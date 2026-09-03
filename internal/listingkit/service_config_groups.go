@@ -1,6 +1,9 @@
 package listingkit
 
-import listingsubmission "task-processor/internal/listing/submission"
+import (
+	listingsubmission "task-processor/internal/listing/submission"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	if config == nil {
@@ -74,7 +77,7 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 	if config == nil {
 		return sheinRuntimeDependencies{}
 	}
-	return sheinRuntimeDependencies{
+	dependencies := sheinRuntimeDependencies{
 		resolutionCacheStore:  config.Shein.SheinResolutionCacheStore,
 		categoryResolver:      config.Shein.SheinCategoryResolver,
 		attributeResolver:     config.Shein.SheinAttributeResolver,
@@ -82,6 +85,8 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 		sizeHeaderResolver:    config.Shein.SheinSizeHeaderResolver,
 		pricingPolicy:         config.Shein.SheinPricingPolicy,
 	}
+	dependencies.freshAttributeResolver, _ = config.Shein.SheinAttributeResolver.(sheinpub.FreshAttributeResolver)
+	return dependencies
 }
 
 func buildSupportDependencies(config *ServiceConfig) supportDependencies {

@@ -129,10 +129,7 @@ linters-settings:
         # Final Phase 3 hard cut: retired roots and the test-only asset helper
         # must never regain production consumers.
         files:
-          - "**/internal/*.go"
-          - "**/internal/**/*.go"
-          - "**/cmd/*.go"
-          - "**/cmd/**/*.go"
+          - "**/*.go"
         deny:
           - pkg: "task-processor/internal/catalog$"
           - pkg: "task-processor/internal/catalog/"

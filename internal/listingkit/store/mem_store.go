@@ -1,9 +1,8 @@
 package store
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
+	"encoding/json"
 	"reflect"
 	"sort"
 	"sync"
@@ -11,6 +10,7 @@ import (
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shared/tenantctx"
 )
 
@@ -629,13 +629,34 @@ func cloneMemTask(task *listingkit.Task) (*listingkit.Task, error) {
 	if task == nil {
 		return nil, nil
 	}
-	var encoded bytes.Buffer
-	if err := gob.NewEncoder(&encoded).Encode(task); err != nil {
+	copyForJSON := *task
+	var sheinPackage *sheinpub.Package
+	if task.Result != nil {
+		result := *task.Result
+		copyForJSON.Result = &result
+		sheinPackage = result.Shein
+		result.Shein = nil
+	}
+	encoded, err := json.Marshal(&copyForJSON)
+	if err != nil {
 		return nil, err
 	}
 	var cloned listingkit.Task
-	if err := gob.NewDecoder(&encoded).Decode(&cloned); err != nil {
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
 		return nil, err
+	}
+	cloned.BillingTenantID = task.BillingTenantID
+	cloned.GenerationUsageReservationState = task.GenerationUsageReservationState
+	if task.GenerationUsageReservationLeaseUntil != nil {
+		leaseUntil := *task.GenerationUsageReservationLeaseUntil
+		cloned.GenerationUsageReservationLeaseUntil = &leaseUntil
+	}
+	if sheinPackage != nil {
+		clonedPackage, cloneErr := sheinpub.ClonePackageForPersistence(sheinPackage)
+		if cloneErr != nil {
+			return nil, cloneErr
+		}
+		cloned.Result.Shein = clonedPackage
 	}
 	return &cloned, nil
 }

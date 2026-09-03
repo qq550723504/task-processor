@@ -1757,21 +1757,31 @@ Pop-Location
 
 `@hey-api/typescript` 是仓库锁定版本提供的 type-only 插件；输出不是精确两个文件时立即失败，不得手写保留旧 endpoint 类型。
 
-- [x] **Step 4: 运行聚焦验证**
+- [x] **Step 4a: 运行聚焦测试**
 
 Run: `go test ./internal/product/... ./internal/imageagent/... ./internal/listingkit/... ./internal/sds/... ./internal/amazonlisting/... ./internal/integration/persistence/product/asset -count=1`
 
 Run: `go test ./tests -run 'Test(Product|ImageAgent|LegacyProductRoots|TargetDomains|Phase3|.*Depguard.*)' -count=1`
 
+Expected: 两组测试 PASS。
+
+- [x] **Step 4b: 运行 Task 17 变更行 lint**
+
+Run: `golangci-lint run --new-from-rev=0904073f01415421cabe3f39b76eebb2b90a3303 ./internal/product/... ./internal/imageagent/... ./internal/app/...`
+
+Expected: PASS。
+
+- [ ] **Step 4c: 运行完整 lint**
+
 Run: `golangci-lint run ./internal/product/... ./internal/imageagent/... ./internal/app/...`
 
-Expected: 全部 PASS。
+Expected: PASS。当前结果见下方验证记录，基线债务清理前不得勾选。
 
 > **Task 17 验证记录（2026-09-03）：** 产品域聚焦测试、架构聚合、全仓编译和本次变更新增 lint 均通过。完整 lint 命令仍被非 Task 17 基线阻断：基准 `0904073f` 已有 273 个 `gofmt` 报告和 `internal/product/enrichment/proposer.go:57` 的 `S1016`；当前仍有 173 个未改文件的 `gofmt` 报告和同一个 `S1016`。本任务没有批量改写无关 CRLF 文件，也没有把该基线债务伪报为通过；`golangci-lint --new-from-rev=0904073f` 覆盖本次涉及包通过。
 
 > OpenAPI 源契约没有变化。仓库锁定的 `@hey-api/openapi-ts v0.99.0` 重新生成后只产生 `index.ts` 与 `types.gen.ts`，两者 SHA-256 均与当前生成客户端完全一致，因此不制造无意义的生成文件改动。
 
-> Task 17 同时修复两个提交原子性根因：内存 Repository 在独立深拷贝上执行 mutation，只在成功后替换存储并返回独立 snapshot；SHEIN 属性再生成先旁路缓存解析并验证，随后清 cache，clear 失败不提交任何任务状态。两组测试均通过 `-count=20 -shuffle=on` 与 `-race`。
+> Task 17 review follow-up 修复两个提交原子性根因：内存 Repository 使用持久化 codec 与字段所有者 clone 合同，在独立副本上执行 mutation，只在成功后替换存储并返回独立 snapshot；SHEIN 属性再生成将 fresh resolution 和全部派生计算移到 Repository mutation 之前，ListingKit 运行时不再接入非权威 attribute cache，事务 callback 内只有 prepared state 的应用与单次 Task 提交，不再执行 cache clear/remember I/O。
 
 - [x] **Step 5: 运行 UI 契约验证**
 

@@ -31,6 +31,19 @@ func (r revisionResolutionAttributeResolver) Resolve(*sheinpub.BuildRequest, *ca
 	return r.resolution
 }
 
+func (r revisionResolutionAttributeResolver) ResolveFreshAttributeResolution(req *sheinpub.BuildRequest, product *canonical.Product, pkg *sheinpub.Package) *sheinpub.AttributeResolution {
+	return r.Resolve(req, product, pkg)
+}
+
+type revisionStaleOnlyAttributeResolver struct {
+	resolveCalls int
+}
+
+func (r *revisionStaleOnlyAttributeResolver) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.AttributeResolution {
+	r.resolveCalls++
+	return &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42}
+}
+
 type revisionRegenerationAttributeResolver struct {
 	resolved     *sheinpub.AttributeResolution
 	fresh        *sheinpub.AttributeResolution
@@ -75,6 +88,8 @@ type revisionAtomicRepository struct {
 	task             *Task
 	mutationAttempts int
 	mutationCommits  int
+	commitErr        error
+	responseErrOnce  error
 }
 
 func (r *revisionAtomicRepository) GetTask(context.Context, string) (*Task, error) {
@@ -92,8 +107,16 @@ func (r *revisionAtomicRepository) MutateTaskResult(_ context.Context, _ string,
 			return nil, err
 		}
 	}
+	if r.commitErr != nil {
+		return nil, r.commitErr
+	}
 	r.task = candidate
 	r.mutationCommits++
+	if r.responseErrOnce != nil {
+		err := r.responseErrOnce
+		r.responseErrOnce = nil
+		return nil, err
+	}
 	return cloneRevisionAtomicTask(r.task)
 }
 
@@ -117,10 +140,11 @@ func TestApplyTaskRevisionFailsClosedWithoutCommittingNilResolution(t *testing.T
 
 	manualRefresh := "manual_refresh"
 	tests := []struct {
-		name       string
-		request    *ApplyRevisionRequest
-		configure  func(*sheinRuntimeDependencies)
-		wantErrKey string
+		name         string
+		request      *ApplyRevisionRequest
+		configure    func(*sheinRuntimeDependencies)
+		wantErrKey   string
+		wantAttempts int
 	}{
 		{
 			name: "manual category refresh",
@@ -130,7 +154,8 @@ func TestApplyTaskRevisionFailsClosedWithoutCommittingNilResolution(t *testing.T
 			configure: func(deps *sheinRuntimeDependencies) {
 				deps.categoryResolver = revisionResolutionCategoryResolver{}
 			},
-			wantErrKey: "category resolution is unavailable",
+			wantErrKey:   "category resolution is unavailable",
+			wantAttempts: 1,
 		},
 		{
 			name: "regenerate attributes",
@@ -140,7 +165,8 @@ func TestApplyTaskRevisionFailsClosedWithoutCommittingNilResolution(t *testing.T
 			configure: func(deps *sheinRuntimeDependencies) {
 				deps.attributeResolver = revisionResolutionAttributeResolver{}
 			},
-			wantErrKey: "attribute resolution is unavailable",
+			wantErrKey:   "attribute resolution is unavailable",
+			wantAttempts: 0,
 		},
 		{
 			name: "regenerate sale attributes",
@@ -150,7 +176,8 @@ func TestApplyTaskRevisionFailsClosedWithoutCommittingNilResolution(t *testing.T
 			configure: func(deps *sheinRuntimeDependencies) {
 				deps.saleAttributeResolver = revisionResolutionSaleAttributeResolver{}
 			},
-			wantErrKey: "sale-attribute resolution is unavailable",
+			wantErrKey:   "sale-attribute resolution is unavailable",
+			wantAttempts: 1,
 		},
 	}
 
@@ -173,21 +200,44 @@ func TestApplyTaskRevisionFailsClosedWithoutCommittingNilResolution(t *testing.T
 			if preview != nil {
 				t.Fatalf("ApplyTaskRevision() preview = %#v, want nil", preview)
 			}
-			if repo.mutationAttempts != 1 || repo.mutationCommits != 0 {
-				t.Fatalf("mutation attempts/commits = %d/%d, want 1/0", repo.mutationAttempts, repo.mutationCommits)
+			if repo.mutationAttempts != tt.wantAttempts || repo.mutationCommits != 0 {
+				t.Fatalf("mutation attempts/commits = %d/%d, want %d/0", repo.mutationAttempts, repo.mutationCommits, tt.wantAttempts)
 			}
 			assertRevisionTaskJSONEqual(t, repo.task, original)
 		})
 	}
 }
 
-func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnlyAfterClear(t *testing.T) {
+func TestRegenerateAttributesRequiresExplicitFreshCapabilityBeforeMutation(t *testing.T) {
 	t.Parallel()
 
-	clearErr := errors.New("attribute cache clear failed")
+	original := revisionFailClosedTaskFixture()
+	repoTask, err := cloneRevisionAtomicTask(original)
+	require.NoError(t, err)
+	repo := &revisionAtomicRepository{task: repoTask}
+	resolver := &revisionStaleOnlyAttributeResolver{}
+	deps := completeRevisionResolutionDependencies()
+	deps.attributeResolver = resolver
+	svc := &service{repo: repo, sheinRuntimeDeps: deps}
+
+	preview, err := svc.ApplyTaskRevision(context.Background(), original.ID, &ApplyRevisionRequest{
+		Platform: "shein", Actor: "reviewer", Reason: "regenerate attributes",
+		Shein: &SheinRevisionInput{RegenerateAttributes: true},
+	})
+	require.ErrorContains(t, err, "fresh attribute resolver is required")
+	require.Nil(t, preview)
+	require.Zero(t, resolver.resolveCalls, "regeneration must never fall back to the possibly cached Resolve path")
+	require.Zero(t, repo.mutationAttempts, "missing fresh capability must fail before opening a repository mutation")
+	assertRevisionTaskJSONEqual(t, repo.task, original)
+}
+
+func TestRegenerateAttributesUsesFreshStateWithoutCrossBoundaryCacheIO(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name             string
 		resolver         *revisionRegenerationAttributeResolver
+		repoCommitErr    error
 		wantErr          string
 		wantEvents       []string
 		wantCommit       bool
@@ -195,7 +245,7 @@ func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnly
 	}{
 		{
 			name:       "missing resolver",
-			wantErr:    "attribute resolver is required",
+			wantErr:    "fresh attribute resolver is required",
 			wantEvents: nil,
 		},
 		{
@@ -207,27 +257,28 @@ func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnly
 			wantEvents: []string{"resolve_fresh"},
 		},
 		{
-			name: "cache clear fails",
-			resolver: &revisionRegenerationAttributeResolver{
-				resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
-				fresh:    &sheinpub.AttributeResolution{Status: "resolved", Source: "fresh", CategoryID: 42},
-				clearErr: clearErr,
-			},
-			wantErr:    clearErr.Error(),
-			wantEvents: []string{"resolve_fresh", "clear"},
-		},
-		{
-			name: "successful regeneration",
+			name: "cache clear implementation may fail but is never called",
 			resolver: &revisionRegenerationAttributeResolver{
 				resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
 				fresh: &sheinpub.AttributeResolution{
 					Status: "resolved", Source: "fresh", CategoryID: 42,
 					ResolvedAttributes: []sheinpub.ResolvedAttribute{{Name: "Color", Value: "Blue"}},
 				},
+				clearErr: errors.New("partially mutated cache before clear failed"),
 			},
-			wantEvents:       []string{"resolve_fresh", "clear"},
+			wantEvents:       []string{"resolve_fresh"},
 			wantCommit:       true,
 			wantAttributeVal: "Blue",
+		},
+		{
+			name: "repository commit fails after fresh resolution",
+			resolver: &revisionRegenerationAttributeResolver{
+				resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
+				fresh:    &sheinpub.AttributeResolution{Status: "resolved", Source: "fresh", CategoryID: 42},
+			},
+			repoCommitErr: errors.New("repository commit failed"),
+			wantErr:       "repository commit failed",
+			wantEvents:    []string{"resolve_fresh"},
 		},
 	}
 
@@ -236,7 +287,7 @@ func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnly
 			original := revisionFailClosedTaskFixture()
 			repoTask, err := cloneRevisionAtomicTask(original)
 			require.NoError(t, err)
-			repo := &revisionAtomicRepository{task: repoTask}
+			repo := &revisionAtomicRepository{task: repoTask, commitErr: tt.repoCommitErr}
 			deps := completeRevisionResolutionDependencies()
 			if tt.resolver == nil {
 				deps.attributeResolver = nil
@@ -259,6 +310,7 @@ func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnly
 			if tt.resolver != nil {
 				require.Equal(t, tt.wantEvents, tt.resolver.events)
 				require.Zero(t, tt.resolver.resolveCalls, "regeneration must bypass the cached Resolve path")
+				require.Zero(t, tt.resolver.clearCalls, "derived cache I/O must not participate in the Task transaction")
 			}
 			if tt.wantCommit {
 				require.Equal(t, 1, repo.mutationCommits)
@@ -270,6 +322,42 @@ func TestRegenerateAttributesResolvesFreshStateBeforeClearingCacheAndCommitsOnly
 			}
 		})
 	}
+}
+
+func TestRegenerateAttributesConvergesAfterCommittedResponseIsLostAndRetried(t *testing.T) {
+	t.Parallel()
+
+	original := revisionFailClosedTaskFixture()
+	repoTask, err := cloneRevisionAtomicTask(original)
+	require.NoError(t, err)
+	repo := &revisionAtomicRepository{task: repoTask, responseErrOnce: errors.New("response lost after commit")}
+	resolver := &revisionRegenerationAttributeResolver{
+		resolved: &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache", CategoryID: 42},
+		fresh: &sheinpub.AttributeResolution{
+			Status: "resolved", Source: "fresh", CategoryID: 42,
+			ResolvedAttributes: []sheinpub.ResolvedAttribute{{Name: "Color", Value: "Blue"}},
+		},
+	}
+	deps := completeRevisionResolutionDependencies()
+	deps.attributeResolver = resolver
+	svc := &service{repo: repo, sheinRuntimeDeps: deps}
+	request := &ApplyRevisionRequest{
+		Platform: "shein", Actor: "reviewer", Reason: "regenerate attributes",
+		Shein: &SheinRevisionInput{RegenerateAttributes: true},
+	}
+
+	preview, err := svc.ApplyTaskRevision(context.Background(), original.ID, request)
+	require.ErrorContains(t, err, "response lost after commit")
+	require.Nil(t, preview)
+	preview, err = svc.ApplyTaskRevision(context.Background(), original.ID, request)
+	require.NoError(t, err)
+	require.NotNil(t, preview)
+	require.Equal(t, 2, resolver.freshCalls)
+	require.Zero(t, resolver.resolveCalls)
+	require.Zero(t, resolver.clearCalls)
+	require.Equal(t, 2, repo.mutationCommits)
+	require.Equal(t, "fresh", repo.task.Result.Shein.AttributeResolution.Source)
+	require.Equal(t, "Blue", repo.task.Result.Shein.AttributeResolution.ResolvedAttributes[0].Value)
 }
 
 func TestRefreshSheinDerivedStateAcceptsExplicitPartialResolutionOutputs(t *testing.T) {

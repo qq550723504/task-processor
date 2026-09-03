@@ -213,8 +213,11 @@ func TestPhase3ProductHardCutProductionSelectionCoversRuntimeContractsOnly(t *te
 		"internal/app/httpapi/routes.go",
 		"cmd/product-listing-api/main.go",
 		"config/config.yaml",
+		"deployments/workers/product-image.yaml",
+		"scripts/start-product-image-worker",
+		"tools/run-product-image-worker",
+		"Dockerfile",
 		"docs/api/listingkit-asset.openapi.yaml",
-		"web/listingkit-ui/src/lib/api/generated/types.gen.ts",
 	} {
 		if !isPhase3ProductHardCutProductionFile(path) {
 			t.Errorf("isPhase3ProductHardCutProductionFile(%q) = false, want true", path)
@@ -225,6 +228,8 @@ func TestPhase3ProductHardCutProductionSelectionCoversRuntimeContractsOnly(t *te
 		"internal/app/httpapi/testdata/routes.go",
 		"tests/target_architecture_phase3_product_test.go",
 		"docs/superpowers/plans/historical.md",
+		"internal/app/generated/routes.go",
+		"web/listingkit-ui/src/lib/api/generated/types.gen.ts",
 		"web/listingkit-ui/src/lib/api/client.type-test.ts",
 	} {
 		if isPhase3ProductHardCutProductionFile(path) {
@@ -236,13 +241,44 @@ func TestPhase3ProductHardCutProductionSelectionCoversRuntimeContractsOnly(t *te
 	for _, source := range trackedPhase3ProductHardCutSources(t) {
 		scanned[source.path] = struct{}{}
 	}
-	for _, path := range []string{
-		"docs/api/listingkit-asset.openapi.yaml",
-		"web/listingkit-ui/src/lib/api/generated/types.gen.ts",
-	} {
+	for _, path := range []string{"docs/api/listingkit-asset.openapi.yaml"} {
 		if _, ok := scanned[path]; !ok {
 			t.Errorf("production scan set does not contain tracked contract %s", path)
 		}
+	}
+}
+
+func TestPhase3ProductHardCutSelectionAndRuntimeRulesRejectTrackedArtifactMutations(t *testing.T) {
+	tests := []listingKitImageBoundarySource{
+		{path: "deployments/workers/product-image.yaml", text: "queue: product_image\n"},
+		{path: "config/workers.yaml", text: "queue: product_enrich\n"},
+		{path: "Dockerfile", text: "ENV WORKER_QUEUE=product_image\n"},
+		{path: "scripts/start-product-image-worker", text: "exec worker --queue product_image\n"},
+		{path: "tools/run-product-enrich-worker", text: "worker --queue=product_enrich\n"},
+	}
+	for _, mutation := range tests {
+		t.Run(mutation.path, func(t *testing.T) {
+			selected := selectPhase3ProductHardCutSources([]listingKitImageBoundarySource{mutation})
+			if len(selected) != 1 {
+				t.Fatalf("tracked production mutation %q was omitted from the hard-cut source set", mutation.path)
+			}
+			violations := findListingKitImageBoundaryViolations(selected)
+			for _, violation := range violations {
+				if violation.rule == "retired product worker or queue" {
+					return
+				}
+			}
+			t.Fatalf("violations = %+v, want retired product worker or queue", violations)
+		})
+	}
+
+	legitimate := listingKitImageBoundarySource{
+		path: "internal/imageagent/policy/scene.go",
+		text: `package policy; var scene = Scene{SceneStyle: "studio"}`,
+	}
+	selected := selectPhase3ProductHardCutSources([]listingKitImageBoundarySource{legitimate})
+	if violations := findListingKitImageBoundaryViolations(selected); len(violations) != 0 {
+		t.Fatalf("legitimate ImageAgent scene produced violations: %+v", violations)
 	}
 }
 
@@ -299,7 +335,17 @@ func trackedListingKitImageBoundarySources(t *testing.T) []listingKitImageBounda
 
 func trackedPhase3ProductHardCutSources(t *testing.T) []listingKitImageBoundarySource {
 	t.Helper()
-	return trackedProductionTextSources(t, []string{"internal", "cmd", "config", "docs/api", "web/listingkit-ui/src/lib/api/generated"}, isPhase3ProductHardCutProductionFile)
+	return trackedProductionTextSources(t, []string{"."}, isPhase3ProductHardCutProductionFile)
+}
+
+func selectPhase3ProductHardCutSources(sources []listingKitImageBoundarySource) []listingKitImageBoundarySource {
+	selected := make([]listingKitImageBoundarySource, 0, len(sources))
+	for _, source := range sources {
+		if isPhase3ProductHardCutProductionFile(source.path) {
+			selected = append(selected, source)
+		}
+	}
+	return selected
 }
 
 func trackedProductionTextSources(t *testing.T, scopes []string, include func(string) bool) []listingKitImageBoundarySource {
@@ -334,15 +380,17 @@ func trackedProductionTextSources(t *testing.T, scopes []string, include func(st
 func isPhase3ProductHardCutProductionFile(path string) bool {
 	path = filepath.ToSlash(path)
 	base := filepath.Base(path)
-	if strings.HasSuffix(base, "_test.go") || strings.Contains(base, ".test.") || strings.Contains(base, ".type-test.") || strings.Contains(path, "/testdata/") {
+	if strings.HasPrefix(path, "tests/") || strings.HasPrefix(path, ".superpowers/") ||
+		strings.HasPrefix(path, "generated/") || strings.Contains(path, "/generated/") ||
+		strings.HasPrefix(path, "testdata/") || strings.Contains(path, "/testdata/") ||
+		strings.EqualFold(filepath.Ext(base), ".md") || strings.HasSuffix(base, "_test.go") ||
+		strings.Contains(base, ".test.") || strings.Contains(base, ".type-test.") {
 		return false
 	}
-	if strings.HasPrefix(path, "internal/") || strings.HasPrefix(path, "cmd/") {
-		return strings.HasSuffix(base, ".go")
+	if strings.HasPrefix(path, "docs/") {
+		return strings.HasPrefix(path, "docs/api/")
 	}
-	return strings.HasPrefix(path, "config/") ||
-		strings.HasPrefix(path, "docs/api/") ||
-		strings.HasPrefix(path, "web/listingkit-ui/src/lib/api/generated/")
+	return true
 }
 
 func isListingKitImageBoundaryProductionFile(path string) bool {
@@ -465,6 +513,6 @@ func listingKitImageBoundaryRules() []listingKitImageBoundaryRule {
 		{name: "retired frontend image owner", paths: frontend, match: regexp.MustCompile(`(?i)(?:shein-studio|style-gallery|sds-workbench|image_nanobanana|image_background_removal)`)},
 		{name: "retired product task API", paths: phase3ProductRuntime, match: regexp.MustCompile(`(?i)/api/v1/(?:products/(?:generate|tasks)|images/(?:process|tasks))(?:[/\s?:"']|$)`)},
 		{name: "retired product task table", paths: phase3ProductRuntime, match: regexp.MustCompile(`\bproduct_(?:enrich|image)_tasks\b`)},
-		{name: "retired product worker or queue", paths: phase3ProductRuntime, match: regexp.MustCompile(`["']product_(?:enrich|image)["']`)},
+		{name: "retired product worker or queue", paths: phase3ProductRuntime, match: regexp.MustCompile(`(?i)\bproduct_(?:enrich|image)\b`)},
 	}
 }

@@ -26,10 +26,8 @@ func buildListingKitSheinCategoryResolver(storeRepo listingadmin.StoreRepository
 }
 
 func buildListingKitSheinAttributeResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
-	return sheinpub.NewCachedAttributeResolver(
-		sheinpub.NewRuntimeAttributeResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, llm),
-		cache,
-	)
+	_ = cache
+	return sheinpub.NewRuntimeAttributeResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, llm)
 }
 
 func buildListingKitSheinSaleAttributeResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {

@@ -6,8 +6,16 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/product/catalog/canonical"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/sheinlogin"
 )
+
+type cachedOnlyAttributeResolver struct{}
+
+func (cachedOnlyAttributeResolver) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.AttributeResolution {
+	return &sheinpub.AttributeResolution{Status: "resolved", Source: "stale-cache"}
+}
 
 func completeCapabilityHooks() BuildServiceHooks {
 	return BuildRuntimeSupport(RuntimeSupportInput{SheinCookieStore: &sheinlogin.RedisStore{}}).Hooks
@@ -88,5 +96,29 @@ func TestBuildSubmitModuleRejectsNilSheinCapabilityResults(t *testing.T) {
 				t.Fatalf("buildSubmitModule() module/error = %#v/%v, want explicit %s error", module, err, tt.wantErrKey)
 			}
 		})
+	}
+}
+
+func TestSubmitSheinDependenciesRejectAttributeResolverWithoutFreshCapability(t *testing.T) {
+	t.Parallel()
+
+	err := (submitSheinDependencies{
+		categoryResolver:  buildListingKitSheinCategoryResolver(nil, nil, nil, nil),
+		attributeResolver: cachedOnlyAttributeResolver{},
+	}).validate()
+	if err == nil || !strings.Contains(err.Error(), "fresh attribute resolution capability") {
+		t.Fatalf("validate() error = %v, want explicit fresh capability error", err)
+	}
+}
+
+func TestRuntimeListingKitAttributeResolverRetiresDerivedCacheBoundary(t *testing.T) {
+	t.Parallel()
+
+	resolver := buildListingKitSheinAttributeResolver(nil, nil, nil, nil)
+	if _, ok := resolver.(sheinpub.FreshAttributeResolver); !ok {
+		t.Fatal("runtime ListingKit attribute resolver must declare fresh resolution capability")
+	}
+	if _, ok := resolver.(sheinpub.AttributeResolutionCache); ok {
+		t.Fatal("runtime ListingKit attribute resolver must not expose the retired derived cache boundary")
 	}
 }

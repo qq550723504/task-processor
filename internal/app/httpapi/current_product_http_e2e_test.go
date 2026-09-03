@@ -861,6 +861,10 @@ func (currentE2EResolvedAttributes) Resolve(*sheinpub.BuildRequest, *canonical.P
 	}
 }
 
+func (resolver currentE2EResolvedAttributes) ResolveFreshAttributeResolution(req *sheinpub.BuildRequest, product *canonical.Product, pkg *sheinpub.Package) *sheinpub.AttributeResolution {
+	return resolver.Resolve(req, product, pkg)
+}
+
 type currentE2EResolvedSaleAttributes struct{}
 
 func (currentE2EResolvedSaleAttributes) Resolve(*sheinpub.BuildRequest, *canonical.Product, *sheinpub.Package) *sheinpub.SaleAttributeResolution {

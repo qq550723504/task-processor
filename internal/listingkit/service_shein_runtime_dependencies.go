@@ -3,12 +3,13 @@ package listingkit
 import sheinpub "task-processor/internal/publishing/shein"
 
 type sheinRuntimeDependencies struct {
-	resolutionCacheStore  sheinpub.ResolutionCacheStore
-	categoryResolver      sheinpub.CategoryResolver
-	attributeResolver     sheinpub.AttributeResolver
-	saleAttributeResolver sheinpub.SaleAttributeResolver
-	sizeHeaderResolver    sheinpub.SizeAttributeHeaderResolver
-	pricingPolicy         sheinpub.PricingPolicy
+	resolutionCacheStore   sheinpub.ResolutionCacheStore
+	categoryResolver       sheinpub.CategoryResolver
+	attributeResolver      sheinpub.AttributeResolver
+	freshAttributeResolver sheinpub.FreshAttributeResolver
+	saleAttributeResolver  sheinpub.SaleAttributeResolver
+	sizeHeaderResolver     sheinpub.SizeAttributeHeaderResolver
+	pricingPolicy          sheinpub.PricingPolicy
 }
 
 func resolveSheinResolutionCacheStore(s *service) sheinpub.ResolutionCacheStore {
@@ -30,6 +31,17 @@ func resolveSheinAttributeResolver(s *service) sheinpub.AttributeResolver {
 		return nil
 	}
 	return s.sheinRuntimeDeps.attributeResolver
+}
+
+func resolveSheinFreshAttributeResolver(s *service) sheinpub.FreshAttributeResolver {
+	if s == nil {
+		return nil
+	}
+	if s.sheinRuntimeDeps.freshAttributeResolver != nil {
+		return s.sheinRuntimeDeps.freshAttributeResolver
+	}
+	fresh, _ := s.sheinRuntimeDeps.attributeResolver.(sheinpub.FreshAttributeResolver)
+	return fresh
 }
 
 func resolveSheinSaleAttributeResolver(s *service) sheinpub.SaleAttributeResolver {

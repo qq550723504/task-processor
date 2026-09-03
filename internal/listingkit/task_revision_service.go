@@ -13,7 +13,8 @@ type taskRevisionServiceConfig struct {
 	repo                                    Repository
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
 	recovery                                *taskSubmissionRecoveryService
-	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest) error
+	prepareSheinDerivedState                func(*Task, *ApplyRevisionRequest) (*preparedSheinRevisionDerivedState, error)
+	applyPreparedSheinDerivedState          func(*Task, *ApplyRevisionRequest, *preparedSheinRevisionDerivedState) error
 	refreshSheinTaskResultState             func(context.Context, *Task, *ListingKitResult)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
@@ -22,7 +23,8 @@ type taskRevisionService struct {
 	repo                                    Repository
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
 	recovery                                *taskSubmissionRecoveryService
-	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest) error
+	prepareSheinDerivedState                func(*Task, *ApplyRevisionRequest) (*preparedSheinRevisionDerivedState, error)
+	applyPreparedSheinDerivedState          func(*Task, *ApplyRevisionRequest, *preparedSheinRevisionDerivedState) error
 	refreshSheinTaskResultState             func(context.Context, *Task, *ListingKitResult)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
@@ -32,7 +34,8 @@ func newTaskRevisionService(config taskRevisionServiceConfig) *taskRevisionServi
 		repo:                                    config.repo,
 		resolveManualSheinSaleAttributeValueIDs: config.resolveManualSheinSaleAttributeValueIDs,
 		recovery:                                config.recovery,
-		refreshSheinDerivedState:                config.refreshSheinDerivedState,
+		prepareSheinDerivedState:                config.prepareSheinDerivedState,
+		applyPreparedSheinDerivedState:          config.applyPreparedSheinDerivedState,
 		refreshSheinTaskResultState:             config.refreshSheinTaskResultState,
 		buildTaskPreview:                        config.buildTaskPreview,
 	}
@@ -55,6 +58,27 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 			return nil, err
 		}
 	}
+	var preparedSheinDerivedState *preparedSheinRevisionDerivedState
+	if effectiveReq.Platform == "shein" && effectiveReq.Shein != nil && effectiveReq.Shein.RegenerateAttributes && s.prepareSheinDerivedState != nil {
+		preparationTask := *task
+		preparationTask.Result, err = cloneListingKitResult(task.Result)
+		if err != nil {
+			return nil, err
+		}
+		if task.Result.Shein != nil {
+			preparationTask.Result.Shein, err = sheinpub.ClonePackageForPersistence(task.Result.Shein)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if err := applyListingKitRevision(preparationTask.Result, effectiveReq); err != nil {
+			return nil, err
+		}
+		preparedSheinDerivedState, err = s.prepareSheinDerivedState(&preparationTask, effectiveReq)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var appliedChanges *RevisionDiffPreview
 	task, err = s.mutateRevisionTask(ctx, taskID, func(task *Task) error {
 		if task.Result == nil {
@@ -67,8 +91,8 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 		if err := applyListingKitRevision(task.Result, effectiveReq); err != nil {
 			return err
 		}
-		if effectiveReq.Platform == "shein" && s.refreshSheinDerivedState != nil {
-			if err := s.refreshSheinDerivedState(task, effectiveReq); err != nil {
+		if effectiveReq.Platform == "shein" && s.applyPreparedSheinDerivedState != nil {
+			if err := s.applyPreparedSheinDerivedState(task, effectiveReq, preparedSheinDerivedState); err != nil {
 				return err
 			}
 		}

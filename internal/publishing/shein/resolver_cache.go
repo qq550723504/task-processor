@@ -22,6 +22,11 @@ type cachedAttributeResolver struct {
 	store ResolutionCacheStore
 }
 
+type cachedFreshAttributeResolver struct {
+	*cachedAttributeResolver
+	fresh FreshAttributeResolver
+}
+
 type cachedSaleAttributeResolver struct {
 	inner SaleAttributeResolver
 	cache sync.Map
@@ -39,6 +44,7 @@ type AttributeResolutionCache interface {
 }
 
 type FreshAttributeResolver interface {
+	AttributeResolver
 	ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution
 }
 
@@ -51,7 +57,7 @@ type attributeResolutionCacheValidator interface {
 	CachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) (bool, string)
 }
 
-var _ FreshAttributeResolver = (*cachedAttributeResolver)(nil)
+var _ FreshAttributeResolver = (*cachedFreshAttributeResolver)(nil)
 
 func NewCachedCategoryResolver(inner CategoryResolver, stores ...ResolutionCacheStore) CategoryResolver {
 	if inner == nil {
@@ -64,7 +70,11 @@ func NewCachedAttributeResolver(inner AttributeResolver, stores ...ResolutionCac
 	if inner == nil {
 		return nil
 	}
-	return &cachedAttributeResolver{inner: inner, store: firstResolutionCacheStore(stores)}
+	cached := &cachedAttributeResolver{inner: inner, store: firstResolutionCacheStore(stores)}
+	if fresh, ok := inner.(FreshAttributeResolver); ok {
+		return &cachedFreshAttributeResolver{cachedAttributeResolver: cached, fresh: fresh}
+	}
+	return cached
 }
 
 func NewCachedSaleAttributeResolver(inner SaleAttributeResolver, stores ...ResolutionCacheStore) SaleAttributeResolver {
@@ -196,11 +206,11 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 	return resolution
 }
 
-func (r *cachedAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
-	if r == nil || r.inner == nil {
+func (r *cachedFreshAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
+	if r == nil || r.fresh == nil {
 		return nil
 	}
-	return r.inner.Resolve(req, canonical, pkg)
+	return r.fresh.ResolveFreshAttributeResolution(req, canonical, pkg)
 }
 
 func (r *cachedAttributeResolver) cachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution *AttributeResolution) bool {

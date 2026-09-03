@@ -29,6 +29,10 @@ func (r *countingAttributeResolver) Resolve(_ *BuildRequest, _ *canonical.Produc
 	return cloneAttributeResolution(r.out)
 }
 
+func (r *countingAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, product *canonical.Product, pkg *Package) *AttributeResolution {
+	return r.Resolve(req, product, pkg)
+}
+
 type countingSaleAttributeResolver struct {
 	calls int
 	out   *SaleAttributeResolution
@@ -518,6 +522,21 @@ func TestCachedAttributeResolverFreshResolutionBypassesRememberedValue(t *testin
 	if fresh == nil || fresh.Source != "fresh" || inner.calls != 1 {
 		t.Fatalf("fresh resolution = %#v, inner calls = %d; want one direct inner resolution", fresh, inner.calls)
 	}
+}
+
+func TestCachedAttributeResolverDoesNotClaimFreshCapabilityForCachedOnlyInner(t *testing.T) {
+	resolver := NewCachedAttributeResolver(attributeResolverFunc(func(*BuildRequest, *canonical.Product, *Package) *AttributeResolution {
+		return &AttributeResolution{Status: "resolved", Source: "possibly-cached"}
+	}))
+	if _, ok := resolver.(FreshAttributeResolver); ok {
+		t.Fatal("cached-only inner resolver must not be promoted to fresh capability")
+	}
+}
+
+type attributeResolverFunc func(*BuildRequest, *canonical.Product, *Package) *AttributeResolution
+
+func (resolve attributeResolverFunc) Resolve(req *BuildRequest, product *canonical.Product, pkg *Package) *AttributeResolution {
+	return resolve(req, product, pkg)
 }
 
 func TestCachedAttributeResolverRejectsManualResolutionWithStaleTemplateAttributes(t *testing.T) {

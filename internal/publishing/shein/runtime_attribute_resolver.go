@@ -12,6 +12,8 @@ type runtimeAttributeResolver struct {
 	llm     TextGenerator
 }
 
+var _ FreshAttributeResolver = (*runtimeAttributeResolver)(nil)
+
 func NewRuntimeAttributeResolver(factory RuntimeAPIClientFactory, llm TextGenerator) AttributeResolver {
 	return &runtimeAttributeResolver{
 		factory: newRuntimeAPIFactory(factory),
@@ -30,6 +32,10 @@ func (r *runtimeAttributeResolver) Resolve(req *BuildRequest, canonical *canonic
 	}
 	resolver := NewAttributeResolver(api, r.llm)
 	return resolver.Resolve(req, canonical, pkg)
+}
+
+func (r *runtimeAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
+	return r.Resolve(req, canonical, pkg)
 }
 
 func (r *runtimeAttributeResolver) buildAPI(ctx context.Context, storeID int64) AttributeAPI {

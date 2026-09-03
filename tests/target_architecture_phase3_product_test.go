@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -77,13 +78,53 @@ func TestPhase3LegacyProductImportDeclarationsAreAbsent(t *testing.T) {
 		"task-processor/internal/productimage",
 		"task-processor/internal/product/asset/assettest",
 	}
-	for _, root := range []string{
-		filepath.Join("..", "internal"),
-		filepath.Join("..", "cmd"),
-		filepath.Join("..", "hack"),
+	violations, err := phase3BannedImportDeclarationViolations(trackedPhase3ProductHardCutSources(t), banned)
+	require.NoError(t, err)
+	require.Empty(t, violations, "retired imports must stay absent from every Git-tracked production Go entrypoint")
+}
+
+func TestPhase3LegacyProductImportGuardCoversArbitraryTrackedProductionGoEntrypoints(t *testing.T) {
+	banned := []string{"task-processor/internal/productimage"}
+	for _, path := range []string{
+		"internal/app/reintroduced.go",
+		"cmd/worker/main.go",
+		"tools/release/main.go",
+		"scripts/migrate/main.go",
 	} {
-		assertNoBannedImportPrefixes(t, root, banned, nil)
+		source := listingKitImageBoundarySource{
+			path: path,
+			text: "package main\nimport _ \"task-processor/internal/productimage/runtime\"\n",
+		}
+		selected := selectPhase3ProductHardCutSources([]listingKitImageBoundarySource{source})
+		violations, err := phase3BannedImportDeclarationViolations(selected, banned)
+		require.NoError(t, err)
+		require.Equal(t, []string{path + " -> task-processor/internal/productimage/runtime"}, violations)
 	}
+}
+
+func phase3BannedImportDeclarationViolations(sources []listingKitImageBoundarySource, banned []string) ([]string, error) {
+	var violations []string
+	for _, source := range sources {
+		path := filepath.ToSlash(source.path)
+		if !strings.HasSuffix(path, ".go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, source.text, parser.ImportsOnly)
+		if err != nil {
+			return nil, err
+		}
+		for _, spec := range parsed.Imports {
+			imported := strings.Trim(spec.Path.Value, "`\"")
+			for _, prefix := range banned {
+				if importMatchesPrefix(imported, prefix) {
+					violations = append(violations, path+" -> "+imported)
+					break
+				}
+			}
+		}
+	}
+	sort.Strings(violations)
+	return violations, nil
 }
 
 func TestPhase3ConsumersCannotOrchestrateProductImage(t *testing.T) {

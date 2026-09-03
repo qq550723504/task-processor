@@ -114,13 +114,8 @@ func TestPhase3FinalProductHardCutDepguardRules(t *testing.T) {
 
 	retired := requireDepguardRule(t, rules, "phase3_retired_product_imports")
 	retiredFiles := stringSet(retired.Files)
-	for _, glob := range []string{
-		"**/internal/*.go", "**/internal/**/*.go",
-		"**/cmd/*.go", "**/cmd/**/*.go",
-	} {
-		if _, ok := retiredFiles[glob]; !ok {
-			t.Errorf("phase3_retired_product_imports must cover %s", glob)
-		}
+	if _, ok := retiredFiles["**/*.go"]; !ok {
+		t.Error("phase3_retired_product_imports must cover every Go entrypoint via **/*.go")
 	}
 	retiredDenied := depguardDenyPackageSet(retired)
 	for _, packagePath := range []string{

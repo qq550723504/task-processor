@@ -176,6 +176,8 @@ func (d submitSheinDependencies) validate() error {
 		return fmt.Errorf("SHEIN category resolver builder returned nil")
 	case d.attributeResolver == nil:
 		return fmt.Errorf("SHEIN attribute resolver builder returned nil")
+	case !supportsFreshAttributeResolution(d.attributeResolver):
+		return fmt.Errorf("SHEIN attribute resolver builder returned a resolver without fresh attribute resolution capability")
 	case d.saleAttributeResolver == nil:
 		return fmt.Errorf("SHEIN sale-attribute resolver builder returned nil")
 	case d.productAPIBuilder == nil:
@@ -189,4 +191,9 @@ func (d submitSheinDependencies) validate() error {
 	default:
 		return nil
 	}
+}
+
+func supportsFreshAttributeResolution(resolver sheinpub.AttributeResolver) bool {
+	_, ok := resolver.(sheinpub.FreshAttributeResolver)
+	return ok
 }

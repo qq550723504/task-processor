@@ -13,8 +13,11 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 			return s.resolveManualSheinSaleAttributeValueIDs(ctx, task, req)
 		},
 		recovery: s.taskSubmissionRecoveryOrDefault(),
-		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) error {
-			return s.refreshSheinDerivedState(task, req)
+		prepareSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) (*preparedSheinRevisionDerivedState, error) {
+			return s.prepareSheinRevisionDerivedState(task, req)
+		},
+		applyPreparedSheinDerivedState: func(task *Task, req *ApplyRevisionRequest, prepared *preparedSheinRevisionDerivedState) error {
+			return s.applyPreparedSheinRevisionDerivedState(task, req, prepared)
 		},
 		refreshSheinTaskResultState: func(ctx context.Context, task *Task, result *ListingKitResult) {
 			s.refreshSheinTaskResultState(ctx, task, result)
