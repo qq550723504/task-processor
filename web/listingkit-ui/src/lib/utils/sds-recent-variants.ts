@@ -71,27 +71,3 @@ export function saveRecentSDSVariant(selection: SDSProductVariantSelection) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
-
-export function subscribeRecentSDSVariants(onStoreChange: () => void) {
-  if (!canUseStorage()) {
-    return () => {};
-  }
-
-  const handleStorage = (event: StorageEvent) => {
-    if (!event.key || event.key === STORAGE_KEY) {
-      onStoreChange();
-    }
-  };
-
-  const handleLocalChange = () => {
-    onStoreChange();
-  };
-
-  window.addEventListener("storage", handleStorage);
-  window.addEventListener(CHANGE_EVENT, handleLocalChange);
-
-  return () => {
-    window.removeEventListener("storage", handleStorage);
-    window.removeEventListener(CHANGE_EVENT, handleLocalChange);
-  };
-}

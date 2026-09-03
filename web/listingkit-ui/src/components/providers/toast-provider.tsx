@@ -3,7 +3,6 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useMemo,
   useRef,
   useState,
@@ -160,8 +159,4 @@ export function ToastProvider({ children }: PropsWithChildren) {
       </div>
     </toastContext.Provider>
   );
-}
-
-export function useToast() {
-  return useContext(toastContext);
 }

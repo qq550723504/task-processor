@@ -114,7 +114,7 @@ export type SDSSelectedProductVariant = {
   items?: SDSProductVariant[];
 };
 
-export type SDSProductSummary = {
+type SDSProductSummary = {
   id: number;
   parent_id?: number;
   parentSku?: string;
