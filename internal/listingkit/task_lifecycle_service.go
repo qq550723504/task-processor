@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -101,21 +102,58 @@ func (s *taskLifecycleService) replayIdempotentGenerateTask(ctx context.Context,
 	return existing, nil
 }
 
+// generateTaskPayloadsEquivalent compares the complete persisted target
+// payload, not just the product identity: a corrected retry that changes
+// the store, market, language, category or brand hints, options, text,
+// source reference, or the billing/user identity must surface an
+// idempotency conflict instead of silently replaying the first task.
 func generateTaskPayloadsEquivalent(existing, candidate *Task) bool {
 	if existing == nil || candidate == nil {
 		return false
 	}
 	if existing.TenantID != candidate.TenantID ||
+		existing.UserID != candidate.UserID ||
+		existing.BillingTenantID != candidate.BillingTenantID ||
 		existing.SourceSnapshotVersion != candidate.SourceSnapshotVersion {
 		return false
 	}
 	if existing.Request == nil || candidate.Request == nil {
 		return existing.Request == nil && candidate.Request == nil
 	}
-	if existing.Request.ProductKey != candidate.Request.ProductKey {
+	return generateRequestTargetPayloadEquivalent(existing.Request, candidate.Request)
+}
+
+func generateRequestTargetPayloadEquivalent(existing, candidate *GenerateRequest) bool {
+	if existing.ProductKey != candidate.ProductKey ||
+		existing.Text != candidate.Text ||
+		existing.Country != candidate.Country ||
+		existing.Language != candidate.Language ||
+		existing.SheinStoreID != candidate.SheinStoreID ||
+		existing.TargetCategoryHint != candidate.TargetCategoryHint ||
+		existing.BrandHint != candidate.BrandHint {
 		return false
 	}
-	return stringSlicesEqualIgnoreOrder(existing.Request.Platforms, candidate.Request.Platforms)
+	if !sourceReferencesEquivalent(existing.Source, candidate.Source) {
+		return false
+	}
+	if !generateOptionsEquivalent(existing.Options, candidate.Options) {
+		return false
+	}
+	return stringSlicesEqualIgnoreOrder(existing.Platforms, candidate.Platforms)
+}
+
+func sourceReferencesEquivalent(existing, candidate *SourceReference) bool {
+	if existing == nil || candidate == nil {
+		return existing == nil && candidate == nil
+	}
+	return reflect.DeepEqual(*existing, *candidate)
+}
+
+func generateOptionsEquivalent(existing, candidate *GenerateOptions) bool {
+	if existing == nil || candidate == nil {
+		return existing == nil && candidate == nil
+	}
+	return reflect.DeepEqual(*existing, *candidate)
 }
 
 func stringSlicesEqualIgnoreOrder(a, b []string) bool {

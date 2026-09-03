@@ -188,6 +188,96 @@ func TestCreateGenerateTaskDerivesStableTaskIDFromIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestCreateGenerateTaskRejectsSameIdempotencyKeyWithDifferentTargetPayload(t *testing.T) {
+	baseRequest := func() *GenerateRequest {
+		return &GenerateRequest{
+			TenantID: "101", ProductKey: "crawler:1688:777", Platforms: []string{"amazon"},
+			IdempotencyKey: "source-run:run-1",
+			UserID:         "user-1", BillingTenantID: "101",
+			Country: "us", Language: "en",
+			Source:             &SourceReference{Type: "a1688", ID: "777"},
+			TargetCategoryHint: "bags", BrandHint: "ListingKit",
+			Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 42, ProductName: "Tote"}},
+		}
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*GenerateRequest)
+	}{
+		{name: "different shein store", mutate: func(r *GenerateRequest) { r.SheinStoreID = 2002 }},
+		{name: "different country", mutate: func(r *GenerateRequest) { r.Country = "de" }},
+		{name: "different language", mutate: func(r *GenerateRequest) { r.Language = "de" }},
+		{name: "different category hint", mutate: func(r *GenerateRequest) { r.TargetCategoryHint = "shoes" }},
+		{name: "different brand hint", mutate: func(r *GenerateRequest) { r.BrandHint = "Other" }},
+		{name: "different user", mutate: func(r *GenerateRequest) { r.UserID = "user-2" }},
+		{name: "different billing tenant", mutate: func(r *GenerateRequest) { r.BillingTenantID = "202" }},
+		{name: "different text", mutate: func(r *GenerateRequest) { r.Text = "regenerate with focus on durability" }},
+		{name: "different source", mutate: func(r *GenerateRequest) { r.Source = &SourceReference{Type: "a1688", ID: "999"} }},
+		{name: "missing source", mutate: func(r *GenerateRequest) { r.Source = nil }},
+		{name: "different options", mutate: func(r *GenerateRequest) { r.Options = &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 43}} }},
+		{name: "missing options payload", mutate: func(r *GenerateRequest) { r.Options = nil }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			submitter := &countingTaskSubmitter{}
+			repo := newDuplicateRejectingRepo(submitter)
+			lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+				repo:          repo,
+				taskSubmitter: func() TaskSubmitter { return submitter },
+			})
+			ctx := WithTenantID(context.Background(), "101")
+
+			if _, err := lifecycle.CreateGenerateTask(ctx, baseRequest()); err != nil {
+				t.Fatalf("first CreateGenerateTask() error = %v", err)
+			}
+			replayed := baseRequest()
+			tt.mutate(replayed)
+			_, err := lifecycle.CreateGenerateTask(ctx, replayed)
+			if !errors.Is(err, ErrGenerateTaskIdempotencyConflict) {
+				t.Fatalf("conflicting CreateGenerateTask() error = %v, want ErrGenerateTaskIdempotencyConflict", err)
+			}
+			if submitted := repo.submittedTaskIDs(); len(submitted) != 1 {
+				t.Fatalf("submitted task IDs = %v, want no dispatch for the conflicting replay", submitted)
+			}
+		})
+	}
+}
+
+func TestCreateGenerateTaskReplaysSameIdempotencyKeyWithIdenticalTargetPayload(t *testing.T) {
+	submitter := &countingTaskSubmitter{}
+	repo := newDuplicateRejectingRepo(submitter)
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo:          repo,
+		taskSubmitter: func() TaskSubmitter { return submitter },
+	})
+	ctx := WithTenantID(context.Background(), "101")
+	request := &GenerateRequest{
+		TenantID: "101", ProductKey: "crawler:1688:777", Platforms: []string{"amazon"},
+		IdempotencyKey: "source-run:run-1",
+		UserID:         "user-1", BillingTenantID: "101",
+		Country: "us", Language: "en",
+		Source:             &SourceReference{Type: "a1688", ID: "777"},
+		TargetCategoryHint: "bags", BrandHint: "ListingKit",
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 42, ProductName: "Tote"}},
+	}
+
+	first, err := lifecycle.CreateGenerateTask(ctx, request)
+	if err != nil {
+		t.Fatalf("first CreateGenerateTask() error = %v", err)
+	}
+	second, err := lifecycle.CreateGenerateTask(ctx, request)
+	if err != nil {
+		t.Fatalf("replayed CreateGenerateTask() error = %v, want idempotent replay", err)
+	}
+	if second == nil || second.ID != first.ID {
+		t.Fatalf("replayed task ID = %v, want %v", secondTaskID(second), first.ID)
+	}
+	if submitted := repo.submittedTaskIDs(); len(submitted) != 1 {
+		t.Fatalf("submitted task IDs = %v, want exactly one dispatch", submitted)
+	}
+}
+
 func secondTaskID(task *Task) string {
 	if task == nil {
 		return ""
