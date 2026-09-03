@@ -36,6 +36,7 @@ import {
 import {
   TaskAdvancedSettingsToggle,
   TaskCreateFormActions,
+  TaskCatalogProductField,
   TaskPlatformFieldset,
   TaskSheinStoreField,
 } from "@/components/listingkit/tasks/task-create-form-sections";
@@ -49,6 +50,7 @@ import {
 import { useCreateTask } from "@/lib/query/use-create-task";
 import { useUploadImages } from "@/lib/query/use-upload-images";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
+import type { CanonicalProductListItem } from "@/lib/canonical-products/canonical-products";
 
 function StatusPill({
   label,
@@ -99,11 +101,17 @@ export function TaskCreateForm({
   initialValues,
   initialFocus,
   fieldIssues,
+  catalogProducts,
+  catalogProductsLoading,
+  catalogProductsError,
   variant = "default",
 }: {
   initialValues?: Partial<TaskCreateDraft>;
   initialFocus?: "text" | "imageUrls" | "productUrl";
   fieldIssues?: Array<"text" | "imageUrls" | "productUrl">;
+  catalogProducts?: CanonicalProductListItem[];
+  catalogProductsLoading?: boolean;
+  catalogProductsError?: boolean;
   variant?: TaskCreateVariant;
 }) {
   const router = useRouter();
@@ -171,6 +179,7 @@ export function TaskCreateForm({
     currentCustomSceneHint,
     currentImageUrls,
     currentProductUrl,
+    currentProductKey,
     currentPropsLevel,
     currentSceneCategory,
     currentSceneStyle,
@@ -230,11 +239,7 @@ export function TaskCreateForm({
     textRef,
   });
 
-  const hasSourceInput = Boolean(
-    (currentProductUrl ?? "").trim() ||
-      (currentImageUrls ?? "").trim() ||
-      textLength > 0,
-  );
+  const hasSourceInput = Boolean((currentProductKey ?? "").trim());
   const selectedPlatformCount = selectedPlatforms?.length ?? 0;
   const sourceModeLabel = activeSourceTab === "productUrl" ? "商品链接" : "图片素材";
 
@@ -294,6 +299,15 @@ export function TaskCreateForm({
         <div className="grid gap-6 px-6 py-6 sm:px-8 2xl:grid-cols-[minmax(0,1.35fr)_360px]">
           <div className="space-y-6">
             <section className="space-y-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <TaskCatalogProductField
+                catalogProducts={catalogProducts}
+                error={catalogProductsError}
+                fieldError={errors.productKey?.message}
+                isLoading={catalogProductsLoading}
+                register={register}
+              />
+
+              <Separator />
               <TaskSourceTabs
                 activeTab={activeSourceTab}
                 embedded
@@ -307,7 +321,7 @@ export function TaskCreateForm({
                 <div className="mb-4">
                   <h2 className="text-base font-semibold text-foreground">来源信息</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    先把最核心的商品来源补齐，再决定平台和高级参数。
+                    任务以商品中心中的标准商品为准；以下来源信息可选，用于补充上下文。
                   </p>
                 </div>
 

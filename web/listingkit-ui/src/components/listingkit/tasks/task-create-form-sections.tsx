@@ -9,6 +9,59 @@ import { platformOptions } from "@/components/listingkit/tasks/task-create-form-
 import type { UseFormRegister, FieldErrors } from "react-hook-form";
 import type { FormValues } from "@/components/listingkit/tasks/task-create-form-model";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
+import type { CanonicalProductListItem } from "@/lib/canonical-products/canonical-products";
+
+export function TaskCatalogProductField({
+  catalogProducts,
+  error,
+  fieldError,
+  isLoading,
+  register,
+}: {
+  catalogProducts?: CanonicalProductListItem[];
+  error?: boolean;
+  fieldError?: string;
+  isLoading?: boolean;
+  register: UseFormRegister<FormValues>;
+}) {
+  const seenProductKeys = new Set<string>();
+  const selectableProducts = (catalogProducts ?? []).filter((item) => {
+    const productKey = item.productKey.trim();
+    if (!productKey || seenProductKeys.has(productKey)) {
+      return false;
+    }
+    seenProductKeys.add(productKey);
+    return true;
+  });
+
+  return (
+    <Label className="block space-y-2">
+      <span className="text-sm font-medium text-muted-foreground">商品中心商品</span>
+      <Select
+        aria-label="商品中心商品"
+        aria-invalid={Boolean(error)}
+        className="rounded-xl px-4 py-3"
+        {...register("productKey")}
+      >
+        <option value="">
+          {isLoading ? "商品加载中..." : "请选择已整理的商品"}
+        </option>
+        {selectableProducts.map((item) => (
+            <option key={item.productKey} value={item.productKey}>
+              {item.title} · {item.productKey}
+            </option>
+          ))}
+      </Select>
+      <p className="text-sm leading-6 text-muted-foreground">
+        新任务必须绑定商品中心中的已整理商品，标准商品资料会作为生成的唯一来源。
+      </p>
+      {fieldError ? <p className="text-sm text-red-600">{fieldError}</p> : null}
+      {error ? (
+        <p className="text-sm text-red-600">商品目录读取失败，请刷新后重试。</p>
+      ) : null}
+    </Label>
+  );
+}
 
 export function TaskPlatformFieldset({
   errors,

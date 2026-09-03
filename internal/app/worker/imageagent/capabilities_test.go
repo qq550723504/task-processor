@@ -118,8 +118,8 @@ func TestBuildProductionImageCapabilitiesQuotesCurrentRouteAndRejectsStaleAuthor
 	clientConfig := openaiclient.NewClientConfig("test-key", "gpt-image-test", "https://provider.example.test/v1", 30)
 	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
 		Clients: map[string]*openaiclient.ClientConfig{
-			imageAgentOpenAIClientName:       clientConfig,
-			imageAgentReviewOpenAIClientName: openaiclient.NewClientConfig("test-key", "gpt-vision-test", "https://provider.example.test/v1", 30),
+			imageAgentOpenAIClientName: clientConfig,
+			"default":                  openaiclient.NewClientConfig("test-key", "gpt-vision-test", "https://provider.example.test/v1", 30),
 		},
 		DefaultClient: imageAgentOpenAIClientName,
 	})

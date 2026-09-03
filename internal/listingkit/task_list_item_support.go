@@ -128,6 +128,7 @@ func applyTaskListRequestFields(item *TaskListItem, task *Task) {
 		return
 	}
 	item.Platforms = append([]string(nil), task.Request.Platforms...)
+	item.ProductKey = strings.TrimSpace(task.Request.ProductKey)
 	item.Title = task.Request.Text
 	if source := task.Request.Source; source != nil {
 		if item.Title == "" {

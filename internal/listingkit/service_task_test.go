@@ -41,6 +41,9 @@ func TestBuildTaskListItemIncludesCanonicalProductSummary(t *testing.T) {
 	if item.CanonicalProduct.ImageCount != 1 || item.CanonicalProduct.VariantCount != 2 || !item.CanonicalProduct.NeedsReview {
 		t.Fatalf("canonical product counts = %+v", item.CanonicalProduct)
 	}
+	if item.ProductKey != "test-product" {
+		t.Fatalf("product key = %q, want test-product", item.ProductKey)
+	}
 }
 
 func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {

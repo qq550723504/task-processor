@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 )
 
@@ -33,16 +34,24 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	}
 	if state.blocked {
 		now := time.Now().UTC()
-		nextRetryAt := now.Add(time.Minute)
-		if err := s.repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
+		classified := &submissiondomain.RetryableBlockState{
 			ReasonCode:           standardProductReadinessBlockReason,
 			ReasonMessage:        standardProductReadinessBlockMessage,
-			BlockedAt:            now,
-			NextRetryAt:          &nextRetryAt,
 			MaxAutoRetryAttempts: 8,
-			RecoveryScope:        "task",
+			RecoveryScope:        submissiondomain.RetryableRecoveryScopeTask,
 			AutoResumeEnabled:    true,
-		}, standardProductReadinessBlockMessage); err != nil {
+		}
+		block := adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
+			adaptRetryableBlockState(task.RetryableBlock),
+			classified,
+			now,
+			submissiondomain.RetryableRecoveryScopeTask,
+		))
+		if block.MaxAutoRetryAttempts == 0 {
+			block.MaxAutoRetryAttempts = classified.MaxAutoRetryAttempts
+		}
+		block.AutoResumeEnabled = true
+		if err := s.repo.MarkBlockedRetryable(ctx, task.ID, block, standardProductReadinessBlockMessage); err != nil {
 			return nil, err
 		}
 		return state.snapshot, nil

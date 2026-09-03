@@ -119,6 +119,7 @@ type TaskListLifecycleFields struct {
 
 type TaskListDisplayFields struct {
 	Platforms          []string                 `json:"platforms,omitempty"`
+	ProductKey         string                   `json:"product_key,omitempty"`
 	Title              string                   `json:"title,omitempty"`
 	ImageCount         int                      `json:"image_count"`
 	CanonicalProduct   *CanonicalProductSummary `json:"canonical_product,omitempty"`

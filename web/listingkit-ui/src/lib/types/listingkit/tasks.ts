@@ -143,6 +143,7 @@ type RetryableBlock = {
 
 export type ListingKitTaskResult = {
   task_id?: string;
+  product_key?: string;
   tenant_id?: string;
   status?: string;
   source_reference?: ListingKitSourceReference;
@@ -226,6 +227,7 @@ export type ListingKitTaskListItem = {
   status?: string;
   pod_execution?: PodExecutionSummary;
   platforms?: string[];
+  product_key?: string;
   title?: string;
   image_count?: number;
   canonical_product?: {
@@ -304,6 +306,7 @@ export type ListingKitTaskListPage = {
 
 export type CreateListingKitTaskRequest = {
   tenant_id?: string;
+  product_key: string;
   image_urls?: string[];
   text?: string;
   product_url?: string;

@@ -76,7 +76,11 @@ func buildProductionImageCapabilities(runtime imageCapabilityRuntime) (ImageCapa
 }
 
 const imageAgentOpenAIClientName = "image_gpt_image_2"
-const imageAgentReviewOpenAIClientName = "vision"
+
+// The default client is the configured chat-capable route exposed by the
+// worker settings. Image generation remains pinned to the dedicated image
+// route, so review does not depend on a hidden, manually seeded credential.
+const imageAgentReviewOpenAIClientName = "default"
 
 type routedOpenAIProductImageProvider struct {
 	manager *openaiclient.Manager
