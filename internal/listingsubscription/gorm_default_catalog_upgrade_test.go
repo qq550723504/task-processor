@@ -48,13 +48,23 @@ func TestNewServiceRetiresStudioCatalogAndPreservesLedgerRowsAtomically(t *testi
 	if err != nil {
 		t.Fatalf("GetTenantSummary() error = %v", err)
 	}
+	var migratedListingKit *EntitlementView
 	for _, view := range summary.Entitlements {
 		if view.Module.Code == retiredStudioModuleCode {
 			t.Fatalf("tenant summary retained retired entitlement: %+v", view)
 		}
-		if view.Module.Code == ModuleListingKit && (view.Allowed || view.Reason != "not_configured") {
-			t.Fatalf("listingkit entitlement = %+v, want a clean non-migrated entitlement", view)
+		if view.Module.Code == ModuleListingKit {
+			migratedListingKit = &view
 		}
+	}
+	if migratedListingKit == nil || !migratedListingKit.Allowed {
+		t.Fatalf("listingkit entitlement = %+v, want migrated active entitlement", migratedListingKit)
+	}
+	if migratedListingKit.Entitlement == nil || migratedListingKit.Entitlement.Status != StatusActive {
+		t.Fatalf("migrated listingkit entitlement status = %+v, want active", migratedListingKit.Entitlement)
+	}
+	if migratedListingKit.Entitlement.Limits["listingkit_generations_succeeded"] != 100 || migratedListingKit.Entitlement.Limits["product_image_jobs"] != 100 {
+		t.Fatalf("migrated listingkit limits = %+v, want professional default plan limits", migratedListingKit.Entitlement.Limits)
 	}
 
 	assertRetiredStudioCatalogRetiredAndLedgerPresent(t, db)
@@ -82,6 +92,56 @@ func TestNewServiceRollsBackStudioRetirementWhenDefaultCatalogSyncFails(t *testi
 	if insertedDefaults != 0 {
 		t.Fatalf("partially inserted default modules = %d, want 0 after rollback", insertedDefaults)
 	}
+}
+
+func TestNewServiceMigratesStudioEntitlementsWithoutPlanOrExistingReplacement(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	now := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	seed := []any{
+		&subscriptionModuleRow{Code: retiredStudioModuleCode, Name: "Studio", Active: true},
+		&tenantEntitlementRow{TenantID: "tenant-no-plan", ModuleCode: retiredStudioModuleCode, Status: StatusActive, LimitsJSON: `{"design_jobs":7,"product_image_jobs":9,"shein_drafts_succeeded":11}`, ExpiresAt: &now},
+		&tenantEntitlementRow{TenantID: "tenant-has-listingkit", ModuleCode: retiredStudioModuleCode, Status: StatusActive, LimitsJSON: `{"design_jobs":7}`},
+		&tenantEntitlementRow{TenantID: "tenant-has-listingkit", ModuleCode: ModuleListingKit, Status: StatusActive, LimitsJSON: `{"listingkit_generations_succeeded":42}`},
+		&tenantEntitlementRow{TenantID: "tenant-expired", ModuleCode: retiredStudioModuleCode, Status: StatusExpired, LimitsJSON: `{"design_jobs":5}`},
+	}
+	for _, row := range seed {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatalf("seed %T: %v", row, err)
+		}
+	}
+
+	if _, err := NewService(NewGormRepository(db)); err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	var noPlan tenantEntitlementRow
+	if err := db.Where("tenant_id = ? AND module_code = ?", "tenant-no-plan", ModuleListingKit).Take(&noPlan).Error; err != nil {
+		t.Fatalf("migrated no-plan entitlement missing: %v", err)
+	}
+	if noPlan.Status != StatusActive || noPlan.ExpiresAt == nil || !noPlan.ExpiresAt.Equal(now) {
+		t.Fatalf("migrated no-plan entitlement = %+v, want active with preserved expiry", noPlan)
+	}
+	noPlanLimits, err := unmarshalLimits(noPlan.LimitsJSON)
+	if err != nil {
+		t.Fatalf("unmarshal migrated limits: %v", err)
+	}
+	if noPlanLimits["listingkit_generations_succeeded"] != 7 || noPlanLimits["product_image_jobs"] != 9 || noPlanLimits["shein_drafts_succeeded"] != 11 {
+		t.Fatalf("migrated no-plan limits = %+v, want mapped studio metrics", noPlanLimits)
+	}
+
+	var existing tenantEntitlementRow
+	if err := db.Where("tenant_id = ? AND module_code = ?", "tenant-has-listingkit", ModuleListingKit).Take(&existing).Error; err != nil {
+		t.Fatalf("existing listingkit entitlement missing: %v", err)
+	}
+	existingLimits, err := unmarshalLimits(existing.LimitsJSON)
+	if err != nil {
+		t.Fatalf("unmarshal existing limits: %v", err)
+	}
+	if existingLimits["listingkit_generations_succeeded"] != 42 {
+		t.Fatalf("existing listingkit limits = %+v, want untouched value 42", existingLimits)
+	}
+
+	assertRowCount(t, db, &tenantEntitlementRow{}, "tenant_id = ? AND module_code = ?", 0, "tenant-expired", ModuleListingKit)
 }
 
 func seedRetiredStudioSubscriptionGraph(t *testing.T, db *gorm.DB) {
