@@ -134,6 +134,38 @@ func TestPhase3ListingKitImageWorkflowBoundaryRejectsRetiredMutations(t *testing
 			},
 			wantRule: "ListingKit provider implementation ownership",
 		},
+		{
+			name: "approved asset persistence child is denied",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/httpapi/persistence_child.go",
+				text: "package httpapi\n\nimport runtimeadapter \"task-processor/internal/integration/persistence/product/asset/fluxrender\"\n\nvar _ = runtimeadapter.New\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
+		{
+			name: "s3 child is denied",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/httpapi/s3_child.go",
+				text: "package httpapi\n\nimport runtimeadapter \"task-processor/internal/integration/s3/fluxrender\"\n\nvar _ = runtimeadapter.New\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
+		{
+			name: "product asset child is denied",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/product_asset_child.go",
+				text: "package listingkit\n\nimport runtimeadapter \"task-processor/internal/product/asset/fluxrender\"\n\nvar _ = runtimeadapter.New\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
+		{
+			name: "product catalog child is denied",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/product_catalog_child.go",
+				text: "package listingkit\n\nimport runtimeadapter \"task-processor/internal/product/catalog/fluxrender\"\n\nvar _ = runtimeadapter.New\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
 	}
 
 	for _, test := range tests {
@@ -265,20 +297,21 @@ func findListingKitImageBoundaryViolations(sources []listingKitImageBoundarySour
 
 var listingKitDependencyOwnershipBoundaries = []struct {
 	namespace string
-	allowed   []string
+	allowed   map[string]struct{}
 }{
 	{
 		namespace: "task-processor/internal/integration",
-		allowed: []string{
-			"task-processor/internal/integration/persistence/product/asset",
-			"task-processor/internal/integration/s3",
+		allowed: map[string]struct{}{
+			"task-processor/internal/integration/persistence/product/asset": {},
+			"task-processor/internal/integration/s3":                        {},
 		},
 	},
 	{
 		namespace: "task-processor/internal/product",
-		allowed: []string{
-			"task-processor/internal/product/asset",
-			"task-processor/internal/product/catalog",
+		allowed: map[string]struct{}{
+			"task-processor/internal/product/asset":             {},
+			"task-processor/internal/product/catalog":           {},
+			"task-processor/internal/product/catalog/canonical": {},
 		},
 	},
 }
@@ -298,13 +331,7 @@ func listingKitDisallowedOwnedDependencyImports(source string) []string {
 			if !importMatchesPrefix(imported, boundary.namespace) {
 				continue
 			}
-			allowed := false
-			for _, root := range boundary.allowed {
-				if importMatchesPrefix(imported, root) {
-					allowed = true
-					break
-				}
-			}
+			_, allowed := boundary.allowed[imported]
 			if !allowed {
 				forbidden = append(forbidden, imported)
 			}
