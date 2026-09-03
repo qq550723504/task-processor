@@ -510,6 +510,36 @@ commit claim
 
 自动 destructive Provider Delete 还必须满足 pinned ZITADEL 已证明的 atomic/conditional ownership precondition 与 finality；否则 automatic Delete 关闭，new self-registration rollout 保持 gated/off，直到存在经过验证的 bounded cleanup strategy。
 
+### Cleanup 成功后的 Pending Capacity 终态
+
+取得 `cleanup_claimed` **不等于**可以释放 pending-object reservation。只有 RegistrationReconciler/cleanup owner 已对本 Registration 保护的全部 disposable Provider User/Organization 完成 Delete，并通过 Provider finality/read-back **确认目标全部不存在** 后，才能释放容量。
+
+最终收敛必须在一个 PostgreSQL transaction 中完成：
+
+```text
+lock Registration Intent
+lock cleanup claim / cleanup_epoch
+lock pending_object reservation
+lock relevant terminal Provider Delete Operations
+verify fence = cleanup_claimed(expected cleanup_epoch)
+verify every protected disposable Provider target = definitively absent
+verify no durable business ownership was created
+-> cleanup_state = cleaned / 等价 terminal
+-> Registration = terminal_cleaned / expired_cleaned
+-> release pending_object reservation exactly once
+-> release cleanup/work lease
+-> close active-phone registration fence
+-> scrub transient phone material when replay/finality no longer needs it
+-> commit
+```
+
+规则：
+
+- Delete response loss 后若 read-back 最终确认 absent，走同一终态事务，不能额外释放第二次；
+- 任一 Provider target 仍存在、partial delete、finality ambiguous、ownership mismatch 或 business ownership 出现时，**不得释放 pending capacity**；继续由 RegistrationReconciler 做 finality/repair；
+- 同 cleanup logical replay 只能读取 `terminal_cleaned`，不得重复 decrement/release reservation；
+- capacity release 与 cleanup terminal transition 不得拆成两个 commit，否则 crash 会造成永久泄漏或双释放。
+
 Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proof 分离。Reclaim 前同样 exact read-back Provider ownership，并与 Delete 共享 stable target fence；不允许 stale Delete 与新 Reclaim 并行 inflight。
 
 ## 14. SMS 与公共接口防滥用
@@ -563,6 +593,9 @@ current policy changes after Bootstrap before Grant/Auth -> consent_required + f
 current policy changes while Grant/Auth retry_wait -> 下一次 send 前拦截，不授予 listingkit_admin
 post-Bootstrap reconsent -> 只新增 current Consent，不重复 base_payg/business projection/welcome Grant
 Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功
+Cleanup Delete success + all protected Provider targets absent -> terminal_cleaned + pending capacity 同 tx exactly-once release
+Cleanup Delete response loss -> read-back absent 后同一 terminal tx release once；ambiguous/partial delete 不释放
+Cleanup terminal replay -> 不二次释放 capacity；Reclaim/Bootstrap 不能越过 cleanup target fence
 new direct org welcome grant -> exactly +1 store_renewal_period
 welcome grant response/retry/resume/reclaim -> same org source replay，不重复 +1
 existing org / ordinary login -> 不触发 welcome grant
@@ -584,4 +617,4 @@ phone ciphertext / phone-derived fingerprints retention 后 scrub
 
 ## 完成定义
 
-ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；definitive no-object Create failure 可原子释放真实 pending capacity；Current Consent 在每次延迟授权 send 前、以及 authorized 后每个受保护 tenant business request 上都持续有效；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
+ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity；Current Consent 在每次延迟授权 send 前、以及 authorized 后每个受保护 tenant business request 上都持续有效；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
