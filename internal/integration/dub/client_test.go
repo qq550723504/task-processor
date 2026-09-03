@@ -17,6 +17,13 @@ func TestNewClientRequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestNewClientRejectsInsecureRemoteBaseURL(t *testing.T) {
+	_, err := NewClient(Config{BaseURL: "http://example.com", APIKey: "dub_test_secret"})
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("NewClient() error = %v, want ErrInvalidConfig", err)
+	}
+}
+
 func TestUpsertPartnerUsesStableExternalIdentity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/partners" {
@@ -53,6 +60,39 @@ func TestUpsertPartnerUsesStableExternalIdentity(t *testing.T) {
 	}
 }
 
+func TestPartnerNameLengthCountsCharactersNotUTF8Bytes(t *testing.T) {
+	valid := normalizePartnerInput(PartnerInput{
+		ExternalID: "partner-1",
+		Email:      "partner@example.com",
+		Name:       strings.Repeat("硕", 100),
+	})
+	if err := validatePartnerInput(valid); err != nil {
+		t.Fatalf("100-character Unicode name rejected: %v", err)
+	}
+
+	invalid := valid
+	invalid.Name = strings.Repeat("硕", 101)
+	if err := validatePartnerInput(invalid); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("101-character Unicode name error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestLeadEventNameLengthCountsCharactersNotUTF8Bytes(t *testing.T) {
+	valid := normalizeLeadInput(LeadInput{
+		EventName:          strings.Repeat("转", 255),
+		CustomerExternalID: "customer-1",
+	})
+	if err := validateLeadInput(valid); err != nil {
+		t.Fatalf("255-character Unicode event rejected: %v", err)
+	}
+
+	invalid := valid
+	invalid.EventName = strings.Repeat("转", 256)
+	if err := validateLeadInput(invalid); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("256-character Unicode event error = %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestCreatePartnerLinkUsesDocumentedPartnerLinkFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/partners/links" {
@@ -62,8 +102,8 @@ func TestCreatePartnerLinkUsesDocumentedPartnerLinkFields(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["tenantId"] != "affiliate-7" || body["url"] != "https://shuomi.example/pricing" {
-			t.Fatalf("body = %#v", body)
+		if body["tenantId"] != "affiliate-7" || body["url"] != "https://shuomi.example/pricing" || body["key"] != "alice" {
+			t.Fatalf("top-level partner-link fields = %#v", body)
 		}
 		props, ok := body["linkProps"].(map[string]any)
 		if !ok {
@@ -192,8 +232,49 @@ func TestTrackSaleUsesInvoiceIdAndSafeDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result == nil || result.Sale.InvoiceID != "invoice-1001" || result.Sale.Amount != 29900 {
-		t.Fatalf("result = %#v", result)
+	if result == nil || result.Sale == nil || result.Customer == nil {
+		t.Fatalf("result = %#v, want non-null customer and sale", result)
+	}
+	if result.Sale.InvoiceID != "invoice-1001" || result.Sale.Amount != 29900 {
+		t.Fatalf("sale = %#v", result.Sale)
+	}
+}
+
+func TestTrackSaleTreatsDuplicateNullAsSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("null\n"))
+	}))
+	defer server.Close()
+
+	client := mustTestClient(t, server.URL)
+	result, err := client.TrackSale(context.Background(), SaleInput{
+		CustomerExternalID: "customer-1", Amount: 29900, InvoiceID: "invoice-1001",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != nil {
+		t.Fatalf("result = %#v, want nil duplicate", result)
+	}
+}
+
+func TestTrackSalePreservesNullableNestedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"eventName":"Invoice paid","customer":null,"sale":null}`))
+	}))
+	defer server.Close()
+
+	client := mustTestClient(t, server.URL)
+	result, err := client.TrackSale(context.Background(), SaleInput{
+		CustomerExternalID: "customer-1", Amount: 29900, InvoiceID: "invoice-1001",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Customer != nil || result.Sale != nil {
+		t.Fatalf("result = %#v, want documented nullable nested fields", result)
 	}
 }
 
