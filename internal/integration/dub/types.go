@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 )
 
 const DefaultBaseURL = "https://api.dub.co"
@@ -111,22 +112,31 @@ type SaleInput struct {
 	Metadata            map[string]any
 }
 
+// SaleCustomer is nullable in Dub's sale response schema.
+type SaleCustomer struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	ExternalID string `json:"externalId"`
+}
+
+// SaleRecord is nullable in Dub's sale response schema.
+type SaleRecord struct {
+	Amount           int64          `json:"amount"`
+	Currency         string         `json:"currency"`
+	PaymentProcessor string         `json:"paymentProcessor"`
+	InvoiceID        string         `json:"invoiceId"`
+	Metadata         map[string]any `json:"metadata"`
+}
+
 // SaleResult is the subset of Dub's sale response used for reconciliation.
+// Customer and Sale are pointers because Dub's documented response permits
+// either field to be null. A root-level JSON null is represented by a nil
+// *SaleResult from TrackSale.
 type SaleResult struct {
-	EventName string `json:"eventName"`
-	Customer  struct {
-		ID         string `json:"id"`
-		Name       string `json:"name"`
-		Email      string `json:"email"`
-		ExternalID string `json:"externalId"`
-	} `json:"customer"`
-	Sale struct {
-		Amount           int64          `json:"amount"`
-		Currency         string         `json:"currency"`
-		PaymentProcessor string         `json:"paymentProcessor"`
-		InvoiceID        string         `json:"invoiceId"`
-		Metadata         map[string]any `json:"metadata"`
-	} `json:"sale"`
+	EventName string        `json:"eventName"`
+	Customer  *SaleCustomer `json:"customer"`
+	Sale      *SaleRecord   `json:"sale"`
 }
 
 func normalizePartnerInput(input PartnerInput) PartnerInput {
@@ -139,19 +149,19 @@ func normalizePartnerInput(input PartnerInput) PartnerInput {
 }
 
 func validatePartnerInput(input PartnerInput) error {
-	if input.ExternalID == "" || len(input.ExternalID) > 255 {
+	if input.ExternalID == "" || charCount(input.ExternalID) > 255 {
 		return fmt.Errorf("%w: external partner id is required and must be <= 255 characters", ErrInvalidInput)
 	}
-	if len(input.Name) > 100 || len(input.Username) > 100 {
+	if charCount(input.Name) > 100 || charCount(input.Username) > 100 {
 		return fmt.Errorf("%w: partner name and username must be <= 100 characters", ErrInvalidInput)
 	}
-	if len(input.Email) > 190 {
+	if charCount(input.Email) > 190 {
 		return fmt.Errorf("%w: partner email is too long", ErrInvalidInput)
 	}
 	if !validEmail(input.Email) {
 		return fmt.Errorf("%w: partner email is invalid", ErrInvalidInput)
 	}
-	if input.Country != "" && len(input.Country) != 2 {
+	if input.Country != "" && charCount(input.Country) != 2 {
 		return fmt.Errorf("%w: partner country must be an ISO 3166-1 alpha-2 code", ErrInvalidInput)
 	}
 	return nil
@@ -167,14 +177,17 @@ func normalizePartnerLinkInput(input PartnerLinkInput) PartnerLinkInput {
 }
 
 func validatePartnerLinkInput(input PartnerLinkInput) error {
-	if input.ExternalPartnerID == "" || len(input.ExternalPartnerID) > 255 {
+	if input.ExternalPartnerID == "" || charCount(input.ExternalPartnerID) > 255 {
 		return fmt.Errorf("%w: external partner id is required and must be <= 255 characters", ErrInvalidInput)
 	}
-	if input.ExternalLinkID == "" || len(input.ExternalLinkID) > 255 {
+	if input.ExternalLinkID == "" || charCount(input.ExternalLinkID) > 255 {
 		return fmt.Errorf("%w: external link id is required and must be <= 255 characters", ErrInvalidInput)
 	}
-	if len(input.Key) > 190 {
+	if charCount(input.Key) > 190 {
 		return fmt.Errorf("%w: link key must be <= 190 characters", ErrInvalidInput)
+	}
+	if charCount(input.DestinationURL) > 32000 {
+		return fmt.Errorf("%w: destination url must be <= 32000 characters", ErrInvalidInput)
 	}
 	if input.DestinationURL != "" {
 		parsed, err := url.Parse(input.DestinationURL)
@@ -195,10 +208,10 @@ func normalizeLeadInput(input LeadInput) LeadInput {
 }
 
 func validateLeadInput(input LeadInput) error {
-	if input.EventName == "" || len(input.EventName) > 255 {
+	if input.EventName == "" || charCount(input.EventName) > 255 {
 		return fmt.Errorf("%w: lead event name is required and must be <= 255 characters", ErrInvalidInput)
 	}
-	if input.CustomerExternalID == "" || len(input.CustomerExternalID) > 100 {
+	if input.CustomerExternalID == "" || charCount(input.CustomerExternalID) > 100 {
 		return fmt.Errorf("%w: customer external id is required and must be <= 100 characters", ErrInvalidInput)
 	}
 	if input.CustomerEmail != "" && !validEmail(input.CustomerEmail) {
@@ -230,19 +243,19 @@ func normalizeSaleInput(input SaleInput) SaleInput {
 }
 
 func validateSaleInput(input SaleInput) error {
-	if input.CustomerExternalID == "" || len(input.CustomerExternalID) > 100 {
+	if input.CustomerExternalID == "" || charCount(input.CustomerExternalID) > 100 {
 		return fmt.Errorf("%w: customer external id is required and must be <= 100 characters", ErrInvalidInput)
 	}
 	if input.Amount < 0 {
 		return fmt.Errorf("%w: sale amount must be >= 0", ErrInvalidInput)
 	}
-	if len(input.Currency) != 3 {
+	if charCount(input.Currency) != 3 {
 		return fmt.Errorf("%w: currency must be a three-letter ISO 4217 code", ErrInvalidInput)
 	}
 	if input.InvoiceID == "" {
 		return fmt.Errorf("%w: invoice id is required for idempotent sale tracking", ErrInvalidInput)
 	}
-	if len(input.EventName) > 255 {
+	if charCount(input.EventName) > 255 {
 		return fmt.Errorf("%w: sale event name must be <= 255 characters", ErrInvalidInput)
 	}
 	if !allowedPaymentProcessor(input.PaymentProcessor) {
@@ -266,4 +279,8 @@ func allowedPaymentProcessor(value string) bool {
 func validEmail(value string) bool {
 	address, err := mail.ParseAddress(value)
 	return err == nil && strings.EqualFold(address.Address, value)
+}
+
+func charCount(value string) int {
+	return utf8.RuneCountInString(value)
 }
