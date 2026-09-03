@@ -236,6 +236,30 @@ next_attempt_at / attempts / total_deadline
 - 不因网络超时 blind retry Create/Delete/Grant/Auth；
 - target mutation fence 按稳定 Provider target 隔离 conflicting mutations。
 
+### Definitive no-object Create failure 的容量终态
+
+`failed_permanent` 不能天然等价为“继续占用 pending-object 容量”。当且仅当 Provider finality 能证明：
+
+```text
+failed Create 对应目标不存在
+AND 该 mutation 没有任何 side effect
+AND 当前 Registration 也不存在其它仍需该 pending-object reservation 保护的 Provider Organization/User object
+```
+
+必须在一个 PostgreSQL transaction 中：
+
+```text
+lock Intent + Provider Operation + pending_object reservation
+-> operation = failed_permanent
+-> intent = terminal_no_provider_object / 等价终态
+-> release pending_object reservation
+-> release 已取得的短 work lease（如有）
+-> close/scrub 可终结的 transient registration material
+-> commit
+```
+
+同 logical replay 只能读取该终态，不能二次 release。若 Organization 已创建而 User Create 永久失败、存在 partial object、或 finality 仍不确定，则**不得**走 no-object release；继续占用 reservation，进入 cleanup/repair/finality 收敛。
+
 ### RegistrationReconciler
 
 `RegistrationReconciler` 是所有 Registration-owned 非终态 Provider Operation 的**唯一 durable recovery owner**。不能依赖下一次浏览器请求才能恢复。
@@ -292,6 +316,56 @@ task-processor 不持久化 OTP code / plaintext Session Token。
 Acceptance 必须绑定本次 proof attempt，并在 OTP Proof 成功之后形成权威事实。`saas_policy_releases` 是 current policy 单一 DB 权威。
 
 Consent 写入前必须验证：exact ZITADEL User、exact Registration/proof attempt、current policy version、Acceptance 与 proof 同 attempt/user/policy，并一次性消费 proof/Acceptance。
+
+### 8.1 Bootstrap 前 Consent
+
+初次注册在第一笔 durable business ownership 前，Consent 只能通过 §9 的原子 Bootstrap 事务建立；不能由浏览器直接指定 user/org/policy/version/accepted_at。
+
+### 8.2 Bootstrap 后、Authorization 前的 re-consent
+
+若 policy 在 `preserved_business` 已成立后、Project Grant/User Authorization 发送前发生变化，**不得再次执行 Bootstrap，也不得复用已消费的原 proof/Acceptance**。
+
+Registration 进入 `consent_required`，由 Login V2 对同一 Provider User 发起新的 ownership proof：
+
+```text
+fresh proof_attempt_id
+purpose = registration_reconsent
+fresh ZITADEL OTP/session proof
++ current policy acceptance
+```
+
+Verify 成功后，服务器形成新的 attempt-bound Acceptance；task-processor 的 `RecordRegistrationReconsent` / 等价窄命令在一个 PostgreSQL transaction 中：
+
+```text
+lock Registration + current policy + fresh proof + fresh Acceptance
+verify exact Provider User / registration ownership
+verify policy still current
+consume fresh proof + Acceptance exactly once
+insert saas_account_consents(user_id, current_policy_version)
+transition consent_required -> business_prepared / authorization_waiting 等不重写 business ownership 的可继续状态
+commit
+```
+
+该路径**只新增 current Consent**：不重跑 `base_payg`、不重新创建 business projection、不重复 welcome Grant。随后 RegistrationReconciler 重新取得短 work lease，重新验证 subscription/entitlements/welcome resource readiness，并继续 §11。
+
+若用户放弃 re-consent，由该 post-business Registration/Consent recovery owner 保持可恢复状态；因为 `preserved_business` 已存在，绝不再走 destructive pre-business identity cleanup。
+
+### 8.3 Authorized 用户的 Current Consent
+
+Registration 到 `authorized` 后，ZITADEL `listingkit_admin` 是长期业务角色，但**不能绕过当前协议版本**。所有受保护 tenant business request 必须在 VerifiedIdentity + live effective Organization 之后、业务 Handler 之前执行 `CurrentConsentPolicy`：
+
+```text
+read DB current active policy version/epoch
+-> require exact Consent(zitadel_user_id, current_policy_version)
+-> missing/stale => CONSENT_REQUIRED / 受控 re-consent response
+-> DB authority unavailable => fail closed
+```
+
+登录/退出、re-consent、必要的 consent/status/recovery 路由显式豁免，避免死锁；其它仍可达的 legacy/new tenant business API 都必须受同一 gate 约束，而不是只拦 Workbench 页面。
+
+已授权用户完成 re-consent 时，使用现有 authenticated Auth.js/ZITADEL identity + live Organization 上下文，服务器读取 current policy 并记录该 subject 的 Acceptance/Consent；请求体不得覆盖 subject/organization/current policy version。若特定政策要求 re-auth，再委托 Provider-native re-auth，不在 task-processor 新建密码/OTP 系统。
+
+Current Consent Gate **不通过删除、Update 或 Reactivate ZITADEL 长期角色来模拟**；Consent 恢复后同一合法 authorization 自动重新获得业务可用性。
 
 ## 9. Consent + First Business Ownership Atomic Bootstrap
 
@@ -388,7 +462,7 @@ Project Grant / User Authorization：absent -> create；exact roles + ACTIVE -> 
 -> 原 operation 不得在没有 fresh current Consent 时再次变为 runnable
 ```
 
-fresh Consent 完成后，Reconciler 可在同 target fence 下重新取得执行资格；`listingkit_admin` 绝不能凭旧 policy Consent 延迟授予。
+fresh Consent 必须通过 §8.2 的明确 re-consent transaction 建立，而不是假设原 Bootstrap/proof 可以重放。完成后 Reconciler 才可在同 target fence 下重新取得执行资格；`listingkit_admin` 绝不能凭旧 policy Consent 延迟授予。
 
 ## 12. Authorized Terminal / Pending Capacity Release
 
@@ -409,6 +483,8 @@ verify expected ownership/fence/version
 ```
 
 pending-object release/transfer 与 `authorized` 不得拆开；crash/replay 不能泄漏或二次释放容量。成功账号继续存在于 ZITADEL，但不再计入“未完成注册 Provider object”高水位。
+
+`authorized` 之后的 policy 变化由 §8.3 `CurrentConsentPolicy` 持续执行；不能因为 Registration Intent 已终态就绕过新 policy Consent。
 
 随后 Login V2 使用官方 OIDC CreateCallback 完成应用登录；task-processor 不自建 callback acknowledgement runtime。
 
@@ -477,19 +553,23 @@ same new E.164 concurrent requests -> one active Registration Attempt
 key rotation -> maintenance gate 后切换，无重复 active attempt
 rate limit / SMS cooldown / global SMS budget
 Create Org/User response loss -> exact ownership read-back/adopt，不 blind retry
+Create definitive no-side-effect/no-object failure -> terminal_no_provider_object + pending capacity atomic release；partial object 不释放
 AddOTPSMS response loss -> factor read-back/idempotency，否则 outcome_unknown/repair
 same logical Provider op changed payload -> conflict
 stale prepared/inflight/outcome_unknown/retry_wait -> RegistrationReconciler durable recovery
 VerifySMS response loss -> 无证明则 outcome_unknown，不写 Consent
 current policy changes before Bootstrap -> zero business write
-current policy changes after Bootstrap before Grant/Auth -> consent_required
+current policy changes after Bootstrap before Grant/Auth -> consent_required + fresh registration_reconsent proof/Acceptance；不重跑 Bootstrap
 current policy changes while Grant/Auth retry_wait -> 下一次 send 前拦截，不授予 listingkit_admin
+post-Bootstrap reconsent -> 只新增 current Consent，不重复 base_payg/business projection/welcome Grant
 Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功
 new direct org welcome grant -> exactly +1 store_renewal_period
 welcome grant response/retry/resume/reclaim -> same org source replay，不重复 +1
 existing org / ordinary login -> 不触发 welcome grant
 welcome grant unavailable -> 不授权，进入 readiness retry；不 destructive cleanup preserved business
 successful authorization -> consent + plan + welcome resource ready, authorized + pending-object release + work-lease release
+policy changes after authorized -> protected tenant API 返回 CONSENT_REQUIRED，不能凭旧 Consent 继续业务访问
+authorized user authenticated reconsent -> 写 current Consent 后业务访问恢复，不修改长期 ZITADEL role
 paid plan race -> 不覆盖 paid plan，entitlements ready，welcome grant 仍最多一次
 Grant/Auth absent create，exact active adopt，different/revoked repair
 unsafe automatic Delete capability -> self-registration remains off
@@ -504,4 +584,4 @@ phone ciphertext / phone-derived fingerprints retention 后 scrub
 
 ## 完成定义
 
-ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；Current Consent 在每次延迟授权 send 前仍有效；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
+ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；definitive no-object Create failure 可原子释放真实 pending capacity；Current Consent 在每次延迟授权 send 前、以及 authorized 后每个受保护 tenant business request 上都持续有效；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
