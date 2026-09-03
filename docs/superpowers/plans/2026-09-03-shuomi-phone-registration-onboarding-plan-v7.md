@@ -106,11 +106,19 @@ registration_owned_pending
 
 ### 2.4 Genuinely new phone
 
+`not_found` 分支在**任何 Provider durable write 前**，必须先用一个 PostgreSQL transaction 原子建立本地所有权与真实容量归属：
+
 ```text
 classification = not_found
--> acquire short-lived same-phone registration fence
--> reserve real pending Provider-object capacity
--> persist Registration Intent + stable Provider Org/User IDs
+-> BEGIN PostgreSQL
+     lock/adopt same logical registration attempt
+     acquire active-phone registration claim
+     preallocate stable Provider Organization/User IDs + opaque Organization name
+     persist Registration Intent + immutable ownership inputs
+     reserve one real pending Provider-object capacity slot
+     bind slot.registration_id = Intent.registration_id
+     persist Intent.pending_object_slot_id = slot.id
+   COMMIT
 -> Create/Get/Adopt Provider identity
 -> AddOTPSMS（仅 registration-owned User）
 -> CreateSMSChallenge
@@ -123,6 +131,14 @@ classification = not_found
 -> User Authorization(listingkit_admin)
 -> official Login V2 CreateCallback / Auth.js session
 ```
+
+事务不允许留下“只有 slot 没有 Intent”或“只有 Intent 没有 slot”的 durable 半状态：
+
+- crash/rollback 在 COMMIT 前 -> Intent、active-phone claim、capacity reservation 全部不存在；
+- COMMIT 后、Provider call 前 crash -> RegistrationReconciler 能通过 Intent + `pending_object_slot_id` 找到并继续该 attempt；
+- same logical attempt retry -> adopt exact Intent + exact slot，不重新分配容量；
+- same E.164 并发 -> active-phone UNIQUE/等价 DB fence 保证最多一个 active Intent/slot；
+- changed immutable payload -> conflict/fail closed。
 
 同一手机号并发注册只允许一个 active Registration Attempt；其他请求 adopt/resume 或返回处理中，不能创建第二套 Provider Org/User。
 
@@ -141,6 +157,34 @@ active_phone_correlator = HMAC(K_registration_attempt, domain || normalized_E164
 - existing/new 由 ZITADEL exact lookup + ownership classification 决定；
 - ordinary active attempt hard TTL <=72h；
 - attempt terminal 或 hard TTL fenced 后 scrub。
+
+### Hard TTL：先原子 `expired_fenced`，再 scrub
+
+“hard TTL fenced”不是逻辑描述，必须是数据库可验证的终态过渡。达到 72h hard TTL 时，Expiry/Reconciliation owner 先执行一个 PostgreSQL transaction：
+
+```text
+lock Registration Intent
+lock active-phone claim
+lock current execution/work lease
+lock current Provider target/operation fence metadata
+require Intent 仍为可执行且 expected execution_epoch/ownership_epoch 匹配
+CAS Intent -> expired_fenced
+execution_epoch = execution_epoch + 1
+revoke/clear current local execution lease
+mark future Provider writes prohibited for this Intent
+cancel/fence 尚未发送的 prepared operations
+commit
+```
+
+规则：
+
+- 每个 Provider writer 在**实际 external send 前**必须重新读取并验证 Intent 不是 `expired_fenced`、expected execution epoch、work lease 与 stable target fence；不满足即不得发送；
+- worker external call 返回后、本地写结果前再次验证 epoch；旧 worker late response 若 epoch 已变化不得推进 Registration；
+- 已经 `inflight/outcome_unknown` 的 Provider mutation 不能假装被本地 fence 回滚，仍由 RegistrationReconciler 按 §6 做 finality；相反 mutation 继续由 stable Provider target fence 阻止；
+- `expired_fenced` COMMIT 完成后才允许 scrub active-phone correlator / phone-derived attempt fingerprint；
+- scrub correlator 后的新请求若 exact lookup 命中旧 pending Provider identity，必须按 §2.3 `registration_owned_pending` + stable target fence 进入 resume/reclaim/repair，不能与旧 unresolved Provider mutation 并行创建第二套 identity。
+
+这样 hard TTL 可以停止旧 attempt 的未来执行，同时不会让“scrub phone claim”本身变成绕过旧 worker/finality 的手段。
 
 ### Key rotation
 
@@ -180,7 +224,7 @@ phone lookup + classification
 仍要求：
 
 - global pending Provider object high-water；
-- pending-object reservation 必须 DB 原子分配；
+- pending-object reservation 必须 DB 原子分配，并按 §2.4 与 Intent/phone claim 同事务建立 durable owner；
 - per-phone / per-IP / per-session 注册限流；
 - SMS challenge/resend cooldown 与全局 SMS budget；
 - Provider worker bounded concurrency；
@@ -201,6 +245,7 @@ provider_user_id
 phone_ciphertext / key_version / retention_until
 state
 ownership_epoch
+execution_epoch
 expires_at
 cleanup_state
 pending_object_slot_id
@@ -234,7 +279,8 @@ next_attempt_at / attempts / total_deadline
 - timeout/connection loss/ambiguous 5xx -> outcome_unknown，只做 read-back/finality；
 - semantic permanent failure -> failed_permanent；
 - 不因网络超时 blind retry Create/Delete/Grant/Auth；
-- target mutation fence 按稳定 Provider target 隔离 conflicting mutations。
+- target mutation fence 按稳定 Provider target 隔离 conflicting mutations；
+- actual external send 前必须同时验证 Provider Operation lease/epoch、stable target fence 以及 Registration `execution_epoch/state`，`expired_fenced`/stale epoch 不得发送。
 
 ### Definitive no-object Create failure 的容量终态
 
@@ -277,7 +323,8 @@ Recovery 使用 `FOR UPDATE SKIP LOCKED`/等价行锁 + lease/epoch CAS：
 - expired `inflight` -> fenced 转 `outcome_unknown`，先 read-back，禁止直接重发；
 - `outcome_unknown` -> 只依据 Provider finality/read-back 收敛；
 - `retry_wait` -> 到期后重新取得 lease，但发送前重新检查所有业务前置条件；
-- 旧 worker 的 late response 若 epoch 已变化，不得写本地状态。
+- `expired_fenced` Intent 不允许新 Provider send，只允许对已发出的 operation 做 finality/read-back；
+- 旧 worker 的 late response 若 Provider Operation epoch 或 Registration execution epoch 已变化，不得写本地状态。
 
 每个非终态最终必须进入 succeeded / failed_permanent / repair_required / 等待用户重新证明等明确状态；不能永久占用 pending capacity。
 
@@ -462,16 +509,32 @@ Project Grant / User Authorization：absent -> create；exact roles + ACTIVE -> 
 -> 原 operation 不得在没有 fresh current Consent 时再次变为 runnable
 ```
 
-fresh Consent 必须通过 §8.2 的明确 re-consent transaction 建立，而不是假设原 Bootstrap/proof 可以重放。完成后 Reconciler 才可在同 target fence 下重新取得执行资格；`listingkit_admin` 绝不能凭旧 policy Consent 延迟授予。
+fresh Consent 必须通过 §8.2 的明确 re-consent transaction 建立，而不是假设原 Bootstrap/proof 可以重放。完成后 Reconciler 才可在同 target fence 下重新取得执行资格；`listingkit_admin` 绝不能凭已知 stale Consent 延迟授予。
+
+### Policy activation 与远端 Provider send 的 Phase1 一致性边界
+
+Phase1 **不承诺 PostgreSQL policy publication 与远端 ZITADEL Create 的跨系统可串行化原子性**。上述“send 前 current Consent DB check”是最后一个本地授权决策点；若新的 policy activation 在这个 DB check 之后、ZITADEL 接受 Create 之前提交，这被定义为“policy 在 authorization decision 之后变化”，而不是要求建设一个跨 PostgreSQL/ZITADEL 的全局分布式锁或回滚 Provider role。
+
+为了保证这个边界不会变成业务授权绕过：
+
+1. Provider Grant/User Authorization exact read-back 成功后，**在本地 `authorized` 终态提交前再次读取 DB current active policy/version**；
+2. 若仍与刚才授权决策使用的 policy version 相同且 exact Consent current -> 才允许进入 §12 `authorized`；
+3. 若已变化 -> Provider authorization 可以作为已存在的身份侧事实保留，但 Registration 进入 `authorization_present_consent_required` / 等价 `consent_required` 状态，释放短 work lease，不完成 Auth.js 业务进入；
+4. 用户通过 §8.2 fresh re-consent 后，Reconciler exact read-back 现有 ACTIVE authorization，确认不需要再次 Create，再进入 authorized terminal；
+5. 无论 Registration 状态如何，§8.3 `CurrentConsentPolicy` 是每个受保护 tenant business request 的持续权威，因此 stale Consent 永远不能借已经存在的 ZITADEL role 调用业务 API。
+
+这个合同接受“policy 可以在远端角色创建的瞬间之后变化”，但**不接受 stale Consent 获得任何业务访问**。如果未来合规要求“policy switch 后连 Provider role 都不得短暂存在”，必须另行引入 policy-publication/send serialization；它不是 Phase1 当前一致性目标。
 
 ## 12. Authorized Terminal / Pending Capacity Release
 
-Provider Grant + Authorization exact read-back 成功后，本地终态必须是**一个 PostgreSQL transaction**：
+Provider Grant + Authorization exact read-back 成功后，先执行 §11 的**post-send current-policy recheck**。只有 exact current Consent 仍成立时，本地终态才允许进入下面的 PostgreSQL transaction：
 
 ```text
 lock Intent
 lock pending_object reservation
 lock verified work lease
+lock/read current policy version
+verify exact current Consent
 verify expected ownership/fence/version
 -> authorizing -> authorized
 -> release/transfer pending Provider-object slot out of registration pending accounting
@@ -481,6 +544,8 @@ verify expected ownership/fence/version
 -> authorized_at = now
 -> commit
 ```
+
+若 post-send policy 已变化，则不执行 `authorized`/pending-slot terminal transaction；进入 §11 的 `authorization_present_consent_required`，fresh re-consent 后再 exact-adopt 现有 authorization，并在当前 policy 下完成本事务。
 
 pending-object release/transfer 与 `authorized` 不得拆开；crash/replay 不能泄漏或二次释放容量。成功账号继续存在于 ZITADEL，但不再计入“未完成注册 Provider object”高水位。
 
@@ -579,7 +644,11 @@ existing active phone -> accountExists=true / 登录提示，不调用 AddOTPSMS
 registration-owned pending phone -> resume/reclaim，不误送 ordinary login
 provider ownership mismatch -> repair_required，不 adopt/不改 factor/不授权
 new phone -> one Registration / one Provider identity
-same new E.164 concurrent requests -> one active Registration Attempt
+not_found atomic owner transaction crash-before-commit -> no Intent/no phone claim/no pending slot
+not_found atomic owner transaction crash-after-commit-before-Provider-call -> Reconciler finds exact Intent+slot
+same new E.164 concurrent requests -> one active Registration Attempt + one pending slot
+hard TTL -> expired_fenced + execution_epoch fence before correlator scrub
+expired_fenced vs leased Provider worker -> stale worker cannot new-send or advance local state; inflight only finality/read-back
 key rotation -> maintenance gate 后切换，无重复 active attempt
 rate limit / SMS cooldown / global SMS budget
 Create Org/User response loss -> exact ownership read-back/adopt，不 blind retry
@@ -591,6 +660,7 @@ VerifySMS response loss -> 无证明则 outcome_unknown，不写 Consent
 current policy changes before Bootstrap -> zero business write
 current policy changes after Bootstrap before Grant/Auth -> consent_required + fresh registration_reconsent proof/Acceptance；不重跑 Bootstrap
 current policy changes while Grant/Auth retry_wait -> 下一次 send 前拦截，不授予 listingkit_admin
+policy activates after final pre-send DB check but before Provider Create commits -> post-send policy recheck prevents local authorized/business entry; authorization_present_consent_required until fresh Consent
 post-Bootstrap reconsent -> 只新增 current Consent，不重复 base_payg/business projection/welcome Grant
 Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功
 Cleanup Delete success + all protected Provider targets absent -> terminal_cleaned + pending capacity 同 tx exactly-once release
@@ -600,7 +670,7 @@ new direct org welcome grant -> exactly +1 store_renewal_period
 welcome grant response/retry/resume/reclaim -> same org source replay，不重复 +1
 existing org / ordinary login -> 不触发 welcome grant
 welcome grant unavailable -> 不授权，进入 readiness retry；不 destructive cleanup preserved business
-successful authorization -> consent + plan + welcome resource ready, authorized + pending-object release + work-lease release
+successful authorization -> post-send current-policy recheck + consent + plan + welcome resource ready, authorized + pending-object release + work-lease release
 policy changes after authorized -> protected tenant API 返回 CONSENT_REQUIRED，不能凭旧 Consent 继续业务访问
 authorized user authenticated reconsent -> 写 current Consent 后业务访问恢复，不修改长期 ZITADEL role
 paid plan race -> 不覆盖 paid plan，entitlements ready，welcome grant 仍最多一次
@@ -611,10 +681,10 @@ phone ciphertext / phone-derived fingerprints retention 后 scrub
 
 ## 17. 开发停止条件
 
-本设计不以“自动评审找不到任何 P1/P2”为开工条件。真正阻塞实现的是会导致：跨租户/越权、重复 Provider identity/授权、错误 Consent、paid plan 覆盖、welcome resource 重复 mint/漏发导致 Phase1 首次 Store 闭环失效、不可恢复 Provider side effect、身份删除与业务资产不一致、pending capacity 永久泄漏导致核心注册不可用、或核心注册流程无法完成的问题。
+本设计不以“自动评审找不到任何 P1/P2”为开工条件。真正阻塞实现的是会导致：跨租户/越权、重复 Provider identity/授权、错误 Consent 导致**实际 tenant business access**、paid plan 覆盖、welcome resource 重复 mint/漏发导致 Phase1 首次 Store 闭环失效、不可恢复 Provider side effect、身份删除与业务资产不一致、pending capacity 永久泄漏导致核心注册不可用、或核心注册流程无法完成的问题。
 
-纯 Account Enumeration、branch-neutral capacity、cross-epoch side-channel、零停机 correlator key rotation 不属于 Phase1 blocking requirement。
+纯 Account Enumeration、branch-neutral capacity、cross-epoch side-channel、零停机 correlator key rotation，以及“要求 PostgreSQL policy activation 与远端 ZITADEL Create 全局线性化”不属于 Phase1 blocking requirement。Phase1 对 Consent 的强保证是：final local decision 前检查 current policy、Provider result 后再检查一次、且所有 protected tenant business request 始终由 DB `CurrentConsentPolicy` fail-closed 控制。
 
 ## 完成定义
 
-ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity；Current Consent 在每次延迟授权 send 前、以及 authorized 后每个受保护 tenant business request 上都持续有效；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
+ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；active-phone claim + Intent + pending reservation 在第一笔 Provider write 前同一事务建立 durable ownership；hard TTL 先原子 `expired_fenced`/execution epoch fence 再 scrub；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity；Current Consent 在每次延迟授权 send 前、Provider authorization read-back 后、以及 authorized 后每个受保护 tenant business request 上都持续 fail-closed；policy activation 与远端 Provider send 不要求跨系统全局线性化，但 race 后不会获得业务访问；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
