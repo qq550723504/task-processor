@@ -18,26 +18,28 @@ import (
 )
 
 const (
-	activityWireV2Patch             = "image-agent-atomic-command-boundaries-v2"
-	slotExecutionWireV3Patch        = "image-agent-slot-execution-wire-v3"
-	approvalActionIDV3Patch         = "image-agent-approval-action-id-v3"
-	approvalPublicationWireV3Patch  = "image-agent-approval-publication-wire-v3"
-	resultDigestV3Patch             = "image-agent-result-digest-v3"
-	budgetAuthorizationPatch        = "image-agent-budget-authorization-v1"
-	workflowFailureProjectionPatch  = "image-agent-workflow-failure-projection-v1"
-	projectionExecutionCommitPatch  = "image-agent-projection-execution-commit-v1"
-	commandIngressPlanPolicyPatch   = "image-agent-command-ingress-plan-policy-v1"
-	approvalPublicationScopePatch   = "image-agent-approval-publication-scope-v1"
-	externalEffectFinalizationPatch = "image-agent-external-effect-finalization-v1"
-	effectRecoveryStartWireV1Patch  = "image-agent-effect-recovery-start-wire-v1"
-	recoveryRequestedBlockCode      = "recovery_requested"
-	recoveryStartFailedBlockCode    = "recovery_start_failed"
+	activityWireV2Patch               = "image-agent-atomic-command-boundaries-v2"
+	slotExecutionWireV3Patch          = "image-agent-slot-execution-wire-v3"
+	approvalActionIDV3Patch           = "image-agent-approval-action-id-v3"
+	approvalPublicationWireV3Patch    = "image-agent-approval-publication-wire-v3"
+	resultDigestV3Patch               = "image-agent-result-digest-v3"
+	budgetAuthorizationPatch          = "image-agent-budget-authorization-v1"
+	workflowFailureProjectionPatch    = "image-agent-workflow-failure-projection-v1"
+	projectionExecutionCommitPatch    = "image-agent-projection-execution-commit-v1"
+	commandIngressPlanPolicyPatch     = "image-agent-command-ingress-plan-policy-v1"
+	approvalPublicationScopePatch     = "image-agent-approval-publication-scope-v1"
+	approvalPublicationKeyLengthPatch = "image-agent-approval-publication-key-length-v1"
+	externalEffectFinalizationPatch   = "image-agent-external-effect-finalization-v1"
+	effectRecoveryStartWireV1Patch    = "image-agent-effect-recovery-start-wire-v1"
+	recoveryRequestedBlockCode        = "recovery_requested"
+	recoveryStartFailedBlockCode      = "recovery_start_failed"
 )
 
 type workflowActivityWire struct {
 	executeSlot, persistSlotResult, persistRunState, persistPlanRevision, persistPendingCommand, publishApproved, startEffectRecovery string
 	useV3Slot, useV3Approval                                                                                                          bool
 	useRunScopedApprovalKey                                                                                                           bool
+	useBoundedApprovalKey                                                                                                             bool
 }
 
 func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
@@ -46,6 +48,10 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 	useV3ApprovalPublication := workflow.GetVersion(ctx, approvalPublicationWireV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	useV3ResultDigest := workflow.GetVersion(ctx, resultDigestV3Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
 	useRunScopedApprovalKey := workflow.GetVersion(ctx, approvalPublicationScopePatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	useBoundedApprovalKey := false
+	if useV3ApprovalActionID && useV3ApprovalPublication && useV3ResultDigest && useRunScopedApprovalKey {
+		useBoundedApprovalKey = workflow.GetVersion(ctx, approvalPublicationKeyLengthPatch, workflow.DefaultVersion, 1) != workflow.DefaultVersion
+	}
 	version := workflow.GetVersion(ctx, activityWireV2Patch, workflow.DefaultVersion, 1)
 	if version == workflow.DefaultVersion {
 		return workflowActivityWire{
@@ -68,6 +74,7 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 		wire.publishApproved = activityPublishApprovedV3
 		wire.useV3Approval = true
 		wire.useRunScopedApprovalKey = useRunScopedApprovalKey
+		wire.useBoundedApprovalKey = useBoundedApprovalKey
 	}
 	if useV3Slot && workflow.GetVersion(ctx, effectRecoveryStartWireV1Patch, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
 		wire.startEffectRecovery = activityStartEffectRecoveryV3
@@ -2384,7 +2391,10 @@ func resultDigestForWire(plan imageagent.Plan, results []SlotWorkflowResult, act
 func approvalPublicationKeyForWire(actionID, runID string, revision int64, activityWire workflowActivityWire) string {
 	if activityWire.useV3Approval {
 		if activityWire.useRunScopedApprovalKey {
-			return approvalActionPublicationKey(actionID, runID, revision)
+			if activityWire.useBoundedApprovalKey {
+				return approvalActionPublicationKey(actionID, runID, revision)
+			}
+			return legacyApprovalActionPublicationKey(actionID, runID, revision)
 		}
 		return actionID
 	}
@@ -2392,6 +2402,11 @@ func approvalPublicationKeyForWire(actionID, runID string, revision int64, activ
 }
 
 func approvalActionPublicationKey(actionID, runID string, revision int64) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d", strings.TrimSpace(actionID), strings.TrimSpace(runID), revision)))
+	return fmt.Sprintf("image-agent:approval:%s", hex.EncodeToString(digest[:]))
+}
+
+func legacyApprovalActionPublicationKey(actionID, runID string, revision int64) string {
 	digest := sha256.Sum256([]byte(strings.TrimSpace(actionID)))
 	return fmt.Sprintf("image-agent:%s:plan:%d:approval:%s", strings.TrimSpace(runID), revision, hex.EncodeToString(digest[:]))
 }

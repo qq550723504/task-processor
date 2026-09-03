@@ -53,6 +53,7 @@ type resolvedSlotInput struct {
 	profile         imagepolicy.ProductImageProfile
 	sourceAssetID   string
 	styleReferences []string
+	legacyPolicy    bool
 }
 
 type quotedSlotOperation struct {
@@ -81,7 +82,7 @@ func (e *ProductImageSlotExecutor) quoteSlot(ctx context.Context, input imageage
 	if e == nil || e.dependencies.UsageQuoter == nil {
 		return quotedSlotExecution{}, fmt.Errorf("%w: image usage quoter is required", imageagent.ErrBudgetQuoteUnavailable)
 	}
-	operations, err := slotOperations(resolved.slot.Role, e.legacyV2)
+	operations, err := slotOperations(resolved.slot.Role, e.legacyV2 || resolved.legacyPolicy)
 	if err != nil {
 		return quotedSlotExecution{}, err
 	}
@@ -190,7 +191,7 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 }
 
 func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context, input resolvedSlotInput, candidates []productimage.Candidate, quoted *quotedSlotExecution) error {
-	if e != nil && e.legacyV2 {
+	if e != nil && (e.legacyV2 || input.legacyPolicy) {
 		return nil
 	}
 	if e == nil || e.dependencies.Reviewer == nil {
@@ -337,7 +338,8 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 	if e == nil {
 		return resolvedSlotInput{}, fmt.Errorf("%w: image executor is required", imageagent.ErrValidation)
 	}
-	if !e.legacyV2 && e.dependencies.ProfileResolver == nil {
+	legacyPolicy := !e.legacyV2 && strings.TrimSpace(input.TargetPlatform) == "" && input.ImagePolicyContext == nil
+	if !e.legacyV2 && !legacyPolicy && e.dependencies.ProfileResolver == nil {
 		return resolvedSlotInput{}, fmt.Errorf("%w: image policy resolver is required", imageagent.ErrValidation)
 	}
 	if strings.TrimSpace(input.RunID) == "" || strings.TrimSpace(input.TenantID) == "" || strings.TrimSpace(input.UserID) == "" ||
@@ -348,7 +350,7 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 	if strings.TrimSpace(slot.ID) == "" || strings.TrimSpace(slot.IdempotencyKey) == "" || len(slot.SourceAssetIDs) != 1 {
 		return resolvedSlotInput{}, imageagent.ErrValidation
 	}
-	if !e.legacyV2 && input.ImagePolicyContext == nil {
+	if !e.legacyV2 && !legacyPolicy && input.ImagePolicyContext == nil {
 		return resolvedSlotInput{}, imageagent.ErrValidation
 	}
 	var profile imagepolicy.ProductImageProfile
@@ -401,7 +403,7 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 	}
 	return resolvedSlotInput{
 		slot: slot, source: source, styles: styles, product: product, profile: profile,
-		sourceAssetID: sourceID, styleReferences: styleIDs,
+		sourceAssetID: sourceID, styleReferences: styleIDs, legacyPolicy: legacyPolicy,
 	}, nil
 }
 

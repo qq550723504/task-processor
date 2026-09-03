@@ -46,6 +46,10 @@ func (a *assembler) Build(input DraftInput) (*AmazonListingDraft, error) {
 	if images.MainImage == "" {
 		return nil, productasset.ErrApprovedAssetsNotReady
 	}
+	if images.WhiteBgImage == "" {
+		// ImageAgent's main slot is rendered by the white-background capability.
+		images.WhiteBgImage = images.MainImage
+	}
 
 	now := time.Now()
 	draft := &AmazonListingDraft{

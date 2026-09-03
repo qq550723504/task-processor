@@ -1078,6 +1078,7 @@ func TestV3InitialChildFailurePersistsRecoverableBlockedSlotIdentity(t *testing.
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalPublicationScopePatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(approvalPublicationKeyLengthPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(commandIngressPlanPolicyPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 
@@ -1155,6 +1156,7 @@ func newV3BlockWorkflowEnv(t *testing.T, blocked func(ExecuteSlotV3ActivityInput
 	env.OnGetVersion(approvalPublicationWireV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(resultDigestV3Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(approvalPublicationScopePatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
+	env.OnGetVersion(approvalPublicationKeyLengthPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(activityWireV2Patch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.OnGetVersion(commandIngressPlanPolicyPatch, workflow.DefaultVersion, 1).Return(workflow.Version(1))
 	env.RegisterWorkflow(ImageSlotWorkflowV3)

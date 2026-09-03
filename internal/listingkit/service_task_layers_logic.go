@@ -31,6 +31,9 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	if err := s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result)); err != nil {
 		return nil, err
 	}
+	if state.blocked {
+		return state.snapshot, nil
+	}
 	if client, enabled := resolvePlatformAdaptWorkflowClient(s); enabled && client != nil {
 		if err := client.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
 			TaskID:      strings.TrimSpace(task.ID),

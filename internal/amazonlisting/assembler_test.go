@@ -55,3 +55,21 @@ func TestAssemblerKeepsSnapshotCategoryWhenTargetCategoryHintMissing(t *testing.
 		t.Fatalf("expected category path %v, got %v", expected, assembled.CategoryPath)
 	}
 }
+
+func TestAssemblerTreatsImageAgentMainAsWhiteBackgroundImage(t *testing.T) {
+	assembled, err := NewAssembler().Build(DraftInput{
+		TaskID:   "task-white-background",
+		Request:  &GenerateRequest{Marketplace: "amazon", Country: "US"},
+		Snapshot: catalog.ProductSnapshot{Title: "Ceramic Mug"},
+		ApprovedAssets: productasset.ApprovedAssetInventory{Assets: []productasset.ApprovedAsset{
+			{ID: "main-1", Role: productasset.RoleMain, URL: "https://cdn.example.com/white-background.jpg"},
+		}},
+	})
+
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if assembled.Images.WhiteBgImage != "https://cdn.example.com/white-background.jpg" {
+		t.Fatalf("white background image = %q, want approved main image", assembled.Images.WhiteBgImage)
+	}
+}

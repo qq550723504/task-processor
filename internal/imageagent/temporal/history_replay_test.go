@@ -395,7 +395,28 @@ func TestRecoveryStartMarkerEnablesExternalRecoveryForNewV3Histories(t *testing.
 
 func TestRunScopedApprovalPublicationKeyFitsReceiptSchema(t *testing.T) {
 	key := approvalActionPublicationKey(strings.Repeat("a", imageagent.MaxActionIDLength), strings.Repeat("r", 64), imageagent.MaxJSONSafePlanRevision)
-	require.LessOrEqual(t, len(key), 192)
+	require.LessOrEqual(t, len(key), 128)
+}
+
+func TestLegacyScopedApprovalHistoryKeepsLegacyPublicationKey(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(workflowWireProbe)
+	env.OnGetVersion(slotExecutionWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(approvalActionIDV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(approvalPublicationWireV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(resultDigestV3Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(approvalPublicationScopePatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+	env.OnGetVersion(approvalPublicationKeyLengthPatch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.DefaultVersion).Once()
+	env.OnGetVersion(activityWireV2Patch, sdkworkflow.DefaultVersion, 1).Return(sdkworkflow.Version(1)).Once()
+
+	env.ExecuteWorkflow(workflowWireProbe)
+
+	require.NoError(t, env.GetWorkflowError())
+	var got wireProbeResult
+	require.NoError(t, env.GetWorkflowResult(&got))
+	require.Equal(t, legacyApprovalActionPublicationKey("capture-action", "capture-run", 1), got.ApprovalActionID)
+	require.True(t, env.AssertExpectations(t))
 }
 
 func wireProbePlanAndResults() (imageagent.Plan, []SlotWorkflowResult) {

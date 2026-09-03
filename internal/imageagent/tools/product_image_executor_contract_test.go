@@ -75,6 +75,21 @@ func TestFrozenV2ExecutorAcceptsHistoricalInputWithoutV3PolicyFields(t *testing.
 	require.Len(t, generated.Assets, 1)
 }
 
+func TestExecutorAcceptsHistoricalV3InputWithoutPolicyFields(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
+		UsageQuoter:   testProductUsageQuoter{},
+	})
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = ""
+	input.ImagePolicyContext = nil
+
+	generated, err := executor.GenerateSlot(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Len(t, generated.Assets, 1)
+}
+
 func TestExecutorFailsClosedWhenExactPolicyIsMissingBeforeProviderDispatch(t *testing.T) {
 	resolver := &recordingImageProfileResolver{err: imagepolicy.ErrPolicyNotFound}
 	renderer := &recordingProductSceneRenderer{}
