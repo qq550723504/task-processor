@@ -40,6 +40,8 @@ task-processor
 2. 增加手机号自助注册的最小入口/桥接
 ```
 
+**新手机号产品化不能删除现有通用 Login V2 能力。** 历史 email-only、非手机号或未来其它由 ZITADEL 支持的身份仍可通过 generic Login V2 chooser 登录。
+
 ---
 
 ## 2. ZITADEL 负责什么
@@ -73,6 +75,7 @@ login.shuomi.example
 
 负责：
 
+- 保留官方 Login V2 generic/default 登录能力；
 - 复用官方 Login V2 Session/OIDC 结构；
 - 手机号验证码登录；
 - 手机号密码登录（Capability Gate 通过后开放）；
@@ -100,6 +103,8 @@ Token refresh
 `listingkit-ui` 不复制 Login V2 页面，不接收 ZITADEL 管理凭据，不自行验证 OTP/Password。
 
 公开 `/login`、`/register`、`/forgot-password` 只负责选择受控认证 Entry 并进入标准 Login V2 / OIDC 流程。
+
+受保护页面未登录时现有的 bare `/login?returnTo=...` 重定向继续合法，并进入 **generic Login V2 entry**；它不能被强制解释成手机号 OTP。这样现有 email-only 等历史用户不会因为新 Console/手机号入口上线失去登录能力。
 
 ---
 
@@ -194,7 +199,7 @@ Figma 注册基线：`374:325`，字段按上述产品口径裁剪。
 该手机号已注册，请直接登录
 ```
 
-并提供 OTP 登录、Password 登录（若 capability enabled）和找回入口（若 capability enabled）。
+并提供 generic Login V2、OTP 登录、Password 登录（若 capability enabled）和找回入口（若 capability enabled）。
 
 ---
 
@@ -203,6 +208,7 @@ Figma 注册基线：`374:325`，字段按上述产品口径裁剪。
 公开入口固定为：
 
 ```text
+/login
 /register
 /login?method=otp
 /login?method=password
@@ -212,26 +218,31 @@ Figma 注册基线：`374:325`，字段按上述产品口径裁剪。
 服务器维护 allowlist 映射：
 
 ```text
+/login                   -> generic_login
 /register                -> registration
 /login?method=otp        -> otp_login
 /login?method=password   -> password_login
 /forgot-password         -> password_reset
 ```
 
+其中 `generic_login` 是官方 Login V2 默认/chooser 入口，必须保留 ZITADEL 当前允许的既有登录方式。它承担 protected-route 默认 redirect，不受手机号专用 capability gate 影响。
+
 实现可以使用受控 authorize 参数或独立 Login Fork URL，但必须满足：
 
-- `listingkit-ui` 不丢弃 `method` 后全部落到默认登录；
+- bare `/login?returnTo=...` 进入 generic upstream Login V2，不强制 OTP；
+- `listingkit-ui` 不丢弃明确的 `method` 后把 OTP/Password/Reset 全部落到 generic；
 - 只有上述 allowlist entry 可以进入 Login Fork；
 - 浏览器不能指定任意 action/handler/redirect URL；
 - `returnTo` 仍走现有安全 normalization/allowlist；
-- password/reset capability 关闭时，不渲染对应入口，直接请求也不会误入一个看似可用但实际无法完成的 flow；
-- contract tests 必须逐一证明公开 URL 选择了正确 Entry。
+- password/reset capability 关闭时，不渲染对应专用入口，直接请求也不会误入一个看似可用但实际无法完成的 flow；
+- contract tests 必须逐一证明 5 个公开 URL 选择了正确 Entry；
+- 必须覆盖 existing email-only historical user：protected route -> bare `/login?returnTo=...` -> generic Login V2 -> Auth.js authenticated session。
 
 ---
 
 ## 10. OTP → OIDC Capability Gate
 
-手机号验证码登录是 Phase1 默认登录方式，但**不能仅因为 Session API/OTP preflight 成功就视为完整登录已确认**。
+手机号验证码登录是 Phase1 默认手机号登录方式，但**不能仅因为 Session API/OTP preflight 成功就视为完整登录已确认**。
 
 上线前必须在 pinned ZITADEL/Login V2 staging 环境记录证据，证明：
 
@@ -251,6 +262,7 @@ E.164 User
 若该完整链路没有通过：
 
 - 对应 OTP login / new-phone self-registration 保持 feature gated；
+- generic Login V2 与现有非手机号身份登录不因此关闭；
 - Console 其他不依赖新自注册的实现不因此停止；
 - 不允许在 task-processor 自研另一套 OTP→OIDC 桥接来绕过 Gate。
 
@@ -263,10 +275,12 @@ E.164 User
 未通过时：
 
 ```text
-不展示密码 Tab
-/login?method=password -> feature unavailable / 安全回 OTP
+不展示手机号密码 Tab
+/login?method=password -> feature unavailable / 安全回 generic 或 OTP
 不新增业务侧 Password Flow
 ```
+
+这不意味着删除 generic Login V2 中现有用户可能已经可用的其它 Provider-native 登录方式。
 
 通过时仍完全使用 ZITADEL Password Policy、lockout 与 Session/OIDC。
 
@@ -276,7 +290,7 @@ E.164 User
 
 直接注册只要求手机号，不要求用户真实邮箱；technical `@phone.invalid` 地址不能用于 Recovery。
 
-因此“忘记密码/重置密码”只有在 staging 明确证明 **Phone-only / SMS ownership proof 可以完成 ZITADEL Password Reset** 时才开放。
+因此手机号产品中的“忘记密码/重置密码”只有在 staging 明确证明 **Phone-only / SMS ownership proof 可以完成 ZITADEL Password Reset** 时才开放。
 
 Gate 必须证明：
 
@@ -286,7 +300,7 @@ Gate 必须证明：
 - 错误手机号/错误验证码不会暴露其他账户资料；
 - task-processor 不生成/保存 Reset Token。
 
-若 Provider 当前能力不满足，第一阶段隐藏 Forgot Password/Reset UI，而不是把 technical email 暴露给用户或新建自研 Reset Token 系统。
+若 Provider 当前能力不满足，第一阶段隐藏手机号专用 Forgot Password/Reset UI，而不是把 technical email 暴露给用户或新建自研 Reset Token 系统。Generic Login V2 自己对其它既有身份提供的合法 recovery 能力不因本 Gate 被删除。
 
 ---
 
@@ -344,7 +358,7 @@ emailVerified = false / not_applicable for user-facing purposes
 ```text
 OTP 发送冷却
 OTP 错误尝试上限
-Password lockout（若 Password capability enabled）
+Password lockout（若手机号 Password capability enabled）
 Origin / Host / Trusted Domain
 Session Cookie 属性
 可信代理链
@@ -431,7 +445,7 @@ PR #284 V7
 → 企业资源账本 + Store Service
 ```
 
-本文与 #283 冲突时，手机号注册/Onboarding 实现细节以 #283 V7 为准；#281 的已确认 Product Decision（例如允许 account existence disclosure）必须同步到下游 V7，历史 anti-enumeration 假设不再恢复。
+本文与 #283 冲突时，手机号注册/Onboarding 实现细节以 #283 V7 为准；#281 的已确认 Product Decision（例如允许 account existence disclosure、保留 generic existing-user login）必须同步到下游实现，历史 anti-enumeration 假设不再恢复。
 
 ---
 
@@ -440,6 +454,7 @@ PR #284 V7
 本文件只接受以下类型的 BLOCKER：
 
 - advertised auth entry 无法实际进入目标 Login V2 flow；
+- 新手机号入口让既有可登录身份失去 generic login path；
 - mandatory OTP→OIDC 链路无法完成；
 - 页面承诺 Password/Reset/Change 但没有经过验证的 Provider authority；
 - technical internal identity 被误当成用户真实资料；
@@ -456,11 +471,12 @@ Account Enumeration、时序等价、Decoy User、branch-neutral capacity 不属
 - ZITADEL/Login V2/Auth.js/task-processor 职责边界明确；
 - 注册/登录页面字段与 Figma 产品口径稳定；
 - Account Existence 允许公开，但账户/组织/业务资料仍私密；
-- `/register`、OTP、Password、Reset 有明确 allowlisted Entry Routing；
+- bare `/login` 保留 generic Login V2，existing email-only 等历史身份不会因手机号产品化被锁死；
+- `/login`、`/register`、OTP、Password、Reset 有明确 allowlisted Entry Routing；
 - OTP→OIDC 有 staging Capability Gate；
-- Password Login、Phone-only Reset、Authenticated Password Management 未验证前不展示为可用功能；
+- Password Login、Phone-only Reset、Authenticated Password Management 未验证前不展示为手机号产品可用功能；
 - technical email 永不作为真实用户邮箱展示或恢复通道；
 - 不再计划自研密码、OTP、Session、Callback 或长期手机号身份系统；
 - 手机号注册的复杂可靠性问题已移动到 #283 V7 单独实现。
 
-**原则：能由 ZITADEL 提供的身份能力不重复实现；未验证的 IAM 能力宁可 feature-gate，也不通过业务后端补一套新的身份系统。**
+**原则：能由 ZITADEL 提供的身份能力不重复实现；新增手机号能力不能破坏既有身份登录；未验证的 IAM 能力宁可 feature-gate，也不通过业务后端补一套新的身份系统。**
