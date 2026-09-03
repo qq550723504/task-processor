@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -111,6 +110,30 @@ func TestPhase3ListingKitImageWorkflowBoundaryRejectsRetiredMutations(t *testing
 			},
 			wantRule: "ListingKit provider implementation ownership",
 		},
+		{
+			name: "listingkit http image runtime adapter",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/httpapi/fetch.go",
+				text: "package httpapi\n\nimport runtimeadapter \"task-processor/internal/integration/httpimage\"\n\nvar _ = runtimeadapter.Fetch\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
+		{
+			name: "listingkit product image capability owner",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/httpapi/generate.go",
+				text: "package httpapi\n\nimport imagecapability \"task-processor/internal/product/image\"\n\nvar _ imagecapability.Generator\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
+		{
+			name: "future integration provider name is denied by default",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/httpapi/future.go",
+				text: "package httpapi\n\nimport runtimeadapter \"task-processor/internal/integration/fluxrender\"\n\nvar _ = runtimeadapter.New\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
 	}
 
 	for _, test := range tests {
@@ -156,6 +179,19 @@ func TestPhase3ListingKitImageWorkflowBoundaryAllowsImageAgentStudioScene(t *tes
 	}
 	if violations := findListingKitImageBoundaryViolations(sources); len(violations) != 0 {
 		t.Fatalf("legitimate ImageAgent studio semantics produced violations: %+v", violations)
+	}
+}
+
+func TestListingKitImageDependencyOwnershipAllowsNeutralPortsAndApprovedAdapters(t *testing.T) {
+	sources := []listingKitImageBoundarySource{
+		{path: "internal/listingkit/httpapi/chat.go", text: "package httpapi\nimport _ \"task-processor/internal/ai\""},
+		{path: "internal/listingkit/approved_assets.go", text: "package listingkit\nimport _ \"task-processor/internal/product/asset\""},
+		{path: "internal/listingkit/product_snapshot.go", text: "package listingkit\nimport _ \"task-processor/internal/product/catalog/canonical\""},
+		{path: "internal/listingkit/httpapi/repositories.go", text: "package httpapi\nimport _ \"task-processor/internal/integration/persistence/product/asset\""},
+		{path: "internal/listingkit/httpapi/object_store.go", text: "package httpapi\nimport _ \"task-processor/internal/integration/s3\""},
+	}
+	if violations := findListingKitImageBoundaryViolations(sources); len(violations) != 0 {
+		t.Fatalf("neutral ListingKit dependencies were rejected: %v", violations)
 	}
 }
 
@@ -205,7 +241,7 @@ func findListingKitImageBoundaryViolations(sources []listingKitImageBoundarySour
 	for _, source := range sources {
 		path := filepath.ToSlash(source.path)
 		if strings.HasPrefix(path, "internal/listingkit/") && strings.HasSuffix(path, ".go") {
-			for _, imported := range listingKitProviderImplementationImports(source.text) {
+			for _, imported := range listingKitDisallowedOwnedDependencyImports(source.text) {
 				violations = append(violations, listingKitImageBoundaryViolation{
 					rule: "ListingKit provider implementation ownership",
 					path: path + " -> " + imported,
@@ -227,28 +263,52 @@ func findListingKitImageBoundaryViolations(sources []listingKitImageBoundarySour
 	return violations
 }
 
-var listingKitProviderImplementationPrefixes = []string{
-	"task-processor/internal/integration/openai",
-	"task-processor/internal/integration/geminiimage",
-	"task-processor/internal/integration/grsai",
+var listingKitDependencyOwnershipBoundaries = []struct {
+	namespace string
+	allowed   []string
+}{
+	{
+		namespace: "task-processor/internal/integration",
+		allowed: []string{
+			"task-processor/internal/integration/persistence/product/asset",
+			"task-processor/internal/integration/s3",
+		},
+	},
+	{
+		namespace: "task-processor/internal/product",
+		allowed: []string{
+			"task-processor/internal/product/asset",
+			"task-processor/internal/product/catalog",
+		},
+	},
 }
 
-func listingKitProviderImplementationImports(source string) []string {
+func listingKitDisallowedOwnedDependencyImports(source string) []string {
 	parsed, err := parser.ParseFile(token.NewFileSet(), "listingkit.go", source, parser.ImportsOnly)
 	if err != nil {
 		return nil
 	}
 	var forbidden []string
 	for _, spec := range parsed.Imports {
-		imported, err := strconv.Unquote(spec.Path.Value)
+		imported, err := decodeGoImportPath(spec.Path.Value)
 		if err != nil {
 			continue
 		}
-		for _, prefix := range listingKitProviderImplementationPrefixes {
-			if imported == prefix || strings.HasPrefix(imported, prefix+"/") {
-				forbidden = append(forbidden, imported)
-				break
+		for _, boundary := range listingKitDependencyOwnershipBoundaries {
+			if !importMatchesPrefix(imported, boundary.namespace) {
+				continue
 			}
+			allowed := false
+			for _, root := range boundary.allowed {
+				if importMatchesPrefix(imported, root) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				forbidden = append(forbidden, imported)
+			}
+			break
 		}
 	}
 	return forbidden

@@ -120,7 +120,7 @@ func TestHTTPE2E_ListingKitFailsClosedWhenPersistentApprovedAssetsAreMissing(t *
 	require.Contains(t, strings.Join(task.Result.ReviewReasons, "\n"), "Approved product assets are not ready")
 }
 
-func TestHTTPE2E_ImageAgentPublisherPersistsAssetsConsumedByListingKitWithoutCreatingRun(t *testing.T) {
+func TestHTTPE2E_ImageAgentApprovalPublishesExactlyOnceBeforeListingKitRead(t *testing.T) {
 	const (
 		productKey  = "listingkit-published-assets"
 		approvedURL = "https://cdn.example.test/published-main.png"
@@ -136,16 +136,28 @@ func TestHTTPE2E_ImageAgentPublisherPersistsAssetsConsumedByListingKitWithoutCre
 		Variants:      []catalog.Variant{{SKU: "PUBLISHED-1", Stock: 2, IsDefault: true, Price: &catalog.Price{Currency: "USD", Amount: 12}}},
 	})
 
-	projection := currentE2EApprovedProjection(t, productKey, approvedURL)
+	imageAgentRepository := imageagentstore.NewGormRepository(db)
+	projection := persistCurrentE2EAwaitingApprovalProjection(t, imageAgentRepository, productKey, approvedURL)
 	approvedAssets, err := assetpersistence.NewRepository(db)
 	require.NoError(t, err)
-	publisher, err := assetpublication.NewV2Publisher(currentE2EProjectionSource{projection: projection}, approvedAssets)
+	publisher, err := assetpublication.NewV2Publisher(imageAgentRepository, approvedAssets)
 	require.NoError(t, err)
-	_, err = publisher.PublishApproved(context.Background(), imageagent.PublishApprovedInput{
+	publication := imageagent.PublishApprovedInput{
 		RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID,
 		PlanRevision: projection.Plan.Revision, CandidateAssetIDs: []string{"published-main"}, IdempotencyKey: "publish-current-e2e",
-	})
+	}
+	firstAcknowledgement, err := publisher.PublishApproved(context.Background(), publication)
 	require.NoError(t, err)
+	secondAcknowledgement, err := publisher.PublishApproved(context.Background(), publication)
+	require.NoError(t, err)
+	require.Equal(t, firstAcknowledgement, secondAcknowledgement)
+	require.Equal(t, "publish-current-e2e", firstAcknowledgement.ActionID)
+	require.Equal(t, []string{"published-main"}, firstAcknowledgement.AssetIDs)
+	assertCurrentE2ERowCount(t, db, "product_approval_receipts", "tenant_id = ? AND action_id = ?", 1, projection.Run.TenantID, publication.IdempotencyKey)
+	assertCurrentE2ERowCount(t, db, "product_approved_assets", "tenant_id = ? AND action_id = ?", 1, projection.Run.TenantID, publication.IdempotencyKey)
+	assertCurrentE2ERowCount(t, db, "product_approved_inventory_heads", "tenant_id = ? AND product_key = ?", 1, projection.Run.TenantID, productKey)
+	assertCurrentE2ERowCount(t, db, "image_agent_v2_runs", "tenant_id = ? AND owner_user_id = ?", 1, projection.Run.TenantID, projection.Run.UserID)
+	assertCurrentE2ERowCount(t, db, "image_agent_v2_events", "tenant_id = ? AND owner_user_id = ? AND run_id = ?", 3, projection.Run.TenantID, projection.Run.UserID, projection.Run.ID)
 
 	server, client := startCurrentE2EListingKitServer(t, db, repositories, t.TempDir())
 	enableCurrentE2EListingKitSubscription(t, client, server.URL, listingsubscription.ModuleListingKit)
@@ -159,9 +171,8 @@ func TestHTTPE2E_ImageAgentPublisherPersistsAssetsConsumedByListingKitWithoutCre
 	require.Equal(t, approvedURL, task.Result.ApprovedAssetInventory.Assets[0].URL)
 	require.Equal(t, approvedURL, task.Result.CanonicalProduct.Images[0].URL)
 
-	var runCount int64
-	require.NoError(t, db.Table("image_agent_v2_runs").Count(&runCount).Error)
-	require.Zero(t, runCount, "ListingKit read path must not create an ImageAgent run")
+	assertCurrentE2ERowCount(t, db, "image_agent_v2_runs", "tenant_id = ? AND owner_user_id = ?", 1, projection.Run.TenantID, projection.Run.UserID)
+	assertCurrentE2ERowCount(t, db, "image_agent_v2_events", "tenant_id = ? AND owner_user_id = ? AND run_id = ?", 3, projection.Run.TenantID, projection.Run.UserID, projection.Run.ID)
 }
 
 func TestHTTPE2E_CurrentAmazonListingUsesSnapshotAndApprovedAssets(t *testing.T) {
@@ -663,29 +674,81 @@ func mustCurrentE2EPNG(t *testing.T) []byte {
 	return data
 }
 
-type currentE2EProjectionSource struct{ projection imageagent.RunProjection }
-
-func (s currentE2EProjectionSource) GetProjection(context.Context, imageagent.RunScope) (imageagent.RunProjection, error) {
-	return s.projection, nil
-}
-
-func currentE2EApprovedProjection(t *testing.T, productKey, approvedURL string) imageagent.RunProjection {
+func persistCurrentE2EAwaitingApprovalProjection(t *testing.T, repository imageagent.Repository, productKey, approvedURL string) imageagent.RunProjection {
 	t.Helper()
-	plan := imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain}}}
-	projection := imageagent.RunProjection{
-		Run:          imageagent.Run{ID: "publisher-run", TenantID: "app-http-test-tenant", UserID: "app-http-test-user", Status: imageagent.RunStatusAwaitingFinalApproval, ActivePlanRevision: 1},
-		Plan:         plan,
-		AssetCatalog: imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: productKey}},
-		Slots: []imageagent.SlotProjection{{
-			Slot:       imageagent.Slot{ID: "main", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusAccepted},
-			Attempt:    1,
-			Candidates: []imageagent.AssetCandidate{{AssetID: "published-main", SourceAssetID: "source-main", URL: approvedURL}},
+	ctx := context.Background()
+	run := imageagent.Run{
+		ID: "publisher-run", TenantID: "app-http-test-tenant", UserID: "app-http-test-user",
+		Mode: imageagent.RunModeManual, IdempotencyKey: "publisher-run-current-e2e",
+		Status: imageagent.RunStatusExecuting, CurrentNode: "execute_slots", Version: 1,
+	}
+	plan := imageagent.Plan{
+		Revision: 1, IdempotencyKey: "publisher-plan-current-e2e", SourceAssetIDs: []string{"source-main"}, CreatedBy: run.UserID,
+		Slots: []imageagent.Slot{{
+			ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-main"},
+			IdempotencyKey: "publisher-slot-current-e2e", Status: imageagent.SlotStatusPending,
 		}},
 	}
-	digest, err := imageagent.ResultDigestV2(projection.Plan, projection.Slots)
+	catalog := imageagent.AssetCatalog{
+		Assets:         []imageagent.AuthorizedAsset{{ID: "source-main", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example.test/main.png"}},
+		ProductContext: imageagent.ProductContextRef{ProductID: productKey},
+	}
+	scope := imageagent.ScopeForRun(run)
+	projection, err := repository.InitializeRun(ctx, imageagent.ProjectionInitialization{
+		Scope: scope, Run: run, Plan: plan, Catalog: catalog,
+		Snapshot: imageagent.RunProjection{Run: run, Plan: plan},
+		CommitID: "run:publisher-current-e2e", EventType: "run.initialized", EventPayload: json.RawMessage(`{}`),
+	})
 	require.NoError(t, err)
-	projection.ResultDigest = digest
+
+	accepted := projection
+	accepted.Slots = append([]imageagent.SlotProjection(nil), projection.Slots...)
+	accepted.Slots[0] = imageagent.SlotProjection{
+		Slot: imageagent.Slot{
+			ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-main"},
+			IdempotencyKey: "publisher-slot-current-e2e", Status: imageagent.SlotStatusAccepted,
+		},
+		Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "published-main", SourceAssetID: "source-main", URL: approvedURL}},
+	}
+	projection, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "slot:published-main", ExpectedProjectionVersion: projection.ProjectionVersion,
+		Snapshot: accepted, EventType: "slot.result.persisted", EventPayload: json.RawMessage(`{}`),
+		SlotMutation: &imageagent.SlotProjectionMutation{
+			PlanRevision: plan.Revision,
+			Result:       imageagent.SlotResult{SlotID: "main", Attempt: 1, Status: imageagent.SlotStatusAccepted, CandidateAssetIDs: []string{"published-main"}},
+			Projection:   accepted.Slots[0],
+			Attempt: imageagent.StepAttempt{
+				TenantID: run.TenantID, OwnerUserID: run.UserID, RunID: run.ID, PlanRevision: plan.Revision,
+				SlotID: "main", Node: "execute_slot", IdempotencyKey: "slot:published-main:attempt:1", Attempt: 1, Outcome: "accepted",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	awaitingApproval := projection
+	awaitingApproval.Run.Status = imageagent.RunStatusAwaitingFinalApproval
+	awaitingApproval.Run.CurrentNode = "approve_results"
+	awaitingApproval.Run.Version++
+	digest, err := imageagent.ResultDigestV2(awaitingApproval.Plan, awaitingApproval.Slots)
+	require.NoError(t, err)
+	awaitingApproval.ResultDigest = digest
+	projection, err = repository.CommitProjection(ctx, imageagent.ProjectionCommit{
+		Scope: scope, CommitID: "run:awaiting-final-approval", ExpectedProjectionVersion: projection.ProjectionVersion,
+		ExpectedRunVersion: projection.Run.Version, Snapshot: awaitingApproval,
+		EventType: "run.updated", EventPayload: json.RawMessage(`{"status":"awaiting_final_approval"}`),
+		RunMutation: &imageagent.RunMutation{
+			Status: imageagent.RunStatusAwaitingFinalApproval, CurrentNode: "approve_results", ActivePlanRevision: plan.Revision,
+		},
+	})
+	require.NoError(t, err)
 	return projection
+}
+
+func assertCurrentE2ERowCount(t *testing.T, db *gorm.DB, table, query string, want int64, args ...any) {
+	t.Helper()
+	var got int64
+	require.NoError(t, db.Table(table).Where(query, args...).Count(&got).Error)
+	require.Equal(t, want, got, "row count for %s where %s", table, query)
 }
 
 func currentE2EProductReaders(t *testing.T, productKey string, snapshot catalog.ProductSnapshot, inventory productasset.ApprovedAssetInventory) (*gorm.DB, string, catalog.Repository, productasset.Repository) {
