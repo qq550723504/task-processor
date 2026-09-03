@@ -55,7 +55,9 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 		Runtime: listingkithttpapi.RuntimeDependencies{
 			Config:                             deps.shared.cfg,
 			ProductSnapshotReader:              deps.features.productSnapshotReader,
-			AICredentialStore:                  deps.shared.aiCredentialStore,
+			AIClientCredentialStore:            adaptListingKitAICredentialStore(deps.shared.aiCredentialStore),
+			SheinCategoryLLMClient:             buildStrictListingKitChatClient(deps.shared.cfg, deps.shared.aiCredentialStore, "default"),
+			SheinSaleAttributeLLM:              buildStrictListingKitChatClient(deps.shared.cfg, deps.shared.aiCredentialStore, listingKitSheinSaleAttributeClientName),
 			Support:                            support,
 			ShouldStartTemporalWorkerInProcess: appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess(),
 		},

@@ -74,10 +74,6 @@ func (h BuildServiceHooks) Validate() error {
 		return fmt.Errorf("build service hook image upload store is required")
 	case h.LegacyTenantResolverConfigurator == nil:
 		return fmt.Errorf("build service hook legacy tenant resolver is required")
-	case h.SheinCategoryLLMClientBuilder == nil:
-		return fmt.Errorf("build service hook shein category llm client is required")
-	case h.SheinSaleAttributeLLMBuilder == nil:
-		return fmt.Errorf("build service hook shein sale attribute llm client is required")
 	case h.SheinCategoryResolverBuilder == nil:
 		return fmt.Errorf("build service hook shein category resolver is required")
 	case h.SheinAttributeResolverBuilder == nil:

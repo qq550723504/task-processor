@@ -1,12 +1,10 @@
 package httpapi
 
 import (
-	"context"
-
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
@@ -80,12 +78,6 @@ type moduleService interface {
 	TemporalWorkerService
 }
 
-type aiCredentialStore interface {
-	openaiclient.ClientConfigResolver
-	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error
-	GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error)
-}
-
 type BuildModuleInput struct {
 	ServiceInput                       BuildServiceInput
 	ShouldStartTemporalWorkerInProcess bool
@@ -131,11 +123,9 @@ type BuildServiceHooks struct {
 	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
 	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error)
 	LegacyTenantResolverConfigurator  func(*config.Config, *logrus.Logger) (func() error, error)
-	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter
-	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter
-	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
-	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
-	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
 	SheinProductAPIBuilderFactory     func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
@@ -149,7 +139,9 @@ type BuildServiceInput struct {
 	SDSSyncService            sdsusecase.Service
 	SDSLoginStatusProvider    listingkit.SDSLoginStatusProvider
 	SDSBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
-	AICredentialStore         aiCredentialStore
+	AIClientCredentialStore   listingkit.AIClientCredentialStore
+	SheinCategoryLLMClient    ai.TextChatCompleter
+	SheinSaleAttributeLLM     ai.TextChatCompleter
 	Repositories              BuildServiceRepositories
 	Hooks                     BuildServiceHooks
 }

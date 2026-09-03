@@ -199,12 +199,16 @@ func (r *GormRepository) ListModules(ctx context.Context) ([]Module, error) {
 }
 
 func (r *GormRepository) UpsertDefaultModules(ctx context.Context, modules []Module) error {
+	return upsertDefaultModules(r.db.WithContext(ctx), modules)
+}
+
+func upsertDefaultModules(db *gorm.DB, modules []Module) error {
 	for _, module := range modules {
 		row := subscriptionModuleRow{
 			Code: module.Code, Name: module.Name, Description: module.Description,
 			SortOrder: module.SortOrder, Active: module.Active,
 		}
-		if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "code"}},
 			DoUpdates: clause.AssignmentColumns([]string{"name", "description", "sort_order", "active", "updated_at"}),
 		}).Create(&row).Error; err != nil {
@@ -251,36 +255,40 @@ func (r *GormRepository) ListPlans(ctx context.Context) ([]PlanBundle, error) {
 
 func (r *GormRepository) UpsertDefaultPlans(ctx context.Context, plans []PlanBundle) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, bundle := range plans {
-			planRow := subscriptionPlanRow{
-				Code: bundle.Plan.Code, Name: bundle.Plan.Name, Description: bundle.Plan.Description,
-				SortOrder: bundle.Plan.SortOrder, Active: bundle.Plan.Active,
-			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "code"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name", "description", "sort_order", "active", "updated_at"}),
-			}).Create(&planRow).Error; err != nil {
+		return upsertDefaultPlans(tx, plans)
+	})
+}
+
+func upsertDefaultPlans(db *gorm.DB, plans []PlanBundle) error {
+	for _, bundle := range plans {
+		planRow := subscriptionPlanRow{
+			Code: bundle.Plan.Code, Name: bundle.Plan.Name, Description: bundle.Plan.Description,
+			SortOrder: bundle.Plan.SortOrder, Active: bundle.Plan.Active,
+		}
+		if err := db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "code"}},
+			DoUpdates: clause.AssignmentColumns([]string{"name", "description", "sort_order", "active", "updated_at"}),
+		}).Create(&planRow).Error; err != nil {
+			return err
+		}
+		for _, module := range bundle.Modules {
+			limitsJSON, err := marshalLimits(module.Limits)
+			if err != nil {
 				return err
 			}
-			for _, module := range bundle.Modules {
-				limitsJSON, err := marshalLimits(module.Limits)
-				if err != nil {
-					return err
-				}
-				moduleRow := subscriptionPlanModuleRow{
-					PlanCode: bundle.Plan.Code, ModuleCode: module.ModuleCode,
-					LimitsJSON: limitsJSON, SortOrder: module.SortOrder,
-				}
-				if err := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "plan_code"}, {Name: "module_code"}},
-					DoUpdates: clause.AssignmentColumns([]string{"limits", "sort_order"}),
-				}).Create(&moduleRow).Error; err != nil {
-					return err
-				}
+			moduleRow := subscriptionPlanModuleRow{
+				PlanCode: bundle.Plan.Code, ModuleCode: module.ModuleCode,
+				LimitsJSON: limitsJSON, SortOrder: module.SortOrder,
+			}
+			if err := db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "plan_code"}, {Name: "module_code"}},
+				DoUpdates: clause.AssignmentColumns([]string{"limits", "sort_order"}),
+			}).Create(&moduleRow).Error; err != nil {
+				return err
 			}
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (r *GormRepository) UpsertPlan(ctx context.Context, plan Plan, modules []PlanModule) (*PlanBundle, error) {

@@ -3,7 +3,7 @@ package httpapi
 import (
 	"context"
 
-	openaiclient "task-processor/internal/integration/openai"
+	"task-processor/internal/ai"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheincategoryselector "task-processor/internal/shein/category"
 )
@@ -12,7 +12,7 @@ type sheinCategorySelectorAdapter struct {
 	selector sheincategoryselector.AISelector
 }
 
-func newSheinCategorySelectorAdapter(llm openaiclient.TextChatCompleter) sheinpub.CategoryAISelector {
+func newSheinCategorySelectorAdapter(llm ai.TextChatCompleter) sheinpub.CategoryAISelector {
 	if llm == nil {
 		return nil
 	}

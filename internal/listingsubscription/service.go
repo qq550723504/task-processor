@@ -17,6 +17,10 @@ type Service struct {
 	tenantDisplayNameResolver TenantDisplayNameResolver
 }
 
+type defaultCatalogSynchronizer interface {
+	SyncDefaultCatalog(context.Context, []Module, []PlanBundle) error
+}
+
 func NewService(repo Repository) (*Service, error) {
 	if repo == nil {
 		return nil, errors.New("subscription repository is required")
@@ -26,11 +30,18 @@ func NewService(repo Repository) (*Service, error) {
 		now:                       time.Now,
 		tenantDisplayNameResolver: fallbackTenantDisplayNameResolver{},
 	}
-	if err := repo.UpsertDefaultModules(context.Background(), DefaultModules()); err != nil {
-		return nil, err
-	}
-	if err := repo.UpsertDefaultPlans(context.Background(), DefaultPlans()); err != nil {
-		return nil, err
+	modules, plans := DefaultModules(), DefaultPlans()
+	if synchronizer, ok := repo.(defaultCatalogSynchronizer); ok {
+		if err := synchronizer.SyncDefaultCatalog(context.Background(), modules, plans); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := repo.UpsertDefaultModules(context.Background(), modules); err != nil {
+			return nil, err
+		}
+		if err := repo.UpsertDefaultPlans(context.Background(), plans); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }

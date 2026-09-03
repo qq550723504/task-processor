@@ -28,7 +28,7 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		ImageUploadStore:          in.submit.assets.imageUploadStore,
 		UploadedImageRepository:   in.repositories.uploadedImageRepository,
 		StoreProfileRepository:    in.repositories.storeProfileRepository,
-		AIClientCredentialStore:   adaptListingKitAICredentialStore(in.input.AICredentialStore),
+		AIClientCredentialStore:   in.input.AIClientCredentialStore,
 		GenerationUsageLedger:     generationUsageSettlementDependency(in),
 		GenerationUsageAdmission:  generationUsageAdmissionForConfig(in.input.Config),
 	}

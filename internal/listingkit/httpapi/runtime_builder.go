@@ -3,6 +3,7 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
 )
@@ -15,7 +16,9 @@ type RuntimeBuildInput struct {
 type RuntimeDependencies struct {
 	Config                             *config.Config
 	ProductSnapshotReader              listingkit.ProductSnapshotReader
-	AICredentialStore                  aiCredentialStore
+	AIClientCredentialStore            listingkit.AIClientCredentialStore
+	SheinCategoryLLMClient             ai.TextChatCompleter
+	SheinSaleAttributeLLM              ai.TextChatCompleter
 	Support                            RuntimeSupport
 	ShouldStartTemporalWorkerInProcess bool
 }
@@ -36,7 +39,9 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 		SDSSyncService:            support.SDSSyncService,
 		SDSLoginStatusProvider:    support.SDSLoginStatusProvider,
 		SDSBaselineRemoteProvider: support.SDSBaselineRemoteProvider,
-		AICredentialStore:         runtime.AICredentialStore,
+		AIClientCredentialStore:   runtime.AIClientCredentialStore,
+		SheinCategoryLLMClient:    runtime.SheinCategoryLLMClient,
+		SheinSaleAttributeLLM:     runtime.SheinSaleAttributeLLM,
 		Repositories:              support.Repositories,
 		Hooks:                     support.Hooks,
 	}

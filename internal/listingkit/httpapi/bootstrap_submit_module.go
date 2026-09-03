@@ -5,8 +5,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -15,11 +15,9 @@ import (
 type submitModuleHooks struct {
 	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
 	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error)
-	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter
-	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.TextChatCompleter
-	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
-	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
-	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
 	SheinProductAPIBuilderFactory     func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
@@ -27,12 +25,13 @@ type submitModuleHooks struct {
 }
 
 type submitModuleInput struct {
-	Config               *config.Config
-	Logger               *logrus.Logger
-	AICredentialStore    aiCredentialStore
-	Hooks                submitModuleHooks
-	StoreRepository      listingadmin.StoreRepository
-	ResolutionCacheStore sheinpub.ResolutionCacheStore
+	Config                *config.Config
+	Logger                *logrus.Logger
+	SheinCategoryLLM      ai.TextChatCompleter
+	SheinSaleAttributeLLM ai.TextChatCompleter
+	Hooks                 submitModuleHooks
+	StoreRepository       listingadmin.StoreRepository
+	ResolutionCacheStore  sheinpub.ResolutionCacheStore
 }
 
 type submitAssetDependencies struct {
@@ -50,7 +49,7 @@ type submitSheinDependencies struct {
 	imageAPIBuilder       sheinpub.ImageAPIBuilder
 	translateAPIBuilder   sheinpub.TranslateAPIBuilder
 	apiClientFactory      listingkit.SheinAPIClientFactory
-	contentOptimizer      openaiclient.TextChatCompleter
+	contentOptimizer      ai.TextChatCompleter
 }
 
 type submitModule struct {
@@ -62,8 +61,6 @@ func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 	return submitModuleHooks{
 		SheinPricingPolicyBuilder:         hooks.SheinPricingPolicyBuilder,
 		ImageUploadStoreBuilder:           hooks.ImageUploadStoreBuilder,
-		SheinCategoryLLMClientBuilder:     hooks.SheinCategoryLLMClientBuilder,
-		SheinSaleAttributeLLMBuilder:      hooks.SheinSaleAttributeLLMBuilder,
 		SheinCategoryResolverBuilder:      hooks.SheinCategoryResolverBuilder,
 		SheinAttributeResolverBuilder:     hooks.SheinAttributeResolverBuilder,
 		SheinSaleAttributeResolverBuilder: hooks.SheinSaleAttributeResolverBuilder,
@@ -76,25 +73,19 @@ func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 
 func newSubmitModuleInput(input BuildServiceInput, repos *builtRepositories) submitModuleInput {
 	return submitModuleInput{
-		Config:               input.Config,
-		Logger:               input.Logger,
-		AICredentialStore:    input.AICredentialStore,
-		Hooks:                newSubmitModuleHooks(input.Hooks),
-		StoreRepository:      repos.storeRepository,
-		ResolutionCacheStore: repos.resolutionCacheStore,
+		Config:                input.Config,
+		Logger:                input.Logger,
+		SheinCategoryLLM:      input.SheinCategoryLLMClient,
+		SheinSaleAttributeLLM: input.SheinSaleAttributeLLM,
+		Hooks:                 newSubmitModuleHooks(input.Hooks),
+		StoreRepository:       repos.storeRepository,
+		ResolutionCacheStore:  repos.resolutionCacheStore,
 	}
 }
 
 func buildSubmitModule(in submitModuleInput) (submitModule, error) {
-	var sheinCategoryLLMClient openaiclient.TextChatCompleter
-	if in.Hooks.SheinCategoryLLMClientBuilder != nil {
-		sheinCategoryLLMClient = in.Hooks.SheinCategoryLLMClientBuilder(in.Config, in.AICredentialStore)
-	}
-
-	var sheinSaleAttributeLLMClient openaiclient.TextChatCompleter
-	if in.Hooks.SheinSaleAttributeLLMBuilder != nil {
-		sheinSaleAttributeLLMClient = in.Hooks.SheinSaleAttributeLLMBuilder(in.Config, in.AICredentialStore)
-	}
+	sheinCategoryLLMClient := in.SheinCategoryLLM
+	sheinSaleAttributeLLMClient := in.SheinSaleAttributeLLM
 
 	var sheinCategoryResolver sheinpub.CategoryResolver
 	if in.Hooks.SheinCategoryResolverBuilder != nil {

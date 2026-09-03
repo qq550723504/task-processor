@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +29,9 @@ import (
 	"task-processor/internal/amazonlisting"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/assetpublication"
+	imageagentstore "task-processor/internal/imageagent/store"
 	openaiclient "task-processor/internal/integration/openai"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
@@ -34,6 +40,7 @@ import (
 	"task-processor/internal/listingkit/core"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
+	"task-processor/internal/listingsubscription"
 	worker "task-processor/internal/platform/workerpool"
 	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
@@ -42,6 +49,120 @@ import (
 	"task-processor/internal/shared/aiidentity"
 	"task-processor/internal/tenantbridge"
 )
+
+func TestHTTPE2E_ListingKitProductionUploadCRUDUsesLocalStoreAndPersistentMetadata(t *testing.T) {
+	db := openCurrentE2ESQLite(t, filepath.Join(t.TempDir(), "listingkit-upload-crud.sqlite"))
+	repositories := prepareCurrentE2EListingKitPersistence(t, db)
+	server, client := startCurrentE2EListingKitServer(t, db, repositories, t.TempDir())
+	enableCurrentE2EListingKitSubscription(t, client, server.URL, "oss_storage")
+
+	png := mustCurrentE2EPNG(t)
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	part, err := form.CreateFormFile("files", "pixel.png")
+	require.NoError(t, err)
+	_, err = part.Write(png)
+	require.NoError(t, err)
+	require.NoError(t, form.Close())
+
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/listing-kits/uploads/images", body)
+	require.NoError(t, err)
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode, responseBody(response))
+	var uploaded listingkit.UploadImagesResponse
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&uploaded))
+	require.Len(t, uploaded.ImageURLs, 1)
+
+	fileURL := strings.Replace(uploaded.ImageURLs[0], "/api/listing-kits/", "/api/v1/listing-kits/", 1)
+	getResponse, err := client.Get(fileURL)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, getResponse.StatusCode, responseBody(getResponse))
+	got, err := io.ReadAll(getResponse.Body)
+	require.NoError(t, err)
+	require.NoError(t, getResponse.Body.Close())
+	require.Equal(t, png, got)
+
+	deleteRequest, err := http.NewRequest(http.MethodDelete, fileURL, nil)
+	require.NoError(t, err)
+	deleteResponse, err := client.Do(deleteRequest)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, deleteResponse.StatusCode, responseBody(deleteResponse))
+	require.NoError(t, deleteResponse.Body.Close())
+
+	missingResponse, err := client.Get(fileURL)
+	require.NoError(t, err)
+	defer missingResponse.Body.Close()
+	require.Equal(t, http.StatusNotFound, missingResponse.StatusCode)
+}
+
+func TestHTTPE2E_ListingKitFailsClosedWhenPersistentApprovedAssetsAreMissing(t *testing.T) {
+	const productKey = "listingkit-no-approved-assets"
+	db := openCurrentE2ESQLite(t, filepath.Join(t.TempDir(), "listingkit-no-assets.sqlite"))
+	repositories := prepareCurrentE2EListingKitPersistence(t, db)
+	seedCurrentE2EProductSnapshot(t, db, productKey, catalog.ProductSnapshot{
+		Title: "No approved assets", Images: []catalog.Image{{URL: "https://source.example.test/unapproved.png", Role: "primary"}},
+		Variants: []catalog.Variant{{SKU: "NO-ASSET-1", Stock: 1, IsDefault: true, Price: &catalog.Price{Currency: "USD", Amount: 10}}},
+	})
+	server, client := startCurrentE2EListingKitServer(t, db, repositories, t.TempDir())
+	enableCurrentE2EListingKitSubscription(t, client, server.URL, listingsubscription.ModuleListingKit)
+
+	taskID := createCurrentE2ETask(t, client, server.URL+"/api/v1/listing-kits/generate", map[string]any{
+		"product_key": productKey, "platforms": []string{"shein"}, "country": "US", "language": "en", "shein_store_id": int64(869),
+	})
+	task := waitForCurrentE2ETask(t, client, server.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
+	require.Equal(t, core.TaskStatusNeedsReview, task.Status)
+	require.NotNil(t, task.Result)
+	require.Nil(t, task.Result.ApprovedAssetInventory)
+	require.Nil(t, task.Result.Shein, "missing approved assets must block platform adaptation")
+	require.Contains(t, strings.Join(task.Result.ReviewReasons, "\n"), "Approved product assets are not ready")
+}
+
+func TestHTTPE2E_ImageAgentPublisherPersistsAssetsConsumedByListingKitWithoutCreatingRun(t *testing.T) {
+	const (
+		productKey  = "listingkit-published-assets"
+		approvedURL = "https://cdn.example.test/published-main.png"
+	)
+	db := openCurrentE2ESQLite(t, filepath.Join(t.TempDir(), "listingkit-published-assets.sqlite"))
+	repositories := prepareCurrentE2EListingKitPersistence(t, db)
+	require.NoError(t, imageagentstore.AutoMigrate(db))
+	seedCurrentE2EProductSnapshot(t, db, productKey, catalog.ProductSnapshot{
+		Title: "Publisher-backed product", Brand: "Boundary",
+		CategoryPath:  []string{"Electronics", "Accessories"},
+		Description:   "A complete product description supplied by the immutable snapshot.",
+		SellingPoints: []string{"Published approved main image"},
+		Variants:      []catalog.Variant{{SKU: "PUBLISHED-1", Stock: 2, IsDefault: true, Price: &catalog.Price{Currency: "USD", Amount: 12}}},
+	})
+
+	projection := currentE2EApprovedProjection(t, productKey, approvedURL)
+	approvedAssets, err := assetpersistence.NewRepository(db)
+	require.NoError(t, err)
+	publisher, err := assetpublication.NewV2Publisher(currentE2EProjectionSource{projection: projection}, approvedAssets)
+	require.NoError(t, err)
+	_, err = publisher.PublishApproved(context.Background(), imageagent.PublishApprovedInput{
+		RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID,
+		PlanRevision: projection.Plan.Revision, CandidateAssetIDs: []string{"published-main"}, IdempotencyKey: "publish-current-e2e",
+	})
+	require.NoError(t, err)
+
+	server, client := startCurrentE2EListingKitServer(t, db, repositories, t.TempDir())
+	enableCurrentE2EListingKitSubscription(t, client, server.URL, listingsubscription.ModuleListingKit)
+	taskID := createCurrentE2ETask(t, client, server.URL+"/api/v1/listing-kits/generate", map[string]any{
+		"product_key": productKey, "platforms": []string{"shein"}, "country": "US", "language": "en", "shein_store_id": int64(869),
+	})
+	task := waitForCurrentE2ETask(t, client, server.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
+	require.Equal(t, core.TaskStatusCompleted, task.Status, task.Error)
+	require.NotNil(t, task.Result)
+	require.NotNil(t, task.Result.ApprovedAssetInventory)
+	require.Equal(t, approvedURL, task.Result.ApprovedAssetInventory.Assets[0].URL)
+	require.Equal(t, approvedURL, task.Result.CanonicalProduct.Images[0].URL)
+
+	var runCount int64
+	require.NoError(t, db.Table("image_agent_v2_runs").Count(&runCount).Error)
+	require.Zero(t, runCount, "ListingKit read path must not create an ImageAgent run")
+}
 
 func TestHTTPE2E_CurrentAmazonListingUsesSnapshotAndApprovedAssets(t *testing.T) {
 	const productKey = "amazon-current-e2e-1"
@@ -448,6 +569,123 @@ func TestHTTPE2E_CurrentListingKitPersistsFailedWhenRemoteResolutionIsUnavailabl
 	if persistedTask.Result != nil {
 		require.Nil(t, persistedTask.Result.Shein, "fresh read must not expose a fabricated fallback SHEIN package")
 	}
+}
+
+func prepareCurrentE2EListingKitPersistence(t *testing.T, db *gorm.DB) listingkithttpapi.BuildServiceRepositories {
+	t.Helper()
+	require.NoError(t, catalogpersistence.AutoMigrate(db))
+	require.NoError(t, listingkithttpapi.AutoMigrateListingKitRuntimeSchema(db))
+	repositories, err := listingkithttpapi.NewPersistentRepositories(db)
+	require.NoError(t, err)
+	return repositories
+}
+
+func seedCurrentE2EProductSnapshot(t *testing.T, db *gorm.DB, productKey string, snapshot catalog.ProductSnapshot) {
+	t.Helper()
+	repository, err := catalogpersistence.NewRepository(db)
+	require.NoError(t, err)
+	_, err = repository.PublishSnapshot(context.Background(), catalog.PublishRequest{
+		Identity:      catalog.SnapshotIdentity{TenantID: "app-http-test-tenant", ProductKey: productKey},
+		PublicationID: "current-e2e-snapshot-" + productKey,
+		Snapshot:      snapshot,
+	})
+	require.NoError(t, err)
+}
+
+func startCurrentE2EListingKitServer(t *testing.T, db *gorm.DB, repositories listingkithttpapi.BuildServiceRepositories, uploadRoot string) (*httptest.Server, *http.Client) {
+	t.Helper()
+	logger := currentE2ELogger()
+	cfg := currentE2EConfig(t)
+	configureCurrentE2ESheinCookieRedis(t, cfg)
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{cfg: cfg, productCatalogDB: db},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{
+			approvedAssetReader: repositories.Core.ApprovedAsset,
+			repositories:        repositories,
+		}},
+	}
+	require.NoError(t, initializeProductSnapshotReader(deps))
+
+	storeRepo := &currentE2EListingStoreRepository{store: listingadmin.Store{
+		ID: 869, TenantID: 227, StoreID: "869", Name: "Boundary E2E SHEIN Store",
+		Username: "boundary-e2e-store", LoginURL: "https://example.test/shein-login",
+		ShopType: "marketplace", Region: "US", Platform: "shein", Status: 0,
+	}}
+	uploadStore, err := listingkit.NewLocalImageUploadStore(uploadRoot)
+	require.NoError(t, err)
+	builder := newListingKitFeatureBuilder()
+	productionBuild := builder.buildListingKit
+	builder.buildListingKit = func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
+		input.Runtime.Support.Repositories = repositories
+		input.Runtime.Support.Repositories.Admin.Store = storeRepo
+		input.Runtime.Support.Repositories.Core.ApprovedAsset = repositories.Core.ApprovedAsset
+		input.Runtime.Support.Hooks.ImageUploadStoreBuilder = func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error) {
+			return uploadStore, nil
+		}
+		input.Runtime.Support.Hooks.SheinCategoryResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+			return currentE2EResolvedCategory{}
+		}
+		input.Runtime.Support.Hooks.SheinAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+			return currentE2EResolvedAttributes{}
+		}
+		input.Runtime.Support.Hooks.SheinSaleAttributeResolverBuilder = func(listingadmin.StoreRepository, openaiclient.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+			return currentE2EResolvedSaleAttributes{}
+		}
+		input.Runtime.Support.Hooks.SheinAPIClientFactoryBuilder = func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
+			return currentE2ESheinAPIClientFactory{tenantID: 227}
+		}
+		return productionBuild(input)
+	}
+	module, err := builder.build(logger, deps)
+	require.NoError(t, err)
+	require.NotNil(t, module)
+	t.Cleanup(func() { closeCurrentE2EClosers(t, deps.shared.closers) })
+
+	restoreTenantResolver := tenantbridge.ConfigureLegacyTenantResolver(currentE2ELegacyTenantResolver{
+		tenantID: "app-http-test-tenant", legacyTenantID: 227,
+	})
+	t.Cleanup(restoreTenantResolver)
+	composition := httpFeatureComposition{listingKitModule: module}
+	bundle, err := composition.buildRuntimeBundle(appHTTPTestConfig)
+	require.NoError(t, err)
+	requireCurrentE2EPool(t, bundle, "listing_kit")
+	startCurrentE2EPools(t, bundle.pools())
+	serverBundle, _ := bundle.buildServerBundle(0, appHTTPTestRouteAuthorization)
+	server := httptest.NewServer(serverBundle.Handler)
+	t.Cleanup(server.Close)
+	return server, authenticatedAppHTTPTestClient(server.Client())
+}
+
+func mustCurrentE2EPNG(t *testing.T) []byte {
+	t.Helper()
+	data, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	require.NoError(t, err)
+	return data
+}
+
+type currentE2EProjectionSource struct{ projection imageagent.RunProjection }
+
+func (s currentE2EProjectionSource) GetProjection(context.Context, imageagent.RunScope) (imageagent.RunProjection, error) {
+	return s.projection, nil
+}
+
+func currentE2EApprovedProjection(t *testing.T, productKey, approvedURL string) imageagent.RunProjection {
+	t.Helper()
+	plan := imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain}}}
+	projection := imageagent.RunProjection{
+		Run:          imageagent.Run{ID: "publisher-run", TenantID: "app-http-test-tenant", UserID: "app-http-test-user", Status: imageagent.RunStatusAwaitingFinalApproval, ActivePlanRevision: 1},
+		Plan:         plan,
+		AssetCatalog: imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: productKey}},
+		Slots: []imageagent.SlotProjection{{
+			Slot:       imageagent.Slot{ID: "main", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusAccepted},
+			Attempt:    1,
+			Candidates: []imageagent.AssetCandidate{{AssetID: "published-main", SourceAssetID: "source-main", URL: approvedURL}},
+		}},
+	}
+	digest, err := imageagent.ResultDigestV2(projection.Plan, projection.Slots)
+	require.NoError(t, err)
+	projection.ResultDigest = digest
+	return projection
 }
 
 func currentE2EProductReaders(t *testing.T, productKey string, snapshot catalog.ProductSnapshot, inventory productasset.ApprovedAssetInventory) (*gorm.DB, string, catalog.Repository, productasset.Repository) {

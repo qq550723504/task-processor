@@ -1,12 +1,17 @@
 package tests
 
 import (
+	"bytes"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type listingKitImageBoundarySource struct {
@@ -83,6 +88,29 @@ func TestPhase3ListingKitImageWorkflowBoundaryRejectsRetiredMutations(t *testing
 			source:   listingKitImageBoundarySource{path: "internal/integration/openmeter/usage_event.go", text: `const metric = "studio_design_jobs_succeeded"`},
 			wantRule: "retired subscription module",
 		},
+		{
+			name:     "tracked sql studio table",
+			source:   listingKitImageBoundarySource{path: "scripts/reintroduce_studio.sql", text: `SELECT * FROM shein_studio_sessions`},
+			wantRule: "retired Studio data ownership",
+		},
+		{
+			name:     "tracked mjs studio route",
+			source:   listingKitImageBoundarySource{path: "tools/reintroduce-studio.mjs", text: `export const endpoint = "/api/v1/listing-kits/studio/sessions";`},
+			wantRule: "retired Studio route",
+		},
+		{
+			name:     "tracked Dockerfile studio module",
+			source:   listingKitImageBoundarySource{path: "deployments/docker/Dockerfile.listingkit", text: `ENV SUBSCRIPTION_MODULE_CODE=studio`},
+			wantRule: "retired subscription module",
+		},
+		{
+			name: "arbitrarily named listingkit provider adapter",
+			source: listingKitImageBoundarySource{
+				path: "internal/listingkit/httpapi/whatever.go",
+				text: "package httpapi\n\nimport secretprovider \"task-processor/internal/integration/openai\"\n\nvar _ = secretprovider.NewClient\n",
+			},
+			wantRule: "ListingKit provider implementation ownership",
+		},
 	}
 
 	for _, test := range tests {
@@ -95,6 +123,29 @@ func TestPhase3ListingKitImageWorkflowBoundaryRejectsRetiredMutations(t *testing
 			}
 			t.Fatalf("violations = %+v, want rule %q", violations, test.wantRule)
 		})
+	}
+}
+
+func TestListingKitImageBoundaryProductionSelectionUsesTrackedTextRatherThanExtensions(t *testing.T) {
+	for _, path := range []string{
+		"scripts/upgrade.sql",
+		"tools/runtime.mjs",
+		"deployments/docker/Dockerfile.listingkit",
+	} {
+		if !isListingKitImageBoundaryProductionFile(path) {
+			t.Errorf("isListingKitImageBoundaryProductionFile(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{
+		"docs/architecture.md",
+		"tests/fixture.sql",
+		"internal/listingkit/generated/client.go",
+		"internal/listingkit/testdata/fixture.json",
+		"internal/listingkit/httpapi/handler_test.go",
+	} {
+		if isListingKitImageBoundaryProductionFile(path) {
+			t.Errorf("isListingKitImageBoundaryProductionFile(%q) = true, want false", path)
+		}
 	}
 }
 
@@ -128,6 +179,9 @@ func trackedListingKitImageBoundarySources(t *testing.T) []listingKitImageBounda
 			if readErr != nil {
 				t.Fatalf("read %s: %v", relative, readErr)
 			}
+			if bytes.IndexByte(content, 0) >= 0 || !utf8.Valid(content) {
+				continue
+			}
 			sources = append(sources, listingKitImageBoundarySource{path: relative, text: string(content)})
 		}
 	}
@@ -137,16 +191,12 @@ func trackedListingKitImageBoundarySources(t *testing.T) []listingKitImageBounda
 func isListingKitImageBoundaryProductionFile(path string) bool {
 	path = filepath.ToSlash(path)
 	base := filepath.Base(path)
-	if strings.Contains(path, "/generated/") || strings.Contains(path, "/testdata/") ||
+	if strings.HasPrefix(path, "docs/") || strings.HasPrefix(path, "tests/") || strings.HasPrefix(path, ".superpowers/") ||
+		strings.Contains(path, "/generated/") || strings.Contains(path, "/testdata/") ||
 		strings.HasSuffix(base, "_test.go") || strings.Contains(base, ".test.") || strings.Contains(base, ".type-test.") {
 		return false
 	}
-	switch strings.ToLower(filepath.Ext(base)) {
-	case ".go", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml", ".ps1", ".sh":
-		return true
-	default:
-		return false
-	}
+	return true
 }
 
 func findListingKitImageBoundaryViolations(sources []listingKitImageBoundarySource) []listingKitImageBoundaryViolation {
@@ -154,6 +204,14 @@ func findListingKitImageBoundaryViolations(sources []listingKitImageBoundarySour
 	var violations []listingKitImageBoundaryViolation
 	for _, source := range sources {
 		path := filepath.ToSlash(source.path)
+		if strings.HasPrefix(path, "internal/listingkit/") && strings.HasSuffix(path, ".go") {
+			for _, imported := range listingKitProviderImplementationImports(source.text) {
+				violations = append(violations, listingKitImageBoundaryViolation{
+					rule: "ListingKit provider implementation ownership",
+					path: path + " -> " + imported,
+				})
+			}
+		}
 		for _, rule := range rules {
 			if rule.paths(path) && rule.match.MatchString(source.text) {
 				violations = append(violations, listingKitImageBoundaryViolation{rule: rule.name, path: path})
@@ -169,6 +227,33 @@ func findListingKitImageBoundaryViolations(sources []listingKitImageBoundarySour
 	return violations
 }
 
+var listingKitProviderImplementationPrefixes = []string{
+	"task-processor/internal/integration/openai",
+	"task-processor/internal/integration/geminiimage",
+	"task-processor/internal/integration/grsai",
+}
+
+func listingKitProviderImplementationImports(source string) []string {
+	parsed, err := parser.ParseFile(token.NewFileSet(), "listingkit.go", source, parser.ImportsOnly)
+	if err != nil {
+		return nil
+	}
+	var forbidden []string
+	for _, spec := range parsed.Imports {
+		imported, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			continue
+		}
+		for _, prefix := range listingKitProviderImplementationPrefixes {
+			if imported == prefix || strings.HasPrefix(imported, prefix+"/") {
+				forbidden = append(forbidden, imported)
+				break
+			}
+		}
+	}
+	return forbidden
+}
+
 func listingKitImageBoundaryRules() []listingKitImageBoundaryRule {
 	all := func(string) bool { return true }
 	listingKitOrConfig := func(path string) bool {
@@ -177,8 +262,11 @@ func listingKitImageBoundaryRules() []listingKitImageBoundaryRule {
 			strings.HasPrefix(path, "config/")
 	}
 	listingKit := func(path string) bool { return strings.HasPrefix(path, "internal/listingkit/") }
+	notRetiredSubscriptionMigration := func(path string) bool {
+		return path != "internal/listingsubscription/gorm_retired_module.go"
+	}
 	subscriptionWiring := func(path string) bool {
-		return strings.HasPrefix(path, "internal/listingsubscription/") ||
+		return (strings.HasPrefix(path, "internal/listingsubscription/") && notRetiredSubscriptionMigration(path)) ||
 			strings.HasPrefix(path, "internal/listingkit/api/") ||
 			strings.HasPrefix(path, "internal/listingkit/httpapi/") ||
 			path == "internal/listingkit/usage_settlement.go" ||
@@ -193,7 +281,7 @@ func listingKitImageBoundaryRules() []listingKitImageBoundaryRule {
 		{name: "retired Studio route", paths: all, match: regexp.MustCompile(`(?i)(?:/api/v1/listing-kits/studio(?:[/\s?"']|$)|/api/listing-kits/studio(?:[/\s?"']|$)|path\s*\[\s*0\s*\]\s*===?\s*["']studio["'])`)},
 		{name: "retired Studio data ownership", paths: all, match: regexp.MustCompile(`(?i)\b(?:listingkit_studio_[a-z0-9_]*|shein_studio_(?:sessions?|designs?)|SheinStudio[A-Za-z0-9_]*|shein_studio)\b`)},
 		{name: "retired ListingKit image runtime", paths: notRetiredConfigRegistry, match: regexp.MustCompile(`\b(?:AIImageGenerator|AIAsyncImage[A-Za-z0-9_]*|StudioBackgroundRemover|CapabilityListingKitStudioImage|studioImageRoutingMode)\b`)},
-		{name: "retired subscription module", paths: all, match: regexp.MustCompile(`(?i)\b(?:ModuleStudio|studio_design_jobs_succeeded)\b|\bmodule(?:_code|Code)?\b[^\r\n]{0,40}[:=]\s*["']?studio\b`)},
+		{name: "retired subscription module", paths: notRetiredSubscriptionMigration, match: regexp.MustCompile(`(?i)\b(?:ModuleStudio|studio_design_jobs_succeeded)\b|\b[A-Z0-9_]*module(?:_code|Code)?\b[^\r\n]{0,40}[:=]\s*["']?studio\b`)},
 		{name: "retired subscription module", paths: subscriptionWiring, match: regexp.MustCompile(`["']studio["']`)},
 		{name: "ListingKit to ImageAgent bridge", paths: listingKit, match: regexp.MustCompile(`["']task-processor/internal/imageagent(?:/[^"']*)?["']|\b(?:ImageAgentWorkspace|NewImageAgentAuthorizedAssetCatalog|imageAgentCatalogFromTask)[A-Za-z0-9_]*\b|/(?:api/v1/)?image-agent/runs\b|/image-agent-runs\b`)},
 		{name: "ListingKit to ImageAgent bridge", paths: frontend, match: regexp.MustCompile(`\b(?:ImageAgentLaunchPanel|createImageAgentWorkspaceRun|getImageAgentWorkspaceAssets)\b|/image-agent-(?:runs|assets)\b`)},
