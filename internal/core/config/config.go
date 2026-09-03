@@ -249,6 +249,12 @@ func knownEnvBindings() map[string]envBinding {
 		"featureFlags.flags.product-listing-runtime-auto-migrate": {
 			Primary: "TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE",
 		},
+		"imageagent.admission.enabled": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ADMISSION_ENABLED",
+		},
+		"imageagent.admission.allowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_IMAGEAGENT_ADMISSION_ALLOWED_TENANT_IDS",
+		},
 		"imageagent.artifactStore.enabled": {
 			Primary: "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_ENABLED",
 		},

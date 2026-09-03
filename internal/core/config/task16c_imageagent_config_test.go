@@ -72,6 +72,17 @@ func TestLoadFromBytesBindsImageAgentArtifactStoreEnvironment(t *testing.T) {
 	assert.False(t, store.S3.COSImmutableNonVersionedBucketPolicy)
 }
 
+func TestLoadFromBytesBindsImageAgentAdmissionEnvironment(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_IMAGEAGENT_ADMISSION_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_IMAGEAGENT_ADMISSION_ALLOWED_TENANT_IDS", "373211199677923496,1038")
+
+	cfg, err := LoadFromBytes([]byte("openai:\n  apiKey: test-key\nimageagent:\n  admission:\n    enabled: false\n    allowedTenantIDs: []\n"))
+	require.NoError(t, err)
+
+	assert.True(t, cfg.ImageAgent.Admission.Enabled)
+	assert.Equal(t, []string{"373211199677923496", "1038"}, cfg.ImageAgent.Admission.AllowedTenantIDs)
+}
+
 func TestLoadFromBytesBindsListingKitOwnedImageUploadYAML(t *testing.T) {
 	cfg, err := LoadFromBytes([]byte(`
 openai:

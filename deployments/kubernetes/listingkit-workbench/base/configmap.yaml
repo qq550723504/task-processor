@@ -14,6 +14,11 @@ data:
   ZITADEL_POST_LOGOUT_REDIRECT_URI: "https://pod.shuomiai.com"
   LISTINGKIT_PUBLIC_BASE_URL: "https://pod.shuomiai.com"
   TASK_PROCESSOR_ENV: "prod"
+  # ImageAgent admission gate replaces the retired ProductImage scene
+  # governance canary: only the verified zone tenant is allowed to start
+  # ImageAgent runs, so tasks blocked on approved assets can recover.
+  TASK_PROCESSOR_IMAGEAGENT_ADMISSION_ENABLED: "true"
+  TASK_PROCESSOR_IMAGEAGENT_ADMISSION_ALLOWED_TENANT_IDS: "373211199677923496"
   # PAY-042 canary: only legacy subscription tenant 1038 is admitted to the
   # durable generation usage ledger. The canonical ZITADEL owner tenant is
   # intentionally not the billing identity for this cohort.
