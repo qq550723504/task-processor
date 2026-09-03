@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -49,8 +50,9 @@ func (e *APIError) Error() string {
 }
 
 // NewClient creates a Dub REST adapter. The API key is required and must remain
-// server-side. A caller-owned HTTP client may be supplied for transport policy,
-// tracing, tests, proxies, or mTLS.
+// server-side. Production endpoints must use HTTPS; HTTP is accepted only for
+// localhost/loopback test endpoints. A caller-owned HTTP client may be supplied
+// for transport policy, tracing, tests, proxies, or mTLS.
 func NewClient(cfg Config) (*Client, error) {
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {
@@ -61,8 +63,12 @@ func NewClient(cfg Config) (*Client, error) {
 		baseURL = DefaultBaseURL
 	}
 	parsed, err := url.Parse(baseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, fmt.Errorf("%w: base url is invalid", ErrInvalidConfig)
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())) {
+		return nil, fmt.Errorf("%w: base url must use https outside localhost", ErrInvalidConfig)
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
 
@@ -153,7 +159,7 @@ func (c *Client) TrackLead(ctx context.Context, input LeadInput) (*LeadResult, e
 	if err := c.postJSON(ctx, "/track/lead", payload, &raw); err != nil {
 		return nil, err
 	}
-	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+	if isJSONNullOrEmpty(raw) {
 		return nil, nil
 	}
 	var result LeadResult
@@ -165,6 +171,8 @@ func (c *Client) TrackLead(ctx context.Context, input LeadInput) (*LeadResult, e
 
 // TrackSale records one paid conversion. The caller remains the owner of order,
 // subscription, commission, refund, and payout state; Dub owns attribution.
+// A successful JSON null response is treated as an idempotent duplicate and
+// represented as (nil, nil), matching TrackLead's duplicate semantics.
 func (c *Client) TrackSale(ctx context.Context, input SaleInput) (*SaleResult, error) {
 	input = normalizeSaleInput(input)
 	if err := validateSaleInput(input); err != nil {
@@ -189,9 +197,16 @@ func (c *Client) TrackSale(ctx context.Context, input SaleInput) (*SaleResult, e
 		CustomerName: input.CustomerName, CustomerEmail: input.CustomerEmail,
 	}
 
-	var result SaleResult
-	if err := c.postJSON(ctx, "/track/sale", payload, &result); err != nil {
+	var raw json.RawMessage
+	if err := c.postJSON(ctx, "/track/sale", payload, &raw); err != nil {
 		return nil, err
+	}
+	if isJSONNullOrEmpty(raw) {
+		return nil, nil
+	}
+	var result SaleResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("decode dub sale response: %w", err)
 	}
 	return &result, nil
 }
@@ -254,4 +269,17 @@ func decodeAPIError(status int, body []byte) error {
 		message = http.StatusText(status)
 	}
 	return &APIError{StatusCode: status, Code: strings.TrimSpace(envelope.Error.Code), Message: message}
+}
+
+func isJSONNullOrEmpty(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && ip.IsLoopback()
 }
