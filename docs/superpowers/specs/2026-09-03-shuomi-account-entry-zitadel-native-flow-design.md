@@ -2,6 +2,8 @@
 
 **状态：** IMPLEMENTATION_READY / 冻结职责基线
 
+> **登录决策更新（2026-09-05）：** 本文中与现有用户登录、专用 `otp_login` / `password_login` 和 Login V2 Fork 登录职责有关的 Phase1 决策，已由 `2026-09-05-shuomi-login-phase1-zitadel-native-simplification.md` 替代。手机号注册及其 Onboarding 边界不受该补充影响。
+
 > 本文只定义账号入口的系统职责、公开入口路由和 Capability Gate，不再定义手机号注册的数据库状态机、Provider 恢复、Consent 事务、`base_payg` 初始化或 Cleanup 算法。上述详细设计以 **PR #283 V7** 为唯一实现基线。
 
 ---
