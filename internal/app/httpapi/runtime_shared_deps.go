@@ -19,15 +19,15 @@ type traceRuntime interface {
 }
 
 type sharedRuntimeDeps struct {
-	cfg                  *config.Config
-	traceRuntime         traceRuntime
-	featureFlags         BoolEvaluator
-	closers              []func() error
-	openaiMgr            *openaiclient.Manager
-	aiCredentialStore    *openaiclient.GormCredentialResolver
-	tenantPromptStore    prompt.TenantPromptStore
-	storeAPI             listingadmin.StoreAPI
-	productCatalogDB     *gorm.DB
+	cfg               *config.Config
+	traceRuntime      traceRuntime
+	featureFlags      BoolEvaluator
+	closers           []func() error
+	openaiMgr         *openaiclient.Manager
+	aiCredentialStore *openaiclient.GormCredentialResolver
+	tenantPromptStore prompt.TenantPromptStore
+	storeAPI          listingadmin.StoreAPI
+	productCatalogDB  *gorm.DB
 }
 
 func traceRuntimeConfig(cfg *config.Config) platformobservability.Config {
