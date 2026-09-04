@@ -48,7 +48,17 @@ func cloneSlotEffectV3Attempt(attempt imageagent.SlotEffectV3Attempt) imageagent
 	attempt.Published.Candidates = clonePublishedCandidates(attempt.Published.Candidates)
 	attempt.Quote.Operations = cloneSlice(attempt.Quote.Operations)
 	attempt.Receipt.ProviderRequestIDs = cloneStrings(attempt.Receipt.ProviderRequestIDs)
+	attempt.ReviewUsage = cloneReviewUsage(attempt.ReviewUsage)
 	return attempt
+}
+
+func cloneReviewUsage(values []imageagent.SlotReviewUsageAttempt) []imageagent.SlotReviewUsageAttempt {
+	cloned := cloneSlice(values)
+	for index := range cloned {
+		cloned[index].Quote.Operations = cloneSlice(cloned[index].Quote.Operations)
+		cloned[index].Receipt.ProviderRequestIDs = cloneStrings(cloned[index].Receipt.ProviderRequestIDs)
+	}
+	return cloned
 }
 
 func cloneStagedAssetRefs(assets []imageagent.StagedAssetRef) []imageagent.StagedAssetRef {

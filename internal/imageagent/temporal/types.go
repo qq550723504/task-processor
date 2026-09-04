@@ -238,6 +238,7 @@ type ExecuteSlotV3ActivityInput struct {
 	Slot                       imageagent.Slot
 	Attempt                    int
 	IdempotencyKey             string
+	ReviewActionID             string `json:",omitempty"`
 	AssetCatalog               imageagent.AssetCatalog
 	ExternalEffectFinalization bool
 	BudgetAuthorization        bool

@@ -510,7 +510,8 @@ func (o *workflowEffectOwner) reviewStagedSlotV3(ctx workflow.Context, input Wor
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		Slot: slot, Attempt: attempt, IdempotencyKey: slotAttemptKey(input.Plan.Revision, slot, attempt),
-		AssetCatalog: input.AssetCatalog, ExternalEffectFinalization: input.externalEffectFinalization,
+		ReviewActionID: slotAttemptKey(input.Plan.Revision, slot, attempt) + ":review",
+		AssetCatalog:   input.AssetCatalog, ExternalEffectFinalization: input.externalEffectFinalization,
 		BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy,
 		DeadlineAt: input.DeadlineAt, LifecycleDeadlineAt: input.LifecycleDeadlineAt,
 	}

@@ -572,9 +572,71 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 	if err := a.artifactStore.EnsureStaged(ctx, prepared); err != nil {
 		return imageagent.SlotEffectV3PublishedResult{}, err
 	}
-	staged := stagedOutputFromManifest(input, effect.StagingManifest, a.artifactStore)
-	if err := reviewer.ReviewStagedSlot(ctx, executionInput, staged); err != nil {
-		if errors.Is(err, imageagent.ErrReviewDecision) {
+	staged, err := stagedOutputFromManifest(input, effect.StagingManifest, a.artifactStore)
+	if err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	var reviewReservation imageagent.SlotReviewUsageReservation
+	budgetedReview, budgeted := a.stagedSlotExecutor.(imageagent.BudgetedStagedSlotReviewer)
+	reviewAlreadySettled := false
+	if input.BudgetAuthorization {
+		if !budgeted {
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image agent reviewer cannot produce a conservative usage quote", imageagent.BudgetQuoteUnavailableCode, imageagent.ErrBudgetQuoteUnavailable)
+		}
+		if strings.TrimSpace(input.ReviewActionID) == "" {
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged review action identity is missing", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrValidation)
+		}
+		quote, quoteErr := budgetedReview.QuoteStagedReview(ctx, executionInput, effect.Policy)
+		if quoteErr != nil {
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image agent review usage quote is unavailable", imageagent.BudgetQuoteUnavailableCode, quoteErr)
+		}
+		reviewReservation = imageagent.SlotReviewUsageReservation{
+			Identity: reservation.Identity, ActionID: input.ReviewActionID,
+			InputFingerprint: imageagent.SlotExecutionFingerprint(executionInput), Policy: effect.Policy, Quote: quote,
+		}
+		reservedEffect, acquired, reserveErr := a.slotEffectsV3.ReserveSlotReviewV3(ctx, reviewReservation)
+		if reserveErr != nil {
+			if errors.Is(reserveErr, imageagent.ErrBudgetExceeded) || errors.Is(reserveErr, imageagent.ErrBudgetOverflow) {
+				return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image agent review budget is exhausted", imageagent.BudgetExhaustedCode, reserveErr)
+			}
+			return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(reserveErr)
+		}
+		if !acquired {
+			for _, prior := range reservedEffect.ReviewUsage {
+				if prior.ActionID == input.ReviewActionID && prior.BudgetStatus == imageagent.SlotBudgetCommitted {
+					reviewAlreadySettled = true
+					break
+				}
+			}
+			if !reviewAlreadySettled {
+				_, _ = a.slotEffectsV3.MarkSlotReviewBudgetUnknownV3(ctx, reviewReservation)
+				return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewApplicationError("image reviewer budget reservation outcome is unknown", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrRevisionConflict)
+			}
+		}
+	}
+	var reviewErr error
+	var reviewReceipt imageagent.SlotUsageReceipt
+	if !reviewAlreadySettled {
+		if input.BudgetAuthorization && budgeted {
+			reviewReceipt, reviewErr = budgetedReview.ReviewStagedSlotQuoted(ctx, executionInput, staged, reviewReservation.Quote)
+		} else {
+			reviewErr = reviewer.ReviewStagedSlot(ctx, executionInput, staged)
+		}
+		if input.BudgetAuthorization && budgeted {
+			if reviewErr == nil || errors.Is(reviewErr, imageagent.ErrReviewDecision) || imageagent.ProviderDispatchStateOf(reviewErr) == imageagent.ProviderDispatchedUnknown {
+				if _, settleErr := a.slotEffectsV3.SettleSlotReviewV3(ctx, reviewReservation, reviewReceipt); settleErr != nil {
+					_, _ = a.slotEffectsV3.MarkSlotReviewBudgetUnknownV3(ctx, reviewReservation)
+					return imageagent.SlotEffectV3PublishedResult{}, fmt.Errorf("settle staged review budget: %w", persistedSlotEffectV3RepositoryError(settleErr))
+				}
+			} else {
+				if _, releaseErr := a.slotEffectsV3.ReleaseSlotReviewBudgetV3(ctx, reviewReservation); releaseErr != nil {
+					return imageagent.SlotEffectV3PublishedResult{}, fmt.Errorf("release staged review budget: %w", persistedSlotEffectV3RepositoryError(releaseErr))
+				}
+			}
+		}
+	}
+	if reviewErr != nil {
+		if errors.Is(reviewErr, imageagent.ErrReviewDecision) {
 			if effect.Phase == imageagent.SlotEffectV3ReviewTransportRequired {
 				if _, err := resumeReviewRetrySlot(ctx, a.slotEffectsV3, reservation); err != nil {
 					return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
@@ -590,12 +652,12 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 			}); err != nil {
 				return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
 			}
-			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged image review requires human intervention", imageagent.SlotReviewRequiredCode, err)
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged image review requires human intervention", imageagent.SlotReviewRequiredCode, reviewErr)
 		}
-		if imageagent.ProviderDispatchStateOf(err) == imageagent.ProviderDispatchedUnknown {
-			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewApplicationError("image reviewer transport failed", imageagent.SlotReviewTransportRequiredCode, err)
+		if imageagent.ProviderDispatchStateOf(reviewErr) == imageagent.ProviderDispatchedUnknown {
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewApplicationError("image reviewer transport failed", imageagent.SlotReviewTransportRequiredCode, reviewErr)
 		}
-		return imageagent.SlotEffectV3PublishedResult{}, err
+		return imageagent.SlotEffectV3PublishedResult{}, reviewErr
 	}
 	if effect.Phase == imageagent.SlotEffectV3ReviewTransportRequired {
 		if _, err := resumeReviewRetrySlot(ctx, a.slotEffectsV3, reservation); err != nil {
@@ -613,12 +675,16 @@ func resumeReviewRetrySlot(ctx context.Context, repository imageagent.SlotExtern
 	return resumer.ResumeReviewRetrySlotV3(ctx, reservation)
 }
 
-func stagedOutputFromManifest(input ExecuteSlotV3ActivityInput, manifest imageagent.StagingManifest, store DurableArtifactStore) imageagent.SlotGeneratedOutput {
+func stagedOutputFromManifest(input ExecuteSlotV3ActivityInput, manifest imageagent.StagingManifest, store DurableArtifactStore) (imageagent.SlotGeneratedOutput, error) {
 	output := imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt}
 	for _, staged := range manifest.Assets {
 		url := store.PublicURL(staged.ObjectKey)
+		sourceURL, err := stagedSourceURL(input.AssetCatalog, staged.SourceAssetID)
+		if err != nil {
+			return imageagent.SlotGeneratedOutput{}, err
+		}
 		output.Assets = append(output.Assets, imageagent.GeneratedAsset{
-			URL: url, ContentType: staged.ContentType, SourceURL: url,
+			URL: url, ContentType: staged.ContentType, SourceURL: sourceURL,
 			Operations: append([]string(nil), staged.Operations...), Width: staged.Width, Height: staged.Height,
 			ProviderReceiptID: staged.ProviderReceiptID,
 		})
@@ -626,7 +692,26 @@ func stagedOutputFromManifest(input ExecuteSlotV3ActivityInput, manifest imageag
 			output.SourceAssetID = staged.SourceAssetID
 		}
 	}
-	return output
+	return output, nil
+}
+
+func stagedSourceURL(catalog imageagent.AssetCatalog, sourceAssetID string) (string, error) {
+	for _, asset := range catalog.Assets {
+		if asset.ID != sourceAssetID || asset.Type != imageagent.AuthorizedAssetSource {
+			continue
+		}
+		for _, candidate := range []string{asset.SourceURL, asset.URL, asset.DisplayURL} {
+			if strings.TrimSpace(candidate) == "" {
+				continue
+			}
+			validated, err := imageagent.ValidateSafeImageURL(candidate)
+			if err != nil {
+				return "", err
+			}
+			return validated, nil
+		}
+	}
+	return "", fmt.Errorf("%w: staged source asset %q is missing from the immutable catalog", imageagent.ErrValidation, sourceAssetID)
 }
 
 func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {

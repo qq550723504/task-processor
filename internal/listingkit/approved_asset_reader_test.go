@@ -73,7 +73,7 @@ func TestWorkflowReadsApprovedMainWithoutSourceFallback(t *testing.T) {
 	}
 }
 
-func TestWorkflowVerifiesEverySelectedPlatformBeforeUsingScalarInventory(t *testing.T) {
+func TestWorkflowRetainsEverySelectedPlatformInventory(t *testing.T) {
 	mainAmazon := productasset.ApprovedAsset{ID: "amazon-main", Role: productasset.RoleMain, URL: "https://cdn.example/amazon.png"}
 	mainShein := productasset.ApprovedAsset{ID: "shein-main", Role: productasset.RoleMain, URL: "https://cdn.example/shein.png"}
 	var scopes []productasset.InventoryScope
@@ -86,16 +86,50 @@ func TestWorkflowVerifiesEverySelectedPlatformBeforeUsingScalarInventory(t *test
 		return productasset.ApprovedAssetInventory{Scope: scope, Assets: assets}, nil
 	})}
 
-	_, err := phase.runForPlatforms(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}, []string{"amazon", "shein"})
+	inventories, err := phase.runForPlatforms(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}, []string{"amazon", "shein"})
 
-	if !errors.Is(err, productasset.ErrRepositoryStateInvalid) {
-		t.Fatalf("runForPlatforms() error = %v, want ErrRepositoryStateInvalid", err)
+	if err != nil {
+		t.Fatalf("runForPlatforms() error = %v", err)
 	}
 	if !reflect.DeepEqual(scopes, []productasset.InventoryScope{
 		{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "amazon"},
 		{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "shein"},
 	}) {
 		t.Fatalf("scopes = %+v, want one scoped read per selected platform", scopes)
+	}
+	if !reflect.DeepEqual(inventories["amazon"].Assets, []productasset.ApprovedAsset{mainAmazon}) || !reflect.DeepEqual(inventories["shein"].Assets, []productasset.ApprovedAsset{mainShein}) {
+		t.Fatalf("inventories = %+v, want target-specific assets", inventories)
+	}
+}
+
+func TestRunForPlatformsRetainsTargetKeyedInventories(t *testing.T) {
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		return productasset.ApprovedAssetInventory{
+			Scope: scope,
+			Assets: []productasset.ApprovedAsset{{
+				ID: scope.TargetPlatform + "-main", Role: productasset.RoleMain,
+				URL: "https://cdn.example.test/" + scope.TargetPlatform + ".png",
+			}},
+		}, nil
+	})}
+
+	inventories, err := phase.runForPlatforms(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}, []string{"amazon", "shein"})
+
+	if err != nil {
+		t.Fatalf("runForPlatforms() error = %v", err)
+	}
+	want := map[string]productasset.ApprovedAssetInventory{
+		"amazon": {
+			Scope:  productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "amazon"},
+			Assets: []productasset.ApprovedAsset{{ID: "amazon-main", Role: productasset.RoleMain, URL: "https://cdn.example.test/amazon.png"}},
+		},
+		"shein": {
+			Scope:  productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "shein"},
+			Assets: []productasset.ApprovedAsset{{ID: "shein-main", Role: productasset.RoleMain, URL: "https://cdn.example.test/shein.png"}},
+		},
+	}
+	if !reflect.DeepEqual(inventories, want) {
+		t.Fatalf("inventories = %+v, want %+v", inventories, want)
 	}
 }
 

@@ -182,6 +182,7 @@ type SlotEffectV3Attempt struct {
 	Policy           BudgetPolicy
 	Quote            SlotUsageQuote
 	Receipt          SlotUsageReceipt
+	ReviewUsage      []SlotReviewUsageAttempt
 }
 
 type PublicationClaim struct {
@@ -350,6 +351,10 @@ type SlotExternalEffectV3Repository interface {
 	RecordSlotProviderNotDispatchedV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	ReleaseSlotProviderBudgetV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 	MarkSlotProviderBudgetUnknownV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
+	ReserveSlotReviewV3(context.Context, SlotReviewUsageReservation) (SlotEffectV3Attempt, bool, error)
+	SettleSlotReviewV3(context.Context, SlotReviewUsageReservation, SlotUsageReceipt) (SlotEffectV3Attempt, error)
+	ReleaseSlotReviewBudgetV3(context.Context, SlotReviewUsageReservation) (SlotEffectV3Attempt, error)
+	MarkSlotReviewBudgetUnknownV3(context.Context, SlotReviewUsageReservation) (SlotEffectV3Attempt, error)
 	GetSlotExternalEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)
 }
 

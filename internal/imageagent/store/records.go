@@ -197,6 +197,7 @@ type slotExternalEffectV3Record struct {
 	UsageQuoteJSON             []byte
 	UsageQuoteFingerprint      string `gorm:"type:varchar(64)"`
 	UsageReceiptJSON           []byte
+	ReviewUsageJSON            []byte
 	PricingVersion             string `gorm:"type:varchar(128)"`
 	BudgetSettledAt            *time.Time
 	BudgetReleasedAt           *time.Time

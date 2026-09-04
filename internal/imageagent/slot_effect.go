@@ -81,6 +81,25 @@ type SlotUsageReceipt struct {
 	CostBasis          UsageCostBasis
 }
 
+// SlotReviewUsageReservation is the budget identity for one read-only review
+// dispatch against an already-staged slot. It is separate from the provider
+// generation reservation so a review retry cannot overwrite its quote.
+type SlotReviewUsageReservation struct {
+	Identity         SlotExternalEffectIdentity
+	ActionID         string
+	InputFingerprint string
+	Policy           BudgetPolicy
+	Quote            SlotUsageQuote
+}
+
+type SlotReviewUsageAttempt struct {
+	ActionID         string
+	InputFingerprint string
+	BudgetStatus     SlotBudgetStatus
+	Quote            SlotUsageQuote
+	Receipt          SlotUsageReceipt
+}
+
 func ValidateSlotUsageQuote(quote SlotUsageQuote) error {
 	if quote.Fingerprint == "" || len(quote.Operations) == 0 {
 		return fmt.Errorf("%w: quote identity is incomplete", ErrValidation)

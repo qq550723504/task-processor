@@ -64,6 +64,8 @@ func cloneListingKitResultForSemanticSerialization(result *ListingKitResult) (*L
 	}
 	wire := *result
 	wire.PodExecution = clonePodExecutionSummary(result.PodExecution)
+	wire.ApprovedAssetInventory = cloneApprovedAssetInventory(result.ApprovedAssetInventory)
+	wire.ApprovedAssetInventories = cloneApprovedAssetInventories(result.ApprovedAssetInventories)
 	wire.StandardProductSnapshot = cloneStandardProductSnapshotForSemanticSerialization(result.StandardProductSnapshot)
 	if result.Shein != nil {
 		var err error
@@ -81,6 +83,8 @@ func cloneStandardProductSnapshotForSemanticSerialization(snapshot *StandardProd
 	}
 	wire := *snapshot
 	wire.PodExecution = clonePodExecutionSummary(snapshot.PodExecution)
+	wire.ApprovedAssetInventory = cloneApprovedAssetInventory(snapshot.ApprovedAssetInventory)
+	wire.ApprovedAssetInventories = cloneApprovedAssetInventories(snapshot.ApprovedAssetInventories)
 	return &wire
 }
 

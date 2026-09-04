@@ -373,6 +373,17 @@ func TestReviewStagedSlotV3ReusesCandidatesWithoutRegeneration(t *testing.T) {
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
 }
 
+func TestStagedOutputFromManifestRetainsOriginalCatalogSourceURL(t *testing.T) {
+	_, input := initializedSlotEffectV3Activity(t, "run-v3-source-url")
+	input.AssetCatalog.Assets = []imageagent.AuthorizedAsset{{ID: input.Slot.SourceAssetIDs[0], Type: imageagent.AuthorizedAssetSource, SourceURL: "https://source.example/original.png"}}
+	output, err := stagedOutputFromManifest(input, v3StagingManifest(input, tinyPNGBytes(t)), &recordingArtifactStore{})
+
+	require.NoError(t, err)
+	require.Len(t, output.Assets, 1)
+	require.Equal(t, "https://source.example/original.png", output.Assets[0].SourceURL)
+	require.NotEqual(t, output.Assets[0].URL, output.Assets[0].SourceURL)
+}
+
 func TestExecuteSlotV3PersistsReviewerTransportBlockWithStagedManifest(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-review-transport")
 	generated := generatedV3Output(input, writeTinyPNG(t))

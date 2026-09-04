@@ -237,28 +237,137 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlot(ctx context.Context, input i
 	if err != nil {
 		return err
 	}
-	if staged.SlotID != resolved.slot.ID || staged.Attempt != input.Attempt || staged.SourceAssetID != resolved.sourceAssetID || len(staged.Assets) == 0 {
-		return imageagent.ErrRevisionConflict
+	candidates, err := e.reviewCandidates(resolved, input.Attempt, staged)
+	if err != nil {
+		return err
+	}
+	return e.reviewGeneratedCandidates(ctx, resolved, candidates, nil)
+}
+
+func (e *ProductImageSlotExecutor) QuoteStagedReview(ctx context.Context, input imageagent.SlotExecutionInput, policy imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
+	resolved, err := e.resolveInput(input)
+	if err != nil {
+		return imageagent.SlotUsageQuote{}, err
+	}
+	if e == nil || e.dependencies.UsageQuoter == nil {
+		return imageagent.SlotUsageQuote{}, fmt.Errorf("%w: image usage quoter is required", imageagent.ErrBudgetQuoteUnavailable)
+	}
+	capability, err := e.quoteReviewCapability(ctx, input)
+	if err != nil {
+		return imageagent.SlotUsageQuote{}, fmt.Errorf("%w: quote review: %v", imageagent.ErrBudgetQuoteUnavailable, err)
+	}
+	if capability.MaximumOutputs != 1 {
+		return imageagent.SlotUsageQuote{}, fmt.Errorf("%w: review capability returned an invalid quote", imageagent.ErrBudgetQuoteUnavailable)
+	}
+	if policy.CostMicros.Enabled && !capability.CostUpperBoundKnown {
+		return imageagent.SlotUsageQuote{}, fmt.Errorf("%w: review capability has no trustworthy cost upper bound", imageagent.ErrBudgetQuoteUnavailable)
+	}
+	quote, err := reviewQuoteFromCapability(input, resolved.profile, capability)
+	if err != nil {
+		return imageagent.SlotUsageQuote{}, err
+	}
+	if err := imageagent.ValidateSlotUsageQuote(quote); err != nil {
+		return imageagent.SlotUsageQuote{}, err
+	}
+	return quote, nil
+}
+
+func (e *ProductImageSlotExecutor) ReviewStagedSlotQuoted(ctx context.Context, input imageagent.SlotExecutionInput, staged imageagent.SlotGeneratedOutput, expected imageagent.SlotUsageQuote) (imageagent.SlotUsageReceipt, error) {
+	if err := imageagent.ValidateSlotUsageQuote(expected); err != nil {
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
+	}
+	resolved, err := e.resolveInput(input)
+	if err != nil {
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
+	}
+	if e.dependencies.Reviewer == nil {
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, fmt.Errorf("%w: image reviewer is required", imageagent.ErrValidation))
+	}
+	capability, err := e.quoteReviewCapability(ctx, input)
+	if err != nil {
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
+	}
+	quoted, err := reviewQuoteFromCapability(input, resolved.profile, capability)
+	if err != nil || quoted.Fingerprint != expected.Fingerprint {
+		if err == nil {
+			err = imageagent.ErrRevisionConflict
+		}
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
+	}
+	candidates, err := e.reviewCandidates(resolved, input.Attempt, staged)
+	if err != nil {
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
+	}
+	review, err := e.dependencies.Reviewer.Review(ctx, productimage.ReviewRequest{Product: resolved.product, Sources: []productimage.Asset{resolved.source}, Candidates: candidates, Authorization: &capability})
+	receipt := imageagent.SlotUsageReceipt{Actual: expected.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
+	if err != nil {
+		return receipt, dispatchedCapabilityError("review image", err, true)
+	}
+	threshold := resolved.profile.Thresholds.MainReview
+	if input.Slot.Role == imageagent.SlotRoleMain {
+		threshold = resolved.profile.Thresholds.WhiteBackgroundReview
+	}
+	if review.NeedsHumanReview || review.Score < threshold {
+		return receipt, fmt.Errorf("%w: %w: score %.4f is below threshold %.4f", imageagent.ErrReviewDecision, imageagent.ErrValidation, review.Score, threshold)
+	}
+	return receipt, nil
+}
+
+func (e *ProductImageSlotExecutor) quoteReviewCapability(ctx context.Context, input imageagent.SlotExecutionInput) (productimage.UsageQuote, error) {
+	if e == nil || e.dependencies.UsageQuoter == nil {
+		return productimage.UsageQuote{}, imageagent.ErrBudgetQuoteUnavailable
+	}
+	capability, err := e.dependencies.UsageQuoter.QuoteUsage(ctx, productimage.UsageQuoteRequest{Operation: "review", InputFingerprint: imageagent.SlotExecutionFingerprint(input), MaximumOutputs: 1})
+	if err != nil {
+		return productimage.UsageQuote{}, err
+	}
+	return productimage.NormalizeUsageAuthorization(capability, "review")
+}
+
+func reviewQuoteFromCapability(input imageagent.SlotExecutionInput, profile imagepolicy.ProductImageProfile, capability productimage.UsageQuote) (imageagent.SlotUsageQuote, error) {
+	maximum := imageagent.UsageVector{Images: 1, AgentSteps: 1, ModelCalls: capability.MaximumModelCalls}
+	if capability.CostUpperBoundKnown {
+		maximum.CostMicros = capability.MaximumCostMicros
+	}
+	operation := imageagent.SlotUsageOperation{Name: "review", Provider: capability.Provider, Model: capability.Model, PricingVersion: capability.PricingVersion, Fingerprint: capability.Fingerprint, Maximum: maximum, MaximumOutputs: 1}
+	quote := imageagent.SlotUsageQuote{Maximum: maximum, Operations: []imageagent.SlotUsageOperation{operation}, PricingVersion: capability.PricingVersion}
+	encoded, err := json.Marshal(struct {
+		InputFingerprint string
+		Policy           imagepolicy.ProductImageProfile
+		Operation        imageagent.SlotUsageOperation
+		PricingVersion   string
+	}{imageagent.SlotExecutionFingerprint(input), profile, operation, capability.PricingVersion})
+	if err != nil {
+		return imageagent.SlotUsageQuote{}, err
+	}
+	digest := sha256.Sum256(encoded)
+	quote.Fingerprint = hex.EncodeToString(digest[:])
+	return quote, nil
+}
+
+func (e *ProductImageSlotExecutor) reviewCandidates(input resolvedSlotInput, expectedAttempt int, staged imageagent.SlotGeneratedOutput) ([]productimage.Candidate, error) {
+	if staged.SlotID != input.slot.ID || staged.Attempt != expectedAttempt || staged.SourceAssetID != input.sourceAssetID || len(staged.Assets) == 0 {
+		return nil, imageagent.ErrRevisionConflict
 	}
 	candidates := make([]productimage.Candidate, len(staged.Assets))
 	for index, generated := range staged.Assets {
 		url := strings.TrimSpace(generated.URL)
 		if url == "" || generated.Width <= 0 || generated.Height <= 0 || generated.SourceURL == "" || len(generated.Operations) == 0 {
-			return imageagent.ErrValidation
+			return nil, imageagent.ErrValidation
 		}
 		if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := imageagent.ValidateSafeImageURL(generated.SourceURL); err != nil {
-			return err
+			return nil, err
 		}
 		candidates[index] = productimage.Candidate{Asset: productimage.Asset{
-			URL: url, SourceURL: generated.SourceURL, SourceAssetID: resolved.sourceAssetID,
+			URL: url, SourceURL: generated.SourceURL, SourceAssetID: input.sourceAssetID,
 			Role: productimage.RoleScene, Width: generated.Width, Height: generated.Height,
 			MediaType: generated.ContentType, Operations: append([]string(nil), generated.Operations...),
 		}}
 	}
-	return e.reviewGeneratedCandidates(ctx, resolved, candidates, nil)
+	return candidates, nil
 }
 
 func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resolvedSlotInput, quoted *quotedSlotExecution) ([]productimage.Candidate, imageagent.SlotUsageReceipt, error) {

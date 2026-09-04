@@ -61,6 +61,31 @@ func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
 	require.Equal(t, "product-1", reviewer.request.Product.ProductKey)
 }
 
+func TestExecutorReviewRetryPinsAndAuthorizesTheReviewRoute(t *testing.T) {
+	reviewer := &recordingProductReviewer{review: productimage.Review{Score: 1}}
+	quoter := &recordingProductUsageQuoter{quote: productimage.UsageQuote{
+		Provider: "openai", RouteReference: "review-route", Model: "review-model",
+		CredentialReference: "review-credential", ConfigurationVersion: "review-config", PricingVersion: "review-pricing",
+		Fingerprint: "review-provider-quote", MaximumOutputs: 1, MaximumModelCalls: 1,
+		MaximumCostMicros: 7, CostUpperBoundKnown: true,
+	}}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		Reviewer: reviewer, UsageQuoter: quoter, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+	})
+	input := testProductImageExecutionInput()
+	quote, err := executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	receipt, err := executor.ReviewStagedSlotQuoted(context.Background(), input, imageagent.SlotGeneratedOutput{
+		SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: "source-1",
+		Assets: []imageagent.GeneratedAsset{{URL: "https://staging.example/review.png", SourceURL: "https://source.example/item.png", Width: 1, Height: 1, Operations: []string{"render_scene_model"}}},
+	}, quote)
+	require.NoError(t, err)
+	require.Equal(t, quote.Maximum, receipt.Actual)
+	require.NotNil(t, reviewer.request.Authorization)
+	require.Equal(t, "review-route", reviewer.request.Authorization.RouteReference)
+	require.Equal(t, "review-model", reviewer.request.Authorization.Model)
+}
+
 func TestExecutorClassifiesReviewerTransportFailureSeparately(t *testing.T) {
 	reviewer := &failingProductReviewer{err: context.DeadlineExceeded}
 	executor := NewProductImageSlotExecutor(Dependencies{

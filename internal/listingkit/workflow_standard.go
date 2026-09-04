@@ -77,12 +77,16 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	}
 	platforms := selectedInventoryPlatforms(task)
 	var approvedInventory productasset.ApprovedAssetInventory
+	var approvedInventories map[string]productasset.ApprovedAssetInventory
 	var assetErr error
 	if len(platforms) == 1 {
 		assetScope.TargetPlatform = platforms[0]
 		approvedInventory, assetErr = buildStandardWorkflowAssetPhase(s).run(ctx, assetScope)
+		if assetErr == nil {
+			approvedInventories = map[string]productasset.ApprovedAssetInventory{platforms[0]: approvedInventory}
+		}
 	} else {
-		approvedInventory, assetErr = buildStandardWorkflowAssetPhase(s).runForPlatforms(ctx, assetScope, platforms)
+		approvedInventories, assetErr = buildStandardWorkflowAssetPhase(s).runForPlatforms(ctx, assetScope, platforms)
 	}
 	if assetErr != nil {
 		if errors.Is(assetErr, productasset.ErrApprovedAssetsNotReady) {
@@ -97,7 +101,13 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		return &standardWorkflowState{result: result}, assetErr
 	}
 	assetStage.Complete()
-	result.ApprovedAssetInventory = &approvedInventory
+	result.ApprovedAssetInventories = cloneApprovedAssetInventories(approvedInventories)
+	if len(approvedInventories) == 1 {
+		for _, inventory := range approvedInventories {
+			approvedInventory = inventory
+		}
+		result.ApprovedAssetInventory = &approvedInventory
+	}
 
 	recorder.FinalizeSummary()
 	snapshot := buildStandardProductSnapshot(result)

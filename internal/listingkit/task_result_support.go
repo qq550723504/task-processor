@@ -164,12 +164,16 @@ func cloneListingKitResultForReadState(src *ListingKitResult) *ListingKitResult 
 		cloned.Summary = &summary
 	}
 	cloned.PodExecution = clonePodExecutionSummary(src.PodExecution)
+	cloned.ApprovedAssetInventory = cloneApprovedAssetInventory(src.ApprovedAssetInventory)
+	cloned.ApprovedAssetInventories = cloneApprovedAssetInventories(src.ApprovedAssetInventories)
 	if src.Shein != nil {
 		cloned.Shein = cloneSheinPackageForReadState(src.Shein)
 	}
 	if src.StandardProductSnapshot != nil {
 		snapshot := *src.StandardProductSnapshot
 		snapshot.PodExecution = clonePodExecutionSummary(src.StandardProductSnapshot.PodExecution)
+		snapshot.ApprovedAssetInventory = cloneApprovedAssetInventory(src.StandardProductSnapshot.ApprovedAssetInventory)
+		snapshot.ApprovedAssetInventories = cloneApprovedAssetInventories(src.StandardProductSnapshot.ApprovedAssetInventories)
 		cloned.StandardProductSnapshot = &snapshot
 	}
 	return &cloned

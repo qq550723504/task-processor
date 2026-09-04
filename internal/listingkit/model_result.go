@@ -10,17 +10,18 @@ import (
 )
 
 type ListingKitResult struct {
-	TaskID                  string                               `json:"task_id"`
-	Status                  string                               `json:"status"`
-	ReviewReasons           []string                             `json:"review_reasons,omitempty"`
-	Platforms               []string                             `json:"platforms,omitempty"`
-	Country                 string                               `json:"country,omitempty"`
-	Language                string                               `json:"language,omitempty"`
-	PodExecution            *PodExecutionSummary                 `json:"pod_execution,omitempty"`
-	StandardProductSnapshot *StandardProductSnapshot             `json:"standard_product_snapshot,omitempty"`
-	CatalogProduct          *catalog.ProductSnapshot             `json:"catalog_product,omitempty"`
-	ApprovedAssetInventory  *productasset.ApprovedAssetInventory `json:"approved_asset_inventory,omitempty"`
-	CanonicalProduct        *canonical.Product                   `json:"canonical_product,omitempty"`
+	TaskID                   string                                         `json:"task_id"`
+	Status                   string                                         `json:"status"`
+	ReviewReasons            []string                                       `json:"review_reasons,omitempty"`
+	Platforms                []string                                       `json:"platforms,omitempty"`
+	Country                  string                                         `json:"country,omitempty"`
+	Language                 string                                         `json:"language,omitempty"`
+	PodExecution             *PodExecutionSummary                           `json:"pod_execution,omitempty"`
+	StandardProductSnapshot  *StandardProductSnapshot                       `json:"standard_product_snapshot,omitempty"`
+	CatalogProduct           *catalog.ProductSnapshot                       `json:"catalog_product,omitempty"`
+	ApprovedAssetInventory   *productasset.ApprovedAssetInventory           `json:"approved_asset_inventory,omitempty"`
+	ApprovedAssetInventories map[string]productasset.ApprovedAssetInventory `json:"approved_asset_inventories,omitempty"`
+	CanonicalProduct         *canonical.Product                             `json:"canonical_product,omitempty"`
 	// Deprecated: kept only for JSON/history compatibility. New business code should use SDSDesignResult.
 	SDSSync *SDSSyncSummary `json:"sds_sync,omitempty"`
 	// SDSDesignResult is the canonical SDS design execution result used by current business logic.
@@ -46,9 +47,10 @@ type ListingKitResult struct {
 // on the task result so the standard layer can later be executed and resumed
 // independently from platform-specific workflows such as SHEIN adaptation.
 type StandardProductSnapshot struct {
-	CatalogProduct         *catalog.ProductSnapshot             `json:"catalog_product,omitempty"`
-	ApprovedAssetInventory *productasset.ApprovedAssetInventory `json:"approved_asset_inventory,omitempty"`
-	PodExecution           *PodExecutionSummary                 `json:"pod_execution,omitempty"`
+	CatalogProduct           *catalog.ProductSnapshot                       `json:"catalog_product,omitempty"`
+	ApprovedAssetInventory   *productasset.ApprovedAssetInventory           `json:"approved_asset_inventory,omitempty"`
+	ApprovedAssetInventories map[string]productasset.ApprovedAssetInventory `json:"approved_asset_inventories,omitempty"`
+	PodExecution             *PodExecutionSummary                           `json:"pod_execution,omitempty"`
 	// Deprecated: kept only for JSON/history compatibility. New business code should use SDSDesignResult.
 	SDSSync *SDSSyncSummary `json:"sds_sync,omitempty"`
 	// SDSDesignResult is the canonical SDS design execution result used by current business logic.

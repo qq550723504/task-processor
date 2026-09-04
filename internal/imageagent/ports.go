@@ -34,6 +34,15 @@ type StagedSlotReviewer interface {
 	ReviewStagedSlot(context.Context, SlotExecutionInput, SlotGeneratedOutput) error
 }
 
+// BudgetedStagedSlotReviewer pins and accounts for each read-only review
+// dispatch. The quote is revalidated at dispatch time so a route change is a
+// revision conflict instead of an unaccounted provider call.
+type BudgetedStagedSlotReviewer interface {
+	StagedSlotReviewer
+	QuoteStagedReview(context.Context, SlotExecutionInput, BudgetPolicy) (SlotUsageQuote, error)
+	ReviewStagedSlotQuoted(context.Context, SlotExecutionInput, SlotGeneratedOutput, SlotUsageQuote) (SlotUsageReceipt, error)
+}
+
 // BudgetedStagedSlotExecutor is additive so frozen v2 and legacy uncapped v3
 // executors keep their historical wire behavior.
 type BudgetedStagedSlotExecutor interface {

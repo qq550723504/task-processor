@@ -11,14 +11,15 @@ func buildStandardProductSnapshot(result *ListingKitResult) *StandardProductSnap
 		return nil
 	}
 	return normalizeStandardProductSnapshotSemanticFields(&StandardProductSnapshot{
-		CatalogProduct:         result.CatalogProduct,
-		ApprovedAssetInventory: cloneApprovedAssetInventory(result.ApprovedAssetInventory),
-		PodExecution:           clonePodExecutionSummary(result.PodExecution),
-		SDSDesignResult:        result.SDSDesignResult,
-		Summary:                cloneGenerationSummary(result.Summary),
-		ChildTasks:             append([]ChildTaskState(nil), result.ChildTasks...),
-		WorkflowStages:         append([]WorkflowStage(nil), result.WorkflowStages...),
-		WorkflowIssues:         append([]WorkflowIssue(nil), result.WorkflowIssues...),
+		CatalogProduct:           result.CatalogProduct,
+		ApprovedAssetInventory:   cloneApprovedAssetInventory(result.ApprovedAssetInventory),
+		ApprovedAssetInventories: cloneApprovedAssetInventories(result.ApprovedAssetInventories),
+		PodExecution:             clonePodExecutionSummary(result.PodExecution),
+		SDSDesignResult:          result.SDSDesignResult,
+		Summary:                  cloneGenerationSummary(result.Summary),
+		ChildTasks:               append([]ChildTaskState(nil), result.ChildTasks...),
+		WorkflowStages:           append([]WorkflowStage(nil), result.WorkflowStages...),
+		WorkflowIssues:           append([]WorkflowIssue(nil), result.WorkflowIssues...),
 	})
 }
 
@@ -31,6 +32,7 @@ func applyStandardProductSnapshot(result *ListingKitResult, snapshot *StandardPr
 	result.StandardProductSnapshot = snapshot
 	result.CatalogProduct = snapshot.CatalogProduct
 	result.ApprovedAssetInventory = cloneApprovedAssetInventory(snapshot.ApprovedAssetInventory)
+	result.ApprovedAssetInventories = cloneApprovedAssetInventories(snapshot.ApprovedAssetInventories)
 	result.PodExecution = clonePodExecutionSummary(snapshot.PodExecution)
 	result.SDSDesignResult = snapshot.SDSDesignResult
 	result.ChildTasks = append([]ChildTaskState(nil), snapshot.ChildTasks...)
@@ -57,6 +59,7 @@ func mergeStandardProductLayerResult(existing, standard *ListingKitResult) *List
 	merged.StandardProductSnapshot = standard.StandardProductSnapshot
 	merged.CatalogProduct = standard.CatalogProduct
 	merged.ApprovedAssetInventory = cloneApprovedAssetInventory(standard.ApprovedAssetInventory)
+	merged.ApprovedAssetInventories = cloneApprovedAssetInventories(standard.ApprovedAssetInventories)
 	merged.CanonicalProduct = standard.CanonicalProduct
 	if standard.SDSDesignResult != nil {
 		merged.SDSDesignResult = standard.SDSDesignResult
@@ -76,6 +79,17 @@ func cloneApprovedAssetInventory(input *productasset.ApprovedAssetInventory) *pr
 	}
 	cloned := productasset.CloneApprovedAssetInventory(*input)
 	return &cloned
+}
+
+func cloneApprovedAssetInventories(input map[string]productasset.ApprovedAssetInventory) map[string]productasset.ApprovedAssetInventory {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make(map[string]productasset.ApprovedAssetInventory, len(input))
+	for platform, inventory := range input {
+		cloned[platform] = productasset.CloneApprovedAssetInventory(inventory)
+	}
+	return cloned
 }
 
 func cloneGenerationSummary(summary *GenerationSummary) *GenerationSummary {
@@ -100,6 +114,7 @@ func standardProductSnapshotEmpty(snapshot *StandardProductSnapshot) bool {
 	}
 	return snapshot.CatalogProduct == nil &&
 		snapshot.ApprovedAssetInventory == nil &&
+		len(snapshot.ApprovedAssetInventories) == 0 &&
 		snapshot.PodExecution == nil &&
 		snapshot.SDSDesignResult == nil &&
 		snapshot.Summary == nil &&

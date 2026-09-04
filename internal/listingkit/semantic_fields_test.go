@@ -131,12 +131,12 @@ func TestStandardProductSnapshotMarshalJSONDoesNotMutateEitherAliasDirectionOrPo
 func TestSemanticSerializationReferenceFieldSchemaIsExplicit(t *testing.T) {
 	assertSemanticSerializationReferenceFields(t, reflect.TypeOf(ListingKitResult{}), []string{
 		"ReviewReasons", "Platforms", "PodExecution", "StandardProductSnapshot", "CatalogProduct",
-		"ApprovedAssetInventory", "CanonicalProduct", "SDSSync", "SDSDesignResult", "Amazon", "Shein",
+		"ApprovedAssetInventory", "ApprovedAssetInventories", "CanonicalProduct", "SDSSync", "SDSDesignResult", "Amazon", "Shein",
 		"SheinStoreResolution", "Temu", "Walmart", "Summary", "Revision", "RevisionHistory", "ChildTasks",
 		"WorkflowStages", "WorkflowIssues",
 	})
 	assertSemanticSerializationReferenceFields(t, reflect.TypeOf(StandardProductSnapshot{}), []string{
-		"CatalogProduct", "ApprovedAssetInventory", "PodExecution", "SDSSync", "SDSDesignResult", "Summary",
+		"CatalogProduct", "ApprovedAssetInventory", "ApprovedAssetInventories", "PodExecution", "SDSSync", "SDSDesignResult", "Summary",
 		"ChildTasks", "WorkflowStages", "WorkflowIssues",
 	})
 }
