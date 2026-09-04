@@ -25,6 +25,15 @@ func TestPostgresStoreServicePhaseEConstraintsAreGuardedBoundedAndIdempotent(t *
 	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
 		t.Fatal(err)
 	}
+	if storeRecordStatusNotNull(t, db) {
+		t.Fatal("AutoMigrateStoreRepository() initiated Phase E on a fresh schema")
+	}
+	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
+		t.Fatalf("replayed pre-Phase E AutoMigrateStoreRepository() = %v", err)
+	}
+	if storeRecordStatusNotNull(t, db) {
+		t.Fatal("replayed AutoMigrateStoreRepository() initiated Phase E")
+	}
 
 	ids := []string{
 		"00000000-0000-4000-8000-000000000801",
@@ -91,6 +100,12 @@ func TestPostgresStoreServicePhaseEConstraintsAreGuardedBoundedAndIdempotent(t *
 	}
 	if replayed.ConstraintsAdded != 0 || replayed.ConstraintsValidated != 0 || !replayed.RecordStatusNotNull || !replayed.ConstraintsApplied {
 		t.Fatalf("replayed ApplyConstraints() report = %+v", replayed)
+	}
+	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
+		t.Fatalf("AutoMigrateStoreRepository() after Phase E = %v", err)
+	}
+	if !storeRecordStatusNotNull(t, db) {
+		t.Fatal("AutoMigrateStoreRepository() reversed Phase E record_status NOT NULL")
 	}
 
 	assertStoreServiceConstraintRejects(t, db, ids[0], map[string]any{"record_status": nil})
