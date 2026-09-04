@@ -50,16 +50,15 @@ silently adopting the new decision.
 ```powershell
 go run ./cmd/listingkit-schema-migrate --scope workbench --config config/config-prod.yaml
 
-go run ./cmd/store-service-history-migrate `
-  --action verify `
-  --manifest C:\release\store-service-history-manifest.json `
-  --config config/config-prod.yaml
+./scripts/store-service-history-migrate.ps1 `
+  -ManifestPath C:\release\store-service-history-manifest.json `
+  -ConfigPath config/config-prod.yaml
 
-go run ./cmd/store-service-history-migrate `
-  --action backfill `
-  --batch-size 100 `
-  --manifest C:\release\store-service-history-manifest.json `
-  --config config/config-prod.yaml
+./scripts/store-service-history-migrate.ps1 `
+  -Action backfill `
+  -BatchSize 100 `
+  -ManifestPath C:\release\store-service-history-manifest.json `
+  -ConfigPath config/config-prod.yaml
 ```
 
 ## Required Phase D result
