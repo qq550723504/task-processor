@@ -251,6 +251,8 @@ phone lookup + classification
 
 - global pending Provider object high-water；
 - pending-object reservation 必须 DB 原子分配，并按 §2.4 与 Intent/phone claim 同事务建立 durable owner；
+- `pending_object` high-water 只保护尚未形成 durable business ownership 的 disposable/unresolved 注册对象；一旦 §9 在同一事务把身份转成 `preserved_business`，该对象必须原子转出 registration-pending accounting，进入正常 business/provider inventory accounting，不能继续占匿名注册高水位；
+- 正常 business/provider inventory 可有独立运营总量指标/配额，但不能通过长期保留 registration pending slot 来实现；
 - per-phone / per-IP / per-session 注册限流；
 - SMS challenge/resend cooldown 与全局 SMS budget；
 - Provider worker bounded concurrency；
@@ -344,7 +346,7 @@ lock Intent + Provider Operation + pending_object reservation + same-phone claim
 - lease-expired `inflight`；
 - `outcome_unknown`；
 - `retry_wait` 且 `next_attempt_at <= now`；
-- §7 的 stale `challenge_preparing / challenge_outcome_unknown` proof attempts。
+- §7 的 stale `challenge_preparing / challenge_inflight / challenge_outcome_unknown` proof attempts。
 
 Recovery 使用 `FOR UPDATE SKIP LOCKED`/等价行锁 + lease/epoch CAS：
 
@@ -352,6 +354,8 @@ Recovery 使用 `FOR UPDATE SKIP LOCKED`/等价行锁 + lease/epoch CAS：
 - expired `inflight` -> fenced 转 `outcome_unknown`，先 read-back，禁止直接重发；
 - `outcome_unknown` -> 只依据 Provider finality/read-back 收敛；
 - `retry_wait` -> 到期后重新取得 lease，但发送前重新检查所有业务前置条件与 phone request material 仍存在；
+- §7 `challenge_preparing` 且没有 committed send claim -> 该 generation 仍是 definitively-unsent，可在同 generation 下取得 send lease；
+- §7 `challenge_inflight` lease 过期 -> 必须 fenced 转 `challenge_outcome_unknown`，因为 external send 可能已经发生，禁止把它当成 unsent 或直接重发；
 - `expired_fenced` Intent 不允许新 Provider send，只允许对已发出的 operation 做 finality/read-back；
 - unresolved sent operation 继续持有 §3 `finality_hold` same-phone exclusion；
 - 旧 worker 的 late response 若 Provider Operation epoch、Registration execution epoch 或 challenge generation 已变化，不得写本地状态。
@@ -367,6 +371,7 @@ Recovery 使用 `FOR UPDATE SKIP LOCKED`/等价行锁 + lease/epoch CAS：
 ```text
 AddOTPSMS factor definitive
 -> persist proof_attempt challenge_preparing generation
+-> CAS challenge_preparing -> challenge_inflight，并 COMMIT send claim
 -> CreateSMSChallenge
 -> 持久化其实际返回的 challenge-bearing Session 非凭据引用
 -> VerifySMS
@@ -385,17 +390,18 @@ task-processor 不持久化 OTP code / plaintext Session Token。
 
 该非终态同样由 `RegistrationReconciler` 接管；existing active User 永远不进入此写路径。
 
-### CreateSMSChallenge：发送前必须有 durable generation
+### CreateSMSChallenge：发送前必须有 durable generation + durable inflight claim
 
-`CreateSMSChallenge` 虽然属于 ZITADEL/Login 的短期认证边界，不强行塞入 §6 的 durable business Provider Operation 表，但它必须拥有自己的 durable、attempt-bound challenge recovery state。**禁止先发 SMS，成功返回后才第一次记录 generation。**
+`CreateSMSChallenge` 虽然属于 ZITADEL/Login 的短期认证边界，不强行塞入 §6 的 durable business Provider Operation 表，但它必须拥有自己的 durable、attempt-bound challenge recovery state。**禁止先发 SMS，成功返回后才第一次记录 generation；也禁止只有 `challenge_preparing` 就直接 external send。**
 
 建议最小状态：
 
 ```text
 proof_attempt_id
 challenge_generation
-challenge_state = challenge_preparing | challenge_ready | challenge_outcome_unknown | challenge_retry_allowed | challenge_superseded
+challenge_state = challenge_preparing | challenge_inflight | challenge_ready | challenge_outcome_unknown | challenge_retry_allowed | challenge_superseded
 challenge_execution_epoch
+challenge_send_owner / challenge_send_lease_until
 challenge_started_at
 challenge_ready_at
 returned_session_ref/hash   # 仅非凭据引用；绝不保存 plaintext Session Token
@@ -404,15 +410,17 @@ returned_session_ref/hash   # 仅非凭据引用；绝不保存 plaintext Sessio
 固定协议：
 
 1. `AddOTPSMS` 已 definitive 后，先在 PostgreSQL transaction 创建/锁定当前 `proof_attempt_id`，递增或分配 `challenge_generation`，写 `challenge_preparing` + expected execution epoch，再 COMMIT；
-2. 真正调用 `CreateSMSChallenge` 前重新验证 Registration 未 `expired_fenced`、当前 generation/epoch、SMS cooldown/rate limit/global budget；同一 generation 只能有一个 send owner；
-3. Provider 正常返回时，在本地 transaction 再次验证 generation/epoch 仍 current，随后写入它**实际返回**的 challenge-bearing Session 非秘密 ref/hash，并转 `challenge_ready`；
-4. timeout/connection loss/ambiguous response 后，写 `challenge_outcome_unknown`；**不能立即 blind resend 同 generation，也不能假定“没收到 response = 没发短信”**；
-5. 若 pinned ZITADEL 能通过安全 read-back、provider-side idempotency/operation status 找回该 exact challenge/session，则 Reconciler adopt 并转 `challenge_ready`；
-6. 若无法 read-back/adopt，则等待明确 cooldown。Reconciler 只把旧 generation 原子标为 `challenge_superseded / challenge_retry_allowed` 并 fence 其 execution epoch；**不得后台自动再发一条 SMS**。用户显式 resend/continue 且通过 limiter 后，才可创建 `generation+1`，并再次先持久化 `challenge_preparing` 后发送；
-7. 旧 generation 的迟到 response 在写本地前必须检查 generation/epoch；一旦已 superseded，不能覆盖新 Session ref，也不能重新变成 `challenge_ready`；
-8. `VerifySMS` 只接受当前 `challenge_ready` generation 绑定的 returned Session；旧/superseded generation 永远不能生成 Proof/Acceptance。
+2. send worker 锁定该 proof attempt，重新验证 Registration 未 `expired_fenced`、当前 generation/epoch、SMS cooldown/rate limit/global budget，并 CAS `challenge_preparing -> challenge_inflight`，写 send owner/lease、`challenge_started_at`，**先 COMMIT 这次 send claim**；同一 generation 只能有一个 committed send owner；
+3. 只有步骤 2 COMMIT 成功的 worker 才能调用 `CreateSMSChallenge`。如果进程在该 COMMIT 前崩溃，generation 仍是 definitively-unsent 的 `challenge_preparing`，Reconciler 可以安全让同 generation 重新取得 send claim；
+4. 如果进程在 `challenge_inflight` COMMIT 后崩溃，无论是在 external call 前、调用期间还是 call 返回但本地结果尚未落库，都按**可能已经发送**处理；stale `challenge_inflight` 由 Reconciler fenced CAS 为 `challenge_outcome_unknown`，禁止直接重发同 generation；
+5. Provider 正常返回时，在本地 transaction 再次验证 generation/epoch/send owner 仍 current，随后写入它**实际返回**的 challenge-bearing Session 非秘密 ref/hash，并转 `challenge_ready`；
+6. timeout/connection loss/ambiguous response 后，写 `challenge_outcome_unknown`；**不能立即 blind resend 同 generation，也不能假定“没收到 response = 没发短信”**；
+7. 若 pinned ZITADEL 能通过安全 read-back、provider-side idempotency/operation status 找回该 exact challenge/session，则 Reconciler adopt 并转 `challenge_ready`；
+8. 若无法 read-back/adopt，则等待明确 cooldown。Reconciler 只把旧 generation 原子标为 `challenge_superseded / challenge_retry_allowed` 并 fence 其 execution epoch；**不得后台自动再发一条 SMS**。用户显式 resend/continue 且通过 limiter 后，才可创建 `generation+1`，并再次走 `challenge_preparing -> challenge_inflight COMMIT -> external send`；
+9. 旧 generation 的迟到 response 在写本地前必须检查 generation/epoch/send owner；一旦已 superseded，不能覆盖新 Session ref，也不能重新变成 `challenge_ready`；
+10. `VerifySMS` 只接受当前 `challenge_ready` generation 绑定的 returned Session；旧/superseded generation 永远不能生成 Proof/Acceptance。
 
-因此 crash-before-send、send-response-loss、late-response、用户 resend 都有明确状态。SMS abuse limiter 继续位于 Challenge send 前，recovery 不得绕过 cooldown/global budget。
+因此 crash-before-send-claim、send-claimed crash、send-response-loss、late-response、用户 resend 都有明确状态。SMS abuse limiter 继续位于 Challenge send claim 前，并在 claim transaction 中与可用 budget/cooldown 事实一致地校验；recovery 不得绕过 cooldown/global budget。
 
 ### VerifySMS response loss
 
@@ -455,7 +463,9 @@ commit
 
 该路径**只新增 current Consent**：不重跑 `base_payg`、不重新创建 business projection、不重复 welcome Grant。随后 RegistrationReconciler 重新取得短 work lease，重新验证 subscription/entitlements/welcome resource readiness，并继续 §11。
 
-若用户放弃 re-consent，由该 post-business Registration/Consent recovery owner 保持可恢复状态；因为 `preserved_business` 已存在，绝不再走 destructive pre-business identity cleanup。
+若用户放弃 re-consent，`preserved_business` 身份/资产必须保留，绝不再走 destructive pre-business identity cleanup；但该状态也**不得继续占用 registration pending-object high-water**。§9 在形成 `preserved_business` 的同一 Bootstrap transaction 已经把 pending reservation 原子转出 registration-pending accounting。post-business Registration/Consent recovery owner 只保留可恢复业务状态和短 work lease：在配置的 bounded active re-consent window 内可主动恢复；窗口到期仍未 re-consent 时，释放 work lease并转为 `preserved_business_dormant_consent_required` / 等价 dormant 状态。dormant 状态没有 registration pending slot、不能后台发送 Provider mutation；用户未来经 Login V2 + fresh proof/Acceptance 返回时再重新取得 work lease继续。
+
+因此 policy rollout 可以产生大量等待 re-consent 的既有 durable business，但不会耗尽“新手机号注册 pending Provider object”安全池；这些对象进入正常 business/provider inventory 与运营 backlog 统计，而不是伪装成未完成 disposable Registration。
 
 ### 8.3 Authorized 用户的 Current Consent
 
@@ -487,16 +497,27 @@ onboarding_writable | bootstrap_claimed | preserved_business | cleanup_claimed
 同一 PostgreSQL transaction：
 
 ```text
-lock Intent / work lease / fence / current policy / proof / Acceptance
+lock Intent / work lease / fence / pending_object reservation / current policy / proof / Acceptance
+-> validate exact Provider User/Organization ownership creation is definitive
 -> validate current policy acceptance
 -> consume proof + Acceptance
 -> insert Consent
 -> create first durable business ownership
+-> transfer pending_object reservation from registration_pending -> preserved_business_owned / normal business inventory accounting exactly once
+-> clear Intent.pending_object_slot_id or mark its reservation terminal-transferred using an idempotent state transition
 -> fence = preserved_business
 -> commit
 ```
 
-Policy stale -> zero business write，进入 `consent_required`。除 Bootstrap 外，paid ApplyPlan、projection、Project Grant preparation、Store/resource/order 等 ownership creator 只有 `preserved_business` 才可写。
+这笔 transfer 与第一笔 durable business ownership、`preserved_business` 必须同事务：
+
+- crash 前全部回滚，Registration 仍是 disposable/pre-business，pending slot 继续保护它；
+- commit 后 Provider User/Organization 已成为 durable business identity，不再属于 registration pending high-water；
+- replay 只能读取 `terminal_transferred / preserved_business_owned`，不得二次 release/decrement；
+- 若 identity ownership/finality 尚未 definitive，不得执行 Bootstrap，也不得提前转出 pending slot；
+- 该 transfer 只是从“未完成注册对象安全池”转入正常 business/provider inventory，不表示真实 Provider object 消失，也不绕过独立的正常租户/Provider 总量控制。
+
+Policy stale -> zero business write、zero pending-slot transfer，进入 `consent_required`。除 Bootstrap 外，paid ApplyPlan、projection、Project Grant preparation、Store/resource/order 等 ownership creator 只有 `preserved_business` 才可写。
 
 首次体验资源 Grant **不需要和这笔 Bootstrap transaction 强行合并成跨 package 巨型事务**；它是 Bootstrap 成功后、授权前必须收敛的独立幂等 readiness effect。这样 #283 只负责业务顺序，资源写入仍由 #284 的 Resource authority 完成。
 
@@ -540,7 +561,7 @@ source_identity = organization_id
 -> 按同一 source identity 重试/read-back
 ```
 
-不允许因为 welcome Grant 暂时失败而回退删除已经 `preserved_business` 的 Provider identity。
+不允许因为 welcome Grant 暂时失败而回退删除已经 `preserved_business` 的 Provider identity。此时 registration pending-object slot 已按 §9 转出，因此 readiness backlog 不会阻塞 anonymous/new-phone pending high-water；它由 post-business work lease/backlog SLO 独立约束。
 
 ## 11. Project Grant / User Authorization
 
@@ -585,19 +606,21 @@ Phase1 **不承诺 PostgreSQL policy publication 与远端 ZITADEL Create 的跨
 
 这个合同接受“policy 可以在远端角色创建的瞬间之后变化”，但**不接受 stale Consent 获得任何业务访问**。如果未来合规要求“policy switch 后连 Provider role 都不得短暂存在”，必须另行引入 policy-publication/send serialization；它不是 Phase1 当前一致性目标。
 
-## 12. Authorized Terminal / Pending Capacity Release
+## 12. Authorized Terminal / Pending Capacity Verification
 
 Provider Grant + Authorization exact read-back 成功后，先执行 §11 的**post-send current-policy recheck**。只有 exact current Consent 仍成立时，本地终态才允许进入下面的 PostgreSQL transaction：
 
 ```text
 lock Intent
-lock pending_object reservation
+lock pending_object reservation/accounting record if present
 lock verified work lease
 lock/read current policy version
 verify exact current Consent
 verify expected ownership/fence/version
+verify fence = preserved_business
+verify registration-pending reservation 已在 §9 terminal-transferred；若存在兼容旧状态，则只允许执行一次受版本保护的 fallback transfer
 -> authorizing -> authorized
--> release/transfer pending Provider-object slot out of registration pending accounting
+-> ensure no registration-pending Provider-object slot remains
 -> release verified work lease
 -> close Registration Attempt
 -> close same-phone claim when no unresolved sent Provider mutation remains
@@ -606,9 +629,9 @@ verify expected ownership/fence/version
 -> commit
 ```
 
-若 post-send policy 已变化，则不执行 `authorized`/pending-slot terminal transaction；进入 §11 的 `authorization_present_consent_required`，fresh re-consent 后再 exact-adopt 现有 authorization，并在当前 policy 下完成本事务。
+新 V7 正常路径的 pending-object slot 在 §9 `preserved_business` Bootstrap 时已经原子转出，因此 `authorized` 不再是首次释放 pending registration capacity 的唯一时点。§12 负责**验证没有遗留 registration-pending reservation**并提供旧状态/迁移兼容的 exactly-once fallback；不得对已 `terminal_transferred` 的 reservation 二次 release/decrement。
 
-pending-object release/transfer 与 `authorized` 不得拆开；crash/replay 不能泄漏或二次释放容量。成功账号继续存在于 ZITADEL，但不再计入“未完成注册 Provider object”高水位。
+若 post-send policy 已变化，则不执行 `authorized`，进入 §11 的 `authorization_present_consent_required`。因为 §9 已完成 pending accounting transfer，该状态即使用户长期不 re-consent，也不会占用新手机号注册 pending high-water；fresh re-consent 后再 exact-adopt 现有 authorization 并完成本事务。
 
 如果仍存在较早 sent Provider mutation 的 unresolved finality，`authorized` 业务终态与 pending accounting 可以按其真实业务合同完成，但 same-phone HMAC exclusion 不得提前释放；由 §3 `finality_hold` 独立保持到全部相关 sent mutation definitive。通常正常成功路径不应存在这种异常重叠；若出现必须审计并收敛。
 
@@ -634,7 +657,7 @@ commit claim
 
 之后整个 Provider Delete/finality 期间保持 `cleanup_claimed`。Bootstrap/ApplyPlan/projection/Grant preparation/Store/resource/order 等 ownership writer 看到 `cleanup_claimed` 必须 fail closed；因此 Cleanup 与第一笔 business ownership 不可能交叉提交。
 
-一旦 `preserved_business` 已成立，包括 welcome resource readiness 正在等待/已完成，都不得再走 destructive pre-business cleanup。资源 Grant 失败只能 repair/retry，不能通过删除 Identity “回滚”。
+一旦 `preserved_business` 已成立，包括 welcome resource readiness 正在等待/已完成，都不得再走 destructive pre-business cleanup。资源 Grant 失败只能 repair/retry，不能通过删除 Identity “回滚”。`preserved_business` 的 registration pending-object slot 已在 §9 同事务转出，因此禁止 cleanup 不会形成 pending capacity 泄漏。
 
 自动 destructive Provider Delete 还必须满足 pinned ZITADEL 已证明的 atomic/conditional ownership precondition 与 finality；否则 automatic Delete 关闭，new self-registration rollout 保持 gated/off，直到存在经过验证的 bounded cleanup strategy。
 
@@ -686,7 +709,7 @@ Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proo
 - Human User Technical Email request shape；
 - OTP factor enrollment **read-back 或 proven idempotency**；
 - CreateSMSChallenge / VerifySMS 与 response-loss recovery；
-- Challenge 创建是否支持安全 read-back/idempotency；若不支持，必须验证 §7 durable generation + cooldown + supersede/fresh-generation fallback；
+- Challenge 创建是否支持安全 read-back/idempotency；若不支持，必须验证 §7 durable generation + committed inflight claim + cooldown + supersede/fresh-generation fallback；
 - Project Grant / User Authorization exact read-back；
 - durable Provider Write finality；
 - Provider ownership attributes/marker read-back；
@@ -728,27 +751,31 @@ stale prepared/inflight/outcome_unknown/retry_wait -> RegistrationReconciler dur
 phone-bearing retry_wait >24h but <72h -> required AEAD ciphertext retained and exact retry succeeds; purge cannot strand runnable operation
 phone-bearing workflow reaches hard TTL -> expired_fenced first, future sends disabled, then ciphertext scrub when no remaining recovery call needs it
 outcome_unknown needs only stable-ID read-back -> ciphertext may scrub but same-phone finality_hold remains until definitive
-CreateSMSChallenge crash before pre-send transaction commit -> no challenge send/no generation
-CreateSMSChallenge crash after challenge_preparing commit before send -> Reconciler safely resumes same unsent generation under lease
+CreateSMSChallenge crash before challenge_preparing transaction commit -> no challenge send/no generation
+CreateSMSChallenge crash after challenge_preparing commit but before challenge_inflight CAS/commit -> definitively unsent; Reconciler can safely claim/send same generation once
+CreateSMSChallenge crash after challenge_inflight commit -> stale inflight becomes challenge_outcome_unknown; never resend same generation blindly
 CreateSMSChallenge response loss after SMS sent -> challenge_outcome_unknown, no blind resend
-challenge outcome cannot read-back -> cooldown then old generation superseded; explicit resend creates generation+1 only after pre-send persistence
+challenge outcome cannot read-back -> cooldown then old generation superseded; explicit resend creates generation+1 only after preparing+inflight pre-send persistence
 late response from superseded challenge generation -> cannot overwrite current Session ref or produce proof
 VerifySMS only current challenge_ready generation -> superseded/old generation rejected
 VerifySMS response loss -> 无证明则 outcome_unknown，不写 Consent
-current policy changes before Bootstrap -> zero business write
-current policy changes after Bootstrap before Grant/Auth -> consent_required + fresh registration_reconsent proof/Acceptance；不重跑 Bootstrap
+current policy changes before Bootstrap -> zero business write + zero pending-slot transfer
+Bootstrap success -> Consent + first durable ownership + preserved_business + pending_object transfer 同一 tx；crash/replay 不泄漏/不双释放
+current policy changes after Bootstrap before Grant/Auth -> consent_required + fresh registration_reconsent proof/Acceptance；不重跑 Bootstrap；不重新占 pending slot
+post-Bootstrap user abandons re-consent -> bounded active work lease eventually -> preserved_business_dormant_consent_required；business preserved，registration pending high-water 不被占用
 current policy changes while Grant/Auth retry_wait -> 下一次 send 前拦截，不授予 listingkit_admin
-policy activates after final pre-send DB check but before Provider Create commits -> post-send policy recheck prevents local authorized/business entry; authorization_present_consent_required until fresh Consent
+policy activates after final pre-send DB check but before Provider Create commits -> post-send policy recheck prevents local authorized/business entry; authorization_present_consent_required until fresh Consent；无 pending registration slot 泄漏
 post-Bootstrap reconsent -> 只新增 current Consent，不重复 base_payg/business projection/welcome Grant
-Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功
+Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功；preserved_business 成功时 pending slot 同 tx 转出
 Cleanup Delete success + all protected Provider targets absent + no unresolved sent mutation -> terminal_cleaned + pending capacity + same-phone claim 同 tx exactly-once release
 Cleanup Delete response loss -> read-back absent 后同一 terminal tx release once；ambiguous/partial delete 不释放
 Cleanup terminal replay -> 不二次释放 capacity；Reclaim/Bootstrap 不能越过 cleanup target fence
 new direct org welcome grant -> exactly +1 store_renewal_period
 welcome grant response/retry/resume/reclaim -> same org source replay，不重复 +1
 existing org / ordinary login -> 不触发 welcome grant
-welcome grant unavailable -> 不授权，进入 readiness retry；不 destructive cleanup preserved business
-successful authorization -> post-send current-policy recheck + consent + plan + welcome resource ready, authorized + pending-object release + work-lease release
+welcome grant unavailable -> 不授权，进入 readiness retry；不 destructive cleanup preserved business；不占 registration pending high-water
+successful authorization -> post-send current-policy recheck + consent + plan + welcome resource ready；authorized verifies no registration-pending slot + work-lease release
+legacy/resume state reaches authorized with still-valid old pending reservation -> exactly-once fallback transfer；已 transferred reservation 不二次 release
 policy changes after authorized -> protected tenant API 返回 CONSENT_REQUIRED，不能凭旧 Consent 继续业务访问
 authorized user authenticated reconsent -> 写 current Consent 后业务访问恢复，不修改长期 ZITADEL role
 paid plan race -> 不覆盖 paid plan，entitlements ready，welcome grant 仍最多一次
@@ -765,4 +792,4 @@ phone ciphertext / phone-derived fingerprints retention 后 scrub；不得存在
 
 ## 完成定义
 
-ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；active-phone claim + Intent + pending reservation 在第一笔 Provider write 前同一事务建立 durable ownership；hard TTL 先原子 `expired_fenced`/execution epoch fence 停止旧执行，**same-phone claim 在任何 sent mutation 未 definitive 时继续进入 finality_hold，不能因 TTL scrub 后重新创建第二套 Provider identity**；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；phone ciphertext 的 privacy purge 不能删除仍 runnable recovery 所必需的 request material；CreateSMSChallenge 在发送前已有 durable generation，response loss 不 blind resend，旧 generation 被 supersede 后不能产生 Proof；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity 与可释放的 same-phone exclusion；Current Consent 在每次延迟授权 send 前、Provider authorization read-back 后、以及 authorized 后每个受保护 tenant business request 上都持续 fail-closed；policy activation 与远端 Provider send 不要求跨系统全局线性化，但 race 后不会获得业务访问；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
+ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；active-phone claim + Intent + pending reservation 在第一笔 Provider write 前同一事务建立 durable ownership；hard TTL 先原子 `expired_fenced`/execution epoch fence 停止旧执行，**same-phone claim 在任何 sent mutation 未 definitive 时继续进入 finality_hold，不能因 TTL scrub 后重新创建第二套 Provider identity**；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；phone ciphertext 的 privacy purge 不能删除仍 runnable recovery 所必需的 request material；CreateSMSChallenge 在发送前已有 durable generation，且 external send 前先提交 `challenge_inflight` send claim，stale inflight 一律按 ambiguous outcome 收敛，不 blind resend，旧 generation 被 supersede 后不能产生 Proof；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity 与可释放的 same-phone exclusion；**Bootstrap 在 Consent + 第一笔 durable business ownership + `preserved_business` 的同一事务把 Provider object 原子转出 registration-pending accounting，因此 post-Bootstrap consent/readiness backlog 永远不会耗尽新注册 pending high-water**；Current Consent 在每次延迟授权 send 前、Provider authorization read-back 后、以及 authorized 后每个受保护 tenant business request 上都持续 fail-closed；policy activation 与远端 Provider send 不要求跨系统全局线性化，但 race 后不会获得业务访问；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；放弃 re-consent 只进入无 pending slot 的 preserved-business dormant recovery，不 destructive cleanup；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 终态验证不存在遗留 registration-pending reservation并释放 work lease；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
