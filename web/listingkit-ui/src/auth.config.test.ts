@@ -77,6 +77,60 @@ describe("ListingKit Auth.js canonical ZITADEL identity", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    "/workbench/stores?tab=active",
+    "https://console.shuomiai.com/listing-kits/canonical-products",
+  ])("keeps an allowlisted Auth.js return target %s", async (url) => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://auth.shuomiai.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    const redirect = buildAuthConfig().callbacks?.redirect;
+    if (!redirect) {
+      throw new Error("Auth.js redirect callback is not configured");
+    }
+
+    await expect(
+      redirect({ url, baseUrl: "https://console.shuomiai.com" }),
+    ).resolves.toBe(
+      url.startsWith("/") ? `https://console.shuomiai.com${url}` : url,
+    );
+  });
+
+  it.each([
+    "/api/auth/callback/zitadel",
+    "/\\evil.example/workbench",
+    "https://console.shuomiai.com/admin",
+    "https://evil.example/workbench",
+  ])("rejects an unsafe Auth.js return target %s", async (url) => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://auth.shuomiai.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    const redirect = buildAuthConfig().callbacks?.redirect;
+    if (!redirect) {
+      throw new Error("Auth.js redirect callback is not configured");
+    }
+
+    await expect(
+      redirect({ url, baseUrl: "https://console.shuomiai.com" }),
+    ).resolves.toBe("https://console.shuomiai.com/");
+  });
+
+  it("preserves the trusted ZITADEL end-session redirect", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://auth.shuomiai.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    const redirect = buildAuthConfig().callbacks?.redirect;
+    if (!redirect) {
+      throw new Error("Auth.js redirect callback is not configured");
+    }
+    const endSessionUrl =
+      "https://auth.shuomiai.com/oidc/v1/end_session?client_id=listingkit-client";
+
+    await expect(
+      redirect({
+        url: endSessionUrl,
+        baseUrl: "https://console.shuomiai.com",
+      }),
+    ).resolves.toBe(endSessionUrl);
+  });
+
   it("marks an identity only after a ZITADEL profile supplies sub", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");

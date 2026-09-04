@@ -25,6 +25,41 @@ describe("LoginPage", () => {
     );
   });
 
+  it.each(["otp", "password"])(
+    "preserves the allowlisted %s entry for the server-side capability gate",
+    async (method) => {
+      await LoginPage({
+        searchParams: Promise.resolve({
+          method,
+          returnTo: "/workbench",
+        }),
+      });
+
+      expect(redirectMock).toHaveBeenCalledWith(
+        `/api/zitadel-auth/login?returnTo=%2Fworkbench&method=${method}`,
+      );
+    },
+  );
+
+  it.each([
+    { method: "magic-link", caseName: "an unknown method" },
+    {
+      method: ["otp", "password"],
+      caseName: "ambiguous repeated methods",
+    },
+  ])("keeps generic login for $caseName", async ({ method }) => {
+    await LoginPage({
+      searchParams: Promise.resolve({
+        method,
+        returnTo: "/workbench",
+      }),
+    });
+
+    expect(redirectMock).toHaveBeenCalledWith(
+      "/api/zitadel-auth/login?returnTo=%2Fworkbench",
+    );
+  });
+
   it("falls back to the app root for invalid returnTo values", async () => {
     await LoginPage({
       searchParams: Promise.resolve({

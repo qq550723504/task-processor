@@ -4,6 +4,7 @@ import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
 
 import { createResilientOidcFetch } from "@/lib/server/auth-fetch";
+import { resolveAuthRedirect } from "@/lib/server/login-entry";
 import { persistZitadelAcceptanceToken } from "@/lib/server/zitadel-acceptance-token";
 import {
   extractZitadelIdentityFromClaims,
@@ -149,15 +150,6 @@ export function buildAuthConfig(): NextAuthConfig {
       });
     },
   });
-  const publicOrigin =
-    process.env.LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
-    process.env.TASK_PROCESSOR_LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.APP_URL?.trim() ||
-    "";
-  const normalizedPublicOrigin = publicOrigin.replace(/\/+$/, "");
-  const postLogoutRedirect =
-    zitadel?.postLogoutRedirectUri || normalizedPublicOrigin || "/";
   const zitadelProvider = zitadel
     ? ZITADEL({
         issuer: zitadel.issuerUrl,
@@ -260,22 +252,7 @@ export function buildAuthConfig(): NextAuthConfig {
         return session;
       },
       async redirect({ url, baseUrl }) {
-        if (url.startsWith("/")) {
-          return `${baseUrl}${url}`;
-        }
-        try {
-          const target = new URL(url);
-          if (target.origin === baseUrl) {
-            return target.toString();
-          }
-          const issuer = zitadel?.issuerUrl;
-          if (issuer && target.origin === new URL(issuer).origin) {
-            return target.toString();
-          }
-        } catch {
-          return postLogoutRedirect;
-        }
-        return postLogoutRedirect;
+        return resolveAuthRedirect(url, baseUrl, zitadel?.issuerUrl);
       },
     },
   };
