@@ -94,3 +94,34 @@ Describe "image-agent-local-acceptance authorization startup" {
         $global:apiRequiredReadiness | Should Be $true
     }
 }
+
+Describe "image-agent-local-acceptance persisted ZITADEL environment upgrade" {
+    BeforeEach {
+        Import-AcceptanceFunction -Name "Initialize-ZitadelRuntime"
+        $global:zitadelEnvFile = Join-Path $TestDrive "zitadel.env"
+        Set-Content -LiteralPath $global:zitadelEnvFile -Value @(
+            "ZITADEL_MASTERKEY=preserve-this-secret"
+            "ZITADEL_VERSION=v4.13.0"
+            "PROXY_HTTP_PUBLISHED_HOST=old-host"
+        )
+        function global:Write-PrivateFile {
+            param([string]$Path, [string]$Content)
+            Set-Content -LiteralPath $Path -Value $Content -NoNewline
+        }
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:Initialize-ZitadelRuntime,Function:\global:Write-PrivateFile -ErrorAction SilentlyContinue
+        Remove-Variable zitadelEnvFile -Scope Global -ErrorAction SilentlyContinue
+    }
+
+    It "upgrades an existing environment without replacing its secret" {
+        Initialize-ZitadelRuntime
+
+        $contents = Get-Content -LiteralPath $global:zitadelEnvFile -Raw
+        $contents | Should Match ([regex]::Escape("ZITADEL_MASTERKEY=preserve-this-secret"))
+        $contents | Should Match ([regex]::Escape("ZITADEL_VERSION=v4.17.1"))
+        $contents | Should Not Match ([regex]::Escape("ZITADEL_VERSION=v4.13.0"))
+        $contents | Should Match ([regex]::Escape("PROXY_HTTP_PUBLISHED_HOST=127.0.0.1"))
+    }
+}

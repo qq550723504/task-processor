@@ -15,6 +15,18 @@ if ($LASTEXITCODE -ne 0) { throw "non-destructive stop must not require Reset" }
 if ($LASTEXITCODE -ne 0) { throw "reset preview must identify only the acceptance project" }
 
 $scriptText = Get-Content -LiteralPath $scriptPath -Raw
+$zitadelExampleEnvPath = Join-Path $PSScriptRoot "..\..\deployments\docker\zitadel\.env.example"
+$zitadelExampleEnvText = Get-Content -LiteralPath $zitadelExampleEnvPath -Raw
+$pinnedZitadelVersion = "ZITADEL_VERSION=v4.17.1"
+if ($scriptText -notmatch [regex]::Escape($pinnedZitadelVersion)) {
+    throw "acceptance orchestrator must pin $pinnedZitadelVersion"
+}
+if ($zitadelExampleEnvText -notmatch [regex]::Escape($pinnedZitadelVersion)) {
+    throw "ZITADEL example environment must pin $pinnedZitadelVersion"
+}
+if ($scriptText -notmatch [regex]::Escape("SET client_min_messages TO warning")) {
+    throw "acceptance marker setup must suppress idempotent PostgreSQL notices"
+}
 $stopFunction = [regex]::Match($scriptText, '(?s)function Stop-Acceptance \{(?<body>.*?)\r?\n\}').Groups['body'].Value
 $ownershipStopIndex = $stopFunction.IndexOf('Stop-LocalProcess')
 $shouldProcessIndex = $stopFunction.IndexOf('$PSCmdlet.ShouldProcess')

@@ -364,11 +364,12 @@ function Initialize-AcceptanceRuntime {
 }
 
 function Initialize-ZitadelRuntime {
+    $zitadelVersionLine = "ZITADEL_VERSION=v4.17.1"
     if (Test-Path -LiteralPath $zitadelEnvFile) {
         $lines = @(Get-Content -LiteralPath $zitadelEnvFile | Where-Object {
-            $_ -notmatch '^\s*PROXY_HTTP_PUBLISHED_HOST='
+            $_ -notmatch '^\s*(PROXY_HTTP_PUBLISHED_HOST|ZITADEL_VERSION)='
         })
-        Write-PrivateFile -Path $zitadelEnvFile -Content (((@($lines) + "PROXY_HTTP_PUBLISHED_HOST=127.0.0.1") -join "`n") + "`n")
+        Write-PrivateFile -Path $zitadelEnvFile -Content (((@($lines) + "PROXY_HTTP_PUBLISHED_HOST=127.0.0.1" + $zitadelVersionLine) -join "`n") + "`n")
         return
     }
     $password = New-LocalSecret
@@ -382,7 +383,7 @@ function Initialize-ZitadelRuntime {
         "ZITADEL_PUBLIC_SCHEME=http",
         "ZITADEL_MASTERKEY=$masterKey",
         "LOGIN_CLIENT_PAT_EXPIRATION=2099-01-01T00:00:00Z",
-        "ZITADEL_VERSION=v4.13.0",
+        $zitadelVersionLine,
         "TRAEFIK_IMAGE=traefik:v3.6.8",
         "POSTGRES_IMAGE=postgres:17.2-alpine",
         "POSTGRES_DB=zitadel",
@@ -410,7 +411,7 @@ function Persist-EnvironmentMarker {
     if ([string]::IsNullOrWhiteSpace($marker) -or [string]::IsNullOrWhiteSpace($password)) { throw "acceptance runtime state is incomplete" }
     $env:PGPASSWORD = $password
     try {
-        $sql = "CREATE TABLE IF NOT EXISTS listingkit_acceptance_environment (id bigserial PRIMARY KEY, marker text NOT NULL); DELETE FROM listingkit_acceptance_environment; INSERT INTO listingkit_acceptance_environment (marker) VALUES ('$marker');"
+        $sql = "SET client_min_messages TO warning; CREATE TABLE IF NOT EXISTS listingkit_acceptance_environment (id bigserial PRIMARY KEY, marker text NOT NULL); DELETE FROM listingkit_acceptance_environment; INSERT INTO listingkit_acceptance_environment (marker) VALUES ('$marker');"
         & $DockerCommand compose --project-name $composeProject --file $composeFile --env-file $composeEnvFile exec -T acceptance-postgres psql -U acceptance -d $databaseName -v ON_ERROR_STOP=1 -c $sql 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "persist acceptance environment marker failed" }
     } finally {
