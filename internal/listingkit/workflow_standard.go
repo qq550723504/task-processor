@@ -72,9 +72,18 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	}
 
 	assetStage := recorder.Start("approved_assets", "")
-	approvedInventory, assetErr := buildStandardWorkflowAssetPhase(s).run(ctx, productasset.InventoryScope{
+	assetScope := productasset.InventoryScope{
 		TenantID: task.TenantID, ProductKey: task.Request.ProductKey, SourceSnapshotVersion: task.SourceSnapshotVersion,
-	})
+	}
+	platforms := selectedInventoryPlatforms(task)
+	var approvedInventory productasset.ApprovedAssetInventory
+	var assetErr error
+	if len(platforms) == 1 {
+		assetScope.TargetPlatform = platforms[0]
+		approvedInventory, assetErr = buildStandardWorkflowAssetPhase(s).run(ctx, assetScope)
+	} else {
+		approvedInventory, assetErr = buildStandardWorkflowAssetPhase(s).runForPlatforms(ctx, assetScope, platforms)
+	}
 	if assetErr != nil {
 		if errors.Is(assetErr, productasset.ErrApprovedAssetsNotReady) {
 			assetStage.Fail("approved_assets_not_ready", "Approved product assets are not ready", assetErr.Error())

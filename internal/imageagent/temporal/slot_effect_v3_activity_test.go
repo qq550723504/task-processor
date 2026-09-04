@@ -349,6 +349,52 @@ func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
 }
 
+func TestReviewStagedSlotV3ReusesCandidatesWithoutRegeneration(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-review-retry")
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	seedV3StagingPrepared(t, effects, input, manifest)
+	_, err := effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+		Reservation: v3Reservation(input), Phase: imageagent.SlotEffectV3ReviewTransportRequired,
+		Code: imageagent.SlotReviewTransportRequiredCode,
+	})
+	require.NoError(t, err)
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+
+	result, err := activities.ReviewStagedSlotV3(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.Zero(t, executor.GenerateCalls(), "review-only retry must not regenerate")
+	require.Equal(t, 1, executor.BuildCalls(), "successful staged review should finalize the existing artifact")
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
+func TestExecuteSlotV3PersistsReviewerTransportBlockWithStagedManifest(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-review-transport")
+	generated := generatedV3Output(input, writeTinyPNG(t))
+	executor := &recordingStagedExecutor{
+		generated: generated,
+		generateErr: &imageagent.SlotReviewTransportError{
+			Output: generated, Reason: "reviewer timeout", Cause: context.DeadlineExceeded,
+		},
+	}
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	requireV3ApplicationErrorType(t, err, imageagent.SlotReviewTransportRequiredCode)
+	require.Equal(t, 1, executor.GenerateCalls())
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ReviewTransportRequired, stored.Phase)
+	require.NotEmpty(t, stored.StagingManifestFingerprint)
+}
+
 func TestEffectRecoveryWorkflowReconcilesClaimWithoutProviderCall(t *testing.T) {
 	repository, input := initializedSlotEffectV3Activity(t, "run-v3-recovery-publication")
 	effects := repository.(imageagent.SlotExternalEffectV3Repository)
@@ -1168,6 +1214,10 @@ func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imagea
 		onGenerate()
 	}
 	return generated, nil
+}
+
+func (e *recordingStagedExecutor) ReviewStagedSlot(context.Context, imageagent.SlotExecutionInput, imageagent.SlotGeneratedOutput) error {
+	return nil
 }
 
 type cancellationRejectingV3Repository struct {

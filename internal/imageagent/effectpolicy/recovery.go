@@ -135,7 +135,7 @@ func validateBlockTransition(transition imageagent.SlotEffectV3BlockTransition) 
 
 func isBlockedPhase(phase imageagent.SlotEffectV3Phase) bool {
 	return phase == imageagent.SlotEffectV3ProviderUnknown || phase == imageagent.SlotEffectV3StagingUnknown ||
-		phase == imageagent.SlotEffectV3PublicationUnknown || phase == imageagent.SlotEffectV3ReviewRequired || phase == imageagent.SlotEffectV3RecoveryBlocked
+		phase == imageagent.SlotEffectV3PublicationUnknown || phase == imageagent.SlotEffectV3ReviewRequired || phase == imageagent.SlotEffectV3ReviewTransportRequired || phase == imageagent.SlotEffectV3RecoveryBlocked
 }
 
 func isRedrivableRecoveryPhase(phase imageagent.SlotEffectV3Phase) bool {
@@ -167,6 +167,8 @@ func canBlock(current, blocked imageagent.SlotEffectV3Phase) bool {
 		return current == imageagent.SlotEffectV3PublicationClaimed
 	case imageagent.SlotEffectV3ReviewRequired:
 		return current == imageagent.SlotEffectV3ProviderClaimed || current == imageagent.SlotEffectV3StagingPrepared
+	case imageagent.SlotEffectV3ReviewTransportRequired:
+		return current == imageagent.SlotEffectV3ProviderClaimed || current == imageagent.SlotEffectV3StagingPrepared
 	case imageagent.SlotEffectV3RecoveryBlocked:
 		return current == imageagent.SlotEffectV3ProviderClaimed || current == imageagent.SlotEffectV3ProviderNotDispatched ||
 			current == imageagent.SlotEffectV3StagingPrepared || current == imageagent.SlotEffectV3ArtifactStaged ||
@@ -175,6 +177,24 @@ func canBlock(current, blocked imageagent.SlotEffectV3Phase) bool {
 	default:
 		return false
 	}
+}
+
+// ResumeReviewRetry moves a reviewer-transport block back to the durable
+// staging boundary without changing its effect identity or manifest.
+func ResumeReviewRetry(current imageagent.SlotEffectV3Attempt, reservation imageagent.SlotEffectV3Reservation) (EffectDecision, error) {
+	if err := validateProviderReservation(reservation); err != nil {
+		return EffectDecision{}, err
+	}
+	attempt := cloneSlotEffectV3Attempt(current)
+	if err := validateProviderAttemptReservation(attempt, reservation); err != nil {
+		return EffectDecision{}, err
+	}
+	if attempt.Phase != imageagent.SlotEffectV3ReviewTransportRequired || attempt.BlockedCode != imageagent.SlotReviewTransportRequiredCode || attempt.StagingManifestFingerprint == "" {
+		return EffectDecision{}, imageagent.ErrRevisionConflict
+	}
+	attempt.Phase = imageagent.SlotEffectV3StagingPrepared
+	attempt.BlockedCode = ""
+	return EffectDecision{Attempt: attempt, Changed: true}, nil
 }
 
 func sameRecoveryReservation(attempt imageagent.SlotEffectV3Attempt, reservation imageagent.SlotEffectV3Reservation) bool {

@@ -85,7 +85,12 @@ func approvedAssetScopeFromTask(task *Task) productasset.InventoryScope {
 	if task == nil || task.Request == nil {
 		return productasset.InventoryScope{}
 	}
-	return productasset.InventoryScope{TenantID: task.TenantID, ProductKey: task.Request.ProductKey, SourceSnapshotVersion: task.SourceSnapshotVersion}
+	platforms := selectedInventoryPlatforms(task)
+	targetPlatform := ""
+	if len(platforms) == 1 {
+		targetPlatform = platforms[0]
+	}
+	return productasset.InventoryScope{TenantID: task.TenantID, ProductKey: task.Request.ProductKey, TargetPlatform: targetPlatform, SourceSnapshotVersion: task.SourceSnapshotVersion}
 }
 
 func (s *service) collectSDSVariantApprovedAssetSummaries(

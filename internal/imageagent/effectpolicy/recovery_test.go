@@ -136,6 +136,26 @@ func TestBlockDecisionMatrix(t *testing.T) {
 	}
 }
 
+func TestResumeReviewRetryPreservesStagedAttemptIdentity(t *testing.T) {
+	reservation := providerPolicyReservation()
+	manifest := stagingPolicyManifest()
+	fingerprint, err := imageagent.StagingManifestFingerprint(manifest)
+	require.NoError(t, err)
+	current := recoveryPolicyAttempt(reservation, imageagent.SlotEffectV3ReviewTransportRequired)
+	current.BlockedCode = imageagent.SlotReviewTransportRequiredCode
+	current.StagingManifest = manifest
+	current.StagingManifestFingerprint = fingerprint
+
+	decision, err := ResumeReviewRetry(current, reservation)
+
+	require.NoError(t, err)
+	require.True(t, decision.Changed)
+	require.Equal(t, imageagent.SlotEffectV3StagingPrepared, decision.Attempt.Phase)
+	require.Empty(t, decision.Attempt.BlockedCode)
+	require.Equal(t, current.Identity, decision.Attempt.Identity)
+	require.Equal(t, current.StagingManifestFingerprint, decision.Attempt.StagingManifestFingerprint)
+}
+
 func TestRestoreRecoveryBlockedDecisionMatrix(t *testing.T) {
 	reservation := providerPolicyReservation()
 	allowed := map[imageagent.SlotEffectV3Phase]string{

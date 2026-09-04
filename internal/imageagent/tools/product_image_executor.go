@@ -197,10 +197,13 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 		if e != nil && !e.legacyV2 && !resolved.legacyPolicy && errors.Is(err, imageagent.ErrReviewDecision) {
 			return output, &imageagent.SlotReviewRequiredError{Output: output, Reason: err.Error(), Cause: err}
 		}
-		// Generation has already dispatched and produced durable candidate material.
-		// Preserve it across reviewer transport failures so the activity can stage
-		// the output and retry the read-only review step instead of losing work.
-		return output, &imageagent.SlotReviewRequiredError{Output: output, Reason: err.Error(), Cause: err}
+		if e != nil && !resolved.legacyPolicy && imageagent.ProviderDispatchStateOf(err) == imageagent.ProviderDispatchedUnknown {
+			// Generation has already dispatched and produced durable candidate
+			// material. Preserve it across reviewer transport failures so the
+			// activity can stage it and retry only the read-only review step.
+			return output, &imageagent.SlotReviewTransportError{Output: output, Reason: err.Error(), Cause: err}
+		}
+		return output, err
 	}
 	return output, nil
 }
@@ -227,6 +230,35 @@ func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context
 		return fmt.Errorf("%w: %w: score %.4f is below threshold %.4f", imageagent.ErrReviewDecision, imageagent.ErrValidation, review.Score, threshold)
 	}
 	return nil
+}
+
+func (e *ProductImageSlotExecutor) ReviewStagedSlot(ctx context.Context, input imageagent.SlotExecutionInput, staged imageagent.SlotGeneratedOutput) error {
+	resolved, err := e.resolveInput(input)
+	if err != nil {
+		return err
+	}
+	if staged.SlotID != resolved.slot.ID || staged.Attempt != input.Attempt || staged.SourceAssetID != resolved.sourceAssetID || len(staged.Assets) == 0 {
+		return imageagent.ErrRevisionConflict
+	}
+	candidates := make([]productimage.Candidate, len(staged.Assets))
+	for index, generated := range staged.Assets {
+		url := strings.TrimSpace(generated.URL)
+		if url == "" || generated.Width <= 0 || generated.Height <= 0 || generated.SourceURL == "" || len(generated.Operations) == 0 {
+			return imageagent.ErrValidation
+		}
+		if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
+			return err
+		}
+		if _, err := imageagent.ValidateSafeImageURL(generated.SourceURL); err != nil {
+			return err
+		}
+		candidates[index] = productimage.Candidate{Asset: productimage.Asset{
+			URL: url, SourceURL: generated.SourceURL, SourceAssetID: resolved.sourceAssetID,
+			Role: productimage.RoleScene, Width: generated.Width, Height: generated.Height,
+			MediaType: generated.ContentType, Operations: append([]string(nil), generated.Operations...),
+		}}
+	}
+	return e.reviewGeneratedCandidates(ctx, resolved, candidates, nil)
 }
 
 func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resolvedSlotInput, quoted *quotedSlotExecution) ([]productimage.Candidate, imageagent.SlotUsageReceipt, error) {

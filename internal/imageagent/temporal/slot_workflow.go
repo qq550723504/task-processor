@@ -171,6 +171,8 @@ func terminalEffectPhaseForErrorCode(code string) imageagent.SlotEffectV3Phase {
 		return imageagent.SlotEffectV3PublicationUnknown
 	case imageagent.SlotReviewRequiredCode:
 		return imageagent.SlotEffectV3ReviewRequired
+	case imageagent.SlotReviewTransportRequiredCode:
+		return imageagent.SlotEffectV3ReviewTransportRequired
 	default:
 		return ""
 	}
@@ -216,7 +218,7 @@ func slotExecutionV3ErrorCode(err error) string {
 	var applicationError *sdktemporal.ApplicationError
 	if errors.As(err, &applicationError) {
 		switch applicationError.Type() {
-		case imageagent.SlotProviderNotDispatchedCode, slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode, imageagent.SlotReviewRequiredCode:
+		case imageagent.SlotProviderNotDispatchedCode, slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode, imageagent.SlotReviewRequiredCode, imageagent.SlotReviewTransportRequiredCode:
 			return applicationError.Type()
 		case slotEffectPhaseInvalidCode:
 			return imageagent.SlotEffectPhaseInvalidCode

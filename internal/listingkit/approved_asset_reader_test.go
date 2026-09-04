@@ -73,6 +73,32 @@ func TestWorkflowReadsApprovedMainWithoutSourceFallback(t *testing.T) {
 	}
 }
 
+func TestWorkflowVerifiesEverySelectedPlatformBeforeUsingScalarInventory(t *testing.T) {
+	mainAmazon := productasset.ApprovedAsset{ID: "amazon-main", Role: productasset.RoleMain, URL: "https://cdn.example/amazon.png"}
+	mainShein := productasset.ApprovedAsset{ID: "shein-main", Role: productasset.RoleMain, URL: "https://cdn.example/shein.png"}
+	var scopes []productasset.InventoryScope
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		scopes = append(scopes, scope)
+		assets := []productasset.ApprovedAsset{mainAmazon}
+		if scope.TargetPlatform == "shein" {
+			assets = []productasset.ApprovedAsset{mainShein}
+		}
+		return productasset.ApprovedAssetInventory{Scope: scope, Assets: assets}, nil
+	})}
+
+	_, err := phase.runForPlatforms(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}, []string{"amazon", "shein"})
+
+	if !errors.Is(err, productasset.ErrRepositoryStateInvalid) {
+		t.Fatalf("runForPlatforms() error = %v, want ErrRepositoryStateInvalid", err)
+	}
+	if !reflect.DeepEqual(scopes, []productasset.InventoryScope{
+		{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "amazon"},
+		{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "shein"},
+	}) {
+		t.Fatalf("scopes = %+v, want one scoped read per selected platform", scopes)
+	}
+}
+
 func TestAssemblerUsesOnlyApprovedAssetImages(t *testing.T) {
 	snapshot := catalog.ProductSnapshot{
 		Title:  "Bottle",

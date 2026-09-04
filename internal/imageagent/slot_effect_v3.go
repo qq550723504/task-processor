@@ -14,17 +14,18 @@ import (
 type SlotEffectV3Phase string
 
 const (
-	SlotEffectV3ProviderClaimed       SlotEffectV3Phase = "provider_claimed"
-	SlotEffectV3ProviderNotDispatched SlotEffectV3Phase = "provider_not_dispatched"
-	SlotEffectV3StagingPrepared       SlotEffectV3Phase = "staging_prepared"
-	SlotEffectV3ArtifactStaged        SlotEffectV3Phase = "artifact_staged"
-	SlotEffectV3PublicationClaimed    SlotEffectV3Phase = "publication_claimed"
-	SlotEffectV3PublicationComplete   SlotEffectV3Phase = "publication_complete"
-	SlotEffectV3ProviderUnknown       SlotEffectV3Phase = "provider_outcome_unknown"
-	SlotEffectV3StagingUnknown        SlotEffectV3Phase = "staging_outcome_unknown"
-	SlotEffectV3PublicationUnknown    SlotEffectV3Phase = "publication_outcome_unknown"
-	SlotEffectV3ReviewRequired        SlotEffectV3Phase = "review_required"
-	SlotEffectV3RecoveryBlocked       SlotEffectV3Phase = "recovery_blocked"
+	SlotEffectV3ProviderClaimed         SlotEffectV3Phase = "provider_claimed"
+	SlotEffectV3ProviderNotDispatched   SlotEffectV3Phase = "provider_not_dispatched"
+	SlotEffectV3StagingPrepared         SlotEffectV3Phase = "staging_prepared"
+	SlotEffectV3ArtifactStaged          SlotEffectV3Phase = "artifact_staged"
+	SlotEffectV3PublicationClaimed      SlotEffectV3Phase = "publication_claimed"
+	SlotEffectV3PublicationComplete     SlotEffectV3Phase = "publication_complete"
+	SlotEffectV3ProviderUnknown         SlotEffectV3Phase = "provider_outcome_unknown"
+	SlotEffectV3StagingUnknown          SlotEffectV3Phase = "staging_outcome_unknown"
+	SlotEffectV3PublicationUnknown      SlotEffectV3Phase = "publication_outcome_unknown"
+	SlotEffectV3ReviewRequired          SlotEffectV3Phase = "review_required"
+	SlotEffectV3ReviewTransportRequired SlotEffectV3Phase = "review_transport_required"
+	SlotEffectV3RecoveryBlocked         SlotEffectV3Phase = "recovery_blocked"
 )
 
 const (
@@ -34,6 +35,7 @@ const (
 	SlotPublicationOutcomeUnknownCode = "slot_publication_outcome_unknown"
 	SlotRecoveryBlockedCode           = "recovery_blocked"
 	SlotReviewRequiredCode            = "slot_review_required"
+	SlotReviewTransportRequiredCode   = "slot_review_transport_required"
 	SlotEffectPhaseInvalidCode        = "slot_effect_phase_invalid"
 	SlotEffectPolicyInvalidCode       = "slot_effect_policy_invalid"
 	BudgetExhaustedCode               = "budget_exhausted"
@@ -61,6 +63,8 @@ func SlotEffectV3BlockedPolicyFor(phase SlotEffectV3Phase, code string) (SlotEff
 		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotRecoveryBlockedCode, PermittedActions: []Action{ActionCancel}}
 	case SlotEffectV3ReviewRequired:
 		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotReviewRequiredCode, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}
+	case SlotEffectV3ReviewTransportRequired:
+		policy = SlotEffectV3BlockedPolicy{Phase: phase, Code: SlotReviewTransportRequiredCode, PermittedActions: []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}}
 	default:
 		return SlotEffectV3BlockedPolicy{}, fmt.Errorf("%w: unsupported v3 blocked phase %q", ErrInvalidPersistedPolicy, phase)
 	}
@@ -88,6 +92,8 @@ func SlotEffectV3BlockedPolicyForCode(code string) (SlotEffectV3BlockedPolicy, b
 		phase = SlotEffectV3RecoveryBlocked
 	case SlotReviewRequiredCode:
 		phase = SlotEffectV3ReviewRequired
+	case SlotReviewTransportRequiredCode:
+		phase = SlotEffectV3ReviewTransportRequired
 	case SlotEffectPhaseInvalidCode, SlotEffectPolicyInvalidCode:
 		return SlotEffectV3BlockedPolicy{Code: code, PermittedActions: []Action{ActionCancel}}, true
 	case BudgetExhaustedCode:
@@ -121,7 +127,7 @@ func NormalizeSlotEffectV3BlockCode(code string) string {
 // interpreter so persisted authorization cannot be silently reclassified.
 func ValidateSlotEffectV3AttemptPolicy(attempt SlotEffectV3Attempt) error {
 	switch attempt.Phase {
-	case SlotEffectV3ProviderUnknown, SlotEffectV3StagingUnknown, SlotEffectV3PublicationUnknown, SlotEffectV3ReviewRequired, SlotEffectV3RecoveryBlocked:
+	case SlotEffectV3ProviderUnknown, SlotEffectV3StagingUnknown, SlotEffectV3PublicationUnknown, SlotEffectV3ReviewRequired, SlotEffectV3ReviewTransportRequired, SlotEffectV3RecoveryBlocked:
 		_, err := SlotEffectV3BlockedPolicyFor(attempt.Phase, attempt.BlockedCode)
 		return err
 	case SlotEffectV3ProviderClaimed, SlotEffectV3ProviderNotDispatched, SlotEffectV3StagingPrepared, SlotEffectV3ArtifactStaged, SlotEffectV3PublicationClaimed, SlotEffectV3PublicationComplete:
@@ -360,4 +366,8 @@ type CorruptSlotEffectV3Repository interface {
 // callers cannot move an external effect across tenant, plan, slot, or attempt.
 type RecoveryBlockedSlotEffectV3Repository interface {
 	RestoreRecoveryBlockedEffectV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
+}
+
+type ReviewRetrySlotEffectV3Repository interface {
+	ResumeReviewRetrySlotV3(context.Context, SlotEffectV3Reservation) (SlotEffectV3Attempt, error)
 }

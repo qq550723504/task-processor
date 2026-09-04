@@ -323,6 +323,24 @@ func (r *memoryRepository) GetSlotExternalEffectV3(_ context.Context, identity i
 	return cloneSlotEffectV3(effect), nil
 }
 
+func (r *memoryRepository) ResumeReviewRetrySlotV3(_ context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
+	if err := effectpolicy.PreflightReservation(reservation); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	effect, ok := r.slotEffectsV3[slotEffectKey(reservation.Identity)]
+	if !ok {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	decision, err := effectpolicy.ResumeReviewRetry(effect, reservation)
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	r.slotEffectsV3[slotEffectKey(reservation.Identity)] = cloneSlotEffectV3(decision.Attempt)
+	return cloneSlotEffectV3(decision.Attempt), nil
+}
+
 func (r *memoryRepository) BlockCorruptSlotEffectV3(_ context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
 	if err := validateSlotEffectIdentity(identity); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err

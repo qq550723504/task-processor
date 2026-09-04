@@ -27,6 +27,13 @@ type StagedSlotExecutor interface {
 	BuildSlotResult(context.Context, SlotExecutionInput, PublishedSlotOutput) (SlotExecutionResult, error)
 }
 
+// StagedSlotReviewer is an additive capability for retrying a reviewer
+// transport failure against already-staged candidates. Implementations must
+// not invoke generation or quote provider work from this method.
+type StagedSlotReviewer interface {
+	ReviewStagedSlot(context.Context, SlotExecutionInput, SlotGeneratedOutput) error
+}
+
 // BudgetedStagedSlotExecutor is additive so frozen v2 and legacy uncapped v3
 // executors keep their historical wire behavior.
 type BudgetedStagedSlotExecutor interface {

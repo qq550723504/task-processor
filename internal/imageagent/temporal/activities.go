@@ -297,6 +297,30 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 					}
 					return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ReviewRequired, imageagent.SlotReviewRequiredCode, imageagent.PublicationClaim{})
 				}
+				if reviewOutput, transportFailure := imageagent.ReviewTransportOutput(generateErr); transportFailure {
+					providerStagingCtx := postProviderContext()
+					if budgeted != nil {
+						if _, settleErr := a.slotEffectsV3.SettleSlotProviderV3(providerStagingCtx, reservation, reviewOutput.UsageReceipt); settleErr != nil {
+							if _, unknownErr := a.slotEffectsV3.MarkSlotProviderBudgetUnknownV3(providerStagingCtx, reservation); unknownErr != nil {
+								return v3Result, fmt.Errorf("retain review provider reservation: %w", persistedSlotEffectV3RepositoryError(unknownErr))
+							}
+							return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ProviderUnknown, slotProviderOutcomeUnknownCode, imageagent.PublicationClaim{})
+						}
+					}
+					prepared, err = prepareGeneratedSlotArtifacts(executionInput, reviewOutput, a.artifactStore)
+					if err != nil {
+						return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
+					}
+					if err := a.preserveSlotRecoveryBundle(providerStagingCtx, reservation.Identity, prepared); err != nil {
+						cleanupGeneratedSlotTemporaryAssets(&reviewOutput)
+						return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3StagingUnknown, slotStagingOutcomeUnknownCode, imageagent.PublicationClaim{})
+					}
+					cleanupGeneratedSlotTemporaryAssets(&reviewOutput)
+					if _, err = a.slotEffectsV3.PrepareSlotStagingV3(providerStagingCtx, reservation, prepared.Manifest); err != nil {
+						return v3Result, fmt.Errorf("persist review staging manifest: %w", persistedSlotEffectV3RepositoryError(err))
+					}
+					return v3Result, a.blockSlotEffectV3(providerStagingCtx, reservation, imageagent.SlotEffectV3ReviewTransportRequired, imageagent.SlotReviewTransportRequiredCode, imageagent.PublicationClaim{})
+				}
 				switch imageagent.ProviderDispatchStateOf(generateErr) {
 				case imageagent.ProviderNotDispatched, imageagent.ProviderRejectedBeforeEffect:
 					finalizationCtx, cancelFinalization := providerFinalizationContext(ctx)
@@ -504,11 +528,105 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		return v3Result, blockedSlotEffectV3Error(slotPublicationOutcomeUnknownCode)
 	case imageagent.SlotEffectV3ReviewRequired:
 		return v3Result, blockedSlotEffectV3Error(imageagent.SlotReviewRequiredCode)
+	case imageagent.SlotEffectV3ReviewTransportRequired:
+		return v3Result, blockedSlotEffectV3Error(imageagent.SlotReviewTransportRequiredCode)
 	default:
 		return v3Result, sdktemporal.NewNonRetryableApplicationError(
 			fmt.Sprintf("unsupported persisted slot effect phase %q", effect.Phase), slotEffectPhaseInvalidCode, nil,
 		)
 	}
+}
+
+// ReviewStagedSlotV3 retries only the read-only reviewer call for candidates
+// already captured by the durable staging manifest. A successful review then
+// resumes the existing staging attempt and lets ExecuteSlotV3 finalize it;
+// generation and provider quoting are never called here.
+func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3ActivityInput) (imageagent.SlotEffectV3PublishedResult, error) {
+	if a.slotEffectsV3 == nil || a.stagedSlotExecutor == nil || a.artifactStore == nil {
+		return imageagent.SlotEffectV3PublishedResult{}, fmt.Errorf("image agent staged review dependencies are incomplete")
+	}
+	reviewer, ok := a.stagedSlotExecutor.(imageagent.StagedSlotReviewer)
+	if !ok {
+		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image agent executor cannot review staged candidates", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrValidation)
+	}
+	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	if err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	executionInput := slotExecutionInputV3(input)
+	reservation := slotEffectReservationV3(executionInput)
+	effect, err := a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+	if err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+	}
+	if err := validatePersistedSlotEffectV3(effect); err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	if effect.Phase != imageagent.SlotEffectV3ReviewTransportRequired && effect.Phase != imageagent.SlotEffectV3StagingPrepared {
+		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged review is not pending", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrRevisionConflict)
+	}
+	prepared, err := a.artifactStore.RecoverSlotArtifacts(ctx, reservation.Identity, effect.StagingManifest)
+	if err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	if err := a.artifactStore.EnsureStaged(ctx, prepared); err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	staged := stagedOutputFromManifest(input, effect.StagingManifest, a.artifactStore)
+	if err := reviewer.ReviewStagedSlot(ctx, executionInput, staged); err != nil {
+		if errors.Is(err, imageagent.ErrReviewDecision) {
+			if effect.Phase == imageagent.SlotEffectV3ReviewTransportRequired {
+				if _, err := resumeReviewRetrySlot(ctx, a.slotEffectsV3, reservation); err != nil {
+					return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+				}
+				effect, err = a.slotEffectsV3.GetSlotExternalEffectV3(ctx, reservation.Identity)
+				if err != nil {
+					return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+				}
+			}
+			if _, err := a.slotEffectsV3.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+				Reservation: reservation, Phase: imageagent.SlotEffectV3ReviewRequired,
+				Code: imageagent.SlotReviewRequiredCode,
+			}); err != nil {
+				return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+			}
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged image review requires human intervention", imageagent.SlotReviewRequiredCode, err)
+		}
+		if imageagent.ProviderDispatchStateOf(err) == imageagent.ProviderDispatchedUnknown {
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewApplicationError("image reviewer transport failed", imageagent.SlotReviewTransportRequiredCode, err)
+		}
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	if effect.Phase == imageagent.SlotEffectV3ReviewTransportRequired {
+		if _, err := resumeReviewRetrySlot(ctx, a.slotEffectsV3, reservation); err != nil {
+			return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+		}
+	}
+	return a.ExecuteSlotV3(ctx, input)
+}
+
+func resumeReviewRetrySlot(ctx context.Context, repository imageagent.SlotExternalEffectV3Repository, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
+	resumer, ok := repository.(imageagent.ReviewRetrySlotEffectV3Repository)
+	if !ok {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRevisionConflict
+	}
+	return resumer.ResumeReviewRetrySlotV3(ctx, reservation)
+}
+
+func stagedOutputFromManifest(input ExecuteSlotV3ActivityInput, manifest imageagent.StagingManifest, store DurableArtifactStore) imageagent.SlotGeneratedOutput {
+	output := imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt}
+	for _, staged := range manifest.Assets {
+		url := store.PublicURL(staged.ObjectKey)
+		output.Assets = append(output.Assets, imageagent.GeneratedAsset{
+			URL: url, ContentType: staged.ContentType, SourceURL: url,
+			Operations: append([]string(nil), staged.Operations...), Width: staged.Width, Height: staged.Height,
+			ProviderReceiptID: staged.ProviderReceiptID,
+		})
+		if output.SourceAssetID == "" {
+			output.SourceAssetID = staged.SourceAssetID
+		}
+	}
+	return output
 }
 
 func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
@@ -567,6 +685,8 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, slotPublicationOutcomeUnknownCode), nil
 	case imageagent.SlotEffectV3ReviewRequired:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, imageagent.SlotReviewRequiredCode), nil
+	case imageagent.SlotEffectV3ReviewTransportRequired:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, imageagent.SlotReviewTransportRequiredCode), nil
 	case imageagent.SlotEffectV3ProviderNotDispatched:
 		return a.blockEffectRecoveryV3(ctx, input, reservation)
 	case imageagent.SlotEffectV3ProviderClaimed:
@@ -642,6 +762,8 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, slotPublicationOutcomeUnknownCode), nil
 	case imageagent.SlotEffectV3ReviewRequired:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, imageagent.SlotReviewRequiredCode), nil
+	case imageagent.SlotEffectV3ReviewTransportRequired:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, imageagent.SlotReviewTransportRequiredCode), nil
 	case imageagent.SlotEffectV3RecoveryBlocked:
 		return effectRecoveryBlockedResult(input), nil
 	}
@@ -728,6 +850,8 @@ func effectRecoveryResultFromDurableEffect(effect imageagent.SlotEffectV3Attempt
 	case imageagent.SlotEffectV3PublicationUnknown:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, effect.Phase, effect.BlockedCode), nil
 	case imageagent.SlotEffectV3ReviewRequired:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, effect.BlockedCode), nil
+	case imageagent.SlotEffectV3ReviewTransportRequired:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, effect.Phase, effect.BlockedCode), nil
 	case imageagent.SlotEffectV3RecoveryBlocked:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeRecoveryBlocked, effect.Phase, effect.BlockedCode), nil
@@ -973,6 +1097,8 @@ func effectRecoveryResultFromError(err error) (EffectRecoveryResult, bool) {
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomePublicationUnknown, imageagent.SlotEffectV3PublicationUnknown, slotPublicationOutcomeUnknownCode), true
 	case imageagent.SlotReviewRequiredCode:
 		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, imageagent.SlotEffectV3ReviewRequired, imageagent.SlotReviewRequiredCode), true
+	case imageagent.SlotReviewTransportRequiredCode:
+		return effectRecoveryBlockedPhaseResult(EffectRecoveryOutcomeReviewRequired, imageagent.SlotEffectV3ReviewTransportRequired, imageagent.SlotReviewTransportRequiredCode), true
 	default:
 		return EffectRecoveryResult{}, false
 	}
@@ -997,7 +1123,7 @@ func validatePersistedSlotEffectV3(effect imageagent.SlotEffectV3Attempt) error 
 		switch effect.Phase {
 		case imageagent.SlotEffectV3ProviderClaimed, imageagent.SlotEffectV3StagingPrepared, imageagent.SlotEffectV3ArtifactStaged,
 			imageagent.SlotEffectV3PublicationClaimed, imageagent.SlotEffectV3PublicationComplete,
-			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown, imageagent.SlotEffectV3ReviewRequired,
+			imageagent.SlotEffectV3ProviderUnknown, imageagent.SlotEffectV3StagingUnknown, imageagent.SlotEffectV3PublicationUnknown, imageagent.SlotEffectV3ReviewRequired, imageagent.SlotEffectV3ReviewTransportRequired,
 			imageagent.SlotEffectV3RecoveryBlocked:
 		default:
 			code = slotEffectPhaseInvalidCode
@@ -1675,6 +1801,7 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 		registrar.RegisterActivityWithOptions(activities.PublishApproved, sdkactivity.RegisterOptions{Name: activityPublishApproved})
 	} else {
 		registrar.RegisterActivityWithOptions(activities.ExecuteSlotV3, sdkactivity.RegisterOptions{Name: activityExecuteSlotV3})
+		registrar.RegisterActivityWithOptions(activities.ReviewStagedSlotV3, sdkactivity.RegisterOptions{Name: activityReviewStagedSlotV3})
 		registrar.RegisterActivityWithOptions(activities.StartEffectRecoveryV3, sdkactivity.RegisterOptions{Name: activityStartEffectRecoveryV3})
 		registrar.RegisterActivityWithOptions(activities.RecoverEffectV3, sdkactivity.RegisterOptions{Name: activityRecoverEffectV3})
 		registrar.RegisterActivityWithOptions(activities.PersistRecoveryBlockedEffectV3, sdkactivity.RegisterOptions{Name: activityPersistRecoveryBlockedV3})

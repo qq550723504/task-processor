@@ -55,7 +55,8 @@ func (r *repository) CommitApproval(ctx context.Context, commit productasset.App
 		assetRecords[index] = ApprovedAssetRecord{
 			TenantID: commit.TenantID, RunID: approved.RunID, PlanRevision: approved.PlanRevision,
 			SlotID: approved.SlotID, Attempt: approved.Attempt, ActionID: commit.ActionID,
-			AssetID: approved.ID, ProductKey: commit.ProductKey, SourceSnapshotVersion: commit.SourceSnapshotVersion, PayloadJSON: payload,
+			AssetID: approved.ID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform,
+			SourceSnapshotVersion: commit.SourceSnapshotVersion, PayloadJSON: payload,
 		}
 	}
 	assetIDsJSON, err := json.Marshal(assetIDs)
@@ -149,7 +150,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	if scope.SourceSnapshotVersion > 0 {
 		var head ApprovedInventoryVersionHeadRecord
 		err := r.db.WithContext(ctx).
-			Where("tenant_id = ? AND product_key = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.SourceSnapshotVersion).
+			Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, scope.SourceSnapshotVersion).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Legacy approvals predate snapshot binding. They may be used only when
@@ -157,7 +158,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 			// must never be substituted for a pinned task.
 			var legacy ApprovedInventoryHeadRecord
 			legacyErr := r.db.WithContext(ctx).
-				Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
+				Where("tenant_id = ? AND product_key = ? AND target_platform = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform).
 				Take(&legacy).Error
 			if legacyErr == nil {
 				actionID = legacy.ActionID
@@ -175,7 +176,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	} else {
 		var head ApprovedInventoryHeadRecord
 		err := r.db.WithContext(ctx).
-			Where("tenant_id = ? AND product_key = ?", scope.TenantID, scope.ProductKey).
+			Where("tenant_id = ? AND product_key = ? AND target_platform = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
@@ -188,7 +189,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 
 	var records []ApprovedAssetRecord
 	recordQuery := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND product_key = ? AND action_id = ?", scope.TenantID, scope.ProductKey, actionID)
+		Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND action_id = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, actionID)
 	if versionBound {
 		recordQuery = recordQuery.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
 	}
@@ -221,9 +222,9 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 }
 
 func advanceCurrentInventoryHead(tx *gorm.DB, commit productasset.ApprovalCommit) error {
-	head := ApprovedInventoryHeadRecord{TenantID: commit.TenantID, ProductKey: commit.ProductKey, ActionID: commit.ActionID}
+	head := ApprovedInventoryHeadRecord{TenantID: commit.TenantID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform, ActionID: commit.ActionID}
 	updated := tx.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}},
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}, {Name: "target_platform"}},
 		DoUpdates: clause.AssignmentColumns([]string{"action_id"}),
 	}).Create(&head)
 	if updated.Error != nil {
@@ -235,10 +236,11 @@ func advanceCurrentInventoryHead(tx *gorm.DB, commit productasset.ApprovalCommit
 func advanceVersionedInventoryHead(tx *gorm.DB, commit productasset.ApprovalCommit) error {
 	head := ApprovedInventoryVersionHeadRecord{
 		TenantID: commit.TenantID, ProductKey: commit.ProductKey,
+		TargetPlatform:        commit.TargetPlatform,
 		SourceSnapshotVersion: commit.SourceSnapshotVersion, ActionID: commit.ActionID,
 	}
 	updated := tx.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}, {Name: "source_snapshot_version"}},
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "product_key"}, {Name: "target_platform"}, {Name: "source_snapshot_version"}},
 		DoUpdates: clause.AssignmentColumns([]string{"action_id"}),
 	}).Create(&head)
 	if updated.Error != nil {
@@ -250,6 +252,7 @@ func advanceVersionedInventoryHead(tx *gorm.DB, commit productasset.ApprovalComm
 type canonicalApprovalPayload struct {
 	TenantID              string                   `json:"tenant_id"`
 	ProductKey            string                   `json:"product_key"`
+	TargetPlatform        string                   `json:"target_platform,omitempty"`
 	ActionID              string                   `json:"action_id"`
 	SourceSnapshotVersion uint64                   `json:"source_snapshot_version,omitempty"`
 	Assets                []canonicalApprovedAsset `json:"assets"`
@@ -289,7 +292,7 @@ func (approved canonicalApprovedAsset) domainAsset() productasset.ApprovedAsset 
 
 func approvalPayloadHash(commit productasset.ApprovalCommit) (string, error) {
 	payload := canonicalApprovalPayload{
-		TenantID: commit.TenantID, ProductKey: commit.ProductKey, ActionID: commit.ActionID,
+		TenantID: commit.TenantID, ProductKey: commit.ProductKey, TargetPlatform: commit.TargetPlatform, ActionID: commit.ActionID,
 		SourceSnapshotVersion: commit.SourceSnapshotVersion,
 		Assets:                make([]canonicalApprovedAsset, len(commit.Assets)),
 	}
@@ -346,7 +349,7 @@ func validatePersistedAsset(record ApprovedAssetRecord, approved productasset.Ap
 		return errors.New("payload identity does not match indexed record identity")
 	}
 	commit := productasset.ApprovalCommit{
-		TenantID: record.TenantID, ProductKey: record.ProductKey, ActionID: record.ActionID,
+		TenantID: record.TenantID, ProductKey: record.ProductKey, TargetPlatform: record.TargetPlatform, ActionID: record.ActionID,
 		SourceSnapshotVersion: record.SourceSnapshotVersion,
 		Assets:                []productasset.ApprovedAsset{approved},
 	}

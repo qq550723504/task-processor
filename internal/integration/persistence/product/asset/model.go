@@ -12,7 +12,8 @@ type ApprovedAssetRecord struct {
 	ActionID              string `gorm:"primaryKey;size:128"`
 	AssetID               string `gorm:"size:128;not null;uniqueIndex:ux_product_approved_asset_id,priority:2"`
 	ProductKey            string `gorm:"size:128;not null;index:ix_product_approved_inventory,priority:2"`
-	SourceSnapshotVersion uint64 `gorm:"not null;index:ix_product_approved_inventory,priority:3"`
+	TargetPlatform        string `gorm:"size:128;not null;index:ix_product_approved_inventory,priority:3"`
+	SourceSnapshotVersion uint64 `gorm:"not null;index:ix_product_approved_inventory,priority:4"`
 	PayloadJSON           []byte `gorm:"type:json;not null"`
 }
 
@@ -30,24 +31,26 @@ type ApprovalReceiptRecord struct {
 func (ApprovalReceiptRecord) TableName() string { return "product_approval_receipts" }
 
 // ApprovedInventoryHeadRecord points at the one approval action whose full
-// asset set is currently authoritative for a tenant-qualified product.
+// asset set is currently authoritative for a tenant/product/target tuple.
 // Historical approved assets remain immutable and queryable for audit, while
 // consumers never have to infer recency from opaque run or action IDs.
 type ApprovedInventoryHeadRecord struct {
-	TenantID   string `gorm:"primaryKey;size:128"`
-	ProductKey string `gorm:"primaryKey;size:128"`
-	ActionID   string `gorm:"size:128;not null"`
+	TenantID       string `gorm:"primaryKey;size:128"`
+	ProductKey     string `gorm:"primaryKey;size:128"`
+	TargetPlatform string `gorm:"primaryKey;size:128"`
+	ActionID       string `gorm:"size:128;not null"`
 }
 
 func (ApprovedInventoryHeadRecord) TableName() string { return "product_approved_inventory_heads" }
 
 // ApprovedInventoryVersionHeadRecord points at the latest approval for one
-// immutable source snapshot. It is separate from the legacy current-head
-// table so existing deployments can add version pinning without rebuilding
-// that table's primary key.
+// immutable source snapshot and target. It is separate from the legacy
+// current-head table so existing deployments can add version pinning without
+// rebuilding that table's primary key.
 type ApprovedInventoryVersionHeadRecord struct {
 	TenantID              string `gorm:"primaryKey;size:128"`
 	ProductKey            string `gorm:"primaryKey;size:128"`
+	TargetPlatform        string `gorm:"primaryKey;size:128"`
 	SourceSnapshotVersion uint64 `gorm:"primaryKey;autoIncrement:false"`
 	ActionID              string `gorm:"size:128;not null"`
 }

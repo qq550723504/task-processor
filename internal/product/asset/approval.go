@@ -14,6 +14,7 @@ const MaxIdentityLength = 128
 type ApprovalCommit struct {
 	TenantID              string          `json:"tenant_id"`
 	ProductKey            string          `json:"product_key"`
+	TargetPlatform        string          `json:"target_platform,omitempty"`
 	ActionID              string          `json:"action_id"`
 	SourceSnapshotVersion uint64          `json:"source_snapshot_version,omitempty"`
 	Assets                []ApprovedAsset `json:"assets"`
@@ -30,6 +31,9 @@ func ValidateApprovalCommit(commit ApprovalCommit) error {
 	}
 	if !validIdentityPart(commit.ProductKey) {
 		return fmt.Errorf("%w: product key must be non-empty and canonical", ErrInvalidApproval)
+	}
+	if commit.TargetPlatform != "" && !validIdentityPart(commit.TargetPlatform) {
+		return fmt.Errorf("%w: target platform must be canonical when provided", ErrInvalidApproval)
 	}
 	if !validIdentityPart(commit.ActionID) {
 		return fmt.Errorf("%w: action id must be non-empty and canonical", ErrInvalidApproval)
@@ -58,7 +62,8 @@ func ValidateApprovalCommit(commit ApprovalCommit) error {
 }
 
 func ValidateInventoryScope(scope InventoryScope) error {
-	if !validIdentityPart(scope.TenantID) || !validIdentityPart(scope.ProductKey) {
+	if !validIdentityPart(scope.TenantID) || !validIdentityPart(scope.ProductKey) ||
+		(scope.TargetPlatform != "" && !validIdentityPart(scope.TargetPlatform)) {
 		return ErrInvalidInventoryScope
 	}
 	return nil

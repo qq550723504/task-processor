@@ -2,7 +2,9 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 
+	listingplatform "task-processor/internal/listing/platform"
 	productasset "task-processor/internal/product/asset"
 )
 
@@ -34,4 +36,39 @@ func (p standardWorkflowAssetPhase) run(ctx context.Context, scope productasset.
 		}
 	}
 	return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+}
+
+// runForPlatforms verifies every selected target has an approval inventory.
+// The scalar ListingKit result can only safely consume one common inventory,
+// so divergent target inventories fail closed instead of letting one target's
+// head stand in for another target.
+func (p standardWorkflowAssetPhase) runForPlatforms(ctx context.Context, scope productasset.InventoryScope, platforms []string) (productasset.ApprovedAssetInventory, error) {
+	if len(platforms) == 0 {
+		return p.run(ctx, scope)
+	}
+	var common productasset.ApprovedAssetInventory
+	for index, platform := range platforms {
+		targetScope := scope
+		targetScope.TargetPlatform = platform
+		inventory, err := p.run(ctx, targetScope)
+		if err != nil {
+			return productasset.ApprovedAssetInventory{}, err
+		}
+		if index == 0 {
+			common = inventory
+			continue
+		}
+		if !reflect.DeepEqual(common.Assets, inventory.Assets) {
+			return productasset.ApprovedAssetInventory{}, productasset.ErrRepositoryStateInvalid
+		}
+	}
+	common.Scope = scope
+	return common, nil
+}
+
+func selectedInventoryPlatforms(task *Task) []string {
+	if task == nil || task.Request == nil {
+		return nil
+	}
+	return listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms)
 }

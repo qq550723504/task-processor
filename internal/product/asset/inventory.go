@@ -3,6 +3,7 @@ package asset
 type InventoryScope struct {
 	TenantID              string `json:"tenant_id"`
 	ProductKey            string `json:"product_key"`
+	TargetPlatform        string `json:"target_platform,omitempty"`
 	SourceSnapshotVersion uint64 `json:"source_snapshot_version,omitempty"`
 }
 

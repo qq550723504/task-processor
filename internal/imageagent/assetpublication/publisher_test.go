@@ -41,6 +41,25 @@ func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
 	require.Equal(t, []string{"render_scene"}, inventory.Assets[1].Operations)
 }
 
+func TestPublisherPersistsRunTargetPlatformInApprovalScope(t *testing.T) {
+	projection := approvedV3Projection(t)
+	projection.Run.TargetPlatform = "shein"
+	repository := assettest.NewMemoryRepository()
+	publisher, err := NewPublisher(staticProjectionSource{projection: projection}, repository, staticPublicURLResolver{})
+	require.NoError(t, err)
+
+	_, err = publisher.PublishApprovedV3(context.Background(), approvedV3PublicationInput(projection))
+	require.NoError(t, err)
+	_, err = repository.GetApprovedInventory(context.Background(), productasset.InventoryScope{
+		TenantID: projection.Run.TenantID, ProductKey: projection.AssetCatalog.ProductContext.ProductID, TargetPlatform: "shein",
+	})
+	require.NoError(t, err)
+	_, err = repository.GetApprovedInventory(context.Background(), productasset.InventoryScope{
+		TenantID: projection.Run.TenantID, ProductKey: projection.AssetCatalog.ProductContext.ProductID, TargetPlatform: "amazon",
+	})
+	require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
+}
+
 func TestPublisherBindsApprovalToCatalogSourceSnapshot(t *testing.T) {
 	projection := approvedV3Projection(t)
 	projection.AssetCatalog.ProductContext.SourceSnapshotVersion = 7

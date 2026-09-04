@@ -61,6 +61,25 @@ func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
 	require.Equal(t, "product-1", reviewer.request.Product.ProductKey)
 }
 
+func TestExecutorClassifiesReviewerTransportFailureSeparately(t *testing.T) {
+	reviewer := &failingProductReviewer{err: context.DeadlineExceeded}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
+		Reviewer:      reviewer, UsageQuoter: testProductUsageQuoter{},
+		ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+	})
+
+	generated, err := executor.GenerateSlot(context.Background(), testProductImageExecutionInput())
+
+	require.Error(t, err)
+	require.Len(t, generated.Assets, 1)
+	transportOutput, ok := imageagent.ReviewTransportOutput(err)
+	require.True(t, ok, "reviewer transport failures must preserve staged output as a distinct error")
+	require.Len(t, transportOutput.Assets, 1)
+	_, qualityReview := imageagent.ReviewRequiredOutput(err)
+	require.False(t, qualityReview, "transport failure must not be classified as a low-score decision")
+}
+
 func TestFrozenV2ExecutorAcceptsHistoricalInputWithoutV3PolicyFields(t *testing.T) {
 	executor := NewFrozenV2ProductImageSlotExecutor(Dependencies{
 		SceneRenderer: &recordingProductSceneRenderer{candidates: []productimage.Candidate{testSceneCandidate(t, "https://source.example/item.png")}},
@@ -312,6 +331,12 @@ type recordingProductSceneRenderer struct {
 type recordingProductReviewer struct {
 	review  productimage.Review
 	request productimage.ReviewRequest
+}
+
+type failingProductReviewer struct{ err error }
+
+func (r *failingProductReviewer) Review(context.Context, productimage.ReviewRequest) (productimage.Review, error) {
+	return productimage.Review{}, r.err
 }
 
 func (r *recordingProductReviewer) Review(_ context.Context, request productimage.ReviewRequest) (productimage.Review, error) {

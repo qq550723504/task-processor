@@ -14,10 +14,10 @@ func TestIndexedIdentityColumnSizesMatchDomainLimit(t *testing.T) {
 		value  any
 		fields []string
 	}{
-		{value: ApprovedAssetRecord{}, fields: []string{"TenantID", "RunID", "SlotID", "ActionID", "AssetID", "ProductKey"}},
+		{value: ApprovedAssetRecord{}, fields: []string{"TenantID", "RunID", "SlotID", "ActionID", "AssetID", "ProductKey", "TargetPlatform"}},
 		{value: ApprovalReceiptRecord{}, fields: []string{"TenantID", "ActionID"}},
-		{value: ApprovedInventoryHeadRecord{}, fields: []string{"TenantID", "ProductKey", "ActionID"}},
-		{value: ApprovedInventoryVersionHeadRecord{}, fields: []string{"TenantID", "ProductKey", "ActionID"}},
+		{value: ApprovedInventoryHeadRecord{}, fields: []string{"TenantID", "ProductKey", "TargetPlatform", "ActionID"}},
+		{value: ApprovedInventoryVersionHeadRecord{}, fields: []string{"TenantID", "ProductKey", "TargetPlatform", "ActionID"}},
 	} {
 		typeOfModel := reflect.TypeOf(model.value)
 		for _, fieldName := range model.fields {

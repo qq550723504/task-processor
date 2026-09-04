@@ -16,6 +16,29 @@ type SlotReviewRequiredError struct {
 	Cause  error
 }
 
+// SlotReviewTransportError preserves generated output when the reviewer could
+// not return a decision. It is intentionally distinct from a low-score review
+// so retry can re-run only the read-only review step.
+type SlotReviewTransportError struct {
+	Output SlotGeneratedOutput
+	Reason string
+	Cause  error
+}
+
+func (e *SlotReviewTransportError) Error() string {
+	if e == nil || e.Reason == "" {
+		return "image reviewer transport failed"
+	}
+	return fmt.Sprintf("image reviewer transport failed: %s", e.Reason)
+}
+
+func (e *SlotReviewTransportError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
 func (e *SlotReviewRequiredError) Error() string {
 	if e == nil || e.Reason == "" {
 		return "image review requires human intervention"
@@ -32,6 +55,14 @@ func (e *SlotReviewRequiredError) Unwrap() error {
 
 func ReviewRequiredOutput(err error) (SlotGeneratedOutput, bool) {
 	reviewErr, ok := err.(*SlotReviewRequiredError)
+	if !ok || reviewErr == nil {
+		return SlotGeneratedOutput{}, false
+	}
+	return reviewErr.Output, true
+}
+
+func ReviewTransportOutput(err error) (SlotGeneratedOutput, bool) {
+	reviewErr, ok := err.(*SlotReviewTransportError)
 	if !ok || reviewErr == nil {
 		return SlotGeneratedOutput{}, false
 	}

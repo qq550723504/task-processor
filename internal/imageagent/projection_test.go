@@ -78,6 +78,17 @@ func TestNormalizeRecoverableEffectsDeduplicatesStableEntriesAndRejectsConflicts
 	require.ErrorIs(t, err, ErrRevisionConflict)
 }
 
+func TestNormalizeRecoverableEffectsAcceptsReviewerTransportBlocks(t *testing.T) {
+	normalized, err := NormalizeRecoverableEffects([]RecoverableEffect{{
+		SlotID: "slot-1", Attempt: 1, Code: SlotReviewTransportRequiredCode,
+	}})
+
+	require.NoError(t, err)
+	require.Equal(t, []RecoverableEffect{{
+		SlotID: "slot-1", Attempt: 1, Code: SlotReviewTransportRequiredCode,
+	}}, normalized)
+}
+
 func TestValidateProjectionSnapshotRejectsRecoverableEffectWithoutMatchingBlockedSlot(t *testing.T) {
 	run := Run{ID: "run-a", TenantID: "tenant-a", UserID: "user-a", ActivePlanRevision: 1, Status: RunStatusBlocked}
 	plan := Plan{Revision: 1, IdempotencyKey: "plan-key", SourceAssetIDs: []string{"source-1"}, Slots: []Slot{{ID: "scene-1", Role: SlotRoleMain, IdempotencyKey: "scene-key", SourceAssetIDs: []string{"source-1"}, Status: SlotStatusPending}}}

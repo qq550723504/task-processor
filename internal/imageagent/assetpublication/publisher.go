@@ -142,7 +142,7 @@ func (p *Publisher) approvalCommitV2(projection imageagent.RunProjection, input 
 		return productasset.ApprovalCommit{}, "", imageagent.ErrRevisionConflict
 	}
 	commit := productasset.ApprovalCommit{
-		TenantID: input.TenantID, ProductKey: product.ProductID, ActionID: input.IdempotencyKey,
+		TenantID: input.TenantID, ProductKey: product.ProductID, TargetPlatform: strings.TrimSpace(projection.Run.TargetPlatform), ActionID: input.IdempotencyKey,
 		SourceSnapshotVersion: sourceSnapshotVersion(projection.AssetCatalog), Assets: approved,
 	}
 	if err := productasset.ValidateApprovalCommit(commit); err != nil {
@@ -224,7 +224,7 @@ func (p *Publisher) approvalCommit(projection imageagent.RunProjection, input im
 		return productasset.ApprovalCommit{}, "", imageagent.ErrRevisionConflict
 	}
 	commit := productasset.ApprovalCommit{
-		TenantID: input.TenantID, ProductKey: product.ProductID, ActionID: input.IdempotencyKey,
+		TenantID: input.TenantID, ProductKey: product.ProductID, TargetPlatform: strings.TrimSpace(projection.Run.TargetPlatform), ActionID: input.IdempotencyKey,
 		SourceSnapshotVersion: sourceSnapshotVersion(projection.AssetCatalog), Assets: approved,
 	}
 	if err := productasset.ValidateApprovalCommit(commit); err != nil {

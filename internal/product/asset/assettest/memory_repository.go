@@ -27,8 +27,9 @@ type actionKey struct {
 }
 
 type inventoryKey struct {
-	tenantID   string
-	productKey string
+	tenantID       string
+	productKey     string
+	targetPlatform string
 }
 
 type versionedInventoryKey struct {
@@ -89,7 +90,7 @@ func (r *MemoryRepository) CommitApproval(ctx context.Context, commit asset.Appr
 	storedCommit := asset.CloneApprovalCommit(commit)
 	storedReceipt := asset.CloneApprovalReceipt(receipt)
 	r.actions[key] = actionRecord{commit: storedCommit, receipt: storedReceipt}
-	invKey := inventoryKey{tenantID: commit.TenantID, productKey: commit.ProductKey}
+	invKey := inventoryKey{tenantID: commit.TenantID, productKey: commit.ProductKey, targetPlatform: commit.TargetPlatform}
 	r.heads[invKey] = key
 	if commit.SourceSnapshotVersion > 0 {
 		r.versionedHeads[versionedInventoryKey{inventoryKey: invKey, version: commit.SourceSnapshotVersion}] = key
@@ -113,7 +114,7 @@ func (r *MemoryRepository) GetApprovedInventory(ctx context.Context, scope asset
 	if err := ctx.Err(); err != nil {
 		return asset.ApprovedAssetInventory{}, err
 	}
-	invKey := inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey}
+	invKey := inventoryKey{tenantID: scope.TenantID, productKey: scope.ProductKey, targetPlatform: scope.TargetPlatform}
 	var head actionKey
 	var ok bool
 	if scope.SourceSnapshotVersion > 0 {
@@ -125,7 +126,7 @@ func (r *MemoryRepository) GetApprovedInventory(ctx context.Context, scope asset
 		return asset.ApprovedAssetInventory{}, asset.ErrApprovedAssetsNotReady
 	}
 	record, ok := r.actions[head]
-	if !ok || record.commit.ProductKey != scope.ProductKey || len(record.commit.Assets) == 0 {
+	if !ok || record.commit.ProductKey != scope.ProductKey || record.commit.TargetPlatform != scope.TargetPlatform || len(record.commit.Assets) == 0 {
 		return asset.ApprovedAssetInventory{}, asset.ErrRepositoryStateInvalid
 	}
 	return asset.CloneApprovedAssetInventory(asset.ApprovedAssetInventory{Scope: scope, Assets: record.commit.Assets}), nil
@@ -198,6 +199,32 @@ func ExerciseRepositoryContract(t *testing.T, factory RepositoryFactory) {
 		assertNoError(t, err)
 		if len(current.Assets) != 1 || current.Assets[0].ID != "asset-v2" {
 			t.Fatalf("current inventory = %+v, want asset-v2", current)
+		}
+	})
+
+	t.Run("target platform approvals remain isolated", func(t *testing.T) {
+		repo := factory(t)
+		amazon := contractCommit("tenant-a", "product-targeted", "approve-amazon", "asset-amazon")
+		amazon.TargetPlatform = "amazon"
+		shein := contractCommit("tenant-a", "product-targeted", "approve-shein", "asset-shein")
+		shein.TargetPlatform = "shein"
+		assertNoError(t, commitOnly(repo, amazon))
+		assertNoError(t, commitOnly(repo, shein))
+
+		for _, test := range []struct {
+			platform string
+			assetID  string
+		}{
+			{platform: "amazon", assetID: "asset-amazon"},
+			{platform: "shein", assetID: "asset-shein"},
+		} {
+			inventory, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{
+				TenantID: "tenant-a", ProductKey: "product-targeted", TargetPlatform: test.platform,
+			})
+			assertNoError(t, err)
+			if inventory.Scope.TargetPlatform != test.platform || len(inventory.Assets) != 1 || inventory.Assets[0].ID != test.assetID {
+				t.Fatalf("%s inventory = %+v, want only %s", test.platform, inventory, test.assetID)
+			}
 		}
 	})
 

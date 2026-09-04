@@ -4437,7 +4437,7 @@ func TestRegisterWorkerUsesExactModeBoundWorkflowAndActivitySets(t *testing.T) {
 			wantWorkflows: []string{workflowNameImageAgent, "ImageSlotWorkflowV3", EffectRecoveryWorkflowName, workflowNameCompatibilityCanary},
 			wantActivities: []string{
 				"imageagent.persist_run_state.v2", "imageagent.persist_workflow_failure.v1", "imageagent.persist_workflow_failure.v2", "imageagent.persist_plan_revision.v2", "imageagent.persist_pending_command.v2",
-				"imageagent.execute_slot.v3", "imageagent.start_effect_recovery.v3", "imageagent.recover_effect.v3", "imageagent.persist_recovery_blocked.v3", "imageagent.reconcile_effect_recovery.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
+				"imageagent.execute_slot.v3", "imageagent.review_staged_slot.v3", "imageagent.start_effect_recovery.v3", "imageagent.recover_effect.v3", "imageagent.persist_recovery_blocked.v3", "imageagent.reconcile_effect_recovery.v3", "imageagent.persist_slot_result.v3", "imageagent.publish_approved.v3",
 			},
 		},
 	}
