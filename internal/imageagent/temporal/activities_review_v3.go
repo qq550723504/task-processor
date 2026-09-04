@@ -34,6 +34,26 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
 		return imageagent.SlotEffectV3PublishedResult{}, err
 	}
+	if effect.Quote.Fingerprint != "" {
+		reservation.Policy, reservation.Quote = effect.Policy, effect.Quote
+	}
+	if input.BudgetAuthorization && hasPersistedHumanReviewOutcome(effect, input.ReviewActionID, imageagent.SlotExecutionFingerprint(executionInput)) {
+		if effect.Phase == imageagent.SlotEffectV3ReviewTransportRequired {
+			if _, err := resumeReviewRetrySlot(ctx, a.slotEffectsV3, reservation); err != nil {
+				return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+			}
+			effect.Phase = imageagent.SlotEffectV3StagingPrepared
+		}
+		if effect.Phase != imageagent.SlotEffectV3ReviewRequired {
+			if _, err := a.slotEffectsV3.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{
+				Reservation: reservation, Phase: imageagent.SlotEffectV3ReviewRequired,
+				Code: imageagent.SlotReviewRequiredCode,
+			}); err != nil {
+				return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(err)
+			}
+		}
+		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged image review requires human intervention", imageagent.SlotReviewRequiredCode, imageagent.ErrReviewDecision)
+	}
 	if effect.Phase == imageagent.SlotEffectV3ReviewRequired {
 		if input.BudgetAuthorization && !hasPersistedHumanReviewOutcome(effect, input.ReviewActionID, imageagent.SlotExecutionFingerprint(executionInput)) {
 			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged review block has no replayable human-review outcome", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrRevisionConflict)
