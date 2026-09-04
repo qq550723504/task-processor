@@ -482,10 +482,26 @@ func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) sourcing.P
 		Title:        strings.TrimSpace(product.Title),
 		Description:  product.NormalizedDescription(),
 		Brand:        strings.TrimSpace(product.Brand),
-		CategoryPath: sourcing.ParseCategoryPath(product.Category),
+		CategoryPath: alibaba1688CategoryPath(product.Category),
 		Attributes:   attributes,
 		Variants:     alibaba1688VariantCandidates(product.Variants, product.NormalizedCurrency()),
 	}
+}
+
+func alibaba1688CategoryPath(value string) []string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '>' || r == '/' || r == '|'
+	})
+	path := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			path = append(path, part)
+		}
+	}
+	if len(path) == 0 {
+		return nil
+	}
+	return path
 }
 
 func alibaba1688VariantCandidates(variants []Alibaba1688VariantSnapshot, currency string) []sourcing.ProductVariantCandidate {

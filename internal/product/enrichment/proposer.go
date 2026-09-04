@@ -54,11 +54,7 @@ func (p *proposer) Propose(ctx context.Context, request Request) (Proposal, erro
 	if err := ctx.Err(); err != nil {
 		return Proposal{}, err
 	}
-	candidate, err := p.generator.Generate(ctx, GenerationRequest{
-		Snapshot: generationInput.Snapshot,
-		Source:   generationInput.Source,
-		Policy:   generationInput.Policy,
-	})
+	candidate, err := p.generator.Generate(ctx, GenerationRequest(generationInput))
 	if contextErr := ctx.Err(); contextErr != nil {
 		return Proposal{}, contextErr
 	}

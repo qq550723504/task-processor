@@ -3,8 +3,10 @@ package temporal
 import (
 	"context"
 	"fmt"
+
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
+
 	"task-processor/internal/imageagent"
 )
 

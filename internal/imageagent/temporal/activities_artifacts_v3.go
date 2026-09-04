@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	sdkactivity "go.temporal.io/sdk/activity"
-	sdktemporal "go.temporal.io/sdk/temporal"
 	"os"
 	"path/filepath"
 	"strings"
+
+	sdkactivity "go.temporal.io/sdk/activity"
+	sdktemporal "go.temporal.io/sdk/temporal"
+
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/pkg/imagex"
