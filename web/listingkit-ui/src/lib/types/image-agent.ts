@@ -160,6 +160,7 @@ export type ImageAgentProjection = {
 };
 
 export type ImageAgentTaskLaunchInput = {
+  request_id: string;
   business_task_id: string;
   target_platform: string;
   image_policy_context: {

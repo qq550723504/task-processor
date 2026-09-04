@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { getImageAgentTaskAssets, launchImageAgentTaskRun } from "@/lib/api/image-agent";
@@ -31,6 +31,11 @@ export function ImageAgentTaskRunLauncher({
   const [error, setError] = useState<string>();
   const [sourceId, setSourceId] = useState("");
   const [styleIds, setStyleIds] = useState<string[]>([]);
+  const launchRequestId = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    launchRequestId.current = undefined;
+  }, [taskId, targetPlatform, country]);
 
   const preflightKey = open && targetPlatform
     ? `${encodeURIComponent(taskId)}|${encodeURIComponent(targetPlatform)}`
@@ -75,13 +80,21 @@ export function ImageAgentTaskRunLauncher({
 
   if (!open) {
     return (
-      <Button onClick={() => setOpen(true)} type="button" variant="secondary">
+      <Button
+        onClick={() => {
+          launchRequestId.current = undefined;
+          setOpen(true);
+        }}
+        type="button"
+        variant="secondary"
+      >
         创建图片方案
       </Button>
     );
   }
 
   const toggleStyle = (id: string) => {
+    launchRequestId.current = undefined;
     setStyleIds((current) =>
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
@@ -92,7 +105,10 @@ export function ImageAgentTaskRunLauncher({
     setCreating(true);
     setError(undefined);
     try {
+      const requestId = launchRequestId.current ?? globalThis.crypto.randomUUID();
+      launchRequestId.current = requestId;
       const created = await launchImageAgentTaskRun({
+        request_id: requestId,
         business_task_id: taskId,
         target_platform: targetPlatform,
         image_policy_context: {
@@ -103,6 +119,7 @@ export function ImageAgentTaskRunLauncher({
         source_asset_id: sourceId,
         style_asset_ids: styleIds.length > 0 ? styleIds : undefined,
       });
+      launchRequestId.current = undefined;
       onLaunched(created.run_id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "创建图片方案失败");
@@ -122,7 +139,15 @@ export function ImageAgentTaskRunLauncher({
             为当前任务启动图片 Agent 生成；创建后可在运行面板中调整素材与计划。
           </p>
         </div>
-        <Button onClick={() => setOpen(false)} size="sm" type="button" variant="ghost">
+        <Button
+          onClick={() => {
+            launchRequestId.current = undefined;
+            setOpen(false);
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
           取消
         </Button>
       </div>
@@ -151,7 +176,10 @@ export function ImageAgentTaskRunLauncher({
                 <input
                   checked={sourceId === asset.id}
                   name="image-agent-source-asset"
-                  onChange={() => setSourceId(asset.id)}
+                  onChange={() => {
+                    launchRequestId.current = undefined;
+                    setSourceId(asset.id);
+                  }}
                   type="radio"
                   value={asset.id}
                 />
@@ -201,7 +229,10 @@ export function ImageAgentTaskRunLauncher({
               <input
                 checked={sceneCategory === choice.value}
                 name="image-agent-scene-category"
-                onChange={() => setSceneCategory(choice.value)}
+                onChange={() => {
+                  launchRequestId.current = undefined;
+                  setSceneCategory(choice.value);
+                }}
                 type="radio"
                 value={choice.value}
               />

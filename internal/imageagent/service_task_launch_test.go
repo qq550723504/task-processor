@@ -52,9 +52,10 @@ func (r taskScopedCatalogResolver) Resolve(_ context.Context, scope imageagent.A
 
 func launchTaskRunInput() imageagent.TaskRunLaunchInput {
 	return imageagent.TaskRunLaunchInput{
+		RequestID:      "launch-request-1",
 		BusinessTaskID: "task-1", TargetPlatform: "shein",
 		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
-		SourceAssetID: "source-1",
+		SourceAssetID:      "source-1",
 	}
 }
 
@@ -159,6 +160,11 @@ func TestServiceLaunchTaskRunRequiresIdentityTaskAndPolicyContext(t *testing.T) 
 	require.ErrorIs(t, err, imageagent.ErrIdentityRequired)
 
 	ctx := verifiedContext("tenant-a", "user-a")
+	missingRequestID := launchTaskRunInput()
+	missingRequestID.RequestID = " "
+	_, err = service.LaunchTaskRun(ctx, missingRequestID)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+
 	missingTask := launchTaskRunInput()
 	missingTask.BusinessTaskID = "  "
 	_, err = service.LaunchTaskRun(ctx, missingTask)
@@ -201,9 +207,9 @@ func TestServiceLaunchTaskRunRejectsTaskWithoutAuthorizedSourceAssets(t *testing
 // admissionGateTrackingCatalogResolver records the resolve call order so
 // tests can assert admission is checked before any catalog work.
 type admissionGateTrackingCatalogResolver struct {
-	catalog    imageagent.AssetCatalog
-	startGate  *gateCallRecorder
-	resolved   int
+	catalog   imageagent.AssetCatalog
+	startGate *gateCallRecorder
+	resolved  int
 }
 
 func (r *admissionGateTrackingCatalogResolver) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
@@ -240,7 +246,7 @@ func TestServiceLaunchTaskRunChecksAdmissionBeforeResolvingAssets(t *testing.T) 
 	require.Empty(t, workflows.starts)
 }
 
-func TestServiceLaunchTaskRunReplaysStableLaunchIdentityWithoutDuplicateWorkflow(t *testing.T) {
+func TestServiceLaunchTaskRunUsesRequestIdentityForRetryDeduplication(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	workflows := &recordingWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, taskScopedCatalogResolver{catalog: launchCatalog()})
@@ -261,14 +267,21 @@ func TestServiceLaunchTaskRunReplaysStableLaunchIdentityWithoutDuplicateWorkflow
 	require.Len(t, workflows.starts, 2)
 	require.Equal(t, first.RunID, workflows.starts[1].Run.ID, "replay must re-dispatch the same workflow identity")
 
-	// A changed target payload must not collide with the replayed identity.
+	// A new user launch of the same payload must create a fresh run.
+	newLaunch := launchTaskRunInput()
+	newLaunch.RequestID = "launch-request-2"
+	third, err := service.LaunchTaskRun(ctx, newLaunch)
+	require.NoError(t, err)
+	require.NotEqual(t, first.RunID, third.RunID)
+	require.Len(t, workflows.starts, 3)
+
+	// Reusing one request identity with a changed payload is a conflict, not a
+	// new paid execution hidden behind the same retry key.
 	changed := launchTaskRunInput()
 	changed.SourceAssetID = "source-2"
-	third, err := service.LaunchTaskRun(ctx, changed)
-	require.NoError(t, err)
-	require.NotEqual(t, first.RunID, third.RunID, "changed payload must use a different launch identity")
+	_, err = service.LaunchTaskRun(ctx, changed)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
 	require.Len(t, workflows.starts, 3)
-	require.Equal(t, third.RunID, workflows.starts[2].Run.ID)
 }
 
 func TestServicePreflightTaskRunAssetsListsSelectableAssets(t *testing.T) {

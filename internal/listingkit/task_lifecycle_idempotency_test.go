@@ -69,7 +69,7 @@ func (s *countingTaskSubmitter) submitted() []string {
 	return append([]string(nil), s.ids...)
 }
 
-func TestCreateGenerateTaskReplaysSourceIdempotencyKeyWithoutDuplicateDispatch(t *testing.T) {
+func TestCreateGenerateTaskReplaysSourceIdempotencyKeyAndRedispatchesPendingTask(t *testing.T) {
 	submitter := &countingTaskSubmitter{}
 	repo := newDuplicateRejectingRepo(submitter)
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
@@ -99,8 +99,39 @@ func TestCreateGenerateTaskReplaysSourceIdempotencyKeyWithoutDuplicateDispatch(t
 	if second == nil || second.ID != first.ID {
 		t.Fatalf("replayed task ID = %v, want %v", secondTaskID(second), first.ID)
 	}
-	if submitted := repo.submittedTaskIDs(); len(submitted) != 1 {
-		t.Fatalf("submitted task IDs = %v, want exactly one dispatch", submitted)
+	if submitted := repo.submittedTaskIDs(); len(submitted) != 2 {
+		t.Fatalf("submitted task IDs = %v, want the pending replay redispatched", submitted)
+	}
+}
+
+func TestCreateGenerateTaskRedispatchesMatchingPendingTaskAfterCommitDispatchGap(t *testing.T) {
+	submitter := &countingTaskSubmitter{}
+	repo := newDuplicateRejectingRepo(submitter)
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo, taskSubmitter: func() TaskSubmitter { return submitter },
+	})
+	ctx := WithTenantID(context.Background(), "101")
+	request := &GenerateRequest{
+		TenantID: "101", ProductKey: "crawler:1688:777", Platforms: []string{"amazon"},
+		IdempotencyKey: "source-run:commit-dispatch-gap",
+	}
+	preparedCtx, pending, err := lifecycle.prepareGenerateTask(ctx, request)
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+	if err := repo.CreateTask(preparedCtx, pending); err != nil {
+		t.Fatalf("seed committed pending task: %v", err)
+	}
+
+	replayed, err := lifecycle.CreateGenerateTask(ctx, request)
+	if err != nil {
+		t.Fatalf("replayed CreateGenerateTask() error = %v", err)
+	}
+	if replayed == nil || replayed.ID != pending.ID {
+		t.Fatalf("replayed task = %+v, want %s", replayed, pending.ID)
+	}
+	if submitted := submitter.submitted(); len(submitted) != 1 || submitted[0] != pending.ID {
+		t.Fatalf("submitted task IDs = %v, want pending task redispatched once", submitted)
 	}
 }
 
@@ -273,8 +304,8 @@ func TestCreateGenerateTaskReplaysSameIdempotencyKeyWithIdenticalTargetPayload(t
 	if second == nil || second.ID != first.ID {
 		t.Fatalf("replayed task ID = %v, want %v", secondTaskID(second), first.ID)
 	}
-	if submitted := repo.submittedTaskIDs(); len(submitted) != 1 {
-		t.Fatalf("submitted task IDs = %v, want exactly one dispatch", submitted)
+	if submitted := repo.submittedTaskIDs(); len(submitted) != 2 {
+		t.Fatalf("submitted task IDs = %v, want the pending replay redispatched", submitted)
 	}
 }
 

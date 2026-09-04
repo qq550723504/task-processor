@@ -96,7 +96,7 @@ func TestNewServiceRollsBackStudioRetirementWhenDefaultCatalogSyncFails(t *testi
 
 func TestNewServiceMigratesStudioEntitlementsWithoutPlanOrExistingReplacement(t *testing.T) {
 	db := openUsageLedgerTestDB(t)
-	now := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(24 * time.Hour)
 	seed := []any{
 		&subscriptionModuleRow{Code: retiredStudioModuleCode, Name: "Studio", Active: true},
 		&tenantEntitlementRow{TenantID: "tenant-no-plan", ModuleCode: retiredStudioModuleCode, Status: StatusActive, LimitsJSON: `{"design_jobs":7,"product_image_jobs":9,"shein_drafts_succeeded":11}`, ExpiresAt: &now},
@@ -142,6 +142,81 @@ func TestNewServiceMigratesStudioEntitlementsWithoutPlanOrExistingReplacement(t 
 	}
 
 	assertRowCount(t, db, &tenantEntitlementRow{}, "tenant_id = ? AND module_code = ?", 0, "tenant-expired", ModuleListingKit)
+}
+
+func TestNewServiceReplacesUnusableListingKitEntitlementDuringStudioMigration(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	now := time.Now().UTC()
+	future := now.Add(24 * time.Hour)
+	shorterFuture := now.Add(12 * time.Hour)
+	past := now.Add(-24 * time.Hour)
+	tests := []struct {
+		tenant    string
+		status    string
+		startsAt  *time.Time
+		expiresAt *time.Time
+	}{
+		{tenant: "tenant-disabled", status: StatusDisabled},
+		{tenant: "tenant-expired-status", status: StatusExpired},
+		{tenant: "tenant-not-started", status: StatusActive, startsAt: &future},
+		{tenant: "tenant-expired-window", status: StatusActive, expiresAt: &past},
+		{tenant: "tenant-short-window", status: StatusActive, expiresAt: &shorterFuture},
+	}
+	for _, tt := range tests {
+		if err := db.Create(&tenantEntitlementRow{TenantID: tt.tenant, ModuleCode: retiredStudioModuleCode, Status: StatusTrialing, LimitsJSON: `{"design_jobs":7}`}).Error; err != nil {
+			t.Fatalf("seed studio entitlement: %v", err)
+		}
+		if err := db.Create(&tenantEntitlementRow{TenantID: tt.tenant, ModuleCode: ModuleListingKit, Status: tt.status, StartsAt: tt.startsAt, ExpiresAt: tt.expiresAt, LimitsJSON: `{"listingkit_generations_succeeded":1}`}).Error; err != nil {
+			t.Fatalf("seed listingkit entitlement: %v", err)
+		}
+	}
+
+	if _, err := NewService(NewGormRepository(db)); err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	for _, tt := range tests {
+		var got tenantEntitlementRow
+		if err := db.Where("tenant_id = ? AND module_code = ?", tt.tenant, ModuleListingKit).Take(&got).Error; err != nil {
+			t.Fatalf("load replacement for %s: %v", tt.tenant, err)
+		}
+		if got.Status != StatusTrialing || got.StartsAt != nil || got.ExpiresAt != nil {
+			t.Fatalf("replacement for %s = %+v, want usable migrated trial", tt.tenant, got)
+		}
+		limits, err := unmarshalLimits(got.LimitsJSON)
+		if err != nil || limits["listingkit_generations_succeeded"] != 7 {
+			t.Fatalf("replacement limits for %s = %+v, err %v", tt.tenant, limits, err)
+		}
+	}
+}
+
+func TestNewServicePreservesFutureStudioEntitlementWindow(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	startsAt := time.Now().UTC().Add(24 * time.Hour)
+	expiresAt := startsAt.Add(7 * 24 * time.Hour)
+	if err := db.Create(&tenantEntitlementRow{
+		TenantID: "tenant-future-studio", ModuleCode: retiredStudioModuleCode,
+		Status: StatusActive, StartsAt: &startsAt, ExpiresAt: &expiresAt,
+		LimitsJSON: `{"design_jobs":9}`,
+	}).Error; err != nil {
+		t.Fatalf("seed future Studio entitlement: %v", err)
+	}
+	if err := db.Create(&tenantEntitlementRow{
+		TenantID: "tenant-future-studio", ModuleCode: ModuleListingKit,
+		Status: StatusDisabled, LimitsJSON: `{"listingkit_generations_succeeded":1}`,
+	}).Error; err != nil {
+		t.Fatalf("seed disabled ListingKit entitlement: %v", err)
+	}
+
+	if _, err := NewService(NewGormRepository(db)); err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	var got tenantEntitlementRow
+	if err := db.Where("tenant_id = ? AND module_code = ?", "tenant-future-studio", ModuleListingKit).Take(&got).Error; err != nil {
+		t.Fatalf("load migrated future entitlement: %v", err)
+	}
+	if got.Status != StatusActive || got.StartsAt == nil || !got.StartsAt.Equal(startsAt) || got.ExpiresAt == nil || !got.ExpiresAt.Equal(expiresAt) {
+		t.Fatalf("future ListingKit entitlement = %+v, want preserved Studio window", got)
+	}
 }
 
 func seedRetiredStudioSubscriptionGraph(t *testing.T, db *gorm.DB) {

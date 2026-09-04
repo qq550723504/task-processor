@@ -128,6 +128,9 @@ type StartRunInput struct {
 // the image policy context; ImageAgent owns the durable run identity, plan,
 // and budget shape so the browser never constructs plan payloads directly.
 type TaskRunLaunchInput struct {
+	// RequestID identifies one intentional browser launch. Transport retries
+	// reuse it; a later user-initiated regeneration supplies a fresh value.
+	RequestID          string
 	BusinessTaskID     string
 	TargetPlatform     string
 	ImagePolicyContext ImagePolicyContext

@@ -115,6 +115,7 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 type launchTaskRunRequest struct {
+	RequestID          string                `json:"request_id"`
 	BusinessTaskID     string                `json:"business_task_id"`
 	TargetPlatform     string                `json:"target_platform"`
 	ImagePolicyContext imagePolicyContextDTO `json:"image_policy_context"`
@@ -135,6 +136,7 @@ func (h *Handler) LaunchTaskRun(c *gin.Context) {
 		return
 	}
 	result, err := h.application.LaunchTaskRun(c.Request.Context(), imageagent.TaskRunLaunchInput{
+		RequestID:          request.RequestID,
 		BusinessTaskID:     request.BusinessTaskID,
 		TargetPlatform:     request.TargetPlatform,
 		ImagePolicyContext: request.ImagePolicyContext.domain(),

@@ -61,6 +61,9 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 			}
 			return nil, fmt.Errorf("failed to create task: %w", err)
 		} else if replayed != nil {
+			if replayed.Status == core.TaskStatusPending {
+				return s.dispatchGenerateTask(ctx, replayed)
+			}
 			return replayed, nil
 		}
 		return nil, fmt.Errorf("failed to create task: %w", err)
@@ -83,8 +86,9 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 // payload matches the replayed request, ErrGenerateTaskIdempotencyConflict
 // when the same key carries a different target payload, and (nil, nil) when
 // no idempotency key is present or no task exists so the caller surfaces the
-// original creation error. Replays never re-dispatch: the existing task keeps
-// its current lifecycle and the task retry/requeue flows own any redelivery.
+// original creation error. The caller re-dispatches a matching pending task to
+// close the crash window between the task commit and workflow submission; the
+// stable task/workflow identity makes that redelivery idempotent.
 func (s *taskLifecycleService) replayIdempotentGenerateTask(ctx context.Context, task *Task) (*Task, error) {
 	if task == nil || task.Request == nil || strings.TrimSpace(task.Request.IdempotencyKey) == "" {
 		return nil, nil

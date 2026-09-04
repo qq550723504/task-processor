@@ -28,10 +28,14 @@ describe("ImageAgentTaskRunLauncher", () => {
   const onLaunched = vi.fn();
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     mocks.getImageAgentTaskAssets.mockReset();
     mocks.launchImageAgentTaskRun.mockReset();
     onLaunched.mockReset();
     mocks.getImageAgentTaskAssets.mockResolvedValue(taskAssets);
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-4111-8111-111111111111")
+      .mockReturnValueOnce("22222222-2222-4222-8222-222222222222");
   });
 
   it("requires an explicit source asset and launches with it", async () => {
@@ -58,6 +62,7 @@ describe("ImageAgentTaskRunLauncher", () => {
     await vi.waitFor(() => expect(onLaunched).toHaveBeenCalledWith("image-agent-run-1"));
     expect(mocks.getImageAgentTaskAssets).toHaveBeenCalledWith("task-1", "shein", expect.anything());
     expect(mocks.launchImageAgentTaskRun).toHaveBeenCalledWith({
+      request_id: "11111111-1111-4111-8111-111111111111",
       business_task_id: "task-1",
       target_platform: "shein",
       image_policy_context: { country: "us", family: "default", scene_category: "shoes" },
@@ -109,6 +114,40 @@ describe("ImageAgentTaskRunLauncher", () => {
     expect(alert.textContent).toContain("image agent command is not valid");
     expect(onLaunched).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "开始生成" })).toBeEnabled();
+  });
+
+  it("reuses a request identity after an uncertain failure and rotates it after success", async () => {
+    mocks.launchImageAgentTaskRun
+      .mockRejectedValueOnce(new Error("connection lost"))
+      .mockResolvedValueOnce({ run_id: "image-agent-run-replayed", status: "accepted" })
+      .mockResolvedValueOnce({ run_id: "image-agent-run-new", status: "accepted" });
+    const user = userEvent.setup();
+    render(
+      <ImageAgentTaskRunLauncher
+        taskId="task-1"
+        targetPlatform="shein"
+        onLaunched={onLaunched}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "创建图片方案" }));
+    await user.click(await screen.findByLabelText("Source 1"));
+    await user.click(screen.getByLabelText("鞋履"));
+    await user.click(screen.getByRole("button", { name: "开始生成" }));
+    await screen.findByText("connection lost");
+    await user.click(screen.getByRole("button", { name: "开始生成" }));
+
+    await vi.waitFor(() => expect(onLaunched).toHaveBeenCalledWith("image-agent-run-replayed"));
+    const first = mocks.launchImageAgentTaskRun.mock.calls[0]?.[0];
+    const retry = mocks.launchImageAgentTaskRun.mock.calls[1]?.[0];
+    expect(first.request_id).toBe("11111111-1111-4111-8111-111111111111");
+    expect(retry.request_id).toBe(first.request_id);
+    await user.click(screen.getByRole("button", { name: "开始生成" }));
+    await vi.waitFor(() => expect(mocks.launchImageAgentTaskRun).toHaveBeenCalledTimes(3));
+    expect(mocks.launchImageAgentTaskRun.mock.calls[2]?.[0].request_id).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(globalThis.crypto.randomUUID).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces preflight failures without offering a launch", async () => {

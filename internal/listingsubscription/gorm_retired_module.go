@@ -3,6 +3,7 @@ package listingsubscription
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -29,8 +30,9 @@ func (r *GormRepository) SyncDefaultCatalog(ctx context.Context, modules []Modul
 // Tenants must not lose ListingKit access merely because the startup catalog
 // sync removed the module row before an administrator reapplies a plan.
 func migrateRetiredStudioEntitlements(tx *gorm.DB, plans []PlanBundle) error {
+	now := time.Now().UTC()
 	var retired []tenantEntitlementRow
-	if err := tx.Where("module_code = ? AND status IN ?", retiredSystemStudioModuleCode, []string{StatusActive, StatusTrialing}).
+	if err := tx.Where("module_code = ? AND status IN ? AND (expires_at IS NULL OR expires_at > ?)", retiredSystemStudioModuleCode, []string{StatusActive, StatusTrialing}, now).
 		Find(&retired).Error; err != nil {
 		return err
 	}
@@ -40,12 +42,12 @@ func migrateRetiredStudioEntitlements(tx *gorm.DB, plans []PlanBundle) error {
 	planLimits := listingKitPlanLimitsByPlan(plans)
 	for _, row := range retired {
 		var existing tenantEntitlementRow
-		err := tx.Where("tenant_id = ? AND module_code = ?", row.TenantID, ModuleListingKit).Take(&existing).Error
-		if err == nil {
+		lookupErr := tx.Where("tenant_id = ? AND module_code = ?", row.TenantID, ModuleListingKit).Take(&existing).Error
+		if lookupErr == nil && entitlementRowCovers(existing, row, now) {
 			continue
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return lookupErr
 		}
 		limits, ok := tenantPlanListingKitLimits(tx, row.TenantID, planLimits)
 		if !ok {
@@ -55,15 +57,47 @@ func migrateRetiredStudioEntitlements(tx *gorm.DB, plans []PlanBundle) error {
 		if err != nil {
 			return err
 		}
-		replacement := tenantEntitlementRow{
-			TenantID: row.TenantID, ModuleCode: ModuleListingKit, Status: row.Status,
-			StartsAt: row.StartsAt, ExpiresAt: row.ExpiresAt, LimitsJSON: limitsJSON,
-		}
-		if err := tx.Create(&replacement).Error; err != nil {
-			return err
+		if lookupErr == nil {
+			if err := tx.Model(&existing).Updates(map[string]any{
+				"status": row.Status, "starts_at": row.StartsAt,
+				"expires_at": row.ExpiresAt, "limits": limitsJSON,
+			}).Error; err != nil {
+				return err
+			}
+		} else {
+			replacement := tenantEntitlementRow{
+				TenantID: row.TenantID, ModuleCode: ModuleListingKit, Status: row.Status,
+				StartsAt: row.StartsAt, ExpiresAt: row.ExpiresAt, LimitsJSON: limitsJSON,
+			}
+			if err := tx.Create(&replacement).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// entitlementRowCovers reports whether the replacement preserves all access
+// still available from the retired entitlement. Current usability alone is
+// insufficient when the replacement expires before the entitlement it replaces.
+func entitlementRowCovers(replacement, retired tenantEntitlementRow, now time.Time) bool {
+	if replacement.Status != StatusActive && replacement.Status != StatusTrialing {
+		return false
+	}
+	requiredStart := now
+	if retired.StartsAt != nil && retired.StartsAt.After(requiredStart) {
+		requiredStart = *retired.StartsAt
+	}
+	if replacement.StartsAt != nil && replacement.StartsAt.After(requiredStart) {
+		return false
+	}
+	if replacement.ExpiresAt != nil && !requiredStart.Before(*replacement.ExpiresAt) {
+		return false
+	}
+	if retired.ExpiresAt == nil {
+		return replacement.ExpiresAt == nil
+	}
+	return replacement.ExpiresAt == nil || !replacement.ExpiresAt.Before(*retired.ExpiresAt)
 }
 
 func listingKitPlanLimitsByPlan(plans []PlanBundle) map[string]map[string]int {

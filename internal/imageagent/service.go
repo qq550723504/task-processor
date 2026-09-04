@@ -187,11 +187,15 @@ func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (
 	if err != nil {
 		return TaskRunLaunchResult{}, err
 	}
+	input.RequestID = strings.TrimSpace(input.RequestID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
 	input.TargetPlatform = strings.ToLower(strings.TrimSpace(input.TargetPlatform))
 	input.SourceAssetID = strings.TrimSpace(input.SourceAssetID)
-	if input.BusinessTaskID == "" {
-		return TaskRunLaunchResult{}, fmt.Errorf("%w: business task ID is required", ErrValidation)
+	if input.RequestID == "" || input.BusinessTaskID == "" {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: request ID and business task ID are required", ErrValidation)
+	}
+	if err := validatePersistedIdempotencyKey("launch request", input.RequestID); err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	if err := ValidateImagePolicyContext(input.TargetPlatform, input.ImagePolicyContext); err != nil {
 		return TaskRunLaunchResult{}, err
@@ -209,7 +213,7 @@ func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (
 	if input.SourceAssetID == "" {
 		return TaskRunLaunchResult{}, fmt.Errorf("%w: source_asset_id must select one task-owned source asset", ErrValidation)
 	}
-	runID, runIdempotencyKey := taskLaunchRunIdentity(identity, input, styleIDs)
+	runID, runIdempotencyKey := taskLaunchRunIdentity(identity, input)
 	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{
 		TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID,
 		RunID: runID, TargetPlatform: input.TargetPlatform,
@@ -296,17 +300,13 @@ func (s *Service) PreflightTaskRunAssets(ctx context.Context, input TaskRunAsset
 	return preflight, nil
 }
 
-// taskLaunchRunIdentity derives the durable run identity from the complete
-// launch payload. Identical retries map to the same run row so Start's
-// existing projection replay path absorbs lost responses; any payload change
-// (source, styles, platform, or policy context) produces a distinct identity
-// so it never collides with a different generation request.
-func taskLaunchRunIdentity(identity ExecutionIdentity, input TaskRunLaunchInput, styleIDs []string) (runID, idempotencyKey string) {
+// taskLaunchRunIdentity derives the durable run identity from a caller-stable
+// request identity. Retries of one launch map to the same run, while a later
+// intentional regeneration supplies a new request ID even when its generation
+// payload is identical. Start still rejects reuse of one ID with a new payload.
+func taskLaunchRunIdentity(identity ExecutionIdentity, input TaskRunLaunchInput) (runID, idempotencyKey string) {
 	payload := strings.Join([]string{
-		identity.TenantID, identity.UserID, input.BusinessTaskID, input.TargetPlatform,
-		input.ImagePolicyContext.Country,
-		input.ImagePolicyContext.Family, input.ImagePolicyContext.SceneCategory,
-		input.SourceAssetID, strings.Join(styleIDs, ","),
+		identity.TenantID, identity.UserID, input.BusinessTaskID, input.RequestID,
 	}, "\x00")
 	launchKey := uuid.NewSHA1(uuid.NameSpaceURL, []byte("task-processor:imageagent:task-launch:"+payload)).String()
 	return "image-agent-" + launchKey, "image-agent-run-" + launchKey

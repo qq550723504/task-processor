@@ -45,6 +45,7 @@ func TestLaunchTaskRunDecodesTaskScopedPayloadAndReturnsRunID(t *testing.T) {
 	handler := requireHandler(t, application)
 
 	response := performLaunchRequest(t, handler, `{
+		"request_id":"launch-request-1",
 		"business_task_id":"task-1",
 		"target_platform":"shein",
 		"image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},
@@ -55,6 +56,7 @@ func TestLaunchTaskRunDecodesTaskScopedPayloadAndReturnsRunID(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, response.Code)
 	require.JSONEq(t, `{"run_id":"image-agent-launched","status":"accepted"}`, response.Body.String())
 	require.Equal(t, "tenant-a", application.launchIdentity.TenantID)
+	require.Equal(t, "launch-request-1", application.launchInput.RequestID)
 	require.Equal(t, "task-1", application.launchInput.BusinessTaskID)
 	require.Equal(t, "shein", application.launchInput.TargetPlatform)
 	require.Equal(t, imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}, application.launchInput.ImagePolicyContext)
