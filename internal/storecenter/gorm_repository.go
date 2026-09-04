@@ -23,17 +23,21 @@ type GormStoreRepository struct {
 }
 
 type workbenchStoreRecord struct {
-	ID                       string         `gorm:"column:id;type:char(36);primaryKey;not null"`
+	ID                       string         `gorm:"column:id;type:char(36);primaryKey;not null;index:idx_workbench_stores_history_backfill_record,priority:2;index:idx_workbench_stores_history_backfill_resolution,priority:4"`
 	OrganizationID           string         `gorm:"column:organization_id;size:200;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:1;index:idx_workbench_stores_org_record_status_updated,priority:1;index:idx_workbench_stores_org_platform_region,priority:1;uniqueIndex:ux_workbench_stores_org_create_key,priority:1;uniqueIndex:ux_workbench_stores_org_identity_key,priority:1"`
 	Name                     string         `gorm:"column:name;not null"`
 	Platform                 string         `gorm:"column:platform;not null;index:idx_workbench_stores_org_platform_region,priority:2"`
 	Region                   string         `gorm:"column:region;not null;index:idx_workbench_stores_org_platform_region,priority:3"`
 	ExternalStoreID          string         `gorm:"column:external_store_id;not null"`
-	LifecycleStatus          string         `gorm:"column:lifecycle_status;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:2"`
-	RecordStatus             *string        `gorm:"column:record_status;size:32;index:idx_workbench_stores_org_record_status_updated,priority:2"`
+	LifecycleStatus          string         `gorm:"column:lifecycle_status;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:2;index:idx_workbench_stores_history_backfill_resolution,priority:2"`
+	RecordStatus             *string        `gorm:"column:record_status;size:32;index:idx_workbench_stores_org_record_status_updated,priority:2;index:idx_workbench_stores_history_backfill_record,priority:1"`
 	ServiceStatus            *string        `gorm:"column:service_status;size:32"`
 	ServiceStartedAt         *time.Time     `gorm:"column:service_started_at"`
 	ServiceExpiresAt         *time.Time     `gorm:"column:service_expires_at"`
+	ServiceHistoryResolution *string        `gorm:"column:service_history_resolution_status;size:32;index:idx_workbench_stores_history_resolution_updated,priority:1;index:idx_workbench_stores_history_backfill_resolution,priority:1"`
+	ServiceHistorySource     *string        `gorm:"column:service_history_source_identity;size:256"`
+	ServiceHistoryToken      *string        `gorm:"column:service_history_snapshot_token;size:64"`
+	ServiceHistoryResolvedAt *time.Time     `gorm:"column:service_history_resolved_at;index:idx_workbench_stores_history_resolution_updated,priority:2"`
 	ConnectionRef            string         `gorm:"column:connection_ref;not null"`
 	QuotaAllocationID        string         `gorm:"column:quota_allocation_id;type:char(36);not null"`
 	Version                  int64          `gorm:"column:version;not null"`
@@ -41,7 +45,7 @@ type workbenchStoreRecord struct {
 	UpdatedBy                string         `gorm:"column:updated_by;size:200;not null"`
 	CreatedAt                time.Time      `gorm:"column:created_at;not null"`
 	UpdatedAt                time.Time      `gorm:"column:updated_at;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:3;index:idx_workbench_stores_org_record_status_updated,priority:3"`
-	DeletedAt                gorm.DeletedAt `gorm:"column:deleted_at;index"`
+	DeletedAt                gorm.DeletedAt `gorm:"column:deleted_at;index;index:idx_workbench_stores_history_backfill_resolution,priority:3"`
 	CreateIdempotencyKey     string         `gorm:"column:create_idempotency_key;type:char(36);not null;uniqueIndex:ux_workbench_stores_org_create_key,priority:2"`
 	DeleteOperationKey       string         `gorm:"column:delete_operation_key;type:varchar(36);not null"`
 	IdentityKey              string         `gorm:"column:identity_key;size:64;not null;uniqueIndex:ux_workbench_stores_org_identity_key,priority:2"`
@@ -444,12 +448,18 @@ func (r *GormStoreRepository) loadActiveRecord(ctx context.Context, organization
 }
 
 func recordFromSnapshot(snapshot StoreSnapshot, identity, fingerprint string) workbenchStoreRecord {
+	createdAt := snapshot.CreatedAt.UTC()
+	historyStatus := historyResolutionNotApplicableNew
+	historySource := historySourceStoreCreate
+	historyToken := fingerprint
 	record := workbenchStoreRecord{
 		ID: snapshot.ID, OrganizationID: snapshot.OrganizationID, Name: snapshot.Name, Platform: string(snapshot.Platform), Region: snapshot.Region,
 		ExternalStoreID: snapshot.ExternalStoreID, LifecycleStatus: string(snapshot.LifecycleStatus), ConnectionRef: snapshot.ConnectionRef,
 		QuotaAllocationID: snapshot.QuotaAllocationID, Version: snapshot.Version, CreatedBy: snapshot.CreatedBy, UpdatedBy: snapshot.UpdatedBy,
 		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, CreateIdempotencyKey: snapshot.CreateIdempotencyKey, DeleteOperationKey: snapshot.DeleteOperationKey,
 		IdentityKey: identity, CreateRequestFingerprint: fingerprint,
+		ServiceHistoryResolution: &historyStatus, ServiceHistorySource: &historySource,
+		ServiceHistoryToken: &historyToken, ServiceHistoryResolvedAt: &createdAt,
 	}
 	record.applyCompatibilityState(compatibilityStateForNewStore(snapshot.LifecycleStatus))
 	if snapshot.DeletedAt != nil {
