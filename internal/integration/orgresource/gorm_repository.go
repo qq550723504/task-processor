@@ -29,6 +29,17 @@ func NewGormRepository(db *gorm.DB, config TransactionConfig) (*GormRepository, 
 }
 
 func (repository *GormRepository) ReplayWelcomeGrant(ctx context.Context, replay orgresource.WelcomeGrantReplay) (orgresource.WelcomeGrantResult, bool, error) {
+	var result orgresource.WelcomeGrantResult
+	var found bool
+	err := repository.runner.runRead(ctx, func(readContext context.Context) error {
+		var readErr error
+		result, found, readErr = repository.replayWelcomeGrantOnce(readContext, replay)
+		return readErr
+	})
+	return result, found, err
+}
+
+func (repository *GormRepository) replayWelcomeGrantOnce(ctx context.Context, replay orgresource.WelcomeGrantReplay) (orgresource.WelcomeGrantResult, bool, error) {
 	if result, found, err := repository.lookupOperation(ctx, repository.db, replay.OrganizationID, replay.OperationID, replay.RequestFingerprint); err != nil || found {
 		return result, found, err
 	}
@@ -43,10 +54,12 @@ func (repository *GormRepository) ReplayWelcomeGrant(ctx context.Context, replay
 }
 
 func (repository *GormRepository) ExecuteWelcomeGrant(ctx context.Context, input orgresource.WelcomeGrantExecution) (orgresource.WelcomeGrantResult, error) {
-	if result, found, err := repository.lookupOperation(ctx, repository.db, input.OrganizationID, input.OperationID, input.RequestFingerprint); err != nil || found {
-		return result, err
+	replay := orgresource.WelcomeGrantReplay{
+		OrganizationID: input.OrganizationID, OperationID: input.OperationID,
+		ResourceType: input.ResourceType, SourceType: input.SourceType,
+		SourceIdentity: input.SourceIdentity, RequestFingerprint: input.RequestFingerprint,
 	}
-	if result, found, err := repository.lookupSource(ctx, repository.db, input); err != nil || found {
+	if result, found, err := repository.ReplayWelcomeGrant(ctx, replay); err != nil || found {
 		return result, err
 	}
 
@@ -189,11 +202,7 @@ func (repository *GormRepository) ExecuteWelcomeGrant(ctx context.Context, input
 	// A COMMIT acknowledgement can be lost after PostgreSQL made every row
 	// durable. Always read the authoritative operation and source claim before
 	// deciding whether a failed call is safe to retry.
-	if result, found, lookupErr := repository.lookupOperation(ctx, repository.db, input.OrganizationID, input.OperationID, input.RequestFingerprint); lookupErr == nil && found {
-		result.Replayed = true
-		return result, nil
-	}
-	if result, found, lookupErr := repository.lookupSource(ctx, repository.db, input); lookupErr == nil && found {
+	if result, found, lookupErr := repository.ReplayWelcomeGrant(ctx, replay); lookupErr == nil && found {
 		result.Replayed = true
 		return result, nil
 	}

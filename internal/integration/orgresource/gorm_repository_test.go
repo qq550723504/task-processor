@@ -367,7 +367,7 @@ func (v *mutableEligibilityVerifier) VerifyWelcomeGrantEligibility(context.Conte
 
 func openSQLiteStore(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "orgresource.db")) + "?_busy_timeout=5000&_journal_mode=WAL"
+	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "orgresource.db")) + "?mode=rwc&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: dsn}, &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		t.Fatal(err)

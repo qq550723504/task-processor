@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
+
+	"task-processor/internal/ledger/orgresource"
 )
 
 func TestPostgresRetryClassifierUsesOnlyBoundedConcurrencyStates(t *testing.T) {
@@ -37,6 +40,37 @@ func TestTransactionRunnerStopsOnCallerCancellationBeforeDatabaseWork(t *testing
 	}
 	if called {
 		t.Fatal("operation ran after caller cancellation")
+	}
+}
+
+func TestTransactionRunnerRetriesTransientSQLiteReads(t *testing.T) {
+	runner := &transactionRunner{dialect: "sqlite", config: TransactionConfig{
+		MaxAttempts: 3, TotalRetryBudget: time.Second, TransactionTimeout: time.Second, BaseRetryDelay: time.Millisecond,
+	}.withDefaults()}
+	attempts := 0
+	err := runner.runRead(context.Background(), func(context.Context) error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("database is locked (5) (SQLITE_BUSY)")
+		}
+		return nil
+	})
+	if err != nil || attempts != 3 {
+		t.Fatalf("runRead() = %v after %d attempts, want success after 3", err, attempts)
+	}
+}
+
+func TestTransactionRunnerBoundsTransientReadRetries(t *testing.T) {
+	runner := &transactionRunner{dialect: "sqlite", config: TransactionConfig{
+		MaxAttempts: 2, TotalRetryBudget: time.Second, TransactionTimeout: time.Second, BaseRetryDelay: time.Millisecond,
+	}.withDefaults()}
+	attempts := 0
+	err := runner.runRead(context.Background(), func(context.Context) error {
+		attempts++
+		return errors.New("database is locked (5) (SQLITE_BUSY)")
+	})
+	if !errors.Is(err, orgresource.ErrConcurrencyRetry) || attempts != 2 {
+		t.Fatalf("runRead() = %v after %d attempts, want bounded concurrency retry", err, attempts)
 	}
 }
 

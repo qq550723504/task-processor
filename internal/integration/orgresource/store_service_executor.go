@@ -56,7 +56,14 @@ var _ storecenter.ServiceLifecycleExecutor = (*StoreServiceExecutor)(nil)
 var _ TransactionalStoreServiceStore = (*storecenter.GormStoreRepository)(nil)
 
 func (executor *StoreServiceExecutor) ReplayServiceLifecycle(ctx context.Context, replay storecenter.ServiceReplay) (storecenter.ServiceOperationResult, bool, error) {
-	return executor.lookupOperation(ctx, executor.db, replay.OrganizationID, replay.OperationID, replay.RequestFingerprint, false)
+	var result storecenter.ServiceOperationResult
+	var found bool
+	err := executor.runner.runRead(ctx, func(readContext context.Context) error {
+		var readErr error
+		result, found, readErr = executor.lookupOperation(readContext, executor.db, replay.OrganizationID, replay.OperationID, replay.RequestFingerprint, false)
+		return readErr
+	})
+	return result, found, err
 }
 
 func (executor *StoreServiceExecutor) ExecuteServiceLifecycle(ctx context.Context, input storecenter.ServiceExecution) (storecenter.ServiceOperationResult, error) {

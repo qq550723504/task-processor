@@ -88,6 +88,17 @@ func NewGormReservationRepository(db *gorm.DB, config TransactionConfig, owners 
 }
 
 func (repository *GormReservationRepository) ReplayReservation(ctx context.Context, replay orgresource.ReservationReplay) (orgresource.ReservationResult, bool, error) {
+	var result orgresource.ReservationResult
+	var found bool
+	err := repository.runner.runRead(ctx, func(readContext context.Context) error {
+		var readErr error
+		result, found, readErr = repository.replayReservationOnce(readContext, replay)
+		return readErr
+	})
+	return result, found, err
+}
+
+func (repository *GormReservationRepository) replayReservationOnce(ctx context.Context, replay orgresource.ReservationReplay) (orgresource.ReservationResult, bool, error) {
 	if result, found, err := repository.lookupOperation(ctx, repository.db, replay.OrganizationID, replay.OperationID, replay.RequestFingerprint); err != nil || found {
 		return result, found, err
 	}

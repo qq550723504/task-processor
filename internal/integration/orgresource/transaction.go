@@ -56,6 +56,27 @@ func newTransactionRunner(db *gorm.DB, config TransactionConfig) *transactionRun
 }
 
 func (runner *transactionRunner) run(ctx context.Context, operation func(*gorm.DB) error) error {
+	return runner.runWithRetry(ctx, func(transactionContext context.Context) error {
+		return runner.db.WithContext(transactionContext).Transaction(func(tx *gorm.DB) error {
+			if runner.dialect == "postgres" {
+				if setErr := setPostgresLocalTimeouts(tx, runner.config); setErr != nil {
+					return setErr
+				}
+			}
+			return operation(tx)
+		}, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	})
+}
+
+// runRead applies the same bounded transient-concurrency policy to durable
+// replay and authoritative read-back queries. Those reads run outside the
+// write transaction by design, but they can still observe SQLite busy or
+// PostgreSQL concurrency cancellation while another attempt commits.
+func (runner *transactionRunner) runRead(ctx context.Context, operation func(context.Context) error) error {
+	return runner.runWithRetry(ctx, operation)
+}
+
+func (runner *transactionRunner) runWithRetry(ctx context.Context, operation func(context.Context) error) error {
 	budgetContext, cancelBudget := context.WithTimeout(ctx, runner.config.TotalRetryBudget)
 	defer cancelBudget()
 
@@ -67,16 +88,9 @@ func (runner *transactionRunner) run(ctx context.Context, operation func(*gorm.D
 			}
 			return fmt.Errorf("%w: %v", orgresource.ErrConcurrencyRetry, lastErr)
 		}
-		transactionContext, cancelTransaction := context.WithTimeout(budgetContext, runner.config.TransactionTimeout)
-		err := runner.db.WithContext(transactionContext).Transaction(func(tx *gorm.DB) error {
-			if runner.dialect == "postgres" {
-				if setErr := setPostgresLocalTimeouts(tx, runner.config); setErr != nil {
-					return setErr
-				}
-			}
-			return operation(tx)
-		}, &sql.TxOptions{Isolation: sql.LevelSerializable})
-		cancelTransaction()
+		attemptContext, cancelAttempt := context.WithTimeout(budgetContext, runner.config.TransactionTimeout)
+		err := operation(attemptContext)
+		cancelAttempt()
 		if err == nil {
 			return nil
 		}

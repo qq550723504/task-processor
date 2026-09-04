@@ -17,6 +17,17 @@ import (
 )
 
 func (repository *GormReservationRepository) ReplaySettlement(ctx context.Context, replay orgresource.SettlementReplay) (orgresource.SettlementResult, bool, error) {
+	var result orgresource.SettlementResult
+	var found bool
+	err := repository.runner.runRead(ctx, func(readContext context.Context) error {
+		var readErr error
+		result, found, readErr = repository.replaySettlementOnce(readContext, replay)
+		return readErr
+	})
+	return result, found, err
+}
+
+func (repository *GormReservationRepository) replaySettlementOnce(ctx context.Context, replay orgresource.SettlementReplay) (orgresource.SettlementResult, bool, error) {
 	if result, found, err := repository.lookupSettlementOperation(ctx, repository.db, replay.OrganizationID, replay.OperationID, replay.RequestFingerprint); err != nil || found {
 		return result, found, err
 	}
@@ -39,7 +50,12 @@ func (repository *GormReservationRepository) ExecuteSettlement(ctx context.Conte
 	if result, found, err := repository.ReplaySettlement(ctx, replay); err != nil || found {
 		return result, err
 	}
-	seed, err := repository.loadReservation(ctx, repository.db, input.OrganizationID, input.ReservationID, false)
+	var seed organizationResourceReservationRow
+	err := repository.runner.runRead(ctx, func(readContext context.Context) error {
+		var readErr error
+		seed, readErr = repository.loadReservation(readContext, repository.db, input.OrganizationID, input.ReservationID, false)
+		return readErr
+	})
 	if err != nil {
 		return orgresource.SettlementResult{}, err
 	}
