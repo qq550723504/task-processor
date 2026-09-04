@@ -46,7 +46,7 @@ func TestLoadManifestUsesStrictJSON(t *testing.T) {
 }
 
 func TestRunDefaultsToReadOnlyVerifyAndWritesMachineReadableReport(t *testing.T) {
-	fake := &fakeHistoryMigrator{verifyReport: storecenter.StoreHistoryMigrationReport{ScannedCount: 4, HistoryConfirmedAbsentCount: 3, ReadyForConstraints: true}}
+	fake := &fakeHistoryMigrator{verifyReport: storecenter.StoreHistoryMigrationReport{ScannedCount: 4, HistoryConfirmedAbsentCount: 3, UnknownHistoryPendingActivationCount: 2, ReadyForConstraints: true}}
 	var output bytes.Buffer
 	closed := false
 	readOnlyOpened := false
@@ -77,7 +77,7 @@ func TestRunDefaultsToReadOnlyVerifyAndWritesMachineReadableReport(t *testing.T)
 	if fake.verifyCalls != 1 || fake.backfillCalls != 0 || !closed || !readOnlyOpened || writableOpened {
 		t.Fatalf("verify/backfill/closed/read-only/writable = %d/%d/%v/%v/%v", fake.verifyCalls, fake.backfillCalls, closed, readOnlyOpened, writableOpened)
 	}
-	if !strings.Contains(output.String(), `"ready_for_constraints":true`) {
+	if !strings.Contains(output.String(), `"unknown_history_pending_activation_count":2`) || !strings.Contains(output.String(), `"ready_for_constraints":true`) {
 		t.Fatalf("report output = %q", output.String())
 	}
 }

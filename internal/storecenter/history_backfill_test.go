@@ -94,7 +94,7 @@ func TestGormStoreHistoryBackfillMapsLegacyRowsAndClearsUnsupportedExpandedServi
 	if err != nil {
 		t.Fatalf("BackfillBatch() error = %v", err)
 	}
-	if report.ScannedCount != 4 || report.UpdatedCount != 4 || report.HistoryConfirmedAbsentCount != 3 {
+	if report.ScannedCount != 4 || report.UpdatedCount != 4 || report.HistoryConfirmedAbsentCount != 3 || report.UnknownHistoryPendingActivationCount != 2 {
 		t.Fatalf("BackfillBatch() report = %+v", report)
 	}
 
@@ -115,7 +115,7 @@ func TestGormStoreHistoryBackfillMapsLegacyRowsAndClearsUnsupportedExpandedServi
 	if err != nil {
 		t.Fatalf("Verify() error = %v, report = %+v", err, verification)
 	}
-	if !verification.ReadyForConstraints || verification.HistoryConfirmedAbsentCount != 3 || verification.UnresolvedCount != 0 || verification.HistorySnapshotConflictCount != 0 {
+	if !verification.ReadyForConstraints || verification.HistoryConfirmedAbsentCount != 3 || verification.UnknownHistoryPendingActivationCount != 2 || verification.UnresolvedCount != 0 || verification.HistorySnapshotConflictCount != 0 {
 		t.Fatalf("Verify() report = %+v, want ready", verification)
 	}
 }

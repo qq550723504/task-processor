@@ -77,6 +77,7 @@ history_unavailable_count=0
 history_error_count=0
 history_snapshot_conflict_count=0
 history_handoff_backlog_count=0
+unknown_history_pending_activation_count=<audited total>
 ```
 
 Rows in the migration cohort carry `confirmed_absent` evidence from the
@@ -88,6 +89,10 @@ Legacy `provisioning` rows are part of the migration cohort even though they do
 not yet have service state. Verification remains blocked until they carry
 `confirmed_absent` evidence, so a later create recovery cannot activate a row
 that bypassed the history gate.
+
+`unknown_history_pending_activation_count` separately records confirmed-absent
+legacy rows currently mapped to `pending_activation`; do not derive this audit
+value from the broader `history_confirmed_absent_count`.
 
 Expanded service fields on a legacy row without immutable history evidence are
 not authoritative. Backfill re-derives the compatibility state from the legacy

@@ -343,6 +343,8 @@ period from being blessed by migration. New Stores are marked
 cannot re-enter the legacy migration cohort. Legacy provisioning Stores must
 also receive `confirmed_absent` evidence before verification can pass, fencing
 recovery from activating an unresolved row after the readiness check. The
+migration report exposes a dedicated unknown-history-to-pending-activation
+counter instead of deriving it from the broader confirmed-absent total. The
 migration command defaults to read-only verification, opens only an existing
 database, streams verification rows with bounded memory, and requires an
 explicit action for one bounded backfill batch using an existing writable

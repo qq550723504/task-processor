@@ -29,18 +29,19 @@ const (
 // No-authoritative-source mode can only produce confirmed-absent evidence;
 // found/unavailable are retained so rollout tooling cannot silently omit them.
 type StoreHistoryMigrationReport struct {
-	ScannedCount                 int64 `json:"scanned_count"`
-	UpdatedCount                 int64 `json:"updated_count"`
-	HistoryFoundCount            int64 `json:"history_found_count"`
-	HistoryConfirmedAbsentCount  int64 `json:"history_confirmed_absent_count"`
-	HistoryNotApplicableCount    int64 `json:"history_not_applicable_count"`
-	HistoryUnavailableCount      int64 `json:"history_unavailable_count"`
-	HistoryErrorCount            int64 `json:"history_error_count"`
-	HistorySnapshotConflictCount int64 `json:"history_snapshot_conflict_count"`
-	HistoryHandoffBacklogCount   int64 `json:"history_handoff_backlog_count"`
-	UnresolvedCount              int64 `json:"unresolved_count"`
-	InvalidStateCount            int64 `json:"invalid_state_count"`
-	ReadyForConstraints          bool  `json:"ready_for_constraints"`
+	ScannedCount                         int64 `json:"scanned_count"`
+	UpdatedCount                         int64 `json:"updated_count"`
+	HistoryFoundCount                    int64 `json:"history_found_count"`
+	HistoryConfirmedAbsentCount          int64 `json:"history_confirmed_absent_count"`
+	UnknownHistoryPendingActivationCount int64 `json:"unknown_history_pending_activation_count"`
+	HistoryNotApplicableCount            int64 `json:"history_not_applicable_count"`
+	HistoryUnavailableCount              int64 `json:"history_unavailable_count"`
+	HistoryErrorCount                    int64 `json:"history_error_count"`
+	HistorySnapshotConflictCount         int64 `json:"history_snapshot_conflict_count"`
+	HistoryHandoffBacklogCount           int64 `json:"history_handoff_backlog_count"`
+	UnresolvedCount                      int64 `json:"unresolved_count"`
+	InvalidStateCount                    int64 `json:"invalid_state_count"`
+	ReadyForConstraints                  bool  `json:"ready_for_constraints"`
 }
 
 type GormStoreHistoryMigrator struct {
@@ -95,13 +96,17 @@ func (migrator *GormStoreHistoryMigrator) BackfillBatch(ctx context.Context, bat
 		if outcome.confirmedAbsent {
 			report.HistoryConfirmedAbsentCount++
 		}
+		if outcome.unknownHistoryPendingActivation {
+			report.UnknownHistoryPendingActivationCount++
+		}
 	}
 	return report, nil
 }
 
 type storeHistoryBackfillOutcome struct {
-	updated         bool
-	confirmedAbsent bool
+	updated                         bool
+	confirmedAbsent                 bool
+	unknownHistoryPendingActivation bool
 }
 
 func (migrator *GormStoreHistoryMigrator) backfillOne(ctx context.Context, storeID string) (storeHistoryBackfillOutcome, error) {
@@ -172,6 +177,7 @@ func (migrator *GormStoreHistoryMigrator) backfillOneAttempt(ctx context.Context
 			updates["service_history_snapshot_token"] = resolution.SourceSnapshotToken
 			updates["service_history_resolved_at"] = occurredAt
 			outcome.confirmedAbsent = true
+			outcome.unknownHistoryPendingActivation = state.RecordStatus == RecordStatusActive && state.ServiceStatus == ServiceStatusPendingActivation
 		}
 
 		updates["version"] = gorm.Expr("version + ?", 1)
@@ -241,6 +247,9 @@ func (migrator *GormStoreHistoryMigrator) Verify(ctx context.Context) (StoreHist
 		if hasAnyHistoryEvidence(record) {
 			if completeConfirmedAbsentEvidence(record, migrator.resolver.sourceIdentity(), migrator.resolver.snapshotToken()) {
 				report.HistoryConfirmedAbsentCount++
+				if state.RecordStatus == RecordStatusActive && state.ServiceStatus == ServiceStatusPendingActivation {
+					report.UnknownHistoryPendingActivationCount++
+				}
 			} else if completeNewStoreHistoryEvidence(record) {
 				report.HistoryNotApplicableCount++
 			} else {
