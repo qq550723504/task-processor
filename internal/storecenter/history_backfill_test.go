@@ -3,6 +3,7 @@ package storecenter_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -139,6 +140,31 @@ func TestGormStoreHistoryVerificationBlocksUnresolvedAndManifestDrift(t *testing
 	report, err = migrator.Verify(context.Background())
 	if !errors.Is(err, storecenter.ErrStoreHistoryRolloutBlocked) || report.HistorySnapshotConflictCount != 1 || report.ReadyForConstraints {
 		t.Fatalf("Verify() = %+v, %v; want snapshot conflict blocker", report, err)
+	}
+}
+
+func TestGormStoreHistoryVerificationStreamsRows(t *testing.T) {
+	db := openStoreDB(t)
+	now := time.Date(2026, 9, 4, 15, 0, 0, 0, time.UTC)
+	seedLegacyStoreRow(t, db, "00000000-0000-4000-8000-000000000723", "org-a", "active", 2, nil)
+	migrator := newNoHistoryMigrator(t, db, now)
+	if _, err := migrator.BackfillBatch(context.Background(), 10); err != nil {
+		t.Fatal(err)
+	}
+
+	errUnboundedDestination := errors.New("verification must not materialize a result slice")
+	if err := db.Callback().Query().Before("gorm:query").Register("test:reject-unbounded-verification", func(tx *gorm.DB) {
+		destination := reflect.ValueOf(tx.Statement.Dest)
+		if destination.IsValid() && destination.Kind() == reflect.Ptr && !destination.IsNil() && destination.Elem().Kind() == reflect.Slice {
+			tx.AddError(errUnboundedDestination)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := migrator.Verify(context.Background())
+	if err != nil || !report.ReadyForConstraints || report.ScannedCount != 1 {
+		t.Fatalf("Verify() = %+v, %v; want one streamed row", report, err)
 	}
 }
 

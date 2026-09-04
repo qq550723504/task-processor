@@ -217,12 +217,18 @@ func (migrator *GormStoreHistoryMigrator) Verify(ctx context.Context) (StoreHist
 	if migrator == nil || migrator.db == nil || migrator.resolver == nil {
 		return report, errors.New("store history migrator is required")
 	}
-	var records []workbenchStoreRecord
-	if err := migrator.db.WithContext(ctx).Unscoped().Order("id ASC").Find(&records).Error; err != nil {
+	query := migrator.db.WithContext(ctx).Unscoped().Model(&workbenchStoreRecord{}).Order("id ASC")
+	rows, err := query.Rows()
+	if err != nil {
 		return report, fmt.Errorf("load Store history verification rows: %w", err)
 	}
-	report.ScannedCount = int64(len(records))
-	for _, record := range records {
+	defer rows.Close()
+	for rows.Next() {
+		var record workbenchStoreRecord
+		if err := query.ScanRows(rows, &record); err != nil {
+			return report, fmt.Errorf("scan Store history verification row: %w", err)
+		}
+		report.ScannedCount++
 		state, mapped := expandedStateFromRecord(record)
 		if !mapped {
 			report.UnresolvedCount++
@@ -243,6 +249,9 @@ func (migrator *GormStoreHistoryMigrator) Verify(ctx context.Context) (StoreHist
 		} else if state.RecordStatus == RecordStatusProvisioning || state.RecordStatus == RecordStatusActive {
 			report.UnresolvedCount++
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return report, fmt.Errorf("stream Store history verification rows: %w", err)
 	}
 	report.ReadyForConstraints = report.UnresolvedCount == 0 &&
 		report.InvalidStateCount == 0 &&

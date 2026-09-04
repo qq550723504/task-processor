@@ -344,10 +344,10 @@ cannot re-enter the legacy migration cohort. Legacy provisioning Stores must
 also receive `confirmed_absent` evidence before verification can pass, fencing
 recovery from activating an unresolved row after the readiness check. The
 migration command defaults to read-only verification, opens only an existing
-database, and requires an explicit action for one bounded backfill batch using
-an existing writable database. Constraints, authority switching, and lifecycle
-HTTP routes remain separate later phases and must not be enabled by this
-foundation.
+database, streams verification rows with bounded memory, and requires an
+explicit action for one bounded backfill batch using an existing writable
+database. Constraints, authority switching, and lifecycle HTTP routes remain
+separate later phases and must not be enabled by this foundation.
 
 ## 4. Forbidden Import Directions
 

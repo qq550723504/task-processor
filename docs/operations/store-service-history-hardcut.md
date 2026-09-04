@@ -7,7 +7,7 @@ external history resolver.
 ## Safety boundary
 
 - `verify` is the default, opens only an existing database, and uses a read-only
-  session.
+  session. It scans rows in ID order without materializing the Store table.
 - `backfill` opens only an existing database and updates one bounded batch only;
   the maximum batch size is 1000.
 - The command never creates schema, adds final constraints, switches read/write
