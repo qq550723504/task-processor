@@ -34,6 +34,12 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 	if err := validatePersistedSlotEffectV3(effect); err != nil {
 		return imageagent.SlotEffectV3PublishedResult{}, err
 	}
+	if effect.Phase == imageagent.SlotEffectV3ReviewRequired {
+		if input.BudgetAuthorization && !hasPersistedHumanReviewOutcome(effect, input.ReviewActionID, imageagent.SlotExecutionFingerprint(executionInput)) {
+			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged review block has no replayable human-review outcome", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrRevisionConflict)
+		}
+		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged image review requires human intervention", imageagent.SlotReviewRequiredCode, imageagent.ErrReviewDecision)
+	}
 	if effect.Phase != imageagent.SlotEffectV3ReviewTransportRequired && effect.Phase != imageagent.SlotEffectV3StagingPrepared {
 		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("staged review is not pending", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrRevisionConflict)
 	}
@@ -158,6 +164,16 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 		}
 	}
 	return a.ExecuteSlotV3(ctx, input)
+}
+
+func hasPersistedHumanReviewOutcome(effect imageagent.SlotEffectV3Attempt, actionID, inputFingerprint string) bool {
+	for _, review := range effect.ReviewUsage {
+		if review.ActionID == actionID && review.InputFingerprint == inputFingerprint &&
+			review.BudgetStatus == imageagent.SlotBudgetCommitted && review.Outcome == imageagent.SlotReviewOutcomeNeedsHuman {
+			return true
+		}
+	}
+	return false
 }
 
 func resumeReviewRetrySlot(ctx context.Context, repository imageagent.SlotExternalEffectV3Repository, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {

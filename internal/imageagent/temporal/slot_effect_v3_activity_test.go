@@ -373,6 +373,51 @@ func TestReviewStagedSlotV3ReusesCandidatesWithoutRegeneration(t *testing.T) {
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
 }
 
+func TestReviewStagedSlotV3ReplaysPersistedHumanReviewBlock(t *testing.T) {
+	repository, input, policy := initializedBudgetedV3Activity(t, "run-v3-review-human-replay", 2)
+	input.BudgetAuthorization, input.BudgetPolicy, input.ReviewActionID = true, policy, "review-action"
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	providerReservation := v3Reservation(input)
+	providerReservation.Policy, providerReservation.Quote = policy, budgetActivityQuote("provider-human-review-replay")
+	_, acquired, err := effects.ReserveSlotProviderV3(context.Background(), providerReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, err = effects.PrepareSlotStagingV3(context.Background(), providerReservation, manifest)
+	require.NoError(t, err)
+	_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+		Reservation: providerReservation, Phase: imageagent.SlotEffectV3ReviewRequired,
+		Code: imageagent.SlotReviewRequiredCode,
+	})
+	require.NoError(t, err)
+
+	reviewReservation := imageagent.SlotReviewUsageReservation{
+		Identity: v3Reservation(input).Identity, ActionID: input.ReviewActionID,
+		InputFingerprint: imageagent.SlotExecutionFingerprint(imageagent.SlotExecutionInput{
+			RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+			PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
+			IdempotencyKey: input.IdempotencyKey, AssetCatalog: input.AssetCatalog,
+		}),
+		Policy: policy, Quote: budgetActivityQuote("human-review-replay"),
+	}
+	_, acquired, err = effects.ReserveSlotReviewV3(context.Background(), reviewReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, err = effects.SettleSlotReviewV3(context.Background(), reviewReservation, imageagent.SlotUsageReceipt{
+		Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound,
+	})
+	require.NoError(t, err)
+	_, err = effects.RecordSlotReviewOutcomeV3(context.Background(), reviewReservation, imageagent.SlotReviewOutcomeNeedsHuman)
+	require.NoError(t, err)
+
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+	_, err = activities.ReviewStagedSlotV3(context.Background(), input)
+
+	requireV3ApplicationErrorType(t, err, imageagent.SlotReviewRequiredCode)
+	require.Zero(t, executor.GenerateCalls(), "replaying a human-review block must not regenerate")
+}
+
 func TestStagedOutputFromManifestRetainsOriginalCatalogSourceURL(t *testing.T) {
 	_, input := initializedSlotEffectV3Activity(t, "run-v3-source-url")
 	input.AssetCatalog.Assets = []imageagent.AuthorizedAsset{{ID: input.Slot.SourceAssetIDs[0], Type: imageagent.AuthorizedAssetSource, SourceURL: "https://source.example/original.png"}}
