@@ -3,6 +3,32 @@
 - What changed?
 - Why is this needed?
 
+# Product Boundary
+
+Fill this section for architecture-sensitive, security-sensitive, or product-contract changes. For routine bounded changes, write `N/A` where appropriate instead of inventing policy.
+
+## Product Decisions
+
+- Must:
+- Should:
+- Out of Scope:
+- Accepted Risks:
+
+## Threat Model
+
+- Risks this change must protect against:
+- Risks explicitly not being solved in this phase:
+
+## Review State
+
+- Architecture review round: `0 / 1 / 2 / frozen`
+- Implementation status: `DESIGNING / IMPLEMENTATION_READY / IMPLEMENTING`
+
+- [ ] Reviewer findings were classified before changing architecture.
+- [ ] `BLOCKER` findings identify the concrete blocker category from `AGENTS.md`.
+- [ ] `IMPLEMENTATION_TEST`, `BACKLOG`, `ACCEPTED_RISK`, and `NOT_APPLICABLE` findings do not block implementation.
+- [ ] If the design is `IMPLEMENTATION_READY`, non-blocking findings did not create another versioned design document.
+
 # Validation
 
 - [ ] `go test ...`
@@ -37,9 +63,12 @@ Use this checklist for changes touching `internal/app`, `internal/listingkit`,
 - Risk areas:
 - Follow-up work:
 - Any intentional boundary exceptions:
+- Finding classification notes (`BLOCKER / IMPLEMENTATION_TEST / BACKLOG / ACCEPTED_RISK / NOT_APPLICABLE`):
 
 Relevant docs when needed:
 
+- `AGENTS.md`
+- `docs/architecture/architecture-review-checklist.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/architecture/next-steps.md`
