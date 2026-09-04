@@ -1,5 +1,7 @@
 # 阶段三产品域目标架构实施计划
 
+**状态：** 已完成（2026-09-04）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在一个最终 PR 内建立唯一的产品事实、来源、丰富化、资产和图片能力边界，令 ImageAgent 成为唯一图片工作流，并删除旧 ProductEnrich/ProductImage 任务体系及五个旧产品根目录。
@@ -1771,13 +1773,15 @@ Run: `golangci-lint run --new-from-rev=0904073f01415421cabe3f39b76eebb2b90a3303 
 
 Expected: PASS。
 
-- [ ] **Step 4c: 运行完整 lint**
+- [x] **Step 4c: 运行完整 lint**
 
 Run: `golangci-lint run ./internal/product/... ./internal/imageagent/... ./internal/app/...`
 
-Expected: PASS。当前结果见下方验证记录，基线债务清理前不得勾选。
+Expected: PASS。
 
 > **Task 17 验证记录（2026-09-03）：** 产品域聚焦测试、架构聚合、全仓编译和本次变更新增 lint 均通过。完整 lint 命令仍被非 Task 17 基线阻断：基准 `0904073f` 已有 273 个 `gofmt` 报告和 `internal/product/enrichment/proposer.go:57` 的 `S1016`；当前仍有 173 个未改文件的 `gofmt` 报告和同一个 `S1016`。本任务没有批量改写无关 CRLF 文件，也没有把该基线债务伪报为通过；`golangci-lint --new-from-rev=0904073f` 覆盖本次涉及包通过。
+
+> **Task 17 最终收尾（2026-09-04）：** `d5bd2003a` 保留 1688 来源类目的结构化路径，并把原始路径语法留在来源 Adapter；`6df4fd92d` 增加标准的 Go 文件 LF 规则，解决 Windows `core.autocrlf=true` 导致工作区文件反复被 `gofmt` 判定失败的根因，同时修复唯一真实的 `S1016`。`golangci-lint run ./internal/product/... ./internal/imageagent/... ./internal/app/...`、受影响包测试、阶段三架构护栏和 `go test ./... -count=1 -timeout 20m` 均通过。
 
 > OpenAPI 源契约没有变化。仓库锁定的 `@hey-api/openapi-ts v0.99.0` 重新生成后只产生 `index.ts` 与 `types.gen.ts`，两者 SHA-256 均与当前生成客户端完全一致，因此不制造无意义的生成文件改动。
 
@@ -1827,4 +1831,4 @@ git commit -m "refactor(architecture): complete phase 3 product hard cut"
 - [x] `product_enrich_tasks`、`product_image_tasks` 未被物理删除，但应用不再创建、查询或写入它们。
 - [x] `internal/pipeline` 未迁入产品域且生产文件数没有增长。
 - [x] Go 聚焦测试、架构护栏、全仓测试、UI typecheck/test 与本次新增 lint 全部通过。
-- [ ] 完整 lint 命令通过；当前仍被上述基准提交已有的 173 个未改文件 `gofmt` 报告和一个 `S1016` 阻断。
+- [x] 完整 lint 命令通过；Windows 工作区 Go 文件行尾已由 `.gitattributes` 固定为 LF，既有 `S1016` 已清理。
