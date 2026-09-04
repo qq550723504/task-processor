@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	sdktemporal "go.temporal.io/sdk/temporal"
 	"strings"
+
+	sdktemporal "go.temporal.io/sdk/temporal"
+
 	"task-processor/internal/imageagent"
 )
 

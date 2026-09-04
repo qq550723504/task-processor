@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"time"
+
 	sdkactivity "go.temporal.io/sdk/activity"
 	sdktemporal "go.temporal.io/sdk/temporal"
-	"reflect"
+
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
-	"time"
 )
 
 const slotProviderOutcomeUnknownErrorType = "imageagent_slot_provider_outcome_unknown"
