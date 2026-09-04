@@ -152,13 +152,13 @@ active_phone_correlator = HMAC(K_registration_attempt, domain || normalized_E164
 
 规则：
 
-- active-only UNIQUE；
-- 仅防同 E.164 并发 Registration Attempt，不作为账号目录；
+- active/finality-hold only UNIQUE；
+- 仅防同 E.164 并发或 unresolved-finality Registration Attempt，不作为账号目录；
 - existing/new 由 ZITADEL exact lookup + ownership classification 决定；
-- ordinary active attempt hard TTL <=72h；
-- attempt terminal 或 hard TTL fenced 后 scrub。
+- ordinary **execution** hard TTL <=72h；
+- attempt terminal 且不再存在 unresolved sent mutation 后才可关闭/scrub same-phone claim；hard TTL 本身只停止执行，不自动释放同手机号排他。
 
-### Hard TTL：先原子 `expired_fenced`，再 scrub
+### Hard TTL：先原子 `expired_fenced`，再决定是否可以 scrub
 
 “hard TTL fenced”不是逻辑描述，必须是数据库可验证的终态过渡。达到 72h hard TTL 时，Expiry/Reconciliation owner 先执行一个 PostgreSQL transaction：
 
@@ -180,11 +180,33 @@ commit
 
 - 每个 Provider writer 在**实际 external send 前**必须重新读取并验证 Intent 不是 `expired_fenced`、expected execution epoch、work lease 与 stable target fence；不满足即不得发送；
 - worker external call 返回后、本地写结果前再次验证 epoch；旧 worker late response 若 epoch 已变化不得推进 Registration；
-- 已经 `inflight/outcome_unknown` 的 Provider mutation 不能假装被本地 fence 回滚，仍由 RegistrationReconciler 按 §6 做 finality；相反 mutation 继续由 stable Provider target fence 阻止；
-- `expired_fenced` COMMIT 完成后才允许 scrub active-phone correlator / phone-derived attempt fingerprint；
-- scrub correlator 后的新请求若 exact lookup 命中旧 pending Provider identity，必须按 §2.3 `registration_owned_pending` + stable target fence 进入 resume/reclaim/repair，不能与旧 unresolved Provider mutation 并行创建第二套 identity。
+- 已经 `inflight/outcome_unknown` 的 Provider mutation 不能假装被本地 fence 回滚，仍由 RegistrationReconciler 按 §6 做 finality；相反 mutation继续由 stable Provider target fence 阻止；
+- `expired_fenced` COMMIT **只代表旧 attempt 失去继续发送 Provider write 的资格，不代表 same-phone correlator 已可释放**；
+- 如果不存在任何已经发送且尚未 definitive 的 identity-affecting Provider mutation，才可按下述 terminal/finality 规则关闭 same-phone claim；否则必须进入 `finality_hold`。
 
-这样 hard TTL 可以停止旧 attempt 的未来执行，同时不会让“scrub phone claim”本身变成绕过旧 worker/finality 的手段。
+### Finality Hold：执行过期不等于释放同手机号排他
+
+只要本 Registration 仍存在任一已经发送、但结果尚未 definitive 的 Provider identity mutation（例如 Create Organization/User、ownership mutation、Reclaim/Delete 或其它可能改变该 registration-owned Provider identity 的 sent operation），same-phone claim 必须保持为非执行态 `finality_hold` / 等价状态：
+
+```text
+Intent = expired_fenced / non-runnable
+active-phone claim = finality_hold
+execution lease = none
+Provider sent operation = inflight | outcome_unknown | 等待 definitive read-back
+```
+
+硬规则：
+
+- `finality_hold` 保留同一 `active_phone_correlator` 的 UNIQUE 排他，但不授予旧 attempt 任何新的 Provider send 权限；
+- 新的同手机号 `/register` 即使此刻 ZITADEL exact lookup 暂时返回 `not_found`，也必须先在 §2.4 admission transaction 中命中并锁定该 existing/finality-hold claim，绑定旧 Registration ownership，返回“处理中/需恢复/repair”或进入既有 resume/reclaim 流程；**不得**据此重新预分配另一组 Provider IDs、另一条 Intent 或第二个 pending-object slot；
+- stable target fence 继续保护已经知道的 Provider target；same-phone `finality_hold` 额外保护“旧 Create 可能尚未可见，因此新 attempt 尚不知道旧 target”的窗口；
+- Provider finality 最终证明旧 object 已存在且 ownership exact -> 后续同手机号只能按 §2.3 `registration_owned_pending`/resume/reclaim；
+- Provider finality 最终证明没有任何 Provider object/partial side effect -> 可在与 no-object terminal/capacity release 相同或等价的 fenced transaction 中关闭 same-phone claim，随后新的请求才可成为 genuinely new；
+- partial object、ownership mismatch 或 finality 仍 ambiguous -> 不释放 claim，进入 repair/finality；不能为了 privacy TTL 猜测“应该不存在”。
+
+普通可执行 attempt 的 hard execution TTL 仍为 <=72h；但若 Provider sent mutation 在该时点仍 unresolved，**same-phone HMAC fence 可以作为 correctness-only exceptional tombstone 超过 72h 保留到 definitive finality**。它不包含 plaintext phone，也不能被业务查询使用。该异常必须有独立监控/SLO；若 Provider 无法在 rollout 证明 bounded finality，或线上 finality backlog 超过安全阈值，new-phone self-registration circuit breaker fail closed，而不是释放 fence 后冒险创建重复 identity。
+
+只有所有 sent mutation 都 definitive，且 terminal/replay 不再需要同手机号排他时，才允许关闭/scrub correlator。这样 hard TTL 能停止旧 attempt 的未来执行，同时不会让“scrub phone claim”变成迟到 Create 制造重复 Provider identity 的窗口。
 
 ### Key rotation
 
@@ -192,21 +214,25 @@ Phase1 **不要求零停机在线轮换**：
 
 1. gate 新 self-registration；
 2. 等待/终止旧 active attempts 到安全边界；
-3. 确认旧 correlator claim 无可执行 workflow；
+3. 确认旧 correlator claim 无可执行 workflow，且 unresolved-finality claim 不会在 cutover 后失去 same-phone exclusion；
 4. 切换 primary key version；
 5. reopen registration。
 
-不设计 rolling old/new primary overlap、cross-key dual lookup 或 Admission Epoch 联动。
+不设计 rolling old/new primary overlap、cross-key dual lookup 或 Admission Epoch 联动。存在 `finality_hold` 的旧 key claim 时，不能通过直接切 key 让其排他失效；需要 maintenance migration/dual-check 或继续 gate，直到该 claim definitive 关闭。
 
 ### Phone retention
 
 - raw phone 只在请求内存中规范化；
 - 跨请求恢复只保存 versioned AEAD ciphertext；
-- ordinary pending ciphertext <=24h；
-- repair/quarantine 最多72h；
+- **24h 是 ordinary privacy target，不是可以破坏 recovery 的无条件删除点**；
+- 若仍存在可自动执行/重试且其 exact request reconstruction 需要手机号的 phone-bearing operation（例如 Create Human User 的 `prepared/retry_wait`、需要手机号输入的 registration recovery，或当前 challenge generation 的恢复），AEAD ciphertext 必须保留到该 operation terminal、被显式 fenced，或 ordinary hard execution TTL（<=72h）中的更早者；
+- 到 24h 时若该 attempt 仍需要 ciphertext 才能继续，Purge owner 不得直接删除；必须先保持 recovery，或在达到 hard TTL 时执行 `expired_fenced`，撤销所有未来 phone-bearing send 资格后再 scrub；
+- `outcome_unknown` mutation 若后续只允许用 stable Provider IDs/read-back 做 finality、明确禁止 blind retry，则 raw phone/ciphertext 在不再需要重构请求后可以先 scrub，但 §3 `finality_hold` 的 HMAC exclusion 必须继续保留到 definitive finality；
+- repair/quarantine 中只有仍需要合法恢复输入时才可持有 ciphertext，最长不超过 72h；超过后必须要求用户重新输入手机号并重新证明，不能延长 plaintext/AEAD 恢复秘密；
 - terminal 后立即或短 replay window 后 scrub；
 - 日志、HTTP error、trace、proxy access log 不得记录明文 E.164 query；
-- phone-derived attempt / Provider Operation fingerprint 必须有 key version 与 retention deadline，finality/replay 不再需要后 scrub 或转为不含 phone-derived stable alias 的 tombstone。
+- phone-derived attempt / Provider Operation fingerprint 必须有 key version 与 retention deadline，finality/replay 不再需要后 scrub 或转为不含 phone-derived stable alias 的 tombstone；
+- **禁止出现“operation 仍 runnable，但其唯一必需 request material 已被 purge”的状态**，该不变量必须由状态机/测试验证。
 
 ## 4. 真实容量保护
 
@@ -280,7 +306,8 @@ next_attempt_at / attempts / total_deadline
 - semantic permanent failure -> failed_permanent；
 - 不因网络超时 blind retry Create/Delete/Grant/Auth；
 - target mutation fence 按稳定 Provider target 隔离 conflicting mutations；
-- actual external send 前必须同时验证 Provider Operation lease/epoch、stable target fence 以及 Registration `execution_epoch/state`，`expired_fenced`/stale epoch 不得发送。
+- actual external send 前必须同时验证 Provider Operation lease/epoch、stable target fence 以及 Registration `execution_epoch/state`，`expired_fenced`/stale epoch 不得发送；
+- 如果 sent operation 尚未 definitive，§3 same-phone claim 不能因为 hard execution TTL 到期而释放。
 
 ### Definitive no-object Create failure 的容量终态
 
@@ -295,16 +322,17 @@ AND 当前 Registration 也不存在其它仍需该 pending-object reservation �
 必须在一个 PostgreSQL transaction 中：
 
 ```text
-lock Intent + Provider Operation + pending_object reservation
+lock Intent + Provider Operation + pending_object reservation + same-phone claim
 -> operation = failed_permanent
 -> intent = terminal_no_provider_object / 等价终态
 -> release pending_object reservation
 -> release 已取得的短 work lease（如有）
 -> close/scrub 可终结的 transient registration material
+-> close same-phone finality_hold/claim when no other sent mutation remains unresolved
 -> commit
 ```
 
-同 logical replay 只能读取该终态，不能二次 release。若 Organization 已创建而 User Create 永久失败、存在 partial object、或 finality 仍不确定，则**不得**走 no-object release；继续占用 reservation，进入 cleanup/repair/finality 收敛。
+同 logical replay 只能读取该终态，不能二次 release。若 Organization 已创建而 User Create 永久失败、存在 partial object、或 finality 仍不确定，则**不得**走 no-object release；继续占用 reservation 与 same-phone finality exclusion，进入 cleanup/repair/finality 收敛。
 
 ### RegistrationReconciler
 
@@ -315,18 +343,20 @@ lock Intent + Provider Operation + pending_object reservation
 - stale `prepared`；
 - lease-expired `inflight`；
 - `outcome_unknown`；
-- `retry_wait` 且 `next_attempt_at <= now`。
+- `retry_wait` 且 `next_attempt_at <= now`；
+- §7 的 stale `challenge_preparing / challenge_outcome_unknown` proof attempts。
 
 Recovery 使用 `FOR UPDATE SKIP LOCKED`/等价行锁 + lease/epoch CAS：
 
 - `prepared` 且能证明外部 call 尚未发送 -> 在同 logical op 下继续；
 - expired `inflight` -> fenced 转 `outcome_unknown`，先 read-back，禁止直接重发；
 - `outcome_unknown` -> 只依据 Provider finality/read-back 收敛；
-- `retry_wait` -> 到期后重新取得 lease，但发送前重新检查所有业务前置条件；
+- `retry_wait` -> 到期后重新取得 lease，但发送前重新检查所有业务前置条件与 phone request material 仍存在；
 - `expired_fenced` Intent 不允许新 Provider send，只允许对已发出的 operation 做 finality/read-back；
-- 旧 worker 的 late response 若 Provider Operation epoch 或 Registration execution epoch 已变化，不得写本地状态。
+- unresolved sent operation 继续持有 §3 `finality_hold` same-phone exclusion；
+- 旧 worker 的 late response 若 Provider Operation epoch、Registration execution epoch 或 challenge generation 已变化，不得写本地状态。
 
-每个非终态最终必须进入 succeeded / failed_permanent / repair_required / 等待用户重新证明等明确状态；不能永久占用 pending capacity。
+每个非终态最终必须进入 succeeded / failed_permanent / repair_required / 等待用户重新证明等明确状态；不能永久占用 pending capacity，也不能在 finality 未完成时释放 same-phone exclusion。
 
 ## 7. OTP / Factor Enrollment / Proof
 
@@ -336,6 +366,7 @@ Recovery 使用 `FOR UPDATE SKIP LOCKED`/等价行锁 + lease/epoch CAS：
 
 ```text
 AddOTPSMS factor definitive
+-> persist proof_attempt challenge_preparing generation
 -> CreateSMSChallenge
 -> 持久化其实际返回的 challenge-bearing Session 非凭据引用
 -> VerifySMS
@@ -354,9 +385,38 @@ task-processor 不持久化 OTP code / plaintext Session Token。
 
 该非终态同样由 `RegistrationReconciler` 接管；existing active User 永远不进入此写路径。
 
+### CreateSMSChallenge：发送前必须有 durable generation
+
+`CreateSMSChallenge` 虽然属于 ZITADEL/Login 的短期认证边界，不强行塞入 §6 的 durable business Provider Operation 表，但它必须拥有自己的 durable、attempt-bound challenge recovery state。**禁止先发 SMS，成功返回后才第一次记录 generation。**
+
+建议最小状态：
+
+```text
+proof_attempt_id
+challenge_generation
+challenge_state = challenge_preparing | challenge_ready | challenge_outcome_unknown | challenge_retry_allowed | challenge_superseded
+challenge_execution_epoch
+challenge_started_at
+challenge_ready_at
+returned_session_ref/hash   # 仅非凭据引用；绝不保存 plaintext Session Token
+```
+
+固定协议：
+
+1. `AddOTPSMS` 已 definitive 后，先在 PostgreSQL transaction 创建/锁定当前 `proof_attempt_id`，递增或分配 `challenge_generation`，写 `challenge_preparing` + expected execution epoch，再 COMMIT；
+2. 真正调用 `CreateSMSChallenge` 前重新验证 Registration 未 `expired_fenced`、当前 generation/epoch、SMS cooldown/rate limit/global budget；同一 generation 只能有一个 send owner；
+3. Provider 正常返回时，在本地 transaction 再次验证 generation/epoch 仍 current，随后写入它**实际返回**的 challenge-bearing Session 非秘密 ref/hash，并转 `challenge_ready`；
+4. timeout/connection loss/ambiguous response 后，写 `challenge_outcome_unknown`；**不能立即 blind resend 同 generation，也不能假定“没收到 response = 没发短信”**；
+5. 若 pinned ZITADEL 能通过安全 read-back、provider-side idempotency/operation status 找回该 exact challenge/session，则 Reconciler adopt 并转 `challenge_ready`；
+6. 若无法 read-back/adopt，则等待明确 cooldown。Reconciler 只把旧 generation 原子标为 `challenge_superseded / challenge_retry_allowed` 并 fence 其 execution epoch；**不得后台自动再发一条 SMS**。用户显式 resend/continue 且通过 limiter 后，才可创建 `generation+1`，并再次先持久化 `challenge_preparing` 后发送；
+7. 旧 generation 的迟到 response 在写本地前必须检查 generation/epoch；一旦已 superseded，不能覆盖新 Session ref，也不能重新变成 `challenge_ready`；
+8. `VerifySMS` 只接受当前 `challenge_ready` generation 绑定的 returned Session；旧/superseded generation 永远不能生成 Proof/Acceptance。
+
+因此 crash-before-send、send-response-loss、late-response、用户 resend 都有明确状态。SMS abuse limiter 继续位于 Challenge send 前，recovery 不得绕过 cooldown/global budget。
+
 ### VerifySMS response loss
 
-只有 Provider 能安全 read-back/idempotent reconcile 才自动收敛，否则进入 `verification_outcome_unknown`，不生成 proof/Acceptance/Consent、不 blind retry；必要时 cooldown 后新 challenge generation，旧 generation 不得变成 proof。
+只有 Provider 能安全 read-back/idempotent reconcile 才自动收敛，否则进入 `verification_outcome_unknown`，不生成 proof/Acceptance/Consent、不 blind retry；必要时 cooldown 后新 challenge generation，旧 generation 不得变成 proof。fresh generation 同样必须走上述 pre-send durable protocol。
 
 ## 8. Consent
 
@@ -540,7 +600,8 @@ verify expected ownership/fence/version
 -> release/transfer pending Provider-object slot out of registration pending accounting
 -> release verified work lease
 -> close Registration Attempt
--> scrub transient phone material when replay window no longer needs it
+-> close same-phone claim when no unresolved sent Provider mutation remains
+-> scrub transient phone material when replay/finality no longer needs it
 -> authorized_at = now
 -> commit
 ```
@@ -548,6 +609,8 @@ verify expected ownership/fence/version
 若 post-send policy 已变化，则不执行 `authorized`/pending-slot terminal transaction；进入 §11 的 `authorization_present_consent_required`，fresh re-consent 后再 exact-adopt 现有 authorization，并在当前 policy 下完成本事务。
 
 pending-object release/transfer 与 `authorized` 不得拆开；crash/replay 不能泄漏或二次释放容量。成功账号继续存在于 ZITADEL，但不再计入“未完成注册 Provider object”高水位。
+
+如果仍存在较早 sent Provider mutation 的 unresolved finality，`authorized` 业务终态与 pending accounting 可以按其真实业务合同完成，但 same-phone HMAC exclusion 不得提前释放；由 §3 `finality_hold` 独立保持到全部相关 sent mutation definitive。通常正常成功路径不应存在这种异常重叠；若出现必须审计并收敛。
 
 `authorized` 之后的 policy 变化由 §8.3 `CurrentConsentPolicy` 持续执行；不能因为 Registration Intent 已终态就绕过新 policy Consent。
 
@@ -586,14 +649,16 @@ lock Registration Intent
 lock cleanup claim / cleanup_epoch
 lock pending_object reservation
 lock relevant terminal Provider Delete Operations
+lock same-phone claim
 verify fence = cleanup_claimed(expected cleanup_epoch)
 verify every protected disposable Provider target = definitively absent
 verify no durable business ownership was created
+verify no other sent identity mutation remains unresolved
 -> cleanup_state = cleaned / 等价 terminal
 -> Registration = terminal_cleaned / expired_cleaned
 -> release pending_object reservation exactly once
 -> release cleanup/work lease
--> close active-phone registration fence
+-> close active-phone/finality-hold registration fence
 -> scrub transient phone material when replay/finality no longer needs it
 -> commit
 ```
@@ -601,11 +666,11 @@ verify no durable business ownership was created
 规则：
 
 - Delete response loss 后若 read-back 最终确认 absent，走同一终态事务，不能额外释放第二次；
-- 任一 Provider target 仍存在、partial delete、finality ambiguous、ownership mismatch 或 business ownership 出现时，**不得释放 pending capacity**；继续由 RegistrationReconciler 做 finality/repair；
+- 任一 Provider target 仍存在、partial delete、finality ambiguous、ownership mismatch、其它 sent identity mutation 未 definitive 或 business ownership 出现时，**不得释放 pending capacity/same-phone finality exclusion**；继续由 RegistrationReconciler 做 finality/repair；
 - 同 cleanup logical replay 只能读取 `terminal_cleaned`，不得重复 decrement/release reservation；
 - capacity release 与 cleanup terminal transition 不得拆成两个 commit，否则 crash 会造成永久泄漏或双释放。
 
-Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proof 分离。Reclaim 前同样 exact read-back Provider ownership，并与 Delete 共享 stable target fence；不允许 stale Delete 与新 Reclaim 并行 inflight。
+Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proof 分离。Reclaim 前同样 exact read-back Provider ownership，并与 Delete 共享 stable target fence；不允许 stale Delete 与新 Reclaim 并行 inflight。若旧 attempt 仍处于 §3 `finality_hold`，新的同手机号请求只能绑定旧 ownership 等待/收敛 finality，不能分配新 Provider IDs 后“绕过” reclaim fence。
 
 ## 14. SMS 与公共接口防滥用
 
@@ -621,6 +686,7 @@ Reclaim 使用 fresh ownership proof；reclaim proof 与 onboarding-consent proo
 - Human User Technical Email request shape；
 - OTP factor enrollment **read-back 或 proven idempotency**；
 - CreateSMSChallenge / VerifySMS 与 response-loss recovery；
+- Challenge 创建是否支持安全 read-back/idempotency；若不支持，必须验证 §7 durable generation + cooldown + supersede/fresh-generation fallback；
 - Project Grant / User Authorization exact read-back；
 - durable Provider Write finality；
 - Provider ownership attributes/marker read-back；
@@ -647,15 +713,27 @@ new phone -> one Registration / one Provider identity
 not_found atomic owner transaction crash-before-commit -> no Intent/no phone claim/no pending slot
 not_found atomic owner transaction crash-after-commit-before-Provider-call -> Reconciler finds exact Intent+slot
 same new E.164 concurrent requests -> one active Registration Attempt + one pending slot
-hard TTL -> expired_fenced + execution_epoch fence before correlator scrub
+hard TTL -> expired_fenced + execution_epoch fence before any same-phone claim release
 expired_fenced vs leased Provider worker -> stale worker cannot new-send or advance local state; inflight only finality/read-back
-key rotation -> maintenance gate 后切换，无重复 active attempt
+old Create outcome_unknown at hard TTL -> same-phone claim enters finality_hold and remains unique; same-phone retry cannot allocate new IDs/Intent/slot even when Provider lookup temporarily not_found
+finality_hold + delayed old Create appears -> exact old ownership resume/reclaim; never second Provider identity
+finality_hold + definitive no-object -> terminal transaction releases pending capacity + same-phone claim exactly once, then fresh registration may start
+key rotation -> maintenance gate 后切换；finality_hold claim 不因 key cutover 失去排他
 rate limit / SMS cooldown / global SMS budget
 Create Org/User response loss -> exact ownership read-back/adopt，不 blind retry
 Create definitive no-side-effect/no-object failure -> terminal_no_provider_object + pending capacity atomic release；partial object 不释放
 AddOTPSMS response loss -> factor read-back/idempotency，否则 outcome_unknown/repair
 same logical Provider op changed payload -> conflict
 stale prepared/inflight/outcome_unknown/retry_wait -> RegistrationReconciler durable recovery
+phone-bearing retry_wait >24h but <72h -> required AEAD ciphertext retained and exact retry succeeds; purge cannot strand runnable operation
+phone-bearing workflow reaches hard TTL -> expired_fenced first, future sends disabled, then ciphertext scrub when no remaining recovery call needs it
+outcome_unknown needs only stable-ID read-back -> ciphertext may scrub but same-phone finality_hold remains until definitive
+CreateSMSChallenge crash before pre-send transaction commit -> no challenge send/no generation
+CreateSMSChallenge crash after challenge_preparing commit before send -> Reconciler safely resumes same unsent generation under lease
+CreateSMSChallenge response loss after SMS sent -> challenge_outcome_unknown, no blind resend
+challenge outcome cannot read-back -> cooldown then old generation superseded; explicit resend creates generation+1 only after pre-send persistence
+late response from superseded challenge generation -> cannot overwrite current Session ref or produce proof
+VerifySMS only current challenge_ready generation -> superseded/old generation rejected
 VerifySMS response loss -> 无证明则 outcome_unknown，不写 Consent
 current policy changes before Bootstrap -> zero business write
 current policy changes after Bootstrap before Grant/Auth -> consent_required + fresh registration_reconsent proof/Acceptance；不重跑 Bootstrap
@@ -663,7 +741,7 @@ current policy changes while Grant/Auth retry_wait -> 下一次 send 前拦截�
 policy activates after final pre-send DB check but before Provider Create commits -> post-send policy recheck prevents local authorized/business entry; authorization_present_consent_required until fresh Consent
 post-Bootstrap reconsent -> 只新增 current Consent，不重复 base_payg/business projection/welcome Grant
 Cleanup vs Bootstrap race -> 只有 cleanup_claimed 或 preserved_business 一方成功
-Cleanup Delete success + all protected Provider targets absent -> terminal_cleaned + pending capacity 同 tx exactly-once release
+Cleanup Delete success + all protected Provider targets absent + no unresolved sent mutation -> terminal_cleaned + pending capacity + same-phone claim 同 tx exactly-once release
 Cleanup Delete response loss -> read-back absent 后同一 terminal tx release once；ambiguous/partial delete 不释放
 Cleanup terminal replay -> 不二次释放 capacity；Reclaim/Bootstrap 不能越过 cleanup target fence
 new direct org welcome grant -> exactly +1 store_renewal_period
@@ -676,7 +754,7 @@ authorized user authenticated reconsent -> 写 current Consent 后业务访问�
 paid plan race -> 不覆盖 paid plan，entitlements ready，welcome grant 仍最多一次
 Grant/Auth absent create，exact active adopt，different/revoked repair
 unsafe automatic Delete capability -> self-registration remains off
-phone ciphertext / phone-derived fingerprints retention 后 scrub
+phone ciphertext / phone-derived fingerprints retention 后 scrub；不得存在 runnable operation 丢失必需 request material
 ```
 
 ## 17. 开发停止条件
@@ -687,4 +765,4 @@ phone ciphertext / phone-derived fingerprints retention 后 scrub
 
 ## 完成定义
 
-ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；active-phone claim + Intent + pending reservation 在第一笔 Provider write 前同一事务建立 durable ownership；hard TTL 先原子 `expired_fenced`/execution epoch fence 再 scrub；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity；Current Consent 在每次延迟授权 send 前、Provider authorization read-back 后、以及 authorized 后每个受保护 tenant business request 上都持续 fail-closed；policy activation 与远端 Provider send 不要求跨系统全局线性化，但 race 后不会获得业务访问；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
+ZITADEL 继续拥有认证核心；已注册 active 手机号可明确提示并转登录；registration-owned pending identity 可以安全 resume/reclaim；未注册手机号只产生一条可恢复 Registration；active-phone claim + Intent + pending reservation 在第一笔 Provider write 前同一事务建立 durable ownership；hard TTL 先原子 `expired_fenced`/execution epoch fence 停止旧执行，**same-phone claim 在任何 sent mutation 未 definitive 时继续进入 finality_hold，不能因 TTL scrub 后重新创建第二套 Provider identity**；Provider/Factor unknown outcome 不靠猜测；Provider adopt 必须验证 ownership；所有非终态 Provider operation 有唯一 durable recovery owner；phone ciphertext 的 privacy purge 不能删除仍 runnable recovery 所必需的 request material；CreateSMSChallenge 在发送前已有 durable generation，response loss 不 blind resend，旧 generation 被 supersede 后不能产生 Proof；definitive no-object Create failure 与 successful definitive Cleanup 都会在正确终态 transaction 中 exactly-once 释放真实 pending capacity 与可释放的 same-phone exclusion；Current Consent 在每次延迟授权 send 前、Provider authorization read-back 后、以及 authorized 后每个受保护 tenant business request 上都持续 fail-closed；policy activation 与远端 Provider send 不要求跨系统全局线性化，但 race 后不会获得业务访问；Bootstrap 后 policy 变化有独立 fresh re-consent 路径且不重复 business ownership；Cleanup 与 Business Bootstrap 有互斥 fence；新直接注册 Organization 的一次性 `store_renewal_period=1` 在授权前按 Organization source identity 幂等 ready；authorized 与 pending capacity release 同事务；`listingkit_admin` 最后授予；没有 Admission Epoch / cross-epoch anti-enumeration 复杂度。
