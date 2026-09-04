@@ -262,6 +262,81 @@ fingerprints, and repository ports. Within that boundary:
   directly, so orchestration and delivery adapters cannot become a second
   transition owner.
 
+### 3.10 `internal/ledger/orgresource`
+
+The organization-resource ledger owns organization-scoped platform balances
+such as `store_renewal_period`, `ai_point`, and `data_row`. It does not own
+subscription plan assignment, usage metering, account registration, ZITADEL,
+or RMB payment flows.
+
+- `internal/ledger/orgresource` owns commands, fixed positive-mint use cases,
+  reservation admission contracts, verified-principal and eligibility ports,
+  deterministic fingerprints, and immutable result contracts.
+- `internal/integration/orgresource` implements the domain's persistence port
+  and owns GORM schema, PostgreSQL transaction deadlines and retry
+  classification, row locking, source claims, reservations, events, and audit
+  persistence.
+- A resource reservation is available only to an explicitly registered durable
+  owner adapter. The adapter receives the resource transaction, locks the exact
+  organization-scoped owner attempt, and writes the reservation binding in the
+  same transaction as Operation, Reservation, Bucket, Event, and Audit. The
+  resource adapter verifies the locked owner scope and reads the owner back
+  after binding; an adapter that does not persist the exact binding fails the
+  whole transaction.
+- No owner adapter is registered by this foundation slice. A concrete owner is
+  not eligible for rollout until its domain also supplies durable attempt
+  state, finality/recovery ownership, and the shared Owner Start versus expired
+  recovery fence. Runtime reservation and settlement therefore remain closed
+  until a concrete owner satisfies that contract.
+- Settlement accepts only organization, operation, and reservation identities;
+  it never accepts a caller-selected commit/release decision. The registered
+  owner adapter locks and returns terminal proof in the same transaction.
+  `succeeded_terminal` commits reserved value to consumed, while
+  `failed_terminal` or `cancelled_terminal` releases it. Non-terminal and
+  `outcome_unknown` attempts remain reserved for owner-specific recovery.
+- Every positive available-balance flow uses the same bucket-then-debt lock
+  order and debt-first allocator. Welcome credits and reservation releases both
+  record gross credit, debt repaid, and net credit in the immutable Event; only
+  net credit reaches available.
+- Runtime assembly supplies verified service-principal authorization and
+  immutable onboarding eligibility adapters. Browser and tenant HTTP layers do
+  not construct a generic positive-mint command.
+- `internal/listingsubscription` remains the existing plan/entitlement and
+  usage-metering authority; its usage ledger is not reused as an enterprise
+  resource-balance authority.
+
+### 3.11 `internal/storecenter` expanded Store state
+
+Store Center keeps the legacy `lifecycle_status` during the expand/compatibility
+window, while the V7 state contract introduces nullable transitional
+`record_status`, `service_status`, `service_started_at`, and
+`service_expires_at` columns. `RecordStatus` and `ServiceStatus` validation is
+pure domain code; it enforces the record/service/timestamp invariants but does
+not infer legacy history. In particular, a legacy disabled row is not treated
+as confirmed-absent history. New Store creates and every existing lifecycle
+write now use a compatibility writer: provisioning/active/deleting mirror to
+the corresponding record state, active starts as `pending_activation`, legacy
+disabled mirrors to suspended, and soft delete mirrors to deleted. A known
+service period is preserved by lifecycle/profile writes; no period is invented
+for legacy rows. Pure Activate/Renew/Reactivate decisions validate these
+states and calculate periods without persistence side effects. The
+organization-resource integration adapter commits their Store and resource
+updates as one unit of work. The Store GORM adapter exposes only narrow
+transaction-bound lock/CAS methods to that integration boundary and does not
+open a nested transaction. The shared transaction persists the immutable
+Operation result (or terminal business failure), resource Bucket/Event/Audit,
+and Store service state/version together. A changed Store version or connection
+reference prevents resource consumption, and a failed audit rolls every write
+back. The lifecycle application service derives Organization and actor from
+the verified identity context, rechecks the lifecycle permission, computes the
+canonical request fingerprint, and checks the durable Operation before reading
+the server-owned quantity policy, Store snapshot, or volatile connection
+status. Only Activate queries the connection provider; Renew and Reactivate do
+not acquire that unrelated volatile dependency. Backfill and hard-cut remain
+blocked until the authoritative history resolver and writer fence are
+available, so lifecycle HTTP routes must not be enabled before that authority
+handoff is complete.
+
 ## 4. Forbidden Import Directions
 
 These import directions are forbidden by default:
