@@ -423,6 +423,7 @@ func performRequest(t *testing.T, handler *Handler, method, target, body string,
 	router := gin.New()
 	router.POST("/api/v1/image-agent/runs", handler.Create)
 	router.POST("/api/v1/image-agent/task-runs", handler.LaunchTaskRun)
+	router.GET("/api/v1/image-agent/task-runs/assets", handler.TaskAssets)
 	router.GET("/api/v1/image-agent/runs/:run_id", handler.Get)
 	router.PUT("/api/v1/image-agent/runs/:run_id/plan", handler.ReplacePlan)
 	router.POST("/api/v1/image-agent/runs/:run_id/slots/:slot_id/retry", handler.RetrySlot)
@@ -466,6 +467,9 @@ type stubApplication struct {
 	launchInput                  imageagent.TaskRunLaunchInput
 	launchResult                 imageagent.TaskRunLaunchResult
 	launchErr                    error
+	preflightInput               imageagent.TaskRunAssetsInput
+	preflight                    imageagent.TaskRunAssetPreflight
+	preflightErr                 error
 	recoverErr                   error
 	retryErr, approveErr         error
 	cancelErr                    error
@@ -497,6 +501,10 @@ func (s *stubApplication) LaunchTaskRun(ctx context.Context, input imageagent.Ta
 	s.launchIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)
 	s.launchInput = input
 	return s.launchResult, s.launchErr
+}
+func (s *stubApplication) PreflightTaskRunAssets(_ context.Context, input imageagent.TaskRunAssetsInput) (imageagent.TaskRunAssetPreflight, error) {
+	s.preflightInput = input
+	return s.preflight, s.preflightErr
 }
 func (s *stubApplication) RestartFailed(ctx context.Context, runID string) error {
 	s.restartIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)

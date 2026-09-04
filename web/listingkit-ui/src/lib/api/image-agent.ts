@@ -6,6 +6,7 @@ import type {
   ImageAgentProjection,
   ImageAgentTaskLaunchInput,
   ImageAgentTaskLaunchResult,
+  ImageAgentTaskAssetsResponse,
 } from "@/lib/types/image-agent";
 
 const imageAgentBffBase = "/api/listing-kits/image-agent/runs";
@@ -174,6 +175,15 @@ export async function launchImageAgentTaskRun(
   signal?: AbortSignal,
 ): Promise<ImageAgentTaskLaunchResult> {
   return imageAgentRequest("", { method: "POST", body: input, signal }, imageAgentTaskRunsBffBase);
+}
+
+export async function getImageAgentTaskAssets(
+  businessTaskId: string,
+  targetPlatform: string,
+  signal?: AbortSignal,
+): Promise<ImageAgentTaskAssetsResponse> {
+  const search = `?business_task_id=${encodeURIComponent(businessTaskId.trim())}&target_platform=${encodeURIComponent(targetPlatform.trim())}`;
+  return imageAgentRequest(`assets${search}`, { signal }, imageAgentTaskRunsBffBase);
 }
 
 export async function getImageAgentRun(runId: string, signal?: AbortSignal) {

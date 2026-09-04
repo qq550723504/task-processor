@@ -14,9 +14,10 @@ import (
 
 func TestImageAgentRoutesDeclareExactZitadelPolicies(t *testing.T) {
 	routes := AppendRouteDescriptors(nil, requireHandler(t, &stubApplication{}))
-	require.Len(t, routes, 11)
+	require.Len(t, routes, 12)
 	want := map[string]string{
 		http.MethodPost + " /api/v1/image-agent/runs":                                                  authz.PermissionImageAgentWrite,
+		http.MethodGet + " /api/v1/image-agent/task-runs/assets":                                       authz.PermissionImageAgentRead,
 		http.MethodPost + " /api/v1/image-agent/task-runs":                                             authz.PermissionImageAgentWrite,
 		http.MethodGet + " /api/v1/image-agent/runs/:run_id":                                           authz.PermissionImageAgentRead,
 		http.MethodPut + " /api/v1/image-agent/runs/:run_id/plan":                                      authz.PermissionImageAgentWrite,
@@ -43,5 +44,5 @@ func TestImageAgentModuleRegistersRoutes(t *testing.T) {
 	require.True(t, built.Module.Enabled(&config.Config{}))
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, built.Module.Register(registry))
-	require.Len(t, registry.Routes(), 11)
+	require.Len(t, registry.Routes(), 12)
 }

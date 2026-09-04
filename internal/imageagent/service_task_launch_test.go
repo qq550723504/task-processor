@@ -2,6 +2,7 @@ package imageagent_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,27 +19,33 @@ func launchCatalog() imageagent.AssetCatalog {
 	}}
 }
 
-// taskScopedCatalogResolver mirrors the composition-owned catalog: it narrows
-// to the caller-selected primary source and promotes only the requested style
-// references into the run-scoped snapshot.
+// taskScopedCatalogResolver mirrors the composition-owned catalog selection:
+// a selected primary source narrows sources, and an explicit style selection
+// narrows styles — while an absent style selection preserves every task-owned
+// style in the run-scoped authorization snapshot.
 type taskScopedCatalogResolver struct{ catalog imageagent.AssetCatalog }
 
 func (r taskScopedCatalogResolver) Resolve(_ context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
-	wantedStyles := make(map[string]struct{}, len(scope.StyleReferenceIDs))
+	styleSelectionProvided := len(scope.StyleReferenceIDs) > 0
+	selectedStyles := make(map[string]struct{}, len(scope.StyleReferenceIDs))
 	for _, id := range scope.StyleReferenceIDs {
-		wantedStyles[id] = struct{}{}
+		selectedStyles[id] = struct{}{}
 	}
 	assets := make([]imageagent.AuthorizedAsset, 0, len(r.catalog.Assets))
 	for _, asset := range r.catalog.Assets {
-		switch {
-		case asset.Type == imageagent.AuthorizedAssetSource && scope.PrimarySourceAssetID != "" && asset.ID != scope.PrimarySourceAssetID:
-			continue
-		case asset.Type == imageagent.AuthorizedAssetStyle:
-			if _, ok := wantedStyles[asset.ID]; !ok {
-				continue
+		if asset.Type == imageagent.AuthorizedAssetSource {
+			if scope.PrimarySourceAssetID == "" || asset.ID == scope.PrimarySourceAssetID {
+				assets = append(assets, asset)
 			}
+			continue
 		}
-		assets = append(assets, asset)
+		if !styleSelectionProvided {
+			assets = append(assets, asset)
+			continue
+		}
+		if _, ok := selectedStyles[asset.ID]; ok {
+			assets = append(assets, asset)
+		}
 	}
 	return imageagent.AssetCatalog{Assets: assets}, nil
 }
@@ -47,10 +54,11 @@ func launchTaskRunInput() imageagent.TaskRunLaunchInput {
 	return imageagent.TaskRunLaunchInput{
 		BusinessTaskID: "task-1", TargetPlatform: "shein",
 		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		SourceAssetID: "source-1",
 	}
 }
 
-func TestServiceLaunchTaskRunStartsSingleMainSlotRunWithPrimarySource(t *testing.T) {
+func TestServiceLaunchTaskRunStartsSingleMainSlotRunWithExplicitSource(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	workflows := &recordingWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, taskScopedCatalogResolver{catalog: launchCatalog()})
@@ -91,8 +99,13 @@ func TestServiceLaunchTaskRunStartsSingleMainSlotRunWithPrimarySource(t *testing
 	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: result.RunID})
 	require.NoError(t, err)
 	require.Equal(t, imageagent.RunStatusPlanning, projection.Run.Status)
-	require.Len(t, projection.AssetCatalog.Assets, 1)
-	require.Equal(t, "source-1", projection.AssetCatalog.Assets[0].ID)
+	var persistedSourceIDs []string
+	for _, asset := range projection.AssetCatalog.Assets {
+		if asset.Type == imageagent.AuthorizedAssetSource {
+			persistedSourceIDs = append(persistedSourceIDs, asset.ID)
+		}
+	}
+	require.Equal(t, []string{"source-1"}, persistedSourceIDs)
 }
 
 func TestServiceLaunchTaskRunHonorsExplicitSourceAndStyleSelection(t *testing.T) {
@@ -161,6 +174,11 @@ func TestServiceLaunchTaskRunRequiresIdentityTaskAndPolicyContext(t *testing.T) 
 	_, err = service.LaunchTaskRun(ctx, missingPlatform)
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 
+	missingSource := launchTaskRunInput()
+	missingSource.SourceAssetID = " "
+	_, err = service.LaunchTaskRun(ctx, missingSource)
+	require.ErrorIs(t, err, imageagent.ErrValidation)
+
 	require.Empty(t, workflows.starts)
 }
 
@@ -171,11 +189,145 @@ func TestServiceLaunchTaskRunRejectsTaskWithoutAuthorizedSourceAssets(t *testing
 	catalog.Assets = catalog.Assets[2:] // style only
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: catalog})
 	require.NoError(t, err)
+	input := launchTaskRunInput()
+	input.SourceAssetID = ""
 
-	_, err = service.LaunchTaskRun(verifiedContext("tenant-a", "user-a"), launchTaskRunInput())
+	_, err = service.LaunchTaskRun(verifiedContext("tenant-a", "user-a"), input)
 
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 	require.Empty(t, workflows.starts)
+}
+
+// admissionGateTrackingCatalogResolver records the resolve call order so
+// tests can assert admission is checked before any catalog work.
+type admissionGateTrackingCatalogResolver struct {
+	catalog    imageagent.AssetCatalog
+	startGate  *gateCallRecorder
+	resolved   int
+}
+
+func (r *admissionGateTrackingCatalogResolver) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
+	r.resolved++
+	return taskScopedCatalogResolver{catalog: r.catalog}.Resolve(ctx, scope)
+}
+
+type gateCallRecorder struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (g *gateCallRecorder) AllowTenantStart(_ context.Context, tenantID string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.calls = append(g.calls, tenantID)
+	return false
+}
+
+func TestServiceLaunchTaskRunChecksAdmissionBeforeResolvingAssets(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	gate := &gateCallRecorder{}
+	catalogResolver := &admissionGateTrackingCatalogResolver{catalog: launchCatalog()}
+	service, err := imageagent.NewService(repository, workflows, catalogResolver,
+		imageagent.WithTenantStartGate(gate))
+	require.NoError(t, err)
+
+	_, err = service.LaunchTaskRun(verifiedContext("tenant-b", "user-a"), launchTaskRunInput())
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Equal(t, []string{"tenant-b"}, gate.calls, "admission must be checked exactly once before any catalog work")
+	require.Zero(t, catalogResolver.resolved, "catalog resolution must not run for an ineligible tenant")
+	require.Empty(t, workflows.starts)
+}
+
+func TestServiceLaunchTaskRunReplaysStableLaunchIdentityWithoutDuplicateWorkflow(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, taskScopedCatalogResolver{catalog: launchCatalog()})
+	require.NoError(t, err)
+	ctx := verifiedContext("tenant-a", "user-a")
+	input := launchTaskRunInput()
+
+	first, err := service.LaunchTaskRun(ctx, input)
+	require.NoError(t, err)
+	require.Len(t, workflows.starts, 1)
+
+	// Simulates a lost HTTP response: the caller retries the identical launch.
+	// The retry replays the same durable run identity; the re-dispatch goes
+	// to the same Temporal workflow (USE_EXISTING), never a second paid run.
+	second, err := service.LaunchTaskRun(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, first.RunID, second.RunID, "retried launch must replay the same durable run identity")
+	require.Len(t, workflows.starts, 2)
+	require.Equal(t, first.RunID, workflows.starts[1].Run.ID, "replay must re-dispatch the same workflow identity")
+
+	// A changed target payload must not collide with the replayed identity.
+	changed := launchTaskRunInput()
+	changed.SourceAssetID = "source-2"
+	third, err := service.LaunchTaskRun(ctx, changed)
+	require.NoError(t, err)
+	require.NotEqual(t, first.RunID, third.RunID, "changed payload must use a different launch identity")
+	require.Len(t, workflows.starts, 3)
+	require.Equal(t, third.RunID, workflows.starts[2].Run.ID)
+}
+
+func TestServicePreflightTaskRunAssetsListsSelectableAssets(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	service, err := imageagent.NewService(repository, workflows, taskScopedCatalogResolver{catalog: launchCatalog()})
+	require.NoError(t, err)
+
+	preflight, err := service.PreflightTaskRunAssets(verifiedContext("tenant-a", "user-a"), imageagent.TaskRunAssetsInput{
+		BusinessTaskID: "task-1", TargetPlatform: "shein",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "task-1", preflight.BusinessTaskID)
+	require.Equal(t, "shein", preflight.TargetPlatform)
+	require.Equal(t, []string{"source-1", "source-2"}, authorizedAssetIDs(preflight.Sources))
+	require.Equal(t, []string{"style-1"}, authorizedAssetIDs(preflight.Styles))
+	require.Empty(t, workflows.starts, "preflight must never dispatch a workflow")
+}
+
+func TestServicePreflightTaskRunAssetsChecksAdmissionBeforeResolvingAssets(t *testing.T) {
+	workflows := &recordingWorkflowClient{}
+	gate := &gateCallRecorder{}
+	catalogResolver := &admissionGateTrackingCatalogResolver{catalog: launchCatalog()}
+	service, err := imageagent.NewService(store.NewMemoryRepository(), workflows, catalogResolver,
+		imageagent.WithTenantStartGate(gate))
+	require.NoError(t, err)
+
+	_, err = service.PreflightTaskRunAssets(verifiedContext("tenant-b", "user-a"), imageagent.TaskRunAssetsInput{
+		BusinessTaskID: "task-1", TargetPlatform: "shein",
+	})
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Equal(t, []string{"tenant-b"}, gate.calls, "admission must be checked before any catalog work")
+	require.Zero(t, catalogResolver.resolved, "catalog resolution must not run for an ineligible tenant")
+	require.Empty(t, workflows.starts)
+}
+
+func TestServicePreflightTaskRunAssetsRequiresTaskAndPlatform(t *testing.T) {
+	service, err := imageagent.NewService(store.NewMemoryRepository(), &recordingWorkflowClient{}, taskScopedCatalogResolver{catalog: launchCatalog()})
+	require.NoError(t, err)
+
+	for name, input := range map[string]imageagent.TaskRunAssetsInput{
+		"missing business task": {TargetPlatform: "shein"},
+		"missing platform":      {BusinessTaskID: "task-1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := service.PreflightTaskRunAssets(verifiedContext("tenant-a", "user-a"), input)
+			require.ErrorIs(t, err, imageagent.ErrValidation)
+		})
+	}
+}
+
+func authorizedAssetIDs(assets []imageagent.AuthorizedAsset) []string {
+	ids := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		ids = append(ids, asset.ID)
+	}
+	return ids
 }
 
 func TestServiceLaunchTaskRunAdmitsTenantThroughStartGate(t *testing.T) {

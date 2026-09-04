@@ -171,6 +171,13 @@ export type ImageAgentTaskLaunchInput = {
   style_asset_ids?: string[];
 };
 
+export type ImageAgentTaskAssetsResponse = {
+  business_task_id: string;
+  target_platform: string;
+  sources: ImageAgentAuthorizedAsset[];
+  styles: ImageAgentAuthorizedAsset[];
+};
+
 export type ImageAgentTaskLaunchResult = {
   run_id: string;
   status: string;

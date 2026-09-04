@@ -244,6 +244,16 @@ type authorizedAssetDTO struct {
 	Label      string                         `json:"label,omitempty"`
 }
 
+func newAuthorizedAssetDTO(asset imageagent.AuthorizedAsset) authorizedAssetDTO {
+	displayURL := ""
+	if strings.TrimSpace(asset.DisplayURL) != "" {
+		if safeURL, err := imageagent.ValidateSafeImageURL(asset.DisplayURL); err == nil {
+			displayURL = safeURL
+		}
+	}
+	return authorizedAssetDTO{ID: strings.TrimSpace(asset.ID), Type: asset.Type, DisplayURL: displayURL, Label: strings.TrimSpace(asset.Label)}
+}
+
 type pendingCommandDTO struct {
 	ActionID        string     `json:"action_id"`
 	Kind            string     `json:"kind"`
@@ -278,13 +288,7 @@ func newRunProjectionResponse(value imageagent.RunProjection, publicURLs imageag
 		if strings.TrimSpace(asset.ID) == "" || (asset.Type != imageagent.AuthorizedAssetSource && asset.Type != imageagent.AuthorizedAssetStyle) {
 			continue
 		}
-		displayURL := ""
-		if strings.TrimSpace(asset.DisplayURL) != "" {
-			if safeURL, err := imageagent.ValidateSafeImageURL(asset.DisplayURL); err == nil {
-				displayURL = safeURL
-			}
-		}
-		response.AssetCatalog = append(response.AssetCatalog, authorizedAssetDTO{ID: strings.TrimSpace(asset.ID), Type: asset.Type, DisplayURL: displayURL, Label: strings.TrimSpace(asset.Label)})
+		response.AssetCatalog = append(response.AssetCatalog, newAuthorizedAssetDTO(asset))
 	}
 	if value.PendingCommand != nil {
 		receipt := value.PendingCommand

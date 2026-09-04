@@ -77,6 +77,7 @@ describe("buildListingKitProxyUrl", () => {
   it.each([
     ["POST", ["image-agent", "runs"]],
     ["POST", ["image-agent", "task-runs"]],
+    ["GET", ["image-agent", "task-runs", "assets"]],
     ["GET", ["image-agent", "runs", "run-1"]],
     ["PUT", ["image-agent", "runs", "run-1", "plan"]],
     ["POST", ["image-agent", "runs", "run-1", "slots", "scene-2", "retry"]],
@@ -102,7 +103,9 @@ describe("buildListingKitProxyUrl", () => {
     ["GET", ["image-agent", "runs", "run%2F1"]],
     ["GET", ["image-agent", "runs", "run%5C1"]],
     ["GET", ["image-agent", "runs", "run-1", "unknown"]],
-  ])("rejects %s for unsafe or unknown image-agent route %j", (method, path) => {
+    ["POST", ["image-agent", "task-runs", "assets"]],
+    ["GET", ["image-agent", "task-runs", "assets", "extra"]],
+    ["GET", ["image-agent", "task-runs", "assets%2Fsecrets"]],  ])("rejects %s for unsafe or unknown image-agent route %j", (method, path) => {
     expect(() => buildListingKitProxyUrl(
       "http://localhost:8080/api/v1/listing-kits", path, "", method,
     )).toThrow("image-agent proxy route is not allowed");

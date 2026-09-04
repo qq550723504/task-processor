@@ -29,6 +29,7 @@ const (
 type Application interface {
 	Start(context.Context, imageagent.StartRunInput) error
 	LaunchTaskRun(context.Context, imageagent.TaskRunLaunchInput) (imageagent.TaskRunLaunchResult, error)
+	PreflightTaskRunAssets(context.Context, imageagent.TaskRunAssetsInput) (imageagent.TaskRunAssetPreflight, error)
 	RestartFailed(context.Context, string) error
 	Get(context.Context, string) (imageagent.RunProjection, error)
 	ReplacePlan(context.Context, string, int64, imageagent.Plan, string) error
@@ -145,6 +146,46 @@ func (h *Handler) LaunchTaskRun(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"run_id": result.RunID, "status": "accepted"})
+}
+
+// TaskAssets is the preflight endpoint for the task-scoped workspace
+// entrypoint: it lists the task-owned source and style assets so the launcher
+// can require an explicit source selection. It never creates a run.
+func (h *Handler) TaskAssets(c *gin.Context) {
+	if !requireVerifiedIdentity(c) {
+		return
+	}
+	preflight, err := h.application.PreflightTaskRunAssets(c.Request.Context(), imageagent.TaskRunAssetsInput{
+		BusinessTaskID: c.Query("business_task_id"),
+		TargetPlatform: c.Query("target_platform"),
+	})
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, newTaskRunAssetsResponse(preflight))
+}
+
+type taskRunAssetsResponse struct {
+	BusinessTaskID string               `json:"business_task_id"`
+	TargetPlatform string               `json:"target_platform"`
+	Sources        []authorizedAssetDTO `json:"sources"`
+	Styles         []authorizedAssetDTO `json:"styles"`
+}
+
+func newTaskRunAssetsResponse(preflight imageagent.TaskRunAssetPreflight) taskRunAssetsResponse {
+	response := taskRunAssetsResponse{
+		BusinessTaskID: preflight.BusinessTaskID, TargetPlatform: preflight.TargetPlatform,
+		Sources: make([]authorizedAssetDTO, 0, len(preflight.Sources)),
+		Styles:  make([]authorizedAssetDTO, 0, len(preflight.Styles)),
+	}
+	for _, asset := range preflight.Sources {
+		response.Sources = append(response.Sources, newAuthorizedAssetDTO(asset))
+	}
+	for _, asset := range preflight.Styles {
+		response.Styles = append(response.Styles, newAuthorizedAssetDTO(asset))
+	}
+	return response
 }
 
 type imagePolicyContextDTO struct {

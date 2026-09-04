@@ -131,8 +131,9 @@ type TaskRunLaunchInput struct {
 	BusinessTaskID     string
 	TargetPlatform     string
 	ImagePolicyContext ImagePolicyContext
-	// SourceAssetID optionally narrows the launch to one task-owned source
-	// asset. Empty selects the primary source asset of the resolved catalog.
+	// SourceAssetID selects the single task-owned source asset for the
+	// run. It is required: crawler ordering never establishes intent,
+	// so the launcher must force an explicit choice via the preflight.
 	SourceAssetID string
 	// StyleAssetIDs optionally promotes task-owned style assets into the
 	// run-scoped authorization snapshot.
@@ -141,6 +142,22 @@ type TaskRunLaunchInput struct {
 
 type TaskRunLaunchResult struct {
 	RunID string
+}
+
+// TaskRunAssetsInput is the preflight query for the task-scoped workspace
+// entrypoint: it resolves the selectable task-owned assets without
+// creating a run, so the launcher can require an explicit source
+// selection instead of trusting crawler ordering.
+type TaskRunAssetsInput struct {
+	BusinessTaskID string
+	TargetPlatform string
+}
+
+type TaskRunAssetPreflight struct {
+	BusinessTaskID string
+	TargetPlatform string
+	Sources        []AuthorizedAsset
+	Styles         []AuthorizedAsset
 }
 
 type WorkflowStart struct {

@@ -200,7 +200,16 @@ func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (
 	if err != nil {
 		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
-	runID := "image-agent-" + uuid.NewString()
+	// Admission is checked before the task catalog is resolved: the production
+	// resolver can probe up to 32 remote images on a 30s budget, and ineligible
+	// tenants must fail closed without consuming that capacity.
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	if input.SourceAssetID == "" {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: source_asset_id must select one task-owned source asset", ErrValidation)
+	}
+	runID, runIdempotencyKey := taskLaunchRunIdentity(identity, input, styleIDs)
 	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{
 		TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID,
 		RunID: runID, TargetPlatform: input.TargetPlatform,
@@ -221,22 +230,86 @@ func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (
 		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	plan := Plan{
-		Revision: 1, IdempotencyKey: "image-agent-plan-" + uuid.NewString(),
+		Revision: 1, IdempotencyKey: runID + "-plan",
 		SourceAssetIDs: []string{primarySource}, StyleReferenceIDs: styleIDs,
 		Slots: []Slot{{
 			ID: "main", Role: SlotRoleMain, SourceAssetIDs: []string{primarySource}, StyleReferenceIDs: styleIDs,
-			IdempotencyKey: "image-agent-slot-main-" + uuid.NewString(), Status: SlotStatusPending,
+			IdempotencyKey: runID + "-slot-main", Status: SlotStatusPending,
 		}},
 	}
 	if err := s.Start(ctx, StartRunInput{
 		RunID: runID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
 		ImagePolicyContext: input.ImagePolicyContext, Mode: RunModeManual,
-		IdempotencyKey: "image-agent-run-" + uuid.NewString(), Plan: plan,
+		IdempotencyKey: runIdempotencyKey, Plan: plan,
 		Budget: Budget{MaxImages: 1, EnabledLimits: BudgetLimitImages}, MaxConcurrentSlots: 1,
 	}); err != nil {
 		return TaskRunLaunchResult{}, err
 	}
 	return TaskRunLaunchResult{RunID: runID}, nil
+}
+
+// PreflightTaskRunAssets resolves the task-scoped asset catalog without
+// creating a run. The workspace launcher uses it to force an explicit
+// source selection; crawler ordering never establishes user intent.
+func (s *Service) PreflightTaskRunAssets(ctx context.Context, input TaskRunAssetsInput) (TaskRunAssetPreflight, error) {
+	identity, err := verifiedExecutionIdentity(ctx)
+	if err != nil {
+		return TaskRunAssetPreflight{}, err
+	}
+	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
+	input.TargetPlatform = strings.ToLower(strings.TrimSpace(input.TargetPlatform))
+	if input.BusinessTaskID == "" {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: business task ID is required", ErrValidation)
+	}
+	if input.TargetPlatform == "" {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: target platform is required", ErrValidation)
+	}
+	// Same admission ordering as LaunchTaskRun: the production resolver can
+	// probe up to 32 remote images on a 30s budget, so ineligible tenants
+	// must fail closed before any catalog work.
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{
+		TenantID: identity.TenantID, OwnerUserID: identity.UserID,
+		BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+	})
+	if err != nil {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
+	}
+	catalog, err = NormalizeAssetCatalog(catalog)
+	if err != nil {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: normalize authorized image assets: %v", ErrValidation, err)
+	}
+	preflight := TaskRunAssetPreflight{
+		BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+		Sources: []AuthorizedAsset{}, Styles: []AuthorizedAsset{},
+	}
+	for _, asset := range catalog.Assets {
+		switch asset.Type {
+		case AuthorizedAssetSource:
+			preflight.Sources = append(preflight.Sources, asset)
+		case AuthorizedAssetStyle:
+			preflight.Styles = append(preflight.Styles, asset)
+		}
+	}
+	return preflight, nil
+}
+
+// taskLaunchRunIdentity derives the durable run identity from the complete
+// launch payload. Identical retries map to the same run row so Start's
+// existing projection replay path absorbs lost responses; any payload change
+// (source, styles, platform, or policy context) produces a distinct identity
+// so it never collides with a different generation request.
+func taskLaunchRunIdentity(identity ExecutionIdentity, input TaskRunLaunchInput, styleIDs []string) (runID, idempotencyKey string) {
+	payload := strings.Join([]string{
+		identity.TenantID, identity.UserID, input.BusinessTaskID, input.TargetPlatform,
+		input.ImagePolicyContext.Country,
+		input.ImagePolicyContext.Family, input.ImagePolicyContext.SceneCategory,
+		input.SourceAssetID, strings.Join(styleIDs, ","),
+	}, "\x00")
+	launchKey := uuid.NewSHA1(uuid.NameSpaceURL, []byte("task-processor:imageagent:task-launch:"+payload)).String()
+	return "image-agent-" + launchKey, "image-agent-run-" + launchKey
 }
 
 func normalizeTaskLaunchStyleIDs(raw []string) ([]string, error) {
@@ -256,21 +329,17 @@ func normalizeTaskLaunchStyleIDs(raw []string) ([]string, error) {
 	return out, nil
 }
 
+// primaryTaskLaunchSource requires the caller to select one authorized source
+// asset explicitly. Catalog ordering is crawler-provided and never establishes
+// user intent, so no implicit fallback exists: a missing selection fails
+// closed before any generation budget is spent.
 func primaryTaskLaunchSource(catalog AssetCatalog, requested string) (string, error) {
-	if requested != "" {
-		for _, asset := range catalog.Assets {
-			if asset.Type == AuthorizedAssetSource && asset.ID == requested {
-				return requested, nil
-			}
-		}
-		return "", fmt.Errorf("source asset %q is not authorized for this business task", requested)
-	}
 	for _, asset := range catalog.Assets {
-		if asset.Type == AuthorizedAssetSource {
-			return asset.ID, nil
+		if asset.Type == AuthorizedAssetSource && asset.ID == requested {
+			return requested, nil
 		}
 	}
-	return "", fmt.Errorf("business task has no authorized source images")
+	return "", fmt.Errorf("source asset %q is not authorized for this business task", requested)
 }
 
 func validateTaskLaunchStyleIDs(catalog AssetCatalog, styleIDs []string) error {
@@ -311,6 +380,9 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 }
 
 func (s *Service) startExistingProjection(ctx context.Context, projection RunProjection, identity ExecutionIdentity) error {
+	// The workflow is already durable (Temporal USE_EXISTING conflict policy
+	// keyed by run ID); StartManual on an existing projection is a re-dispatch
+	// of the same workflow, not a new paid execution.
 	if !s.tenantStartAllowed(ctx, identity.TenantID) {
 		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
 	}

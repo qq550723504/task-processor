@@ -71,6 +71,64 @@ func TestLaunchTaskRunMapsApplicationErrors(t *testing.T) {
 	require.Equal(t, http.StatusConflict, response.Code)
 }
 
+func TestTaskAssetsRequiresIdentity(t *testing.T) {
+	response := performRequest(t, requireHandler(t, &stubApplication{}), http.MethodGet,
+		"/api/v1/image-agent/task-runs/assets?business_task_id=task-1&target_platform=shein", "", nil, nil)
+
+	require.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestTaskAssetsDecodesQueryAndReturnsSelectableAssets(t *testing.T) {
+	application := &stubApplication{
+		preflight: imageagent.TaskRunAssetPreflight{
+			BusinessTaskID: "task-1", TargetPlatform: "shein",
+			Sources: []imageagent.AuthorizedAsset{
+				{ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png", Label: "Source 1"},
+				{ID: "source-2", Type: imageagent.AuthorizedAssetSource, Label: "Source 2"},
+			},
+			Styles: []imageagent.AuthorizedAsset{
+				{ID: "style-1", Type: imageagent.AuthorizedAssetStyle, Label: "Style 1"},
+			},
+		},
+	}
+	handler := requireHandler(t, application)
+
+	response := performRequest(t, handler, http.MethodGet,
+		"/api/v1/image-agent/task-runs/assets?business_task_id=task-1&target_platform=shein", "", verifiedIdentity("tenant-a", "user-a"), nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.JSONEq(t, `{
+		"business_task_id":"task-1",
+		"target_platform":"shein",
+		"sources":[
+			{"id":"source-1","type":"source","display_url":"https://cdn.example.test/source-1.png","label":"Source 1"},
+			{"id":"source-2","type":"source","label":"Source 2"}
+		],
+		"styles":[{"id":"style-1","type":"style","label":"Style 1"}]
+	}`, response.Body.String())
+	require.Equal(t, "task-1", application.preflightInput.BusinessTaskID)
+	require.Equal(t, "shein", application.preflightInput.TargetPlatform)
+}
+
+func TestTaskAssetsMapsApplicationErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{name: "blocked tenant", err: imageagent.ErrCommandBlocked, wantCode: http.StatusConflict},
+		{name: "invalid request", err: imageagent.ErrValidation, wantCode: http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := requireHandler(t, &stubApplication{preflightErr: tt.err})
+			response := performRequest(t, handler, http.MethodGet,
+				"/api/v1/image-agent/task-runs/assets?business_task_id=task-1&target_platform=shein", "", verifiedIdentity("tenant-a", "user-a"), nil)
+			require.Equal(t, tt.wantCode, response.Code)
+		})
+	}
+}
+
 func performLaunchRequest(t *testing.T, handler *Handler, body string, identity *authidentity.AuthenticatedIdentity) *httptest.ResponseRecorder {
 	t.Helper()
 	return performRequest(t, handler, http.MethodPost, "/api/v1/image-agent/task-runs", body, identity, nil)
