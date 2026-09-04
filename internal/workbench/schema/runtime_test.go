@@ -35,6 +35,13 @@ func TestWorkbenchAutoMigrateCreatesOwnedTablesAndIsRepeatable(t *testing.T) {
 
 	wantTables := []string{
 		"listing_store",
+		"saas_organization_resource_audit_logs",
+		"saas_organization_resource_buckets",
+		"saas_organization_resource_debts",
+		"saas_organization_resource_events",
+		"saas_organization_resource_operations",
+		"saas_organization_resource_reservations",
+		"saas_organization_resource_source_claims",
 		"saas_plan_modules",
 		"saas_store_quota_allocations",
 		"saas_store_quota_buckets",
@@ -65,7 +72,7 @@ func TestWorkbenchAutoMigrateUsesNonNullStringOrganizationColumns(t *testing.T) 
 		t.Fatalf("AutoMigrateRuntime() error = %v", err)
 	}
 
-	for _, table := range []string{"workbench_stores", "workbench_store_audit_logs", "saas_store_quota_allocations", "saas_store_quota_buckets"} {
+	for _, table := range []string{"workbench_stores", "workbench_store_audit_logs", "saas_store_quota_allocations", "saas_store_quota_buckets", "saas_organization_resource_buckets", "saas_organization_resource_debts", "saas_organization_resource_reservations"} {
 		columns := sqliteTableColumns(t, db, table)
 		var organizationColumn *sqliteColumnInfo
 		for index := range columns {
