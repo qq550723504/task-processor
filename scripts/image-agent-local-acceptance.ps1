@@ -364,11 +364,12 @@ function Initialize-AcceptanceRuntime {
 }
 
 function Initialize-ZitadelRuntime {
+    $zitadelVersionLine = "ZITADEL_VERSION=v4.17.1"
     if (Test-Path -LiteralPath $zitadelEnvFile) {
         $lines = @(Get-Content -LiteralPath $zitadelEnvFile | Where-Object {
-            $_ -notmatch '^\s*PROXY_HTTP_PUBLISHED_HOST='
+            $_ -notmatch '^\s*(PROXY_HTTP_PUBLISHED_HOST|ZITADEL_VERSION)='
         })
-        Write-PrivateFile -Path $zitadelEnvFile -Content (((@($lines) + "PROXY_HTTP_PUBLISHED_HOST=127.0.0.1") -join "`n") + "`n")
+        Write-PrivateFile -Path $zitadelEnvFile -Content (((@($lines) + "PROXY_HTTP_PUBLISHED_HOST=127.0.0.1" + $zitadelVersionLine) -join "`n") + "`n")
         return
     }
     $password = New-LocalSecret
@@ -382,7 +383,7 @@ function Initialize-ZitadelRuntime {
         "ZITADEL_PUBLIC_SCHEME=http",
         "ZITADEL_MASTERKEY=$masterKey",
         "LOGIN_CLIENT_PAT_EXPIRATION=2099-01-01T00:00:00Z",
-        "ZITADEL_VERSION=v4.17.1",
+        $zitadelVersionLine,
         "TRAEFIK_IMAGE=traefik:v3.6.8",
         "POSTGRES_IMAGE=postgres:17.2-alpine",
         "POSTGRES_DB=zitadel",
