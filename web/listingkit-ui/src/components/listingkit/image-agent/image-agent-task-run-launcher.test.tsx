@@ -180,4 +180,36 @@ describe("ImageAgentTaskRunLauncher", () => {
     expect(mocks.getImageAgentTaskAssets).not.toHaveBeenCalled();
     expect(mocks.launchImageAgentTaskRun).not.toHaveBeenCalled();
   });
+
+  it("clears task-scoped asset selections when the task or platform changes", async () => {
+    const user = userEvent.setup();
+    const rendered = render(
+      <ImageAgentTaskRunLauncher
+        taskId="task-1"
+        targetPlatform="shein"
+        onLaunched={onLaunched}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "创建图片方案" }));
+    await user.click(await screen.findByLabelText("Source 1"));
+    await user.click(screen.getByLabelText("Style 1"));
+    await user.click(screen.getByLabelText("鞋履"));
+    expect(screen.getByLabelText("Source 1")).toBeChecked();
+    expect(screen.getByLabelText("Style 1")).toBeChecked();
+
+    rendered.rerender(
+      <ImageAgentTaskRunLauncher
+        taskId="task-2"
+        targetPlatform="amazon"
+        onLaunched={onLaunched}
+      />,
+    );
+
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText("Source 1")).not.toBeChecked();
+      expect(screen.getByLabelText("Style 1")).not.toBeChecked();
+      expect(screen.getByRole("button", { name: "开始生成" })).toBeDisabled();
+    });
+  });
 });

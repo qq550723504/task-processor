@@ -35,6 +35,8 @@ export function ImageAgentTaskRunLauncher({
 
   useEffect(() => {
     launchRequestId.current = undefined;
+    setSourceId("");
+    setStyleIds([]);
   }, [taskId, targetPlatform, country]);
 
   const preflightKey = open && targetPlatform
