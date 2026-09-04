@@ -82,7 +82,16 @@ func TestGormStoreRepositoryExpandsNullableStoreServiceColumns(t *testing.T) {
 	for _, column := range columns {
 		byName[column.Name] = column
 	}
-	for _, name := range []string{"record_status", "service_status", "service_started_at", "service_expires_at"} {
+	for _, name := range []string{
+		"record_status",
+		"service_status",
+		"service_started_at",
+		"service_expires_at",
+		"service_history_resolution_status",
+		"service_history_source_identity",
+		"service_history_snapshot_token",
+		"service_history_resolved_at",
+	} {
 		column, ok := byName[name]
 		if !ok || column.NotNull != 0 {
 			t.Fatalf("expand column %q = %#v, want present and nullable", name, column)

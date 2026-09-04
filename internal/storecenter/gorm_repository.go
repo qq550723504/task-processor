@@ -34,6 +34,10 @@ type workbenchStoreRecord struct {
 	ServiceStatus            *string        `gorm:"column:service_status;size:32"`
 	ServiceStartedAt         *time.Time     `gorm:"column:service_started_at"`
 	ServiceExpiresAt         *time.Time     `gorm:"column:service_expires_at"`
+	ServiceHistoryResolution *string        `gorm:"column:service_history_resolution_status;size:32;index:idx_workbench_stores_history_resolution_updated,priority:1"`
+	ServiceHistorySource     *string        `gorm:"column:service_history_source_identity;size:256"`
+	ServiceHistoryToken      *string        `gorm:"column:service_history_snapshot_token;size:64"`
+	ServiceHistoryResolvedAt *time.Time     `gorm:"column:service_history_resolved_at;index:idx_workbench_stores_history_resolution_updated,priority:2"`
 	ConnectionRef            string         `gorm:"column:connection_ref;not null"`
 	QuotaAllocationID        string         `gorm:"column:quota_allocation_id;type:char(36);not null"`
 	Version                  int64          `gorm:"column:version;not null"`
@@ -444,12 +448,18 @@ func (r *GormStoreRepository) loadActiveRecord(ctx context.Context, organization
 }
 
 func recordFromSnapshot(snapshot StoreSnapshot, identity, fingerprint string) workbenchStoreRecord {
+	createdAt := snapshot.CreatedAt.UTC()
+	historyStatus := historyResolutionNotApplicableNew
+	historySource := historySourceStoreCreate
+	historyToken := fingerprint
 	record := workbenchStoreRecord{
 		ID: snapshot.ID, OrganizationID: snapshot.OrganizationID, Name: snapshot.Name, Platform: string(snapshot.Platform), Region: snapshot.Region,
 		ExternalStoreID: snapshot.ExternalStoreID, LifecycleStatus: string(snapshot.LifecycleStatus), ConnectionRef: snapshot.ConnectionRef,
 		QuotaAllocationID: snapshot.QuotaAllocationID, Version: snapshot.Version, CreatedBy: snapshot.CreatedBy, UpdatedBy: snapshot.UpdatedBy,
 		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, CreateIdempotencyKey: snapshot.CreateIdempotencyKey, DeleteOperationKey: snapshot.DeleteOperationKey,
 		IdentityKey: identity, CreateRequestFingerprint: fingerprint,
+		ServiceHistoryResolution: &historyStatus, ServiceHistorySource: &historySource,
+		ServiceHistoryToken: &historyToken, ServiceHistoryResolvedAt: &createdAt,
 	}
 	record.applyCompatibilityState(compatibilityStateForNewStore(snapshot.LifecycleStatus))
 	if snapshot.DeletedAt != nil {

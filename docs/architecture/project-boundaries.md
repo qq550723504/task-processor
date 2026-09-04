@@ -332,10 +332,15 @@ the verified identity context, rechecks the lifecycle permission, computes the
 canonical request fingerprint, and checks the durable Operation before reading
 the server-owned quantity policy, Store snapshot, or volatile connection
 status. Only Activate queries the connection provider; Renew and Reactivate do
-not acquire that unrelated volatile dependency. Backfill and hard-cut remain
-blocked until the authoritative history resolver and writer fence are
-available, so lifecycle HTTP routes must not be enabled before that authority
-handoff is complete.
+not acquire that unrelated volatile dependency. The Phase 1 history migrator
+accepts only a strict, approved `NoAuthoritativeHistorySource` manifest and
+persists its immutable token as per-row `confirmed_absent` evidence; it never
+infers absence from nullable fields or Store timestamps. New Stores are marked
+`not_applicable_new` with evidence bound to their create fingerprint, so they
+cannot re-enter the legacy migration cohort. The migration command defaults to
+read-only verification and requires an explicit action for one bounded
+backfill batch. Constraints, authority switching, and lifecycle HTTP routes
+remain separate later phases and must not be enabled by this foundation.
 
 ## 4. Forbidden Import Directions
 
