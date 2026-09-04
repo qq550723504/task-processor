@@ -22,6 +22,10 @@ type GormStoreRepository struct {
 	db *gorm.DB
 }
 
+// ErrStoreSchemaMigrationBusy asks the schema runner to retry after the
+// separately authorized Phase E migration releases its transaction lock.
+var ErrStoreSchemaMigrationBusy = errors.New("store schema migration lock is already held")
+
 type workbenchStoreRecord struct {
 	ID                       string         `gorm:"column:id;type:char(36);primaryKey;not null;index:idx_workbench_stores_history_backfill_record,priority:2;index:idx_workbench_stores_history_backfill_resolution,priority:4"`
 	OrganizationID           string         `gorm:"column:organization_id;size:200;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:1;index:idx_workbench_stores_org_record_status_updated,priority:1;index:idx_workbench_stores_org_platform_region,priority:1;uniqueIndex:ux_workbench_stores_org_create_key,priority:1;uniqueIndex:ux_workbench_stores_org_identity_key,priority:1"`
@@ -54,13 +58,59 @@ type workbenchStoreRecord struct {
 
 func (workbenchStoreRecord) TableName() string { return "workbench_stores" }
 
+// workbenchStoreRecordPostCutover mirrors the repository schema while telling
+// GORM about a hard-cut record_status column. The migration entrypoint selects
+// this model only when the existing catalog already reports NOT NULL, so normal
+// migrations preserve Phase E without initiating the transition themselves.
+type workbenchStoreRecordPostCutover struct {
+	Record       workbenchStoreRecord `gorm:"embedded"`
+	RecordStatus *string              `gorm:"column:record_status;size:32;not null;index:idx_workbench_stores_org_record_status_updated,priority:2;index:idx_workbench_stores_history_backfill_record,priority:1"`
+}
+
+func (workbenchStoreRecordPostCutover) TableName() string { return "workbench_stores" }
+
 // AutoMigrateStoreRepository creates the Store Center table. It is safe to
 // call repeatedly and rejects a nil handle instead of panicking at startup.
+// PostgreSQL migrations share Phase E's transaction lock so the catalog
+// nullability decision and the migration cannot straddle the hard-cut.
 func AutoMigrateStoreRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("store repository database is required")
 	}
-	return db.AutoMigrate(&workbenchStoreRecord{})
+	if db.Dialector != nil && db.Dialector.Name() == "postgres" {
+		return db.Transaction(func(tx *gorm.DB) error {
+			var acquired bool
+			if err := tx.Raw(`SELECT pg_try_advisory_xact_lock(hashtext(?))`, storeServiceConstraintLockKey).Scan(&acquired).Error; err != nil {
+				return fmt.Errorf("acquire Store schema migration lock: %w", err)
+			}
+			if !acquired {
+				return ErrStoreSchemaMigrationBusy
+			}
+			return autoMigrateStoreRepository(tx)
+		})
+	}
+	return autoMigrateStoreRepository(db)
+}
+
+func autoMigrateStoreRepository(db *gorm.DB) error {
+	model := any(&workbenchStoreRecord{})
+	if db.Migrator().HasTable(&workbenchStoreRecord{}) {
+		columnTypes, err := db.Migrator().ColumnTypes(&workbenchStoreRecord{})
+		if err != nil {
+			return fmt.Errorf("inspect workbench store schema before migration: %w", err)
+		}
+		for _, columnType := range columnTypes {
+			if columnType.Name() != "record_status" {
+				continue
+			}
+			nullable, known := columnType.Nullable()
+			if known && !nullable {
+				model = &workbenchStoreRecordPostCutover{}
+			}
+			break
+		}
+	}
+	return db.AutoMigrate(model)
 }
 
 func NewGormStoreRepository(db *gorm.DB) (*GormStoreRepository, error) {

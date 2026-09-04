@@ -113,6 +113,69 @@ func TestRunBackfillRequiresExplicitActionAndUsesBoundedBatch(t *testing.T) {
 	}
 }
 
+func TestRunConstraintsRequiresExplicitActionAndUsesWritableDatabase(t *testing.T) {
+	fake := &fakeHistoryMigrator{constraintReport: storecenter.StoreServiceConstraintReport{
+		PhaseD:             storecenter.StoreHistoryMigrationReport{ReadyForConstraints: true},
+		ConstraintsApplied: true,
+	}}
+	var output bytes.Buffer
+	readOnlyOpened := false
+	writableOpened := false
+	err := runWithDependencies(context.Background(), Options{
+		Config: "config/test.yaml", Manifest: "manifest.json", Action: "constraints", LogLevel: "error",
+		ConstraintLockTimeout: 750 * time.Millisecond, ConstraintStatementTimeout: 45 * time.Second,
+	}, &output, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) { return &config.Config{Database: &config.DatabaseConfig{}}, nil },
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			readOnlyOpened = true
+			return &gorm.DB{}, nil
+		},
+		OpenWritableDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			writableOpened = true
+			return &gorm.DB{}, nil
+		},
+		CloseDB: func(*gorm.DB) error { return nil },
+		LoadManifest: func(string) (storecenter.NoAuthoritativeHistorySourceManifest, error) {
+			return validManifest(), nil
+		},
+		NewMigrator: func(*gorm.DB, storecenter.NoAuthoritativeHistorySourceManifest, string, func() time.Time) (historyMigrator, error) {
+			return fake, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.constraintCalls != 1 || fake.verifyCalls != 0 || fake.backfillCalls != 0 || readOnlyOpened || !writableOpened {
+		t.Fatalf("constraints/verify/backfill/read-only/writable = %d/%d/%d/%v/%v", fake.constraintCalls, fake.verifyCalls, fake.backfillCalls, readOnlyOpened, writableOpened)
+	}
+	if fake.constraintOptions.LockTimeout != 750*time.Millisecond || fake.constraintOptions.StatementTimeout != 45*time.Second {
+		t.Fatalf("constraint options = %+v", fake.constraintOptions)
+	}
+	if !strings.Contains(output.String(), `"constraints_applied":true`) {
+		t.Fatalf("constraint report output = %q", output.String())
+	}
+}
+
+func TestRunConstraintsRejectsUnboundedTimeoutsBeforeRuntimeSideEffects(t *testing.T) {
+	for _, options := range []Options{
+		{Action: "constraints", Manifest: "manifest.json", ConstraintLockTimeout: 0, ConstraintStatementTimeout: time.Second},
+		{Action: "constraints", Manifest: "manifest.json", ConstraintLockTimeout: time.Second, ConstraintStatementTimeout: 0},
+		{Action: "constraints", Manifest: "manifest.json", ConstraintLockTimeout: 31 * time.Second, ConstraintStatementTimeout: time.Second},
+		{Action: "constraints", Manifest: "manifest.json", ConstraintLockTimeout: time.Second, ConstraintStatementTimeout: 31 * time.Minute},
+	} {
+		called := false
+		err := runWithDependencies(context.Background(), options, &bytes.Buffer{}, runtimeDependencies{
+			LoadConfig: func(string) (*config.Config, error) {
+				called = true
+				return nil, nil
+			},
+		})
+		if err == nil || called {
+			t.Fatalf("runWithDependencies() = %v, called=%v; want timeout rejection before side effects", err, called)
+		}
+	}
+}
+
 func TestRunRejectsUnknownActionBeforeRuntimeSideEffects(t *testing.T) {
 	called := false
 	err := runWithDependencies(context.Background(), Options{Action: "enable", Manifest: "manifest.json"}, &bytes.Buffer{}, runtimeDependencies{
@@ -141,7 +204,7 @@ func TestRunRejectsNilDatabaseConfigWithoutPanicking(t *testing.T) {
 func TestParseFlagsAdvertisesSafeDefaults(t *testing.T) {
 	fs := flag.NewFlagSet("store-service-history-migrate", flag.ContinueOnError)
 	opts := ParseFlagsFrom(fs, "--manifest", "decision.json")
-	if opts.Action != "verify" || opts.BatchSize != 100 || opts.Manifest != "decision.json" {
+	if opts.Action != "verify" || opts.BatchSize != 100 || opts.Manifest != "decision.json" || opts.ConstraintLockTimeout <= 0 || opts.ConstraintStatementTimeout <= 0 {
 		t.Fatalf("options = %+v", opts)
 	}
 }
@@ -154,10 +217,12 @@ func validManifest() storecenter.NoAuthoritativeHistorySourceManifest {
 }
 
 type fakeHistoryMigrator struct {
-	verifyCalls, backfillCalls int
-	batchSize                  int
-	verifyReport               storecenter.StoreHistoryMigrationReport
-	backfillReport             storecenter.StoreHistoryMigrationReport
+	verifyCalls, backfillCalls, constraintCalls int
+	batchSize                                   int
+	constraintOptions                           storecenter.StoreServiceConstraintOptions
+	verifyReport                                storecenter.StoreHistoryMigrationReport
+	backfillReport                              storecenter.StoreHistoryMigrationReport
+	constraintReport                            storecenter.StoreServiceConstraintReport
 }
 
 func (fake *fakeHistoryMigrator) Verify(context.Context) (storecenter.StoreHistoryMigrationReport, error) {
@@ -169,4 +234,10 @@ func (fake *fakeHistoryMigrator) BackfillBatch(_ context.Context, batchSize int)
 	fake.backfillCalls++
 	fake.batchSize = batchSize
 	return fake.backfillReport, nil
+}
+
+func (fake *fakeHistoryMigrator) ApplyConstraints(_ context.Context, options storecenter.StoreServiceConstraintOptions) (storecenter.StoreServiceConstraintReport, error) {
+	fake.constraintCalls++
+	fake.constraintOptions = options
+	return fake.constraintReport, nil
 }
