@@ -130,6 +130,77 @@ func TestPostgresStoreServicePhaseEConstraintsAreGuardedBoundedAndIdempotent(t *
 	assertStoreServiceConstraintRejects(t, db, ids[1], map[string]any{"service_expires_at": nil})
 }
 
+func TestPostgresAutoMigrateSerializesNullabilityDecisionWithPhaseE(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	db, sqlDB := openStoreServiceConstraintPostgres(t, ctx)
+	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
+		t.Fatal(err)
+	}
+
+	phaseE, err := sqlDB.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = phaseE.Rollback() }()
+	if _, err := phaseE.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "task-processor:workbench-stores:store-service-phase-e:v1"); err != nil {
+		t.Fatal(err)
+	}
+
+	autoMigrateDone := make(chan error, 1)
+	go func() {
+		autoMigrateDone <- storecenter.AutoMigrateStoreRepository(db.WithContext(ctx))
+	}()
+	waitForPostgresAdvisoryLockWaiter(t, ctx, db, autoMigrateDone)
+
+	if _, err := phaseE.ExecContext(ctx, `ALTER TABLE workbench_stores ALTER COLUMN record_status SET NOT NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := phaseE.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-autoMigrateDone:
+		if err != nil {
+			t.Fatalf("AutoMigrateStoreRepository() after Phase E commit = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("AutoMigrateStoreRepository() did not resume after Phase E commit: %v", ctx.Err())
+	}
+	if !storeRecordStatusNotNull(t, db) {
+		t.Fatal("AutoMigrateStoreRepository() reversed the concurrent Phase E record_status NOT NULL transition")
+	}
+}
+
+func waitForPostgresAdvisoryLockWaiter(t *testing.T, ctx context.Context, db *gorm.DB, completed <-chan error) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case err := <-completed:
+			t.Fatalf("AutoMigrateStoreRepository() completed before the Phase E lock was released: %v", err)
+		default:
+		}
+		var waiters int64
+		if err := db.WithContext(ctx).Raw(`
+SELECT COUNT(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND wait_event_type = 'Lock'
+  AND wait_event = 'advisory'
+  AND query LIKE '%pg_advisory_xact_lock%'`).Scan(&waiters).Error; err != nil {
+			t.Fatal(err)
+		}
+		if waiters > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("AutoMigrateStoreRepository() did not wait for the Phase E advisory lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func openStoreServiceConstraintPostgres(t *testing.T, ctx context.Context) (*gorm.DB, *sql.DB) {
 	t.Helper()
 	container, err := tcpostgres.Run(ctx,

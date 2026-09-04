@@ -67,10 +67,24 @@ func (workbenchStoreRecordPostCutover) TableName() string { return "workbench_st
 
 // AutoMigrateStoreRepository creates the Store Center table. It is safe to
 // call repeatedly and rejects a nil handle instead of panicking at startup.
+// PostgreSQL migrations share Phase E's transaction lock so the catalog
+// nullability decision and the migration cannot straddle the hard-cut.
 func AutoMigrateStoreRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("store repository database is required")
 	}
+	if db.Dialector != nil && db.Dialector.Name() == "postgres" {
+		return db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, storeServiceConstraintLockKey).Error; err != nil {
+				return fmt.Errorf("acquire Store schema migration lock: %w", err)
+			}
+			return autoMigrateStoreRepository(tx)
+		})
+	}
+	return autoMigrateStoreRepository(db)
+}
+
+func autoMigrateStoreRepository(db *gorm.DB) error {
 	model := any(&workbenchStoreRecord{})
 	if db.Migrator().HasTable(&workbenchStoreRecord{}) {
 		columnTypes, err := db.Migrator().ColumnTypes(&workbenchStoreRecord{})
