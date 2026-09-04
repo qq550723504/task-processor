@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { signIn } from "@/auth";
+import { getZitadelAuthOptions } from "@/lib/server/zitadel-auth";
 import {
-  signIn,
-} from "@/auth";
-import {
-  getZitadelAuthOptions,
+  isLoginEntryAvailable,
   normalizeReturnTo,
-} from "@/lib/server/zitadel-auth";
+  resolveLoginEntry,
+} from "@/lib/server/login-entry";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,20 @@ export async function GET(request: NextRequest) {
         message: "ZITADEL authentication is not configured",
       },
       { status: 503 },
+    );
+  }
+
+  const entry = resolveLoginEntry(request.nextUrl.searchParams.getAll("method"));
+  if (!isLoginEntryAvailable(entry)) {
+    return NextResponse.json(
+      {
+        error: "login_capability_unavailable",
+        entry,
+      },
+      {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      },
     );
   }
 

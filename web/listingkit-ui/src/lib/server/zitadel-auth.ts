@@ -12,6 +12,8 @@ import {
   ZITADEL_IDENTITY_VERSION,
 } from "@/lib/server/zitadel-identity";
 
+export { normalizeReturnTo } from "@/lib/server/login-entry";
+
 export type ZitadelDiscovery = {
   authorization_endpoint: string;
   token_endpoint: string;
@@ -48,47 +50,6 @@ export function resolvePublicAppOrigin() {
   }
 
   return "http://localhost:3000";
-}
-
-export function normalizeReturnTo(value: string | null) {
-  if (
-    !value ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    value.includes("\\")
-  ) {
-    return "/";
-  }
-  try {
-    decodeURIComponent(value);
-  } catch {
-    return "/";
-  }
-  if (!isAllowedReturnToPath(value)) {
-    return "/";
-  }
-  return value;
-}
-
-function isAllowedReturnToPath(value: string) {
-  const localOrigin = "http://localhost";
-  let pathname: string;
-  try {
-    const returnToUrl = new URL(value, localOrigin);
-    if (returnToUrl.origin !== localOrigin) {
-      return false;
-    }
-    pathname = returnToUrl.pathname;
-  } catch {
-    return false;
-  }
-  return (
-    pathname === "/" ||
-    pathname === "/listing-kits" ||
-    pathname.startsWith("/listing-kits/") ||
-    pathname === "/workbench" ||
-    pathname.startsWith("/workbench/")
-  );
 }
 
 export function readZitadelIdentityFromSession(
