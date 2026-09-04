@@ -114,7 +114,7 @@ func (migrator *GormStoreHistoryMigrator) backfillOne(ctx context.Context, store
 		MaxDelay:            250 * time.Millisecond,
 		Multiplier:          2,
 		RandomizationFactor: 0.2,
-		IsRetryable:         isStoreHistoryTransientConcurrencyError,
+		IsRetryable:         isStoreHistoryTransientDatabaseError,
 	}, func(attemptContext context.Context) error {
 		attemptOutcome, attemptErr := migrator.backfillOneAttempt(attemptContext, storeID)
 		if attemptErr == nil {
@@ -192,7 +192,7 @@ func (migrator *GormStoreHistoryMigrator) backfillOneAttempt(ctx context.Context
 	return outcome, err
 }
 
-func isStoreHistoryTransientConcurrencyError(err error) bool {
+func isStoreHistoryTransientDatabaseError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
@@ -202,7 +202,7 @@ func isStoreHistoryTransientConcurrencyError(err error) bool {
 	var stateError interface{ SQLState() string }
 	if errors.As(err, &stateError) {
 		switch stateError.SQLState() {
-		case "40001", "40P01", "55P03":
+		case "40001", "40P01", "55P03", "57014":
 			return true
 		default:
 			return false

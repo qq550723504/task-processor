@@ -15,7 +15,8 @@ external history resolver.
 - Missing, malformed, unknown-field, or changed manifests fail closed.
 - `record_status`, `service_status`, timestamps, and immutable history evidence
   are updated in one serializable row transaction. Transient PostgreSQL/SQLite
-  concurrency failures use bounded retries.
+  concurrency failures and PostgreSQL server-side statement timeouts use bounded
+  retries; caller cancellation remains terminal.
 - A `ready_for_constraints=true` report is evidence for Phase D only. It is not
   approval for Phase E constraints or Phase F enablement.
 
