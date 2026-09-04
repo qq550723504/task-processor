@@ -41,13 +41,13 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: listingkit-workbench-secret
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID
+                  key: TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_ACCESS_KEY_ID
                   optional: false
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: listingkit-workbench-secret
-                  key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY
+                  key: TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_SECRET_ACCESS_KEY
                   optional: false
           readinessProbe:
             httpGet: null

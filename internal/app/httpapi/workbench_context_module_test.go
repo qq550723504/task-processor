@@ -150,7 +150,7 @@ func TestWorkbenchRuntimeBundleConsumesInjectedAuthenticationDependencies(t *tes
 		},
 	}
 
-	server, _ := bundle.buildServerBundle(18080)
+	server, _ := bundle.buildServerBundle(18080, routeAuthorization{})
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)
 	request.Header.Set("Authorization", "Bearer current-request-token")
 	response := httptest.NewRecorder()
@@ -172,7 +172,6 @@ func TestWorkbenchCompositionRegistersRoutesExactlyOnceWhenEnabled(t *testing.T)
 }
 
 func TestBuildBootstrapFailsClosedWhenWorkbenchIsEnabledWithoutDatabase(t *testing.T) {
-	configureProductImageRuntimePaths(t)
 	restoreAuth := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
 	t.Cleanup(restoreAuth)
 	logger := logrus.New()
@@ -189,7 +188,7 @@ func TestBuildBootstrapFailsClosedWhenWorkbenchIsEnabledWithoutDatabase(t *testi
 
 	require.Error(t, err)
 	require.Nil(t, bootstrap)
-	require.Contains(t, err.Error(), "durable database configuration is required")
+	require.Contains(t, err.Error(), "listingkit database config is required")
 	require.NotContains(t, err.Error(), "sk-test")
 }
 

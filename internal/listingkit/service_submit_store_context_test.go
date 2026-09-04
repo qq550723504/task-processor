@@ -78,7 +78,7 @@ func TestResolveSheinSubmitSettingsUsesExplicitTaskStoreAndProfileFields(t *test
 
 	task := &Task{
 		TenantID: "404",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 902,
 		},
 	}
@@ -144,7 +144,7 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 
 	task := &Task{
 		TenantID: "405",
-		Request:  &GenerateRequest{},
+		Request:  &GenerateRequest{ProductKey: "test-product"},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 			StoreID:           902,
 			Site:              "GB",
@@ -211,7 +211,7 @@ func TestResolveSheinSubmitSettingsRehydratesProfileWhenSnapshotOnlyCarriesAcces
 
 	task := &Task{
 		TenantID: "406",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			SheinStoreID: 999,
 		},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
@@ -265,10 +265,9 @@ func TestApplySubmitSettingsTaskRequestPrefersCountry(t *testing.T) {
 	settings := applySubmitSettingsTaskRequest(SheinSettings{
 		Site:          "GB",
 		WarehouseCode: "WH-GB-1",
-	}, &Task{
-		Request: &GenerateRequest{
-			Country: "us",
-		},
+	}, &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Country: "us",
+	},
 	})
 
 	if settings.Site != "US" {

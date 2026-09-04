@@ -3,8 +3,8 @@ package rules
 
 import (
 	"fmt"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 
 	api "task-processor/internal/listingadmin"
 	"task-processor/internal/pipeline"
@@ -17,7 +17,7 @@ import (
 // RuleValidator 规则验证器（TEMU平台包装器）
 type RuleValidator struct {
 	logger             *logrus.Entry
-	checker            *product.RuleChecker
+	checker            *productpolicy.RuleChecker
 	fulfillmentChecker *handlerbase.FulfillmentChecker
 }
 
@@ -25,7 +25,7 @@ type RuleValidator struct {
 func NewRuleValidator(logger *logrus.Entry) *RuleValidator {
 	return &RuleValidator{
 		logger:             logger.WithField("component", "RuleValidator"),
-		checker:            product.NewRuleChecker(),
+		checker:            productpolicy.NewRuleChecker(),
 		fulfillmentChecker: handlerbase.NewFulfillmentChecker(logger),
 	}
 }
@@ -88,7 +88,7 @@ func (v *RuleValidator) checkPriceRuleDetailedTemu(amazonProduct *model.Product,
 	if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
 		priceType = temuCtx.StoreInfo.PriceType
 	}
-	price := product.GetProductPrice(amazonProduct, priceType)
+	price := productpolicy.GetProductPrice(amazonProduct, priceType)
 
 	v.logger.WithFields(logrus.Fields{
 		"asin":       amazonProduct.Asin,
@@ -116,7 +116,7 @@ func (v *RuleValidator) checkPriceRuleDetailedTemu(amazonProduct *model.Product,
 }
 
 func (v *RuleValidator) checkPriceRuleBasic(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
-	price := product.GetProductPrice(amazonProduct, "final")
+	price := productpolicy.GetProductPrice(amazonProduct, "final")
 
 	v.logger.WithFields(logrus.Fields{
 		"asin":       amazonProduct.Asin,
@@ -189,7 +189,7 @@ func (v *RuleValidator) checkStockRuleDetailed(amazonProduct *model.Product, rul
 	if rule.StockMin == nil {
 		return &handlerbase.FilterCheckResult{Passed: true}
 	}
-	stock := product.GetInventory(amazonProduct)
+	stock := productpolicy.GetInventory(amazonProduct)
 
 	v.logger.WithFields(logrus.Fields{
 		"asin":      amazonProduct.Asin,

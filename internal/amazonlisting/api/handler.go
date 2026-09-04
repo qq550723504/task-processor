@@ -42,12 +42,11 @@ func (h *handler) GenerateListing(c *gin.Context) {
 
 func (h *handler) ListTaskQueue(c *gin.Context) {
 	query := amazonlisting.TaskQueueQuery{
-		Status:      parseStatusesQuery(c.Query("status")),
-		Action:      c.Query("action"),
-		Field:       c.Query("field"),
-		Severity:    c.Query("severity"),
-		Source:      c.Query("source"),
-		ChildStatus: c.Query("child_status"),
+		Status:   parseStatusesQuery(c.Query("status")),
+		Action:   c.Query("action"),
+		Field:    c.Query("field"),
+		Severity: c.Query("severity"),
+		Source:   c.Query("source"),
 	}
 	if needsHuman := strings.TrimSpace(c.Query("needs_human")); needsHuman != "" {
 		parsed, err := strconv.ParseBool(needsHuman)

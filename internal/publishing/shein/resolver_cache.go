@@ -7,7 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 type cachedCategoryResolver struct {
@@ -20,6 +20,11 @@ type cachedAttributeResolver struct {
 	inner AttributeResolver
 	cache sync.Map
 	store ResolutionCacheStore
+}
+
+type cachedFreshAttributeResolver struct {
+	*cachedAttributeResolver
+	fresh FreshAttributeResolver
 }
 
 type cachedSaleAttributeResolver struct {
@@ -38,6 +43,11 @@ type AttributeResolutionCache interface {
 	ClearAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
 }
 
+type FreshAttributeResolver interface {
+	AttributeResolver
+	ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution
+}
+
 type SaleAttributeResolutionCache interface {
 	RememberSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *SaleAttributeResolution)
 	ClearSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
@@ -46,6 +56,8 @@ type SaleAttributeResolutionCache interface {
 type attributeResolutionCacheValidator interface {
 	CachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) (bool, string)
 }
+
+var _ FreshAttributeResolver = (*cachedFreshAttributeResolver)(nil)
 
 func NewCachedCategoryResolver(inner CategoryResolver, stores ...ResolutionCacheStore) CategoryResolver {
 	if inner == nil {
@@ -58,7 +70,11 @@ func NewCachedAttributeResolver(inner AttributeResolver, stores ...ResolutionCac
 	if inner == nil {
 		return nil
 	}
-	return &cachedAttributeResolver{inner: inner, store: firstResolutionCacheStore(stores)}
+	cached := &cachedAttributeResolver{inner: inner, store: firstResolutionCacheStore(stores)}
+	if fresh, ok := inner.(FreshAttributeResolver); ok {
+		return &cachedFreshAttributeResolver{cachedAttributeResolver: cached, fresh: fresh}
+	}
+	return cached
 }
 
 func NewCachedSaleAttributeResolver(inner SaleAttributeResolver, stores ...ResolutionCacheStore) SaleAttributeResolver {
@@ -188,6 +204,13 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
 	return resolution
+}
+
+func (r *cachedFreshAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
+	if r == nil || r.fresh == nil {
+		return nil
+	}
+	return r.fresh.ResolveFreshAttributeResolution(req, canonical, pkg)
 }
 
 func (r *cachedAttributeResolver) cachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution *AttributeResolution) bool {

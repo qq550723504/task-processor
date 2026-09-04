@@ -2,47 +2,49 @@ package shein
 
 import (
 	"context"
-	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type runtimeAttributeResolver struct {
-	fallback AttributeResolver
-	factory  *runtimeAPIFactory
-	llm      TextGenerator
+	factory *runtimeAPIFactory
+	llm     TextGenerator
 }
+
+var _ FreshAttributeResolver = (*runtimeAttributeResolver)(nil)
 
 func NewRuntimeAttributeResolver(factory RuntimeAPIClientFactory, llm TextGenerator) AttributeResolver {
 	return &runtimeAttributeResolver{
-		fallback: NewAttributeResolver(nil, llm),
-		factory:  newRuntimeAPIFactory(factory),
-		llm:      llm,
+		factory: newRuntimeAPIFactory(factory),
+		llm:     llm,
 	}
 }
 
 func (r *runtimeAttributeResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
-	if req == nil {
-		return r.fallback.Resolve(req, canonical, pkg)
+	if r == nil || req == nil {
+		return nil
 	}
 
-	api, note := r.buildAPI(req.Context, req.SheinStoreID)
-	resolver := NewAttributeResolver(api, r.llm)
-	resolution := resolver.Resolve(req, canonical, pkg)
-	if strings.TrimSpace(note) != "" {
-		resolution.ReviewNotes = append(resolution.ReviewNotes, note)
-		if resolution.Status == "" || resolution.Status == "unresolved" {
-			resolution.Status = "partial"
-		}
+	api := r.buildAPI(req.Context, req.SheinStoreID)
+	if api == nil {
+		return nil
 	}
-	return resolution
+	resolver := NewAttributeResolver(api, r.llm)
+	return resolver.Resolve(req, canonical, pkg)
 }
 
-func (r *runtimeAttributeResolver) buildAPI(ctx context.Context, storeID int64) (AttributeAPI, string) {
-	baseAPIClient, note := r.factory.BuildBaseClient(ctx, storeID)
-	if baseAPIClient == nil {
-		return nil, note
+func (r *runtimeAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) *AttributeResolution {
+	return r.Resolve(req, canonical, pkg)
+}
+
+func (r *runtimeAttributeResolver) buildAPI(ctx context.Context, storeID int64) AttributeAPI {
+	if r == nil || r.factory == nil {
+		return nil
 	}
-	return sheinattribute.NewClient(baseAPIClient), ""
+	baseAPIClient, _ := r.factory.BuildBaseClient(ctx, storeID)
+	if baseAPIClient == nil {
+		return nil
+	}
+	return sheinattribute.NewClient(baseAPIClient)
 }

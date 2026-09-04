@@ -2,21 +2,22 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"sync"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shared/tenantctx"
 )
 
 type MemTaskRepository struct {
 	mu                sync.RWMutex
 	tasks             map[string]*listingkit.Task
-	canonicalProduct  map[string]*listingkit.CanonicalProductCacheEntry
 	sdsBaselineCache  map[string]*listingkit.SDSBaselineCacheEntry
 	sdsChildRetryJobs map[string]listingkit.SDSChildRetryJob
 }
@@ -24,7 +25,6 @@ type MemTaskRepository struct {
 func NewMemTaskRepository() listingkit.Repository {
 	return &MemTaskRepository{
 		tasks:             make(map[string]*listingkit.Task),
-		canonicalProduct:  make(map[string]*listingkit.CanonicalProductCacheEntry),
 		sdsBaselineCache:  make(map[string]*listingkit.SDSBaselineCacheEntry),
 		sdsChildRetryJobs: make(map[string]listingkit.SDSChildRetryJob),
 	}
@@ -44,6 +44,9 @@ func (r *MemTaskRepository) CreateTask(ctx context.Context, task *listingkit.Tas
 	}
 	if task.Request != nil && task.Request.UserID == "" {
 		task.Request.UserID = task.UserID
+	}
+	if _, exists := r.tasks[task.ID]; exists {
+		return fmt.Errorf("task %s already exists", task.ID)
 	}
 	copied := *task
 	r.tasks[task.ID] = &copied
@@ -195,6 +198,23 @@ func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, error
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
+}
+
+func (r *MemTaskRepository) MarkFailedIfProcessing(ctx context.Context, taskID string, errorMsg string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return false, core.ErrTaskNotFound
+	}
+	if task.Status != core.TaskStatusProcessing {
+		return false, nil
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return true, nil
 }
 
 func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string) error {
@@ -591,16 +611,59 @@ func (r *MemTaskRepository) MutateTaskResult(ctx context.Context, taskID string,
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return nil, core.ErrTaskNotFound
 	}
-	copied := *task
-	out := &copied
+	candidate, err := cloneMemTask(task)
+	if err != nil {
+		return nil, err
+	}
 	if mutate != nil {
-		if err := mutate(task); err != nil {
+		if err := mutate(candidate); err != nil {
+			out, cloneErr := cloneMemTask(task)
+			if cloneErr != nil {
+				return nil, cloneErr
+			}
 			return out, err
 		}
 	}
-	task.UpdatedAt = time.Now()
-	copied = *task
-	return &copied, nil
+	candidate.UpdatedAt = time.Now()
+	r.tasks[taskID] = candidate
+	return cloneMemTask(candidate)
+}
+
+func cloneMemTask(task *listingkit.Task) (*listingkit.Task, error) {
+	if task == nil {
+		return nil, nil
+	}
+	copyForJSON := *task
+	var sheinPackage *sheinpub.Package
+	if task.Result != nil {
+		result := *task.Result
+		copyForJSON.Result = &result
+		sheinPackage = result.Shein
+		result.Shein = nil
+	}
+	encoded, err := json.Marshal(&copyForJSON)
+	if err != nil {
+		return nil, err
+	}
+	var cloned listingkit.Task
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
+		return nil, err
+	}
+	cloned.BillingTenantID = task.BillingTenantID
+	cloned.SourceSnapshotVersion = task.SourceSnapshotVersion
+	cloned.GenerationUsageReservationState = task.GenerationUsageReservationState
+	if task.GenerationUsageReservationLeaseUntil != nil {
+		leaseUntil := *task.GenerationUsageReservationLeaseUntil
+		cloned.GenerationUsageReservationLeaseUntil = &leaseUntil
+	}
+	if sheinPackage != nil {
+		clonedPackage, cloneErr := sheinpub.ClonePackageForPersistence(sheinPackage)
+		if cloneErr != nil {
+			return nil, cloneErr
+		}
+		cloned.Result.Shein = clonedPackage
+	}
+	return &cloned, nil
 }
 
 func (r *MemTaskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *listingkit.SDSSyncOptions, audit listingkit.PodExecutionAuditEvent) (*listingkit.Task, error) {
@@ -621,37 +684,6 @@ func (r *MemTaskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, t
 	task.UpdatedAt = time.Now()
 	copied := *task
 	return &copied, nil
-}
-
-func (r *MemTaskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error) {
-	if fingerprint == "" {
-		return nil, nil
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.canonicalProduct == nil {
-		return nil, nil
-	}
-	entry := r.canonicalProduct[canonicalCacheKey(ctx, fingerprint)]
-	if entry == nil {
-		return nil, nil
-	}
-	return entry.CanonicalProduct()
-}
-
-func (r *MemTaskRepository) SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error {
-	entry, err := listingkit.NewCanonicalProductCacheEntry(fingerprint, product, sourceTaskID)
-	if err != nil {
-		return err
-	}
-	entry.TenantID = tenantctx.TenantIDFromContext(ctx)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.canonicalProduct == nil {
-		r.canonicalProduct = make(map[string]*listingkit.CanonicalProductCacheEntry)
-	}
-	r.canonicalProduct[canonicalCacheKey(ctx, fingerprint)] = entry
-	return nil
 }
 
 func (r *MemTaskRepository) GetSDSBaselineCache(ctx context.Context, tenantID, baselineKey string) (*listingkit.SDSBaselineCacheEntry, error) {
@@ -705,10 +737,6 @@ func matchesTenantScope(ctx context.Context, recordTenantID string) bool {
 		return true
 	}
 	return tenantctx.MatchesTenant(recordTenantID, tenantID)
-}
-
-func canonicalCacheKey(ctx context.Context, fingerprint string) string {
-	return tenantctx.TenantIDFromContext(ctx) + ":" + fingerprint
 }
 
 func cloneSDSBaselineCacheEntry(entry *listingkit.SDSBaselineCacheEntry) (*listingkit.SDSBaselineCacheEntry, error) {

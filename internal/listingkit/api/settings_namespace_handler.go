@@ -102,7 +102,7 @@ func (h *handler) GetSettingsNamespaceSchema(c *gin.Context) {
 
 func (h *handler) UpdateSettingsNamespace(c *gin.Context) {
 	namespace := c.Param("namespace")
-	if namespace == "shein" && !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if namespace == "shein" && !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	payload, err := io.ReadAll(c.Request.Body)

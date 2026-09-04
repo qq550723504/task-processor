@@ -9,7 +9,7 @@ func TestTaskResultJSONContainsSourceReferenceWithoutRequest(t *testing.T) {
 	task := &Task{
 		ID:       "task-detail-source-json",
 		TenantID: "tenant-a",
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Source: &SourceReference{
 				Key:      "crawler:1688:888",
 				Type:     "crawler",

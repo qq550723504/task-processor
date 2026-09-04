@@ -18,7 +18,6 @@ type TaskWorkbench struct {
 	Status        TaskStatus           `json:"status"`
 	Ready         bool                 `json:"ready"`
 	NeedsReview   bool                 `json:"needs_review"`
-	ChildTasks    []ChildTaskState     `json:"child_tasks,omitempty"`
 	ReviewItems   []AmazonReviewItem   `json:"review_items,omitempty"`
 	ReviewSummary *ReviewItemSummary   `json:"review_summary,omitempty"`
 	TotalItems    int                  `json:"total_items"`
@@ -27,14 +26,13 @@ type TaskWorkbench struct {
 }
 
 type TaskQueueQuery struct {
-	Status      []TaskStatus `json:"status,omitempty"`
-	Action      string       `json:"action,omitempty"`
-	Field       string       `json:"field,omitempty"`
-	Severity    string       `json:"severity,omitempty"`
-	Source      string       `json:"source,omitempty"`
-	ChildStatus string       `json:"child_status,omitempty"`
-	NeedsHuman  *bool        `json:"needs_human,omitempty"`
-	Limit       int          `json:"limit,omitempty"`
+	Status     []TaskStatus `json:"status,omitempty"`
+	Action     string       `json:"action,omitempty"`
+	Field      string       `json:"field,omitempty"`
+	Severity   string       `json:"severity,omitempty"`
+	Source     string       `json:"source,omitempty"`
+	NeedsHuman *bool        `json:"needs_human,omitempty"`
+	Limit      int          `json:"limit,omitempty"`
 }
 
 type TaskQueueResult struct {
@@ -50,13 +48,6 @@ type ReviewItemSummary struct {
 	ByAction        map[string]int `json:"by_action,omitempty"`
 	ByField         map[string]int `json:"by_field,omitempty"`
 	BySeverity      map[string]int `json:"by_severity,omitempty"`
-}
-
-type ChildTaskState struct {
-	Kind   string `json:"kind"`
-	TaskID string `json:"task_id,omitempty"`
-	Status string `json:"status,omitempty"`
-	Error  string `json:"error,omitempty"`
 }
 
 type WorkbenchActionBox struct {

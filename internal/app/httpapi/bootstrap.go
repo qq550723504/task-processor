@@ -6,21 +6,21 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/productenrich"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 const productListingTraceOperation = "product-listing-api"
 
 type bootstrapBuildDependencies struct {
-	buildRuntimeDeps   func(*logrus.Logger, string) (*runtimeDeps, error)
-	buildComposition   func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
-	buildRuntimeBundle func(httpFeatureComposition, *config.Config) (runtimeBundle, error)
+	buildRuntimeDeps        func(*logrus.Logger, string) (*runtimeDeps, error)
+	buildRouteAuthorization func(*config.Config) (routeAuthorization, error)
+	buildComposition        func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error)
+	buildRuntimeBundle      func(httpFeatureComposition, *config.Config) (runtimeBundle, error)
 }
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	return buildBootstrapWithDependencies(logger, options, bootstrapBuildDependencies{
-		buildRuntimeDeps: buildRuntimeDeps,
+		buildRuntimeDeps:        buildRuntimeDeps,
+		buildRouteAuthorization: buildRouteAuthorization,
 		buildComposition: func(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 			return newHTTPFeatureCompositionBuilder().build(logger, deps)
 		},
@@ -43,7 +43,14 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 	defer func() {
 		cleanupOwnedRuntimeResources(completed, deps.constructionClosers)
 	}()
-	deps.shared.sourceImageFetcher = options.SourceImageFetcher
+	routeAuthorizationBuilder := builders.buildRouteAuthorization
+	if routeAuthorizationBuilder == nil {
+		routeAuthorizationBuilder = buildRouteAuthorization
+	}
+	authorization, err := routeAuthorizationBuilder(deps.shared.cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	done = timer.phase("configureSheinLoginAccount")
 	configureSheinLoginAccount(deps)
@@ -64,7 +71,7 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 	}
 
 	done = timer.phase("buildHTTPServerBundle")
-	server, routes := runtimeBundle.buildServerBundle(options.Port)
+	server, routes := runtimeBundle.buildServerBundle(options.Port, authorization)
 	if bindAddress := strings.TrimSpace(options.BindAddress); bindAddress != "" {
 		server.Addr = serverAddress(bindAddress, options.Port)
 	}
@@ -81,27 +88,11 @@ func buildBootstrapWithDependencies(logger *logrus.Logger, options Options, buil
 		closers = append(closers, deps.traceCloser)
 	}
 	bootstrap := &appBootstrap{
-		productHandler: composition.productHandler(),
-		imageHandler:   composition.imageHandler(),
-		server:         server,
-		routes:         routes,
-		pools:          runtimeBundle.pools(),
-		closers:        closers,
+		server:  server,
+		routes:  routes,
+		pools:   runtimeBundle.pools(),
+		closers: closers,
 	}
 	completed = true
 	return bootstrap, nil
-}
-
-func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
-	if c.productModule == nil {
-		return nil
-	}
-	return c.productModule.Handler
-}
-
-func (c httpFeatureComposition) imageHandler() productimagehttpapi.RouteHandler {
-	if c.imageModule == nil {
-		return nil
-	}
-	return c.imageModule.Handler
 }

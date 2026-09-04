@@ -2,6 +2,9 @@ package a1688
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,6 +13,7 @@ import (
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	crawler1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
+	productcatalog "task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
@@ -49,13 +53,24 @@ type CreateTaskResult struct {
 // boundary and does not fetch, crawl, or submit marketplace payloads.
 type TaskCommandService struct {
 	creator                      sourcehandoff.GenerateTaskCreator
+	sourcePublisher              SourceSnapshotPublisher
 	storeAccessValidator         listingkit.StoreAccessValidator
 	sourceAccountAccessValidator sourceaccount.AccessValidator
+}
+
+// SourceSnapshotPublisher is the Catalog publication boundary used by source
+// ingestion. The publisher owns validation and idempotent persistence; this
+// service only orders publication before task dispatch.
+type SourceSnapshotPublisher interface {
+	Publish(context.Context, sourcing.PublishRequest) (productcatalog.PublishedSnapshot, error)
 }
 
 func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, dependencies ...any) *TaskCommandService {
 	service := &TaskCommandService{creator: creator}
 	for _, dependency := range dependencies {
+		if value, ok := dependency.(SourceSnapshotPublisher); ok {
+			service.sourcePublisher = value
+		}
 		if value, ok := dependency.(listingkit.StoreAccessValidator); ok {
 			service.storeAccessValidator = value
 		}
@@ -90,9 +105,9 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 		return nil, fmt.Errorf("1688 source url is required")
 	}
 
-	task, handoff, err := CreateListingKitTask(ctx, s.creator, ListingKitTaskInput{
-		Source: sourcing.Alibaba1688SourceEnvelopeInput{
-			Request:     sourcing.Alibaba1688CrawlRequestInput{URL: url, AccountID: command.SourceAccountID},
+	handoff, err := PrepareListingKitTaskHandoff(ListingKitTaskInput{
+		Source: crawler1688.Alibaba1688SourceEnvelopeInput{
+			Request:     crawler1688.Alibaba1688CrawlRequestInput{URL: url, AccountID: command.SourceAccountID},
 			Product:     crawler1688.SnapshotFromLegacyProduct(command.Product),
 			RawSnapshot: command.RawSnapshot,
 			SourceRunID: command.SourceRunID,
@@ -111,7 +126,66 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 	if err != nil {
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
+	handoff.Request.ProductKey = boundedProductKey(handoff.Request.ProductKey)
+	// Bind task creation to the same durable identity used for Catalog
+	// publication (source run when present, otherwise the content-derived
+	// snapshot identity) so a retried source request replays the original
+	// task instead of duplicating processing and billing.
+	handoff.Request.IdempotencyKey = sourcePublicationID(handoff.Envelope)
+	if s.sourcePublisher != nil {
+		productKey := handoff.Request.ProductKey
+		published, err := s.sourcePublisher.Publish(ctx, sourcing.PublishRequest{
+			TenantID: command.TenantID, ProductKey: productKey,
+			PublicationID: sourcePublicationID(handoff.Envelope), Envelope: handoff.Envelope,
+		})
+		if err != nil {
+			return &CreateTaskResult{Handoff: handoff}, fmt.Errorf("publish source snapshot: %w", err)
+		}
+		handoff.Request.SourceSnapshotVersion = published.Version
+	}
+	task, err := s.creator.CreateGenerateTask(ctx, &handoff.Request)
+	if err != nil {
+		return &CreateTaskResult{Handoff: handoff}, err
+	}
 	return &CreateTaskResult{Task: task, Handoff: handoff}, nil
+}
+
+func boundedProductKey(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 128 {
+		return value
+	}
+	digest := sha256.Sum256([]byte(value))
+	return "source-key-hash:" + hex.EncodeToString(digest[:])
+}
+
+func sourcePublicationID(envelope sourcing.SourceEnvelope) string {
+	if sourceRunID := strings.TrimSpace(envelope.Trace.SourceRunID); sourceRunID != "" {
+		publicationID := "source-run:" + sourceRunID
+		if len(publicationID) <= 128 {
+			return publicationID
+		}
+		digest := sha256.Sum256([]byte(sourceRunID))
+		return "source-run-hash:" + hex.EncodeToString(digest[:])
+	}
+	if checksum := strings.TrimSpace(envelope.RawReference.Checksum); checksum != "" {
+		return "source-snapshot:" + checksum
+	}
+	encoded, _ := json.Marshal(struct {
+		Identity            sourcing.SourceIdentity
+		ProductCandidate    sourcing.ProductCandidate
+		AssetCandidates     []sourcing.AssetCandidate
+		SupplierOrCostFacts sourcing.SupplierOrCostFacts
+		Warnings            []sourcing.SourceWarning
+	}{
+		Identity:            envelope.Identity,
+		ProductCandidate:    envelope.ProductCandidate,
+		AssetCandidates:     envelope.AssetCandidates,
+		SupplierOrCostFacts: envelope.SupplierOrCostFacts,
+		Warnings:            envelope.Warnings,
+	})
+	digest := sha256.Sum256(encoded)
+	return "source-snapshot:" + hex.EncodeToString(digest[:])
 }
 
 func (s *TaskCommandService) validateStores(ctx context.Context, command CreateTaskCommand) error {

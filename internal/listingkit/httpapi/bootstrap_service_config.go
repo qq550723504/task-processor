@@ -1,12 +1,6 @@
 package httpapi
 
-import (
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/core/config"
-	"task-processor/internal/listingkit"
-)
+import "task-processor/internal/listingkit"
 
 type buildListingKitServiceConfigInput struct {
 	input        BuildServiceInput
@@ -26,23 +20,17 @@ func buildListingKitServiceConfig(in buildListingKitServiceConfigInput) *listing
 
 func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceCoreDependencies {
 	return listingkit.ServiceCoreDependencies{
-		Repository:                    in.repositories.taskRepository,
-		StudioSessionRepository:       in.repositories.studioSessionRepository,
-		StudioBatchRepository:         in.repositories.studioBatchRepository,
-		StudioBatchRunRepository:      in.repositories.studioBatchRunRepository,
-		StudioBatchTaskLinkRepository: in.repositories.studioBatchTaskLinkRepository,
-		ProductService:                in.input.ProductService,
-		ImageService:                  in.input.ImageService,
-		SDSSyncService:                in.input.SDSSyncService,
-		SDSLoginStatusProvider:        in.input.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider:     in.input.SDSBaselineRemoteProvider,
-		ImageUploadStore:              in.submit.assets.imageUploadStore,
-		UploadedImageRepository:       in.repositories.uploadedImageRepository,
-		StoreProfileRepository:        in.repositories.storeProfileRepository,
-		AIClientCredentialStore:       adaptListingKitAICredentialStore(in.input.AICredentialStore),
-		GenerationUsageLedger:         generationUsageSettlementDependency(in),
-		GenerationUsageAdmission:      generationUsageAdmissionForConfig(in.input.Config),
-		StudioProductImageUsage:       studioProductImageUsageDependency(in.repositories.subscriptionService, generationUsageAdmissionForConfig(in.input.Config)),
+		Repository:                in.repositories.taskRepository,
+		ProductSnapshotReader:     in.input.ProductSnapshotReader,
+		SDSSyncService:            in.input.SDSSyncService,
+		SDSLoginStatusProvider:    in.input.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider: in.input.SDSBaselineRemoteProvider,
+		ImageUploadStore:          in.submit.assets.imageUploadStore,
+		UploadedImageRepository:   in.repositories.uploadedImageRepository,
+		StoreProfileRepository:    in.repositories.storeProfileRepository,
+		AIClientCredentialStore:   in.input.AIClientCredentialStore,
+		GenerationUsageLedger:     generationUsageSettlementDependency(in),
+		GenerationUsageAdmission:  generationUsageAdmissionForConfig(in.input.Config),
 	}
 }
 
@@ -55,28 +43,10 @@ func generationUsageSettlementDependency(in buildListingKitServiceConfigInput) l
 
 func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceAssetDependencies {
 	return listingkit.ServiceAssetDependencies{
-		Assembler:           in.submit.assets.assembler,
-		AssetRepository:     in.repositories.assetRepository,
-		ReviewRepository:    in.repositories.reviewRepository,
-		AssetRecipeResolver: assetrecipe.NewStaticResolver(),
-		AssetBundleBuilder:  assetbundle.NewBuilder(),
-		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
-			SubjectExtractor:        in.input.ImageSubjectExtractor,
-			WhiteBackgroundRenderer: in.input.ImageWhiteBackgroundRender,
-			DeferredRenderer: assetgeneration.NewProductImageDeferredRendererWithPublisherAndCleanup(
-				in.input.ImageSceneRenderer,
-				in.input.ImageAssetPublisher,
-				productImageCleanupTemporaryFiles(in.input.Config),
-			),
-		}),
+		ApprovedAssetInventoryReader: in.repositories.approvedAssetInventoryReader,
+		Assembler:                    in.submit.assets.assembler,
+		ReviewRepository:             in.repositories.reviewRepository,
 	}
-}
-
-func productImageCleanupTemporaryFiles(cfg *config.Config) bool {
-	if cfg == nil {
-		return true
-	}
-	return cfg.ProductImage.Lifecycle.CleanupTemporaryFiles
 }
 
 func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceSheinDependencies {
@@ -94,9 +64,6 @@ func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) list
 		SheinImageAPIBuilder:       in.submit.shein.imageAPIBuilder,
 		SheinTranslateAPIBuilder:   in.submit.shein.translateAPIBuilder,
 		SheinContentOptimizer:      in.submit.shein.contentOptimizer,
-		StudioPromptDiversifier:    in.submit.shein.contentOptimizer,
-		StudioImageGenerator:       in.submit.studio.imageGenerator,
-		StudioBackgroundRemover:    in.submit.studio.backgroundRemover,
 	}
 }
 

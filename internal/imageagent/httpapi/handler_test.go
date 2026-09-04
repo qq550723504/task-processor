@@ -95,7 +95,7 @@ func TestRecoverEffectHandlerRejectsCrossTenantAndNonBlockedEffect(t *testing.T)
 
 func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 	validBody := `{
-		"run_id":"run-1","business_task_id":"task-1","mode":"manual","idempotency_key":"run-key-1",
+		"run_id":"run-1","business_task_id":"task-1","target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"mode":"manual","idempotency_key":"run-key-1",
 		"budget":{"max_images":12,"max_agent_steps":20,"max_model_calls":30,"max_repair_attempts_per_slot":2,"max_cost_micros":4000,"max_elapsed":5000000000},
 		"plan":{"revision":1,"idempotency_key":"plan-key-1","source_asset_ids":["source-1"],
 		"slots":[{"id":"slot-1","role":"scene","source_asset_ids":["source-1"],"idempotency_key":"slot-key-1"}]}}`
@@ -104,6 +104,8 @@ func TestCreateAcceptsManualOnlyAndRejectsIdentityFields(t *testing.T) {
 		response := performRequest(t, requireHandler(t, application), http.MethodPost, "/api/v1/image-agent/runs", validBody, verifiedIdentity("tenant-a", "user-a"), nil)
 		require.Equal(t, http.StatusAccepted, response.Code)
 		require.Equal(t, imageagent.RunModeManual, application.startInput.Mode)
+		require.Equal(t, "shein", application.startInput.TargetPlatform)
+		require.Equal(t, imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}, application.startInput.ImagePolicyContext)
 		require.Equal(t, 12, application.startInput.Budget.MaxImages)
 		require.Equal(t, 5*time.Second, application.startInput.Budget.MaxElapsed)
 		require.Equal(t, "tenant-a", application.startIdentity.TenantID)
@@ -156,7 +158,8 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	application := &stubApplication{projection: imageagent.RunProjection{
 		Run: imageagent.Run{
 			ID: "run-1", BusinessTaskID: "task-1", TargetPlatform: "shein", TenantID: "tenant-a", UserID: "user-a",
-			Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-1", Status: imageagent.RunStatusBlocked,
+			ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+			Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-1", Status: imageagent.RunStatusBlocked,
 			CurrentNode: "retry_slot", ActivePlanRevision: 2, Version: 7, MaxConcurrentSlots: 3,
 			Budget: imageagent.Budget{MaxImages: 12}, Usage: imageagent.BudgetUsage{Images: 2, AgentSteps: 4, ModelCalls: 3, EstimatedCostMicros: 19, Elapsed: 5 * time.Second},
 			Block: &imageagent.Block{Code: "slot_failed", SlotID: "slot-1"},
@@ -188,7 +191,7 @@ func TestGetRunUsesExplicitSnakeCaseHTTPResponseDTO(t *testing.T) {
 	response := performRequest(t, requireHandler(t, application), http.MethodGet, "/api/v1/image-agent/runs/run-1", "", verifiedIdentity("tenant-a", "user-a"), nil)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	for _, field := range []string{`"business_task_id":"task-1"`, `"target_platform":"shein"`, `"active_plan_revision":2`, `"max_concurrent_slots":3`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"images":2`, `"agent_steps":4`, `"model_calls":3`, `"estimated_cost_micros":19`, `"elapsed":5000000000`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`, `"failure_code":"provider_unavailable"`, `"failure_category":"provider"`, `"failure_message":"图片生成服务暂时不可用"`, `"command_ingress":{"used":1024,"limit":1024,"exhausted":true,"reason":"command_capacity_exhausted"}`} {
+	for _, field := range []string{`"business_task_id":"task-1"`, `"target_platform":"shein"`, `"image_policy_context":{"country":"us","family":"default","scene_category":"shoes"}`, `"active_plan_revision":2`, `"max_concurrent_slots":3`, `"source_asset_ids":["source-1"]`, `"idempotency_key":"plan-key-2"`, `"source_asset_id":"source-1"`, `"last_event_id":9`, `"projection_version":9`, `"max_images":12`, `"images":2`, `"agent_steps":4`, `"model_calls":3`, `"estimated_cost_micros":19`, `"elapsed":5000000000`, `"asset_catalog"`, `"action_id":"retry-pending"`, `"slot_id":"slot-1"`, `"failure_code":"provider_unavailable"`, `"failure_category":"provider"`, `"failure_message":"图片生成服务暂时不可用"`, `"command_ingress":{"used":1024,"limit":1024,"exhausted":true,"reason":"command_capacity_exhausted"}`} {
 		require.Contains(t, response.Body.String(), field)
 	}
 	require.Contains(t, response.Body.String(), `"enabled_limits":["max_images"]`)
@@ -419,6 +422,8 @@ func performRequest(t *testing.T, handler *Handler, method, target, body string,
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST("/api/v1/image-agent/runs", handler.Create)
+	router.POST("/api/v1/image-agent/task-runs", handler.LaunchTaskRun)
+	router.GET("/api/v1/image-agent/task-runs/assets", handler.TaskAssets)
 	router.GET("/api/v1/image-agent/runs/:run_id", handler.Get)
 	router.PUT("/api/v1/image-agent/runs/:run_id/plan", handler.ReplacePlan)
 	router.POST("/api/v1/image-agent/runs/:run_id/slots/:slot_id/retry", handler.RetrySlot)
@@ -458,6 +463,13 @@ type stubApplication struct {
 	startIdentity                authidentity.AuthenticatedIdentity
 	startInput                   imageagent.StartRunInput
 	startErr, replaceErr         error
+	launchIdentity               authidentity.AuthenticatedIdentity
+	launchInput                  imageagent.TaskRunLaunchInput
+	launchResult                 imageagent.TaskRunLaunchResult
+	launchErr                    error
+	preflightInput               imageagent.TaskRunAssetsInput
+	preflight                    imageagent.TaskRunAssetPreflight
+	preflightErr                 error
 	recoverErr                   error
 	retryErr, approveErr         error
 	cancelErr                    error
@@ -484,6 +496,15 @@ func (s *stubApplication) Start(ctx context.Context, input imageagent.StartRunIn
 	s.startIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)
 	s.startInput = input
 	return s.startErr
+}
+func (s *stubApplication) LaunchTaskRun(ctx context.Context, input imageagent.TaskRunLaunchInput) (imageagent.TaskRunLaunchResult, error) {
+	s.launchIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)
+	s.launchInput = input
+	return s.launchResult, s.launchErr
+}
+func (s *stubApplication) PreflightTaskRunAssets(_ context.Context, input imageagent.TaskRunAssetsInput) (imageagent.TaskRunAssetPreflight, error) {
+	s.preflightInput = input
+	return s.preflight, s.preflightErr
 }
 func (s *stubApplication) RestartFailed(ctx context.Context, runID string) error {
 	s.restartIdentity, _ = authidentity.AuthenticatedIdentityFromContext(ctx)

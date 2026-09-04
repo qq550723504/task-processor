@@ -78,7 +78,7 @@ func TestRouteRequestContractValidatesIdentityShapeAndFeatures(t *testing.T) {
 		{name: "wrong operation", mutate: func(request *RouteRequest) { request.Operation = OperationProductEnrichImageAnalyze }, category: ErrorPolicyDenied},
 		{name: "missing required feature", mutate: func(request *RouteRequest) { request.RequiredFeatures = nil }, category: ErrorPolicyDenied},
 		{name: "unexpected feature", mutate: func(request *RouteRequest) {
-			request.RequiredFeatures = []ModelFeature{FeatureTextGenerate, FeatureImageGenerate}
+			request.RequiredFeatures = []ModelFeature{FeatureTextGenerate, FeatureVisionAnalyze}
 		}, category: ErrorPolicyDenied},
 	}
 	for _, tt := range tests {

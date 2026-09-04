@@ -5,9 +5,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/aicapability"
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -15,30 +14,24 @@ import (
 
 type submitModuleHooks struct {
 	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
-	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore
-	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
-	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
-	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error)
+	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
 	SheinProductAPIBuilderFactory     func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
-	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
-	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
-	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
 }
 
 type submitModuleInput struct {
-	Config               *config.Config
-	Logger               *logrus.Logger
-	AICredentialStore    aiCredentialStore
-	AIInvocationRecorder aicapability.InvocationRecorder
-	AIAsyncJobStore      aicapability.AsyncJobBindingStore
-	Hooks                submitModuleHooks
-	StoreRepository      listingadmin.StoreRepository
-	ResolutionCacheStore sheinpub.ResolutionCacheStore
+	Config                *config.Config
+	Logger                *logrus.Logger
+	SheinCategoryLLM      ai.TextChatCompleter
+	SheinSaleAttributeLLM ai.TextChatCompleter
+	Hooks                 submitModuleHooks
+	StoreRepository       listingadmin.StoreRepository
+	ResolutionCacheStore  sheinpub.ResolutionCacheStore
 }
 
 type submitAssetDependencies struct {
@@ -56,26 +49,18 @@ type submitSheinDependencies struct {
 	imageAPIBuilder       sheinpub.ImageAPIBuilder
 	translateAPIBuilder   sheinpub.TranslateAPIBuilder
 	apiClientFactory      listingkit.SheinAPIClientFactory
-	contentOptimizer      openaiclient.ChatCompleter
-}
-
-type submitStudioDependencies struct {
-	imageGenerator    listingkit.AIImageGenerator
-	backgroundRemover listingkit.StudioBackgroundRemover
+	contentOptimizer      ai.TextChatCompleter
 }
 
 type submitModule struct {
 	assets submitAssetDependencies
 	shein  submitSheinDependencies
-	studio submitStudioDependencies
 }
 
 func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 	return submitModuleHooks{
 		SheinPricingPolicyBuilder:         hooks.SheinPricingPolicyBuilder,
 		ImageUploadStoreBuilder:           hooks.ImageUploadStoreBuilder,
-		SheinCategoryLLMClientBuilder:     hooks.SheinCategoryLLMClientBuilder,
-		SheinSaleAttributeLLMBuilder:      hooks.SheinSaleAttributeLLMBuilder,
 		SheinCategoryResolverBuilder:      hooks.SheinCategoryResolverBuilder,
 		SheinAttributeResolverBuilder:     hooks.SheinAttributeResolverBuilder,
 		SheinSaleAttributeResolverBuilder: hooks.SheinSaleAttributeResolverBuilder,
@@ -83,35 +68,24 @@ func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 		SheinImageAPIBuilderFactory:       hooks.SheinImageAPIBuilderFactory,
 		SheinTranslateAPIBuilderFactory:   hooks.SheinTranslateAPIBuilderFactory,
 		SheinAPIClientFactoryBuilder:      hooks.SheinAPIClientFactoryBuilder,
-		StudioImageGeneratorBuilder:       hooks.StudioImageGeneratorBuilder,
-		StudioAICapabilityRouterBuilder:   hooks.StudioAICapabilityRouterBuilder,
-		StudioBackgroundRemoverBuilder:    hooks.StudioBackgroundRemoverBuilder,
 	}
 }
 
 func newSubmitModuleInput(input BuildServiceInput, repos *builtRepositories) submitModuleInput {
 	return submitModuleInput{
-		Config:               input.Config,
-		Logger:               input.Logger,
-		AICredentialStore:    input.AICredentialStore,
-		AIInvocationRecorder: input.AIInvocationRecorder,
-		AIAsyncJobStore:      input.AIAsyncJobStore,
-		Hooks:                newSubmitModuleHooks(input.Hooks),
-		StoreRepository:      repos.storeRepository,
-		ResolutionCacheStore: repos.resolutionCacheStore,
+		Config:                input.Config,
+		Logger:                input.Logger,
+		SheinCategoryLLM:      input.SheinCategoryLLMClient,
+		SheinSaleAttributeLLM: input.SheinSaleAttributeLLM,
+		Hooks:                 newSubmitModuleHooks(input.Hooks),
+		StoreRepository:       repos.storeRepository,
+		ResolutionCacheStore:  repos.resolutionCacheStore,
 	}
 }
 
 func buildSubmitModule(in submitModuleInput) (submitModule, error) {
-	var sheinCategoryLLMClient openaiclient.ChatCompleter
-	if in.Hooks.SheinCategoryLLMClientBuilder != nil {
-		sheinCategoryLLMClient = in.Hooks.SheinCategoryLLMClientBuilder(in.Config, in.AICredentialStore)
-	}
-
-	var sheinSaleAttributeLLMClient openaiclient.ChatCompleter
-	if in.Hooks.SheinSaleAttributeLLMBuilder != nil {
-		sheinSaleAttributeLLMClient = in.Hooks.SheinSaleAttributeLLMBuilder(in.Config, in.AICredentialStore)
-	}
+	sheinCategoryLLMClient := in.SheinCategoryLLM
+	sheinSaleAttributeLLMClient := in.SheinSaleAttributeLLM
 
 	var sheinCategoryResolver sheinpub.CategoryResolver
 	if in.Hooks.SheinCategoryResolverBuilder != nil {
@@ -156,16 +130,27 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 
 	var imageUploadStore listingkit.ImageUploadStore
 	if in.Hooks.ImageUploadStoreBuilder != nil {
-		imageUploadStore = in.Hooks.ImageUploadStoreBuilder(in.Config, in.Logger)
+		var err error
+		imageUploadStore, err = in.Hooks.ImageUploadStoreBuilder(in.Config, in.Logger)
+		if err != nil {
+			return submitModule{}, fmt.Errorf("build ListingKit image upload store: %w", err)
+		}
 	}
 
-	var studioImageGenerator openaiclient.ImageGenerator
-	if in.Hooks.StudioImageGeneratorBuilder != nil {
-		studioImageGenerator = in.Hooks.StudioImageGeneratorBuilder(in.Config, in.AICredentialStore)
+	sheinDependencies := submitSheinDependencies{
+		categoryResolver:      sheinCategoryResolver,
+		attributeResolver:     sheinAttributeResolver,
+		saleAttributeResolver: sheinSaleAttributeResolver,
+		sizeHeaderResolver:    sheinSizeHeaderResolver,
+		pricingPolicy:         sheinPricingPolicy,
+		productAPIBuilder:     sheinProductAPIBuilder,
+		imageAPIBuilder:       sheinImageAPIBuilder,
+		translateAPIBuilder:   sheinTranslateAPIBuilder,
+		apiClientFactory:      sheinAPIClientFactory,
+		contentOptimizer:      sheinCategoryLLMClient,
 	}
-	var studioBackgroundRemover listingkit.StudioBackgroundRemover
-	if in.Hooks.StudioBackgroundRemoverBuilder != nil {
-		studioBackgroundRemover = in.Hooks.StudioBackgroundRemoverBuilder(in.Config, in.AICredentialStore)
+	if err := sheinDependencies.validate(); err != nil {
+		return submitModule{}, err
 	}
 
 	module := submitModule{
@@ -180,64 +165,35 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 			}),
 			imageUploadStore: imageUploadStore,
 		},
-		shein: submitSheinDependencies{
-			categoryResolver:      sheinCategoryResolver,
-			attributeResolver:     sheinAttributeResolver,
-			saleAttributeResolver: sheinSaleAttributeResolver,
-			sizeHeaderResolver:    sheinSizeHeaderResolver,
-			pricingPolicy:         sheinPricingPolicy,
-			productAPIBuilder:     sheinProductAPIBuilder,
-			imageAPIBuilder:       sheinImageAPIBuilder,
-			translateAPIBuilder:   sheinTranslateAPIBuilder,
-			apiClientFactory:      sheinAPIClientFactory,
-			contentOptimizer:      sheinCategoryLLMClient,
-		},
-		studio: submitStudioDependencies{
-			imageGenerator:    adaptListingKitAIImageGenerator(studioImageGenerator),
-			backgroundRemover: studioBackgroundRemover,
-		},
+		shein: sheinDependencies,
 	}
-	mode := aicapability.RoutingModeLegacy
-	if in.Config != nil {
-		var err error
-		mode, err = aicapability.ParseRoutingMode(in.Config.AICapability.StudioImageRoutingMode)
-		if err != nil {
-			return submitModule{}, fmt.Errorf("parse Studio AI capability routing mode: %w", err)
-		}
-	}
-	if mode == aicapability.RoutingModeLegacy {
-		return module, nil
-	}
-	if in.AICredentialStore == nil || in.Hooks.StudioAICapabilityRouterBuilder == nil || in.AIInvocationRecorder == nil || module.studio.imageGenerator == nil {
-		return submitModule{}, fmt.Errorf("Studio AI capability routing requires credential resolver, router builder, invocation recorder, and legacy image generator")
-	}
-	if mode == aicapability.RoutingModeActive && in.AIAsyncJobStore == nil {
-		return submitModule{}, fmt.Errorf("Studio AI capability active routing requires async job binding store")
-	}
-	router := in.Hooks.StudioAICapabilityRouterBuilder(in.AICredentialStore)
-	if router == nil {
-		return submitModule{}, fmt.Errorf("Studio AI capability routing requires router builder to return a router")
-	}
-	adapter, err := listingkit.NewStudioAIImageCapabilityAdapter(listingkit.StudioAIImageCapabilityAdapterConfig{
-		Legacy:        module.studio.imageGenerator,
-		Router:        router,
-		Recorder:      in.AIInvocationRecorder,
-		AsyncJobStore: in.AIAsyncJobStore,
-		Mode:          mode,
-		OnRecordError: func(record aicapability.InvocationRecord, err error) {
-			if in.Logger != nil {
-				in.Logger.WithError(err).WithFields(logrus.Fields{
-					"invocation_id": record.InvocationID,
-					"tenant_id":     record.TenantID,
-					"capability":    record.Capability,
-					"operation":     record.Operation,
-				}).Warn("record Studio AI capability invocation")
-			}
-		},
-	})
-	if err != nil {
-		return submitModule{}, fmt.Errorf("create Studio AI capability adapter: %w", err)
-	}
-	module.studio.imageGenerator = adapter
 	return module, nil
+}
+
+func (d submitSheinDependencies) validate() error {
+	switch {
+	case d.categoryResolver == nil:
+		return fmt.Errorf("SHEIN category resolver builder returned nil")
+	case d.attributeResolver == nil:
+		return fmt.Errorf("SHEIN attribute resolver builder returned nil")
+	case !supportsFreshAttributeResolution(d.attributeResolver):
+		return fmt.Errorf("SHEIN attribute resolver builder returned a resolver without fresh attribute resolution capability")
+	case d.saleAttributeResolver == nil:
+		return fmt.Errorf("SHEIN sale-attribute resolver builder returned nil")
+	case d.productAPIBuilder == nil:
+		return fmt.Errorf("SHEIN product API builder factory returned nil")
+	case d.imageAPIBuilder == nil:
+		return fmt.Errorf("SHEIN image API builder factory returned nil")
+	case d.translateAPIBuilder == nil:
+		return fmt.Errorf("SHEIN translate API builder factory returned nil")
+	case d.apiClientFactory == nil:
+		return fmt.Errorf("SHEIN API client factory builder returned nil")
+	default:
+		return nil
+	}
+}
+
+func supportsFreshAttributeResolution(resolver sheinpub.AttributeResolver) bool {
+	_, ok := resolver.(sheinpub.FreshAttributeResolver)
+	return ok
 }

@@ -10,12 +10,6 @@ const QUICK_TOOLS = [
     href: "/listing-kits/new",
   },
   {
-    eyebrow: "Source",
-    title: "POD",
-    description: "选择 POD 商品、子 SKU 和印刷区，创建后续生成任务。",
-    href: "/listing-kits/sds",
-  },
-  {
     eyebrow: "Canonical",
     title: "标准商品",
     description: "查看已抽取的标准商品事实和来源任务。",

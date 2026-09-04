@@ -32,16 +32,16 @@ func TestBuildSettingsHealthProbesFromConfigReportsReadyConfiguredRuntime(t *tes
 				},
 			},
 		},
-		ProductImage: config.ProductImageConfig{
-			Publisher: config.ProductImagePublisherConfig{
-				Enabled:    true,
-				Provider:   "s3",
-				PublicBase: "https://cdn.example.test/assets",
-				S3: config.ProductImagePublisherS3Config{
+		ListingKit: config.ListingKitConfig{
+			ImageUpload: config.ListingKitImageUploadConfig{
+				Provider: "s3",
+				S3: config.ListingKitImageUploadS3Config{
 					Bucket:          "listingkit",
+					Region:          "ap-southeast-1",
 					Endpoint:        "https://s3.example.test",
 					AccessKeyID:     "access",
 					SecretAccessKey: "secret",
+					PublicBase:      "https://cdn.example.test/assets",
 				},
 			},
 		},
@@ -87,9 +87,8 @@ func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testi
 	t.Parallel()
 
 	probes := buildSettingsHealthProbesFromConfig(&config.Config{
-		ProductImage: config.ProductImageConfig{
-			Publisher: config.ProductImagePublisherConfig{
-				Enabled:  true,
+		ListingKit: config.ListingKitConfig{
+			ImageUpload: config.ListingKitImageUploadConfig{
 				Provider: "s3",
 			},
 		},
@@ -100,41 +99,31 @@ func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testi
 	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.baseURL 缺失")
 	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.tenantID 缺失")
 	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.identifier 缺失")
-	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.bucket 缺失")
-	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.endpoint 缺失")
+	assertProbeMissing(t, probes.ObjectStorage, "listingkit.imageUpload.s3.bucket 缺失")
+	assertProbeMissing(t, probes.ObjectStorage, "listingkit.imageUpload.s3.region 缺失")
 }
 
-func TestBuildSettingsHealthProbesReportsLocalPublisherWithoutPublicBase(t *testing.T) {
+func TestBuildSettingsHealthProbesReportsLocalUploadWithoutRoot(t *testing.T) {
 	t.Parallel()
 
 	probes := buildSettingsHealthProbesFromConfig(&config.Config{
-		ProductImage: config.ProductImageConfig{
-			Publisher: config.ProductImagePublisherConfig{
-				Enabled:  true,
-				Provider: "local",
-			},
+		ListingKit: config.ListingKitConfig{
+			ImageUpload: config.ListingKitImageUploadConfig{Provider: "local"},
 		},
 	})
 
-	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.publicBase 缺失")
+	assertProbeMissing(t, probes.ObjectStorage, "listingkit.imageUpload.local.rootDir 缺失")
 }
 
-func TestBuildSettingsHealthProbesReportsDisabledPublisherUnavailable(t *testing.T) {
+func TestBuildSettingsHealthProbesReportsMissingUploadProvider(t *testing.T) {
 	t.Parallel()
 
-	probes := buildSettingsHealthProbesFromConfig(&config.Config{
-		ProductImage: config.ProductImageConfig{
-			Publisher: config.ProductImagePublisherConfig{
-				Provider:   "local",
-				PublicBase: "https://cdn.example.test/assets",
-			},
-		},
-	})
+	probes := buildSettingsHealthProbesFromConfig(&config.Config{})
 
 	if probes.ObjectStorage.Configured {
-		t.Fatalf("object storage probe = %+v, want unavailable when publisher is disabled", probes.ObjectStorage)
+		t.Fatalf("object storage probe = %+v, want unavailable without an explicit provider", probes.ObjectStorage)
 	}
-	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.enabled 未启用")
+	assertProbeMissing(t, probes.ObjectStorage, "listingkit.imageUpload.provider 缺失")
 }
 
 func TestCompleteSettingsHealthProbesWithSubmitRuntimeReportsMissingSheinCapabilities(t *testing.T) {

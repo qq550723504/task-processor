@@ -48,6 +48,12 @@ type SourceIdentityValidation struct {
 	Fingerprintable       bool
 }
 
+// Valid reports whether the identity contains the strict source type,
+// platform, and source-native identifier required for deterministic handoff.
+func (id SourceIdentity) Valid() bool {
+	return id.Validation().Valid()
+}
+
 // Valid reports whether the identity has enough stable fields for normal source
 // lineage. Weak-but-fingerprintable identities are intentionally not Valid; the
 // caller must decide whether the weak identity is acceptable for a specific

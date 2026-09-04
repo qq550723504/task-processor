@@ -6,8 +6,8 @@ import (
 )
 
 func TestOwnerReconciliationInventoryIsFixedAndComplete(t *testing.T) {
-	if len(ownerReconciliationInventory) != 24 {
-		t.Fatalf("inventory length = %d, want 24", len(ownerReconciliationInventory))
+	if len(ownerReconciliationInventory) != 15 {
+		t.Fatalf("inventory length = %d, want 15", len(ownerReconciliationInventory))
 	}
 	seen := make(map[string]struct{}, len(ownerReconciliationInventory))
 	for _, spec := range ownerReconciliationInventory {
@@ -20,6 +20,9 @@ func TestOwnerReconciliationInventoryIsFixedAndComplete(t *testing.T) {
 		}
 		if strings.Contains(spec.Query, "ai_client_credentials") {
 			t.Fatalf("tenant-wide AI credentials must be excluded from reconciliation")
+		}
+		if strings.Contains(spec.Table, "studio") {
+			t.Fatalf("retired Studio table %q must be excluded from reconciliation", spec.Table)
 		}
 		if err := validateTableSpec(spec); err != nil {
 			t.Fatalf("inventory spec %s invalid: %v", spec.Table, err)

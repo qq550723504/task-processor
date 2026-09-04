@@ -1,10 +1,8 @@
 package httpapi
 
 import (
-	"bytes"
 	"net/http"
 	"os"
-	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -14,26 +12,11 @@ import (
 )
 
 func TestRun_GracefulShutdown(t *testing.T) {
-	runtimePaths := configureProductImageRuntimePaths(t)
-	configContents, err := os.ReadFile("../../../config/config-test.yaml")
-	if err != nil {
-		t.Fatalf("read test config: %v", err)
-	}
-	configContents = bytes.Replace(configContents,
-		[]byte(`workDir: "./.local/tmp/productimage-test"`),
-		[]byte(`workDir: "`+filepath.ToSlash(runtimePaths.workDir)+`"`), 1)
-	configContents = bytes.Replace(configContents,
-		[]byte(`outputDir: "./.local/tmp/productimage-published-test"`),
-		[]byte(`outputDir: "`+filepath.ToSlash(runtimePaths.publisherOutputDir)+`"`), 1)
-	configPath := filepath.Join(t.TempDir(), "config-test.yaml")
-	if err := os.WriteFile(configPath, configContents, 0o600); err != nil {
-		t.Fatalf("write isolated test config: %v", err)
-	}
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
 	stopCh := make(chan os.Signal, 1)
-	options := Options{ConfigPath: configPath, Port: 18082, ShutdownSignal: stopCh}
+	options := Options{ConfigPath: "config/config-test.yaml", Port: 18082, ShutdownSignal: stopCh}
 
 	done := make(chan error, 1)
 	go func() {

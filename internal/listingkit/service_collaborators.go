@@ -11,7 +11,6 @@ func (s *service) initializeCollaborators() {
 func (s *service) initializeTaskCollaborators() {
 	s.runCollaboratorInitializers(
 		s.initializeTaskReadCollaborators,
-		s.initializeTaskStudioCollaborators,
 	)
 }
 
@@ -29,11 +28,4 @@ func (s *service) initializeAdminCollaborators() {
 		s.initializeSettingsAdminCollaborators,
 		s.initializeSheinAdminCollaborators,
 	)
-}
-
-func resolveStudioBatchTaskLinkRepo(s *service) StudioBatchTaskLinkRepository {
-	if s == nil {
-		return nil
-	}
-	return s.studioDeps.batchTaskLinkRepo
 }

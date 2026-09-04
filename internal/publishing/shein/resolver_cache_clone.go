@@ -179,7 +179,7 @@ func cloneResolvedSaleAttributeMap(input map[string]ResolvedSaleAttribute) map[s
 	}
 	out := make(map[string]ResolvedSaleAttribute, len(input))
 	for key, value := range input {
-		out[key] = value
+		out[key] = cloneResolvedSaleAttribute(value)
 	}
 	return out
 }
@@ -190,7 +190,19 @@ func cloneResolvedSaleAttributeSliceMap(input map[string][]ResolvedSaleAttribute
 	}
 	out := make(map[string][]ResolvedSaleAttribute, len(input))
 	for key, value := range input {
-		out[key] = append([]ResolvedSaleAttribute(nil), value...)
+		cloned := make([]ResolvedSaleAttribute, len(value))
+		for index := range value {
+			cloned[index] = cloneResolvedSaleAttribute(value[index])
+		}
+		out[key] = cloned
 	}
 	return out
+}
+
+func cloneResolvedSaleAttribute(value ResolvedSaleAttribute) ResolvedSaleAttribute {
+	if value.AttributeValueID != nil {
+		attributeValueID := *value.AttributeValueID
+		value.AttributeValueID = &attributeValueID
+	}
+	return value
 }

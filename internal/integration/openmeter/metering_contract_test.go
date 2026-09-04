@@ -31,7 +31,7 @@ func TestPoCCountMetersAggregateCommittedSuccesses(t *testing.T) {
 		events  int
 		want    string
 	}{
-		{name: "studio design jobs", metric: MetricStudioDesignJobsSucceeded, meterID: fixture.Meters[0].ID, events: 3, want: "3"},
+		{name: "listingkit generations", metric: MetricListingKitGenerationsSucceeded, meterID: fixture.Meters[0].ID, events: 3, want: "3"},
 		{name: "SHEIN drafts", metric: MetricSheinDraftsSucceeded, meterID: fixture.Meters[1].ID, events: 2, want: "2"},
 	}
 
@@ -58,7 +58,7 @@ func TestPoCDuplicateSourceAndIDCountsOnce(t *testing.T) {
 	tenantID := pocContractTenant(fixture, "duplicate-source-id")
 	event := mustPoCUsageEvent(t, UsageFact{
 		TenantID:   tenantID,
-		Metric:     MetricStudioDesignJobsSucceeded,
+		Metric:     MetricListingKitGenerationsSucceeded,
 		Quantity:   "1",
 		SourceType: "design_job",
 		SourceID:   "poc-" + fixture.Environment.RunID + "-duplicate-source-id",
@@ -78,7 +78,7 @@ func TestPoCSameIDDifferentSourceCountsSeparately(t *testing.T) {
 	tenantID := pocContractTenant(fixture, "same-id-different-source")
 	event := mustPoCUsageEvent(t, UsageFact{
 		TenantID:   tenantID,
-		Metric:     MetricStudioDesignJobsSucceeded,
+		Metric:     MetricListingKitGenerationsSucceeded,
 		Quantity:   "1",
 		SourceType: "design_job",
 		SourceID:   "poc-" + fixture.Environment.RunID + "-same-id-different-source",
@@ -117,7 +117,7 @@ func TestPoCTenantSubjectsRemainIsolated(t *testing.T) {
 		for index := 0; index < input.count; index++ {
 			mustPoCIngest(t, client, mustPoCUsageEvent(t, UsageFact{
 				TenantID:   input.tenantID,
-				Metric:     MetricStudioDesignJobsSucceeded,
+				Metric:     MetricListingKitGenerationsSucceeded,
 				Quantity:   "1",
 				SourceType: "design_job",
 				SourceID:   fmt.Sprintf("poc-%s-tenant-isolation-%s-%d", fixture.Environment.RunID, input.suffix, index),
@@ -152,7 +152,7 @@ func assertInvalidUsageEventsMakeZeroRequests(t *testing.T, runID string) {
 	validFact := func() UsageFact {
 		return UsageFact{
 			TenantID:   "poc-" + runID + "-invalid-events",
-			Metric:     MetricStudioDesignJobsSucceeded,
+			Metric:     MetricListingKitGenerationsSucceeded,
 			Quantity:   "1",
 			SourceType: "design_job",
 			SourceID:   "poc-" + runID + "-invalid-events",

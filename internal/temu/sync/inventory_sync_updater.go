@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/product"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -65,7 +65,7 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 
 				// 更新Amazon监控数据
 				amazonProduct := update.AmazonProduct
-				currentPrice := product.GetProductPrice(amazonProduct, priceType)
+				currentPrice := productpolicy.GetProductPrice(amazonProduct, priceType)
 				newStock := s.extractStockFromProduct(amazonProduct)
 
 				sku.AmazonMonitorData = &TemuAmazonMonitorData{

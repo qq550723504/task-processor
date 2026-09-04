@@ -5,12 +5,10 @@ func buildAmazonPreviewPayloadBody(input amazonPreviewPayloadInput) *AmazonPrevi
 		return nil
 	}
 	return &AmazonPreviewPayload{
-		Title:          input.draft.Title,
-		Brand:          input.draft.Brand,
-		ProductType:    input.draft.ProductType,
-		ImageBundle:    input.visualBase.imageBundle,
-		RenderPreviews: input.visualBase.renderPreviews,
-		ScenePresets:   input.visualBase.scenePresets,
-		Draft:          input.draft,
+		Title:       input.draft.Title,
+		Brand:       input.draft.Brand,
+		ProductType: input.draft.ProductType,
+		ImageBundle: input.visualBase.imageBundle,
+		Draft:       input.draft,
 	}
 }

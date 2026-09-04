@@ -1,12 +1,16 @@
 package listingkit
 
-import listingsubmission "task-processor/internal/listing/submission"
+import (
+	listingsubmission "task-processor/internal/listing/submission"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	if config == nil {
 		return taskDependencies{}
 	}
 	return taskDependencies{
+		productSnapshots:             config.Core.ProductSnapshotReader,
 		sdsLoginStatusProvider:       config.Core.SDSLoginStatusProvider,
 		taskSubmitter:                config.Core.TaskSubmitter,
 		generationUsage:              config.Core.GenerationUsageLedger,
@@ -15,24 +19,6 @@ func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 		standardWorkflowEnabled:      config.Workflow.StandardProductWorkflowEnabled,
 		platformAdaptWorkflowClient:  config.Workflow.PlatformAdaptWorkflowClient,
 		platformAdaptWorkflowEnabled: config.Workflow.PlatformAdaptWorkflowEnabled,
-	}
-}
-
-func buildStudioDependencies(config *ServiceConfig) studioDependencies {
-	if config == nil {
-		return studioDependencies{}
-	}
-	return studioDependencies{
-		sessionRepo:              config.Core.StudioSessionRepository,
-		batchRepo:                config.Core.StudioBatchRepository,
-		batchRunRepo:             config.Core.StudioBatchRunRepository,
-		batchTaskLinkRepo:        config.Core.StudioBatchTaskLinkRepository,
-		promptDiversifier:        config.Shein.StudioPromptDiversifier,
-		imageGenerator:           config.Shein.StudioImageGenerator,
-		backgroundRemover:        config.Shein.StudioBackgroundRemover,
-		uploadStore:              config.Core.ImageUploadStore,
-		productImageUsage:        config.Core.StudioProductImageUsage,
-		generationUsageAdmission: config.Core.GenerationUsageAdmission,
 	}
 }
 
@@ -83,12 +69,8 @@ func buildWorkflowDependencies(config *ServiceConfig) workflowDependencies {
 		return workflowDependencies{}
 	}
 	return workflowDependencies{
-		productService:         config.Core.ProductService,
-		imageService:           config.Core.ImageService,
-		assetRepository:        config.Assets.AssetRepository,
-		assetRecipeResolver:    config.Assets.AssetRecipeResolver,
-		assetBundleBuilder:     config.Assets.AssetBundleBuilder,
-		assetGenerationService: config.Assets.AssetGenerationService,
+		productSnapshots: config.Core.ProductSnapshotReader,
+		approvedAssets:   config.Assets.ApprovedAssetInventoryReader,
 	}
 }
 
@@ -96,7 +78,7 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 	if config == nil {
 		return sheinRuntimeDependencies{}
 	}
-	return sheinRuntimeDependencies{
+	dependencies := sheinRuntimeDependencies{
 		resolutionCacheStore:  config.Shein.SheinResolutionCacheStore,
 		categoryResolver:      config.Shein.SheinCategoryResolver,
 		attributeResolver:     config.Shein.SheinAttributeResolver,
@@ -104,6 +86,8 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 		sizeHeaderResolver:    config.Shein.SheinSizeHeaderResolver,
 		pricingPolicy:         config.Shein.SheinPricingPolicy,
 	}
+	dependencies.freshAttributeResolver, _ = config.Shein.SheinAttributeResolver.(sheinpub.FreshAttributeResolver)
+	return dependencies
 }
 
 func buildSupportDependencies(config *ServiceConfig) supportDependencies {
@@ -113,6 +97,7 @@ func buildSupportDependencies(config *ServiceConfig) supportDependencies {
 	return supportDependencies{
 		sdsSyncService:            config.Core.SDSSyncService,
 		sdsBaselineRemoteProvider: config.Core.SDSBaselineRemoteProvider,
+		imageUploadStore:          config.Core.ImageUploadStore,
 		uploadedImageRepository:   config.Core.UploadedImageRepository,
 		assembler:                 config.Assets.Assembler,
 		reviewRepository:          config.Assets.ReviewRepository,
@@ -124,7 +109,6 @@ func applyServiceDependencyGroups(svc *service, config *ServiceConfig) {
 		return
 	}
 	svc.taskDeps = buildTaskDependencies(config)
-	svc.studioDeps = buildStudioDependencies(config)
 	svc.submission = buildSubmissionCollaborators()
 	svc.adminDeps = buildAdminDependencies(config)
 	svc.submissionDeps = buildSubmissionDependencies(config)

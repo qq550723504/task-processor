@@ -17,9 +17,9 @@ func TestSubscriptionGenerationUsageAdapterMapsCanonicalFact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServiceWithLedger() error = %v", err)
 	}
-	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", listingsubscription.ModuleListingKit, listingsubscription.EntitlementInput{
 		Status: listingsubscription.StatusActive,
-		Limits: map[string]int{"studio_design_jobs_succeeded": 2},
+		Limits: map[string]int{"listingkit_generations_succeeded": 2},
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
@@ -37,7 +37,7 @@ func TestSubscriptionGenerationUsageAdapterMapsCanonicalFact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUsage() error = %v", err)
 	}
-	if event.ModuleCode != listingsubscription.ModuleStudio || event.Metric != "studio_design_jobs_succeeded" || event.Quantity != 1 || event.SourceType != "listingkit_generation" || event.SourceID != "task-42" {
+	if event.ModuleCode != listingsubscription.ModuleListingKit || event.Metric != "listingkit_generations_succeeded" || event.Quantity != 1 || event.SourceType != "listingkit_generation" || event.SourceID != "task-42" {
 		t.Fatalf("event = %#v, want canonical generation fact", event)
 	}
 }
@@ -69,9 +69,9 @@ func TestSubscriptionGenerationUsageAdapterZeroOccurrenceUsesCurrentPeriodForMis
 	if err != nil {
 		t.Fatalf("NewServiceWithLedger() error = %v", err)
 	}
-	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", listingsubscription.ModuleListingKit, listingsubscription.EntitlementInput{
 		Status: listingsubscription.StatusActive,
-		Limits: map[string]int{"studio_design_jobs_succeeded": 2},
+		Limits: map[string]int{"listingkit_generations_succeeded": 2},
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
@@ -98,9 +98,9 @@ func TestSubscriptionGenerationUsageAdapterZeroOccurrenceReplaysExistingPeriod(t
 	if err != nil {
 		t.Fatalf("NewServiceWithLedger() error = %v", err)
 	}
-	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", listingsubscription.ModuleListingKit, listingsubscription.EntitlementInput{
 		Status: listingsubscription.StatusActive,
-		Limits: map[string]int{"studio_design_jobs_succeeded": 2},
+		Limits: map[string]int{"listingkit_generations_succeeded": 2},
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}

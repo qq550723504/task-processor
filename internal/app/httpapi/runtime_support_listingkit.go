@@ -1,11 +1,17 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 
+	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/catalog"
+	sdsadapter "task-processor/internal/sds/adapter"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -15,38 +21,136 @@ import (
 
 var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
 
-func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) *sheinlogin.RedisStore {
+type listingKitProductSnapshotReader struct {
+	reader catalog.SnapshotReader
+}
+
+func newListingKitProductSnapshotReader(reader catalog.SnapshotReader) listingkit.ProductSnapshotReader {
+	return listingKitProductSnapshotReader{reader: reader}
+}
+
+func (r listingKitProductSnapshotReader) GetProductSnapshot(ctx context.Context, query listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	identity := catalog.SnapshotIdentity{
+		TenantID: query.TenantID, ProductKey: query.ProductKey,
+	}
+	var (
+		published catalog.PublishedSnapshot
+		err       error
+	)
+	if query.Version > 0 {
+		versioned, ok := r.reader.(catalog.VersionedSnapshotReader)
+		if !ok {
+			return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = versioned.GetSnapshot(ctx, identity, query.Version)
+	} else {
+		published, err = r.reader.GetCurrentSnapshot(ctx, identity)
+	}
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return catalog.ProductSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	if err != nil {
+		return catalog.ProductSnapshot{}, err
+	}
+	return catalog.CloneProductSnapshot(published.Snapshot)
+}
+
+func (r listingKitProductSnapshotReader) GetPublishedProductSnapshot(ctx context.Context, query listingkit.ProductSnapshotQuery) (catalog.PublishedSnapshot, error) {
+	identity := catalog.SnapshotIdentity{TenantID: query.TenantID, ProductKey: query.ProductKey}
+	var (
+		published catalog.PublishedSnapshot
+		err       error
+	)
+	versioned, ok := r.reader.(catalog.VersionedSnapshotReader)
+	if query.Version > 0 {
+		if !ok {
+			return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = versioned.GetSnapshot(ctx, identity, query.Version)
+	} else {
+		published, err = r.reader.GetCurrentSnapshot(ctx, identity)
+	}
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	return published, err
+}
+
+func isProductSnapshotNotReadyForHTTPAPI(err error) bool {
+	return errors.Is(err, listingkit.ErrProductSnapshotNotReady) || errors.Is(err, catalog.ErrSnapshotNotReady)
+}
+
+func readProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string, version uint64) (catalog.ProductSnapshot, error) {
+	published, err := readPublishedProductSnapshotForHTTPAPI(ctx, deps, tenantID, productKey, version)
+	return published.Snapshot, err
+}
+
+func readPublishedProductSnapshotForHTTPAPI(ctx context.Context, deps *runtimeDeps, tenantID, productKey string, version uint64) (catalog.PublishedSnapshot, error) {
+	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
+		return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	if reader, ok := deps.features.productSnapshotReader.(interface {
+		GetPublishedProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.PublishedSnapshot, error)
+	}); ok {
+		return reader.GetPublishedProductSnapshot(ctx, listingkit.ProductSnapshotQuery{TenantID: tenantID, ProductKey: productKey, Version: version})
+	}
+	identity := catalog.SnapshotIdentity{TenantID: tenantID, ProductKey: productKey}
+	var (
+		published catalog.PublishedSnapshot
+		err       error
+	)
+	if version > 0 {
+		reader, ok := deps.features.productSnapshotReader.(catalog.VersionedSnapshotReader)
+		if !ok {
+			return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = reader.GetSnapshot(ctx, identity, version)
+	} else {
+		reader, ok := deps.features.productSnapshotReader.(catalog.SnapshotReader)
+		if !ok {
+			return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+		}
+		published, err = reader.GetCurrentSnapshot(ctx, identity)
+	}
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return catalog.PublishedSnapshot{}, listingkit.ErrProductSnapshotNotReady
+	}
+	return published, err
+}
+
+func ensureListingKitSheinCookieStore(_ *logrus.Logger, deps *runtimeDeps) (*sheinlogin.RedisStore, error) {
 	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {
-		return nil
+		return nil, errors.New("ListingKit SHEIN cookie store configuration is required")
 	}
 	support := deps.ensureListingKitSupport()
 	if support == nil {
-		return nil
+		return nil, errors.New("ListingKit SHEIN cookie store support is required")
 	}
 	if support.sheinCookieStore != nil {
-		return support.sheinCookieStore
+		return support.sheinCookieStore, nil
 	}
 	store, err := sheinloginbootstrap.BuildRedisStore(deps.shared.cfg)
 	if err != nil {
-		if logger != nil {
-			logger.WithError(err).Warn("failed to initialize listingkit shein cookie store; shein runtime will degrade")
-		}
-		return nil
+		return nil, fmt.Errorf("initialize ListingKit SHEIN cookie store: %w", err)
 	}
 	if store == nil {
-		return nil
+		return nil, errors.New("ListingKit SHEIN cookie store configuration is required")
 	}
 	support.sheinCookieStore = store
 	deps.addClosers(store.Close)
-	return store
+	return store, nil
 }
 
 func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Service {
-	if deps == nil || deps.shared == nil || deps.features == nil || deps.features.imageService == nil {
+	if deps == nil || deps.shared == nil || deps.features == nil {
+		return nil
+	}
+	approvedAssets := ensureApprovedAssetReader(logger, deps)
+	if approvedAssets == nil {
 		return nil
 	}
 
-	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.features.imageService, sdshttpapi.BuildClientConfig(deps.shared.cfg))
+	svc, authState, err := newSDSSyncServiceForHTTPAPI(approvedAssets, sdshttpapi.BuildClientConfig(deps.shared.cfg))
 	if err != nil {
 		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
 		return nil
@@ -61,6 +165,34 @@ func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Se
 	}
 
 	return svc
+}
+
+func ensureApprovedAssetReader(logger *logrus.Logger, deps *runtimeDeps) sdsadapter.ApprovedAssetReader {
+	if deps == nil || deps.shared == nil || deps.features == nil {
+		return nil
+	}
+	support := deps.ensureListingKitSupport()
+	if support == nil {
+		return nil
+	}
+	if support.approvedAssetReader != nil {
+		return support.approvedAssetReader
+	}
+	if deps.shared.productCatalogDB == nil {
+		return nil
+	}
+	reader, err := assetpersistence.NewRepository(deps.shared.productCatalogDB)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).Warn("failed to initialize approved product asset reader; SDS sync disabled")
+		}
+		return nil
+	}
+	if reader == nil {
+		return nil
+	}
+	support.approvedAssetReader = reader
+	return support.approvedAssetReader
 }
 
 func buildSDSBaselineRemoteProvider(logger *logrus.Logger, deps *runtimeDeps) listingkit.SDSBaselineRemoteProvider {

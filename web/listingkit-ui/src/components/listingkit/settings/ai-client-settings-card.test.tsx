@@ -26,17 +26,13 @@ describe("AIClientSettingsCard", () => {
         resolved_scope: "tenant",
         api_key_set: clientName !== "image_gpt_image_2",
         base_url:
-          clientName === "image_nanobanana"
-            ? "https://tenant-nano.example.com/v1"
-            : clientName === "image_gpt_image_2"
+          clientName === "image_gpt_image_2"
             ? "https://tenant-image.example.com/v1"
             : "https://tenant-ai.example.com/v1",
         model:
-          clientName === "image_nanobanana"
-            ? "nano-banana-fast"
-            : clientName === "image_gpt_image_2"
-              ? "gpt-image-2"
-              : "gpt-4.1-mini",
+          clientName === "image_gpt_image_2"
+            ? "gpt-image-2"
+            : "gpt-4.1-mini",
         enabled: true,
       },
       isLoading: false,
@@ -104,25 +100,14 @@ describe("AIClientSettingsCard", () => {
     expect(screen.queryByLabelText("User ID")).not.toBeInTheDocument();
   });
 
-  it("switches to Nano Banana settings and saves with image client name", () => {
+  it("exposes only AI clients with production consumers", () => {
     render(<AIClientSettingsCard />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Nano Banana/ }));
-
-    expect(screen.getByDisplayValue("https://tenant-nano.example.com/v1")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("nano-banana-fast")).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("Model"), {
-      target: { value: "nano-banana-pro" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存 Nano Banana 配置" }));
-
-    expect(mocks.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        client_name: "image_nanobanana",
-        model: "nano-banana-pro",
-      }),
-    );
+    expect(screen.getAllByText("通用文案").length).toBeGreaterThan(0);
+    expect(screen.getByText("属性映射")).toBeInTheDocument();
+    expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
+    expect(screen.queryByText("Nano Banana")).not.toBeInTheDocument();
+    expect(screen.queryByText("背景抠图")).not.toBeInTheDocument();
   });
 
   it("shows user scope when a user-level config is currently taking effect", () => {
@@ -152,19 +137,11 @@ describe("AIClientSettingsCard", () => {
     const defaultClientButton = optionButtons.find((button) =>
       button.textContent?.startsWith("通用文案"),
     );
-    const nanoClientButton = optionButtons.find((button) =>
-      button.textContent?.startsWith("Nano Banana"),
-    );
     const gptImageClientButton = optionButtons.find((button) =>
       button.textContent?.startsWith("GPT Image 2"),
     );
-    const backgroundRemovalClientButton = optionButtons.find((button) =>
-      button.textContent?.startsWith("背景抠图"),
-    );
 
     expect(defaultClientButton).toHaveClass("w-full");
-    expect(nanoClientButton).toHaveClass("w-full");
     expect(gptImageClientButton).not.toHaveClass("min-w-[160px]");
-    expect(backgroundRemovalClientButton).toHaveClass("w-full");
   });
 });

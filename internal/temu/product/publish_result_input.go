@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
 	"task-processor/internal/shared/ptr"
-	pkgproduct "task-processor/internal/product"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -186,7 +186,7 @@ func (input *SavePublishResultInput) CostPrice() (float64, bool) {
 		return 0, false
 	}
 
-	costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
+	costPrice := productpolicy.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
 	return costPrice, costPrice > 0
 }
 

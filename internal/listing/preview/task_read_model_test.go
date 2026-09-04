@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 func TestBuildTaskReadModel(t *testing.T) {
@@ -26,7 +26,7 @@ func TestBuildTaskReadModel(t *testing.T) {
 		ReadModel: ReadModelInput{
 			NeedsReview: true,
 			Attachment: &AttachmentInput{
-				CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+				CatalogProduct: &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 			},
 			Overview: &HeaderInput{
 				Country:       "US",

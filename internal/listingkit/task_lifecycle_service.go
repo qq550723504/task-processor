@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 type taskLifecycleServiceConfig struct {
 	repo                        Repository
+	productSnapshots            ProductSnapshotReader
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
 	taskSubmitter               func() TaskSubmitter
@@ -23,6 +25,7 @@ type taskLifecycleServiceConfig struct {
 
 type taskLifecycleService struct {
 	repo                        Repository
+	productSnapshots            ProductSnapshotReader
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
 	taskSubmitter               func() TaskSubmitter
@@ -35,6 +38,7 @@ type taskLifecycleService struct {
 func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleService {
 	return &taskLifecycleService{
 		repo:                        config.repo,
+		productSnapshots:            config.productSnapshots,
 		sdsBaselineReadinessService: config.sdsBaselineReadinessService,
 		validateSheinStoreAccess:    config.validateSheinStoreAccess,
 		taskSubmitter:               config.taskSubmitter,
@@ -51,6 +55,17 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 		return nil, err
 	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
+		if replayed, replayErr := s.replayIdempotentGenerateTask(ctx, task); replayErr != nil {
+			if errors.Is(replayErr, ErrGenerateTaskIdempotencyConflict) {
+				return nil, replayErr
+			}
+			return nil, fmt.Errorf("failed to create task: %w", err)
+		} else if replayed != nil {
+			if replayed.Status == core.TaskStatusPending {
+				return s.dispatchGenerateTask(ctx, replayed)
+			}
+			return replayed, nil
+		}
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 	dispatched, err := s.dispatchGenerateTask(ctx, task)
@@ -63,6 +78,103 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 		return task, err
 	}
 	return dispatched, nil
+}
+
+// replayIdempotentGenerateTask resolves an idempotent replay after
+// CreateTask failed, which for deterministic source-handoff task IDs means the
+// task row already exists. It returns the existing task when the recorded
+// payload matches the replayed request, ErrGenerateTaskIdempotencyConflict
+// when the same key carries a different target payload, and (nil, nil) when
+// no idempotency key is present or no task exists so the caller surfaces the
+// original creation error. The caller re-dispatches a matching pending task to
+// close the crash window between the task commit and workflow submission; the
+// stable task/workflow identity makes that redelivery idempotent.
+func (s *taskLifecycleService) replayIdempotentGenerateTask(ctx context.Context, task *Task) (*Task, error) {
+	if task == nil || task.Request == nil || strings.TrimSpace(task.Request.IdempotencyKey) == "" {
+		return nil, nil
+	}
+	existing, err := s.repo.GetTask(ctx, task.ID)
+	if err != nil {
+		return nil, nil
+	}
+	if existing == nil {
+		return nil, nil
+	}
+	if !generateTaskPayloadsEquivalent(existing, task) {
+		return nil, fmt.Errorf("%w: task %s already exists with a different target payload", ErrGenerateTaskIdempotencyConflict, task.ID)
+	}
+	return existing, nil
+}
+
+// generateTaskPayloadsEquivalent compares the complete persisted target
+// payload, not just the product identity: a corrected retry that changes
+// the store, market, language, category or brand hints, options, text,
+// source reference, or the billing/user identity must surface an
+// idempotency conflict instead of silently replaying the first task.
+func generateTaskPayloadsEquivalent(existing, candidate *Task) bool {
+	if existing == nil || candidate == nil {
+		return false
+	}
+	if existing.TenantID != candidate.TenantID ||
+		existing.UserID != candidate.UserID ||
+		existing.BillingTenantID != candidate.BillingTenantID ||
+		existing.SourceSnapshotVersion != candidate.SourceSnapshotVersion {
+		return false
+	}
+	if existing.Request == nil || candidate.Request == nil {
+		return existing.Request == nil && candidate.Request == nil
+	}
+	return generateRequestTargetPayloadEquivalent(existing.Request, candidate.Request)
+}
+
+func generateRequestTargetPayloadEquivalent(existing, candidate *GenerateRequest) bool {
+	if existing.ProductKey != candidate.ProductKey ||
+		existing.Text != candidate.Text ||
+		existing.Country != candidate.Country ||
+		existing.Language != candidate.Language ||
+		existing.SheinStoreID != candidate.SheinStoreID ||
+		existing.TargetCategoryHint != candidate.TargetCategoryHint ||
+		existing.BrandHint != candidate.BrandHint {
+		return false
+	}
+	if !sourceReferencesEquivalent(existing.Source, candidate.Source) {
+		return false
+	}
+	if !generateOptionsEquivalent(existing.Options, candidate.Options) {
+		return false
+	}
+	return stringSlicesEqualIgnoreOrder(existing.Platforms, candidate.Platforms)
+}
+
+func sourceReferencesEquivalent(existing, candidate *SourceReference) bool {
+	if existing == nil || candidate == nil {
+		return existing == nil && candidate == nil
+	}
+	return reflect.DeepEqual(*existing, *candidate)
+}
+
+func generateOptionsEquivalent(existing, candidate *GenerateOptions) bool {
+	if existing == nil || candidate == nil {
+		return existing == nil && candidate == nil
+	}
+	return reflect.DeepEqual(*existing, *candidate)
+}
+
+func stringSlicesEqualIgnoreOrder(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, value := range a {
+		counts[value]++
+	}
+	for _, value := range b {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func markCanceledTaskFailedIfActive(ctx context.Context, repo Repository, taskID, errorMsg string) error {

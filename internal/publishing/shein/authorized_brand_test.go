@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sharedtenantctx "task-processor/internal/shared/tenantctx"
 	"task-processor/internal/shein/authorizedbrand"
@@ -52,7 +52,7 @@ func TestAssemblerBuildWritesAuthorizedBrandMetadataAndPreviewBrandCode(t *testi
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := NewAssembler(AssemblerConfig{}).Build(req, product, nil)
+	pkg := NewAssembler(AssemblerConfig{}).Build(req, product)
 	if pkg == nil {
 		t.Fatal("Build() = nil, want package")
 	}

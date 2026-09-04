@@ -6,8 +6,8 @@ import (
 	coreLogger "task-processor/internal/core/logger"
 	amazonCrawler "task-processor/internal/crawler/amazon"
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/product"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -70,7 +70,7 @@ func isProductNotFoundError(err error) bool {
 }
 
 func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
-	req := &domainProduct.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,

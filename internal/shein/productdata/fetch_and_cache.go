@@ -3,7 +3,7 @@ package productdata
 import (
 	coreLogger "task-processor/internal/core/logger"
 	appProduct "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -26,7 +26,7 @@ func (h *FetchAndCacheProductHandler) Name() string {
 func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 	h.logger.Infof("fetch product data: product_id=%s region=%s", ctx.Task.ProductID, ctx.Task.Region)
 
-	req := &product.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
@@ -47,7 +47,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 
 	ctx.SetAmazonProduct(amazonProduct)
 
-	cacheReq := &product.FetchRequest{
+	cacheReq := &sourceproduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,

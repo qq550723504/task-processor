@@ -21,7 +21,6 @@ func ValidateConfig(c *Config) []error {
 		&c.Amazon,
 		c.RabbitMQ,
 		&c.Platforms,
-		&c.AICapability,
 	)
 	errors := validator.Validate()
 	errors = append(errors, ValidateListingKitConfig(&c.ListingKit)...)
@@ -121,8 +120,6 @@ func moduleFromField(field string) string {
 		return "Worker"
 	case strings.HasPrefix(field, "processor."):
 		return "Processor"
-	case strings.HasPrefix(field, "aiCapability."):
-		return "AI Capability"
 	default:
 		return "General"
 	}
@@ -150,8 +147,6 @@ func validationModuleRank(module string) int {
 		return 9
 	case "Processor":
 		return 10
-	case "AI Capability":
-		return 11
 	default:
 		return 99
 	}

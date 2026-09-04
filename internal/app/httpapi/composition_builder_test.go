@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"runtime"
 	"testing"
@@ -9,21 +10,25 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	amazonlistingstore "task-processor/internal/amazonlisting/store"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
+	imageagentstore "task-processor/internal/imageagent/store"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	"task-processor/internal/productenrich"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	"task-processor/internal/productimage"
-	productimagedomain "task-processor/internal/productimage/domain"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	listingkitstore "task-processor/internal/listingkit/store"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 	prompt "task-processor/internal/prompt"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
+	"task-processor/internal/sheinlogin"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 )
@@ -33,14 +38,6 @@ func TestNewHTTPFeatureCompositionBuilderUsesFeatureOwnedRuntimeBuilders(t *test
 
 	builder := newHTTPFeatureCompositionBuilder()
 
-	require.Equal(t,
-		runtime.FuncForPC(reflect.ValueOf(buildProductModuleResult).Pointer()).Name(),
-		runtime.FuncForPC(reflect.ValueOf(builder.buildProduct).Pointer()).Name(),
-	)
-	require.Equal(t,
-		runtime.FuncForPC(reflect.ValueOf(buildImageModuleResult).Pointer()).Name(),
-		runtime.FuncForPC(reflect.ValueOf(builder.buildImage).Pointer()).Name(),
-	)
 	require.Equal(t,
 		runtime.FuncForPC(reflect.ValueOf(buildAmazonListingModuleResult).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildAmazonListing).Pointer()).Name(),
@@ -60,41 +57,31 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 
 	logger := logrus.New()
 	deps := &runtimeDeps{
-		shared:   &sharedRuntimeDeps{},
-		features: &featureRuntimeState{},
+		shared: &sharedRuntimeDeps{cfg: &config.Config{}},
+		features: &featureRuntimeState{
+			productSnapshotReader: stubCompositionProductSnapshotReader{},
+			listingKitSupport: &listingKitSupport{
+				approvedAssetReader: stubCompositionApprovedAssetReader{},
+				sheinCookieStore:    &sheinlogin.RedisStore{},
+			},
+		},
 	}
 	order := make([]string, 0, 9)
 	sheinClosed := false
 	sdsClosed := false
-	productService := &stubCompositionProductService{}
-	imageService := &stubCompositionImageService{}
-	subjectExtractor := &stubCompositionSubjectExtractor{}
-	whiteBgRenderer := &stubCompositionWhiteBackgroundRenderer{}
-	sceneRenderer := &stubCompositionSceneRenderer{}
 	statusProvider := &stubCompositionSDSStatusProvider{}
 
 	builder := httpFeatureCompositionBuilder{
-		buildProduct: func(productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
-			order = append(order, "product")
-			return &productenrichhttpapi.Module{
-				Service: productService,
-				Pool:    stubWorkerPool{},
-			}, nil
+		buildAmazonRepo: func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error) {
+			return amazonlistingstore.NewMemTaskRepository(), nil, nil
 		},
-		buildImage: func(productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error) {
-			order = append(order, "image")
-			return &productimagehttpapi.Module{
-				Service:               imageService,
-				SubjectExtractor:      subjectExtractor,
-				WhiteBackgroundRender: whiteBgRenderer,
-				SceneRenderer:         sceneRenderer,
-				Pool:                  stubWorkerPool{},
-			}, nil
+		buildListingRepos: func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error) {
+			return listingkithttpapi.BuildServiceRepositories{Core: listingkithttpapi.CoreRepositories{
+				Task: listingkitstore.NewMemTaskRepository(),
+			}}, nil, nil
 		},
 		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 			order = append(order, "amazon")
-			require.Equal(t, productService, deps.features.productService)
-			require.Equal(t, imageService, deps.features.imageService)
 			return &amazonlistinghttpapi.Module{}, nil
 		},
 		buildSheinLogin: func(*runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error) {
@@ -113,15 +100,9 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 		},
 		buildListingKit: func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 			order = append(order, "listingkit")
-			require.Equal(t, subjectExtractor, deps.features.imageSubjectExtractor)
-			require.Equal(t, whiteBgRenderer, deps.features.imageWhiteBgRenderer)
-			require.Equal(t, sceneRenderer, deps.features.imageSceneRenderer)
 			require.NotNil(t, input.Runtime.Support.Repositories.Core.Task)
-			require.NotNil(t, input.Runtime.Support.Hooks.ConfigureAuthorization)
+			require.NotNil(t, input.Runtime.Support.Hooks.SheinPricingPolicyBuilder)
 			require.Equal(t, statusProvider, input.Runtime.Support.SDSLoginStatusProvider)
-			require.Nil(t, input.Runtime.SDSLoginStatusProvider)
-			require.Nil(t, input.Runtime.Repositories.Core.Task)
-			require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
 			return &listingkithttpapi.Module{
 				TaskLifecycleService: stubCompositionTaskLifecycleService{},
 				StoreAccessValidator: stubCompositionStoreAccessValidator{},
@@ -140,9 +121,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			order = append(order, "taskrpc")
 			require.NotNil(t, provider)
 			snapshot := provider()
-			require.Equal(t, 3, snapshot["summary"].(map[string]any)["poolCount"])
-			require.Contains(t, snapshot["pools"].(map[string]any), "product_enrich")
-			require.Contains(t, snapshot["pools"].(map[string]any), "product_image")
+			require.Equal(t, 1, snapshot["summary"].(map[string]any)["poolCount"])
 			require.Contains(t, snapshot["pools"].(map[string]any), "listing_kit")
 			require.NotContains(t, snapshot["pools"].(map[string]any), "amazon_listing")
 			return &taskrpcapi.BuildResult{}, nil
@@ -155,8 +134,6 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 
 	composition, err := builder.build(logger, deps)
 	require.NoError(t, err)
-	require.NotNil(t, composition.productModule)
-	require.NotNil(t, composition.imageModule)
 	require.NotNil(t, composition.amazonListingModule)
 	require.NotNil(t, composition.listingKitModule)
 	require.NotNil(t, composition.imageAgentModule)
@@ -165,8 +142,6 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NotNil(t, composition.taskRPCResult)
 	require.NotNil(t, composition.sdsModule)
 	require.Equal(t, []string{
-		"product",
-		"image",
 		"amazon",
 		"shein-login",
 		"sds-login",
@@ -183,6 +158,58 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.True(t, sdsClosed)
 }
 
+func TestHTTPFeatureCompositionBuilderFailsBeforeModulesWhenPersistentRepositoriesAreUnavailable(t *testing.T) {
+	t.Parallel()
+
+	moduleCalled := false
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{cfg: &config.Config{Database: &config.DatabaseConfig{Host: "persistent"}}},
+		features: &featureRuntimeState{
+			productSnapshotReader: stubCompositionProductSnapshotReader{},
+		},
+	}
+	builder := httpFeatureCompositionBuilder{
+		buildListingRepos: func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error) {
+			return listingkithttpapi.BuildServiceRepositories{}, nil, errors.New("database unavailable")
+		},
+		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
+			moduleCalled = true
+			return &amazonlistinghttpapi.Module{}, nil
+		},
+	}
+
+	composition, err := builder.build(logrus.New(), deps)
+
+	require.EqualError(t, err, "build listingkit repositories: database unavailable")
+	require.Equal(t, httpFeatureComposition{}, composition)
+	require.False(t, moduleCalled)
+	require.Empty(t, deps.shared.closers)
+}
+
+func TestAmazonListingFeatureBuilderSkipsModuleWithoutProductSnapshotReader(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	builder := amazonListingFeatureBuilder{
+		buildAmazonListing: func(amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
+			called = true
+			return &amazonlistinghttpapi.Module{}, nil
+		},
+	}
+	deps := &runtimeDeps{
+		shared: &sharedRuntimeDeps{},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{
+			approvedAssetReader: stubCompositionApprovedAssetReader{},
+		}},
+	}
+
+	module, err := builder.build(logrus.New(), deps)
+
+	require.NoError(t, err)
+	require.Nil(t, module)
+	require.False(t, called)
+}
+
 func TestHTTPFeatureCompositionIncludesImageAgentRouteModule(t *testing.T) {
 	module := imageagenthttpapi.NewHTTPModule(nil)
 	composition := httpFeatureComposition{imageAgentModule: &imageagenthttpapi.BuildResult{Module: module}}
@@ -191,15 +218,85 @@ func TestHTTPFeatureCompositionIncludesImageAgentRouteModule(t *testing.T) {
 
 func TestImageAgentDurableAssetPublicURLResolverUsesPublisherConfiguration(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.ProductImage.Publisher.Enabled = true
-	cfg.ProductImage.Publisher.Provider = "s3"
-	cfg.ProductImage.Publisher.PublicBase = "https://cdn.example.test/assets"
-	cfg.ProductImage.Publisher.S3.Bucket = "listingkit-assets"
+	cfg.ImageAgent.ArtifactStore.Enabled = true
+	cfg.ImageAgent.ArtifactStore.Provider = "s3"
+	cfg.ImageAgent.ArtifactStore.PublicBase = "https://cdn.example.test/assets"
+	cfg.ImageAgent.ArtifactStore.S3.Bucket = "image-agent-assets"
 
 	resolver := imageAgentDurableAssetPublicURLResolver(cfg)
 
 	require.NotNil(t, resolver)
 	require.Equal(t, "https://cdn.example.test/assets/image-agent/public/tenant-a/run-1/result.png", resolver.PublicURL("image-agent/public/tenant-a/run-1/result.png"))
+}
+
+func TestNewImageAgentHTTPServiceRequiresImageAgentTenantAdmission(t *testing.T) {
+	workflows := &recordingCompositionImageAgentWorkflowClient{}
+	service, err := newImageAgentHTTPService(
+		&config.Config{ImageAgent: config.ImageAgentConfig{Admission: config.ImageAgentAdmissionConfig{
+			Enabled: true, AllowedTenantIDs: []string{"tenant-allowed"},
+		}}},
+		imageagentstore.NewMemoryRepository(),
+		workflows,
+		staticCompositionImageAgentCatalog{catalog: imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{
+			ID: "source-1", Type: imageagent.AuthorizedAssetSource, DisplayURL: "https://cdn.example.test/source-1.png", Width: 1200, Height: 900,
+		}}}},
+	)
+	require.NoError(t, err)
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-not-in-allowlist", UserID: "user-a"})
+
+	err = service.Start(ctx, imageagent.StartRunInput{
+		RunID: "run-1", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-1",
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-1", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-1", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-1", Status: imageagent.SlotStatusPending}},
+		},
+	})
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Zero(t, workflows.starts)
+
+	allowedCtx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "tenant-allowed", UserID: "user-a"})
+	err = service.Start(allowedCtx, imageagent.StartRunInput{
+		RunID: "run-2", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-2",
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-2", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-2", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusPending}},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, workflows.starts)
+
+	err = service.Start(allowedCtx, imageagent.StartRunInput{
+		RunID: "run-unsupported-country", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "gb", Family: "default", SceneCategory: "shoes"},
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-unsupported-country",
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-unsupported-country", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-unsupported-country", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-unsupported-country", Status: imageagent.SlotStatusPending}},
+		},
+	})
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Equal(t, 1, workflows.starts, "unsupported countries must be rejected before workflow dispatch")
+}
+
+type staticCompositionImageAgentCatalog struct{ catalog imageagent.AssetCatalog }
+
+func (catalog staticCompositionImageAgentCatalog) Resolve(context.Context, imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
+	return catalog.catalog, nil
+}
+
+type recordingCompositionImageAgentWorkflowClient struct {
+	imageagent.WorkflowClient
+	starts int
+}
+
+func (client *recordingCompositionImageAgentWorkflowClient) StartManual(context.Context, imageagent.WorkflowStart) error {
+	client.starts++
+	return nil
 }
 
 type stubCompositionTaskLifecycleService struct {
@@ -212,62 +309,20 @@ func (stubCompositionStoreAccessValidator) ValidateStoreAccess(context.Context, 
 	return listingkit.StoreAccess{}, nil
 }
 
-type stubCompositionProductService struct{}
-
-func (stubCompositionProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return nil, nil
-}
-
-func (stubCompositionProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubCompositionProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
-	return nil, nil
-}
-
-func (stubCompositionProductService) SetTaskSubmitter(productenrich.TaskSubmitter) {}
-
-type stubCompositionImageService struct{}
-
-func (stubCompositionImageService) CreateProcessTask(context.Context, *productimage.ImageProcessRequest) (*productimage.Task, error) {
-	return nil, nil
-}
-
-func (stubCompositionImageService) GetTaskResult(context.Context, string) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubCompositionImageService) ReviewTask(context.Context, string, *productimage.ReviewTaskRequest) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (stubCompositionImageService) ProcessImages(context.Context, *productimage.Task) (*productimage.ImageProcessResult, error) {
-	return nil, nil
-}
-
-func (stubCompositionImageService) SetTaskSubmitter(productimage.TaskSubmitter) {}
-
-type stubCompositionSubjectExtractor struct{}
-
-func (stubCompositionSubjectExtractor) Extract(context.Context, string, *productimagedomain.ProductContext) (*productimagedomain.ImageAsset, error) {
-	return nil, nil
-}
-
-type stubCompositionWhiteBackgroundRenderer struct{}
-
-func (stubCompositionWhiteBackgroundRenderer) Render(context.Context, *productimagedomain.ImageAsset, *productimagedomain.ProductContext) (*productimagedomain.ImageAsset, error) {
-	return nil, nil
-}
-
-type stubCompositionSceneRenderer struct{}
-
-func (stubCompositionSceneRenderer) Render(context.Context, *productimagedomain.ImageAsset, *productimagedomain.ProductContext) ([]productimagedomain.ImageAsset, error) {
-	return nil, nil
-}
-
 type stubCompositionSDSStatusProvider struct{}
 
 func (stubCompositionSDSStatusProvider) Status(context.Context) (*sdslogin.Status, error) {
 	return nil, nil
+}
+
+type stubCompositionProductSnapshotReader struct{}
+
+func (stubCompositionProductSnapshotReader) GetProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return catalog.ProductSnapshot{}, nil
+}
+
+type stubCompositionApprovedAssetReader struct{}
+
+func (stubCompositionApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.ApprovedAssetInventory{}, nil
 }

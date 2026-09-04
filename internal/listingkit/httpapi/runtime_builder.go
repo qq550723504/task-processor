@@ -3,12 +3,9 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/aicapability"
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
-	sdsusecase "task-processor/internal/sds/usecase"
 )
 
 type RuntimeBuildInput struct {
@@ -18,21 +15,11 @@ type RuntimeBuildInput struct {
 
 type RuntimeDependencies struct {
 	Config                             *config.Config
-	ProductService                     productenrich.ProductService
-	ImageService                       productimage.Service
-	SDSSyncService                     sdsusecase.Service
-	SDSLoginStatusProvider             listingkit.SDSLoginStatusProvider
-	SDSBaselineRemoteProvider          listingkit.SDSBaselineRemoteProvider
-	ImageSubjectExtractor              productimage.SubjectExtractor
-	ImageWhiteBackgroundRender         productimage.WhiteBackgroundRenderer
-	ImageSceneRenderer                 productimage.SceneRenderer
-	ImageAssetPublisher                productimage.AssetPublisher
-	AICredentialStore                  aiCredentialStore
-	AIInvocationRecorder               aicapability.InvocationRecorder
-	AIAsyncJobStore                    aicapability.AsyncJobBindingStore
+	ProductSnapshotReader              listingkit.ProductSnapshotReader
+	AIClientCredentialStore            listingkit.AIClientCredentialStore
+	SheinCategoryLLMClient             ai.TextChatCompleter
+	SheinSaleAttributeLLM              ai.TextChatCompleter
 	Support                            RuntimeSupport
-	Repositories                       BuildServiceRepositories
-	Hooks                              BuildServiceHooks
 	ShouldStartTemporalWorkerInProcess bool
 }
 
@@ -44,44 +31,18 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 }
 
 func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies) BuildServiceInput {
-	support := resolveRuntimeSupport(runtime)
+	support := runtime.Support
 	return BuildServiceInput{
-		Config:                     runtime.Config,
-		Logger:                     logger,
-		ProductService:             runtime.ProductService,
-		ImageService:               runtime.ImageService,
-		SDSSyncService:             support.SDSSyncService,
-		SDSLoginStatusProvider:     support.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider:  support.SDSBaselineRemoteProvider,
-		ImageSubjectExtractor:      runtime.ImageSubjectExtractor,
-		ImageWhiteBackgroundRender: runtime.ImageWhiteBackgroundRender,
-		ImageSceneRenderer:         runtime.ImageSceneRenderer,
-		ImageAssetPublisher:        runtime.ImageAssetPublisher,
-		AICredentialStore:          runtime.AICredentialStore,
-		AIInvocationRecorder:       runtime.AIInvocationRecorder,
-		AIAsyncJobStore:            runtime.AIAsyncJobStore,
-		Repositories:               support.Repositories,
-		Hooks:                      support.Hooks,
+		Config:                    runtime.Config,
+		Logger:                    logger,
+		ProductSnapshotReader:     runtime.ProductSnapshotReader,
+		SDSSyncService:            support.SDSSyncService,
+		SDSLoginStatusProvider:    support.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider: support.SDSBaselineRemoteProvider,
+		AIClientCredentialStore:   runtime.AIClientCredentialStore,
+		SheinCategoryLLMClient:    runtime.SheinCategoryLLMClient,
+		SheinSaleAttributeLLM:     runtime.SheinSaleAttributeLLM,
+		Repositories:              support.Repositories,
+		Hooks:                     support.Hooks,
 	}
-}
-
-func resolveRuntimeSupport(runtime RuntimeDependencies) RuntimeSupport {
-	if hasRuntimeSupport(runtime.Support) {
-		return runtime.Support
-	}
-	return RuntimeSupport{
-		Repositories:              runtime.Repositories,
-		Hooks:                     runtime.Hooks,
-		SDSSyncService:            runtime.SDSSyncService,
-		SDSLoginStatusProvider:    runtime.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider: runtime.SDSBaselineRemoteProvider,
-	}
-}
-
-func hasRuntimeSupport(support RuntimeSupport) bool {
-	return support.Repositories.Core.Task != nil ||
-		support.Hooks.ConfigureAuthorization != nil ||
-		support.SDSSyncService != nil ||
-		support.SDSLoginStatusProvider != nil ||
-		support.SDSBaselineRemoteProvider != nil
 }

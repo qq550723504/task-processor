@@ -1,3 +1,3 @@
-// Package sourcing owns normalized sourcing pipelines for external product-data
-// inputs such as crawler outputs.
+// Package sourcing owns provider-neutral source envelopes, evidence, lineage,
+// warnings, and deterministic conversion into canonical product snapshots.
 package sourcing

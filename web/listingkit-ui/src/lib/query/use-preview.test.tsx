@@ -29,6 +29,8 @@ function preview(taskId: string): ListingKitPreview {
   return {
     task_id: taskId,
     status: "completed",
+    needs_review: false,
+    created_at: "2026-04-19T00:00:00Z",
     shein: {},
   };
 }

@@ -30,17 +30,15 @@ type ListingKitRequestInput struct {
 }
 
 // GenerateRequestFromEnvelope converts a normalized source envelope into the
-// existing ListingKit request shape through the neutral catalog and asset fact
-// handoff. It does not create tasks, submit marketplace payloads, or make
+// existing ListingKit request shape through this compatibility adapter. It does
+// not create tasks, submit marketplace payloads, or make
 // ListingKit depend on source-specific crawler DTOs.
 func GenerateRequestFromEnvelope(input ListingKitRequestInput) listingkit.GenerateRequest {
-	productFacts := sourcing.CatalogProductFactsFromEnvelope(input.Envelope)
-	assetFacts := sourcing.AssetFactsFromEnvelope(input.Envelope)
+	productFacts := catalogProductFactsFromEnvelope(input.Envelope)
 	return listingkit.GenerateRequestFromSourceFacts(listingkit.SourceFactsGenerateRequestInput{
 		TenantID:           input.TenantID,
 		UserID:             input.UserID,
 		Product:            productFacts,
-		Assets:             assetFacts,
 		Platforms:          input.Platforms,
 		Country:            input.Country,
 		Language:           input.Language,

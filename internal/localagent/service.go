@@ -18,7 +18,7 @@ import (
 	coreLogger "task-processor/internal/core/logger"
 	alibaba1688 "task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/product/sourcing"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 
 	"github.com/sirupsen/logrus"
 )
@@ -179,7 +179,7 @@ func (s *Service) claimRecordForPendingLocked(selected *record, now time.Time) (
 	return &Claim{Job: selected.job, ExecutionToken: selected.executionToken}, nil
 }
 
-func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourcing.Alibaba1688ProductSnapshot) (Job, error) {
+func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourcea1688.Alibaba1688ProductSnapshot) (Job, error) {
 	if err := validateActor(actor); err != nil {
 		return Job{}, err
 	}
@@ -207,14 +207,14 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	if err != nil || productURL != claimedURL {
 		return Job{}, fmt.Errorf("%w: %w: product URL does not match claimed offer", ErrSnapshotInvalid, ErrInvalidURL)
 	}
-	if strings.TrimSpace(product.ID) == "" || product.ID != sourcing.ExtractAlibaba1688ProductID(claimedURL) {
+	if strings.TrimSpace(product.ID) == "" || product.ID != sourcea1688.ExtractAlibaba1688ProductID(claimedURL) {
 		return Job{}, fmt.Errorf("%w: %w: product id does not match claimed offer", ErrSnapshotInvalid, ErrInvalidClaim)
 	}
 	if err := validateCrawlerSnapshot(product); err != nil {
 		return Job{}, ErrSnapshotInvalid
 	}
-	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request:     sourcing.Alibaba1688CrawlRequestInput{URL: claimedURL},
+	envelope := sourcea1688.Alibaba1688SourceEnvelope(sourcea1688.Alibaba1688SourceEnvelopeInput{
+		Request:     sourcea1688.Alibaba1688CrawlRequestInput{URL: claimedURL},
 		Product:     product,
 		SourceRunID: recordID,
 	})
@@ -256,7 +256,7 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	return completed, nil
 }
 
-func validateCrawlerSnapshot(product *sourcing.Alibaba1688ProductSnapshot) error {
+func validateCrawlerSnapshot(product *sourcea1688.Alibaba1688ProductSnapshot) error {
 	videos := make([]model.Video, 0, len(product.Videos))
 	for _, video := range product.Videos {
 		videos = append(videos, model.Video{VideoURL: video.VideoURL, CoverURL: video.CoverURL})
@@ -422,7 +422,7 @@ func validateOfferURL(raw string) (string, error) {
 	if err != nil || originalParsed.RawQuery != "" || originalParsed.ForceQuery || originalParsed.Fragment != "" {
 		return "", ErrInvalidURL
 	}
-	clean := sourcing.NormalizeAlibaba1688URL(original)
+	clean := sourcea1688.NormalizeAlibaba1688URL(original)
 	parsed, err := url.Parse(clean)
 	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "detail.1688.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawPath != "" {
 		return "", ErrInvalidURL

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Boxes, Clock, LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, Boxes, Clock, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ import {
   sheinSubmissionRemoteStatusLabel,
   sheinSubmissionStatusLabel,
   sheinWorkflowStatusLabel,
-} from "@/lib/shein-studio/shein-submission-display";
+} from "@/lib/shein/submission-display";
 import {
   hasActionablePodExecution,
   podExecutionBadgeLabel,
@@ -84,10 +84,6 @@ export function TaskListHero({ onRefresh }: { onRefresh: () => void }) {
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
-        <Link href="/listing-kits/sds" className={`${primaryLinkClass} w-full sm:w-auto`}>
-          <Plus className="mr-2 h-4 w-4" />
-          新建 POD 批次
-        </Link>
       </div>
     </section>
   );
@@ -584,12 +580,7 @@ export function TaskListContent({
     return (
       <EmptyState
         title="暂无任务"
-        description="先从 SHEIN Studio 创建一个批次，生成后会出现在这里。"
-        action={
-          <Link href="/listing-kits/sds" className={primaryLinkClass}>
-            新建 POD 批次
-          </Link>
-        }
+        description="创建并执行 ListingKit 任务后，记录会出现在这里。"
       />
     );
   }

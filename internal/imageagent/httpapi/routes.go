@@ -16,6 +16,8 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler *Handler) []h
 	verified := httproute.AuthPolicyVerifiedIdentity
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/image-agent/runs", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.Create},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/image-agent/task-runs", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.LaunchTaskRun},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/image-agent/task-runs/assets", Module: ModuleName, Permission: authz.PermissionImageAgentRead, AuthPolicy: verified, Handler: handler.TaskAssets},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/image-agent/runs/:run_id", Module: ModuleName, Permission: authz.PermissionImageAgentRead, AuthPolicy: verified, Handler: handler.Get},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/image-agent/runs/:run_id/restart", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.RestartFailed},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/image-agent/runs/:run_id/plan", Module: ModuleName, Permission: authz.PermissionImageAgentWrite, AuthPolicy: verified, Handler: handler.ReplacePlan},

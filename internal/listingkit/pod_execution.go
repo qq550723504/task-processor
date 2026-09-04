@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	sdspod "task-processor/internal/product/sourcing/sdspod"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 const (
@@ -95,11 +95,7 @@ func podExecutionPolicyChildren(children []ChildTaskState) []sdspod.ChildTask {
 }
 
 func shouldUsePODPlatform(req *GenerateRequest) bool {
-	return shouldRunRemoteSDSDesignSync(req) || shouldRunImageResultSDSDesignSync(req)
-}
-
-func shouldRunImageResultSDSDesignSync(req *GenerateRequest) bool {
-	return shouldSyncSDS(req) && shouldProcessImages(req)
+	return shouldRunSDSDesignSync(req)
 }
 
 func inferPODProvider(req *GenerateRequest) string {

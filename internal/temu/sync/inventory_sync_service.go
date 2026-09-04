@@ -10,8 +10,8 @@ import (
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/pricing"
-	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"
@@ -22,7 +22,7 @@ type inventorySyncServiceImpl struct {
 	runtime               inventorySyncRuntime
 	temuAPIClient         client.ClientAPI
 	productFetcher        fetcher.ProductFetcher
-	rawJsonDataClient     product.RawJsonDataClient
+	rawJsonDataClient     sourceproduct.RawJsonDataClient
 	inventoryRecordClient listingadmin.InventoryRecordAPI
 	storeRepo             temuInventoryStoreFinder
 	productDataRepo       listingadmin.ProductDataRepository
@@ -49,7 +49,7 @@ func NewInventorySyncService(
 	temuAPIClient client.ClientAPI,
 	productFetcher fetcher.ProductFetcher,
 	monitorConfig *config.MonitorConfig,
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	inventoryRecordClient listingadmin.InventoryRecordAPI,
 ) InventorySyncService {
 	log := logger.GetGlobalLogger("TemuInventorySyncService")

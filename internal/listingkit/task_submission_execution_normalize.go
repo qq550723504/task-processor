@@ -8,7 +8,6 @@ import (
 
 func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	normalizeSheinStudioSubmitSupplierSKUs(task, pkg, normalizedSubmitIdempotencyKey(req))
 	var manualOverrides map[string]float64
 	if pkg.FinalSubmissionDraft != nil {
 		manualOverrides = pkg.FinalSubmissionDraft.ManualPriceOverrides

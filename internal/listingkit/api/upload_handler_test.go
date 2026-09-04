@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"mime/multipart"
@@ -16,11 +17,45 @@ import (
 	"task-processor/internal/listingsubscription"
 )
 
+type stubUploadedImageService struct {
+	uploadResponse          *listingkit.UploadImagesResponse
+	uploadedImageFile       *listingkit.UploadedImageFile
+	deletedUploadedImage    *listingkit.DeletedUploadedImage
+	err                     error
+	uploadedImageKey        string
+	deletedUploadedImageKey string
+	uploadImagesReq         *listingkit.UploadImagesRequest
+}
+
+func (s *stubUploadedImageService) UploadImages(_ context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
+	s.uploadImagesReq = req
+	if s.uploadResponse != nil || s.err != nil {
+		return s.uploadResponse, s.err
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubUploadedImageService) GetUploadedImage(_ context.Context, key string) (*listingkit.UploadedImageFile, error) {
+	s.uploadedImageKey = key
+	if s.uploadedImageFile != nil || s.err != nil {
+		return s.uploadedImageFile, s.err
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubUploadedImageService) DeleteUploadedImage(_ context.Context, key string) (*listingkit.DeletedUploadedImage, error) {
+	s.deletedUploadedImageKey = key
+	if s.deletedUploadedImage != nil || s.err != nil {
+		return s.deletedUploadedImage, s.err
+	}
+	return nil, errors.New("not implemented")
+}
+
 func TestUploadListingKitImagesReturnsImageURLs(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{
 				"http://localhost:8080/api/v1/listing-kits/uploads/files/a.jpg",
@@ -29,7 +64,7 @@ func TestUploadListingKitImagesReturnsImageURLs(t *testing.T) {
 		},
 	}
 	subscriptionService := activeOSSStorageSubscriptionService(t, nil)
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -101,15 +136,14 @@ func TestUploadListingKitImagesUsesForwardedPublicBaseAndRemovesMultipartTempFil
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/reference.jpg"},
 		},
 	}
 	h, err := NewHandler(
 		&stubHandlerCoreService{},
-		WithStudioMediaService(svc),
-		WithUploadedImageDeleteService(svc),
+		WithUploadedImageService(svc),
 		WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)),
 	)
 	if err != nil {
@@ -212,13 +246,13 @@ func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitIsExceeded(t 
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/large.jpg"},
 		},
 	}
 	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 3})
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -269,17 +303,17 @@ func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitIsExceeded(t 
 	t.Fatal("oss storage entitlement view missing")
 }
 
-func TestUploadListingKitImagesAllowsStudioBackedStorageFallback(t *testing.T) {
+func TestUploadListingKitImagesAllowsListingKitBackedStorageFallback(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/style.jpg"},
 		},
 	}
-	subscriptionService := activeStudioOnlySubscriptionService(t)
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	subscriptionService := activeListingKitOnlySubscriptionService(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -314,9 +348,9 @@ func TestUploadListingKitImagesDoesNotRecordStorageUsageWhenUploadFails(t *testi
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{err: errors.New("store unavailable")}
+	svc := &stubUploadedImageService{err: errors.New("store unavailable")}
 	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 1024})
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -364,7 +398,7 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		deletedUploadedImage: &listingkit.DeletedUploadedImage{
 			Key:  "20260515/a.jpg",
 			Size: 3,
@@ -377,7 +411,7 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleOSSStorage, "uploaded_bytes", 3); err != nil {
 		t.Fatalf("seed uploaded usage: %v", err)
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -415,12 +449,12 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 
 func TestDeleteUploadedListingKitImageRefundsOnlyFirstCompletedDelete(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{deletedUploadedImage: &listingkit.DeletedUploadedImage{Key: "0b15bb5e-9f9e-4952-9a06-fd31aab99901", Size: 3}}
+	svc := &stubUploadedImageService{deletedUploadedImage: &listingkit.DeletedUploadedImage{Key: "0b15bb5e-9f9e-4952-9a06-fd31aab99901", Size: 3}}
 	subscriptionService := activeOSSStorageSubscriptionService(t, nil)
 	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleOSSStorage, "storage_bytes", 6); err != nil {
 		t.Fatalf("seed storage usage: %v", err)
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -456,8 +490,8 @@ func TestDeleteUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{err: listingkit.ErrUploadedImageNotFound}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
+	svc := &stubUploadedImageService{err: listingkit.ErrUploadedImageNotFound}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc), WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -481,14 +515,14 @@ func TestGetUploadedListingKitImageReturnsFile(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		uploadedImageFile: &listingkit.UploadedImageFile{
 			Filename:    "shirt.jpg",
 			ContentType: "image/jpeg",
 			Data:        []byte{0xFF, 0xD8, 0xFF},
 		},
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -515,10 +549,10 @@ func TestGetUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubStudioMediaHandlerService{
+	svc := &stubUploadedImageService{
 		err: listingkit.ErrUploadedImageNotFound,
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithUploadedImageService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -553,16 +587,16 @@ func activeOSSStorageSubscriptionService(t *testing.T, limits map[string]int) *l
 	return svc
 }
 
-func activeStudioOnlySubscriptionService(t *testing.T) *listingsubscription.Service {
+func activeListingKitOnlySubscriptionService(t *testing.T) *listingsubscription.Service {
 	t.Helper()
 	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
 	if err != nil {
 		t.Fatalf("create subscription service: %v", err)
 	}
-	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+	if _, err := svc.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleListingKit, listingsubscription.EntitlementInput{
 		Status: listingsubscription.StatusActive,
 	}); err != nil {
-		t.Fatalf("upsert studio entitlement: %v", err)
+		t.Fatalf("upsert listingkit entitlement: %v", err)
 	}
 	return svc
 }

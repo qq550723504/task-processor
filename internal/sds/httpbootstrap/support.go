@@ -3,14 +3,14 @@ package httpbootstrap
 import (
 	"context"
 
-	"task-processor/internal/productimage"
+	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
 	sdsdesign "task-processor/internal/sds/design"
 	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
-func NewSyncService(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+func NewSyncService(approvedAssets sdsadapter.ApprovedAssetReader, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 	if cfg == nil {
 		cfg = sdsclient.DefaultConfig()
 	}
@@ -21,8 +21,8 @@ func NewSyncService(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsus
 
 	authState := sdsHTTPClient.AuthState()
 	svc, err := sdsusecase.NewService(sdsusecase.Config{
-		SDSClient:    sdsHTTPClient,
-		ImageService: imageSvc,
+		SDSClient:      sdsHTTPClient,
+		ApprovedAssets: approvedAssets,
 	})
 	if err != nil {
 		return nil, authState, err

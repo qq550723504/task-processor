@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	assetpkg "task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingkit/core"
 )
 
@@ -48,36 +45,12 @@ func standardSnapshotFromTask(task *Task) (*StandardProductSnapshot, error) {
 		return nil, fmt.Errorf("standard product snapshot is required before platform adaptation")
 	}
 	if task.Result.StandardProductSnapshot != nil {
+		if task.Result.StandardProductSnapshot.CatalogProduct == nil {
+			return nil, fmt.Errorf("product snapshot is required before platform adaptation")
+		}
 		return task.Result.StandardProductSnapshot, nil
 	}
-	snapshot := buildStandardProductSnapshot(task.Result)
-	if standardProductSnapshotEmpty(snapshot) {
-		return nil, fmt.Errorf("standard product snapshot is required before platform adaptation")
-	}
-	return snapshot, nil
-}
-
-func (s *service) loadPlatformAdaptationAssets(ctx context.Context, task *Task, snapshot *StandardProductSnapshot) (*assetpkg.Inventory, []assetgeneration.Task) {
-	assetRepo := resolveWorkflowAssetRepository(s)
-	var inventory *assetpkg.Inventory
-	if assetRepo != nil {
-		saved, err := assetRepo.GetInventory(ctx, assetpkg.InventoryRef{TaskID: task.ID})
-		if err == nil {
-			inventory = saved
-		} else if !errors.Is(err, assetrepo.ErrInventoryNotFound) {
-			inventory = nil
-		}
-	}
-	if inventory == nil && snapshot != nil {
-		inventory = assetpkg.BuildInventory(task.ID, snapshot.AssetBundle)
-	}
-	var persistedGenerationTasks []assetgeneration.Task
-	if assetRepo != nil {
-		if savedTasks, err := assetRepo.ListGenerationTasks(ctx, task.ID); err == nil {
-			persistedGenerationTasks = assetgeneration.CloneTasks(savedTasks)
-		}
-	}
-	return inventory, persistedGenerationTasks
+	return nil, fmt.Errorf("standard product snapshot is required before platform adaptation")
 }
 
 func (s *service) persistProcessedTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {

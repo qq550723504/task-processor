@@ -2,11 +2,12 @@ package listingkit
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
+	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 )
 
@@ -20,16 +21,24 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	}
 	state, err := s.runStandardProductWorkflow(ctx, task)
 	if err != nil {
+		var saveErr error
 		if state != nil && state.result != nil {
 			state.result.Status = string(core.TaskStatusProcessing)
-			_ = s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result))
+			saveErr = s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result))
 		}
-		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
-		return nil, err
+		return nil, errors.Join(err, saveErr)
 	}
 	state.result.Status = string(core.TaskStatusProcessing)
 	if err := s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result)); err != nil {
 		return nil, err
+	}
+	if state.blocked {
+		now := time.Now().UTC()
+		block := buildStandardProductReadinessBlock(task.RetryableBlock, now)
+		if err := s.repo.MarkBlockedRetryable(ctx, task.ID, block, standardProductReadinessBlockMessage); err != nil {
+			return nil, err
+		}
+		return state.snapshot, nil
 	}
 	if client, enabled := resolvePlatformAdaptWorkflowClient(s); enabled && client != nil {
 		if err := client.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
@@ -41,6 +50,28 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 		}
 	}
 	return state.snapshot, nil
+}
+
+func buildStandardProductReadinessBlock(previous *RetryableBlock, blockedAt time.Time) *RetryableBlock {
+	block := cloneRetryableBlock(previous)
+	if block == nil {
+		block = &RetryableBlock{}
+	}
+	block.ReasonCode = standardProductReadinessBlockReason
+	block.ReasonMessage = standardProductReadinessBlockMessage
+	if block.BlockedAt.IsZero() {
+		block.BlockedAt = blockedAt
+	}
+	block.RetryAttempts++
+	lastRetryAt := blockedAt
+	block.LastRetryAt = &lastRetryAt
+	block.MaxAutoRetryAttempts = 0
+	block.RecoveryScope = submissiondomain.RetryableRecoveryScopeTask
+	block.AutoResumeEnabled = true
+	block.AutoRetryPaused = false
+	nextRetryAt := blockedAt.Add(standardProductReadinessRetryDelay)
+	block.NextRetryAt = &nextRetryAt
+	return block
 }
 
 func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error) {
@@ -55,39 +86,51 @@ func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID str
 	if err != nil {
 		return nil, err
 	}
-	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, snapshot.CanonicalProduct)
 	if normalized := strings.ToLower(strings.TrimSpace(platform)); normalized != "" && normalized != "all" {
-		filtered := map[string][]assetrecipe.AssetRecipe{}
-		if recipes, ok := recipesByPlatform[normalized]; ok {
-			filtered[normalized] = recipes
-		} else {
-			filtered[normalized] = nil
-		}
-		recipesByPlatform = filtered
+		adaptationTask := *task
+		adaptationRequest := *task.Request
+		adaptationRequest.Platforms = []string{normalized}
+		adaptationTask.Request = &adaptationRequest
+		task = &adaptationTask
 	}
-	inventory, persistedGenerationTasks := s.loadPlatformAdaptationAssets(ctx, task, snapshot)
-	var generationPlan *assetgeneration.Result
-	if len(persistedGenerationTasks) > 0 {
-		generationPlan = &assetgeneration.Result{Tasks: assetgeneration.CloneTasks(persistedGenerationTasks)}
+	result, err := s.runPlatformAdaptation(ctx, task, snapshot)
+	if err != nil {
+		return nil, err
 	}
-	var sdsOptions *SDSSyncOptions
-	if task.Request != nil && task.Request.Options != nil {
-		sdsOptions = task.Request.Options.SDS
-	}
-	result := s.runPlatformAdaptation(
-		ctx,
-		task,
-		snapshot,
-		recipesByPlatform,
-		generationPlan,
-		inventory,
-		persistedGenerationTasks,
-		shouldGenerateAssets(task.Request),
-		sdsOptions,
-	)
 	if err := s.persistProcessedTaskResult(ctx, task.ID, result); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *service) PersistLayerFailure(ctx context.Context, taskID string, errorMessage string) error {
+	taskID = strings.TrimSpace(taskID)
+	errorMessage = strings.TrimSpace(errorMessage)
+	if taskID == "" {
+		return fmt.Errorf("task ID is required")
+	}
+	if errorMessage == "" {
+		return fmt.Errorf("failure message is required")
+	}
+	failureRepo, ok := s.repo.(ProcessingFailureRepository)
+	if !ok {
+		return fmt.Errorf("mark layer task failed: processing failure repository is required")
+	}
+	updated, err := failureRepo.MarkFailedIfProcessing(ctx, taskID, errorMessage)
+	if err != nil {
+		return fmt.Errorf("mark layer task failed: %w", err)
+	}
+	if updated {
+		return nil
+	}
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("load layer task after failure conflict: %w", err)
+	}
+	switch task.Status {
+	case core.TaskStatusCompleted, core.TaskStatusNeedsReview, core.TaskStatusFailed:
+		return nil
+	default:
+		return fmt.Errorf("mark layer task failed from status %q: %w", task.Status, core.ErrTaskNotRecoverable)
+	}
 }

@@ -3,124 +3,66 @@ package listingkit
 import (
 	"context"
 
-	"task-processor/internal/asset"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	"task-processor/internal/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
+	productasset "task-processor/internal/product/asset"
 )
 
 type standardWorkflowAssetPhase struct {
-	service *service
+	approvedAssets ApprovedAssetInventoryReader
 }
 
-func buildStandardWorkflowAssetPhase(s *service) *standardWorkflowAssetPhase {
-	return &standardWorkflowAssetPhase{service: s}
+func buildStandardWorkflowAssetPhase(s *service) standardWorkflowAssetPhase {
+	return standardWorkflowAssetPhase{approvedAssets: resolveWorkflowApprovedAssets(s)}
 }
 
-func (p *standardWorkflowAssetPhase) run(
-	ctx context.Context,
-	task *Task,
-	result *ListingKitResult,
-	canonicalProduct *canonical.Product,
-	recorder *workflowRecorder,
-	enableAssetGeneration bool,
-) (*asset.Inventory, map[string][]assetrecipe.AssetRecipe, *assetgeneration.Result, []assetgeneration.Task) {
-	workingBundle := result.assetBundleForInventory()
-	inventory := asset.BuildInventory(task.ID, workingBundle)
-	assetRepo := resolveWorkflowAssetRepository(p.service)
-	assetGenerator := resolveWorkflowAssetGenerationService(p.service)
-	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(p.service)
-	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProduct)
-	baseRecipes := assetrecipe.BaseAssetRecipes()
-	var generationPlan *assetgeneration.Result
-	var persistedGenerationTasks []assetgeneration.Task
-
-	if inventory != nil {
-		inventoryStage := recorder.Start("asset_inventory", "")
-		if assetRepo != nil {
-			if err := assetRepo.SaveInventory(ctx, inventory); err != nil {
-				appendWarning(result, "asset inventory persistence failed: "+err.Error())
-				inventoryStage.Degrade("asset_inventory_persistence_failed", "Asset inventory persistence failed", err.Error())
-			} else {
-				inventoryStage.Complete()
-			}
-		} else {
-			inventoryStage.Skip()
-		}
-		if enableAssetGeneration && assetGenerator != nil && len(baseRecipes) > 0 {
-			stage := recorder.Start("asset_generation_baseline", "")
-			execution, execErr := assetGenerator.Execute(ctx, assetgeneration.Request{
-				TaskID:          task.ID,
-				TargetPlatforms: append([]string(nil), task.Request.Platforms...),
-				Product:         result.CatalogProduct,
-				Inventory:       inventory,
-				Recipes:         append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
-			})
-			if execErr != nil {
-				stage.Degrade("asset_generation_baseline_execute_failed", "Baseline asset generation failed", execErr.Error())
-			} else {
-				stage.Complete()
-			}
-			if execution != nil && len(execution.Assets) > 0 {
-				inventory.Records = append(inventory.Records, execution.Assets...)
-				inventory.Summary = asset.RebuildInventorySummary(inventory)
-				workingBundle = asset.RebuildBundleWithRecords(workingBundle, execution.Assets)
-				if assetRepo != nil {
-					_ = assetRepo.SaveInventory(ctx, inventory)
-				}
-			}
-		}
-		if enableAssetGeneration && assetGenerator != nil && assetRecipeResolver != nil {
-			stage := recorder.Start("asset_generation_platform", "")
-			var planErr error
-			generationPlan, planErr = assetGenerator.Plan(ctx, assetgeneration.Request{
-				TaskID:          task.ID,
-				TargetPlatforms: listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms),
-				Product:         result.CatalogProduct,
-				Inventory:       inventory,
-				Recipes:         assetrecipe.FlattenResolved(recipesByPlatform),
-			})
-			if planErr != nil {
-				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
-			}
-			if generationPlan != nil && len(generationPlan.Tasks) > 0 {
-				dispatchResult, dispatchErr := dispatchGenerationTasksByPlatform(ctx, assetGenerator, task.ID, result.CatalogProduct, result, inventory, generationPlan.Tasks)
-				if dispatchErr != nil {
-					stage.Degrade("asset_generation_platform_dispatch_failed", "Platform asset generation dispatch failed", dispatchErr.Error())
-				}
-				if dispatchResult != nil {
-					generationPlan.Tasks = assetgeneration.CloneTasks(dispatchResult.Tasks)
-					persistedGenerationTasks = assetgeneration.MergeTasks(persistedGenerationTasks, dispatchResult.Tasks)
-					if len(dispatchResult.Assets) > 0 {
-						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
-						inventory.Summary = asset.RebuildInventorySummary(inventory)
-						workingBundle = asset.RebuildBundleWithRecords(workingBundle, dispatchResult.Assets)
-						if assetRepo != nil {
-							_ = assetRepo.SaveInventory(ctx, inventory)
-						}
-					}
-				}
-			}
-			if stage.IsRunning() {
-				stage.Complete()
-			}
-		}
-		if inventory.Summary != nil {
-			inventory.Summary.RecipeCount = len(baseRecipes) + len(assetrecipe.FlattenResolved(recipesByPlatform))
-		}
-		for target, bundle := range result.AssetBundlesByTarget {
-			if bundle == nil {
-				continue
-			}
-			result.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(bundle)
-		}
-		result.applyCompatibilityAssetProjectionForRequest(task.Request)
-		if result.AssetBundle != nil {
-			result.AssetBundle = workingBundle
-			result.AssetInventorySummary = inventory.Summary
+func (p standardWorkflowAssetPhase) run(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	if err := productasset.ValidateInventoryScope(scope); err != nil {
+		return productasset.ApprovedAssetInventory{}, err
+	}
+	if p.approvedAssets == nil {
+		return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+	}
+	inventory, err := p.approvedAssets.GetApprovedInventory(ctx, scope)
+	if err != nil {
+		return productasset.ApprovedAssetInventory{}, err
+	}
+	if inventory.Scope != scope {
+		return productasset.ApprovedAssetInventory{}, productasset.ErrRepositoryStateInvalid
+	}
+	for _, approved := range inventory.Assets {
+		if approved.Role == productasset.RoleMain {
+			return productasset.CloneApprovedAssetInventory(inventory), nil
 		}
 	}
+	return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+}
 
-	return inventory, recipesByPlatform, generationPlan, persistedGenerationTasks
+// runForPlatforms verifies every selected target has an approval inventory and
+// retains each inventory under its canonical target platform key.
+func (p standardWorkflowAssetPhase) runForPlatforms(ctx context.Context, scope productasset.InventoryScope, platforms []string) (map[string]productasset.ApprovedAssetInventory, error) {
+	if len(platforms) == 0 {
+		inventory, err := p.run(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]productasset.ApprovedAssetInventory{"": inventory}, nil
+	}
+	inventories := make(map[string]productasset.ApprovedAssetInventory, len(platforms))
+	for _, platform := range platforms {
+		targetScope := scope
+		targetScope.TargetPlatform = platform
+		inventory, err := p.run(ctx, targetScope)
+		if err != nil {
+			return nil, err
+		}
+		inventories[platform] = inventory
+	}
+	return inventories, nil
+}
+
+func selectedInventoryPlatforms(task *Task) []string {
+	if task == nil || task.Request == nil {
+		return nil
+	}
+	return listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms)
 }

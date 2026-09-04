@@ -3,17 +3,16 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productimage"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
-func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *TemuPackage {
+func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product) *TemuPackage {
 	if canonical == nil {
 		return &TemuPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}
 
-	images := common.BuildImagesWithSelection(canonical, image)
+	images := common.BuildImages(canonical)
 	variants := common.BuildVariants(canonical)
 	pkg := &TemuPackage{
 		GoodsName:        common.WithBrandHint(canonical.Title, req.BrandHint),
@@ -36,7 +35,7 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 	if strings.TrimSpace(req.TargetCategoryHint) != "" {
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
 	}
-	pkg.ReviewNotes = common.CollectReviewNotes(canonical, image, "TEMU 资料包已贴近 goods_basic/skc_list 结构，但类目 ID、属性 ID、承诺/扩展字段仍需接 TEMU 模板规则")
+	pkg.ReviewNotes = common.CollectReviewNotes(canonical, "TEMU 资料包已贴近 goods_basic/skc_list 结构，但类目 ID、属性 ID、承诺/扩展字段仍需接 TEMU 模板规则")
 	return pkg
 }
 

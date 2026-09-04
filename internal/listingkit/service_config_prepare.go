@@ -9,9 +9,6 @@ func validateServiceConfig(config *ServiceConfig) error {
 	if config.Core.Repository == nil {
 		return fmt.Errorf("repository cannot be nil")
 	}
-	if config.Core.ProductService == nil {
-		return fmt.Errorf("product service cannot be nil")
-	}
 	return nil
 }
 

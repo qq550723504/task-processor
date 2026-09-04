@@ -131,17 +131,14 @@ func scanProviderConstructors(t *testing.T, roots ...string) map[string]provider
 
 func TestProductionProviderConstructorInventoryIsComplete(t *testing.T) {
 	want := map[string]providerConstructorCounts{
-		"hack/debug/replay-sale-attribute/main.go":                {openAI: 1},
-		"internal/amazon/processor.go":                            {openAI: 1},
-		"internal/app/httpapi/adapters_openai.go":                 {openAI: 1},
-		"internal/app/worker/imageagent/dependencies.go":          {openAI: 1},
-		"internal/listingkit/httpapi/ai_client_builders.go":       {openAI: 1, grsai: 2, gemini: 2},
-		"internal/listingkit/httpapi/ai_client_strict_chat.go":    {openAI: 1},
-		"internal/productenrich/llm_adapter.go":                   {openAI: 1},
-		"internal/productimage/httpapi/model_provider_builder.go": {grsai: 1},
-		"internal/shein/pipeline/pipeline.go":                     {openAI: 1},
-		"internal/temu/pipeline_registry.go":                      {openAI: 1},
-		"internal/temu/sku/ai_mapping_handler.go":                 {openAI: 1},
+		"hack/debug/replay-sale-attribute/main.go":          {openAI: 1},
+		"internal/amazon/processor.go":                      {openAI: 1},
+		"internal/app/httpapi/adapters_openai.go":           {openAI: 1},
+		"internal/app/httpapi/listingkit_openai_runtime.go": {openAI: 1},
+		"internal/app/worker/imageagent/dependencies.go":    {openAI: 1},
+		"internal/shein/pipeline/pipeline.go":               {openAI: 1},
+		"internal/temu/pipeline_registry.go":                {openAI: 1},
+		"internal/temu/sku/ai_mapping_handler.go":           {openAI: 1},
 	}
 	got := scanProviderConstructors(t,
 		filepath.Join("..", "internal"),
@@ -229,10 +226,7 @@ func TestProductionLLMManagerAdapterCallersPassLogger(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := map[string]int{
-		"hack/debug/test-analyzeimage/main.go":      1,
-		"hack/debug/test-productenrich/adapters.go": 1,
-	}
+	want := map[string]int{}
 	if !reflect.DeepEqual(callers, want) {
 		t.Fatalf("NewLLMManagerAdapter production callers = %v, want %v", callers, want)
 	}

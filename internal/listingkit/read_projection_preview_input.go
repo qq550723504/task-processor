@@ -45,44 +45,28 @@ func buildPreviewDomainPlatformCards(platformCards []ListingKitPlatformCard) []p
 			ApprovedSections:      card.ApprovedSections,
 			DeferredSections:      card.DeferredSections,
 			ReviewPendingSections: card.ReviewPendingSections,
-			PrimaryActionKey:      card.PrimaryActionKey,
-			PrimaryCTAKind:        card.PrimaryCTAKind,
 		})
 	}
 	return cards
 }
 
-func buildListingKitPreviewAttachmentInput(result *ListingKitResult, selectedPlatform string) *previewdomain.AttachmentInput {
+func buildListingKitPreviewAttachmentInput(result *ListingKitResult, _ string) *previewdomain.AttachmentInput {
 	if result == nil {
 		return nil
 	}
 	return &previewdomain.AttachmentInput{
-		CatalogProduct:        result.CatalogProduct,
-		AssetBundle:           result.AssetBundleForTarget(selectedPlatform),
-		AssetInventorySummary: result.AssetInventorySummaryForTarget(selectedPlatform),
+		CatalogProduct:         result.CatalogProduct,
+		ApprovedAssetInventory: cloneApprovedAssetInventory(result.ApprovedAssetInventory),
 	}
 }
 
 func buildListingKitReadProjectionAttachmentExtras(
 	result *ListingKitResult,
-	selectedPlatform string,
+	_ string,
 ) listingKitReadProjectionAttachmentExtras {
 	if result == nil {
 		return listingKitReadProjectionAttachmentExtras{}
 	}
 
-	assetRenderPreviews := assetRenderPreviewsForTarget(result, selectedPlatform)
-
-	platformRenderPreviews := append([]PlatformAssetRenderPreviews(nil), result.PlatformAssetRenderPreviews...)
-	if len(result.AssetBundlesByTarget) > 0 || len(platformRenderPreviews) == 0 {
-		platformRenderPreviews = buildPlatformAssetRenderPreviews(result)
-	}
-	platformRenderPreviews = filterPlatformAssetRenderPreviews(platformRenderPreviews, selectedPlatform)
-
-	return listingKitReadProjectionAttachmentExtras{
-		AssetRenderPreviews:         assetRenderPreviews,
-		PlatformAssetRenderPreviews: platformRenderPreviews,
-		AssetGenerationQueue:        result.AssetGenerationQueue,
-		AssetGenerationOverview:     result.AssetGenerationOverview,
-	}
+	return listingKitReadProjectionAttachmentExtras{}
 }

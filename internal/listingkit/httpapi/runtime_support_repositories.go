@@ -1,39 +1,13 @@
 package httpapi
 
-func buildRuntimeSupportRepositories() BuildServiceRepositories {
-	return BuildServiceRepositories{
-		Core: CoreRepositoryBuilders{
-			Task:                  BuildListingKitTaskRepository,
-			StudioAsyncJob:        BuildListingKitStudioAsyncJobRepository,
-			StudioBatch:           BuildListingKitStudioBatchRepository,
-			StudioBatchRun:        BuildListingKitStudioBatchRunRepository,
-			StudioBatchTaskLink:   BuildListingKitStudioBatchTaskLinkRepository,
-			SheinSync:             BuildListingKitSheinSyncRepository,
-			Subscription:          BuildListingSubscriptionRepository,
-			MemberInvitationAudit: BuildMemberInvitationAuditRepository,
-			Asset:                 BuildAssetRepository,
-			Review:                BuildListingKitReviewRepository,
-			StudioSession:         BuildListingKitStudioSessionRepository,
-			UploadedImage:         BuildListingKitUploadedImageRepository,
-			StoreProfile:          BuildListingKitStoreProfileRepository,
-			SheinResolutionCache:  BuildSheinResolutionCacheStore,
-		},
-		Admin: AdminRepositoryBuilders{
-			Store:                   BuildListingAdminStoreRepository,
-			StoreStatistics:         BuildListingAdminStoreStatisticsRepository,
-			DispatchEvent:           BuildListingAdminDispatchEventRepository,
-			ImportTask:              BuildListingAdminImportTaskRepository,
-			FilterRule:              BuildListingAdminFilterRuleRepository,
-			ProfitRule:              BuildListingAdminProfitRuleRepository,
-			PricingRule:             BuildListingAdminPricingRuleRepository,
-			OperationStrategy:       BuildListingAdminOperationStrategyRepository,
-			ScheduledTaskConfig:     BuildListingAdminScheduledTaskConfigRepository,
-			SensitiveWord:           BuildListingAdminSensitiveWordRepository,
-			GenerationTopicOverride: BuildListingAdminGenerationTopicOverrideRepository,
-			GenerationTopicPolicy:   BuildListingAdminGenerationTopicPolicyRepository,
-			ProductImportMapping:    BuildListingAdminProductImportMappingRepository,
-			Category:                BuildListingAdminCategoryRepository,
-			ProductData:             BuildListingAdminProductDataRepository,
-		},
+import (
+	"task-processor/internal/listingkit"
+)
+
+func withApprovedAssetReader(repositories BuildServiceRepositories, approvedAssets listingkit.ApprovedAssetInventoryReader) BuildServiceRepositories {
+	if approvedAssets == nil {
+		return repositories
 	}
+	repositories.Core.ApprovedAsset = approvedAssets
+	return repositories
 }

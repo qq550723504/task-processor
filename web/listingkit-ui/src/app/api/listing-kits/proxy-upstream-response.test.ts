@@ -126,9 +126,9 @@ describe("buildListingKitProxyResponse", () => {
     const response = await buildListingKitProxyResponse({
       durationMs: 12,
       method: "GET",
-      path: "/studio/batches",
+      path: "/tasks",
       requestId: "req-500",
-      routePath: ["studio", "batches"],
+      routePath: ["tasks"],
       upstream: new Response(
         JSON.stringify({ error: "boom", message: "database row scan failed" }),
         {

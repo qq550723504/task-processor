@@ -11,13 +11,11 @@ import (
 func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 	return []kernelmodule.Module{
 		newCoreHTTPModule(),
-		c.productHTTPModule(),
 		c.amazonListingHTTPModule(),
 		c.listingKitHTTPModule(),
 		c.imageAgentHTTPModule(),
 		c.productSourcingHTTPModule(),
 		c.promptHTTPModule(),
-		c.listingKitStudioHTTPModule(),
 		c.sdsHTTPModule(),
 		c.sheinLoginHTTPModule(),
 		c.sdsLoginHTTPModule(),
@@ -62,7 +60,11 @@ func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) 
 	if err != nil {
 		return nil, nil, err
 	}
-	server, routes := bundle.buildServerBundle(port)
+	authorization, err := buildRouteAuthorization(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	server, routes := bundle.buildServerBundle(port, authorization)
 	return server, routes, nil
 }
 

@@ -12,6 +12,7 @@ import (
 const (
 	activityNameProcessStandardProduct = "ProcessStandardProduct"
 	activityNameProcessPlatformAdapt   = "ProcessPlatformAdapt"
+	activityNamePersistLayerFailure    = "PersistLayerFailure"
 )
 
 type LayerActivities struct {
@@ -27,6 +28,7 @@ func RegisterLayerActivities(reg activityRegisterer, activities *LayerActivities
 	}
 	reg.RegisterActivityWithOptions(activities.ProcessStandardProduct, sdkactivity.RegisterOptions{Name: activityNameProcessStandardProduct})
 	reg.RegisterActivityWithOptions(activities.ProcessPlatformAdaptation, sdkactivity.RegisterOptions{Name: activityNameProcessPlatformAdapt})
+	reg.RegisterActivityWithOptions(activities.PersistLayerFailure, sdkactivity.RegisterOptions{Name: activityNamePersistLayerFailure})
 	return nil
 }
 
@@ -44,6 +46,14 @@ func (a *LayerActivities) ProcessPlatformAdaptation(ctx context.Context, in Plat
 		return nil, err
 	}
 	return host.ProcessPlatformAdaptationLayer(ctx, in.TaskID, in.Platform)
+}
+
+func (a *LayerActivities) PersistLayerFailure(ctx context.Context, in LayerFailureInput) error {
+	host, err := a.host()
+	if err != nil {
+		return err
+	}
+	return host.PersistLayerFailure(ctx, in.TaskID, in.Error)
 }
 
 func (a *LayerActivities) host() (listingkit.LayerWorkflowActivityHost, error) {

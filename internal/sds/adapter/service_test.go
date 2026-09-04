@@ -2,183 +2,93 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"testing"
 
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/sds/workflow"
-	"task-processor/internal/shared/aiidentity"
 )
 
-type stubImageService struct {
-	createTask    *productimage.Task
-	createErr     error
-	processResult *productimage.ImageProcessResult
-	processErr    error
-	taskResult    *productimage.TaskResult
-	taskErr       error
-	lastRequest   *productimage.ImageProcessRequest
-	lastTask      *productimage.Task
-	processCtx    context.Context
+type stubApprovedAssetReader struct {
+	inventory productasset.ApprovedAssetInventory
+	err       error
+	lastScope productasset.InventoryScope
 }
 
-func (s *stubImageService) CreateProcessTask(_ context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
-	s.lastRequest = req
-	return s.createTask, s.createErr
-}
-
-func (s *stubImageService) GetTaskResult(_ context.Context, _ string) (*productimage.TaskResult, error) {
-	return s.taskResult, s.taskErr
-}
-
-func (s *stubImageService) ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
-	s.processCtx = ctx
-	s.lastTask = task
-	return s.processResult, s.processErr
-}
-
-func TestSyncFromImageRequestRestoresChildExecutionEnvelope(t *testing.T) {
-	t.Parallel()
-
-	child := &productimage.Task{ID: "img-task-envelope"}
-	child.SetExecutionEnvelope(aiidentity.ExecutionEnvelope{
-		Version:        aiidentity.CurrentEnvelopeVersion,
-		TenantID:       "tenant-a",
-		UserID:         "user-a",
-		BusinessTaskID: child.ID,
-		TraceID:        "trace-a",
-		SourcePlatform: "productimage",
-		SourceTaskType: "image",
-	})
-	imgSvc := &stubImageService{createTask: child, processResult: &productimage.ImageProcessResult{}}
-	svc := newServiceWithDeps(imgSvc, &stubWorkflowService{result: &workflow.SyncResult{}})
-	parent := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "parent-task"})
-
-	_, err := svc.SyncFromImageRequest(parent, SyncFromImageRequestInput{ImageRequest: &productimage.ImageProcessRequest{ImageURLs: []string{"https://example.com/a.jpg"}}})
-	if err != nil {
-		t.Fatalf("SyncFromImageRequest() error = %v", err)
-	}
-	identity := aiidentity.FromContext(imgSvc.processCtx)
-	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" || identity.BusinessTaskID != child.ID {
-		t.Fatalf("processed child identity = %+v, want tenant/user/child task", identity)
-	}
+func (s *stubApprovedAssetReader) GetApprovedInventory(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	s.lastScope = scope
+	return s.inventory, s.err
 }
 
 type stubWorkflowService struct {
-	lastInput  workflow.SyncInput
-	lastResult *productimage.ImageProcessResult
-	result     *workflow.SyncResult
-	err        error
+	lastInput     workflow.SyncInput
+	lastInventory productasset.ApprovedAssetInventory
+	result        *workflow.SyncResult
+	err           error
 }
 
-func (s *stubWorkflowService) SyncDesignFromProcessResult(_ context.Context, input workflow.SyncInput, result *productimage.ImageProcessResult) (*workflow.SyncResult, error) {
+func (s *stubWorkflowService) SyncDesignFromApprovedAssets(_ context.Context, input workflow.SyncInput, inventory productasset.ApprovedAssetInventory) (*workflow.SyncResult, error) {
 	s.lastInput = input
-	s.lastResult = result
-	if s.err != nil {
-		return nil, s.err
-	}
-	if s.result != nil {
-		return s.result, nil
-	}
-	return &workflow.SyncResult{}, nil
+	s.lastInventory = inventory
+	return s.result, s.err
 }
 
-func TestSyncFromImageRequestRunsInlineFlow(t *testing.T) {
+func TestSyncFromApprovedAssetsReadsScopedInventoryAndDelegates(t *testing.T) {
 	t.Parallel()
 
-	imgSvc := &stubImageService{
-		createTask: &productimage.Task{ID: "img-task-1"},
-		processResult: &productimage.ImageProcessResult{
-			WhiteBgImage: &productimage.ImageAsset{URL: "white.png"},
+	scope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	inventory := productasset.ApprovedAssetInventory{
+		Scope: scope,
+		Assets: []productasset.ApprovedAsset{
+			{ID: "design-1", Role: productasset.RoleDesign, URL: "https://example.com/design.jpg"},
 		},
 	}
-	wfSvc := &stubWorkflowService{result: &workflow.SyncResult{}}
-	svc := newServiceWithDeps(imgSvc, wfSvc)
+	reader := &stubApprovedAssetReader{inventory: inventory}
+	wf := &stubWorkflowService{result: &workflow.SyncResult{}}
+	svc := newServiceWithDeps(reader, wf)
 
-	result, err := svc.SyncFromImageRequest(context.Background(), SyncFromImageRequestInput{
+	result, err := svc.SyncFromApprovedAssets(context.Background(), SyncFromApprovedAssetsInput{
 		SyncInput: workflow.SyncInput{VariantID: 89764},
-		ImageRequest: &productimage.ImageProcessRequest{
-			ImageURLs:   []string{"https://example.com/a.jpg"},
-			Marketplace: "amazon",
-		},
+		Scope:     scope,
 	})
 	if err != nil {
-		t.Fatalf("SyncFromImageRequest() error = %v", err)
+		t.Fatalf("SyncFromApprovedAssets() error = %v", err)
 	}
-	if result == nil || result.ImageTask == nil || result.ImageTask.ID != "img-task-1" {
-		t.Fatalf("unexpected image task result: %+v", result)
+	if reader.lastScope != scope {
+		t.Fatalf("reader scope = %+v, want %+v", reader.lastScope, scope)
 	}
-	if imgSvc.lastRequest == nil {
-		t.Fatal("expected image request to be passed through")
+	if wf.lastInput.VariantID != 89764 {
+		t.Fatalf("workflow variant id = %d, want 89764", wf.lastInput.VariantID)
 	}
-	if imgSvc.lastTask == nil || imgSvc.lastTask.ID != "img-task-1" {
-		t.Fatalf("unexpected processed task: %+v", imgSvc.lastTask)
+	if wf.lastInventory.Scope != scope || len(wf.lastInventory.Assets) != 1 || wf.lastInventory.Assets[0].ID != "design-1" {
+		t.Fatalf("workflow inventory = %+v, want scoped approved inventory", wf.lastInventory)
 	}
-	if wfSvc.lastInput.VariantID != 89764 {
-		t.Fatalf("workflow variant id = %d, want 89764", wfSvc.lastInput.VariantID)
+	if result == nil || result.DesignSync != wf.result {
+		t.Fatalf("sync result = %+v, want workflow result", result)
+	}
+	if result.ApprovedAssets.Scope != scope || len(result.ApprovedAssets.Assets) != 1 || result.ApprovedAssets.Assets[0].ID != "design-1" {
+		t.Fatalf("sync result inventory = %+v, want scoped approved inventory", result.ApprovedAssets)
 	}
 }
 
-func TestSyncFromExistingImageTaskUsesStoredResult(t *testing.T) {
+func TestSyncFromApprovedAssetsRejectsReaderScopeMismatch(t *testing.T) {
 	t.Parallel()
 
-	imgResult := &productimage.ImageProcessResult{
-		MainImage: &productimage.ImageAsset{URL: "main.jpg"},
-	}
-	imgSvc := &stubImageService{
-		taskResult: &productimage.TaskResult{
-			TaskID: "img-task-2",
-			Status: productimage.TaskStatusCompleted,
-			Result: imgResult,
+	requested := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	reader := &stubApprovedAssetReader{inventory: productasset.ApprovedAssetInventory{
+		Scope: productasset.InventoryScope{TenantID: "tenant-b", ProductKey: "product-1"},
+		Assets: []productasset.ApprovedAsset{
+			{ID: "design-1", Role: productasset.RoleDesign, URL: "https://example.com/design.jpg"},
 		},
-	}
-	wfSvc := &stubWorkflowService{result: &workflow.SyncResult{}}
-	svc := newServiceWithDeps(imgSvc, wfSvc)
+	}}
+	wf := &stubWorkflowService{}
+	svc := newServiceWithDeps(reader, wf)
 
-	result, err := svc.SyncFromExistingImageTask(context.Background(), workflow.SyncInput{VariantID: 89765}, "img-task-2")
-	if err != nil {
-		t.Fatalf("SyncFromExistingImageTask() error = %v", err)
+	_, err := svc.SyncFromApprovedAssets(context.Background(), SyncFromApprovedAssetsInput{Scope: requested})
+	if !errors.Is(err, productasset.ErrRepositoryStateInvalid) {
+		t.Fatalf("SyncFromApprovedAssets() error = %v, want %v", err, productasset.ErrRepositoryStateInvalid)
 	}
-	if result.ImageTask == nil || result.ImageTask.ID != "img-task-2" {
-		t.Fatalf("unexpected image task: %+v", result.ImageTask)
-	}
-	if wfSvc.lastResult != imgResult {
-		t.Fatalf("workflow received unexpected image result")
-	}
-}
-
-func TestSyncFromExistingImageTaskRejectsMissingResult(t *testing.T) {
-	t.Parallel()
-
-	svc := newServiceWithDeps(&stubImageService{
-		taskResult: &productimage.TaskResult{
-			TaskID: "img-task-3",
-			Status: productimage.TaskStatusPending,
-		},
-	}, &stubWorkflowService{})
-
-	_, err := svc.SyncFromExistingImageTask(context.Background(), workflow.SyncInput{VariantID: 1}, "img-task-3")
-	if err == nil {
-		t.Fatal("expected error for missing image result")
-	}
-}
-
-func TestSyncFromImageResultDelegatesToWorkflow(t *testing.T) {
-	t.Parallel()
-
-	imgResult := &productimage.ImageProcessResult{
-		WhiteBgImage: &productimage.ImageAsset{URL: "white.jpg"},
-	}
-	wfSvc := &stubWorkflowService{result: &workflow.SyncResult{}}
-	svc := newServiceWithDeps(nil, wfSvc)
-
-	result, err := svc.SyncFromImageResult(context.Background(), workflow.SyncInput{VariantID: 89766}, imgResult)
-	if err != nil {
-		t.Fatalf("SyncFromImageResult() error = %v", err)
-	}
-	if result == nil || result.ImageResult != imgResult {
-		t.Fatalf("unexpected sync result: %+v", result)
-	}
-	if wfSvc.lastInput.VariantID != 89766 {
-		t.Fatalf("workflow variant id = %d, want 89766", wfSvc.lastInput.VariantID)
+	if wf.lastInventory.Scope != (productasset.InventoryScope{}) {
+		t.Fatalf("workflow called with mismatched inventory: %+v", wf.lastInventory)
 	}
 }

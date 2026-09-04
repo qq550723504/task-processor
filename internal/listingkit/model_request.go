@@ -1,8 +1,11 @@
 package listingkit
 
-import (
-	"task-processor/internal/productimage"
-)
+import "errors"
+
+// ErrGenerateTaskIdempotencyConflict signals that an idempotency key was
+// reused with a different target payload. Callers must surface it as a
+// client-visible conflict instead of silently returning the existing task.
+var ErrGenerateTaskIdempotencyConflict = errors.New("generate task idempotency conflict")
 
 type SourceReference struct {
 	Key      string `json:"key,omitempty"`
@@ -13,16 +16,24 @@ type SourceReference struct {
 }
 
 type GenerateRequest struct {
-	TenantID string `json:"tenant_id,omitempty"`
+	TenantID   string `json:"tenant_id,omitempty"`
+	ProductKey string `json:"product_key"`
+	// SourceSnapshotVersion is populated only by trusted source handoff code
+	// after Catalog publication. It is copied onto Task and never accepted from
+	// or exposed to the caller-facing request JSON.
+	SourceSnapshotVersion uint64 `json:"-"`
+	// IdempotencyKey is populated only by trusted source handoff code so a
+	// retried source request replays the originally created task instead of
+	// creating a duplicate. It derives a deterministic task ID and is never
+	// accepted from or exposed to the caller-facing request JSON.
+	IdempotencyKey string `json:"-"`
 	// BillingTenantID is set only by the authenticated HTTP boundary after its
 	// subscription check. It is intentionally excluded from the persisted
 	// request JSON; Task owns the durable billing identity separately from the
 	// caller-facing ownership tenant.
 	BillingTenantID    string           `json:"-"`
 	UserID             string           `json:"user_id,omitempty"`
-	ImageURLs          []string         `json:"image_urls,omitempty"`
 	Text               string           `json:"text,omitempty"`
-	ProductURL         string           `json:"product_url,omitempty"`
 	Source             *SourceReference `json:"source,omitempty"`
 	Platforms          []string         `json:"platforms,omitempty"`
 	Country            string           `json:"country,omitempty"`
@@ -34,16 +45,10 @@ type GenerateRequest struct {
 }
 
 type WarmSDSBaselineRequest struct {
-	TenantID  string          `json:"tenant_id,omitempty"`
-	ImageURLs []string        `json:"image_urls,omitempty"`
-	SDS       *SDSSyncOptions `json:"sds,omitempty"`
+	TenantID string          `json:"tenant_id,omitempty"`
+	SDS      *SDSSyncOptions `json:"sds,omitempty"`
 }
 
 type GenerateOptions struct {
-	ImageStrategy               string                               `json:"image_strategy,omitempty"`
-	ProcessImages               bool                                 `json:"process_images"`
-	CompatibilityTargetPlatform string                               `json:"compatibility_target_platform,omitempty"`
-	Scene                       *productimage.SceneGenerationOptions `json:"scene,omitempty"`
-	SheinStudio                 *SheinStudioOptions                  `json:"shein_studio,omitempty"`
-	SDS                         *SDSSyncOptions                      `json:"sds,omitempty"`
+	SDS *SDSSyncOptions `json:"sds,omitempty"`
 }

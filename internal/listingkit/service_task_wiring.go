@@ -4,27 +4,6 @@ import (
 	"context"
 )
 
-func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
-	repository := buildTaskRepositoryWiring(s)
-	return taskGenerationServiceConfig{
-		repo:                              repository.repo,
-		assetRepo:                         resolveWorkflowAssetRepository(s),
-		assetRecipeResolver:               resolveWorkflowAssetRecipeResolver(s),
-		assetBundleBuilder:                resolveWorkflowAssetBundleBuilder(s),
-		assetGenerator:                    resolveWorkflowAssetGenerationService(s),
-		listAssetGenerationTasks:          s.listAssetGenerationTasks,
-		listGenerationReviews:             s.listGenerationReviews,
-		buildRetryGenerationTaskSelection: s.buildRetryGenerationTaskSelection,
-		persistGenerationReviewDecision:   s.persistGenerationReviewDecision,
-		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
-			return resolveStandardWorkflowClient(s)
-		},
-		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
-			return resolvePlatformAdaptWorkflowClient(s)
-		},
-	}
-}
-
 func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 	preview := buildTaskPreviewAccessWiring(s)
 	repository := buildTaskRepositoryWiring(s)
@@ -34,8 +13,11 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 			return s.resolveManualSheinSaleAttributeValueIDs(ctx, task, req)
 		},
 		recovery: s.taskSubmissionRecoveryOrDefault(),
-		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
-			s.refreshSheinDerivedState(task, req)
+		prepareSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) (*preparedSheinRevisionDerivedState, error) {
+			return s.prepareSheinRevisionDerivedState(task, req)
+		},
+		applyPreparedSheinDerivedState: func(task *Task, req *ApplyRevisionRequest, prepared *preparedSheinRevisionDerivedState) error {
+			return s.applyPreparedSheinRevisionDerivedState(task, req, prepared)
 		},
 		refreshSheinTaskResultState: func(ctx context.Context, task *Task, result *ListingKitResult) {
 			s.refreshSheinTaskResultState(ctx, task, result)
@@ -54,10 +36,9 @@ func buildTaskPreviewServiceConfig(s *service) taskPreviewServiceConfig {
 }
 
 func buildTaskExportServiceConfig(s *service) taskExportServiceConfig {
-	wiring := buildTaskPreviewExportReadWiring(s)
+	wiring := buildTaskRepositoryWiring(s)
 	return taskExportServiceConfig{
-		repo:                     wiring.repo,
-		listAssetGenerationTasks: wiring.listAssetGenerationTasks,
+		repo: wiring.repo,
 	}
 }
 
@@ -65,6 +46,7 @@ func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 	repository := buildTaskRepositoryWiring(s)
 	return taskLifecycleServiceConfig{
 		repo:                        repository.repo,
+		productSnapshots:            s.workflowDeps.productSnapshots,
 		sdsBaselineReadinessService: s.sdsBaselineOrDefault(),
 		validateSheinStoreAccess: func(ctx context.Context, tenantID, storeID int64) error {
 			validator := resolveSheinStoreAccessValidator(s)

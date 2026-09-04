@@ -10,16 +10,8 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		}
 		return state.result, err
 	}
-	final := s.runPlatformAdaptation(
-		ctx,
-		task,
-		state.snapshot,
-		state.recipesByPlatform,
-		state.generationPlan,
-		state.inventory,
-		state.persistedGenerationTasks,
-		state.enableAssetGeneration,
-		state.sdsOptions,
-	)
-	return final, nil
+	if state.blocked {
+		return state.result, nil
+	}
+	return s.runPlatformAdaptation(ctx, task, state.snapshot)
 }

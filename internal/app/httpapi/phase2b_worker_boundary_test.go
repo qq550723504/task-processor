@@ -57,7 +57,7 @@ func TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods(t *testing.T) {
 		"func (c httpFeatureComposition) productHandler(",
 		"func (c httpFeatureComposition) imageHandler(",
 	} {
-		require.Contains(t, string(bootstrapSrc), marker)
+		require.NotContains(t, string(bootstrapSrc), marker)
 	}
 
 	modulesSrc, err := os.ReadFile("http_modules.go")
@@ -140,10 +140,10 @@ func TestHTTPAPITypesDoesNotOwnAppBootstrapState(t *testing.T) {
 	bootstrapTypesContent := string(bootstrapTypesSrc)
 	for _, marker := range []string{
 		"type appBootstrap struct",
-		"server         *http.Server",
-		"routes         []httproute.Descriptor",
-		"pools          []worker.WorkerPool",
-		"closers        []func() error",
+		"server  *http.Server",
+		"routes  []httproute.Descriptor",
+		"pools   []worker.WorkerPool",
+		"closers []func() error",
 	} {
 		require.Contains(t, bootstrapTypesContent, marker)
 	}
@@ -197,7 +197,7 @@ func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
 	for _, marker := range []string{
 		"func buildHTTPServerBundleFromModules(",
 		"buildRuntimeBundleFromModules(cfg, modules)",
-		"bundle.buildServerBundle(port)",
+		"bundle.buildServerBundle(port, authorization)",
 	} {
 		require.NotContains(t, appContent, marker)
 	}
@@ -209,7 +209,7 @@ func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
 		"func buildHTTPServerBundleFromModules(",
 		"func buildRegisteredRoutesForModules(",
 		"buildRuntimeBundleFromModules(cfg, modules)",
-		"bundle.buildServerBundle(port)",
+		"bundle.buildServerBundle(port, authorization)",
 	} {
 		require.Contains(t, moduleRuntimeContent, marker)
 	}
@@ -236,11 +236,19 @@ func TestHTTPAPIServerDoesNotOwnListingKitAuthMiddlewareSelection(t *testing.T) 
 	authContent := string(authSrc)
 	for _, marker := range []string{
 		`"task-processor/internal/listingkit/httpapi"`,
-		"NewZitadelAuthMiddlewareFromEnv(",
+		"zitadelruntime.NewMiddleware(",
 		"RouteRequiresZitadelAuth(",
-		"NewRouteRoleMiddleware(",
+		"NewRouteRoleMiddlewareWithAuthorizer(",
 	} {
 		require.Contains(t, authContent, marker)
+	}
+	for _, forbidden := range []string{
+		"ConfigureListingKitZitadelAuth(",
+		"ConfigureListingKitAuthorization(",
+		"NewZitadelAuthMiddlewareFromEnv(",
+		"NewRouteRoleMiddleware(route)",
+	} {
+		require.NotContains(t, authContent, forbidden)
 	}
 }
 
@@ -479,16 +487,16 @@ func TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes(t *testing.T) {
 	for _, marker := range []string{
 		`"task-processor/internal/amazonlisting/httpapi"`,
 		`"task-processor/internal/listingkit/httpapi"`,
-		`"task-processor/internal/productenrich/httpapi"`,
-		`"task-processor/internal/productimage/httpapi"`,
 		"*amazonlistinghttpapi.Module",
 		"*listingkithttpapi.Module",
-		"*productenrichhttpapi.Module",
-		"*productimagehttpapi.Module",
 	} {
 		require.Contains(t, typesContent, marker)
 	}
 	for _, marker := range []string{
+		`"task-processor/internal/productenrich/httpapi"`,
+		`"task-processor/internal/productimage/httpapi"`,
+		"*productenrichhttpapi.Module",
+		"*productimagehttpapi.Module",
 		"*productModuleResult",
 		"*imageModuleResult",
 		"*amazonListingModuleResult",
@@ -521,16 +529,16 @@ func TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes(t *testing.
 	for _, marker := range []string{
 		`"task-processor/internal/amazonlisting/httpapi"`,
 		`"task-processor/internal/listingkit/httpapi"`,
-		`"task-processor/internal/productenrich/httpapi"`,
-		`"task-processor/internal/productimage/httpapi"`,
 		"*amazonlistinghttpapi.Module",
 		"*listingkithttpapi.Module",
-		"*productenrichhttpapi.Module",
-		"*productimagehttpapi.Module",
 	} {
 		require.Contains(t, methodsContent, marker)
 	}
 	for _, marker := range []string{
+		`"task-processor/internal/productenrich/httpapi"`,
+		`"task-processor/internal/productimage/httpapi"`,
+		"*productenrichhttpapi.Module",
+		"*productimagehttpapi.Module",
 		"*productModuleResult",
 		"*imageModuleResult",
 		"*amazonListingModuleResult",
@@ -578,8 +586,6 @@ func TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures(t 
 
 	expectedModules := map[string][]string{
 		"feature_builder_listingkit.go": {
-			"*productenrichhttpapi.Module",
-			"*productimagehttpapi.Module",
 			"*listingkithttpapi.Module",
 		},
 		"feature_builder_amazonlisting.go": {
@@ -607,15 +613,9 @@ func TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures(t 
 	listingKitFeatureSrc, err := os.ReadFile("feature_builder_listingkit.go")
 	require.NoError(t, err)
 	listingKitFeatureContent := string(listingKitFeatureSrc)
-	for _, marker := range []string{
-		"productModule    *productenrichhttpapi.Module",
-		"imageModule      *productimagehttpapi.Module",
-		"listingKitModule *listingkithttpapi.Module",
-		"buildProduct    productModuleBuilder",
-		"buildImage      imageModuleBuilder",
-		"buildListingKit listingKitModuleBuilder",
-	} {
-		require.Contains(t, listingKitFeatureContent, marker)
+	require.Contains(t, listingKitFeatureContent, "buildListingKit listingKitModuleBuilder")
+	for _, marker := range []string{"productenrichhttpapi", "productimagehttpapi", "buildProduct", "buildImage"} {
+		require.NotContains(t, listingKitFeatureContent, marker)
 	}
 
 	amazonListingFeatureSrc, err := os.ReadFile("feature_builder_amazonlisting.go")
@@ -637,8 +637,6 @@ func TestFeatureModuleBuilderContractsUseOwningModuleTypes(t *testing.T) {
 	content := string(src)
 
 	for _, marker := range []string{
-		"(*productenrichhttpapi.Module, error)",
-		"(*productimagehttpapi.Module, error)",
 		"(*amazonlistinghttpapi.Module, error)",
 		"(*listingkithttpapi.Module, error)",
 	} {
@@ -646,16 +644,15 @@ func TestFeatureModuleBuilderContractsUseOwningModuleTypes(t *testing.T) {
 	}
 
 	for _, marker := range []string{
-		"type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)",
-		"type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)",
 		"type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)",
 		"type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)",
-		"func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)",
-		"func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)",
 		"func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)",
 		"func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)",
 	} {
 		require.Contains(t, content, marker)
+	}
+	for _, marker := range []string{"productenrichhttpapi", "productimagehttpapi", "productModuleBuilder", "imageModuleBuilder", "buildProductModuleResult", "buildImageModuleResult"} {
+		require.NotContains(t, content, marker)
 	}
 }
 

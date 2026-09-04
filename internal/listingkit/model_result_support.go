@@ -6,29 +6,6 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-type GenerationRecoverySummary struct {
-	Title                  string                              `json:"title,omitempty"`
-	Summary                string                              `json:"summary,omitempty"`
-	Severity               string                              `json:"severity,omitempty"`
-	Urgency                string                              `json:"urgency,omitempty"`
-	CTAKind                string                              `json:"cta_kind,omitempty"`
-	ActionKey              string                              `json:"action_key,omitempty"`
-	RecommendedCount       int                                 `json:"recommended_count"`
-	PrimaryDescriptor      *GenerationPanelResourceDescriptor  `json:"primary_descriptor,omitempty"`
-	RecommendedDescriptors []GenerationPanelResourceDescriptor `json:"recommended_descriptors,omitempty"`
-}
-
-type GenerationResolvedActionSummary struct {
-	SourceKind       string                            `json:"source_kind,omitempty"`
-	Title            string                            `json:"title,omitempty"`
-	Summary          string                            `json:"summary,omitempty"`
-	CTAKind          string                            `json:"cta_kind,omitempty"`
-	ActionKey        string                            `json:"action_key,omitempty"`
-	NavigationTarget *GenerationReviewNavigationTarget `json:"navigation_target,omitempty"`
-	ActionTarget     *AssetGenerationActionTarget      `json:"action_target,omitempty"`
-	RecoverySummary  *GenerationRecoverySummary        `json:"recovery_summary,omitempty"`
-}
-
 type AmazonPackage struct {
 	Draft       *amazonlisting.AmazonListingDraft `json:"draft,omitempty"`
 	ImageBundle *common.PublishImageBundle        `json:"image_bundle,omitempty"`

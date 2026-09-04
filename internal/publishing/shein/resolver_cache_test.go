@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
@@ -27,6 +27,10 @@ type countingAttributeResolver struct {
 func (r *countingAttributeResolver) Resolve(_ *BuildRequest, _ *canonical.Product, _ *Package) *AttributeResolution {
 	r.calls++
 	return cloneAttributeResolution(r.out)
+}
+
+func (r *countingAttributeResolver) ResolveFreshAttributeResolution(req *BuildRequest, product *canonical.Product, pkg *Package) *AttributeResolution {
+	return r.Resolve(req, product, pkg)
 }
 
 type countingSaleAttributeResolver struct {
@@ -481,6 +485,58 @@ func TestCachedAttributeResolverCanRememberManualResolution(t *testing.T) {
 	if got := next.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 2001 {
 		t.Fatalf("attribute value id = %v, want 2001", got)
 	}
+}
+
+func TestCachedAttributeResolverFreshResolutionBypassesRememberedValue(t *testing.T) {
+	valueID := 2001
+	inner := &countingAttributeResolver{
+		out: &AttributeResolution{
+			Status: "resolved", Source: "fresh", CategoryID: 8218, TemplateCount: 1, ResolvedCount: 1,
+			ResolvedAttributes: []ResolvedAttribute{{Name: "Material", Value: "Cotton", AttributeID: 160, AttributeValueID: &valueID}},
+		},
+	}
+	resolver := NewCachedAttributeResolver(inner)
+	cache := resolver.(AttributeResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	pkg := &Package{
+		CategoryID:     8218,
+		CategoryIDList: []int{2030, 6012, 8218},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8014192"},
+		},
+	}
+	cache.RememberAttributeResolution(req, nil, pkg, &AttributeResolution{
+		Status: "resolved", Source: "remembered", CategoryID: 8218, TemplateCount: 1, ResolvedCount: 1,
+		ResolvedAttributes: []ResolvedAttribute{{Name: "Material", Value: "Polyester", AttributeID: 160, AttributeValueID: &valueID}},
+	})
+
+	cached := resolver.Resolve(req, nil, pkg)
+	if cached == nil || cached.Source != "remembered" || inner.calls != 0 {
+		t.Fatalf("ordinary resolution = %#v, inner calls = %d; want remembered cache hit", cached, inner.calls)
+	}
+	freshResolver, ok := resolver.(FreshAttributeResolver)
+	if !ok {
+		t.Fatal("cached attribute resolver must expose fresh resolution for atomic regeneration")
+	}
+	fresh := freshResolver.ResolveFreshAttributeResolution(req, nil, pkg)
+	if fresh == nil || fresh.Source != "fresh" || inner.calls != 1 {
+		t.Fatalf("fresh resolution = %#v, inner calls = %d; want one direct inner resolution", fresh, inner.calls)
+	}
+}
+
+func TestCachedAttributeResolverDoesNotClaimFreshCapabilityForCachedOnlyInner(t *testing.T) {
+	resolver := NewCachedAttributeResolver(attributeResolverFunc(func(*BuildRequest, *canonical.Product, *Package) *AttributeResolution {
+		return &AttributeResolution{Status: "resolved", Source: "possibly-cached"}
+	}))
+	if _, ok := resolver.(FreshAttributeResolver); ok {
+		t.Fatal("cached-only inner resolver must not be promoted to fresh capability")
+	}
+}
+
+type attributeResolverFunc func(*BuildRequest, *canonical.Product, *Package) *AttributeResolution
+
+func (resolve attributeResolverFunc) Resolve(req *BuildRequest, product *canonical.Product, pkg *Package) *AttributeResolution {
+	return resolve(req, product, pkg)
 }
 
 func TestCachedAttributeResolverRejectsManualResolutionWithStaleTemplateAttributes(t *testing.T) {

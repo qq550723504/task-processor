@@ -63,8 +63,7 @@ func TestApplyExportPlatformSection(t *testing.T) {
 func TestBuildListingKitExportReturnsUnavailableForMissingSelectedPlatformPayload(t *testing.T) {
 	t.Parallel()
 
-	_, err := buildListingKitExport(&Task{
-		ID: "task-export-missing-platform",
+	_, err := buildListingKitExport(&Task{TenantID: "tenant-test", ID: "task-export-missing-platform",
 		Result: &ListingKitResult{
 			Platforms: []string{"amazon", "shein"},
 		},

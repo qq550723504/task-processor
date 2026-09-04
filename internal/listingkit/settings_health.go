@@ -43,7 +43,7 @@ func BuildSettingsHealth(inputs SettingsHealthInputs) SettingsHealthPage {
 		sheinAccountHealthItem(inputs.Shein),
 		runtimeProbeHealthItem("shein.integration", "SHEIN Token / 权限 / 类目接口", inputs.Probes.SheinIntegration, []string{"保存草稿和发布", "SHEIN 类目接口校验"}, "补齐 SHEIN 登录服务端点、Cookie Redis 或店铺 API 客户端配置；任务提交时按目标租户和店铺解析账号及权限。"),
 		sheinPricingHealthItem(inputs.Shein),
-		runtimeProbeHealthItem("sds.session", "SDS 登录态", mergeLegacyProbe(inputs.Probes.SDSLogin, inputs.SDSProbeConfigured), []string{"SDS 属性补全", "SDS 商品库和 Studio"}, "接入 SDS 登录态探针，或在当前 SDS 登录服务引导配置中补齐身份参数。"),
+		runtimeProbeHealthItem("sds.session", "SDS 登录态", mergeLegacyProbe(inputs.Probes.SDSLogin, inputs.SDSProbeConfigured), []string{"SDS 属性补全", "SDS 商品库"}, "接入 SDS 登录态探针，或在当前 SDS 登录服务引导配置中补齐身份参数。"),
 		runtimeProbeHealthItem("storage.object", "对象存储", mergeLegacyProbe(inputs.Probes.ObjectStorage, inputs.ObjectStoreConfigured), []string{"图片上传", "任务素材预览"}, "接入对象存储探针或在环境配置中补齐 bucket/endpoint/credentials。"),
 	}
 	return SettingsHealthPage{

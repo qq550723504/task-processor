@@ -610,7 +610,7 @@ func TestRunRecoverySweepContinuesUnrelatedRecoveryAfterSettlementFailure(t *tes
 	if err := repo.MarkBlockedRetryable(ctx, settlementTask.ID, &RetryableBlock{ReasonCode: "usage_commit_pending", NextRetryAt: &due, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
 		t.Fatalf("MarkBlockedRetryable(settlement) error = %v", err)
 	}
-	regularTask := &Task{ID: "task-usage-sweep-regular", TenantID: "tenant-usage-sweep-continue", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-continue", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	regularTask := &Task{ID: "task-usage-sweep-regular", TenantID: "tenant-usage-sweep-continue", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-usage-sweep-continue", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
 	if err := repo.CreateTask(ctx, regularTask); err != nil {
 		t.Fatalf("CreateTask(regular) error = %v", err)
 	}
@@ -657,7 +657,7 @@ func TestRunRecoverySweepFiltersFailedSettlementPagesBeforeProviderBatch(t *test
 			t.Fatalf("MarkBlockedRetryable(%s) error = %v", id, err)
 		}
 	}
-	regular := &Task{ID: "task-usage-sweep-page-regular", TenantID: "tenant-usage-sweep-pages", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-pages", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	regular := &Task{ID: "task-usage-sweep-page-regular", TenantID: "tenant-usage-sweep-pages", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-usage-sweep-pages", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
 	if err := repo.CreateTask(ctx, regular); err != nil {
 		t.Fatalf("CreateTask(regular) error = %v", err)
 	}
@@ -690,7 +690,7 @@ func TestRunRecoverySweepFindsSettlementBehindProviderBacklog(t *testing.T) {
 	regularDue := now.Add(-2 * time.Minute)
 	settlementDue := now.Add(-time.Minute)
 	for _, id := range []string{"task-usage-sweep-provider-1", "task-usage-sweep-provider-2"} {
-		task := &Task{ID: id, TenantID: "tenant-usage-sweep-provider-backlog", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-provider-backlog", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+		task := &Task{ID: id, TenantID: "tenant-usage-sweep-provider-backlog", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-usage-sweep-provider-backlog", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
 		if err := repo.CreateTask(ctx, task); err != nil {
 			t.Fatalf("CreateTask(%s) error = %v", id, err)
 		}
@@ -742,7 +742,7 @@ func TestRunRecoverySweepHonorsLimitAfterUsageSettlement(t *testing.T) {
 	regularDue := now.Add(-time.Minute)
 	for _, task := range []*Task{
 		{ID: "task-usage-sweep-limit-settle", TenantID: "tenant-usage-sweep-limit", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now},
-		{ID: "task-usage-sweep-limit-regular", TenantID: "tenant-usage-sweep-limit", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-limit", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now},
+		{ID: "task-usage-sweep-limit-regular", TenantID: "tenant-usage-sweep-limit", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-usage-sweep-limit", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now},
 	} {
 		if err := repo.CreateTask(ctx, task); err != nil {
 			t.Fatalf("CreateTask(%s) error = %v", task.ID, err)

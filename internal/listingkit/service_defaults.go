@@ -5,13 +5,9 @@ import (
 	"time"
 
 	"task-processor/internal/amazonlisting"
-	assetbundle "task-processor/internal/asset/bundle"
-	assetgeneration "task-processor/internal/asset/generation"
-	assetrecipe "task-processor/internal/asset/recipe"
-	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/reviewstore"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/sdslogin"
 )
@@ -19,37 +15,14 @@ import (
 func (config *ServiceConfig) applyDefaults() {
 	runServiceConfigInitializers(
 		config,
-		(*ServiceConfig).ensureSheinResolvers,
+		(*ServiceConfig).ensureSheinSizeHeaderResolver,
 		(*ServiceConfig).ensureAssembler,
 		(*ServiceConfig).ensureAssetDependencies,
 		(*ServiceConfig).ensureCoreRepositories,
-		(*ServiceConfig).ensureSheinDefaults,
 	)
 }
 
-func (config *ServiceConfig) ensureSheinResolvers() {
-	cacheStore := config.Shein.SheinResolutionCacheStore
-	if config.Shein.SheinCategoryResolver == nil {
-		resolver := sheinpub.NewCategoryResolver(nil)
-		if cacheStore != nil {
-			resolver = sheinpub.NewCachedCategoryResolver(resolver, cacheStore)
-		}
-		config.Shein.SheinCategoryResolver = resolver
-	}
-	if config.Shein.SheinAttributeResolver == nil {
-		resolver := sheinpub.NewAttributeResolver(nil, nil)
-		if cacheStore != nil {
-			resolver = sheinpub.NewCachedAttributeResolver(resolver, cacheStore)
-		}
-		config.Shein.SheinAttributeResolver = resolver
-	}
-	if config.Shein.SheinSaleAttributeResolver == nil {
-		resolver := sheinpub.NewSaleAttributeResolver(nil, nil)
-		if cacheStore != nil {
-			resolver = sheinpub.NewCachedSaleAttributeResolver(resolver, cacheStore)
-		}
-		config.Shein.SheinSaleAttributeResolver = resolver
-	}
+func (config *ServiceConfig) ensureSheinSizeHeaderResolver() {
 	if config.Shein.SheinSizeHeaderResolver == nil {
 		config.Shein.SheinSizeHeaderResolver = sheinpub.NewSizeAttributeHeaderResolver(config.Shein.SheinContentOptimizer)
 	}
@@ -71,32 +44,14 @@ func (config *ServiceConfig) ensureAssembler() {
 }
 
 func (config *ServiceConfig) ensureAssetDependencies() {
-	if config.Assets.AssetRepository == nil {
-		config.Assets.AssetRepository = assetrepo.NewMemRepository()
-	}
 	if config.Assets.ReviewRepository == nil {
 		config.Assets.ReviewRepository = reviewstore.NewMemRepository()
-	}
-	if config.Assets.AssetRecipeResolver == nil {
-		config.Assets.AssetRecipeResolver = newDefaultAssetRecipeResolver()
-	}
-	if config.Assets.AssetBundleBuilder == nil {
-		config.Assets.AssetBundleBuilder = newDefaultAssetBundleBuilder()
-	}
-	if config.Assets.AssetGenerationService == nil {
-		config.Assets.AssetGenerationService = newDefaultAssetGenerationService()
 	}
 }
 
 func (config *ServiceConfig) ensureCoreRepositories() {
 	if config.Core.StoreProfileRepository == nil {
 		config.Core.StoreProfileRepository = newInMemoryStoreProfileRepository()
-	}
-}
-
-func (config *ServiceConfig) ensureSheinDefaults() {
-	if config.Shein.StudioPromptDiversifier == nil {
-		config.Shein.StudioPromptDiversifier = config.Shein.SheinContentOptimizer
 	}
 }
 
@@ -142,34 +97,25 @@ func newAmazonDraftBuilder() AmazonDraftBuilder {
 	return &amazonDraftBuilder{assembler: amazonlisting.NewAssembler()}
 }
 
-func newDefaultAssetRecipeResolver() assetrecipe.Resolver {
-	return assetrecipe.NewStaticResolver()
-}
-
-func newDefaultAssetBundleBuilder() assetbundle.Builder {
-	return assetbundle.NewBuilder()
-}
-
-func newDefaultAssetGenerationService() assetgeneration.Service {
-	return assetgeneration.NewService(assetgeneration.Config{})
-}
-
-func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
-	task := &amazonlisting.Task{
-		ID: "listingkit-amazon-preview",
+func (b *amazonDraftBuilder) Build(req *GenerateRequest, snapshot *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error) {
+	if req == nil || snapshot == nil || approved == nil {
+		return nil, productasset.ErrApprovedAssetsNotReady
+	}
+	draft, err := b.assembler.Build(amazonlisting.DraftInput{
+		TaskID: "listingkit-amazon-preview",
 		Request: &amazonlisting.GenerateRequest{
 			Marketplace:        "amazon",
 			Country:            req.Country,
 			Language:           req.Language,
-			ImageURLs:          append([]string(nil), req.ImageURLs...),
-			Text:               req.Text,
-			ProductURL:         req.ProductURL,
+			ProductKey:         req.ProductKey,
 			TargetCategoryHint: req.TargetCategoryHint,
 			BrandHint:          req.BrandHint,
-			Options: &amazonlisting.GenerateOptions{
-				ProcessImages: req.Options != nil && req.Options.ProcessImages,
-			},
 		},
+		Snapshot:       *snapshot,
+		ApprovedAssets: *approved,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return b.assembler.Assemble(task, canonical, image)
+	return draft, nil
 }

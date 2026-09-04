@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/app/runner"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	sheinscheduler "task-processor/internal/shein/scheduler"
@@ -24,7 +25,7 @@ func BuildDependencies(
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) runner.SchedulerDependencies {
-	boundFetcherBuilder := platformbase.BindProductFetcherBuilder(platformbase.NewDefaultProductFetcherBuilder(), crawlSource)
+	boundFetcherBuilder := appfetcher.NewProductFetcherBuilder(schedulerRuntime.GetRawJsonDataAdapter(), crawlSource)
 	deps := runner.SchedulerDependencies{}
 	for _, module := range platformSchedulerModules() {
 		deps = module.assign(deps, module.build(schedulerRuntime, cfg, boundFetcherBuilder, rabbitmqClient))

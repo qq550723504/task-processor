@@ -27,24 +27,10 @@ const aiClientOptions = [
     icon: Tags,
   },
   {
-    name: "image_nanobanana",
-    label: "Nano Banana",
-    description: "SHEIN Studio 默认生图链路，单独配置 Nano Banana 的地址和密钥",
-    modelHint: "例如 nano-banana-fast",
-    icon: Image,
-  },
-  {
     name: "image_gpt_image_2",
     label: "GPT Image 2",
     description: "透明背景和 GPT Image 2 生图链路，单独配置它的地址和密钥",
     modelHint: "例如 gpt-image-2",
-    icon: Image,
-  },
-  {
-    name: "image_background_removal",
-    label: "背景抠图",
-    description: "普通图片生成后的独立抠图模型，配置支持图像编辑的地址和密钥",
-    modelHint: "例如 briaai/RMBG-2.0",
     icon: Image,
   },
 ] as const;

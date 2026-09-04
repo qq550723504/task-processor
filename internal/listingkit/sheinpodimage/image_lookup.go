@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit"
+	productasset "task-processor/internal/product/asset"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -58,18 +59,19 @@ func BuildSheinPODImageLookupRecord(task *listingkit.Task) (SheinPODImageLookupR
 	}
 	if task.Request != nil {
 		record.Prompt = strings.TrimSpace(task.Request.Text)
-		if len(task.Request.ImageURLs) > 0 {
-			record.AIOriginalImageURL = strings.TrimSpace(task.Request.ImageURLs[0])
+	}
+	if task.Result.ApprovedAssetInventory != nil {
+		for _, approved := range task.Result.ApprovedAssetInventory.Assets {
+			if approved.Role == productasset.RoleMain {
+				record.AIOriginalImageURL = strings.TrimSpace(approved.URL)
+				break
+			}
 		}
 	}
 	record.AIOriginalImageKey = uploadedImageKeyFromPublicURL(record.AIOriginalImageURL)
 	if pkg.Images != nil {
 		record.SDSMainImageURL = strings.TrimSpace(pkg.Images.MainImage)
 		record.SDSGalleryImageURLs = append([]string(nil), pkg.Images.Gallery...)
-		if record.AIOriginalImageURL == "" && len(pkg.Images.SourceImages) > 0 {
-			record.AIOriginalImageURL = strings.TrimSpace(pkg.Images.SourceImages[0])
-			record.AIOriginalImageKey = uploadedImageKeyFromPublicURL(record.AIOriginalImageURL)
-		}
 	}
 	record.ProductName, record.SupplierCode, record.SellerSKU = resolveSheinPODDraftIdentity(pkg)
 	record.SheinSPUName, record.SheinVersion = resolveSheinPODSubmissionIdentity(pkg)

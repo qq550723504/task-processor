@@ -6,6 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
@@ -17,44 +18,23 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 	platformdatabase "task-processor/internal/platform/database"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sourceaccount"
+	sourceaccountbootstrap "task-processor/internal/sourceaccount/bootstrap"
 )
 
 type sourceAccountRepositoryBuilder func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error)
 
-var buildSourceAccountRepository = listingkithttpapi.BuildSourceAccountRepository
-
-type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
-
-type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
+var buildSourceAccountRepository = sourceaccountbootstrap.BuildRepository
 
 type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
 
+type amazonListingRepositoryBuilder func(*config.DatabaseConfig, *logrus.Logger) (amazonlisting.Repository, func() error, error)
+
 type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
 
+type listingKitRepositoryBuilder func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error)
+
 type imageAgentModuleBuilder func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error)
-
-func attachImageAgentWorkspace(listingKitModule *listingkithttpapi.Module, imageAgentModule *imageagenthttpapi.BuildResult) error {
-	if listingKitModule == nil || listingKitModule.TaskRepository == nil || imageAgentModule == nil || imageAgentModule.Application == nil {
-		return nil
-	}
-	handler, err := listingkithttpapi.NewImageAgentWorkspaceHandler(listingKitModule.TaskRepository, imageAgentModule.Application)
-	if err != nil {
-		return err
-	}
-	listingKitModule.ImageAgentWorkspaceHandler = handler
-	return nil
-}
-
-func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
-	return productenrichhttpapi.BuildRuntimeModule(input)
-}
-
-func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error) {
-	return productimagehttpapi.BuildRuntimeModule(input)
-}
 
 func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 	return amazonlistinghttpapi.BuildRuntimeModule(input)
@@ -62,6 +42,10 @@ func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput
 
 func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 	return listingkithttpapi.BuildRuntimeModule(input)
+}
+
+func buildListingKitPersistentRepositories(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error) {
+	return listingkithttpapi.BuildPersistentRepositories(cfg, logger)
 }
 
 func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*imageagenthttpapi.BuildResult, error) {
@@ -88,13 +72,10 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 		return nil, fmt.Errorf("build image agent repository: %w", err)
 	}
 	databaseCloser := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
-	service, err := imageagent.NewService(
+	service, err := newImageAgentHTTPService(
+		cfg,
 		imageagentstore.NewGormRepository(db), workflowClient,
-		listingkithttpapi.NewImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db)),
-		imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{
-			Enabled:          cfg.AICapability.ProductImageSceneEnabled,
-			AllowedTenantIDs: cfg.AICapability.ProductImageSceneAllowedTenantIDs,
-		}),
+		newImageAgentAuthorizedAssetCatalog(listingkitstore.NewTaskRepository(db), newPublicImageDimensionResolver()),
 	)
 	if err != nil {
 		_ = databaseCloser()
@@ -118,17 +99,30 @@ func buildImageAgentModuleResult(cfg *config.Config, logger *logrus.Logger) (*im
 	return built, nil
 }
 
+func newImageAgentHTTPService(cfg *config.Config, repository imageagent.Repository, workflows imageagent.WorkflowClient, catalog imageagent.AuthorizedAssetCatalog) (*imageagent.Service, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("build image agent HTTP service: config is required")
+	}
+	policyAvailability, err := loadImageAgentPolicyAvailability()
+	if err != nil {
+		return nil, fmt.Errorf("build image agent HTTP service: %w", err)
+	}
+	return imageagent.NewService(repository, workflows, catalog, imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{
+		Enabled: cfg.ImageAgent.Admission.Enabled, AllowedTenantIDs: append([]string(nil), cfg.ImageAgent.Admission.AllowedTenantIDs...),
+	}), imageagent.WithImagePolicyAvailability(policyAvailability))
+}
+
 func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.DurableAssetPublicURLResolver {
 	if cfg == nil {
 		return nil
 	}
-	publisher := cfg.ProductImage.Publisher
-	if !publisher.Enabled || !strings.EqualFold(strings.TrimSpace(publisher.Provider), "s3") || strings.TrimSpace(publisher.PublicBase) == "" || strings.TrimSpace(publisher.S3.Bucket) == "" {
+	store := cfg.ImageAgent.ArtifactStore
+	if !store.Enabled || !strings.EqualFold(strings.TrimSpace(store.Provider), "s3") || strings.TrimSpace(store.PublicBase) == "" || strings.TrimSpace(store.S3.Bucket) == "" {
 		return nil
 	}
 	return imageAgentObjectURLResolver{
-		bucket: publisher.S3.Bucket, publicBase: publisher.PublicBase,
-		endpoint: publisher.S3.Endpoint, usePathStyle: publisher.S3.UsePathStyle,
+		bucket: store.S3.Bucket, publicBase: store.PublicBase,
+		endpoint: store.S3.Endpoint, usePathStyle: store.S3.UsePathStyle,
 	}
 }
 

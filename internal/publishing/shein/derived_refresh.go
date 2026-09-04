@@ -3,8 +3,7 @@ package shein
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productimage"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -14,7 +13,6 @@ import (
 func RefreshDerivedState(
 	req *BuildRequest,
 	canonical *canonical.Product,
-	image *productimage.ImageProcessResult,
 	pkg *Package,
 	categoryResolver CategoryResolver,
 	attributeResolver AttributeResolver,
@@ -35,7 +33,7 @@ func RefreshDerivedState(
 
 	images := pkg.Images
 	if images == nil {
-		images = common.BuildImages(canonical, image)
+		images = common.BuildImages(canonical)
 	}
 	if images == nil {
 		images = &common.ImageSet{}

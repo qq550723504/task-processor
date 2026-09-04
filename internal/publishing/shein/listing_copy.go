@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 type listingCopy struct {

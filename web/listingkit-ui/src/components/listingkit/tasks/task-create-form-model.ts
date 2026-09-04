@@ -60,6 +60,7 @@ export const SHEIN_STORE_REQUIRED_MESSAGE =
 
 export const schema = z
   .object({
+    productKey: z.string().trim().min(1, "必须选择商品中心中的商品。"),
     text: z.string().trim(),
     imageUrls: z.string().trim(),
     productUrl: z.string().trim(),
@@ -111,6 +112,7 @@ export function buildTaskCreateDefaultValues({
     ) ?? [];
 
   return {
+    productKey: initialValues?.productKey ?? "",
     text: initialValues?.text ?? "",
     imageUrls: initialValues?.imageUrls ?? "",
     productUrl: initialValues?.productUrl ?? "",
@@ -152,7 +154,7 @@ export function taskCreatePageCopy(variant: TaskCreateVariant) {
   return {
     eyebrow: "ListingKit",
     title: "创建新任务",
-    description: "先提供标题、图片或商品链接，再选择要生成的平台。",
+    description: "先从商品中心选择已整理商品，再选择要生成的平台；来源字段可用于补充上下文。",
     submitLabel: "创建任务",
   };
 }

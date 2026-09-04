@@ -14,7 +14,7 @@ func TestPodExecutionSupportBoundary(t *testing.T) {
 	root := parsePodExecutionBoundaryFile(t, "pod_execution.go")
 	policy := parsePodExecutionBoundaryFile(t, "pod_execution_policy_support.go")
 
-	assertPodExecutionImport(t, root, "task-processor/internal/product/sourcing/sdspod")
+	assertPodExecutionImport(t, root, "task-processor/internal/sds/adapter/product_source")
 	assertPodExecutionDelegates(t, root, "derivePodExecutionSummary", "DeriveExecution")
 	assertPodExecutionDelegates(t, root, "normalizePodExecutionSummary", "NormalizeExecution")
 	assertPodExecutionDelegates(t, policy, "podSubmissionBlocked", "SubmissionBlocked")

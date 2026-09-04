@@ -40,7 +40,6 @@ func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 		route.Module == "listing-kit-admin" ||
 		route.Module == "listing-kit-platform-admin" ||
 		route.Module == "listing-kit-prompts" ||
-		route.Module == "listing-kit-studio" ||
 		route.Module == "shein-login" ||
 		route.Module == "sds" ||
 		route.Module == "sds-login" ||
@@ -76,21 +75,34 @@ func listingKitRouteRequiredPermission(route httproute.Descriptor) string {
 }
 
 func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
-	return NewRouteRoleMiddlewareWithResponder(route, legacyRoleAuthorizationResponder)
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	var authorizer *authz.ListingKitAuthorizer
+	if runtimeCfg != nil {
+		authorizer = runtimeCfg.Authorizer
+	}
+	return NewRouteRoleMiddlewareWithAuthorizer(route, authorizer)
 }
 
 func NewRouteRoleMiddlewareWithResponder(route httproute.Descriptor, respond RoleAuthorizationResponder) gin.HandlerFunc {
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	var authorizer *authz.ListingKitAuthorizer
+	if runtimeCfg != nil {
+		authorizer = runtimeCfg.Authorizer
+	}
+	return NewRouteRoleMiddlewareWithAuthorizerAndResponder(route, authorizer, respond)
+}
+
+func NewRouteRoleMiddlewareWithAuthorizer(route httproute.Descriptor, authorizer *authz.ListingKitAuthorizer) gin.HandlerFunc {
+	return NewRouteRoleMiddlewareWithAuthorizerAndResponder(route, authorizer, legacyRoleAuthorizationResponder)
+}
+
+func NewRouteRoleMiddlewareWithAuthorizerAndResponder(route httproute.Descriptor, authorizer *authz.ListingKitAuthorizer, respond RoleAuthorizationResponder) gin.HandlerFunc {
 	if respond == nil {
 		respond = legacyRoleAuthorizationResponder
 	}
 	requiredPermission := listingKitRouteRequiredPermission(route)
 	if requiredPermission == "" {
 		return nil
-	}
-	runtimeCfg := currentListingKitZitadelRuntimeConfig()
-	var authorizer *authz.ListingKitAuthorizer
-	if runtimeCfg != nil {
-		authorizer = runtimeCfg.Authorizer
 	}
 	if authorizer == nil {
 		var err error

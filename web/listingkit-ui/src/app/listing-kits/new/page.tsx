@@ -5,11 +5,12 @@ export default async function ListingKitNewTaskPage({
 }: {
   searchParams: Promise<{
     fromTask?: string;
+    product_key?: string;
     focus?: "text" | "imageUrls";
     issues?: string;
   }>;
 }) {
-  const { fromTask, focus, issues } = await searchParams;
+  const { fromTask, focus, issues, product_key: productKey } = await searchParams;
   const parsedIssues = issues
     ?.split(",")
     .map((value) => value.trim())
@@ -17,7 +18,7 @@ export default async function ListingKitNewTaskPage({
 
   return (
     <div className="flex flex-1 py-6">
-      <TaskCreatePage fromTask={fromTask} focus={focus} issues={parsedIssues} />
+      <TaskCreatePage fromTask={fromTask} focus={focus} issues={parsedIssues} productKey={productKey} />
     </div>
   );
 }

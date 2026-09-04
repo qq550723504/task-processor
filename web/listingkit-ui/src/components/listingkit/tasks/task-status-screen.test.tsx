@@ -43,10 +43,6 @@ vi.mock("@/lib/query/use-task-recovery", () => ({
     mutate: recoverTaskNowMutate,
     isPending: false,
   }),
-  useBulkRecoverTasks: () => ({
-    mutate: vi.fn(),
-    isPending: false,
-  }),
 }));
 
 describe("TaskStatusScreen", () => {
@@ -388,7 +384,7 @@ describe("TaskStatusScreen", () => {
     expect(screen.getByText("远端已确认")).toBeInTheDocument();
   });
 
-  it("can manually trigger layered temporal actions", () => {
+  it("does not expose retired layered temporal actions", () => {
     render(
       <TaskStatusScreen
         taskId="task_123"
@@ -399,23 +395,8 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "运行标准商品层" }));
-    expect(executeActionMutate).toHaveBeenCalledWith({
-      action_key: "run_standard_product_temporal",
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "运行平台适配层" }));
-    expect(executeActionMutate).toHaveBeenCalledWith({
-      action_key: "run_platform_adapt_temporal",
-      target: {
-        action_key: "run_platform_adapt_temporal",
-        queue_query: {
-          platform: "all",
-        },
-      },
-    });
-    expect(screen.getByRole("button", { name: "运行标准商品层" })).toHaveClass("w-full");
-    expect(screen.getByRole("button", { name: "运行平台适配层" })).toHaveClass("w-full");
+    expect(screen.queryByRole("button", { name: "运行标准商品层" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "运行平台适配层" })).not.toBeInTheDocument();
   });
 
   it("can retry the SDS design sync child task from the status screen", () => {

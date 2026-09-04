@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/sheinlogin"
 )
 
-func buildListingKitSheinCategoryResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+func buildListingKitSheinCategoryResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
 	var aiConfig sheinpub.CategoryAIConfig
 	if llm != nil {
 		aiConfig.Selector = newSheinCategorySelectorAdapter(llm)
@@ -25,14 +25,12 @@ func buildListingKitSheinCategoryResolver(storeRepo listingadmin.StoreRepository
 	)
 }
 
-func buildListingKitSheinAttributeResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
-	return sheinpub.NewCachedAttributeResolver(
-		sheinpub.NewRuntimeAttributeResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, llm),
-		cache,
-	)
+func buildListingKitSheinAttributeResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver {
+	_ = cache
+	return sheinpub.NewRuntimeAttributeResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, llm)
 }
 
-func buildListingKitSheinSaleAttributeResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
+func buildListingKitSheinSaleAttributeResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm ai.TextChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver {
 	return sheinpub.NewCachedSaleAttributeResolver(
 		sheinpub.NewRuntimeSaleAttributeResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, llm, cache),
 		cache,

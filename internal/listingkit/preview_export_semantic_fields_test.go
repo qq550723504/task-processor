@@ -20,7 +20,7 @@ func TestBuildSheinPreviewPayloadPopulatesSemanticFields(t *testing.T) {
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 
-	payload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	payload := buildSheinPreviewPayload(pkg, nil, nil)
 	if payload == nil {
 		t.Fatal("payload = nil")
 	}
@@ -36,8 +36,7 @@ func TestBuildSheinPreviewPayloadPopulatesSemanticFields(t *testing.T) {
 }
 
 func TestBuildListingKitExportPopulatesSemanticFields(t *testing.T) {
-	task := &Task{
-		ID: "task-semantic-export",
+	task := &Task{TenantID: "tenant-test", ID: "task-semantic-export",
 		Result: &ListingKitResult{
 			Shein: &sheinpub.Package{
 				DraftPayload:   &sheinpub.RequestDraft{SpuName: "Semantic Export Product"},
@@ -71,7 +70,7 @@ func TestPreviewAndExportJSONIncludeLegacyAndSemanticFieldNames(t *testing.T) {
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 
-	previewPayload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	previewPayload := buildSheinPreviewPayload(pkg, nil, nil)
 	if previewPayload == nil {
 		t.Fatal("preview payload = nil")
 	}
@@ -125,7 +124,7 @@ func TestBuildSheinPreviewPayloadDoesNotFallbackHeadlineOrFinalReviewTitle(t *te
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 
-	payload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	payload := buildSheinPreviewPayload(pkg, nil, nil)
 	if payload == nil {
 		t.Fatal("payload = nil")
 	}

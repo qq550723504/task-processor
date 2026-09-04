@@ -8,56 +8,46 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsclient "task-processor/internal/sds/client"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsusecase "task-processor/internal/sds/usecase"
-	sdsworkflow "task-processor/internal/sds/workflow"
 )
 
-type stubHTTPAPIImageService struct{}
+type stubHTTPAPIApprovedAssetReader struct{}
 
-func (s *stubHTTPAPIImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
-	return nil, nil
+func (*stubHTTPAPIApprovedAssetReader) GetApprovedInventory(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
 }
-
-func (s *stubHTTPAPIImageService) GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (s *stubHTTPAPIImageService) ReviewTask(ctx context.Context, taskID string, req *productimage.ReviewTaskRequest) (*productimage.TaskResult, error) {
-	return nil, nil
-}
-
-func (s *stubHTTPAPIImageService) ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
-	return nil, nil
-}
-
-func (s *stubHTTPAPIImageService) SetTaskSubmitter(submitter productimage.TaskSubmitter) {}
 
 type stubHTTPAPISDSSyncService struct{}
 
-func (s *stubHTTPAPISDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
+func (s *stubHTTPAPISDSSyncService) SyncFromApprovedAssets(context.Context, sdsusecase.ApprovedAssetsInput) (*sdsadapter.SyncResult, error) {
 	return nil, nil
 }
 
-func (s *stubHTTPAPISDSSyncService) SyncFromLocalFile(ctx context.Context, input sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
-	return nil, nil
-}
-
-func (s *stubHTTPAPISDSSyncService) SyncFromImageResult(ctx context.Context, input sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
-	return nil, nil
-}
-
-func (s *stubHTTPAPISDSSyncService) SyncFromImageRequest(ctx context.Context, input sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
-	return nil, nil
-}
-
-func TestBuildSDSSyncServiceReturnsNilWithoutImageService(t *testing.T) {
+func TestBuildSDSSyncServiceReturnsNilWithoutApprovedAssetReader(t *testing.T) {
 	logger := logrus.New()
 	if svc := buildSDSSyncService(logger, &runtimeDeps{}); svc != nil {
 		t.Fatalf("buildSDSSyncService() = %v, want nil", svc)
+	}
+}
+
+func TestEnsureApprovedAssetReaderUsesSharedPersistentDatabaseWithoutAnotherCloser(t *testing.T) {
+	db := openHTTPAPICatalogTestDB(t)
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{cfg: &config.Config{}, productCatalogDB: db},
+		features: &featureRuntimeState{},
+	}
+
+	first := ensureApprovedAssetReader(logrus.New(), deps)
+	second := ensureApprovedAssetReader(logrus.New(), deps)
+	if first == nil || second != first {
+		t.Fatalf("approved asset readers = (%v, %v), want one shared reader", first, second)
+	}
+	if len(deps.shared.closers) != 0 || len(deps.constructionClosers) != 0 {
+		t.Fatalf("registered closers = shared:%d construction:%d, want database owner to remain unique", len(deps.shared.closers), len(deps.constructionClosers))
 	}
 }
 
@@ -68,20 +58,24 @@ func TestBuildSDSSyncServiceReturnsServiceWithoutAuthState(t *testing.T) {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
 	expected := &stubHTTPAPISDSSyncService{}
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	var received sdsadapter.ApprovedAssetReader
+	newSDSSyncServiceForHTTPAPI = func(approvedAssets sdsadapter.ApprovedAssetReader, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+		received = approvedAssets
 		return expected, nil, nil
 	}
+	approvedAssets := &stubHTTPAPIApprovedAssetReader{}
 
 	svc := buildSDSSyncService(logger, &runtimeDeps{
 		shared: &sharedRuntimeDeps{
 			cfg: &config.Config{},
 		},
-		features: &featureRuntimeState{
-			imageService: &stubHTTPAPIImageService{},
-		},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{approvedAssetReader: approvedAssets}},
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)
+	}
+	if received != approvedAssets {
+		t.Fatalf("SDS approved asset reader = %v, want shared reader %v", received, approvedAssets)
 	}
 }
 
@@ -97,7 +91,7 @@ func TestNewSDSSyncServiceForHTTPAPIReturnsServiceWithoutAuthState(t *testing.T)
 	cfg.BaseURL = "http://127.0.0.1:1"
 	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
 
-	svc, authState, err := previousFactory(&stubHTTPAPIImageService{}, cfg)
+	svc, authState, err := previousFactory(&stubHTTPAPIApprovedAssetReader{}, cfg)
 	if err != nil {
 		t.Fatalf("newSDSSyncServiceForHTTPAPI() error = %v", err)
 	}
@@ -115,7 +109,7 @@ func TestBuildSDSSyncServiceReturnsNilOnFactoryError(t *testing.T) {
 	t.Cleanup(func() {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(approvedAssets sdsadapter.ApprovedAssetReader, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return nil, nil, fmt.Errorf("boom")
 	}
 
@@ -123,9 +117,7 @@ func TestBuildSDSSyncServiceReturnsNilOnFactoryError(t *testing.T) {
 		shared: &sharedRuntimeDeps{
 			cfg: &config.Config{},
 		},
-		features: &featureRuntimeState{
-			imageService: &stubHTTPAPIImageService{},
-		},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{approvedAssetReader: &stubHTTPAPIApprovedAssetReader{}}},
 	})
 	if svc != nil {
 		t.Fatalf("buildSDSSyncService() = %v, want nil", svc)
@@ -139,7 +131,7 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 		newSDSSyncServiceForHTTPAPI = previousFactory
 	})
 	expected := &stubHTTPAPISDSSyncService{}
-	newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	newSDSSyncServiceForHTTPAPI = func(approvedAssets sdsadapter.ApprovedAssetReader, cfg *sdsclient.Config) (sdsusecase.Service, *sdsclient.AuthState, error) {
 		return expected, &sdsclient.AuthState{AccessToken: "token"}, nil
 	}
 
@@ -147,9 +139,7 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 		shared: &sharedRuntimeDeps{
 			cfg: &config.Config{},
 		},
-		features: &featureRuntimeState{
-			imageService: &stubHTTPAPIImageService{},
-		},
+		features: &featureRuntimeState{listingKitSupport: &listingKitSupport{approvedAssetReader: &stubHTTPAPIApprovedAssetReader{}}},
 	})
 	if svc != expected {
 		t.Fatalf("buildSDSSyncService() = %v, want %v", svc, expected)

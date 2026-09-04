@@ -15,19 +15,16 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 	t.Parallel()
 
 	metadataRepo := NewMemUploadedImageRepository()
-	svc := seedSupportDeps(&service{
-		studioDeps: studioDependencies{
-			uploadStore: &stubMetadataImageUploadStore{
-				saveResult: &StoredUploadedImage{
-					Key:         "20260515/a.jpg",
-					Filename:    "a.jpg",
-					PublicURL:   "https://cdn.example.com/20260515/a.jpg",
-					ContentType: "image/jpeg",
-					Size:        3,
-				},
+	svc := seedSupportDeps(&service{}, supportDependencySeed{
+		imageUploadStore: &stubMetadataImageUploadStore{
+			saveResult: &StoredUploadedImage{
+				Key:         "20260515/a.jpg",
+				Filename:    "a.jpg",
+				PublicURL:   "https://cdn.example.com/20260515/a.jpg",
+				ContentType: "image/jpeg",
+				Size:        3,
 			},
 		},
-	}, supportDependencySeed{
 		uploadedImageRepository: metadataRepo,
 	})
 	ctx := tenantctx.WithTenantID(context.Background(), "227")
@@ -53,7 +50,7 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 func TestUploadImagesRejectsInvalidImageBeforeStorage(t *testing.T) {
 	t.Parallel()
 	store := &stubMetadataImageUploadStore{saveResult: &StoredUploadedImage{Key: "listingkit/tenants/1/uploads/id.jpg"}}
-	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	svc := seedSupportDeps(&service{}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: NewMemUploadedImageRepository()})
 
 	ctx := tenantctx.WithTenantID(context.Background(), "227")
 	_, err := svc.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "not-an-image.jpg", Data: []byte("not an image")}}})
@@ -69,7 +66,7 @@ func TestUploadImagesUsesOpaqueIDAndTenantScopedStorageKey(t *testing.T) {
 	t.Parallel()
 	metadataRepo := NewMemUploadedImageRepository()
 	store := &stubMetadataImageUploadStore{saveResult: &StoredUploadedImage{Key: "legacy/upload.webp", Filename: "upload.webp"}}
-	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: metadataRepo})
+	svc := seedSupportDeps(&service{}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: metadataRepo})
 	ctx := tenantctx.WithTenantID(context.Background(), "227")
 
 	response, err := svc.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "shirt.jpg", Data: validWebPData(t)}}})
@@ -100,7 +97,7 @@ func TestUploadImagesDeletesObjectWhenMetadataSaveFails(t *testing.T) {
 	t.Parallel()
 	store := &stubMetadataImageUploadStore{}
 	repo := &failingUploadedImageRepository{MemUploadedImageRepository: NewMemUploadedImageRepository(), saveErr: errors.New("db down")}
-	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: repo})
+	svc := seedSupportDeps(&service{}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: repo})
 
 	_, err := svc.UploadImages(tenantctx.WithTenantID(context.Background(), "227"), &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "shirt.webp", Data: validWebPData(t)}}})
 	if err == nil || !strings.Contains(err.Error(), "save uploaded image metadata") {
@@ -127,9 +124,8 @@ func TestDeleteUploadedImageUsesMetadataAndMarksRecordDeleted(t *testing.T) {
 		t.Fatalf("SaveUploadedImage() error = %v", err)
 	}
 	store := &stubMetadataImageUploadStore{}
-	svc := seedSupportDeps(&service{
-		studioDeps: studioDependencies{uploadStore: store},
-	}, supportDependencySeed{
+	svc := seedSupportDeps(&service{}, supportDependencySeed{
+		imageUploadStore:        store,
 		uploadedImageRepository: metadataRepo,
 	})
 
@@ -157,7 +153,7 @@ func TestGetUploadedImageDoesNotOpenForeignObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &stubMetadataImageUploadStore{}
-	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: metadataRepo})
+	svc := seedSupportDeps(&service{}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: metadataRepo})
 
 	_, err := svc.GetUploadedImage(tenantctx.WithTenantID(context.Background(), "202"), uploadID)
 	if !errors.Is(err, ErrUploadedImageNotFound) {
@@ -178,7 +174,7 @@ func TestDeleteUploadedImageIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &stubMetadataImageUploadStore{}
-	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: metadataRepo})
+	svc := seedSupportDeps(&service{}, supportDependencySeed{imageUploadStore: store, uploadedImageRepository: metadataRepo})
 
 	first, err := svc.DeleteUploadedImage(ctx, uploadID)
 	if err != nil {

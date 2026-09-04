@@ -186,7 +186,9 @@ func responseFromCreateTaskResult(result *a1688.CreateTaskResult) CreateListingK
 	if result.Handoff != nil {
 		response.SourceIdentity = result.Handoff.Envelope.Identity
 		response.SourceWarnings = result.Handoff.Envelope.Warnings
-		response.ProductURL = result.Handoff.Request.ProductURL
+		if result.Handoff.Request.Source != nil {
+			response.ProductURL = result.Handoff.Request.Source.URL
+		}
 	}
 	return response
 }

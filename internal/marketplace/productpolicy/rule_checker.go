@@ -1,0 +1,128 @@
+package productpolicy
+
+import (
+	"fmt"
+
+	"task-processor/internal/model"
+)
+
+// RuleChecker 产品筛选规则检查器
+type RuleChecker struct{}
+
+// NewRuleChecker 创建新的规则检查器
+func NewRuleChecker() *RuleChecker {
+	return &RuleChecker{}
+}
+
+// CheckPriceRange 校验价格范围
+func (c *RuleChecker) CheckPriceRange(rule *FilterRule, price float64) error {
+	if rule.PriceMin != nil && price < *rule.PriceMin {
+		return fmt.Errorf("产品价格(%.2f)低于筛选规则最低价格(%.2f)", price, *rule.PriceMin)
+	}
+	if rule.PriceMax != nil && price > *rule.PriceMax {
+		return fmt.Errorf("产品价格(%.2f)高于筛选规则最高价格(%.2f)", price, *rule.PriceMax)
+	}
+	return nil
+}
+
+// CheckInventory 校验库存
+func (c *RuleChecker) CheckInventory(rule *FilterRule, inventory int) error {
+	if rule.StockMin == nil {
+		return nil
+	}
+	stockMin := *rule.StockMin
+	if stockMin > 30 {
+		stockMin = 30
+	}
+	if inventory < stockMin {
+		return fmt.Errorf("产品库存(%d)低于筛选规则最低库存(%d)", inventory, stockMin)
+	}
+	return nil
+}
+
+// CheckRating 校验评论星级
+func (c *RuleChecker) CheckRating(rule *FilterRule, rating float64) error {
+	if rule.RatingMin == nil {
+		return nil
+	}
+	if rating < *rule.RatingMin {
+		return fmt.Errorf("产品评论星级(%.1f)低于筛选规则最低星级(%.1f)", rating, *rule.RatingMin)
+	}
+	return nil
+}
+
+// CheckReviewCount 校验评论数量
+func (c *RuleChecker) CheckReviewCount(rule *FilterRule, reviewCount int) error {
+	if rule.ReviewCountMin == nil {
+		return nil
+	}
+	if reviewCount < *rule.ReviewCountMin {
+		return fmt.Errorf("产品评论数量(%d)低于筛选规则最低评论数量(%d)", reviewCount, *rule.ReviewCountMin)
+	}
+	return nil
+}
+
+// CheckDeliveryTime 校验发货时效
+func (c *RuleChecker) CheckDeliveryTime(rule *FilterRule, deliveryTimeHours int) error {
+	if rule.DeliveryTimeMax == nil {
+		return nil
+	}
+	maxHours := *rule.DeliveryTimeMax * 24
+	if maxHours == 0 {
+		maxHours = 48
+	}
+	if deliveryTimeHours > maxHours {
+		return fmt.Errorf("产品发货时效(%d小时)超过筛选规则最大时效(%d小时)", deliveryTimeHours, maxHours)
+	}
+	return nil
+}
+
+// CheckFulfillmentType 校验配送方式
+func (c *RuleChecker) CheckFulfillmentType(rule *FilterRule, amazonProduct *model.Product) error {
+	if rule.FulfillmentType == "" || rule.FulfillmentType == "ALL" {
+		return nil
+	}
+	if amazonProduct == nil {
+		return fmt.Errorf("产品信息为空，无法校验配送方式")
+	}
+
+	isFBA := IsFBAFulfillment(amazonProduct.ShipsFrom)
+	isAMZ := IsAMZSeller(amazonProduct.SellerName)
+
+	switch rule.FulfillmentType {
+	case "FBA":
+		if !isFBA {
+			return fmt.Errorf("产品配送方式不符合要求：规则要求FBA配送，但产品为FBM配送 (ships_from: %s)", amazonProduct.ShipsFrom)
+		}
+	case "FBM":
+		if isFBA {
+			return fmt.Errorf("产品配送方式不符合要求：规则要求FBM配送，但产品为FBA配送 (ships_from: %s)", amazonProduct.ShipsFrom)
+		}
+	case "AMZ":
+		if !isAMZ {
+			return fmt.Errorf("产品配送方式不符合要求：规则要求亚马逊自营，但卖家为 %s", amazonProduct.SellerName)
+		}
+	}
+	return nil
+}
+
+// CheckAllRules 检查所有规则
+func (c *RuleChecker) CheckAllRules(rule *FilterRule, amazonProduct *model.Product, priceType string) error {
+	price := GetProductPrice(amazonProduct, priceType)
+	if err := c.CheckPriceRange(rule, price); err != nil {
+		return err
+	}
+	if err := c.CheckInventory(rule, GetInventory(amazonProduct)); err != nil {
+		return err
+	}
+	if err := c.CheckRating(rule, amazonProduct.Rating); err != nil {
+		return err
+	}
+	if err := c.CheckReviewCount(rule, amazonProduct.ReviewsCount); err != nil {
+		return err
+	}
+	if err := c.CheckDeliveryTime(rule, 24); err != nil {
+		return err
+	}
+	return c.CheckFulfillmentType(rule, amazonProduct)
+}

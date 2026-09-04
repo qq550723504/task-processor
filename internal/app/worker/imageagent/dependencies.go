@@ -1,6 +1,7 @@
 package imageagentworker
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -13,26 +14,32 @@ import (
 	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/core/config"
+	domainimageagent "task-processor/internal/imageagent"
+	"task-processor/internal/imageagent/assetpublication"
 	"task-processor/internal/imageagent/objectstore"
 	imageagentstore "task-processor/internal/imageagent/store"
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
 	"task-processor/internal/integration/httpimage"
 	openaiclient "task-processor/internal/integration/openai"
+	productassetpersistence "task-processor/internal/integration/persistence/product/asset"
 	s3integration "task-processor/internal/integration/s3"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	listingkitstore "task-processor/internal/listingkit/store"
-	"task-processor/internal/pkg/runtimepath"
 	platformdatabase "task-processor/internal/platform/database"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
+
+type imageCapabilityRuntime struct {
+	OpenAIManager      *openaiclient.Manager
+	CredentialResolver openaiclient.ClientConfigResolver
+	InvocationRecorder aicapability.InvocationRecorder
+	Logger             *logrus.Logger
+}
 
 type imageAgentWorkerDependencyResolver struct {
 	LoadConfig         func(string) (*config.Config, error)
 	OpenDB             func(*config.DatabaseConfig) (*gorm.DB, error)
 	CloseDB            func(*config.DatabaseConfig, *gorm.DB) error
 	BuildAI            func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
-	BuildCapabilities  func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error)
+	BuildCapabilities  func(imageCapabilityRuntime) (ImageCapabilities, error)
 	BuildArtifactStore func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
 	ArtifactTiming     imageAgentArtifactTiming
 }
@@ -40,6 +47,50 @@ type imageAgentWorkerDependencyResolver struct {
 type imageAgentArtifactTiming struct {
 	PublicationLeaseDuration time.Duration
 	OperationTimeout         time.Duration
+}
+
+// legacyV2AssetMaterializer gives the frozen URL-based activity contract a
+// durable publication path while the provider adapter produces inline bytes.
+// The deterministic v3 object key makes retries idempotent without changing
+// the v2 Temporal payload or its product-asset publisher.
+type legacyV2AssetMaterializer struct {
+	store imageagenttemporal.DurableArtifactStore
+}
+
+func (m legacyV2AssetMaterializer) Materialize(ctx context.Context, input domainimageagent.SlotExecutionInput, index int, generated domainimageagent.GeneratedAsset) (string, error) {
+	if m.store == nil || ctx == nil || index < 0 {
+		return "", domainimageagent.ErrValidation
+	}
+	identity := domainimageagent.SlotExternalEffectIdentity{
+		RunScope:     domainimageagent.RunScope{TenantID: input.TenantID, OwnerUserID: input.UserID, RunID: input.RunID},
+		PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt,
+	}
+	sourceAssetID := ""
+	if len(input.Slot.SourceAssetIDs) == 1 {
+		sourceAssetID = strings.TrimSpace(input.Slot.SourceAssetIDs[0])
+	}
+	prepared, err := m.store.PrepareSlotArtifacts(objectstore.PrepareSlotArtifactsInput{
+		Identity: identity,
+		Assets: []objectstore.ArtifactInput{{
+			Bytes: generated.Bytes, ContentType: generated.ContentType, Width: generated.Width, Height: generated.Height,
+			SourceAssetID: sourceAssetID, Operations: generated.Operations,
+			ProviderReceiptID: generated.ProviderReceiptID,
+		}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("prepare v2 compatibility artifact: %w", err)
+	}
+	if err := m.store.EnsureStaged(ctx, prepared); err != nil {
+		return "", fmt.Errorf("stage v2 compatibility artifact: %w", err)
+	}
+	final, err := m.store.Finalize(ctx, prepared.Manifest)
+	if err != nil || len(final.Assets) != 1 {
+		if err == nil {
+			err = domainimageagent.ErrValidation
+		}
+		return "", fmt.Errorf("publish v2 compatibility artifact: %w", err)
+	}
+	return m.store.PublicURL(final.Assets[0].ObjectKey), nil
 }
 
 var defaultImageAgentArtifactTiming = imageAgentArtifactTiming{
@@ -56,14 +107,14 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 		CloseDB: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
 			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
 		},
-		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: productimagehttpapi.BuildImageAgentCapabilities,
+		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: buildProductionImageCapabilities,
 		BuildArtifactStore: buildImageAgentDurableArtifactStore,
 		ArtifactTiming:     defaultImageAgentArtifactTiming,
 	}
 }
 
 // ResolveImageAgentTemporalDependencies builds the dedicated production worker
-// from the same database, ProductImage provider/storage, and ListingKit result
+// from the same database, ImageAgent artifact storage, and ListingKit result
 // ownership adapters used by the API runtime.
 func ResolveImageAgentTemporalDependencies(configPath string, logger *logrus.Logger) (appruntime.ImageAgentTemporalDependencies, func() error, error) {
 	return ResolveImageAgentTemporalDependenciesForMode(configPath, logger, imageagenttemporal.WorkerWireModeV3)
@@ -95,17 +146,25 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	if cfg == nil || cfg.Database == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker database configuration is required")
 	}
-	var timing imageAgentArtifactTiming
+	timing := resolver.ArtifactTiming
+	if timing == (imageAgentArtifactTiming{}) {
+		timing = defaultImageAgentArtifactTiming
+	}
 	var artifactStore imageagenttemporal.DurableArtifactStore
-	if mode == imageagenttemporal.WorkerWireModeV3 {
-		timing = resolver.ArtifactTiming
-		if timing == (imageAgentArtifactTiming{}) {
-			timing = defaultImageAgentArtifactTiming
+	if mode == imageagenttemporal.WorkerWireModeV2 {
+		if resolver.BuildArtifactStore == nil {
+			resolver.BuildArtifactStore = buildImageAgentDurableArtifactStore
 		}
+		artifactStore, err = resolver.BuildArtifactStore(cfg, timing, logger)
+		if err != nil {
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v2 compatibility artifact store: %w", err)
+		}
+	}
+	if mode == imageagenttemporal.WorkerWireModeV3 {
 		if err := timing.validate(); err != nil {
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
 		}
-		if _, err := artifactStorageCapabilitiesFromConfig(cfg.ProductImage.Publisher); err != nil {
+		if _, err := artifactStorageCapabilitiesFromConfig(cfg.ImageAgent.ArtifactStore); err != nil {
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact configuration: %w", err)
 		}
 		if resolver.BuildArtifactStore == nil {
@@ -126,75 +185,87 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent provider runtime: %w", err)
 	}
-	workDir := strings.TrimSpace(cfg.ProductImage.WorkDir)
-	if workDir == "" {
-		workDir = runtimepath.NamespacedTempPath("productimage")
+	if resolver.BuildCapabilities == nil {
+		_ = closeDB()
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capability builder is required")
 	}
-	capabilities, err := resolver.BuildCapabilities(productimagehttpapi.RuntimeBuildInput{
-		Logger: logger, Config: cfg, OpenAIManager: manager, AICredentialResolver: credentialResolver,
-		AIInvocationRecorder: recorder, ImageWorkDir: workDir,
+	capabilities, err := resolver.BuildCapabilities(imageCapabilityRuntime{
+		OpenAIManager: manager, CredentialResolver: credentialResolver, InvocationRecorder: recorder, Logger: logger,
 	})
 	if err != nil {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent ProductImage capabilities: %w", err)
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent capabilities: %w", err)
 	}
-	if capabilities.SubjectExtractor == nil || capabilities.WhiteBackgroundRenderer == nil || capabilities.SceneRenderer == nil || capabilities.AssetPublisher == nil {
+	if nilDependency(capabilities.SubjectExtractor) || nilDependency(capabilities.WhiteBackgroundRenderer) ||
+		nilDependency(capabilities.SceneRenderer) || nilDependency(capabilities.Reviewer) ||
+		nilDependency(capabilities.UsageQuoter) || nilDependency(capabilities.ProfileResolver) {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent ProductImage capabilities are incomplete")
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capabilities are incomplete")
 	}
 	repository := imageagentstore.NewGormRepository(db)
-	publisher, err := listingkithttpapi.NewImageAgentApprovedPublisher(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db))
+	assetRepository, err := productassetpersistence.NewRepository(db)
 	if err != nil {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, err
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build product asset repository: %w", err)
 	}
-	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
+	publisher, err := assetpublication.NewV2Publisher(repository, assetRepository)
+	if err != nil {
+		_ = closeDB()
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v2 asset publisher: %w", err)
+	}
+	executorDependencies := imageagenttools.Dependencies{
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
-		SceneRenderer: capabilities.SceneRenderer, AssetPublisher: capabilities.AssetPublisher,
-	})
-	dependencies := appruntime.ImageAgentTemporalDependencies{Repository: repository, SlotExecutor: executor, Publisher: publisher}
+		SceneRenderer: capabilities.SceneRenderer, Reviewer: capabilities.Reviewer, UsageQuoter: capabilities.UsageQuoter,
+		ProfileResolver: capabilities.ProfileResolver,
+	}
+	if artifactStore != nil {
+		executorDependencies.LegacyAssetMaterializer = legacyV2AssetMaterializer{store: artifactStore}
+	}
+	v2Executor := imageagenttools.NewFrozenV2ProductImageSlotExecutor(executorDependencies)
+	v3Executor := imageagenttools.NewProductImageSlotExecutor(executorDependencies)
+	dependencies := appruntime.ImageAgentTemporalDependencies{Repository: repository, SlotExecutor: v2Executor, Publisher: publisher}
 	if mode == imageagenttemporal.WorkerWireModeV2 {
 		return dependencies, closeDB, nil
 	}
-	publisherV3, err := listingkithttpapi.NewImageAgentApprovedPublisherV3(repository, listingkitstore.NewImageAgentPublicationTransactionRepository(db), artifactStore)
+	publisherV3, err := assetpublication.NewPublisher(repository, assetRepository, artifactStore)
 	if err != nil {
 		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, err
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v3 asset publisher: %w", err)
 	}
-	dependencies.StagedSlotExecutor = executor
+	dependencies.StagedSlotExecutor = v3Executor
 	dependencies.ArtifactStore = artifactStore
 	dependencies.PublisherV3 = publisherV3
 	dependencies.PublicationLeaseDuration = timing.PublicationLeaseDuration
 	return dependencies, closeDB, nil
 }
 
-func artifactStorageCapabilitiesFromConfig(publisher config.ProductImagePublisherConfig) (s3integration.ArtifactStorageCapabilities, error) {
-	if !publisher.Enabled {
+func artifactStorageCapabilitiesFromConfig(store config.ImageAgentArtifactStoreConfig) (s3integration.ArtifactStorageCapabilities, error) {
+	if !store.Enabled {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact publication is disabled")
 	}
-	if strings.TrimSpace(publisher.Provider) != "s3" {
+	if strings.TrimSpace(store.Provider) != "s3" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact provider must be s3")
 	}
-	if strings.TrimSpace(publisher.S3.Bucket) == "" {
+	if strings.TrimSpace(store.S3.Bucket) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact bucket is required")
 	}
-	if strings.TrimSpace(publisher.S3.Region) == "" {
+	if strings.TrimSpace(store.S3.Region) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact region is required")
 	}
-	if strings.TrimSpace(publisher.PublicBase) == "" {
+	if strings.TrimSpace(store.PublicBase) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact public base URL is required")
 	}
-	if strings.TrimSpace(publisher.S3.AccessKeyID) == "" || strings.TrimSpace(publisher.S3.SecretAccessKey) == "" {
+	if strings.TrimSpace(store.S3.AccessKeyID) == "" || strings.TrimSpace(store.S3.SecretAccessKey) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact access key ID and secret access key are both required")
 	}
-	switch strings.TrimSpace(publisher.S3.ArtifactMode) {
+	switch strings.TrimSpace(store.S3.ArtifactMode) {
 	case string(s3integration.ArtifactStorageModeAWS):
 		return s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}, nil
 	case string(s3integration.ArtifactStorageModeCOS):
-		if strings.TrimSpace(publisher.S3.Endpoint) == "" {
+		if strings.TrimSpace(store.S3.Endpoint) == "" {
 			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact COS endpoint is required")
 		}
-		if !publisher.S3.COSImmutableNonVersionedBucketPolicy {
+		if !store.S3.COSImmutableNonVersionedBucketPolicy {
 			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact COS immutable non-versioned bucket policy must be confirmed")
 		}
 		return s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}, nil
@@ -210,12 +281,12 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 	if err := timing.validate(); err != nil {
 		return nil, err
 	}
-	publisher := cfg.ProductImage.Publisher
-	capabilities, err := artifactStorageCapabilitiesFromConfig(publisher)
+	storeConfig := cfg.ImageAgent.ArtifactStore
+	capabilities, err := artifactStorageCapabilitiesFromConfig(storeConfig)
 	if err != nil {
 		return nil, err
 	}
-	s3Config := publisher.S3
+	s3Config := storeConfig.S3
 	client, err := s3integration.NewClient(s3integration.ClientConfig{
 		Region: s3Config.Region, Endpoint: s3Config.Endpoint, AccessKeyID: s3Config.AccessKeyID,
 		SecretAccessKey: s3Config.SecretAccessKey, UsePathStyle: s3Config.UsePathStyle,
@@ -228,7 +299,7 @@ func buildImageAgentDurableArtifactStore(cfg *config.Config, timing imageAgentAr
 		componentLogger = logrus.NewEntry(logger).WithField("component", "image-agent-s3")
 	}
 	uploader, err := s3integration.NewUploaderWithOptions(client, s3integration.UploaderOptions{
-		Bucket: s3Config.Bucket, PublicBase: publisher.PublicBase, Endpoint: s3Config.Endpoint,
+		Bucket: s3Config.Bucket, PublicBase: storeConfig.PublicBase, Endpoint: s3Config.Endpoint,
 		UsePathStyle: s3Config.UsePathStyle, ArtifactCapabilities: capabilities,
 		Logger: s3integration.AdaptLogrus(componentLogger),
 	})

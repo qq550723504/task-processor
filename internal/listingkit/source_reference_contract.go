@@ -18,9 +18,6 @@ func normalizeGenerateRequestSource(req *GenerateRequest) {
 	if req == nil || hasSourceReference(req.Source) {
 		return
 	}
-	if productURL := strings.TrimSpace(req.ProductURL); productURL != "" {
-		req.Source = &SourceReference{Type: "product_url", URL: productURL}
-	}
 }
 
 // normalizeTrustedGenerateRequestSource is called by the service creation

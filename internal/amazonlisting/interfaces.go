@@ -6,25 +6,32 @@ import (
 	"github.com/gin-gonic/gin"
 
 	amazonapi "task-processor/internal/amazon/api"
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 type TaskSubmitter interface {
 	Submit(taskID string) error
 }
 
-type ProductService interface {
-	CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error)
-	GetTaskResult(ctx context.Context, taskID string) (*productenrich.TaskResult, error)
-	ProcessProduct(ctx context.Context, task *productenrich.Task) (*productenrich.ProductJSON, error)
+type ProductSnapshotQuery struct {
+	TenantID   string
+	ProductKey string
+	Version    uint64
 }
 
-type ImageService interface {
-	CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error)
-	GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error)
-	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
+type ProductSnapshotReader interface {
+	GetProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error)
+}
+
+// VersionedProductSnapshotReader lets task creation pin the immutable catalog
+// version that asynchronous processing must later read.
+type VersionedProductSnapshotReader interface {
+	GetPublishedProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.PublishedSnapshot, error)
+}
+
+type ApprovedAssetInventoryReader interface {
+	GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
 }
 
 type Repository interface {
@@ -45,7 +52,14 @@ type Repository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, product *canonical.Product, image *productimage.ImageProcessResult) *AmazonListingDraft
+	Build(input DraftInput) (*AmazonListingDraft, error)
+}
+
+type DraftInput struct {
+	TaskID         string
+	Request        *GenerateRequest
+	Snapshot       catalog.ProductSnapshot
+	ApprovedAssets productasset.ApprovedAssetInventory
 }
 
 type ValidationReport struct {

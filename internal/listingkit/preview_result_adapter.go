@@ -1,9 +1,9 @@
 package listingkit
 
 import (
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
 	previewdomain "task-processor/internal/listing/preview"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 type listingKitPreviewProjection struct {
@@ -15,13 +15,8 @@ type listingKitPreviewProjection struct {
 }
 
 type listingKitPreviewProjectionAttachment struct {
-	catalog             *catalog.Product
-	assets              *asset.Bundle
-	assetInventory      *asset.InventorySummary
-	assetRenderPreviews []AssetRenderPreview
-	platformPreviews    []PlatformAssetRenderPreviews
-	generationQueue     *GenerationWorkQueue
-	generationOverview  *AssetGenerationOverview
+	catalog        *catalog.ProductSnapshot
+	approvedAssets *productasset.ApprovedAssetInventory
 }
 
 func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listingKitPreviewProjection {
@@ -56,8 +51,7 @@ func adaptPreviewDomainResultProjection(
 		needsReview: domainProjection.NeedsReview,
 		attachment: listingKitPreviewProjectionAttachment{
 			catalog:        adaptPreviewDomainCatalog(domainProjection.Attachment),
-			assets:         adaptPreviewDomainAssets(domainProjection.Attachment),
-			assetInventory: adaptPreviewDomainAssetInventory(domainProjection.Attachment),
+			approvedAssets: adaptPreviewDomainApprovedAssets(domainProjection.Attachment),
 		},
 		revisionMeta:    adaptPreviewDomainRevisionHistoryMeta(domainProjection.RevisionHistoryMeta),
 		revisionHistory: buildRevisionHistoryPreviewItems(revisionHistory),
@@ -66,10 +60,6 @@ func adaptPreviewDomainResultProjection(
 		return projection
 	}
 	projection.overview = adaptPreviewDomainHeaderWithLegacyPlatformCards(domainProjection.Overview, readProjection.PlatformCards)
-	projection.attachment.assetRenderPreviews = readProjection.AssetRenderPreviews
-	projection.attachment.platformPreviews = readProjection.PlatformAssetRenderPreviews
-	projection.attachment.generationQueue = readProjection.AssetGenerationQueue
-	projection.attachment.generationOverview = readProjection.AssetGenerationOverview
 	return projection
 }
 
@@ -80,12 +70,7 @@ func applyListingKitPreviewProjection(preview *ListingKitPreview, projection lis
 	preview.Overview = projection.overview
 	preview.NeedsReview = projection.needsReview
 	preview.Catalog = projection.attachment.catalog
-	preview.Assets = projection.attachment.assets
-	preview.AssetInventory = projection.attachment.assetInventory
-	preview.AssetRenderPreviews = projection.attachment.assetRenderPreviews
-	preview.PlatformAssetRenderPreviews = projection.attachment.platformPreviews
-	preview.AssetGenerationQueue = projection.attachment.generationQueue
-	preview.AssetGenerationOverview = projection.attachment.generationOverview
+	preview.ApprovedAssetInventory = cloneApprovedAssetInventory(projection.attachment.approvedAssets)
 	preview.RevisionHistoryMeta = projection.revisionMeta
 	preview.RevisionHistory = projection.revisionHistory
 }

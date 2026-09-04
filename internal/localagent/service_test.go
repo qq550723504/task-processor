@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"task-processor/internal/product/sourcing"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 )
 
 const offerURL = "https://detail.1688.com/offer/1052008074197.html"
@@ -111,7 +111,7 @@ func TestServiceRejectsOversizedSnapshotAndKeepsClaimActive(t *testing.T) {
 	require.NoError(t, err)
 	claim, err := service.Claim(actor)
 	require.NoError(t, err)
-	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcea1688.Alibaba1688ProductSnapshot{
 		ID: "1052008074197", URL: offerURL, Title: strings.Repeat("x", maxSnapshotBytes),
 	})
 	require.ErrorIs(t, err, ErrSnapshotTooLarge)
@@ -141,7 +141,7 @@ func TestServiceRejectsSnapshotMissingCrawlerRequiredFacts(t *testing.T) {
 	claim, err := service.Claim(actor)
 	require.NoError(t, err)
 
-	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcea1688.Alibaba1688ProductSnapshot{
 		ID: "1052008074197", Title: "shirt", URL: offerURL,
 	})
 	require.ErrorIs(t, err, ErrSnapshotInvalid)
@@ -150,28 +150,28 @@ func TestServiceRejectsSnapshotMissingCrawlerRequiredFacts(t *testing.T) {
 func TestServiceRejectsMalformedOptionalAssetURLs(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+		mutate func(*sourcea1688.Alibaba1688ProductSnapshot)
 	}{
-		{name: "gallery image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "gallery image", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.Images = []string{"not-a-url"}
 		}},
-		{name: "hostless optional image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Image: "https:///.jpg"}}
+		{name: "hostless optional image", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.Variants = []sourcea1688.Alibaba1688VariantSnapshot{{Image: "https:///.jpg"}}
 		}},
-		{name: "video URL", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.Videos = []sourcing.Alibaba1688VideoSnapshot{{VideoURL: "not-a-url"}}
+		{name: "video URL", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.Videos = []sourcea1688.Alibaba1688VideoSnapshot{{VideoURL: "not-a-url"}}
 		}},
-		{name: "video cover", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.Videos = []sourcing.Alibaba1688VideoSnapshot{{CoverURL: "not-a-url"}}
+		{name: "video cover", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.Videos = []sourcea1688.Alibaba1688VideoSnapshot{{CoverURL: "not-a-url"}}
 		}},
-		{name: "detail image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.ProductDetails = []sourcing.Alibaba1688ProductDetailSnapshot{{Images: []string{"not-a-url"}}}
+		{name: "detail image", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.ProductDetails = []sourcea1688.Alibaba1688ProductDetailSnapshot{{Images: []string{"not-a-url"}}}
 		}},
-		{name: "variant image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Image: "not-a-url"}}
+		{name: "variant image", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.Variants = []sourcea1688.Alibaba1688VariantSnapshot{{Image: "not-a-url"}}
 		}},
-		{name: "package image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{PackageImages: []string{"not-a-url"}}
+		{name: "package image", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.PackInfo = &sourcea1688.Alibaba1688PackInfoSnapshot{PackageImages: []string{"not-a-url"}}
 		}},
 	}
 
@@ -195,15 +195,15 @@ func TestServiceRejectsMalformedOptionalAssetURLs(t *testing.T) {
 func TestServiceRejectsImpossibleOptionalSupplierNumbers(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+		mutate func(*sourcea1688.Alibaba1688ProductSnapshot)
 	}{
-		{name: "negative years in business", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "negative years in business", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.Supplier.YearsInBusiness = -1
 		}},
-		{name: "supplier rating above maximum", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "supplier rating above maximum", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.Supplier.Rating = 5.1
 		}},
-		{name: "response rate above maximum", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "response rate above maximum", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.Supplier.ResponseRate = 100.1
 		}},
 	}
@@ -260,7 +260,7 @@ func TestServiceValidatesSnapshotOutsideGlobalLock(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	snapshot := validSnapshot()
-	snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Attributes: map[string]any{
+	snapshot.Variants = []sourcea1688.Alibaba1688VariantSnapshot{{Attributes: map[string]any{
 		"Color": blockingJSONValue{started: started, release: release},
 	}}}
 	submitDone := make(chan error, 1)
@@ -305,15 +305,15 @@ func (v blockingJSONValue) MarshalJSON() ([]byte, error) {
 func TestServiceRejectsImpossibleProductNumbers(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+		mutate func(*sourcea1688.Alibaba1688ProductSnapshot)
 	}{
-		{name: "negative sales volume", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "negative sales volume", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.SalesVolume = -1
 		}},
-		{name: "negative review count", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "negative review count", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.ReviewCount = -1
 		}},
-		{name: "product rating above maximum", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "product rating above maximum", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.Rating = 99
 		}},
 	}
@@ -338,13 +338,13 @@ func TestServiceRejectsImpossibleProductNumbers(t *testing.T) {
 func TestServiceRejectsImpossibleVariantNumbers(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+		mutate func(*sourcea1688.Alibaba1688ProductSnapshot)
 	}{
-		{name: "negative stock", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Stock: -1}}
+		{name: "negative stock", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.Variants = []sourcea1688.Alibaba1688VariantSnapshot{{Stock: -1}}
 		}},
-		{name: "negative price", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Price: -1}}
+		{name: "negative price", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.Variants = []sourcea1688.Alibaba1688VariantSnapshot{{Price: -1}}
 		}},
 	}
 
@@ -376,7 +376,7 @@ func TestServiceRejectsReservedVariantNumericAttributes(t *testing.T) {
 			require.NoError(t, err)
 
 			snapshot := validSnapshot()
-			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Attributes: map[string]any{key: "invalid"}}}
+			snapshot.Variants = []sourcea1688.Alibaba1688VariantSnapshot{{Attributes: map[string]any{key: "invalid"}}}
 			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
 			require.ErrorIs(t, err, ErrSnapshotInvalid)
 		})
@@ -386,16 +386,16 @@ func TestServiceRejectsReservedVariantNumericAttributes(t *testing.T) {
 func TestServiceRejectsNonFiniteSnapshotNumbersAsInvalid(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+		mutate func(*sourcea1688.Alibaba1688ProductSnapshot)
 	}{
-		{name: "minimum price", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "minimum price", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.MinPrice = math.NaN()
 		}},
-		{name: "maximum price", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+		{name: "maximum price", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
 			snapshot.MaxPrice = math.Inf(1)
 		}},
-		{name: "package weight", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
-			snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{Weight: math.NaN()}
+		{name: "package weight", mutate: func(snapshot *sourcea1688.Alibaba1688ProductSnapshot) {
+			snapshot.PackInfo = &sourcea1688.Alibaba1688PackInfoSnapshot{Weight: math.NaN()}
 		}},
 	}
 
@@ -423,13 +423,13 @@ func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
 	require.NoError(t, err)
 	claim, err := service.Claim(actor)
 	require.NoError(t, err)
-	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt"})
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcea1688.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt"})
 	require.ErrorIs(t, err, ErrInvalidURL)
 	require.ErrorIs(t, err, ErrSnapshotInvalid)
-	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt", URL: "https://detail.1688.com/offer/999.html"})
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcea1688.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt", URL: "https://detail.1688.com/offer/999.html"})
 	require.ErrorIs(t, err, ErrInvalidURL)
 	require.ErrorIs(t, err, ErrSnapshotInvalid)
-	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "999", Title: "shirt", URL: offerURL})
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcea1688.Alibaba1688ProductSnapshot{ID: "999", Title: "shirt", URL: offerURL})
 	require.ErrorIs(t, err, ErrInvalidClaim)
 	require.ErrorIs(t, err, ErrSnapshotInvalid)
 }
@@ -621,14 +621,14 @@ func newMutableClock(value time.Time) *mutableClock { return &mutableClock{value
 func (c *mutableClock) Now() time.Time              { return c.value }
 func (c *mutableClock) Advance(delta time.Duration) { c.value = c.value.Add(delta) }
 
-func validSnapshot() *sourcing.Alibaba1688ProductSnapshot {
-	return &sourcing.Alibaba1688ProductSnapshot{
+func validSnapshot() *sourcea1688.Alibaba1688ProductSnapshot {
+	return &sourcea1688.Alibaba1688ProductSnapshot{
 		ID:               "1052008074197",
 		Title:            "shirt",
 		URL:              offerURL,
 		MainImage:        "https://img.1688.com/product.jpg",
 		MinPrice:         12.5,
 		MinOrderQuantity: 1,
-		Supplier:         sourcing.Alibaba1688SupplierSnapshot{Name: "Acme"},
+		Supplier:         sourcea1688.Alibaba1688SupplierSnapshot{Name: "Acme"},
 	}
 }

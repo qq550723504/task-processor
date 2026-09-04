@@ -127,6 +127,12 @@ func pricingCacheReviewSKUKey(item SKUPriceReview) string {
 }
 
 func pricingCacheSKUAlias(value string) string {
+	return normalizePricingSKUIdentity(value)
+}
+
+// normalizePricingSKUIdentity returns the stable product identity used to
+// reconcile cached prices across regenerated publishing SKUs.
+func normalizePricingSKUIdentity(value string) string {
 	value = strings.TrimSpace(strings.ToUpper(value))
 	if value == "" {
 		return ""
@@ -134,5 +140,51 @@ func pricingCacheSKUAlias(value string) string {
 	if index := strings.Index(value, "-V"); index > 0 {
 		return strings.TrimSpace(value[:index])
 	}
-	return StudioPricingSKUAlias(value)
+	parts := strings.Split(value, "-")
+	stableParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if isTransientPricingTaskDiscriminator(part) || isTransientPricingRequestDiscriminator(part) {
+			continue
+		}
+		stableParts = append(stableParts, part)
+	}
+	identity := strings.Join(stableParts, "-")
+	if index := strings.LastIndex(identity, "-"); index > 0 {
+		suffix := strings.TrimSpace(identity[index+1:])
+		prefix := strings.TrimSpace(identity[:index])
+		if len(suffix) == 8 && strings.ContainsAny(prefix, "0123456789") && isUpperAlphaNumeric(suffix) {
+			return prefix
+		}
+	}
+	return identity
+}
+
+func isTransientPricingTaskDiscriminator(value string) bool {
+	return len(value) == 9 && value[0] == 'T' && isUpperHex(value[1:])
+}
+
+func isTransientPricingRequestDiscriminator(value string) bool {
+	return len(value) >= 6 && len(value) <= 9 && value[0] == 'R' && isUpperAlphaNumeric(value[1:])
+}
+
+func isUpperHex(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !((r >= '0' && r <= '9') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isUpperAlphaNumeric(value string) bool {
+	for _, r := range value {
+		if !((r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z')) {
+			return false
+		}
+	}
+	return true
 }

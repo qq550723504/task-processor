@@ -10,8 +10,7 @@ func TestBuildTaskResultProjectionIncludesTerminalLifecycleAndReviewState(t *tes
 	t.Parallel()
 
 	now := time.Now().UTC()
-	task := &Task{
-		Status:    core.TaskStatusNeedsReview,
+	task := &Task{TenantID: "tenant-test", Status: core.TaskStatusNeedsReview,
 		Error:     "legacy error",
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,

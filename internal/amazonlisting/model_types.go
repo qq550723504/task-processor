@@ -6,13 +6,14 @@ import (
 	"errors"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
 	amazonmodel "task-processor/internal/marketplace/amazon/model"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/shared/aiidentity"
 )
 
 var ErrTaskNotFound = errors.New("task not found")
 var ErrTaskNotPending = errors.New("task is not pending")
+var ErrProductSnapshotNotReady = errors.New("product snapshot is not ready")
 
 type TaskStatus = amazonmodel.TaskStatus
 
@@ -29,17 +30,13 @@ type GenerateRequest struct {
 	Marketplace        string           `json:"marketplace"`
 	Country            string           `json:"country,omitempty"`
 	Language           string           `json:"language,omitempty"`
-	ImageURLs          []string         `json:"image_urls,omitempty"`
-	Text               string           `json:"text,omitempty"`
-	ProductURL         string           `json:"product_url,omitempty"`
+	ProductKey         string           `json:"product_key"`
 	TargetCategoryHint string           `json:"target_category_hint,omitempty"`
 	BrandHint          string           `json:"brand_hint,omitempty"`
 	Options            *GenerateOptions `json:"options,omitempty"`
 }
 
 type GenerateOptions struct {
-	ProcessImages    bool `json:"process_images"`
-	PublishImages    bool `json:"publish_images"`
 	StrictValidation bool `json:"strict_validation"`
 }
 
@@ -70,6 +67,7 @@ type Task struct {
 	CreatedAt                             time.Time           `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt                             time.Time           `json:"updated_at" gorm:"autoUpdateTime"`
 	RetryCount                            int                 `json:"retry_count" gorm:"default:0"`
+	SourceSnapshotVersion                 uint64              `json:"source_snapshot_version,omitempty" gorm:"index"`
 }
 
 func (t *Task) ExecutionEnvelope() (aiidentity.ExecutionEnvelope, error) {
@@ -99,7 +97,6 @@ type TaskWorkbench = amazonmodel.TaskWorkbench
 type TaskQueueQuery = amazonmodel.TaskQueueQuery
 type TaskQueueResult = amazonmodel.TaskQueueResult
 type ReviewItemSummary = amazonmodel.ReviewItemSummary
-type ChildTaskState = amazonmodel.ChildTaskState
 type WorkbenchActionBox = amazonmodel.WorkbenchActionBox
 
 type AmazonListingDraft struct {
@@ -126,30 +123,21 @@ type AmazonListingDraft struct {
 	Images             *AmazonImageBundle      `json:"images,omitempty"`
 	Pricing            *AmazonPricingDraft     `json:"pricing,omitempty"`
 	Compliance         *AmazonComplianceReport `json:"compliance,omitempty"`
-	IPRisk             *IPRiskReport           `json:"ip_risk,omitempty"`
 	ListingIPRisk      *IPRiskReport           `json:"listing_ip_risk,omitempty"`
 	Review             *AmazonReviewReport     `json:"review,omitempty"`
 	Export             *AmazonListingExport    `json:"export,omitempty"`
 	Submission         *AmazonSubmissionReport `json:"submission,omitempty"`
 	LastAmazonIssues   []AmazonIssue           `json:"last_amazon_issues,omitempty"`
 	FixHistory         []AmazonFixRecord       `json:"fix_history,omitempty"`
-	ProductTaskID      string                  `json:"product_task_id,omitempty"`
-	ProductImageTaskID string                  `json:"product_image_task_id,omitempty"`
-	CanonicalProduct   *canonical.Product      `json:"canonical_product,omitempty"`
-	ChildTasks         []ChildTaskState        `json:"child_tasks,omitempty"`
 	ReviewItems        []AmazonReviewItem      `json:"review_items,omitempty"`
 	CreatedAt          time.Time               `json:"created_at"`
 	UpdatedAt          time.Time               `json:"updated_at"`
 }
 
 type AmazonSourceTrace struct {
-	InputTextProvided bool              `json:"input_text_provided"`
-	InputImageCount   int               `json:"input_image_count"`
-	ProductURL        string            `json:"product_url,omitempty"`
-	ScrapedTitle      string            `json:"scraped_title,omitempty"`
-	ScrapedPrice      float64           `json:"scraped_price,omitempty"`
-	ScrapedSpecs      map[string]string `json:"scraped_specs,omitempty"`
-	UsedImageSources  []string          `json:"used_image_sources,omitempty"`
+	ProductKey       string                 `json:"product_key"`
+	SnapshotSources  []catalog.SourceRecord `json:"snapshot_sources,omitempty"`
+	ApprovedAssetIDs []string               `json:"approved_asset_ids,omitempty"`
 }
 
 type AmazonDimensions struct {
@@ -187,10 +175,9 @@ type AmazonVariantDraft struct {
 }
 
 type AmazonImageBundle struct {
-	MainImage      string   `json:"main_image,omitempty"`
-	WhiteBgImage   string   `json:"white_bg_image,omitempty"`
-	GalleryImages  []string `json:"gallery_images,omitempty"`
-	RawInputImages []string `json:"raw_input_images,omitempty"`
+	MainImage     string   `json:"main_image,omitempty"`
+	WhiteBgImage  string   `json:"white_bg_image,omitempty"`
+	GalleryImages []string `json:"gallery_images,omitempty"`
 }
 
 type AmazonPricingDraft struct {

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"path/filepath"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -10,8 +9,6 @@ import (
 
 	"task-processor/internal/core/config"
 	listingkitstore "task-processor/internal/listingkit/store"
-
-	"github.com/sirupsen/logrus"
 )
 
 func TestShouldAutoMigrateListingKitRuntimeDefaultsTrue(t *testing.T) {
@@ -104,63 +101,13 @@ func TestRepositorySchemaBootstrapperRunsMigrationOncePerDatabase(t *testing.T) 
 	}
 }
 
-func TestBuildListingKitTaskRepositoryFallsBackToInMemoryWithoutDatabase(t *testing.T) {
+func TestBuildPersistentRepositoriesRejectsMissingDatabaseConfiguration(t *testing.T) {
 	t.Parallel()
 
-	repo, closers, err := BuildListingKitTaskRepository(&config.Config{}, logrus.New())
-	if err != nil {
-		t.Fatalf("BuildListingKitTaskRepository() error = %v", err)
-	}
-	if repo == nil {
-		t.Fatal("expected in-memory task repository")
-	}
-	if len(closers) != 0 {
-		t.Fatalf("closers = %d, want 0", len(closers))
-	}
-}
-
-func TestBuildListingAdminStoreRepositoryDisablesWithoutDatabase(t *testing.T) {
-	t.Parallel()
-
-	repo, closers, err := BuildListingAdminStoreRepository(&config.Config{}, logrus.New())
-	if err != nil {
-		t.Fatalf("BuildListingAdminStoreRepository() error = %v", err)
-	}
-	if repo != nil {
-		t.Fatal("expected store admin repository to remain disabled without database")
-	}
-	if len(closers) != 0 {
-		t.Fatalf("closers = %d, want 0", len(closers))
-	}
-}
-
-func TestBuildListingSubscriptionRepositoryFallsBackToInMemoryWithoutDatabase(t *testing.T) {
-	t.Parallel()
-
-	repo, closers, err := BuildListingSubscriptionRepository(&config.Config{}, logrus.New())
-	if err != nil {
-		t.Fatalf("BuildListingSubscriptionRepository() error = %v", err)
-	}
-	if repo == nil {
-		t.Fatal("expected in-memory listing subscription repository")
-	}
-	if len(closers) != 0 {
-		t.Fatalf("closers = %d, want 0", len(closers))
-	}
-}
-
-func TestBuildListingAdminImportTaskRepositoryDisablesWithoutDatabase(t *testing.T) {
-	t.Parallel()
-
-	repo, closers, err := BuildListingAdminImportTaskRepository(&config.Config{}, logrus.New())
-	if err != nil {
-		t.Fatalf("BuildListingAdminImportTaskRepository() error = %v", err)
-	}
-	if repo != nil {
-		t.Fatal("expected import task admin repository to remain disabled without database")
-	}
-	if len(closers) != 0 {
-		t.Fatalf("closers = %d, want 0", len(closers))
+	for _, database := range []*config.DatabaseConfig{nil, {}} {
+		if repositories, closer, err := BuildPersistentRepositories(database, nil); err == nil || closer != nil || repositories.Core.Task != nil {
+			t.Fatalf("BuildPersistentRepositories(%#v) = %#v/%T/%v, want fail closed", database, repositories, closer, err)
+		}
 	}
 }
 
@@ -204,33 +151,17 @@ func TestLegacyTenantResolverDatabaseConfigsEnumeratesCandidateDatabases(t *test
 	}
 }
 
-func TestShouldUseS3ImageUploadStoreMatchesConfiguredProvider(t *testing.T) {
-	t.Parallel()
-
-	if shouldUseS3ImageUploadStore(nil) {
-		t.Fatal("expected nil config to skip s3 image upload store")
-	}
-	if shouldUseS3ImageUploadStore(&config.Config{}) {
-		t.Fatal("expected blank provider to skip s3 image upload store")
-	}
-	if !shouldUseS3ImageUploadStore(&config.Config{ProductImage: config.ProductImageConfig{Publisher: config.ProductImagePublisherConfig{Provider: " S3 "}}}) {
-		t.Fatal("expected s3 provider to enable s3 image upload store")
-	}
-}
-
-func TestLocalImageUploadRootDirUsesPublisherOutputDir(t *testing.T) {
+func TestLocalImageUploadRootDirUsesListingKitOwnedRoot(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		ProductImage: config.ProductImageConfig{
-			Publisher: config.ProductImagePublisherConfig{
-				OutputDir: filepath.Join("tmp", "publisher"),
-			},
-		},
+		ListingKit: config.ListingKitConfig{ImageUpload: config.ListingKitImageUploadConfig{
+			Local: config.ListingKitImageUploadLocalConfig{RootDir: "listingkit-owned-root"},
+		}},
 	}
 
 	got := localImageUploadRootDir(cfg)
-	want := filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+	want := cfg.ListingKit.ImageUpload.Local.RootDir
 	if got != want {
 		t.Fatalf("root dir = %q, want %q", got, want)
 	}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sdsdesign "task-processor/internal/sds/design"
 	sdstemplate "task-processor/internal/sds/template"
 	"task-processor/internal/sdslogin"
@@ -253,9 +253,9 @@ func TestGetSDSBaselineReadinessReturnsCachedWhenValidationUnknown(t *testing.T)
 		VariantID:          101,
 		SelectedVariantIDs: []int64{101},
 	}
-	payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Baseline Product"})
+	payload, err := newSDSBaselineCanonicalProductPayload(&canonical.Product{Title: "Baseline Product"})
 	if err != nil {
-		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+		t.Fatalf("newSDSBaselineCanonicalProductPayload: %v", err)
 	}
 	if err := cacheRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
 		BaselineKey:          SDSBaselineKeyFromOptions(DefaultTenantID, query.BaselineOptions()),

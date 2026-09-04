@@ -517,7 +517,7 @@ func TestSubmitTaskBlocksSharedSingleImageAcrossMultipleSKCs(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	task.Request.Options = &GenerateOptions{
-		SheinStudio: &SheinStudioOptions{},
+		SDS: &SDSSyncOptions{},
 	}
 	mainImage := "https://oss.shuomiai.com/listingkit/shared-main.png"
 	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{

@@ -8,6 +8,7 @@ import {
 function valuesFor(platforms: string[], sheinStoreId: string) {
   return {
     ...buildTaskCreateDefaultValues({ variant: "default" }),
+    productKey: "catalog-product-1",
     text: "Canvas tote",
     platforms,
     sheinStoreId,

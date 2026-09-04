@@ -24,7 +24,7 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "demo",
 			Platforms: []string{"shein"},
 			Country:   "GB",
@@ -110,7 +110,7 @@ func TestGetTaskPreviewDoesNotExposeStoreResolutionFallback(t *testing.T) {
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "demo",
 			Platforms: []string{"shein"},
 			Country:   "GB",
@@ -218,7 +218,7 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
-		Request: &GenerateRequest{
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:         "cookie blocker demo",
 			Platforms:    []string{"shein"},
 			Country:      "US",

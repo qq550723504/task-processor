@@ -1,0 +1,170 @@
+package listingkit
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"testing"
+
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
+)
+
+type approvedAssetReaderFunc func(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
+
+func (f approvedAssetReaderFunc) GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+	return f(ctx, scope)
+}
+
+func TestWorkflowRequiresApprovedAssets(t *testing.T) {
+	wantScope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		if !reflect.DeepEqual(scope, wantScope) {
+			t.Fatalf("scope = %+v, want %+v", scope, wantScope)
+		}
+		return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
+	})}
+
+	_, err := phase.run(context.Background(), wantScope)
+	if !errors.Is(err, productasset.ErrApprovedAssetsNotReady) {
+		t.Fatalf("run() error = %v, want ErrApprovedAssetsNotReady", err)
+	}
+}
+
+func TestWorkflowRejectsApprovedGalleryWithoutMain(t *testing.T) {
+	scope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		return productasset.ApprovedAssetInventory{
+			Scope: scope,
+			Assets: []productasset.ApprovedAsset{{
+				ID: "gallery-1", Role: productasset.RoleGallery, URL: "https://cdn.example/gallery.png",
+			}},
+		}, nil
+	})}
+
+	_, err := phase.run(context.Background(), scope)
+	if !errors.Is(err, productasset.ErrApprovedAssetsNotReady) {
+		t.Fatalf("run() error = %v, want ErrApprovedAssetsNotReady", err)
+	}
+}
+
+func TestWorkflowReadsApprovedMainWithoutSourceFallback(t *testing.T) {
+	scope := productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}
+	want := productasset.ApprovedAssetInventory{
+		Scope: scope,
+		Assets: []productasset.ApprovedAsset{{
+			ID: "main-1", Role: productasset.RoleMain, URL: "https://cdn.example/main.png", Operations: []string{"approved"},
+		}},
+	}
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(context.Context, productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		return want, nil
+	})}
+
+	got, err := phase.run(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("run() = %+v, want %+v", got, want)
+	}
+	got.Assets[0].Operations[0] = "mutated"
+	if want.Assets[0].Operations[0] != "approved" {
+		t.Fatalf("reader inventory mutated through result: %+v", want)
+	}
+}
+
+func TestWorkflowRetainsEverySelectedPlatformInventory(t *testing.T) {
+	mainAmazon := productasset.ApprovedAsset{ID: "amazon-main", Role: productasset.RoleMain, URL: "https://cdn.example/amazon.png"}
+	mainShein := productasset.ApprovedAsset{ID: "shein-main", Role: productasset.RoleMain, URL: "https://cdn.example/shein.png"}
+	var scopes []productasset.InventoryScope
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		scopes = append(scopes, scope)
+		assets := []productasset.ApprovedAsset{mainAmazon}
+		if scope.TargetPlatform == "shein" {
+			assets = []productasset.ApprovedAsset{mainShein}
+		}
+		return productasset.ApprovedAssetInventory{Scope: scope, Assets: assets}, nil
+	})}
+
+	inventories, err := phase.runForPlatforms(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}, []string{"amazon", "shein"})
+
+	if err != nil {
+		t.Fatalf("runForPlatforms() error = %v", err)
+	}
+	if !reflect.DeepEqual(scopes, []productasset.InventoryScope{
+		{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "amazon"},
+		{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "shein"},
+	}) {
+		t.Fatalf("scopes = %+v, want one scoped read per selected platform", scopes)
+	}
+	if !reflect.DeepEqual(inventories["amazon"].Assets, []productasset.ApprovedAsset{mainAmazon}) || !reflect.DeepEqual(inventories["shein"].Assets, []productasset.ApprovedAsset{mainShein}) {
+		t.Fatalf("inventories = %+v, want target-specific assets", inventories)
+	}
+}
+
+func TestRunForPlatformsRetainsTargetKeyedInventories(t *testing.T) {
+	phase := standardWorkflowAssetPhase{approvedAssets: approvedAssetReaderFunc(func(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+		return productasset.ApprovedAssetInventory{
+			Scope: scope,
+			Assets: []productasset.ApprovedAsset{{
+				ID: scope.TargetPlatform + "-main", Role: productasset.RoleMain,
+				URL: "https://cdn.example.test/" + scope.TargetPlatform + ".png",
+			}},
+		}, nil
+	})}
+
+	inventories, err := phase.runForPlatforms(context.Background(), productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"}, []string{"amazon", "shein"})
+
+	if err != nil {
+		t.Fatalf("runForPlatforms() error = %v", err)
+	}
+	want := map[string]productasset.ApprovedAssetInventory{
+		"amazon": {
+			Scope:  productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "amazon"},
+			Assets: []productasset.ApprovedAsset{{ID: "amazon-main", Role: productasset.RoleMain, URL: "https://cdn.example.test/amazon.png"}},
+		},
+		"shein": {
+			Scope:  productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "shein"},
+			Assets: []productasset.ApprovedAsset{{ID: "shein-main", Role: productasset.RoleMain, URL: "https://cdn.example.test/shein.png"}},
+		},
+	}
+	if !reflect.DeepEqual(inventories, want) {
+		t.Fatalf("inventories = %+v, want %+v", inventories, want)
+	}
+}
+
+func TestAssemblerUsesOnlyApprovedAssetImages(t *testing.T) {
+	snapshot := catalog.ProductSnapshot{
+		Title:  "Bottle",
+		Images: []catalog.Image{{URL: "https://source.example/source.png", Role: "main"}},
+		Variants: []catalog.Variant{{
+			SKU: "SKU-1", Images: []catalog.Image{{URL: "https://source.example/variant.png"}},
+		}},
+	}
+	inventory := productasset.ApprovedAssetInventory{
+		Scope: productasset.InventoryScope{TenantID: "tenant-a", ProductKey: "product-1"},
+		Assets: []productasset.ApprovedAsset{
+			{ID: "gallery-1", Role: productasset.RoleGallery, URL: "https://cdn.example/gallery.png"},
+			{ID: "main-1", Role: productasset.RoleMain, URL: "https://cdn.example/main.png"},
+		},
+	}
+	task := &Task{TenantID: "tenant-a", Request: &GenerateRequest{ProductKey: "product-1"}}
+
+	result, err := NewAssembler(nil).Assemble(task, &snapshot, &inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.CanonicalProduct == nil {
+		t.Fatal("canonical product = nil")
+	}
+	if len(result.CanonicalProduct.Images) != 2 {
+		t.Fatalf("canonical images = %#v, want approved projection", result.CanonicalProduct.Images)
+	}
+	if result.CanonicalProduct.Images[0].URL != "https://cdn.example/main.png" || result.CanonicalProduct.Images[0].Role != string(productasset.RoleMain) {
+		t.Fatalf("canonical main = %#v, want approved main", result.CanonicalProduct.Images[0])
+	}
+	if result.CanonicalProduct.Images[1].URL != "https://cdn.example/gallery.png" || result.CanonicalProduct.Images[1].Role != string(productasset.RoleGallery) {
+		t.Fatalf("canonical gallery = %#v, want approved gallery", result.CanonicalProduct.Images[1])
+	}
+}

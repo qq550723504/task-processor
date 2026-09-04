@@ -4,11 +4,13 @@ import { ApiError } from "@/lib/api/api-error";
 import type {
   ImageAgentPlan,
   ImageAgentProjection,
-  ImageAgentWorkspaceAssets,
+  ImageAgentTaskLaunchInput,
+  ImageAgentTaskLaunchResult,
+  ImageAgentTaskAssetsResponse,
 } from "@/lib/types/image-agent";
 
 const imageAgentBffBase = "/api/listing-kits/image-agent/runs";
-const listingKitTaskBffBase = "/api/listing-kits/tasks";
+const imageAgentTaskRunsBffBase = "/api/listing-kits/image-agent/task-runs";
 
 const slotRoleSchema = z.enum([
   "main",
@@ -168,25 +170,25 @@ export function parseImageAgentProjection(payload: unknown): ImageAgentProjectio
   return projectionSchema.parse(payload) as ImageAgentProjection;
 }
 
+export async function launchImageAgentTaskRun(
+  input: ImageAgentTaskLaunchInput,
+  signal?: AbortSignal,
+): Promise<ImageAgentTaskLaunchResult> {
+  return imageAgentRequest("", { method: "POST", body: input, signal }, imageAgentTaskRunsBffBase);
+}
+
+export async function getImageAgentTaskAssets(
+  businessTaskId: string,
+  targetPlatform: string,
+  signal?: AbortSignal,
+): Promise<ImageAgentTaskAssetsResponse> {
+  const search = `?business_task_id=${encodeURIComponent(businessTaskId.trim())}&target_platform=${encodeURIComponent(targetPlatform.trim())}`;
+  return imageAgentRequest(`assets${search}`, { signal }, imageAgentTaskRunsBffBase);
+}
+
 export async function getImageAgentRun(runId: string, signal?: AbortSignal) {
 	const payload = await imageAgentRequest<unknown>(encodeId(runId), { signal });
   return parseImageAgentProjection(payload);
-}
-
-const workspaceAssetsSchema = z.object({
-  target_platform: z.string().optional(),
-  source_assets: z.array(z.object({ id: z.string(), label: z.string(), display_url: z.string() }).passthrough()),
-  style_candidates: z.array(z.object({ id: z.string(), label: z.string(), display_url: z.string() }).passthrough()),
-}).passthrough();
-
-export async function getImageAgentWorkspaceAssets(taskId: string, targetPlatform?: string, signal?: AbortSignal): Promise<ImageAgentWorkspaceAssets> {
-  const search = targetPlatform?.trim() ? `?target_platform=${encodeURIComponent(targetPlatform.trim())}` : "";
-  const payload = await listingKitTaskRequest<unknown>(`${encodeId(taskId)}/image-agent-assets${search}`, { signal });
-  return workspaceAssetsSchema.parse(payload) as ImageAgentWorkspaceAssets;
-}
-
-export function createImageAgentWorkspaceRun(taskId: string, input: { target_platform?: string; source_asset_id: string; style_asset_ids: string[] }, signal?: AbortSignal) {
-  return listingKitTaskRequest<{ run_id: string; status: "accepted" }>(`${encodeId(taskId)}/image-agent-runs`, { method: "POST", body: input, signal });
 }
 
 export function replaceImageAgentPlan(
@@ -274,9 +276,10 @@ async function command(
 async function imageAgentRequest<T>(
   path: string,
 	{ method = "GET", body, signal }: { method?: "GET" | "POST" | "PUT"; body?: unknown; signal?: AbortSignal } = {},
+  base: string = imageAgentBffBase,
 ): Promise<T> {
   const response = await fetch(
-    path ? `${imageAgentBffBase}/${path}` : imageAgentBffBase,
+    path ? `${base}/${path}` : base,
     {
       method,
       headers: {
@@ -299,24 +302,6 @@ async function imageAgentRequest<T>(
     typeof payload.message === "string"
       ? payload.message
       : `Image Agent request failed: ${response.status}`;
-  throw new ApiError(message, response.status, payload);
-}
-
-async function listingKitTaskRequest<T>(
-  path: string,
-  { method = "GET", body, signal }: { method?: "GET" | "POST"; body?: unknown; signal?: AbortSignal } = {},
-): Promise<T> {
-  const response = await fetch(`${listingKitTaskBffBase}/${path}`, {
-    method,
-    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  });
-  if (response.ok) return (await response.json()) as T;
-  const payload = await response.json().catch(() => null);
-  const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
-    ? payload.message
-    : `Image Agent workspace request failed: ${response.status}`;
   throw new ApiError(message, response.status, payload);
 }
 

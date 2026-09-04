@@ -161,10 +161,8 @@ func (s *Service) fetchFinishedProductImageURLsByProduct(ctx context.Context, in
 	accept := func(urls []string) bool {
 		return !s.renderedCandidateLooksBlank(ctx, urls, input.BlankDesignURL)
 	}
-	if urls := selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(list.Items, targetIDs, expectedMaterialName, accept, includeStaticGalleryImages); len(urls) > 0 {
-		return urls, observations, sensitiveWords
-	}
-	return selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(list.Items, targetIDs, expectedMaterialName, nil, includeStaticGalleryImages), observations, sensitiveWords
+	urls := selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(list.Items, targetIDs, expectedMaterialName, accept, includeStaticGalleryImages)
+	return urls, observations, sensitiveWords
 }
 
 func resolvedDesignVariantID(input PrepareSyncDesignInput, result *PrepareSyncDesignResult) int64 {

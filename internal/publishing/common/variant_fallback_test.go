@@ -3,7 +3,7 @@ package common
 import (
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func TestBuildVariantsFallsBackToColorAndSizeMatrix(t *testing.T) {

@@ -9,11 +9,11 @@ import (
 
 // AICategorySelectorHandler AI分类选择处理器
 type AICategorySelectorHandler struct {
-	openaiClient openaiClient.ChatCompleter
+	openaiClient openaiClient.TextChatCompleter
 }
 
 // NewAICategorySelectorHandler 创建新的AI分类选择处理器
-func NewAICategorySelectorHandler(client openaiClient.ChatCompleter) *AICategorySelectorHandler {
+func NewAICategorySelectorHandler(client openaiClient.TextChatCompleter) *AICategorySelectorHandler {
 	return &AICategorySelectorHandler{
 		openaiClient: client,
 	}

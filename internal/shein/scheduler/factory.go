@@ -6,8 +6,10 @@ import (
 
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
 	platformtask "task-processor/internal/platformtask"
@@ -26,9 +28,9 @@ import (
 )
 
 type schedulerRuntime interface {
-	platformbase.Runtime
 	platformtask.AutoPricingStoreConfigProvider
 	pricing.OperationStrategyProvider
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetRuntimeStoreService() listingruntime.StoreService
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
@@ -93,7 +95,7 @@ func NewSheinTaskFactory(
 		Dependencies{
 			CookieManager:  cookieManager,
 			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(runtimeProvider, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
-			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
+			FetcherBuilder: appfetcher.NewProductFetcherBuilder(runtimeProvider.GetRawJsonDataAdapter(), crawlSource),
 		},
 	)
 }
@@ -129,7 +131,6 @@ func NewSheinTaskFactoryWithDependencies(
 	rabbitmqClient *rabbitmq.Client,
 	deps Dependencies,
 ) *SheinTaskFactory {
-	_ = crawlSource
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:       "SHEIN",
 		Runtime:        runtimeProvider,

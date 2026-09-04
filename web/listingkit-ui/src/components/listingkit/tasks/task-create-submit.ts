@@ -17,6 +17,7 @@ export async function buildTaskCreateSubmission({
   values: FormValues;
 }) {
   const text = (values.text ?? "").trim();
+  const productKey = (values.productKey ?? "").trim();
   const imageUrls = values.imageUrls ?? "";
   const productUrl = (values.productUrl ?? "").trim();
   const parsedImageUrls = parseImageUrls(imageUrls);
@@ -25,10 +26,10 @@ export async function buildTaskCreateSubmission({
   );
   const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
 
-  if (!text && parsedImageUrls.length === 0 && !productUrl) {
+  if (!productKey) {
     return {
       ok: false as const,
-      message: "请至少提供商品标题、图片链接或商品链接中的一种。",
+      message: "必须选择商品中心中的商品。",
     };
   }
   if (targetsShein && sheinStoreId === undefined) {
@@ -78,6 +79,7 @@ export async function buildTaskCreateSubmission({
     ok: true as const,
     draft,
     request: {
+      product_key: productKey,
       text: draft.text,
       image_urls: parsedImageUrls,
       platforms: values.platforms,
@@ -100,6 +102,7 @@ function buildTaskCreateDraft({
   values: FormValues;
 }) {
   return {
+    productKey: values.productKey,
     text,
     imageUrls,
     productUrl,

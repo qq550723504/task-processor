@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -31,54 +30,40 @@ func BuildSheinPricingPolicy(cfg *config.Config) sheinpub.PricingPolicy {
 	}
 }
 
-func BuildImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {
+func BuildImageUploadStore(cfg *config.Config, logger *logrus.Logger) (listingkit.ImageUploadStore, error) {
 	if cfg == nil {
-		return nil
+		return nil, fmt.Errorf("listingkit.imageUpload configuration is required")
 	}
-	if shouldUseS3ImageUploadStore(cfg) {
-		primaryStore := buildS3ImageUploadStore(cfg, logger)
-		if primaryStore == nil {
-			return nil
-		}
-		fallbackStore := buildLocalImageUploadStore(cfg, logger)
-		store, err := listingkit.NewFallbackImageUploadStore(primaryStore, fallbackStore)
-		if err != nil {
-			logger.WithError(err).Warn("listingkit image upload store fallback unavailable")
-			return primaryStore
-		}
-		return store
+	switch strings.ToLower(strings.TrimSpace(cfg.ListingKit.ImageUpload.Provider)) {
+	case "local":
+		return buildLocalImageUploadStore(cfg)
+	case "s3":
+		return buildS3ImageUploadStore(cfg, logger)
+	default:
+		return nil, fmt.Errorf("listingkit.imageUpload.provider must be explicitly local or s3")
 	}
-	return buildLocalImageUploadStore(cfg, logger)
-}
-
-func shouldUseS3ImageUploadStore(cfg *config.Config) bool {
-	return cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.ProductImage.Publisher.Provider), "s3")
 }
 
 func localImageUploadRootDir(cfg *config.Config) string {
 	if cfg == nil {
 		return ""
 	}
-	return filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+	return cfg.ListingKit.ImageUpload.Local.RootDir
 }
 
-func buildLocalImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {
+func buildLocalImageUploadStore(cfg *config.Config) (listingkit.ImageUploadStore, error) {
 	rootDir := localImageUploadRootDir(cfg)
 	store, err := listingkit.NewLocalImageUploadStore(rootDir)
 	if err != nil {
-		if logger != nil {
-			logger.WithError(err).Warn("local listingkit image upload store unavailable")
-		}
-		return nil
+		return nil, fmt.Errorf("build listingkit.imageUpload local store: %w", err)
 	}
-	return store
+	return store, nil
 }
 
-func buildS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {
-	client, err := newProductImagePublisherS3Client(cfg)
+func buildS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) (listingkit.ImageUploadStore, error) {
+	client, err := newListingKitImageUploadS3Client(cfg)
 	if err != nil {
-		logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
-		return nil
+		return nil, err
 	}
 
 	var componentLogger *logrus.Entry
@@ -86,43 +71,49 @@ func buildS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingk
 		componentLogger = logrus.NewEntry(logger).WithField("component", "listingkit-s3")
 	}
 	uploader, err := s3integration.NewUploaderWithOptions(client, s3integration.UploaderOptions{
-		Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
-		PublicBase:   cfg.ProductImage.Publisher.PublicBase,
-		Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,
-		UsePathStyle: cfg.ProductImage.Publisher.S3.UsePathStyle,
+		Bucket:       cfg.ListingKit.ImageUpload.S3.Bucket,
+		PublicBase:   cfg.ListingKit.ImageUpload.S3.PublicBase,
+		Endpoint:     cfg.ListingKit.ImageUpload.S3.Endpoint,
+		UsePathStyle: cfg.ListingKit.ImageUpload.S3.UsePathStyle,
 		Logger:       s3integration.AdaptLogrus(componentLogger),
 	})
 	if err != nil {
-		if logger != nil {
-			logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
-		}
-		return nil
+		return nil, fmt.Errorf("build listingkit.imageUpload S3 uploader: %w", err)
 	}
 	store, err := listingkit.NewS3ImageUploadStore(listingkit.S3ImageUploadStoreConfig{
-		Bucket:   cfg.ProductImage.Publisher.S3.Bucket,
+		Bucket:   cfg.ListingKit.ImageUpload.S3.Bucket,
 		Uploader: uploader,
 		Reader:   client,
 	})
 	if err != nil {
-		logger.WithError(err).Warn("s3 listingkit image upload store unavailable")
-		return nil
+		return nil, fmt.Errorf("build listingkit.imageUpload S3 store: %w", err)
 	}
-	return store
+	return store, nil
 }
 
-func newProductImagePublisherS3Client(cfg *config.Config) (*s3.Client, error) {
+func newListingKitImageUploadS3Client(cfg *config.Config) (*s3.Client, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("config cannot be nil")
+		return nil, fmt.Errorf("listingkit.imageUpload configuration is required")
 	}
-	s3Cfg := cfg.ProductImage.Publisher.S3
+	s3Cfg := cfg.ListingKit.ImageUpload.S3
 	if strings.TrimSpace(s3Cfg.Bucket) == "" {
-		return nil, fmt.Errorf("productimage.publisher.s3.bucket cannot be empty")
+		return nil, fmt.Errorf("listingkit.imageUpload.s3.bucket cannot be empty")
 	}
-	return s3integration.NewClient(s3integration.ClientConfig{
+	if strings.TrimSpace(s3Cfg.Region) == "" {
+		return nil, fmt.Errorf("listingkit.imageUpload.s3.region cannot be empty")
+	}
+	if strings.TrimSpace(s3Cfg.AccessKeyID) == "" || strings.TrimSpace(s3Cfg.SecretAccessKey) == "" {
+		return nil, fmt.Errorf("listingkit.imageUpload.s3 access key ID and secret access key are both required")
+	}
+	client, err := s3integration.NewClient(s3integration.ClientConfig{
 		Region:          s3Cfg.Region,
 		Endpoint:        s3Cfg.Endpoint,
 		AccessKeyID:     s3Cfg.AccessKeyID,
 		SecretAccessKey: s3Cfg.SecretAccessKey,
 		UsePathStyle:    s3Cfg.UsePathStyle,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("build listingkit.imageUpload S3 client: %w", err)
+	}
+	return client, nil
 }

@@ -82,8 +82,6 @@ func TestProductListingRepositoryBuildersDoNotCallDirectAutoMigrate(t *testing.T
 		filepath.Join("..", "internal", "amazonlisting", "httpapi"),
 		filepath.Join("..", "internal", "app", "httpapi"),
 		filepath.Join("..", "internal", "app", "bootstrap", "resources"),
-		filepath.Join("..", "internal", "productimage", "httpapi"),
-		filepath.Join("..", "internal", "productenrich", "httpapi"),
 	} {
 		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
@@ -634,7 +632,8 @@ func TestSharedPackagesDoNotImportAppDomainPlatformOrIntegration(t *testing.T) {
 	forbidden := []string{
 		"task-processor/internal/app",
 		"task-processor/internal/listing",
-		"task-processor/internal/product",
+		"task-processor/internal/marketplace/sourceproduct",
+		"task-processor/internal/marketplace/productpolicy",
 		"task-processor/internal/marketplace",
 		"task-processor/internal/agent",
 		"task-processor/internal/knowledge",
@@ -725,19 +724,29 @@ func integrationProviderAdapterImportViolations(root string) ([]string, error) {
 				if !importMatchesPrefix(importPath, "task-processor/internal") {
 					continue
 				}
-				allowed := false
-				if providerRoots[name] {
-					allowed = importPath == "task-processor/internal/ai" ||
-						importMatchesPrefix(importPath, "task-processor/internal/shared") ||
-						importPath == "task-processor/internal/integration/httpimage"
-				}
-				if !allowed {
+				if !isAllowedIntegrationProviderAdapterImport(name, providerRoots[name], importPath) {
 					violations = append(violations, fmt.Sprintf("%s imports forbidden internal package %s", filepath.ToSlash(path), importPath))
 				}
 			}
 		}
 	}
 	return violations, nil
+}
+
+func isAllowedIntegrationProviderAdapterImport(providerRoot string, hasLegacyProviderDependencies bool, importPath string) bool {
+	if hasLegacyProviderDependencies && (importPath == "task-processor/internal/ai" ||
+		importMatchesPrefix(importPath, "task-processor/internal/shared") ||
+		importPath == "task-processor/internal/integration/httpimage") {
+		return true
+	}
+	switch providerRoot {
+	case "openai":
+		return importPath == "task-processor/internal/product/enrichment" ||
+			importPath == "task-processor/internal/product/image"
+	case "grsai", "httpimage":
+		return importPath == "task-processor/internal/product/image"
+	}
+	return false
 }
 
 func TestIntegrationProviderAdaptersUseOnlyContracts(t *testing.T) {
@@ -750,7 +759,144 @@ func TestIntegrationProviderAdaptersUseOnlyContracts(t *testing.T) {
 	}
 }
 
-func TestIntegrationProviderBoundaryDecodesGoImportLiterals(t *testing.T) {
+func TestIntegrationProviderAdaptersEnforceRootSpecificContractMatrix(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		allowed   []string
+		forbidden []string
+	}{
+		{
+			name: "openai",
+			allowed: []string{
+				"task-processor/internal/ai",
+				"task-processor/internal/shared/strx",
+				"task-processor/internal/integration/httpimage",
+				"task-processor/internal/product/enrichment",
+				"task-processor/internal/product/image",
+			},
+			forbidden: []string{
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/image/runtime",
+				"task-processor/internal/product/catalog",
+			},
+		},
+		{
+			name: "geminiimage",
+			allowed: []string{
+				"task-processor/internal/ai",
+				"task-processor/internal/shared/strx",
+				"task-processor/internal/integration/httpimage",
+			},
+			forbidden: []string{
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/enrichment",
+				"task-processor/internal/product/image",
+			},
+		},
+		{
+			name:    "grsai",
+			allowed: []string{"task-processor/internal/ai", "task-processor/internal/shared/strx", "task-processor/internal/integration/httpimage", "task-processor/internal/product/image"},
+			forbidden: []string{
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/enrichment",
+				"task-processor/internal/product/image/runtime",
+			},
+		},
+		{
+			name:    "httpimage",
+			allowed: []string{"task-processor/internal/product/image"},
+			forbidden: []string{
+				"task-processor/internal/ai",
+				"task-processor/internal/shared/strx",
+				"task-processor/internal/integration/httpimage",
+				"task-processor/internal/integration/httpimage/child",
+				"task-processor/internal/product/enrichment",
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, providerRoot := range []string{"openai", "geminiimage", "grsai", "httpimage"} {
+				if err := os.MkdirAll(filepath.Join(root, providerRoot), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.MkdirAll(filepath.Join(root, testCase.name), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			source := "package fixture\nimport (\n"
+			for _, importPath := range append(testCase.allowed, testCase.forbidden...) {
+				source += "\t\"" + importPath + "\"\n"
+			}
+			source += ")\n"
+			if err := os.WriteFile(filepath.Join(root, testCase.name, "fixture.go"), []byte(source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			violations, err := integrationProviderAdapterImportViolations(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(violations) != len(testCase.forbidden) {
+				t.Fatalf("violations = %v, want %d", violations, len(testCase.forbidden))
+			}
+			for _, importPath := range testCase.allowed {
+				for _, violation := range violations {
+					if integrationProviderAdapterViolationMentionsImport(violation, importPath) {
+						t.Fatalf("allowed import %s was rejected: %v", importPath, violations)
+					}
+				}
+			}
+			for _, importPath := range testCase.forbidden {
+				found := false
+				for _, violation := range violations {
+					found = found || integrationProviderAdapterViolationMentionsImport(violation, importPath)
+				}
+				if !found {
+					t.Fatalf("forbidden import %s was allowed: %v", importPath, violations)
+				}
+			}
+		})
+	}
+}
+
+func integrationProviderAdapterViolationMentionsImport(violation, importPath string) bool {
+	return strings.HasSuffix(violation, "imports forbidden internal package "+importPath)
+}
+
+func TestIntegrationProviderAdaptersRejectNonContractProductAndRuntimeDependencies(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"openai", "geminiimage", "grsai", "httpimage"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		source := "package " + name + "\nimport (\n" +
+			"\t\"task-processor/internal/product\"\n" +
+			"\t\"task-processor/internal/productenrich\"\n" +
+			"\t\"task-processor/internal/productimage\"\n" +
+			"\t\"task-processor/internal/product/image/runtime\"\n" +
+			"\t\"task-processor/internal/product/catalog\"\n" +
+			"\t\"task-processor/internal/product/asset\"\n" +
+			"\t\"task-processor/internal/product/sourcing\"\n" +
+			"\t\"task-processor/internal/app\"\n" +
+			"\t\"task-processor/internal/platform\"\n" +
+			"\t\"task-processor/internal/marketplace\"\n" +
+			")\n"
+		if err := os.WriteFile(filepath.Join(root, name, "fixture.go"), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	violations, err := integrationProviderAdapterImportViolations(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const forbiddenImportsPerProviderRoot = 10
+	if want := 4 * forbiddenImportsPerProviderRoot; len(violations) != want {
+		t.Fatalf("non-contract provider dependency violations = %v, want %d", violations, want)
+	}
+}
+
+func TestIntegrationProviderBoundaryDecodesAllowedAndForbiddenGoImportLiterals(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"openai", "geminiimage", "grsai", "httpimage"} {
 		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
@@ -760,6 +906,8 @@ func TestIntegrationProviderBoundaryDecodesGoImportLiterals(t *testing.T) {
 	source := "package openai\nimport (\n" +
 		"\t`task-processor/internal/app`\n" +
 		"\t\"task-processor/internal/\\x63ore\"\n" +
+		"\t`task-processor/internal/product/image`\n" +
+		"\t\"task-processor/internal/product/\\x65nrichment\"\n" +
 		")\n"
 	if err := os.WriteFile(filepath.Join(root, "openai", "fixture.go"), []byte(source), 0o600); err != nil {
 		t.Fatal(err)

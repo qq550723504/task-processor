@@ -85,6 +85,9 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	if err := imageagent.ValidateMaxConcurrentSlots(start.Run.MaxConcurrentSlots); err != nil {
 		return err
 	}
+	if err := imageagent.ValidateImagePolicyContext(start.Run.TargetPlatform, start.Run.ImagePolicyContext); err != nil {
+		return err
+	}
 	if err := imageagent.ValidateSubmittedPlan(start.Plan); err != nil {
 		return fmt.Errorf("validate image agent workflow plan: %w", err)
 	}
@@ -112,6 +115,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
 	}, workflowNameImageAgent, WorkflowInput{
 		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
+		TargetPlatform: start.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(start.Run.ImagePolicyContext),
 		Plan: start.Plan, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(start.Run.MaxConcurrentSlots), WaitForCommands: true,
 		AssetCatalog: start.AssetCatalog,
 		BudgetPolicy: policy, StartedAt: startedAt, DeadlineAt: deadlineAt, LifecycleDeadlineAt: lifecycleDeadlineAt,
@@ -129,8 +133,17 @@ func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEf
 	}
 	return newRecoveryWorkflowStarter(c.client, TaskQueueV3)(ctx, EffectRecoveryWorkflowInput{
 		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
+		TargetPlatform: projection.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(projection.Run.ImagePolicyContext),
 		Slot: slot, Attempt: command.Attempt, ActionID: command.ActionID, AssetCatalog: projection.AssetCatalog,
 	})
+}
+
+func policyContextPointer(value imageagent.ImagePolicyContext) *imageagent.ImagePolicyContext {
+	if value == (imageagent.ImagePolicyContext{}) {
+		return nil
+	}
+	cloned := value
+	return &cloned
 }
 
 func (c *Client) RetrySlot(ctx context.Context, command imageagent.RetrySlotCommand) error {

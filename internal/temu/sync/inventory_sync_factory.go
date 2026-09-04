@@ -9,8 +9,8 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
-	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +24,7 @@ type InventorySyncServiceFactory struct {
 
 type inventoryServiceFactoryRuntime interface {
 	inventorySyncRuntime
-	GetRawJsonDataAdapter() product.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 }
 

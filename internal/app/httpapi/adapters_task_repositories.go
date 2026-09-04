@@ -10,43 +10,7 @@ import (
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/core/config"
 	platformdatabase "task-processor/internal/platform/database"
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productenrich/store"
-	productimage "task-processor/internal/productimage"
-	productimagestore "task-processor/internal/productimage/store"
 )
-
-func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (productenrich.TaskRepository, func() error, error) {
-	if cfg == nil {
-		return nil, nil, fmt.Errorf("database config is nil")
-	}
-	databaseConfig := configadapter.Database(cfg)
-	db, err := platformdatabase.OpenShared(databaseConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
-	}
-	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-
-	repo := store.NewTaskRepository(db)
-	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
-	return repo, closer, nil
-}
-
-func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (productimage.TaskRepository, func() error, error) {
-	if cfg == nil {
-		return nil, nil, fmt.Errorf("database config is nil")
-	}
-	databaseConfig := configadapter.Database(cfg)
-	db, err := platformdatabase.OpenShared(databaseConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
-	}
-	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-
-	repo := productimagestore.NewTaskRepository(db)
-	closer := func() error { return platformdatabase.CloseShared(databaseConfig, db) }
-	return repo, closer, nil
-}
 
 func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (amazonlisting.Repository, func() error, error) {
 	if cfg == nil {

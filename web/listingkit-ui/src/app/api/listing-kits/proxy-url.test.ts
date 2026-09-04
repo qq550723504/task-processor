@@ -40,25 +40,6 @@ describe("buildListingKitProxyUrl", () => {
     );
   });
 
-  it.each([
-    ["GET", ["tasks", "task_123", "image-agent-assets"]],
-    ["POST", ["tasks", "task_123", "image-agent-runs"]],
-  ])("permits the exact task-scoped image-agent %s route", (method, path) => {
-    expect(() => buildListingKitProxyUrl(
-      "http://localhost:8080/api/v1/listing-kits", path, "", method,
-    )).not.toThrow();
-  });
-
-  it.each([
-    ["POST", ["tasks", "task_123", "image-agent-assets"]],
-    ["GET", ["tasks", "task_123", "image-agent-runs"]],
-    ["GET", ["tasks", "task_123", "image-agent-secrets"]],
-  ])("rejects unlisted task-scoped image-agent %s route", (method, path) => {
-    expect(() => buildListingKitProxyUrl(
-      "http://localhost:8080/api/v1/listing-kits", path, "", method,
-    )).toThrow("image-agent task proxy route is not allowed");
-  });
-
   it("forwards every backend-valid action ID on the resume route", () => {
     const result = buildListingKitProxyUrl(
       "http://localhost:8080/api/v1/listing-kits",
@@ -95,6 +76,8 @@ describe("buildListingKitProxyUrl", () => {
 
   it.each([
     ["POST", ["image-agent", "runs"]],
+    ["POST", ["image-agent", "task-runs"]],
+    ["GET", ["image-agent", "task-runs", "assets"]],
     ["GET", ["image-agent", "runs", "run-1"]],
     ["PUT", ["image-agent", "runs", "run-1", "plan"]],
     ["POST", ["image-agent", "runs", "run-1", "slots", "scene-2", "retry"]],
@@ -120,7 +103,9 @@ describe("buildListingKitProxyUrl", () => {
     ["GET", ["image-agent", "runs", "run%2F1"]],
     ["GET", ["image-agent", "runs", "run%5C1"]],
     ["GET", ["image-agent", "runs", "run-1", "unknown"]],
-  ])("rejects %s for unsafe or unknown image-agent route %j", (method, path) => {
+    ["POST", ["image-agent", "task-runs", "assets"]],
+    ["GET", ["image-agent", "task-runs", "assets", "extra"]],
+    ["GET", ["image-agent", "task-runs", "assets%2Fsecrets"]],  ])("rejects %s for unsafe or unknown image-agent route %j", (method, path) => {
     expect(() => buildListingKitProxyUrl(
       "http://localhost:8080/api/v1/listing-kits", path, "", method,
     )).toThrow("image-agent proxy route is not allowed");

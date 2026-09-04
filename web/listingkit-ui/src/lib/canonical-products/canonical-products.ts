@@ -12,6 +12,7 @@ import type {
 
 export type CanonicalProductListItem = {
   taskId: string;
+  productKey: string;
   tenantId?: string;
   title: string;
   brand?: string;
@@ -78,6 +79,7 @@ export async function getCanonicalProducts(
   }
   return {
     taskId: task.task_id,
+    productKey: task.product_key?.trim() ?? "",
     tenantId: task.tenant_id,
     title: product.title?.trim() || task.title?.trim() || task.task_id || "Untitled canonical product",
     brand: product.brand,
@@ -108,6 +110,7 @@ export function buildCanonicalProductListItem(
   }
   return {
     taskId: result.task_id ?? result.result?.task_id ?? "",
+    productKey: result.product_key?.trim() ?? "",
     tenantId: result.tenant_id ?? result.result?.tenant_id,
     title: product.title?.trim() || result.task_id || "Untitled canonical product",
     brand: product.brand,

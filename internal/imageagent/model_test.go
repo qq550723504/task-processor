@@ -189,6 +189,7 @@ func TestSlotEffectV3BlockedPolicyMapsExactPhaseCodeAndActions(t *testing.T) {
 		{SlotEffectV3ProviderUnknown, SlotProviderOutcomeUnknownCode, []Action{ActionCancel}},
 		{SlotEffectV3StagingUnknown, SlotStagingOutcomeUnknownCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
 		{SlotEffectV3PublicationUnknown, SlotPublicationOutcomeUnknownCode, []Action{ActionEditPlan, ActionCancel}},
+		{SlotEffectV3ReviewRequired, SlotReviewRequiredCode, []Action{ActionEditPlan, ActionRetrySlot, ActionCancel}},
 		{SlotEffectV3RecoveryBlocked, SlotRecoveryBlockedCode, []Action{ActionCancel}},
 	} {
 		policy, err := SlotEffectV3BlockedPolicyFor(tc.phase, tc.code)

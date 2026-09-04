@@ -27,6 +27,22 @@ type StagedSlotExecutor interface {
 	BuildSlotResult(context.Context, SlotExecutionInput, PublishedSlotOutput) (SlotExecutionResult, error)
 }
 
+// StagedSlotReviewer is an additive capability for retrying a reviewer
+// transport failure against already-staged candidates. Implementations must
+// not invoke generation or quote provider work from this method.
+type StagedSlotReviewer interface {
+	ReviewStagedSlot(context.Context, SlotExecutionInput, SlotGeneratedOutput) error
+}
+
+// BudgetedStagedSlotReviewer pins and accounts for each read-only review
+// dispatch. The quote is revalidated at dispatch time so a route change is a
+// revision conflict instead of an unaccounted provider call.
+type BudgetedStagedSlotReviewer interface {
+	StagedSlotReviewer
+	QuoteStagedReview(context.Context, SlotExecutionInput, BudgetPolicy) (SlotUsageQuote, error)
+	ReviewStagedSlotQuoted(context.Context, SlotExecutionInput, SlotGeneratedOutput, SlotUsageQuote) (SlotUsageReceipt, error)
+}
+
 // BudgetedStagedSlotExecutor is additive so frozen v2 and legacy uncapped v3
 // executors keep their historical wire behavior.
 type BudgetedStagedSlotExecutor interface {
@@ -53,24 +69,26 @@ type DurableAssetPublicURLResolver interface {
 }
 
 type PublicationAcknowledgement struct {
-	TaskID            string
-	RunID             string
-	PlanRevision      int64
-	ResultDigest      string
-	IdempotencyKey    string
-	CandidateAssetIDs []string
+	ProductKey   string
+	RunID        string
+	PlanRevision int64
+	ResultDigest string
+	ActionID     string
+	AssetIDs     []string
 }
 
 type SlotExecutionInput struct {
-	RunID          string
-	TenantID       string
-	UserID         string
-	PlanRevision   int64
-	Slot           Slot
-	Attempt        int
-	IdempotencyKey string
-	AssetCatalog   AssetCatalog
-	ProductContext ProductContextRef
+	RunID              string
+	TenantID           string
+	UserID             string
+	TargetPlatform     string              `json:",omitempty"`
+	ImagePolicyContext *ImagePolicyContext `json:",omitempty"`
+	PlanRevision       int64
+	Slot               Slot
+	Attempt            int
+	IdempotencyKey     string
+	AssetCatalog       AssetCatalog
+	ProductContext     ProductContextRef
 }
 
 type SlotExecutionResult struct {
@@ -113,11 +131,60 @@ type StartRunInput struct {
 	RunID              string
 	BusinessTaskID     string
 	TargetPlatform     string
+	ImagePolicyContext ImagePolicyContext
 	Mode               RunMode
 	IdempotencyKey     string
 	Plan               Plan
 	Budget             Budget
 	MaxConcurrentSlots int
+}
+
+// TaskRunLaunchInput is the task-scoped launch contract for the workspace
+// entrypoint. The caller supplies the verified business task identity plus
+// the image policy context; ImageAgent owns the durable run identity, plan,
+// and budget shape so the browser never constructs plan payloads directly.
+type TaskRunLaunchInput struct {
+	// RequestID identifies one intentional browser launch. Transport retries
+	// reuse it; a later user-initiated regeneration supplies a fresh value.
+	RequestID          string
+	BusinessTaskID     string
+	TargetPlatform     string
+	ImagePolicyContext ImagePolicyContext
+	// SourceAssetID selects the single task-owned source asset for the
+	// run. It is required: crawler ordering never establishes intent,
+	// so the launcher must force an explicit choice via the preflight.
+	SourceAssetID string
+	// StyleAssetIDs optionally promotes task-owned style assets into the
+	// run-scoped authorization snapshot.
+	StyleAssetIDs []string
+}
+
+type TaskRunLaunchResult struct {
+	RunID string
+}
+
+// ImagePolicyAvailability is the command-boundary view of the configured
+// ProductImage policy catalog. Launchers use it before creating durable run
+// state so a syntactically valid but unsupported marketplace policy key cannot
+// become a run that the worker is guaranteed to reject later.
+type ImagePolicyAvailability interface {
+	ValidateAvailable(context.Context, string, ImagePolicyContext) error
+}
+
+// TaskRunAssetsInput is the preflight query for the task-scoped workspace
+// entrypoint: it resolves the selectable task-owned assets without
+// creating a run, so the launcher can require an explicit source
+// selection instead of trusting crawler ordering.
+type TaskRunAssetsInput struct {
+	BusinessTaskID string
+	TargetPlatform string
+}
+
+type TaskRunAssetPreflight struct {
+	BusinessTaskID string
+	TargetPlatform string
+	Sources        []AuthorizedAsset
+	Styles         []AuthorizedAsset
 }
 
 type WorkflowStart struct {

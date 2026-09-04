@@ -3,7 +3,7 @@ package sync
 import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
-	"task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 )
 
 type ServiceRuntime interface {
@@ -18,7 +18,7 @@ type runtimeSource interface {
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	GetStoreAPI() listingadmin.StoreAPI
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
-	GetRawJsonDataAdapter() product.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 }
 
@@ -75,7 +75,7 @@ func (r serviceRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingrunt
 	return r.source.GetRuntimeOperationStrategy(storeID)
 }
 
-func (r serviceRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
+func (r serviceRuntime) GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient {
 	if r.source == nil {
 		return nil
 	}

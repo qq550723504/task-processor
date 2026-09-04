@@ -1,6 +1,10 @@
 package listingkit
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func normalizeListingKitResultSemanticFields(result *ListingKitResult) *ListingKitResult {
 	if result == nil {
@@ -29,8 +33,12 @@ func normalizeStandardProductSnapshotSemanticFields(snapshot *StandardProductSna
 
 func (r *ListingKitResult) MarshalJSON() ([]byte, error) {
 	type alias ListingKitResult
-	normalizeListingKitResultSemanticFields(r)
-	return json.Marshal((*alias)(r))
+	wire, err := cloneListingKitResultForSemanticSerialization(r)
+	if err != nil {
+		return nil, err
+	}
+	normalizeListingKitResultSemanticFields(wire)
+	return json.Marshal((*alias)(wire))
 }
 
 func (r *ListingKitResult) UnmarshalJSON(data []byte) error {
@@ -45,8 +53,39 @@ func (r *ListingKitResult) UnmarshalJSON(data []byte) error {
 
 func (s *StandardProductSnapshot) MarshalJSON() ([]byte, error) {
 	type alias StandardProductSnapshot
-	normalizeStandardProductSnapshotSemanticFields(s)
-	return json.Marshal((*alias)(s))
+	wire := cloneStandardProductSnapshotForSemanticSerialization(s)
+	normalizeStandardProductSnapshotSemanticFields(wire)
+	return json.Marshal((*alias)(wire))
+}
+
+func cloneListingKitResultForSemanticSerialization(result *ListingKitResult) (*ListingKitResult, error) {
+	if result == nil {
+		return nil, nil
+	}
+	wire := *result
+	wire.PodExecution = clonePodExecutionSummary(result.PodExecution)
+	wire.ApprovedAssetInventory = cloneApprovedAssetInventory(result.ApprovedAssetInventory)
+	wire.ApprovedAssetInventories = cloneApprovedAssetInventories(result.ApprovedAssetInventories)
+	wire.StandardProductSnapshot = cloneStandardProductSnapshotForSemanticSerialization(result.StandardProductSnapshot)
+	if result.Shein != nil {
+		var err error
+		wire.Shein, err = sheinpub.ClonePackageForPersistence(result.Shein)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &wire, nil
+}
+
+func cloneStandardProductSnapshotForSemanticSerialization(snapshot *StandardProductSnapshot) *StandardProductSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	wire := *snapshot
+	wire.PodExecution = clonePodExecutionSummary(snapshot.PodExecution)
+	wire.ApprovedAssetInventory = cloneApprovedAssetInventory(snapshot.ApprovedAssetInventory)
+	wire.ApprovedAssetInventories = cloneApprovedAssetInventories(snapshot.ApprovedAssetInventories)
+	return &wire
 }
 
 func (s *StandardProductSnapshot) UnmarshalJSON(data []byte) error {

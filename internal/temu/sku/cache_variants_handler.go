@@ -3,9 +3,9 @@ package sku
 import (
 	"fmt"
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	domainProduct "task-processor/internal/product"
 
 	"task-processor/internal/core/logger"
 
@@ -54,7 +54,7 @@ func (h *CacheVariantsHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 构建缓存请求
-	req := &domainProduct.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.Platform,
 		Region:     task.Region,

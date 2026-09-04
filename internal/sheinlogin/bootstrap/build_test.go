@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	miniredis "github.com/alicebob/miniredis/v2"
-	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
@@ -88,9 +87,6 @@ func TestBuildHandlerReturnsNilWithoutLocalStoreRepository(t *testing.T) {
 				},
 			},
 		},
-		AccountRepositoryBuilder: func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
-			return nil, nil, nil
-		},
 	})
 	if err != nil {
 		t.Fatalf("BuildHandler() error = %v", err)
@@ -113,7 +109,6 @@ func TestBuildHandlerReturnsHandlerAndClose(t *testing.T) {
 		t.Fatalf("Atoi() error = %v", err)
 	}
 
-	closed := false
 	result, err := BuildHandler(BuildInput{
 		Config: &config.Config{
 			Browser: config.BrowserConfig{ViewportWidth: 1280, ViewportHeight: 720},
@@ -123,20 +118,15 @@ func TestBuildHandlerReturnsHandlerAndClose(t *testing.T) {
 				},
 			},
 		},
-		AccountRepositoryBuilder: func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
-			return &stubStoreRepository{
-					items: []listingadmin.Store{{
-						ID:       12,
-						TenantID: 7,
-						Platform: "SHEIN",
-						Username: "demo-user",
-						Password: "secret",
-						LoginURL: "sellerhub.shein.com",
-					}},
-				}, []func() error{func() error {
-					closed = true
-					return nil
-				}}, nil
+		AccountRepository: &stubStoreRepository{
+			items: []listingadmin.Store{{
+				ID:       12,
+				TenantID: 7,
+				Platform: "SHEIN",
+				Username: "demo-user",
+				Password: "secret",
+				LoginURL: "sellerhub.shein.com",
+			}},
 		},
 	})
 	if err != nil {
@@ -153,8 +143,5 @@ func TestBuildHandlerReturnsHandlerAndClose(t *testing.T) {
 	}
 	if err := result.Close(); err != nil {
 		t.Fatalf("result.Close() error = %v", err)
-	}
-	if !closed {
-		t.Fatal("expected repository closer to be invoked")
 	}
 }

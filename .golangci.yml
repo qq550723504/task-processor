@@ -107,6 +107,61 @@ linters-settings:
           - pkg: "github.com/rabbitmq/"
             desc: "RabbitMQ SDKs belong to platform adapters"
 
+      phase3_product_domain_boundaries:
+        files:
+          - "**/internal/product/catalog/**/*.go"
+          - "**/internal/product/sourcing/**/*.go"
+          - "**/internal/product/enrichment/**/*.go"
+          - "**/internal/product/asset/**/*.go"
+          - "**/internal/product/image/**/*.go"
+        deny:
+          - pkg: task-processor/internal/app
+          - pkg: task-processor/internal/platform
+          - pkg: task-processor/internal/integration
+          - pkg: gorm.io/gorm
+          - pkg: go.temporal.io
+          - pkg: github.com/aws/aws-sdk-go-v2
+          - pkg: github.com/aws/smithy-go
+          - pkg: github.com/sashabaranov/go-openai
+          - pkg: github.com/tencentcloud/tencentcloud-sdk-go
+
+      phase3_retired_product_imports:
+        # Final Phase 3 hard cut: retired roots and the test-only asset helper
+        # must never regain production consumers.
+        files:
+          - "**/*.go"
+        deny:
+          - pkg: "task-processor/internal/catalog$"
+          - pkg: "task-processor/internal/catalog/"
+          - pkg: "task-processor/internal/asset$"
+          - pkg: "task-processor/internal/asset/"
+          - pkg: "task-processor/internal/imageasset$"
+          - pkg: "task-processor/internal/imageasset/"
+          - pkg: "task-processor/internal/productenrich$"
+          - pkg: "task-processor/internal/productenrich/"
+          - pkg: "task-processor/internal/productimage$"
+          - pkg: "task-processor/internal/productimage/"
+          - pkg: "task-processor/internal/product/asset/assettest$"
+          - pkg: "task-processor/internal/product/asset/assettest/"
+
+      phase3_product_consumers_read_only:
+        # ListingKit, SDS and AmazonListing consume only product snapshots and
+        # approved assets; ImageAgent remains the sole image workflow owner.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+          - "**/internal/sds/*.go"
+          - "**/internal/sds/**/*.go"
+          - "**/internal/amazonlisting/*.go"
+          - "**/internal/amazonlisting/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/product/image$"
+          - pkg: "task-processor/internal/product/image/"
+          - pkg: "task-processor/internal/imageagent/store$"
+          - pkg: "task-processor/internal/imageagent/store/"
+          - pkg: "task-processor/internal/imageagent/temporal$"
+          - pkg: "task-processor/internal/imageagent/temporal/"
+
       platform_domain_dependencies:
         files:
           - "**/internal/platform/*.go"
@@ -341,10 +396,14 @@ linters-settings:
         files:
           - "**/internal/amazon/*.go"
           - "**/internal/amazon/**/*.go"
-          - "**/internal/asset/*.go"
-          - "**/internal/asset/**/*.go"
-          - "**/internal/catalog/*.go"
-          - "**/internal/catalog/**/*.go"
+          - "**/internal/product/asset/*.go"
+          - "**/internal/product/asset/**/*.go"
+          - "**/internal/product/catalog/*.go"
+          - "**/internal/product/catalog/**/*.go"
+          - "**/internal/product/enrichment/*.go"
+          - "**/internal/product/enrichment/**/*.go"
+          - "**/internal/product/image/*.go"
+          - "**/internal/product/image/**/*.go"
           - "**/internal/infra/*.go"
           - "**/internal/infra/**/*.go"
           - "**/internal/integration/*.go"
@@ -355,8 +414,6 @@ linters-settings:
           - "**/internal/platform/**/*.go"
           - "**/internal/product/sourcing/*.go"
           - "**/internal/product/sourcing/**/*.go"
-          - "**/internal/productimage/*.go"
-          - "**/internal/productimage/**/*.go"
           - "**/internal/publishing/*.go"
           - "**/internal/publishing/**/*.go"
           - "**/internal/shein/*.go"
@@ -379,6 +436,8 @@ linters-settings:
           - "**/internal/infra/**/*.go"
           - "**/internal/integration/*.go"
           - "**/internal/integration/**/*.go"
+          - "!**/internal/integration/persistence/product/catalog/*.go"
+          - "!**/internal/integration/persistence/product/catalog/**/*.go"
           - "**/internal/platform/*.go"
           - "**/internal/platform/**/*.go"
           - "**/internal/platformbase/*.go"
@@ -395,9 +454,9 @@ linters-settings:
           - pkg: "task-processor/internal/asset$"
             desc: "Infrastructure packages must not depend on asset business rules"
           - pkg: "task-processor/internal/asset/"
-          - pkg: "task-processor/internal/catalog$"
-            desc: "Infrastructure packages must not depend on catalog business rules"
-          - pkg: "task-processor/internal/catalog/"
+          - pkg: "task-processor/internal/product/catalog$"
+            desc: "Infrastructure packages outside the approved Catalog persistence adapter must not depend on Catalog business rules"
+          - pkg: "task-processor/internal/product/catalog/"
           - pkg: "task-processor/internal/listing$"
             desc: "Infrastructure packages must not depend on listing business rules"
           - pkg: "task-processor/internal/listing/"
@@ -432,6 +491,53 @@ linters-settings:
             desc: "Infrastructure packages must not depend on workspace business rules"
           - pkg: "task-processor/internal/workspace/"
 
+      product_catalog_persistence_boundary:
+        # This exact adapter implements the Catalog-owned repository ports. It may depend on Catalog, but no other business domain.
+        files:
+          - "**/internal/integration/persistence/product/catalog/*.go"
+          - "**/internal/integration/persistence/product/catalog/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/amazon$"
+          - pkg: "task-processor/internal/amazon/"
+          - pkg: "task-processor/internal/amazonlisting$"
+          - pkg: "task-processor/internal/amazonlisting/"
+          - pkg: "task-processor/internal/asset$"
+          - pkg: "task-processor/internal/asset/"
+          - pkg: "task-processor/internal/product/asset$"
+            desc: "Catalog persistence must not depend on Product Asset business rules"
+          - pkg: "task-processor/internal/product/asset/"
+          - pkg: "task-processor/internal/product/sourcing$"
+            desc: "Catalog persistence must not depend on Product Sourcing business rules"
+          - pkg: "task-processor/internal/product/sourcing/"
+          - pkg: "task-processor/internal/product/enrichment$"
+            desc: "Catalog persistence must not depend on Product Enrichment business rules"
+          - pkg: "task-processor/internal/product/enrichment/"
+          - pkg: "task-processor/internal/product/image$"
+            desc: "Catalog persistence must not depend on Product Image business rules"
+          - pkg: "task-processor/internal/product/image/"
+          - pkg: "task-processor/internal/listing$"
+          - pkg: "task-processor/internal/listing/"
+          - pkg: "task-processor/internal/listingkit$"
+          - pkg: "task-processor/internal/listingkit/"
+          - pkg: "task-processor/internal/marketplace$"
+          - pkg: "task-processor/internal/marketplace/"
+          - pkg: "task-processor/internal/pricing$"
+          - pkg: "task-processor/internal/pricing/"
+          - pkg: "task-processor/internal/productenrich$"
+          - pkg: "task-processor/internal/productenrich/"
+          - pkg: "task-processor/internal/productimage$"
+          - pkg: "task-processor/internal/productimage/"
+          - pkg: "task-processor/internal/publishing$"
+          - pkg: "task-processor/internal/publishing/"
+          - pkg: "task-processor/internal/sds$"
+          - pkg: "task-processor/internal/sds/"
+          - pkg: "task-processor/internal/shein$"
+          - pkg: "task-processor/internal/shein/"
+          - pkg: "task-processor/internal/temu$"
+          - pkg: "task-processor/internal/temu/"
+          - pkg: "task-processor/internal/workspace$"
+          - pkg: "task-processor/internal/workspace/"
+
       domain_app_httpapi_boundaries:
         # Domain and business packages must not depend on HTTP assembly; transport adapters belong above the domain boundary.
         # The repository-wide issues.exclude-files excludes _test.go; TestDomainHTTPPackagesDoNotImportAppHTTPAPI and TestBusinessDomainsDoNotImportAppHTTPAPI retain semantic coverage for all domain files.
@@ -440,10 +546,16 @@ linters-settings:
           - "**/internal/amazon/**/*.go"
           - "**/internal/amazonlisting/*.go"
           - "**/internal/amazonlisting/**/*.go"
-          - "**/internal/asset/*.go"
-          - "**/internal/asset/**/*.go"
-          - "**/internal/catalog/*.go"
-          - "**/internal/catalog/**/*.go"
+          - "**/internal/product/asset/*.go"
+          - "**/internal/product/asset/**/*.go"
+          - "**/internal/product/catalog/*.go"
+          - "**/internal/product/catalog/**/*.go"
+          - "**/internal/product/enrichment/*.go"
+          - "**/internal/product/enrichment/**/*.go"
+          - "**/internal/product/image/*.go"
+          - "**/internal/product/image/**/*.go"
+          - "**/internal/product/sourcing/*.go"
+          - "**/internal/product/sourcing/**/*.go"
           - "**/internal/listing/*.go"
           - "**/internal/listing/**/*.go"
           - "**/internal/listingkit/*.go"
@@ -452,10 +564,6 @@ linters-settings:
           - "**/internal/marketplace/**/*.go"
           - "**/internal/pricing/*.go"
           - "**/internal/pricing/**/*.go"
-          - "**/internal/productenrich/*.go"
-          - "**/internal/productenrich/**/*.go"
-          - "**/internal/productimage/*.go"
-          - "**/internal/productimage/**/*.go"
           - "**/internal/publishing/*.go"
           - "**/internal/publishing/**/*.go"
           - "**/internal/sds/*.go"
@@ -483,8 +591,8 @@ linters-settings:
           - pkg: "task-processor/internal/asset$"
           - pkg: "task-processor/internal/asset/"
             desc: "Platform registration must not own asset business rules"
-          - pkg: "task-processor/internal/catalog$"
-          - pkg: "task-processor/internal/catalog/"
+          - pkg: "task-processor/internal/product/catalog$"
+          - pkg: "task-processor/internal/product/catalog/"
             desc: "Platform registration must not own catalog business rules"
           - pkg: "task-processor/internal/listingkit$"
           - pkg: "task-processor/internal/listingkit/"
@@ -620,8 +728,8 @@ linters-settings:
         # Catalog code must own canonical product facts instead of depending on ProductEnrich compatibility aliases.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
         files:
-          - "**/internal/catalog/*.go"
-          - "**/internal/catalog/**/*.go"
+          - "**/internal/product/catalog/*.go"
+          - "**/internal/product/catalog/**/*.go"
         deny:
           - pkg: "task-processor/internal/productenrich$"
             desc: "Catalog code must not depend on ProductEnrich compatibility aliases"
@@ -681,9 +789,9 @@ linters-settings:
             desc: "Command entrypoints must not depend on the asset domain package"
           - pkg: "task-processor/internal/asset/"
             desc: "Command entrypoints must not depend on asset subpackages"
-          - pkg: "task-processor/internal/catalog$"
+          - pkg: "task-processor/internal/product/catalog$"
             desc: "Command entrypoints must not depend on the catalog domain package"
-          - pkg: "task-processor/internal/catalog/"
+          - pkg: "task-processor/internal/product/catalog/"
             desc: "Command entrypoints must not depend on catalog subpackages"
           - pkg: "task-processor/internal/infra$"
             desc: "Command entrypoints must not depend on the infrastructure package"

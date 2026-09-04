@@ -5,112 +5,61 @@ import (
 
 	appruntime "task-processor/internal/app/runtime"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
-type listingKitFeatureBuildOptions struct {
-	includeImage      bool
-	includeListingKit bool
-	skipProduct       bool
-}
-
-type listingKitFeatureSet struct {
-	productModule    *productenrichhttpapi.Module
-	imageModule      *productimagehttpapi.Module
-	listingKitModule *listingkithttpapi.Module
-}
-
 type listingKitFeatureBuilder struct {
-	buildProduct    productModuleBuilder
-	buildImage      imageModuleBuilder
 	buildListingKit listingKitModuleBuilder
 }
 
 func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 	return listingKitFeatureBuilder{
-		buildProduct:    buildProductModuleResult,
-		buildImage:      buildImageModuleResult,
 		buildListingKit: buildListingKitModuleResult,
 	}
 }
 
-func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps, options listingKitFeatureBuildOptions) (listingKitFeatureSet, error) {
-	var features listingKitFeatureSet
-
-	if !options.skipProduct {
-		productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
-			Logger:               logger,
-			Config:               deps.shared.cfg,
-			LLMManager:           deps.shared.llmMgr,
-			TextGenerator:        deps.shared.contentGenerator,
-			SpecsGenerator:       deps.shared.specsGenerator,
-			VariantsGenerator:    deps.shared.variantsGenerator,
-			ScoringTextGenerator: deps.shared.scoringTextGenerator,
-			ScoringImageAnalyzer: deps.shared.scoringImageAnalyzer,
-			InputParser:          deps.shared.inputParser,
-			Understanding:        deps.shared.understanding,
-		})
-		if err != nil {
-			return features, err
-		}
-		deps.attachProductModule(productModule)
-		features.productModule = productModule
+func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*listingkithttpapi.Module, error) {
+	if deps == nil || deps.features == nil || deps.features.productSnapshotReader == nil {
+		return nil, nil
 	}
-
-	if options.includeImage {
-		imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
-			Logger:               logger,
-			Config:               deps.shared.cfg,
-			LLMManager:           deps.shared.llmMgr,
-			OpenAIManager:        deps.shared.openaiMgr,
-			AICredentialResolver: deps.shared.aiCredentialStore,
-			AIInvocationRecorder: deps.shared.aiInvocationRecorder,
-			InputParser:          deps.shared.inputParser,
-			Understanding:        deps.shared.understanding,
-			ImageWorkDir:         deps.shared.imageWorkDir,
-			SourceImageFetcher:   deps.shared.sourceImageFetcher,
-		})
-		if err != nil {
-			return features, err
-		}
-		deps.attachImageModule(imageModule)
-		features.imageModule = imageModule
+	if ensureApprovedAssetReader(logger, deps) == nil {
+		return nil, nil
 	}
-
-	if options.includeListingKit {
-		listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
-		if err != nil {
-			return features, err
-		}
-		deps.attachListingKitModule(listingKitModule)
-		features.listingKitModule = listingKitModule
+	input, err := newListingKitRuntimeBuildInput(logger, deps, deps.ensureListingKitSupport().repositories)
+	if err != nil {
+		return nil, err
 	}
-
-	return features, nil
+	listingKitModule, err := b.buildListingKit(input)
+	if err != nil {
+		return nil, err
+	}
+	deps.attachListingKitModule(listingKitModule)
+	return listingKitModule, nil
 }
 
-func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) listingkithttpapi.RuntimeBuildInput {
+func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, repositories listingkithttpapi.BuildServiceRepositories) (listingkithttpapi.RuntimeBuildInput, error) {
+	approvedAssets := ensureApprovedAssetReader(logger, deps)
+	cookieStore, err := ensureListingKitSheinCookieStore(logger, deps)
+	if err != nil {
+		return listingkithttpapi.RuntimeBuildInput{}, err
+	}
+	support := listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
+		Repositories:              repositories,
+		SheinCookieStore:          cookieStore,
+		ApprovedAssets:            approvedAssets,
+		SDSSyncService:            buildSDSSyncService(logger, deps),
+		SDSLoginStatusProvider:    deps.features.sdsLoginStatusProvider,
+		SDSBaselineRemoteProvider: buildSDSBaselineRemoteProvider(logger, deps),
+	})
 	return listingkithttpapi.RuntimeBuildInput{
 		Logger: logger,
 		Runtime: listingkithttpapi.RuntimeDependencies{
-			Config:                     deps.shared.cfg,
-			ProductService:             deps.features.productService,
-			ImageService:               deps.features.imageService,
-			ImageSubjectExtractor:      deps.features.imageSubjectExtractor,
-			ImageWhiteBackgroundRender: deps.features.imageWhiteBgRenderer,
-			ImageSceneRenderer:         deps.features.imageSceneRenderer,
-			ImageAssetPublisher:        deps.features.imageAssetPublisher,
-			AICredentialStore:          deps.shared.aiCredentialStore,
-			AIInvocationRecorder:       deps.shared.aiInvocationRecorder,
-			AIAsyncJobStore:            deps.shared.aiAsyncJobStore,
-			Support: listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
-				SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
-				SDSSyncService:            buildSDSSyncService(logger, deps),
-				SDSLoginStatusProvider:    deps.features.sdsLoginStatusProvider,
-				SDSBaselineRemoteProvider: buildSDSBaselineRemoteProvider(logger, deps),
-			}),
+			Config:                             deps.shared.cfg,
+			ProductSnapshotReader:              deps.features.productSnapshotReader,
+			AIClientCredentialStore:            adaptListingKitAICredentialStore(deps.shared.aiCredentialStore),
+			SheinCategoryLLMClient:             buildStrictListingKitChatClient(deps.shared.cfg, deps.shared.aiCredentialStore, "default"),
+			SheinSaleAttributeLLM:              buildStrictListingKitChatClient(deps.shared.cfg, deps.shared.aiCredentialStore, listingKitSheinSaleAttributeClientName),
+			Support:                            support,
 			ShouldStartTemporalWorkerInProcess: appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess(),
 		},
-	}
+	}, nil
 }

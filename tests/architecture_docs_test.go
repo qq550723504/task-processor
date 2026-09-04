@@ -282,7 +282,7 @@ func TestProjectBoundaryDocumentDefines1688SourceHandoffOwnership(t *testing.T) 
 
 	for _, phrase := range []string{
 		"internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration",
-		"internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots",
+		"internal/integration/crawler/a1688 converts legacy crawler DTOs into adapter-local snapshots and internal/product/sourcing SourceEnvelope values",
 		"internal/compatibility/listingkit/sourcehandoff owns the 1688 to ListingKit application handoff",
 	} {
 		if !strings.Contains(string(content), phrase) {

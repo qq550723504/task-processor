@@ -563,6 +563,39 @@ func (r *gormRepository) RestoreRecoveryBlockedEffectV3(ctx context.Context, res
 	return result, err
 }
 
+func (r *gormRepository) ResumeReviewRetrySlotV3(ctx context.Context, reservation imageagent.SlotEffectV3Reservation) (imageagent.SlotEffectV3Attempt, error) {
+	if err := effectpolicy.PreflightReservation(reservation); err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	var result imageagent.SlotEffectV3Attempt
+	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
+		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		if err != nil {
+			return err
+		}
+		current, err := decodeSlotEffectV3Record(row)
+		if err != nil {
+			return err
+		}
+		decision, err := effectpolicy.ResumeReviewRetry(current, reservation)
+		if err != nil {
+			return err
+		}
+		updated := slotEffectV3IdentityWhere(tx.Model(&slotExternalEffectV3Record{}), reservation.Identity).
+			Where("phase = ? AND blocked_code = ?", string(imageagent.SlotEffectV3ReviewTransportRequired), imageagent.SlotReviewTransportRequiredCode).
+			Updates(map[string]any{"phase": string(decision.Attempt.Phase), "blocked_code": ""})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return imageagent.ErrRevisionConflict
+		}
+		result = decision.Attempt
+		return nil
+	})
+	return result, err
+}
+
 func (r *gormRepository) GetSlotExternalEffectV3(ctx context.Context, identity imageagent.SlotExternalEffectIdentity) (imageagent.SlotEffectV3Attempt, error) {
 	if err := validateSlotEffectIdentity(identity); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err

@@ -9,8 +9,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/shared/aiidentity"
 )
+
+func isAmazonSnapshotNotReady(err error) bool {
+	return errors.Is(err, ErrProductSnapshotNotReady) || errors.Is(err, catalog.ErrSnapshotNotReady)
+}
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
 	if req == nil {
@@ -29,18 +34,32 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 		RetryCount: 0,
 	}
 	identityEnvelope, envelopeErr := aiidentity.CaptureExecutionEnvelope(ctx, task.ID, "amazon", "listing")
-	if envelopeErr == nil {
-		task.SetExecutionEnvelope(identityEnvelope)
-	} else if !errors.Is(envelopeErr, aiidentity.ErrMissingIdentity) {
+	if envelopeErr != nil {
 		return nil, fmt.Errorf("capture execution identity: %w", envelopeErr)
+	}
+	task.SetExecutionEnvelope(identityEnvelope)
+	if versioned, ok := s.productSnapshots.(VersionedProductSnapshotReader); ok {
+		published, err := versioned.GetPublishedProductSnapshot(ctx, ProductSnapshotQuery{
+			TenantID: task.ExecutionTenantID, ProductKey: req.ProductKey,
+		})
+		if isAmazonSnapshotNotReady(err) {
+			return nil, ErrProductSnapshotNotReady
+		}
+		if err != nil {
+			return nil, fmt.Errorf("capture source snapshot version: %w", err)
+		}
+		if published.Version == 0 {
+			return nil, fmt.Errorf("capture source snapshot version: %w", ErrProductSnapshotNotReady)
+		}
+		task.SourceSnapshotVersion = published.Version
 	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 	if s.taskSubmitter != nil {
 		if err := s.taskSubmitter.Submit(task.ID); err != nil {
-			_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err))
-			return nil, fmt.Errorf("failed to submit task: %w", err)
+			submitErr := fmt.Errorf("failed to submit task: %w", err)
+			return nil, joinTaskFailurePersistenceError(submitErr, s.repo.MarkFailed(ctx, task.ID, submitErr.Error()))
 		}
 	}
 	return task, nil
@@ -101,8 +120,8 @@ func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTask
 		}
 		if s.taskSubmitter != nil {
 			if err := s.taskSubmitter.Submit(taskID); err != nil {
-				_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to resubmit task: %v", err))
-				return nil, err
+				resubmitErr := fmt.Errorf("failed to resubmit task: %w", err)
+				return nil, joinTaskFailurePersistenceError(resubmitErr, s.repo.MarkFailed(ctx, task.ID, resubmitErr.Error()))
 			}
 		}
 	case "apply_edits":
@@ -112,15 +131,10 @@ func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTask
 		if len(req.Edits) == 0 {
 			return nil, fmt.Errorf("edit request is empty")
 		}
-		ensureCanonicalProduct(task)
-		if err := applyCanonicalEdits(task.Result.CanonicalProduct, req.Edits); err != nil {
-			return nil, err
-		}
-		syncDraftFromCanonical(task.Result, task.Result.CanonicalProduct)
 		if err := applyDraftEdits(task.Result, req.Edits); err != nil {
 			return nil, err
 		}
-		task.Result.ReviewItems = refreshCanonicalReviewItems(removeResolvedReviewItems(task.Result.ReviewItems, req.Edits), task.Result.CanonicalProduct)
+		task.Result.ReviewItems = removeResolvedReviewItems(task.Result.ReviewItems, req.Edits)
 		if s.exportBuilder != nil {
 			task.Result.Export = s.exportBuilder.Build(task.Request, task.Result)
 		}

@@ -29,7 +29,7 @@ func TestLoadTaskExecutionContextRestoresTenantAdminStoreAccess(t *testing.T) {
 		ID:       "task-1",
 		TenantID: "101",
 		UserID:   "user-1",
-		Request:  &GenerateRequest{UserID: "user-1"},
+		Request:  &GenerateRequest{ProductKey: "test-product", UserID: "user-1"},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 			StoreID:           202,
 			TenantAdminAccess: true,

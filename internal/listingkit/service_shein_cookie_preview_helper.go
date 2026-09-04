@@ -27,8 +27,6 @@ func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, ta
 		&pkg,
 		task.Result.PodExecution,
 		task.Result.CanonicalProduct,
-		task.Result.AssetBundleForTarget("shein"),
-		preview.Shein.RenderPreviews,
 	)
 	if rebuilt == nil {
 		return

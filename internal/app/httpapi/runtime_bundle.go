@@ -38,11 +38,11 @@ func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Mo
 	}, nil
 }
 
-func (b runtimeBundle) buildServerBundle(port int) (*http.Server, []httproute.Descriptor) {
+func (b runtimeBundle) buildServerBundle(port int, authorization routeAuthorization) (*http.Server, []httproute.Descriptor) {
 	if b.authDependencies != nil {
-		return buildHTTPServerFromRoutesAtWithAuthDependencies("", port, b.routes, *b.authDependencies), b.routes
+		authorization = authorization.withWorkbench(*b.authDependencies)
 	}
-	return buildHTTPServerFromRoutes(port, b.routes), b.routes
+	return buildHTTPServerFromRoutes(port, b.routes, authorization), b.routes
 }
 
 func (b runtimeBundle) pools() []worker.WorkerPool {

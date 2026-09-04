@@ -1,6 +1,6 @@
 package listingkit
 
-import sdspod "task-processor/internal/product/sourcing/sdspod"
+import sdspod "task-processor/internal/sds/adapter/product_source"
 
 func podSubmissionBlocked(pod *PodExecutionSummary) bool {
 	return sdspod.SubmissionBlocked(podExecutionPolicyState(pod))

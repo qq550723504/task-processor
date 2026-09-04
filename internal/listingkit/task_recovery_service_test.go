@@ -27,7 +27,7 @@ func TestRecoverTaskNowRequeuesBlockedTask(t *testing.T) {
 		ID:        "task-recover-now",
 		TenantID:  "tenant-recovery",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{TenantID: "tenant-recovery", Platforms: []string{"amazon"}, Text: "recover now"},
+		Request:   &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-recovery", Platforms: []string{"amazon"}, Text: "recover now"},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
 	}
@@ -85,7 +85,7 @@ func TestRecoverTaskNowForcesImmediateRecoveryBeforeNextRetryAt(t *testing.T) {
 		ID:        "task-force-recover-now",
 		TenantID:  "tenant-force-recovery",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{TenantID: "tenant-force-recovery", Platforms: []string{"amazon"}, Text: "force recover now"},
+		Request:   &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-force-recovery", Platforms: []string{"amazon"}, Text: "force recover now"},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
 	}
@@ -152,7 +152,7 @@ func TestRunRecoverySweepRequeuesDueBlockedTasksOnly(t *testing.T) {
 			ID:        fixture.id,
 			TenantID:  "tenant-sweep",
 			Status:    core.TaskStatusPending,
-			Request:   &GenerateRequest{TenantID: "tenant-sweep", Platforms: []string{"amazon"}, Text: fixture.id},
+			Request:   &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-sweep", Platforms: []string{"amazon"}, Text: fixture.id},
 			CreatedAt: now.Add(-10 * time.Minute),
 			UpdatedAt: now.Add(-10 * time.Minute),
 		}
@@ -233,7 +233,7 @@ func TestBulkRecoverTasksSkipsNotRecoverableItems(t *testing.T) {
 			ID:        fixture.id,
 			TenantID:  "tenant-bulk",
 			Status:    core.TaskStatusPending,
-			Request:   &GenerateRequest{TenantID: "tenant-bulk", Platforms: []string{"amazon"}, Text: fixture.id},
+			Request:   &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-bulk", Platforms: []string{"amazon"}, Text: fixture.id},
 			CreatedAt: now.Add(-10 * time.Minute),
 			UpdatedAt: now.Add(-10 * time.Minute),
 		}
@@ -334,7 +334,7 @@ func TestRecoverTaskNowRejectsNonRecoverableTask(t *testing.T) {
 		ID:        "task-invalid",
 		TenantID:  "tenant-invalid",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{TenantID: "tenant-invalid", Platforms: []string{"amazon"}, Text: "invalid"},
+		Request:   &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-invalid", Platforms: []string{"amazon"}, Text: "invalid"},
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now.Add(-time.Minute),
 	}
@@ -373,7 +373,7 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailures(t *testing.T) {
 		ID:        "task-reblock",
 		TenantID:  "tenant-reblock",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{TenantID: "tenant-reblock", Platforms: []string{"amazon"}, Text: "reblock"},
+		Request:   &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-reblock", Platforms: []string{"amazon"}, Text: "reblock"},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
 	}
@@ -476,7 +476,7 @@ func TestRecoverTaskNowMovesExhaustedIntentBearingSubmissionToReconciliation(t *
 	now := time.Date(2026, 6, 6, 17, 35, 0, 0, time.UTC)
 	nextRetryAt := now.Add(-time.Minute)
 	leaseUntil := now.Add(time.Hour)
-	task := &Task{ID: "task-intent-exhausted", TenantID: "tenant-intent-exhausted", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-intent-exhausted", Platforms: []string{"amazon"}, Text: "recover"}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-10 * time.Minute), UpdatedAt: now.Add(-10 * time.Minute)}
+	task := &Task{ID: "task-intent-exhausted", TenantID: "tenant-intent-exhausted", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductKey: "test-product", TenantID: "tenant-intent-exhausted", Platforms: []string{"amazon"}, Text: "recover"}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-10 * time.Minute), UpdatedAt: now.Add(-10 * time.Minute)}
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -621,7 +621,7 @@ func createBlockedRecoveryTask(t *testing.T, repo *taskRecoveryServiceTestRepo, 
 		ID:        taskID,
 		TenantID:  TenantIDFromContext(ctx),
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{TenantID: TenantIDFromContext(ctx), Platforms: []string{"amazon"}, Text: taskID},
+		Request:   &GenerateRequest{ProductKey: "test-product", TenantID: TenantIDFromContext(ctx), Platforms: []string{"amazon"}, Text: taskID},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
 	}

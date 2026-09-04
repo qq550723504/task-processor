@@ -4,19 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"task-processor/internal/authidentity"
-	listingplatform "task-processor/internal/listing/platform"
 	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	worker "task-processor/internal/platform/workerpool"
 	"task-processor/internal/tenantbridge"
 )
+
+type taskDispatchCancellationContextKey struct{}
+
+func taskDispatchCancellationPreserved(ctx context.Context) bool {
+	preserve, _ := ctx.Value(taskDispatchCancellationContextKey{}).(bool)
+	return preserve
+}
+
+func withTaskDispatchCancellation(ctx context.Context) context.Context {
+	return context.WithValue(ctx, taskDispatchCancellationContextKey{}, true)
+}
 
 func buildTaskListSummary(tasks []Task) *TaskListSummary {
 	if len(tasks) == 0 {
@@ -98,10 +107,6 @@ func pruneEmptyTaskListSummary(summary *TaskListSummary) *TaskListSummary {
 	return summary
 }
 
-func (s *taskLifecycleService) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {
-	return s.dispatchStudioTask(ctx, task)
-}
-
 func (s *taskLifecycleService) runTaskInline(ctx context.Context, task *Task) (*Task, error) {
 	return s.runGenerateTaskInline(ctx, task)
 }
@@ -130,20 +135,45 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	if err := s.validateRequestedSheinStoreAccess(ctx, req); err != nil {
 		return ctx, nil, err
 	}
+	if req.SourceSnapshotVersion == 0 {
+		if reader, ok := s.productSnapshots.(PublishedProductSnapshotReader); ok {
+			published, err := reader.GetPublishedProductSnapshot(ctx, ProductSnapshotQuery{TenantID: req.TenantID, ProductKey: req.ProductKey})
+			if err != nil {
+				return ctx, nil, fmt.Errorf("resolve product snapshot version: %w", err)
+			}
+			req.SourceSnapshotVersion = published.Version
+		}
+	}
 
 	task := &Task{
-		ID:              uuid.New().String(),
-		TenantID:        TenantIDFromContext(ctx),
-		BillingTenantID: billingTenantIDForTask(req, TenantIDFromContext(ctx)),
-		UserID:          strings.TrimSpace(req.UserID),
-		Request:         req,
-		Status:          core.TaskStatusPending,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-		RetryCount:      0,
+		ID:                    generateTaskID(req),
+		TenantID:              TenantIDFromContext(ctx),
+		BillingTenantID:       billingTenantIDForTask(req, TenantIDFromContext(ctx)),
+		UserID:                strings.TrimSpace(req.UserID),
+		SourceSnapshotVersion: req.SourceSnapshotVersion,
+		Request:               req,
+		Status:                core.TaskStatusPending,
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
+		RetryCount:            0,
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+// generateTaskID returns a deterministic task ID for trusted source-handoff
+// requests carrying an idempotency key, so a retried source request replays
+// the same task row instead of creating a duplicate. Caller-facing requests
+// without a key keep the random UUID behaviour.
+func generateTaskID(req *GenerateRequest) string {
+	if req == nil {
+		return uuid.New().String()
+	}
+	if key := strings.TrimSpace(req.IdempotencyKey); key != "" {
+		return uuid.NewSHA1(uuid.NameSpaceURL,
+			[]byte("task-processor:listingkit:source-task:"+strings.TrimSpace(req.TenantID)+"\x00"+key)).String()
+	}
+	return uuid.New().String()
 }
 
 func billingTenantIDForTask(req *GenerateRequest, _ string) string {
@@ -224,23 +254,10 @@ func (s *taskLifecycleService) dispatchGenerateTask(ctx context.Context, task *T
 	if s.taskSubmitter == nil || s.taskSubmitter() == nil {
 		return s.runGenerateTaskInline(ctx, task)
 	}
-	if shouldRunStudioInline(task.Request) {
-		return s.dispatchStudioTask(ctx, task)
-	}
 	if err := s.enqueueGenerateTask(ctx, task); err != nil {
 		return nil, err
 	}
 	return task, nil
-}
-
-func (s *taskLifecycleService) dispatchStudioTask(ctx context.Context, task *Task) (*Task, error) {
-	if s.taskSubmitter != nil && s.taskSubmitter() != nil {
-		if err := s.enqueueGenerateTask(ctx, task); err != nil {
-			return nil, err
-		}
-		return task, nil
-	}
-	return s.runGenerateTaskInline(ctx, task)
 }
 
 func (s *taskLifecycleService) runGenerateTaskInline(ctx context.Context, task *Task) (*Task, error) {
@@ -336,34 +353,11 @@ func (s *taskLifecycleService) persistEnqueueFailure(ctx context.Context, taskID
 }
 
 func validateRequest(req *GenerateRequest) error {
-	if len(req.ImageURLs) == 0 && strings.TrimSpace(req.Text) == "" && strings.TrimSpace(req.ProductURL) == "" {
-		return fmt.Errorf("at least one of image_urls, text, or product_url must be provided")
+	if req == nil || strings.TrimSpace(req.ProductKey) == "" {
+		return fmt.Errorf("product_key is required")
 	}
 	if len(req.Platforms) == 0 {
 		return fmt.Errorf("at least one platform is required")
-	}
-	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(listingplatform.NormalizeSupportedPlatforms(req.Platforms)) == 0 {
-		return fmt.Errorf("image processing requires at least one supported target platform")
-	}
-	if err := validateSheinStudioAspectRatio(req); err != nil {
-		return err
-	}
-	return nil
-}
-
-func validateSheinStudioAspectRatio(req *GenerateRequest) error {
-	if req == nil || req.Options == nil || req.Options.SheinStudio == nil || req.Options.SDS == nil {
-		return nil
-	}
-	studio := req.Options.SheinStudio
-	sds := req.Options.SDS
-	if studio.SourceDesignWidth <= 0 || studio.SourceDesignHeight <= 0 || sds.PrintableWidth <= 0 || sds.PrintableHeight <= 0 {
-		return nil
-	}
-	sourceRatio := float64(studio.SourceDesignWidth) / float64(studio.SourceDesignHeight)
-	targetRatio := float64(sds.PrintableWidth) / float64(sds.PrintableHeight)
-	if math.Abs(sourceRatio-targetRatio)/targetRatio > 0.25 {
-		return fmt.Errorf("shein studio source image ratio differs too much from SDS printable area ratio")
 	}
 	return nil
 }

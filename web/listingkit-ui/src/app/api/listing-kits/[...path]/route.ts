@@ -24,7 +24,6 @@ import {
   logRequestWarn,
   newRequestLogId,
 } from "@/lib/server/request-log";
-import { buildListingKitTraceLogFields } from "@/lib/listingkit/request-trace";
 export const dynamic = "force-dynamic";
 const PROXY_BODY_READ_TIMEOUT_MS = 15_000;
 
@@ -36,7 +35,6 @@ async function proxyRequest(
   const startedAt = Date.now();
   const { path } = await params;
   const proxyPath = `/${path.join("/")}`;
-  const traceFields = buildListingKitTraceLogFields(request.headers);
   let url: string;
   try {
     url = buildListingKitProxyUrl(
@@ -60,7 +58,6 @@ async function proxyRequest(
         path: proxyPath,
         status: 200,
         durationMs: Date.now() - startedAt,
-        ...traceFields,
       });
       return NextResponse.json(mock.createTask, {
         headers: {
@@ -81,7 +78,6 @@ async function proxyRequest(
       path: proxyPath,
       status: 200,
       durationMs: Date.now() - startedAt,
-      ...traceFields,
     });
     return NextResponse.json(payload, {
       headers: {
@@ -121,7 +117,6 @@ async function proxyRequest(
         status,
         durationMs: Date.now() - startedAt,
         error: message,
-        ...traceFields,
       },
     );
     return auth.response;
@@ -145,15 +140,6 @@ async function proxyRequest(
     request.method,
     path,
   );
-  if (path[0] === "studio") {
-    logRequestInfo("listingkit upstream request started", {
-      requestId,
-      method: request.method,
-      path: proxyPath,
-      timeoutMs: upstreamTimeoutMs,
-      ...traceFields,
-    });
-  }
   try {
     const body =
       request.method === "GET" || request.method === "HEAD"
@@ -185,7 +171,6 @@ async function proxyRequest(
       durationMs: Date.now() - startedAt,
       error: message,
       timeoutMs: upstreamTimeoutMs,
-      ...traceFields,
     });
     return NextResponse.json(
       {
@@ -202,7 +187,6 @@ async function proxyRequest(
     method: request.method,
     path: proxyPath,
     routePath: path,
-    traceFields,
     upstream,
   });
   return response;

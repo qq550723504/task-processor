@@ -25,7 +25,7 @@ import (
 	"task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/objectstore"
 	"task-processor/internal/imageagent/store"
-	"task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
@@ -38,9 +38,33 @@ func TestExecuteSlotV3RestoresProductImageBusinessIdentity(t *testing.T) {
 	_, err := activities.ExecuteSlotV3(context.Background(), input)
 
 	require.NoError(t, err)
-	require.Equal(t, productimage.AIIdentity{
+	require.Equal(t, aiidentity.Identity{
 		TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-product-image", TraceID: "trace-product-image",
-	}, executor.ProductImageIdentity())
+	}, executor.AIIdentity())
+}
+
+func TestPrepareGeneratedSlotArtifactsUsesInlineBytesWithoutFilesystemFallback(t *testing.T) {
+	data := tinyPNGBytes(t)
+	input := imageagent.SlotExecutionInput{
+		RunID: "run-inline", TenantID: "tenant-a", UserID: "user-a", PlanRevision: 1, Attempt: 1,
+		Slot: imageagent.Slot{ID: "scene-1"},
+	}
+	generated := imageagent.SlotGeneratedOutput{
+		SlotID: "scene-1", Attempt: 1, SourceAssetID: "source-1",
+		Assets: []imageagent.GeneratedAsset{{
+			Bytes: data, ContentType: "image/png", Width: 1, Height: 1,
+			Operations: []string{"render_scene"}, ProviderReceiptID: "request-1",
+		}},
+	}
+	store := &recordingArtifactStore{}
+
+	prepared, err := prepareGeneratedSlotArtifacts(input, generated, store)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, store.prepareCalls)
+	require.Equal(t, "request-1", prepared.Manifest.Assets[0].ProviderReceiptID)
+	cleanupGeneratedSlotTemporaryAssets(&generated)
+	require.Nil(t, generated.Assets[0].Bytes)
 }
 
 func TestExecuteSlotV3CleansGeneratedLocalFileOnlyAfterDurableStaging(t *testing.T) {
@@ -323,6 +347,155 @@ func TestExecuteSlotV3ResumesPersistedStagingWithoutRegeneration(t *testing.T) {
 	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
 	require.NoError(t, err)
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
+func TestReviewStagedSlotV3ReusesCandidatesWithoutRegeneration(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-review-retry")
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	seedV3StagingPrepared(t, effects, input, manifest)
+	_, err := effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+		Reservation: v3Reservation(input), Phase: imageagent.SlotEffectV3ReviewTransportRequired,
+		Code: imageagent.SlotReviewTransportRequiredCode,
+	})
+	require.NoError(t, err)
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+
+	result, err := activities.ReviewStagedSlotV3(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	require.Zero(t, executor.GenerateCalls(), "review-only retry must not regenerate")
+	require.Equal(t, 1, executor.BuildCalls(), "successful staged review should finalize the existing artifact")
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
+}
+
+func TestReviewStagedSlotV3ReplaysPersistedHumanReviewBlock(t *testing.T) {
+	repository, input, policy := initializedBudgetedV3Activity(t, "run-v3-review-human-replay", 2)
+	input.BudgetAuthorization, input.BudgetPolicy, input.ReviewActionID = true, policy, "review-action"
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	providerReservation := v3Reservation(input)
+	providerReservation.Policy, providerReservation.Quote = policy, budgetActivityQuote("provider-human-review-replay")
+	_, acquired, err := effects.ReserveSlotProviderV3(context.Background(), providerReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, err = effects.PrepareSlotStagingV3(context.Background(), providerReservation, manifest)
+	require.NoError(t, err)
+	_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+		Reservation: providerReservation, Phase: imageagent.SlotEffectV3ReviewRequired,
+		Code: imageagent.SlotReviewRequiredCode,
+	})
+	require.NoError(t, err)
+
+	reviewReservation := imageagent.SlotReviewUsageReservation{
+		Identity: v3Reservation(input).Identity, ActionID: input.ReviewActionID,
+		InputFingerprint: imageagent.SlotExecutionFingerprint(imageagent.SlotExecutionInput{
+			RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+			PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
+			IdempotencyKey: input.IdempotencyKey, AssetCatalog: input.AssetCatalog,
+		}),
+		Policy: policy, Quote: budgetActivityQuote("human-review-replay"),
+	}
+	_, acquired, err = effects.ReserveSlotReviewV3(context.Background(), reviewReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, err = effects.SettleSlotReviewV3(context.Background(), reviewReservation, imageagent.SlotUsageReceipt{
+		Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound,
+	})
+	require.NoError(t, err)
+	_, err = effects.RecordSlotReviewOutcomeV3(context.Background(), reviewReservation, imageagent.SlotReviewOutcomeNeedsHuman)
+	require.NoError(t, err)
+
+	executor := &recordingStagedExecutor{}
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+	_, err = activities.ReviewStagedSlotV3(context.Background(), input)
+
+	requireV3ApplicationErrorType(t, err, imageagent.SlotReviewRequiredCode)
+	require.Zero(t, executor.GenerateCalls(), "replaying a human-review block must not regenerate")
+}
+
+func TestReviewStagedSlotV3CompletesHumanBlockAfterOutcomeBeforePhaseTransition(t *testing.T) {
+	repository, input, policy := initializedBudgetedV3Activity(t, "run-v3-review-human-phase-replay", 2)
+	input.BudgetAuthorization, input.BudgetPolicy, input.ReviewActionID = true, policy, "review-action"
+	input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "source-1", Type: imageagent.AuthorizedAssetSource, SourceURL: "https://source.example/original.png"})
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	manifest := v3StagingManifest(input, tinyPNGBytes(t))
+	providerReservation := v3Reservation(input)
+	providerReservation.Policy, providerReservation.Quote = policy, budgetActivityQuote("provider-human-phase-replay")
+	_, acquired, err := effects.ReserveSlotProviderV3(context.Background(), providerReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, err = effects.PrepareSlotStagingV3(context.Background(), providerReservation, manifest)
+	require.NoError(t, err)
+	_, err = effects.BlockSlotEffectV3(context.Background(), imageagent.SlotEffectV3BlockTransition{
+		Reservation: providerReservation, Phase: imageagent.SlotEffectV3ReviewTransportRequired,
+		Code: imageagent.SlotReviewTransportRequiredCode,
+	})
+	require.NoError(t, err)
+
+	reviewReservation := imageagent.SlotReviewUsageReservation{
+		Identity: v3Reservation(input).Identity, ActionID: input.ReviewActionID,
+		InputFingerprint: imageagent.SlotExecutionFingerprint(imageagent.SlotExecutionInput{
+			RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+			PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
+			IdempotencyKey: input.IdempotencyKey, AssetCatalog: input.AssetCatalog,
+		}),
+		Policy: policy, Quote: budgetActivityQuote("human-phase-replay"),
+	}
+	_, acquired, err = effects.ReserveSlotReviewV3(context.Background(), reviewReservation)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	_, err = effects.SettleSlotReviewV3(context.Background(), reviewReservation, imageagent.SlotUsageReceipt{
+		Actual: imageagent.UsageVector{Images: 1, AgentSteps: 1}, CostBasis: imageagent.UsageCostReservedUpperBound,
+	})
+	require.NoError(t, err)
+	_, err = effects.RecordSlotReviewOutcomeV3(context.Background(), reviewReservation, imageagent.SlotReviewOutcomeNeedsHuman)
+	require.NoError(t, err)
+
+	activities := newV3Activities(t, repository, effects, &recordingStagedExecutor{}, &recordingArtifactStore{})
+	_, err = activities.ReviewStagedSlotV3(context.Background(), input)
+
+	requireV3ApplicationErrorType(t, err, imageagent.SlotReviewRequiredCode)
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ReviewRequired, stored.Phase)
+}
+
+func TestStagedOutputFromManifestRetainsOriginalCatalogSourceURL(t *testing.T) {
+	_, input := initializedSlotEffectV3Activity(t, "run-v3-source-url")
+	input.AssetCatalog.Assets = []imageagent.AuthorizedAsset{{ID: input.Slot.SourceAssetIDs[0], Type: imageagent.AuthorizedAssetSource, SourceURL: "https://source.example/original.png"}}
+	output, err := stagedOutputFromManifest(input, v3StagingManifest(input, tinyPNGBytes(t)), &recordingArtifactStore{})
+
+	require.NoError(t, err)
+	require.Len(t, output.Assets, 1)
+	require.Equal(t, "https://source.example/original.png", output.Assets[0].SourceURL)
+	require.NotEqual(t, output.Assets[0].URL, output.Assets[0].SourceURL)
+}
+
+func TestExecuteSlotV3PersistsReviewerTransportBlockWithStagedManifest(t *testing.T) {
+	repository, input := initializedSlotEffectV3Activity(t, "run-v3-review-transport")
+	generated := generatedV3Output(input, writeTinyPNG(t))
+	executor := &recordingStagedExecutor{
+		generated: generated,
+		generateErr: &imageagent.SlotReviewTransportError{
+			Output: generated, Reason: "reviewer timeout", Cause: context.DeadlineExceeded,
+		},
+	}
+	effects := repository.(imageagent.SlotExternalEffectV3Repository)
+	activities := newV3Activities(t, repository, effects, executor, &recordingArtifactStore{})
+
+	_, err := activities.ExecuteSlotV3(context.Background(), input)
+
+	requireV3ApplicationErrorType(t, err, imageagent.SlotReviewTransportRequiredCode)
+	require.Equal(t, 1, executor.GenerateCalls())
+	stored, err := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ReviewTransportRequired, stored.Phase)
+	require.NotEmpty(t, stored.StagingManifestFingerprint)
 }
 
 func TestEffectRecoveryWorkflowReconcilesClaimWithoutProviderCall(t *testing.T) {
@@ -1096,7 +1269,7 @@ type recordingStagedExecutor struct {
 	generateCalls               int
 	buildCalls                  int
 	mutateResult                func(*imageagent.SlotExecutionResult)
-	identity                    productimage.AIIdentity
+	identity                    aiidentity.Identity
 	started                     chan struct{}
 	onGenerate                  func()
 	waitForCancellation         bool
@@ -1124,7 +1297,7 @@ func (e *recordingStagedExecutor) ExecuteSlot(context.Context, imageagent.SlotEx
 func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imageagent.SlotExecutionInput) (imageagent.SlotGeneratedOutput, error) {
 	e.mu.Lock()
 	e.generateCalls++
-	e.identity = productimage.AIIdentityFromContext(ctx)
+	e.identity = aiidentity.FromContext(ctx)
 	generated, generateErr := e.generated, e.generateErr
 	started, onGenerate, waitForCancellation := e.started, e.onGenerate, e.waitForCancellation
 	e.mu.Unlock()
@@ -1144,6 +1317,10 @@ func (e *recordingStagedExecutor) GenerateSlot(ctx context.Context, input imagea
 		onGenerate()
 	}
 	return generated, nil
+}
+
+func (e *recordingStagedExecutor) ReviewStagedSlot(context.Context, imageagent.SlotExecutionInput, imageagent.SlotGeneratedOutput) error {
+	return nil
 }
 
 type cancellationRejectingV3Repository struct {
@@ -1306,7 +1483,7 @@ func (e *recordingStagedExecutor) BuildSawCancelledContext() bool {
 	return e.buildSawCancelledContext
 }
 
-func (e *recordingStagedExecutor) ProductImageIdentity() productimage.AIIdentity {
+func (e *recordingStagedExecutor) AIIdentity() aiidentity.Identity {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.identity

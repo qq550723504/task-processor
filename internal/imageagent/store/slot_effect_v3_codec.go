@@ -55,6 +55,11 @@ func decodeSlotEffectV3Record(row slotExternalEffectV3Record) (imageagent.SlotEf
 			return result, fmt.Errorf("decode v3 usage receipt: %w", err)
 		}
 	}
+	if len(row.ReviewUsageJSON) > 0 {
+		if err := json.Unmarshal(row.ReviewUsageJSON, &result.ReviewUsage); err != nil {
+			return result, fmt.Errorf("decode v3 review usage: %w", err)
+		}
+	}
 	if err := imageagent.ValidateSlotEffectV3AttemptPolicy(result); err != nil {
 		return imageagent.SlotEffectV3Attempt{}, err
 	}
@@ -111,6 +116,7 @@ func cloneSlotEffectV3(effect imageagent.SlotEffectV3Attempt) imageagent.SlotEff
 	effect.Published = cloneSlotEffectV3PublishedResult(effect.Published)
 	effect.Quote = cloneSlotUsageQuote(effect.Quote)
 	effect.Receipt = cloneSlotUsageReceipt(effect.Receipt)
+	effect.ReviewUsage = cloneReviewUsage(effect.ReviewUsage)
 	return effect
 }
 
@@ -122,6 +128,15 @@ func cloneSlotUsageQuote(quote imageagent.SlotUsageQuote) imageagent.SlotUsageQu
 func cloneSlotUsageReceipt(receipt imageagent.SlotUsageReceipt) imageagent.SlotUsageReceipt {
 	receipt.ProviderRequestIDs = append([]string(nil), receipt.ProviderRequestIDs...)
 	return receipt
+}
+
+func cloneReviewUsage(values []imageagent.SlotReviewUsageAttempt) []imageagent.SlotReviewUsageAttempt {
+	cloned := append([]imageagent.SlotReviewUsageAttempt(nil), values...)
+	for index := range cloned {
+		cloned[index].Quote.Operations = append([]imageagent.SlotUsageOperation(nil), cloned[index].Quote.Operations...)
+		cloned[index].Receipt.ProviderRequestIDs = append([]string(nil), cloned[index].Receipt.ProviderRequestIDs...)
+	}
+	return cloned
 }
 
 func cloneSlotEffectV3PublishedResult(result imageagent.SlotEffectV3PublishedResult) imageagent.SlotEffectV3PublishedResult {

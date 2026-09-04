@@ -13,22 +13,17 @@ func TestExtractedBootstrapFilesOwnSplitAssemblers(t *testing.T) {
 	repositoryContractsSrc, err := os.ReadFile("bootstrap_repositories_contracts.go")
 	require.NoError(t, err)
 	require.Contains(t, string(repositoryContractsSrc), "type builtRepositories struct")
-	require.Contains(t, string(repositoryContractsSrc), "type repositoryAssembly struct")
+	require.NotContains(t, string(repositoryContractsSrc), "type repositoryAssembly struct")
 
-	repositoryCoreSrc, err := os.ReadFile("bootstrap_repositories_core.go")
-	require.NoError(t, err)
-	require.Contains(t, string(repositoryCoreSrc), "func buildCoreRepositories(")
-	require.Contains(t, string(repositoryCoreSrc), "func buildLateCoreRepositories(")
-
-	repositoryAdminSrc, err := os.ReadFile("bootstrap_repositories_admin.go")
-	require.NoError(t, err)
-	require.Contains(t, string(repositoryAdminSrc), "func buildAdminRepositories(")
-	require.Contains(t, string(repositoryAdminSrc), "func buildAdminCatalogRepositories(")
+	_, err = os.Stat("bootstrap_repositories_core.go")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat("bootstrap_repositories_admin.go")
+	require.ErrorIs(t, err, os.ErrNotExist)
 
 	repositoryMergeSrc, err := os.ReadFile("bootstrap_repositories_merge.go")
 	require.NoError(t, err)
 	require.Contains(t, string(repositoryMergeSrc), "func buildRepositories(")
-	require.Contains(t, string(repositoryMergeSrc), "func mergeBuiltRepositories(")
+	require.NotContains(t, string(repositoryMergeSrc), "func mergeBuiltRepositories(")
 
 	contractsSrc, err := os.ReadFile("bootstrap_contracts.go")
 	require.NoError(t, err)
@@ -42,7 +37,7 @@ func TestExtractedBootstrapFilesOwnSplitAssemblers(t *testing.T) {
 	closersSrc, err := os.ReadFile("bootstrap_closers.go")
 	require.NoError(t, err)
 	require.Contains(t, string(closersSrc), "type closerStack struct")
-	require.Contains(t, string(closersSrc), "func buildNamedWithClosers")
+	require.NotContains(t, string(closersSrc), "func buildNamedWithClosers")
 
 	moduleServiceSrc, err := os.ReadFile("bootstrap_module_service.go")
 	require.NoError(t, err)

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/listingruntime"
 	openaiclient "task-processor/internal/integration/openai"

@@ -9,9 +9,9 @@ import (
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
-	productpkg "task-processor/internal/product"
 )
 
 // extractMappingInfoFromAttributes 从Attributes JSON中提取所有映射信息和库存
@@ -32,7 +32,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 
 // extractStockFromProduct 从Amazon产品中提取库存（使用公共函数）
 func (s *inventorySyncServiceImpl) extractStockFromProduct(amazonProduct *model.Product) int {
-	return productpkg.GetInventory(amazonProduct)
+	return productpolicy.GetInventory(amazonProduct)
 }
 
 // parsePrice 解析价格字符串

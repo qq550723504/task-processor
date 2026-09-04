@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { regenerateSheinDataImage } from "@/lib/api/shein-image-regeneration";
 import type { ApplyRevisionRequest } from "@/lib/api/revision";
 import type { SubmitTaskRequest } from "@/lib/api/submit";
 import type { UpdateSheinFinalDraftRequest } from "@/lib/api/shein-final-draft";
@@ -23,7 +22,6 @@ import type {
   SheinResolvedAttribute,
   SheinSaleAttributeTemplateOption,
 } from "@/lib/types/listingkit";
-import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
 
 type MutationLike<TVariables = unknown> = {
   isPending: boolean;
@@ -63,16 +61,12 @@ type UpdateSheinFinalDraftMutation = MutationLike & {
 export function useSheinWorkspaceActions({
   taskId,
   sheinPreview,
-  preview,
-  taskResult,
   applyRevision,
   submitTask,
   updateSheinFinalDraft,
 }: {
   taskId: string;
   sheinPreview?: SheinPreviewPayload;
-  preview: { refetch: () => Promise<unknown> };
-  taskResult: { refetch: () => Promise<unknown> };
   applyRevision: ApplyRevisionMutation;
   submitTask: SubmitTaskMutation;
   updateSheinFinalDraft: UpdateSheinFinalDraftMutation;
@@ -93,9 +87,6 @@ export function useSheinWorkspaceActions({
   };
 
   const [selectedSheinImageUrl, setSelectedSheinImageUrl] = useState<string>();
-  const [regeneratingSheinImage, setRegeneratingSheinImage] = useState(false);
-  const [sheinImageRegenerationError, setSheinImageRegenerationError] =
-    useState<string | null>(null);
   const [sheinSubmitAction, setSheinSubmitAction] = useState<
     "publish" | "save_draft" | null
   >(null);
@@ -346,33 +337,9 @@ export function useSheinWorkspaceActions({
     );
   };
 
-  const handleRegenerateSheinImage = async (
-    image: SheinPreviewImage,
-    prompt: string,
-  ) => {
-    setRegeneratingSheinImage(true);
-    setSheinImageRegenerationError(null);
-    try {
-      const response = await regenerateSheinDataImage(taskId, {
-        image_url: image.url,
-        label: image.label,
-        prompt,
-      });
-      setSelectedSheinImageUrl(response.image?.image_url ?? undefined);
-      await Promise.all([preview.refetch(), taskResult.refetch()]);
-    } catch (error) {
-      setSheinImageRegenerationError(submitErrorMessage(error));
-      throw error;
-    } finally {
-      setRegeneratingSheinImage(false);
-    }
-  };
-
   return {
     selectedSheinImageUrl,
     setSelectedSheinImageUrl,
-    regeneratingSheinImage,
-    sheinImageRegenerationError,
     sheinSubmitAction,
     sheinFinalDraftMessage,
     sheinFinalDraftError,
@@ -396,6 +363,5 @@ export function useSheinWorkspaceActions({
     handleSaveSheinFinalDraft,
     handleSubmitShein,
     handleSaveSheinDraft: () => handleSubmitShein("save_draft"),
-    handleRegenerateSheinImage,
   };
 }

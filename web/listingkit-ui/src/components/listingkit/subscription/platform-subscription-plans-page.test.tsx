@@ -64,7 +64,7 @@ describe("PlatformSubscriptionPlansPage", () => {
     mockedUpsertPlatformSubscriptionPlan.mockReset();
     mockedGetSubscriptionModules.mockResolvedValue([
       {
-        code: "studio",
+        code: "listingkit",
         name: "Studio",
         sort_order: 50,
         active: true,
@@ -88,8 +88,8 @@ describe("PlatformSubscriptionPlansPage", () => {
         modules: [
           {
             plan_code: "professional",
-            module_code: "studio",
-            limits: { design_jobs: 100 },
+            module_code: "listingkit",
+            limits: { listingkit_generations_succeeded: 100 },
             sort_order: 50,
           },
         ],
@@ -199,11 +199,11 @@ describe("PlatformSubscriptionPlansPage", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "移除 studio" }));
+    fireEvent.click(screen.getByRole("button", { name: "移除 listingkit" }));
     await waitFor(() => {
       expect(mockedDeletePlatformSubscriptionPlanModule).toHaveBeenCalledWith(
         "professional",
-        "studio",
+        "listingkit",
       );
     });
   });

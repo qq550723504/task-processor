@@ -91,7 +91,7 @@ func TestListSheinStoreProfilesReturnsProfiles(t *testing.T) {
 	adminSvc := &stubStoreProfileAdminService{
 		profiles: []listingkit.ListingKitStoreProfile{legacyProfile},
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeListingKitOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestUpsertSheinStoreProfileBindsRequest(t *testing.T) {
 			DefaultSubmitMode: "save_draft",
 		},
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeListingKitOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}

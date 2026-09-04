@@ -9,22 +9,6 @@ import (
 	"task-processor/internal/listingsubscription"
 )
 
-func TestBuildGenerationUsageLedgerSupportsKnownRepositories(t *testing.T) {
-	t.Parallel()
-
-	mem, err := buildGenerationUsageLedger(listingsubscription.NewMemRepository())
-	require.NoError(t, err)
-	require.NotNil(t, mem)
-}
-
-func TestBuildGenerationUsageLedgerRejectsUnknownRepository(t *testing.T) {
-	t.Parallel()
-
-	var repo listingsubscription.Repository
-	_, err := buildGenerationUsageLedger(repo)
-	require.Error(t, err)
-}
-
 func TestGenerationUsageSettlementDependencyKeepsLedgerForRecoveryWhenAdmissionDisabled(t *testing.T) {
 	t.Parallel()
 

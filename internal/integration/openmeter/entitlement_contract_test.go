@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	pocStudioLimit       = "5"
+	pocListingKitLimit   = "5"
 	pocSheinLimit        = "3"
 	pocStorageLimitBytes = "10485760"
 )
@@ -48,14 +48,14 @@ func TestPoCEntitlementAccessTracksUsageThresholds(t *testing.T) {
 	eventOffset := 0
 	for _, step := range steps {
 		t.Run(step.name, func(t *testing.T) {
-			ingestPoCCountEvents(t, fixture, client, tenantID, MetricStudioDesignJobsSucceeded, window, "entitlement-threshold", eventOffset, step.events)
+			ingestPoCCountEvents(t, fixture, client, tenantID, MetricListingKitGenerationsSucceeded, window, "entitlement-threshold", eventOffset, step.events)
 			eventOffset += step.events
-			waitForPoCEntitlementEvidence(t, client, fixture.Customers[0].ID, fixture.Names.StudioFeatureKey, fixture.Meters[0].ID, fixture.Names.SubjectA, window, pocStudioLimit, pocDerivedEntitlementEvidence{
+			waitForPoCEntitlementEvidence(t, client, fixture.Customers[0].ID, fixture.Names.ListingKitFeatureKey, fixture.Meters[0].ID, fixture.Names.SubjectA, window, pocListingKitLimit, pocDerivedEntitlementEvidence{
 				Usage:      step.wantUsage,
 				Balance:    step.wantBalance,
 				Overage:    step.wantOverage,
 				HasAccess:  step.wantAccess,
-				FeatureKey: fixture.Names.StudioFeatureKey,
+				FeatureKey: fixture.Names.ListingKitFeatureKey,
 			})
 		})
 	}
@@ -128,9 +128,9 @@ func TestPoCConcurrentAccessCheckDoesNotPromiseAtomicReservation(t *testing.T) {
 
 	// Four committed units leave one unit. The experiment intentionally adds no
 	// local lock or reservation around the subsequent check-then-ingest workers.
-	ingestPoCCountEvents(t, fixture, client, tenantID, MetricStudioDesignJobsSucceeded, window, "concurrency-primer", 0, 4)
-	waitForPoCEntitlementEvidence(t, client, fixture.Customers[1].ID, fixture.Names.StudioFeatureKey, fixture.Meters[0].ID, fixture.Names.SubjectB, window, pocStudioLimit, pocDerivedEntitlementEvidence{
-		Usage: "4", Balance: "1", Overage: "0", HasAccess: true, FeatureKey: fixture.Names.StudioFeatureKey,
+	ingestPoCCountEvents(t, fixture, client, tenantID, MetricListingKitGenerationsSucceeded, window, "concurrency-primer", 0, 4)
+	waitForPoCEntitlementEvidence(t, client, fixture.Customers[1].ID, fixture.Names.ListingKitFeatureKey, fixture.Meters[0].ID, fixture.Names.SubjectB, window, pocListingKitLimit, pocDerivedEntitlementEvidence{
+		Usage: "4", Balance: "1", Overage: "0", HasAccess: true, FeatureKey: fixture.Names.ListingKitFeatureKey,
 	})
 
 	const workers = 20
@@ -138,7 +138,7 @@ func TestPoCConcurrentAccessCheckDoesNotPromiseAtomicReservation(t *testing.T) {
 	for index := range events {
 		events[index] = mustPoCUsageEvent(t, UsageFact{
 			TenantID:   tenantID,
-			Metric:     MetricStudioDesignJobsSucceeded,
+			Metric:     MetricListingKitGenerationsSucceeded,
 			Quantity:   "1",
 			SourceType: "concurrent_committed_success",
 			SourceID:   fmt.Sprintf("poc-%s-concurrent-access-%02d", fixture.Environment.RunID, index),
@@ -164,7 +164,7 @@ func TestPoCConcurrentAccessCheckDoesNotPromiseAtomicReservation(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(parentContext, pocMeterPollTimeout)
 			defer cancel()
-			hasAccess, err := customerHasPoCFeatureAccess(ctx, client, fixture.Customers[1].ID, fixture.Names.StudioFeatureKey)
+			hasAccess, err := customerHasPoCFeatureAccess(ctx, client, fixture.Customers[1].ID, fixture.Names.ListingKitFeatureKey)
 			if err == nil {
 				err = client.Ingest(ctx, event)
 			}

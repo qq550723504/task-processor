@@ -13,12 +13,12 @@ import (
 )
 
 type httpFeatureCompositionBuilder struct {
-	buildProduct          productModuleBuilder
-	buildImage            imageModuleBuilder
 	buildAmazonListing    amazonListingModuleBuilder
+	buildAmazonRepo       amazonListingRepositoryBuilder
 	buildSheinLogin       sheinLoginModuleBuilder
 	buildSDSLogin         sdsLoginModuleBuilder
 	buildListingKit       listingKitModuleBuilder
+	buildListingRepos     listingKitRepositoryBuilder
 	buildPrompt           promptModuleBuilder
 	buildTaskRPC          taskRPCModuleBuilder
 	buildSDS              sdsModuleBuilder
@@ -30,12 +30,12 @@ type httpFeatureCompositionBuilder struct {
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
-		buildProduct:          buildProductModuleResult,
-		buildImage:            buildImageModuleResult,
 		buildAmazonListing:    buildAmazonListingModuleResult,
+		buildAmazonRepo:       newDBAmazonListingTaskRepository,
 		buildSheinLogin:       buildSheinLoginModuleResult,
 		buildSDSLogin:         buildSDSLoginModuleResult,
 		buildListingKit:       buildListingKitModuleResult,
+		buildListingRepos:     buildListingKitPersistentRepositories,
 		buildPrompt:           buildPromptModuleResult,
 		buildTaskRPC:          buildTaskRPCModuleResult,
 		buildSDS:              buildSDSModuleResult,
@@ -49,23 +49,26 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (httpFeatureComposition, error) {
 	var composition httpFeatureComposition
 	timer := newStartupTimer(logger)
-
-	done := timer.phase("buildProductImageModules")
-	listingKitFeatures, err := listingKitFeatureBuilder{
-		buildProduct:    b.buildProduct,
-		buildImage:      b.buildImage,
-		buildListingKit: b.buildListingKit,
-	}.build(logger, deps, listingKitFeatureBuildOptions{includeImage: true})
-	done()
-	if err != nil {
+	if err := initializeProductSnapshotReader(deps); err != nil {
 		return composition, err
 	}
-	composition.productModule = listingKitFeatures.productModule
-	composition.imageModule = listingKitFeatures.imageModule
+	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {
+		return composition, fmt.Errorf("build product repositories: runtime config is required")
+	}
+	if b.buildListingRepos == nil {
+		return composition, fmt.Errorf("build product repositories: listingkit repository builder is required")
+	}
+	listingKitRepositories, listingKitCloser, err := b.buildListingRepos(deps.shared.cfg.Database, logger)
+	if err != nil {
+		return composition, fmt.Errorf("build listingkit repositories: %w", err)
+	}
+	deps.ensureListingKitSupport().repositories = listingKitRepositories
+	deps.addClosers(listingKitCloser)
 
-	done = timer.phase("buildAmazonListingModule")
+	done := timer.phase("buildAmazonListingModule")
 	amazonListingModule, err := amazonListingFeatureBuilder{
 		buildAmazonListing: b.buildAmazonListing,
+		buildRepository:    b.buildAmazonRepo,
 	}.build(logger, deps)
 	done()
 	if err != nil {
@@ -86,19 +89,12 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.sdsLoginResult = loginFeatures.sdsLoginResult
 
 	done = timer.phase("buildListingKitModule")
-	listingKitFeatures, err = listingKitFeatureBuilder{
-		buildProduct:    b.buildProduct,
-		buildImage:      b.buildImage,
-		buildListingKit: b.buildListingKit,
-	}.build(logger, deps, listingKitFeatureBuildOptions{
-		includeListingKit: true,
-		skipProduct:       true,
-	})
+	listingKitModule, err := listingKitFeatureBuilder{buildListingKit: b.buildListingKit}.build(logger, deps)
 	done()
 	if err != nil {
 		return composition, err
 	}
-	composition.listingKitModule = listingKitFeatures.listingKitModule
+	composition.listingKitModule = listingKitModule
 	var sourceRepository sourceaccount.Repository
 	var sourceValidator sourceaccount.AccessValidator
 	if composition.listingKitModule != nil {
@@ -122,7 +118,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	}
 	if composition.listingKitModule != nil && composition.listingKitModule.TaskLifecycleService != nil && composition.listingKitModule.StoreAccessValidator != nil {
 		composition.productSourcingModule = a1688httpapi.BuildModule(
-			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator, sourceValidator),
+			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator, sourceValidator, deps.features.productSnapshotPublisher),
 		)
 	}
 	if composition.listingKitModule != nil {
@@ -138,9 +134,6 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		composition.imageAgentModule = imageAgentModule
 		if imageAgentModule != nil {
 			deps.addClosers(imageAgentModule.Closers...)
-		}
-		if workspaceErr := attachImageAgentWorkspace(composition.listingKitModule, imageAgentModule); workspaceErr != nil {
-			return composition, workspaceErr
 		}
 	}
 

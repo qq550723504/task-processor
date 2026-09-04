@@ -13,7 +13,7 @@ import (
 )
 
 func (h *handler) ListSheinStoreProfiles(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	items, err := h.storeAdminService.ListSheinStoreProfiles(requestContext(c))
@@ -25,7 +25,7 @@ func (h *handler) ListSheinStoreProfiles(c *gin.Context) {
 }
 
 func (h *handler) UpsertSheinStoreProfile(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	var req listingkit.ListingKitStoreProfile
@@ -42,7 +42,7 @@ func (h *handler) UpsertSheinStoreProfile(c *gin.Context) {
 }
 
 func (h *handler) DeleteSheinStoreProfile(c *gin.Context) {
-	if !h.requireSubscription(c, listingsubscription.ModuleStudio) {
+	if !h.requireSubscription(c, listingsubscription.ModuleListingKit) {
 		return
 	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

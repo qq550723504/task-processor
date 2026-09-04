@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 )
 
 // MaxActionIDLength leaves bounded headroom for the longest projection commit
@@ -25,6 +27,15 @@ const MaxPlanSlots = 32
 
 var actionIDPattern = regexp.MustCompile(fmt.Sprintf(`^[A-Za-z0-9][A-Za-z0-9._:+-]{0,%d}$`, MaxActionIDLength-1))
 
+func ValidateImagePolicyContext(marketplace string, context ImagePolicyContext) error {
+	if err := imagepolicy.ValidateProfileInput(imagepolicy.ProfileInput{
+		Marketplace: marketplace, Country: context.Country, Family: context.Family, SceneCategory: context.SceneCategory,
+	}); err != nil {
+		return fmt.Errorf("%w: image policy key must contain canonical marketplace, country, family, and scene category", ErrValidation)
+	}
+	return nil
+}
+
 func ValidateActionID(value string) error {
 	if len(value) > MaxActionIDLength || !actionIDPattern.MatchString(value) {
 		return fmt.Errorf("action ID must be a canonical path-safe identifier of at most %d bytes", MaxActionIDLength)
@@ -44,6 +55,13 @@ func validatePersistedIdempotencyKey(kind, value string) error {
 
 var knownSlotRoles = map[SlotRole]struct{}{
 	SlotRoleMain: {}, SlotRoleScene: {}, SlotRoleDetail: {}, SlotRoleSellingPoint: {}, SlotRoleSize: {},
+}
+
+func ValidateSlotRole(role SlotRole) error {
+	if _, known := knownSlotRoles[role]; !known {
+		return fmt.Errorf("%w: unknown slot role %q", ErrValidation, role)
+	}
+	return nil
 }
 
 func ValidatePlan(plan Plan) error {
@@ -95,8 +113,8 @@ func ValidatePlan(plan Plan) error {
 			return fmt.Errorf("duplicate slot id %q", id)
 		}
 		slotIDs[id] = struct{}{}
-		if _, known := knownSlotRoles[slot.Role]; !known {
-			return fmt.Errorf("unknown slot role %q", slot.Role)
+		if err := ValidateSlotRole(slot.Role); err != nil {
+			return err
 		}
 		if slot.Role == SlotRoleMain {
 			mainSlots++

@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import type { CustomerIssue } from "@/lib/shein-studio/shein-customer-issues";
+import type { CustomerIssue } from "@/lib/shein/customer-issues";
 
 function severityLabel(severity: CustomerIssue["severity"]) {
   switch (severity) {

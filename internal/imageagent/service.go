@@ -8,15 +8,18 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"task-processor/internal/authidentity"
 	"task-processor/internal/shared/aiidentity"
 )
 
 type Service struct {
-	repository Repository
-	workflows  WorkflowClient
-	catalogs   AuthorizedAssetCatalog
-	startGate  TenantStartGate
+	repository    Repository
+	workflows     WorkflowClient
+	catalogs      AuthorizedAssetCatalog
+	startGate     TenantStartGate
+	imagePolicies ImagePolicyAvailability
 }
 
 // TenantStartGate admits a run before any durable run state or workflow is
@@ -62,6 +65,16 @@ func WithTenantStartGate(gate TenantStartGate) ServiceOption {
 	}
 }
 
+func WithImagePolicyAvailability(availability ImagePolicyAvailability) ServiceOption {
+	return func(service *Service) error {
+		if availability == nil {
+			return fmt.Errorf("image agent policy availability is required")
+		}
+		service.imagePolicies = availability
+		return nil
+	}
+}
+
 func NewService(repository Repository, workflows WorkflowClient, catalogs AuthorizedAssetCatalog, options ...ServiceOption) (*Service, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("image agent repository is required")
@@ -94,8 +107,10 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	input.RunID = strings.TrimSpace(input.RunID)
 	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
-	input.TargetPlatform = strings.TrimSpace(input.TargetPlatform)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if err := ValidateImagePolicyContext(input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return err
+	}
 	if err := ValidateMaxConcurrentSlots(input.MaxConcurrentSlots); err != nil {
 		return err
 	}
@@ -119,7 +134,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: input.RunID}
 	if existing, getErr := s.repository.GetProjection(ctx, scope); getErr == nil {
-		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.TargetPlatform != input.TargetPlatform || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
+		if existing.Run.BusinessTaskID != input.BusinessTaskID || existing.Run.TargetPlatform != input.TargetPlatform || existing.Run.ImagePolicyContext != input.ImagePolicyContext || existing.Run.IdempotencyKey != input.IdempotencyKey || existing.Run.Budget != input.Budget || existing.Run.MaxConcurrentSlots != input.MaxConcurrentSlots || !reflect.DeepEqual(existing.Plan, input.Plan) {
 			return ErrRevisionConflict
 		}
 		if existing.Run.Status == RunStatusCompleted || existing.Run.Status == RunStatusCancelled {
@@ -129,8 +144,11 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	} else if !errors.Is(getErr, ErrRunNotFound) {
 		return getErr
 	}
-	if s.startGate != nil && !s.startGate.AllowTenantStart(ctx, identity.TenantID) {
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
 		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	if err := s.validateImagePolicyAvailable(ctx, input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return err
 	}
 	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
@@ -152,7 +170,8 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	}
 	run := Run{
 		ID: input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
-		TenantID: identity.TenantID, UserID: identity.UserID,
+		ImagePolicyContext: input.ImagePolicyContext,
+		TenantID:           identity.TenantID, UserID: identity.UserID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
 		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,
 		Budget: input.Budget, MaxConcurrentSlots: input.MaxConcurrentSlots,
@@ -170,6 +189,192 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots,
 		AssetCatalog:       projection.AssetCatalog,
 	})
+}
+
+// LaunchTaskRun starts a manual single-main-slot run for a verified business
+// task without trusting a browser-built plan. It resolves the task-scoped
+// authorized asset catalog, selects the primary (or caller-requested) source
+// asset, and delegates to Start so admission, idempotent replay, and workflow
+// ingress reuse the generic run-creation semantics unchanged.
+func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (TaskRunLaunchResult, error) {
+	identity, err := verifiedExecutionIdentity(ctx)
+	if err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	input.RequestID = strings.TrimSpace(input.RequestID)
+	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
+	input.TargetPlatform = strings.ToLower(strings.TrimSpace(input.TargetPlatform))
+	input.SourceAssetID = strings.TrimSpace(input.SourceAssetID)
+	if input.RequestID == "" || input.BusinessTaskID == "" {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: request ID and business task ID are required", ErrValidation)
+	}
+	if err := validatePersistedIdempotencyKey("launch request", input.RequestID); err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	if err := ValidateImagePolicyContext(input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	styleIDs, err := normalizeTaskLaunchStyleIDs(input.StyleAssetIDs)
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	// Admission is checked before the task catalog is resolved: the production
+	// resolver can probe up to 32 remote images on a 30s budget, and ineligible
+	// tenants must fail closed without consuming that capacity.
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	if err := s.validateImagePolicyAvailable(ctx, input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	if input.SourceAssetID == "" {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: source_asset_id must select one task-owned source asset", ErrValidation)
+	}
+	runID, runIdempotencyKey := taskLaunchRunIdentity(identity, input)
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{
+		TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: input.BusinessTaskID,
+		RunID: runID, TargetPlatform: input.TargetPlatform,
+		PrimarySourceAssetID: input.SourceAssetID, StyleReferenceIDs: styleIDs,
+	})
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
+	}
+	catalog, err = NormalizeAssetCatalog(catalog)
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: normalize authorized image assets: %v", ErrValidation, err)
+	}
+	primarySource, err := primaryTaskLaunchSource(catalog, input.SourceAssetID)
+	if err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	if err := validateTaskLaunchStyleIDs(catalog, styleIDs); err != nil {
+		return TaskRunLaunchResult{}, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	plan := Plan{
+		Revision: 1, IdempotencyKey: runID + "-plan",
+		SourceAssetIDs: []string{primarySource}, StyleReferenceIDs: styleIDs,
+		Slots: []Slot{{
+			ID: "main", Role: SlotRoleMain, SourceAssetIDs: []string{primarySource}, StyleReferenceIDs: styleIDs,
+			IdempotencyKey: runID + "-slot-main", Status: SlotStatusPending,
+		}},
+	}
+	if err := s.Start(ctx, StartRunInput{
+		RunID: runID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+		ImagePolicyContext: input.ImagePolicyContext, Mode: RunModeManual,
+		IdempotencyKey: runIdempotencyKey, Plan: plan,
+		Budget: Budget{MaxImages: 1, EnabledLimits: BudgetLimitImages}, MaxConcurrentSlots: 1,
+	}); err != nil {
+		return TaskRunLaunchResult{}, err
+	}
+	return TaskRunLaunchResult{RunID: runID}, nil
+}
+
+// PreflightTaskRunAssets resolves the task-scoped asset catalog without
+// creating a run. The workspace launcher uses it to force an explicit
+// source selection; crawler ordering never establishes user intent.
+func (s *Service) PreflightTaskRunAssets(ctx context.Context, input TaskRunAssetsInput) (TaskRunAssetPreflight, error) {
+	identity, err := verifiedExecutionIdentity(ctx)
+	if err != nil {
+		return TaskRunAssetPreflight{}, err
+	}
+	input.BusinessTaskID = strings.TrimSpace(input.BusinessTaskID)
+	input.TargetPlatform = strings.ToLower(strings.TrimSpace(input.TargetPlatform))
+	if input.BusinessTaskID == "" {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: business task ID is required", ErrValidation)
+	}
+	if input.TargetPlatform == "" {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: target platform is required", ErrValidation)
+	}
+	// Same admission ordering as LaunchTaskRun: the production resolver can
+	// probe up to 32 remote images on a 30s budget, so ineligible tenants
+	// must fail closed before any catalog work.
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	catalog, err := s.catalogs.Resolve(ctx, AssetCatalogScope{
+		TenantID: identity.TenantID, OwnerUserID: identity.UserID,
+		BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+	})
+	if err != nil {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: resolve authorized image assets: %v", ErrValidation, err)
+	}
+	catalog, err = NormalizeAssetCatalog(catalog)
+	if err != nil {
+		return TaskRunAssetPreflight{}, fmt.Errorf("%w: normalize authorized image assets: %v", ErrValidation, err)
+	}
+	preflight := TaskRunAssetPreflight{
+		BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+		Sources: []AuthorizedAsset{}, Styles: []AuthorizedAsset{},
+	}
+	for _, asset := range catalog.Assets {
+		switch asset.Type {
+		case AuthorizedAssetSource:
+			preflight.Sources = append(preflight.Sources, asset)
+		case AuthorizedAssetStyle:
+			preflight.Styles = append(preflight.Styles, asset)
+		}
+	}
+	return preflight, nil
+}
+
+// taskLaunchRunIdentity derives the durable run identity from a caller-stable
+// request identity. Retries of one launch map to the same run, while a later
+// intentional regeneration supplies a new request ID even when its generation
+// payload is identical. Start still rejects reuse of one ID with a new payload.
+func taskLaunchRunIdentity(identity ExecutionIdentity, input TaskRunLaunchInput) (runID, idempotencyKey string) {
+	payload := strings.Join([]string{
+		identity.TenantID, identity.UserID, input.BusinessTaskID, input.RequestID,
+	}, "\x00")
+	launchKey := uuid.NewSHA1(uuid.NameSpaceURL, []byte("task-processor:imageagent:task-launch:"+payload)).String()
+	return "image-agent-" + launchKey, "image-agent-run-" + launchKey
+}
+
+func normalizeTaskLaunchStyleIDs(raw []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, value := range raw {
+		id := strings.TrimSpace(value)
+		if id == "" {
+			return nil, fmt.Errorf("style asset IDs cannot contain an empty value")
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// primaryTaskLaunchSource requires the caller to select one authorized source
+// asset explicitly. Catalog ordering is crawler-provided and never establishes
+// user intent, so no implicit fallback exists: a missing selection fails
+// closed before any generation budget is spent.
+func primaryTaskLaunchSource(catalog AssetCatalog, requested string) (string, error) {
+	for _, asset := range catalog.Assets {
+		if asset.Type == AuthorizedAssetSource && asset.ID == requested {
+			return requested, nil
+		}
+	}
+	return "", fmt.Errorf("source asset %q is not authorized for this business task", requested)
+}
+
+func validateTaskLaunchStyleIDs(catalog AssetCatalog, styleIDs []string) error {
+	if len(styleIDs) == 0 {
+		return nil
+	}
+	known := make(map[string]struct{}, len(catalog.Assets))
+	for _, asset := range catalog.Assets {
+		if asset.Type == AuthorizedAssetStyle {
+			known[asset.ID] = struct{}{}
+		}
+	}
+	for _, id := range styleIDs {
+		if _, ok := known[id]; !ok {
+			return fmt.Errorf("style asset %q is not authorized for this business task", id)
+		}
+	}
+	return nil
 }
 
 // RestartFailed exposes the same-request recovery path using only immutable,
@@ -192,10 +397,33 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 }
 
 func (s *Service) startExistingProjection(ctx context.Context, projection RunProjection, identity ExecutionIdentity) error {
+	// The workflow is already durable (Temporal USE_EXISTING conflict policy
+	// keyed by run ID); StartManual on an existing projection is a re-dispatch
+	// of the same workflow, not a new paid execution.
+	if !s.tenantStartAllowed(ctx, identity.TenantID) {
+		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	if err := s.validateImagePolicyAvailable(ctx, projection.Run.TargetPlatform, projection.Run.ImagePolicyContext); err != nil {
+		return err
+	}
 	return s.workflows.StartManual(ctx, WorkflowStart{
 		Run: projection.Run, Plan: projection.Plan, Identity: identity,
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots, AssetCatalog: projection.AssetCatalog,
 	})
+}
+
+func (s *Service) tenantStartAllowed(ctx context.Context, tenantID string) bool {
+	return s == nil || s.startGate == nil || s.startGate.AllowTenantStart(ctx, tenantID)
+}
+
+func (s *Service) validateImagePolicyAvailable(ctx context.Context, marketplace string, policy ImagePolicyContext) error {
+	if s == nil || s.imagePolicies == nil {
+		return nil
+	}
+	if err := s.imagePolicies.ValidateAvailable(ctx, marketplace, policy); err != nil {
+		return fmt.Errorf("%w: image policy is unavailable: %v", ErrCommandBlocked, err)
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) {

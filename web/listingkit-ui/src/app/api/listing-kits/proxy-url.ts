@@ -24,9 +24,6 @@ export function buildListingKitProxyUrl(
       throw new Error("invalid proxy path segment");
     }
   }
-	if (pathParts[0] === "tasks" && isImageAgentTaskRoute(pathParts.slice(1)) && !isAllowedImageAgentTaskRoute(method, pathParts.slice(1))) {
-		throw new Error("image-agent task proxy route is not allowed");
-	}
   let normalizedBase = upstreamBase.replace(/\/+$/, "");
   let routedParts = pathParts;
   if (pathParts[0] === "image-agent") {
@@ -46,17 +43,6 @@ export function buildListingKitProxyUrl(
   return `${normalizedBase}/${path}${search ? `?${search}` : ""}`;
 }
 
-function isImageAgentTaskRoute(route: string[]) {
-	return route.length >= 2 && route[1].startsWith("image-agent");
-}
-
-function isAllowedImageAgentTaskRoute(method: string, route: string[]) {
-	if (!safeID.test(route[0] ?? "")) return false;
-	const verb = method.toUpperCase();
-	return (verb === "GET" && route.length === 2 && route[1] === "image-agent-assets") ||
-		(verb === "POST" && route.length === 2 && route[1] === "image-agent-runs");
-}
-
 const safeID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const safePositiveAttempt = /^[1-9][0-9]{0,8}$/;
 // Mirrors imageagent.ValidateActionID so a durable command is always resumable.
@@ -65,6 +51,8 @@ const safeActionID = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/;
 function isAllowedImageAgentRoute(method: string, route: string[]) {
   const verb = method.toUpperCase();
   if (verb === "POST" && route.length === 1 && route[0] === "runs") return true;
+  if (verb === "POST" && route.length === 1 && route[0] === "task-runs") return true;
+  if (verb === "GET" && route.length === 2 && route[0] === "task-runs" && route[1] === "assets") return true;
   if (route[0] !== "runs" || !safeID.test(route[1] ?? "")) return false;
   if (verb === "GET" && route.length === 2) return true;
   if (verb === "PUT" && route.length === 3 && route[2] === "plan") return true;

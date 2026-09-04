@@ -54,19 +54,6 @@ Handlers 按功能域分组到不同文件,使用前缀标识:
 
 ---
 
-### 🎨 Studio (工作室) - 6个文件
-
-批量处理、会话管理、异步任务相关接口。
-
-- `studio_async_jobs_handler.go` - 异步任务管理
-- `studio_batch_runs_handler.go` - 批次运行管理
-- `studio_batches_handler_test.go` - 批次测试
-- `studio_designs_handler.go` - 设计管理
-- `studio_product_images_handler.go` - 产品图片管理
-- `studio_sessions_handler.go` - 会话管理
-
----
-
 ### 🛍️ Shein (SHEIN平台) - 9个文件
 
 SHEIN 平台特定功能接口。
@@ -210,11 +197,6 @@ type handler struct {
     taskRequeueService         listingkit.TaskRequeueService
     generationTaskService      listingkit.GenerationTaskService
     
-    // Studio 服务
-    studioMediaService         listingkit.StudioMediaService
-    studioBatchRunService      studioBatchRunHandlerService
-    studioSessionService       studioSessionAsyncJobService
-    
     // Admin 服务
     storeAdminService          listingkit.StoreAdminService
     storeRepository            listingadmin.StoreRepository
@@ -291,7 +273,6 @@ type catalogAdminHandlers struct {
 
 根据功能选择对应的文件前缀:
 - Admin 相关 → `admin_*_handler.go`
-- Studio 相关 → `studio_*_handler.go`
 - Shein 相关 → `shein_*_handler.go`
 - 等等...
 
@@ -437,7 +418,6 @@ go test ./internal/listingkit/api -run TestAdmin -v
 
 **A**: 使用文件前缀搜索:
 - Admin 相关: `admin_*`
-- Studio 相关: `studio_*`
 - Shein 相关: `shein_*`
 - 或使用 IDE 的全局搜索
 

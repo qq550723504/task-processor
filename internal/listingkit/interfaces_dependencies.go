@@ -2,27 +2,35 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"task-processor/internal/amazonlisting"
-	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
 
-type ProductService interface {
-	CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error)
-	GetTaskResult(ctx context.Context, taskID string) (*productenrich.TaskResult, error)
-	ProcessProduct(ctx context.Context, task *productenrich.Task) (*productenrich.ProductJSON, error)
+var ErrProductSnapshotNotReady = errors.New("product snapshot is not ready")
+
+type ProductSnapshotQuery struct {
+	TenantID   string
+	ProductKey string
+	Version    uint64
 }
 
-type ImageService interface {
-	CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error)
-	GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error)
-	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
+type ProductSnapshotReader interface {
+	GetProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.ProductSnapshot, error)
+}
+
+type PublishedProductSnapshotReader interface {
+	GetPublishedProductSnapshot(ctx context.Context, query ProductSnapshotQuery) (catalog.PublishedSnapshot, error)
+}
+
+type ApprovedAssetInventoryReader interface {
+	GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error)
 }
 
 type AIClientCredentialStore interface {
@@ -49,6 +57,13 @@ type Repository interface {
 	PrepareRetry(ctx context.Context, taskID string) error
 	IncrementRetryCount(ctx context.Context, taskID string) error
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
+}
+
+// ProcessingFailureRepository provides the compare-and-set boundary used by
+// durable workflows when recording a terminal failure. It must never replace
+// a completed or needs-review result after an activity response is lost.
+type ProcessingFailureRepository interface {
+	MarkFailedIfProcessing(ctx context.Context, taskID string, errorMessage string) (bool, error)
 }
 
 // UsageSettlementRepository is an optional task-repository extension used to
@@ -125,11 +140,6 @@ type SheinSourceSDSMetadataSource interface {
 	ListSheinSourceSDSMetadata(ctx context.Context, query *SheinSourceSDSMetadataQuery) ([]SheinSourceSDSMetadataRecord, error)
 }
 
-type CanonicalProductCacheRepository interface {
-	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error)
-	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error
-}
-
 type SDSBaselineCacheRepository interface {
 	// tenantID is optional. When empty, implementations resolve the tenant from ctx.
 	// If both tenantID and ctx resolve to a tenant, they must match or the call fails.
@@ -147,15 +157,15 @@ type SDSRetirementRepository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult
+	Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error)
 }
 
 type TargetAwareAssembler interface {
-	AssembleForTargets(task *Task, canonical *canonical.Product, images map[string]*productimage.ImageProcessResult) *ListingKitResult
+	AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error)
 }
 
 type AmazonDraftBuilder interface {
-	Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
+	Build(req *GenerateRequest, snapshot *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error)
 }
 
 type TaskSubmitterConfigurer interface {

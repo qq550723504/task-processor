@@ -3,52 +3,33 @@ package amazonlisting
 import (
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog"
 )
 
-func TestBuildReviewItemsFromCanonicalIncludesTraceEvidence(t *testing.T) {
-	product := &canonical.Product{
-		Title:       "Demo Product",
-		Description: "Demo description",
-		FieldTraces: map[string]canonical.FieldTrace{
-			"title": {
-				Sources: []canonical.Source{
-					{Type: canonical.SourceProductURL, Detail: "https://detail.1688.com/offer/123.html"},
-					{Type: canonical.SourceScrapedData, Detail: "scraped_title"},
-					{Type: canonical.SourceLLM, Detail: "productenrich_product_json"},
-				},
-				Confidence:  0.62,
-				IsInferred:  true,
-				NeedsReview: true,
-			},
+func TestBuildReviewItemsFromSnapshotIncludesTraceEvidence(t *testing.T) {
+	snapshot := &catalog.ProductSnapshot{Attributes: []catalog.Attribute{{
+		Name:  "material",
+		Value: "steel",
+		Trace: catalog.Trace{
+			Sources:     []catalog.SourceRecord{{Type: "scraped_data", Detail: "specification.material"}},
+			Confidence:  0.62,
+			IsInferred:  true,
+			NeedsReview: true,
 		},
-		NeedsReview: true,
-	}
+	}}}
 
-	items := buildReviewItemsFromCanonical(product)
+	items := buildReviewItemsFromSnapshot(snapshot)
 	if len(items) != 1 {
 		t.Fatalf("len(items) = %d, want 1", len(items))
 	}
 	item := items[0]
-	if item.Field != "title" {
-		t.Fatalf("field = %q, want title", item.Field)
+	if item.Field != "attributes.material" || item.Source != "scraped_data" {
+		t.Fatalf("review item = %+v", item)
 	}
-	if item.Source != "product_url,scraped_data,llm" {
-		t.Fatalf("source = %q", item.Source)
+	if item.Confidence != 0.62 || !item.IsInferred {
+		t.Fatalf("trace metadata = %+v", item)
 	}
-	if item.Confidence != 0.62 {
-		t.Fatalf("confidence = %v, want 0.62", item.Confidence)
-	}
-	if !item.IsInferred {
-		t.Fatal("expected item to be inferred")
-	}
-	if len(item.Evidence) != 4 {
-		t.Fatalf("len(evidence) = %d, want 4", len(item.Evidence))
-	}
-	if item.Evidence[0].Type != "product_url" || item.Evidence[0].Detail != "https://detail.1688.com/offer/123.html" {
-		t.Fatalf("unexpected first evidence: %+v", item.Evidence[0])
-	}
-	if item.Evidence[3].Type != "field_value" || item.Evidence[3].Detail != `title = "Demo Product"` {
-		t.Fatalf("unexpected field snippet evidence: %+v", item.Evidence[3])
+	if len(item.Evidence) != 1 || item.Evidence[0].Detail != "specification.material" {
+		t.Fatalf("evidence = %+v", item.Evidence)
 	}
 }

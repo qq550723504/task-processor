@@ -152,27 +152,29 @@ func newBlockDTO(value *imageagent.Block) *blockDTO {
 }
 
 type runDTO struct {
-	ID                 string               `json:"id"`
-	BusinessTaskID     string               `json:"business_task_id,omitempty"`
-	TargetPlatform     string               `json:"target_platform,omitempty"`
-	TenantID           string               `json:"tenant_id"`
-	UserID             string               `json:"user_id"`
-	Mode               imageagent.RunMode   `json:"mode"`
-	IdempotencyKey     string               `json:"idempotency_key"`
-	Status             imageagent.RunStatus `json:"status"`
-	CurrentNode        string               `json:"current_node"`
-	ActivePlanRevision int64                `json:"active_plan_revision"`
-	Version            int64                `json:"version"`
-	MaxConcurrentSlots int                  `json:"max_concurrent_slots"`
-	Budget             budgetDTO            `json:"budget"`
-	Usage              budgetUsageDTO       `json:"usage"`
-	Block              *blockDTO            `json:"block,omitempty"`
+	ID                 string                `json:"id"`
+	BusinessTaskID     string                `json:"business_task_id,omitempty"`
+	TargetPlatform     string                `json:"target_platform,omitempty"`
+	ImagePolicyContext imagePolicyContextDTO `json:"image_policy_context"`
+	TenantID           string                `json:"tenant_id"`
+	UserID             string                `json:"user_id"`
+	Mode               imageagent.RunMode    `json:"mode"`
+	IdempotencyKey     string                `json:"idempotency_key"`
+	Status             imageagent.RunStatus  `json:"status"`
+	CurrentNode        string                `json:"current_node"`
+	ActivePlanRevision int64                 `json:"active_plan_revision"`
+	Version            int64                 `json:"version"`
+	MaxConcurrentSlots int                   `json:"max_concurrent_slots"`
+	Budget             budgetDTO             `json:"budget"`
+	Usage              budgetUsageDTO        `json:"usage"`
+	Block              *blockDTO             `json:"block,omitempty"`
 }
 
 func newRunDTO(run imageagent.Run) runDTO {
 	return runDTO{
 		ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, TenantID: run.TenantID, UserID: run.UserID,
-		Mode: run.Mode, IdempotencyKey: run.IdempotencyKey, Status: run.Status, CurrentNode: run.CurrentNode,
+		ImagePolicyContext: imagePolicyContextDTO{Country: run.ImagePolicyContext.Country, Family: run.ImagePolicyContext.Family, SceneCategory: run.ImagePolicyContext.SceneCategory},
+		Mode:               run.Mode, IdempotencyKey: run.IdempotencyKey, Status: run.Status, CurrentNode: run.CurrentNode,
 		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: run.MaxConcurrentSlots,
 		Budget: newBudgetDTO(run.Budget),
 		Usage:  newBudgetUsageDTO(run.Usage), Block: newBlockDTO(run.Block),
@@ -242,6 +244,16 @@ type authorizedAssetDTO struct {
 	Label      string                         `json:"label,omitempty"`
 }
 
+func newAuthorizedAssetDTO(asset imageagent.AuthorizedAsset) authorizedAssetDTO {
+	displayURL := ""
+	if strings.TrimSpace(asset.DisplayURL) != "" {
+		if safeURL, err := imageagent.ValidateSafeImageURL(asset.DisplayURL); err == nil {
+			displayURL = safeURL
+		}
+	}
+	return authorizedAssetDTO{ID: strings.TrimSpace(asset.ID), Type: asset.Type, DisplayURL: displayURL, Label: strings.TrimSpace(asset.Label)}
+}
+
 type pendingCommandDTO struct {
 	ActionID        string     `json:"action_id"`
 	Kind            string     `json:"kind"`
@@ -276,13 +288,7 @@ func newRunProjectionResponse(value imageagent.RunProjection, publicURLs imageag
 		if strings.TrimSpace(asset.ID) == "" || (asset.Type != imageagent.AuthorizedAssetSource && asset.Type != imageagent.AuthorizedAssetStyle) {
 			continue
 		}
-		displayURL := ""
-		if strings.TrimSpace(asset.DisplayURL) != "" {
-			if safeURL, err := imageagent.ValidateSafeImageURL(asset.DisplayURL); err == nil {
-				displayURL = safeURL
-			}
-		}
-		response.AssetCatalog = append(response.AssetCatalog, authorizedAssetDTO{ID: strings.TrimSpace(asset.ID), Type: asset.Type, DisplayURL: displayURL, Label: strings.TrimSpace(asset.Label)})
+		response.AssetCatalog = append(response.AssetCatalog, newAuthorizedAssetDTO(asset))
 	}
 	if value.PendingCommand != nil {
 		receipt := value.PendingCommand

@@ -4,14 +4,12 @@ import (
 	"context"
 	"net/http"
 
-	"task-processor/internal/aicapability"
+	"gorm.io/gorm"
+
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	platformobservability "task-processor/internal/platform/observability"
-	"task-processor/internal/productenrich"
-	productenrichenrich "task-processor/internal/productenrich/enrich"
-	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
 )
 
@@ -27,21 +25,9 @@ type sharedRuntimeDeps struct {
 	closers              []func() error
 	openaiMgr            *openaiclient.Manager
 	aiCredentialStore    *openaiclient.GormCredentialResolver
-	aiInvocationRecorder aicapability.InvocationRecorder
-	aiAsyncJobStore      aicapability.AsyncJobBindingStore
 	tenantPromptStore    prompt.TenantPromptStore
-	llmMgr               productenrich.LLMManager
-	inputParser          productenrich.InputParser
-	understanding        productenrich.ProductUnderstanding
-	contentGenerator     productenrichenrich.TextGenerator
-	specsGenerator       productenrichenrich.TextGenerator
-	variantsGenerator    productenrichenrich.TextGenerator
-	fusionGenerator      productenrichenrich.TextGenerator
-	scoringTextGenerator productenrichenrich.TextGenerator
-	scoringImageAnalyzer productenrichenrich.ImageAnalyzer
-	imageWorkDir         string
-	sourceImageFetcher   productimage.SourceImageFetcher
 	storeAPI             listingadmin.StoreAPI
+	productCatalogDB     *gorm.DB
 }
 
 func traceRuntimeConfig(cfg *config.Config) platformobservability.Config {

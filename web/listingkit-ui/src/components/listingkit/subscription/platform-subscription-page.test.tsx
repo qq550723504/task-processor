@@ -88,8 +88,8 @@ describe("PlatformSubscriptionPage", () => {
         modules: [
           {
             plan_code: "professional",
-            module_code: "studio",
-            limits: { design_jobs: 100 },
+            module_code: "listingkit",
+            limits: { listingkit_generations_succeeded: 100 },
             sort_order: 50,
           },
         ],
@@ -127,7 +127,7 @@ describe("PlatformSubscriptionPage", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
+            code: "listingkit",
             name: "Studio",
             sort_order: 50,
             active: true,
@@ -143,9 +143,9 @@ describe("PlatformSubscriptionPage", () => {
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockResolvedValue({
       id: 1,
       tenant_id: "org-target",
-      module_code: "studio",
+      module_code: "listingkit",
       status: "active",
-      limits: { design_jobs: 10 },
+      limits: { listingkit_generations_succeeded: 10 },
     });
 
     renderWithQueryClient(<PlatformSubscriptionPage />);
@@ -157,8 +157,8 @@ describe("PlatformSubscriptionPage", () => {
 
     expect(await screen.findByText("Studio")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "配置" }));
-    fireEvent.click(screen.getByRole("button", { name: "添加 设计任务额度" }));
-    fireEvent.change(screen.getByLabelText("额度值 design_jobs"), {
+    fireEvent.click(screen.getByRole("button", { name: "添加 ListingKit 生成额度" }));
+    fireEvent.change(screen.getByLabelText("额度值 listingkit_generations_succeeded"), {
       target: { value: "10" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
@@ -166,10 +166,10 @@ describe("PlatformSubscriptionPage", () => {
     await waitFor(() => {
       expect(mockedUpdatePlatformTenantSubscriptionEntitlement).toHaveBeenCalledWith(
         "org-target",
-        "studio",
+        "listingkit",
         expect.objectContaining({
           status: "active",
-          limits: { design_jobs: 10 },
+          limits: { listingkit_generations_succeeded: 10 },
         }),
       );
     });
@@ -415,9 +415,9 @@ describe("PlatformSubscriptionPage", () => {
       entitlements: [
         {
           module: {
-            code: "studio",
+            code: "listingkit",
             name: "Studio",
-            description: "Design jobs",
+            description: "ListingKit generation",
             sort_order: 50,
             active: true,
           },
@@ -441,7 +441,7 @@ describe("PlatformSubscriptionPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "查询" }));
 
-    expect(await screen.findByText("控制生成任务、工作台和图片生产类能力。")).toBeInTheDocument();
+    expect(await screen.findByText("控制 ListingKit 生成任务能力与额度。")).toBeInTheDocument();
   });
 
   it("shows usage adjustment as an advanced action", () => {

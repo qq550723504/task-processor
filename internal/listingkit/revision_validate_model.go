@@ -3,12 +3,11 @@ package listingkit
 import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 type RevisionValidationResult struct {
-	TaskID       string                          `json:"task_id,omitempty"`
-	Platform     string                          `json:"platform,omitempty"`
-	Valid        bool                            `json:"valid"`
-	FieldErrors  []RevisionFieldError            `json:"field_errors,omitempty"`
-	ScenePresets []PlatformScenePresetSummary    `json:"scene_presets,omitempty"`
-	Shein        *SheinRevisionValidationPayload `json:"shein,omitempty"`
+	TaskID      string                          `json:"task_id,omitempty"`
+	Platform    string                          `json:"platform,omitempty"`
+	Valid       bool                            `json:"valid"`
+	FieldErrors []RevisionFieldError            `json:"field_errors,omitempty"`
+	Shein       *SheinRevisionValidationPayload `json:"shein,omitempty"`
 }
 
 type SheinRevisionValidationPayload = sheinworkspace.ValidationPayload[RevisionRestorePreviewPayload]
@@ -23,7 +22,6 @@ func buildRevisionValidationResult(taskID, platform string, result *ListingKitRe
 		output.FieldErrors = append([]RevisionFieldError(nil), validationErr.Fields...)
 	}
 	if result != nil && platform == "shein" && result.Shein != nil {
-		output.ScenePresets = buildPlatformScenePresetSummaries(result.Shein.ImageBundle, result.AssetBundleForTarget("shein"))
 		output.Shein = sheinworkspace.BuildValidationPayload(result.Shein, restorePreview)
 	}
 	return output

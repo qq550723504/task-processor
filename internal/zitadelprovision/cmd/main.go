@@ -349,8 +349,6 @@ func runAuthorize(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}, additionalRole, identity); err != nil {
 		return fmt.Errorf("grant local operator authorization: %w", err)
 	}
-	runtime["TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED"] = "true"
-	runtime["TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS"] = identity.TenantID
 	if err := writeRuntimeEnv(runtimeFile, runtime); err != nil {
 		return fmt.Errorf("persist authorized acceptance tenant: %w", err)
 	}
@@ -368,8 +366,6 @@ func runtimeValues(existing map[string]string, issuerURL, managementToken, orgID
 		"LISTINGKIT_ACCEPTANCE_DATABASE_DSN",
 		"LISTINGKIT_ACCEPTANCE_ENVIRONMENT_MARKER",
 		"LISTINGKIT_ACCEPTANCE_COMPOSE_PROJECT",
-		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
-		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
 		bootstrapTenantIDKey,
 		bootstrapUserIDKey,
 		acceptanceOrgAIDKey,

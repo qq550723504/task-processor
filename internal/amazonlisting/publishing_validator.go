@@ -127,17 +127,6 @@ func (v *validator) validateBrand(report *ValidationReport, draft *AmazonListing
 		appendReviewItem(draft, AmazonReviewItem{Field: "brand", Action: OperatorActionFillBrand, Severity: "warning", Reason: "missing brand", NeedsHuman: true, RecommendedFix: "confirm or fill the selling brand"})
 		return
 	}
-	badBrands := map[string]struct{}{
-		"generic": {},
-		"unknown": {},
-		"n/a":     {},
-	}
-	if _, bad := badBrands[strings.ToLower(brand)]; bad {
-		report.Warnings = append(report.Warnings, "brand is generic or placeholder")
-		report.NeedsReview = true
-		report.ReviewReasons = append(report.ReviewReasons, "brand is generic or placeholder")
-		appendReviewItem(draft, AmazonReviewItem{Field: "brand", Action: OperatorActionEditBrand, Severity: "warning", Reason: "brand is generic or placeholder", NeedsHuman: true, CurrentValue: brand, RecommendedFix: "replace placeholder brand with the actual brand"})
-	}
 }
 
 func (v *validator) validateCategory(report *ValidationReport, draft *AmazonListingDraft) {
@@ -150,9 +139,6 @@ func (v *validator) validateCategory(report *ValidationReport, draft *AmazonList
 }
 
 func (v *validator) validateImages(report *ValidationReport, req *GenerateRequest, draft *AmazonListingDraft) {
-	if req != nil && req.Options != nil && !req.Options.ProcessImages {
-		return
-	}
 	if draft.Images == nil || strings.TrimSpace(draft.Images.MainImage) == "" {
 		report.Ready = false
 		report.BlockingIssues = append(report.BlockingIssues, "main image is required")
@@ -255,13 +241,10 @@ func (v *validator) validateDimensions(report *ValidationReport, draft *AmazonLi
 }
 
 func (v *validator) validateIPRisk(report *ValidationReport, req *GenerateRequest, draft *AmazonListingDraft) {
-	ipRisk := assessContentIPRisk(req, draft)
-	draft.IPRisk = ipRisk
-	draft.ListingIPRisk = mergeListingIPRisk(draft.ListingIPRisk, ipRisk)
-	if ipRisk == nil {
-		ipRisk = draft.ListingIPRisk
+	if risk := assessContentIPRisk(req, draft); risk != nil {
+		draft.ListingIPRisk = mergeListingIPRisk(draft.ListingIPRisk, risk)
 	}
-	if ipRisk == nil {
+	if draft.ListingIPRisk == nil {
 		return
 	}
 	switch draft.ListingIPRisk.Level {

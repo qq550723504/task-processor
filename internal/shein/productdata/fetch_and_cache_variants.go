@@ -6,9 +6,9 @@ import (
 
 	coreLogger "task-processor/internal/core/logger"
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/perf"
-	"task-processor/internal/product"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -49,7 +49,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	tracker.StartStep("fetch_variants")
-	req := &product.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
@@ -71,7 +71,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 	}
 	ctx.SetVariants(variantList)
 
-	cacheReq := &product.FetchRequest{
+	cacheReq := &sourceproduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,

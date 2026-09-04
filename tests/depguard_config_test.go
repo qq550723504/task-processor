@@ -74,6 +74,91 @@ func TestPhase2TargetDirectionDepguardRulesCoverApprovedBoundaries(t *testing.T)
 	}
 }
 
+func TestPhase3ProductDomainBoundaryDepguardRuleCoversOnlyTargetSubpackages(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+	rule := requireDepguardRule(t, rules, "phase3_product_domain_boundaries")
+	files := stringSet(rule.Files)
+	denied := depguardDenyPackageSet(rule)
+
+	for _, glob := range []string{
+		"**/internal/product/catalog/**/*.go",
+		"**/internal/product/sourcing/**/*.go",
+		"**/internal/product/enrichment/**/*.go",
+		"**/internal/product/asset/**/*.go",
+		"**/internal/product/image/**/*.go",
+	} {
+		if _, ok := files[glob]; !ok {
+			t.Errorf("phase3_product_domain_boundaries must cover %s", glob)
+		}
+	}
+
+	for _, packagePath := range []string{
+		"task-processor/internal/app",
+		"task-processor/internal/platform",
+		"task-processor/internal/integration",
+		"gorm.io/gorm",
+		"go.temporal.io",
+		"github.com/aws/aws-sdk-go-v2",
+		"github.com/aws/smithy-go",
+		"github.com/sashabaranov/go-openai",
+		"github.com/tencentcloud/tencentcloud-sdk-go",
+	} {
+		if _, ok := denied[packagePath]; !ok {
+			t.Errorf("phase3_product_domain_boundaries must deny %s", packagePath)
+		}
+	}
+}
+
+func TestPhase3FinalProductHardCutDepguardRules(t *testing.T) {
+	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
+
+	retired := requireDepguardRule(t, rules, "phase3_retired_product_imports")
+	retiredFiles := stringSet(retired.Files)
+	if _, ok := retiredFiles["**/*.go"]; !ok {
+		t.Error("phase3_retired_product_imports must cover every Go entrypoint via **/*.go")
+	}
+	retiredDenied := depguardDenyPackageSet(retired)
+	for _, packagePath := range []string{
+		"task-processor/internal/catalog",
+		"task-processor/internal/asset",
+		"task-processor/internal/imageasset",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/product/asset/assettest",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			if _, ok := retiredDenied[packagePath+suffix]; !ok {
+				t.Errorf("phase3_retired_product_imports must deny %s%s", packagePath, suffix)
+			}
+		}
+	}
+
+	consumers := requireDepguardRule(t, rules, "phase3_product_consumers_read_only")
+	consumerFiles := stringSet(consumers.Files)
+	for _, root := range []string{"listingkit", "sds", "amazonlisting"} {
+		for _, glob := range []string{
+			"**/internal/" + root + "/*.go",
+			"**/internal/" + root + "/**/*.go",
+		} {
+			if _, ok := consumerFiles[glob]; !ok {
+				t.Errorf("phase3_product_consumers_read_only must cover %s", glob)
+			}
+		}
+	}
+	consumerDenied := depguardDenyPackageSet(consumers)
+	for _, packagePath := range []string{
+		"task-processor/internal/product/image",
+		"task-processor/internal/imageagent/store",
+		"task-processor/internal/imageagent/temporal",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			if _, ok := consumerDenied[packagePath+suffix]; !ok {
+				t.Errorf("phase3_product_consumers_read_only must deny %s%s", packagePath, suffix)
+			}
+		}
+	}
+}
+
 func TestDepguardRuleParsingUsesYAMLSemantics(t *testing.T) {
 	rules := parseDepguardRules(t, []byte(`
 linters-settings:
@@ -297,7 +382,7 @@ func TestPlatformRegistrationDepguardPatternsRespectPackageBoundaries(t *testing
 	for _, packagePath := range []string{
 		"task-processor/internal/app/httpapi",
 		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
+		"task-processor/internal/product/catalog",
 		"task-processor/internal/listingkit",
 		"task-processor/internal/marketplace",
 		"task-processor/internal/productimage",
@@ -453,7 +538,7 @@ func TestCmdProductionDepguardPatternCoversDomainAndInfraTrees(t *testing.T) {
 		"task-processor/internal/amazon",
 		"task-processor/internal/amazonlisting",
 		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
+		"task-processor/internal/product/catalog",
 		"task-processor/internal/infra",
 		"task-processor/internal/listingkit",
 		"task-processor/internal/marketplace",
@@ -525,14 +610,15 @@ func TestDomainAppHTTPAPIDepguardPatternCoversBusinessTrees(t *testing.T) {
 	for _, packagePath := range []string{
 		"amazon",
 		"amazonlisting",
-		"asset",
-		"catalog",
+		"product/asset",
+		"product/catalog",
+		"product/enrichment",
+		"product/image",
+		"product/sourcing",
 		"listing",
 		"listingkit",
 		"marketplace",
 		"pricing",
-		"productenrich",
-		"productimage",
 		"publishing",
 		"sds",
 		"shein",
@@ -584,12 +670,20 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 			}
 		}
 	}
+	for _, pattern := range []string{
+		`- "!**/internal/integration/persistence/product/catalog/*.go"`,
+		`- "!**/internal/integration/persistence/product/catalog/**/*.go"`,
+	} {
+		if !strings.Contains(config, pattern) {
+			t.Errorf("%s must exclude only the approved Catalog persistence adapter with %s", configPath, pattern)
+		}
+	}
 
 	for _, packagePath := range []string{
 		"amazon",
 		"amazonlisting",
 		"asset",
-		"catalog",
+		"product/catalog",
 		"listing",
 		"listingkit",
 		"marketplace",
@@ -607,6 +701,56 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 			if !strings.Contains(config, pattern) {
 				t.Errorf("%s must deny business package-tree pattern %s", configPath, pattern)
 			}
+		}
+	}
+	adapterRule := requireDepguardRule(t, loadDepguardRules(t, configPath), "product_catalog_persistence_boundary")
+	adapterFiles := stringSet(adapterRule.Files)
+	for _, pattern := range []string{
+		"**/internal/integration/persistence/product/catalog/*.go",
+		"**/internal/integration/persistence/product/catalog/**/*.go",
+	} {
+		if _, ok := adapterFiles[pattern]; !ok {
+			t.Errorf("product_catalog_persistence_boundary must cover only the approved adapter with %s", pattern)
+		}
+	}
+	adapterDeny := depguardDenyPackageSet(adapterRule)
+	for _, packagePath := range []string{
+		"task-processor/internal/amazonlisting$",
+		"task-processor/internal/listingkit$",
+		"task-processor/internal/marketplace$",
+		"task-processor/internal/productenrich$",
+		"task-processor/internal/productimage$",
+	} {
+		if _, ok := adapterDeny[packagePath]; !ok {
+			t.Errorf("product_catalog_persistence_boundary must keep adapter free of %s", packagePath)
+		}
+	}
+	if _, denied := adapterDeny["task-processor/internal/product/catalog$"]; denied {
+		t.Error("product_catalog_persistence_boundary must allow the adapter to implement Catalog-owned ports")
+	}
+}
+
+func TestProductCatalogPersistenceDepguardDeniesEverySiblingProductDomain(t *testing.T) {
+	configPath := filepath.Join("..", ".golangci.yml")
+	adapterRule := requireDepguardRule(t, loadDepguardRules(t, configPath), "product_catalog_persistence_boundary")
+	adapterDeny := depguardDenyPackageSet(adapterRule)
+
+	for _, packagePath := range []string{
+		"task-processor/internal/product/asset",
+		"task-processor/internal/product/sourcing",
+		"task-processor/internal/product/enrichment",
+		"task-processor/internal/product/image",
+	} {
+		for _, suffix := range []string{"$", "/"} {
+			pattern := packagePath + suffix
+			if _, ok := adapterDeny[pattern]; !ok {
+				t.Errorf("product_catalog_persistence_boundary must deny sibling Product domain pattern %s", pattern)
+			}
+		}
+	}
+	for _, suffix := range []string{"$", "/"} {
+		if _, denied := adapterDeny["task-processor/internal/product/catalog"+suffix]; denied {
+			t.Errorf("product_catalog_persistence_boundary must allow its Catalog-owned port pattern ending in %q", suffix)
 		}
 	}
 }
@@ -631,14 +775,15 @@ func TestProjectBoundaryListingKitDepguardPatternCoversDomainTrees(t *testing.T)
 
 	for _, packagePath := range []string{
 		"amazon",
-		"asset",
-		"catalog",
+		"product/asset",
+		"product/catalog",
+		"product/enrichment",
+		"product/image",
 		"infra",
 		"integration",
 		"marketplace",
 		"platform",
 		"product/sourcing",
-		"productimage",
 		"publishing",
 		"shein",
 		"temu",

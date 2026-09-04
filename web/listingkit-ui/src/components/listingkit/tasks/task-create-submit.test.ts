@@ -6,6 +6,7 @@ import { buildTaskCreateSubmission } from "@/components/listingkit/tasks/task-cr
 function valuesFor(platforms: string[], sheinStoreId: string) {
   return {
     ...buildTaskCreateDefaultValues({ variant: "default" }),
+    productKey: "catalog-product-1",
     text: "Canvas tote",
     platforms,
     sheinStoreId,
@@ -52,5 +53,21 @@ describe("buildTaskCreateSubmission", () => {
     if (result.ok) {
       expect(result.request).not.toHaveProperty("shein_store_id");
     }
+  });
+
+  it("requires and submits the selected catalog product key", async () => {
+    const values = valuesFor(["amazon"], "");
+    values.productKey = "";
+
+    await expect(buildTaskCreateSubmission({ values })).resolves.toEqual({
+      ok: false,
+      message: "必须选择商品中心中的商品。",
+    });
+
+    const result = await buildTaskCreateSubmission({ values: valuesFor(["amazon"], "") });
+    expect(result).toMatchObject({
+      ok: true,
+      request: { product_key: "catalog-product-1" },
+    });
   });
 });

@@ -2,14 +2,12 @@ package shein
 
 import (
 	"context"
-	"strings"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type runtimeCategoryResolver struct {
-	fallback         CategoryResolver
 	factory          *runtimeAPIFactory
 	suggestFallback  categorySuggestFallback
 	treeFallback     categoryTreeFallback
@@ -18,7 +16,6 @@ type runtimeCategoryResolver struct {
 
 func NewRuntimeCategoryResolver(factory RuntimeAPIClientFactory, aiConfig CategoryAIConfig) CategoryResolver {
 	return &runtimeCategoryResolver{
-		fallback:         NewCategoryResolver(nil),
 		factory:          newRuntimeAPIFactory(factory),
 		suggestFallback:  buildAICategorySuggestFallback(aiConfig),
 		treeFallback:     buildAICategoryTreeFallback(aiConfig),
@@ -27,18 +24,16 @@ func NewRuntimeCategoryResolver(factory RuntimeAPIClientFactory, aiConfig Catego
 }
 
 func (r *runtimeCategoryResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *CategoryResolution {
-	if req == nil {
-		return r.fallback.Resolve(req, canonical, pkg)
+	if r == nil || req == nil {
+		return nil
 	}
 
-	api, note := r.buildAPI(req.Context, req.SheinStoreID)
-	resolver := NewCategoryResolverWithSemanticVerifier(api, r.suggestFallback, r.treeFallback, r.semanticVerifier)
-	resolution := resolver.Resolve(req, canonical, pkg)
-	if strings.TrimSpace(note) != "" {
-		resolution.ReviewNotes = append(resolution.ReviewNotes, note)
-		resolution.Status = "partial"
+	api := r.buildAPI(req.Context, req.SheinStoreID)
+	if api == nil {
+		return nil
 	}
-	return resolution
+	resolver := NewCategoryResolverWithSemanticVerifier(api, r.suggestFallback, r.treeFallback, r.semanticVerifier)
+	return resolver.Resolve(req, canonical, pkg)
 }
 
 func buildAICategorySuggestFallback(aiConfig CategoryAIConfig) categorySuggestFallback {
@@ -62,10 +57,13 @@ func buildAICategorySemanticVerifier(aiConfig CategoryAIConfig) categorySemantic
 	return newAICategorySemanticVerifier(aiConfig.SemanticVerifier)
 }
 
-func (r *runtimeCategoryResolver) buildAPI(ctx context.Context, storeID int64) (CategoryAPI, string) {
-	baseAPIClient, note := r.factory.BuildBaseClient(ctx, storeID)
-	if baseAPIClient == nil {
-		return nil, note
+func (r *runtimeCategoryResolver) buildAPI(ctx context.Context, storeID int64) CategoryAPI {
+	if r == nil || r.factory == nil {
+		return nil
 	}
-	return sheincategory.NewClient(baseAPIClient), ""
+	baseAPIClient, _ := r.factory.BuildBaseClient(ctx, storeID)
+	if baseAPIClient == nil {
+		return nil
+	}
+	return sheincategory.NewClient(baseAPIClient)
 }

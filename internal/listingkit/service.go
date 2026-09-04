@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	listingplatform "task-processor/internal/listing/platform"
@@ -11,10 +10,6 @@ import (
 
 func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 	s.taskDeps.taskSubmitter = submitter
-}
-
-func (s *service) SetStudioBatchTaskLinkRepository(repo StudioBatchTaskLinkRepository) {
-	s.studioDeps.batchTaskLinkRepo = repo
 }
 
 func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
@@ -83,57 +78,13 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 		req.Language = "en_US"
 	}
 	if req.Options == nil {
-		req.Options = &GenerateOptions{ProcessImages: true}
-	} else if req.Options.Scene != nil {
-		req.Options.ProcessImages = true
+		req.Options = &GenerateOptions{}
 	}
 	req.Platforms = listingplatform.NormalizeSupportedPlatforms(req.Platforms)
-	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
 	normalizeGenerateRequestSource(req)
-	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(req.Platforms) == 0 {
-		req.Platforms = nil
-		return
-	}
 	if len(req.Platforms) == 0 {
 		req.Platforms = listingplatform.SupportedPlatforms()
 	}
-}
-
-func hasImageProcessingInput(req *GenerateRequest) bool {
-	if req == nil {
-		return false
-	}
-	return len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != ""
-}
-
-func normalizeGenerateRequestImageURLs(urls []string) []string {
-	if len(urls) == 0 {
-		return nil
-	}
-	normalized := make([]string, 0, len(urls))
-	for _, rawURL := range urls {
-		trimmed := strings.TrimSpace(rawURL)
-		if trimmed == "" {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "/api/v1/listing-kits/uploads/files/") {
-			trimmed = absolutizeListingKitUploadedImageURL(trimmed)
-		}
-		normalized = append(normalized, trimmed)
-	}
-	return normalized
-}
-
-func absolutizeListingKitUploadedImageURL(rawURL string) string {
-	trimmed := strings.TrimSpace(rawURL)
-	if trimmed == "" {
-		return ""
-	}
-	parsed, err := url.Parse(trimmed)
-	if err == nil && parsed.IsAbs() {
-		return trimmed
-	}
-	return "http://localhost:3000" + trimmed
 }
 
 func (s *service) setSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {

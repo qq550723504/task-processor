@@ -1,91 +1,66 @@
 package sourcing
 
-import "testing"
+import (
+	"testing"
+)
 
-func TestCatalogProductFactsFromEnvelopeMapsNeutralFacts(t *testing.T) {
-	envelope := SourceEnvelope{
-		Identity: SourceIdentity{
-			SourceType:     SourceTypeCrawler,
-			SourcePlatform: AmazonSourcePlatform,
-			SourceID:       "B001",
-			SourceURL:      "https://www.amazon.com/dp/B001",
+func TestToSnapshotPersistsImageAssetCandidates(t *testing.T) {
+	snapshot, err := ToSnapshot(SourceEnvelope{
+		Identity:         SourceIdentity{SourceType: SourceTypeCrawler, SourcePlatform: "1688", SourceID: "777"},
+		ProductCandidate: ProductCandidate{Title: "Lunch Bag"},
+		AssetCandidates: []AssetCandidate{
+			{SourceID: "main", URL: "https://cdn.example.test/main.jpg", MediaType: "image", Role: "primary", Checksum: "sha-main", Width: 1600, Height: 1200},
+			{SourceID: "video", URL: "https://cdn.example.test/demo.mp4", MediaType: "video", Role: "video"},
 		},
-		ProductCandidate: ProductCandidate{
-			Title:       "Test Shirt",
-			Description: "Test description",
-			Brand:       "Test Brand",
-			Attributes:  map[string]string{"asin": "B001", "category": "Shirts"},
-			Variants: []ProductVariantCandidate{{
-				SourceID:   "B001-BLUE-M",
-				Title:      "Blue / M",
-				SKU:        "SKU-1",
-				Attributes: map[string]string{"Color": "Blue", "Size": "M"},
-			}},
-		},
-		Warnings: []SourceWarning{{Code: " Missing_Description ", Field: "description", Message: " description is weak "}},
+	})
+	if err != nil {
+		t.Fatalf("ToSnapshot() error = %v", err)
 	}
-
-	facts := CatalogProductFactsFromEnvelope(envelope)
-	if !facts.HasIdentity() {
-		t.Fatal("HasIdentity() = false, want true")
+	if len(snapshot.Images) != 1 {
+		t.Fatalf("snapshot.Images = %#v, want one image candidate", snapshot.Images)
 	}
-	if facts.SourceKey != "crawler:amazon:B001" {
-		t.Fatalf("SourceKey = %q, want crawler:amazon:B001", facts.SourceKey)
-	}
-	if facts.Title != "Test Shirt" || facts.Brand != "Test Brand" {
-		t.Fatalf("facts = %+v, want title and brand", facts)
-	}
-	if facts.Attributes["asin"] != "B001" {
-		t.Fatalf("asin attribute = %q, want B001", facts.Attributes["asin"])
-	}
-	if len(facts.Variants) != 1 || facts.Variants[0].Attributes["Color"] != "Blue" {
-		t.Fatalf("variants = %+v, want mapped variant facts", facts.Variants)
-	}
-	if len(facts.Warnings) != 1 || facts.Warnings[0].Code != "missing_description" {
-		t.Fatalf("warnings = %+v, want normalized warning", facts.Warnings)
-	}
-
-	envelope.ProductCandidate.Attributes["asin"] = "mutated"
-	envelope.ProductCandidate.Variants[0].Attributes["Color"] = "Red"
-	if facts.Attributes["asin"] != "B001" {
-		t.Fatalf("facts attributes mutated through source map, got %q", facts.Attributes["asin"])
-	}
-	if facts.Variants[0].Attributes["Color"] != "Blue" {
-		t.Fatalf("variant attributes mutated through source map, got %q", facts.Variants[0].Attributes["Color"])
+	if got := snapshot.Images[0]; got.URL != "https://cdn.example.test/main.jpg" || got.Role != "primary" || got.Width != 1600 || got.Height != 1200 {
+		t.Fatalf("snapshot.Images[0] = %#v, want persisted image identity", got)
 	}
 }
 
-func TestAssetFactsFromEnvelopeMapsNeutralAssets(t *testing.T) {
-	envelope := SourceEnvelope{
-		Identity: SourceIdentity{
-			SourceType:     SourceTypeCrawler,
-			SourcePlatform: AmazonSourcePlatform,
-			SourceID:       "B001",
+func TestToSnapshotPreservesSupplierCostSeparatelyFromAmount(t *testing.T) {
+	snapshot, err := ToSnapshot(SourceEnvelope{
+		Identity: SourceIdentity{SourceType: SourceTypeCrawler, SourcePlatform: "1688", SourceID: "777"},
+		ProductCandidate: ProductCandidate{
+			Title: "Lunch Bag",
+			Variants: []ProductVariantCandidate{{
+				SourceID: "SKU-1", SKU: "SKU-1", Price: 19.9, Stock: 20,
+			}},
 		},
-		AssetCandidates: []AssetCandidate{{
-			SourceID:  "img-1",
-			URL:       "https://img.example/1.jpg",
-			MediaType: "image",
-			Role:      "primary",
-			Checksum:  "sha256:1",
-		}},
-		Warnings: []SourceWarning{{Code: " Missing_Alt_Text ", Field: "images", Message: " image alt text missing "}},
+		SupplierOrCostFacts: SupplierOrCostFacts{Currency: "CNY", Cost: "12.5"},
+	})
+	if err != nil {
+		t.Fatalf("ToSnapshot() error = %v", err)
 	}
+	if len(snapshot.Variants) != 1 || snapshot.Variants[0].Price == nil {
+		t.Fatalf("snapshot variant = %+v, want typed price", snapshot.Variants)
+	}
+	price := snapshot.Variants[0].Price
+	if price.Currency != "CNY" || price.Amount != 19.9 || price.CostPrice != 12.5 {
+		t.Fatalf("variant price = %+v, want amount 19.9 with supplier cost 12.5", price)
+	}
+}
 
-	facts := AssetFactsFromEnvelope(envelope)
-	if !facts.HasAssets() {
-		t.Fatal("HasAssets() = false, want true")
+func TestToSnapshotPreservesTypedVariantCommerceFacts(t *testing.T) {
+	snapshot, err := ToSnapshot(SourceEnvelope{
+		Identity: SourceIdentity{SourceType: SourceTypeCrawler, SourcePlatform: "1688", SourceID: "777"},
+		ProductCandidate: ProductCandidate{
+			Title: "Lunch Bag",
+			Variants: []ProductVariantCandidate{{
+				SourceID: "SKU-1", SKU: "SKU-1", Currency: "CNY", Price: 19.9, Stock: 20,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ToSnapshot() error = %v", err)
 	}
-	if facts.SourceKey != "crawler:amazon:B001" {
-		t.Fatalf("SourceKey = %q, want crawler:amazon:B001", facts.SourceKey)
-	}
-	if len(facts.Items) != 1 {
-		t.Fatalf("items = %d, want 1", len(facts.Items))
-	}
-	if facts.Items[0].URL != "https://img.example/1.jpg" || facts.Items[0].Role != "primary" {
-		t.Fatalf("asset item = %+v, want mapped asset facts", facts.Items[0])
-	}
-	if len(facts.Warnings) != 1 || facts.Warnings[0].Code != "missing_alt_text" {
-		t.Fatalf("warnings = %+v, want normalized warning", facts.Warnings)
+	if len(snapshot.Variants) != 1 || snapshot.Variants[0].Price == nil || snapshot.Variants[0].Price.Currency != "CNY" || snapshot.Variants[0].Price.Amount != 19.9 || snapshot.Variants[0].Stock != 20 {
+		t.Fatalf("snapshot variant = %+v, want typed price and stock", snapshot.Variants)
 	}
 }

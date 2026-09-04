@@ -1,6 +1,7 @@
 package listingkit
 
 type taskDependencies struct {
+	productSnapshots             ProductSnapshotReader
 	sdsLoginStatusProvider       SDSLoginStatusProvider
 	taskSubmitter                TaskSubmitter
 	generationUsage              GenerationUsageSettlement

@@ -17,6 +17,7 @@ const mockedGetListingKitTasks = vi.mocked(getListingKitTasks);
 
 const taskResult: ListingKitTaskResult = {
   task_id: "task-1",
+  product_key: "catalog-product-1",
   tenant_id: "tenant-a",
   status: "completed",
   source_reference: {
@@ -50,6 +51,7 @@ describe("buildCanonicalProductListItem", () => {
   it("summarizes a task result with a canonical product", () => {
     expect(buildCanonicalProductListItem(taskResult)).toEqual({
       taskId: "task-1",
+      productKey: "catalog-product-1",
       tenantId: "tenant-a",
       title: "Bluetooth Headphones",
       brand: "SoundPeak",
@@ -82,6 +84,7 @@ describe("getCanonicalProducts", () => {
       items: [
         {
           task_id: "task-1",
+          product_key: "catalog-product-1",
           tenant_id: "tenant-a",
           platforms: ["shein"],
           title: "Canvas Tote",
@@ -106,6 +109,7 @@ describe("getCanonicalProducts", () => {
       items: [
         expect.objectContaining({
           taskId: "task-1",
+          productKey: "catalog-product-1",
           title: "Canvas Tote",
           imageCount: 3,
           variantCount: 2,

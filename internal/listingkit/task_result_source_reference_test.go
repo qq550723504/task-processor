@@ -3,7 +3,7 @@ package listingkit
 import "testing"
 
 func TestBuildTaskResultIncludesPersistedSourceReference(t *testing.T) {
-	task := &Task{ID: "task-detail-source", TenantID: "tenant-a", Request: &GenerateRequest{
+	task := &Task{ID: "task-detail-source", TenantID: "tenant-a", Request: &GenerateRequest{ProductKey: "test-product",
 		Source: &SourceReference{
 			Key: "crawler:1688:888", Type: "crawler", Platform: "1688", ID: "888",
 			URL: "https://detail.1688.com/offer/888.html",
@@ -19,7 +19,7 @@ func TestBuildTaskResultIncludesPersistedSourceReference(t *testing.T) {
 }
 
 func TestBuildTaskResultOmitsLegacySourceReference(t *testing.T) {
-	result := buildTaskResult(&Task{ID: "legacy-task"}, nil)
+	result := buildTaskResult(&Task{TenantID: "tenant-test", ID: "legacy-task"}, nil)
 	if result.SourceReference != nil {
 		t.Fatalf("source_reference = %+v, want nil for legacy task", result.SourceReference)
 	}

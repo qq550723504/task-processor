@@ -6,8 +6,8 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	domainproduct "task-processor/internal/product"
 )
 
 func TestCreateTaskProcessingPipelinePlacesSpuRecordAfterVariantFetch(t *testing.T) {
@@ -38,19 +38,19 @@ func TestCreateTaskProcessingPipelinePlacesSpuRecordAfterVariantFetch(t *testing
 
 type stubSpuRecordPipelineProductFetcher struct{}
 
-func (stubSpuRecordPipelineProductFetcher) FetchProduct(_ context.Context, _ *domainproduct.FetchRequest) (*model.Product, error) {
+func (stubSpuRecordPipelineProductFetcher) FetchProduct(_ context.Context, _ *sourceproduct.FetchRequest) (*model.Product, error) {
 	return nil, nil
 }
 
-func (stubSpuRecordPipelineProductFetcher) FetchVariants(_ context.Context, _ *domainproduct.FetchRequest, _ []string) ([]*model.Product, error) {
+func (stubSpuRecordPipelineProductFetcher) FetchVariants(_ context.Context, _ *sourceproduct.FetchRequest, _ []string) ([]*model.Product, error) {
 	return nil, nil
 }
 
-func (stubSpuRecordPipelineProductFetcher) CacheProduct(*domainproduct.FetchRequest, *model.Product) error {
+func (stubSpuRecordPipelineProductFetcher) CacheProduct(*sourceproduct.FetchRequest, *model.Product) error {
 	return nil
 }
 
-func (stubSpuRecordPipelineProductFetcher) CacheVariants(*domainproduct.FetchRequest, []*model.Product) error {
+func (stubSpuRecordPipelineProductFetcher) CacheVariants(*sourceproduct.FetchRequest, []*model.Product) error {
 	return nil
 }
 

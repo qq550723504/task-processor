@@ -104,18 +104,6 @@ type ImageAgentRun = {
   block?: ImageAgentBlock;
 };
 
-type ImageAgentWorkspaceAsset = {
-  id: string;
-  label: string;
-  display_url: string;
-};
-
-export type ImageAgentWorkspaceAssets = {
-  target_platform?: string;
-  source_assets: ImageAgentWorkspaceAsset[];
-  style_candidates: ImageAgentWorkspaceAsset[];
-};
-
 export type ImageAgentAuthorizedAsset = {
   id: string;
   type: "source" | "style";
@@ -169,6 +157,31 @@ export type ImageAgentProjection = {
   asset_catalog: ImageAgentAuthorizedAsset[];
   pending_command?: ImageAgentPendingCommand;
   command_ingress?: ImageAgentCommandIngress;
+};
+
+export type ImageAgentTaskLaunchInput = {
+  request_id: string;
+  business_task_id: string;
+  target_platform: string;
+  image_policy_context: {
+    country: string;
+    family: string;
+    scene_category: string;
+  };
+  source_asset_id?: string;
+  style_asset_ids?: string[];
+};
+
+export type ImageAgentTaskAssetsResponse = {
+  business_task_id: string;
+  target_platform: string;
+  sources: ImageAgentAuthorizedAsset[];
+  styles: ImageAgentAuthorizedAsset[];
+};
+
+export type ImageAgentTaskLaunchResult = {
+  run_id: string;
+  status: string;
 };
 
 export type ImageAgentProjectionEvent = {

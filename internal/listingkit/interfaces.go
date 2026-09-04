@@ -4,9 +4,7 @@ type Service interface {
 	TaskLifecycleService
 	TaskRecoveryService
 	TaskRequeueService
-	GenerationTaskService
-	StudioBatchRunService
-	StudioMediaService
+	UploadedImageService
 	StoreAdminService
 	InternalListingKitService
 }

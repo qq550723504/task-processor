@@ -12,8 +12,7 @@ func TestGetTaskRevisionHistoryReturnsNewestFirstPage(t *testing.T) {
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-1",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-1",
 			SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
 				StoreID:          903,
 				Site:             "GB",
@@ -60,8 +59,7 @@ func TestGetTaskRevisionHistoryFiltersBeforeCursor(t *testing.T) {
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-2",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-2",
 			Result: &ListingKitResult{
 				TaskID: "task-history-2",
 				RevisionHistory: []ListingKitRevisionRecord{
@@ -94,8 +92,7 @@ func TestGetTaskRevisionHistoryRejectsInvalidCursor(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID:     "task-history-3",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-3",
 			Result: &ListingKitResult{TaskID: "task-history-3"},
 		},
 	}
@@ -115,8 +112,7 @@ func TestGetTaskRevisionHistoryFiltersActionType(t *testing.T) {
 
 	now := time.Now().UTC()
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID: "task-history-4",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-4",
 			Result: &ListingKitResult{
 				TaskID: "task-history-4",
 				RevisionHistory: []ListingKitRevisionRecord{
@@ -155,8 +151,7 @@ func TestGetTaskRevisionHistoryRejectsInvalidActionType(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubApplyRevisionRepo{
-		task: &Task{
-			ID:     "task-history-5",
+		task: &Task{TenantID: "tenant-test", ID: "task-history-5",
 			Result: &ListingKitResult{TaskID: "task-history-5"},
 		},
 	}

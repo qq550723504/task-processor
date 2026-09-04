@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheincategory "task-processor/internal/shein/api/category"
 	sheinclient "task-processor/internal/shein/client"

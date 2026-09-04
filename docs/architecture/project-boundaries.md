@@ -127,9 +127,9 @@ Must not depend on:
 - HTTP handlers.
 - Marketplace workspace facade code.
 
-For the 1688 source boundary, internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration. The product-owned `internal/product/sourcing` package consumes the neutral 1688 snapshot and owns source normalization; it does not consume the legacy crawler DTO.
+For the 1688 source boundary, internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration. The product-owned `internal/product/sourcing` package consumes only provider-neutral `SourceEnvelope` values; it does not own or consume the legacy crawler DTO or a 1688-specific snapshot.
 
-The adapter direction is explicit: internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots. This is a narrow adapter-to-domain exception, not permission for integration packages to call product services or own product workflows.
+The adapter direction is explicit: internal/integration/crawler/a1688 converts legacy crawler DTOs into adapter-local snapshots and internal/product/sourcing SourceEnvelope values. Integration adapters may import this pure product contract, but they may not call product services or own product workflows.
 
 ### 3.5 Marketplace modules
 

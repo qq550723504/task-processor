@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	assetrepo "task-processor/internal/asset/repository"
-	"task-processor/internal/catalog/canonical"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -14,8 +15,15 @@ type testServiceConfigOption func(*ServiceConfig)
 func newTestServiceConfig(repo Repository, opts ...testServiceConfigOption) *ServiceConfig {
 	cfg := &ServiceConfig{
 		Core: ServiceCoreDependencies{
-			Repository:     repo,
-			ProductService: stubSubmitProductService{},
+			Repository: repo,
+			ProductSnapshotReader: &stubWorkflowProductSnapshotReader{snapshot: catalog.ProductSnapshot{
+				Title: "Test product",
+			}},
+		},
+		Assets: ServiceAssetDependencies{
+			ApprovedAssetInventoryReader: approvedAssetReaderFunc(func(_ context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {
+				return productasset.ApprovedAssetInventory{Scope: scope, Assets: []productasset.ApprovedAsset{{ID: "approved-main", Role: productasset.RoleMain, URL: "https://example.com/approved-main.png"}}}, nil
+			}),
 		},
 	}
 	cfg.Shein.SheinStoreCatalog = testSheinStoreCatalog{}
@@ -38,9 +46,9 @@ func (testSheinStoreCatalog) ListStoreOptions(context.Context, int64) ([]SheinSt
 	return nil, nil
 }
 
-func withTestProductService(productSvc ProductService) testServiceConfigOption {
+func withTestProductSnapshotReader(reader ProductSnapshotReader) testServiceConfigOption {
 	return func(cfg *ServiceConfig) {
-		cfg.Core.ProductService = productSvc
+		cfg.Core.ProductSnapshotReader = reader
 	}
 }
 
@@ -108,7 +116,6 @@ func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
 func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *testing.T) {
 	t.Parallel()
 
-	sessionRepo := &studioBatchRunExecutorSessionRepoStub{}
 	syncSvc := &stubWorkflowSDSSyncService{}
 	statusProvider := stubSDSLoginStatusProvider{}
 	credentialStore := &fakeAIClientCredentialStore{}
@@ -119,7 +126,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *
 		&stubSubmitRepo{},
 		withTestTaskSubmitter(submitter),
 		withTestConfig(func(cfg *ServiceConfig) {
-			cfg.Core.StudioSessionRepository = sessionRepo
 			cfg.Core.SDSSyncService = syncSvc
 			cfg.Core.SDSLoginStatusProvider = statusProvider
 			cfg.Core.AIClientCredentialStore = credentialStore
@@ -133,9 +139,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *
 	}
 	if svc.taskDeps.taskSubmitter != submitter {
 		t.Fatalf("task deps submitter = %v, want seeded submitter", svc.taskDeps.taskSubmitter)
-	}
-	if svc.studioDeps.sessionRepo != sessionRepo {
-		t.Fatalf("studio deps session repo = %v, want seeded repo", svc.studioDeps.sessionRepo)
 	}
 	if svc.supportDeps.sdsSyncService != syncSvc {
 		t.Fatalf("support deps sync service = %v, want seeded service", svc.supportDeps.sdsSyncService)
@@ -152,9 +155,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *
 
 	if got := resolveTaskSubmitter(svc); got != submitter {
 		t.Fatalf("resolveTaskSubmitter() = %v, want seeded submitter", got)
-	}
-	if got := resolveStudioSessionRepo(svc); got != sessionRepo {
-		t.Fatalf("resolveStudioSessionRepo() = %v, want seeded repo", got)
 	}
 	if got := resolveSDSSyncService(svc); got != syncSvc {
 		t.Fatalf("resolveSDSSyncService() = %v, want seeded service", got)
@@ -276,13 +276,12 @@ func TestNewServiceWithConfigSeedsSheinRuntimeDependenciesWithoutLegacyMirrors(t
 	}
 }
 
-func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(t *testing.T) {
+func TestNewServiceWithConfigUsesExplicitCachedSheinCategoryResolver(t *testing.T) {
 	t.Parallel()
 
 	store := &submitResolutionCacheStore{}
-	task := &Task{
-		ID: "task-default-category-cache",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-default-category-cache",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:         "linen tablecloth",
 			Platforms:    []string{"shein"},
 			Country:      "US",
@@ -306,7 +305,7 @@ func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(
 		}},
 	}
 	req := buildSheinPublishRequestForTask(task, task.Request)
-	pkg := sheinpub.NewAssembler(sheinpub.AssemblerConfig{}).Build(req, product, nil)
+	pkg := sheinpub.NewAssembler(sheinpub.AssemblerConfig{}).Build(req, product)
 	cacheResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewCategoryResolver(nil), store)
 	categoryCache, ok := cacheResolver.(sheinpub.CategoryResolutionCache)
 	if !ok {
@@ -321,14 +320,21 @@ func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(
 		ProductTypeID:  99,
 		TopCategoryID:  2030,
 	})
+	explicitCacheResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewCategoryResolver(nil), store)
 
 	cfg := prepareServiceConfig(newTestServiceConfig(
 		&stubSubmitRepo{},
 		withTestConfig(func(cfg *ServiceConfig) {
 			cfg.Shein.SheinResolutionCacheStore = store
+			cfg.Shein.SheinCategoryResolver = explicitCacheResolver
+			cfg.Shein.SheinAttributeResolver = failClosedAttributeResolver{resolution: &sheinpub.AttributeResolution{Status: "resolved", Source: "remote_fixture", CategoryID: 8185}}
+			cfg.Shein.SheinSaleAttributeResolver = failClosedSaleAttributeResolver{resolution: &sheinpub.SaleAttributeResolution{Status: "resolved", Source: "remote_fixture", CategoryID: 8185}}
 		}),
 	))
-	result := cfg.Assets.Assembler.Assemble(task, product, nil)
+	result, err := cfg.Assets.Assembler.Assemble(task, testCatalogSnapshot(t, product), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Shein == nil || result.Shein.CategoryResolution == nil {
 		t.Fatal("expected SHEIN category resolution")
@@ -387,66 +393,5 @@ func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testin
 	}
 	if got := resolveWorkflowSheinContentOptimizer(svc); got != contentOptimizer {
 		t.Fatalf("resolveWorkflowSheinContentOptimizer() = %v, want seeded optimizer", got)
-	}
-}
-
-func TestNewServiceWithConfigSeedsWorkflowDependenciesWithoutLegacyMirrors(t *testing.T) {
-	t.Parallel()
-
-	productSvc := &stubWorkflowProductService{}
-	imageSvc := &stubWorkflowImageService{}
-	assetRepository := assetrepo.NewMemRepository()
-	assetRecipeResolver := newDefaultAssetRecipeResolver()
-	assetBundleBuilder := newDefaultAssetBundleBuilder()
-	assetGenerator := newDefaultAssetGenerationService()
-
-	svc := newServiceWithConfig(newTestServiceConfig(
-		&stubSubmitRepo{},
-		withTestConfig(func(cfg *ServiceConfig) {
-			cfg.Core.ProductService = productSvc
-			cfg.Core.ImageService = imageSvc
-			cfg.Assets.AssetRepository = assetRepository
-			cfg.Assets.AssetRecipeResolver = assetRecipeResolver
-			cfg.Assets.AssetBundleBuilder = assetBundleBuilder
-			cfg.Assets.AssetGenerationService = assetGenerator
-		}),
-	))
-
-	if svc.workflowDeps.productService != productSvc {
-		t.Fatalf("workflow deps product service = %v, want seeded service", svc.workflowDeps.productService)
-	}
-	if svc.workflowDeps.imageService != imageSvc {
-		t.Fatalf("workflow deps image service = %v, want seeded service", svc.workflowDeps.imageService)
-	}
-	if svc.workflowDeps.assetRepository != assetRepository {
-		t.Fatalf("workflow deps asset repository = %v, want seeded repository", svc.workflowDeps.assetRepository)
-	}
-	if svc.workflowDeps.assetRecipeResolver != assetRecipeResolver {
-		t.Fatalf("workflow deps asset recipe resolver = %v, want seeded resolver", svc.workflowDeps.assetRecipeResolver)
-	}
-	if svc.workflowDeps.assetBundleBuilder != assetBundleBuilder {
-		t.Fatalf("workflow deps asset bundle builder = %v, want seeded builder", svc.workflowDeps.assetBundleBuilder)
-	}
-	if svc.workflowDeps.assetGenerationService != assetGenerator {
-		t.Fatalf("workflow deps asset generation service = %v, want seeded service", svc.workflowDeps.assetGenerationService)
-	}
-
-	if got := resolveWorkflowProductService(svc); got != productSvc {
-		t.Fatalf("resolveWorkflowProductService() = %v, want seeded service", got)
-	}
-	if got := resolveWorkflowImageService(svc); got != imageSvc {
-		t.Fatalf("resolveWorkflowImageService() = %v, want seeded service", got)
-	}
-	if got := resolveWorkflowAssetRepository(svc); got != assetRepository {
-		t.Fatalf("resolveWorkflowAssetRepository() = %v, want seeded repository", got)
-	}
-	if got := resolveWorkflowAssetRecipeResolver(svc); got != assetRecipeResolver {
-		t.Fatalf("resolveWorkflowAssetRecipeResolver() = %v, want seeded resolver", got)
-	}
-	if got := resolveWorkflowAssetBundleBuilder(svc); got != assetBundleBuilder {
-		t.Fatalf("resolveWorkflowAssetBundleBuilder() = %v, want seeded builder", got)
-	}
-	if got := resolveWorkflowAssetGenerationService(svc); got != assetGenerator {
-		t.Fatalf("resolveWorkflowAssetGenerationService() = %v, want seeded service", got)
 	}
 }

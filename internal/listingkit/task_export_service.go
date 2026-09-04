@@ -1,25 +1,18 @@
 package listingkit
 
-import (
-	"context"
-
-	assetgeneration "task-processor/internal/asset/generation"
-)
+import "context"
 
 type taskExportServiceConfig struct {
-	repo                     Repository
-	listAssetGenerationTasks func(context.Context, string) ([]assetgeneration.Task, error)
+	repo Repository
 }
 
 type taskExportService struct {
-	repo                     Repository
-	listAssetGenerationTasks func(context.Context, string) ([]assetgeneration.Task, error)
+	repo Repository
 }
 
 func newTaskExportService(config taskExportServiceConfig) *taskExportService {
 	return &taskExportService{
-		repo:                     config.repo,
-		listAssetGenerationTasks: config.listAssetGenerationTasks,
+		repo: config.repo,
 	}
 }
 
@@ -31,18 +24,6 @@ func (s *taskExportService) GetTaskExport(ctx context.Context, taskID string, pl
 	export, err := buildListingKitExport(task, platform)
 	if err != nil {
 		return nil, err
-	}
-	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	projection := buildAssetGenerationProjection(task.Result, tasks)
-	applyAssetGenerationProjectionToExport(export, projection)
-	if len(export.AssetRenderPreviews) == 0 && task.Result != nil {
-		export.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
-	}
-	if len(export.PlatformAssetRenderPreviews) == 0 && task.Result != nil {
-		export.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
 	}
 	return export, nil
 }

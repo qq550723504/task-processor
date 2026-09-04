@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/shared/strx"
-	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"task-processor/internal/core/logger"
@@ -74,7 +74,7 @@ func (h *VariantJsonDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		return fmt.Errorf("NONRETRYABLE: 变体ASIN数量过多，停止处理")
 	}
 
-	req := &domainProduct.FetchRequest{
+	req := &sourceproduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.Platform,
 		Region:     task.Region,

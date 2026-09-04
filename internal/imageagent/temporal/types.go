@@ -44,6 +44,7 @@ const (
 	activityPersistPendingCommand       = "imageagent.persist_pending_command.v2"
 	activityPublishApproved             = "imageagent.publish_approved.v2"
 	activityExecuteSlotV3               = "imageagent.execute_slot.v3"
+	activityReviewStagedSlotV3          = "imageagent.review_staged_slot.v3"
 	activityStartEffectRecoveryV3       = "imageagent.start_effect_recovery.v3"
 	activityRecoverEffectV3             = "imageagent.recover_effect.v3"
 	activityPersistRecoveryBlockedV3    = "imageagent.persist_recovery_blocked.v3"
@@ -88,6 +89,8 @@ func (mode WorkerWireMode) DefaultTaskQueue() (string, error) {
 
 type WorkflowInput struct {
 	RunID               string
+	TargetPlatform      string                         `json:",omitempty"`
+	ImagePolicyContext  *imageagent.ImagePolicyContext `json:",omitempty"`
 	Mode                imageagent.RunMode
 	Identity            imageagent.ExecutionIdentity
 	Plan                imageagent.Plan
@@ -143,12 +146,14 @@ type SlotWorkflowResult struct {
 // SlotWorkflowV3Input is additive and is not registered by the Task 4 worker.
 // Task 6 owns selecting this child workflow on the production wire.
 type SlotWorkflowV3Input struct {
-	RunID        string
-	Identity     imageagent.ExecutionIdentity
-	PlanRevision int64
-	Slot         imageagent.Slot
-	Attempt      int
-	AssetCatalog imageagent.AssetCatalog
+	RunID              string
+	TargetPlatform     string                         `json:",omitempty"`
+	ImagePolicyContext *imageagent.ImagePolicyContext `json:",omitempty"`
+	Identity           imageagent.ExecutionIdentity
+	PlanRevision       int64
+	Slot               imageagent.Slot
+	Attempt            int
+	AssetCatalog       imageagent.AssetCatalog
 	// ExecuteActivityName is supplied by the Task 6 wire-selection gate. Task 4
 	// deliberately defines no production v3 activity name or registration.
 	ExecuteActivityName        string
@@ -169,11 +174,13 @@ type SlotWorkflowV3Result struct {
 }
 
 type EffectRecoveryWorkflowInput struct {
-	RunID        string
-	Identity     imageagent.ExecutionIdentity
-	PlanRevision int64
-	Slot         imageagent.Slot
-	Attempt      int
+	RunID              string
+	TargetPlatform     string                         `json:",omitempty"`
+	ImagePolicyContext *imageagent.ImagePolicyContext `json:",omitempty"`
+	Identity           imageagent.ExecutionIdentity
+	PlanRevision       int64
+	Slot               imageagent.Slot
+	Attempt            int
 	// ActionID is empty for automatic recovery and historical workflow inputs.
 	// Explicit redrives use it to scope a restartable workflow execution.
 	ActionID     string
@@ -187,6 +194,7 @@ const (
 	EffectRecoveryOutcomeProviderUnknown    EffectRecoveryOutcome = "provider_unknown"
 	EffectRecoveryOutcomeStagingUnknown     EffectRecoveryOutcome = "staging_unknown"
 	EffectRecoveryOutcomePublicationUnknown EffectRecoveryOutcome = "publication_unknown"
+	EffectRecoveryOutcomeReviewRequired     EffectRecoveryOutcome = "review_required"
 	EffectRecoveryOutcomeRecoveryBlocked    EffectRecoveryOutcome = "recovery_blocked"
 )
 
@@ -223,11 +231,14 @@ type ExecuteSlotActivityInput struct {
 // Keep ExecuteSlotActivityInput frozen for imageagent.execute_slot.v2 replay.
 type ExecuteSlotV3ActivityInput struct {
 	RunID                      string
+	TargetPlatform             string                         `json:",omitempty"`
+	ImagePolicyContext         *imageagent.ImagePolicyContext `json:",omitempty"`
 	Identity                   imageagent.ExecutionIdentity
 	PlanRevision               int64
 	Slot                       imageagent.Slot
 	Attempt                    int
 	IdempotencyKey             string
+	ReviewActionID             string `json:",omitempty"`
 	AssetCatalog               imageagent.AssetCatalog
 	ExternalEffectFinalization bool
 	BudgetAuthorization        bool

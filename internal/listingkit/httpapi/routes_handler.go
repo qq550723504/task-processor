@@ -7,7 +7,6 @@ type RouteHandler interface {
 	SubscriptionRouteHandler
 	PlatformAdminRouteHandler
 	AdminRouteHandler
-	StudioGenerationRouteHandler
 	ZitadelSMSRouteHandler
 	sheinSyncRouteHandler
 	sheinPODImageLookupRouteHandler

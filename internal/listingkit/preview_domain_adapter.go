@@ -1,10 +1,10 @@
 package listingkit
 
 import (
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
 	previewdomain "task-processor/internal/listing/preview"
 	"task-processor/internal/listingkit/core"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
@@ -12,18 +12,17 @@ func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
 		return nil
 	}
 	return &ListingKitPreview{
-		TaskID:              base.TaskID,
-		Status:              core.TaskStatus(base.Status),
-		SelectedPlatform:    base.SelectedPlatform,
-		Platforms:           append([]string(nil), base.Platforms...),
-		NeedsReview:         base.NeedsReview,
-		Catalog:             adaptPreviewDomainCatalog(base.Attachment),
-		Assets:              adaptPreviewDomainAssets(base.Attachment),
-		AssetInventory:      adaptPreviewDomainAssetInventory(base.Attachment),
-		CreatedAt:           base.CreatedAt,
-		CompletedAt:         base.CompletedAt,
-		Overview:            adaptPreviewDomainHeader(base.Overview),
-		RevisionHistoryMeta: adaptPreviewDomainRevisionHistoryMeta(base.RevisionHistoryMeta),
+		TaskID:                 base.TaskID,
+		Status:                 core.TaskStatus(base.Status),
+		SelectedPlatform:       base.SelectedPlatform,
+		Platforms:              append([]string(nil), base.Platforms...),
+		NeedsReview:            base.NeedsReview,
+		Catalog:                adaptPreviewDomainCatalog(base.Attachment),
+		ApprovedAssetInventory: adaptPreviewDomainApprovedAssets(base.Attachment),
+		CreatedAt:              base.CreatedAt,
+		CompletedAt:            base.CompletedAt,
+		Overview:               adaptPreviewDomainHeader(base.Overview),
+		RevisionHistoryMeta:    adaptPreviewDomainRevisionHistoryMeta(base.RevisionHistoryMeta),
 	}
 }
 
@@ -53,33 +52,24 @@ func adaptPreviewDomainHeader(base *previewdomain.Header) *ListingKitPreviewHead
 				ApprovedSections:      card.ApprovedSections,
 				DeferredSections:      card.DeferredSections,
 				ReviewPendingSections: card.ReviewPendingSections,
-				PrimaryActionKey:      card.PrimaryActionKey,
-				PrimaryCTAKind:        card.PrimaryCTAKind,
 			})
 		}
 	}
 	return header
 }
 
-func adaptPreviewDomainCatalog(base *previewdomain.Attachment) *catalog.Product {
+func adaptPreviewDomainCatalog(base *previewdomain.Attachment) *catalog.ProductSnapshot {
 	if base == nil {
 		return nil
 	}
 	return base.CatalogProduct
 }
 
-func adaptPreviewDomainAssets(base *previewdomain.Attachment) *asset.Bundle {
+func adaptPreviewDomainApprovedAssets(base *previewdomain.Attachment) *productasset.ApprovedAssetInventory {
 	if base == nil {
 		return nil
 	}
-	return base.AssetBundle
-}
-
-func adaptPreviewDomainAssetInventory(base *previewdomain.Attachment) *asset.InventorySummary {
-	if base == nil {
-		return nil
-	}
-	return base.AssetInventorySummary
+	return cloneApprovedAssetInventory(base.ApprovedAssetInventory)
 }
 
 func adaptPreviewDomainRevisionHistoryMeta(base *previewdomain.RevisionHistoryMeta) *ListingKitRevisionHistoryMeta {

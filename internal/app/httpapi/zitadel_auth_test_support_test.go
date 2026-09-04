@@ -8,11 +8,13 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 )
 
 const appHTTPTestBearerToken = "app-http-test-token"
 const appHTTPTestViewerBearerToken = "app-http-test-viewer-token"
+
+var appHTTPTestRouteAuthorization routeAuthorization
+var appHTTPTestConfig *config.Config
 
 func TestMain(m *testing.M) {
 	var zitadel *httptest.Server
@@ -41,29 +43,23 @@ func TestMain(m *testing.M) {
 		}
 	}))
 
-	issuerBefore, issuerSet := os.LookupEnv("ZITADEL_ISSUER_URL")
-	clientBefore, clientSet := os.LookupEnv("ZITADEL_CLIENT_ID")
-	_ = os.Setenv("ZITADEL_ISSUER_URL", zitadel.URL)
-	_ = os.Setenv("ZITADEL_CLIENT_ID", "app-http-test-client")
-	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
-		IssuerURL: zitadel.URL,
-		ClientID:  "app-http-test-client",
-	})
-	_ = listingkithttpapi.ConfigureListingKitAuthorization(nil, []string{"platform_admin"})
+	var err error
+	appHTTPTestConfig = &config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"platform_admin"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "app-http-test-client",
+		},
+	}}
+	appHTTPTestRouteAuthorization, err = buildRouteAuthorization(appHTTPTestConfig)
+	if err != nil {
+		zitadel.Close()
+		panic(err)
+	}
 
 	code := m.Run()
 	zitadel.Close()
-	restoreTestEnv("ZITADEL_ISSUER_URL", issuerBefore, issuerSet)
-	restoreTestEnv("ZITADEL_CLIENT_ID", clientBefore, clientSet)
 	os.Exit(code)
-}
-
-func restoreTestEnv(key, value string, wasSet bool) {
-	if wasSet {
-		_ = os.Setenv(key, value)
-		return
-	}
-	_ = os.Unsetenv(key)
 }
 
 func withAppHTTPTestBearer(request *http.Request) *http.Request {

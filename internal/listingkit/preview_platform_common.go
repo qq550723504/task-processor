@@ -1,9 +1,6 @@
 package listingkit
 
-import (
-	"task-processor/internal/asset"
-	common "task-processor/internal/publishing/common"
-)
+import common "task-processor/internal/publishing/common"
 
 type reviewablePlatformPreviewBase struct {
 	platformVisualPresentationBase
@@ -14,11 +11,9 @@ type reviewablePlatformPreviewBase struct {
 func buildReviewablePlatformPreviewBase(
 	reviewNotes []string,
 	imageBundle *common.PublishImageBundle,
-	assetBundle *asset.Bundle,
-	renderPreviews *PlatformAssetRenderPreviews,
 ) reviewablePlatformPreviewBase {
 	return reviewablePlatformPreviewBase{
-		platformVisualPresentationBase: buildPlatformVisualPresentationBase(imageBundle, assetBundle, renderPreviews),
+		platformVisualPresentationBase: buildPlatformVisualPresentationBase(imageBundle),
 		needsReview:                    len(reviewNotes) > 0,
 		reviewNotes:                    append([]string(nil), reviewNotes...),
 	}

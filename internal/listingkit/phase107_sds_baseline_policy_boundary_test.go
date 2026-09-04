@@ -19,7 +19,7 @@ func TestSDSBaselinePolicyBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if path == "task-processor/internal/product/sourcing/sdspod" {
+		if path == "task-processor/internal/sds/adapter/product_source" {
 			imported = true
 		}
 	}

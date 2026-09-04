@@ -14,7 +14,6 @@ import (
 
 type taskModuleInput struct {
 	TaskRepository                  listingkit.Repository
-	StudioAsyncJobRepository        listingkit.StudioAsyncJobRepository
 	SubscriptionService             *listingsubscription.Service
 	GenerationUsageAdmission        listingkit.GenerationUsageAdmission
 	PlatformAdminUsers              []string
@@ -60,7 +59,6 @@ func newTaskModuleInput(input BuildServiceInput, repos *builtRepositories) taskM
 	}
 	return taskModuleInput{
 		TaskRepository:                  repos.taskRepository,
-		StudioAsyncJobRepository:        repos.studioAsyncJobRepository,
 		SubscriptionService:             repos.subscriptionService,
 		GenerationUsageAdmission:        generationUsageAdmissionForConfig(input.Config),
 		PlatformAdminUsers:              platformAdminUsers,
@@ -76,7 +74,6 @@ func buildTaskModule(in taskModuleInput) taskModule {
 	return taskModule{
 		taskRepository: in.TaskRepository,
 		handlerDependencies: listingkitapi.HandlerDependencies{
-			StudioAsyncJobRepository: in.StudioAsyncJobRepository,
 			Subscription: listingkitapi.SubscriptionDependencies{
 				Service:                         in.SubscriptionService,
 				GenerationUsageAdmission:        in.GenerationUsageAdmission,

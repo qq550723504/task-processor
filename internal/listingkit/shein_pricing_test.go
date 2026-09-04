@@ -510,7 +510,7 @@ func TestApplyDefaultSheinPricingRemapsCachedManualOverrideToCurrentSKU(t *testi
 		t.Fatalf("new service: %v", err)
 	}
 
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Platforms:    []string{"shein"},
 		SheinStoreID: 869,
 	}

@@ -30,8 +30,6 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 		t.Fatalf("discover owner-scoped models: %v", err)
 	}
 
-	// shein_studio_designs is deliberately absent: it has no independent user
-	// column and inherits ownership from shein_studio_sessions.
 	// Generic AI telemetry is deliberately absent because telemetry identities
 	// are not used as owner-scope filters.
 	// The invitation audit table is excluded below because UserID is the target
@@ -79,7 +77,7 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 func TestSystemOwnedNativeTablesIgnoreBlankOwnerRows(t *testing.T) {
 	for _, table := range ownerTableInventory {
 		switch table.Table {
-		case "listing_kit_tasks", "listingkit_shein_pod_image_indexes", "listingkit_studio_async_jobs", "listingkit_studio_batches", "listingkit_studio_batch_items", "listingkit_studio_generation_attempts", "listingkit_studio_materialized_designs", "listingkit_studio_batch_task_links", "listingkit_studio_batch_runs", "listingkit_studio_batch_run_items", "shein_studio_sessions":
+		case "listing_kit_tasks", "listingkit_shein_pod_image_indexes":
 			if table.BlankUserPolicy != BlankUserPolicyIgnore {
 				t.Fatalf("%s blank policy = %v, want system-owned rows ignored", table.Table, table.BlankUserPolicy)
 			}
@@ -175,7 +173,6 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 	listingKitDirectory := filepath.Join(repositoryRoot, "internal", "listingkit")
 	listingAdminDirectory := filepath.Join(repositoryRoot, "internal", "listingadmin")
 	identityPreflightDirectory := filepath.Join(listingKitDirectory, "identitypreflight")
-	imageAgentAcceptanceDirectory := filepath.Join(listingKitDirectory, "imageagentacceptance")
 	memberInviteDirectory := filepath.Join(listingKitDirectory, "memberinvite")
 	storeDirectory := filepath.Join(listingKitDirectory, "store")
 	openAIDirectory := filepath.Join(repositoryRoot, "internal", "integration", "openai")
@@ -183,7 +180,6 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 	return map[ownerModelKey]string{
 		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "PersistedOwner"}:      "read-only aggregate result returned by the preflight repository",
 		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "unknownOwnerFinding"}: "in-memory comparison finding, never passed to GORM",
-		{Directory: imageAgentAcceptanceDirectory, Package: "imageagentacceptance", TypeName: "SeedResult"}:    "local acceptance command result, never passed to GORM",
 
 		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "CategoryQuery"}:                "repository filter input; Category is represented by a separate persistence row",
 		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "FilterRuleQuery"}:              "repository filter input; FilterRule is represented by a separate persistence row",
@@ -211,7 +207,6 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "TryConsumeDailyQuotaReqDTO"}:       "management API transport DTO, never passed to GORM as a model",
 		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "ProductImportMappingCreateReqDTO"}: "management API transport DTO, never passed to GORM as a model",
 
-		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIAsyncImageQueryContext"}:        "request context value, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIClientCredential"}:              "service contract mapped to the infrastructure credential store",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "GenerateRequest"}:                 "orchestration request input, never passed to GORM as a model",
 		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "ImageAgentPublicationCommit"}:     "atomic publication command mapped to the private image-agent publication receipt row before persistence",

@@ -27,7 +27,7 @@ import {
 } from "@/lib/api/shein-login";
 import { useSheinLoginAccounts } from "@/lib/query/use-shein-login";
 import { buildSheinLoginStatusMap } from "@/components/listingkit/stores/store-login-status";
-import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
+import { formatSheinStoreOptionLabel } from "@/lib/shein/store-option-label";
 import type { SheinLoginWarehouse } from "@/lib/types/shein-login";
 import { SHEIN_SITE_OPTIONS } from "@/components/listingkit/stores/shein-site-options";
 

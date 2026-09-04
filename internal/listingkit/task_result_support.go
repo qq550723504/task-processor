@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/catalog"
 	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog"
 )
 
 func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID string, errorMsg string, cause error) error {
@@ -36,11 +36,6 @@ func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*List
 	}
 	copied := cloneListingKitResultForReadState(task.Result)
 	ensureResultPodExecution(copied, task.Request)
-	tasks, err := s.listAssetGenerationTasks(ctx, task.ID)
-	if err != nil {
-		return nil, err
-	}
-	decorateListingKitResultGeneration(copied, tasks)
 	s.refreshSheinTaskResultState(ctx, task, copied)
 	if copied.Shein != nil {
 		if selection, selectionErr := s.resolveSheinStoreSelection(ctx, task); selectionErr == nil {
@@ -50,14 +45,15 @@ func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*List
 	return copied, nil
 }
 
-func effectiveCatalogProduct(result *ListingKitResult) *catalog.Product {
+func effectiveCatalogProduct(result *ListingKitResult) *catalog.ProductSnapshot {
 	if result == nil {
 		return nil
 	}
 	if result.CatalogProduct != nil {
 		return result.CatalogProduct
 	}
-	return catalog.BuildProduct(result.CanonicalProduct)
+	snapshot, _ := catalog.Normalize(result.CanonicalProduct)
+	return snapshot
 }
 
 func cloneListingKitResult(result *ListingKitResult) (*ListingKitResult, error) {
@@ -168,12 +164,16 @@ func cloneListingKitResultForReadState(src *ListingKitResult) *ListingKitResult 
 		cloned.Summary = &summary
 	}
 	cloned.PodExecution = clonePodExecutionSummary(src.PodExecution)
+	cloned.ApprovedAssetInventory = cloneApprovedAssetInventory(src.ApprovedAssetInventory)
+	cloned.ApprovedAssetInventories = cloneApprovedAssetInventories(src.ApprovedAssetInventories)
 	if src.Shein != nil {
 		cloned.Shein = cloneSheinPackageForReadState(src.Shein)
 	}
 	if src.StandardProductSnapshot != nil {
 		snapshot := *src.StandardProductSnapshot
 		snapshot.PodExecution = clonePodExecutionSummary(src.StandardProductSnapshot.PodExecution)
+		snapshot.ApprovedAssetInventory = cloneApprovedAssetInventory(src.StandardProductSnapshot.ApprovedAssetInventory)
+		snapshot.ApprovedAssetInventories = cloneApprovedAssetInventories(src.StandardProductSnapshot.ApprovedAssetInventories)
 		cloned.StandardProductSnapshot = &snapshot
 	}
 	return &cloned

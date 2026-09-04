@@ -3,7 +3,7 @@ package publishing
 import (
 	"strings"
 
-	sdspod "task-processor/internal/product/sourcing/sdspod"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 const saveDraftPODReadinessFallback = "POD 平台处理尚未完成；当前允许先保存草稿，正式发布前仍需确认平台结果"

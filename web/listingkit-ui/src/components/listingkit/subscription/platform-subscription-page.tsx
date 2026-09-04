@@ -89,8 +89,14 @@ const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string
   },
   operation_strategy: {
   },
-  studio: {
-    recommendedMetrics: [{ key: "design_jobs", label: "设计任务额度", unit: "次" }],
+  listingkit: {
+    recommendedMetrics: [
+      {
+        key: "listingkit_generations_succeeded",
+        label: "ListingKit 生成额度",
+        unit: "次",
+      },
+    ],
   },
   oss_storage: {
     recommendedMetrics: [{ key: "storage_bytes", label: "存储额度", unit: "字节" }],
@@ -1189,7 +1195,9 @@ export function PlatformSubscriptionPage() {
                     value={usageMetric}
                     onChange={(event) => setUsageMetric(event.target.value)}
                     className="mt-1 h-9 font-mono"
-                    placeholder={recommendedMetrics[0]?.key ?? "design_jobs"}
+                    placeholder={
+                      recommendedMetrics[0]?.key ?? "listingkit_generations_succeeded"
+                    }
                   />
                   {usageMetric ? (
                     <div className="mt-1 text-xs text-zinc-500">

@@ -8,9 +8,17 @@ import (
 type supportDependencies struct {
 	sdsSyncService            sdsusecase.Service
 	sdsBaselineRemoteProvider SDSBaselineRemoteProvider
+	imageUploadStore          ImageUploadStore
 	uploadedImageRepository   UploadedImageRepository
 	assembler                 Assembler
 	reviewRepository          reviewstore.Repository
+}
+
+func resolveImageUploadStore(s *service) ImageUploadStore {
+	if s == nil {
+		return nil
+	}
+	return s.supportDeps.imageUploadStore
 }
 
 func resolveSDSSyncService(s *service) sdsusecase.Service {

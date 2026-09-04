@@ -24,13 +24,9 @@ import {
   shouldSyncFocusedTargetToRoute,
 } from "@/components/listingkit/workspace/workspace-routing";
 import { scrollSheinWorkspaceTarget } from "@/components/listingkit/workspace/workspace-screen-helpers";
-import { useExecuteAction } from "@/lib/query/use-action";
-import { useDispatchNavigation } from "@/lib/query/use-dispatch";
 import type {
-  ActionTarget,
-  ActionExecutionResult,
   ActionExecutionRequest,
-  NavigationDispatchResponse,
+  ActionTarget,
   NavigationTarget,
   QueueQuery,
   RecoveryDescriptor,
@@ -54,22 +50,19 @@ type SheinFreshnessActionHandlers = Partial<
 
 export function useWorkspaceNavigationActions({
   taskId,
-  baseQuery,
   searchParams,
   focusedTarget,
   sheinStoreID,
   sheinFreshnessActions,
 }: {
   taskId: string;
-  baseQuery: QueueQuery;
+  baseQuery?: QueueQuery;
   searchParams: SearchParamsLike;
   focusedTarget?: ReviewTarget;
   sheinStoreID?: number | null;
   sheinFreshnessActions?: SheinFreshnessActionHandlers;
 }) {
   const router = useRouter();
-  const dispatch = useDispatchNavigation(taskId, baseQuery);
-  const action = useExecuteAction(taskId, baseQuery);
 
   useEffect(() => {
     if (!focusedTarget) {
@@ -115,28 +108,11 @@ export function useWorkspaceNavigationActions({
     if (!target) {
       return;
     }
-    dispatch.mutate(target, {
-      onSuccess: (result) => {
-        routeExplicitFocusedTarget(
-          focusedTargetFromDispatchResponse(result) ??
-            reviewTargetFromNavigationTarget(target),
-        );
-      },
-    });
-  };
-
-  const routeActionResult = (result: ActionExecutionResult) => {
-    routeExplicitFocusedTarget(
-      result.review_session?.focused_target ??
-        result.review_patch?.focused_target ??
-        reviewTargetFromActionTarget(result.resolved_target),
-    );
+    routeExplicitFocusedTarget(reviewTargetFromNavigationTarget(target));
   };
 
   const executeAction = (request: ActionExecutionRequest) => {
-    action.mutate(request, {
-      onSuccess: routeActionResult,
-    });
+    routeExplicitFocusedTarget(reviewTargetFromActionTarget(request.target));
   };
 
   const handleAction = (
@@ -270,21 +246,6 @@ function shouldRouteExplicitNavigation(search: string) {
     params.has("product_section") ||
     params.get("section_key") === "general_review" ||
     params.get("section_key") === "final_review"
-  );
-}
-
-function focusedTargetFromDispatchResponse(
-  result: NavigationDispatchResponse,
-): ReviewTarget | undefined {
-  return (
-    result.panel_update?.focused_target ??
-    result.review_session?.session?.focused_target ??
-    result.review_session?.patch?.focused_target ??
-    result.review_preview?.review_target ??
-    result.panel_update?.review_patch?.focused_target ??
-    result.panel_update?.review_session?.session?.focused_target ??
-    result.panel_update?.review_session?.patch?.focused_target ??
-    result.panel_update?.review_preview?.review_target
   );
 }
 

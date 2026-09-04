@@ -39,7 +39,7 @@
   updated_at?: string;
 };
 
-export type SDSRetirementItem = {
+type SDSRetirementItem = {
   id: string;
   run_id: string;
   tenant_id?: string;

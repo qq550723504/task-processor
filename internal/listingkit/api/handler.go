@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"time"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
@@ -20,13 +19,9 @@ type handler struct {
 	taskRequeueService            listingkit.TaskRequeueService
 	sdsBaselineWarmService        listingkit.SDSBaselineWarmService
 	sdsRetirementService          listingkit.SDSRetirementService
-	generationTaskService         listingkit.GenerationTaskService
 	childTaskRetryService         childTaskRetryService
 	taskSDSRepairService          taskSDSRepairService
-	studioMediaService            listingkit.StudioMediaService
-	studioBatchRunService         studioBatchRunHandlerService
-	studioSessionService          studioSessionAsyncJobService
-	uploadedImageDeleteService    uploadedImageDeleteService
+	uploadedImageService          listingkit.UploadedImageService
 	storeAdminService             storeAdminHandlerService
 	storeRepository               listingadmin.StoreRepository
 	sheinSyncService              listingkit.SheinSyncService
@@ -36,14 +31,11 @@ type handler struct {
 	sheinPODImageLookupService    sheinpodimage.SheinPODImageLookupRepository
 	operationStrategyRepository   listingadmin.OperationStrategyRepository
 	scheduledTaskConfigRepository listingadmin.ScheduledTaskConfigRepository
-	studioAsyncJobs               studioAsyncJobStoreService
 	initErr                       error
 	adminHandlers
 	subscriptionDependencies
-	settingsService                 settingsNamespaceService
-	studioAsyncJobHeartbeatInterval time.Duration
-	studioAsyncJobHeartbeatNow      func() time.Time
-	zitadelSMSService               *zitadelsms.Service
+	settingsService   settingsNamespaceService
+	zitadelSMSService *zitadelsms.Service
 }
 
 type storeAdminHandlers struct {
@@ -86,8 +78,7 @@ type subscriptionDependencies struct {
 
 type handlerCoreService interface {
 	listingkit.TaskLifecycleService
-	listingkit.GenerationTaskService
-	listingkit.StudioMediaService
+	listingkit.UploadedImageService
 }
 
 type HandlerService interface {
@@ -112,22 +103,6 @@ type childTaskRetryService interface {
 type taskSDSRepairService interface {
 	GetTaskSDSRepair(ctx context.Context, taskID string) (*listingkit.TaskSDSRepairSession, error)
 	RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *listingkit.ApplyTaskSDSRepairRequest) (*listingkit.TaskResult, error)
-}
-
-type uploadedImageDeleteService interface {
-	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
-}
-
-type studioSessionAsyncJobService interface {
-	SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus listingkit.StudioAsyncJobStatus, jobID string, errMessage string) error
-}
-
-type studioBatchRunHandlerService interface {
-	CreateStudioBatchRun(ctx context.Context, req *listingkit.CreateStudioBatchRunRequest) (*listingkit.StudioBatchRunRecord, []listingkit.StudioBatchRunItemRecord, error)
-	GetStudioBatchRun(ctx context.Context, runID string) (*listingkit.StudioBatchRunRecord, error)
-	ListStudioBatchRunItems(ctx context.Context, runID string) ([]listingkit.StudioBatchRunItemRecord, error)
-	CancelStudioBatchRun(ctx context.Context, runID string) error
-	RecoverStudioBatchRun(ctx context.Context, runID string) error
 }
 
 type HandlerOption func(*handler)
@@ -161,10 +136,9 @@ type SubscriptionDependencies struct {
 }
 
 type HandlerDependencies struct {
-	StudioAsyncJobRepository listingkit.StudioAsyncJobRepository
-	Admin                    AdminHandlerDependencies
-	Subscription             SubscriptionDependencies
-	ZitadelSMSService        *zitadelsms.Service
+	Admin             AdminHandlerDependencies
+	Subscription      SubscriptionDependencies
+	ZitadelSMSService *zitadelsms.Service
 }
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -194,7 +168,6 @@ func withAdminDependency[Repo comparable](repo Repo, apply func(Repo, *adminHand
 
 func WithDependencies(deps HandlerDependencies) HandlerOption {
 	options := []HandlerOption{
-		WithStudioAsyncJobRepository(deps.StudioAsyncJobRepository),
 		withStoreAdminDependencies(deps.Admin),
 		withCatalogAdminDependencies(deps.Admin),
 		withSubscriptionConfig(deps.Subscription),
@@ -215,26 +188,15 @@ func WithZitadelSMSService(service *zitadelsms.Service) HandlerOption {
 	})
 }
 
-func WithStudioAsyncJobRepository(repo listingkit.StudioAsyncJobRepository) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		store, err := newStudioAsyncJobStore(repo)
-		if err != nil {
-			h.initErr = err
-			return
-		}
-		h.studioAsyncJobs = store
-	})
-}
-
-func WithStudioBatchRunService(service studioBatchRunHandlerService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.studioBatchRunService = service
-	})
-}
-
 func WithTaskLifecycleService(service listingkit.TaskLifecycleService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.taskLifecycleService = service
+	})
+}
+
+func WithUploadedImageService(service listingkit.UploadedImageService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.uploadedImageService = service
 	})
 }
 
@@ -247,30 +209,6 @@ func WithTaskRecoveryService(service listingkit.TaskRecoveryService) HandlerOpti
 func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.taskRequeueService = service
-	})
-}
-
-func WithGenerationTaskService(service listingkit.GenerationTaskService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.generationTaskService = service
-	})
-}
-
-func WithStudioMediaService(service listingkit.StudioMediaService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.studioMediaService = service
-	})
-}
-
-func WithStudioSessionAsyncJobService(service studioSessionAsyncJobService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.studioSessionService = service
-	})
-}
-
-func WithUploadedImageDeleteService(service uploadedImageDeleteService) HandlerOption {
-	return withHandlerState(func(h *handler) {
-		h.uploadedImageDeleteService = service
 	})
 }
 

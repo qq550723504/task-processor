@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/product/sourcing"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 )
 
 func TestLocalAgentProtocolCompletesWithoutListingKitTask(t *testing.T) {
@@ -35,7 +35,7 @@ type serviceJobs struct {
 }
 
 func (j serviceJobs) Claim(context.Context) (*Claim, error) { return j.service.Claim(j.actor) }
-func (j serviceJobs) SubmitSuccess(_ context.Context, id, token string, product *sourcing.Alibaba1688ProductSnapshot) (Job, error) {
+func (j serviceJobs) SubmitSuccess(_ context.Context, id, token string, product *sourcea1688.Alibaba1688ProductSnapshot) (Job, error) {
 	return j.service.SubmitSuccess(j.actor, id, token, product)
 }
 func (j serviceJobs) SubmitFailure(_ context.Context, id, token string, failure Failure) (Job, error) {

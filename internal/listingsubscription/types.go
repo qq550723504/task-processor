@@ -11,7 +11,7 @@ const (
 	ModuleTaskImport        = "task_import"
 	ModuleRules             = "rules"
 	ModuleOperationStrategy = "operation_strategy"
-	ModuleStudio            = "studio"
+	ModuleListingKit        = "listingkit"
 	ModuleOSSStorage        = "oss_storage"
 )
 

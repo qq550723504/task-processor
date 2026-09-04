@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ func StandardProductWorkflow(ctx sdkworkflow.Context, in StandardProductWorkflow
 	})
 	var snapshot *listingkit.StandardProductSnapshot
 	if err := sdkworkflow.ExecuteActivity(ctx, activityNameProcessStandardProduct, in).Get(ctx, &snapshot); err != nil {
-		return nil, err
+		return nil, persistLayerFailure(ctx, in.TaskID, err)
 	}
 	return snapshot, nil
 }
@@ -41,9 +42,29 @@ func PlatformAdaptWorkflow(ctx sdkworkflow.Context, in PlatformAdaptWorkflowInpu
 	})
 	var result *listingkit.ListingKitResult
 	if err := sdkworkflow.ExecuteActivity(ctx, activityNameProcessPlatformAdapt, in).Get(ctx, &result); err != nil {
-		return nil, err
+		return nil, persistLayerFailure(ctx, in.TaskID, err)
 	}
 	return result, nil
+}
+
+func persistLayerFailure(ctx sdkworkflow.Context, taskID string, cause error) error {
+	failureCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: time.Minute,
+		RetryPolicy: &sdktemporal.RetryPolicy{
+			InitialInterval:    time.Second,
+			BackoffCoefficient: 2,
+			MaximumInterval:    10 * time.Second,
+			MaximumAttempts:    3,
+		},
+	})
+	persistErr := sdkworkflow.ExecuteActivity(failureCtx, activityNamePersistLayerFailure, LayerFailureInput{
+		TaskID: taskID,
+		Error:  cause.Error(),
+	}).Get(failureCtx, nil)
+	if persistErr != nil {
+		return fmt.Errorf("layer processing failed: %v; persist terminal state: %w", cause, persistErr)
+	}
+	return cause
 }
 
 func normalizeStandardProductWorkflowInput(ctx sdkworkflow.Context, in StandardProductWorkflowInput) StandardProductWorkflowInput {

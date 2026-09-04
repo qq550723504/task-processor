@@ -41,7 +41,7 @@ func TestBuildUsageEventMapsEachMetricToDistinctEventType(t *testing.T) {
 		metric Metric
 		want   string
 	}{
-		{"studio design jobs", MetricStudioDesignJobsSucceeded, "listingkit.usage.studio_design_jobs_succeeded"},
+		{"listingkit generations", MetricListingKitGenerationsSucceeded, "listingkit.usage.listingkit_generations_succeeded"},
 		{"product image jobs", MetricProductImageJobsSucceeded, "listingkit.usage.product_image_jobs_succeeded"},
 		{"shein drafts", MetricSheinDraftsSucceeded, "listingkit.usage.shein_drafts_succeeded"},
 		{"shein publishes", MetricSheinPublishesSucceeded, "listingkit.usage.shein_publishes_succeeded"},
@@ -73,6 +73,7 @@ func TestBuildUsageEventRejectsInvalidFacts(t *testing.T) {
 	}{
 		{"empty tenant", func() UsageFact { f := validUsageFact(); f.TenantID = ""; return f }()},
 		{"unknown metric", func() UsageFact { f := validUsageFact(); f.Metric = "unknown"; return f }()},
+		{"retired studio metric", func() UsageFact { f := validUsageFact(); f.Metric = "studio_design_jobs_succeeded"; return f }()},
 		{"empty source type", func() UsageFact { f := validUsageFact(); f.SourceType = ""; return f }()},
 		{"empty source ID", func() UsageFact { f := validUsageFact(); f.SourceID = ""; return f }()},
 		{"empty revision", func() UsageFact { f := validUsageFact(); f.Revision = ""; return f }()},
@@ -171,7 +172,7 @@ func TestBuildUsageEventDataContainsOnlyAllowlistedFields(t *testing.T) {
 	}
 
 	want := map[string]any{
-		"metric":      "studio_design_jobs_succeeded",
+		"metric":      "listingkit_generations_succeeded",
 		"quantity":    "1",
 		"source_type": "design_job",
 		"source_id":   "job-42",
@@ -208,7 +209,7 @@ func TestBuildUsageEventNormalizesStorageQuantity(t *testing.T) {
 func validUsageFact() UsageFact {
 	return UsageFact{
 		TenantID:   "tenant-17",
-		Metric:     MetricStudioDesignJobsSucceeded,
+		Metric:     MetricListingKitGenerationsSucceeded,
 		Quantity:   "1",
 		SourceType: "design_job",
 		SourceID:   "job-42",

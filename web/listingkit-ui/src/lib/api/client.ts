@@ -1,16 +1,9 @@
 import { buildQueryString } from "@/lib/api/query-string";
 import { ApiError } from "@/lib/api/api-error";
 import {
-  resumeOrRestartAsyncJob,
-} from "@/lib/api/async-job";
-import {
   parseJsonResponse,
   ResponseJsonParseError,
 } from "@/lib/api/response-json";
-import {
-  buildListingKitTraceHeaders,
-  isListingKitStudioPath,
-} from "@/lib/listingkit/request-trace";
 import type { ConditionalState, QueueQuery } from "@/lib/types/listingkit";
 
 const API_BASE =
@@ -23,8 +16,6 @@ type RequestOptions = {
   conditional?: ConditionalState | null;
   timeoutMs?: number;
   signal?: AbortSignal;
-  onJobStarted?: (jobId: string) => void;
-  asyncJobSessionId?: string;
 };
 
 type FormRequestOptions = {
@@ -35,14 +26,8 @@ type FormRequestOptions = {
 
 export { ApiError };
 
-function buildHeaders(
-  path: string,
-  conditional?: ConditionalState | null,
-  source?: HeadersInit,
-) {
-  const headers = isListingKitStudioPath(path)
-    ? buildListingKitTraceHeaders(source)
-    : new Headers(source);
+function buildHeaders(conditional?: ConditionalState | null, source?: HeadersInit) {
+  const headers = new Headers(source);
 
   headers.set("Accept", "application/json");
 
@@ -78,7 +63,7 @@ export async function apiRequest<T>(
   { method = "GET", query, body, conditional, timeoutMs, signal }: RequestOptions = {},
 ): Promise<T> {
   const url = buildApiUrl(path, query);
-  const headers = buildHeaders(path, conditional);
+  const headers = buildHeaders(conditional);
   const controller = timeoutMs && !signal ? new AbortController() : undefined;
   const activeSignal = signal ?? controller?.signal;
   const timeout =
@@ -137,70 +122,6 @@ export async function apiRequest<T>(
   }
 
   return payload as T;
-}
-
-export async function apiAsyncRequest<T>(
-  path: string,
-  {
-    body,
-    timeoutMs = 3600000,
-    signal,
-    onJobStarted,
-    asyncJobSessionId,
-  }: Pick<RequestOptions, "body" | "timeoutMs" | "signal" | "onJobStarted" | "asyncJobSessionId"> = {},
-): Promise<T> {
-  return resumeOrRestartAsyncJob<T, BackendAsyncJobInput>(
-    {
-      path,
-      body,
-      sessionId: asyncJobSessionId,
-    },
-    {
-      timeoutMs,
-      signal,
-      onJobStarted,
-      buildStartRequest: buildAsyncJobStartRequest,
-      buildPollRequest: buildAsyncJobPollRequest,
-    },
-  );
-}
-
-type BackendAsyncJobInput = {
-  path: string;
-  body: unknown;
-  sessionId?: string;
-};
-
-function buildAsyncJobStartRequest({
-  path,
-  body,
-  sessionId,
-}: BackendAsyncJobInput) {
-  return {
-    url: buildApiUrl("/studio/async-jobs"),
-    init: {
-      method: "POST",
-      headers: buildHeaders(
-        "/studio/async-jobs",
-        null,
-        new Headers({
-          "Content-Type": "application/json",
-        }),
-      ),
-      body: JSON.stringify({ path, body, session_id: sessionId?.trim() || undefined }),
-    },
-  };
-}
-
-function buildAsyncJobPollRequest(jobId: string) {
-  const path = `/studio/async-jobs/${encodeURIComponent(jobId)}`;
-  return {
-    url: buildApiUrl(path),
-    init: {
-      headers: buildHeaders(path),
-      cache: "no-store" as const,
-    },
-  };
 }
 
 export async function apiFormRequest<T>(

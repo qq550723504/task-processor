@@ -5,7 +5,7 @@ func buildListingKitReadProjection(result *ListingKitResult, selectedPlatform st
 		return nil
 	}
 
-	platformCards := buildPlatformPreviewCards(result, selectedPlatform)
+	var platformCards []ListingKitPlatformCard
 	previewInput := buildListingKitPreviewReadModelInput(result, platformCards, selectedPlatform)
 	attachmentExtras := buildListingKitReadProjectionAttachmentExtras(result, selectedPlatform)
 	return assembleListingKitReadProjection(

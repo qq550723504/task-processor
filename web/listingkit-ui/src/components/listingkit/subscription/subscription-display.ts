@@ -3,12 +3,12 @@
   task_import: "控制任务导入与批量导入能力是否可用。",
   rules: "控制规则、映射和限制类配置能力是否可用。",
   operation_strategy: "控制运营策略相关配置能力是否可用。",
-  studio: "控制生成任务、工作台和图片生产类能力。",
+  listingkit: "控制 ListingKit 生成任务能力与额度。",
   oss_storage: "控制文件存储额度，适合按存储空间进行配额管理。",
 };
 
  const SUBSCRIPTION_METRIC_LABELS: Record<string, { label: string; unit?: string }> = {
-  design_jobs: { label: "设计任务额度", unit: "次" },
+  listingkit_generations_succeeded: { label: "ListingKit 生成额度", unit: "次" },
   product_image_jobs: { label: "商品图片任务额度", unit: "次" },
   storage_bytes: { label: "存储额度", unit: "字节" },
   uploaded_bytes: { label: "已上传存储用量", unit: "字节" },

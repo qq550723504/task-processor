@@ -41,6 +41,7 @@ const taskListItemSchema = z
       .passthrough()
       .optional(),
     platforms: z.array(z.string()).optional(),
+    product_key: z.string().optional(),
     title: z.string().optional(),
     image_count: z.coerce.number().optional(),
     canonical_product: z

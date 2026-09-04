@@ -88,19 +88,3 @@ type TaskChildRetryAccepted struct {
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
 }
-
-// StudioBatchSDSChildRetryResult records the tasks accepted by an explicit
-// Studio batch retry request. Each accepted task is retried by the same durable
-// worker used for automatically classified OSS failures.
-type StudioBatchSDSChildRetryResult struct {
-	BatchID   string                         `json:"batch_id"`
-	Scheduled int                            `json:"scheduled"`
-	Skipped   int                            `json:"skipped"`
-	Failures  []StudioBatchSDSChildRetryFail `json:"failures,omitempty"`
-}
-
-type StudioBatchSDSChildRetryFail struct {
-	TaskID  string `json:"task_id,omitempty"`
-	Message string `json:"message"`
-}
-

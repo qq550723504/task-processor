@@ -308,11 +308,6 @@ func TestProductionProviderAndLLMLoggerContractsInSSA(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules := productionProviderLoggerRules()
-	nilRules := []typedNilCallRule{{
-		PackagePath:  "task-processor/internal/productenrich",
-		FunctionName: "NewLLMManagerAdapter",
-		Argument:     1,
-	}}
 	var violations []string
 	for _, goModPath := range modules {
 		loaded := loadRepositoryModulePackages(t, repositoryRoot, goModPath)
@@ -320,7 +315,7 @@ func TestProductionProviderAndLLMLoggerContractsInSSA(t *testing.T) {
 			t.Logf("provider SSA module %s: zero packages (N/A)", relativeModulePath(repositoryRoot, filepath.Dir(goModPath)))
 			continue
 		}
-		violations = append(violations, loggerContractSSAViolations(loaded, rules, nilRules)...)
+		violations = append(violations, loggerContractSSAViolations(loaded, rules, nil)...)
 	}
 	if len(violations) != 0 {
 		t.Fatalf("provider constructors without must-bound matching logger:\n%s", strings.Join(violations, "\n"))

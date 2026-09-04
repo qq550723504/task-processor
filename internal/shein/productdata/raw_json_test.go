@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	appProduct "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 	shein "task-processor/internal/shein"
 )
 
@@ -18,19 +18,19 @@ type stubProductFetcher struct {
 
 var _ appProduct.ProductFetcher = (*stubProductFetcher)(nil)
 
-func (s *stubProductFetcher) FetchProduct(context.Context, *product.FetchRequest) (*model.Product, error) {
+func (s *stubProductFetcher) FetchProduct(context.Context, *sourceproduct.FetchRequest) (*model.Product, error) {
 	return nil, s.err
 }
 
-func (s *stubProductFetcher) FetchVariants(context.Context, *product.FetchRequest, []string) ([]*model.Product, error) {
+func (s *stubProductFetcher) FetchVariants(context.Context, *sourceproduct.FetchRequest, []string) ([]*model.Product, error) {
 	return nil, s.err
 }
 
-func (s *stubProductFetcher) CacheProduct(*product.FetchRequest, *model.Product) error {
+func (s *stubProductFetcher) CacheProduct(*sourceproduct.FetchRequest, *model.Product) error {
 	return nil
 }
 
-func (s *stubProductFetcher) CacheVariants(*product.FetchRequest, []*model.Product) error {
+func (s *stubProductFetcher) CacheVariants(*sourceproduct.FetchRequest, []*model.Product) error {
 	return nil
 }
 

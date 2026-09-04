@@ -3,13 +3,15 @@ package fetcher
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
+	sourceamazon "task-processor/internal/integration/crawler/amazon"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/platform/queue/rabbitmq"
-	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,13 +25,13 @@ const (
 )
 
 type ProductReader interface {
-	FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error)
-	FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error)
+	FetchProduct(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error)
+	FetchVariants(ctx context.Context, req *sourceproduct.FetchRequest, variantASINs []string) ([]*model.Product, error)
 }
 
 type ProductCache interface {
-	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
-	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
+	CacheProduct(req *sourceproduct.FetchRequest, product *model.Product) error
+	CacheVariants(req *sourceproduct.FetchRequest, variants []*model.Product) error
 }
 
 type ProductFetcherStats interface {
@@ -40,6 +42,107 @@ type ProductFetcher interface {
 	ProductReader
 	ProductCache
 	ProductFetcherStats
+}
+
+type amazonSourceFetcherAdapter struct {
+	crawlSource ports.CrawlSource
+	delegate    sourceamazon.AmazonSourceFetcher
+}
+
+func newAmazonSourceFetcher(crawlSource ports.CrawlSource, zipcodes map[string]string) sourceproduct.SourceFetcher {
+	zipcodesSnapshot := make(map[string]string, len(zipcodes))
+	for region, zipcode := range zipcodes {
+		zipcodesSnapshot[region] = zipcode
+	}
+	return &amazonSourceFetcherAdapter{
+		crawlSource: crawlSource,
+		delegate: sourceamazon.AmazonSourceFetcher{
+			Planner: sourceamazon.AmazonCrawlRequestPlanner{
+				DomainResolver: sourceamazon.AmazonDefaultDomainResolver{},
+				ZipcodePolicy:  sourceamazon.AmazonDefaultZipcodePolicy{},
+				Zipcodes:       zipcodesSnapshot,
+			},
+			Source: crawlSource,
+		},
+	}
+}
+
+func (a *amazonSourceFetcherAdapter) Configured() bool {
+	return a != nil && !isNilCrawlSource(a.crawlSource)
+}
+
+func (a *amazonSourceFetcherAdapter) Fetch(ctx context.Context, req sourceproduct.SourceFetchRequest) (*model.Product, error) {
+	if !a.Configured() {
+		return nil, fmt.Errorf("amazon crawler source is not configured")
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	product, err := a.delegate.Fetch(ctx, sourceamazon.AmazonCrawlRequestInput{
+		Region:    req.Region,
+		ProductID: req.ProductID,
+		Zipcode:   req.Zipcode,
+	})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return product, err
+}
+
+func isNilCrawlSource(source ports.CrawlSource) bool {
+	if source == nil {
+		return true
+	}
+	value := reflect.ValueOf(source)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
+type ProductFetcherBuilder struct {
+	factory           *FetcherFactory
+	rawJsonDataClient sourceproduct.RawJsonDataClient
+	crawlSource       ports.CrawlSource
+}
+
+func NewProductFetcherBuilder(
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
+	crawlSource ports.CrawlSource,
+) *ProductFetcherBuilder {
+	return &ProductFetcherBuilder{
+		factory:           NewFetcherFactory(),
+		rawJsonDataClient: rawJsonDataClient,
+		crawlSource:       crawlSource,
+	}
+}
+
+func (b *ProductFetcherBuilder) Build(
+	amazonConfig *config.AmazonConfig,
+	rabbitmqClient *rabbitmq.Client,
+) (ProductFetcher, error) {
+	return b.factory.CreateFetcher(
+		resolveProductFetcherType(amazonConfig, rabbitmqClient),
+		b.rawJsonDataClient,
+		amazonConfig,
+		b.crawlSource,
+		rabbitmqClient,
+	)
+}
+
+func resolveProductFetcherType(
+	amazonConfig *config.AmazonConfig,
+	rabbitmqClient *rabbitmq.Client,
+) FetcherType {
+	if rabbitmqClient != nil {
+		return DistributedFetcher
+	}
+	if amazonConfig != nil && amazonConfig.RemoteAPI.Enabled {
+		return RemoteAPIFetcher
+	}
+	return LocalFetcher
 }
 
 type FetcherFactory struct {
@@ -54,7 +157,7 @@ func NewFetcherFactory() *FetcherFactory {
 
 func (f *FetcherFactory) CreateFetcher(
 	fetcherType FetcherType,
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
@@ -65,7 +168,19 @@ func (f *FetcherFactory) CreateFetcher(
 	switch fetcherType {
 	case LocalFetcher:
 		f.logger.Info("creating local product fetcher")
-		return domainProduct.NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, f.logger), nil
+		options := sourceproduct.ProductFetcherOptions{}
+		var zipcodes map[string]string
+		if amazonConfig != nil {
+			options.Enabled = amazonConfig.Enabled
+			options.DataFreshnessDays = amazonConfig.DataFreshnessDays
+			zipcodes = amazonConfig.Zipcodes
+		}
+		return sourceproduct.NewProductFetcherWithLogger(
+			rawJsonDataClient,
+			options,
+			newAmazonSourceFetcher(crawlSource, zipcodes),
+			f.logger,
+		), nil
 	case RemoteAPIFetcher:
 		f.logger.Info("creating remote api product fetcher")
 		return NewRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)
@@ -82,7 +197,7 @@ func (f *FetcherFactory) CreateFetcher(
 
 func (f *FetcherFactory) CreateFetcherFromConfig(
 	cfg *config.Config,
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
@@ -113,7 +228,7 @@ func (f *FetcherFactory) GetRecommendedFetcher(cfg *config.Config) FetcherType {
 }
 
 func NewDistributedProductFetcher(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
@@ -121,7 +236,7 @@ func NewDistributedProductFetcher(
 }
 
 func NewRemoteAPIProductFetcher(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 ) (ProductFetcher, error) {
 	return newRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)

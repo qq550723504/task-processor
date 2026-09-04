@@ -1,14 +1,10 @@
 package httpapi
 
 import (
-	"context"
-
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/aicapability"
-	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
@@ -16,28 +12,23 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingsubscription"
 	worker "task-processor/internal/platform/workerpool"
-	productenrich "task-processor/internal/productenrich"
-	productimage "task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
 type Module struct {
-	Handler                    RouteHandler
-	ImageAgentWorkspaceHandler ImageAgentWorkspaceRouteHandler
-	StudioSessionHandler       listingkit.StudioSessionHandler
-	TaskLifecycleService       listingkit.TaskLifecycleService
-	TaskRepository             listingkit.Repository
-	StoreAccessValidator       listingkit.StoreAccessValidator
-	StoreRepository            listingadmin.StoreRepository
-	Pool                       worker.WorkerPool
-	Closers                    []func() error
+	Handler              RouteHandler
+	TaskLifecycleService listingkit.TaskLifecycleService
+	TaskRepository       listingkit.Repository
+	StoreAccessValidator listingkit.StoreAccessValidator
+	StoreRepository      listingadmin.StoreRepository
+	Pool                 worker.WorkerPool
+	Closers              []func() error
 }
 
 type ServiceBundle struct {
 	TemporalWorkerService           TemporalWorkerService
 	TaskRepository                  listingkit.Repository
-	StudioAsyncJobRepository        listingkit.StudioAsyncJobRepository
 	StoreRepository                 listingadmin.StoreRepository
 	StoreStatisticsRepository       listingadmin.StoreStatisticsRepository
 	DispatchEventRepository         listingadmin.DispatchEventRepository
@@ -77,23 +68,14 @@ type TemporalWorkerService interface {
 
 type moduleService interface {
 	listingkit.TaskLifecycleService
-	listingkit.GenerationTaskService
 	listingkit.ChildTaskRetryService
 	listingkit.SDSBaselineWarmService
 	listingkit.StoreAdminService
-	listingkit.StudioBatchRunService
-	listingkit.StudioMediaService
+	listingkit.UploadedImageService
 	listingkit.InternalListingKitService
 	listingkit.TaskSubmitterConfigurer
-	listingkit.StudioSessionHandlerService
 	listingkit.WorkflowClientConfigurer
 	TemporalWorkerService
-}
-
-type aiCredentialStore interface {
-	openaiclient.ClientConfigResolver
-	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error
-	GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error)
 }
 
 type BuildModuleInput struct {
@@ -101,81 +83,65 @@ type BuildModuleInput struct {
 	ShouldStartTemporalWorkerInProcess bool
 }
 
-type AdminRepositoryBuilders struct {
-	Store                   func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
-	StoreStatistics         func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
-	DispatchEvent           func(*config.Config, *logrus.Logger) (listingadmin.DispatchEventRepository, []func() error, error)
-	ImportTask              func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
-	FilterRule              func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
-	ProfitRule              func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
-	PricingRule             func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
-	OperationStrategy       func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
-	ScheduledTaskConfig     func(*config.Config, *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error)
-	SensitiveWord           func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
-	GenerationTopicOverride func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error)
-	GenerationTopicPolicy   func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error)
-	ProductImportMapping    func(*config.Config, *logrus.Logger) (listingadmin.ProductImportMappingRepository, []func() error, error)
-	Category                func(*config.Config, *logrus.Logger) (listingadmin.CategoryRepository, []func() error, error)
-	ProductData             func(*config.Config, *logrus.Logger) (listingadmin.ProductDataRepository, []func() error, error)
+type AdminRepositories struct {
+	Store                   listingadmin.StoreRepository
+	StoreStatistics         listingadmin.StoreStatisticsRepository
+	DispatchEvent           listingadmin.DispatchEventRepository
+	ImportTask              listingadmin.ImportTaskRepository
+	FilterRule              listingadmin.FilterRuleRepository
+	ProfitRule              listingadmin.ProfitRuleRepository
+	PricingRule             listingadmin.PricingRuleRepository
+	OperationStrategy       listingadmin.OperationStrategyRepository
+	ScheduledTaskConfig     listingadmin.ScheduledTaskConfigRepository
+	SensitiveWord           listingadmin.SensitiveWordRepository
+	GenerationTopicOverride listingadmin.GenerationTopicOverrideRepository
+	GenerationTopicPolicy   listingadmin.GenerationTopicPolicyRepository
+	ProductImportMapping    listingadmin.ProductImportMappingRepository
+	Category                listingadmin.CategoryRepository
+	ProductData             listingadmin.ProductDataRepository
 }
 
-type CoreRepositoryBuilders struct {
-	Task                  func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error)
-	StudioAsyncJob        func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
-	StudioBatch           func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
-	StudioBatchRun        func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
-	StudioBatchTaskLink   func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error)
-	SheinSync             func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
-	Subscription          func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
-	MemberInvitationAudit func(*config.Config, *logrus.Logger) (memberinvite.AuditRepository, []func() error, error)
-	Asset                 func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
-	Review                func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
-	StudioSession         func(*config.Config, *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error)
-	UploadedImage         func(*config.Config, *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error)
-	StoreProfile          func(*config.Config, *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error)
-	SheinResolutionCache  func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error)
+type CoreRepositories struct {
+	Task                  listingkit.Repository
+	SheinSync             listingkit.SheinSyncRepository
+	Subscription          listingsubscription.Repository
+	GenerationUsageLedger listingsubscription.UsageLedger
+	MemberInvitationAudit memberinvite.AuditRepository
+	ApprovedAsset         listingkit.ApprovedAssetInventoryReader
+	Review                reviewstore.Repository
+	UploadedImage         listingkit.UploadedImageRepository
+	StoreProfile          listingkit.StoreProfileRepository
+	SheinResolutionCache  sheinpub.ResolutionCacheStore
 }
 
 type BuildServiceRepositories struct {
-	Core  CoreRepositoryBuilders
-	Admin AdminRepositoryBuilders
+	Core  CoreRepositories
+	Admin AdminRepositories
 }
 
 type BuildServiceHooks struct {
 	SheinPricingPolicyBuilder         func(*config.Config) sheinpub.PricingPolicy
-	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore
+	ImageUploadStoreBuilder           func(*config.Config, *logrus.Logger) (listingkit.ImageUploadStore, error)
 	LegacyTenantResolverConfigurator  func(*config.Config, *logrus.Logger) (func() error, error)
-	SheinCategoryLLMClientBuilder     func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinSaleAttributeLLMBuilder      func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ChatCompleter
-	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
-	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
-	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, openaiclient.ChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
+	SheinCategoryResolverBuilder      func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver
+	SheinAttributeResolverBuilder     func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.AttributeResolver
+	SheinSaleAttributeResolverBuilder func(listingadmin.StoreRepository, ai.TextChatCompleter, sheinpub.ResolutionCacheStore) sheinpub.SaleAttributeResolver
 	SheinProductAPIBuilderFactory     func(listingadmin.StoreRepository) sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilderFactory       func(listingadmin.StoreRepository) sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
-	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
-	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
-	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
-	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
-	ConfigureAuthorization            func([]string, []string) error
 }
 
 type BuildServiceInput struct {
-	Config                     *config.Config
-	Logger                     *logrus.Logger
-	ProductService             productenrich.ProductService
-	ImageService               productimage.Service
-	SDSSyncService             sdsusecase.Service
-	SDSLoginStatusProvider     listingkit.SDSLoginStatusProvider
-	SDSBaselineRemoteProvider  listingkit.SDSBaselineRemoteProvider
-	ImageSubjectExtractor      productimage.SubjectExtractor
-	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
-	ImageSceneRenderer         productimage.SceneRenderer
-	ImageAssetPublisher        productimage.AssetPublisher
-	AICredentialStore          aiCredentialStore
-	AIInvocationRecorder       aicapability.InvocationRecorder
-	AIAsyncJobStore            aicapability.AsyncJobBindingStore
-	Repositories               BuildServiceRepositories
-	Hooks                      BuildServiceHooks
+	Config                    *config.Config
+	Logger                    *logrus.Logger
+	ProductSnapshotReader     listingkit.ProductSnapshotReader
+	SDSSyncService            sdsusecase.Service
+	SDSLoginStatusProvider    listingkit.SDSLoginStatusProvider
+	SDSBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
+	AIClientCredentialStore   listingkit.AIClientCredentialStore
+	SheinCategoryLLMClient    ai.TextChatCompleter
+	SheinSaleAttributeLLM     ai.TextChatCompleter
+	Repositories              BuildServiceRepositories
+	Hooks                     BuildServiceHooks
 }

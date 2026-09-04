@@ -34,7 +34,7 @@ func TestGetSDSBaselineReadinessBindsQueryAndReturnsPayload(t *testing.T) {
 			Status:      listingkit.SDSBaselineStatusBaselineCached,
 		},
 	}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(activeListingKitOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestGetSDSBaselineReadinessReturnsBadRequestForInvalidSelectedVariantIDs(t 
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubHandlerCoreService{}, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSubscriptionService(activeListingKitOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}

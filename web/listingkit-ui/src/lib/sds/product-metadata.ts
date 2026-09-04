@@ -32,7 +32,7 @@ export type SDSListingKitMetadata = {
   variants?: SDSListingKitVariantMetadata[];
 };
 
-export type SDSListingKitVariantMetadata = {
+type SDSListingKitVariantMetadata = {
   variant_id: number;
   variant_sku?: string;
   size?: string;

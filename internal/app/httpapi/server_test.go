@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +25,6 @@ import (
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
@@ -36,23 +34,6 @@ import (
 	"task-processor/internal/workbenchcontext"
 	workbenchcontexthttpapi "task-processor/internal/workbenchcontext/httpapi"
 )
-
-func init() {
-	gin.SetMode(gin.TestMode)
-}
-
-func TestBuildHTTPServerFromRoutesAtBindsLoopback(t *testing.T) {
-	server := buildHTTPServerFromRoutesAt("127.0.0.1", 18085, nil)
-	if server.Addr != "127.0.0.1:18085" {
-		t.Fatalf("server address = %q, want loopback-only listener", server.Addr)
-	}
-	if server.ReadTimeout != 0 {
-		t.Fatalf("server read timeout = %s, want route-scoped body deadlines", server.ReadTimeout)
-	}
-	if got := buildHTTPServerFromRoutes(18085, nil).Addr; got != ":18085" {
-		t.Fatalf("default server address = %q, want backward-compatible wildcard", got)
-	}
-}
 
 type mountedOrganizationResolverStub struct {
 	events *[]string
@@ -426,7 +407,7 @@ func TestWorkbenchAuthHandlerOrderIsAuthenticationOrganizationRoleThenHandler(t 
 	require.Equal(t, "pre-auth-token", resolvedBearer)
 }
 
-func TestProductionAuthShapeSkipsLegacyAllowlistBeforeWorkbenchOrganizationResolution(t *testing.T) {
+func TestProductionAuthShapeUsesIndependentServerAndWorkbenchAuthentication(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -443,19 +424,18 @@ func TestProductionAuthShapeSkipsLegacyAllowlistBeforeWorkbenchOrganizationResol
 		}
 	}))
 	defer zitadel.Close()
-	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
-	t.Cleanup(restore)
-	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+	events := []string{}
+	authorization, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{
 		IssuerURL: zitadel.URL, ClientID: "listingkit-client", ProjectID: "project-1",
 		AuthorizationRequired: true, AllowedTenantIDs: []string{"org-other"},
+	}}})
+	require.NoError(t, err)
+	authorization = authorization.withWorkbench(routeAuthDependencies{
+		workbenchVerifier: zitadelruntime.NewVerifier(zitadelruntime.Config{
+			IssuerURL: zitadel.URL, ClientID: "listingkit-client", ProjectID: "project-1", HTTPClient: zitadel.Client(),
+		}),
+		organizationResolver: mountedOrganizationResolverStub{events: &events, roles: []string{"listingkit_viewer"}},
 	})
-
-	events := []string{}
-	dependencies := newRouteAuthDependencies()
-	dependencies.workbenchVerifier = zitadelruntime.NewVerifier(zitadelruntime.Config{
-		IssuerURL: zitadel.URL, ClientID: "listingkit-client", ProjectID: "project-1", HTTPClient: zitadel.Client(),
-	})
-	dependencies.organizationResolver = mountedOrganizationResolverStub{events: &events, roles: []string{"listingkit_viewer"}}
 	router := gin.New()
 	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{
 		{
@@ -469,9 +449,9 @@ func TestProductionAuthShapeSkipsLegacyAllowlistBeforeWorkbenchOrganizationResol
 		{
 			Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks", Module: "listing-kit",
 			AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
-			Handler:    func(c *gin.Context) { t.Fatal("legacy handler ran after allowlist denial") },
+			Handler:    func(c *gin.Context) { t.Fatal("listing kit handler ran after allowlist denial") },
 		},
-	}, dependencies)
+	}, authorization)
 
 	workbenchRequest := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/context", nil)
 	workbenchRequest.Header.Set("Authorization", "Bearer user-token")
@@ -505,7 +485,7 @@ func TestWorkbenchOrganizationPolicyFailsClosedWithoutAuthenticationMiddleware(t
 			t.Fatal("handler ran without authentication middleware")
 		},
 	}
-	router.Handle(route.Method, route.Path, append(routeAuthHandlers(route, nil), route.Handler)...)
+	router.Handle(route.Method, route.Path, append(routeAuthHandlers(route, routeAuthorization{}), route.Handler)...)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workbench", nil))
@@ -879,17 +859,105 @@ func TestWorkbenchOrganizationErrorsUseStableNonEnumeratingProtocol(t *testing.T
 	}
 }
 
-func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse(t *testing.T) {
-	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
-	t.Cleanup(restore)
-	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
-		IssuerURL:             "https://issuer.example",
-		ClientID:              "listingkit-client",
-		AuthorizationRequired: false,
-	})
-	if err := listingkithttpapi.ConfigureListingKitAuthorization(nil, []string{"platform_admin"}); err != nil {
-		t.Fatal(err)
+func init() {
+	gin.SetMode(gin.TestMode)
+}
+
+func TestBuildHTTPServerFromRoutesAtBindsLoopback(t *testing.T) {
+	server := buildHTTPServerFromRoutesAt("127.0.0.1", 18085, nil, appHTTPTestRouteAuthorization)
+	if server.Addr != "127.0.0.1:18085" {
+		t.Fatalf("server address = %q, want loopback-only listener", server.Addr)
 	}
+	if server.ReadTimeout != 0 {
+		t.Fatalf("server read timeout = %s, want route-scoped body deadlines", server.ReadTimeout)
+	}
+	if got := buildHTTPServerFromRoutes(18085, nil, appHTTPTestRouteAuthorization).Addr; got != ":18085" {
+		t.Fatalf("default server address = %q, want backward-compatible wildcard", got)
+	}
+}
+
+func TestHTTPServersKeepRouteAuthorizationIsolated(t *testing.T) {
+	issuerA := newRouteAuthorizationIssuer(t, "token-a", "role-a")
+	issuerB := newRouteAuthorizationIssuer(t, "token-b", "role-b")
+
+	authA, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"role-a"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL: issuerA.URL,
+			ClientID:  "client-a",
+		},
+	}})
+	require.NoError(t, err)
+	authB, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"role-b"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL: issuerB.URL,
+			ClientID:  "client-b",
+		},
+	}})
+	require.NoError(t, err)
+
+	route := httproute.Descriptor{
+		Method: http.MethodPost,
+		Path:   "/api/v1/listing-kits/platform/test",
+		Module: "listing-kit-platform-admin",
+		Handler: func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		},
+	}
+	serverA := buildHTTPServerFromRoutes(0, []httproute.Descriptor{route}, authA)
+	serverB := buildHTTPServerFromRoutes(0, []httproute.Descriptor{route}, authB)
+
+	assertStatus := func(server *http.Server, token string, want int) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, route.Path, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		require.Equal(t, want, response.Code, response.Body.String())
+	}
+	assertStatus(serverA, "token-a", http.StatusNoContent)
+	assertStatus(serverB, "token-b", http.StatusNoContent)
+	assertStatus(serverA, "token-b", http.StatusUnauthorized)
+	assertStatus(serverB, "token-a", http.StatusUnauthorized)
+}
+
+func newRouteAuthorizationIssuer(t *testing.T, acceptedToken, role string) *httptest.Server {
+	t.Helper()
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"introspection_endpoint": issuer.URL + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			active := r.FormValue("token") == acceptedToken
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                active,
+				"sub":                                   "user-" + role,
+				"user_id":                               "user-" + role,
+				"urn:zitadel:iam:user:resourceowner:id": "tenant-" + role,
+				"urn:zitadel:iam:org:project:roles":     map[string]any{role: map[string]any{}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(issuer.Close)
+	return issuer
+}
+
+func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse(t *testing.T) {
+	authorization, err := buildRouteAuthorization(&config.Config{ListingKit: config.ListingKitConfig{
+		PlatformAdminRoles: []string{"platform_admin"},
+		Zitadel: config.ListingKitZitadelConfig{
+			IssuerURL:             "https://issuer.example",
+			ClientID:              "listingkit-client",
+			AuthorizationRequired: false,
+		},
+	}})
+	require.NoError(t, err)
 
 	handlerCalled := false
 	server := buildHTTPServerFromRoutes(0, []httproute.Descriptor{{
@@ -900,7 +968,7 @@ func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFal
 			handlerCalled = true
 			c.Status(http.StatusCreated)
 		},
-	}})
+	}}, authorization)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/platform/tenants/org-1/members/invitations", strings.NewReader(`{"email":"victim@example.com"}`))
 	request.Header.Set("X-User-ID", "forged-admin")
 	request.Header.Set("X-User-Roles", "platform_admin")
@@ -938,7 +1006,7 @@ func TestZitadelSMSWebhookBypassesBearerWithoutRelaxingListingKitRoutes(t *testi
 				c.Status(http.StatusOK)
 			},
 		},
-	})
+	}, appHTTPTestRouteAuthorization)
 
 	webhookResponse := httptest.NewRecorder()
 	server.Handler.ServeHTTP(webhookResponse, httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/integrations/zitadel/sms", nil))
@@ -952,7 +1020,7 @@ func TestZitadelSMSWebhookBypassesBearerWithoutRelaxingListingKitRoutes(t *testi
 }
 
 func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
-	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}), appHTTPTestRouteAuthorization)
 	tests := []struct {
 		method string
 		path   string
@@ -982,7 +1050,7 @@ func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
 
 func TestListingKitAuthContextRouteRequiresVerifiedIdentity(t *testing.T) {
 	handler := &stubListingKitHandler{}
-	server := buildHTTPServerFromRoutes(0, listingkithttpapi.AppendRouteDescriptors(nil, handler))
+	server := buildHTTPServerFromRoutes(0, listingkithttpapi.AppendRouteDescriptors(nil, handler), appHTTPTestRouteAuthorization)
 
 	unauthenticated := httptest.NewRecorder()
 	server.Handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/auth-context", nil))
@@ -996,7 +1064,7 @@ func TestListingKitAuthContextRouteRequiresVerifiedIdentity(t *testing.T) {
 }
 
 func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
-	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}), appHTTPTestRouteAuthorization)
 	request := withAppHTTPTestBearer(httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/prompts/catalog", nil))
 	response := httptest.NewRecorder()
 
@@ -1008,7 +1076,7 @@ func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
 }
 
 func TestListingKitPromptWritesRejectVerifiedViewer(t *testing.T) {
-	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}), appHTTPTestRouteAuthorization)
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/listing-kits/prompts", strings.NewReader(`{}`))
 	request.Header.Set("Authorization", "Bearer "+appHTTPTestViewerBearerToken)
 	response := httptest.NewRecorder()
@@ -1148,61 +1216,14 @@ func (s *stubTaskRPCHandler) GetQueueStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"queueStats": "ok"})
 }
 
-type stubProductHandler struct {
-	generateCalled  bool
-	getResultCalled bool
-}
-
-func (s *stubProductHandler) GenerateProduct(c *gin.Context) {
-	s.generateCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": "product-task"})
-}
-
-func (s *stubProductHandler) GetTaskResult(c *gin.Context) {
-	s.getResultCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
-}
-
-type stubImageHandler struct {
-	processCalled   bool
-	getResultCalled bool
-	reviewCalled    bool
-}
-
-func (s *stubImageHandler) ProcessImages(c *gin.Context) {
-	s.processCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": "image-task"})
-}
-
-func (s *stubImageHandler) GetTaskResult(c *gin.Context) {
-	s.getResultCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
-}
-
-func (s *stubImageHandler) ReviewTask(c *gin.Context) {
-	s.reviewCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "reviewed"})
-}
-
 type stubListingKitHandler struct {
 	generateCalled                         bool
-	generateStudioDesignsCalled            bool
-	generateStudioProductImagesCalled      bool
-	startStudioAsyncJobCalled              bool
-	getStudioAsyncJobCalled                bool
 	uploadImagesCalled                     bool
 	getUploadedImageCalled                 bool
 	listTasksCalled                        bool
 	getResultCalled                        bool
 	getPreviewCalled                       bool
-	getGenerationCalled                    bool
-	getGenerationQueueCalled               bool
-	getGenerationReviewSessionCalled       bool
-	getGenerationReviewPreviewCalled       bool
-	dispatchGenerationNavigationCalled     bool
-	retryGenerationCalled                  bool
 	retryChildTaskCalled                   bool
-	executeGenerationActionCalled          bool
 	getHistoryCalled                       bool
 	getHistoryDetailCalled                 bool
 	getExportCalled                        bool
@@ -1267,32 +1288,12 @@ func (s *stubListingKitHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"style": gin.H{}})
 }
 
-func (s *stubListingKitHandler) GenerateStudioDesigns(c *gin.Context) {
-	s.generateStudioDesignsCalled = true
-	c.JSON(http.StatusOK, gin.H{"images": []any{}})
-}
-
-func (s *stubListingKitHandler) GenerateStudioProductImages(c *gin.Context) {
-	s.generateStudioProductImagesCalled = true
-	c.JSON(http.StatusOK, gin.H{"images": []any{}})
-}
-
 func (s *stubListingKitHandler) GetSDSBaselineReadiness(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ready"})
 }
 
 func (s *stubListingKitHandler) WarmSDSBaseline(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ready"})
-}
-
-func (s *stubListingKitHandler) StartStudioAsyncJob(c *gin.Context) {
-	s.startStudioAsyncJobCalled = true
-	c.JSON(http.StatusAccepted, gin.H{"job_id": "studio-job-1", "status": "running"})
-}
-
-func (s *stubListingKitHandler) GetStudioAsyncJob(c *gin.Context) {
-	s.getStudioAsyncJobCalled = true
-	c.JSON(http.StatusOK, gin.H{"job_id": c.Param("job_id"), "status": "succeeded"})
 }
 
 func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {
@@ -1788,36 +1789,6 @@ func (s *stubListingKitHandler) LookupSheinPODImages(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []gin.H{}, "total": 0})
 }
 
-func (s *stubListingKitHandler) GetTaskGenerationTasks(c *gin.Context) {
-	s.getGenerationCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "tasks": []any{}})
-}
-
-func (s *stubListingKitHandler) GetTaskGenerationQueue(c *gin.Context) {
-	s.getGenerationQueueCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "items": []any{}})
-}
-
-func (s *stubListingKitHandler) GetTaskGenerationReviewSession(c *gin.Context) {
-	s.getGenerationReviewSessionCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "slot": c.Query("slot")})
-}
-
-func (s *stubListingKitHandler) GetTaskGenerationReviewPreview(c *gin.Context) {
-	s.getGenerationReviewPreviewCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "slot": c.Query("slot")})
-}
-
-func (s *stubListingKitHandler) DispatchTaskGenerationNavigation(c *gin.Context) {
-	s.dispatchGenerationNavigationCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "dispatch_kind": "session"})
-}
-
-func (s *stubListingKitHandler) RetryTaskGenerationTasks(c *gin.Context) {
-	s.retryGenerationCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
-}
-
 func (s *stubListingKitHandler) RetryTaskChildTask(c *gin.Context) {
 	s.retryChildTaskCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
@@ -1829,11 +1800,6 @@ func (s *stubListingKitHandler) GetTaskSDSRepair(c *gin.Context) {
 
 func (s *stubListingKitHandler) RepairAndRetryTaskSDS(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
-}
-
-func (s *stubListingKitHandler) ExecuteTaskGenerationAction(c *gin.Context) {
-	s.executeGenerationActionCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "executed"})
 }
 
 func (s *stubListingKitHandler) GetTaskRevisionHistory(c *gin.Context) {
@@ -2157,87 +2123,6 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	}
 }
 
-func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
-	t.Parallel()
-
-	handler := &stubProductHandler{}
-	router := mustBuildTestRouterFromModules(t, productenrichhttpapi.NewHTTPModule(handler, nil))
-
-	// generate endpoint
-	generatePayload := map[string]any{"text": "test"}
-	body, _ := json.Marshal(generatePayload)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/generate", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/products/generate = %d, want 200", resp.Code)
-	}
-	if !handler.generateCalled {
-		t.Fatal("GenerateProduct handler was not called")
-	}
-
-	// get task result
-	handler.getResultCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/products/tasks/task-123", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/products/tasks/task-123 = %d, want 200", resp.Code)
-	}
-	if !handler.getResultCalled {
-		t.Fatal("GetTaskResult handler was not called")
-	}
-}
-
-func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
-	t.Parallel()
-
-	handler := &stubImageHandler{}
-	router := mustBuildTestRouterFromModules(t, productenrichhttpapi.NewHTTPModule(nil, handler))
-
-	// process endpoint
-	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
-	body, _ := json.Marshal(processPayload)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/images/process = %d, want 200", resp.Code)
-	}
-	if !handler.processCalled {
-		t.Fatal("ProcessImages handler was not called")
-	}
-
-	// get task result
-	handler.getResultCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/images/tasks/task-123", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/images/tasks/task-123 = %d, want 200", resp.Code)
-	}
-	if !handler.getResultCalled {
-		t.Fatal("image GetTaskResult handler was not called")
-	}
-
-	// review endpoint
-	handler.reviewCalled = false
-	reviewPayload := map[string]any{"action": "approve"}
-	body, _ = json.Marshal(reviewPayload)
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/images/tasks/task-123/review", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/images/tasks/task-123/review = %d, want 200", resp.Code)
-	}
-	if !handler.reviewCalled {
-		t.Fatal("ReviewTask handler was not called")
-	}
-}
-
 func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	t.Parallel()
 
@@ -2265,51 +2150,27 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 		t.Fatal("GenerateListingKit handler was not called")
 	}
 
-	handler.generateStudioDesignsCalled = false
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/designs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/studio/designs = %d, want 200", resp.Code)
-	}
-	if !handler.generateStudioDesignsCalled {
-		t.Fatal("listing kit GenerateStudioDesigns handler was not called")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("POST /api/v1/listing-kits/studio/designs = %d, want 404", resp.Code)
 	}
 
-	handler.generateStudioProductImagesCalled = false
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/product-images", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/studio/product-images = %d, want 200", resp.Code)
-	}
-	if !handler.generateStudioProductImagesCalled {
-		t.Fatal("listing kit GenerateStudioProductImages handler was not called")
-	}
-
-	handler.startStudioAsyncJobCalled = false
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/async-jobs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusAccepted {
-		t.Fatalf("POST /api/v1/listing-kits/studio/async-jobs = %d, want 202", resp.Code)
-	}
-	if !handler.startStudioAsyncJobCalled {
-		t.Fatal("listing kit StartStudioAsyncJob handler was not called")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("POST /api/v1/listing-kits/studio/async-jobs = %d, want 404", resp.Code)
 	}
 
-	handler.getStudioAsyncJobCalled = false
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/studio/async-jobs/studio-job-1", nil)
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/studio/async-jobs/:job_id = %d, want 200", resp.Code)
-	}
-	if !handler.getStudioAsyncJobCalled {
-		t.Fatal("listing kit GetStudioAsyncJob handler was not called")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("GET /api/v1/listing-kits/studio/async-jobs/:job_id = %d, want 404", resp.Code)
 	}
 
 	handler.uploadImagesCalled = false
@@ -2835,85 +2696,6 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 		t.Fatal("listing kit GetTaskRevisionHistory handler was not called")
 	}
 
-	handler.getGenerationCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-tasks", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-tasks = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationCalled {
-		t.Fatal("listing kit GetTaskGenerationTasks handler was not called")
-	}
-
-	handler.getGenerationQueueCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-queue", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-queue = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationQueueCalled {
-		t.Fatal("listing kit GetTaskGenerationQueue handler was not called")
-	}
-
-	handler.getGenerationReviewSessionCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-review-session?platform=shein&slot=main", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-review-session = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationReviewSessionCalled {
-		t.Fatal("listing kit GetTaskGenerationReviewSession handler was not called")
-	}
-
-	handler.getGenerationReviewPreviewCalled = false
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-review-preview?platform=shein&slot=main", nil)
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-review-preview = %d, want 200", resp.Code)
-	}
-	if !handler.getGenerationReviewPreviewCalled {
-		t.Fatal("listing kit GetTaskGenerationReviewPreview handler was not called")
-	}
-
-	handler.dispatchGenerationNavigationCalled = false
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-navigation/dispatch", bytes.NewReader([]byte(`{"target":{"dispatch_kind":"session","session_query":{"platform":"shein","slot":"main"}}}`)))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-navigation/dispatch = %d, want 200", resp.Code)
-	}
-	if !handler.dispatchGenerationNavigationCalled {
-		t.Fatal("listing kit DispatchTaskGenerationNavigation handler was not called")
-	}
-
-	handler.retryGenerationCalled = false
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-tasks/retry", bytes.NewReader([]byte(`{"task_ids":["amazon:amazon-lifestyle"]}`)))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-tasks/retry = %d, want 200", resp.Code)
-	}
-	if !handler.retryGenerationCalled {
-		t.Fatal("listing kit RetryTaskGenerationTasks handler was not called")
-	}
-
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-actions/execute", bytes.NewReader([]byte(`{"action_key":"generate_missing_assets"}`)))
-	req.Header.Set("Content-Type", "application/json")
-	resp = httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-actions/execute = %d, want 200", resp.Code)
-	}
-	if !handler.executeGenerationActionCalled {
-		t.Fatal("listing kit ExecuteTaskGenerationAction handler was not called")
-	}
-
 	handler.getHistoryDetailCalled = false
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/revision-history/rev-123", nil)
 	resp = httptest.NewRecorder()
@@ -3100,7 +2882,6 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 
 	router := gin.New()
 	modules := testHTTPModules(
-		productenrichhttpapi.NewHTTPModule(&stubProductHandler{}, &stubImageHandler{}),
 		amazonlistinghttpapi.NewHTTPModule(&stubAmazonListingHandler{}),
 		listingkithttpapi.NewHTTPModule(&stubListingKitHandler{}),
 		taskrpcapi.NewHTTPModule(&stubTaskRPCHandler{}),
@@ -3108,7 +2889,7 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 
 	routes, err := buildRegisteredRoutesForModules(nil, modules)
 	require.NoError(t, err)
-	mountRoutes(router, routes)
+	mountRoutes(router, routes, appHTTPTestRouteAuthorization)
 
 	registered := router.Routes()
 	if len(registered) != len(routes) {
@@ -3132,18 +2913,16 @@ func TestBuildHTTPServerBundleFromModulesMountsRegisteredRoutes(t *testing.T) {
 	t.Parallel()
 
 	modules := testHTTPModules(
-		productenrichhttpapi.NewHTTPModule(&stubProductHandler{}, &stubImageHandler{}),
 		amazonlistinghttpapi.NewHTTPModule(&stubAmazonListingHandler{}),
 		listingkithttpapi.NewHTTPModule(&stubListingKitHandler{}),
 		promptmgmtapi.NewHTTPModule(&stubPromptTemplateHandler{}),
-		listingkithttpapi.NewStudioHTTPModule(&stubStudioSessionHandler{}),
 		sheinlogin.NewHTTPModule(&stubSheinLoginHandler{}),
 		sdslogin.NewHTTPModule(&stubSDSLoginHandler{}),
 		taskrpcapi.NewHTTPModule(&stubTaskRPCHandler{}),
 		sdshttpapi.NewHTTPModule(&stubSDSCatalogRouteHandler{}),
 	)
 
-	server, routes, err := buildHTTPServerBundleFromModules(18080, nil, modules)
+	server, routes, err := buildHTTPServerBundleFromModules(18080, appHTTPTestConfig, modules)
 	if err != nil {
 		t.Fatalf("buildHTTPServerBundleFromModules returned error: %v", err)
 	}
@@ -3193,15 +2972,26 @@ func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
 }
 
 func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
-	runtimePaths := configureProductImageRuntimePaths(t)
-
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
-	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	deps := &runtimeDeps{
+		shared:   &sharedRuntimeDeps{cfg: &config.Config{}},
+		features: &featureRuntimeState{},
+	}
+	composition := httpFeatureComposition{
+		sdsModule: &sdshttpapi.BuildResult{
+			Module: sdshttpapi.NewHTTPModule(&stubSDSCatalogRouteHandler{}),
+		},
+	}
 
-	bootstrap, err := buildBootstrap(logger, Options{
-		ConfigPath: "../../../config/config-test.yaml",
-		Port:       18080,
+	bootstrap, err := buildBootstrapWithDependencies(logger, Options{Port: 18080}, bootstrapBuildDependencies{
+		buildRuntimeDeps: func(*logrus.Logger, string) (*runtimeDeps, error) { return deps, nil },
+		buildComposition: func(*logrus.Logger, *runtimeDeps) (httpFeatureComposition, error) {
+			return composition, nil
+		},
+		buildRuntimeBundle: func(composition httpFeatureComposition, cfg *config.Config) (runtimeBundle, error) {
+			return composition.buildRuntimeBundle(cfg)
+		},
 	})
 	if err != nil {
 		t.Fatalf("buildBootstrap returned error: %v", err)
@@ -3240,8 +3030,6 @@ func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 	if resp.Code == http.StatusNotFound {
 		t.Fatal("expected SDS catalog categories endpoint to be mounted")
 	}
-	assertRuntimeDirectory(t, runtimePaths.workDir)
-	assertRuntimeDirectory(t, filepath.Join(runtimePaths.publisherOutputDir, "listingkit-inputs"))
 }
 
 func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
@@ -3274,7 +3062,7 @@ func mustBuildTestRouterFromModules(t *testing.T, modules ...kernelmodule.Module
 		withAppHTTPTestBearer(c.Request)
 		c.Next()
 	})
-	mountRoutes(router, routes)
+	mountRoutes(router, routes, appHTTPTestRouteAuthorization)
 	return router
 }
 

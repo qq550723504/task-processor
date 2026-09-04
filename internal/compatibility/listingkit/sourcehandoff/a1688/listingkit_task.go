@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/compatibility/listingkit/sourcehandoff"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcing"
 )
@@ -12,7 +13,7 @@ import (
 // ListingKitTaskInput carries one normalized 1688 crawler result plus the
 // caller/task context needed to prepare the existing ListingKit create request.
 type ListingKitTaskInput struct {
-	Source sourcing.Alibaba1688SourceEnvelopeInput
+	Source sourcea1688.Alibaba1688SourceEnvelopeInput
 
 	TenantID           string
 	UserID             string
@@ -34,7 +35,7 @@ type ListingKitTaskHandoff struct {
 // PrepareListingKitTaskHandoff normalizes a 1688 result into a source envelope
 // and existing ListingKit GenerateRequest without creating a task.
 func PrepareListingKitTaskHandoff(input ListingKitTaskInput) (*ListingKitTaskHandoff, error) {
-	envelope := sourcing.Alibaba1688SourceEnvelope(input.Source)
+	envelope := sourcea1688.Alibaba1688SourceEnvelope(input.Source)
 	if err := validateAlibaba1688ListingKitEnvelope(envelope); err != nil {
 		return &ListingKitTaskHandoff{Envelope: envelope}, err
 	}

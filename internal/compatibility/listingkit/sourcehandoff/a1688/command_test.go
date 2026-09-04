@@ -3,11 +3,13 @@ package a1688
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"task-processor/internal/authidentity"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/sourcing"
 	"task-processor/internal/sourceaccount"
 )
 
@@ -44,8 +46,8 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if got := result.Handoff.Envelope.Identity.Key(); got != "1688:cn:888" {
 		t.Fatalf("Key() = %q, want neutral source identity", got)
 	}
-	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/888.html" {
-		t.Fatalf("ProductURL = %q, want normalized command URL", result.Handoff.Request.ProductURL)
+	if result.Handoff.Request.ProductKey != "crawler:1688:888" {
+		t.Fatalf("ProductKey = %q, want normalized source identity", result.Handoff.Request.ProductKey)
 	}
 	if result.Handoff.Request.TenantID != "101" || result.Handoff.Request.UserID != "user-1688" {
 		t.Fatalf("request tenant/user = %q/%q, want trimmed values", result.Handoff.Request.TenantID, result.Handoff.Request.UserID)
@@ -56,7 +58,7 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if len(result.Handoff.Request.Platforms) != 1 || result.Handoff.Request.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein", result.Handoff.Request.Platforms)
 	}
-	if creator.request == nil || creator.request.ProductURL != "https://detail.1688.com/offer/888.html" {
+	if creator.request == nil || creator.request.ProductKey != "crawler:1688:888" {
 		t.Fatalf("creator request = %+v, want normalized request", creator.request)
 	}
 	if creator.request.Source == nil {
@@ -67,6 +69,96 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 		creator.request.Source.ID != "888" ||
 		creator.request.Source.URL != "https://detail.1688.com/offer/888.html" {
 		t.Fatalf("creator request Source = %+v, want normalized 1688 identity", creator.request.Source)
+	}
+}
+
+func TestTaskCommandServicePublishesSourceSnapshotBeforeTaskCreation(t *testing.T) {
+	events := []string{}
+	creator := &fakeGenerateTaskCreator{events: &events}
+	publisher := &recordingSourcePublisher{events: &events}
+	service := NewTaskCommandService(creator, validStoreAccessValidator(), publisher)
+
+	result, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), CreateTaskCommand{
+		URL:          "https://detail.1688.com/offer/888.html",
+		Product:      commandProduct1688("888"),
+		SourceRunID:  "run-888",
+		RequestID:    "request-888",
+		TenantID:     "101",
+		UserID:       "user-1688",
+		SheinStoreID: 168811,
+		Platforms:    []string{"shein"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if result == nil || result.Task == nil {
+		t.Fatalf("result = %+v, want created task", result)
+	}
+	if publisher.request == nil {
+		t.Fatal("source snapshot was not published")
+	}
+	if publisher.request.TenantID != "101" || publisher.request.ProductKey != "crawler:1688:888" {
+		t.Fatalf("publication identity = %+v, want tenant 101 and crawler:1688:888", publisher.request)
+	}
+	if len(publisher.request.Envelope.AssetCandidates) == 0 {
+		t.Fatal("published envelope has no source assets")
+	}
+	if got := strings.Join(events, ","); got != "publish,create" {
+		t.Fatalf("event order = %q, want publish,create", got)
+	}
+	if result.Task.SourceSnapshotVersion != 1 {
+		t.Fatalf("task source snapshot version = %d, want published version 1", result.Task.SourceSnapshotVersion)
+	}
+}
+
+func TestTaskCommandServicePinsChangedImportsToDistinctPublicationIdentitiesWithoutSourceRunID(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	publisher := &recordingSourcePublisher{}
+	service := NewTaskCommandService(creator, validStoreAccessValidator(), publisher)
+	command := CreateTaskCommand{
+		URL: "https://detail.1688.com/offer/888.html", TenantID: "101", UserID: "user-1688",
+		SheinStoreID: 168811, Platforms: []string{"shein"}, Product: commandProduct1688("888"),
+	}
+	if _, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), command); err != nil {
+		t.Fatalf("first CreateTask() error = %v", err)
+	}
+	firstPublicationID := publisher.request.PublicationID
+	command.Product.Title = "updated title"
+	if _, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), command); err != nil {
+		t.Fatalf("second CreateTask() error = %v", err)
+	}
+	if publisher.request.PublicationID == firstPublicationID {
+		t.Fatalf("publication ID = %q, want changed identity for changed raw snapshot", publisher.request.PublicationID)
+	}
+}
+
+func TestTaskCommandServiceBindsTaskCreationToIdempotentSourceIdentity(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	publisher := &recordingSourcePublisher{}
+	service := NewTaskCommandService(creator, validStoreAccessValidator(), publisher)
+	command := CreateTaskCommand{
+		URL: "https://detail.1688.com/offer/888.html", TenantID: "101", UserID: "user-1688",
+		SheinStoreID: 168811, Platforms: []string{"shein"}, Product: commandProduct1688("888"),
+		SourceRunID: "run-888", RequestID: "request-888",
+	}
+	if _, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), command); err != nil {
+		t.Fatalf("first CreateTask() error = %v", err)
+	}
+	if creator.request.IdempotencyKey != "source-run:run-888" {
+		t.Fatalf("IdempotencyKey = %q, want task creation bound to the source run identity", creator.request.IdempotencyKey)
+	}
+	if publisher.request == nil || creator.request.IdempotencyKey != publisher.request.PublicationID {
+		t.Fatalf("idempotency key %q does not match publication ID %v, want a single durable source identity", creator.request.IdempotencyKey, publisher.request)
+	}
+}
+
+func TestSourcePublicationIDBoundsLongSourceRunIDs(t *testing.T) {
+	publicationID := sourcePublicationID(sourcing.SourceEnvelope{Trace: sourcing.SourceTrace{SourceRunID: strings.Repeat("r", 118)}})
+	if len(publicationID) > 128 {
+		t.Fatalf("publication ID length = %d, want at most 128", len(publicationID))
+	}
+	if !strings.HasPrefix(publicationID, "source-run-hash:") {
+		t.Fatalf("publication ID = %q, want hashed long source run ID", publicationID)
 	}
 }
 
@@ -224,8 +316,8 @@ func TestTaskCommandServiceCreateTaskFallsBackToProductURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/889.html" {
-		t.Fatalf("ProductURL = %q, want product URL fallback", result.Handoff.Request.ProductURL)
+	if result.Handoff.Request.ProductKey != "crawler:1688:889" {
+		t.Fatalf("ProductKey = %q, want source identity from product URL fallback", result.Handoff.Request.ProductKey)
 	}
 }
 

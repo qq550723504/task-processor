@@ -21,33 +21,33 @@ type BuildRequest struct {
 }
 
 type Package struct {
-	SpuName                 string                     `json:"spu_name,omitempty"`
-	BrandName               string                     `json:"brand_name,omitempty"`
-	ProductNameEn           string                     `json:"product_name_en,omitempty"`
-	ProductNameMulti        string                     `json:"product_name_multi,omitempty"`
-	TitleDiagnostics        *TitleDiagnostics          `json:"title_diagnostics,omitempty"`
-	CategoryName            string                     `json:"category_name,omitempty"`
-	CategoryPath            []string                   `json:"category_path,omitempty"`
-	CategoryID              int                        `json:"category_id,omitempty"`
-	CategoryIDList          []int                      `json:"category_id_list,omitempty"`
-	ProductTypeID           *int                       `json:"product_type_id,omitempty"`
-	TopCategoryID           int                        `json:"top_category_id,omitempty"`
-	CategoryResolution      *CategoryResolution        `json:"category_resolution,omitempty"`
-	AttributeResolution     *AttributeResolution       `json:"attribute_resolution,omitempty"`
-	SaleAttributeResolution *SaleAttributeResolution   `json:"sale_attribute_resolution,omitempty"`
-	Inspection              *Inspection                `json:"inspection,omitempty"`
-	Description             string                     `json:"description,omitempty"`
-	SellingPoints           []string                   `json:"selling_points,omitempty"`
-	Attributes              map[string]string          `json:"attributes,omitempty"`
-	ProductAttributes       []common.Attribute         `json:"product_attributes,omitempty"`
-	ResolvedAttributes      []ResolvedAttribute        `json:"resolved_attributes,omitempty"`
-	SiteList                []common.Site              `json:"site_list,omitempty"`
+	SpuName                 string                   `json:"spu_name,omitempty"`
+	BrandName               string                   `json:"brand_name,omitempty"`
+	ProductNameEn           string                   `json:"product_name_en,omitempty"`
+	ProductNameMulti        string                   `json:"product_name_multi,omitempty"`
+	TitleDiagnostics        *TitleDiagnostics        `json:"title_diagnostics,omitempty"`
+	CategoryName            string                   `json:"category_name,omitempty"`
+	CategoryPath            []string                 `json:"category_path,omitempty"`
+	CategoryID              int                      `json:"category_id,omitempty"`
+	CategoryIDList          []int                    `json:"category_id_list,omitempty"`
+	ProductTypeID           *int                     `json:"product_type_id,omitempty"`
+	TopCategoryID           int                      `json:"top_category_id,omitempty"`
+	CategoryResolution      *CategoryResolution      `json:"category_resolution,omitempty"`
+	AttributeResolution     *AttributeResolution     `json:"attribute_resolution,omitempty"`
+	SaleAttributeResolution *SaleAttributeResolution `json:"sale_attribute_resolution,omitempty"`
+	Inspection              *Inspection              `json:"inspection,omitempty"`
+	Description             string                   `json:"description,omitempty"`
+	SellingPoints           []string                 `json:"selling_points,omitempty"`
+	Attributes              map[string]string        `json:"attributes,omitempty"`
+	ProductAttributes       []common.Attribute       `json:"product_attributes,omitempty"`
+	ResolvedAttributes      []ResolvedAttribute      `json:"resolved_attributes,omitempty"`
+	SiteList                []common.Site            `json:"site_list,omitempty"`
 	// SkcList is the compatibility/workbench summary of the SKC/SKU hierarchy.
 	// New draft writes must target DraftPayload; this summary remains because
 	// existing review, image, and recovery paths still consume it.
-	SkcList                 []SKCPackage               `json:"skc_list,omitempty"`
-	Images                  *common.ImageSet           `json:"images,omitempty"`
-	ImageBundle             *common.PublishImageBundle `json:"image_bundle,omitempty"`
+	SkcList     []SKCPackage               `json:"skc_list,omitempty"`
+	Images      *common.ImageSet           `json:"images,omitempty"`
+	ImageBundle *common.PublishImageBundle `json:"image_bundle,omitempty"`
 	// Deprecated: kept only for JSON/history compatibility. New business code
 	// should use DraftPayloadOf, EnsureDraftPayload, or SetDraftPayload.
 	RequestDraft *RequestDraft `json:"request_draft,omitempty"`

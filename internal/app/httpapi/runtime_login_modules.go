@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"task-processor/internal/listingadmin"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinclient "task-processor/internal/shein/client"
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
@@ -56,9 +55,9 @@ func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildR
 	}
 
 	result, err := sheinloginbootstrap.BuildHandler(sheinloginbootstrap.BuildInput{
-		Config:                   deps.shared.cfg,
-		StoreAPI:                 sheinLoginStoreAPI(deps),
-		AccountRepositoryBuilder: listingkithttpapi.BuildListingAdminStoreRepository,
+		Config:            deps.shared.cfg,
+		StoreAPI:          sheinLoginStoreAPI(deps),
+		AccountRepository: deps.ensureListingKitSupport().repositories.Admin.Store,
 	})
 	if err != nil {
 		return nil, nil, err

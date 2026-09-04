@@ -52,3 +52,20 @@ func FindVariantImageSet(input VariantImageSKCInput, byColor map[string]VariantI
 func NormalizeVariantImageKey(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
+
+func uniqueNonEmptyImageStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}

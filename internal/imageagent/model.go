@@ -69,12 +69,18 @@ type Plan struct {
 	CreatedBy         string
 }
 
+type ImagePolicyContext struct {
+	Country       string
+	Family        string
+	SceneCategory string
+}
+
 type Run struct {
 	ID             string
 	BusinessTaskID string
-	// TargetPlatform is the immutable ListingKit target selected when a
-	// target-keyed task starts a run. Empty retains scalar-task compatibility.
+	// TargetPlatform is the immutable marketplace selected when the run starts.
 	TargetPlatform     string
+	ImagePolicyContext ImagePolicyContext
 	TenantID           string
 	UserID             string
 	Mode               RunMode
@@ -185,10 +191,11 @@ type CommandIngress struct {
 }
 
 type ProductContextRef struct {
-	ProductID   string
-	Title       string
-	ProductType string
-	Attributes  map[string]string
+	ProductID             string
+	Title                 string
+	ProductType           string
+	SourceSnapshotVersion uint64
+	Attributes            map[string]string
 }
 
 type AssetCandidate struct {
@@ -196,6 +203,9 @@ type AssetCandidate struct {
 	URL           string
 	SourceAssetID string
 	Metadata      map[string]string
+	Width         int                  `json:"-"`
+	Height        int                  `json:"-"`
+	Operations    []string             `json:"-"`
 	DurableAsset  DurableAssetIdentity `json:"-"`
 }
 

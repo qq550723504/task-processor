@@ -58,6 +58,10 @@ export function useTaskCreateWatchedState({
     control,
     name: "text",
   });
+  const currentProductKey = useWatch({
+    control,
+    name: "productKey",
+  });
   const currentImageUrls = useWatch({
     control,
     name: "imageUrls",
@@ -126,6 +130,7 @@ export function useTaskCreateWatchedState({
     currentCustomSceneHint,
     currentImageUrls,
     currentProductUrl,
+    currentProductKey,
     currentPropsLevel,
     currentSceneCategory,
     currentSceneStyle,

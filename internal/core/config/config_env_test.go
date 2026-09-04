@@ -373,61 +373,6 @@ func TestNewViper_BindsSDSAuthBootstrapEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "{\"risk\":1}", v.GetString("platforms.sds.authBootstrap.loginExtraInfo"))
 }
 
-func TestNewViper_BindsProductEnrichMockLLMEnvironmentVariable(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM", "true")
-
-	v := newViper()
-
-	assert.True(t, v.GetBool("debug.productEnrichMockLLM"))
-}
-
-func TestLoadFromBytes_AppliesProductImagePublisherEnvironmentOverrides(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED", "true")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER", "s3")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE", "https://cos.example.com")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET", "cos-bucket")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION", "na-ashburn")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT", "https://cos.endpoint.example.com")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID", "local-access")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY", "local-secret")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE", "false")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE", "cos")
-	t.Setenv("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY", "true")
-
-	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
-		"openai:",
-		"  apiKey: \"test-openai-key\"",
-		"  model: \"gemini-2.5-flash\"",
-		"  baseURL: \"https://api.example.test/v1\"",
-		"productimage:",
-		"  publisher:",
-		"    enabled: true",
-		"    provider: s3",
-		"    publicBase: https://oss.example.com",
-		"    s3:",
-		"      bucket: oss-bucket",
-		"      region: oss-region",
-		"      endpoint: https://oss.endpoint.example.com",
-		"      accessKeyID: oss-access",
-		"      secretAccessKey: oss-secret",
-		"      usePathStyle: true",
-		"      artifactMode: aws",
-		"      cosImmutableNonVersionedBucketPolicy: false",
-	}, "\n")))
-	require.NoError(t, err)
-
-	assert.Equal(t, "s3", cfg.ProductImage.Publisher.Provider)
-	assert.Equal(t, "https://cos.example.com", cfg.ProductImage.Publisher.PublicBase)
-	assert.Equal(t, "cos-bucket", cfg.ProductImage.Publisher.S3.Bucket)
-	assert.Equal(t, "na-ashburn", cfg.ProductImage.Publisher.S3.Region)
-	assert.Equal(t, "https://cos.endpoint.example.com", cfg.ProductImage.Publisher.S3.Endpoint)
-	assert.Equal(t, "local-access", cfg.ProductImage.Publisher.S3.AccessKeyID)
-	assert.Equal(t, "local-secret", cfg.ProductImage.Publisher.S3.SecretAccessKey)
-	assert.False(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
-	assert.Equal(t, "cos", cfg.ProductImage.Publisher.S3.ArtifactMode)
-	assert.True(t, cfg.ProductImage.Publisher.S3.COSImmutableNonVersionedBucketPolicy)
-}
-
 func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED", "true")
 	t.Setenv("LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR", "D:/tmp/shein-submit-dumps")
@@ -530,21 +475,6 @@ func TestLoadConfigFromFileDoesNotExposeListingKitOwnerScopeToggle(t *testing.T)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	_, exposed := reflect.TypeOf(cfg.ListingKit).FieldByName("OwnerScopeRequired")
 	assert.False(t, exposed, "real config loading must not expose either former owner scope environment variable")
-}
-
-func TestLoadConfigFromFileWithoutValidationPreservesUnvalidatedConfig(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "config-test.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(strings.Join([]string{
-		"aiCapability:",
-		"  productImageSceneEnabled: not-a-boolean",
-	}, "\n")), 0o600))
-
-	_, err := LoadConfigFromFile(configPath)
-	require.Error(t, err, "validated loading must reject malformed boolean values")
-
-	cfg, err := LoadConfigFromFileWithoutValidation(configPath)
-	require.NoError(t, err)
-	assert.False(t, cfg.AICapability.ProductImageSceneEnabled, "unvalidated loading preserves the builder's zero-value conversion")
 }
 
 func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {

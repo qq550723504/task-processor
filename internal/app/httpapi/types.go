@@ -8,11 +8,9 @@ import (
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	localagenthttpapi "task-processor/internal/localagent/httpapi"
-	productenrich "task-processor/internal/productenrich"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimage "task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	"task-processor/internal/product/sourcing"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
+	sdsadapter "task-processor/internal/sds/adapter"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	"task-processor/internal/sheinlogin"
@@ -29,24 +27,20 @@ type runtimeDeps struct {
 }
 
 type featureRuntimeState struct {
-	productService         productenrich.ProductService
-	imageService           productimage.Service
-	sdsLoginStatusProvider listingkit.SDSLoginStatusProvider
-	imageSubjectExtractor  productimage.SubjectExtractor
-	imageWhiteBgRenderer   productimage.WhiteBackgroundRenderer
-	imageSceneRenderer     productimage.SceneRenderer
-	imageAssetPublisher    productimage.AssetPublisher
-	listingKitSupport      *listingKitSupport
+	productSnapshotReader    listingkit.ProductSnapshotReader
+	productSnapshotPublisher *sourcing.Publisher
+	sdsLoginStatusProvider   listingkit.SDSLoginStatusProvider
+	listingKitSupport        *listingKitSupport
 }
 
 type listingKitSupport struct {
 	sdsBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
 	sheinCookieStore          *sheinlogin.RedisStore
+	approvedAssetReader       sdsadapter.ApprovedAssetReader
+	repositories              listingkithttpapi.BuildServiceRepositories
 }
 
 type httpFeatureComposition struct {
-	productModule             *productenrichhttpapi.Module
-	imageModule               *productimagehttpapi.Module
 	amazonListingModule       *amazonlistinghttpapi.Module
 	listingKitModule          *listingkithttpapi.Module
 	productSourcingModule     *a1688httpapi.BuildResult

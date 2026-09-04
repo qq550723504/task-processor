@@ -18,9 +18,9 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingruntime"
 	localruntime "task-processor/internal/listingruntime/local"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/platform/queue/rabbitmq"
 	platformtask "task-processor/internal/platformtask"
-	"task-processor/internal/product"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/inventory"
 	temupricingruntime "task-processor/internal/temu/pricing"
@@ -37,7 +37,7 @@ type SharedResourceOptions struct {
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
-	rawJSONDataClient    product.RawJsonDataClient
+	rawJSONDataClient    sourceproduct.RawJsonDataClient
 	storeAPI             listingadmin.StoreAPI
 	processorRuntime     consumer.ProcessorRuntime
 	importTaskRepository consumer.ListingRuntimeImportTaskRepository
@@ -82,7 +82,7 @@ func (r SharedResources) Close() error {
 	return r.closeState.err
 }
 
-func (r SharedResources) RawJSONDataClient() product.RawJsonDataClient {
+func (r SharedResources) RawJSONDataClient() sourceproduct.RawJsonDataClient {
 	return r.rawJSONDataClient
 }
 
@@ -210,7 +210,7 @@ type schedulerRuntimeSource interface {
 	ListRuntimeScheduledTaskConfigStates(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
-	GetRawJsonDataAdapter() product.RawJsonDataClient
+	GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient
 	GetPricingRuleClient() listingadmin.PricingRuleAPI
 	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
 	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
@@ -282,7 +282,7 @@ func (r localSchedulerFactoryRuntime) GetAutoPricingStoreConfig(ctx context.Cont
 	return r.source.GetAutoPricingStoreConfig(ctx, storeID)
 }
 
-func (r localSchedulerFactoryRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
+func (r localSchedulerFactoryRuntime) GetRawJsonDataAdapter() sourceproduct.RawJsonDataClient {
 	if r.source == nil {
 		return nil
 	}

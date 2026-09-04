@@ -6,30 +6,8 @@ import (
 	"task-processor/internal/httproute"
 )
 
-func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler StudioGenerationRouteHandler) []httproute.Descriptor {
-	routes = append(routes,
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/reference-style/analyze", Module: "listing-kit", Handler: handler.AnalyzeStudioReferenceStyle},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: handler.GenerateStudioDesigns},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: handler.GenerateStudioProductImages},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/async-jobs", Module: "listing-kit", Handler: handler.StartStudioAsyncJob},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/async-jobs/:job_id", Module: "listing-kit", Handler: handler.GetStudioAsyncJob},
-	)
-	batchRuns, ok := handler.(studioBatchRunRouteHandler)
-	if !ok {
-		return routes
-	}
-	return append(routes,
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs", Module: "listing-kit", Handler: batchRuns.CreateStudioBatchRun},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id", Module: "listing-kit", Handler: batchRuns.GetStudioBatchRun},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/items", Module: "listing-kit", Handler: batchRuns.ListStudioBatchRunItems},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/cancel", Module: "listing-kit", Handler: batchRuns.CancelStudioBatchRun},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/recover", Module: "listing-kit", Handler: batchRuns.RecoverStudioBatchRun},
-	)
-}
-
 func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler TaskRouteHandler) []httproute.Descriptor {
 	return append(routes,
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: handler.RegenerateSheinDataImage},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/uploads/images", Module: "listing-kit", Handler: handler.UploadListingKitImages},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/uploads/files/*key", Module: "listing-kit", Handler: handler.GetUploadedListingKitImage},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/uploads/files/*key", Module: "listing-kit", Handler: handler.DeleteUploadedListingKitImage},
@@ -46,16 +24,9 @@ func appendTaskRouteDescriptors(routes []httproute.Descriptor, handler TaskRoute
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/recover", Module: "listing-kit", Handler: handler.RecoverTaskNow},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/recovery/recover", Module: "listing-kit", Handler: handler.BulkRecoverTasks},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/preview", Module: "listing-kit", Handler: handler.GetTaskPreview},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-tasks", Module: "listing-kit", Handler: handler.GetTaskGenerationTasks},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-queue", Module: "listing-kit", Handler: handler.GetTaskGenerationQueue},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-review-session", Module: "listing-kit", Handler: handler.GetTaskGenerationReviewSession},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-review-preview", Module: "listing-kit", Handler: handler.GetTaskGenerationReviewPreview},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/generation-navigation/dispatch", Module: "listing-kit", Handler: handler.DispatchTaskGenerationNavigation},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/generation-tasks/retry", Module: "listing-kit", Handler: handler.RetryTaskGenerationTasks},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/child-tasks/retry", Module: "listing-kit", Handler: handler.RetryTaskChildTask},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/sds-repair", Module: "listing-kit", Handler: handler.GetTaskSDSRepair},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/sds-repair/retry", Module: "listing-kit", Handler: handler.RepairAndRetryTaskSDS},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/generation-actions/execute", Module: "listing-kit", Handler: handler.ExecuteTaskGenerationAction},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/revision-history", Module: "listing-kit", Handler: handler.GetTaskRevisionHistory},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/revision-history/:revision_id", Module: "listing-kit", Handler: handler.GetTaskRevisionHistoryDetail},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/export", Module: "listing-kit", Handler: handler.GetTaskExport},

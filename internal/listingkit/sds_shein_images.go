@@ -1,72 +1,9 @@
 package listingkit
 
 import (
-	"strings"
-
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
-
-func applySelectedSDSImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, sourceImages []string) bool {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || req == nil || req.Options == nil || req.Options.SheinStudio == nil {
-		return false
-	}
-	selected := normalizeSelectedSDSImages(req.Options.SheinStudio.SelectedSDSImages)
-	if len(selected) == 0 {
-		return false
-	}
-
-	defaultImages := imageSetFromSelectedSDSImages(selected, sourceImages)
-	if defaultImages == nil {
-		return false
-	}
-
-	byColor := map[string]*common.ImageSet{}
-	bySKU := map[string]*common.ImageSet{}
-	for _, item := range selected {
-		images := &common.ImageSet{
-			MainImage:    item.ImageURL,
-			SourceImages: uniqueNonEmptyStrings(sourceImages),
-		}
-		if sku := sheinpub.NormalizeSDSImageKey(item.VariantSKU); sku != "__default__" {
-			bySKU[sku] = sheinpub.MergeSDSImageSet(bySKU[sku], images)
-		}
-		if color := sheinpub.NormalizeSDSImageKey(item.Color); color != "__default__" {
-			byColor[color] = sheinpub.MergeSDSImageSet(byColor[color], images)
-		}
-	}
-
-	pkg.Images = defaultImages
-	if pkg.DraftPayload != nil {
-		pkg.DraftPayload.ImageInfo = sheinpub.BuildImageDraft(defaultImages)
-		for skcIndex := range pkg.DraftPayload.SKCList {
-			skcImages := sheinpub.ResolveSDSImagesForSKC(pkg, skcIndex, bySKU, byColor)
-			if skcImages == nil {
-				continue
-			}
-			pkg.DraftPayload.SKCList[skcIndex].ImageInfo = sheinpub.BuildImageDraft(skcImages)
-			for skuIndex := range pkg.DraftPayload.SKCList[skcIndex].SKUList {
-				skuImages := sheinpub.ResolveSDSImagesForSKU(&pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex], bySKU, byColor)
-				if skuImages == nil {
-					skuImages = skcImages
-				}
-				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].MainImage = skuImages.MainImage
-				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].ImageInfo = sheinpub.BuildImageDraft(skuImages)
-			}
-		}
-	}
-	for skcIndex := range pkg.SkcList {
-		skcImages := sheinpub.ResolveSDSImagesForSKC(pkg, skcIndex, bySKU, byColor)
-		if skcImages == nil {
-			skcImages = defaultImages
-		}
-		pkg.SkcList[skcIndex].MainImageURL = skcImages.MainImage
-	}
-	preview := sheinpub.BuildPreviewProduct(pkg)
-	sheinpub.SetPreviewPayload(pkg, preview)
-	return true
-}
 
 func applySDSOfficialImagesToShein(pkg *sheinpub.Package, _ *GenerateRequest, summary *SDSSyncSummary, options *SDSSyncOptions) bool {
 	return applySDSTemplateImagesToSheinWithResult(pkg, summary, nil, options)
@@ -222,41 +159,4 @@ func imageSetFromSDSVariantOption(item SDSSyncVariantOption, sourceImages []stri
 		return nil
 	}
 	return sheinpub.ImageSetFromSDSMockups(mockups, sourceImages)
-}
-
-func imageSetFromSelectedSDSImages(items []SheinStudioSelectedSDSImage, sourceImages []string) *common.ImageSet {
-	if len(items) == 0 {
-		return nil
-	}
-	images := &common.ImageSet{
-		MainImage:    items[0].ImageURL,
-		SourceImages: uniqueNonEmptyStrings(sourceImages),
-	}
-	for _, item := range items[1:] {
-		if imageURL := strings.TrimSpace(item.ImageURL); imageURL != "" {
-			images.Gallery = append(images.Gallery, imageURL)
-		}
-	}
-	return images
-}
-
-func normalizeSelectedSDSImages(input []SheinStudioSelectedSDSImage) []SheinStudioSelectedSDSImage {
-	result := make([]SheinStudioSelectedSDSImage, 0, len(input))
-	seen := map[string]struct{}{}
-	for _, item := range input {
-		imageURL := strings.TrimSpace(item.ImageURL)
-		if imageURL == "" {
-			continue
-		}
-		if _, ok := seen[imageURL]; ok {
-			continue
-		}
-		seen[imageURL] = struct{}{}
-		result = append(result, SheinStudioSelectedSDSImage{
-			ImageURL:   imageURL,
-			VariantSKU: strings.TrimSpace(item.VariantSKU),
-			Color:      strings.TrimSpace(item.Color),
-		})
-	}
-	return result
 }

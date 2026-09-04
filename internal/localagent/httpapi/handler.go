@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/authidentity"
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/localagent"
 	"task-processor/internal/product/sourcing"
 )
@@ -115,33 +116,33 @@ type shippingSnapshotRequest struct {
 	ProcessingTime string `json:"processing_time"`
 }
 
-func (r productSnapshotRequest) toSnapshot() sourcing.Alibaba1688ProductSnapshot {
-	snapshot := sourcing.Alibaba1688ProductSnapshot{
+func (r productSnapshotRequest) toSnapshot() sourcea1688.Alibaba1688ProductSnapshot {
+	snapshot := sourcea1688.Alibaba1688ProductSnapshot{
 		ID: r.ID, Title: r.Title, URL: r.URL, Images: r.Images, MainImage: r.MainImage,
 		MinPrice: r.MinPrice, MaxPrice: r.MaxPrice,
 		Currency: r.Currency, MinOrderQuantity: r.MinOrderQuantity, Unit: r.Unit,
 		SalesVolume: r.SalesVolume, ReviewCount: r.ReviewCount, Rating: r.Rating,
 		Category: r.Category, Brand: r.Brand, Keywords: r.Keywords, IsCustomized: r.IsCustomized,
-		Shipping: sourcing.Alibaba1688ShippingSnapshot{ShippingFrom: r.Shipping.ShippingFrom, ProcessingTime: r.Shipping.ProcessingTime},
-		Supplier: sourcing.Alibaba1688SupplierSnapshot{ID: r.Supplier.ID, Name: r.Supplier.Name, CompanyName: r.Supplier.CompanyName, Location: r.Supplier.Location, ShopURL: r.Supplier.ShopURL, CardType: r.Supplier.CardType, YearsInBusiness: r.Supplier.YearsInBusiness, Rating: r.Supplier.Rating, ResponseRate: r.Supplier.ResponseRate, IsGoldSupplier: r.Supplier.IsGoldSupplier, IsVerified: r.Supplier.IsVerified},
+		Shipping: sourcea1688.Alibaba1688ShippingSnapshot{ShippingFrom: r.Shipping.ShippingFrom, ProcessingTime: r.Shipping.ProcessingTime},
+		Supplier: sourcea1688.Alibaba1688SupplierSnapshot{ID: r.Supplier.ID, Name: r.Supplier.Name, CompanyName: r.Supplier.CompanyName, Location: r.Supplier.Location, ShopURL: r.Supplier.ShopURL, CardType: r.Supplier.CardType, YearsInBusiness: r.Supplier.YearsInBusiness, Rating: r.Supplier.Rating, ResponseRate: r.Supplier.ResponseRate, IsGoldSupplier: r.Supplier.IsGoldSupplier, IsVerified: r.Supplier.IsVerified},
 	}
 	for _, video := range r.Videos {
-		snapshot.Videos = append(snapshot.Videos, sourcing.Alibaba1688VideoSnapshot{VideoURL: video.VideoURL, CoverURL: video.CoverURL})
+		snapshot.Videos = append(snapshot.Videos, sourcea1688.Alibaba1688VideoSnapshot{VideoURL: video.VideoURL, CoverURL: video.CoverURL})
 	}
 	for _, spec := range r.Specifications {
-		snapshot.Specifications = append(snapshot.Specifications, sourcing.Alibaba1688SpecificationSnapshot{Name: spec.Name, Value: spec.Value})
+		snapshot.Specifications = append(snapshot.Specifications, sourcea1688.Alibaba1688SpecificationSnapshot{Name: spec.Name, Value: spec.Value})
 	}
 	for _, detail := range r.ProductDetails {
-		snapshot.ProductDetails = append(snapshot.ProductDetails, sourcing.Alibaba1688ProductDetailSnapshot{Content: detail.Content, Images: detail.Images})
+		snapshot.ProductDetails = append(snapshot.ProductDetails, sourcea1688.Alibaba1688ProductDetailSnapshot{Content: detail.Content, Images: detail.Images})
 	}
 	for _, variation := range r.VariationValues {
-		snapshot.VariationValues = append(snapshot.VariationValues, sourcing.Alibaba1688VariationValueSnapshot{Name: variation.Name, Values: variation.Values})
+		snapshot.VariationValues = append(snapshot.VariationValues, sourcea1688.Alibaba1688VariationValueSnapshot{Name: variation.Name, Values: variation.Values})
 	}
 	for _, variant := range r.Variants {
-		snapshot.Variants = append(snapshot.Variants, sourcing.Alibaba1688VariantSnapshot{Attributes: variant.Attributes, Name: variant.Name, Image: variant.Image, Stock: variant.Stock, Price: variant.Price})
+		snapshot.Variants = append(snapshot.Variants, sourcea1688.Alibaba1688VariantSnapshot{Attributes: variant.Attributes, Name: variant.Name, Image: variant.Image, Stock: variant.Stock, Price: variant.Price})
 	}
 	if r.PackInfo != nil {
-		snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{PackageType: r.PackInfo.PackageType, Weight: r.PackInfo.Weight, PackageImages: r.PackInfo.PackageImages, Instructions: r.PackInfo.Instructions}
+		snapshot.PackInfo = &sourcea1688.Alibaba1688PackInfoSnapshot{PackageType: r.PackInfo.PackageType, Weight: r.PackInfo.Weight, PackageImages: r.PackInfo.PackageImages, Instructions: r.PackInfo.Instructions}
 	}
 	return snapshot
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/product"
 )
 
 // DailyListingCountGetReqDTO 获取每日上架数量请求DTO
@@ -187,8 +187,8 @@ type FilterRuleAPI interface {
 }
 
 // ToFilterRule 将 DTO 转换为 domain 层的 FilterRule 值对象
-func (r *FilterRuleRespDTO) ToFilterRule() *product.FilterRule {
-	return &product.FilterRule{
+func (r *FilterRuleRespDTO) ToFilterRule() *productpolicy.FilterRule {
+	return &productpolicy.FilterRule{
 		PriceMin:        r.PriceMin,
 		PriceMax:        r.PriceMax,
 		StockMin:        r.StockMin,

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 
 	"task-processor/internal/authidentity"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
+	"task-processor/internal/authz"
+	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/workbenchcontext"
@@ -21,8 +24,8 @@ type organizationIdentityResolver interface {
 }
 
 type routeAuthDependencies struct {
-	// legacyZitadelAuth is the legacy combined authentication/allowlist middleware.
-	legacyZitadelAuth    gin.HandlerFunc
+	identityMiddleware   gin.HandlerFunc
+	authorizer           *authz.ListingKitAuthorizer
 	workbenchVerifier    zitadelruntime.Verifier
 	organizationResolver organizationIdentityResolver
 	roleMiddleware       func(httproute.Descriptor) gin.HandlerFunc
@@ -30,17 +33,57 @@ type routeAuthDependencies struct {
 	auditNow             func() time.Time
 }
 
+type routeAuthorization = routeAuthDependencies
+
 const resolvedOrganizationTargetKey = "workbench.resolved-organization-target"
 
-func newRouteAuthDependencies() routeAuthDependencies {
-	return routeAuthDependencies{legacyZitadelAuth: newLegacyZitadelAuthMiddleware(), auditNow: time.Now}
+// buildRouteAuthorization creates the immutable authorization dependency owned
+// by one HTTP server. It does not publish configuration through package globals.
+func buildRouteAuthorization(cfg *config.Config) (routeAuthorization, error) {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	zitadel := cfg.ListingKit.Zitadel
+	legacyUsernameAllowlistConfigured := zitadel.LegacyUsernameAllowlistConfigured || len(zitadel.AllowedUsernames) > 0
+	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
+	if err != nil {
+		return routeAuthorization{}, fmt.Errorf("build route authorizer: %w", err)
+	}
+	return routeAuthorization{
+		identityMiddleware: zitadelruntime.NewMiddleware(zitadelruntime.Config{
+			IssuerURL:    strings.TrimRight(strings.TrimSpace(zitadel.IssuerURL), "/"),
+			ClientID:     strings.TrimSpace(zitadel.ClientID),
+			ClientSecret: strings.TrimSpace(zitadel.ClientSecret),
+			ProjectID:    strings.TrimSpace(zitadel.ProjectID),
+		}, zitadelruntime.AuthorizationConfig{
+			Required:                          zitadel.AuthorizationRequired || legacyUsernameAllowlistConfigured,
+			LegacyUsernameAllowlistConfigured: legacyUsernameAllowlistConfigured,
+			AllowedTenantIDs:                  zitadelruntime.StringSliceToSet(zitadel.AllowedTenantIDs),
+			AllowedUserIDs:                    zitadelruntime.StringSliceToSet(zitadel.AllowedUserIDs),
+			AllowedRoles:                      zitadelruntime.StringSliceToSet(zitadel.AllowedRoles),
+		}),
+		authorizer: authorizer,
+		auditNow:   time.Now,
+	}, nil
 }
 
-func routeAuthHandlers(route httproute.Descriptor, zitadelAuth gin.HandlerFunc) []gin.HandlerFunc {
-	if zitadelAuth == nil && !routeRequiresOrganizationResolution(route.OrganizationAccessPolicy) {
-		return nil
+func routeAuthHandlers(route httproute.Descriptor, authorization routeAuthorization) []gin.HandlerFunc {
+	return routeAuthHandlersWithDependencies(route, authorization)
+}
+
+func (authorization routeAuthorization) withWorkbench(workbench routeAuthDependencies) routeAuthorization {
+	authorization.workbenchVerifier = workbench.workbenchVerifier
+	authorization.organizationResolver = workbench.organizationResolver
+	authorization.auditRecorder = workbench.auditRecorder
+	authorization.auditNow = workbench.auditNow
+	if workbench.roleMiddleware != nil {
+		authorization.roleMiddleware = workbench.roleMiddleware
 	}
-	return routeAuthHandlersWithDependencies(route, routeAuthDependencies{legacyZitadelAuth: zitadelAuth})
+	return authorization
+}
+
+func newRouteAuthDependencies() routeAuthDependencies {
+	return routeAuthDependencies{auditNow: time.Now}
 }
 
 func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies routeAuthDependencies) []gin.HandlerFunc {
@@ -54,8 +97,8 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	handlers := make([]gin.HandlerFunc, 0, 4)
 	if requiresOrganization {
 		handlers = append(handlers, workbenchAuthenticationMiddleware(dependencies.workbenchVerifier))
-	} else if dependencies.legacyZitadelAuth != nil {
-		handlers = append(handlers, dependencies.legacyZitadelAuth)
+	} else if dependencies.identityMiddleware != nil {
+		handlers = append(handlers, dependencies.identityMiddleware)
 	}
 	if requiresOrganization {
 		if route.OrganizationTargetResolver != nil {
@@ -67,9 +110,9 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	if dependencies.roleMiddleware != nil {
 		roleAuth = dependencies.roleMiddleware(route)
 	} else if requiresOrganization {
-		roleAuth = listingkithttpapi.NewRouteRoleMiddlewareWithResponder(route, workbenchRoleAuthorizationResponder(route, dependencies))
+		roleAuth = listingkithttpapi.NewRouteRoleMiddlewareWithAuthorizerAndResponder(route, dependencies.authorizer, workbenchRoleAuthorizationResponder(route, dependencies))
 	} else {
-		roleAuth = listingkithttpapi.NewRouteRoleMiddleware(route)
+		roleAuth = listingkithttpapi.NewRouteRoleMiddlewareWithAuthorizer(route, dependencies.authorizer)
 	}
 	if roleAuth != nil {
 		handlers = append(handlers, roleAuth)
@@ -274,8 +317,4 @@ func writeWorkbenchProtocolError(c *gin.Context, status int, code string, messag
 		"requestId":   strings.TrimSpace(c.GetHeader("X-Request-ID")),
 		"fieldErrors": []any{},
 	})
-}
-
-func newLegacyZitadelAuthMiddleware() gin.HandlerFunc {
-	return listingkithttpapi.NewZitadelAuthMiddlewareFromEnv()
 }

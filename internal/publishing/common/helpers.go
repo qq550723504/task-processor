@@ -5,9 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog/canonical"
 )
 
 func BuildVariants(product *canonical.Product) []Variant {
@@ -47,93 +46,34 @@ func BuildVariants(product *canonical.Product) []Variant {
 	return result
 }
 
-func BuildImages(product *canonical.Product, image *productimage.ImageProcessResult) *ImageSet {
-	return BuildImagesFromBundle(asset.BuildBundle(product, image))
-}
-
-// BuildImagesWithSelection projects a product image result while honoring
-// the explicit asset selection captured in its bundle.
-func BuildImagesWithSelection(product *canonical.Product, image *productimage.ImageProcessResult) *ImageSet {
-	return BuildImagesFromBundleWithSelection(asset.BuildBundle(product, image))
-}
-
-func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
-	return buildImagesFromBundle(bundle, false)
-}
-
-// BuildImagesFromBundleWithSelection projects a bundle while honoring its
-// explicit asset selection before applying source-image fallbacks.
-func BuildImagesFromBundleWithSelection(bundle *asset.Bundle) *ImageSet {
-	return buildImagesFromBundle(bundle, true)
-}
-
-func buildImagesFromBundle(bundle *asset.Bundle, useSelection bool) *ImageSet {
+func BuildImages(product *canonical.Product) *ImageSet {
 	set := &ImageSet{}
-	if bundle != nil {
-		for _, item := range bundle.Assets {
-			switch item.Kind {
-			case asset.KindSourceImage:
-				set.SourceImages = append(set.SourceImages, item.URL)
-			case asset.KindWhiteBgImage:
-				if set.WhiteBgImage == "" {
-					set.WhiteBgImage = item.URL
-				}
-			case asset.KindGalleryImage, asset.KindSceneImage, asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
-				set.Gallery = append(set.Gallery, item.URL)
-			case asset.KindMainImage, asset.KindModelImage, asset.KindCleanImage:
-				if set.MainImage == "" {
-					set.MainImage = item.URL
-				}
-			}
-		}
-	}
-	if useSelection && bundle != nil && bundle.Selection != nil {
-		if set.MainImage == "" {
-			if url := assetURLByID(bundle.Assets, bundle.Selection.MainAssetID); url != "" {
-				set.MainImage = url
-			}
-		}
-		if set.WhiteBgImage == "" {
-			if url := assetURLByID(bundle.Assets, bundle.Selection.WhiteBgAssetID); url != "" {
-				set.WhiteBgImage = url
-			}
-		}
-		if len(set.Gallery) == 0 {
-			for _, id := range bundle.Selection.GalleryAssetIDs {
-				if url := assetURLByID(bundle.Assets, id); url != "" {
-					set.Gallery = append(set.Gallery, url)
-				}
-			}
-		}
-	}
-	if useSelection {
-		if set.MainImage == "" && len(set.SourceImages) > 0 {
-			set.MainImage = set.SourceImages[0]
-		}
-		if len(set.Gallery) == 0 && len(set.SourceImages) > 1 {
-			set.Gallery = append(set.Gallery, set.SourceImages[1:]...)
-		}
-	} else if set.MainImage == "" && len(set.Gallery) > 0 {
-		set.MainImage = set.Gallery[0]
-	}
-	if useSelection && set.MainImage == "" && len(set.Gallery) > 0 {
-		set.MainImage = set.Gallery[0]
-	}
-	if set.MainImage == "" && len(set.SourceImages) == 0 && len(set.Gallery) == 0 && set.WhiteBgImage == "" {
+	if product == nil {
 		return nil
 	}
-	set.Gallery = UniqueStrings(set.Gallery)
-	set.SourceImages = UniqueStrings(set.SourceImages)
-	return set
-}
-
-func assetURLByID(items []asset.Asset, id string) string {
-	for _, item := range items {
-		if item.ID == id {
-			return item.URL
+	for _, image := range product.Images {
+		url := strings.TrimSpace(image.URL)
+		if url == "" {
+			continue
+		}
+		switch productasset.Role(image.Role) {
+		case productasset.RoleMain:
+			if set.MainImage == "" {
+				set.MainImage = url
+			}
+		case productasset.RoleWhiteBackground:
+			if set.WhiteBgImage == "" {
+				set.WhiteBgImage = url
+			}
+		case productasset.RoleDesign, productasset.RoleGallery:
+			set.Gallery = append(set.Gallery, url)
 		}
 	}
-	return ""
+	set.Gallery = UniqueStrings(set.Gallery)
+	if set.MainImage == "" && set.WhiteBgImage == "" && len(set.Gallery) == 0 {
+		return nil
+	}
+	return set
 }
 
 func FlattenAttributes(attributes map[string]canonical.Attribute) map[string]string {
@@ -158,13 +98,10 @@ func BuildAttributes(attributes map[string]canonical.Attribute) []Attribute {
 	return result
 }
 
-func CollectReviewNotes(product *canonical.Product, image *productimage.ImageProcessResult, extras ...string) []string {
+func CollectReviewNotes(product *canonical.Product, extras ...string) []string {
 	notes := make([]string, 0, len(extras)+4)
 	if product != nil && product.NeedsReview {
 		notes = append(notes, "商品结构化结果存在低置信字段，建议人工复核标题、品牌、属性和变体")
-	}
-	if image != nil && image.Review != nil && image.Review.NeedsReview {
-		notes = append(notes, image.Review.Reasons...)
 	}
 	notes = append(notes, extras...)
 	return UniqueStrings(notes)

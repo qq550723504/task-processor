@@ -5,13 +5,11 @@ func buildTemuPreviewPayloadBody(input reviewablePlatformPreviewPayloadInput, pk
 		return nil
 	}
 	return &TemuPreviewPayload{
-		Headline:       input.base.headline,
-		NeedsReview:    input.base.needsReview,
-		ReviewNotes:    input.base.reviewNotes,
-		ImageBundle:    input.base.imageBundle,
-		RenderPreviews: input.base.renderPreviews,
-		ScenePresets:   input.base.scenePresets,
-		Package:        pkg,
+		Headline:    input.base.headline,
+		NeedsReview: input.base.needsReview,
+		ReviewNotes: input.base.reviewNotes,
+		ImageBundle: input.base.imageBundle,
+		Package:     pkg,
 	}
 }
 
@@ -20,12 +18,10 @@ func buildWalmartPreviewPayloadBody(input reviewablePlatformPreviewPayloadInput,
 		return nil
 	}
 	return &WalmartPreviewPayload{
-		Headline:       input.base.headline,
-		NeedsReview:    input.base.needsReview,
-		ReviewNotes:    input.base.reviewNotes,
-		ImageBundle:    input.base.imageBundle,
-		RenderPreviews: input.base.renderPreviews,
-		ScenePresets:   input.base.scenePresets,
-		Package:        pkg,
+		Headline:    input.base.headline,
+		NeedsReview: input.base.needsReview,
+		ReviewNotes: input.base.reviewNotes,
+		ImageBundle: input.base.imageBundle,
+		Package:     pkg,
 	}
 }

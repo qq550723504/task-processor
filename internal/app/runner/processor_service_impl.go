@@ -11,9 +11,9 @@ import (
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
+	"task-processor/internal/marketplace/sourceproduct"
 	logger "task-processor/internal/platform/logging"
 	"task-processor/internal/platform/queue/rabbitmq"
-	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -35,7 +35,7 @@ type processorServiceImpl struct {
 	healthChecker    *monitoring.HealthChecker
 
 	// 共享资源（通过依赖注入获取）
-	rawJSONDataClient       product.RawJsonDataClient
+	rawJSONDataClient       sourceproduct.RawJsonDataClient
 	processorRuntime        processorRuntimeProvider
 	schedulerRuntime        SchedulerRuntimeProvider
 	schedulerFactoryRuntime schedulerFactoryRuntimeProvider

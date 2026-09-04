@@ -1,6 +1,6 @@
 package listingruntime
 
-import "task-processor/internal/product"
+import "task-processor/internal/marketplace/productpolicy"
 
 type FilterRule struct {
 	ID              int64
@@ -19,11 +19,11 @@ type FilterRule struct {
 	Status          int16
 }
 
-func (r *FilterRule) ToFilterRule() *product.FilterRule {
+func (r *FilterRule) ToFilterRule() *productpolicy.FilterRule {
 	if r == nil {
 		return nil
 	}
-	return &product.FilterRule{
+	return &productpolicy.FilterRule{
 		PriceMin:        r.PriceMin,
 		PriceMax:        r.PriceMax,
 		StockMin:        r.StockMin,

@@ -318,7 +318,7 @@ func TestServiceStartRequiresBusinessTaskAndAuthorizedCatalogSubset(t *testing.T
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
 	ctx := verifiedContext("tenant-a", "user-a")
-	input := imageagent.StartRunInput{RunID: "run-start", BusinessTaskID: " ", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-key", Plan: commandPlan(1)}
+	input := withValidPolicy(imageagent.StartRunInput{RunID: "run-start", BusinessTaskID: " ", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-key", Plan: commandPlan(1)})
 
 	require.ErrorIs(t, service.Start(ctx, input), imageagent.ErrValidation)
 	input.BusinessTaskID = "task-1"
@@ -334,15 +334,33 @@ func TestServiceStartRejectsTenantBeforeInitializeRunWhenProviderIneligible(t *t
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()}, imageagent.WithTenantStartGate(staticTenantStartGate{allowed: map[string]bool{"tenant-a": true}}))
 	require.NoError(t, err)
 
-	err = service.Start(verifiedContext("tenant-b", "user-a"), imageagent.StartRunInput{
+	err = service.Start(verifiedContext("tenant-b", "user-a"), withValidPolicy(imageagent.StartRunInput{
 		RunID: "run-ineligible", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 		IdempotencyKey: "run-ineligible-key", Plan: commandPlan(1),
-	})
+	}))
 
 	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
 	_, getErr := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-b", OwnerUserID: "user-a", RunID: "run-ineligible"})
 	require.ErrorIs(t, getErr, imageagent.ErrRunNotFound)
 	require.Empty(t, workflows.starts)
+}
+
+func TestServiceStartRechecksTenantAdmissionBeforeRestartingExistingRun(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	gate := staticTenantStartGate{allowed: map[string]bool{"tenant-a": true}}
+	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()}, imageagent.WithTenantStartGate(gate))
+	require.NoError(t, err)
+	input := withValidPolicy(imageagent.StartRunInput{
+		RunID: "run-existing-admission", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
+		IdempotencyKey: "run-existing-admission-key", Plan: commandPlan(1),
+	})
+	require.NoError(t, service.Start(verifiedContext("tenant-a", "user-a"), input))
+	require.Len(t, workflows.starts, 1)
+
+	gate.allowed["tenant-a"] = false
+	require.ErrorIs(t, service.Start(verifiedContext("tenant-a", "user-a"), input), imageagent.ErrCommandBlocked)
+	require.Len(t, workflows.starts, 1)
 }
 
 type staticTenantStartGate struct{ allowed map[string]bool }
@@ -368,10 +386,10 @@ func TestServiceStartAndReplaceRejectUnmeasuredSizeSlotBeforeWorkflowIngress(t *
 		workflows := &recordingWorkflowClient{}
 		service, err := imageagent.NewService(store.NewMemoryRepository(), workflows, staticCatalogResolver{catalog: unmeasured})
 		require.NoError(t, err)
-		err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+		err = service.Start(verifiedContext("tenant-a", "user-a"), withValidPolicy(imageagent.StartRunInput{
 			RunID: "run-size", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 			IdempotencyKey: "run-size-key", Plan: withSizeSlot(1),
-		})
+		}))
 		require.ErrorIs(t, err, imageagent.ErrValidation)
 		require.ErrorContains(t, err, "reliable dimensions")
 		require.Empty(t, workflows.starts)
@@ -397,10 +415,10 @@ func TestServiceStartRejectsRunIDOutsideArtifactGrammarBeforeWorkflowStart(t *te
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
 
-	err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+	err = service.Start(verifiedContext("tenant-a", "user-a"), withValidPolicy(imageagent.StartRunInput{
 		RunID: "run:1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 		IdempotencyKey: "run-start-key", Plan: commandPlan(1),
-	})
+	}))
 
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 	require.Empty(t, workflows.starts)
@@ -413,10 +431,10 @@ func TestServiceStartRejectsUnsafeSlotConcurrencyBeforePersistence(t *testing.T)
 		service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 		require.NoError(t, err)
 
-		err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+		err = service.Start(verifiedContext("tenant-a", "user-a"), withValidPolicy(imageagent.StartRunInput{
 			RunID: "run-concurrency", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 			IdempotencyKey: "run-concurrency-key", Plan: commandPlan(1), MaxConcurrentSlots: maxConcurrentSlots,
-		})
+		}))
 
 		require.ErrorIs(t, err, imageagent.ErrValidation)
 		_, getErr := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-concurrency"})
@@ -433,10 +451,10 @@ func TestServiceStartCapturesBusinessTaskInExecutionIdentity(t *testing.T) {
 
 	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TraceID: "trace-identity"})
 	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
-	err = service.Start(ctx, imageagent.StartRunInput{
+	err = service.Start(ctx, withValidPolicy(imageagent.StartRunInput{
 		RunID: "run-identity", BusinessTaskID: "task-identity", Mode: imageagent.RunModeManual,
 		IdempotencyKey: "run-identity-key", Plan: commandPlan(1),
-	})
+	}))
 
 	require.NoError(t, err)
 	require.Len(t, workflows.starts, 1)
@@ -449,11 +467,11 @@ func TestServiceStartValidatesAndPersistsPresenceAwareBudget(t *testing.T) {
 	workflows := &recordingWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
-	input := imageagent.StartRunInput{
+	input := withValidPolicy(imageagent.StartRunInput{
 		RunID: "run-budget", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 		IdempotencyKey: "run-budget-key", Plan: commandPlan(1),
 		Budget: imageagent.Budget{EnabledLimits: imageagent.BudgetLimitImages},
-	}
+	})
 
 	require.NoError(t, service.Start(verifiedContext("tenant-a", "user-a"), input))
 	projection, err := repository.GetProjection(context.Background(), imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-budget"})
@@ -566,7 +584,7 @@ func TestServiceStartRetryUsesImmutablePersistedCatalogInsteadOfMutableTaskCatal
 	service, err := imageagent.NewService(repository, workflows, resolver)
 	require.NoError(t, err)
 	ctx := verifiedContext("tenant-a", "user-a")
-	input := imageagent.StartRunInput{RunID: "run-start-retry", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-retry-key", Plan: commandPlan(1)}
+	input := withValidPolicy(imageagent.StartRunInput{RunID: "run-start-retry", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-retry-key", Plan: commandPlan(1)})
 
 	require.NoError(t, service.Start(ctx, input))
 	resolver.catalog = imageagent.AssetCatalog{Assets: []imageagent.AuthorizedAsset{{ID: "source-replaced", Type: imageagent.AuthorizedAssetSource, URL: "https://mutated.example/source.png"}}}
@@ -583,10 +601,10 @@ func TestServiceStartRejectsRunIdempotencyKeyBeyondPersistenceLimit(t *testing.T
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
 
-	err = service.Start(verifiedContext("tenant-a", "user-a"), imageagent.StartRunInput{
+	err = service.Start(verifiedContext("tenant-a", "user-a"), withValidPolicy(imageagent.StartRunInput{
 		RunID: "run-long-key", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 		IdempotencyKey: strings.Repeat("r", imageagent.MaxIdempotencyKeyLength+1), Plan: commandPlan(1),
-	})
+	}))
 
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 	require.Empty(t, workflows.starts)
@@ -599,10 +617,10 @@ func TestServiceClosedStartReplayReturnsOriginalSuccessWithoutRestartingTemporal
 			workflows := &recordingWorkflowClient{}
 			service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 			require.NoError(t, err)
-			input := imageagent.StartRunInput{
+			input := withValidPolicy(imageagent.StartRunInput{
 				RunID: "run-1", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 				IdempotencyKey: "run-key-1", Plan: commandPlan(1),
-			}
+			})
 			ctx := verifiedContext("tenant-a", "user-a")
 			require.NoError(t, service.Start(ctx, input))
 			current, err := repository.GetProjection(ctx, imageagent.RunScope{TenantID: "tenant-a", OwnerUserID: "user-a", RunID: "run-1"})
@@ -633,10 +651,10 @@ func TestServiceRestartFailedUsesPersistedImmutableInputs(t *testing.T) {
 	workflows := &recordingWorkflowClient{}
 	service, err := imageagent.NewService(repository, workflows, staticCatalogResolver{catalog: authorizedCatalog()})
 	require.NoError(t, err)
-	input := imageagent.StartRunInput{
+	input := withValidPolicy(imageagent.StartRunInput{
 		RunID: "run-restart", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual,
 		IdempotencyKey: "run-restart-key", Plan: commandPlan(1), MaxConcurrentSlots: 3,
-	}
+	})
 	ctx := verifiedContext("tenant-a", "user-a")
 	require.NoError(t, service.Start(ctx, input))
 	workflows.starts = nil
@@ -670,7 +688,7 @@ func TestServiceConcurrentIdenticalStartWithRepositoryOwnedCatalogTimestampConve
 	resolver := newConcurrentCatalogResolver(authorizedCatalog(), 2)
 	service, err := imageagent.NewService(repository, workflows, resolver)
 	require.NoError(t, err)
-	input := imageagent.StartRunInput{RunID: "run-concurrent-start", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-start-key", Plan: commandPlan(1), MaxConcurrentSlots: 0}
+	input := withValidPolicy(imageagent.StartRunInput{RunID: "run-concurrent-start", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-start-key", Plan: commandPlan(1), MaxConcurrentSlots: 0})
 
 	errs := make(chan error, 2)
 	for range 2 {
@@ -699,7 +717,7 @@ func TestServiceStartUsesRepositoryWinnerConcurrencyForReplayAndRejectsConflicti
 	service, err := imageagent.NewService(repository, workflows, resolver)
 	require.NoError(t, err)
 	ctx := verifiedContext("tenant-a", "user-a")
-	input := imageagent.StartRunInput{RunID: "run-start-concurrency", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-concurrency-key", Plan: commandPlan(1), MaxConcurrentSlots: 2}
+	input := withValidPolicy(imageagent.StartRunInput{RunID: "run-start-concurrency", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-start-concurrency-key", Plan: commandPlan(1), MaxConcurrentSlots: 2})
 
 	require.NoError(t, service.Start(ctx, input))
 	require.NoError(t, service.Start(ctx, input))
@@ -723,7 +741,7 @@ func TestServiceConcurrentConflictingStartConcurrencyKeepsRepositoryWinnerValue(
 	resolver := newConcurrentCatalogResolver(authorizedCatalog(), 2)
 	service, err := imageagent.NewService(repository, workflows, resolver)
 	require.NoError(t, err)
-	base := imageagent.StartRunInput{RunID: "run-concurrent-conflict", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-conflict-key", Plan: commandPlan(1)}
+	base := withValidPolicy(imageagent.StartRunInput{RunID: "run-concurrent-conflict", BusinessTaskID: "task-1", Mode: imageagent.RunModeManual, IdempotencyKey: "run-concurrent-conflict-key", Plan: commandPlan(1)})
 	inputs := []imageagent.StartRunInput{base, base}
 	inputs[0].MaxConcurrentSlots = 2
 	inputs[1].MaxConcurrentSlots = 3

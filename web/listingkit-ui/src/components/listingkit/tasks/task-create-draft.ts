@@ -1,4 +1,5 @@
 export type TaskCreateDraft = {
+  productKey?: string;
   text: string;
   imageUrls: string;
   productUrl: string;
@@ -43,6 +44,7 @@ export function loadTaskCreateDraft(taskId: string) {
   try {
     const parsed = JSON.parse(raw) as Partial<TaskCreateDraft>;
     return {
+      productKey: parsed.productKey ?? "",
       text: parsed.text ?? "",
       imageUrls: parsed.imageUrls ?? "",
       productUrl: parsed.productUrl ?? "",

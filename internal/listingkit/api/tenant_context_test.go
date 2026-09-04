@@ -2,17 +2,13 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
-	openaiclient "task-processor/internal/integration/openai"
 	"task-processor/internal/listingkit"
 )
 
@@ -141,36 +137,6 @@ func TestDetachedHandlerContextPreservesSafeIdentityForCredentialResolution(t *t
 		t.Fatalf("request identity = %+v", requestIdentity)
 	}
 
-	resolver := &handlerContextCredentialResolver{}
-	router := &handlerContextRouter{resolver: resolver}
-	recorder := &handlerContextInvocationRecorder{}
-	adapter, err := listingkit.NewStudioAIImageCapabilityAdapter(listingkit.StudioAIImageCapabilityAdapterConfig{
-		Legacy:   handlerContextImageGenerator{},
-		Router:   router,
-		Recorder: recorder,
-		Mode:     aicapability.RoutingModeShadow,
-	})
-	if err != nil {
-		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
-	}
-	if _, err := adapter.GenerateImage(detached, &listingkit.AIImageGenerateRequest{Model: "nanobanana", Prompt: "private-prompt"}); err != nil {
-		t.Fatalf("GenerateImage() error = %v", err)
-	}
-	if resolver.identity.TenantID != "tenant-a" || resolver.identity.UserID != "user-a" {
-		t.Fatalf("credential identity = %+v", resolver.identity)
-	}
-	if router.request.TenantID != "tenant-a" || router.request.UserID != "user-a" {
-		t.Fatalf("route request identity = %+v", router.request)
-	}
-	if recorder.record.TenantID != "tenant-a" || recorder.record.UserID != "user-a" {
-		t.Fatalf("invocation record identity = %+v", recorder.record)
-	}
-	recordText := fmt.Sprintf("%+v", recorder.record)
-	for _, secret := range []string{"raw-token-must-not-be-copied", "test-secret", "private-prompt"} {
-		if strings.Contains(recordText, secret) {
-			t.Fatalf("invocation record contains sensitive value %q", secret)
-		}
-	}
 }
 
 func TestRequestExplicitTenantIDRejectsMissingTenant(t *testing.T) {
@@ -201,57 +167,3 @@ func TestRequestExplicitTenantIDAcceptsExplicitDefaultTenant(t *testing.T) {
 		t.Fatalf("tenant id = %q ok=%v, want default true", got, ok)
 	}
 }
-
-type handlerContextCredentialResolver struct {
-	identity openaiclient.Identity
-}
-
-func (r *handlerContextCredentialResolver) ResolveClientConfig(ctx context.Context, _ string, _ *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
-	r.identity = openaiclient.IdentityFromContext(ctx)
-	return &openaiclient.ResolvedClientConfig{Config: &openaiclient.ClientConfig{
-		APIKey:  "test-secret",
-		BaseURL: "https://provider.example.test/v1",
-		Model:   "test-model",
-	}}, nil
-}
-
-type handlerContextRouter struct {
-	resolver *handlerContextCredentialResolver
-	request  aicapability.RouteRequest
-}
-
-func (r *handlerContextRouter) Decide(ctx context.Context, request aicapability.RouteRequest) (aicapability.RouteDecision, error) {
-	r.request = request
-	if _, err := r.resolver.ResolveClientConfig(ctx, "image_nanobanana", nil); err != nil {
-		return aicapability.RouteDecision{}, err
-	}
-	return aicapability.RouteDecision{
-		Capability:          request.Capability,
-		Operation:           request.Operation,
-		ProviderID:          "grsai_async",
-		ModelID:             "test-model",
-		RoutingKey:          "nanobanana",
-		CredentialReference: "image_nanobanana",
-	}, nil
-}
-
-type handlerContextInvocationRecorder struct {
-	record aicapability.InvocationRecord
-}
-
-func (r *handlerContextInvocationRecorder) RecordInvocation(_ context.Context, record aicapability.InvocationRecord) error {
-	r.record = record
-	return nil
-}
-
-type handlerContextImageGenerator struct{}
-
-func (handlerContextImageGenerator) GenerateImage(context.Context, *listingkit.AIImageGenerateRequest) (*listingkit.AIImageResponse, error) {
-	return &listingkit.AIImageResponse{}, nil
-}
-
-func (handlerContextImageGenerator) EditImage(context.Context, *listingkit.AIImageEditRequest) (*listingkit.AIImageResponse, error) {
-	return &listingkit.AIImageResponse{}, nil
-}
-
-func (handlerContextImageGenerator) GetDefaultModel() string { return "nanobanana" }

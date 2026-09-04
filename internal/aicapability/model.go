@@ -6,22 +6,16 @@ import "time"
 type Capability string
 
 const (
-	CapabilityListingKitStudioImage Capability = "listingkit.studio.image"
-	CapabilityProductImageScene     Capability = "productimage.scene_generation"
-	CapabilityProductEnrichText     Capability = "productenrich.text_understanding"
-	CapabilityProductEnrichVision   Capability = "productenrich.vision_understanding"
-	CapabilityProductEnrichListing  Capability = "productenrich.listing_generation"
-	CapabilityProductEnrichFusion   Capability = "productenrich.multimodal_fusion"
+	CapabilityProductImageScene    Capability = "productimage.scene_generation"
+	CapabilityProductEnrichText    Capability = "productenrich.text_understanding"
+	CapabilityProductEnrichVision  Capability = "productenrich.vision_understanding"
+	CapabilityProductEnrichListing Capability = "productenrich.listing_generation"
+	CapabilityProductEnrichFusion  Capability = "productenrich.multimodal_fusion"
 )
 
 type Operation string
 
 const (
-	OperationImageGenerate                   Operation = "image_generate"
-	OperationImageEdit                       Operation = "image_edit"
-	OperationAsyncImageGenerate              Operation = "async_image_generate"
-	OperationAsyncImageEdit                  Operation = "async_image_edit"
-	OperationAsyncImageQuery                 Operation = "async_image_query"
 	OperationProductImageSceneGenerate       Operation = "productimage_scene_generate"
 	OperationProductImageSubjectExtract      Operation = "productimage_subject_extract"
 	OperationProductImageWhiteBackground     Operation = "productimage_white_background"
@@ -39,9 +33,6 @@ const (
 type ModelFeature string
 
 const (
-	FeatureImageGenerate ModelFeature = "image_generate"
-	FeatureImageEdit     ModelFeature = "image_edit"
-	FeatureAsyncImageJob ModelFeature = "async_image_job"
 	FeatureTextGenerate  ModelFeature = "text_generate"
 	FeatureVisionAnalyze ModelFeature = "vision_analyze"
 )

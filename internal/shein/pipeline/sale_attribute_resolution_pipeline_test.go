@@ -9,9 +9,9 @@ import (
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
-	domainproduct "task-processor/internal/product"
 	"task-processor/internal/state"
 
 	"github.com/sirupsen/logrus"
@@ -19,19 +19,19 @@ import (
 
 type stubPipelineProductFetcher struct{}
 
-func (stubPipelineProductFetcher) FetchProduct(context.Context, *domainproduct.FetchRequest) (*model.Product, error) {
+func (stubPipelineProductFetcher) FetchProduct(context.Context, *sourceproduct.FetchRequest) (*model.Product, error) {
 	return nil, nil
 }
 
-func (stubPipelineProductFetcher) FetchVariants(context.Context, *domainproduct.FetchRequest, []string) ([]*model.Product, error) {
+func (stubPipelineProductFetcher) FetchVariants(context.Context, *sourceproduct.FetchRequest, []string) ([]*model.Product, error) {
 	return nil, nil
 }
 
-func (stubPipelineProductFetcher) CacheProduct(*domainproduct.FetchRequest, *model.Product) error {
+func (stubPipelineProductFetcher) CacheProduct(*sourceproduct.FetchRequest, *model.Product) error {
 	return nil
 }
 
-func (stubPipelineProductFetcher) CacheVariants(*domainproduct.FetchRequest, []*model.Product) error {
+func (stubPipelineProductFetcher) CacheVariants(*sourceproduct.FetchRequest, []*model.Product) error {
 	return nil
 }
 

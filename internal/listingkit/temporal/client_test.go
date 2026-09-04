@@ -111,6 +111,37 @@ func TestClientStartPlatformAdaptationUsesStableWorkflowIDAndAllowsManualRerun(t
 	}
 }
 
+func TestClientGenerationStartsTreatAlreadyRunningWorkflowAsReplaySuccess(t *testing.T) {
+	t.Parallel()
+
+	alreadyStarted := serviceerror.NewWorkflowExecutionAlreadyStarted("already started", "", "run-123")
+	tests := []struct {
+		name  string
+		start func(*Client) error
+	}{
+		{
+			name: "standard product",
+			start: func(client *Client) error {
+				return client.StartStandardProduct(context.Background(), listingkit.StandardProductWorkflowStartInput{TaskID: "task-123"})
+			},
+		},
+		{
+			name: "platform adaptation",
+			start: func(client *Client) error {
+				return client.StartPlatformAdaptation(context.Background(), listingkit.PlatformAdaptWorkflowStartInput{TaskID: "task-123", Platform: "shein"})
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClient(&stubTemporalClient{startErr: alreadyStarted})
+			if err := tt.start(client); err != nil {
+				t.Fatalf("idempotent replay returned already-started error: %v", err)
+			}
+		})
+	}
+}
+
 func TestClientStartsWorkflowsOnConfiguredTaskQueue(t *testing.T) {
 	t.Setenv(EnvTaskQueue, " listingkit-local-test ")
 

@@ -22,8 +22,6 @@ import {
   PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
-  PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS,
-  PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
   buildListingKitProxyFailureMessage,
   resolveListingKitProxyTimeoutMs,
   shouldProxyListingKitResponseAsBinary,
@@ -128,29 +126,6 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     );
   });
 
-  it("extends the timeout for studio batch generation routes", () => {
-    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "async-jobs"])).toBe(
-      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
-    );
-    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batch-runs"])).toBe(
-      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
-    );
-    expect(
-      resolveListingKitProxyTimeoutMs("GET", ["studio", "batch-runs", "run-1"]),
-    ).toBe(PROXY_STUDIO_UPSTREAM_TIMEOUT_MS);
-    expect(
-      resolveListingKitProxyTimeoutMs("POST", ["studio", "sessions", "session-1", "designs", "append"]),
-    ).toBe(PROXY_STUDIO_UPSTREAM_TIMEOUT_MS);
-    expect(resolveListingKitProxyTimeoutMs("POST", ["studio", "batches"])).toBe(
-      PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
-    );
-  });
-
-  it("extends the timeout for studio batch task creation routes", () => {
-    expect(
-      resolveListingKitProxyTimeoutMs("POST", ["studio", "batches", "batch-1", "tasks"]),
-    ).toBe(PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS);
-  });
 });
 
 describe("buildListingKitProxyFailureMessage", () => {
@@ -282,28 +257,6 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-Tenant-ID")).toBeNull();
   });
 
-  it("forwards shein studio trace headers to the upstream request", () => {
-    const request = new Request("http://localhost/api/listing-kits/studio/async-jobs", {
-      headers: {
-        accept: "application/json",
-        "x-listingkit-batch-run-id": "run-1",
-        "x-listingkit-batch-id": "batch-1",
-        "x-listingkit-studio-session-id": "session-1",
-        "x-listingkit-queue-mode": "generate",
-        "x-listingkit-queue-index": "2",
-        "x-listingkit-queue-total": "5",
-      },
-    });
-
-    const headers = buildListingKitUpstreamHeaders(request.headers);
-
-    expect(headers.get("X-ListingKit-Batch-Run-Id")).toBe("run-1");
-    expect(headers.get("X-ListingKit-Batch-Id")).toBe("batch-1");
-    expect(headers.get("X-ListingKit-Studio-Session-Id")).toBe("session-1");
-    expect(headers.get("X-ListingKit-Queue-Mode")).toBe("generate");
-    expect(headers.get("X-ListingKit-Queue-Index")).toBe("2");
-    expect(headers.get("X-ListingKit-Queue-Total")).toBe("5");
-  });
 });
 
 describe("verifyListingKitRequestIdentity", () => {

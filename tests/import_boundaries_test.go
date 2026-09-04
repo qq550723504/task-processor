@@ -1077,7 +1077,7 @@ func TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets(t *testing.T
 		root string
 	}{
 		{name: "publishing common", root: filepath.Join("..", "internal", "publishing", "common")},
-		{name: "catalog", root: filepath.Join("..", "internal", "catalog")},
+		{name: "catalog", root: filepath.Join("..", "internal", "product", "catalog")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			index, err := loadGoFileIndex(tc.root, "")
@@ -1185,6 +1185,7 @@ func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 		"shein_submit_sku_variant_support.go":                 {},
 		"shein_submit_state.go":                               {},
 		"shein_template_matcher.go":                           {},
+		"shein_variant_image_coverage.go":                     {},
 		"shein_workspace_editor_bridge.go":                    {},
 		"shein_workspace_inspection_bridge.go":                {},
 		"shein_workspace_readiness_support.go":                {},
@@ -3635,8 +3636,6 @@ func TestCmdPackagesDoNotImportAppCompatibilityLayers(t *testing.T) {
 
 func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
 	for _, domainRoot := range []string{
-		filepath.Join("..", "internal", "productenrich", "httpapi"),
-		filepath.Join("..", "internal", "productimage", "httpapi"),
 		filepath.Join("..", "internal", "amazonlisting", "httpapi"),
 		filepath.Join("..", "internal", "listingkit", "httpapi"),
 	} {
@@ -3652,14 +3651,12 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "amazonlisting"),
-		filepath.Join("..", "internal", "asset"),
-		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "product", "asset"),
+		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "listing"),
 		filepath.Join("..", "internal", "listingkit"),
 		filepath.Join("..", "internal", "marketplace"),
 		filepath.Join("..", "internal", "pricing"),
-		filepath.Join("..", "internal", "productenrich"),
-		filepath.Join("..", "internal", "productimage"),
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "sds"),
 		filepath.Join("..", "internal", "shein"),
@@ -3676,14 +3673,13 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
-		filepath.Join("..", "internal", "asset"),
-		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "product", "asset"),
+		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
 		filepath.Join("..", "internal", "marketplace"),
 		filepath.Join("..", "internal", "platform"),
 		filepath.Join("..", "internal", "product", "sourcing"),
-		filepath.Join("..", "internal", "productimage"),
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "shein"),
 		filepath.Join("..", "internal", "temu"),
@@ -3709,6 +3705,8 @@ func TestProductDomainDoesNotDependOnOuterAdapters(t *testing.T) {
 }
 
 func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
+	catalogAdapterDirectory := filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "catalog")) + string(os.PathSeparator)
+	catalogAdapterOnly := map[string]struct{}{catalogAdapterDirectory: {}}
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
@@ -3721,7 +3719,6 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/amazon",
 				"task-processor/internal/amazonlisting",
 				"task-processor/internal/asset",
-				"task-processor/internal/catalog",
 				"task-processor/internal/listing",
 				"task-processor/internal/listingkit",
 				"task-processor/internal/marketplace",
@@ -3734,8 +3731,111 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/temu",
 				"task-processor/internal/workspace",
 			}, nil)
+			assertNoBannedImportPrefixes(t, infraRoot, []string{
+				"task-processor/internal/product/catalog",
+			}, catalogAdapterOnly)
 		})
 	}
+}
+
+func TestInfrastructureCatalogGuardRejectsNonAdapterFixture(t *testing.T) {
+	fixtureRoot := filepath.Join("testdata", "infrastructure_catalog_violation")
+	violations, err := findBannedImportViolations(fixtureRoot, []string{
+		`"task-processor/internal/product/catalog"`,
+	}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) != 1 || violations[0].importPath != "task-processor/internal/product/catalog" {
+		t.Fatalf("Catalog guard violations = %+v, want the non-adapter fixture rejected", violations)
+	}
+}
+
+func TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort(t *testing.T) {
+	adapterRoot := filepath.Join("..", "internal", "integration", "persistence", "product", "catalog")
+	assertNoBannedImportPrefixes(t, adapterRoot, []string{
+		"task-processor/internal/amazon",
+		"task-processor/internal/amazonlisting",
+		"task-processor/internal/asset",
+		"task-processor/internal/listing",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/pricing",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/sds",
+		"task-processor/internal/shein",
+		"task-processor/internal/temu",
+		"task-processor/internal/workspace",
+	}, nil)
+	assertCatalogIsOnlyProductDomainImport(t, adapterRoot)
+
+	repositorySource, err := os.ReadFile(filepath.Join(adapterRoot, "repository.go"))
+	if err != nil {
+		t.Fatalf("read Catalog persistence adapter: %v", err)
+	}
+	if !strings.Contains(string(repositorySource), `"task-processor/internal/product/catalog"`) {
+		t.Fatal("Catalog persistence adapter must implement the Catalog-owned repository port")
+	}
+}
+
+func TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture(t *testing.T) {
+	fixtureRoot := filepath.Join("testdata", "catalog_adapter_product_domain_violations")
+	violations := findNonCatalogProductDomainImports(t, fixtureRoot)
+	want := []string{
+		"task-processor/internal/product/asset",
+		"task-processor/internal/product/asset/recipe",
+		"task-processor/internal/product/enrichment",
+		"task-processor/internal/product/enrichment/future",
+		"task-processor/internal/product/image",
+		"task-processor/internal/product/image/presets",
+		"task-processor/internal/product/sourcing",
+		"task-processor/internal/product/sourcing/future",
+	}
+	if len(violations) != len(want) {
+		t.Fatalf("sibling Product domain violations = %+v, want %v", violations, want)
+	}
+	for index, violation := range violations {
+		if violation.importPath != want[index] {
+			t.Fatalf("sibling Product domain violation[%d] = %q, want %q", index, violation.importPath, want[index])
+		}
+	}
+}
+
+func assertCatalogIsOnlyProductDomainImport(t *testing.T, root string) {
+	t.Helper()
+	for _, violation := range findNonCatalogProductDomainImports(t, root) {
+		t.Errorf("%s imports sibling Product business domain %s; the Catalog persistence adapter may import only Catalog-owned ports", violation.path, violation.importPath)
+	}
+}
+
+func findNonCatalogProductDomainImports(t *testing.T, root string) []bannedImportViolation {
+	t.Helper()
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var violations []bannedImportViolation
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/product") &&
+				!importMatchesPrefix(importPath, "task-processor/internal/product/catalog") {
+				violations = append(violations, bannedImportViolation{path: path, importPath: importPath})
+			}
+		}
+	}
+	sort.Slice(violations, func(i, j int) bool {
+		if violations[i].path == violations[j].path {
+			return violations[i].importPath < violations[j].importPath
+		}
+		return violations[i].path < violations[j].path
+	})
+	return violations
 }
 
 func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
@@ -3746,14 +3846,12 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazon"),
 		filepath.Join("..", "internal", "amazonlisting"),
-		filepath.Join("..", "internal", "asset"),
-		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "product", "asset"),
+		filepath.Join("..", "internal", "product", "catalog"),
 		filepath.Join("..", "internal", "listing"),
 		filepath.Join("..", "internal", "listingkit"),
 		filepath.Join("..", "internal", "marketplace"),
 		filepath.Join("..", "internal", "pricing"),
-		filepath.Join("..", "internal", "productenrich"),
-		filepath.Join("..", "internal", "productimage"),
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "sds"),
 		filepath.Join("..", "internal", "shein"),
@@ -3782,9 +3880,6 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "kernel", "module")) + string(os.PathSeparator):          {},
 		filepath.Clean(filepath.Join(root, "listingkit", "api")) + string(os.PathSeparator):         {},
 		filepath.Clean(filepath.Join(root, "listingkit", "httpapi")) + string(os.PathSeparator):     {},
-		filepath.Clean(filepath.Join(root, "productimage", "httpapi")) + string(os.PathSeparator):   {},
-		filepath.Clean(filepath.Join(root, "productenrich", "api")) + string(os.PathSeparator):      {},
-		filepath.Clean(filepath.Join(root, "productenrich", "httpapi")) + string(os.PathSeparator):  {},
 		filepath.Clean(filepath.Join(root, "promptmgmt", "api")) + string(os.PathSeparator):         {},
 		filepath.Clean(filepath.Join(root, "sds", "httpapi")) + string(os.PathSeparator):            {},
 		filepath.Clean(filepath.Join(root, "sdslogin")) + string(os.PathSeparator):                  {},
@@ -3810,7 +3905,6 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingadmin", "store_statistics_handler.go")):          {},
 		filepath.Clean(filepath.Join(root, "listingkit", "studio_session_handler.go")):              {},
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
-		filepath.Clean(filepath.Join(root, "productenrich", "handler.go")):                          {},
 	}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "storecenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "workbenchcontext", "httpapi"))+string(os.PathSeparator)] = struct{}{}
@@ -3829,52 +3923,6 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 			t.Errorf("%s imports gin directly; keep HTTP framework dependencies in api/httpapi or explicitly registered legacy HTTP adapter packages", path)
 		}
 	}
-}
-
-func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
-	root := filepath.Join("..", "internal", "productimage")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "failure_test.go")):                                {},
-		filepath.Clean(filepath.Join(root, "openai_scene_generator_route_test.go")):           {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_builder.go")):           {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_defaults_test.go")):     {},
-		filepath.Clean(filepath.Join(root, "httpapi", "ai_capability_scene_catalog.go")):      {},
-		filepath.Clean(filepath.Join(root, "httpapi", "ai_capability_scene_catalog_test.go")): {},
-		filepath.Clean(filepath.Join(root, "httpapi", "scene_governance_builder.go")):         {},
-		filepath.Clean(filepath.Join(root, "httpapi", "scene_governance_builder_test.go")):    {},
-		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")):                  {},
-		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):                   {},
-		filepath.Clean(filepath.Join(root, "pipeline_test.go")):                               {},
-	}
-
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for path, facts := range index.files {
-		if pathAllowed(path, allowedFiles) {
-			continue
-		}
-		for _, bannedImport := range []string{
-			`"task-processor/internal/integration/grsai"`,
-			`"task-processor/internal/integration/openai"`,
-		} {
-			if _, ok := facts.imports[bannedImport]; ok {
-				t.Errorf("%s imports %s; keep productimage concrete external clients limited to current provider adapter and runtime builder seams", path, bannedImport)
-			}
-		}
-	}
-}
-
-func TestProductImageBusinessPackagesDoNotImportGlobalConfig(t *testing.T) {
-	root := filepath.Join("..", "internal", "productimage")
-	allowedComposition := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "httpapi")) + string(os.PathSeparator): {},
-	}
-	assertNoProductionBannedImports(t, root, []string{
-		`"task-processor/internal/core/config"`,
-	}, allowedComposition)
 }
 
 func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
@@ -4671,7 +4719,7 @@ func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) 
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
 		"task-processor/internal/app/httpapi",
 		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
+		"task-processor/internal/product/catalog",
 		"task-processor/internal/listingkit",
 		"task-processor/internal/marketplace",
 		"task-processor/internal/productimage",
@@ -4794,7 +4842,7 @@ func commandEntrypointBannedPrefixes() []string {
 		"task-processor/internal/amazon",
 		"task-processor/internal/amazonlisting",
 		"task-processor/internal/asset",
-		"task-processor/internal/catalog",
+		"task-processor/internal/product/catalog",
 		"task-processor/internal/infra",
 		"task-processor/internal/listingkit",
 		"task-processor/internal/marketplace",
@@ -4863,7 +4911,8 @@ func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"listingkit_shein_support.go": {},
+		"listingkit_openai_runtime.go": {},
+		"listingkit_shein_support.go":  {},
 	}
 
 	entries, err := os.ReadDir(root)
@@ -5228,7 +5277,7 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/app/runtime"`: {},
 		`"task-processor/internal/asset/repository"`:       {},
 		`"task-processor/internal/core/config"`:            {},
-		`"task-processor/internal/integration/openai"`:   {},
+		`"task-processor/internal/integration/openai"`:     {},
 		`"task-processor/internal/listingadmin"`:           {},
 		`"task-processor/internal/listingkit"`:             {},
 		`"task-processor/internal/listingkit/httpapi"`:     {},
@@ -5252,6 +5301,8 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 func TestAppHTTPAPIListingKitRootImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "image_agent_asset_catalog.go")):  {},
+		filepath.Clean(filepath.Join(root, "listingkit_openai_runtime.go")):  {},
 		filepath.Clean(filepath.Join(root, "runtime_support_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
 	}

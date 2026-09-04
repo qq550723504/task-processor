@@ -3,12 +3,11 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productimage"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 )
 
-func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *WalmartPackage {
+func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product) *WalmartPackage {
 	if canonical == nil {
 		return &WalmartPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}
@@ -22,7 +21,7 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 		KeyFeatures:      append([]string(nil), canonical.SellingPoints...),
 		Attributes:       common.FlattenAttributes(canonical.Attributes),
 		Variants:         common.BuildVariants(canonical),
-		Images:           common.BuildImagesWithSelection(canonical, image),
+		Images:           common.BuildImages(canonical),
 		Metadata: map[string]string{
 			"target_platform": "walmart",
 			"country":         req.Country,
@@ -31,6 +30,6 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 			"product_type":    productType,
 		},
 	}
-	pkg.ReviewNotes = common.CollectReviewNotes(canonical, image, "沃尔玛适配器目前是占位草稿，后续需要补类目、属性和 feed 导出规则")
+	pkg.ReviewNotes = common.CollectReviewNotes(canonical, "沃尔玛适配器目前是占位草稿，后续需要补类目、属性和 feed 导出规则")
 	return pkg
 }

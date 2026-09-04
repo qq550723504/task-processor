@@ -18,6 +18,7 @@ type ChatCompletionChoice = ai.ChatCompletionChoice
 type Usage = ai.Usage
 type ChatCompletionResponse = ai.ChatCompletionResponse
 type ChatCompleter = ai.ChatCompleter
+type TextChatCompleter = ai.TextChatCompleter
 type ImageGenerateRequest = ai.ImageGenerateRequest
 type ImageEditRequest = ai.ImageEditRequest
 type ImageData = ai.ImageData
@@ -70,9 +71,4 @@ type PoolConfig struct {
 	MaxConcurrent int             `json:"max_concurrent"`
 }
 
-// ImageRouteSelection binds an image call to the credential configuration
-// selected by the capability router.
-type ImageRouteSelection struct {
-	CredentialReference  string
-	ConfigurationVersion string
-}
+type ImageRouteSelection = ai.ImageRouteSelection

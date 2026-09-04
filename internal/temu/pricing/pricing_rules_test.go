@@ -8,8 +8,8 @@ import (
 
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 )
 
 type cancelingFetcher struct {
@@ -17,7 +17,7 @@ type cancelingFetcher struct {
 	cancel context.CancelFunc
 }
 
-func (f *cancelingFetcher) FetchProduct(ctx context.Context, req *product.FetchRequest) (*model.Product, error) {
+func (f *cancelingFetcher) FetchProduct(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error) {
 	f.calls++
 	if f.calls == 1 && f.cancel != nil {
 		f.cancel()
@@ -25,15 +25,15 @@ func (f *cancelingFetcher) FetchProduct(ctx context.Context, req *product.FetchR
 	return nil, errors.New("fetch failed")
 }
 
-func (f *cancelingFetcher) FetchVariants(ctx context.Context, req *product.FetchRequest, variantASINs []string) ([]*model.Product, error) {
+func (f *cancelingFetcher) FetchVariants(ctx context.Context, req *sourceproduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
 	return nil, nil
 }
 
-func (f *cancelingFetcher) CacheProduct(req *product.FetchRequest, product *model.Product) error {
+func (f *cancelingFetcher) CacheProduct(req *sourceproduct.FetchRequest, product *model.Product) error {
 	return nil
 }
 
-func (f *cancelingFetcher) CacheVariants(req *product.FetchRequest, variants []*model.Product) error {
+func (f *cancelingFetcher) CacheVariants(req *sourceproduct.FetchRequest, variants []*model.Product) error {
 	return nil
 }
 

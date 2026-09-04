@@ -55,23 +55,10 @@ type SDSRetirementService interface {
 	RetrySDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunDetail, error)
 }
 
-type GenerationTaskService interface {
-	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
-	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
-	GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error)
-	GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error)
-	DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error)
-	RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error)
-	ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error)
-}
-
-type StudioMediaService interface {
+type UploadedImageService interface {
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
-	AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error)
-	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
-	GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
-	RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error)
+	DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error)
 }
 
 type StoreAdminService interface {
@@ -93,4 +80,5 @@ type InternalListingKitService interface {
 	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
 	ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error)
 	ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error)
+	PersistLayerFailure(ctx context.Context, taskID string, errorMessage string) error
 }

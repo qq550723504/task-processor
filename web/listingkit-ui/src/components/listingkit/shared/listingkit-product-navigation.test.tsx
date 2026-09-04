@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListingKitAppShell } from "@/components/listingkit/shared/listingkit-app-shell";
 
 const navigation = vi.hoisted(() => ({
-  pathname: "/listing-kits/sds",
+  pathname: "/listing-kits/canonical-products",
 }));
 
 vi.mock("next/navigation", () => ({
@@ -16,7 +16,7 @@ vi.mock("next/navigation", () => ({
 
 describe("ListingKit product-oriented navigation", () => {
   beforeEach(() => {
-    navigation.pathname = "/listing-kits/sds";
+    navigation.pathname = "/listing-kits/canonical-products";
   });
 
   afterEach(() => {
@@ -57,18 +57,12 @@ describe("ListingKit product-oriented navigation", () => {
       "href",
       "/listing-kits/new",
     );
-    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
-      "href",
-      "/listing-kits/sds",
-    );
-    expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute(
+    expect(screen.queryByRole("link", { name: "POD" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "商品中心" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(screen.getByRole("link", { name: "款式图库" })).toHaveAttribute(
-      "href",
-      "/listing-kits/style-gallery",
-    );
+    expect(screen.queryByRole("link", { name: "款式图库" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "执行记录" })).toHaveAttribute(
       "href",
       "/listing-kits",
@@ -149,8 +143,8 @@ describe("ListingKit product-oriented navigation", () => {
       "/listing-kits/canonical-products",
     );
     expect(screen.getByRole("link", { name: "导入商品" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "POD" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "款式图库" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "POD" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "款式图库" })).not.toBeInTheDocument();
   });
 
   it("preserves tenant context while navigation language changes", async () => {

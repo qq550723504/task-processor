@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	listingkitstore "task-processor/internal/listingkit/store"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinimage "task-processor/internal/shein/api/image"
@@ -29,8 +29,8 @@ func TestPublishWorkflowWithConcreteActivitiesPersistsStateAndBuildsPreview(t *t
 	publishCalls := 0
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Core: listingkit.ServiceCoreDependencies{
-			Repository:     repo,
-			ProductService: temporalStubSubmitProductService{},
+			Repository:            repo,
+			ProductSnapshotReader: temporalStubProductSnapshotReader{},
 		},
 		Shein: listingkit.ServiceSheinDependencies{
 			SheinStoreCatalog:    temporalAllowingSheinStoreCatalog{},
@@ -129,18 +129,10 @@ func temporalHasSubmissionEventPhase(events []sheinpub.SubmissionEvent, phase st
 	return false
 }
 
-type temporalStubSubmitProductService struct{}
+type temporalStubProductSnapshotReader struct{}
 
-func (temporalStubSubmitProductService) CreateGenerateTask(context.Context, *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (temporalStubSubmitProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (temporalStubSubmitProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
-	return nil, errors.New("not implemented")
+func (temporalStubProductSnapshotReader) GetProductSnapshot(context.Context, listingkit.ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return catalog.ProductSnapshot{Title: "Test product"}, nil
 }
 
 type temporalStubSheinProductAPIBuilder struct {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -197,7 +197,7 @@ func TestAssemblerBuildCreatesDefaultSKCWhenCanonicalVariantsMissing(t *testing.
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", TargetCategoryHint: "4004"}, canonical, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", TargetCategoryHint: "4004"}, canonical)
 	if pkg == nil || pkg.RequestDraft == nil {
 		t.Fatalf("expected package with request draft")
 	}
@@ -240,7 +240,7 @@ func TestAssemblerBuildMarks1688LLMOnlyFactsForReview(t *testing.T) {
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical)
 
 	if pkg == nil || pkg.Metadata == nil {
 		t.Fatal("expected package metadata")
@@ -280,7 +280,7 @@ func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical)
 
 	if len(pkg.RequestDraft.SKCList) != 1 || len(pkg.RequestDraft.SKCList[0].SKUList) != 1 {
 		t.Fatalf("request draft skus = %+v", pkg.RequestDraft.SKCList)
@@ -425,7 +425,7 @@ func TestAssemblerBuildCreatesGroupedSKCsWhenSaleAttributeResolverMapsSourceDime
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", TargetCategoryHint: "4004"}, canonical, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", TargetCategoryHint: "4004"}, canonical)
 	if pkg == nil || pkg.RequestDraft == nil {
 		t.Fatalf("expected package with request draft")
 	}
@@ -472,7 +472,7 @@ func TestAssemblerBuildDoesNotPropagatePromptTextIntoSKCNames(t *testing.T) {
 		Images: []canonical.Image{{URL: "main.jpg"}},
 	}
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical)
 	if pkg.ProductNameEn != "Flannel non-slip floor mat" {
 		t.Fatalf("product title = %q, want sanitized title", pkg.ProductNameEn)
 	}
@@ -572,7 +572,7 @@ func TestAssemblerBuildDoesNotTriggerRuleBasedCategoryReview(t *testing.T) {
 		},
 	}
 
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, canonical, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, canonical)
 	if pkg.SaleAttributeResolution == nil {
 		t.Fatal("expected sale attribute resolution")
 	}
@@ -609,7 +609,7 @@ func TestAssemblerBuildDoesNotRequestAlternativeCategoryOnSaleReview(t *testing.
 
 	product := testCanonicalProduct()
 	product.Images = []canonical.Image{{URL: "main.jpg"}}
-	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, product, nil)
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, product)
 	if pkg.CategoryResolution == nil {
 		t.Fatal("expected category resolution")
 	}
@@ -710,7 +710,7 @@ func TestAssemblerBuildReusesPublishedResolutionCacheOnSecondBuild(t *testing.T)
 		SaleAttributeResolver: firstSale,
 	})
 
-	first := firstAssembler.Build(req, product, nil)
+	first := firstAssembler.Build(req, product)
 	if categoryInner.calls != 1 || attributeInner.calls != 1 || saleInner.calls != 1 {
 		t.Fatalf("first build resolver calls = category:%d attribute:%d sale:%d, want 1/1/1", categoryInner.calls, attributeInner.calls, saleInner.calls)
 	}
@@ -725,7 +725,7 @@ func TestAssemblerBuildReusesPublishedResolutionCacheOnSecondBuild(t *testing.T)
 		CategoryResolver:      NewCachedCategoryResolver(secondCategoryInner, store),
 		AttributeResolver:     NewCachedAttributeResolver(secondAttributeInner, store),
 		SaleAttributeResolver: NewCachedSaleAttributeResolver(secondSaleInner, store),
-	}).Build(req, product, nil)
+	}).Build(req, product)
 
 	if secondCategoryInner.calls != 0 || secondAttributeInner.calls != 0 || secondSaleInner.calls != 0 {
 		t.Fatalf("second build resolver calls = category:%d attribute:%d sale:%d, want 0/0/0", secondCategoryInner.calls, secondAttributeInner.calls, secondSaleInner.calls)

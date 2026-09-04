@@ -151,7 +151,7 @@ describe("useWorkspaceNavigationActions", () => {
     );
   });
 
-  it("routes an overview review action to its returned focused target", () => {
+  it("does not call a retired action endpoint for an unscoped review action", () => {
     mocks.actionMutate.mockImplementation((_request, options) => {
       options?.onSuccess?.({
         review_session: {
@@ -176,12 +176,11 @@ describe("useWorkspaceNavigationActions", () => {
       result.current.handleAction({ action_key: "review_detail_previews" });
     });
 
-    expect(mocks.replace).toHaveBeenCalledWith(
-      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview&section_key=detail_preview-main",
-    );
+    expect(mocks.actionMutate).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
-  it("routes a protected action destination from its resolved navigation target", () => {
+  it("does not call a retired action endpoint for an unscoped protected action", () => {
     mocks.actionMutate.mockImplementation((_request, options) => {
       options?.onSuccess?.({
         resolved_target: {
@@ -205,9 +204,8 @@ describe("useWorkspaceNavigationActions", () => {
       result.current.handleAction({ action_key: "review_detail_previews" });
     });
 
-    expect(mocks.replace).toHaveBeenCalledWith(
-      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview",
-    );
+    expect(mocks.actionMutate).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
   it("routes a product recovery dispatch to its returned review target", () => {
@@ -247,7 +245,7 @@ describe("useWorkspaceNavigationActions", () => {
     });
 
     expect(mocks.replace).toHaveBeenCalledWith(
-      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview&section_key=detail_preview-main",
+      "/listing-kits/task-1/workspace?platform=shein&slot=main&preview_capability=detail_preview",
     );
   });
 
@@ -383,7 +381,7 @@ describe("useWorkspaceNavigationActions", () => {
     });
 
     expect(mocks.replace).toHaveBeenCalledWith(
-      "/listing-kits/task-1/workspace?platform=shein&section_key=detail_preview-gallery&slot=gallery&preview_capability=detail_preview",
+      "/listing-kits/task-1/workspace?platform=shein&slot=gallery&preview_capability=detail_preview",
     );
   });
 
@@ -422,7 +420,7 @@ describe("useWorkspaceNavigationActions", () => {
     });
 
     expect(mocks.replace).toHaveBeenCalledWith(
-      "/listing-kits/task-1/workspace?platform=shein&section_key=detail_preview-gallery&slot=gallery&preview_capability=detail_preview",
+      "/listing-kits/task-1/workspace?platform=shein&slot=gallery&preview_capability=detail_preview",
     );
   });
 });

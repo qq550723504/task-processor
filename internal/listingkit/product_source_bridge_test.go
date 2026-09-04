@@ -4,11 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
-func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {
+func TestGenerateRequestFromSourceFactsMapsProductIdentityWithoutAssets(t *testing.T) {
 	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
 		TenantID: " tenant-1 ",
 		UserID:   " user-1 ",
@@ -21,117 +20,47 @@ func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {
 			Title:          "Test Shirt",
 			Brand:          "Test Brand",
 			Description:    "Soft shirt",
-			Attributes: map[string]string{
-				"category": "Clothing>Shirts",
-				"asin":     "B001",
-			},
-			Variants: []catalog.VariantFacts{{SourceID: "B001-BLUE-M"}},
+			Attributes:     map[string]string{"asin": "B001"},
+			Variants:       []catalog.VariantFacts{{SourceID: "B001-BLUE-M"}},
 		},
-		Assets: asset.Facts{Items: []asset.ItemFacts{
-			{URL: " https://img.example/primary.jpg ", Role: "primary"},
-			{URL: "https://img.example/primary.jpg", Role: "gallery"},
-			{URL: "https://img.example/side.jpg", Role: "gallery"},
-		}},
 		Platforms:          []string{" SHEIN ", "shein", "amazon"},
-		Country:            " US ",
-		Language:           " en_US ",
-		SheinStoreID:       873,
-		TargetCategoryHint: " ",
+		TargetCategoryHint: " Clothing > Shirts ",
 	})
 
+	if req.ProductKey != "crawler:amazon:B001" {
+		t.Fatalf("ProductKey = %q", req.ProductKey)
+	}
 	if req.TenantID != "tenant-1" || req.UserID != "user-1" {
-		t.Fatalf("tenant/user = %q/%q, want trimmed values", req.TenantID, req.UserID)
+		t.Fatalf("tenant/user = %q/%q", req.TenantID, req.UserID)
 	}
-	if req.ProductURL != "https://www.amazon.com/dp/B001" {
-		t.Fatalf("ProductURL = %q, want source URL", req.ProductURL)
+	if req.Source == nil || req.Source.URL != "https://www.amazon.com/dp/B001" {
+		t.Fatalf("Source = %+v", req.Source)
 	}
-	if req.Source == nil {
-		t.Fatal("Source = nil, want normalized source reference")
-	}
-	if req.Source.Key != "crawler:amazon:B001" ||
-		req.Source.Type != "crawler" ||
-		req.Source.Platform != "amazon" ||
-		req.Source.ID != "B001" ||
-		req.Source.URL != "https://www.amazon.com/dp/B001" {
-		t.Fatalf("Source = %+v, want normalized source identity", req.Source)
-	}
-	if len(req.ImageURLs) != 2 || req.ImageURLs[0] != "https://img.example/primary.jpg" || req.ImageURLs[1] != "https://img.example/side.jpg" {
-		t.Fatalf("ImageURLs = %#v, want deduped source asset URLs", req.ImageURLs)
+	if req.TargetCategoryHint != "Clothing > Shirts" {
+		t.Fatalf("TargetCategoryHint = %q", req.TargetCategoryHint)
 	}
 	if len(req.Platforms) != 2 || req.Platforms[0] != "shein" || req.Platforms[1] != "amazon" {
-		t.Fatalf("Platforms = %#v, want normalized deduped order", req.Platforms)
+		t.Fatalf("Platforms = %#v", req.Platforms)
 	}
-	if req.BrandHint != "Test Brand" {
-		t.Fatalf("BrandHint = %q, want product brand", req.BrandHint)
-	}
-	if req.TargetCategoryHint != "Clothing>Shirts" {
-		t.Fatalf("TargetCategoryHint = %q, want category attribute fallback", req.TargetCategoryHint)
-	}
-	if req.SheinStoreID != 873 {
-		t.Fatalf("SheinStoreID = %d, want 873", req.SheinStoreID)
-	}
-	for _, want := range []string{"Title: Test Shirt", "Brand: Test Brand", "Description: Soft shirt", "Attribute asin: B001", "Attribute category: Clothing>Shirts", "Variant count: 1"} {
+	for _, want := range []string{"Title: Test Shirt", "Brand: Test Brand", "Attribute asin: B001", "Variant count: 1"} {
 		if !strings.Contains(req.Text, want) {
 			t.Fatalf("Text = %q, missing %q", req.Text, want)
 		}
 	}
 }
 
-func TestGenerateRequestFromSourceFactsKeepsExplicitCategoryHint(t *testing.T) {
+func TestGenerateRequestFromSourceFactsDoesNotGuessCategoryFromAttributes(t *testing.T) {
 	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
-		Product:            catalog.ProductFacts{Attributes: map[string]string{"category": "Source Category"}},
-		TargetCategoryHint: " Explicit Category ",
+		Product: catalog.ProductFacts{SourceKey: "product-1", Attributes: map[string]string{"category": "legacy-category"}},
 	})
-
-	if req.TargetCategoryHint != "Explicit Category" {
-		t.Fatalf("TargetCategoryHint = %q, want explicit category", req.TargetCategoryHint)
+	if req.TargetCategoryHint != "" {
+		t.Fatalf("TargetCategoryHint = %q, want explicit input only", req.TargetCategoryHint)
 	}
 }
 
-func TestGenerateRequestFromSourceFactsDoesNotRequireAssetsOrPlatforms(t *testing.T) {
-	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
-		Product: catalog.ProductFacts{Title: "Only Title"},
-	})
-
-	if req.Text != "Title: Only Title" {
-		t.Fatalf("Text = %q, want title-only prompt", req.Text)
-	}
-	if req.ImageURLs != nil {
-		t.Fatalf("ImageURLs = %#v, want nil", req.ImageURLs)
-	}
-	if req.Platforms != nil {
-		t.Fatalf("Platforms = %#v, want nil", req.Platforms)
-	}
-}
-
-func TestGenerateRequestFromSourceFactsKeepsEmptySourceReference(t *testing.T) {
-	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
-		Product: catalog.ProductFacts{Title: "Only Title"},
-	})
-
-	if req.Source != nil {
-		t.Fatalf("Source = %+v, want nil for facts without source identity", req.Source)
-	}
-	if req.Text != "Title: Only Title" {
-		t.Fatalf("Text = %q, want title-only prompt", req.Text)
-	}
-}
-
-func TestGenerateRequestFromSourceFactsPreservesAllImageURLs(t *testing.T) {
-	assets := make([]asset.ItemFacts, 0, 12)
-	for i := 0; i < 12; i++ {
-		assets = append(assets, asset.ItemFacts{URL: "https://img.example/" + string(rune('a'+i)) + ".jpg"})
-	}
-
-	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
-		Product: catalog.ProductFacts{Title: "Source product"},
-		Assets:  asset.Facts{Items: assets},
-	})
-
-	if len(req.ImageURLs) != 12 {
-		t.Fatalf("ImageURLs length = %d, want all source assets", len(req.ImageURLs))
-	}
-	if req.ImageURLs[0] != "https://img.example/a.jpg" || req.ImageURLs[11] != "https://img.example/l.jpg" {
-		t.Fatalf("ImageURLs = %#v, want all source assets in order", req.ImageURLs)
+func TestGenerateRequestFromSourceFactsAllowsProductWithoutSourceReference(t *testing.T) {
+	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{Product: catalog.ProductFacts{Title: "Only Title"}})
+	if req.Source != nil || req.Text != "Title: Only Title" {
+		t.Fatalf("request = %+v", req)
 	}
 }

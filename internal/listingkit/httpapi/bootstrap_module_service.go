@@ -14,21 +14,17 @@ import (
 
 func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {
 	configureModuleServicePolicies(input)
-	return configureModuleServiceAuthorization(input, closers)
+	return configureModuleServiceTenantResolution(input, closers)
 }
 
 func configureModuleServicePolicies(input BuildServiceInput) {
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
 	listingkit.EnableOwnerScope()
 	listingadmin.EnableOwnerScope()
-	input.Hooks.ConfigureZitadelAuth(input.Config.ListingKit.Zitadel)
 }
 
-func configureModuleServiceAuthorization(input BuildServiceInput, closers *closerStack) error {
+func configureModuleServiceTenantResolution(input BuildServiceInput, closers *closerStack) error {
 	hooks := input.Hooks
-	if err := hooks.ConfigureAuthorization(input.Config.ListingKit.PlatformAdminUsers, input.Config.ListingKit.PlatformAdminRoles); err != nil {
-		return fmt.Errorf("configure listing kit authorization: %w", err)
-	}
 	legacyTenantResolverCloser, err := hooks.LegacyTenantResolverConfigurator(input.Config, input.Logger)
 	if err != nil {
 		return fmt.Errorf("configure listing kit legacy tenant resolver: %w", err)
@@ -108,7 +104,6 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 	return &ServiceBundle{
 		TemporalWorkerService:           workerService,
 		TaskRepository:                  repositories.taskRepository,
-		StudioAsyncJobRepository:        repositories.studioAsyncJobRepository,
 		StoreRepository:                 repositories.storeRepository,
 		StoreStatisticsRepository:       repositories.storeStatisticsRepository,
 		DispatchEventRepository:         repositories.dispatchEventRepository,
@@ -142,7 +137,6 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOption {
 	options := []listingkitapi.HandlerOption{
 		listingkitapi.WithTaskLifecycleService(runtime.service),
-		listingkitapi.WithGenerationTaskService(runtime.service),
 		listingkitapi.WithChildTaskRetryService(runtime.service),
 		listingkitapi.WithSDSBaselineWarmService(runtime.service),
 		listingkitapi.WithSDSRetirementService(
@@ -154,8 +148,7 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 		),
 		listingkitapi.WithStoreAdminService(runtime.service),
 		listingkitapi.WithSettingsHandlerService(runtime.service),
-		listingkitapi.WithStudioMediaService(runtime.service),
-		listingkitapi.WithStudioBatchRunService(runtime.service),
+		listingkitapi.WithUploadedImageService(runtime.service),
 		listingkitapi.WithDependencies(runtime.handlerDependencies),
 		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),

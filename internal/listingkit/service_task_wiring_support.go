@@ -1,16 +1,5 @@
 package listingkit
 
-import (
-	"context"
-
-	assetgeneration "task-processor/internal/asset/generation"
-)
-
-type taskPreviewExportReadWiring struct {
-	repo                     Repository
-	listAssetGenerationTasks func(context.Context, string) ([]assetgeneration.Task, error)
-}
-
 type taskRepositoryWiring struct {
 	repo Repository
 }
@@ -19,16 +8,6 @@ func buildTaskRepositoryWiring(s *service) taskRepositoryWiring {
 	wiring := buildServiceRepositoryWiring(s)
 	return taskRepositoryWiring{
 		repo: wiring.repo,
-	}
-}
-
-func buildTaskPreviewExportReadWiring(s *service) taskPreviewExportReadWiring {
-	repository := buildTaskRepositoryWiring(s)
-	return taskPreviewExportReadWiring{
-		repo: repository.repo,
-		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
-			return s.listAssetGenerationTasks(ctx, taskID)
-		},
 	}
 }
 

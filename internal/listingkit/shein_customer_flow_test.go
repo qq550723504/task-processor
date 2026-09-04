@@ -177,12 +177,9 @@ func TestApplySheinVariantImageCoverageGuardMarksBlockedWithoutClearingImages(t 
 	t.Parallel()
 
 	mainImage := "https://cdn.example.com/shared-main.jpg"
-	task := &Task{
-		Request: &GenerateRequest{
-			Options: &GenerateOptions{
-				SheinStudio: &SheinStudioOptions{},
-			},
-		},
+	task := &Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{}},
+	},
 		Result: &ListingKitResult{
 			SDSSync: &SDSSyncSummary{
 				Status: "failed",
@@ -252,10 +249,8 @@ func TestApplySheinVariantImageCoverageGuardMarksProvidedResultNeedsReview(t *te
 	t.Parallel()
 
 	mainImage := "https://cdn.example.com/shared-main.jpg"
-	req := &GenerateRequest{
-		Options: &GenerateOptions{
-			SheinStudio: &SheinStudioOptions{},
-		},
+	req := &GenerateRequest{ProductKey: "test-product",
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{}},
 	}
 	result := &ListingKitResult{
 		SDSSync: &SDSSyncSummary{

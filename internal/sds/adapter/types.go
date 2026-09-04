@@ -1,19 +1,18 @@
 package adapter
 
 import (
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/sds/workflow"
 )
 
-// SyncFromImageRequestInput 表示“创建图片任务并同步 SDS”的输入。
-type SyncFromImageRequestInput struct {
-	SyncInput    workflow.SyncInput
-	ImageRequest *productimage.ImageProcessRequest
+// SyncFromApprovedAssetsInput 表示从产品批准资产同步 SDS 的输入。
+type SyncFromApprovedAssetsInput struct {
+	SyncInput workflow.SyncInput
+	Scope     productasset.InventoryScope
 }
 
 // SyncResult 表示适配层返回的完整上下文。
 type SyncResult struct {
-	ImageTask   *productimage.Task
-	ImageResult *productimage.ImageProcessResult
-	DesignSync  *workflow.SyncResult
+	ApprovedAssets productasset.ApprovedAssetInventory
+	DesignSync     *workflow.SyncResult
 }

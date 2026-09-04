@@ -19,22 +19,18 @@ import (
 	imageagenttemporal "task-processor/internal/imageagent/temporal"
 	openaiclient "task-processor/internal/integration/openai"
 	s3integration "task-processor/internal/integration/s3"
-	"task-processor/internal/pkg/runtimepath"
-	"task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPublisherAndCloser(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	closed := 0
-	var capabilityInput productimagehttpapi.RuntimeBuildInput
+	var capabilityInput imageCapabilityRuntime
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(path string) (*config.Config, error) {
 			require.Equal(t, "config/worker.yaml", path)
 			cfg := &config.Config{Database: &config.DatabaseConfig{}}
-			cfg.ProductImage.WorkDir = "worker-images"
-			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
+			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 			return cfg, nil
 		},
 		OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
@@ -42,12 +38,9 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(input productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
+		BuildCapabilities: func(input imageCapabilityRuntime) (ImageCapabilities, error) {
 			capabilityInput = input
-			return productimagehttpapi.ImageAgentCapabilities{
-				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
-				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
-			}, nil
+			return completeWorkerImageCapabilities(), nil
 		},
 		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			return stubWorkerArtifactStore{}, nil
@@ -61,16 +54,16 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	require.NotNil(t, dependencies.StagedSlotExecutor)
 	require.NotNil(t, dependencies.ArtifactStore)
 	require.NotNil(t, dependencies.Publisher)
-	require.Equal(t, "worker-images", capabilityInput.ImageWorkDir)
+	require.Nil(t, capabilityInput.OpenAIManager)
 	require.NoError(t, closeFn())
 	require.Equal(t, 1, closed)
 }
 
-func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableComposition(t *testing.T) {
+func TestResolveImageAgentTemporalDependenciesForV2BuildsCompatibilityArtifactStore(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("invalid-v3-mode", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("invalid-v3-mode", false)
 	storeBuilds := 0
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -79,11 +72,8 @@ func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableCo
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
-			return productimagehttpapi.ImageAgentCapabilities{
-				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
-				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
-			}, nil
+		BuildCapabilities: func(imageCapabilityRuntime) (ImageCapabilities, error) {
+			return completeWorkerImageCapabilities(), nil
 		},
 		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
@@ -102,16 +92,15 @@ func TestResolveImageAgentTemporalDependenciesForV2SkipsV3ValidationAndDurableCo
 	require.Nil(t, dependencies.ArtifactStore)
 	require.Nil(t, dependencies.PublisherV3)
 	require.Zero(t, dependencies.PublicationLeaseDuration)
-	require.Zero(t, storeBuilds)
+	require.Equal(t, 1, storeBuilds)
 }
 
-func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *testing.T) {
+func TestResolveImageAgentTemporalDependenciesForV2UsesCompatibilityArtifactStoreEvenWhenV3TimingIsDefaulted(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-no-v3-fields?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("", false)
 	storeBuilds := 0
-	var capabilityInput productimagehttpapi.RuntimeBuildInput
 	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV2, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
 		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
@@ -119,12 +108,8 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 		BuildAI: func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return nil, nil, nil, nil
 		},
-		BuildCapabilities: func(input productimagehttpapi.RuntimeBuildInput) (productimagehttpapi.ImageAgentCapabilities, error) {
-			capabilityInput = input
-			return productimagehttpapi.ImageAgentCapabilities{
-				SubjectExtractor: runtimeSubjectExtractor{}, WhiteBackgroundRenderer: runtimeWhiteBackgroundRenderer{},
-				SceneRenderer: runtimeSceneRenderer{}, AssetPublisher: runtimeAssetPublisher{},
-			}, nil
+		BuildCapabilities: func(imageCapabilityRuntime) (ImageCapabilities, error) {
+			return completeWorkerImageCapabilities(), nil
 		},
 		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
 			storeBuilds++
@@ -141,13 +126,12 @@ func TestResolveImageAgentTemporalDependenciesForV2AllowsAbsentV3OnlyFields(t *t
 	require.Nil(t, dependencies.ArtifactStore)
 	require.Nil(t, dependencies.PublisherV3)
 	require.Zero(t, dependencies.PublicationLeaseDuration)
-	require.Zero(t, storeBuilds)
-	require.Equal(t, runtimepath.NamespacedTempPath("productimage"), capabilityInput.ImageWorkDir)
+	require.Equal(t, 1, storeBuilds)
 }
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidPolicy(t *testing.T) {
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("cos", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("cos", false)
 	databaseOpens, storeBuilds := 0, 0
 	_, _, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV3, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -167,7 +151,7 @@ func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseOnInvalidP
 
 func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseWhenArtifactModeIsAbsent(t *testing.T) {
 	cfg := &config.Config{Database: &config.DatabaseConfig{}}
-	cfg.ProductImage.Publisher = durablePublisherConfig("", false)
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("", false)
 	databaseOpens, storeBuilds := 0, 0
 	_, _, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV3, imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -186,28 +170,28 @@ func TestResolveImageAgentTemporalDependenciesForV3FailsBeforeDatabaseWhenArtifa
 }
 
 func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
-	validAWS := durablePublisherConfig("aws", true)
-	validCOS := durablePublisherConfig("cos", true)
+	validAWS := durableArtifactStoreConfig("aws", true)
+	validCOS := durableArtifactStoreConfig("cos", true)
 	tests := []struct {
 		name    string
-		mutate  func(*config.ProductImagePublisherConfig)
+		mutate  func(*config.ImageAgentArtifactStoreConfig)
 		want    s3integration.ArtifactStorageCapabilities
 		wantErr string
 	}{
 		{name: "aws", want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}},
-		{name: "cos", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS }, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
-		{name: "disabled", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.Enabled = false }, wantErr: "disabled"},
-		{name: "wrong provider", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.Provider = "local" }, wantErr: "provider must be s3"},
-		{name: "missing bucket", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},
-		{name: "missing region", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.Region = "" }, wantErr: "region"},
-		{name: "missing public URL", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.PublicBase = "" }, wantErr: "public base"},
-		{name: "missing credentials", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.AccessKeyID = ""; cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
-		{name: "missing access key", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.AccessKeyID = "" }, wantErr: "access key ID and secret access key"},
-		{name: "missing secret key", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
-		{name: "empty mode", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.ArtifactMode = "" }, wantErr: "artifact mode"},
-		{name: "unknown mode", mutate: func(cfg *config.ProductImagePublisherConfig) { cfg.S3.ArtifactMode = "minio" }, wantErr: "artifact mode"},
-		{name: "COS missing endpoint", mutate: func(cfg *config.ProductImagePublisherConfig) { *cfg = validCOS; cfg.S3.Endpoint = "" }, wantErr: "COS endpoint"},
-		{name: "COS policy unconfirmed", mutate: func(cfg *config.ProductImagePublisherConfig) {
+		{name: "cos", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { *cfg = validCOS }, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
+		{name: "disabled", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.Enabled = false }, wantErr: "disabled"},
+		{name: "wrong provider", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.Provider = "local" }, wantErr: "provider must be s3"},
+		{name: "missing bucket", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},
+		{name: "missing region", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.Region = "" }, wantErr: "region"},
+		{name: "missing public URL", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.PublicBase = "" }, wantErr: "public base"},
+		{name: "missing credentials", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.AccessKeyID = ""; cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
+		{name: "missing access key", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.AccessKeyID = "" }, wantErr: "access key ID and secret access key"},
+		{name: "missing secret key", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.SecretAccessKey = "" }, wantErr: "access key ID and secret access key"},
+		{name: "empty mode", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.ArtifactMode = "" }, wantErr: "artifact mode"},
+		{name: "unknown mode", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.ArtifactMode = "minio" }, wantErr: "artifact mode"},
+		{name: "COS missing endpoint", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { *cfg = validCOS; cfg.S3.Endpoint = "" }, wantErr: "COS endpoint"},
+		{name: "COS policy unconfirmed", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) {
 			*cfg = validCOS
 			cfg.S3.COSImmutableNonVersionedBucketPolicy = false
 		}, wantErr: "immutable non-versioned"},
@@ -241,9 +225,9 @@ func TestResolveImageAgentTemporalDependenciesRejectsCredentialsBeforeDatabaseOp
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{Database: &config.DatabaseConfig{}}
-			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
-			cfg.ProductImage.Publisher.S3.AccessKeyID = tc.access
-			cfg.ProductImage.Publisher.S3.SecretAccessKey = tc.secret
+			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
+			cfg.ImageAgent.ArtifactStore.S3.AccessKeyID = tc.access
+			cfg.ImageAgent.ArtifactStore.S3.SecretAccessKey = tc.secret
 			dbOpens, storeBuilds := 0, 0
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
@@ -278,7 +262,7 @@ func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePubl
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{Database: &config.DatabaseConfig{}}
-			cfg.ProductImage.Publisher = durablePublisherConfig("aws", true)
+			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 			storeBuilds, databaseOpens := 0, 0
 			_, _, err := resolveImageAgentTemporalDependencies("config/worker.yaml", nil, imageAgentWorkerDependencyResolver{
 				ArtifactTiming: tc.timing,
@@ -301,16 +285,16 @@ func TestResolveImageAgentTemporalDependenciesRejectsOperationTimeoutOutsidePubl
 }
 
 func TestBuildImageAgentDurableArtifactStoreUsesConfiguredS3ClientPath(t *testing.T) {
-	cfg := &config.Config{ProductImage: config.ProductImageConfig{Publisher: durablePublisherConfig("aws", true)}}
+	cfg := &config.Config{ImageAgent: config.ImageAgentConfig{ArtifactStore: durableArtifactStoreConfig("aws", true)}}
 	artifactStore, err := buildImageAgentDurableArtifactStore(cfg, defaultImageAgentArtifactTiming, logrus.New())
 	require.NoError(t, err)
 	require.NotNil(t, artifactStore)
 }
 
-func durablePublisherConfig(mode string, cosPolicy bool) config.ProductImagePublisherConfig {
-	return config.ProductImagePublisherConfig{
+func durableArtifactStoreConfig(mode string, cosPolicy bool) config.ImageAgentArtifactStoreConfig {
+	return config.ImageAgentArtifactStoreConfig{
 		Enabled: true, Provider: "s3", PublicBase: "https://cdn.example.test/images",
-		S3: config.ProductImagePublisherS3Config{Bucket: "image-assets", Region: "ap-southeast-1", Endpoint: "https://s3.example.test", AccessKeyID: "test-access", SecretAccessKey: "test-secret", ArtifactMode: mode, COSImmutableNonVersionedBucketPolicy: cosPolicy},
+		S3: config.ImageAgentArtifactStoreS3Config{Bucket: "image-assets", Region: "ap-southeast-1", Endpoint: "https://s3.example.test", AccessKeyID: "test-access", SecretAccessKey: "test-secret", ArtifactMode: mode, COSImmutableNonVersionedBucketPolicy: cosPolicy},
 	}
 }
 
@@ -339,26 +323,10 @@ func (stubWorkerArtifactStore) FinalizeWithProgress(context.Context, imageagent.
 
 var _ imageagenttemporal.DurableArtifactStore = stubWorkerArtifactStore{}
 
-type runtimeSubjectExtractor struct{}
-
-func (runtimeSubjectExtractor) Extract(context.Context, string, *productimage.ProductContext) (*productimage.ImageAsset, error) {
-	return &productimage.ImageAsset{}, nil
-}
-
-type runtimeWhiteBackgroundRenderer struct{}
-
-func (runtimeWhiteBackgroundRenderer) Render(context.Context, *productimage.ImageAsset, *productimage.ProductContext) (*productimage.ImageAsset, error) {
-	return &productimage.ImageAsset{}, nil
-}
-
-type runtimeSceneRenderer struct{}
-
-func (runtimeSceneRenderer) Render(context.Context, *productimage.ImageAsset, *productimage.ProductContext) ([]productimage.ImageAsset, error) {
-	return nil, nil
-}
-
-type runtimeAssetPublisher struct{}
-
-func (runtimeAssetPublisher) Publish(context.Context, *productimage.ImageProcessRequest, *productimage.ImageProcessResult) error {
-	return nil
+func completeWorkerImageCapabilities() ImageCapabilities {
+	capabilities, err := buildImageCapabilities(completeProviderDependencies(), &stubProfileResolver{})
+	if err != nil {
+		panic(err)
+	}
+	return capabilities
 }

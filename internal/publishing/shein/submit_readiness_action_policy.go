@@ -2,7 +2,7 @@ package shein
 
 import (
 	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
-	sdspod "task-processor/internal/product/sourcing/sdspod"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 // PODSubmitReadiness is the action-aware SHEIN POD submit-readiness result.

@@ -31,6 +31,34 @@ func TestAmazonTaskRepositoryTenantScopeContract(t *testing.T) {
 	}
 }
 
+func TestAmazonTaskRepositoryMarkFailedTransitionsToTerminalState(t *testing.T) {
+	factories := []struct {
+		name string
+		new  func(*testing.T) amazonlisting.Repository
+	}{
+		{name: "gorm", new: newAmazonGORMRepository},
+		{name: "memory", new: func(*testing.T) amazonlisting.Repository { return NewMemTaskRepository() }},
+	}
+
+	for _, factory := range factories {
+		t.Run(factory.name, func(t *testing.T) {
+			repo := factory.new(t)
+			task := &amazonlisting.Task{
+				ID:                         "failed-task",
+				Status:                     amazonlisting.TaskStatusProcessing,
+				PersistedExecutionEnvelope: amazonExecutionEnvelope("tenant-a"),
+			}
+			require.NoError(t, repo.CreateTask(context.Background(), task))
+
+			require.NoError(t, repo.MarkFailed(context.Background(), task.ID, "snapshot unavailable"))
+			stored, err := repo.GetTask(context.Background(), task.ID)
+			require.NoError(t, err)
+			require.Equal(t, amazonlisting.TaskStatusFailed, stored.Status)
+			require.Equal(t, "snapshot unavailable", stored.Error)
+		})
+	}
+}
+
 func runAmazonTenantScopeContract(t *testing.T, newRepository func(*testing.T) amazonlisting.Repository) {
 	t.Helper()
 	unscoped := context.Background()

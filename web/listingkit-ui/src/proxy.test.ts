@@ -63,11 +63,11 @@ describe("ListingKit ZITADEL proxy", () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
 
-    const response = await callProxy("/listing-kits/sds?step=generate");
+    const response = await callProxy("/listing-kits/canonical-products?source=import");
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/login?returnTo=%2Flisting-kits%2Fsds%3Fstep%3Dgenerate",
+      "http://localhost/login?returnTo=%2Flisting-kits%2Fcanonical-products%3Fsource%3Dimport",
     );
   });
 
@@ -86,7 +86,7 @@ describe("ListingKit ZITADEL proxy", () => {
       },
     };
 
-    const response = await callProxy("/listing-kits/style-gallery");
+    const response = await callProxy("/listing-kits/canonical-products");
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
@@ -107,11 +107,11 @@ describe("ListingKit ZITADEL proxy", () => {
       },
     };
 
-    const response = await callProxy("/listing-kits/style-gallery");
+    const response = await callProxy("/listing-kits/canonical-products");
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/login?returnTo=%2Flisting-kits%2Fstyle-gallery",
+      "http://localhost/login?returnTo=%2Flisting-kits%2Fcanonical-products",
     );
   });
 
@@ -129,11 +129,11 @@ describe("ListingKit ZITADEL proxy", () => {
       },
     };
 
-    const response = await callProxy("/listing-kits/style-gallery");
+    const response = await callProxy("/listing-kits/canonical-products");
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/login?returnTo=%2Flisting-kits%2Fstyle-gallery",
+      "http://localhost/login?returnTo=%2Flisting-kits%2Fcanonical-products",
     );
     expect(response.headers.get("X-User-ID")).toBeNull();
   });
@@ -203,7 +203,7 @@ describe("ListingKit ZITADEL proxy", () => {
   });
 
   it("returns 503 when ZITADEL auth is required but not configured", async () => {
-    const response = await callProxy("/listing-kits/sds");
+    const response = await callProxy("/listing-kits/canonical-products");
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
@@ -214,7 +214,7 @@ describe("ListingKit ZITADEL proxy", () => {
   it("does not allow ListingKit pages when a retired local auth bypass variable is set", async () => {
     vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
 
-    const response = await callProxy("/listing-kits/sds?step=generate");
+    const response = await callProxy("/listing-kits/canonical-products?source=import");
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({

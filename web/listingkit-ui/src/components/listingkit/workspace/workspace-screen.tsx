@@ -11,7 +11,7 @@ import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
-import { ImageAgentLaunchPanel } from "@/components/listingkit/image-agent/image-agent-launch-panel";
+import { ImageAgentTaskRunLauncher } from "@/components/listingkit/image-agent/image-agent-task-run-launcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -55,7 +55,6 @@ import {
 import { shouldPollTaskResult } from "@/components/listingkit/tasks/task-status-query";
 import { buildWorkspaceReviewViewProps } from "@/components/listingkit/workspace/workspace-review-view-props";
 import { useApplyRevision } from "@/lib/query/use-apply-revision";
-import { useExecuteAction } from "@/lib/query/use-action";
 import {
   getTaskRetryVersion,
   useRetryChildTask,
@@ -87,7 +86,6 @@ function WorkspaceScreenContent({
   taskId: string;
   searchParams: ReturnType<typeof useSearchParams>;
 }) {
-	const router = useRouter();
   const routeSearch = searchParams.toString();
   const routeParams = new URLSearchParams(routeSearch);
   const requestedImageAgentRunId = routeParams.get("image_agent_run_id")?.trim();
@@ -104,6 +102,7 @@ function WorkspaceScreenContent({
     workspaceDestination:
       !routeHistorySelected && routeParams.get("platform") ? "platform" : "product",
   } as const;
+  const router = useRouter();
   const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
   const [localNavigationState, setLocalNavigationState] = useState<
     typeof routeNavigationState
@@ -154,19 +153,15 @@ function WorkspaceScreenContent({
   const refreshSubmissionStatus = useRefreshSubmissionStatus(taskId);
   const updateSheinFinalDraft = useUpdateSheinFinalDraft(taskId);
   const clearSheinResolutionCache = useClearSheinResolutionCache(taskId);
-  const layerAction = useExecuteAction(taskId, baseQuery);
   const sheinActions = useSheinWorkspaceActions({
     taskId,
     sheinPreview: sheinPreviewPayload,
-    preview,
-    taskResult,
     applyRevision,
     submitTask,
     updateSheinFinalDraft,
   });
   const workspaceActions = useWorkspaceNavigationActions({
     taskId,
-    baseQuery,
     searchParams,
     focusedTarget: session.data?.session?.focused_target,
     sheinStoreID:
@@ -225,6 +220,11 @@ function WorkspaceScreenContent({
   const refetchWorkspace = () =>
     Promise.all([preview.refetch(), session.refetch(), taskResult.refetch()]);
 
+  const handleImageAgentLaunched = (runId: string) => {
+    const params = new URLSearchParams(routeSearch);
+    params.set("image_agent_run_id", runId);
+    router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
+  };
   const withAgentSurface = (legacyPanel: ReactNode) =>
     imageAgentRunId ? (
       <WorkspaceAgentSurface context={{ taskId, runId: imageAgentRunId }}>
@@ -233,30 +233,6 @@ function WorkspaceScreenContent({
     ) : (
       legacyPanel
     );
-	const handleImageAgentCreated = (runId: string) => {
-		const params = new URLSearchParams(routeSearch);
-		params.set("image_agent_run_id", runId);
-		router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
-	};
-
-  const handleRunStandardProductTemporal = () => {
-    layerAction.mutate({
-      action_key: "run_standard_product_temporal",
-    });
-  };
-
-  const handleRunPlatformAdaptTemporal = () => {
-    layerAction.mutate({
-      action_key: "run_platform_adapt_temporal",
-      target: {
-        action_key: "run_platform_adapt_temporal",
-        queue_query: {
-          platform: "all",
-        },
-      },
-    });
-  };
-
   if (preview.isLoading || session.isLoading) {
     return withAgentSurface(<WorkspaceLoadingState />);
   }
@@ -455,9 +431,6 @@ function WorkspaceScreenContent({
   return withAgentSurface(
     <div className="min-w-0 space-y-5 overflow-x-hidden">
       <ProductWorkspaceHeader
-        layerActionsPending={layerAction.isPending}
-        onGeneratePlatformData={handleRunPlatformAdaptTemporal}
-        onGenerateProduct={handleRunStandardProductTemporal}
         isCanonicalTask={Boolean(taskResult.data?.result?.canonical_product)}
         subtitle={platformReviewSelected ? workspaceSubtitle : "商品资料"}
         statusLabel={workspaceStatusLabel}
@@ -509,11 +482,16 @@ function WorkspaceScreenContent({
         }
         actions={
           <div className="space-y-4">
-			{imageAgentRunId ? null : <ImageAgentLaunchPanel
-				taskId={taskId}
-				targetPlatform={selectedPlatform}
-				onCreated={handleImageAgentCreated}
-			/>}
+            {imageAgentRunId ? null : (
+              <ImageAgentTaskRunLauncher
+                country={taskResult.data?.result?.country}
+                onLaunched={handleImageAgentLaunched}
+                targetPlatform={
+                  selectedPlatform ?? taskResult.data?.result?.platforms?.[0]
+                }
+                taskId={taskId}
+              />
+            )}
             <TaskProgressNotice task={taskResult.data} />
             <Card className="p-4">
               <details>
@@ -566,9 +544,6 @@ function ProductWorkspaceHeader({
   updatedAtLabel,
   taskId,
   isCanonicalTask,
-  layerActionsPending,
-  onGenerateProduct,
-  onGeneratePlatformData,
 }: {
   title: string;
   subtitle?: string;
@@ -576,9 +551,6 @@ function ProductWorkspaceHeader({
   updatedAtLabel?: string;
   taskId: string;
   isCanonicalTask: boolean;
-  layerActionsPending: boolean;
-  onGenerateProduct: () => void;
-  onGeneratePlatformData: () => void;
 }) {
   return (
     <section className="min-w-0 border-b border-border pb-5">
@@ -604,26 +576,9 @@ function ProductWorkspaceHeader({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/listing-kits/${taskId}/status`}>查看执行记录</Link>
-          </Button>
-          <Button
-            disabled={layerActionsPending}
-            onClick={onGenerateProduct}
-            type="button"
-            variant="secondary"
-          >
-            AI 生成商品
-          </Button>
-          <Button
-            disabled={layerActionsPending}
-            onClick={onGeneratePlatformData}
-            type="button"
-          >
-            生成平台资料
-          </Button>
-        </div>
+        <Button asChild variant="outline">
+          <Link href={`/listing-kits/${taskId}/status`}>查看执行记录</Link>
+        </Button>
       </div>
     </section>
   );

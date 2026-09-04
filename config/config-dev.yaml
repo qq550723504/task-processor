@@ -76,15 +76,23 @@ openai:
   
   # 请求池配置 - 更保守的设置
 
-aiCapability:
-  studioImageRoutingMode: legacy
-  productImageSceneEnabled: false
-  productImageSceneAllowedTenantIDs: []
 
 listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
+  imageUpload:
+    provider: "local"
+    local:
+      rootDir: "./.local/tmp/listingkit-uploads"
+    s3:
+      bucket: "listingkit-assets"
+      region: "us-east-1"
+      endpoint: "https://oss.shuomiai.com"
+      accessKeyID: "replace-me"
+      secretAccessKey: "replace-me"
+      usePathStyle: true
+      publicBase: ""
   zitadel:
     issuerURL: ""
     clientID: ""
@@ -379,35 +387,20 @@ watermark:
     quality_score: 0.8  # 质量评分阈值
 
 
-productimage:
-  workDir: "./.local/tmp/productimage"
-  segmenter:
+imageagent:
+  admission:
     enabled: false
-    endpoint: ""
-    apiKey: ""
-    timeout: 45
-  whiteBackground:
+    allowedTenantIDs: []
+  artifactStore:
     enabled: false
-    endpoint: ""
-    apiKey: ""
-    timeout: 45
-  scene:
-    enabled: false
-    endpoint: ""
-    apiKey: ""
-    timeout: 60
-  publisher:
-    enabled: true
-    provider: "local"
-    outputDir: "./.local/tmp/productimage-published"
+    provider: "s3"
     publicBase: ""
     s3:
-      bucket: "listingkit-assets"
-      region: "us-east-1"
-      endpoint: "https://oss.shuomiai.com"
-      accessKeyID: "replace-me"
-      secretAccessKey: "replace-me"
-      usePathStyle: true
-  lifecycle:
-    cleanupTemporaryFiles: true
-    reuseExistingAssets: true
+      bucket: ""
+      region: ""
+      endpoint: ""
+      accessKeyID: ""
+      secretAccessKey: ""
+      usePathStyle: false
+      artifactMode: ""
+      cosImmutableNonVersionedBucketPolicy: false

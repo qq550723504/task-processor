@@ -2,20 +2,22 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"task-processor/internal/amazonlisting"
-	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/integration/openai"
-	"task-processor/internal/productimage"
-	common "task-processor/internal/publishing/common"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinmanaged "task-processor/internal/publishing/sheinmanaged"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type stubAmazonDraftBuilder struct{}
+
+type failingAmazonDraftBuilder struct{ err error }
 
 type stubSheinCategoryAPI struct {
 	info *sheincategory.CategoryInfo
@@ -42,22 +44,49 @@ func (s *scriptedListingKitLLM) Generate(context.Context, string) (string, error
 	return response, nil
 }
 
-func (s *scriptedListingKitLLM) AnalyzeImage(context.Context, string, string) (string, error) {
-	return "", nil
-}
-
 func (s *scriptedListingKitLLM) GetDefaultModel() string {
 	return "test"
 }
 
-func (stubAmazonDraftBuilder) Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
+func (stubAmazonDraftBuilder) Build(req *GenerateRequest, snapshot *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error) {
+	mainImage := ""
+	if approved != nil {
+		for _, asset := range approved.Assets {
+			if asset.Role == productasset.RoleMain {
+				mainImage = asset.URL
+				break
+			}
+		}
+	}
+	title, brand := "", ""
+	if snapshot != nil {
+		title, brand = snapshot.Title, snapshot.Brand
+	}
 	return &amazonlisting.AmazonListingDraft{
 		Marketplace: "amazon",
-		Title:       canonical.Title,
-		Brand:       canonical.Brand,
+		Title:       title,
+		Brand:       brand,
 		Images: &amazonlisting.AmazonImageBundle{
-			MainImage: canonical.Images[0].URL,
+			MainImage: mainImage,
 		},
+	}, nil
+}
+
+func (b failingAmazonDraftBuilder) Build(*GenerateRequest, *catalog.ProductSnapshot, *productasset.ApprovedAssetInventory) (*amazonlisting.AmazonListingDraft, error) {
+	return nil, b.err
+}
+
+func TestAssemblerPropagatesAmazonDraftBuildFailure(t *testing.T) {
+	want := errors.New("approved inventory is invalid")
+	assembler := NewAssembler(failingAmazonDraftBuilder{err: want})
+	task := &Task{Request: &GenerateRequest{Platforms: []string{"amazon"}, ProductKey: "product-1"}}
+
+	result, err := assembler.Assemble(task, &catalog.ProductSnapshot{Title: "Bottle"}, &productasset.ApprovedAssetInventory{})
+	if !errors.Is(err, want) {
+		t.Fatalf("Assemble() error = %v, want %v", err, want)
+	}
+	if result != nil {
+		t.Fatalf("Assemble() result = %+v, want nil on failed Amazon draft", result)
 	}
 }
 
@@ -93,9 +122,8 @@ func (s stubSheinAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCu
 func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		ID: "task-1",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-1",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:      "test product",
 			Platforms: []string{"amazon", "shein", "temu", "walmart"},
 			Country:   "US",
@@ -147,27 +175,19 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 		},
 	}
 
-	imageResult := &productimage.ImageProcessResult{
-		MainImage: &productimage.ImageAsset{
-			URL: "https://cdn.example.com/main.jpg",
-			Metadata: map[string]string{
-				"scene_defaults_source": "platform_category",
-				"scene_category":        "jewelry",
-				"scene_style":           "studio",
-				"background_tone":       "cool",
-				"composition":           "close_up",
-				"props_level":           "none",
-				"audience_hint":         "premium",
-				"prompt_key":            "productimage.scene.jewelry",
-			},
-		},
-		WhiteBgImage: &productimage.ImageAsset{URL: "https://cdn.example.com/white.jpg"},
-		GalleryImages: []productimage.ImageAsset{
-			{URL: "https://cdn.example.com/gallery-1.jpg"},
+	approvedAssets := &productasset.ApprovedAssetInventory{
+		Scope: productasset.InventoryScope{TenantID: task.TenantID, ProductKey: task.Request.ProductKey},
+		Assets: []productasset.ApprovedAsset{
+			{ID: "main", Role: productasset.RoleMain, URL: "https://cdn.example.com/main.jpg"},
+			{ID: "white", Role: productasset.RoleWhiteBackground, URL: "https://cdn.example.com/white.jpg"},
+			{ID: "gallery", Role: productasset.RoleGallery, URL: "https://cdn.example.com/gallery-1.jpg"},
 		},
 	}
 
-	result := NewAssembler(stubAmazonDraftBuilder{}).Assemble(task, canonical, imageResult)
+	result, err := NewAssemblerWithConfig(completeFailClosedAssemblerConfig()).Assemble(task, testCatalogSnapshot(t, canonical), approvedAssets)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Amazon == nil || result.Amazon.Draft == nil {
 		t.Fatal("expected amazon package")
@@ -238,12 +258,8 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 	if result.Walmart.ProductType != "Headphones" {
 		t.Fatalf("walmart product type = %q, want %q", result.Walmart.ProductType, "Headphones")
 	}
-	if result.ImageAssets == nil || result.ImageAssets.MainImage == nil {
-		t.Fatalf("listingkit image assets = %+v", result.ImageAssets)
-	}
-	if result.ImageAssets.MainImage.Metadata["scene_defaults_source"] != "platform_category" ||
-		result.ImageAssets.MainImage.Metadata["prompt_key"] != "productimage.scene.jewelry" {
-		t.Fatalf("listingkit image metadata = %+v", result.ImageAssets.MainImage.Metadata)
+	if result.ApprovedAssetInventory == nil || len(result.ApprovedAssetInventory.Assets) != 3 {
+		t.Fatalf("approved asset inventory = %+v", result.ApprovedAssetInventory)
 	}
 	if got := len(result.Shein.SkcList); got != 1 {
 		t.Fatalf("shein skc count = %d, want 1", got)
@@ -326,9 +342,8 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 		}, nil),
 	})
 
-	task := &Task{
-		ID: "task-2",
-		Request: &GenerateRequest{
+	task := &Task{TenantID: "tenant-test", ID: "task-2",
+		Request: &GenerateRequest{ProductKey: "test-product",
 			Text:               "test product",
 			Platforms:          []string{"shein"},
 			Country:            "US",
@@ -363,7 +378,10 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 		},
 	}
 
-	result := assembler.Assemble(task, canonical, nil)
+	result, err := assembler.Assemble(task, testCatalogSnapshot(t, canonical), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Shein == nil || result.Shein.CategoryResolution == nil {
 		t.Fatal("expected shein category resolution")
@@ -442,155 +460,11 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 	}
 }
 
-func TestBuildSelectedPlatformImagesFallsBackToCanonicalGallery(t *testing.T) {
-	t.Parallel()
-
-	canonical := &canonical.Product{
-		Images: []canonical.Image{
-			{URL: "https://example.com/1.jpg"},
-			{URL: "https://example.com/2.jpg"},
-		},
-	}
-
-	images := common.BuildImagesWithSelection(canonical, nil)
-	if images == nil {
-		t.Fatal("expected images")
-	}
-	if images.MainImage != "https://example.com/1.jpg" {
-		t.Fatalf("main image = %q, want canonical first image", images.MainImage)
-	}
-	if len(images.Gallery) != 1 || images.Gallery[0] != "https://example.com/2.jpg" {
-		t.Fatalf("gallery = %#v, want second canonical image", images.Gallery)
-	}
-	if len(images.SourceImages) != 2 || images.SourceImages[0] != "https://example.com/1.jpg" || images.SourceImages[1] != "https://example.com/2.jpg" {
-		t.Fatalf("source images = %#v, want canonical images preserved separately", images.SourceImages)
-	}
-}
-
-func TestBuildTemuPackageKeepsCanonicalGalleryWhenGeneratedGalleryIsEmpty(t *testing.T) {
-	t.Parallel()
-
-	product := &canonical.Product{
-		Title: "Desk Lamp",
-		Images: []canonical.Image{
-			{URL: "https://example.com/source-1.jpg"},
-			{URL: "https://example.com/source-2.jpg"},
-		},
-		Variants: []canonical.Variant{{SKU: "SKU-1"}},
-	}
-
-	pkg := buildTemuPackage(&GenerateRequest{}, product, nil)
-	if pkg == nil || len(pkg.SkcList) != 1 {
-		t.Fatalf("temu package = %#v, want one SKC", pkg)
-	}
-	if got := pkg.SkcList[0].CarouselGallery; len(got) != 1 || got[0] != "https://example.com/source-2.jpg" {
-		t.Fatalf("carousel gallery = %#v, want second canonical image", got)
-	}
-}
-
-func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
-	t.Parallel()
-
-	resolver := sheinmanaged.NewCategoryResolver(nil)
-	req := &GenerateRequest{
-		Text:      "wireless earbuds",
-		Country:   "US",
-		Language:  "en_US",
-		Platforms: []string{"shein"},
-	}
-	canonical := &canonical.Product{
-		Title:        "Wireless Earbuds",
-		CategoryPath: []string{"Electronics", "Headphones"},
-	}
-	pkg := &SheinPackage{
-		CategoryName: "Headphones",
-		CategoryPath: []string{"Electronics", "Headphones"},
-	}
-
-	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
-	if resolution == nil {
-		t.Fatal("expected resolution")
-	}
-	if resolution.Status != "partial" {
-		t.Fatalf("resolution status = %q, want %q", resolution.Status, "partial")
-	}
-	if len(resolution.ReviewNotes) == 0 {
-		t.Fatal("expected review notes when shein_store_id is missing")
-	}
-}
-
-func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
-	t.Parallel()
-
-	resolver := sheinmanaged.NewAttributeResolver(nil, nil)
-	req := &GenerateRequest{
-		Text:      "wireless earbuds",
-		Country:   "US",
-		Language:  "en_US",
-		Platforms: []string{"shein"},
-	}
-	canonical := &canonical.Product{
-		Title: "Wireless Earbuds",
-	}
-	pkg := &SheinPackage{
-		CategoryID: 4004,
-		ProductAttributes: []PlatformAttribute{
-			{Name: "color", Value: "Black"},
-		},
-	}
-
-	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
-	if resolution == nil {
-		t.Fatal("expected resolution")
-	}
-	if resolution.Status != "partial" {
-		t.Fatalf("resolution status = %q, want %q", resolution.Status, "partial")
-	}
-	if len(resolution.ReviewNotes) == 0 {
-		t.Fatal("expected review notes when shein_store_id is missing")
-	}
-}
-
-func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
-	t.Parallel()
-
-	resolver := sheinmanaged.NewSaleAttributeResolver(nil, nil)
-	req := &GenerateRequest{
-		Text:      "wireless earbuds",
-		Country:   "US",
-		Language:  "en_US",
-		Platforms: []string{"shein"},
-	}
-	canonical := &canonical.Product{
-		Title: "Wireless Earbuds",
-	}
-	pkg := &SheinPackage{
-		CategoryID: 4004,
-		SkcList: []SheinSKCPackage{{
-			Attributes: map[string]string{"color": "Black"},
-			SKUs: []PlatformVariant{{
-				Attributes: map[string]string{"size": "M"},
-			}},
-		}},
-	}
-
-	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
-	if resolution == nil {
-		t.Fatal("expected resolution")
-	}
-	if resolution.Status != "partial" {
-		t.Fatalf("resolution status = %q, want %q", resolution.Status, "partial")
-	}
-	if len(resolution.ReviewNotes) == 0 {
-		t.Fatal("expected review notes when shein_store_id is missing")
-	}
-}
-
 func TestBuildSheinPublishRequestForTaskIncludesTaskIdentity(t *testing.T) {
 	t.Parallel()
 
 	task := &Task{TenantID: "tenant-1", UserID: "user-1"}
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Country:            "US",
 		Language:           "en_US",
 		Text:               "wireless earbuds",
@@ -618,7 +492,7 @@ func TestBuildSheinPublishRequestIncludesSDSProductSize(t *testing.T) {
 	t.Parallel()
 
 	productSize := `[[{"content":"尺码"},{"content":"肩宽(cm/in)"}],[{"content":"M"},{"content":"55cm/21.7in"}]]`
-	req := &GenerateRequest{
+	req := &GenerateRequest{ProductKey: "test-product",
 		Options: &GenerateOptions{
 			SDS: &SDSSyncOptions{
 				ProductSize: productSize,
@@ -633,37 +507,30 @@ func TestBuildSheinPublishRequestIncludesSDSProductSize(t *testing.T) {
 	}
 }
 
-func TestBuildSummaryIncludesCanonicalAndImageReviewState(t *testing.T) {
+func TestBuildSummaryIncludesCanonicalReviewState(t *testing.T) {
 	t.Parallel()
 
-	summary := buildSummary(&Task{
-		Request: &GenerateRequest{
-			Text:      "wireless earbuds",
-			ImageURLs: []string{"https://example.com/1.jpg", "https://example.com/2.jpg"},
-		},
+	summary := buildSummary(&Task{TenantID: "tenant-test", Request: &GenerateRequest{ProductKey: "test-product",
+		Text: "wireless earbuds",
+	},
 	}, &canonical.Product{
 		NeedsReview: true,
 		Variants: []canonical.Variant{
 			{SKU: "SKU-1"},
 			{SKU: "SKU-2"},
 		},
-	}, &productimage.ImageProcessResult{
-		Review: &productimage.ReviewDecision{
-			NeedsReview: true,
-			Reasons:     []string{"image needs manual review"},
-		},
 	})
 	if summary == nil {
 		t.Fatal("expected summary")
 	}
-	if summary.SourceType != "images_and_text" || summary.ImageCount != 2 || summary.VariantCount != 2 {
+	if summary.SourceType != "product_snapshot" || summary.ImageCount != 0 || summary.VariantCount != 2 {
 		t.Fatalf("summary core fields = %+v", summary)
 	}
 	if !summary.NeedsReview {
 		t.Fatalf("summary needs_review = false, want true: %+v", summary)
 	}
-	if len(summary.Warnings) != 1 || summary.Warnings[0] != "image needs manual review" {
-		t.Fatalf("summary warnings = %#v, want image review reason", summary.Warnings)
+	if len(summary.Warnings) != 0 {
+		t.Fatalf("summary warnings = %#v, want no image orchestration warning", summary.Warnings)
 	}
 }
 

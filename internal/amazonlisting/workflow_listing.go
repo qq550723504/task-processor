@@ -2,40 +2,18 @@ package amazonlisting
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
-	"task-processor/internal/shared/aiidentity"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 type WorkflowArtifacts struct {
-	ProductTask      *productenrich.Task
-	CanonicalProduct *canonical.Product
-	ImageTask        *productimage.Task
-	ImageResult      *productimage.ImageProcessResult
-	Draft            *AmazonListingDraft
-}
-
-type WorkflowError struct {
-	Artifacts *WorkflowArtifacts
-	Err       error
-}
-
-func (e *WorkflowError) Error() string {
-	if e == nil || e.Err == nil {
-		return ""
-	}
-	return e.Err.Error()
-}
-
-func (e *WorkflowError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Err
+	Snapshot       catalog.ProductSnapshot
+	ApprovedAssets productasset.ApprovedAssetInventory
+	Draft          *AmazonListingDraft
 }
 
 type ListingWorkflow interface {
@@ -43,66 +21,75 @@ type ListingWorkflow interface {
 }
 
 type listingWorkflow struct {
-	productService ProductService
-	imageService   ImageService
-	assembler      Assembler
-	autoFixer      AutoFixer
-	exportBuilder  ExportBuilder
+	productSnapshots ProductSnapshotReader
+	approvedAssets   ApprovedAssetInventoryReader
+	assembler        Assembler
+	autoFixer        AutoFixer
+	exportBuilder    ExportBuilder
 }
 
-func NewListingWorkflow(productService ProductService, imageService ImageService, assembler Assembler, autoFixer AutoFixer, exportBuilder ExportBuilder) ListingWorkflow {
+func NewListingWorkflow(productSnapshots ProductSnapshotReader, approvedAssets ApprovedAssetInventoryReader, assembler Assembler, autoFixer AutoFixer, exportBuilder ExportBuilder) ListingWorkflow {
 	return &listingWorkflow{
-		productService: productService,
-		imageService:   imageService,
-		assembler:      assembler,
-		autoFixer:      autoFixer,
-		exportBuilder:  exportBuilder,
+		productSnapshots: productSnapshots,
+		approvedAssets:   approvedAssets,
+		assembler:        assembler,
+		autoFixer:        autoFixer,
+		exportBuilder:    exportBuilder,
 	}
 }
 
 func (w *listingWorkflow) Run(ctx context.Context, task *Task) (*WorkflowArtifacts, error) {
-	if task == nil {
-		return nil, fmt.Errorf("task cannot be nil")
-	}
-	if w.productService == nil {
-		return nil, fmt.Errorf("product service is not configured")
+	if task == nil || task.Request == nil {
+		return nil, fmt.Errorf("task and request are required")
 	}
 	if w.assembler == nil {
 		return nil, fmt.Errorf("assembler is not configured")
 	}
 
-	artifacts := &WorkflowArtifacts{
-		Draft: initWorkflowDraft(task),
+	query := ProductSnapshotQuery{
+		TenantID:   strings.TrimSpace(task.ExecutionTenantID),
+		ProductKey: strings.TrimSpace(task.Request.ProductKey),
+		Version:    task.SourceSnapshotVersion,
 	}
-
-	productTask, canonicalProduct, err := w.ensureProductArtifacts(ctx, task, artifacts)
+	if query.TenantID == "" || query.ProductKey == "" || w.productSnapshots == nil {
+		return nil, ErrProductSnapshotNotReady
+	}
+	snapshot, err := w.productSnapshots.GetProductSnapshot(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	artifacts.ProductTask = productTask
-	artifacts.CanonicalProduct = canonicalProduct
-
-	var (
-		imageTask   *productimage.Task
-		imageResult *productimage.ImageProcessResult
-	)
-	if task.Request.Options == nil || task.Request.Options.ProcessImages {
-		imageTask, imageResult, err = w.ensureImageArtifacts(ctx, task, artifacts)
-		if err != nil {
-			return nil, err
-		}
-		artifacts.ImageTask = imageTask
-		artifacts.ImageResult = imageResult
+	snapshot, err = cloneAmazonProductSnapshot(snapshot)
+	if err != nil {
+		return nil, err
 	}
 
-	draft := w.assembler.Assemble(task, canonicalProduct, imageResult)
-	draft.CanonicalProduct = canonicalProduct
-	draft.ChildTasks = cloneChildTasks(artifacts.Draft.ChildTasks)
-	draft.ReviewItems = append(draft.ReviewItems, buildReviewItemsFromCanonical(canonicalProduct)...)
-	draft.ProductTaskID = productTask.ID
-	if imageTask != nil {
-		draft.ProductImageTaskID = imageTask.ID
+	scope := productasset.InventoryScope{TenantID: query.TenantID, ProductKey: query.ProductKey, TargetPlatform: strings.ToLower(strings.TrimSpace(task.Request.Marketplace)), SourceSnapshotVersion: query.Version}
+	if w.approvedAssets == nil {
+		return nil, productasset.ErrApprovedAssetsNotReady
 	}
+	inventory, err := w.approvedAssets.GetApprovedInventory(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	if inventory.Scope != scope {
+		return nil, productasset.ErrRepositoryStateInvalid
+	}
+	inventory = productasset.CloneApprovedAssetInventory(inventory)
+
+	draft, err := w.assembler.Build(DraftInput{
+		TaskID:         task.ID,
+		Request:        task.Request,
+		Snapshot:       snapshot,
+		ApprovedAssets: inventory,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if draft == nil {
+		return nil, fmt.Errorf("assembler returned nil draft")
+	}
+	draft.ListingIPRisk = assessContentIPRisk(task.Request, draft)
+	draft.ReviewItems = append(draft.ReviewItems, buildReviewItemsFromSnapshot(&snapshot)...)
 	if w.autoFixer != nil {
 		w.autoFixer.Fix(task.Request, draft)
 	}
@@ -110,182 +97,20 @@ func (w *listingWorkflow) Run(ctx context.Context, task *Task) (*WorkflowArtifac
 		draft.Export = w.exportBuilder.Build(task.Request, draft)
 	}
 
-	artifacts.Draft = draft
-	return artifacts, nil
+	return &WorkflowArtifacts{Snapshot: snapshot, ApprovedAssets: inventory, Draft: draft}, nil
 }
 
-func (w *listingWorkflow) ensureProductArtifacts(ctx context.Context, task *Task, artifacts *WorkflowArtifacts) (*productenrich.Task, *canonical.Product, error) {
-	if task != nil && task.Result != nil && task.Result.ProductTaskID != "" {
-		taskResult, err := w.productService.GetTaskResult(ctx, task.Result.ProductTaskID)
-		if err == nil && taskResult != nil && taskResult.Status == productenrich.TaskStatusCompleted && taskResult.ProductJSON != nil {
-			updateChildTaskState(artifacts.Draft, "product_enrich", task.Result.ProductTaskID, string(taskResult.Status), "")
-			productTask := &productenrich.Task{
-				ID:      task.Result.ProductTaskID,
-				Request: toProductGenerateRequest(task),
-				Status:  taskResult.Status,
-				Result:  taskResult.ProductJSON,
-			}
-			canonical := productenrich.BuildCanonicalProduct(productTask.Request, taskResult.ProductJSON)
-			return productTask, canonical, nil
-		}
-	}
-
-	inlineProductCtx := productenrich.WithInlineTaskExecution(ctx)
-	productTask, err := w.productService.CreateGenerateTask(inlineProductCtx, toProductGenerateRequest(task))
+func cloneAmazonProductSnapshot(snapshot catalog.ProductSnapshot) (catalog.ProductSnapshot, error) {
+	raw, err := json.Marshal(snapshot)
 	if err != nil {
-		markChildTaskFailed(artifacts.Draft, "product_enrich", "", err)
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("failed to create product task: %w", err)}
+		return catalog.ProductSnapshot{}, fmt.Errorf("clone product snapshot: %w", err)
 	}
-	updateChildTaskState(artifacts.Draft, "product_enrich", productTask.ID, string(productenrich.TaskStatusPending), "")
-
-	productCtx := ctx
-	if envelope, envelopeErr := productTask.ExecutionEnvelope(); envelopeErr != nil {
-		markChildTaskFailed(artifacts.Draft, "product_enrich", productTask.ID, envelopeErr)
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("invalid product task identity: %w", envelopeErr)}
-	} else if envelope.Version != 0 {
-		productCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, productTask.ID)
-		if envelopeErr != nil {
-			markChildTaskFailed(artifacts.Draft, "product_enrich", productTask.ID, envelopeErr)
-			return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("restore product task identity: %w", envelopeErr)}
-		}
+	if string(raw) == "{}" {
+		return catalog.ProductSnapshot{}, ErrProductSnapshotNotReady
 	}
-	productJSON, err := w.productService.ProcessProduct(productCtx, productTask)
-	if err != nil {
-		markChildTaskFailed(artifacts.Draft, "product_enrich", productTask.ID, err)
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("product enrichment failed: %w", err)}
+	var cloned catalog.ProductSnapshot
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return catalog.ProductSnapshot{}, fmt.Errorf("clone product snapshot: %w", err)
 	}
-	updateChildTaskState(artifacts.Draft, "product_enrich", productTask.ID, string(productenrich.TaskStatusCompleted), "")
-	canonicalProduct := productenrich.BuildCanonicalProduct(productTask.Request, productJSON)
-	return productTask, canonicalProduct, nil
-}
-
-func (w *listingWorkflow) ensureImageArtifacts(ctx context.Context, task *Task, artifacts *WorkflowArtifacts) (*productimage.Task, *productimage.ImageProcessResult, error) {
-	if w.imageService == nil {
-		markChildTaskFailed(artifacts.Draft, "product_image", "", fmt.Errorf("image service is not configured"))
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("image service is not configured")}
-	}
-
-	if task != nil && task.Result != nil && task.Result.ProductImageTaskID != "" {
-		taskResult, err := w.imageService.GetTaskResult(ctx, task.Result.ProductImageTaskID)
-		if err == nil && taskResult != nil {
-			switch taskResult.Status {
-			case productimage.TaskStatusCompleted, productimage.TaskStatusNeedsReview:
-				if taskResult.Result != nil {
-					updateChildTaskState(artifacts.Draft, "product_image", task.Result.ProductImageTaskID, string(taskResult.Status), taskResult.Error)
-					imageTask := &productimage.Task{
-						ID:      task.Result.ProductImageTaskID,
-						Request: toImageProcessRequest(task),
-						Status:  taskResult.Status,
-						Result:  taskResult.Result,
-						Error:   taskResult.Error,
-					}
-					return imageTask, taskResult.Result, nil
-				}
-			}
-		}
-	}
-
-	inlineImageCtx := productimage.WithInlineTaskExecution(ctx)
-	imageTask, err := w.imageService.CreateProcessTask(inlineImageCtx, toImageProcessRequest(task))
-	if err != nil {
-		markChildTaskFailed(artifacts.Draft, "product_image", "", err)
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("failed to create image task: %w", err)}
-	}
-	updateChildTaskState(artifacts.Draft, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
-	imageCtx := ctx
-	if envelope, envelopeErr := imageTask.ExecutionEnvelope(); envelopeErr != nil {
-		markChildTaskFailed(artifacts.Draft, "product_image", imageTask.ID, envelopeErr)
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("invalid image task identity: %w", envelopeErr)}
-	} else if envelope.Version != 0 {
-		imageCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, imageTask.ID)
-		if envelopeErr != nil {
-			markChildTaskFailed(artifacts.Draft, "product_image", imageTask.ID, envelopeErr)
-			return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("restore image task identity: %w", envelopeErr)}
-		}
-	}
-	imageResult, err := w.imageService.ProcessImages(imageCtx, imageTask)
-	if err != nil {
-		markChildTaskFailed(artifacts.Draft, "product_image", imageTask.ID, err)
-		return nil, nil, &WorkflowError{Artifacts: artifacts, Err: fmt.Errorf("image processing failed: %w", err)}
-	}
-	updateChildTaskState(artifacts.Draft, "product_image", imageTask.ID, string(productimage.TaskStatusCompleted), "")
-	return imageTask, imageResult, nil
-}
-
-func initWorkflowDraft(task *Task) *AmazonListingDraft {
-	if task == nil {
-		return &AmazonListingDraft{}
-	}
-	return &AmazonListingDraft{
-		TaskID:      task.ID,
-		Status:      string(TaskStatusProcessing),
-		Marketplace: task.Request.Marketplace,
-		Country:     task.Request.Country,
-		Language:    task.Request.Language,
-		Source: AmazonSourceTrace{
-			InputTextProvided: strings.TrimSpace(task.Request.Text) != "",
-			InputImageCount:   len(task.Request.ImageURLs),
-			ProductURL:        task.Request.ProductURL,
-			UsedImageSources:  append([]string(nil), task.Request.ImageURLs...),
-		},
-	}
-}
-
-func updateChildTaskState(draft *AmazonListingDraft, kind, taskID, status, errorMsg string) {
-	if draft == nil {
-		return
-	}
-	for idx := range draft.ChildTasks {
-		if draft.ChildTasks[idx].Kind == kind {
-			draft.ChildTasks[idx].TaskID = taskID
-			draft.ChildTasks[idx].Status = status
-			draft.ChildTasks[idx].Error = errorMsg
-			return
-		}
-	}
-	draft.ChildTasks = append(draft.ChildTasks, ChildTaskState{
-		Kind:   kind,
-		TaskID: taskID,
-		Status: status,
-		Error:  errorMsg,
-	})
-}
-
-func markChildTaskFailed(draft *AmazonListingDraft, kind, taskID string, err error) {
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
-	updateChildTaskState(draft, kind, taskID, string(TaskStatusFailed), msg)
-}
-
-func cloneChildTasks(tasks []ChildTaskState) []ChildTaskState {
-	if len(tasks) == 0 {
-		return nil
-	}
-	return append([]ChildTaskState(nil), tasks...)
-}
-
-func toProductGenerateRequest(task *Task) *productenrich.GenerateRequest {
-	if task == nil || task.Request == nil {
-		return &productenrich.GenerateRequest{}
-	}
-	return &productenrich.GenerateRequest{
-		ImageURLs:  append([]string(nil), task.Request.ImageURLs...),
-		Text:       task.Request.Text,
-		ProductURL: task.Request.ProductURL,
-	}
-}
-
-func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
-	if task == nil || task.Request == nil {
-		return &productimage.ImageProcessRequest{}
-	}
-	return &productimage.ImageProcessRequest{
-		ProductURL:  task.Request.ProductURL,
-		ImageURLs:   append([]string(nil), task.Request.ImageURLs...),
-		Text:        task.Request.Text,
-		Marketplace: task.Request.Marketplace,
-		Country:     task.Request.Country,
-	}
+	return cloned, nil
 }

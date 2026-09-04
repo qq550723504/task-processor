@@ -149,10 +149,8 @@ export const listingKitKeys = {
     ] as const,
   sheinEnrollmentStoreScope: (storeId: number) =>
     ["listingkit", "shein-enrollment", storeId] as const,
-  preview: (taskId: string, freshnessKey?: string) =>
-    freshnessKey
-      ? (["listingkit", taskId, "preview", freshnessKey] as const)
-      : (["listingkit", taskId, "preview"] as const),
+  preview: (taskId: string, freshnessKey?: string, platform?: string) =>
+    ["listingkit", taskId, "preview", freshnessKey ?? "", platform ?? ""] as const,
   taskResult: (taskId: string) => ["listingkit", taskId, "task-result"] as const,
   sdsProducts: (query: SDSProductsKeyQuery) =>
     [

@@ -11,10 +11,10 @@ import (
 	"task-processor/internal/app/lifecycle"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
+	"task-processor/internal/marketplace/sourceproduct"
 	platformconfig "task-processor/internal/platform/config"
 	"task-processor/internal/platform/queue/rabbitmq"
 	"task-processor/internal/platformbase"
-	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -41,7 +41,7 @@ type appServiceResources struct {
 }
 
 type processorServiceResources struct {
-	rawJSONDataClient product.RawJsonDataClient
+	rawJSONDataClient sourceproduct.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
 	scheduler         consumer.SchedulerResources
 	rabbitmqClient    *rabbitmq.Client

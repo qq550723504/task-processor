@@ -98,6 +98,7 @@ func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotW
 	ctx = workflow.WithActivityOptions(ctx, slotWorkflowV3ActivityOptions(startToClose, input.ExternalEffectFinalization))
 	activityInput := ExecuteSlotV3ActivityInput{
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.PlanRevision,
+		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey:             slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
 		AssetCatalog:               input.AssetCatalog,
@@ -168,6 +169,10 @@ func terminalEffectPhaseForErrorCode(code string) imageagent.SlotEffectV3Phase {
 		return imageagent.SlotEffectV3StagingUnknown
 	case imageagent.SlotPublicationOutcomeUnknownCode:
 		return imageagent.SlotEffectV3PublicationUnknown
+	case imageagent.SlotReviewRequiredCode:
+		return imageagent.SlotEffectV3ReviewRequired
+	case imageagent.SlotReviewTransportRequiredCode:
+		return imageagent.SlotEffectV3ReviewTransportRequired
 	default:
 		return ""
 	}
@@ -213,7 +218,7 @@ func slotExecutionV3ErrorCode(err error) string {
 	var applicationError *sdktemporal.ApplicationError
 	if errors.As(err, &applicationError) {
 		switch applicationError.Type() {
-		case imageagent.SlotProviderNotDispatchedCode, slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode:
+		case imageagent.SlotProviderNotDispatchedCode, slotProviderOutcomeUnknownCode, slotStagingOutcomeUnknownCode, slotPublicationOutcomeUnknownCode, imageagent.SlotReviewRequiredCode, imageagent.SlotReviewTransportRequiredCode:
 			return applicationError.Type()
 		case slotEffectPhaseInvalidCode:
 			return imageagent.SlotEffectPhaseInvalidCode

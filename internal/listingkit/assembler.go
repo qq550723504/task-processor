@@ -2,10 +2,12 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/productimage"
+	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -50,48 +52,93 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 	}
 }
 
-func (a *assembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
-	result := a.assemble(task, canonical, func(string) *productimage.ImageProcessResult { return image })
-	result.ImageAssets = image
-	return result
+func (a *assembler) Assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error) {
+	return a.assemble(task, product, approved)
 }
 
-func (a *assembler) AssembleForTargets(task *Task, canonical *canonical.Product, images map[string]*productimage.ImageProcessResult) *ListingKitResult {
-	result := a.assemble(task, canonical, func(target string) *productimage.ImageProcessResult { return images[target] })
-	result.ImageAssetsByTarget = cloneImageAssetsByTarget(images)
-	if task != nil {
-		result.applyCompatibilityAssetProjectionForRequest(task.Request)
-	}
-	return result
+func (a *assembler) AssembleForTargets(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error) {
+	return a.assemble(task, product, approved)
 }
 
-func (a *assembler) assemble(task *Task, canonical *canonical.Product, imageForTarget func(string) *productimage.ImageProcessResult) *ListingKitResult {
+func (a *assembler) assemble(task *Task, product *catalog.ProductSnapshot, approved *productasset.ApprovedAssetInventory) (*ListingKitResult, error) {
 	now := time.Now()
 	result := initResult(task)
 	result.UpdatedAt = now
-	result.CanonicalProduct = canonical
-	result.Summary = buildSummary(task, canonical, nil)
+	var canonicalProduct *canonical.Product
+	if product != nil {
+		cloned, err := cloneProductSnapshot(*product)
+		if err == nil {
+			result.CatalogProduct = &cloned
+			canonicalProduct = canonicalProductFromApprovedAssets(cloned, approved)
+		}
+	}
+	result.ApprovedAssetInventory = cloneApprovedAssetInventory(approved)
+	result.CanonicalProduct = canonicalProduct
+	result.Summary = buildSummary(task, canonicalProduct)
 
 	if task == nil || task.Request == nil {
-		return result
+		return result, nil
 	}
 
 	for _, platform := range task.Request.Platforms {
-		image := imageForTarget(platform)
 		switch platform {
 		case "amazon":
-			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonical, image)}
+			draft, err := a.amazonBuilder.Build(task.Request, product, approved)
+			if err != nil {
+				return nil, fmt.Errorf("build amazon draft: %w", err)
+			}
+			result.Amazon = &AmazonPackage{Draft: draft}
 		case "shein":
-			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
-			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonical, image)...)
+			if err := a.validateSheinResolvers(); err != nil {
+				return nil, fmt.Errorf("build shein draft: %w", err)
+			}
+			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonicalProduct)
+			if err := validateSheinResolutions(result.Shein); err != nil {
+				return nil, fmt.Errorf("build shein draft: %w", err)
+			}
+			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonicalProduct)...)
 		case "temu":
-			result.Temu = buildTemuPackage(task.Request, canonical, image)
+			result.Temu = buildTemuPackage(task.Request, canonicalProduct)
 		case "walmart":
-			result.Walmart = buildWalmartPackage(task.Request, canonical, image)
+			result.Walmart = buildWalmartPackage(task.Request, canonicalProduct)
 		}
 	}
 
-	return result
+	return result, nil
+}
+
+func (a *assembler) validateSheinResolvers() error {
+	if err := validateSheinResolver("category", a != nil && a.sheinCategoryResolver != nil); err != nil {
+		return err
+	}
+	if err := validateSheinResolver("attribute", a.sheinAttributeResolver != nil); err != nil {
+		return err
+	}
+	return validateSheinResolver("sale-attribute", a.sheinSaleAttributeResolver != nil)
+}
+
+func validateSheinResolver(name string, available bool) error {
+	if !available {
+		return fmt.Errorf("%s resolver is required", name)
+	}
+	return nil
+}
+
+func validateSheinResolutions(pkg *sheinpub.Package) error {
+	if err := validateSheinResolution("category", pkg != nil && pkg.CategoryResolution != nil); err != nil {
+		return err
+	}
+	if err := validateSheinResolution("attribute", pkg.AttributeResolution != nil); err != nil {
+		return err
+	}
+	return validateSheinResolution("sale-attribute", pkg.SaleAttributeResolution != nil)
+}
+
+func validateSheinResolution(name string, available bool) error {
+	if !available {
+		return fmt.Errorf("%s resolution is unavailable", name)
+	}
+	return nil
 }
 
 func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {
@@ -127,19 +174,15 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 	}
 }
 
-func buildSummary(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *GenerationSummary {
+func buildSummary(task *Task, canonical *canonical.Product) *GenerationSummary {
 	summary := &GenerationSummary{}
 	if task != nil && task.Request != nil {
 		summary.SourceType = detectSourceType(task.Request)
-		summary.ImageCount = len(task.Request.ImageURLs)
 	}
 	if canonical != nil {
+		summary.ImageCount = len(canonical.Images)
 		summary.VariantCount = len(canonical.Variants)
 		summary.NeedsReview = canonical.NeedsReview
-	}
-	if image != nil && image.Review != nil && image.Review.NeedsReview {
-		summary.NeedsReview = true
-		summary.Warnings = append(summary.Warnings, image.Review.Reasons...)
 	}
 	return summary
 }

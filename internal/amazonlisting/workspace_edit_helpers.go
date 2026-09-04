@@ -4,38 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"task-processor/internal/catalog/canonical"
 )
-
-func manualFieldTrace() canonical.FieldTrace {
-	return canonical.FieldTrace{
-		Sources: []canonical.Source{
-			{Type: canonical.SourceDerived, Detail: "manual_review_edit"},
-		},
-		Confidence:  1,
-		IsInferred:  false,
-		NeedsReview: false,
-	}
-}
-
-func canonicalProductNeedsReview(product *canonical.Product) bool {
-	if product == nil {
-		return true
-	}
-	if strings.TrimSpace(product.Title) == "" || strings.TrimSpace(product.Description) == "" {
-		return true
-	}
-	if len(product.CategoryPath) == 0 {
-		return true
-	}
-	for _, trace := range product.FieldTraces {
-		if trace.NeedsReview {
-			return true
-		}
-	}
-	return false
-}
 
 func removeResolvedReviewItems(items []AmazonReviewItem, edits []DraftFieldEdit) []AmazonReviewItem {
 	if len(items) == 0 || len(edits) == 0 {
@@ -116,44 +85,6 @@ func ensureDraftPackageWeight(draft *AmazonListingDraft) {
 	}
 }
 
-func ensureCanonicalSpecifications(product *canonical.Product) {
-	if product.Specifications == nil {
-		product.Specifications = &canonical.ProductSpecs{}
-	}
-}
-
-func ensureCanonicalDimensions(specs *canonical.ProductSpecs) {
-	if specs.Dimensions == nil {
-		specs.Dimensions = &canonical.Dimensions{}
-	}
-}
-
-func ensureCanonicalWeight(specs *canonical.ProductSpecs) {
-	if specs.Weight == nil {
-		specs.Weight = &canonical.Weight{}
-	}
-}
-
-func ensureCanonicalPackage(specs *canonical.ProductSpecs) {
-	if specs.Package == nil {
-		specs.Package = &canonical.PackageInfo{}
-	}
-}
-
-func ensureCanonicalPackageDimensions(specs *canonical.ProductSpecs) {
-	ensureCanonicalPackage(specs)
-	if specs.Package.Dimensions == nil {
-		specs.Package.Dimensions = &canonical.Dimensions{}
-	}
-}
-
-func ensureCanonicalPackageWeight(specs *canonical.ProductSpecs) {
-	ensureCanonicalPackage(specs)
-	if specs.Package.Weight == nil {
-		specs.Package.Weight = &canonical.Weight{}
-	}
-}
-
 func parseIndexedField(field string, collection string) (int, string, bool) {
 	prefix := collection + "["
 	if !strings.HasPrefix(field, prefix) {
@@ -199,24 +130,14 @@ func relatedReviewFields(field string) []string {
 }
 
 func validateRequest(req *GenerateRequest) error {
-	hasImages := len(req.ImageURLs) > 0
-	hasText := strings.TrimSpace(req.Text) != ""
-	hasProductURL := strings.TrimSpace(req.ProductURL) != ""
-
 	if req.Marketplace == "" {
 		req.Marketplace = "amazon"
 	}
 	if req.Marketplace != "amazon" {
 		return fmt.Errorf("only amazon marketplace is supported currently")
 	}
-	if !hasImages && !hasText && !hasProductURL {
-		return fmt.Errorf("at least one input type is required")
+	if strings.TrimSpace(req.ProductKey) == "" {
+		return fmt.Errorf("product_key is required")
 	}
-	if hasProductURL {
-		return nil
-	}
-	if hasImages && hasText {
-		return nil
-	}
-	return fmt.Errorf("provide product_url, or provide both image_urls and text")
+	return nil
 }

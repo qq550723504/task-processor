@@ -47,8 +47,8 @@ func TestWorkflowRecorderMarksBlockingFailure(t *testing.T) {
 	result := &ListingKitResult{Summary: &GenerationSummary{}}
 	recorder := newWorkflowRecorder(result)
 
-	stage := recorder.Start("product_enrich", "product-task-1")
-	stage.Fail("product_enrich_failed", "Product enrichment failed", "upstream timeout")
+	stage := recorder.Start(productSnapshotStageKind, "")
+	stage.Fail("product_snapshot_read_failed", "Product snapshot could not be read", "upstream timeout")
 	recorder.FinalizeSummary()
 
 	if got, want := len(result.WorkflowStages), 1; got != want {
@@ -118,7 +118,7 @@ func TestRefreshSheinTaskResultStateKeepsCoverageWarningButSkipsReviewIssue(t *t
 	}
 
 	svc := &service{}
-	svc.refreshSheinTaskResultState(context.Background(), &Task{Result: result}, result)
+	svc.refreshSheinTaskResultState(context.Background(), &Task{TenantID: "tenant-test", Result: result}, result)
 
 	if result.Summary == nil || !result.Summary.NeedsReview {
 		t.Fatalf("summary = %+v, want needs review retained for coverage-only refresh", result.Summary)

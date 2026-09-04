@@ -4,8 +4,8 @@ package pricing
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/marketplace/productpolicy"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -84,7 +84,7 @@ func (c *CostCalculator) CalculateAmazonProductCost(
 	storeID int64,
 ) float64 {
 	// 获取Amazon基础价格
-	basePrice := product.GetProductPrice(amazonProduct, priceType)
+	basePrice := productpolicy.GetProductPrice(amazonProduct, priceType)
 	if basePrice <= 0 {
 		return 0
 	}

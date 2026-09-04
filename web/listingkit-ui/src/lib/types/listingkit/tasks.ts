@@ -143,6 +143,7 @@ type RetryableBlock = {
 
 export type ListingKitTaskResult = {
   task_id?: string;
+  product_key?: string;
   tenant_id?: string;
   status?: string;
   source_reference?: ListingKitSourceReference;
@@ -226,6 +227,7 @@ export type ListingKitTaskListItem = {
   status?: string;
   pod_execution?: PodExecutionSummary;
   platforms?: string[];
+  product_key?: string;
   title?: string;
   image_count?: number;
   canonical_product?: {
@@ -304,6 +306,7 @@ export type ListingKitTaskListPage = {
 
 export type CreateListingKitTaskRequest = {
   tenant_id?: string;
+  product_key: string;
   image_urls?: string[];
   text?: string;
   product_url?: string;
@@ -322,26 +325,6 @@ export type CreateListingKitTaskRequest = {
       props_level?: string;
       audience_hint?: string;
       custom_scene_hint?: string;
-    };
-    shein_studio?: {
-      style_id?: string;
-      style_name?: string;
-      source_design_urls?: string[];
-      source_design_width?: number;
-      source_design_height?: number;
-      product_image_urls?: string[];
-      selected_sds_images?: Array<{
-        image_url?: string;
-        variant_sku?: string;
-        color?: string;
-      }>;
-      variant_product_images?: Array<{
-        variant_sku?: string;
-        color?: string;
-        image_urls?: string[];
-      }>;
-      size_reference_image_urls?: string[];
-      render_size_images_with_sds?: boolean;
     };
     sds?: {
       variant_id: number;

@@ -24,7 +24,7 @@ func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 
 	err := recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
 		InvocationID: " invocation-1 ", ParentInvocationID: " parent-1 ", AgentRunID: " run-1 ", TenantID: " tenant-1 ", UserID: " user-1 ", BusinessTaskID: " task-1 ", TraceID: " trace-1 ",
-		Capability: " listingkit.studio.image ", Operation: " image_generate ", RouteMode: " shadow ", RouteOutcome: " shadow_decided ", ProviderID: " openai ", ModelID: " gpt-image-1 ", RequestedRoutingKey: " request-key ", RoutingKey: " route-key ", CredentialReference: " credential-ref ",
+		Capability: " product.image.scene ", Operation: " product_image_generate ", RouteMode: " active ", RouteOutcome: " routed ", ProviderID: " openai ", ModelID: " gpt-image-1 ", RequestedRoutingKey: " request-key ", RoutingKey: " route-key ", CredentialReference: " credential-ref ",
 		PolicyVersion: " policy-v1 ", ConfigurationVersion: " config-v1 ", PromptKey: " prompt-key ", PromptVersion: " prompt-v1 ", PromptScope: " tenant ", PromptHash: " prompt-hash ",
 		StartedAt: startedAt, FinishedAt: finishedAt, Attempt: 2, FallbackIndex: 1, PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30, ImageCount: 2, EstimatedCostMicros: 400, Currency: " usd ",
 		Outcome: " succeeded ", ErrorCategory: " ", RouteErrorCategory: " policy_denied ", ErrorCode: " ", ProviderRequestID: " request-1 ", UpstreamJobID: " job-1 ", InputHash: " input-hash ", OutputHash: " output-hash ", CacheStatus: aicapability.CacheStatusHit,
@@ -34,8 +34,8 @@ func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 	var row invocationRow
 	require.NoError(t, db.Where("invocation_id = ?", "invocation-1").First(&row).Error)
 	require.Equal(t, "tenant-1", row.TenantID)
-	require.Equal(t, "listingkit.studio.image", row.Capability)
-	require.Equal(t, "shadow", row.RouteMode)
+	require.Equal(t, "product.image.scene", row.Capability)
+	require.Equal(t, "active", row.RouteMode)
 	require.Equal(t, "usd", row.Currency)
 	require.Equal(t, "policy_denied", row.RouteErrorCategory)
 	require.Equal(t, int64(1500), row.LatencyMilliseconds)

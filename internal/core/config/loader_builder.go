@@ -153,45 +153,25 @@ func BuildConfig(v *viper.Viper) *Config {
 				Timeout: v.GetInt("amazon.remoteAPI.timeout"),
 			},
 		},
-		ProductImage: ProductImageConfig{
-			WorkDir: v.GetString("productimage.workDir"),
-			Segmenter: ProductImageModelConfig{
-				Enabled:  v.GetBool("productimage.segmenter.enabled"),
-				Endpoint: v.GetString("productimage.segmenter.endpoint"),
-				APIKey:   v.GetString("productimage.segmenter.apiKey"),
-				Timeout:  v.GetInt("productimage.segmenter.timeout"),
+		ImageAgent: ImageAgentConfig{
+			Admission: ImageAgentAdmissionConfig{
+				Enabled:          v.GetBool("imageagent.admission.enabled"),
+				AllowedTenantIDs: getStringSlice(v, "imageagent.admission.allowedTenantIDs"),
 			},
-			WhiteBackground: ProductImageModelConfig{
-				Enabled:  v.GetBool("productimage.whiteBackground.enabled"),
-				Endpoint: v.GetString("productimage.whiteBackground.endpoint"),
-				APIKey:   v.GetString("productimage.whiteBackground.apiKey"),
-				Timeout:  v.GetInt("productimage.whiteBackground.timeout"),
-			},
-			Scene: ProductImageModelConfig{
-				Enabled:  v.GetBool("productimage.scene.enabled"),
-				Endpoint: v.GetString("productimage.scene.endpoint"),
-				APIKey:   v.GetString("productimage.scene.apiKey"),
-				Timeout:  v.GetInt("productimage.scene.timeout"),
-			},
-			Publisher: ProductImagePublisherConfig{
-				Enabled:    v.GetBool("productimage.publisher.enabled"),
-				Provider:   v.GetString("productimage.publisher.provider"),
-				OutputDir:  v.GetString("productimage.publisher.outputDir"),
-				PublicBase: v.GetString("productimage.publisher.publicBase"),
-				S3: ProductImagePublisherS3Config{
-					Bucket:                               v.GetString("productimage.publisher.s3.bucket"),
-					Region:                               v.GetString("productimage.publisher.s3.region"),
-					Endpoint:                             v.GetString("productimage.publisher.s3.endpoint"),
-					AccessKeyID:                          v.GetString("productimage.publisher.s3.accessKeyID"),
-					SecretAccessKey:                      v.GetString("productimage.publisher.s3.secretAccessKey"),
-					UsePathStyle:                         v.GetBool("productimage.publisher.s3.usePathStyle"),
-					ArtifactMode:                         v.GetString("productimage.publisher.s3.artifactMode"),
-					COSImmutableNonVersionedBucketPolicy: v.GetBool("productimage.publisher.s3.cosImmutableNonVersionedBucketPolicy"),
+			ArtifactStore: ImageAgentArtifactStoreConfig{
+				Enabled:    v.GetBool("imageagent.artifactStore.enabled"),
+				Provider:   v.GetString("imageagent.artifactStore.provider"),
+				PublicBase: v.GetString("imageagent.artifactStore.publicBase"),
+				S3: ImageAgentArtifactStoreS3Config{
+					Bucket:                               v.GetString("imageagent.artifactStore.s3.bucket"),
+					Region:                               v.GetString("imageagent.artifactStore.s3.region"),
+					Endpoint:                             v.GetString("imageagent.artifactStore.s3.endpoint"),
+					AccessKeyID:                          v.GetString("imageagent.artifactStore.s3.accessKeyID"),
+					SecretAccessKey:                      v.GetString("imageagent.artifactStore.s3.secretAccessKey"),
+					UsePathStyle:                         v.GetBool("imageagent.artifactStore.s3.usePathStyle"),
+					ArtifactMode:                         v.GetString("imageagent.artifactStore.s3.artifactMode"),
+					COSImmutableNonVersionedBucketPolicy: v.GetBool("imageagent.artifactStore.s3.cosImmutableNonVersionedBucketPolicy"),
 				},
-			},
-			Lifecycle: ProductImageLifecycleConfig{
-				CleanupTemporaryFiles: v.GetBool("productimage.lifecycle.cleanupTemporaryFiles"),
-				ReuseExistingAssets:   v.GetBool("productimage.lifecycle.reuseExistingAssets"),
 			},
 		},
 		Updater: UpdaterConfig{
@@ -201,19 +181,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			InsecureSkipVerify: v.GetBool("updater.insecureSkipVerify"),
 		},
 		Debug: DebugConfig{
-			SavePublishJSON:      v.GetBool("debug.save_publish_json"),
-			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
-		},
-		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode:               v.GetString("aiCapability.studioImageRoutingMode"),
-			ProductImageSceneEnabled:             v.GetBool("aiCapability.productImageSceneEnabled"),
-			ProductImageSceneAllowedTenantIDs:    getStringSlice(v, "aiCapability.productImageSceneAllowedTenantIDs"),
-			ProductEnrichTextEnabled:             v.GetBool("aiCapability.productEnrichTextEnabled"),
-			ProductEnrichTextAllowedTenantIDs:    getStringSlice(v, "aiCapability.productEnrichTextAllowedTenantIDs"),
-			ProductEnrichVisionEnabled:           v.GetBool("aiCapability.productEnrichVisionEnabled"),
-			ProductEnrichVisionAllowedTenantIDs:  getStringSlice(v, "aiCapability.productEnrichVisionAllowedTenantIDs"),
-			ProductEnrichListingEnabled:          v.GetBool("aiCapability.productEnrichListingEnabled"),
-			ProductEnrichListingAllowedTenantIDs: getStringSlice(v, "aiCapability.productEnrichListingAllowedTenantIDs"),
+			SavePublishJSON: v.GetBool("debug.save_publish_json"),
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),
@@ -236,6 +204,16 @@ func BuildConfig(v *viper.Viper) *Config {
 			GenerationUsageLedgerTenantIDs: getStringSlice(v, "listingkit.generationUsageLedgerTenantIDs"),
 			PlatformAdminUsers:             getStringSlice(v, "listingkit.platformAdminUsers"),
 			PlatformAdminRoles:             getStringSlice(v, "listingkit.platformAdminRoles"),
+			ImageUpload: ListingKitImageUploadConfig{
+				Provider: v.GetString("listingkit.imageUpload.provider"),
+				Local:    ListingKitImageUploadLocalConfig{RootDir: v.GetString("listingkit.imageUpload.local.rootDir")},
+				S3: ListingKitImageUploadS3Config{
+					Bucket: v.GetString("listingkit.imageUpload.s3.bucket"), Region: v.GetString("listingkit.imageUpload.s3.region"),
+					Endpoint: v.GetString("listingkit.imageUpload.s3.endpoint"), AccessKeyID: v.GetString("listingkit.imageUpload.s3.accessKeyID"),
+					SecretAccessKey: v.GetString("listingkit.imageUpload.s3.secretAccessKey"), UsePathStyle: v.GetBool("listingkit.imageUpload.s3.usePathStyle"),
+					PublicBase: v.GetString("listingkit.imageUpload.s3.publicBase"),
+				},
+			},
 			Zitadel: ListingKitZitadelConfig{
 				IssuerURL:                         listingKitZitadelIssuerURL,
 				AuthorizationAPIURL:               listingKitZitadelAuthorizationAPIURL,

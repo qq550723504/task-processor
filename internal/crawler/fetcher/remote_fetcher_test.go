@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
-	domainProduct "task-processor/internal/product"
+	"task-processor/internal/marketplace/sourceproduct"
 )
 
 func TestRemoteAPIProductFetcherFetchProduct(t *testing.T) {
@@ -34,7 +34,7 @@ func TestRemoteAPIProductFetcherFetchProduct(t *testing.T) {
 		t.Fatalf("create fetcher: %v", err)
 	}
 
-	product, err := fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+	product, err := fetcher.FetchProduct(context.Background(), &sourceproduct.FetchRequest{
 		Platform:  "temu",
 		Region:    "us",
 		ProductID: "B001",
@@ -83,7 +83,7 @@ func TestRemoteAPIProductFetcherFallsBackToAsyncPollingWhenBusy(t *testing.T) {
 		t.Fatalf("create fetcher: %v", err)
 	}
 
-	product, err := fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+	product, err := fetcher.FetchProduct(context.Background(), &sourceproduct.FetchRequest{
 		Platform:  "shein",
 		Region:    "us",
 		ProductID: "B001",
@@ -123,7 +123,7 @@ func TestRemoteAPIProductFetcherDoesNotSendDefaultUSZipcode(t *testing.T) {
 		t.Fatalf("create fetcher: %v", err)
 	}
 
-	_, err = fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+	_, err = fetcher.FetchProduct(context.Background(), &sourceproduct.FetchRequest{
 		Platform:  "shein",
 		Region:    "us",
 		ProductID: "B001",
@@ -160,7 +160,7 @@ func TestRemoteAPIProductFetcherPreservesExplicitZipcode(t *testing.T) {
 		t.Fatalf("create fetcher: %v", err)
 	}
 
-	_, err = fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+	_, err = fetcher.FetchProduct(context.Background(), &sourceproduct.FetchRequest{
 		Platform:  "shein",
 		Region:    "us",
 		ProductID: "B001",
@@ -201,7 +201,7 @@ func TestRemoteAPIProductFetcherUsesConfiguredDefaultZipcode(t *testing.T) {
 		t.Fatalf("create fetcher: %v", err)
 	}
 
-	_, err = fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+	_, err = fetcher.FetchProduct(context.Background(), &sourceproduct.FetchRequest{
 		Platform:  "shein",
 		Region:    "UK",
 		ProductID: "B001",
@@ -240,7 +240,7 @@ func TestRemoteAPIProductFetcherFetchVariantsPreservesExplicitZipcode(t *testing
 		t.Fatalf("create fetcher: %v", err)
 	}
 
-	_, err = fetcher.FetchVariants(context.Background(), &domainProduct.FetchRequest{
+	_, err = fetcher.FetchVariants(context.Background(), &sourceproduct.FetchRequest{
 		Platform:  "shein",
 		Region:    "us",
 		ProductID: "B-parent",

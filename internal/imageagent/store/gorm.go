@@ -292,6 +292,10 @@ func (r *gormRepository) findRunForUpdate(ctx context.Context, db *gorm.DB, scop
 }
 
 func runToRecord(run imageagent.Run) (runRecord, error) {
+	policyContextJSON, err := marshalJSON(run.ImagePolicyContext)
+	if err != nil {
+		return runRecord{}, fmt.Errorf("marshal run image policy context: %w", err)
+	}
 	budgetJSON, err := marshalJSON(run.Budget)
 	if err != nil {
 		return runRecord{}, fmt.Errorf("marshal run budget: %w", err)
@@ -306,12 +310,17 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 	}
 	return runRecord{
 		TenantID: run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID,
-		Mode: string(run.Mode), IdempotencyKey: run.IdempotencyKey, Status: string(run.Status), CurrentNode: run.CurrentNode,
+		PolicyContextJSON: policyContextJSON,
+		Mode:              string(run.Mode), IdempotencyKey: run.IdempotencyKey, Status: string(run.Status), CurrentNode: run.CurrentNode,
 		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(run.MaxConcurrentSlots), BudgetJSON: budgetJSON, UsageJSON: usageJSON, ReservedUsageJSON: []byte("{}"), BlockJSON: blockJSON, CreatedAt: run.StartedAt,
 	}, nil
 }
 
 func recordToRun(row runRecord) (imageagent.Run, error) {
+	var policyContext imageagent.ImagePolicyContext
+	if err := unmarshalJSON(row.PolicyContextJSON, &policyContext); err != nil {
+		return imageagent.Run{}, fmt.Errorf("decode run image policy context: %w", err)
+	}
 	var budget imageagent.Budget
 	if err := unmarshalJSON(row.BudgetJSON, &budget); err != nil {
 		return imageagent.Run{}, fmt.Errorf("decode run budget: %w", err)
@@ -326,7 +335,8 @@ func recordToRun(row runRecord) (imageagent.Run, error) {
 	}
 	return imageagent.Run{
 		ID: row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, Mode: imageagent.RunMode(row.Mode),
-		IdempotencyKey: row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
+		ImagePolicyContext: policyContext,
+		IdempotencyKey:     row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
 		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(row.MaxConcurrentSlots), Budget: budget, Usage: usage, Block: block, StartedAt: row.CreatedAt.UTC(),
 	}, nil
 }

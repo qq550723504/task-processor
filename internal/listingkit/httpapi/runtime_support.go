@@ -7,7 +7,9 @@ import (
 )
 
 type RuntimeSupportInput struct {
+	Repositories              BuildServiceRepositories
 	SheinCookieStore          *sheinlogin.RedisStore
+	ApprovedAssets            listingkit.ApprovedAssetInventoryReader
 	SDSSyncService            sdsusecase.Service
 	SDSLoginStatusProvider    listingkit.SDSLoginStatusProvider
 	SDSBaselineRemoteProvider listingkit.SDSBaselineRemoteProvider
@@ -23,7 +25,7 @@ type RuntimeSupport struct {
 
 func BuildRuntimeSupport(input RuntimeSupportInput) RuntimeSupport {
 	return RuntimeSupport{
-		Repositories:              buildRuntimeSupportRepositories(),
+		Repositories:              withApprovedAssetReader(input.Repositories, input.ApprovedAssets),
 		Hooks:                     buildRuntimeSupportHooks(input.SheinCookieStore),
 		SDSSyncService:            input.SDSSyncService,
 		SDSLoginStatusProvider:    input.SDSLoginStatusProvider,

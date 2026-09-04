@@ -3,12 +3,12 @@ package amazonlisting
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
 	amazonworkspace "task-processor/internal/marketplace/amazon/workspace"
+	"task-processor/internal/product/catalog"
 )
 
-func buildReviewItemsFromCanonical(product *canonical.Product) []AmazonReviewItem {
-	return amazonworkspace.BuildReviewItemsFromCanonical(product)
+func buildReviewItemsFromSnapshot(snapshot *catalog.ProductSnapshot) []AmazonReviewItem {
+	return amazonworkspace.BuildReviewItemsFromSnapshot(snapshot)
 }
 
 func appendReviewItem(draft *AmazonListingDraft, item AmazonReviewItem) {

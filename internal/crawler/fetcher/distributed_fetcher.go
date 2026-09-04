@@ -11,10 +11,10 @@ import (
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
+	sourceamazon "task-processor/internal/integration/crawler/amazon"
+	"task-processor/internal/marketplace/sourceproduct"
 	"task-processor/internal/model"
 	"task-processor/internal/platform/queue/rabbitmq"
-	domainProduct "task-processor/internal/product"
-	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,18 +31,18 @@ func crawlTaskID(productID, region string) string {
 // DistributedProductFetcher 分布式产品数据获取器
 // 使用分布式爬虫集群替代本地Amazon处理器
 type DistributedProductFetcher struct {
-	rawJsonDataClient  domainProduct.RawJsonDataClient
+	rawJsonDataClient  sourceproduct.RawJsonDataClient
 	distributedCrawler *distributed.DistributedCrawlerClient
 	amazonConfig       *config.AmazonConfig
 	logger             *logrus.Entry
 
 	// 专职处理器
-	cacheManager *domainProduct.CacheManager
+	cacheManager *sourceproduct.CacheManager
 }
 
 // newDistributedProductFetcher 创建分布式产品数据获取器（使用共享的RabbitMQ客户端）
 func newDistributedProductFetcher(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
+	rawJsonDataClient sourceproduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) (*DistributedProductFetcher, error) {
@@ -64,7 +64,7 @@ func newDistributedProductFetcher(
 	if amazonConfig != nil {
 		freshnessDays = amazonConfig.DataFreshnessDays
 	}
-	cacheManager := domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, freshnessDays)
+	cacheManager := sourceproduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, freshnessDays)
 
 	return &DistributedProductFetcher{
 		rawJsonDataClient:  rawJsonDataClient,
@@ -76,7 +76,7 @@ func newDistributedProductFetcher(
 }
 
 // FetchProduct 获取产品数据（使用分布式爬虫）
-func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
+func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error) {
 	f.logger.Infof("🔍 开始获取产品数据: ProductID=%s, Platform=%s, Region=%s",
 		req.ProductID, req.Platform, req.Region)
 
@@ -119,8 +119,8 @@ func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domai
 }
 
 // fetchFromDistributedCrawler 从分布式爬虫获取产品数据
-func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
-	crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
+func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Context, req *sourceproduct.FetchRequest) (*model.Product, error) {
+	crawlerPlatform := sourceamazon.CrawlerPlatformForSource(req.Platform)
 
 	// 构建爬虫请求
 	crawlReq := &distributed.CrawlRequest{
@@ -156,7 +156,7 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Cont
 }
 
 // calculatePriority 计算任务优先级
-func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRequest) int {
+func (f *DistributedProductFetcher) calculatePriority(req *sourceproduct.FetchRequest) int {
 	const (
 		PriorityDefault       = 5
 		PriorityAmazonBonus   = 2
@@ -188,11 +188,11 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 
 // shouldUseCrawler 判断是否应该使用爬虫
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
-	return sourcing.SupportsCrawlerSource(platform)
+	return sourceamazon.SupportsCrawlerSource(platform)
 }
 
 // CacheProduct 缓存产品数据到服务器
-func (f *DistributedProductFetcher) CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error {
+func (f *DistributedProductFetcher) CacheProduct(req *sourceproduct.FetchRequest, product *model.Product) error {
 	if !f.shouldUseCache(req) {
 		f.logger.Debug("skip cache because request uses explicit zipcode")
 		return nil
@@ -207,7 +207,7 @@ func (f *DistributedProductFetcher) CacheProduct(req *domainProduct.FetchRequest
 }
 
 // CacheVariants 批量缓存变体数据到服务器
-func (f *DistributedProductFetcher) CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error {
+func (f *DistributedProductFetcher) CacheVariants(req *sourceproduct.FetchRequest, variants []*model.Product) error {
 	if len(variants) == 0 {
 		f.logger.Debug("没有变体数据，跳过缓存")
 		return nil
@@ -218,7 +218,7 @@ func (f *DistributedProductFetcher) CacheVariants(req *domainProduct.FetchReques
 }
 
 // FetchVariants 批量获取变体数据（一次性提交所有任务，并发等待结果）
-func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
+func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *sourceproduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
 	if len(variantASINs) == 0 {
 		return []*model.Product{}, nil
 	}
@@ -230,14 +230,14 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 	cachedProducts := make(map[string]*model.Product)
 
 	for _, asin := range variantASINs {
-		variantReq := domainProduct.VariantFetchRequest(req, asin)
+		variantReq := sourceproduct.VariantFetchRequest(req, asin)
 		if product, err := f.cacheManager.GetFromCache(variantReq); err == nil && product != nil {
 			f.logger.Debugf("✅ 变体从缓存获取: ASIN=%s", asin)
 			cachedProducts[asin] = product
 			continue
 		}
 
-		crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
+		crawlerPlatform := sourceamazon.CrawlerPlatformForSource(req.Platform)
 		crawlReqs = append(crawlReqs, &distributed.CrawlRequest{
 			TaskID:         crawlTaskID(asin, req.Region),
 			TenantID:       req.TenantID,
@@ -294,7 +294,7 @@ func (f *DistributedProductFetcher) GetStats() map[string]any {
 	return stats
 }
 
-func (f *DistributedProductFetcher) shouldUseCache(req *domainProduct.FetchRequest) bool {
+func (f *DistributedProductFetcher) shouldUseCache(req *sourceproduct.FetchRequest) bool {
 	return req == nil || strings.TrimSpace(req.Zipcode) == ""
 }
 

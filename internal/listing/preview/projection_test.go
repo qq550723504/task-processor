@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/catalog"
+	"task-processor/internal/product/catalog"
 )
 
 func TestBuildProjection(t *testing.T) {
@@ -24,7 +24,7 @@ func TestBuildProjection(t *testing.T) {
 		},
 		NeedsReview: true,
 		Attachment: &AttachmentInput{
-			CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+			CatalogProduct: &catalog.ProductSnapshot{Title: "Wireless Earbuds"},
 		},
 		Overview: &HeaderInput{
 			Country:       "US",

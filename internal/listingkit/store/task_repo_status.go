@@ -83,6 +83,37 @@ func (r *taskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg
 	})
 }
 
+func (r *taskRepository) MarkFailedIfProcessing(ctx context.Context, taskID string, errorMsg string) (bool, error) {
+	updated := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&listingkit.Task{}).
+			Scopes(taskAccessScope(ctx)).
+			Where("id = ? AND status = ?", taskID, core.TaskStatusProcessing).
+			Updates(map[string]any{
+				"status":          core.TaskStatusFailed,
+				"retryable_block": nil,
+				"error":           errorMsg,
+				"updated_at":      currentTimestampValue(tx),
+			})
+		if result.Error != nil {
+			return fmt.Errorf("mark processing task failed: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		if err := syncSheinPODImageLookupIndex(ctx, tx, finalTask); err != nil {
+			return err
+		}
+		updated = true
+		return nil
+	})
+	return updated, err
+}
+
 func (r *taskRepository) MarkBlockedRetryable(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"status":          core.TaskStatusBlockedRetryable,

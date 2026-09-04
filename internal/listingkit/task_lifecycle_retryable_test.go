@@ -11,7 +11,7 @@ import (
 	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	worker "task-processor/internal/platform/workerpool"
-	"task-processor/internal/productenrich"
+	"task-processor/internal/product/catalog"
 )
 
 func TestCreateGenerateTaskHandlesWorkerQueueFullAsAsyncRetry(t *testing.T) {
@@ -29,7 +29,7 @@ func TestCreateGenerateTaskHandlesWorkerQueueFullAsAsyncRetry(t *testing.T) {
 		},
 	})
 
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "queue backpressure",
 		Platforms: []string{"amazon"},
 	})
@@ -80,7 +80,7 @@ func TestCreateGenerateTaskAsyncRetryMarksRetryableFailureWhenRetryStops(t *test
 		},
 	})
 
-	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "queue retry stops on retryable failure",
 		Platforms: []string{"amazon"},
 	})
@@ -131,7 +131,7 @@ func TestCreateGenerateTaskAsyncRetryPreservesRequestScopeOnFinalFailure(t *test
 		UserID:   "user-async",
 	})
 
-	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{ProductKey: "test-product",
 		Text:      "queue retry preserves scope",
 		Platforms: []string{"amazon"},
 	})
@@ -157,18 +157,17 @@ func TestProcessFlowMarksOpenAICreditFailureAsBlockedRetryable(t *testing.T) {
 	repo := newRetryableLifecycleTestRepo()
 	svc, err := NewService(&ServiceConfig{
 		Core: ServiceCoreDependencies{
-			Repository:     repo,
-			ProductService: retryableLifecycleTestProductService{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
+			Repository:            repo,
+			ProductSnapshotReader: retryableLifecycleTestProductSnapshotReader{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
 		},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "retryable-openai-credits-1",
+	task := &Task{TenantID: "tenant-test", ID: "retryable-openai-credits-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -215,18 +214,17 @@ func TestProcessFlowReturnsPersistenceErrorWhenFailureStateCannotBeStored(t *tes
 	repo.blockedErr = errors.New("persist blocked state failed")
 	svc, err := NewService(&ServiceConfig{
 		Core: ServiceCoreDependencies{
-			Repository:     repo,
-			ProductService: retryableLifecycleTestProductService{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
+			Repository:            repo,
+			ProductSnapshotReader: retryableLifecycleTestProductSnapshotReader{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
 		},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "retryable-openai-persist-failure-1",
+	task := &Task{TenantID: "tenant-test", ID: "retryable-openai-persist-failure-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -253,18 +251,17 @@ func TestProcessFlowReturnsPartialResultSaveErrorWhenFailureResultCannotBeStored
 	repo.saveResultErr = errors.New("persist partial result failed")
 	svc, err := NewService(&ServiceConfig{
 		Core: ServiceCoreDependencies{
-			Repository:     repo,
-			ProductService: retryableLifecycleTestProductService{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
+			Repository:            repo,
+			ProductSnapshotReader: retryableLifecycleTestProductSnapshotReader{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
 		},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	task := &Task{
-		ID:        "retryable-openai-save-failure-1",
+	task := &Task{TenantID: "tenant-test", ID: "retryable-openai-save-failure-1",
 		Status:    core.TaskStatusPending,
-		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
+		Request:   &GenerateRequest{ProductKey: "test-product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -305,7 +302,7 @@ func TestCreateGenerateTaskMarksNonRetryableSubmitFailureAsFailed(t *testing.T) 
 		},
 	})
 
-	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "non retryable submit failure",
 		Platforms: []string{"amazon"},
 	})
@@ -345,7 +342,7 @@ func TestCreateGenerateTaskMarksLeaseCanceledInlineTaskFailed(t *testing.T) {
 		},
 	})
 
-	_, err := lifecycle.CreateGenerateTask(withTaskDispatchCancellation(ctx), &GenerateRequest{
+	_, err := lifecycle.CreateGenerateTask(withTaskDispatchCancellation(ctx), &GenerateRequest{ProductKey: "test-product",
 		Text:      "lease-canceled inline task",
 		Platforms: []string{"amazon"},
 	})
@@ -384,7 +381,7 @@ func TestCreateGenerateTaskDoesNotOverwriteTerminalTaskAfterLeaseCancellation(t 
 		},
 	})
 
-	_, err := lifecycle.CreateGenerateTask(withTaskDispatchCancellation(ctx), &GenerateRequest{
+	_, err := lifecycle.CreateGenerateTask(withTaskDispatchCancellation(ctx), &GenerateRequest{ProductKey: "test-product",
 		Text:      "lease-canceled terminal task",
 		Platforms: []string{"amazon"},
 	})
@@ -416,7 +413,7 @@ func TestCreateGenerateTaskReturnsPersistenceErrorWhenSubmitFailureCannotBeStore
 		},
 	})
 
-	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
+	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{ProductKey: "test-product",
 		Text:      "non retryable submit persistence failure",
 		Platforms: []string{"amazon"},
 	})
@@ -641,21 +638,10 @@ func waitForRetryableLifecycleTaskStatus(t *testing.T, repo *retryableLifecycleT
 	return nil
 }
 
-type retryableLifecycleTestProductService struct {
+type retryableLifecycleTestProductSnapshotReader struct {
 	processErr error
 }
 
-func (s retryableLifecycleTestProductService) CreateGenerateTask(_ context.Context, _ *productenrich.GenerateRequest) (*productenrich.Task, error) {
-	return &productenrich.Task{
-		ID:      "product-task-retryable-1",
-		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
-	}, nil
-}
-
-func (s retryableLifecycleTestProductService) GetTaskResult(context.Context, string) (*productenrich.TaskResult, error) {
-	return nil, nil
-}
-
-func (s retryableLifecycleTestProductService) ProcessProduct(context.Context, *productenrich.Task) (*productenrich.ProductJSON, error) {
-	return nil, s.processErr
+func (s retryableLifecycleTestProductSnapshotReader) GetProductSnapshot(context.Context, ProductSnapshotQuery) (catalog.ProductSnapshot, error) {
+	return catalog.ProductSnapshot{}, s.processErr
 }

@@ -79,6 +79,12 @@ func TestRunTargetPlatformRoundTripsThroughV2Schema(t *testing.T) {
 	repository := NewGormRepository(db)
 	run := manualRun("run-target-platform", "tenant-a")
 	run.TargetPlatform = "shein"
+	run.ImagePolicyContext = imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"}
+	record, err := runToRecord(*run)
+	require.NoError(t, err)
+	recordedRun, err := recordToRun(record)
+	require.NoError(t, err)
+	require.Equal(t, run.ImagePolicyContext, recordedRun.ImagePolicyContext)
 	plan := planRevision(1)
 	projection, err := repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{
 		Scope: imageagent.ScopeForRun(*run), Run: *run, Plan: plan,
@@ -91,8 +97,10 @@ func TestRunTargetPlatformRoundTripsThroughV2Schema(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "shein", projection.Run.TargetPlatform)
+	require.Equal(t, run.ImagePolicyContext, projection.Run.ImagePolicyContext)
 
 	stored, err := repository.GetProjection(context.Background(), imageagent.ScopeForRun(*run))
 	require.NoError(t, err)
 	require.Equal(t, "shein", stored.Run.TargetPlatform)
+	require.Equal(t, run.ImagePolicyContext, stored.Run.ImagePolicyContext)
 }

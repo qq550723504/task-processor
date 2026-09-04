@@ -16,9 +16,8 @@ func TestSummarizeReviewReasonsUsesFallbackWhenEmpty(t *testing.T) {
 func TestBuildTaskResultReviewStatePrefersPayloadReasonsForNeedsReview(t *testing.T) {
 	t.Parallel()
 
-	task := &Task{
-		Status: core.TaskStatusNeedsReview,
-		Error:  "legacy error",
+	task := &Task{TenantID: "tenant-test", Status: core.TaskStatusNeedsReview,
+		Error: "legacy error",
 		Result: &ListingKitResult{
 			ReviewReasons: []string{"task reason"},
 		},

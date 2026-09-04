@@ -21,6 +21,10 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 	}
 
 	groupingKey := ""
+	defaultMainImage := ""
+	if images != nil {
+		defaultMainImage = images.MainImage
+	}
 	if resolution != nil {
 		groupingKey = strings.TrimSpace(resolution.PrimarySourceDimension)
 	}
@@ -45,7 +49,7 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 			for _, groupVariant := range groupVariants {
 				groupAttributes := common.CloneMap(groupVariant.Attributes)
 				skcName := resolveSKCNameWithResolution(baseTitle, groupingKey, groupAttributes, groupVariant, resolution)
-				mainImageURL := common.FirstNonEmpty(groupVariant.Image, images.MainImage)
+				mainImageURL := common.FirstNonEmpty(groupVariant.Image, defaultMainImage)
 				result = append(result, variantGroup{
 					skcName:      skcName,
 					saleName:     skcName,
@@ -60,7 +64,7 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 		representative := groupVariants[0]
 		groupAttributes := commonAttributes(groupVariants)
 		skcName := resolveSKCNameWithResolution(baseTitle, groupingKey, groupAttributes, representative, resolution)
-		mainImageURL := common.FirstNonEmpty(representative.Image, images.MainImage)
+		mainImageURL := common.FirstNonEmpty(representative.Image, defaultMainImage)
 		result = append(result, variantGroup{
 			skcName:      skcName,
 			saleName:     skcName,

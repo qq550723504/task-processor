@@ -3,9 +3,9 @@ package listingkit
 import (
 	"strings"
 
-	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -128,11 +128,12 @@ func applyTaskListRequestFields(item *TaskListItem, task *Task) {
 		return
 	}
 	item.Platforms = append([]string(nil), task.Request.Platforms...)
+	item.ProductKey = strings.TrimSpace(task.Request.ProductKey)
 	item.Title = task.Request.Text
-	if item.Title == "" {
-		item.Title = task.Request.ProductURL
-	}
 	if source := task.Request.Source; source != nil {
+		if item.Title == "" {
+			item.Title = strings.TrimSpace(source.URL)
+		}
 		item.SourceReference = cloneSourceReference(source)
 		if item.SourceType == "" {
 			item.SourceType = strings.TrimSpace(source.Type)
@@ -320,9 +321,6 @@ func taskListImageCount(task *Task) int {
 	}
 	if count := listingKitResultImageCount(task.Result); count > 0 {
 		return count
-	}
-	if task.Request != nil {
-		return len(task.Request.ImageURLs)
 	}
 	return 0
 }

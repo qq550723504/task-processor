@@ -13,49 +13,60 @@ import (
 
 func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *testing.T) {
 	base := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench")
-	wantSecrets := map[string]string{
-		"TASK_PROCESSOR_DATABASE_HOST":                             "TASK_PROCESSOR_DATABASE_HOST",
-		"TASK_PROCESSOR_DATABASE_PORT":                             "TASK_PROCESSOR_DATABASE_PORT",
-		"TASK_PROCESSOR_DATABASE_USER":                             "TASK_PROCESSOR_DATABASE_USER",
-		"TASK_PROCESSOR_DATABASE_PASSWORD":                         "TASK_PROCESSOR_DATABASE_PASSWORD",
-		"TASK_PROCESSOR_DATABASE_NAME":                             "TASK_PROCESSOR_DATABASE_NAME",
-		"TASK_PROCESSOR_OPENAI_API_KEY":                            "TASK_PROCESSOR_OPENAI_API_KEY",
-		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY":              "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY",
-		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE":            "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE",
-		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL":             "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL",
-		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL":                "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID":     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY": "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY",
+	sharedSecrets := map[string]string{
+		"TASK_PROCESSOR_DATABASE_HOST":                  "TASK_PROCESSOR_DATABASE_HOST",
+		"TASK_PROCESSOR_DATABASE_PORT":                  "TASK_PROCESSOR_DATABASE_PORT",
+		"TASK_PROCESSOR_DATABASE_USER":                  "TASK_PROCESSOR_DATABASE_USER",
+		"TASK_PROCESSOR_DATABASE_PASSWORD":              "TASK_PROCESSOR_DATABASE_PASSWORD",
+		"TASK_PROCESSOR_DATABASE_NAME":                  "TASK_PROCESSOR_DATABASE_NAME",
+		"TASK_PROCESSOR_OPENAI_API_KEY":                 "TASK_PROCESSOR_OPENAI_API_KEY",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY":   "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE": "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL":  "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL",
+		"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL":     "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL",
 	}
 	sharedConfig := map[string]string{
-		"IMAGE_AGENT_TEMPORAL_ENABLED":                                        "IMAGE_AGENT_TEMPORAL_ENABLED",
-		"IMAGE_AGENT_TEMPORAL_ADDRESS":                                        "IMAGE_AGENT_TEMPORAL_ADDRESS",
-		"IMAGE_AGENT_TEMPORAL_NAMESPACE":                                      "IMAGE_AGENT_TEMPORAL_NAMESPACE",
-		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED":            "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
-		"TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS": "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED":                       "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_ENABLED",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER":                      "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE":                    "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET":                     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION":                     "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT":                   "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT",
-		"TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE":               "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE",
+		"IMAGE_AGENT_TEMPORAL_ENABLED":   "IMAGE_AGENT_TEMPORAL_ENABLED",
+		"IMAGE_AGENT_TEMPORAL_ADDRESS":   "IMAGE_AGENT_TEMPORAL_ADDRESS",
+		"IMAGE_AGENT_TEMPORAL_NAMESPACE": "IMAGE_AGENT_TEMPORAL_NAMESPACE",
+	}
+	withArtifactStoreSecrets := func() map[string]string {
+		result := map[string]string{}
+		for key, value := range sharedSecrets {
+			result[key] = value
+		}
+		result["TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID"] = "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ACCESS_KEY_ID"
+		result["TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY"] = "TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_SECRET_ACCESS_KEY"
+		return result
+	}
+	withArtifactStoreConfig := func() map[string]string {
+		result := map[string]string{}
+		for key, value := range sharedConfig {
+			result[key] = value
+		}
+		for _, key := range []string{
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_ENABLED",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PROVIDER",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_PUBLIC_BASE",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_BUCKET",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_REGION",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ENDPOINT",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_USE_PATH_STYLE",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_ARTIFACT_MODE",
+			"TASK_PROCESSOR_IMAGEAGENT_ARTIFACT_STORE_S3_COS_IMMUTABLE_NON_VERSIONED_BUCKET_POLICY",
+		} {
+			result[key] = key
+		}
+		return result
 	}
 
 	for _, test := range []struct {
 		relativePath string
+		wantSecrets  map[string]string
 		wantConfig   map[string]string
 	}{
-		{relativePath: filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"), wantConfig: sharedConfig},
-		{relativePath: filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"), wantConfig: func() map[string]string {
-			result := map[string]string{}
-			for key, value := range sharedConfig {
-				result[key] = value
-			}
-			result["TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE"] = "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ARTIFACTMODE"
-			result["TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY"] = "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_COSIMMUTABLENONVERSIONEDBUCKETPOLICY"
-			return result
-		}()},
+		{relativePath: filepath.Join("base", "image-agent-temporal-worker-deployment.yaml"), wantSecrets: withArtifactStoreSecrets(), wantConfig: withArtifactStoreConfig()},
+		{relativePath: filepath.Join("base", "image-agent-temporal-worker-v3-deployment.yaml"), wantSecrets: withArtifactStoreSecrets(), wantConfig: withArtifactStoreConfig()},
 	} {
 		t.Run(test.relativePath, func(t *testing.T) {
 			manifest := loadImageAgentWorkloadManifest(t, filepath.Join(base, test.relativePath))
@@ -90,8 +101,8 @@ func TestListingKitCommercialImageAgentWorkersUseExactSecretAndConfigScope(t *te
 					actualConfig[variable.Name] = ref.Key
 				}
 			}
-			if !reflect.DeepEqual(actualSecrets, wantSecrets) {
-				t.Fatalf("%s Secret allowlist=%#v want=%#v", test.relativePath, actualSecrets, wantSecrets)
+			if !reflect.DeepEqual(actualSecrets, test.wantSecrets) {
+				t.Fatalf("%s Secret allowlist=%#v want=%#v", test.relativePath, actualSecrets, test.wantSecrets)
 			}
 			if !reflect.DeepEqual(actualConfig, test.wantConfig) {
 				t.Fatalf("%s ConfigMap allowlist=%#v want=%#v", test.relativePath, actualConfig, test.wantConfig)

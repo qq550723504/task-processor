@@ -18,9 +18,8 @@ type sdsBaselineReadinessRequest struct {
 }
 
 type warmSDSBaselineRequest struct {
-	TenantID  string                     `json:"tenant_id"`
-	ImageURLs []string                   `json:"image_urls"`
-	SDS       *listingkit.SDSSyncOptions `json:"sds"`
+	TenantID string                     `json:"tenant_id"`
+	SDS      *listingkit.SDSSyncOptions `json:"sds"`
 }
 
 func (h *handler) GetSDSBaselineReadiness(c *gin.Context) {
@@ -90,11 +89,7 @@ func (h *handler) WarmSDSBaseline(c *gin.Context) {
 	req.TenantID = requestTenantID(c, req.TenantID)
 	readiness, warmErr := h.sdsBaselineWarmService.WarmSDSBaseline(
 		requestContext(c, req.TenantID),
-		&listingkit.WarmSDSBaselineRequest{
-			TenantID:  req.TenantID,
-			ImageURLs: req.ImageURLs,
-			SDS:       req.SDS,
-		},
+		&listingkit.WarmSDSBaselineRequest{TenantID: req.TenantID, SDS: req.SDS},
 	)
 	if warmErr != nil {
 		status := http.StatusInternalServerError

@@ -58,7 +58,7 @@ func TestLoadSheinSizeAttributeCacheFallsBackToPublishedProductIdentity(t *testi
 		},
 	}
 
-	got := svc.(*service).loadSheinSizeAttributeCache(&GenerateRequest{SheinStoreID: 1043}, pkg)
+	got := svc.(*service).loadSheinSizeAttributeCache(&GenerateRequest{ProductKey: "test-product", SheinStoreID: 1043}, pkg)
 	if got == nil || len(got.Attributes) != 2 {
 		t.Fatalf("cached review = %+v, want two published rows", got)
 	}

@@ -2,9 +2,8 @@ package listingkit
 
 import (
 	amazonlisting "task-processor/internal/amazonlisting"
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -29,8 +28,6 @@ type reviewableExportPayloadInput struct {
 type sheinPreviewPayloadInput struct {
 	pkg               *sheinpub.Package
 	canonical         *canonical.Product
-	visualAssetBundle *asset.Bundle
-	renderPreviews    *PlatformAssetRenderPreviews
 	needsReview       bool
 	summary           []string
 	readiness         *SheinSubmitReadiness

@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 

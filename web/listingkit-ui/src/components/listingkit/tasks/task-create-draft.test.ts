@@ -23,6 +23,7 @@ describe("task create draft storage", () => {
     });
 
     expect(loadTaskCreateDraft("task_123")).toEqual({
+      productKey: "",
       text: "Women knit cardigan",
       imageUrls: "https://example.com/1.jpg",
       productUrl: "",

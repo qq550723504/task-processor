@@ -7,25 +7,14 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-type PlatformScenePresetSummary struct {
-	Slot        string                        `json:"slot,omitempty"`
-	Purpose     string                        `json:"purpose,omitempty"`
-	AssetID     string                        `json:"asset_id,omitempty"`
-	ScenePreset *GenerationScenePresetSummary `json:"scene_preset,omitempty"`
-}
-
 type AmazonExportPayload struct {
-	Draft          *amazonlisting.AmazonListingDraft `json:"draft,omitempty"`
-	ImageBundle    *common.PublishImageBundle        `json:"image_bundle,omitempty"`
-	RenderPreviews *PlatformAssetRenderPreviews      `json:"render_previews,omitempty"`
-	ScenePresets   []PlatformScenePresetSummary      `json:"scene_presets,omitempty"`
+	Draft       *amazonlisting.AmazonListingDraft `json:"draft,omitempty"`
+	ImageBundle *common.PublishImageBundle        `json:"image_bundle,omitempty"`
 }
 
 type SheinExportPayload struct {
-	Inspection     *sheinpub.Inspection         `json:"inspection,omitempty"`
-	ImageBundle    *common.PublishImageBundle   `json:"image_bundle,omitempty"`
-	RenderPreviews *PlatformAssetRenderPreviews `json:"render_previews,omitempty"`
-	ScenePresets   []PlatformScenePresetSummary `json:"scene_presets,omitempty"`
+	Inspection  *sheinpub.Inspection       `json:"inspection,omitempty"`
+	ImageBundle *common.PublishImageBundle `json:"image_bundle,omitempty"`
 	// Deprecated: kept only for export JSON compatibility. New business code should use DraftPayload.
 	RequestDraft *sheinpub.RequestDraft `json:"request_draft,omitempty"`
 	// DraftPayload is the canonical SHEIN draft payload exposed to internal export builders.
@@ -38,15 +27,11 @@ type SheinExportPayload struct {
 }
 
 type TemuExportPayload struct {
-	ImageBundle    *common.PublishImageBundle   `json:"image_bundle,omitempty"`
-	RenderPreviews *PlatformAssetRenderPreviews `json:"render_previews,omitempty"`
-	ScenePresets   []PlatformScenePresetSummary `json:"scene_presets,omitempty"`
-	Package        *TemuPackage                 `json:"package,omitempty"`
+	ImageBundle *common.PublishImageBundle `json:"image_bundle,omitempty"`
+	Package     *TemuPackage               `json:"package,omitempty"`
 }
 
 type WalmartExportPayload struct {
-	ImageBundle    *common.PublishImageBundle   `json:"image_bundle,omitempty"`
-	RenderPreviews *PlatformAssetRenderPreviews `json:"render_previews,omitempty"`
-	ScenePresets   []PlatformScenePresetSummary `json:"scene_presets,omitempty"`
-	Package        *WalmartPackage              `json:"package,omitempty"`
+	ImageBundle *common.PublishImageBundle `json:"image_bundle,omitempty"`
+	Package     *WalmartPackage            `json:"package,omitempty"`
 }

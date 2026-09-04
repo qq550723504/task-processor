@@ -47,14 +47,14 @@ func TestRecordUsageForPeriodOnceAppliesAnOperationOnlyOnce(t *testing.T) {
 	if err := repo.UpsertDefaultModules(ctx, DefaultModules()); err != nil {
 		t.Fatalf("UpsertDefaultModules() error = %v", err)
 	}
-	first, applied, err := svc.RecordUsageForPeriodOnce(ctx, "tenant-17", ModuleStudio, "product_image_jobs", "2026-08", 1, "usage-event-1:reserve")
+	first, applied, err := svc.RecordUsageForPeriodOnce(ctx, "tenant-17", ModuleListingKit, "product_image_jobs", "2026-08", 1, "usage-event-1:reserve")
 	if err != nil {
 		t.Fatalf("first RecordUsageForPeriodOnce() error = %v", err)
 	}
 	if !applied || first.Used != 1 {
 		t.Fatalf("first result = (%#v, %v), want applied usage 1", first, applied)
 	}
-	second, applied, err := svc.RecordUsageForPeriodOnce(ctx, "tenant-17", ModuleStudio, "product_image_jobs", "2026-08", 1, "usage-event-1:reserve")
+	second, applied, err := svc.RecordUsageForPeriodOnce(ctx, "tenant-17", ModuleListingKit, "product_image_jobs", "2026-08", 1, "usage-event-1:reserve")
 	if err != nil {
 		t.Fatalf("replay RecordUsageForPeriodOnce() error = %v", err)
 	}
@@ -115,14 +115,14 @@ func TestNewServiceKeepsLegacyCounterPathWhenLedgerIsNotConfigured(t *testing.T)
 	if _, err := svc.ReserveUsage(ctx, serviceUsageLedgerInput()); !errors.Is(err, ErrUsageLedgerNotConfigured) {
 		t.Fatalf("ReserveUsage() error = %v, want ErrUsageLedgerNotConfigured", err)
 	}
-	if _, err := svc.UpsertEntitlement(ctx, "tenant-17", ModuleStudio, EntitlementInput{
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-17", ModuleListingKit, EntitlementInput{
 		Status: StatusActive,
-		Limits: map[string]int{"design_jobs": 2},
+		Limits: map[string]int{"listingkit_generations_succeeded": 2},
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
 
-	result, err := svc.CheckUsage(ctx, "tenant-17", ModuleStudio, "design_jobs", 1)
+	result, err := svc.CheckUsage(ctx, "tenant-17", ModuleListingKit, "listingkit_generations_succeeded", 1)
 	if err != nil {
 		t.Fatalf("CheckUsage() error = %v", err)
 	}
@@ -187,10 +187,10 @@ func TestBuildOpenMeterUsageOutboxPayloadContainsOnlyAdapterSafeFields(t *testin
 	event := UsageEvent{
 		EventID:    "usage-event-42",
 		TenantID:   "tenant-17",
-		ModuleCode: ModuleStudio,
-		Metric:     "studio_design_jobs_succeeded",
+		ModuleCode: ModuleListingKit,
+		Metric:     "listingkit_generations_succeeded",
 		Quantity:   1,
-		SourceType: "design_job",
+		SourceType: "listingkit_generation",
 		SourceID:   "job-42",
 		Status:     UsageEventCommitted,
 		OccurredAt: time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC),
@@ -242,9 +242,9 @@ func TestBuildOpenMeterUsageOutboxPayloadUsesStorageSnapshot(t *testing.T) {
 
 func seedServiceUsageLedgerEntitlement(t *testing.T, svc *Service) {
 	t.Helper()
-	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", ModuleStudio, EntitlementInput{
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", ModuleListingKit, EntitlementInput{
 		Status: StatusActive,
-		Limits: map[string]int{"studio_design_jobs_succeeded": 3},
+		Limits: map[string]int{"listingkit_generations_succeeded": 3},
 	}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
@@ -257,8 +257,8 @@ func serviceUsageLedgerInput() ReserveUsageInput {
 func serviceUsageLedgerInputWith(idempotencyKey, sourceID string) ReserveUsageInput {
 	return ReserveUsageInput{
 		TenantID:       "tenant-17",
-		ModuleCode:     ModuleStudio,
-		Metric:         "studio_design_jobs_succeeded",
+		ModuleCode:     ModuleListingKit,
+		Metric:         "listingkit_generations_succeeded",
 		Quantity:       1,
 		PeriodKey:      "2026-08",
 		SourceType:     "design_job",

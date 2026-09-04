@@ -28,13 +28,19 @@ func TestProductSourcingDoesNotDependOnListingKitMarketplaceOrRuntime(t *testing
 	assertProductSourcingDoesNotImportPrefixes(t, productSourcingPackageDir(t), forbiddenPrefixes)
 }
 
-func TestProductSourcingDoesNotDependOnCrawlerOrIntegrationAdapters(t *testing.T) {
+func TestProductSourcingDependsOnlyOnNeutralProductFacts(t *testing.T) {
 	t.Parallel()
 
 	forbiddenPrefixes := []string{
+		"task-processor/internal/asset",
 		"task-processor/internal/crawler",
 		"task-processor/internal/integration",
 		"task-processor/internal/listingkit",
+		"task-processor/internal/model",
+		"task-processor/internal/product/asset",
+		"task-processor/internal/product/enrichment",
+		"task-processor/internal/product/image",
+		"task-processor/internal/productenrich",
 	}
 	assertProductSourcingDoesNotImportPrefixes(t, productSourcingPackageDir(t), forbiddenPrefixes)
 }

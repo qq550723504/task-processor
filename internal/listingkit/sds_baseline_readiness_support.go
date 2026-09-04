@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/catalog/canonical"
-	sdspod "task-processor/internal/product/sourcing/sdspod"
+	"task-processor/internal/product/catalog/canonical"
+	sdspod "task-processor/internal/sds/adapter/product_source"
 )
 
 const sdsBaselineSupportedVersion = 1

@@ -6,11 +6,16 @@ import {
   getCanonicalProductDetail,
   getCanonicalProducts,
 } from "@/lib/api/canonical-products";
+import type { CanonicalProductListPage } from "@/lib/canonical-products/canonical-products";
+
+async function getCanonicalProductsPage(query: { page?: number; page_size?: number }): Promise<CanonicalProductListPage> {
+  return getCanonicalProducts(query);
+}
 
 export function useCanonicalProducts(query: { page?: number; page_size?: number }) {
   return useQuery({
     queryKey: ["listingkit", "canonical-products", query],
-    queryFn: () => getCanonicalProducts(query),
+    queryFn: () => getCanonicalProductsPage(query),
     refetchInterval: 15000,
     refetchOnWindowFocus: true,
   });

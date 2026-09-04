@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/marketplace/sourceproduct"
 )
 
 func TestContractsOwnFetcherTypeAndProductFetcherInterface(t *testing.T) {
@@ -75,7 +76,7 @@ func TestFetcherFactoryPassesLoggerToLocalFetcher(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFetcher() error = %v", err)
 	}
-	if err := fetcher.CacheProduct(nil, nil); err != nil {
+	if err := fetcher.CacheProduct(&sourceproduct.FetchRequest{}, nil); err != nil {
 		t.Fatalf("CacheProduct() error = %v", err)
 	}
 	if !strings.Contains(output.String(), "product is nil, skipping cache") {

@@ -20,7 +20,7 @@
   );
 }
 
-export function isUsableSDSMockupImageUrl(url: string) {
+function isUsableSDSMockupImageUrl(url: string) {
   const trimmed = url.trim();
   if (!trimmed) {
     return false;

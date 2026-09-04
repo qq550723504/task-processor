@@ -4,12 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Boxes,
   ChevronRight,
   ClipboardList,
   Database,
   FileCog,
-  GalleryHorizontal,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -107,13 +105,6 @@ const PRIMARY_NAV_ITEMS = [
         href: "/listing-kits/new",
         icon: PackagePlus,
         match: "exact",
-      },
-      { label: "POD", href: "/listing-kits/sds", icon: Boxes, match: "prefix" },
-      {
-        label: "款式图库",
-        href: "/listing-kits/style-gallery",
-        icon: GalleryHorizontal,
-        match: "prefix",
       },
     ],
   },

@@ -70,7 +70,7 @@ describe("TaskCreateForm", () => {
   });
 
   it("rejects SHEIN creation without an explicit store", async () => {
-    render(<TaskCreateForm />);
+    render(<TaskCreateForm initialValues={{ productKey: "catalog-product-1" }} />);
 
     fireEvent.change(screen.getByLabelText("商品标题"), {
       target: { value: "Women knit cardigan" },
@@ -101,7 +101,7 @@ describe("TaskCreateForm", () => {
       created_at: "2026-04-19T00:00:00Z",
     });
 
-    render(<TaskCreateForm />);
+    render(<TaskCreateForm initialValues={{ productKey: "catalog-product-1" }} />);
 
     fireEvent.click(screen.getByRole("tab", { name: "商品链接" }));
     expect(screen.getByText("选填标题")).toBeInTheDocument();
@@ -117,6 +117,7 @@ describe("TaskCreateForm", () => {
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
+        product_key: "catalog-product-1",
         text: "",
         image_urls: [],
         product_url: "https://detail.1688.com/offer/123456789.html",
@@ -133,7 +134,7 @@ describe("TaskCreateForm", () => {
       screen.getByText("适合从图片开始创建任务。标题越完整，生成质量通常越稳定。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("先提供标题、图片或商品链接，再选择要生成的平台。"),
+      screen.getByText("先从商品中心选择已整理商品，再选择要生成的平台；来源字段可用于补充上下文。"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("可以直接粘贴公网图片链接、上传本地图片，或改用商品链接开始。"),
@@ -188,7 +189,7 @@ describe("TaskCreateForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("请至少提供商品标题、图片链接或商品链接中的一种。"),
+        screen.getByText("必须选择商品中心中的商品。"),
       ).toBeInTheDocument();
     });
   });
@@ -214,7 +215,7 @@ describe("TaskCreateForm", () => {
       created_at: "2026-04-19T00:00:00Z",
     });
 
-    render(<TaskCreateForm />);
+    render(<TaskCreateForm initialValues={{ productKey: "catalog-product-1" }} />);
 
     fireEvent.change(screen.getByLabelText("商品标题"), {
       target: { value: "Women knit cardigan" },

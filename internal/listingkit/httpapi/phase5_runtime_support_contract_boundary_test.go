@@ -29,9 +29,10 @@ func TestRuntimeSupportRepositoriesFileOwnsRepositoryBundleBuilders(t *testing.T
 	require.NoError(t, err)
 	content := string(src)
 
-	require.Contains(t, content, "func buildRuntimeSupportRepositories() BuildServiceRepositories {")
-	require.Contains(t, content, "Core: CoreRepositoryBuilders{")
-	require.Contains(t, content, "Admin: AdminRepositoryBuilders{")
+	require.Contains(t, content, "func withApprovedAssetReader(")
+	require.NotContains(t, content, "func buildRuntimeSupportRepositories()")
+	require.NotContains(t, content, "CoreRepositoryBuilders")
+	require.NotContains(t, content, "AdminRepositoryBuilders")
 }
 
 func TestRuntimeSupportHooksFileOwnsHookBundleBuilders(t *testing.T) {
@@ -43,5 +44,5 @@ func TestRuntimeSupportHooksFileOwnsHookBundleBuilders(t *testing.T) {
 
 	require.Contains(t, content, "func buildRuntimeSupportHooks(cookieStore *sheinlogin.RedisStore) BuildServiceHooks {")
 	require.Contains(t, content, "SheinCategoryResolverBuilder:")
-	require.Contains(t, content, "StudioImageGeneratorBuilder: BuildStudioImageGenerator,")
+	require.NotContains(t, content, "StudioImageGeneratorBuilder:")
 }

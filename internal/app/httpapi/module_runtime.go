@@ -13,7 +13,11 @@ func buildHTTPServerBundleFromModules(port int, cfg *config.Config, modules []ke
 	if err != nil {
 		return nil, nil, err
 	}
-	server, routes := bundle.buildServerBundle(port)
+	authorization, err := buildRouteAuthorization(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	server, routes := bundle.buildServerBundle(port, authorization)
 	return server, routes, nil
 }
 

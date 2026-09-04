@@ -5,19 +5,22 @@ import (
 	"errors"
 	"testing"
 
+	sourcea1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
 func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
 	handoff, err := PrepareListingKitTaskHandoff(ListingKitTaskInput{
-		Source:       testAlibaba1688SourceEnvelopeInput(),
-		TenantID:     " tenant-1688 ",
-		UserID:       " user-1688 ",
-		Platforms:    []string{" SHEIN ", "shein"},
-		Country:      " US ",
-		Language:     " en_US ",
-		SheinStoreID: 168811,
+		Source:             testAlibaba1688SourceEnvelopeInput(),
+		TenantID:           " tenant-1688 ",
+		UserID:             " user-1688 ",
+		Platforms:          []string{" SHEIN ", "shein"},
+		Country:            " US ",
+		Language:           " en_US ",
+		SheinStoreID:       168811,
+		TargetCategoryHint: " Bags>Lunch Bags ",
 	})
 	if err != nil {
 		t.Fatalf("PrepareListingKitTaskHandoff() error = %v", err)
@@ -28,17 +31,17 @@ func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
 	if got := handoff.Envelope.Identity.SourceKey(); got != "crawler:1688:777" {
 		t.Fatalf("SourceKey() = %q, want crawler:1688:777", got)
 	}
-	if handoff.Request.ProductURL != "https://detail.1688.com/offer/777.html" {
-		t.Fatalf("ProductURL = %q, want normalized 1688 URL", handoff.Request.ProductURL)
+	if handoff.Request.ProductKey != "crawler:1688:777" {
+		t.Fatalf("ProductKey = %q, want normalized source identity", handoff.Request.ProductKey)
 	}
 	if handoff.Request.BrandHint != "Factory Lunch" {
 		t.Fatalf("BrandHint = %q, want source brand", handoff.Request.BrandHint)
 	}
 	if handoff.Request.TargetCategoryHint != "Bags>Lunch Bags" {
-		t.Fatalf("TargetCategoryHint = %q, want source category", handoff.Request.TargetCategoryHint)
+		t.Fatalf("TargetCategoryHint = %q, want explicit category hint", handoff.Request.TargetCategoryHint)
 	}
-	if len(handoff.Request.ImageURLs) != 3 {
-		t.Fatalf("ImageURLs = %#v, want main/gallery/variant images", handoff.Request.ImageURLs)
+	if handoff.Request.Source == nil || handoff.Request.Source.URL != "https://detail.1688.com/offer/777.html" {
+		t.Fatalf("Source = %#v, want normalized source reference", handoff.Request.Source)
 	}
 	if len(handoff.Request.Platforms) != 1 || handoff.Request.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein", handoff.Request.Platforms)
@@ -62,10 +65,10 @@ func TestCreateListingKitTaskDelegatesToCreator(t *testing.T) {
 	if task == nil || task.ID != "task-1688" {
 		t.Fatalf("task = %+v, want delegated task", task)
 	}
-	if handoff == nil || handoff.Request.ProductURL == "" {
+	if handoff == nil || handoff.Request.ProductKey == "" {
 		t.Fatalf("handoff = %+v, want prepared request", handoff)
 	}
-	if creator.request == nil || creator.request.ProductURL != "https://detail.1688.com/offer/777.html" {
+	if creator.request == nil || creator.request.ProductKey != "crawler:1688:777" {
 		t.Fatalf("creator request = %+v, want normalized source request", creator.request)
 	}
 }
@@ -83,8 +86,8 @@ func TestCreateListingKitTaskRequiresCreator(t *testing.T) {
 func TestCreateListingKitTaskBlocksMissingProduct(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	task, handoff, err := CreateListingKitTask(context.Background(), creator, ListingKitTaskInput{
-		Source: sourcing.Alibaba1688SourceEnvelopeInput{
-			Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/778.html"},
+		Source: sourcea1688.Alibaba1688SourceEnvelopeInput{
+			Request: sourcea1688.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/778.html"},
 			Error:   errors.New("crawler failed"),
 		},
 		Platforms: []string{"shein"},
@@ -103,10 +106,10 @@ func TestCreateListingKitTaskBlocksMissingProduct(t *testing.T) {
 	}
 }
 
-func testAlibaba1688SourceEnvelopeInput() sourcing.Alibaba1688SourceEnvelopeInput {
-	return sourcing.Alibaba1688SourceEnvelopeInput{
-		Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/777.html?spm=adapter", StoreID: 11},
-		Product: &sourcing.Alibaba1688ProductSnapshot{
+func testAlibaba1688SourceEnvelopeInput() sourcea1688.Alibaba1688SourceEnvelopeInput {
+	return sourcea1688.Alibaba1688SourceEnvelopeInput{
+		Request: sourcea1688.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/777.html?spm=adapter", StoreID: 11},
+		Product: &sourcea1688.Alibaba1688ProductSnapshot{
 			ID:       "777",
 			Title:    "Insulated Lunch Bag",
 			URL:      "https://detail.1688.com/offer/777.html?foo=bar",
@@ -115,14 +118,14 @@ func testAlibaba1688SourceEnvelopeInput() sourcing.Alibaba1688SourceEnvelopeInpu
 			Currency: "CNY",
 			Category: "Bags>Lunch Bags",
 			Brand:    "Factory Lunch",
-			Supplier: sourcing.Alibaba1688SupplierSnapshot{ID: "supplier-777", Name: "Lunch Factory"},
-			Variants: []sourcing.Alibaba1688VariantSnapshot{{
+			Supplier: sourcea1688.Alibaba1688SupplierSnapshot{ID: "supplier-777", Name: "Lunch Factory"},
+			Variants: []sourcea1688.Alibaba1688VariantSnapshot{{
 				Name:       "Black",
 				Image:      "https://img.example/777-black.jpg",
 				Price:      19.9,
 				Attributes: map[string]any{"Color": "Black"},
 			}},
-			ProductDetails: []sourcing.Alibaba1688ProductDetailSnapshot{{Content: "Thermal lunch bag with zipper."}},
+			ProductDetails: []sourcea1688.Alibaba1688ProductDetailSnapshot{{Content: "Thermal lunch bag with zipper."}},
 		},
 		SourceRunID: "run-1688",
 		RequestID:   "request-1688",
@@ -131,9 +134,30 @@ func testAlibaba1688SourceEnvelopeInput() sourcing.Alibaba1688SourceEnvelopeInpu
 
 type fakeGenerateTaskCreator struct {
 	request *listingkit.GenerateRequest
+	events  *[]string
 }
 
 func (f *fakeGenerateTaskCreator) CreateGenerateTask(_ context.Context, request *listingkit.GenerateRequest) (*listingkit.Task, error) {
+	if f.events != nil {
+		*f.events = append(*f.events, "create")
+	}
 	f.request = request
-	return &listingkit.Task{ID: "task-1688", Request: request}, nil
+	return &listingkit.Task{ID: "task-1688", Request: request, SourceSnapshotVersion: request.SourceSnapshotVersion}, nil
+}
+
+type recordingSourcePublisher struct {
+	request *sourcing.PublishRequest
+	events  *[]string
+}
+
+func (p *recordingSourcePublisher) Publish(_ context.Context, request sourcing.PublishRequest) (catalog.PublishedSnapshot, error) {
+	if p.events != nil {
+		*p.events = append(*p.events, "publish")
+	}
+	p.request = &request
+	return catalog.PublishedSnapshot{
+		Identity:      catalog.SnapshotIdentity{TenantID: request.TenantID, ProductKey: request.ProductKey},
+		Version:       1,
+		PublicationID: request.PublicationID,
+	}, nil
 }
