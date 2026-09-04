@@ -2,6 +2,9 @@
 
 **日期：** 2026-09-02  
 **状态：** IMPLEMENTATION_READY / 冻结产品基线  
+
+> **登录决策更新（2026-09-05）：** 本文中与现有用户登录、专用 `otp_login` / `password_login` 和 Login V2 Fork 登录职责有关的 Phase1 决策，已由 `2026-09-05-shuomi-login-phase1-zitadel-native-simplification.md` 替代。Console 其他产品决策及手机号注册边界不受该补充影响。
+
 **代码库：** `qq550723504/task-processor`  
 **设计来源：** Figma 文件 `tg48P46SSXl6TBy9lZwg63`，页面 `31:463`
 
