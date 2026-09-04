@@ -28,7 +28,7 @@ require (
 	github.com/openmeterio/openmeter/api/v3/client v1.0.0-beta.231
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/prometheus/client_golang v1.23.2
-	github.com/rabbitmq/amqp091-go v1.10.0
+	github.com/rabbitmq/amqp091-go v1.13.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/sashabaranov/go-openai v1.41.1
