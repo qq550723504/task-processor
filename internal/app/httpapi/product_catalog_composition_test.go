@@ -172,7 +172,7 @@ func TestProductionCompositionBuildsAmazonListingFromPublishedSnapshotAndApprove
 		t.Fatalf("PublishSnapshot() error = %v", err)
 	}
 	_, err = assets.CommitApproval(context.Background(), productasset.ApprovalCommit{
-		TenantID: "tenant-a", ProductKey: "product-1", ActionID: "approve-1",
+		TenantID: "tenant-a", ProductKey: "product-1", TargetPlatform: "amazon", ActionID: "approve-1",
 		Assets: []productasset.ApprovedAsset{{
 			ID: "asset-main", RunID: "image-run-1", PlanRevision: 1, SlotID: "main", Attempt: 1,
 			Role: productasset.RoleMain, URL: "https://cdn.example.test/main.png",

@@ -193,7 +193,7 @@ func TestHTTPE2E_CurrentAmazonListingUsesSnapshotAndApprovedAssets(t *testing.T)
 		}},
 	}
 	inventory := productasset.ApprovedAssetInventory{
-		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey},
+		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey, TargetPlatform: "amazon"},
 		Assets: []productasset.ApprovedAsset{{
 			ID: "approved-amazon-main", RunID: "amazon-image-run-1", PlanRevision: 1,
 			SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: approvedMainURL,
@@ -286,7 +286,7 @@ func TestHTTPE2E_CurrentListingKitUsesReadOnlySnapshotAndApprovedAssets(t *testi
 		}},
 	}
 	inventory := productasset.ApprovedAssetInventory{
-		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey},
+		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey, TargetPlatform: "shein"},
 		Assets: []productasset.ApprovedAsset{{
 			ID: "approved-listingkit-main", RunID: "listingkit-image-run-1", PlanRevision: 1,
 			SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: approvedMainURL,
@@ -490,7 +490,7 @@ func TestHTTPE2E_CurrentListingKitPersistsFailedWhenRemoteResolutionIsUnavailabl
 		}},
 	}
 	inventory := productasset.ApprovedAssetInventory{
-		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey},
+		Scope: productasset.InventoryScope{TenantID: "app-http-test-tenant", ProductKey: productKey, TargetPlatform: "shein"},
 		Assets: []productasset.ApprovedAsset{{
 			ID: "approved-resolution-main", RunID: "resolution-image-run-1", PlanRevision: 1,
 			SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: "https://cdn.example.test/resolution-main.png",
@@ -678,7 +678,7 @@ func persistCurrentE2EAwaitingApprovalProjection(t *testing.T, repository imagea
 	t.Helper()
 	ctx := context.Background()
 	run := imageagent.Run{
-		ID: "publisher-run", TenantID: "app-http-test-tenant", UserID: "app-http-test-user",
+		ID: "publisher-run", TenantID: "app-http-test-tenant", UserID: "app-http-test-user", TargetPlatform: "shein",
 		Mode: imageagent.RunModeManual, IdempotencyKey: "publisher-run-current-e2e",
 		Status: imageagent.RunStatusExecuting, CurrentNode: "execute_slots", Version: 1,
 	}
@@ -773,7 +773,7 @@ func currentE2EProductReaders(t *testing.T, productKey string, snapshot catalog.
 	require.NoError(t, err)
 	_, err = assets.CommitApproval(context.Background(), productasset.ApprovalCommit{
 		TenantID: inventory.Scope.TenantID, ProductKey: inventory.Scope.ProductKey,
-		ActionID: "current-e2e-approval-1", SourceSnapshotVersion: published.Version, Assets: inventory.Assets,
+		TargetPlatform: inventory.Scope.TargetPlatform, ActionID: "current-e2e-approval-1", SourceSnapshotVersion: published.Version, Assets: inventory.Assets,
 	})
 	require.NoError(t, err)
 	return db, dbPath, snapshots, assets
