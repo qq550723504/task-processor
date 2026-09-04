@@ -46,7 +46,7 @@ func (c *Client) StartStandardProduct(ctx context.Context, in listingkit.Standar
 		RequestedAt:     in.RequestedAt,
 		TriggeredByUser: in.TriggeredByUser,
 	})
-	return err
+	return idempotentGenerationStartError(err)
 }
 
 func (c *Client) StartPlatformAdaptation(ctx context.Context, in listingkit.PlatformAdaptWorkflowStartInput) error {
@@ -66,6 +66,16 @@ func (c *Client) StartPlatformAdaptation(ctx context.Context, in listingkit.Plat
 		RequestedAt:     in.RequestedAt,
 		TriggeredByUser: in.TriggeredByUser,
 	})
+	return idempotentGenerationStartError(err)
+}
+
+// idempotentGenerationStartError treats a stable workflow ID that is already
+// running as proof that dispatch succeeded. Terminal executions remain
+// startable because the workflow reuse policy explicitly allows duplicates.
+func idempotentGenerationStartError(err error) error {
+	if sdktemporal.IsWorkflowExecutionAlreadyStartedError(err) {
+		return nil
+	}
 	return err
 }
 
