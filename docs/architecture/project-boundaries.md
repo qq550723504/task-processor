@@ -346,8 +346,10 @@ recovery from activating an unresolved row after the readiness check. The
 migration command defaults to read-only verification, opens only an existing
 database, streams verification rows with bounded memory, and requires an
 explicit action for one bounded backfill batch using an existing writable
-database. Constraints, authority switching, and lifecycle HTTP routes remain
-separate later phases and must not be enabled by this foundation.
+database. Candidate indexes cover both the unmapped-record and unresolved-
+history branches so repeated batches do not rescan the migrated ID prefix.
+Constraints, authority switching, and lifecycle HTTP routes remain separate
+later phases and must not be enabled by this foundation.
 
 ## 4. Forbidden Import Directions
 

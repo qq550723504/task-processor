@@ -98,6 +98,8 @@ func TestGormStoreRepositoryExpandsNullableStoreServiceColumns(t *testing.T) {
 		}
 	}
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "record_status", "updated_at"}, false)
+	assertSQLiteIndex(t, db, "workbench_stores", []string{"record_status", "id"}, false)
+	assertSQLiteIndex(t, db, "workbench_stores", []string{"service_history_resolution_status", "lifecycle_status", "deleted_at", "id"}, false)
 }
 
 func TestGormStoreRepositoryCompatibilityWriterMirrorsLifecycleState(t *testing.T) {

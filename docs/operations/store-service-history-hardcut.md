@@ -9,7 +9,8 @@ external history resolver.
 - `verify` is the default, opens only an existing database, and uses a read-only
   session. It scans rows in ID order without materializing the Store table.
 - `backfill` opens only an existing database and updates one bounded batch only;
-  the maximum batch size is 1000.
+  the maximum batch size is 1000. Dedicated candidate indexes keep repeated
+  batches from rescanning the migrated ID prefix.
 - The command never creates schema, adds final constraints, switches read/write
   authority, or enables lifecycle HTTP/BFF routes.
 - Missing, malformed, unknown-field, or changed manifests fail closed.
