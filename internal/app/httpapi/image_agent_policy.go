@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	policyassembly "task-processor/internal/app/imageagentpolicy"
 	"task-processor/internal/imageagent"
-	policycatalog "task-processor/internal/integration/policy/productimage"
 	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 )
 
@@ -14,7 +14,7 @@ type imageAgentPolicyAvailability struct {
 }
 
 func loadImageAgentPolicyAvailability() (imageagent.ImagePolicyAvailability, error) {
-	resolver, err := policycatalog.LoadEmbeddedResolver()
+	resolver, err := policyassembly.LoadEmbeddedResolver()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded image policy catalog: %w", err)
 	}

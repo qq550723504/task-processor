@@ -1,19 +1,22 @@
-package productimage
+package imageagentpolicy
 
-import imagepolicy "task-processor/internal/marketplace/imagepolicy"
+import (
+	policycatalog "task-processor/internal/integration/policy/productimage"
+	imagepolicy "task-processor/internal/marketplace/imagepolicy"
+)
 
 // LoadEmbeddedResolver builds the exact resolver shared by command admission
-// and worker execution. Keeping this conversion beside the catalog prevents
-// the two process compositions from drifting onto different policy key sets.
+// and worker execution. The app composition layer owns this infrastructure to
+// domain mapping so the policy catalog remains independent of business rules.
 func LoadEmbeddedResolver() (*imagepolicy.Resolver, error) {
-	catalog, err := LoadEmbedded()
+	catalog, err := policycatalog.LoadEmbedded()
 	if err != nil {
 		return nil, err
 	}
 	return NewResolver(catalog)
 }
 
-func NewResolver(catalog Catalog) (*imagepolicy.Resolver, error) {
+func NewResolver(catalog policycatalog.Catalog) (*imagepolicy.Resolver, error) {
 	set := imagepolicy.PolicySet{Version: catalog.Version, Policies: make([]imagepolicy.Policy, len(catalog.Policies))}
 	for index, policy := range catalog.Policies {
 		set.Policies[index] = imagepolicy.Policy{

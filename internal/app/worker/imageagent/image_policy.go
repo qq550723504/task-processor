@@ -1,14 +1,15 @@
 package imageagentworker
 
 import (
+	policyassembly "task-processor/internal/app/imageagentpolicy"
 	policycatalog "task-processor/internal/integration/policy/productimage"
 	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 )
 
 func loadEmbeddedImagePolicyResolver() (*imagepolicy.Resolver, error) {
-	return policycatalog.LoadEmbeddedResolver()
+	return policyassembly.LoadEmbeddedResolver()
 }
 
 func newImagePolicyResolver(catalog policycatalog.Catalog) (*imagepolicy.Resolver, error) {
-	return policycatalog.NewResolver(catalog)
+	return policyassembly.NewResolver(catalog)
 }
