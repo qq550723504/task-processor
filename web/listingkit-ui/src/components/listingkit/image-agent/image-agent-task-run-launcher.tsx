@@ -29,14 +29,18 @@ export function ImageAgentTaskRunLauncher({
   const [sceneCategory, setSceneCategory] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string>();
-  const [sourceId, setSourceId] = useState("");
-  const [styleIds, setStyleIds] = useState<string[]>([]);
+  const selectionScope = JSON.stringify([taskId, targetPlatform ?? ""]);
+  const [selection, setSelection] = useState<{
+    scope: string;
+    sourceId: string;
+    styleIds: string[];
+  }>(() => ({ scope: selectionScope, sourceId: "", styleIds: [] }));
+  const sourceId = selection.scope === selectionScope ? selection.sourceId : "";
+  const styleIds = selection.scope === selectionScope ? selection.styleIds : [];
   const launchRequestId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     launchRequestId.current = undefined;
-    setSourceId("");
-    setStyleIds([]);
   }, [taskId, targetPlatform, country]);
 
   const preflightKey = open && targetPlatform
@@ -97,9 +101,17 @@ export function ImageAgentTaskRunLauncher({
 
   const toggleStyle = (id: string) => {
     launchRequestId.current = undefined;
-    setStyleIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-    );
+    setSelection((current) => {
+      const currentSourceId = current.scope === selectionScope ? current.sourceId : "";
+      const currentStyleIds = current.scope === selectionScope ? current.styleIds : [];
+      return {
+        scope: selectionScope,
+        sourceId: currentSourceId,
+        styleIds: currentStyleIds.includes(id)
+          ? currentStyleIds.filter((item) => item !== id)
+          : [...currentStyleIds, id],
+      };
+    });
   };
 
   const launch = async () => {
@@ -180,7 +192,7 @@ export function ImageAgentTaskRunLauncher({
                   name="image-agent-source-asset"
                   onChange={() => {
                     launchRequestId.current = undefined;
-                    setSourceId(asset.id);
+                    setSelection({ scope: selectionScope, sourceId: asset.id, styleIds });
                   }}
                   type="radio"
                   value={asset.id}
