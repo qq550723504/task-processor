@@ -74,10 +74,11 @@ func TestToSnapshotProducesCanonicalFactsWithoutAssets(t *testing.T) {
 		},
 		RawReference: RawSourceReference{ReferenceID: "raw-1"},
 		ProductCandidate: ProductCandidate{
-			Title:       "Test Shirt",
-			Brand:       "Test Brand",
-			Description: "Test description",
-			Attributes:  map[string]string{"zeta": "last", "category": "Shirts", "alpha": "first"},
+			Title:        "Test Shirt",
+			Brand:        "Test Brand",
+			CategoryPath: []string{"Apparel", "Shirts"},
+			Description:  "Test description",
+			Attributes:   map[string]string{"zeta": "last", "category": "Shirts", "alpha": "first"},
 			Variants: []ProductVariantCandidate{{
 				SourceID:   "B001-BLUE-M",
 				Title:      "Blue / M",
@@ -94,6 +95,9 @@ func TestToSnapshotProducesCanonicalFactsWithoutAssets(t *testing.T) {
 	}
 	if got.Title != "Test Shirt" || got.Brand != "Test Brand" || got.Description != "Test description" {
 		t.Fatalf("ToSnapshot() facts = %+v, want title, brand, and description", got)
+	}
+	if !reflect.DeepEqual(got.CategoryPath, []string{"Apparel", "Shirts"}) {
+		t.Fatalf("ToSnapshot() category path = %#v, want structured source category", got.CategoryPath)
 	}
 	if len(got.Sources) != 1 || got.Sources[0].Type != "crawler" || got.Sources[0].Detail != "raw-1" {
 		t.Fatalf("ToSnapshot() sources = %+v, want normalized source evidence", got.Sources)

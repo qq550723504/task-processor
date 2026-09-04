@@ -479,11 +479,12 @@ func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) sourcing.P
 	}
 
 	return sourcing.ProductCandidate{
-		Title:       strings.TrimSpace(product.Title),
-		Description: product.NormalizedDescription(),
-		Brand:       strings.TrimSpace(product.Brand),
-		Attributes:  attributes,
-		Variants:    alibaba1688VariantCandidates(product.Variants, product.NormalizedCurrency()),
+		Title:        strings.TrimSpace(product.Title),
+		Description:  product.NormalizedDescription(),
+		Brand:        strings.TrimSpace(product.Brand),
+		CategoryPath: sourcing.ParseCategoryPath(product.Category),
+		Attributes:   attributes,
+		Variants:     alibaba1688VariantCandidates(product.Variants, product.NormalizedCurrency()),
 	}
 }
 

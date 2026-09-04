@@ -16,14 +16,15 @@ func ToSnapshot(in SourceEnvelope) (catalog.ProductSnapshot, error) {
 		return catalog.ProductSnapshot{}, err
 	}
 	return catalog.ProductSnapshot{
-		Title:       normalized.ProductCandidate.Title,
-		Brand:       normalized.ProductCandidate.Brand,
-		Description: normalized.ProductCandidate.Description,
-		Attributes:  snapshotAttributes(normalized.ProductCandidate.Attributes),
-		Variants:    snapshotVariants(normalized),
-		Images:      snapshotImages(normalized),
-		Review:      reviewFromSourceWarnings(normalized.Warnings),
-		Warnings:    snapshotWarnings(normalized.Warnings),
+		Title:        normalized.ProductCandidate.Title,
+		Brand:        normalized.ProductCandidate.Brand,
+		CategoryPath: snapshotCategoryPath(normalized.ProductCandidate.CategoryPath),
+		Description:  normalized.ProductCandidate.Description,
+		Attributes:   snapshotAttributes(normalized.ProductCandidate.Attributes),
+		Variants:     snapshotVariants(normalized),
+		Images:       snapshotImages(normalized),
+		Review:       reviewFromSourceWarnings(normalized.Warnings),
+		Warnings:     snapshotWarnings(normalized.Warnings),
 		Sources: []catalog.SourceRecord{{
 			Type: normalized.Identity.SourceType, Detail: normalized.RawReference.ReferenceID,
 			Platform: normalized.Identity.SourcePlatform, SourceID: normalized.Identity.SourceID,
@@ -35,6 +36,22 @@ func ToSnapshot(in SourceEnvelope) (catalog.ProductSnapshot, error) {
 			Notes: normalized.Trace.Notes,
 		}},
 	}, nil
+}
+
+func snapshotCategoryPath(path []string) []string {
+	if len(path) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(path))
+	for _, segment := range path {
+		if segment = strings.TrimSpace(segment); segment != "" {
+			result = append(result, segment)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func snapshotImages(envelope SourceEnvelope) []catalog.Image {

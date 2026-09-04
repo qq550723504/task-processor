@@ -23,7 +23,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 		Currency:         "CNY",
 		MinOrderQuantity: 2,
 		Unit:             "件",
-		Category:         "Bags",
+		Category:         "Bags > Lunch Bags",
 		Brand:            "Factory Brand",
 		Keywords:         []string{" tote ", "canvas"},
 		IsCustomized:     true,
@@ -97,6 +97,16 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	}
 	if envelope.ProductCandidate.Title != "Canvas Tote Bag" || envelope.ProductCandidate.Brand != "Factory Brand" {
 		t.Fatalf("sourcing.ProductCandidate = %+v, want title and brand", envelope.ProductCandidate)
+	}
+	if want := []string{"Bags", "Lunch Bags"}; !reflect.DeepEqual(envelope.ProductCandidate.CategoryPath, want) {
+		t.Fatalf("category path = %#v, want %#v", envelope.ProductCandidate.CategoryPath, want)
+	}
+	snapshot, err := sourcing.ToSnapshot(envelope)
+	if err != nil {
+		t.Fatalf("sourcing.ToSnapshot() error = %v", err)
+	}
+	if want := []string{"Bags", "Lunch Bags"}; !reflect.DeepEqual(snapshot.CategoryPath, want) {
+		t.Fatalf("catalog snapshot category path = %#v, want %#v", snapshot.CategoryPath, want)
 	}
 	if envelope.ProductCandidate.Description != "Durable bag" {
 		t.Fatalf("Description = %q, want product detail content", envelope.ProductCandidate.Description)
