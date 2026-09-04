@@ -12,7 +12,9 @@ external history resolver.
   the maximum batch size is 1000. Dedicated candidate indexes keep repeated
   batches from rescanning the migrated ID prefix.
 - The command never creates schema, adds final constraints, switches read/write
-  authority, or enables lifecycle HTTP/BFF routes.
+  authority, or enables lifecycle HTTP/BFF routes unless the operator explicitly
+  selects the separately gated `constraints` action. That action never switches
+  authority or enables routes.
 - Missing, malformed, unknown-field, or changed manifests fail closed.
 - `record_status`, `service_status`, timestamps, and immutable history evidence
   are updated in one serializable row transaction. Transient PostgreSQL/SQLite
@@ -101,3 +103,29 @@ lifecycle and clears any unexplained service period before persisting
 
 Stop on any non-zero blocker. Do not infer missing history, edit evidence rows,
 add final constraints, or enable lifecycle routes as a workaround.
+
+## Phase E development artifact
+
+The `constraints` action is an explicit PostgreSQL-only Phase E mechanism. It
+does not run from `AutoMigrate`, deployment, or application startup. Before its
+first DDL statement it repeats Phase D verification with the same immutable
+manifest; any blocker produces a report and zero DDL.
+
+When separately authorized for an environment, the action stages five owned
+checks with `NOT VALID`, validates them individually, and only then sets
+`record_status NOT NULL`. Every DDL transaction applies bounded lock and
+statement timeouts. A same-name constraint without the expected ownership
+marker fails closed, while an exact completed run is idempotent.
+
+```powershell
+./scripts/store-service-history-migrate.ps1 `
+  -Action constraints `
+  -ConstraintLockTimeout 500ms `
+  -ConstraintStatementTimeout 30s `
+  -ManifestPath C:\release\store-service-history-manifest.json `
+  -ConfigPath config/config-prod.yaml
+```
+
+This command is documented for review and future authorized execution only. Its
+presence does not authorize deployment, database access, Phase F authority
+handoff, or lifecycle route enablement.

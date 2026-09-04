@@ -2,8 +2,10 @@
 param(
     [string]$ConfigPath = "config/config-dev.yaml",
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$ManifestPath,
-    [ValidateSet("verify", "backfill")][string]$Action = "verify",
-    [ValidateRange(1, 1000)][int]$BatchSize = 100
+    [ValidateSet("verify", "backfill", "constraints")][string]$Action = "verify",
+    [ValidateRange(1, 1000)][int]$BatchSize = 100,
+    [ValidateNotNullOrEmpty()][string]$ConstraintLockTimeout = "500ms",
+    [ValidateNotNullOrEmpty()][string]$ConstraintStatementTimeout = "30s"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +15,9 @@ $arguments = @(
     "--config", $ConfigPath,
     "--manifest", $ManifestPath,
     "--action", $Action,
-    "--batch-size", $BatchSize
+    "--batch-size", $BatchSize,
+    "--constraint-lock-timeout", $ConstraintLockTimeout,
+    "--constraint-statement-timeout", $ConstraintStatementTimeout
 )
 
 Push-Location $repoRoot

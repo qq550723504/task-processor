@@ -21,20 +21,24 @@ import (
 )
 
 const (
-	defaultConfigPath     = "config/config-dev.yaml"
-	defaultAction         = "verify"
-	defaultBatchSize      = 100
-	migrationActorSubject = "store-service-history-migration"
+	defaultConfigPath                 = "config/config-dev.yaml"
+	defaultAction                     = "verify"
+	defaultBatchSize                  = 100
+	defaultConstraintLockTimeout      = 500 * time.Millisecond
+	defaultConstraintStatementTimeout = 30 * time.Second
+	migrationActorSubject             = "store-service-history-migration"
 )
 
 type Options struct {
-	Config    string
-	LogLevel  string
-	Action    string
-	Manifest  string
-	BatchSize int
-	Version   string
-	BuildTime string
+	Config                     string
+	LogLevel                   string
+	Action                     string
+	Manifest                   string
+	BatchSize                  int
+	ConstraintLockTimeout      time.Duration
+	ConstraintStatementTimeout time.Duration
+	Version                    string
+	BuildTime                  string
 }
 
 func (options Options) ConfigPath() string {
@@ -47,6 +51,7 @@ func (options Options) ConfigPath() string {
 type historyMigrator interface {
 	BackfillBatch(context.Context, int) (storecenter.StoreHistoryMigrationReport, error)
 	Verify(context.Context) (storecenter.StoreHistoryMigrationReport, error)
+	ApplyConstraints(context.Context, storecenter.StoreServiceConstraintOptions) (storecenter.StoreServiceConstraintReport, error)
 }
 
 type runtimeDependencies struct {
@@ -92,7 +97,7 @@ func runWithDependencies(ctx context.Context, options Options, output io.Writer,
 	if action == "" {
 		action = defaultAction
 	}
-	if action != "verify" && action != "backfill" {
+	if action != "verify" && action != "backfill" && action != "constraints" {
 		return flag.ErrHelp
 	}
 	if strings.TrimSpace(options.Manifest) == "" {
@@ -100,6 +105,14 @@ func runWithDependencies(ctx context.Context, options Options, output io.Writer,
 	}
 	if action == "backfill" && (options.BatchSize <= 0 || options.BatchSize > 1000) {
 		return errors.New("backfill batch size must be between 1 and 1000")
+	}
+	constraintOptions := storecenter.StoreServiceConstraintOptions{
+		LockTimeout: options.ConstraintLockTimeout, StatementTimeout: options.ConstraintStatementTimeout,
+	}
+	if action == "constraints" {
+		if err := constraintOptions.Validate(); err != nil {
+			return err
+		}
 	}
 	if output == nil {
 		return errors.New("migration report output is required")
@@ -143,7 +156,7 @@ func runWithDependencies(ctx context.Context, options Options, output io.Writer,
 		return errors.New("database config is required")
 	}
 	openDB := dependencies.OpenDB
-	if action == "backfill" {
+	if action == "backfill" || action == "constraints" {
 		openDB = dependencies.OpenWritableDB
 	}
 	db, err := openDB(cfg.Database)
@@ -163,12 +176,14 @@ func runWithDependencies(ctx context.Context, options Options, output io.Writer,
 	if err != nil {
 		return fmt.Errorf("construct Store history migrator: %w", err)
 	}
-	var report storecenter.StoreHistoryMigrationReport
+	var report any
 	switch action {
 	case "verify":
 		report, err = migrator.Verify(ctx)
 	case "backfill":
 		report, err = migrator.BackfillBatch(ctx, options.BatchSize)
+	case "constraints":
+		report, err = migrator.ApplyConstraints(ctx, constraintOptions)
 	}
 	if encodeErr := json.NewEncoder(output).Encode(report); encodeErr != nil {
 		return fmt.Errorf("write Store history migration report: %w", encodeErr)

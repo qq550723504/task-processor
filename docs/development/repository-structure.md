@@ -40,7 +40,7 @@
     - `store-service-history-migrate`
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
-  - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次。
+  - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次，只有显式选择 `constraints` 且 Phase D 重验通过才会执行 PostgreSQL staged constraints。
   - 不再新增临时调试可执行程序。
   - 历史爬虫、订阅、兼容 API、地址复制、一次性迁移或调试入口不得回流到 `cmd/`；确需保留时放到 `hack/`、`tools/` 或业务模块内。
   - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。

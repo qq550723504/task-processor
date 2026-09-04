@@ -350,8 +350,11 @@ database, streams verification rows with bounded memory, and requires an
 explicit action for one bounded backfill batch using an existing writable
 database. Candidate indexes cover both the unmapped-record and unresolved-
 history branches so repeated batches do not rescan the migrated ID prefix.
-Constraints, authority switching, and lifecycle HTTP routes remain separate
-later phases and must not be enabled by this foundation.
+Phase E constraints remain outside `AutoMigrate`: the same explicit command
+must first repeat Phase D verification, then add owned PostgreSQL checks as
+`NOT VALID`, validate them under bounded timeouts, and only afterwards set
+`record_status NOT NULL`. Authority switching and lifecycle HTTP routes remain
+the separate Phase F and are not enabled by schema or constraint tooling.
 
 ## 4. Forbidden Import Directions
 
