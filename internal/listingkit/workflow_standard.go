@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -18,6 +19,7 @@ type standardWorkflowState struct {
 const (
 	standardProductReadinessBlockReason  = "standard_product_readiness_pending"
 	standardProductReadinessBlockMessage = "standard product inputs are not ready"
+	standardProductReadinessRetryDelay   = 30 * time.Second
 )
 
 func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*standardWorkflowState, error) {

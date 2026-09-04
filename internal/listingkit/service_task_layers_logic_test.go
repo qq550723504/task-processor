@@ -78,3 +78,41 @@ func TestProcessStandardProductLayerReblocksWithExistingRetryState(t *testing.T)
 	require.NotNil(t, stored.RetryableBlock.LastRetryAt)
 	require.NotNil(t, stored.RetryableBlock.NextRetryAt)
 }
+
+func TestProcessStandardProductLayerReadinessWaitDoesNotExhaustAutomaticRecovery(t *testing.T) {
+	now := time.Now().UTC()
+	previousBlockedAt := now.Add(-10 * time.Minute)
+	previousRetryAt := now.Add(-time.Minute)
+	repo := &stubInlineTaskRepo{tasks: map[string]*Task{}}
+	task := &Task{
+		ID:       "task-readiness-wait-does-not-exhaust",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusPending,
+		Request:  &GenerateRequest{ProductKey: "product-1", UserID: "user-1"},
+		RetryableBlock: &RetryableBlock{
+			ReasonCode:           standardProductReadinessBlockReason,
+			ReasonMessage:        standardProductReadinessBlockMessage,
+			BlockedAt:            previousBlockedAt,
+			LastRetryAt:          &previousRetryAt,
+			RetryAttempts:        7,
+			MaxAutoRetryAttempts: 8,
+			RecoveryScope:        "task",
+			AutoResumeEnabled:    true,
+		},
+	}
+	require.NoError(t, repo.CreateTask(context.Background(), task))
+
+	_, err := (&service{repo: repo}).ProcessStandardProductLayer(context.Background(), task.ID)
+
+	require.NoError(t, err)
+	stored, getErr := repo.GetTask(context.Background(), task.ID)
+	require.NoError(t, getErr)
+	require.NotNil(t, stored.RetryableBlock)
+	require.Equal(t, 8, stored.RetryableBlock.RetryAttempts)
+	require.Zero(t, stored.RetryableBlock.MaxAutoRetryAttempts)
+	require.False(t, stored.RetryableBlock.AutoRetryPaused)
+	require.True(t, stored.RetryableBlock.AutoResumeEnabled)
+	require.NotNil(t, stored.RetryableBlock.NextRetryAt)
+	require.GreaterOrEqual(t, stored.RetryableBlock.NextRetryAt.Sub(now), standardProductReadinessRetryDelay)
+	require.Equal(t, previousBlockedAt, stored.RetryableBlock.BlockedAt)
+}

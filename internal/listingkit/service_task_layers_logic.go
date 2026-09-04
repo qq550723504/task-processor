@@ -34,23 +34,7 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	}
 	if state.blocked {
 		now := time.Now().UTC()
-		classified := &submissiondomain.RetryableBlockState{
-			ReasonCode:           standardProductReadinessBlockReason,
-			ReasonMessage:        standardProductReadinessBlockMessage,
-			MaxAutoRetryAttempts: 8,
-			RecoveryScope:        submissiondomain.RetryableRecoveryScopeTask,
-			AutoResumeEnabled:    true,
-		}
-		block := adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
-			adaptRetryableBlockState(task.RetryableBlock),
-			classified,
-			now,
-			submissiondomain.RetryableRecoveryScopeTask,
-		))
-		if block.MaxAutoRetryAttempts == 0 {
-			block.MaxAutoRetryAttempts = classified.MaxAutoRetryAttempts
-		}
-		block.AutoResumeEnabled = true
+		block := buildStandardProductReadinessBlock(task.RetryableBlock, now)
 		if err := s.repo.MarkBlockedRetryable(ctx, task.ID, block, standardProductReadinessBlockMessage); err != nil {
 			return nil, err
 		}
@@ -66,6 +50,28 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 		}
 	}
 	return state.snapshot, nil
+}
+
+func buildStandardProductReadinessBlock(previous *RetryableBlock, blockedAt time.Time) *RetryableBlock {
+	block := cloneRetryableBlock(previous)
+	if block == nil {
+		block = &RetryableBlock{}
+	}
+	block.ReasonCode = standardProductReadinessBlockReason
+	block.ReasonMessage = standardProductReadinessBlockMessage
+	if block.BlockedAt.IsZero() {
+		block.BlockedAt = blockedAt
+	}
+	block.RetryAttempts++
+	lastRetryAt := blockedAt
+	block.LastRetryAt = &lastRetryAt
+	block.MaxAutoRetryAttempts = 0
+	block.RecoveryScope = submissiondomain.RetryableRecoveryScopeTask
+	block.AutoResumeEnabled = true
+	block.AutoRetryPaused = false
+	nextRetryAt := blockedAt.Add(standardProductReadinessRetryDelay)
+	block.NextRetryAt = &nextRetryAt
+	return block
 }
 
 func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error) {
