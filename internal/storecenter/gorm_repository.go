@@ -22,6 +22,10 @@ type GormStoreRepository struct {
 	db *gorm.DB
 }
 
+// ErrStoreSchemaMigrationBusy asks the schema runner to retry after the
+// separately authorized Phase E migration releases its transaction lock.
+var ErrStoreSchemaMigrationBusy = errors.New("store schema migration lock is already held")
+
 type workbenchStoreRecord struct {
 	ID                       string         `gorm:"column:id;type:char(36);primaryKey;not null;index:idx_workbench_stores_history_backfill_record,priority:2;index:idx_workbench_stores_history_backfill_resolution,priority:4"`
 	OrganizationID           string         `gorm:"column:organization_id;size:200;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:1;index:idx_workbench_stores_org_record_status_updated,priority:1;index:idx_workbench_stores_org_platform_region,priority:1;uniqueIndex:ux_workbench_stores_org_create_key,priority:1;uniqueIndex:ux_workbench_stores_org_identity_key,priority:1"`
@@ -75,8 +79,12 @@ func AutoMigrateStoreRepository(db *gorm.DB) error {
 	}
 	if db.Dialector != nil && db.Dialector.Name() == "postgres" {
 		return db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, storeServiceConstraintLockKey).Error; err != nil {
+			var acquired bool
+			if err := tx.Raw(`SELECT pg_try_advisory_xact_lock(hashtext(?))`, storeServiceConstraintLockKey).Scan(&acquired).Error; err != nil {
 				return fmt.Errorf("acquire Store schema migration lock: %w", err)
+			}
+			if !acquired {
+				return ErrStoreSchemaMigrationBusy
 			}
 			return autoMigrateStoreRepository(tx)
 		})
