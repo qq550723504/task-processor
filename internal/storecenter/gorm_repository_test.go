@@ -65,6 +65,259 @@ func TestGormStoreRepositoryMigratesRepeatableScopedSchema(t *testing.T) {
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "identity_key"}, true)
 }
 
+func TestGormStoreRepositoryExpandsNullableStoreServiceColumns(t *testing.T) {
+	db := openStoreDB(t)
+	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
+		t.Fatal(err)
+	}
+	type column struct {
+		Name    string `gorm:"column:name"`
+		NotNull int    `gorm:"column:notnull"`
+	}
+	var columns []column
+	if err := db.Raw("PRAGMA table_info(workbench_stores)").Scan(&columns).Error; err != nil {
+		t.Fatal(err)
+	}
+	byName := make(map[string]column, len(columns))
+	for _, column := range columns {
+		byName[column.Name] = column
+	}
+	for _, name := range []string{"record_status", "service_status", "service_started_at", "service_expires_at"} {
+		column, ok := byName[name]
+		if !ok || column.NotNull != 0 {
+			t.Fatalf("expand column %q = %#v, want present and nullable", name, column)
+		}
+	}
+	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "record_status", "updated_at"}, false)
+}
+
+func TestGormStoreRepositoryCompatibilityWriterMirrorsLifecycleState(t *testing.T) {
+	db := openStoreDB(t)
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000401", "00000000-0000-4000-8000-000000000402", "00000000-0000-4000-8000-000000000403", "Legacy", "SG", "legacy-external", time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC))
+	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		RecordStatus     *string    `gorm:"column:record_status"`
+		ServiceStatus    *string    `gorm:"column:service_status"`
+		ServiceStartedAt *time.Time `gorm:"column:service_started_at"`
+		ServiceExpiresAt *time.Time `gorm:"column:service_expires_at"`
+	}
+	if err := db.Table("workbench_stores").Where("id = ?", store.ID()).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.RecordStatus == nil || *row.RecordStatus != string(storecenter.RecordStatusProvisioning) || row.ServiceStatus != nil || row.ServiceStartedAt != nil || row.ServiceExpiresAt != nil {
+		t.Fatalf("create compatibility state = %#v, want provisioning with no service state", row)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-active", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
+		t.Fatal(err)
+	}
+	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusPendingActivation))
+
+	if err := store.TransitionTo(storecenter.StoreStatusDisabled, "subject-disabled", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
+		t.Fatal(err)
+	}
+	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusSuspended))
+
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-reactivated", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 3); !errors.Is(err, storecenter.ErrServiceResumeRequired) {
+		t.Fatalf("legacy enable Save() error = %v, want ErrServiceResumeRequired", err)
+	}
+	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusSuspended))
+
+	store, err = repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BeginDelete("00000000-0000-4000-8000-000000000404", "subject-deleter", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", store, 3); err != nil {
+		t.Fatal(err)
+	}
+	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusDeleting), "")
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 4); err != nil {
+		t.Fatal(err)
+	}
+	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusDeleted), "")
+}
+
+func TestGormStoreRepositoryRejectsLegacyEnableUntilServiceHistoryResolves(t *testing.T) {
+	db := openStoreDB(t)
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000405", "00000000-0000-4000-8000-000000000406", "00000000-0000-4000-8000-000000000407", "Legacy disabled", "SG", "legacy-disabled", time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC))
+	created, _, err := repo.CreateOrReplay(context.Background(), "org-a", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.TransitionTo(storecenter.StoreStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Table("workbench_stores").Where("organization_id = ? AND id = ?", "org-a", created.ID()).Updates(map[string]any{
+		"lifecycle_status":   string(storecenter.StoreStatusDisabled),
+		"version":            int64(3),
+		"record_status":      nil,
+		"service_status":     nil,
+		"service_started_at": nil,
+		"service_expires_at": nil,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	disabled, err := repo.Get(context.Background(), "org-a", created.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := disabled.TransitionTo(storecenter.StoreStatusActive, "subject-enable", disabled.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", disabled, 3); !errors.Is(err, storecenter.ErrServiceResumeRequired) {
+		t.Fatalf("legacy enable Save() error = %v, want ErrServiceResumeRequired", err)
+	}
+
+	var row struct {
+		LifecycleStatus string  `gorm:"column:lifecycle_status"`
+		Version         int64   `gorm:"column:version"`
+		RecordStatus    *string `gorm:"column:record_status"`
+		ServiceStatus   *string `gorm:"column:service_status"`
+	}
+	if err := db.Table("workbench_stores").Where("organization_id = ? AND id = ?", "org-a", created.ID()).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.LifecycleStatus != string(storecenter.StoreStatusDisabled) || row.Version != 3 || row.RecordStatus != nil || row.ServiceStatus != nil {
+		t.Fatalf("legacy enable mutated row = %+v", row)
+	}
+}
+
+func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testing.T) {
+	db := openStoreDB(t)
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000411", "00000000-0000-4000-8000-000000000412", "00000000-0000-4000-8000-000000000413", "Service", "SG", "service-external", time.Date(2026, 9, 4, 9, 0, 0, 0, time.UTC))
+	created, _, err := repo.CreateOrReplay(context.Background(), "org-a", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.TransitionTo(storecenter.StoreStatusActive, "creator", created.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	now := created.UpdatedAt().Add(time.Minute)
+	err = db.Transaction(func(tx *gorm.DB) error {
+		locked, lockErr := repo.LockServiceState(context.Background(), tx, storecenter.ServiceStoreIdentity{OrganizationID: "org-a", StoreID: created.ID()})
+		if lockErr != nil {
+			return lockErr
+		}
+		if locked.Version != 2 || locked.State.RecordStatus != storecenter.RecordStatusActive || locked.State.ServiceStatus != storecenter.ServiceStatusPendingActivation {
+			t.Fatalf("locked service snapshot = %+v", locked)
+		}
+		target, transitionErr := storecenter.ActivateStoreService(locked.State, storecenter.ConnectionStatusConnected, now)
+		if transitionErr != nil {
+			return transitionErr
+		}
+		return repo.ApplyServiceState(context.Background(), tx, storecenter.ServiceStoreMutation{
+			Identity:              locked.Identity,
+			ExpectedVersion:       locked.Version,
+			ExpectedConnectionRef: locked.ConnectionRef,
+			State:                 target,
+			ActorSubject:          "operator",
+			OccurredAt:            now,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		Version          int64      `gorm:"column:version"`
+		UpdatedBy        string     `gorm:"column:updated_by"`
+		RecordStatus     *string    `gorm:"column:record_status"`
+		ServiceStatus    *string    `gorm:"column:service_status"`
+		ServiceStartedAt *time.Time `gorm:"column:service_started_at"`
+		ServiceExpiresAt *time.Time `gorm:"column:service_expires_at"`
+	}
+	if err := db.Table("workbench_stores").Where("id = ?", created.ID()).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Version != 3 || row.UpdatedBy != "operator" {
+		t.Fatalf("durable service mutation = %+v, want version 3/operator", row)
+	}
+	if row.RecordStatus == nil || *row.RecordStatus != string(storecenter.RecordStatusActive) || row.ServiceStatus == nil || *row.ServiceStatus != string(storecenter.ServiceStatusActive) || row.ServiceStartedAt == nil || !row.ServiceStartedAt.Equal(now) || row.ServiceExpiresAt == nil || !row.ServiceExpiresAt.Equal(now.Add(30*24*time.Hour)) {
+		t.Fatalf("durable service state = %+v", row)
+	}
+}
+
+func TestGormStoreRepositoryServiceTransactionFailsClosedOnScopeOrCASMismatch(t *testing.T) {
+	db := openStoreDB(t)
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000421", "00000000-0000-4000-8000-000000000422", "00000000-0000-4000-8000-000000000423", "Service", "SG", "service-external-2", time.Date(2026, 9, 4, 9, 0, 0, 0, time.UTC))
+	created, _, err := repo.CreateOrReplay(context.Background(), "org-a", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.LockServiceState(context.Background(), db, storecenter.ServiceStoreIdentity{OrganizationID: "org-b", StoreID: created.ID()}); !errors.Is(err, storecenter.ErrNotFound) {
+		t.Fatalf("cross-org LockServiceState() error = %v, want ErrNotFound", err)
+	}
+	target := storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation}
+	err = repo.ApplyServiceState(context.Background(), db, storecenter.ServiceStoreMutation{
+		Identity: storecenter.ServiceStoreIdentity{OrganizationID: "org-a", StoreID: created.ID()}, ExpectedVersion: 99,
+		State: target, ActorSubject: "operator", OccurredAt: created.UpdatedAt().Add(time.Minute),
+	})
+	if !errors.Is(err, storecenter.ErrVersionConflict) {
+		t.Fatalf("stale ApplyServiceState() error = %v, want ErrVersionConflict", err)
+	}
+}
+
+func assertCompatibilityStoreState(t *testing.T, db *gorm.DB, storeID, wantRecordStatus, wantServiceStatus string) {
+	t.Helper()
+	var row struct {
+		RecordStatus     *string    `gorm:"column:record_status"`
+		ServiceStatus    *string    `gorm:"column:service_status"`
+		ServiceStartedAt *time.Time `gorm:"column:service_started_at"`
+		ServiceExpiresAt *time.Time `gorm:"column:service_expires_at"`
+	}
+	if err := db.Table("workbench_stores").Unscoped().Where("id = ?", storeID).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.RecordStatus == nil || *row.RecordStatus != wantRecordStatus {
+		t.Fatalf("record_status = %#v, want %q", row.RecordStatus, wantRecordStatus)
+	}
+	if wantServiceStatus == "" {
+		if row.ServiceStatus != nil || row.ServiceStartedAt != nil || row.ServiceExpiresAt != nil {
+			t.Fatalf("service state = %#v, want empty", row)
+		}
+		return
+	}
+	if row.ServiceStatus == nil || *row.ServiceStatus != wantServiceStatus || row.ServiceStartedAt != nil || row.ServiceExpiresAt != nil {
+		t.Fatalf("service state = %#v, want status %q without period", row, wantServiceStatus)
+	}
+}
+
 // Mutation caught: returning the caller's pre-insert aggregate lets database
 // timestamp canonicalization make the first lifecycle Save look like an
 // immutable-field forgery.
