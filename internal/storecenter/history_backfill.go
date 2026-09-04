@@ -76,7 +76,7 @@ func (migrator *GormStoreHistoryMigrator) BackfillBatch(ctx context.Context, bat
 
 	var ids []string
 	err := migrator.db.WithContext(ctx).Unscoped().Model(&workbenchStoreRecord{}).
-		Where("record_status IS NULL OR (deleted_at IS NULL AND lifecycle_status IN ? AND service_history_resolution_status IS NULL)", []string{string(StoreStatusActive), string(StoreStatusDisabled)}).
+		Where("record_status IS NULL OR (deleted_at IS NULL AND lifecycle_status IN ? AND service_history_resolution_status IS NULL)", []string{string(StoreStatusProvisioning), string(StoreStatusActive), string(StoreStatusDisabled)}).
 		Order("id ASC").Limit(batchSize).Pluck("id", &ids).Error
 	if err != nil {
 		return report, fmt.Errorf("list Store history backfill candidates: %w", err)
@@ -240,7 +240,7 @@ func (migrator *GormStoreHistoryMigrator) Verify(ctx context.Context) (StoreHist
 			} else {
 				report.HistorySnapshotConflictCount++
 			}
-		} else if state.RecordStatus == RecordStatusActive {
+		} else if state.RecordStatus == RecordStatusProvisioning || state.RecordStatus == RecordStatusActive {
 			report.UnresolvedCount++
 		}
 	}
@@ -261,7 +261,7 @@ func storeNeedsHistoryBackfill(record workbenchStoreRecord) bool {
 		return true
 	}
 	return !record.DeletedAt.Valid &&
-		(record.LifecycleStatus == string(StoreStatusActive) || record.LifecycleStatus == string(StoreStatusDisabled)) &&
+		(record.LifecycleStatus == string(StoreStatusProvisioning) || record.LifecycleStatus == string(StoreStatusActive) || record.LifecycleStatus == string(StoreStatusDisabled)) &&
 		record.ServiceHistoryResolution == nil
 }
 
@@ -273,11 +273,11 @@ func historyBackfillState(record workbenchStoreRecord) (StoreServiceState, bool,
 		if err := ValidateStoreServiceState(state); err != nil || !historyStateMatchesLegacyLifecycle(record, state) {
 			return StoreServiceState{}, false, ErrInvalidServiceState
 		}
-		return state, state.RecordStatus == RecordStatusActive, nil
+		return state, state.RecordStatus == RecordStatusProvisioning || state.RecordStatus == RecordStatusActive, nil
 	}
 	switch LifecycleStatus(record.LifecycleStatus) {
 	case StoreStatusProvisioning:
-		return StoreServiceState{RecordStatus: RecordStatusProvisioning}, false, nil
+		return StoreServiceState{RecordStatus: RecordStatusProvisioning}, true, nil
 	case StoreStatusActive:
 		return StoreServiceState{RecordStatus: RecordStatusActive, ServiceStatus: ServiceStatusPendingActivation}, true, nil
 	case StoreStatusDisabled:

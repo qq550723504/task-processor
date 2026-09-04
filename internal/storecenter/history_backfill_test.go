@@ -142,6 +142,52 @@ func TestGormStoreHistoryVerificationBlocksUnresolvedAndManifestDrift(t *testing
 	}
 }
 
+func TestGormStoreHistoryVerificationFencesLegacyProvisioningActivation(t *testing.T) {
+	db := openStoreDB(t)
+	now := time.Date(2026, 9, 4, 15, 0, 0, 0, time.UTC)
+	storeID := "00000000-0000-4000-8000-000000000725"
+	seedLegacyStoreRow(t, db, storeID, "org-a", "provisioning", 1, nil)
+	// Reproduce a row mapped by the original migrator: it had expanded state
+	// but no history evidence and Verify incorrectly reported readiness.
+	if err := db.Table("workbench_stores").Where("id = ?", storeID).Update("record_status", "provisioning").Error; err != nil {
+		t.Fatal(err)
+	}
+	migrator := newNoHistoryMigrator(t, db, now)
+
+	report, err := migrator.Verify(context.Background())
+	if !errors.Is(err, storecenter.ErrStoreHistoryRolloutBlocked) || report.UnresolvedCount != 1 || report.ReadyForConstraints {
+		t.Fatalf("Verify() = %+v, %v; want provisioning row fenced before cutover", report, err)
+	}
+
+	backfill, err := migrator.BackfillBatch(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("BackfillBatch() error = %v", err)
+	}
+	if backfill.ScannedCount != 1 || backfill.UpdatedCount != 1 || backfill.HistoryConfirmedAbsentCount != 1 {
+		t.Fatalf("BackfillBatch() report = %+v, want provisioning history evidence", backfill)
+	}
+
+	repository, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := repository.Get(context.Background(), "org-a", storeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TransitionTo(storecenter.StoreStatusActive, "recovery", now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Save(context.Background(), "org-a", store, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err = migrator.Verify(context.Background())
+	if err != nil || !report.ReadyForConstraints || report.HistoryConfirmedAbsentCount != 1 || report.UnresolvedCount != 0 {
+		t.Fatalf("Verify() after activation = %+v, %v; want preserved definitive evidence", report, err)
+	}
+}
+
 func TestGormStoreHistoryVerificationAcceptsNewStoreEvidenceAcrossCompatibilityWrites(t *testing.T) {
 	db := openStoreDB(t)
 	repository, err := storecenter.NewGormStoreRepository(db)

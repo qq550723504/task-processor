@@ -49,11 +49,20 @@ func TestRunDefaultsToReadOnlyVerifyAndWritesMachineReadableReport(t *testing.T)
 	fake := &fakeHistoryMigrator{verifyReport: storecenter.StoreHistoryMigrationReport{ScannedCount: 4, HistoryConfirmedAbsentCount: 3, ReadyForConstraints: true}}
 	var output bytes.Buffer
 	closed := false
+	readOnlyOpened := false
+	writableOpened := false
 	err := runWithDependencies(context.Background(), Options{Config: "config/test.yaml", Manifest: "manifest.json", LogLevel: "error"}, &output, runtimeDependencies{
 		LoadConfig: func(string) (*config.Config, error) {
 			return &config.Config{Database: &config.DatabaseConfig{}}, nil
 		},
-		OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { return &gorm.DB{}, nil },
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			readOnlyOpened = true
+			return &gorm.DB{}, nil
+		},
+		OpenWritableDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			writableOpened = true
+			return &gorm.DB{}, nil
+		},
 		CloseDB: func(*gorm.DB) error { closed = true; return nil },
 		LoadManifest: func(string) (storecenter.NoAuthoritativeHistorySourceManifest, error) {
 			return validManifest(), nil
@@ -65,8 +74,8 @@ func TestRunDefaultsToReadOnlyVerifyAndWritesMachineReadableReport(t *testing.T)
 	if err != nil {
 		t.Fatalf("runWithDependencies() error = %v", err)
 	}
-	if fake.verifyCalls != 1 || fake.backfillCalls != 0 || !closed {
-		t.Fatalf("verify/backfill/closed = %d/%d/%v", fake.verifyCalls, fake.backfillCalls, closed)
+	if fake.verifyCalls != 1 || fake.backfillCalls != 0 || !closed || !readOnlyOpened || writableOpened {
+		t.Fatalf("verify/backfill/closed/read-only/writable = %d/%d/%v/%v/%v", fake.verifyCalls, fake.backfillCalls, closed, readOnlyOpened, writableOpened)
 	}
 	if !strings.Contains(output.String(), `"ready_for_constraints":true`) {
 		t.Fatalf("report output = %q", output.String())
@@ -76,10 +85,19 @@ func TestRunDefaultsToReadOnlyVerifyAndWritesMachineReadableReport(t *testing.T)
 func TestRunBackfillRequiresExplicitActionAndUsesBoundedBatch(t *testing.T) {
 	fake := &fakeHistoryMigrator{backfillReport: storecenter.StoreHistoryMigrationReport{ScannedCount: 25, UpdatedCount: 25}}
 	var output bytes.Buffer
+	readOnlyOpened := false
+	writableOpened := false
 	err := runWithDependencies(context.Background(), Options{Config: "config/test.yaml", Manifest: "manifest.json", Action: "backfill", BatchSize: 25, LogLevel: "error"}, &output, runtimeDependencies{
 		LoadConfig: func(string) (*config.Config, error) { return &config.Config{Database: &config.DatabaseConfig{}}, nil },
-		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return &gorm.DB{}, nil },
-		CloseDB:    func(*gorm.DB) error { return nil },
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			readOnlyOpened = true
+			return &gorm.DB{}, nil
+		},
+		OpenWritableDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			writableOpened = true
+			return &gorm.DB{}, nil
+		},
+		CloseDB: func(*gorm.DB) error { return nil },
 		LoadManifest: func(string) (storecenter.NoAuthoritativeHistorySourceManifest, error) {
 			return validManifest(), nil
 		},
@@ -90,8 +108,8 @@ func TestRunBackfillRequiresExplicitActionAndUsesBoundedBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fake.backfillCalls != 1 || fake.batchSize != 25 || fake.verifyCalls != 0 {
-		t.Fatalf("backfill calls/batch/verify = %d/%d/%d", fake.backfillCalls, fake.batchSize, fake.verifyCalls)
+	if fake.backfillCalls != 1 || fake.batchSize != 25 || fake.verifyCalls != 0 || readOnlyOpened || !writableOpened {
+		t.Fatalf("backfill calls/batch/verify/read-only/writable = %d/%d/%d/%v/%v", fake.backfillCalls, fake.batchSize, fake.verifyCalls, readOnlyOpened, writableOpened)
 	}
 }
 

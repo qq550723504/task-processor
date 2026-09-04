@@ -337,10 +337,14 @@ accepts only a strict, approved `NoAuthoritativeHistorySource` manifest and
 persists its immutable token as per-row `confirmed_absent` evidence; it never
 infers absence from nullable fields or Store timestamps. New Stores are marked
 `not_applicable_new` with evidence bound to their create fingerprint, so they
-cannot re-enter the legacy migration cohort. The migration command defaults to
-read-only verification and requires an explicit action for one bounded
-backfill batch. Constraints, authority switching, and lifecycle HTTP routes
-remain separate later phases and must not be enabled by this foundation.
+cannot re-enter the legacy migration cohort. Legacy provisioning Stores must
+also receive `confirmed_absent` evidence before verification can pass, fencing
+recovery from activating an unresolved row after the readiness check. The
+migration command defaults to read-only verification, opens only an existing
+database, and requires an explicit action for one bounded backfill batch using
+an existing writable database. Constraints, authority switching, and lifecycle
+HTTP routes remain separate later phases and must not be enabled by this
+foundation.
 
 ## 4. Forbidden Import Directions
 

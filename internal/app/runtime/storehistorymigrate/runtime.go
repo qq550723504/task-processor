@@ -50,19 +50,23 @@ type historyMigrator interface {
 }
 
 type runtimeDependencies struct {
-	LoadConfig   func(string) (*config.Config, error)
-	OpenDB       func(*config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB      func(*gorm.DB) error
-	LoadManifest func(string) (storecenter.NoAuthoritativeHistorySourceManifest, error)
-	NewMigrator  func(*gorm.DB, storecenter.NoAuthoritativeHistorySourceManifest, string, func() time.Time) (historyMigrator, error)
-	Now          func() time.Time
+	LoadConfig     func(string) (*config.Config, error)
+	OpenDB         func(*config.DatabaseConfig) (*gorm.DB, error)
+	OpenWritableDB func(*config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB        func(*gorm.DB) error
+	LoadManifest   func(string) (storecenter.NoAuthoritativeHistorySourceManifest, error)
+	NewMigrator    func(*gorm.DB, storecenter.NoAuthoritativeHistorySourceManifest, string, func() time.Time) (historyMigrator, error)
+	Now            func() time.Time
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig: config.LoadConfigFromFileWithoutValidation,
 		OpenDB: func(databaseConfig *config.DatabaseConfig) (*gorm.DB, error) {
-			return platformdatabase.Open(configadapter.Database(databaseConfig))
+			return platformdatabase.OpenExistingReadOnly(configadapter.Database(databaseConfig))
+		},
+		OpenWritableDB: func(databaseConfig *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritable(configadapter.Database(databaseConfig))
 		},
 		CloseDB: func(db *gorm.DB) error {
 			sqlDB, err := db.DB()
@@ -108,6 +112,9 @@ func runWithDependencies(ctx context.Context, options Options, output io.Writer,
 	if dependencies.OpenDB == nil {
 		dependencies.OpenDB = defaults.OpenDB
 	}
+	if dependencies.OpenWritableDB == nil {
+		dependencies.OpenWritableDB = defaults.OpenWritableDB
+	}
 	if dependencies.CloseDB == nil {
 		dependencies.CloseDB = defaults.CloseDB
 	}
@@ -135,7 +142,11 @@ func runWithDependencies(ctx context.Context, options Options, output io.Writer,
 	if cfg == nil || cfg.Database == nil {
 		return errors.New("database config is required")
 	}
-	db, err := dependencies.OpenDB(cfg.Database)
+	openDB := dependencies.OpenDB
+	if action == "backfill" {
+		openDB = dependencies.OpenWritableDB
+	}
+	db, err := openDB(cfg.Database)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}

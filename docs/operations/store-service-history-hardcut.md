@@ -6,8 +6,10 @@ external history resolver.
 
 ## Safety boundary
 
-- `verify` is the default and is read-only.
-- `backfill` updates one bounded batch only; the maximum batch size is 1000.
+- `verify` is the default, opens only an existing database, and uses a read-only
+  session.
+- `backfill` opens only an existing database and updates one bounded batch only;
+  the maximum batch size is 1000.
 - The command never creates schema, adds final constraints, switches read/write
   authority, or enables lifecycle HTTP/BFF routes.
 - Missing, malformed, unknown-field, or changed manifests fail closed.
@@ -79,6 +81,11 @@ Rows in the migration cohort carry `confirmed_absent` evidence from the
 approved manifest. Stores created by the compatibility writer carry
 `not_applicable_new` evidence bound to their create fingerprint. Neither status
 grants service time or resource balance.
+
+Legacy `provisioning` rows are part of the migration cohort even though they do
+not yet have service state. Verification remains blocked until they carry
+`confirmed_absent` evidence, so a later create recovery cannot activate a row
+that bypassed the history gate.
 
 Stop on any non-zero blocker. Do not infer missing history, edit evidence rows,
 add final constraints, or enable lifecycle routes as a workaround.
