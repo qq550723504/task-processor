@@ -132,22 +132,79 @@ func TestGormStoreRepositoryCompatibilityWriterMirrorsLifecycleState(t *testing.
 	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-reactivated", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", store, 3); err != nil {
+	if err := repo.Save(context.Background(), "org-a", store, 3); !errors.Is(err, storecenter.ErrServiceResumeRequired) {
+		t.Fatalf("legacy enable Save() error = %v, want ErrServiceResumeRequired", err)
+	}
+	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusSuspended))
+
+	store, err = repo.Get(context.Background(), "org-a", store.ID())
+	if err != nil {
 		t.Fatal(err)
 	}
-	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusPendingActivation))
-
 	if err := store.BeginDelete("00000000-0000-4000-8000-000000000404", "subject-deleter", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Save(context.Background(), "org-a", store, 4); err != nil {
+	if err := repo.Save(context.Background(), "org-a", store, 3); err != nil {
 		t.Fatal(err)
 	}
 	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusDeleting), "")
-	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 5); err != nil {
+	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 4); err != nil {
 		t.Fatal(err)
 	}
 	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusDeleted), "")
+}
+
+func TestGormStoreRepositoryRejectsLegacyEnableUntilServiceHistoryResolves(t *testing.T) {
+	db := openStoreDB(t)
+	repo, err := storecenter.NewGormStoreRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000405", "00000000-0000-4000-8000-000000000406", "00000000-0000-4000-8000-000000000407", "Legacy disabled", "SG", "legacy-disabled", time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC))
+	created, _, err := repo.CreateOrReplay(context.Background(), "org-a", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.TransitionTo(storecenter.StoreStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Table("workbench_stores").Where("organization_id = ? AND id = ?", "org-a", created.ID()).Updates(map[string]any{
+		"lifecycle_status":   string(storecenter.StoreStatusDisabled),
+		"version":            int64(3),
+		"record_status":      nil,
+		"service_status":     nil,
+		"service_started_at": nil,
+		"service_expires_at": nil,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	disabled, err := repo.Get(context.Background(), "org-a", created.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := disabled.TransitionTo(storecenter.StoreStatusActive, "subject-enable", disabled.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), "org-a", disabled, 3); !errors.Is(err, storecenter.ErrServiceResumeRequired) {
+		t.Fatalf("legacy enable Save() error = %v, want ErrServiceResumeRequired", err)
+	}
+
+	var row struct {
+		LifecycleStatus string  `gorm:"column:lifecycle_status"`
+		Version         int64   `gorm:"column:version"`
+		RecordStatus    *string `gorm:"column:record_status"`
+		ServiceStatus   *string `gorm:"column:service_status"`
+	}
+	if err := db.Table("workbench_stores").Where("organization_id = ? AND id = ?", "org-a", created.ID()).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.LifecycleStatus != string(storecenter.StoreStatusDisabled) || row.Version != 3 || row.RecordStatus != nil || row.ServiceStatus != nil {
+		t.Fatalf("legacy enable mutated row = %+v", row)
+	}
 }
 
 func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testing.T) {

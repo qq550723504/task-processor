@@ -33,6 +33,8 @@ func mapStoreError(err error) protocolError {
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_ALREADY_EXISTS", "Store already exists"
 	case errors.Is(err, storecenter.ErrVersionConflict):
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_VERSION_CONFLICT", "Store has changed"
+	case errors.Is(err, storecenter.ErrServiceResumeRequired):
+		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_SERVICE_RESUME_REQUIRED", "Store service must be resumed"
 	case errors.Is(err, storecenter.ErrInvalidTransition):
 		response.Status, response.Code, response.Message = http.StatusUnprocessableEntity, "STORE_INVALID_STATE", "Store state does not allow this operation"
 	case errors.Is(err, listingsubscription.ErrSubscriptionRequired):

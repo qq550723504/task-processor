@@ -488,6 +488,9 @@ func compatibilityStateForSave(durable workbenchStoreRecord, incoming LifecycleS
 		state.RecordStatus = RecordStatusActive
 		state.ServiceStatus = ServiceStatusSuspended
 	case StoreStatusActive:
+		if durable.LifecycleStatus == string(StoreStatusDisabled) {
+			return StoreServiceState{}, ErrServiceResumeRequired
+		}
 		state.RecordStatus = RecordStatusActive
 		if state.ServiceStatus == ServiceStatusSuspended && validServicePeriod(state.StartedAt, state.ExpiresAt) {
 			state.ServiceStatus = ServiceStatusActive

@@ -1102,6 +1102,32 @@ func TestServiceDisableEnableDoNotTouchQuota(t *testing.T) {
 	}
 }
 
+func TestServiceEnablePreservesServiceResumeRequired(t *testing.T) {
+	repository := newStoreRepositoryFake()
+	store := activeServiceStore(t, "org-a", "00000000-0000-4000-8000-000000000506", "00000000-0000-4000-8000-000000000606", "00000000-0000-4000-8000-000000000706", "Store")
+	if err := store.TransitionTo(storecenter.StoreStatusDisabled, "operator", store.UpdatedAt().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	repository.stores["org-a/"+store.ID()] = cloneStore(store)
+	repository.saveErr = storecenter.ErrServiceResumeRequired
+	service, err := storecenter.NewService(repository, &quotaLedgerFake{}, newAuditRepositoryFake(), &serviceConnectionProvider{}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = service.Enable(context.Background(), storecenter.StoreLifecycleRequest{OrganizationID: "org-a", ActorSubject: "operator", StoreID: store.ID(), ExpectedVersion: store.Version()})
+	if !errors.Is(err, storecenter.ErrServiceResumeRequired) {
+		t.Fatalf("Enable() error = %v, want ErrServiceResumeRequired", err)
+	}
+	if repository.saveCalls != 1 {
+		t.Fatalf("Enable() Save calls = %d, want 1", repository.saveCalls)
+	}
+	current, err := repository.Get(context.Background(), "org-a", store.ID())
+	if err != nil || current.LifecycleStatus() != storecenter.StoreStatusDisabled || current.Version() != store.Version() {
+		t.Fatalf("Store after rejected Enable() = %#v, %v", current, err)
+	}
+}
+
 func TestServiceLifecycleRejectsIllegalStatesAndStaleVersions(t *testing.T) {
 	tests := []struct {
 		name            string

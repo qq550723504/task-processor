@@ -138,6 +138,83 @@ func TestStoreServiceExecutorRecoversSuccessfulCommitResponseLoss(t *testing.T) 
 	assertTableCount(t, db, "saas_organization_resource_events", 1)
 }
 
+func TestStoreServiceExecutorClearsTerminalFailureBetweenTransactionRetries(t *testing.T) {
+	db, storeRepository := openStoreServiceTestDB(t)
+	store := seedPendingActivationStore(t, db, storeRepository, "org-a", "00000000-0000-4000-8000-000000000541")
+	seedResourceBucket(t, db, "org-a", 1)
+	stores := &retryingStoreServiceStore{delegate: storeRepository}
+	executor, err := NewStoreServiceExecutor(db, TransactionConfig{}, stores)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.runner = &rollbackOnceTransactionRunner{db: db}
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	result, err := executor.ExecuteServiceLifecycle(context.Background(), storecenter.ServiceExecution{
+		OrganizationID: "org-a", OperationID: "operation-retry-terminal", StoreID: store.ID(),
+		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
+		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('e'),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteServiceLifecycle() error = %v, want retry success", err)
+	}
+	if result.Replayed || result.Snapshot.StoreVersion != 3 {
+		t.Fatalf("retry result = %+v, want committed second attempt", result)
+	}
+	if stores.lockCalls != 2 {
+		t.Fatalf("LockServiceState calls = %d, want 2 attempts", stores.lockCalls)
+	}
+	assertResourceBucket(t, db, "org-a", 0, 1)
+	assertStoreServiceRow(t, db, store.ID(), 3, storecenter.ServiceStatusActive, now, now.Add(30*24*time.Hour))
+	assertTableCount(t, db, "saas_organization_resource_operations", 1)
+}
+
+type retryingStoreServiceStore struct {
+	delegate  *storecenter.GormStoreRepository
+	lockCalls int
+}
+
+func (s *retryingStoreServiceStore) LockServiceState(ctx context.Context, tx *gorm.DB, identity storecenter.ServiceStoreIdentity) (storecenter.ServiceStoreSnapshot, error) {
+	s.lockCalls++
+	snapshot, err := s.delegate.LockServiceState(ctx, tx, identity)
+	if err == nil && s.lockCalls == 1 {
+		snapshot.Version++
+	}
+	return snapshot, err
+}
+
+func (s *retryingStoreServiceStore) ApplyServiceState(ctx context.Context, tx *gorm.DB, mutation storecenter.ServiceStoreMutation) error {
+	return s.delegate.ApplyServiceState(ctx, tx, mutation)
+}
+
+type rollbackOnceTransactionRunner struct {
+	db       *gorm.DB
+	attempts int
+}
+
+func (r *rollbackOnceTransactionRunner) run(ctx context.Context, operation func(*gorm.DB) error) error {
+	r.attempts++
+	if r.attempts == 1 {
+		tx := r.db.WithContext(ctx).Begin()
+		if tx.Error != nil {
+			return tx.Error
+		}
+		if err := operation(tx); err != nil {
+			_ = tx.Rollback().Error
+			return err
+		}
+		if err := tx.Rollback().Error; err != nil {
+			return err
+		}
+		return r.db.WithContext(ctx).Transaction(operation)
+	}
+	return r.db.WithContext(ctx).Transaction(operation)
+}
+
+func (r *rollbackOnceTransactionRunner) runRead(ctx context.Context, operation func(context.Context) error) error {
+	return operation(ctx)
+}
+
 func openStoreServiceTestDB(t *testing.T) (*gorm.DB, *storecenter.GormStoreRepository) {
 	t.Helper()
 	db := openSQLiteStore(t)

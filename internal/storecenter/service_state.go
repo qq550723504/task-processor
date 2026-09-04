@@ -29,6 +29,7 @@ const (
 var (
 	ErrInvalidServiceState       = errors.New("invalid store record/service state")
 	ErrInvalidServiceTransition  = errors.New("invalid store service transition")
+	ErrServiceResumeRequired     = errors.New("store service resume is required")
 	ErrConnectionSnapshotChanged = errors.New("store connection snapshot changed")
 )
 

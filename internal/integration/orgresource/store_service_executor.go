@@ -25,9 +25,14 @@ type TransactionalStoreServiceStore interface {
 	ApplyServiceState(context.Context, *gorm.DB, storecenter.ServiceStoreMutation) error
 }
 
+type storeServiceTransactionRunner interface {
+	run(context.Context, func(*gorm.DB) error) error
+	runRead(context.Context, func(context.Context) error) error
+}
+
 type StoreServiceExecutor struct {
 	db          *gorm.DB
-	runner      *transactionRunner
+	runner      storeServiceTransactionRunner
 	stores      TransactionalStoreServiceStore
 	afterCommit func() error
 }
@@ -79,6 +84,10 @@ func (executor *StoreServiceExecutor) ExecuteServiceLifecycle(ctx context.Contex
 	var committed storecenter.ServiceOperationResult
 	var terminalFailure error
 	err := executor.runner.run(ctx, func(tx *gorm.DB) error {
+		// The runner may invoke this closure again after rolling back a
+		// transient failure. A terminal outcome from that abandoned attempt
+		// must not leak into the result of a later successful attempt.
+		terminalFailure = nil
 		transactionContext := tx.Statement.Context
 		if result, found, lookupErr := executor.lookupOperation(transactionContext, tx, input.OrganizationID, input.OperationID, input.RequestFingerprint, true); lookupErr != nil {
 			return lookupErr

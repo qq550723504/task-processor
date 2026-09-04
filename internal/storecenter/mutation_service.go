@@ -176,6 +176,9 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 					if errors.Is(err, ErrAlreadyExists) {
 						return StoreMutationResult{}, ErrAlreadyExists
 					}
+					if errors.Is(err, ErrServiceResumeRequired) {
+						return StoreMutationResult{}, ErrServiceResumeRequired
+					}
 					return StoreMutationResult{}, dependencyError(err)
 				} else {
 					return StoreMutationResult{}, ErrVersionConflict
