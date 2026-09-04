@@ -87,5 +87,10 @@ not yet have service state. Verification remains blocked until they carry
 `confirmed_absent` evidence, so a later create recovery cannot activate a row
 that bypassed the history gate.
 
+Expanded service fields on a legacy row without immutable history evidence are
+not authoritative. Backfill re-derives the compatibility state from the legacy
+lifecycle and clears any unexplained service period before persisting
+`confirmed_absent` evidence.
+
 Stop on any non-zero blocker. Do not infer missing history, edit evidence rows,
 add final constraints, or enable lifecycle routes as a workaround.

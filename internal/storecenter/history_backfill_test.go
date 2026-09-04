@@ -71,7 +71,7 @@ func TestNoAuthoritativeHistorySourceManifestRejectsMissingApproval(t *testing.T
 	}
 }
 
-func TestGormStoreHistoryBackfillMapsLegacyRowsAndPreservesExpandedService(t *testing.T) {
+func TestGormStoreHistoryBackfillMapsLegacyRowsAndClearsUnsupportedExpandedService(t *testing.T) {
 	db := openStoreDB(t)
 	now := time.Date(2026, 9, 4, 15, 0, 0, 0, time.UTC)
 	seedLegacyStoreRow(t, db, "00000000-0000-4000-8000-000000000711", "org-a", "active", 2, nil)
@@ -100,7 +100,7 @@ func TestGormStoreHistoryBackfillMapsLegacyRowsAndPreservesExpandedService(t *te
 	assertBackfilledStoreRow(t, db, "00000000-0000-4000-8000-000000000711", "active", "pending_activation", false, 3)
 	assertBackfilledStoreRow(t, db, "00000000-0000-4000-8000-000000000712", "active", "suspended", false, 4)
 	assertBackfilledStoreRow(t, db, "00000000-0000-4000-8000-000000000713", "deleted", "", false, 5)
-	assertBackfilledStoreRow(t, db, "00000000-0000-4000-8000-000000000714", "active", "active", true, 8)
+	assertBackfilledStoreRow(t, db, "00000000-0000-4000-8000-000000000714", "active", "pending_activation", false, 8)
 
 	second, err := migrator.BackfillBatch(context.Background(), 10)
 	if err != nil {

@@ -269,12 +269,10 @@ func historyBackfillState(record workbenchStoreRecord) (StoreServiceState, bool,
 	if record.DeletedAt.Valid {
 		return StoreServiceState{RecordStatus: RecordStatusDeleted}, false, nil
 	}
-	if state, mapped := expandedStateFromRecord(record); mapped {
-		if err := ValidateStoreServiceState(state); err != nil || !historyStateMatchesLegacyLifecycle(record, state) {
-			return StoreServiceState{}, false, ErrInvalidServiceState
-		}
-		return state, state.RecordStatus == RecordStatusProvisioning || state.RecordStatus == RecordStatusActive, nil
-	}
+	// Expanded service fields without immutable history evidence are not
+	// authoritative. Re-derive them from the legacy lifecycle so an interrupted
+	// or pre-compatible write cannot turn an unexplained paid period into an
+	// approved entitlement when confirmed-absent evidence is stamped below.
 	switch LifecycleStatus(record.LifecycleStatus) {
 	case StoreStatusProvisioning:
 		return StoreServiceState{RecordStatus: RecordStatusProvisioning}, true, nil

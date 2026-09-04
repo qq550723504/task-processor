@@ -335,7 +335,10 @@ status. Only Activate queries the connection provider; Renew and Reactivate do
 not acquire that unrelated volatile dependency. The Phase 1 history migrator
 accepts only a strict, approved `NoAuthoritativeHistorySource` manifest and
 persists its immutable token as per-row `confirmed_absent` evidence; it never
-infers absence from nullable fields or Store timestamps. New Stores are marked
+infers absence from nullable fields or Store timestamps. Expanded service state
+without that evidence is non-authoritative and is re-derived from the legacy
+lifecycle before the resolution is persisted, preventing an unexplained paid
+period from being blessed by migration. New Stores are marked
 `not_applicable_new` with evidence bound to their create fingerprint, so they
 cannot re-enter the legacy migration cohort. Legacy provisioning Stores must
 also receive `confirmed_absent` evidence before verification can pass, fencing
