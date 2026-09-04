@@ -74,6 +74,21 @@ func TestTransactionRunnerBoundsTransientReadRetries(t *testing.T) {
 	}
 }
 
+func TestTransactionRunnerRetriesRunnerOwnedDeadlineAsConcurrency(t *testing.T) {
+	runner := &transactionRunner{dialect: "postgres", config: TransactionConfig{
+		MaxAttempts: 2, TotalRetryBudget: time.Second, TransactionTimeout: 5 * time.Millisecond, BaseRetryDelay: time.Millisecond,
+	}.withDefaults()}
+	attempts := 0
+	err := runner.runRead(context.Background(), func(ctx context.Context) error {
+		attempts++
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	if !errors.Is(err, orgresource.ErrConcurrencyRetry) || attempts != 2 {
+		t.Fatalf("runRead() = %v after %d attempts, want bounded deadline retries", err, attempts)
+	}
+}
+
 type testSQLStateError struct {
 	state string
 }

@@ -90,6 +90,8 @@ func (runner *transactionRunner) runWithRetry(ctx context.Context, operation fun
 		}
 		attemptContext, cancelAttempt := context.WithTimeout(budgetContext, runner.config.TransactionTimeout)
 		err := operation(attemptContext)
+		attemptContextErr := attemptContext.Err()
+		budgetContextErr := budgetContext.Err()
 		cancelAttempt()
 		if err == nil {
 			return nil
@@ -98,7 +100,9 @@ func (runner *transactionRunner) runWithRetry(ctx context.Context, operation fun
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if !runner.retryable(err) {
+		runnerDeadline := errors.Is(err, context.DeadlineExceeded) &&
+			(errors.Is(attemptContextErr, context.DeadlineExceeded) || errors.Is(budgetContextErr, context.DeadlineExceeded))
+		if !runnerDeadline && !runner.retryable(err) {
 			return err
 		}
 		if attempt == runner.config.MaxAttempts {
