@@ -61,6 +61,32 @@ func (r *gormRepository) MarkSlotReviewBudgetUnknownV3(ctx context.Context, rese
 	return r.transitionGormReview(ctx, reservation, imageagent.SlotUsageReceipt{}, imageagent.SlotBudgetUnknown)
 }
 
+func (r *gormRepository) RecordSlotReviewOutcomeV3(ctx context.Context, reservation imageagent.SlotReviewUsageReservation, outcome imageagent.SlotReviewOutcome) (imageagent.SlotEffectV3Attempt, error) {
+	var result imageagent.SlotEffectV3Attempt
+	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
+		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		if err != nil {
+			return err
+		}
+		current, err := decodeSlotEffectV3Record(row)
+		if err != nil {
+			return err
+		}
+		decision, err := effectpolicy.RecordReviewOutcome(current, reservation, outcome)
+		if err != nil {
+			return err
+		}
+		if decision.Changed {
+			if err := persistReviewUsage(tx, reservation.Identity, decision.Attempt.ReviewUsage); err != nil {
+				return err
+			}
+		}
+		result = decision.Attempt
+		return nil
+	})
+	return result, err
+}
+
 func (r *gormRepository) transitionGormReview(ctx context.Context, reservation imageagent.SlotReviewUsageReservation, receipt imageagent.SlotUsageReceipt, target imageagent.SlotBudgetStatus) (imageagent.SlotEffectV3Attempt, error) {
 	var result imageagent.SlotEffectV3Attempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {

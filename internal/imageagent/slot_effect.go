@@ -98,7 +98,17 @@ type SlotReviewUsageAttempt struct {
 	BudgetStatus     SlotBudgetStatus
 	Quote            SlotUsageQuote
 	Receipt          SlotUsageReceipt
+	Outcome          SlotReviewOutcome
 }
+
+type SlotReviewOutcome string
+
+const (
+	SlotReviewOutcomePending      SlotReviewOutcome = "pending"
+	SlotReviewOutcomeAccepted     SlotReviewOutcome = "accepted"
+	SlotReviewOutcomeNeedsHuman   SlotReviewOutcome = "needs_human_review"
+	SlotReviewOutcomeTransportErr SlotReviewOutcome = "transport_error"
+)
 
 func ValidateSlotUsageQuote(quote SlotUsageQuote) error {
 	if quote.Fingerprint == "" || len(quote.Operations) == 0 {

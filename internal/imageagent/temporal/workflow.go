@@ -501,7 +501,7 @@ func (o *workflowEffectOwner) persistSlotResultV3(ctx workflow.Context, input Wo
 	})
 }
 
-func (o *workflowEffectOwner) reviewStagedSlotV3(ctx workflow.Context, input WorkflowInput, index, attempt int) (SlotWorkflowV3Result, error) {
+func (o *workflowEffectOwner) reviewStagedSlotV3(ctx workflow.Context, input WorkflowInput, index, attempt int, actionID string) (SlotWorkflowV3Result, error) {
 	if !o.activities.useV3Slot || strings.TrimSpace(o.activities.reviewStagedSlot) == "" {
 		return SlotWorkflowV3Result{}, fmt.Errorf("staged review activity is not configured")
 	}
@@ -510,7 +510,7 @@ func (o *workflowEffectOwner) reviewStagedSlotV3(ctx workflow.Context, input Wor
 		RunID: input.RunID, Identity: input.Identity, PlanRevision: input.Plan.Revision,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		Slot: slot, Attempt: attempt, IdempotencyKey: slotAttemptKey(input.Plan.Revision, slot, attempt),
-		ReviewActionID: slotAttemptKey(input.Plan.Revision, slot, attempt) + ":review",
+		ReviewActionID: strings.TrimSpace(actionID),
 		AssetCatalog:   input.AssetCatalog, ExternalEffectFinalization: input.externalEffectFinalization,
 		BudgetAuthorization: input.BudgetAuthorization, BudgetPolicy: input.BudgetPolicy,
 		DeadlineAt: input.DeadlineAt, LifecycleDeadlineAt: input.LifecycleDeadlineAt,
@@ -1193,7 +1193,7 @@ func (s *workflowUpdateState) applyRetrySlot(ctx workflow.Context, signal RetryS
 			if currentAttempt <= 0 {
 				return CommandAcknowledgement{}, fmt.Errorf("review retry is missing its staged attempt")
 			}
-			reviewed, reviewErr := s.effects.reviewStagedSlotV3(ctx, *s.input, index, currentAttempt)
+			reviewed, reviewErr := s.effects.reviewStagedSlotV3(ctx, *s.input, index, currentAttempt, signal.ActionID)
 			if reviewErr != nil {
 				code := slotExecutionV3ErrorCode(reviewErr)
 				reviewed = SlotWorkflowV3Result{

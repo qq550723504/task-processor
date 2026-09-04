@@ -41,6 +41,24 @@ func (r *memoryRepository) MarkSlotReviewBudgetUnknownV3(_ context.Context, rese
 	return r.transitionMemoryReview(reservation, imageagent.SlotUsageReceipt{}, imageagent.SlotBudgetUnknown)
 }
 
+func (r *memoryRepository) RecordSlotReviewOutcomeV3(_ context.Context, reservation imageagent.SlotReviewUsageReservation, outcome imageagent.SlotReviewOutcome) (imageagent.SlotEffectV3Attempt, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := slotEffectKey(reservation.Identity)
+	effect, ok := r.slotEffectsV3[key]
+	if !ok {
+		return imageagent.SlotEffectV3Attempt{}, imageagent.ErrRunNotFound
+	}
+	decision, err := effectpolicy.RecordReviewOutcome(effect, reservation, outcome)
+	if err != nil {
+		return imageagent.SlotEffectV3Attempt{}, err
+	}
+	if decision.Changed {
+		r.slotEffectsV3[key] = cloneSlotEffectV3(decision.Attempt)
+	}
+	return cloneSlotEffectV3(decision.Attempt), nil
+}
+
 func (r *memoryRepository) transitionMemoryReview(reservation imageagent.SlotReviewUsageReservation, receipt imageagent.SlotUsageReceipt, target imageagent.SlotBudgetStatus) (imageagent.SlotEffectV3Attempt, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

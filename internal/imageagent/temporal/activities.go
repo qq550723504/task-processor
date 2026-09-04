@@ -602,20 +602,29 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 			return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(reserveErr)
 		}
 		if !acquired {
+			priorStatus := imageagent.SlotBudgetStatus("")
 			for _, prior := range reservedEffect.ReviewUsage {
-				if prior.ActionID == input.ReviewActionID && prior.BudgetStatus == imageagent.SlotBudgetCommitted {
-					reviewAlreadySettled = true
+				if prior.ActionID == input.ReviewActionID {
+					priorStatus = prior.BudgetStatus
+					if prior.BudgetStatus == imageagent.SlotBudgetCommitted && prior.Outcome == imageagent.SlotReviewOutcomeAccepted {
+						reviewAlreadySettled = true
+					}
 					break
 				}
 			}
 			if !reviewAlreadySettled {
-				_, _ = a.slotEffectsV3.MarkSlotReviewBudgetUnknownV3(ctx, reviewReservation)
+				if priorStatus == imageagent.SlotBudgetReserved {
+					if _, unknownErr := a.slotEffectsV3.MarkSlotReviewBudgetUnknownV3(ctx, reviewReservation); unknownErr != nil {
+						return imageagent.SlotEffectV3PublishedResult{}, persistedSlotEffectV3RepositoryError(unknownErr)
+					}
+				}
 				return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewApplicationError("image reviewer budget reservation outcome is unknown", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrRevisionConflict)
 			}
 		}
 	}
 	var reviewErr error
 	var reviewReceipt imageagent.SlotUsageReceipt
+	reviewCommitted := false
 	if !reviewAlreadySettled {
 		if input.BudgetAuthorization && budgeted {
 			reviewReceipt, reviewErr = budgetedReview.ReviewStagedSlotQuoted(ctx, executionInput, staged, reviewReservation.Quote)
@@ -628,9 +637,21 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 					_, _ = a.slotEffectsV3.MarkSlotReviewBudgetUnknownV3(ctx, reviewReservation)
 					return imageagent.SlotEffectV3PublishedResult{}, fmt.Errorf("settle staged review budget: %w", persistedSlotEffectV3RepositoryError(settleErr))
 				}
+				reviewCommitted = true
 			} else {
 				if _, releaseErr := a.slotEffectsV3.ReleaseSlotReviewBudgetV3(ctx, reviewReservation); releaseErr != nil {
 					return imageagent.SlotEffectV3PublishedResult{}, fmt.Errorf("release staged review budget: %w", persistedSlotEffectV3RepositoryError(releaseErr))
+				}
+			}
+			outcome := imageagent.SlotReviewOutcomeAccepted
+			if errors.Is(reviewErr, imageagent.ErrReviewDecision) {
+				outcome = imageagent.SlotReviewOutcomeNeedsHuman
+			} else if reviewErr != nil {
+				outcome = imageagent.SlotReviewOutcomeTransportErr
+			}
+			if reviewCommitted {
+				if _, outcomeErr := a.slotEffectsV3.RecordSlotReviewOutcomeV3(ctx, reviewReservation, outcome); outcomeErr != nil {
+					return imageagent.SlotEffectV3PublishedResult{}, fmt.Errorf("record staged review outcome: %w", persistedSlotEffectV3RepositoryError(outcomeErr))
 				}
 			}
 		}

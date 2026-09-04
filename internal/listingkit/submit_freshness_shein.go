@@ -101,11 +101,10 @@ func sheinFreshnessCanonicalProduct(task *Task) *canonical.Product {
 	if task == nil || task.Result == nil {
 		return nil
 	}
-	if task.Result.CanonicalProduct != nil {
-		return task.Result.CanonicalProduct
-	}
 	if task.Result.StandardProductSnapshot != nil {
-		return canonicalProductFromStandardSnapshot(task.Result.StandardProductSnapshot)
+		if product := canonicalProductFromStandardSnapshotForTarget(task.Result.StandardProductSnapshot, "shein"); product != nil {
+			return product
+		}
 	}
-	return nil
+	return task.Result.CanonicalProduct
 }

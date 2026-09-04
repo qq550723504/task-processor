@@ -355,6 +355,7 @@ type SlotExternalEffectV3Repository interface {
 	SettleSlotReviewV3(context.Context, SlotReviewUsageReservation, SlotUsageReceipt) (SlotEffectV3Attempt, error)
 	ReleaseSlotReviewBudgetV3(context.Context, SlotReviewUsageReservation) (SlotEffectV3Attempt, error)
 	MarkSlotReviewBudgetUnknownV3(context.Context, SlotReviewUsageReservation) (SlotEffectV3Attempt, error)
+	RecordSlotReviewOutcomeV3(context.Context, SlotReviewUsageReservation, SlotReviewOutcome) (SlotEffectV3Attempt, error)
 	GetSlotExternalEffectV3(context.Context, SlotExternalEffectIdentity) (SlotEffectV3Attempt, error)
 }
 

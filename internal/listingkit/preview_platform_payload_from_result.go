@@ -1,5 +1,7 @@
 package listingkit
 
+import "task-processor/internal/product/catalog/canonical"
+
 func buildAmazonPreviewPayloadInputFromResult(
 	result *ListingKitResult,
 ) (amazonPreviewPayloadInput, bool) {
@@ -21,8 +23,20 @@ func buildSheinPreviewPayloadInputFromResult(
 	return buildSheinPreviewPayloadInput(
 		result.Shein,
 		result.PodExecution,
-		result.CanonicalProduct,
+		canonicalProductForResultTarget(result, "shein"),
 	), true
+}
+
+func canonicalProductForResultTarget(result *ListingKitResult, target string) *canonical.Product {
+	if result == nil {
+		return nil
+	}
+	if result.StandardProductSnapshot != nil {
+		if targetProduct := canonicalProductFromStandardSnapshotForTarget(result.StandardProductSnapshot, target); targetProduct != nil {
+			return targetProduct
+		}
+	}
+	return result.CanonicalProduct
 }
 
 func buildTemuPreviewPayloadInputFromResult(

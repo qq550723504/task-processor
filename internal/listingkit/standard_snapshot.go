@@ -108,6 +108,16 @@ func canonicalProductFromStandardSnapshot(snapshot *StandardProductSnapshot) *ca
 	return canonicalProductFromApprovedAssets(*snapshot.CatalogProduct, snapshot.ApprovedAssetInventory)
 }
 
+func canonicalProductFromStandardSnapshotForTarget(snapshot *StandardProductSnapshot, target string) *canonical.Product {
+	if snapshot == nil || snapshot.CatalogProduct == nil {
+		return nil
+	}
+	if inventory, ok := snapshot.ApprovedAssetInventories[target]; ok {
+		return canonicalProductFromApprovedAssets(*snapshot.CatalogProduct, &inventory)
+	}
+	return canonicalProductFromStandardSnapshot(snapshot)
+}
+
 func standardProductSnapshotEmpty(snapshot *StandardProductSnapshot) bool {
 	if snapshot == nil {
 		return true

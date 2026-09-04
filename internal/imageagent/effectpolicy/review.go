@@ -61,7 +61,7 @@ func ReserveReview(current *imageagent.SlotEffectV3Attempt, reservation imageage
 	}
 	attempt.ReviewUsage = append(attempt.ReviewUsage, imageagent.SlotReviewUsageAttempt{
 		ActionID: reservation.ActionID, InputFingerprint: reservation.InputFingerprint,
-		BudgetStatus: imageagent.SlotBudgetReserved, Quote: cloneSlotUsageQuote(reservation.Quote),
+		BudgetStatus: imageagent.SlotBudgetReserved, Quote: cloneSlotUsageQuote(reservation.Quote), Outcome: imageagent.SlotReviewOutcomePending,
 	})
 	return ReviewReservationDecision{AccountingDecision: AccountingDecision{
 		EffectDecision: EffectDecision{Attempt: attempt, Changed: true}, Accounting: next, AccountingChanged: true,
@@ -144,6 +144,37 @@ func MarkReviewUnknown(current imageagent.SlotEffectV3Attempt, reservation image
 	decision.Attempt.ReviewUsage[index].BudgetStatus = imageagent.SlotBudgetUnknown
 	decision.Changed = true
 	return decision, nil
+}
+
+func RecordReviewOutcome(current imageagent.SlotEffectV3Attempt, reservation imageagent.SlotReviewUsageReservation, outcome imageagent.SlotReviewOutcome) (EffectDecision, error) {
+	if err := validateReviewReservation(reservation); err != nil {
+		return EffectDecision{}, err
+	}
+	if current.Identity != reservation.Identity || current.Policy != reservation.Policy {
+		return EffectDecision{}, imageagent.ErrRevisionConflict
+	}
+	if outcome != imageagent.SlotReviewOutcomeAccepted && outcome != imageagent.SlotReviewOutcomeNeedsHuman && outcome != imageagent.SlotReviewOutcomeTransportErr {
+		return EffectDecision{}, imageagent.ErrValidation
+	}
+	cloned := cloneSlotEffectV3Attempt(current)
+	for index := range cloned.ReviewUsage {
+		review := &cloned.ReviewUsage[index]
+		if review.ActionID != reservation.ActionID {
+			continue
+		}
+		if review.InputFingerprint != reservation.InputFingerprint || review.Quote.Fingerprint != reservation.Quote.Fingerprint || review.BudgetStatus != imageagent.SlotBudgetCommitted {
+			return EffectDecision{}, imageagent.ErrRevisionConflict
+		}
+		if review.Outcome == outcome {
+			return EffectDecision{Attempt: cloned}, nil
+		}
+		if review.Outcome != "" && review.Outcome != imageagent.SlotReviewOutcomePending {
+			return EffectDecision{}, imageagent.ErrRevisionConflict
+		}
+		review.Outcome = outcome
+		return EffectDecision{Attempt: cloned, Changed: true}, nil
+	}
+	return EffectDecision{}, imageagent.ErrRunNotFound
 }
 
 func validateReviewReservation(reservation imageagent.SlotReviewUsageReservation) error {
