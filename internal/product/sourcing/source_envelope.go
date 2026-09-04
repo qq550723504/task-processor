@@ -72,28 +72,6 @@ type ProductCandidate struct {
 	Variants     []ProductVariantCandidate
 }
 
-// ParseCategoryPath converts a source category path into canonical segments.
-// Source adapters may use the common breadcrumb separators while the catalog
-// stores the result as a structured path.
-func ParseCategoryPath(value string) []string {
-	parts := strings.FieldsFunc(value, func(r rune) bool {
-		return r == '>' || r == '/' || r == '|'
-	})
-	if len(parts) == 0 {
-		return nil
-	}
-	path := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part = strings.TrimSpace(part); part != "" {
-			path = append(path, part)
-		}
-	}
-	if len(path) == 0 {
-		return nil
-	}
-	return path
-}
-
 // ProductVariantCandidate carries neutral variant facts from the source.
 type ProductVariantCandidate struct {
 	SourceID   string
