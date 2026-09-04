@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GormStoreRepository is the SQL implementation of the Organization-scoped
@@ -23,19 +24,23 @@ type GormStoreRepository struct {
 
 type workbenchStoreRecord struct {
 	ID                       string         `gorm:"column:id;type:char(36);primaryKey;not null"`
-	OrganizationID           string         `gorm:"column:organization_id;size:200;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:1;index:idx_workbench_stores_org_platform_region,priority:1;uniqueIndex:ux_workbench_stores_org_create_key,priority:1;uniqueIndex:ux_workbench_stores_org_identity_key,priority:1"`
+	OrganizationID           string         `gorm:"column:organization_id;size:200;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:1;index:idx_workbench_stores_org_record_status_updated,priority:1;index:idx_workbench_stores_org_platform_region,priority:1;uniqueIndex:ux_workbench_stores_org_create_key,priority:1;uniqueIndex:ux_workbench_stores_org_identity_key,priority:1"`
 	Name                     string         `gorm:"column:name;not null"`
 	Platform                 string         `gorm:"column:platform;not null;index:idx_workbench_stores_org_platform_region,priority:2"`
 	Region                   string         `gorm:"column:region;not null;index:idx_workbench_stores_org_platform_region,priority:3"`
 	ExternalStoreID          string         `gorm:"column:external_store_id;not null"`
 	LifecycleStatus          string         `gorm:"column:lifecycle_status;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:2"`
+	RecordStatus             *string        `gorm:"column:record_status;size:32;index:idx_workbench_stores_org_record_status_updated,priority:2"`
+	ServiceStatus            *string        `gorm:"column:service_status;size:32"`
+	ServiceStartedAt         *time.Time     `gorm:"column:service_started_at"`
+	ServiceExpiresAt         *time.Time     `gorm:"column:service_expires_at"`
 	ConnectionRef            string         `gorm:"column:connection_ref;not null"`
 	QuotaAllocationID        string         `gorm:"column:quota_allocation_id;type:char(36);not null"`
 	Version                  int64          `gorm:"column:version;not null"`
 	CreatedBy                string         `gorm:"column:created_by;size:200;not null"`
 	UpdatedBy                string         `gorm:"column:updated_by;size:200;not null"`
 	CreatedAt                time.Time      `gorm:"column:created_at;not null"`
-	UpdatedAt                time.Time      `gorm:"column:updated_at;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:3"`
+	UpdatedAt                time.Time      `gorm:"column:updated_at;not null;index:idx_workbench_stores_org_lifecycle_updated,priority:3;index:idx_workbench_stores_org_record_status_updated,priority:3"`
 	DeletedAt                gorm.DeletedAt `gorm:"column:deleted_at;index"`
 	CreateIdempotencyKey     string         `gorm:"column:create_idempotency_key;type:char(36);not null;uniqueIndex:ux_workbench_stores_org_create_key,priority:2"`
 	DeleteOperationKey       string         `gorm:"column:delete_operation_key;type:varchar(36);not null"`
@@ -179,6 +184,10 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 	if err := validateSaveSnapshot(durableStore.Snapshot(), snapshot); err != nil {
 		return err
 	}
+	compatibilityState, err := compatibilityStateForSave(durableRecord, snapshot.LifecycleStatus)
+	if err != nil {
+		return err
+	}
 	updates := map[string]any{
 		"name":                 snapshot.Name,
 		"region":               snapshot.Region,
@@ -189,6 +198,9 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 		"updated_at":           snapshot.UpdatedAt,
 		"identity_key":         identityKey(snapshot),
 		"delete_operation_key": snapshot.DeleteOperationKey,
+	}
+	for column, value := range compatibilityState.columns() {
+		updates[column] = value
 	}
 	result := r.scopedActiveRecords(ctx, organizationID).Where("id = ? AND version = ?", snapshot.ID, expectedVersion).Updates(updates)
 	if result.Error != nil {
@@ -201,6 +213,104 @@ func (r *GormStoreRepository) Save(ctx context.Context, organizationID string, s
 		return nil
 	}
 	return r.classifyAbsentVersionedRow(ctx, organizationID, snapshot.ID)
+}
+
+// LockServiceState loads the exact Organization-scoped Store through a caller
+// supplied transaction. The organization-resource adapter owns that
+// transaction so Store and Bucket/Event/Operation writes share one commit.
+func (r *GormStoreRepository) LockServiceState(ctx context.Context, tx *gorm.DB, identity ServiceStoreIdentity) (ServiceStoreSnapshot, error) {
+	if tx == nil {
+		return ServiceStoreSnapshot{}, errors.New("store service transaction is required")
+	}
+	organizationID, err := validateOpaqueIdentity("organization ID", identity.OrganizationID, MaxOrganizationIDBytes)
+	if err != nil {
+		return ServiceStoreSnapshot{}, err
+	}
+	storeID, err := canonicalUUID(identity.StoreID)
+	if err != nil {
+		return ServiceStoreSnapshot{}, fmt.Errorf("store ID: %w", err)
+	}
+	var record workbenchStoreRecord
+	err = tx.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("organization_id = ? AND id = ? AND deleted_at IS NULL", organizationID, storeID).
+		Take(&record).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ServiceStoreSnapshot{}, ErrNotFound
+	}
+	if err != nil {
+		return ServiceStoreSnapshot{}, fmt.Errorf("lock workbench Store service state: %w", err)
+	}
+	state, mapped := expandedStateFromRecord(record)
+	if !mapped {
+		return ServiceStoreSnapshot{}, ErrInvalidServiceState
+	}
+	if err := ValidateStoreServiceState(state); err != nil {
+		return ServiceStoreSnapshot{}, err
+	}
+	return ServiceStoreSnapshot{
+		Identity:          ServiceStoreIdentity{OrganizationID: record.OrganizationID, StoreID: record.ID},
+		QuotaAllocationID: record.QuotaAllocationID,
+		ConnectionRef:     record.ConnectionRef,
+		Version:           record.Version,
+		UpdatedAt:         record.UpdatedAt,
+		State:             copyServiceState(state),
+	}, nil
+}
+
+// ApplyServiceState performs only the Store half of a Store+Resource unit of
+// work and therefore requires the same caller-owned transaction used for the
+// resource mutation. It advances the aggregate version exactly once.
+func (r *GormStoreRepository) ApplyServiceState(ctx context.Context, tx *gorm.DB, mutation ServiceStoreMutation) error {
+	if tx == nil {
+		return errors.New("store service transaction is required")
+	}
+	organizationID, err := validateOpaqueIdentity("organization ID", mutation.Identity.OrganizationID, MaxOrganizationIDBytes)
+	if err != nil {
+		return err
+	}
+	storeID, err := canonicalUUID(mutation.Identity.StoreID)
+	if err != nil {
+		return fmt.Errorf("store ID: %w", err)
+	}
+	actor, err := validateOpaqueIdentity("actor subject", mutation.ActorSubject, MaxSubjectBytes)
+	if err != nil {
+		return err
+	}
+	if mutation.ExpectedVersion <= 0 || mutation.OccurredAt.IsZero() {
+		return ErrVersionConflict
+	}
+	if mutation.State.RecordStatus != RecordStatusActive {
+		return ErrInvalidServiceTransition
+	}
+	if err := ValidateStoreServiceState(mutation.State); err != nil {
+		return err
+	}
+	updates := mutation.State.columns()
+	updates["version"] = mutation.ExpectedVersion + 1
+	updates["updated_by"] = actor
+	updates["updated_at"] = mutation.OccurredAt.UTC()
+	result := tx.WithContext(ctx).Model(&workbenchStoreRecord{}).
+		Where("organization_id = ? AND id = ? AND deleted_at IS NULL AND version = ? AND connection_ref = ? AND updated_at <= ?",
+			organizationID, storeID, mutation.ExpectedVersion, mutation.ExpectedConnectionRef, mutation.OccurredAt.UTC()).
+		Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("apply workbench Store service state: %w", result.Error)
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
+	var record workbenchStoreRecord
+	lookupErr := tx.WithContext(ctx).Where("organization_id = ? AND id = ? AND deleted_at IS NULL", organizationID, storeID).Take(&record).Error
+	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if lookupErr != nil {
+		return fmt.Errorf("classify Store service CAS: %w", lookupErr)
+	}
+	if record.ConnectionRef != mutation.ExpectedConnectionRef {
+		return ErrConnectionSnapshotChanged
+	}
+	return ErrVersionConflict
 }
 
 func (r *GormStoreRepository) SoftDelete(ctx context.Context, organizationID string, storeID string, expectedVersion int64) error {
@@ -224,7 +334,15 @@ func (r *GormStoreRepository) SoftDelete(ctx context.Context, organizationID str
 	}
 	result := r.scopedActiveRecords(ctx, organizationID).
 		Where("id = ? AND version = ? AND lifecycle_status = ?", storeID, expectedVersion, string(StoreStatusDeleting)).
-		Updates(map[string]any{"deleted_at": now, "updated_at": now, "version": gorm.Expr("version + ?", 1)})
+		Updates(map[string]any{
+			"deleted_at":         now,
+			"updated_at":         now,
+			"version":            gorm.Expr("version + ?", 1),
+			"record_status":      string(RecordStatusDeleted),
+			"service_status":     nil,
+			"service_started_at": nil,
+			"service_expires_at": nil,
+		})
 	if result.Error != nil {
 		return fmt.Errorf("soft delete workbench store: %w", result.Error)
 	}
@@ -333,10 +451,93 @@ func recordFromSnapshot(snapshot StoreSnapshot, identity, fingerprint string) wo
 		CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, CreateIdempotencyKey: snapshot.CreateIdempotencyKey, DeleteOperationKey: snapshot.DeleteOperationKey,
 		IdentityKey: identity, CreateRequestFingerprint: fingerprint,
 	}
+	record.applyCompatibilityState(compatibilityStateForNewStore(snapshot.LifecycleStatus))
 	if snapshot.DeletedAt != nil {
 		record.DeletedAt = gorm.DeletedAt{Time: *snapshot.DeletedAt, Valid: true}
 	}
 	return record
+}
+
+func compatibilityStateForNewStore(status LifecycleStatus) StoreServiceState {
+	switch status {
+	case StoreStatusProvisioning:
+		return StoreServiceState{RecordStatus: RecordStatusProvisioning}
+	case StoreStatusActive:
+		return StoreServiceState{RecordStatus: RecordStatusActive, ServiceStatus: ServiceStatusPendingActivation}
+	case StoreStatusDisabled:
+		return StoreServiceState{RecordStatus: RecordStatusActive, ServiceStatus: ServiceStatusSuspended}
+	case StoreStatusDeleting:
+		return StoreServiceState{RecordStatus: RecordStatusDeleting}
+	default:
+		return StoreServiceState{}
+	}
+}
+
+func compatibilityStateForSave(durable workbenchStoreRecord, incoming LifecycleStatus) (StoreServiceState, error) {
+	state, mapped := expandedStateFromRecord(durable)
+	if !mapped {
+		state = StoreServiceState{}
+	}
+
+	switch incoming {
+	case StoreStatusProvisioning:
+		state = StoreServiceState{RecordStatus: RecordStatusProvisioning}
+	case StoreStatusDeleting:
+		state = StoreServiceState{RecordStatus: RecordStatusDeleting}
+	case StoreStatusDisabled:
+		state.RecordStatus = RecordStatusActive
+		state.ServiceStatus = ServiceStatusSuspended
+	case StoreStatusActive:
+		state.RecordStatus = RecordStatusActive
+		if state.ServiceStatus == ServiceStatusSuspended && validServicePeriod(state.StartedAt, state.ExpiresAt) {
+			state.ServiceStatus = ServiceStatusActive
+		} else if state.ServiceStatus != ServiceStatusActive && state.ServiceStatus != ServiceStatusExpired {
+			state.ServiceStatus = ServiceStatusPendingActivation
+		}
+	default:
+		return StoreServiceState{}, ErrInvalidServiceState
+	}
+	if err := ValidateStoreServiceState(state); err != nil {
+		return StoreServiceState{}, err
+	}
+	return state, nil
+}
+
+func expandedStateFromRecord(record workbenchStoreRecord) (StoreServiceState, bool) {
+	if record.RecordStatus == nil && record.ServiceStatus == nil && record.ServiceStartedAt == nil && record.ServiceExpiresAt == nil {
+		return StoreServiceState{}, false
+	}
+	state := StoreServiceState{StartedAt: copyTimePointer(record.ServiceStartedAt), ExpiresAt: copyTimePointer(record.ServiceExpiresAt)}
+	if record.RecordStatus != nil {
+		state.RecordStatus = RecordStatus(*record.RecordStatus)
+	}
+	if record.ServiceStatus != nil {
+		state.ServiceStatus = ServiceStatus(*record.ServiceStatus)
+	}
+	return state, true
+}
+
+func (record *workbenchStoreRecord) applyCompatibilityState(state StoreServiceState) {
+	record.RecordStatus = optionalString(string(state.RecordStatus))
+	record.ServiceStatus = optionalString(string(state.ServiceStatus))
+	record.ServiceStartedAt = copyTimePointer(state.StartedAt)
+	record.ServiceExpiresAt = copyTimePointer(state.ExpiresAt)
+}
+
+func (state StoreServiceState) columns() map[string]any {
+	return map[string]any{
+		"record_status":      optionalString(string(state.RecordStatus)),
+		"service_status":     optionalString(string(state.ServiceStatus)),
+		"service_started_at": copyTimePointer(state.StartedAt),
+		"service_expires_at": copyTimePointer(state.ExpiresAt),
+	}
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func rehydrateRecord(record workbenchStoreRecord) (*Store, error) {
