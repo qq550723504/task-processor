@@ -261,7 +261,7 @@ func TestNewImageAgentHTTPServiceRequiresImageAgentTenantAdmission(t *testing.T)
 	err = service.Start(allowedCtx, imageagent.StartRunInput{
 		RunID: "run-2", BusinessTaskID: "task-1", TargetPlatform: "shein",
 		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
-		Mode: imageagent.RunModeManual, IdempotencyKey: "run-key-2",
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-2",
 		Plan: imageagent.Plan{
 			Revision: 1, IdempotencyKey: "plan-key-2", SourceAssetIDs: []string{"source-1"},
 			Slots: []imageagent.Slot{{ID: "slot-2", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-2", Status: imageagent.SlotStatusPending}},
@@ -269,6 +269,18 @@ func TestNewImageAgentHTTPServiceRequiresImageAgentTenantAdmission(t *testing.T)
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, workflows.starts)
+
+	err = service.Start(allowedCtx, imageagent.StartRunInput{
+		RunID: "run-unsupported-country", BusinessTaskID: "task-1", TargetPlatform: "shein",
+		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "gb", Family: "default", SceneCategory: "shoes"},
+		Mode:               imageagent.RunModeManual, IdempotencyKey: "run-key-unsupported-country",
+		Plan: imageagent.Plan{
+			Revision: 1, IdempotencyKey: "plan-key-unsupported-country", SourceAssetIDs: []string{"source-1"},
+			Slots: []imageagent.Slot{{ID: "slot-unsupported-country", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"source-1"}, IdempotencyKey: "slot-key-unsupported-country", Status: imageagent.SlotStatusPending}},
+		},
+	})
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Equal(t, 1, workflows.starts, "unsupported countries must be rejected before workflow dispatch")
 }
 
 type staticCompositionImageAgentCatalog struct{ catalog imageagent.AssetCatalog }

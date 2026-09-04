@@ -6,27 +6,9 @@ import (
 )
 
 func loadEmbeddedImagePolicyResolver() (*imagepolicy.Resolver, error) {
-	catalog, err := policycatalog.LoadEmbedded()
-	if err != nil {
-		return nil, err
-	}
-	return newImagePolicyResolver(catalog)
+	return policycatalog.LoadEmbeddedResolver()
 }
 
 func newImagePolicyResolver(catalog policycatalog.Catalog) (*imagepolicy.Resolver, error) {
-	set := imagepolicy.PolicySet{Version: catalog.Version, Policies: make([]imagepolicy.Policy, len(catalog.Policies))}
-	for index, policy := range catalog.Policies {
-		set.Policies[index] = imagepolicy.Policy{
-			Key: imagepolicy.PolicyKey{
-				Marketplace: policy.Key.Marketplace, Country: policy.Key.Country,
-				Family: policy.Key.Family, SceneCategory: policy.Key.SceneCategory,
-			},
-			Thresholds: imagepolicy.Thresholds{
-				MainReview: policy.Thresholds.MainReview, WhiteBackgroundReview: policy.Thresholds.WhiteBackgroundReview,
-				WhiteCanvasPenalty: policy.Thresholds.WhiteCanvasPenalty,
-			},
-			SceneDefaults: policy.SceneDefaults,
-		}
-	}
-	return imagepolicy.NewResolver(set)
+	return policycatalog.NewResolver(catalog)
 }

@@ -163,6 +163,14 @@ type TaskRunLaunchResult struct {
 	RunID string
 }
 
+// ImagePolicyAvailability is the command-boundary view of the configured
+// ProductImage policy catalog. Launchers use it before creating durable run
+// state so a syntactically valid but unsupported marketplace policy key cannot
+// become a run that the worker is guaranteed to reject later.
+type ImagePolicyAvailability interface {
+	ValidateAvailable(context.Context, string, ImagePolicyContext) error
+}
+
 // TaskRunAssetsInput is the preflight query for the task-scoped workspace
 // entrypoint: it resolves the selectable task-owned assets without
 // creating a run, so the launcher can require an explicit source

@@ -2,6 +2,7 @@ package imageagent_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -222,6 +223,16 @@ type gateCallRecorder struct {
 	calls []string
 }
 
+type recordingImagePolicyAvailability struct {
+	err   error
+	calls []imageagent.ImagePolicyContext
+}
+
+func (a *recordingImagePolicyAvailability) ValidateAvailable(_ context.Context, _ string, policy imageagent.ImagePolicyContext) error {
+	a.calls = append(a.calls, policy)
+	return a.err
+}
+
 func (g *gateCallRecorder) AllowTenantStart(_ context.Context, tenantID string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -243,6 +254,25 @@ func TestServiceLaunchTaskRunChecksAdmissionBeforeResolvingAssets(t *testing.T) 
 	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
 	require.Equal(t, []string{"tenant-b"}, gate.calls, "admission must be checked exactly once before any catalog work")
 	require.Zero(t, catalogResolver.resolved, "catalog resolution must not run for an ineligible tenant")
+	require.Empty(t, workflows.starts)
+}
+
+func TestServiceLaunchTaskRunRejectsUnavailablePolicyBeforeResolvingAssets(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	workflows := &recordingWorkflowClient{}
+	catalogResolver := &admissionGateTrackingCatalogResolver{catalog: launchCatalog()}
+	availability := &recordingImagePolicyAvailability{err: errors.New("policy key is not configured")}
+	service, err := imageagent.NewService(repository, workflows, catalogResolver,
+		imageagent.WithImagePolicyAvailability(availability))
+	require.NoError(t, err)
+	input := launchTaskRunInput()
+	input.ImagePolicyContext.Country = "gb"
+
+	_, err = service.LaunchTaskRun(verifiedContext("tenant-a", "user-a"), input)
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Equal(t, []imageagent.ImagePolicyContext{input.ImagePolicyContext}, availability.calls)
+	require.Zero(t, catalogResolver.resolved, "unsupported policies must fail before task assets are resolved")
 	require.Empty(t, workflows.starts)
 }
 

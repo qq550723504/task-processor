@@ -103,9 +103,13 @@ func newImageAgentHTTPService(cfg *config.Config, repository imageagent.Reposito
 	if cfg == nil {
 		return nil, fmt.Errorf("build image agent HTTP service: config is required")
 	}
+	policyAvailability, err := loadImageAgentPolicyAvailability()
+	if err != nil {
+		return nil, fmt.Errorf("build image agent HTTP service: %w", err)
+	}
 	return imageagent.NewService(repository, workflows, catalog, imageagent.WithTenantStartGate(imageagent.TenantAllowlistStartGate{
 		Enabled: cfg.ImageAgent.Admission.Enabled, AllowedTenantIDs: append([]string(nil), cfg.ImageAgent.Admission.AllowedTenantIDs...),
-	}))
+	}), imageagent.WithImagePolicyAvailability(policyAvailability))
 }
 
 func imageAgentDurableAssetPublicURLResolver(cfg *config.Config) imageagent.DurableAssetPublicURLResolver {

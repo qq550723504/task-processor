@@ -15,10 +15,11 @@ import (
 )
 
 type Service struct {
-	repository Repository
-	workflows  WorkflowClient
-	catalogs   AuthorizedAssetCatalog
-	startGate  TenantStartGate
+	repository    Repository
+	workflows     WorkflowClient
+	catalogs      AuthorizedAssetCatalog
+	startGate     TenantStartGate
+	imagePolicies ImagePolicyAvailability
 }
 
 // TenantStartGate admits a run before any durable run state or workflow is
@@ -60,6 +61,16 @@ func WithTenantStartGate(gate TenantStartGate) ServiceOption {
 			return fmt.Errorf("image agent tenant start gate is required")
 		}
 		service.startGate = gate
+		return nil
+	}
+}
+
+func WithImagePolicyAvailability(availability ImagePolicyAvailability) ServiceOption {
+	return func(service *Service) error {
+		if availability == nil {
+			return fmt.Errorf("image agent policy availability is required")
+		}
+		service.imagePolicies = availability
 		return nil
 	}
 }
@@ -136,6 +147,9 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if !s.tenantStartAllowed(ctx, identity.TenantID) {
 		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
 	}
+	if err := s.validateImagePolicyAvailable(ctx, input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return err
+	}
 	if err := ValidateInitialSubmittedPlan(input.Plan); err != nil {
 		return fmt.Errorf("%w: validate image agent plan: %v", ErrValidation, err)
 	}
@@ -209,6 +223,9 @@ func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (
 	// tenants must fail closed without consuming that capacity.
 	if !s.tenantStartAllowed(ctx, identity.TenantID) {
 		return TaskRunLaunchResult{}, fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
+	}
+	if err := s.validateImagePolicyAvailable(ctx, input.TargetPlatform, input.ImagePolicyContext); err != nil {
+		return TaskRunLaunchResult{}, err
 	}
 	if input.SourceAssetID == "" {
 		return TaskRunLaunchResult{}, fmt.Errorf("%w: source_asset_id must select one task-owned source asset", ErrValidation)
@@ -386,6 +403,9 @@ func (s *Service) startExistingProjection(ctx context.Context, projection RunPro
 	if !s.tenantStartAllowed(ctx, identity.TenantID) {
 		return fmt.Errorf("%w: image agent provider is unavailable for tenant", ErrCommandBlocked)
 	}
+	if err := s.validateImagePolicyAvailable(ctx, projection.Run.TargetPlatform, projection.Run.ImagePolicyContext); err != nil {
+		return err
+	}
 	return s.workflows.StartManual(ctx, WorkflowStart{
 		Run: projection.Run, Plan: projection.Plan, Identity: identity,
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots, AssetCatalog: projection.AssetCatalog,
@@ -394,6 +414,16 @@ func (s *Service) startExistingProjection(ctx context.Context, projection RunPro
 
 func (s *Service) tenantStartAllowed(ctx context.Context, tenantID string) bool {
 	return s == nil || s.startGate == nil || s.startGate.AllowTenantStart(ctx, tenantID)
+}
+
+func (s *Service) validateImagePolicyAvailable(ctx context.Context, marketplace string, policy ImagePolicyContext) error {
+	if s == nil || s.imagePolicies == nil {
+		return nil
+	}
+	if err := s.imagePolicies.ValidateAvailable(ctx, marketplace, policy); err != nil {
+		return fmt.Errorf("%w: image policy is unavailable: %v", ErrCommandBlocked, err)
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) {

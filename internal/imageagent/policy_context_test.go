@@ -40,6 +40,23 @@ func TestServiceRejectsInvalidImagePolicyKeyBeforeResolvingAssets(t *testing.T) 
 	}
 }
 
+func TestServiceRejectsUnavailableValidPolicyBeforeCreatingRun(t *testing.T) {
+	t.Parallel()
+
+	catalog := &countingPolicyCatalog{catalog: authorizedCatalog()}
+	availability := &recordingImagePolicyAvailability{err: imageagent.ErrValidation}
+	service, err := imageagent.NewService(store.NewMemoryRepository(), &recordingWorkflowClient{}, catalog,
+		imageagent.WithImagePolicyAvailability(availability))
+	require.NoError(t, err)
+	input := validPolicyStartInput("run-unavailable-policy")
+	input.ImagePolicyContext.Country = "gb"
+
+	err = service.Start(verifiedContext("tenant-a", "user-a"), input)
+
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked)
+	require.Zero(t, catalog.calls)
+}
+
 func TestServicePersistsImmutableImagePolicyContextAndUsesItForStartIdempotency(t *testing.T) {
 	t.Parallel()
 
