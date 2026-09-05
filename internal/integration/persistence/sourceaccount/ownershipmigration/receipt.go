@@ -11,9 +11,10 @@ import (
 
 // ValidateReceiptTarget verifies the destination without creating anything.
 // The receipt must live outside the profile tree and its parent path must not
-// traverse a symlink/junction alias. Filesystem identities of the profile root,
-// tenant directories and verified account directories are indexed so a direct
-// bind-mount alias fails closed without quadratic scans.
+// traverse a symlink/junction alias. Linux mount identity is also checked so an
+// external bind mount backed by any profile descendant fails closed. Filesystem
+// identities of the profile root, tenant directories and verified account
+// directories are indexed for direct-alias checks without quadratic scans.
 func ValidateReceiptTarget(profileRoot, path string, r Receipt) error {
 	if !filepath.IsAbs(profileRoot) || !filepath.IsAbs(path) {
 		return fmt.Errorf("absolute profile root and receipt path required")
@@ -31,6 +32,13 @@ func ValidateReceiptTarget(profileRoot, path string, r Receipt) error {
 	}
 	if insidePath(profileRoot, parent) {
 		return fmt.Errorf("receipt path must be outside the browser profile root")
+	}
+	aliasesSubtree, err := receiptParentAliasesProfileSubtree(profileRoot, parent)
+	if err != nil {
+		return fmt.Errorf("cannot verify receipt mount identity")
+	}
+	if aliasesSubtree {
+		return fmt.Errorf("receipt parent aliases a browser profile descendant")
 	}
 
 	protectedPaths := map[string]struct{}{profileRoot: {}}
