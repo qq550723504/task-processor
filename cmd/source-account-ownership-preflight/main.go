@@ -67,10 +67,11 @@ func run() error {
 	if err = ownershipmigration.ValidateReceiptTarget(*root, *output, receipt); err != nil {
 		return err
 	}
+	// WriteReceipt owns the publication success decision. It removes a just-linked
+	// receipt if cancellation is observed before it returns; cancellation that
+	// arrives after a nil return does not retroactively turn committed evidence
+	// into a failed invocation.
 	if err = ownershipmigration.WriteReceipt(ctx, *output, receipt); err != nil {
-		return err
-	}
-	if err = ctx.Err(); err != nil {
 		return err
 	}
 	fmt.Printf("Preflight only: %d accounts; sha256 %s. Backfill, profile fleet validation and old-job drain are NOT certified.\n", len(receipt.Accounts), receipt.Digest)
