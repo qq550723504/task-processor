@@ -57,7 +57,7 @@ version: v1.0.0
 
 - 输入 JSON 只有 `task_id`，且必须与 `CallMetadata.BusinessTaskID` 精确一致。
 - 原始 `Call.Arguments` 在任何 clone、JSON decode、Schema validation、身份解析或
-  Executor 调用前执行 64 KiB 全局上限检查。
+  Executor 调用前执行 64 KiB 全局上限检查；超限审计不能再次扫描完整载荷。
 - 每次调用都重新解析可信 Principal、执行 Tool permission 检查，并在 task 查询边界
   再执行 tenant/owner 过滤。
 - tenant admin 和 platform admin 只能绕过当前 tenant 内的 owner 过滤，不能跨 tenant。
@@ -361,7 +361,8 @@ fallback，并且没有副作用；它不承诺 legacy current-read 永久返回
 - tenant ID：沿用 task storage 上限 64 bytes；
 - user ID：沿用 task storage 上限 128 bytes；
 - roles：最多 32 项，每项最多 128 bytes；
-- 原始 `Call.Arguments`：最多 64 KiB，且必须在 clone/decode 前拒绝；
+- 原始 `Call.Arguments`：最多 64 KiB，且必须在 clone/decode 前拒绝；超限路径不得保留或
+  哈希完整载荷，审计使用固定 oversized marker hash；
 - Tool execution timeout：3 秒，从 input schema/permission preflight 完成后开始，覆盖
   task read、catalog read、projection 和序列化；Executor 在每个 CPU 阶段后重新检查
   context；
@@ -407,7 +408,7 @@ B0 不新增第三方依赖：
 | diagnostics 不创建 marketplace rules | projection tests只比较 Review/Warnings |
 | output 无保留字段和任意 metadata | nested reserved metadata fixture |
 | cancellation/deadline 有界 | blocking Reader + Registry timeout test |
-| raw invocation 有界 | 64 KiB exact/over-limit test，断言 PrincipalResolver 未调用 |
+| raw invocation 有界 | 64 KiB exact/over-limit test，断言不保留/哈希原始载荷且 PrincipalResolver 未调用 |
 | B0 Catalog 物化有界且不破坏兼容 | bounded reader exact/over-limit tests + shared repository large snapshot compatibility test |
 | output size 有界 | exact limit / over limit tests |
 | 无模型或外部依赖 | import guard + conformance test |
@@ -528,6 +529,13 @@ Classification: IMPLEMENTATION_TEST
 Reason: 不改变所有权、事务或状态机；可在现有 Port 和 adapter 中稳定映射。
 Action: 增加 ErrCanonicalSubjectUnavailable，保留 context 错误，Executor 映射为
         dependency_unavailable，并用关闭数据库的真实 repository 测试证明。
+
+Finding: 超过 64 KiB 的原始参数虽提前拒绝，但失败审计仍哈希完整攻击载荷。
+Product requirement affected: 请求大小与资源耗尽边界。
+Classification: IMPLEMENTATION_TEST
+Reason: 不改变架构或业务状态；可在 Registry 入口丢弃原始字节并使用固定审计标记。
+Action: oversized invocation state 不 clone、不保留、不哈希原始 Arguments，只记录固定
+        SHA-256 标记；测试断言 state 中没有原始载荷且审计仍完整记录失败。
 ```
 
 两项 Blocker 已按上述最小边界修复，且未新增 IAM、repository owner 或全局数据约束。

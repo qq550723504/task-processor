@@ -193,12 +193,14 @@ func TestInvokeBoundsRawArgumentsBeforeCloneOrPreflightDependencies(t *testing.T
 	t.Run("over limit", func(t *testing.T) {
 		call := validCall()
 		call.Arguments = over
+		recorder := &recordingAuditStub{}
 		resolver := &countingResolver{principal: verifiedPrincipal()}
 		authorizer := &recordingAuthorizer{}
 		executorCalls := 0
 		deps := validInvocationDependencies()
 		deps.PrincipalResolver = resolver
 		deps.Authorizer = authorizer
+		deps.Recorder = recorder
 		bound := bindToolForTest(t, ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
 			executorCalls++
 			return ExecutionResult{}, nil
@@ -210,7 +212,21 @@ func TestInvokeBoundsRawArgumentsBeforeCloneOrPreflightDependencies(t *testing.T
 		require.Equal(t, 0, resolver.calls)
 		require.Equal(t, 0, authorizer.calls)
 		require.Equal(t, 0, executorCalls)
+		require.Len(t, recorder.records, 1)
+		require.Equal(t, oversizedInvocationInputHash, recorder.records[0].InputHash)
 	})
+}
+
+func TestOversizedInvocationStateDoesNotRetainRawArguments(t *testing.T) {
+	call := validCall()
+	call.Arguments = bytesOf('x', MaxInvocationArgumentsBytes+1)
+
+	state := newOversizedInvocationState(time.Now(), call)
+
+	require.Nil(t, state.call.Arguments)
+	require.Equal(t, oversizedInvocationInputHash, state.inputHash)
+	require.Equal(t, call.Tool, state.call.Tool)
+	require.Equal(t, call.Metadata, state.call.Metadata)
 }
 
 func bytesOf(value byte, count int) []byte {

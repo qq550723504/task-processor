@@ -18,9 +18,12 @@ const (
 	MaxInvocationArgumentsBytes = 64 << 10
 )
 
+var oversizedInvocationInputHash = hashRaw(json.RawMessage(`{"oversized":true}`))
+
 type invocationState struct {
 	startedAt  time.Time
 	call       Call
+	inputHash  string
 	principal  Principal
 	definition Definition
 	hasTool    bool
@@ -29,7 +32,7 @@ type invocationState struct {
 func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error) {
 	startedAt := tools.deps.Now().UTC()
 	if len(call.Arguments) > MaxInvocationArgumentsBytes {
-		state := invocationState{startedAt: startedAt, call: call}
+		state := newOversizedInvocationState(startedAt, call)
 		return tools.finish(ctx, state, nil, "", NewError(ErrorInvalidInput, "tool input exceeds size limit", nil))
 	}
 	state := newInvocationState(startedAt, call)
@@ -71,7 +74,12 @@ func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error
 
 func newInvocationState(startedAt time.Time, call Call) invocationState {
 	call.Arguments = cloneRaw(call.Arguments)
-	return invocationState{startedAt: startedAt, call: call}
+	return invocationState{startedAt: startedAt, call: call, inputHash: hashRaw(call.Arguments)}
+}
+
+func newOversizedInvocationState(startedAt time.Time, call Call) invocationState {
+	call.Arguments = nil
+	return invocationState{startedAt: startedAt, call: call, inputHash: oversizedInvocationInputHash}
 }
 
 func (tools *BoundToolSet) preflight(ctx context.Context, call Call, state *invocationState) (registeredTool, error) {
@@ -241,7 +249,7 @@ func (state invocationState) auditRecord(
 		StartedAt:      state.startedAt,
 		FinishedAt:     finishedAt,
 		LatencyMillis:  finishedAt.Sub(state.startedAt).Milliseconds(),
-		InputHash:      hashRaw(state.call.Arguments),
+		InputHash:      state.inputHash,
 		OutputHash:     hashRaw(output),
 		Outcome:        AuditOutcomeSucceeded,
 		AIInvocationID: aiInvocationID,

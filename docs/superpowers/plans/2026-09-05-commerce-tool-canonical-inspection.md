@@ -299,7 +299,8 @@ git commit -m "feat(listing): expose scoped canonical subject reader"
 - 配置化 platform-admin user/role 同时获得 `listingkit.admin.read`，且其 tenant-admin
   判定来自同一个 `ListingKitAuthorizer` 实例；
 - 原始 Call.Arguments 在任何 clone/decode/PrincipalResolver 前执行 64 KiB exact/over-limit
-  检查；over-limit 返回 `invalid_input`，并断言 Resolver/Authorizer/Executor 均未调用。
+  检查；over-limit 返回 `invalid_input`，不保留或哈希完整载荷，只记录固定 audit marker
+  hash，并断言 Resolver/Authorizer/Executor 均未调用。
 
 运行：
 
@@ -316,6 +317,8 @@ go test ./internal/integration/commercetoolauth ./internal/commercetool -run 'Te
 - Commerce Tool Principal validation 拒绝非 canonical whitespace；
 - 在 `BoundToolSet.Invoke` 的最外层、`newInvocationState` 之前检查原始参数长度；不得先
   复制超限字节再返回错误；
+- 超限审计 state 清空 Arguments 并使用固定 oversized marker hash，不能在 `finish`
+  中重新线性扫描攻击载荷；
 - 不新增 permission；B0 使用 `authz.PermissionListingKitAdminRead` 的字符串值。
 
 **Step 3：验证**
@@ -702,7 +705,7 @@ PR 交付说明必须包含：
 - [ ] 输出是深复制只读投影，严格 Schema、无保留 authority 字段、最多 1 MiB。
 - [ ] diagnostics 只投影 Catalog Review/Warnings，不猜 marketplace readiness。
 - [ ] timeout/cancellation 传播，Executor 不重试。
-- [ ] raw Arguments 在 clone/decode 前受 64 KiB 上限保护。
+- [ ] raw Arguments 在 clone/decode 前受 64 KiB 上限保护，超限审计不保留/哈希完整载荷。
 - [ ] B0 bounded Catalog reader 在 hash/unmarshal/clone 前受 8 MiB 上限保护，且共享
   Catalog publication/read 仍兼容大快照。
 - [ ] permission preflight、task scope 与 Executor 共享配置化 admin 语义。
