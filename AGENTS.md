@@ -7,6 +7,41 @@
 - 发现现有架构设计问题时及时说明，不要忽略。
 - 优先复用仓库已有能力和成熟开源实现，避免重复建设。
 
+## Legacy Hard-Cut
+
+仓库对旧代码采用 `Hard-Cut + Selective Extraction`，详细规则见：
+
+- `docs/refactoring/legacy-hard-cut-policy.md`
+- `docs/refactoring/legacy-register.md`
+
+当前 Legacy 只有两种合法处理结果：
+
+- `EXTRACT`：仍然正确、可复用的行为抽取到当前架构的正确 owner；新代码不得继续依赖旧 owner。
+- `RETIRE`：属于旧设计的代码/测试/DTO/Workflow/Task/Workspace/状态机不兼容、不扩展，完成切换后删除或停止使用。
+
+**当前没有 Legacy Compatibility 类别。**
+
+遇到旧代码时：
+
+1. 先判断它是否仍是当前 Product/Architecture requirement；不是则 `RETIRE`。
+2. 若行为仍有价值，优先把行为抽取到当前 Domain/Capability owner，而不是 Wrap 旧 Service。
+3. 不得为了“保持旧代码可用”在新架构内部增加 fallback、双读、双写、双向同步或第二套事实源。
+4. 旧测试不是 Architecture Authority；只保留仍然有效的业务、安全、权限、幂等、平台或确定性行为，旧实现细节测试应删除/改写。
+5. ProductEnrich/ProductImage 旧 task/queue/worker/API、Task-first Product 模型、旧 Listing Workspace/Task Dashboard、平台独立 Workbench 等已 hard-cut 的设计不得通过兼容层重新进入新代码。
+6. 新的 Product/Agent/Tool/Marketplace/Console 代码不得直接依赖已登记为 `RETIRE` 的 legacy abstraction。
+7. 如果未来确实发现外部可观察契约或持久化运行态必须临时兼容，必须先停下来建立显式、可评审的 Exception；不得自行增加“临时”兼容路径。
+
+PR 触碰 Legacy 时必须说明：
+
+```text
+Legacy decision: EXTRACT | RETIRE
+Reusable behavior:
+Current owner:
+Cutover/deletion condition:
+```
+
+“继续兼容旧内部设计”不是当前允许的默认决策。
+
 ## 开发准入与停止条件
 
 开始编码前，先判断任务是有界修改还是架构敏感修改。满足以下任一条件即属于架构敏感修改：
