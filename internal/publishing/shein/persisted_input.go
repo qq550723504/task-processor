@@ -34,10 +34,7 @@ func DecodePersistedPackageStrict(raw []byte) (*Package, error) {
 		return nil, ErrInvalidPersistedPackage
 	}
 	pkg := Package(decoded)
-	if (pkg.DraftPayload != nil && pkg.RequestDraft != nil && !equalPersistedAliases(pkg.DraftPayload, pkg.RequestDraft)) ||
-		(pkg.PreviewPayload != nil && pkg.PreviewProduct != nil && !equalPersistedAliases(pkg.PreviewPayload, pkg.PreviewProduct)) ||
-		(pkg.SubmissionState != nil && pkg.Submission != nil && !equalPersistedAliases(pkg.SubmissionState, pkg.Submission)) ||
-		(pkg.FinalSubmissionDraft != nil && pkg.FinalDraft != nil && !equalPersistedAliases(pkg.FinalSubmissionDraft, pkg.FinalDraft)) {
+	if conflictingPersistedAliases(&pkg) {
 		return nil, ErrInvalidPersistedPackage
 	}
 	NormalizePackageSemanticFields(&pkg)
