@@ -198,8 +198,7 @@ fixture content unchanged. Broken and cyclic links are rejected without resoluti
 The production walk uses directory entries and metadata only; it never opens profile
 files for content. Each account directory is walked once, so work is O(total entries),
 not account pairs or repeated scans of the shared profile root. The existing command
-deadline is checked at every visited entry. `filepath.WalkDir` retains the current
-traversal state plus the entries for one directory. A real tmpfs check visited 4,096
+deadline is checked throughout the bounded batch traversal. A real tmpfs check visited 4,096
 ordinary files once; this is traversal evidence, not a 100,000-profile benchmark. An
 unprivileged disposable Linux run confirmed unreadable descendants fail closed.
 
@@ -214,6 +213,16 @@ system temporary mount through the same mount resolver; other platforms retain t
 native temporary directory. This keeps ordinary tests repeatable in overlay-backed
 containers without bypassing production validation. Dedicated live mount tests still
 exercise the real filesystem path and production checks.
+
+After finding 3940748797, Linux and Windows no longer use `filepath.WalkDir`, which
+loads and sorts all names in one directory. Each platform uses its own depth-first
+walker with `ReadDir(128)` batches and checks cancellation before each batch and entry.
+Memory for directory enumeration is bounded by one 128-entry batch per active path
+depth; native file handles are similarly bounded by directory depth. Linux tests cover
+4,096 real entries plus cancellation after seven checks; Windows covers a 1,024-entry
+directory with the same early cancellation. Filesystem calls already in progress cannot
+be preempted by Go context, but no unbounded name collection occurs before the next
+deadline check.
 
 The final review confirmed that buildability must not imply runtime support. Darwin and
 other non-Linux/non-Windows builds now return an explicit unsupported-platform error

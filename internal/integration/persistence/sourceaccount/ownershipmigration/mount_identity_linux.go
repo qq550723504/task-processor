@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io/fs"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -154,49 +154,75 @@ func validateLinuxProfileEntries(ctx context.Context, accounts []AccountEvidence
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		// WalkDir reads directory entries and metadata without following symlinks.
-		// Each account root is visited once; the shared profile root is not rescanned.
-		err := filepath.WalkDir(account.ProfileDirectory, func(path string, entry fs.DirEntry, walkErr error) error {
+		var walk func(string) error
+		walk = func(directory string) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if walkErr != nil || entry == nil {
+			handle, err := os.Open(directory)
+			if err != nil {
 				return fmt.Errorf("cannot inspect profile directory entries")
 			}
-			info, err := entry.Info()
-			if err != nil {
-				return fmt.Errorf("cannot inspect profile directory metadata")
-			}
-			if entry.Type()&os.ModeSymlink != 0 || info.Mode()&os.ModeSymlink != 0 {
-				return fmt.Errorf("browser profile contains a descendant symlink")
-			}
-			if info.Mode().IsRegular() {
-				stat, ok := info.Sys().(*syscall.Stat_t)
-				if !ok || stat == nil {
-					return fmt.Errorf("browser profile entry identity is unavailable")
+			defer handle.Close()
+			for {
+				if err := ctx.Err(); err != nil {
+					return err
 				}
-				// Most files have one link and need no retained identity. Index only
-				// hard-link candidates, preserving same-account hard links while
-				// rejecting shared mutable state across accounts in O(total entries).
-				if stat.Nlink > 1 {
-					identity, err := directoryFilesystemIdentity(path, info)
+				entries, readErr := handle.ReadDir(profileDirectoryReadBatchSize)
+				if readErr != nil && readErr != io.EOF {
+					return fmt.Errorf("cannot inspect profile directory entries")
+				}
+				for _, entry := range entries {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					path := filepath.Join(directory, entry.Name())
+					info, err := entry.Info()
 					if err != nil {
-						return fmt.Errorf("cannot identify browser profile entry")
+						return fmt.Errorf("cannot inspect profile directory metadata")
 					}
-					if owner, exists := hardLinkOwners[identity]; exists && owner != account.Previous.ID {
-						return fmt.Errorf("source accounts %d and %d share hard-linked browser profile state", owner, account.Previous.ID)
+					if entry.Type()&os.ModeSymlink != 0 || info.Mode()&os.ModeSymlink != 0 {
+						return fmt.Errorf("browser profile contains a descendant symlink")
 					}
-					hardLinkOwners[identity] = account.Previous.ID
+					if info.Mode().IsRegular() {
+						stat, ok := info.Sys().(*syscall.Stat_t)
+						if !ok || stat == nil {
+							return fmt.Errorf("browser profile entry identity is unavailable")
+						}
+						// Most files have one link and need no retained identity.
+						if stat.Nlink > 1 {
+							identity, err := directoryFilesystemIdentity(path, info)
+							if err != nil {
+								return fmt.Errorf("cannot identify browser profile entry")
+							}
+							if owner, exists := hardLinkOwners[identity]; exists && owner != account.Previous.ID {
+								return fmt.Errorf("source accounts %d and %d share hard-linked browser profile state", owner, account.Previous.ID)
+							}
+							hardLinkOwners[identity] = account.Previous.ID
+						}
+					}
+					if info.IsDir() {
+						if err := walk(path); err != nil {
+							return err
+						}
+					}
+				}
+				if readErr == io.EOF {
+					return nil
 				}
 			}
-			return nil
-		})
+		}
+		// Fixed-size batches avoid loading or sorting a high-fanout directory.
+		// Each account root is visited once; the shared profile root is not rescanned.
+		err := walk(account.ProfileDirectory)
 		if err != nil {
 			return fmt.Errorf("source account %d: %w", account.Previous.ID, err)
 		}
 	}
 	return nil
 }
+
+const profileDirectoryReadBatchSize = 128
 
 func validateProfileSubtreesFromMountInfo(ctx context.Context, accounts []AccountEvidence, data []byte) error {
 	entries, err := parseLinuxMountInfo(data)

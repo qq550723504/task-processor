@@ -204,8 +204,8 @@ func (c *cancelAfterChecksContext) Err() error {
 
 func TestLinuxProfileEntryWalkHonorsCancellationDuringTraversal(t *testing.T) {
 	profile := supportedTestTempDir(t)
-	for i := 0; i < 20; i++ {
-		if err := os.Mkdir(filepath.Join(profile, fmt.Sprintf("entry-%02d", i)), 0700); err != nil {
+	for i := 0; i < 4096; i++ {
+		if err := os.Mkdir(filepath.Join(profile, fmt.Sprintf("entry-%04d", i)), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -213,6 +213,9 @@ func TestLinuxProfileEntryWalkHonorsCancellationDuringTraversal(t *testing.T) {
 	err := validateLinuxProfileEntries(ctx, []AccountEvidence{{ProfileDirectory: profile, Previous: LegacyAccount{ID: 7}}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("want traversal cancellation, got %v", err)
+	}
+	if got := ctx.checks.Load(); got != ctx.cancelAt {
+		t.Fatalf("cancellation checks=%d, want %d", got, ctx.cancelAt)
 	}
 }
 
@@ -244,7 +247,8 @@ func TestLinuxProfileEntryWalkResourceBoundary(t *testing.T) {
 	if err := validateLinuxProfileEntries(ctx, []AccountEvidence{{ProfileDirectory: profile, Previous: LegacyAccount{ID: 7}}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := ctx.checks.Load(); got < entries || got > entries+2 {
+	maxChecks := entries + entries/profileDirectoryReadBatchSize + 4
+	if got := ctx.checks.Load(); got < entries || got > int64(maxChecks) {
 		t.Fatalf("entry checks=%d, want one bounded check per directory entry", got)
 	}
 	t.Logf("walked %d real tmpfs entries in %s", entries, time.Since(started))

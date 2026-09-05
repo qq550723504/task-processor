@@ -4,9 +4,12 @@ package ownershipmigration
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 )
 
@@ -92,5 +95,35 @@ func TestPreflightAcceptsSameAccountWindowsHardLinks(t *testing.T) {
 	}
 	if r, err := Preflight(context.Background(), s, root); err != nil || r.Digest == "" {
 		t.Fatalf("same-account hard links rejected: %v", err)
+	}
+}
+
+type windowsCancelAfterChecksContext struct {
+	context.Context
+	checks   atomic.Int64
+	cancelAt int64
+}
+
+func (c *windowsCancelAfterChecksContext) Err() error {
+	if c.checks.Add(1) >= c.cancelAt {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestWindowsProfileEntryWalkHighFanoutCancellation(t *testing.T) {
+	profile := supportedTestTempDir(t)
+	for i := 0; i < 1024; i++ {
+		if err := os.WriteFile(filepath.Join(profile, fmt.Sprintf("entry-%04d", i)), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := &windowsCancelAfterChecksContext{Context: context.Background(), cancelAt: 7}
+	err := validateProfileSubtrees(ctx, []AccountEvidence{{ProfileDirectory: profile, Previous: LegacyAccount{ID: 7}}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want bounded traversal cancellation, got %v", err)
+	}
+	if got := ctx.checks.Load(); got != ctx.cancelAt {
+		t.Fatalf("cancellation checks=%d, want %d", got, ctx.cancelAt)
 	}
 }
