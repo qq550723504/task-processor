@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package ownershipmigration
 
@@ -8,10 +8,8 @@ import (
 	"reflect"
 )
 
-// directoryFilesystemIdentity returns the same underlying directory identity that
-// os.SameFile compares on POSIX-like systems, but in an indexable representation.
-// Reflection keeps this file buildable across non-Windows ports while failing
-// closed on a platform whose FileInfo.Sys value does not expose device/inode data.
+// directoryFilesystemIdentity keeps non-production Unix-like ports buildable
+// while failing closed when FileInfo.Sys does not expose device/inode identity.
 func directoryFilesystemIdentity(_ string, info os.FileInfo) (string, error) {
 	if info == nil || info.Sys() == nil {
 		return "", fmt.Errorf("filesystem identity unavailable")
