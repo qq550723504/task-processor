@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -136,11 +137,44 @@ func linuxFilesystemLocation(path string, mounts map[string]linuxMountChoice) (l
 }
 
 func validateProfileSubtrees(ctx context.Context, accounts []AccountEvidence) error {
+	if err := validateLinuxProfileEntries(ctx, accounts); err != nil {
+		return err
+	}
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		return fmt.Errorf("cannot inspect profile mount identities")
 	}
 	return validateProfileSubtreesFromMountInfo(ctx, accounts, data)
+}
+
+func validateLinuxProfileEntries(ctx context.Context, accounts []AccountEvidence) error {
+	for _, account := range accounts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// WalkDir reads directory entries and metadata without following symlinks.
+		// Each account root is visited once; the shared profile root is not rescanned.
+		err := filepath.WalkDir(account.ProfileDirectory, func(_ string, entry fs.DirEntry, walkErr error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if walkErr != nil || entry == nil {
+				return fmt.Errorf("cannot inspect profile directory entries")
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return fmt.Errorf("cannot inspect profile directory metadata")
+			}
+			if entry.Type()&os.ModeSymlink != 0 || info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("browser profile contains a descendant symlink")
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("source account %d: %w", account.Previous.ID, err)
+		}
+	}
+	return nil
 }
 
 func validateProfileSubtreesFromMountInfo(ctx context.Context, accounts []AccountEvidence, data []byte) error {

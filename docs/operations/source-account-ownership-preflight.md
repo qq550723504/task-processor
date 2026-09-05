@@ -20,8 +20,12 @@ Linux also checks each account's backing subtree and nested mounts for overlap w
 other accounts, even when the account-root inodes differ. Mountpoints and account
 ancestors are indexed; backing ranges are sorted by device/path and checked in one
 pass. This retains near-linear/log-linear work rather than account-pair comparisons,
-and does not enumerate or read browser files. Repeated ranges belonging to the same
-account are allowed; overlap between distinct accounts blocks even within one Organization.
+and does not read browser file contents. Linux additionally walks directory entries
+below each account exactly once and rejects every descendant symbolic link without
+following it. Relative, absolute, broken, looping and deeply nested links all block;
+entry/metadata errors and cancellation block as well. Repeated backing ranges belonging
+to the same account are allowed; overlap between distinct accounts blocks even within
+one Organization.
 
 Windows extends the existing no-symlink/alias rule to descendants: it walks directory
 entry metadata under each verified account and rejects junctions, symlinks and directory
@@ -123,6 +127,8 @@ separate evidence:
 | Empty/malformed/uncovered/ambiguous mount relationship | Reject | `TestReceiptMountMatrix` |
 | Unrelated stacked mounts or nsfs file mounts; repeated identical backing location | Accept external target | `TestReceiptMountMatrix` |
 | Distinct account-root identities with overlapping backing subtrees or nested mounts | Reject | `TestPreflightRejectsLiveOverlappingProfileSubtrees`, `TestProfileSubtreeMountMatrix` |
+| Linux relative/absolute, root/deep, broken/looping descendant symlink | Reject without receipt or mutation | `TestPreflightRejectsLinuxDescendantSymlinksWithoutPublicationOrMutation`, `TestPreflightRejectsBrokenAndLoopingLinuxDescendantSymlinks` |
+| Ordinary Linux descendant directories/files; traversal cancellation/read error | Accept; cancel/reject | `TestLinuxProfileEntryWalkAcceptsOrdinaryEntries`, `TestLinuxProfileEntryWalkHonorsCancellationDuringTraversal`, `TestLinuxProfileEntryWalkFailsClosedOnReadError` |
 | Windows account descendants junctioned to a shared directory | Reject | `TestPreflightRejectsDescendantJunctionOverlap` (real disposable junctions) |
 | Ordinary Windows descendant directories and cancellation | Accept; cancel | `TestPreflightAcceptsOrdinaryWindowsDescendants` |
 | 100,000 account roots plus 100,000 disjoint nested mounts | Accept | `TestProfileSubtreeIndexAtInventoryLimit` (fixture, not fleet acceptance) |
@@ -175,6 +181,19 @@ container with `/tmp` mounted as tmpfs; Windows junction tests use disposable NT
 directories. Real NFS/CIFS/mapped-share acceptance remains **NOT_RUN**. This is an
 explicit fail-closed support boundary, not acceptance of shared-storage risk or new
 network filesystem support. Receipt publication and the #30 BLOCKER are unchanged.
+
+R3-A (finding 3940268783) closes the Linux descendant-symlink gap without replacing
+the mount checks. Its formal test first published a usable disposable receipt on
+`cdf2925ff` for both relative and absolute links at root and deeper paths. The fixed
+preflight rejects before publication and leaves the link target, link metadata and
+fixture content unchanged. Broken and cyclic links are rejected without resolution.
+The production walk uses directory entries and metadata only; it never opens profile
+files for content. Each account directory is walked once, so work is O(total entries),
+not account pairs or repeated scans of the shared profile root. The existing command
+deadline is checked at every visited entry. `filepath.WalkDir` retains the current
+traversal state plus the entries for one directory. A real tmpfs check visited 4,096
+ordinary files once; this is traversal evidence, not a 100,000-profile benchmark. An
+unprivileged disposable Linux run confirmed unreadable descendants fail closed.
 
 The subsequent Windows review reproduced the same gap with two distinct account roots
 containing junctions to a shared directory. That real junction test failed before the
