@@ -229,12 +229,13 @@ func BuildConfig(v *viper.Viper) *Config {
 				LegacyUsernameAllowlistConfigured: listingKitLegacyUsernameAllowlistConfigured,
 				AllowedRoles:                      listingKitAllowedRoles,
 				SMS: ListingKitZitadelSMSConfig{
-					SigningKey:        v.GetString("listingkit.zitadel.sms.signingKey"),
-					TencentSecretID:   v.GetString("listingkit.zitadel.sms.tencentSecretID"),
-					TencentSecretKey:  v.GetString("listingkit.zitadel.sms.tencentSecretKey"),
-					TencentAppID:      v.GetString("listingkit.zitadel.sms.tencentAppID"),
-					TencentSignName:   v.GetString("listingkit.zitadel.sms.tencentSignName"),
-					TencentTemplateID: v.GetString("listingkit.zitadel.sms.tencentTemplateID"),
+					SigningKey:                     v.GetString("listingkit.zitadel.sms.signingKey"),
+					TencentSecretID:                v.GetString("listingkit.zitadel.sms.tencentSecretID"),
+					TencentSecretKey:               v.GetString("listingkit.zitadel.sms.tencentSecretKey"),
+					TencentAppID:                   v.GetString("listingkit.zitadel.sms.tencentAppID"),
+					TencentSignName:                v.GetString("listingkit.zitadel.sms.tencentSignName"),
+					TencentTemplateID:              v.GetString("listingkit.zitadel.sms.tencentTemplateID"),
+					PhoneVerificationExpiryMinutes: phoneVerificationExpiryMinutes(v),
 				},
 			},
 		},
@@ -369,6 +370,23 @@ func buildOpenAIClients(v *viper.Viper) map[string]OpenAIClientConfig {
 		}
 	}
 	return clients
+}
+
+// Preserve malformed configuration as an invalid value for NewService to reject.
+// GetInt would turn invalid strings into zero and truncate YAML floats, making
+// invalid input indistinguishable from an explicitly disabled or valid setting.
+func phoneVerificationExpiryMinutes(v *viper.Viper) int {
+	switch raw := v.Get("listingkit.zitadel.sms.phoneVerificationExpiryMinutes").(type) {
+	case nil:
+		return 0
+	case int:
+		return raw
+	case string:
+		if value, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+			return value
+		}
+	}
+	return -1
 }
 
 func getStringIntMap(v *viper.Viper, key string) map[string]int {

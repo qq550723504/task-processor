@@ -111,6 +111,49 @@ func TestDeliverMapsZitadelExpiryToTencentTemplateParameter(t *testing.T) {
 	require.Equal(t, []string{"123456", "5"}, sender.messages[0].Params)
 }
 
+func TestDeliverPhoneVerificationExpiryContract(t *testing.T) {
+	for _, tc := range []struct {
+		name, event, args string
+		minutes           int
+		want              []string
+	}{
+		{"phone configured", "user.human.phone.code.added", `{"code":"ABC123","domain":"localhost"}`, 60, []string{"ABC123", "60"}},
+		{"phone legacy default", "user.human.phone.code.added", `{"code":"ABC123"}`, 0, []string{"ABC123"}},
+		{"phone native wins", "user.human.phone.code.added", `{"code":"ABC123","expiry":300000000000}`, 60, []string{"ABC123", "5"}},
+		{"malformed native not replaced", "user.human.phone.code.added", `{"code":"ABC123","expiry":"bad"}`, 60, []string{"ABC123"}},
+		{"null native not replaced", "user.human.phone.code.added", `{"code":"ABC123","expiry":null}`, 60, []string{"ABC123"}},
+		{"session MFA native", "session.otp.sms.challenged", `{"oTP":"ABC123","expiry":300000000000}`, 60, []string{"ABC123", "5"}},
+		{"session MFA absent", "session.otp.sms.challenged", `{"oTP":"ABC123"}`, 60, []string{"ABC123"}},
+		{"human MFA absent", "user.human.mfa.otp.sms.code.added", `{"code":"ABC123"}`, 60, []string{"ABC123"}},
+		{"initialization absent", "user.human.initialization.code.added", `{"code":"ABC123"}`, 60, []string{"ABC123"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sender := &senderStub{}
+			service := newTestSMSService(t, sender)
+			service.config.PhoneVerificationExpiryMinutes = tc.minutes
+			body := []byte(fmt.Sprintf(`{"contextInfo":{"recipientPhoneNumber":"+8613800138000","eventType":%q},"args":%s}`, tc.event, tc.args))
+			require.NoError(t, service.Deliver(context.Background(), body, signedHeader(t, body, time.Now())))
+			require.Len(t, sender.messages, 1)
+			require.Equal(t, tc.want, sender.messages[0].Params)
+		})
+	}
+}
+
+func TestNewServiceValidatesPhoneVerificationExpiry(t *testing.T) {
+	for _, minutes := range []int{-1, 0, 1, 60, 61} {
+		t.Run(fmt.Sprint(minutes), func(t *testing.T) {
+			cfg := newTestSMSService(t, &senderStub{}).config
+			cfg.PhoneVerificationExpiryMinutes = minutes
+			_, err := NewService(cfg, &senderStub{})
+			if minutes < 0 || minutes > 60 {
+				require.ErrorIs(t, err, ErrInvalidConfiguration)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestDeliverRejectsNearMatchOTPSMSEventsWithoutSending(t *testing.T) {
 	for _, eventType := range []string{
 		"user.human.mfa.otp.sms.code.sent",

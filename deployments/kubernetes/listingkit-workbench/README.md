@@ -330,6 +330,44 @@ message. Do not build or operate a second OTP system.
    audit/log data. Do not record the phone number or verification code. Then
    test a deliberately invalid signature and confirm no SMS is sent.
 
+### Phone verification with a two-parameter Tencent template
+
+ZITADEL Core v4.17.1's `user.human.phone.code.added` webhook supplies `code`
+but no `expiry`. For a template requiring code and validity minutes, explicitly
+configure the API process with
+`TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_PHONE_VERIFICATION_EXPIRY_MINUTES`
+(YAML: `listingkit.zitadel.sms.phoneVerificationExpiryMinutes`).
+The default is `0` (disabled, preserving single-parameter delivery); supported
+enabled values are integer minutes from `1` to `60`. Invalid values prevent
+SMS service construction. This change does not enable the setting in deployment
+manifests; supply it through the approved API deployment configuration when needed.
+
+Before enabling the provider, read `GET /admin/v1/secretgenerators/3` with an
+authorized management token and compare `secretGenerator.expiry` with the
+configured minutes times 60. For example, `3600s` requires `60`, not `5`.
+Stop activation if they differ, the read fails, or the duration is not a whole
+supported minute. This is an operator preflight, not a runtime API dependency;
+do not give the SMS relay a management token for this purpose.
+
+This value only fills the second template parameter for that exact phone
+verification event when `expiry` is absent. Native `expiry` takes precedence;
+malformed or null native values are not replaced. Initialization and both SMS
+MFA events keep their existing parameter behavior. ZITADEL still generates,
+stores, expires and verifies every code.
+
+The setting describes the configured lifetime from **code generation**, not
+remaining validity at SMS receipt. ZITADEL persists expiry with each code, so
+reading today's generator setting cannot recover an older code's lifetime.
+When changing it, pause verification issuance/delivery, let old codes expire
+and resolve queued notifications, then update both configurations, run the
+comparison again and validate a newly generated code. Never relabel pending
+codes using a new lifetime. Sites requiring exact remaining-time text should
+use a template without a duration or a provider payload that includes the
+per-code deadline.
+
+References: [Core phone notification arguments](https://github.com/zitadel/zitadel/blob/v4.17.1/internal/notification/types/phone_verification_code.go),
+[Core code generation and verification](https://github.com/zitadel/zitadel/blob/v4.17.1/internal/command/user_v2_phone.go).
+
 ### Rotate Tencent SMS credentials
 
 Rotate the Tencent credentials and ZITADEL signing key through the secret
