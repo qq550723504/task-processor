@@ -131,10 +131,23 @@ func BuildResult(version, scope string, snapshot Snapshot, allowsBlockers bool, 
 	if version == "" || scope == "" || len(checks) == 0 {
 		return Result{}, &Error{Code: EvaluationFailed, Field: "checks", Message: "version, scope and evaluated checks are required"}
 	}
-	result := Result{RuleVersion: version, Scope: scope, Snapshot: snapshot, ReadinessBlockersAllowed: allowsBlockers, Checks: make([]Check, 0, len(checks)), Blockers: []Check{}, Warnings: []Check{}}
+	offline, err := BuildOfflineChecks(checks)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{RuleVersion: version, Scope: scope, Snapshot: snapshot, ReadinessBlockersAllowed: allowsBlockers, Status: offline.Status, Ready: len(offline.Blockers) == 0, Checks: offline.Checks, Blockers: offline.Blockers, Warnings: offline.Warnings}, nil
+}
+
+// BuildOfflineChecks normalizes evaluated findings without any input contract,
+// freshness metadata or permission semantics.
+func BuildOfflineChecks(checks []Check) (OfflineChecks, error) {
+	if len(checks) == 0 {
+		return OfflineChecks{}, &Error{Code: EvaluationFailed, Field: "checks", Message: "evaluated checks are required"}
+	}
+	result := OfflineChecks{Checks: make([]Check, 0, len(checks)), Blockers: []Check{}, Warnings: []Check{}}
 	for _, check := range checks {
 		if check.Rule == "" || (check.Status != CheckReady && check.Status != CheckWarning && check.Status != CheckBlocking) {
-			return Result{}, &Error{Code: EvaluationFailed, Field: "checks", Message: "rule or check status is invalid"}
+			return OfflineChecks{}, &Error{Code: EvaluationFailed, Field: "checks", Message: "rule or check status is invalid"}
 		}
 		result.Checks = append(result.Checks, cloneCheck(check))
 	}
@@ -155,9 +168,8 @@ func BuildResult(version, scope string, snapshot Snapshot, allowsBlockers bool, 
 			result.Warnings = append(result.Warnings, cloneCheck(check))
 		}
 	}
-	result.Ready = len(result.Blockers) == 0
 	switch {
-	case !result.Ready:
+	case len(result.Blockers) > 0:
 		result.Status = Blocked
 	case len(result.Warnings) > 0:
 		result.Status = ReadyWithWarnings
