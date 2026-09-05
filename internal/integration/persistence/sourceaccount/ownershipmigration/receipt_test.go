@@ -129,3 +129,20 @@ func TestReceiptPublicationHonorsCancellationBeforeFinalLink(t *testing.T) {
 		t.Fatalf("cancelled publication leaked staging files: %v %v", entries, readErr)
 	}
 }
+
+func TestReceiptPublicationSuccessDecisionIsNotRetroactivelyCancelled(t *testing.T) {
+	s, root := fixture(t)
+	r, err := Preflight(context.Background(), s, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	ctx, cancel := context.WithCancel(context.Background())
+	if err = WriteReceipt(ctx, path, r); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if _, err = os.Stat(path); err != nil {
+		t.Fatalf("successful publication was retroactively invalidated: %v", err)
+	}
+}
