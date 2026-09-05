@@ -74,6 +74,23 @@ jobs:
       - name: Test CI policy evaluators
         run: node --test .github/scripts/pr-scope-guard.test.cjs .github/scripts/ci-change-classifier.test.cjs
 
+  architecture-contracts:
+    name: Architecture Contract Guards
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run repository-wide architecture contracts
+        run: go test ./tests/... -count=1
+
   release-authority:
     name: Release Authority Policy
     needs: changes
@@ -220,6 +237,7 @@ jobs:
     needs:
       - changes
       - development-admission-tests
+      - architecture-contracts
       - release-authority
       - backend
       - frontend
@@ -232,6 +250,7 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
+          ARCHITECTURE_CONTRACT_RESULT: ${{ needs.architecture-contracts.result }}
           RELEASE_RESULT: ${{ needs.release-authority.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
@@ -255,6 +274,7 @@ jobs:
 
           require_success "change classification" "$CHANGES_RESULT"
           require_success "development admission tests" "$DEVELOPMENT_ADMISSION_TEST_RESULT"
+          require_success "architecture contracts" "$ARCHITECTURE_CONTRACT_RESULT"
           require_success "release authority" "$RELEASE_RESULT"
           require_success "backend" "$BACKEND_RESULT"
           require_success "frontend" "$FRONTEND_RESULT"
@@ -265,6 +285,7 @@ jobs:
     needs:
       - changes
       - development-admission-tests
+      - architecture-contracts
       - release-authority
       - backend
       - frontend
@@ -277,6 +298,7 @@ jobs:
       WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
       CHANGES_RESULT: ${{ needs.changes.result }}
       DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
+      ARCHITECTURE_CONTRACT_RESULT: ${{ needs.architecture-contracts.result }}
       RELEASE_AUTHORITY_RESULT: ${{ needs.release-authority.result }}
       BACKEND_RESULT: ${{ needs.backend.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
@@ -327,6 +349,7 @@ jobs:
               f"> 事件：`{os.environ.get('CI_EVENT') or '-'}`",
               f"> Change classification：`{os.environ.get('CHANGES_RESULT', 'unknown')}`",
               f"> Development Admission tests：`{development_admission_tests}`",
+              f"> Architecture Contracts：`{os.environ.get('ARCHITECTURE_CONTRACT_RESULT', 'unknown')}`",
               f"> Release Authority：`{os.environ.get('RELEASE_AUTHORITY_RESULT', 'unknown')}`",
               f"> Backend：`{backend}`",
               f"> Frontend：`{frontend}`",
