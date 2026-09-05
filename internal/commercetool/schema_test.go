@@ -120,6 +120,29 @@ func TestCompileSchemasRejectsUnsafeReferencedAnnotationTargets(t *testing.T) {
 	}
 }
 
+func TestCompileSchemasAllowsTypedDynamicMapOnlyWhenPropertyNamesExcludeEveryAuthorityField(t *testing.T) {
+	excluded := `["tenant_id","user_id","roles","permission","call_id","agent_id","agent_version","agent_run_id","business_task_id","trace_id","idempotency_key","tool_id","tool_version"]`
+	definition := validDefinition()
+	definition.InputSchema = json.RawMessage(fmt.Sprintf(`{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"type":"object","additionalProperties":false,
+		"properties":{"facts":{"type":"object","propertyNames":{"not":{"enum":%s}},"additionalProperties":{"type":"string"}}}
+	}`, excluded))
+
+	compiled, err := compileSchemas(definition)
+	require.NoError(t, err)
+	require.NoError(t, compiled.validateInput(json.RawMessage(`{"facts":{"color":"blue"}}`)))
+	require.Error(t, compiled.validateInput(json.RawMessage(`{"facts":{"tenant_id":"attacker"}}`)))
+
+	definition.InputSchema = json.RawMessage(`{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"type":"object","additionalProperties":false,
+		"properties":{"facts":{"type":"object","propertyNames":{"not":{"enum":["tenant_id"]}},"additionalProperties":{"type":"string"}}}
+	}`)
+	_, err = compileSchemas(definition)
+	require.ErrorContains(t, err, "propertyNames must exclude every reserved authority field")
+}
+
 func TestCompileSchemasDoesNotAuditUnreferencedAnnotationBusinessData(t *testing.T) {
 	tests := []struct {
 		name   string
