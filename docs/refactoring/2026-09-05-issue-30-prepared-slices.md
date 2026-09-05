@@ -194,3 +194,86 @@ their fixture checks are not live provider, PostgreSQL or #30 acceptance.
 
 Final HEAD test/CI receipts belong in the PR body and review replies so they can
 name the actual immutable commit, rather than embed a self-referential SHA here.
+
+## R2-B complete response and prepared-only symbol gate
+
+Handoff HEAD: 50dcc43865b2941c4c3c1d8453add28a0c44cdc9. Both new findings
+(3940042783 and 3940042788) are IMPLEMENTATION_TEST. R1-B selector, snapshot DTO,
+source-neutral identity and durable cutover characterization are retained.
+
+### Temporary PublicationIdentity production gate
+
+The HTTP package import ban alone missed direct calls from existing sourcing
+consumers. A fixture storing an aliased PublicationIdentity function value proved
+that gap before the fix. The additional single-symbol guard reuses Git-tracked
+source enumeration, decoded import paths, Go AST and lexical object/parent data.
+It does not load only host-buildable packages or introduce a generic analyzer.
+
+- Every tracked non-test Go file is scanned across repository roots, nested
+  modules, platform filename suffixes and build tags; fixture testdata is excluded.
+- Qualified calls and function values are matched to the actual sourcing import
+  path, including aliases and parenthesized assignments. Dot-imported references
+  are recognized; unrelated dot-imported symbols are allowed.
+- Unqualified calls and function values in the exact sourcing package directory
+  are checked too, including references alongside the declaration. The function
+  declaration itself is allowed; the sourcing package is not exempted.
+- Tests may use the function. Local/import shadows, fields/methods, struct keys,
+  comments/strings and another package's same-name symbol are not references.
+
+This gate is temporary while publication cutover lacks independent approval.
+Only an independently approved cutover PR may replace it, together with reviewed
+replay/conflict/migration evidence and production-composition acceptance. It is
+not a permanent ban on the current Product owner. No publication/product-key
+algorithm or legacy baseline changed.
+
+### Complete HTTP response contract
+
+The success receipt is HTTP-owned and intentionally bounded:
+
+```json
+{
+  "publication": {
+    "identity": {"product_key": "crawler:1688:123"},
+    "publication_id": "publication-key",
+    "version": 1
+  },
+  "source_identity": {
+    "source_type": "crawler",
+    "source_platform": "1688",
+    "source_id": "123",
+    "source_url": "https://detail.1688.com/offer/123.html",
+    "source_version": "",
+    "source_fingerprint": ""
+  },
+  "source_warnings": [{"code": "missing_title", "message": "title unavailable", "field": "title"}]
+}
+```
+
+Catalog SnapshotIdentity.TenantID represents the verified effective Organization
+in the approved application contract. The request context already selects that
+scope; this receipt needs product identity, publication ID and version, not an
+echoed tenant/Organization ID. Neither TenantID nor a renamed organization_id is
+projected. The entire internal Snapshot is also excluded: this is an import
+receipt, not a new canonical Product read API. No domain JSON tags were added.
+
+Success and invalid_source both explicitly map warnings to code/message/field.
+Nil and empty warning collections omit source_warnings; warning entries retain
+all three fields even when empty. Publication/identity scalar fields retain zero
+or empty values rather than becoming null or disappearing. The invalid_source
+response contains only error and optional source_warnings; other errors contain
+only their safe error code, never partial publication/source facts or warnings.
+
+Exact full-response tests cover populated/empty publication and source identity,
+nil/empty/populated warnings, empty warning fields, invalid_source and other
+Importer/transport errors. R1-B strict input/size/deadline tests remain in place.
+
+### Review and rollout status
+
+3939575683 remains BLOCKED for production rollout. The version 1 -> 2
+characterization is not safe cutover acceptance. No Importer/route/old handoff,
+source-account B/C/D, #303 implementation, profile or business data is changed.
+Final HEAD independent review must answer whether the complete HTTP wire contract
+is closed, whether maintained production paths bypass either temporary gate, and
+whether the prepared-only slice can merge with the rollout blocker still open.
+Passing CI first establishes READY_FOR_REVIEW; MERGE_CANDIDATE requires that
+independent isolation approval and closure of blockers within this slice.

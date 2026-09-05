@@ -48,9 +48,9 @@ type ImportCommand struct {
 }
 
 type ImportResult struct {
-	Publication    catalog.PublishedSnapshot `json:"publication"`
-	SourceIdentity sourcing.SourceIdentity   `json:"source_identity"`
-	SourceWarnings []sourcing.SourceWarning  `json:"source_warnings,omitempty"`
+	Publication    catalog.PublishedSnapshot
+	SourceIdentity sourcing.SourceIdentity
+	SourceWarnings []sourcing.SourceWarning
 }
 
 // Importer must revalidate command identity and Store/source-account access
@@ -147,10 +147,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrInvalidImport):
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(struct {
-				Error    string                   `json:"error"`
-				Warnings []sourcing.SourceWarning `json:"source_warnings,omitempty"`
-			}{Error: "invalid_source", Warnings: result.SourceWarnings})
+			_ = json.NewEncoder(w).Encode(invalidSourceResponse{
+				Error: "invalid_source", Warnings: projectSourceWarnings(result.SourceWarnings),
+			})
 		default:
 			writeError(w, 500, "import_failed")
 		}
@@ -158,7 +157,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(importResponse{
-		Publication: result.Publication, SourceWarnings: result.SourceWarnings,
+		Publication: publicationResponse{
+			Identity:      publicationIdentityResponse{ProductKey: result.Publication.Identity.ProductKey},
+			PublicationID: result.Publication.PublicationID, Version: result.Publication.Version,
+		},
+		SourceWarnings: projectSourceWarnings(result.SourceWarnings),
 		SourceIdentity: sourceIdentityResponse{
 			SourceType: result.SourceIdentity.SourceType, SourcePlatform: result.SourceIdentity.SourcePlatform,
 			SourceID: result.SourceIdentity.SourceID, SourceURL: result.SourceIdentity.SourceURL,
@@ -168,9 +171,41 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type importResponse struct {
-	Publication    catalog.PublishedSnapshot `json:"publication"`
-	SourceIdentity sourceIdentityResponse    `json:"source_identity"`
-	SourceWarnings []sourcing.SourceWarning  `json:"source_warnings,omitempty"`
+	Publication    publicationResponse     `json:"publication"`
+	SourceIdentity sourceIdentityResponse  `json:"source_identity"`
+	SourceWarnings []sourceWarningResponse `json:"source_warnings,omitempty"`
+}
+
+// The receipt identifies a publication within the verified effective Organization.
+// Catalog TenantID is its internal scope, not an additional HTTP identity field.
+// The canonical snapshot is read through Product's read contract, not this receipt.
+type publicationResponse struct {
+	Identity      publicationIdentityResponse `json:"identity"`
+	PublicationID string                      `json:"publication_id"`
+	Version       uint64                      `json:"version"`
+}
+
+type publicationIdentityResponse struct {
+	ProductKey string `json:"product_key"`
+}
+
+type sourceWarningResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Field   string `json:"field"`
+}
+
+type invalidSourceResponse struct {
+	Error    string                  `json:"error"`
+	Warnings []sourceWarningResponse `json:"source_warnings,omitempty"`
+}
+
+func projectSourceWarnings(warnings []sourcing.SourceWarning) []sourceWarningResponse {
+	var result []sourceWarningResponse
+	for _, warning := range warnings {
+		result = append(result, sourceWarningResponse{Code: warning.Code, Message: warning.Message, Field: warning.Field})
+	}
+	return result
 }
 
 // Deliberately project only current source facts, without legacy normalization.
