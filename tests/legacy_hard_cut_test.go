@@ -1,8 +1,11 @@
 package tests
 
 import (
-	"os"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -10,10 +13,54 @@ import (
 )
 
 func TestLegacyPreviewAdapterStaysRetired(t *testing.T) {
-	for _, name := range []string{"preview_adapter.go", "preview_adapter_test.go"} {
-		_, err := os.Stat(filepath.Join("..", "internal", "compatibility", "listingkit", name))
-		require.ErrorIs(t, err, os.ErrNotExist, "unused preview adapter must remain retired")
+	sources := trackedProductionTextSources(t, []string{"internal/compatibility/listingkit"}, func(path string) bool {
+		return strings.HasSuffix(path, ".go")
+	})
+	violations, err := legacyPreviewAdapterViolations(sources)
+	require.NoError(t, err)
+	require.Empty(t, violations, "legacy preview adapter must remain retired under every filename")
+}
+
+func TestLegacyPreviewAdapterGuardRejectsRenamedRevival(t *testing.T) {
+	sources := []listingKitImageBoundarySource{
+		{path: "internal/compatibility/listingkit/legacy_preview.go", text: "package listingkit\nfunc AdaptLegacyPreviewShell() {}\n"},
+		{path: "internal/compatibility/listingkit/revived_bridge.go", text: "package listingkit\nimport _ \"task-processor/internal/listing/preview\"\n"},
+		{path: "internal/compatibility/listingkit/sourcehandoff/allowed.go", text: "package sourcehandoff\nimport _ \"task-processor/internal/product/sourcing\"\n"},
+		{path: "internal/compatibility/listingkit/similar.go", text: "package listingkit\nimport _ \"task-processor/internal/listing/previewcache\"\n"},
 	}
+	violations, err := legacyPreviewAdapterViolations(sources)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"internal/compatibility/listingkit/legacy_preview.go -> AdaptLegacyPreviewShell",
+		"internal/compatibility/listingkit/revived_bridge.go -> task-processor/internal/listing/preview",
+	}, violations)
+}
+
+func legacyPreviewAdapterViolations(sources []listingKitImageBoundarySource) ([]string, error) {
+	var violations []string
+	for _, source := range sources {
+		file, err := parser.ParseFile(token.NewFileSet(), source.path, source.text, 0)
+		if err != nil {
+			return nil, err
+		}
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if ok && function.Name.Name == "AdaptLegacyPreviewShell" {
+				violations = append(violations, filepath.ToSlash(source.path)+" -> AdaptLegacyPreviewShell")
+			}
+		}
+		for _, imported := range file.Imports {
+			importPath, err := decodeGoImportPath(imported.Path.Value)
+			if err != nil {
+				return nil, err
+			}
+			if importMatchesPrefix(importPath, "task-processor/internal/listing/preview") {
+				violations = append(violations, filepath.ToSlash(source.path)+" -> "+importPath)
+			}
+		}
+	}
+	sort.Strings(violations)
+	return violations, nil
 }
 
 func TestLegacyConsumerFreezeRejectsNewEdges(t *testing.T) {
