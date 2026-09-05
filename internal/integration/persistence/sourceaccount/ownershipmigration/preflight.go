@@ -67,11 +67,6 @@ type Receipt struct {
 	Digest              string                 `json:"sha256"`
 }
 
-type profileDirectoryIdentity struct {
-	accountID int64
-	info      os.FileInfo
-}
-
 func Preflight(ctx context.Context, s Snapshot, root string) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return Receipt{}, err
@@ -114,7 +109,7 @@ func Preflight(ctx context.Context, s Snapshot, root string) (Receipt, error) {
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].ID < accounts[j].ID })
 	r := Receipt{Version: 1, Stage: "preflight_only", SnapshotConsistency: "separate_non_atomic_snapshots", AccountObservation: s.AccountObservation, MetadataObservation: s.MetadataObservation, Metadata: metadata, Accounts: []AccountEvidence{}}
 	var previousID int64
-	var profileIdentities []profileDirectoryIdentity
+	profileIdentities := make(map[string]int64, len(accounts))
 	for _, a := range accounts {
 		if err := ctx.Err(); err != nil {
 			return Receipt{}, err
@@ -132,12 +127,14 @@ func Preflight(ctx context.Context, s Snapshot, root string) (Receipt, error) {
 		if err != nil {
 			return Receipt{}, fmt.Errorf("source account %d: %w", a.ID, err)
 		}
-		for _, existing := range profileIdentities {
-			if os.SameFile(info, existing.info) {
-				return Receipt{}, fmt.Errorf("source accounts %d and %d share one browser profile filesystem identity", existing.accountID, a.ID)
-			}
+		identity, err := directoryFilesystemIdentity(dir, info)
+		if err != nil {
+			return Receipt{}, fmt.Errorf("source account %d: cannot identify browser profile filesystem object", a.ID)
 		}
-		profileIdentities = append(profileIdentities, profileDirectoryIdentity{accountID: a.ID, info: info})
+		if existingAccountID, exists := profileIdentities[identity]; exists {
+			return Receipt{}, fmt.Errorf("source accounts %d and %d share one browser profile filesystem identity", existingAccountID, a.ID)
+		}
+		profileIdentities[identity] = a.ID
 		r.Accounts = append(r.Accounts, AccountEvidence{OrganizationID: org, ProfileDirectory: dir, Previous: a})
 	}
 	// Observation times vary on a fresh read; bind source identities and all
