@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/storecenter"
 )
 
@@ -42,13 +43,32 @@ type StoreService interface {
 	Delete(context.Context, storecenter.DeleteStoreRequest) (storecenter.DeleteStoreResult, error)
 }
 
-type Handler struct{ service StoreService }
+type ServiceLifecycleService interface {
+	Activate(context.Context, storecenter.ServiceLifecycleApplicationRequest) (storecenter.ServiceOperationResult, error)
+	Renew(context.Context, storecenter.ServiceLifecycleApplicationRequest) (storecenter.ServiceOperationResult, error)
+	Reactivate(context.Context, storecenter.ServiceLifecycleApplicationRequest) (storecenter.ServiceOperationResult, error)
+}
+
+type Handler struct {
+	service          StoreService
+	serviceLifecycle ServiceLifecycleService
+}
 
 func NewHandler(service StoreService) (*Handler, error) {
 	if isNilInterface(service) {
 		return nil, errors.New("store service is required")
 	}
 	return &Handler{service: service}, nil
+}
+
+// NewHandlerWithServiceLifecycle explicitly opts into lifecycle routes. The
+// standard constructor deliberately leaves them absent until production has a
+// real connection-status authority and the Phase F cutover is approved.
+func NewHandlerWithServiceLifecycle(service StoreService, lifecycle ServiceLifecycleService) (*Handler, error) {
+	if isNilInterface(service) || isNilInterface(lifecycle) {
+		return nil, errors.New("store and Store lifecycle services are required")
+	}
+	return &Handler{service: service, serviceLifecycle: lifecycle}, nil
 }
 
 type StoreResponse struct {
@@ -88,6 +108,17 @@ type DeleteStoreResponse struct {
 	ID      string `json:"id"`
 	Deleted bool   `json:"deleted"`
 	Version int64  `json:"version"`
+}
+
+type ServiceLifecycleResponse struct {
+	StoreID              string                    `json:"storeId"`
+	RecordStatus         storecenter.RecordStatus  `json:"recordStatus"`
+	ServiceStatus        storecenter.ServiceStatus `json:"serviceStatus"`
+	ServiceStartedAt     *time.Time                `json:"serviceStartedAt"`
+	ServiceExpiresAt     *time.Time                `json:"serviceExpiresAt"`
+	Version              int64                     `json:"version"`
+	Quantity             string                    `json:"quantity"`
+	ResourceBalanceAfter string                    `json:"resourceBalanceAfter"`
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -263,6 +294,78 @@ func (h *Handler) Update(c *gin.Context) {
 
 func (h *Handler) Disable(c *gin.Context) { h.lifecycle(c, h.service.Disable) }
 func (h *Handler) Enable(c *gin.Context)  { h.lifecycle(c, h.service.Enable) }
+
+func (h *Handler) Activate(c *gin.Context) {
+	if h.serviceLifecycle == nil {
+		writeStoreError(c, storecenter.ErrDependencyUnavailable)
+		return
+	}
+	h.serviceLifecycleMutation(c, storecenter.ServiceCommandActivate, h.serviceLifecycle.Activate)
+}
+
+func (h *Handler) Renew(c *gin.Context) {
+	if h.serviceLifecycle == nil {
+		writeStoreError(c, storecenter.ErrDependencyUnavailable)
+		return
+	}
+	h.serviceLifecycleMutation(c, storecenter.ServiceCommandRenew, h.serviceLifecycle.Renew)
+}
+
+func (h *Handler) Reactivate(c *gin.Context) {
+	if h.serviceLifecycle == nil {
+		writeStoreError(c, storecenter.ErrDependencyUnavailable)
+		return
+	}
+	h.serviceLifecycleMutation(c, storecenter.ServiceCommandReactivate, h.serviceLifecycle.Reactivate)
+}
+
+func (h *Handler) serviceLifecycleMutation(c *gin.Context, command storecenter.ServiceCommand, mutate func(context.Context, storecenter.ServiceLifecycleApplicationRequest) (storecenter.ServiceOperationResult, error)) {
+	identity, ok := authoritativeIdentity(c)
+	if !ok {
+		return
+	}
+	if err := requireNoQuery(c.Request.URL.RawQuery); err != nil {
+		writeInvalid(c, "query", "invalid")
+		return
+	}
+	storeID, err := canonicalUUID(c.Param("store_id"))
+	if err != nil {
+		writeInvalid(c, "store_id", "invalid")
+		return
+	}
+	operationID, err := requiredCanonicalUUIDHeader(c.Request, "Idempotency-Key")
+	if err != nil {
+		writeInvalid(c, "Idempotency-Key", "invalid")
+		return
+	}
+	version, err := requiredIfMatch(c.Request)
+	if err != nil {
+		writeInvalid(c, "If-Match", "invalid")
+		return
+	}
+	quantity, field, err := parseServiceLifecycleBody(c.Request.Body, command)
+	if err != nil {
+		writeInvalid(c, field, "invalid")
+		return
+	}
+	result, err := mutate(c.Request.Context(), storecenter.ServiceLifecycleApplicationRequest{
+		OperationID: operationID, StoreID: storeID, Quantity: quantity, ExpectedStoreVersion: version,
+	})
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	expectedQuantity := quantity
+	if command == storecenter.ServiceCommandActivate {
+		expectedQuantity = 1
+	}
+	response, err := serviceLifecycleResponse(result, identity.EffectiveOrganizationID, operationID, storeID, command, expectedQuantity)
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
 
 func (h *Handler) lifecycle(c *gin.Context, mutate func(context.Context, storecenter.StoreLifecycleRequest) (storecenter.StoreMutationResult, error)) {
 	identity, storeID, ok := h.mutationIdentity(c, true)
@@ -473,6 +576,68 @@ func parseStringObject(body io.Reader, fields map[string]bool) (map[string]strin
 	return values, "", nil
 }
 
+func parseServiceLifecycleBody(body io.Reader, command storecenter.ServiceCommand) (int64, string, error) {
+	data, err := readBoundedBody(body)
+	if err != nil || !utf8.Valid(data) {
+		return 0, "body", errors.New("invalid body")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return 0, "body", errors.New("body must be object")
+	}
+	var periods int64
+	foundPeriods := false
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return 0, "body", err
+		}
+		name, ok := token.(string)
+		if !ok {
+			return 0, "body", errors.New("invalid field")
+		}
+		if command == storecenter.ServiceCommandActivate || name != "periods" {
+			return 0, name, errors.New("unknown field")
+		}
+		if foundPeriods {
+			return 0, name, errors.New("duplicate field")
+		}
+		value, err := decoder.Token()
+		if err != nil {
+			return 0, name, errors.New("periods must be an integer")
+		}
+		number, ok := value.(json.Number)
+		if !ok {
+			return 0, name, errors.New("periods must be an integer")
+		}
+		periods, err = parseCanonicalInt(number.String(), 1, storecenter.Phase1MaxStoreServicePeriods)
+		if err != nil {
+			return 0, name, err
+		}
+		foundPeriods = true
+	}
+	token, err = decoder.Token()
+	if err != nil || token != json.Delim('}') {
+		return 0, "body", errors.New("invalid body")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return 0, "body", errors.New("trailing JSON")
+	}
+	if command == storecenter.ServiceCommandActivate {
+		return 0, "", nil
+	}
+	if command != storecenter.ServiceCommandRenew && command != storecenter.ServiceCommandReactivate {
+		return 0, "body", errors.New("invalid command")
+	}
+	if !foundPeriods {
+		return 0, "periods", errors.New("periods is required")
+	}
+	return periods, "", nil
+}
+
 func readBoundedBody(body io.Reader) ([]byte, error) {
 	if body == nil {
 		return nil, errors.New("body required")
@@ -563,6 +728,44 @@ func normalizePublicValue(value string, max int, required bool) (string, error) 
 		return "", errors.New("too long")
 	}
 	return value, nil
+}
+
+func serviceLifecycleResponse(result storecenter.ServiceOperationResult, organizationID, operationID, storeID string, command storecenter.ServiceCommand, expectedQuantity int64) (ServiceLifecycleResponse, error) {
+	snapshot := result.Snapshot
+	if snapshot.OrganizationID != organizationID || snapshot.OperationID != operationID || snapshot.StoreID != storeID || snapshot.Command != command || snapshot.ResourceType != string(orgresource.ResourceStoreRenewalPeriod) || snapshot.StoreVersion <= 0 {
+		return ServiceLifecycleResponse{}, storecenter.ErrDependencyUnavailable
+	}
+	quantity, err := parseCanonicalInt(snapshot.Quantity, 1, storecenter.Phase1MaxStoreServicePeriods)
+	if err != nil || quantity != expectedQuantity {
+		return ServiceLifecycleResponse{}, storecenter.ErrDependencyUnavailable
+	}
+	if _, err := parseCanonicalInt(snapshot.BalanceAfter, 0, int64(^uint64(0)>>1)); err != nil {
+		return ServiceLifecycleResponse{}, storecenter.ErrDependencyUnavailable
+	}
+	if err := storecenter.ValidateStoreServiceState(snapshot.ServiceState); err != nil {
+		return ServiceLifecycleResponse{}, storecenter.ErrDependencyUnavailable
+	}
+	if _, err := canonicalUUID(snapshot.EventID); err != nil {
+		return ServiceLifecycleResponse{}, storecenter.ErrDependencyUnavailable
+	}
+	return ServiceLifecycleResponse{
+		StoreID:              snapshot.StoreID,
+		RecordStatus:         snapshot.ServiceState.RecordStatus,
+		ServiceStatus:        snapshot.ServiceState.ServiceStatus,
+		ServiceStartedAt:     utcTimePointer(snapshot.ServiceState.StartedAt),
+		ServiceExpiresAt:     utcTimePointer(snapshot.ServiceState.ExpiresAt),
+		Version:              snapshot.StoreVersion,
+		Quantity:             snapshot.Quantity,
+		ResourceBalanceAfter: snapshot.BalanceAfter,
+	}, nil
+}
+
+func utcTimePointer(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	utc := value.UTC()
+	return &utc
 }
 
 func listResponse(result storecenter.ListStoresResult, request storecenter.ListStoresRequest) (ListStoresResponse, error) {

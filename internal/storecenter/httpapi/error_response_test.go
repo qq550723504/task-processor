@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/storecenter"
 )
@@ -23,6 +24,14 @@ func TestMapStoreErrorUsesStableRedactedProtocolContract(t *testing.T) {
 		{name: "already exists", err: fmt.Errorf("provider secret: %w", storecenter.ErrAlreadyExists), status: http.StatusConflict, code: "STORE_ALREADY_EXISTS"},
 		{name: "version", err: fmt.Errorf("row secret: %w", storecenter.ErrVersionConflict), status: http.StatusConflict, code: "STORE_VERSION_CONFLICT"},
 		{name: "service resume", err: fmt.Errorf("state secret: %w", storecenter.ErrServiceResumeRequired), status: http.StatusConflict, code: "STORE_SERVICE_RESUME_REQUIRED"},
+		{name: "service corrupt", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidServiceState), status: http.StatusConflict, code: "STORE_SERVICE_STATE_CORRUPT"},
+		{name: "service transition", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidServiceTransition), status: http.StatusUnprocessableEntity, code: "STORE_INVALID_STATE"},
+		{name: "connection", err: fmt.Errorf("provider secret: %w", storecenter.ErrConnectionNotFresh), status: http.StatusUnprocessableEntity, code: "STORE_CONNECTION_NOT_CONNECTED"},
+		{name: "connection unavailable", err: fmt.Errorf("provider secret: %w", storecenter.ErrConnectionUnavailable), status: http.StatusServiceUnavailable, code: "STORE_CONNECTION_UNAVAILABLE"},
+		{name: "quantity", err: fmt.Errorf("request secret: %w", storecenter.ErrServiceQuantityExceeded), status: http.StatusUnprocessableEntity, code: "RESOURCE_QUANTITY_INVALID"},
+		{name: "balance", err: fmt.Errorf("balance secret: %w", orgresource.ErrInsufficientBalance), status: http.StatusConflict, code: "RESOURCE_INSUFFICIENT_BALANCE"},
+		{name: "idempotency", err: fmt.Errorf("operation secret: %w", orgresource.ErrIdempotencyKeyConflict), status: http.StatusConflict, code: "IDEMPOTENCY_KEY_CONFLICT"},
+		{name: "concurrency", err: fmt.Errorf("database secret: %w", orgresource.ErrConcurrencyRetry), status: http.StatusServiceUnavailable, code: "RESOURCE_CONCURRENCY_RETRY"},
 		{name: "lifecycle", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidTransition), status: http.StatusUnprocessableEntity, code: "STORE_INVALID_STATE"},
 		{name: "subscription", err: fmt.Errorf("entitlement secret: %w", listingsubscription.ErrSubscriptionRequired), status: http.StatusConflict, code: "SUBSCRIPTION_REQUIRED"},
 		{name: "limit", err: &storecenter.StoreLimitReachedError{Used: 3, Committed: 3, Limit: 3}, status: http.StatusConflict, code: "STORE_LIMIT_REACHED"},

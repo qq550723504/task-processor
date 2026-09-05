@@ -127,6 +127,9 @@ func (application *ServiceLifecycleApplication) execute(ctx context.Context, com
 			Platform:       store.Platform(),
 			ConnectionRef:  store.ConnectionRef(),
 		}, connectionStatusTimeout)
+		if connectionStatus == ConnectionStatusUnavailable {
+			return ServiceOperationResult{}, ErrConnectionUnavailable
+		}
 	}
 
 	return application.executor.ExecuteServiceLifecycle(ctx, ServiceExecution{

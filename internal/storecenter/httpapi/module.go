@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -36,6 +37,13 @@ func (m routeModule) Register(registry *kernelmodule.Registry) error {
 		route(http.MethodPost, "/api/v1/workbench/stores/:store_id/enable", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Enable),
 		route(http.MethodDelete, "/api/v1/workbench/stores/:store_id", authz.PermissionWorkbenchStoreDelete, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Delete),
 	)
+	if m.handler.serviceLifecycle != nil {
+		registry.AddRoutes(
+			route(http.MethodPost, "/api/v1/workbench/stores/:store_id/activate", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Activate),
+			route(http.MethodPost, "/api/v1/workbench/stores/:store_id/renew", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Renew),
+			route(http.MethodPost, "/api/v1/workbench/stores/:store_id/reactivate", authz.PermissionWorkbenchStoreLifecycle, httproute.OrganizationAccessPolicyLiveWrite, m.handler.Reactivate),
+		)
+	}
 	return nil
 }
 
