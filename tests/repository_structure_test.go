@@ -32,6 +32,7 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 		"shein-import-platform-recovery":     {},
 		"shein-login-worker":                 {},
 		"store-service-history-migrate":      {},
+		"source-account-ownership-preflight": {},
 	}
 
 	for _, line := range trackedFiles(t, "cmd") {
@@ -61,6 +62,7 @@ func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
 		"shein-import-platform-recovery":     {},
 		"shein-login-worker":                 {},
 		"store-service-history-migrate":      {},
+		"source-account-ownership-preflight": {},
 	}
 	ownerRoots := []string{".github", "deployments", "scripts"}
 	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()

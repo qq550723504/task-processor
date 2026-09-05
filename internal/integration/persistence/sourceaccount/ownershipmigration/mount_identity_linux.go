@@ -1,0 +1,345 @@
+//go:build linux
+
+package ownershipmigration
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"syscall"
+)
+
+type linuxMountLocation struct {
+	device string
+	path   string
+}
+
+type linuxMountEntry struct {
+	device     string
+	root       string
+	mountPoint string
+	filesystem string
+}
+
+// Only local kernel filesystems with device-relative subtree identities are
+// supported by this bounded preflight. Independent network mounts can expose
+// the same export with different devices; source names cannot prove isolation.
+// Layered/userspace and unknown storage also require evidence we do not have.
+// Apply this check only to selected paths and protected nested mounts.
+func validateLinuxMountStorage(entry linuxMountEntry) error {
+	switch entry.filesystem {
+	case "ext2", "ext3", "ext4", "xfs", "btrfs", "tmpfs", "ramfs":
+		return nil
+	default:
+		return fmt.Errorf("cannot prove profile/receipt isolation on filesystem %q", entry.filesystem)
+	}
+}
+
+func receiptParentAliasesProfileSubtree(profileRoot, receiptParent string) (bool, error) {
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return false, err
+	}
+	return receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent, data)
+}
+
+func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent string, data []byte) (bool, error) {
+	entries, err := parseLinuxMountInfo(data)
+	if err != nil {
+		return false, err
+	}
+	mounts := indexLinuxMounts(entries)
+	profileLocation, err := linuxFilesystemLocation(profileRoot, mounts)
+	if err != nil {
+		return false, err
+	}
+	receiptLocation, err := linuxFilesystemLocation(receiptParent, mounts)
+	if err != nil {
+		return false, err
+	}
+	if profileLocation.device == receiptLocation.device && insidePath(profileLocation.path, receiptLocation.path) {
+		return true, nil
+	}
+	// Each mount below the protected root introduces another backing subtree,
+	// possibly on a different device. Inspect mount metadata, never profile files.
+	// One pass over mounts avoids per-account or pairwise filesystem scans.
+	for _, entry := range entries {
+		if !insidePath(profileRoot, entry.mountPoint) {
+			continue
+		}
+		if err := validateLinuxMountStorage(entry); err != nil {
+			return false, err
+		}
+		if !filepath.IsAbs(entry.root) {
+			return false, fmt.Errorf("cannot resolve protected mount backing path")
+		}
+		if entry.device == receiptLocation.device && insidePath(entry.root, receiptLocation.path) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+type linuxMountChoice struct {
+	entry     linuxMountEntry
+	ambiguous bool
+}
+
+func indexLinuxMounts(entries []linuxMountEntry) map[string]linuxMountChoice {
+	index := make(map[string]linuxMountChoice, len(entries))
+	for _, entry := range entries {
+		choice, exists := index[entry.mountPoint]
+		if !exists {
+			choice.entry = entry
+		} else if entry.device != choice.entry.device || entry.root != choice.entry.root || entry.filesystem != choice.entry.filesystem {
+			choice.ambiguous = true
+		}
+		index[entry.mountPoint] = choice
+	}
+	return index
+}
+
+func linuxFilesystemLocation(path string, mounts map[string]linuxMountChoice) (linuxMountLocation, error) {
+	path = filepath.Clean(path)
+	var choice linuxMountChoice
+	found := false
+	for p := path; ; p = filepath.Dir(p) {
+		if choice, found = mounts[p]; found || filepath.Dir(p) == p {
+			break
+		}
+	}
+	if !found {
+		return linuxMountLocation{}, fmt.Errorf("path is not covered by mountinfo")
+	}
+	selected := choice.entry
+	if choice.ambiguous || !filepath.IsAbs(selected.root) {
+		return linuxMountLocation{}, fmt.Errorf("invalid or ambiguous backing location")
+	}
+	if err := validateLinuxMountStorage(selected); err != nil {
+		return linuxMountLocation{}, err
+	}
+	relative, err := filepath.Rel(selected.mountPoint, path)
+	if err != nil {
+		return linuxMountLocation{}, err
+	}
+	underlying := filepath.Clean(selected.root)
+	if relative != "." {
+		underlying = filepath.Join(underlying, relative)
+	}
+	if !filepath.IsAbs(underlying) {
+		underlying = string(os.PathSeparator) + underlying
+	}
+	return linuxMountLocation{device: selected.device, path: filepath.Clean(underlying)}, nil
+}
+
+func validateProfileSubtrees(ctx context.Context, accounts []AccountEvidence) error {
+	if err := validateLinuxProfileEntries(ctx, accounts); err != nil {
+		return err
+	}
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return fmt.Errorf("cannot inspect profile mount identities")
+	}
+	return validateProfileSubtreesFromMountInfo(ctx, accounts, data)
+}
+
+func validateLinuxProfileEntries(ctx context.Context, accounts []AccountEvidence) error {
+	hardLinkOwners := make(map[string]int64)
+	for _, account := range accounts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var walk func(string) error
+		walk = func(directory string) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			handle, err := os.Open(directory)
+			if err != nil {
+				return fmt.Errorf("cannot inspect profile directory entries")
+			}
+			defer handle.Close()
+			for {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				entries, readErr := handle.ReadDir(profileDirectoryReadBatchSize)
+				if readErr != nil && readErr != io.EOF {
+					return fmt.Errorf("cannot inspect profile directory entries")
+				}
+				for _, entry := range entries {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					path := filepath.Join(directory, entry.Name())
+					info, err := entry.Info()
+					if err != nil {
+						return fmt.Errorf("cannot inspect profile directory metadata")
+					}
+					if entry.Type()&os.ModeSymlink != 0 || info.Mode()&os.ModeSymlink != 0 {
+						return fmt.Errorf("browser profile contains a descendant symlink")
+					}
+					if info.Mode().IsRegular() {
+						stat, ok := info.Sys().(*syscall.Stat_t)
+						if !ok || stat == nil {
+							return fmt.Errorf("browser profile entry identity is unavailable")
+						}
+						// Most files have one link and need no retained identity.
+						if stat.Nlink > 1 {
+							identity, err := directoryFilesystemIdentity(path, info)
+							if err != nil {
+								return fmt.Errorf("cannot identify browser profile entry")
+							}
+							if owner, exists := hardLinkOwners[identity]; exists && owner != account.Previous.ID {
+								return fmt.Errorf("source accounts %d and %d share hard-linked browser profile state", owner, account.Previous.ID)
+							}
+							hardLinkOwners[identity] = account.Previous.ID
+						}
+					}
+					if info.IsDir() {
+						if err := walk(path); err != nil {
+							return err
+						}
+					}
+				}
+				if readErr == io.EOF {
+					return nil
+				}
+			}
+		}
+		// Fixed-size batches avoid loading or sorting a high-fanout directory.
+		// Each account root is visited once; the shared profile root is not rescanned.
+		err := walk(account.ProfileDirectory)
+		if err != nil {
+			return fmt.Errorf("source account %d: %w", account.Previous.ID, err)
+		}
+	}
+	return nil
+}
+
+const profileDirectoryReadBatchSize = 128
+
+func validateProfileSubtreesFromMountInfo(ctx context.Context, accounts []AccountEvidence, data []byte) error {
+	entries, err := parseLinuxMountInfo(data)
+	if err != nil {
+		return err
+	}
+	mounts := indexLinuxMounts(entries)
+	owners := make(map[string]int64, len(accounts))
+	type ownedSubtree struct {
+		device, path string
+		accountID    int64
+	}
+	subtrees := make([]ownedSubtree, 0, len(accounts)+len(entries))
+	for _, account := range accounts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		location, err := linuxFilesystemLocation(account.ProfileDirectory, mounts)
+		if err != nil {
+			return err
+		}
+		owners[filepath.Clean(account.ProfileDirectory)] = account.Previous.ID
+		subtrees = append(subtrees, ownedSubtree{location.device, strings.TrimSuffix(location.path, "/") + "/", account.Previous.ID})
+	}
+	// Assign each nested mount to its containing account with ancestor map
+	// lookups, not a scan of accounts for each mount. Profile contents stay opaque.
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		for p := entry.mountPoint; ; p = filepath.Dir(p) {
+			if owner, ok := owners[p]; ok {
+				if err := validateLinuxMountStorage(entry); err != nil {
+					return err
+				}
+				if !filepath.IsAbs(entry.root) {
+					return fmt.Errorf("cannot resolve protected profile mount")
+				}
+				subtrees = append(subtrees, ownedSubtree{entry.device, strings.TrimSuffix(filepath.Clean(entry.root), "/") + "/", owner})
+				break
+			}
+			if filepath.Dir(p) == p {
+				break
+			}
+		}
+	}
+	// Trailing separators make descendants contiguous in lexical order without
+	// confusing similar prefixes. Keep the broadest range for one account; any
+	// differently owned range inside it is overlap. O((accounts+mounts) log n),
+	// plus bounded path-depth lookups; never cross-account pairwise comparisons.
+	sort.Slice(subtrees, func(i, j int) bool {
+		if subtrees[i].device != subtrees[j].device {
+			return subtrees[i].device < subtrees[j].device
+		}
+		return subtrees[i].path < subtrees[j].path
+	})
+	var covering ownedSubtree
+	for _, subtree := range subtrees {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if covering.device == subtree.device && strings.HasPrefix(subtree.path, covering.path) {
+			if covering.accountID != subtree.accountID {
+				return fmt.Errorf("source accounts %d and %d have overlapping browser profile subtrees", covering.accountID, subtree.accountID)
+			}
+			continue
+		}
+		covering = subtree
+	}
+	return nil
+}
+
+func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	entries := make([]linuxMountEntry, 0, 32)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 10 {
+			return nil, fmt.Errorf("malformed mountinfo")
+		}
+		separator := -1
+		for i := 6; i < len(fields); i++ {
+			if fields[i] == "-" {
+				separator = i
+				break
+			}
+		}
+		if separator < 0 || separator+3 >= len(fields) {
+			return nil, fmt.Errorf("malformed mountinfo")
+		}
+		entry := linuxMountEntry{
+			device:     fields[2],
+			root:       decodeLinuxMountInfoPath(fields[3]),
+			mountPoint: decodeLinuxMountInfoPath(fields[4]),
+			filesystem: fields[separator+1],
+		}
+		// Unrelated mounts may legitimately have opaque roots (e.g. nsfs) or
+		// stacked mountpoints. Resolve backing-path ambiguity only where needed.
+		if !filepath.IsAbs(entry.mountPoint) {
+			return nil, fmt.Errorf("invalid mountinfo mountpoint")
+		}
+		entries = append(entries, entry)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("empty mountinfo")
+	}
+	return entries, nil
+}
+
+func decodeLinuxMountInfoPath(value string) string {
+	return strings.NewReplacer(
+		`\040`, " ",
+		`\011`, "\t",
+		`\012`, "\n",
+		`\134`, `\`,
+	).Replace(value)
+}
