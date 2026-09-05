@@ -304,6 +304,9 @@ jobs:
           frontend = os.environ.get("FRONTEND_RESULT", "unknown")
           code_health = os.environ.get("CODE_HEALTH_RESULT", "unknown")
           development_admission_tests = os.environ.get("DEVELOPMENT_ADMISSION_TEST_RESULT", "unknown")
+          # Keep the historical component snapshot for the existing notification
+          # contract while Required CI Gate remains the authoritative decision.
+          results = [development_admission_tests, backend, frontend, code_health]
           required_gate = os.environ.get("REQUIRED_GATE_RESULT", "unknown")
           if required_gate == "success":
               overall = "✅ 成功"
