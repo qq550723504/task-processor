@@ -156,6 +156,74 @@ func TestInvokeRejectsMissingVerifiedPrincipalBeforeExecution(t *testing.T) {
 	require.Len(t, recorder.records, 1)
 }
 
+func TestInvokeRejectsNonCanonicalPrincipalWhitespace(t *testing.T) {
+	tests := []Principal{
+		{TenantID: " tenant-1", UserID: "user-1", Roles: []string{"listingkit_operator"}},
+		{TenantID: "tenant-1", UserID: "user-1 ", Roles: []string{"listingkit_operator"}},
+		{TenantID: "tenant-1", UserID: "user-1", Roles: []string{" listingkit_operator"}},
+	}
+	for _, principal := range tests {
+		calls := 0
+		resolver := &countingResolver{principal: principal}
+		bound := boundToolSetForTest(t, &calls, resolver)
+
+		_, err := bound.Invoke(context.Background(), validCall())
+
+		require.Equal(t, ErrorIdentityIntegrity, CodeOf(err))
+		require.Equal(t, 1, resolver.calls)
+		require.Equal(t, 0, calls)
+	}
+}
+
+func TestInvokeBoundsRawArgumentsBeforeCloneOrPreflightDependencies(t *testing.T) {
+	valid := validCall().Arguments
+	exact := append(cloneRaw(valid), bytesOf(' ', MaxInvocationArgumentsBytes-len(valid))...)
+	over := append(cloneRaw(exact), ' ')
+
+	t.Run("exact limit", func(t *testing.T) {
+		call := validCall()
+		call.Arguments = exact
+		calls := 0
+		bound := boundToolSetForTest(t, &calls, verifiedResolver())
+		_, err := bound.Invoke(context.Background(), call)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+	})
+
+	t.Run("over limit", func(t *testing.T) {
+		call := validCall()
+		call.Arguments = over
+		resolver := &countingResolver{principal: verifiedPrincipal()}
+		authorizer := &recordingAuthorizer{}
+		executorCalls := 0
+		deps := validInvocationDependencies()
+		deps.PrincipalResolver = resolver
+		deps.Authorizer = authorizer
+		bound := bindToolForTest(t, ExecutorFunc(func(context.Context, ExecutionEnvelope, json.RawMessage) (ExecutionResult, error) {
+			executorCalls++
+			return ExecutionResult{}, nil
+		}), deps)
+
+		_, err := bound.Invoke(context.Background(), call)
+
+		require.Equal(t, ErrorInvalidInput, CodeOf(err))
+		require.Equal(t, 0, resolver.calls)
+		require.Equal(t, 0, authorizer.calls)
+		require.Equal(t, 0, executorCalls)
+	})
+}
+
+func bytesOf(value byte, count int) []byte {
+	if count <= 0 {
+		return nil
+	}
+	result := make([]byte, count)
+	for index := range result {
+		result[index] = value
+	}
+	return result
+}
+
 func TestInvokeRejectsResolverErrorsWithoutLeakingThem(t *testing.T) {
 	calls := 0
 	bound := boundToolSetForTest(t, &calls, resolverStub{err: errors.New("credential backend secret")})

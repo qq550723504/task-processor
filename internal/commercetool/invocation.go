@@ -13,7 +13,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const invocationSpanName = "commerce.tool.invoke"
+const (
+	invocationSpanName          = "commerce.tool.invoke"
+	MaxInvocationArgumentsBytes = 64 << 10
+)
 
 type invocationState struct {
 	startedAt  time.Time
@@ -24,7 +27,12 @@ type invocationState struct {
 }
 
 func (tools *BoundToolSet) Invoke(ctx context.Context, call Call) (Result, error) {
-	state := newInvocationState(tools.deps.Now().UTC(), call)
+	startedAt := tools.deps.Now().UTC()
+	if len(call.Arguments) > MaxInvocationArgumentsBytes {
+		state := invocationState{startedAt: startedAt, call: call}
+		return tools.finish(ctx, state, nil, "", NewError(ErrorInvalidInput, "tool input exceeds size limit", nil))
+	}
+	state := newInvocationState(startedAt, call)
 	registered, err := tools.preflight(ctx, state.call, &state)
 	if err != nil {
 		return tools.finish(ctx, state, nil, "", err)
