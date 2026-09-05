@@ -26,6 +26,10 @@ func receiptParentAliasesProfileSubtree(profileRoot, receiptParent string) (bool
 	if err != nil {
 		return false, err
 	}
+	return receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent, data)
+}
+
+func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent string, data []byte) (bool, error) {
 	profileLocation, err := linuxFilesystemLocationFromMountInfo(profileRoot, data)
 	if err != nil {
 		return false, err
@@ -78,7 +82,7 @@ func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {
 	entries := make([]linuxMountEntry, 0, 32)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) < 6 {
+		if len(fields) < 10 {
 			return nil, fmt.Errorf("malformed mountinfo")
 		}
 		separator := -1
@@ -88,7 +92,7 @@ func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {
 				break
 			}
 		}
-		if separator < 0 || separator+3 > len(fields) {
+		if separator < 0 || separator+3 >= len(fields) {
 			return nil, fmt.Errorf("malformed mountinfo")
 		}
 		entries = append(entries, linuxMountEntry{
