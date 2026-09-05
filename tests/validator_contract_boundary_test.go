@@ -14,8 +14,11 @@ import (
 // Keep this separate from the documentation tests owned by Issue #311.
 func TestValidatorContractImportBoundary(t *testing.T) {
 	roots := map[string]map[string]bool{
-		"internal/marketplace/validator": {"cmp": true, "encoding/json": true, "slices": true, "strings": true, "time": true},
+		"internal/marketplace/validator": {"cmp": true, "encoding/json": true, "slices": true, "strings": true, "time": true, "unicode/utf8": true},
 		"internal/marketplace/shein/validator": {
+			"crypto/sha256": true,
+			"encoding/hex":  true,
+			"encoding/json": true,
 			"task-processor/internal/marketplace/validator":        true,
 			"task-processor/internal/marketplace/shein/publishing": true,
 			"task-processor/internal/marketplace/shein/workspace":  true,
