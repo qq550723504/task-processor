@@ -151,3 +151,7 @@ Before moving or reusing code:
 3. if a file mixes owners, split behavior by ownership rather than moving the whole legacy abstraction;
 4. use `docs/refactoring/legacy-register.md` for active drain decisions;
 5. update this map when a major ownership boundary is completed.
+
+## 6. Phase 2 closure landing rules
+
+Runtime ownership remains with Platform/Integration and application assembly. Legacy business consumers drain to their current owners: the product owner uses `internal/product/*` and keeps the retired Product roots absent; the marketplace owner extracts platform rules under `internal/marketplace/*`; the organization owner handles current identity contracts while #301 coordinates tenantbridge consumer cutover. #29 owns the remaining ListingKit extraction. These are EXTRACT destinations followed by RETIRE, never new compatibility landing zones.
