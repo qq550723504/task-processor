@@ -1,353 +1,413 @@
 # Current Refactoring Status
 
-> Status: active current-state document.
->
-> Last reviewed: 2026-08-13.
->
-> Calibrated against: `master` at `49815aad922d98bc4c7d12b90dcabf86b541df2a`.
->
-> Scope: current product maturity, validation gates, refactoring closeout, Product Sourcing closeout, and the active Now / Next / Later direction for Task Processor / ListingKit.
+> Status: active current-state document.  
+> Last reviewed: 2026-09-05.  
+> Calibrated against: `main` at `f1c8bad612c8026063434ccd1169e69bd4c43168`.  
+> Scope: current product/repository reality, production-validation gates, Product/Marketplace/Console boundaries, Commerce Tool readiness, and the active Now / Next / Later direction for Task Processor / ListingKit / AI Commerce Agent Platform.
 
 ## 1. Current position
 
-The project is past both the early broad-splitting phase and the initial Product Sourcing foundation phase.
+`task-processor` is no longer accurately described as either a generic task processor or a ListingKit-only application. The long-term product is **AI Commerce Agent Platform**, while the current commercial execution surface still depends on mature deterministic Product/Listing/SHEIN flows.
 
 The current posture is:
 
 ```text
-Stabilize and validate the current SHEIN production path first;
-complete controlled 1688 source-to-ListingKit acceptance second;
-stabilize the AI Capability Platform and trusted identity/evaluation gates third;
-establish the minimum Commerce Tool Foundation before Product Agent code;
-defer new product sources and target workbenches until their explicit gates are met.
+1. Validate and ship the current fixed-pipeline commercial baseline safely.
+2. Preserve the Product/Identity/Store/Resource hard-cut boundaries already established.
+3. Close the remaining 1688 + SHEIN + human-review + release-evidence gates.
+4. Stabilize the AI Capability control plane.
+5. Complete the minimum read/compute/propose Commerce Tool set.
+6. Only then start the bounded Product Agent PoC.
+7. Expand SHEIN Agent capability before broad TEMU/Amazon Agent or product expansion.
 ```
 
-This is a modular-monolith stabilization and growth-readiness phase. It is not a greenfield architecture phase and it is not the right time for another broad directory rewrite.
+This is **not** a greenfield architecture phase and **not** the time for another broad directory rewrite, a second product fact model, a second workflow/state machine, or parallel platform-specific workbenches.
 
 Use this file together with:
 
 - `docs/product/ai-commerce-agent-platform-strategy.md`
-- GitHub issue #137
-- `docs/refactoring/listingkit-boundary-checkpoint.md`
-- `docs/product/product-sourcing-handoff.md`
-- `docs/product/product-sourcing-mvp-plan.md`
-- `docs/development/repository-structure.md`
-- `docs/refactoring/next-phase-plan.md` as historical implementation evidence
+- GitHub issue #137 — executable backlog authority
+- GitHub issue #33 — Customer Trial / Production Readiness gate
+- `docs/superpowers/specs/2026-09-02-shuomi-console-phase1-hard-cut-design.md`
+- `docs/superpowers/specs/2026-08-27-listingkit-product-design-v1.md`
+- `docs/architecture/project-boundaries.md`
+- Product-domain / Store / Resource / Agent plans only as bounded design or execution evidence
 
 ### 1.1 Evidence vocabulary
 
-Use these terms consistently in status documents and review notes:
+Use these terms consistently:
 
-- **Implemented**: the code path exists on the calibrated `master` baseline.
+- **Implemented**: the code path exists on the calibrated `main` baseline.
 - **Repository-validated**: the exact baseline has recorded automated test/build results.
-- **Production-validated**: a real environment or real API run is recorded in a dated validation note.
-- **Deferred**: code or runtime assets may exist, but the capability is not an active product-expansion commitment.
+- **Local-accepted**: a real local dependency/runtime path was exercised, such as local ZITADEL/browser acceptance.
+- **Staging-validated**: a controlled non-production environment exercised the real integration.
+- **Production-validated**: a real production environment or real customer path is recorded in a dated validation note.
+- **Deferred**: code/runtime assets may exist, but the capability is not an active product-expansion commitment.
+- **Superseded**: the old issue/design abstraction has been replaced and must not be implemented as originally described.
 
-Do not treat “implemented” as equivalent to “repository-validated” or “production-validated”.
+Never treat implemented, repository-validated, local-accepted, staging-validated, and production-validated as interchangeable.
+
+---
 
 ## 2. Current system reality
 
-### 2.1 Product and runtime shape
+### 2.1 Product model
 
-ListingKit is the product entrypoint. The repository is no longer best described as a generic task processor.
+The current user-facing business hierarchy is:
 
-The maintained runtime entrypoints are:
+```text
+Source Product / Source Evidence
+        ↓
+Canonical Product / ProductSnapshot
+        ↓
+Platform Draft
+        ↓
+Listing (platform + store)
+        ↓
+Published Result / Submission History
+```
 
-- `cmd/product-listing-api`
-- `cmd/listing-control-plane`
-- `cmd/shein-listing`
-- `cmd/temu-listing`
+Task and Workflow remain execution infrastructure:
 
-An official runtime entrypoint means that the command is maintained and structurally supported. It does not mean every target-platform product experience has the same maturity.
+```text
+Workflow -> Task -> Child Task -> Queue / Retry / Adapter
+```
 
-### 2.2 Platform maturity
+They may appear in advanced diagnostics, but they are not the long-term primary user business object. New UI or API work must not recreate a Task-first product model.
+
+### 2.2 Product Domain hard-cut
+
+The Phase 3 Product Domain hard-cut is complete at the architecture level.
+
+Current target ownership includes:
+
+- `internal/product/catalog` — canonical `ProductSnapshot` and normalization
+- `internal/product/sourcing` — source identity, envelope, lineage/warnings contract
+- `internal/product/enrichment` — side-effect-free Proposal generation/validation/scoring boundary
+- `internal/product/asset` — approved asset facts and approval persistence contract
+- `internal/product/image` — provider-neutral image capability boundary
+- ImageAgent — the single owner of product-image workflow, budget/retry/recovery/approval execution
+
+The retired ProductEnrich/ProductImage task/queue/worker/API architecture must not be reintroduced for Agent work.
+
+ListingKit, SDS, Amazon target/source compatibility code and future Commerce Tools consume current Product boundaries; they do not become alternative product-fact owners.
+
+### 2.3 Identity / Organization / Console
+
+ZITADEL remains the identity provider and trusted authentication/authorization foundation.
+
+The repository now contains a Multi-Organization workbench identity model with:
+
+- verified identity context;
+- effective/home Organization semantics;
+- organization switching;
+- role-aware access;
+- fail-closed authorization behavior;
+- local browser acceptance for cross-Organization isolation and revoke/restore behavior;
+- strict BFF/API trust boundaries.
+
+This means the old backlog item “establish the ZITADEL role/tenant model” is no longer an architecture task. Remaining work is **staging/production acceptance and operational security evidence**, tracked through #33/#45/#48.
+
+The Shuomi Console Phase 1 product direction is also active. It is a UI/IA hard cut, not a capability hard cut: existing production capabilities remain reachable until their new Console replacement exists.
+
+### 2.4 Store / Resource baseline
+
+The repository has moved beyond the old “tenant quota JSON / task limit” model.
+
+Current resource semantics are organization-scoped and include:
+
+- `store_renewal_period`
+- `ai_point`
+- `data_row`
+
+Store binding and Store service activation are separate concepts. Resource Ledger / Store Service work owns durable value/idempotency semantics. Online RMB wallet/payment/resource acquisition remains deferred; UI must not present Renew/Reactivate as purchasable when no acquisition channel exists.
+
+Store lifecycle code may be implemented before production authority handoff. Migration/constraints/route enablement and production execution evidence must remain explicit gates.
+
+### 2.5 Platform maturity
 
 | Capability | Current status | Current interpretation |
 | --- | --- | --- |
-| SHEIN target listing | Production main path; active stabilization | The current product and release focus. Pricing, promotion, readiness, caching, browser startup, save-draft, publish, and recovery behavior require current-baseline evidence. |
-| SDS POD source/design flow | Active capability; active stabilization | Treated as a POD/design capability rather than a generic product-source integration. |
-| 1688 product source | Normalization, narrow ListingKit task bridge, and guarded runtime-acceptance operator tool implemented; controlled validation pending | PR #141 supplies a default-read-only, explicitly confirmed acceptance path. A live tenant-owned account run, durable lineage evidence, and the complete preview/readiness result remain open. |
-| Amazon product source | Implemented as a source-envelope boundary-validation path | Useful for source modeling and tests; it does not mean a full Amazon ListingKit workbench is active. |
-| TEMU target listing | Runtime and integration assets retained; full workbench deferred | Maintain existing runtime correctness without starting a broad new workbench. |
-| Amazon target listing | Existing historical/target code retained; full workbench deferred | Do not infer current product parity with SHEIN. |
-| 大建云仓 / next warehouse source | Later candidate; not queued | Reconsider only after the current Product Sourcing MVP and Phase 0 evidence are closed. Do not let a candidate source displace the approved AI Capability and Product Agent prerequisites. |
+| SHEIN target listing | Production main path; active stabilization/validation | The current commercial release focus. Readiness, pricing, submission, idempotency, recovery and real E2E evidence remain release-sensitive. |
+| 1688 product source | Neutral source model and guarded handoff implemented; controlled closeout pending | Durable lineage + one controlled import-to-product/listing path still need acceptance evidence. |
+| SDS POD | Active specialized product/design capability | Keep as POD/design semantics, not a generic source abstraction. |
+| Amazon source | Source-envelope/modeling path exists | Does not mean Amazon target listing product is active. |
+| TEMU target | Runtime/platform assets retained; full shared-Listing expansion deferred | Maintain correctness; do not build an independent TEMU Workbench. |
+| Amazon target | Historical/target assets retained; full shared-Listing expansion deferred | Do not infer SHEIN parity. |
+| Multi-Organization / Store Center | Implemented with strong repository/local evidence | Production release acceptance is still required. |
+| Resource Ledger / Store Service | Core domain foundation implemented/evolving | Production authority handoff and customer-visible enablement remain explicit gates. |
+| AI Capability Control Plane | Foundation exists; release-level validation pending | #126/#130 must close before Product Agent main implementation. |
+| Commerce Tool Registry | Completed | #133 closed through PR #272. |
+| Commerce domain tools | Partial | `product.canonical.inspect@v1.0.0` is merged; the rest of #134 remains open. |
+| Product Agent | Not yet an approved production path | #131/#132 must wait for Phase 1 + Phase 2A exit evidence. |
+| SHEIN Listing Agent | Later phase | Read/propose first; save-draft only after independent write safety gate. |
 
-### 2.3 Product Sourcing implementation status
+---
 
-The Product Sourcing MVP foundation is implemented on the calibrated baseline:
+## 3. Current maintained boundaries
 
-1. `internal/product/sourcing` owns `SourceIdentity`, fingerprinting, validation, and `SourceEnvelope`.
-2. Amazon and 1688 source results map into the neutral envelope.
-3. Source envelopes hand off to `internal/catalog.ProductFacts` and `internal/asset.Facts`.
-4. `internal/compatibility/listingkit/sourcehandoff` adapts neutral facts into the existing ListingKit `GenerateRequest`.
-5. The 1688 handoff has a narrow compatibility command and HTTP adapter path to the existing task-creation boundary; the integration adapter converts the legacy crawler DTO into a product-owned snapshot first.
-6. Product-source, crawler, catalog, asset, and ListingKit bridge dependency directions have guard tests.
+### 3.1 Product facts
 
-PR #141 also adds the maintained guarded runtime-acceptance script. Its default
-mode is GET-only and every task-creating POST requires explicit confirmation.
-That merged operator path is implementation evidence only: no live tenant-owned
-1688 account acceptance, durable source-lineage result, or complete
-preview/readiness acceptance is recorded by the merge itself.
+- Product facts belong to Product Domain.
+- Source lineage belongs to Product Sourcing.
+- Approved assets belong to Product Asset / ImageAgent approval boundaries.
+- Platform-specific representation belongs to marketplace/listing boundaries.
+- Agent output is a Proposal, not an alternative source of truth.
 
-The remaining Product Sourcing work is not “introduce the model”. It is:
+### 3.2 Runtime / workflow
 
-- record focused and full validation against the current baseline;
-- exercise one controlled 1688 import-to-task-to-preview path;
-- verify lineage, warnings, and missing-fact behavior are visible enough for operators;
-- close the MVP explicitly before choosing the next source or starting an Agent that consumes source evidence.
+- `internal/app/*` remains assembly/lifecycle focused.
+- Temporal owns durable workflow execution where already established.
+- RabbitMQ/listing control-plane owners remain singular.
+- Agent Runtime must not become a second durable business-task lifecycle owner.
+- Marketplace submission state remains owned by the existing submission/publishing boundary.
 
-## 3. Now
+### 3.3 Authorization
 
-Current work should focus on validation, production stabilization, and closeout—not broad feature expansion.
+- Agent/Tool code inherits the same tenant/user/Organization identity authority as existing application code.
+- No parallel Agent RBAC system.
+- Every Commerce Tool adapter rechecks the domain authorization boundary; trusted Tool metadata alone is not enough.
 
-### 3.1 Validate the current baseline
+### 3.4 Side effects
 
-Keep exact results visible for the calibrated `master` commit or for the newer commit being considered for release:
+Current Product Agent preparation is read/compute/propose first.
 
-```powershell
-go test ./... -count=1
+Write/publish capabilities require separate review for:
 
-go test -race ./internal/app/runtime/listingcontrol `
-  -run TestControlPlaneService -count=1
+- explicit human approval;
+- proposal/base version binding;
+- authorization;
+- idempotency;
+- remote unknown-state handling;
+- audit;
+- deterministic readiness immediately before the write.
 
-go test -race ./internal/listingadmin `
-  -run "TestConcurrentClaimForDispatchOnlyOneWorkerWins|TestConcurrentRollbackDispatchOnlyOriginalQueuedClaimIsRestoredOnce|TestConcurrentRecoveryOnlyUpdatesStillEligibleRowsOnce" `
-  -count=1
+---
 
-make build-all
-```
+## 4. Now
 
-Frontend validation:
+### 4.1 Close the Customer Trial / Production Readiness baseline
 
-```powershell
-Set-Location web/listingkit-ui
-npm ci
-npm run lint
-npm run typecheck
-npm test
-npm run build
-```
+GitHub #33 is the umbrella release gate.
 
-Required posture:
+Current high-priority evidence:
 
-1. Treat `.github/workflows/ci.yml` as the executable core gate.
-2. Treat GitHub Actions as the source of truth for exact job status and logs.
-3. Record manual smoke or production evidence in a dated validation note when it affects a release decision.
-4. Do not call the current baseline green unless the exact workflow or command result is visible.
+1. #28 — SHEIN end-to-end commercial validation.
+2. #30 — controlled 1688 path with durable lineage.
+3. #36 — Proposal → Human Review → Explicit Apply.
+4. #44 — release-critical E2E regression authority.
+5. #47 — reusable production regression / future Agent-eval dataset.
+6. #41 — production health/metrics/SLO baseline.
+7. #48 — production security readiness.
+8. #45 — first customer or controlled customer-like publishing rehearsal.
 
-### 3.2 Stabilize the SHEIN production path
+Do not expand later marketplace products to avoid doing these acceptance tasks.
 
-The recent change stream concentrates on production-sensitive behavior rather than cosmetic refactoring.
-
-Keep focused evidence for:
-
-1. synchronized SHEIN supply-price usage;
-2. promotion drop-rate and breakeven calculations;
-3. multi-SKU price and cost completeness;
-4. republish resolution-cache preservation;
-5. SDS baseline and canonical metadata behavior;
-6. action-aware submit-readiness and POD-readiness policy;
-7. save-draft / publish idempotency and recovery;
-8. SHEIN listing browser startup and rollout smoke behavior.
-
-New pure SHEIN policies should continue moving behind marketplace/publishing/workspace seams. Root `internal/listingkit` should consume stable seams rather than acquire new marketplace ownership.
-
-### 3.3 Close the Product Sourcing MVP
-
-The guarded operator tool is merged through PR #141. It provides a safe way to
-run the remaining acceptance; it does not satisfy the acceptance by itself.
-
-Required next work:
-
-1. Run the focused Product Sourcing, catalog, asset, source-handoff, ListingKit, and boundary tests.
-2. Exercise one controlled 1688 path:
-   - source request or URL;
-   - source normalization;
-   - `SourceEnvelope`;
-   - catalog and asset facts;
-   - ListingKit task creation;
-   - existing preview/readiness path.
-3. Verify the task records source lineage or a durable source reference.
-4. Verify missing facts remain warnings or explicit errors rather than hidden defaults.
-5. Record the result in a dated validation note.
-6. Decide explicitly whether the MVP is closed before starting 大建云仓 or another warehouse source.
-
-### 3.4 Preserve runtime and package boundaries
+### 4.2 Preserve current Product architecture
 
 Required posture:
 
-1. Keep listing runtime and app runtime free of retired broad management-service semantics.
-2. Keep `internal/app/*` focused on runtime assembly.
-3. Keep `internal/listingkit` focused on orchestration, compatibility, DTO adaptation, persistence ordering, and API-shell glue.
-4. Prefer small target-domain policy seams with focused tests.
-5. Update import allowlists only with an owner, reason, and retirement condition.
-6. Do not use stale generated package maps or dependency snapshots as architecture authority.
-7. Do not continue splitting files merely because a helper can move.
+- Do not recreate old ProductEnrich/ProductImage task systems.
+- New product rules belong to the current Product or Marketplace owner.
+- ProductSnapshot and ApprovedAsset are authoritative read boundaries.
+- Missing facts/assets fail visibly; do not silently choose a source image or hidden default.
+- UI semantics should be Product/Listing-first rather than Task-first.
 
-### 3.5 Control Plane posture
+### 4.3 Finish Marketplace / Listing boundary hard-cut
 
-The Go Listing Control Plane has recorded production validation for leader election, standby readiness, leader takeover, dispatch persistence, rollback, and roll-forward behavior.
+#29 now represents remaining ownership cleanup, not a new universal MarketplaceAdapter project.
 
-Current work should preserve that result and keep current-baseline evidence visible for:
+Focus on:
 
-- listing control-plane race tests;
-- listingadmin dispatch / rollback / recovery race tests;
-- leader status and takeover behavior;
-- dispatch event distribution and `failed > 0` reporting;
-- production rollout and rollback procedures.
+- moving pure platform rules out of root ListingKit where still necessary;
+- keeping one submission state owner;
+- preserving assembly/domain separation;
+- exposing marketplace capabilities to Tools through narrow adapters;
+- preventing TEMU/Amazon from copying independent Workbench/state models.
 
-Do not introduce another scheduler or watchdog owner.
+### 4.4 Stabilize deterministic validation
 
-### 3.6 TaskEvent V2 operational posture
+#34 must turn current readiness logic into a stable deterministic validator contract shared by:
 
-TaskEvent V2 production-observability resources, the public legacy-decode
-metric contract, and a one-pod SHEIN canary helper are merged through PR #142.
-Repository validation of those assets does not prove that the monitoring stack
-is installed or that consumers are rolled out in production.
+- UI/Product/Listing projections;
+- fixed pipeline;
+- submission gates;
+- Commerce Tool invocation;
+- later Agent repair loops.
 
-The remaining operational gate is:
+The model may propose repairs; it may not decide that a failed deterministic validator passed.
 
-1. run a fresh non-mutating cluster and capacity preflight;
-2. obtain explicit authorization before monitoring, registry, or workload writes;
-3. install the pinned monitoring stack and verify every active consumer scrape target;
-4. run the one-pod canary before the complete SHEIN rollout;
-5. start, rather than claim completion of, the 14-day zero-legacy observation window.
+### 4.5 Keep operational evidence exact
 
-Do not remove the legacy decoder until every active consumer has continuous
-scrape coverage and the recorded 14-day query remains zero.
+For release-sensitive work:
 
-## 4. Next
+- name the exact commit/candidate;
+- link exact CI/build results;
+- record controlled runtime acceptance separately;
+- never mark an integration green because a provider-dependent test was skipped;
+- record migration/rollback/security evidence for the exact candidate that will be deployed.
 
-The next executable sequence is gated. Complete or explicitly document the
-exit evidence for each subsection before starting the later subsections.
+---
 
-### 4.1 Complete Phase 0 evidence
+## 5. Next
 
-Close or explicitly record blockers for the current commercial and trust gates:
+### 5.1 AI Capability Platform — Phase 1
 
-1. SHEIN end-to-end commercial validation;
-2. controlled 1688 source-to-ListingKit acceptance with durable lineage;
-3. ZITADEL tenant, role, and permission trust boundaries;
-4. human confirmation for AI-generated product changes;
-5. repeatable core-flow regression coverage and reusable evaluation data;
-6. Customer Trial Readiness.
+Complete #126/#130:
 
-Merged code, operator scripts, or a green repository test do not replace the
-controlled-runtime or production evidence required by those gates.
+- provider-neutral model catalog/capabilities;
+- tenant + capability policy;
+- routing/fallback decisions;
+- invocation ledger;
+- usage/cost/latency/error taxonomy;
+- prompt/policy/version traceability;
+- health/budget/concurrency limits;
+- rollback between legacy/shadow/active behavior.
 
-### 4.2 Stabilize the AI Capability Platform
+Exit condition: Product Agent code never needs to select a provider, handle API keys, or become provider retry authority.
 
-Complete the provider-neutral model catalog, tenant policy, routing and
-fallback decisions, invocation ledger, cost/usage evidence, bounded execution
-gates, and rollback semantics. Agent code must not select a provider, handle an
-API key directly, or become a second owner of provider retries.
+### 5.2 Commerce Tool Foundation — Phase 2A
 
-### 4.3 Establish Phase 2A Commerce Tool Foundation
+#133 is complete. #134 remains open.
 
-Before Product Agent implementation, establish one minimum framework-neutral
-Tool contract and registry for read, compute, and propose capabilities. The
-first adapters may expose source evidence, canonical product and facts,
-ProductEnrich proposals, ProductImage analysis proposals, marketplace rule
-lookup, and deterministic validation.
+Completed:
 
-Keep `internal/app/httpapi` assembly-only, external clients behind small
-interfaces, and source-specific adapters outside root ListingKit. Tools may not
-give Agent Runtime direct access to GORM repositories, provider SDKs, or
-marketplace clients. Write and publish risk levels remain disabled.
+- Tool Registry / governance contract — PR #272.
+- `product.canonical.inspect@v1.0.0` — PR #295.
 
-### 4.4 Start Phase 2B Product Agent only after its gates
+Still required for the minimum Product Agent PoC:
 
-Start the bounded Product Agent PoC only after Phase 1 and Phase 2A have
-recorded exit evidence. Require feature flag and tenant allowlist controls,
-hard step/model/token/runtime/cost budgets, deterministic validation, human
-review, and comparison against the fixed pipeline. A failed Agent run must not
-change canonical product state or the existing fixed flow.
+- source evidence reader;
+- approved asset/product facts reader;
+- enrichment analyze/propose;
+- image analyze/propose through current Product Image/ImageAgent boundary;
+- marketplace category/attribute rule query;
+- deterministic readiness/validator Tool.
 
-### 4.5 Improve operational evidence
+The PR #295 merge must not be interpreted as completing #134 or #128.
 
-After the controlled 1688 path and current production gates are validated:
+### 5.3 Product Agent — Phase 2B
 
-- make source lineage and warnings inspectable;
-- keep dispatch and submission failure reasons operator-visible;
-- record real successful and failed task examples;
-- close gaps in configuration health checks and recovery guidance;
-- convert recurring operational findings into tests or stable runbooks.
+Only after Phase 1 + Phase 2A exit evidence:
 
-## 5. Later
+- #131 defines bounded runtime state/limits/stop reasons;
+- #132 runs the Product Agent PoC against the fixed pipeline;
+- #47 supplies the reusable evaluation dataset;
+- #36 supplies human review/application;
+- #34 supplies deterministic validation.
 
-Full new sales-platform expansion should wait until the SHEIN template and current source loop are stable enough to copy without copying legacy coupling.
+Required safety characteristics:
 
-The next warehouse or catalog source belongs to later Sourcing Agent or
-product-source work. 大建云仓 remains a candidate, not a commitment. Before any
-source implementation, define its raw contract, stable source identity,
-missing/optional facts, authentication, pagination, rate limits, and snapshot
-semantics, then map it into the existing `SourceEnvelope` without target-marketplace policy.
+- feature flag + tenant allowlist;
+- hard step/model/token/time/cost budgets;
+- bounded repair loops;
+- read/compute/propose tools only;
+- structured evidence/confidence/unresolved issues;
+- fixed pipeline remains available as fallback;
+- no canonical Product or platform write on failed Agent runs.
 
-Allowed preparatory work:
+The Agent only advances if measured quality improves without worsening risk metrics.
 
-1. platform capability inventory;
-2. API and readiness contract design;
-3. mapping-cost assessment;
-4. read-only package guards;
-5. payload-preview exploration that does not introduce a second submission state machine.
+---
 
-Deferred:
+## 6. Later
 
-1. full TEMU / Amazon / Walmart workbench expansion;
-2. new platform auto-publish runtime;
-3. another dispatch scheduler or watchdog owner;
-4. marketplace-specific rules in root `internal/listingkit`;
-5. a new submission state machine outside `internal/listing/submission` and marketplace-owned publishing packages;
-6. microservice extraction before package and runtime boundaries are stable.
+### 6.1 SHEIN Listing Agent
 
-## 6. Do not do now
+After Product Agent/Tool contracts prove useful:
+
+- #129/#135: diagnose SHEIN blockers and produce a reviewable Listing Proposal;
+- #136: only then permit a controlled, human-approved, idempotent `save_draft` write path;
+- autonomous formal publish remains out of the initial scope.
+
+### 6.2 TEMU / Amazon expansion
+
+#31/#32 now mean **platform capabilities in the shared Listing Center**, not separate TEMU/Amazon Workbenches.
+
+Wait until:
+
+- #33 commercial baseline is stable;
+- #29 marketplace/listing boundary is stable;
+- current SHEIN patterns are safe to reuse;
+- Product/Tool/Agent boundaries are not being copied as platform-specific forks.
+
+### 6.3 Resource acquisition / billing
+
+Resource Ledger and Store lifecycle do not require redesign when payment arrives.
+
+Later work should add approved acquisition sources to existing resource authority, such as Billing/Platform Finance, rather than restore the old tenant quota/task-limit model.
+
+---
+
+## 7. Superseded backlog abstractions
+
+The following old abstractions must not be restarted as written:
+
+- generic independent Listing Workspace framework (#27 closed);
+- customer-facing Task Center as the primary product object (#35 closed);
+- separate publish-result fact model (#38 closed; current events/results are authoritative);
+- “build ZITADEL tenant/role model from scratch” (#39 closed; production acceptance moved to release gates);
+- “create deployment documentation” (#40 closed; production execution evidence remains);
+- old tenant quota/task-limit billing model (#42 closed);
+- duplicate v0.1 Customer Trial checklist (#43 closed into #33);
+- separate RC branch/release authority (#46 closed; current main/immutable-candidate/gated-release model remains).
+
+Historical docs/issues remain useful as context, but they are not permission to reintroduce these architectures.
+
+---
+
+## 8. Do not do now
 
 Do not start work that:
 
-- renames broad package trees for directory consistency only;
-- moves files without reducing ownership or dependency pressure;
-- combines behavior changes with package movement;
-- expands import-boundary allowlists without a migration explanation;
-- adds business rules to `internal/app/*`;
-- adds SHEIN, TEMU, Amazon, or Walmart policy to root `internal/listingkit`;
-- starts another product source before the current source loop is validated or explicitly closed;
-- starts Product Agent implementation before the AI Capability and Phase 2A Tool gates are recorded;
-- creates a disposable PoC Tool interface that Phase 3 must replace;
-- launches a full new sales-platform workbench during current stabilization;
-- treats official command existence as proof of equal product maturity;
-- treats generated dependency/package snapshots as current without regenerating them;
-- treats unrecorded test execution as a green release gate.
+- recreates old ProductEnrich/ProductImage runtime ownership;
+- introduces another Product fact source or asset approval source;
+- makes Task/Workflow the default user navigation identity again;
+- builds independent TEMU/Amazon product workbenches;
+- creates another submission state machine or durable retry owner;
+- lets Agent Runtime import GORM repositories, provider SDKs or marketplace clients directly;
+- lets an Agent bypass deterministic readiness;
+- lets an Agent write/publish without explicit independent write-safety gates;
+- starts Multi-Agent before one bounded Product Agent proves measurable value;
+- treats repository/local validation as production readiness;
+- starts a new source/platform expansion to avoid completing current commercial evidence.
 
-## 7. Current execution checklist
+---
 
-Before approving the next structural or release-sensitive PR:
+## 9. Current execution checklist
+
+Before approving the next release-sensitive or architecture-sensitive PR:
 
 ```text
-[ ] The exact base commit is named.
-[ ] Current automated test/build results are linked or the missing evidence is explicit.
-[ ] Production-sensitive SHEIN behavior has focused regression coverage.
-[ ] Any real smoke or production result is recorded in a dated validation note.
-[ ] The target package does not import internal/listingkit unless it is an approved compatibility bridge.
-[ ] The moved logic is a stable rule or policy, not runtime wiring.
-[ ] ListingKit keeps only compatibility, DTO adaptation, orchestration, persistence ordering, or API-shell responsibilities.
-[ ] Source packages receive neutral source contracts and do not assemble marketplace publish payloads.
-[ ] The PR includes a focused test or an import-boundary guard.
-[ ] Behavior changes are separated from file moves.
-[ ] Temporal determinism or activity retry semantics are untouched unless explicitly reviewed.
-[ ] The change does not add a second owner for dispatch, recovery, or submission state.
-[ ] Import allowlist changes include an owner, reason, and retirement condition.
-[ ] Generated baseline artifacts are local evidence or a deliberately dated validation note.
-[ ] Agent work names its Phase 1 and Phase 2A exit evidence before Product Agent implementation starts.
+[ ] Exact base/main commit is named.
+[ ] Current automated test/build results are visible.
+[ ] Runtime/staging/production evidence is separately identified when required.
+[ ] Product facts remain owned by Product Domain.
+[ ] Approved assets remain owned by Product Asset/ImageAgent boundaries.
+[ ] No old ProductEnrich/ProductImage workflow is reintroduced.
+[ ] Task/Workflow remains execution infrastructure, not the new product IA.
+[ ] Marketplace rules stay in marketplace/listing ownership.
+[ ] App packages contain assembly/lifecycle logic, not new business rules.
+[ ] No second submission state machine, scheduler, retry owner, RBAC system or Tool Registry is added.
+[ ] Commerce Tool adapters enforce tenant/user authorization again at the domain boundary.
+[ ] Agent work names its Phase 1 and Phase 2A exit evidence before Product Agent implementation.
+[ ] Deterministic validation remains outside model authority.
+[ ] Human approval/version/idempotency/audit gates are named before any new write side effect.
+[ ] Release claims distinguish implemented/repository/local/staging/production validation.
 ```
 
-## 8. Source of truth summary
+---
+
+## 10. Source of truth summary
 
 Current order of authority:
 
-1. `docs/product/ai-commerce-agent-platform-strategy.md` for long-term product direction and phase definitions.
-2. `current-refactoring-status.md` for current repository reality and Now / Next / Later gates.
-3. GitHub issue #137 for executable backlog order.
-4. Domain-specific plans and dated validation notes for bounded acceptance evidence.
-5. `next-phase-plan.md` and other completed implementation plans as historical execution evidence only.
-6. `listingkit-boundary-checkpoint.md` and product-source ownership documents for stable package stop lines.
-7. Generated package/dependency snapshots only as dated evidence when freshly regenerated.
+1. `docs/product/ai-commerce-agent-platform-strategy.md` — long-term product direction and Agent phases.
+2. This file — current repository/product reality and Now / Next / Later gates.
+3. GitHub issue #137 — executable backlog order.
+4. GitHub issue #33 — Customer Trial / Production Readiness release gate.
+5. Current approved product/domain specs — bounded product/architecture contracts.
+6. Dated validation notes / exact CI runs — runtime, staging and production evidence.
+7. Completed implementation plans — historical execution evidence only.
+
+When strategy and current maturity appear to conflict: **strategy determines where the platform is going; this current-status document determines what the repository is ready to do now.**
