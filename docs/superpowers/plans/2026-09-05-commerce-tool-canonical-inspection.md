@@ -65,6 +65,14 @@ internal/product/catalog/tools/canonicalinspect/
   executor_test.go
   conformance_test.go
 
+internal/product/catalog/
+  limits.go                                 # encoded snapshot 全局上限
+  publisher_test.go                         # publication 写前边界
+
+internal/integration/persistence/product/catalog/
+  repository.go                             # unmarshal/clone 前边界
+  repository_contract_test.go
+
 internal/commercetool/
   invocation_contracts.go                  # canonical Principal hardening
   invocation_test.go
@@ -283,6 +291,8 @@ git commit -m "feat(listing): expose scoped canonical subject reader"
 - viewer/未知角色拒绝；
 - nil authorizer 构造失败；
 - Commerce Tool Principal 拒绝 tenant/user/role 首尾空白，而不是只拒绝全空白。
+- 原始 Call.Arguments 在任何 clone/decode/PrincipalResolver 前执行 64 KiB exact/over-limit
+  检查；over-limit 返回 `invalid_input`，并断言 Resolver/Authorizer/Executor 均未调用。
 
 运行：
 
@@ -297,6 +307,8 @@ go test ./internal/integration/commercetoolauth ./internal/commercetool -run 'Te
 - Resolver 不读取 header、query、Tool JSON 或未验证的 legacy identity context；
 - Authorizer 不复制 policy，只委托现有 Casbin owner；
 - Commerce Tool Principal validation 拒绝非 canonical whitespace；
+- 在 `BoundToolSet.Invoke` 的最外层、`newInvocationState` 之前检查原始参数长度；不得先
+  复制超限字节再返回错误；
 - 不新增 permission；B0 使用 `authz.PermissionListingKitAdminRead` 的字符串值。
 
 **Step 3：验证**
@@ -317,7 +329,7 @@ git commit -m "feat(commercetool): adapt trusted listing identity"
 
 ---
 
-### Task 4：定义 Tool、严格 Schema 与安全投影
+### Task 4：定义 Tool、严格 Schema、安全投影与 Catalog 物化上限
 
 **文件：**
 
@@ -327,6 +339,10 @@ git commit -m "feat(commercetool): adapt trusted listing identity"
 - 新建：`internal/product/catalog/tools/canonicalinspect/schema_test.go`
 - 新建：`internal/product/catalog/tools/canonicalinspect/projection.go`
 - 新建：`internal/product/catalog/tools/canonicalinspect/projection_test.go`
+- 新建：`internal/product/catalog/limits.go`
+- 修改：`internal/product/catalog/publisher_test.go`
+- 修改：`internal/integration/persistence/product/catalog/repository.go`
+- 修改：`internal/integration/persistence/product/catalog/repository_contract_test.go`
 
 **Step 1：先写 Definition/Schema 失败测试**
 
@@ -368,19 +384,45 @@ go test ./internal/product/catalog/tools/canonicalinspect -run 'Test(Definition|
 - 1 MiB exact boundary 成功，超过 1 byte 失败且不截断；
 - 输出 JSON 不包含 Commerce Tool reserved authority field。
 
-**Step 3：实现 Definition、Schema 与 Projection**
+**Step 3：先写 Catalog encoded payload 边界失败测试**
+
+覆盖：
+
+- 8 MiB exact encoded snapshot publication 可进入现有 validation path；
+- 超过 8 MiB 在写入 transaction 前返回 `ErrInvalidSnapshot`；
+- repository 读取 exact-limit persisted JSON 可进入 decode path；
+- over-limit persisted JSON 在 unmarshal 和 `CloneProductSnapshot` 前失败；
+- guard 同时覆盖 current 和 versioned read；
+- 超限失败不改变 snapshot head/version rows；
+- 不把 Catalog 8 MiB 上限误用为 Tool 1 MiB 输出上限。
+
+运行：
+
+```powershell
+go test ./internal/product/catalog ./internal/integration/persistence/product/catalog -run 'Test.*Snapshot.*Size|Test.*Encoded.*Limit' -count=1 -v
+```
+
+预期：当前 publication/read 尚无 encoded payload 上限。
+
+**Step 4：实现 Definition、Schema、Projection 与 Catalog guard**
 
 - 复用 `catalog.CloneProductSnapshot`；
 - 类型只用于 wire projection，不提供 persistence/write conversion；
 - Output 中不包含 TenantID/OwnerUserID；
 - Schema 使用现有 Registry compiler，不引入 schema generator 依赖。
+- `catalog.MaxEncodedSnapshotBytes` 固定为 8 MiB；publication 在 repository transaction
+  前验证，persistence reader 在 JSON decode/clone 前验证；
+- Tool output 仍固定 1 MiB，不能因 Catalog 上限较大而放宽。
 
-**Step 4：验证并提交**
+**Step 5：验证并提交**
 
 ```powershell
 gofmt -w internal/product/catalog/tools/canonicalinspect
 go test ./internal/product/catalog/tools/canonicalinspect -run 'Test(Definition|InputSchema|OutputSchema|SchemaParity|Projection)' -count=1
-git add internal/product/catalog/tools/canonicalinspect
+go test ./internal/product/catalog ./internal/integration/persistence/product/catalog -run 'Test.*Snapshot.*Size|Test.*Encoded.*Limit' -count=1
+git add internal/product/catalog/tools/canonicalinspect internal/product/catalog/limits.go
+git add internal/product/catalog/publisher_test.go internal/integration/persistence/product/catalog/repository.go
+git add internal/integration/persistence/product/catalog/repository_contract_test.go
 git commit -m "feat(product): define canonical inspection tool contract"
 ```
 
@@ -408,6 +450,8 @@ git commit -m "feat(product): define canonical inspection tool contract"
 - repository unavailable 映射 `dependency_unavailable`；
 - state invalid/unknown error 不泄露 cause，映射 `internal`；
 - context canceled 后不调用下一个 Reader；
+- 3 秒 Definition timeout 只描述 Executor；input/output schema 分别由 64 KiB/1 MiB
+  上限约束，audit 使用独立 AuditTimeout；
 - 每个 Reader 最多一次调用；
 - projection over limit 返回 `failed_precondition`；
 - 成功结果没有 AIInvocationID。
@@ -645,6 +689,9 @@ PR 交付说明必须包含：
 - [ ] 输出是深复制只读投影，严格 Schema、无保留 authority 字段、最多 1 MiB。
 - [ ] diagnostics 只投影 Catalog Review/Warnings，不猜 marketplace readiness。
 - [ ] timeout/cancellation 传播，Executor 不重试。
+- [ ] raw Arguments 在 clone/decode 前受 64 KiB 上限保护。
+- [ ] Catalog encoded snapshot 在 unmarshal/clone 前受 8 MiB 上限保护。
+- [ ] 3 秒合同准确描述 Executor，不误称整个 Invoke wall-clock timeout。
 - [ ] 真实 SQLite + Casbin + Registry conformance tests 通过。
 - [ ] 调用前后业务数据不变。
 - [ ] 聚焦、race、vet、depguard/code-health 与可运行的全仓验证有 exact evidence。

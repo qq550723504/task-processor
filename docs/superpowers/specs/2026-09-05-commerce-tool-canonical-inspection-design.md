@@ -2,7 +2,12 @@
 
 ## 1. 状态与结论
 
-状态：`ARCHITECTURE_REVIEW_PENDING`
+状态：`IMPLEMENTATION_READY`
+
+独立评审：PR #295，commit `1086e5c176ea0bd98b0ac69e47b70b0083a4f6a5`。
+Code Review 与 Security Review 已完成，没有 Blocker。三项 P2 均按
+`IMPLEMENTATION_TEST` 纳入本文资源合同和实施计划，不重新打开已批准的所有权、权限或
+一致性架构。
 
 本设计是
 `docs/superpowers/specs/2026-08-31-commerce-tool-foundation-design.md`
@@ -51,6 +56,8 @@ version: v1.0.0
 ### 2.2 Must
 
 - 输入 JSON 只有 `task_id`，且必须与 `CallMetadata.BusinessTaskID` 精确一致。
+- 原始 `Call.Arguments` 在任何 clone、JSON decode、Schema validation、身份解析或
+  Executor 调用前执行 64 KiB 全局上限检查。
 - 每次调用都重新解析可信 Principal、执行 Tool permission 检查，并在 task 查询边界
   再执行 tenant/owner 过滤。
 - tenant admin 和 platform admin 只能绕过当前 tenant 内的 owner 过滤，不能跨 tenant。
@@ -106,7 +113,7 @@ version: v1.0.0
 - 使用自己可见的调用上下文读取其他 tenant 或同 tenant 其他 owner 的任务；
 - `task_id` 与审计 `BusinessTaskID` 不一致造成 confused deputy 或审计错位；
 - Repository 错误返回错误 tenant/owner subject 后 Tool 未二次校验；
-- 超长输入或超大 Snapshot 消耗不受控内存；
+- 超长原始 invocation 或超大持久化 Snapshot 消耗不受控内存；
 - repository timeout、cancellation 或临时不可用被错误映射为可重试/不可重试状态；
 - source metadata 中未来出现 Commerce Tool 保留字段，导致权威信息进入模型输出；
 - Tool 直接导入 ListingKit DTO、GORM、Provider SDK 或 Agent Framework，形成永久耦合。
@@ -274,6 +281,9 @@ Schema 要求：
   metadata key 绕过保留字段策略；
 - 输出序列化上限为 1 MiB，与仓库现有 Agent snapshot 边界一致。超过上限返回
   `failed_precondition`，不得截断后伪装为完整商品；
+- Catalog 对新 publication 和持久化读取统一执行 8 MiB encoded snapshot 上限。写入时
+  在持久化前检查，读取时在 JSON unmarshal/clone 前检查；Tool 自己仍执行更严格的
+  1 MiB 输出上限；
 - Output Schema 必须严格声明全部返回字段并禁用 additional properties。
 
 ### 6.4 Business Task Binding
@@ -344,7 +354,15 @@ fallback，并且没有副作用；它不承诺 legacy current-read 永久返回
 - tenant ID：沿用 task storage 上限 64 bytes；
 - user ID：沿用 task storage 上限 128 bytes；
 - roles：最多 32 项，每项最多 128 bytes；
-- Tool timeout：3 秒，包含 task read、catalog read、projection 和 schema validation；
+- 原始 `Call.Arguments`：最多 64 KiB，且必须在 clone/decode 前拒绝；
+- Tool execution timeout：3 秒，从 input schema/permission preflight 完成后开始，覆盖
+  task read、catalog read、projection 和序列化；Executor 在每个 CPU 阶段后重新检查
+  context；
+- input schema validation 位于 execution timeout 之前，output schema validation 位于
+  execution timeout 之后。两者分别被 64 KiB raw input 与 1 MiB output 上限约束；不得
+  把 Definition 的 3 秒描述为整个 `BoundToolSet.Invoke` 的严格 wall-clock 上限；
+- audit 使用 Registry 已有独立 `AuditTimeout`，不占用 3 秒 execution timeout；
+- Catalog encoded snapshot：最多 8 MiB，read 必须在 unmarshal/clone 前检查；
 - 输出：最多 1 MiB，超限不截断；
 - Reader 调用次数：每次最多一次 task read 和一次 catalog read；
 - 不调用网络、模型、消息队列、Temporal、文件系统或 cache；
@@ -381,6 +399,8 @@ B0 不新增第三方依赖：
 | diagnostics 不创建 marketplace rules | projection tests只比较 Review/Warnings |
 | output 无保留字段和任意 metadata | nested reserved metadata fixture |
 | cancellation/deadline 有界 | blocking Reader + Registry timeout test |
+| raw invocation 有界 | 64 KiB exact/over-limit test，断言 PrincipalResolver 未调用 |
+| Catalog 物化有界 | publication 与 raw persisted JSON exact/over-limit tests |
 | output size 有界 | exact limit / over limit tests |
 | 无模型或外部依赖 | import guard + conformance test |
 
@@ -443,3 +463,32 @@ Backlog。
 - task-scoped Port、owner/tenant 行为和 legacy version 语义明确；
 - 权威 owner、错误映射、资源边界和验证证据完整；
 - 没有引入新的通用框架或第二套权限/持久化实现。
+
+### 15.1 Round 1 Finding 分类
+
+```text
+Finding: 原始 Call.Arguments 在 task_id 校验前可能被完整 clone/decode。
+Product requirement affected: 请求大小与资源耗尽边界。
+Classification: IMPLEMENTATION_TEST
+Reason: 问题真实，但不改变 B0 的 owner、权限或状态模型；可由 Registry 入口的全局
+        64 KiB 前置检查和调用次数测试收敛。
+Action: Task 3 先写 exact/over-limit 测试，再在任何 clone/decode 前拒绝。
+
+Finding: Tool 的 1 MiB 输出检查发生在 Catalog 已 unmarshal/clone 持久化 JSON 之后。
+Product requirement affected: 持久化读取的资源耗尽边界。
+Classification: IMPLEMENTATION_TEST
+Reason: 问题真实，但不要求新增事务或恢复机制；Catalog publication/read 的 encoded
+        payload guard 可以在实现阶段验证。
+Action: Task 4 增加 8 MiB Catalog 写前与读前 guard，并保留 Tool 1 MiB 输出 guard。
+
+Finding: Definition 的 3 秒 timeout 当前不覆盖 input/output schema validation。
+Product requirement affected: timeout/deadline 的准确合同。
+Classification: IMPLEMENTATION_TEST
+Reason: 当前 Registry 明确在 preflight 后建立 execution deadline；输入输出已有独立
+        字节上限，没必要为 B0 改写全局调用状态机。
+Action: 将合同明确为 3 秒 Executor timeout；测试 schema 阶段的独立字节边界和 audit
+        timeout，不宣称严格端到端 3 秒。
+```
+
+Security Review 没有 finding。以上三项均不命中 AGENTS.md 的 Blocker 后果，设计达到
+`IMPLEMENTATION_READY`。
