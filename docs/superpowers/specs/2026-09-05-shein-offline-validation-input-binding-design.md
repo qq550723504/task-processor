@@ -91,7 +91,7 @@ task_id 仅资源定位符，不重建 Task-first Product 或 Task Dashboard；�
 
 1. **已有** `server_auth` 的 workbenchAuthenticationMiddleware → `authruntime/zitadel.Verifier` 验证 token/subject/expiry；清除伪造身份头。
 2. **提案 route 声明** `OrganizationAccessPolicyCachedRead`，复用 **已有** `workbenchcontext.Resolver.Resolve`。`X-Requested-Organization-ID` 是既有选择器，按 verified grants 选择 EffectiveOrganization；Home=A 可选择被授权的 B，TenantID 必须等于 B，roles 只取 B。selector 缺省时沿用已批准默认选择：优先有 grant 的 Home，否则唯一获授权组织；多组织且无合法默认才要求显式选择。resolver 无法决定有效组织、无授权、过期或依赖失败时，在业务读取前失败关闭。遵守既有 60 秒缓存/撤权和 suspension deny overlay，不新增 IAM 或零缓存要求。
-3. **提案 role 装配**使用既有 read permission（viewer/operator/admin 读取能力），不靠 URL 自动匹配默认通过；route 测试验证具体授权映射。构造 `listing/task.Actor{TenantID: effectiveOrg, UserID: verifiedSubject, Roles: effectiveRoles}`，要求非空、匹配 verified identity，不调用 legacy requestContext/default tenant。系统管理员也先有 B grant，仅在 B 内按现有 TenantAdminChecker 决定 owner bypass。
+3. **提案 role 装配**显式声明既有 `authz.PermissionListingKitAdminRead`（`listingkit.admin.read`），不靠新 URL 自动匹配默认通过。[现有策略](../../../internal/authz/listingkit.go) 向 `listingkit_operator` / `listingkit_admin` 授此权限；普通 `listingkit_viewer` 只有 Store read，必须拒绝，不能拿 `workbench.store.read` 授资料包访问。本片没有 viewer 可读的产品要求，不新增权限或 role mapping；将来需要 viewer 访问须单独产品批准。route 测试验证具体授权映射。构造 `listing/task.Actor{TenantID: effectiveOrg, UserID: verifiedSubject, Roles: effectiveRoles}`，要求非空、匹配 verified identity，不调用 legacy requestContext/default tenant。系统管理员也先有 B grant，仅在 B 内按现有 TenantAdminChecker 决定 owner bypass。
 4. **未实现窄 port**由 `internal/listing/diagnostic` 拥有 `ReadOfflinePackage(ctx, actor, taskID)`，返回不可变持久 package bytes、exact row resource/org/owner 及已存在的相关 evidence；不扩 CanonicalSubject 为万能 reader。持久 adapter 复用严格 actor SQL/返回后校验模式。查询先 WHERE id AND verified organization AND owner 条件；admin 只可省 owner，不省 org。缺可信 owner 同样拒绝，不能退回 Request.UserID。返回后再检 task ID、org、owner，防错误替身/适配器。
 5. **D1 未满足**：所读行的 org 字段必须来自可证明的当前记录创建合同，不能仅靠 SQL tenant 字符串等于 selector。没有该前提就不加载旧敏感包，不静默回退 Legacy reader。若原表不具备可区分的可信记录集合，当前 adapter 不得在该表开放查询；需要协调方先指定当前生产者/存储准入边界，而不是本设计自造 allowlist 或 provenance 表。
 6. **未实现**当前 Listing 诊断 service 对一次读取副本执行 §3 内容绑定 → Marketplace v2 evaluator → scoped DTO。当前 owner 不导入 root ListingKit/tenantbridge/compatibility。HTTP composition 仅装配；底层既有 legacy store 文件可向当前 port 实现接口作为 EXTRACT，但只能在 D1 证明可用且不新增 legacy consumer/import baseline 时实施，否则独立前置决定适配位置。
@@ -113,11 +113,12 @@ task_id 仅资源定位符，不重建 Task-first Product 或 Task Dashboard；�
 
 ## 6. 具体示例与验证矩阵
 
-隔离 happy path：临时 fixture 的受控创建者明确用 verified Effective=B、subject=U 写入规范 B/U 行 T 和持久 package P（无外部 evidence）；请求用户 Home=A，B 中有 viewer grant。resolver 得 B → scoped reader 仅选 B/U/T → 解码 P → hash H → v2 publish 结构规则无 blocker → HTTP 200，offline_checks ready，external_freshness not_evaluated，diagnostic_only true，缺失在线/资产审批 coverage 明列。这证明设计可表达成功，不证明实际业务生产者已存在；D1 不因 fixture 消失。
+隔离 happy path：临时 fixture 的受控创建者明确用 verified Effective=B、subject=U 写入规范 B/U 行 T 和持久 package P（无外部 evidence）；请求用户 Home=A，B 中有 `listingkit_operator` grant。resolver 得 B → `listingkit.admin.read` 通过 → scoped reader 仅选 B/U/T → 解码 P → hash H → v2 publish 结构规则无 blocker → HTTP 200，offline_checks ready，external_freshness not_evaluated，diagnostic_only true，缺失在线/资产审批 coverage 明列。这证明设计可表达成功，不证明实际业务生产者已存在；D1 不因 fixture 消失。
 
 | 场景 | 预期/后续验证 owner |
 | --- | --- |
-| Home A，选择 B，B viewer，自己的当前可信行 | resolver + handler + SQL 集成成功；A 的 admin 不带入 B |
+| Home A，选择 B，B operator，自己的当前可信行 | resolver + 显式 Listing read permission + SQL 集成成功；A 的 admin 不带入 B |
+| B 只有 viewer/Store read，即便拥有行或 Home A 为 admin | 403 且 reader 不调用；不能把 Store capability 当 Listing 访问许可 |
 | 无 B grant / 缺角色 / 缺身份 / 多组织无合法默认 | 在调用 reader 前失败；伪造 body/header tenant 无效；selector 缺省但有合法 Home/唯一组织时正常解析 |
 | B grant + A 资源 ID；B 他人资源；管理员无 B grant | org/owner SQL 不返回正文，统一资源不可读；admin 不跨 org |
 | legacy 空/数字 tenant、归属无证明或未知 owner | 不访问旧包；不把 numeric 文本与 Organization 数字 ID 相等当证明 |
