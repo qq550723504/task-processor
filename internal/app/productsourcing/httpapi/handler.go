@@ -25,19 +25,26 @@ var ErrAccessDenied = errors.New("source import access denied")
 var ErrInvalidImport = errors.New("invalid source import")
 
 type ImportRequest struct {
-	URL             string                            `json:"url"`
-	Product         *a1688.Alibaba1688ProductSnapshot `json:"product"`
-	RawSnapshot     string                            `json:"raw_snapshot,omitempty"`
-	SourceRunID     string                            `json:"source_run_id,omitempty"`
-	RequestID       string                            `json:"request_id,omitempty"`
-	SourceAccountID int64                             `json:"source_account_id,omitempty"`
-	StoreID         string                            `json:"store_id"`
+	URL         string                  `json:"url"`
+	Product     *productSnapshotRequest `json:"product"`
+	RawSnapshot string                  `json:"raw_snapshot,omitempty"`
+	SourceRunID string                  `json:"source_run_id,omitempty"`
+	RequestID   string                  `json:"request_id,omitempty"`
+	// Required selector: explicit zero is public; positive is account access.
+	SourceAccountID *int64 `json:"source_account_id"`
+	StoreID         string `json:"store_id"`
 }
 
 type ImportCommand struct {
-	ImportRequest
-	OrganizationID string
-	ActorID        string
+	URL             string
+	Product         *a1688.Alibaba1688ProductSnapshot
+	RawSnapshot     string
+	SourceRunID     string
+	RequestID       string
+	SourceAccountID int64
+	StoreID         string
+	OrganizationID  string
+	ActorID         string
 }
 
 type ImportResult struct {
@@ -114,7 +121,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if request == nil || request.SourceAccountID < 0 || strings.TrimSpace(request.URL) == "" || request.Product == nil || strings.TrimSpace(request.StoreID) == "" {
+	if request == nil || request.SourceAccountID == nil || *request.SourceAccountID < 0 || strings.TrimSpace(request.URL) == "" || request.Product == nil || strings.TrimSpace(request.StoreID) == "" {
 		writeError(w, 400, "invalid_request")
 		return
 	}
@@ -122,7 +129,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 504, "import_deadline_exceeded")
 		return
 	}
-	result, err := h.importer.Import(ctx, ImportCommand{ImportRequest: *request, OrganizationID: identity.EffectiveOrganizationID, ActorID: identity.UserID})
+	product := request.Product.toSnapshot()
+	result, err := h.importer.Import(ctx, ImportCommand{
+		URL: request.URL, Product: &product, RawSnapshot: request.RawSnapshot,
+		SourceRunID: request.SourceRunID, RequestID: request.RequestID,
+		SourceAccountID: *request.SourceAccountID, StoreID: request.StoreID,
+		OrganizationID: identity.EffectiveOrganizationID, ActorID: identity.UserID,
+	})
 	if err != nil || ctx.Err() != nil {
 		switch {
 		case ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled):
@@ -144,7 +157,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(importResponse{
+		Publication: result.Publication, SourceWarnings: result.SourceWarnings,
+		SourceIdentity: sourceIdentityResponse{
+			SourceType: result.SourceIdentity.SourceType, SourcePlatform: result.SourceIdentity.SourcePlatform,
+			SourceID: result.SourceIdentity.SourceID, SourceURL: result.SourceIdentity.SourceURL,
+			SourceVersion: result.SourceIdentity.SourceVersion, SourceFingerprint: result.SourceIdentity.SourceFingerprint,
+		},
+	})
+}
+
+type importResponse struct {
+	Publication    catalog.PublishedSnapshot `json:"publication"`
+	SourceIdentity sourceIdentityResponse    `json:"source_identity"`
+	SourceWarnings []sourcing.SourceWarning  `json:"source_warnings,omitempty"`
+}
+
+// Deliberately project only current source facts, without legacy normalization.
+type sourceIdentityResponse struct {
+	SourceType        string `json:"source_type"`
+	SourcePlatform    string `json:"source_platform"`
+	SourceID          string `json:"source_id"`
+	SourceURL         string `json:"source_url"`
+	SourceVersion     string `json:"source_version"`
+	SourceFingerprint string `json:"source_fingerprint"`
 }
 
 func writeError(w http.ResponseWriter, status int, code string) {

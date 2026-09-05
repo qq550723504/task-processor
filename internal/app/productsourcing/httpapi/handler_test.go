@@ -28,7 +28,7 @@ func TestImportHTTPReportsConflictAndSafeSourceWarnings(t *testing.T) {
 			return ImportResult{SourceWarnings: []sourcing.SourceWarning{{Code: "missing_title", Field: "title", Message: "title unavailable"}}}, test.err
 		}))
 		out := httptest.NewRecorder()
-		h.ServeHTTP(out, httptest.NewRequest("POST", "/unregistered", strings.NewReader(`{"url":"x","product":{},"store_id":"s"}`)).WithContext(requestContext()))
+		h.ServeHTTP(out, httptest.NewRequest("POST", "/unregistered", strings.NewReader(`{"url":"x","product":{},"source_account_id":0,"store_id":"s"}`)).WithContext(requestContext()))
 		if out.Code != test.status || strings.Contains(out.Body.String(), "private dependency details") {
 			t.Fatalf("status/body=%d %s", out.Code, out.Body.String())
 		}
@@ -102,7 +102,7 @@ func TestImportHTTPUsesEffectiveIdentityAndBoundedDeadline(t *testing.T) {
 		}
 		return ImportResult{}, nil
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/unregistered", strings.NewReader(`{"url":"https://detail.1688.com/offer/123.html","product":{"ID":"123","Title":"Bottle"},"store_id":"store-1"}`)).WithContext(requestContext())
+	req := httptest.NewRequest(http.MethodPost, "/unregistered", strings.NewReader(`{"url":"https://detail.1688.com/offer/123.html","product":{"id":"123","title":"Bottle"},"source_account_id":0,"store_id":"store-1"}`)).WithContext(requestContext())
 	out := httptest.NewRecorder()
 	handler.ServeHTTP(out, req)
 	if out.Code != 200 || calls != 1 {
@@ -134,7 +134,7 @@ func TestImportHTTPRejectsInvalidInputBeforeImport(t *testing.T) {
 }
 
 func TestImportHTTPAcceptsExactLimitAndRejectsOneMoreByte(t *testing.T) {
-	payload := `{"url":"https://detail.1688.com/offer/123.html","product":{"ID":"123"},"store_id":"store-1","raw_snapshot":""}`
+	payload := `{"url":"https://detail.1688.com/offer/123.html","product":{"id":"123"},"source_account_id":0,"store_id":"store-1","raw_snapshot":""}`
 	for _, extra := range []int{0, 1} {
 		body := payload + strings.Repeat(" ", MaxImportBytes-len(payload)+extra)
 		if !json.Valid([]byte(body)) {
@@ -163,7 +163,7 @@ func TestImportHTTPPreservesEarlierDeadlineAndCancellation(t *testing.T) {
 		return ImportResult{}, ctx.Err()
 	}))
 	out := httptest.NewRecorder()
-	h.ServeHTTP(out, httptest.NewRequest("POST", "/unregistered", strings.NewReader(`{"url":"x","product":{},"store_id":"s"}`)).WithContext(parent))
+	h.ServeHTTP(out, httptest.NewRequest("POST", "/unregistered", strings.NewReader(`{"url":"x","product":{},"source_account_id":0,"store_id":"s"}`)).WithContext(parent))
 	if out.Code != 504 {
 		t.Fatalf("status = %d", out.Code)
 	}

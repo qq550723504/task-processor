@@ -23,7 +23,9 @@ func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
 // Replace this with the old-route/import absence guard only after ownership
 // cutover review and controlled application acceptance.
 func TestIssue30PreparedHTTPContractIsNotWiredBeforePrerequisite(t *testing.T) {
-	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "app", "httpapi"), []string{"task-processor/internal/app/productsourcing"}, nil)
+	for _, root := range []string{"internal", "cmd"} {
+		assertNoBannedImportPrefixes(t, filepath.Join("..", root), []string{"task-processor/internal/app/productsourcing"}, nil)
+	}
 }
 
 func TestIssue30LegacyImportGuardDetectsAliasesAndSubpackages(t *testing.T) {

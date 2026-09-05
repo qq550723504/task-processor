@@ -35,6 +35,10 @@ substitute for application authorization, and its fake Importer is test-only.
 
 ## BLOCKED
 
+- Publication Identity Cutover is a production rollout BLOCKER: no-run retries
+  spanning the historical checksum ID and prepared canonical-snapshot ID append
+  duplicate publication/version facts. This is reproduced, NOT repaired here.
+  See [the bounded prerequisite Issue draft](2026-09-05-publication-identity-cutover-issue-draft.md).
 - Source-account ownership cannot currently be validated directly against the
   effective Organization. Existing account repository/crawler ownership is
   numeric. The accepted finding remains BLOCKER.
@@ -90,7 +94,8 @@ Required semantics:
   rechecks its command identity against that context and uses the same effective
   Organization for Store, source account and Catalog `TenantID`. No fallback to
   TenantID/HomeOrganizationID or parsing an Organization ID as an integer.
-- AccountID zero explicitly selects public access. A negative ID is invalid.
+- HTTP source_account_id is required: omission and null are invalid. Explicit
+  AccountID zero selects public access. A negative ID is invalid.
   A positive unavailable/disabled/deleted/wrong-platform/wrong-owner account fails
   closed; it must never fall back to public access. Missing validator fails closed.
 - Access success returns exactly the requested Organization/account/platform and
@@ -123,23 +128,69 @@ acceptance, production route switch, merge or deployment is claimed.
 `go vet` and `golangci-lint run --new-from-rev=origin/main` passed for the four
 changed production packages (sourcing, Store Center, readiness and prepared HTTP).
 
-The broader `go test ./tests -count=1` finished in 195 seconds with exactly three
-documentation guard failures:
-
-- `TestPhase2ClosureDocumentsRuntimeOwnershipAndDeferredDebt`
-- `TestCommerceToolBoundaryDocumentsDefineNeutralRegistryOwnership`
-- `TestCommerceToolCanonicalInspectionGovernanceIsRecorded`
-
-Finding classification: BACKLOG, outside #30. The two documents and both test
-source files involved have no diff from main `2fd42cc06`; the failures assert
-missing text in `module-target-mapping.md` / `project-target-architecture.md`.
-The same three tests fail when run alone. #303 independently reports the same
-baseline failures. The full architecture suite is therefore **not green**;
-the focused #30 and Product/1688 boundary guards passed. No unrelated document
-rewrite was included to make this preparation PR appear green.
+The previous three documentation guard failures were recorded against old main
+2fd42cc06. R1-B merged current main 1b82592e1, including #302 and #305.
+That historical baseline-failure classification is superseded: current checks
+must be assessed on the final PR HEAD and reported in the PR evidence.
 
 Legacy decision: EXTRACT (prepared behavior); RETIRE is waiting for prerequisite.
 Reusable behavior: deterministic source/publication identity, bounded keys,
 validated Store access, explicit asset/readiness and HTTP contracts.
 Current owner: Product sourcing, Store Center, Listing readiness, Application HTTP.
 Cutover/deletion condition: prerequisite plus current-account application acceptance.
+
+## R1-B prepared HTTP contract and rollout boundary
+
+Baseline: remote PR HEAD 5704828ded; merged main 1b82592e1 without rewriting history.
+This is a bounded transport correction plus characterization tests/documents;
+no authorization implementation, persistent state transition or migration changes.
+
+- HTTP owns the snake_case snapshot DTO and explicitly maps all current fields,
+  including main_image, min_price, product_details and nested supplier/video/
+  variant/pack/shipping fields. The local-agent protocol is the reference; its
+  production handler is unchanged. Handwritten JSON fixture is protocol-shaped,
+  not serialized from the integration Go model.
+- Exactly one access selector: required numeric source_account_id. Zero explicitly
+  means public; positive int64 means account. Omission, null, negative, fractional,
+  string, overflow and alternate access_mode/public fields return 400
+  invalid_request without invoking Importer. Failed account access returns 403
+  source_access_denied and is never retried as public. Store ID is still required.
+- source_identity exposes exactly source_type, source_platform, source_id,
+  source_url, source_version and source_fingerprint, including empty values.
+  It never serializes or fills fields from legacy Platform/Region/ProductID/StoreID.
+- Strict unknown-field/trailing JSON rejection, exact 2 MiB limit, connection read
+  deadline, maximum 30 seconds and earlier cancellation/deadline remain enforced.
+- ImportCommand carries the converted integration snapshot; ImportResult is
+  projected into HTTP response DTOs. No production Importer is implemented.
+
+Finding: snapshot wire format cannot be consumed.
+Product requirement affected: controlled snapshot import.
+Classification: IMPLEMENTATION_TEST within the unregistered prepared slice.
+Reason: DTO translation resolves the transport defect without changing domain or
+authorization design; the core production path remains blocked separately.
+Action: red snake_case fixture, explicit mapper, green focused HTTP tests.
+
+Finding: omission/null selects public and SourceIdentity leaks legacy fields.
+Product requirement affected: explicit source access and source-neutral contract.
+Classification: IMPLEMENTATION_TEST.
+Reason: correct the unregistered wire contract before any cutover; no new access
+policy or compatibility obligation is introduced.
+Action: required selector and exact allowlist response tests, red then green.
+
+Finding: cross-cutover publication ID changes.
+Product requirement affected: idempotent retry and immutable Catalog publication.
+Classification: BLOCKER for production rollout (unsafe rollout/migration).
+Action: durable restart reproduction and prerequisite draft; keep review open.
+No fallback or migration is implemented. Prepared-slice merge eligibility requires
+independent review accepting this isolation boundary; unwired code alone does not
+establish that approval or resolve the defect.
+
+Production inspection: app/httpapi/composition_builder.go and types.go still use
+the old handoff; the old route and composition have no changes against main.
+Production sourcing.PublicationIdentity callers are absent. The temporary guard
+now rejects imports of the prepared package throughout internal and cmd, rather
+than only internal/app/httpapi. Catalog/Store/readiness helpers remain unwired;
+their fixture checks are not live provider, PostgreSQL or #30 acceptance.
+
+Final HEAD test/CI receipts belong in the PR body and review replies so they can
+name the actual immutable commit, rather than embed a self-referential SHA here.
