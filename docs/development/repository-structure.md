@@ -107,6 +107,12 @@
   - `depguard: commercetool_boundaries` 对该目录全部生产 Go 文件使用 strict allowlist，禁止通过宽泛 `internal` 或 SDK 父命名空间绕过边界。
 - `internal/listing`
   - 平台中立的 Listing 子领域目标位置，当前包括 `preview`、`studio`、`submission` 等已抽出的稳定 seam。
+  - `internal/listing/task` 拥有 task-scoped resource resolution 合同；现有 ListingKit persistence adapter 可以实现该 Port，但调用方不能依赖 legacy Task DTO。
+- `internal/product/catalog/tools/canonicalinspect`
+  - `product.canonical.inspect` 是 Phase 2A 的只读 B0 Tool Adapter：通过 `internal/listing/task` 解析授权资源，只读取权威 `ProductSnapshot`，并输出严格、去除任意 authority metadata 的投影。
+  - 该包不拥有 task、repository、write/publish 能力、HTTP/worker/runtime；Phase 2B 之前没有用户可访问的 Agent Runtime。
+- `internal/integration/commercetoolauth`
+  - 只负责把 `authidentity.AuthenticatedIdentity` 和现有 Casbin owner 适配到 Commerce Tool contracts，不复制 IAM policy。
 - `internal/shein` / `internal/temu` / `internal/amazon`
   - 当前仍然存在的历史平台实现目录。
   - 本阶段不为目录一致性做大规模迁移，只在有明确所有权收益时逐步收口。

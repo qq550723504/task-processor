@@ -248,6 +248,18 @@ The import boundary is enforced by `depguard: commercetool_boundaries`, a
 strict allowlist that keeps application, domain, framework, transport,
 workflow, persistence, and provider implementations outside this owner.
 
+The first bounded vertical slice is `product.canonical.inspect`. It accepts a
+task ID, resolves the authorized task-to-product binding through the
+provider-neutral `internal/listing/task` query port, and reads the immutable
+`internal/product/catalog.ProductSnapshot`. The Tool adapter owns only strict
+wire projection and stable error mapping; it owns neither task persistence nor
+canonical product facts, and it receives no write or publish port.
+
+There is no user-accessible Tool or Agent runtime in Phase 2A. Runtime assembly,
+model orchestration, and public entrypoints remain gated on Phase 2B. The B0
+slice therefore proves domain and governance contracts without introducing an
+HTTP route, worker, queue, or second IAM implementation.
+
 ## 4. Strategic Architectural Decisions
 
 ### 4.1 Business-domain-first packaging
