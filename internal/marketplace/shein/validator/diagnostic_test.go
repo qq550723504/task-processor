@@ -199,3 +199,61 @@ func TestDiagnosticUnknownFreshnessReason(t *testing.T) {
 		t.Fatal("valid evidence labeled absent")
 	}
 }
+
+func TestDiagnosticAdverseEvidenceDetails(t *testing.T) {
+	for _, scenario := range []string{"stale", "expired", "expired_at_evaluation", "subject_mismatch", "partial"} {
+		t.Run(scenario, func(t *testing.T) {
+			req := diagnosticRequest(`{}`)
+			initial, err := (DiagnosticValidator{}).Validate(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Freshness = contract.ExternalFreshness{Status: contract.FreshnessValid, Coverage: []string{contract.ExternalPackageFreshness}, Evidence: &contract.FreshnessEvidence{SubjectDigest: initial.Input.Digest, Source: "owner", PolicyVersion: "v1", ObservedAt: req.ReadAt.Add(-time.Minute), ValidUntil: req.ReadAt.Add(time.Minute)}}
+			cause := scenario
+			switch scenario {
+			case "stale":
+				req.Freshness.Status = contract.FreshnessStale
+			case "expired":
+				req.Freshness.Status = contract.FreshnessExpired
+			case "partial":
+				req.Freshness.Status = contract.FreshnessStale
+				req.Freshness.Coverage = []string{"template_only"}
+				cause = "stale"
+			case "expired_at_evaluation":
+				req.Freshness.Evidence.ValidUntil = req.EvaluatedAt
+			case "subject_mismatch":
+				req.Freshness.Evidence.SubjectDigest = "sha256:" + strings.Repeat("b", 64)
+			}
+			got, err := (DiagnosticValidator{}).Validate(req)
+			var typed *contract.Error
+			if !errors.As(err, &typed) || typed.Code != contract.StaleInput || !reflect.DeepEqual(got, contract.DiagnosticResult{}) {
+				t.Fatal("bad rejection", err)
+			}
+			raw, _ := json.Marshal(typed)
+			var wire map[string]any
+			_ = json.Unmarshal(raw, &wire)
+			detail, ok := wire["freshness"].(map[string]any)
+			if !ok {
+				t.Fatal("missing structured stale details")
+			}
+			if detail["status"] != string(req.Freshness.Status) || !reflect.DeepEqual(detail["coverage"], []any{req.Freshness.Coverage[0]}) || !reflect.DeepEqual(detail["causes"], []any{cause}) {
+				t.Fatalf("lost cause/coverage: %s", raw)
+			}
+			req.Freshness.Coverage[0] = "caller changed"
+			after, _ := json.Marshal(typed)
+			if string(after) != string(raw) {
+				t.Fatal("error aliases caller evidence")
+			}
+		})
+	}
+}
+
+func TestDiagnosticClockRollbackIsEvaluationFailure(t *testing.T) {
+	req := diagnosticRequest(`{}`)
+	req.EvaluatedAt = req.ReadAt.Add(-time.Second)
+	got, err := (DiagnosticValidator{}).Validate(req)
+	var typed *contract.Error
+	if !errors.As(err, &typed) || typed.Code != contract.EvaluationFailed || !reflect.DeepEqual(got, contract.DiagnosticResult{}) {
+		t.Fatal("clock rollback code", err)
+	}
+}

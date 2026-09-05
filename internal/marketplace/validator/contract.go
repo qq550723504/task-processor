@@ -76,9 +76,10 @@ const (
 )
 
 type Error struct {
-	Code    ErrorCode `json:"code"`
-	Field   string    `json:"field"`
-	Message string    `json:"message"`
+	Code      ErrorCode         `json:"code"`
+	Field     string            `json:"field"`
+	Message   string            `json:"message"`
+	Freshness *FreshnessFailure `json:"freshness,omitempty"`
 }
 
 func (e *Error) Error() string { return string(e.Code) + ": " + e.Field + ": " + e.Message }

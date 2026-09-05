@@ -32,6 +32,13 @@ type ExternalFreshness struct {
 	Evidence *FreshnessEvidence `json:"evidence,omitempty"`
 }
 
+// FreshnessFailure preserves only bounded rejection metadata, not package data.
+type FreshnessFailure struct {
+	Status   FreshnessStatus `json:"status"`
+	Coverage []string        `json:"coverage"`
+	Causes   []string        `json:"causes"`
+}
+
 type BoundRequest[T any] struct {
 	Input          T
 	Target         Target
@@ -73,8 +80,11 @@ type DiagnosticResult struct {
 }
 
 func ValidateBoundInput(input BoundInput, expected string) error {
-	if !ValidContentDigest(input.Digest) || input.BindingVersion == "" || input.ReadAt.IsZero() || input.EvaluatedAt.IsZero() || input.EvaluatedAt.Before(input.ReadAt) {
+	if !ValidContentDigest(input.Digest) || input.BindingVersion == "" || input.ReadAt.IsZero() || input.EvaluatedAt.IsZero() {
 		return &Error{Code: InvalidInput, Field: "input", Message: "content identity and ordered explicit read/evaluation times are required"}
+	}
+	if input.EvaluatedAt.Before(input.ReadAt) {
+		return &Error{Code: EvaluationFailed, Field: "evaluated_at", Message: "evaluation clock precedes read time"}
 	}
 	if expected != "" && !ValidContentDigest(expected) {
 		return &Error{Code: InvalidInput, Field: "expected_digest", Message: "invalid content digest"}
@@ -117,8 +127,18 @@ func (f ExternalFreshness) Validate(digest string, evaluated time.Time) error {
 	if e == nil || len(f.Coverage) != 1 || !boundedIdentity(f.Coverage[0]) || !ValidContentDigest(e.SubjectDigest) || !boundedIdentity(e.PolicyVersion) || !boundedIdentity(e.Source) || e.ObservedAt.IsZero() || e.ValidUntil.IsZero() || evaluated.IsZero() || e.ObservedAt.After(evaluated) || !e.ValidUntil.After(e.ObservedAt) {
 		return invalid()
 	}
-	if e.SubjectDigest != digest || f.Status == FreshnessStale || f.Status == FreshnessExpired || !evaluated.Before(e.ValidUntil) {
-		return &Error{Code: StaleInput, Field: "external_freshness", Message: "freshness evidence is stale, expired or bound to different content"}
+	var causes []string
+	if f.Status == FreshnessStale || f.Status == FreshnessExpired {
+		causes = append(causes, string(f.Status))
+	}
+	if !evaluated.Before(e.ValidUntil) {
+		causes = append(causes, "expired_at_evaluation")
+	}
+	if e.SubjectDigest != digest {
+		causes = append(causes, "subject_mismatch")
+	}
+	if len(causes) != 0 {
+		return &Error{Code: StaleInput, Field: "external_freshness", Message: "freshness evidence is stale, expired or bound to different content", Freshness: &FreshnessFailure{Status: f.Status, Coverage: append([]string{}, f.Coverage...), Causes: causes}}
 	}
 	if f.Coverage[0] != ExternalPackageFreshness {
 		return invalid()
