@@ -537,6 +537,7 @@ func TestBuildConfigReadsTencentSMSWebhookCredentials(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID", "1400000000")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME", "ListingKit")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID", "100001")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_PHONE_VERIFICATION_EXPIRY_MINUTES", "60")
 
 	cfg := BuildConfig(newViper())
 
@@ -546,6 +547,7 @@ func TestBuildConfigReadsTencentSMSWebhookCredentials(t *testing.T) {
 	assert.Equal(t, "1400000000", cfg.ListingKit.Zitadel.SMS.TencentAppID)
 	assert.Equal(t, "ListingKit", cfg.ListingKit.Zitadel.SMS.TencentSignName)
 	assert.Equal(t, "100001", cfg.ListingKit.Zitadel.SMS.TencentTemplateID)
+	assert.Equal(t, 60, cfg.ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
 }
 
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {

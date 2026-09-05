@@ -50,10 +50,11 @@ type ListingKitZitadelConfig struct {
 }
 
 type ListingKitZitadelSMSConfig struct {
-	SigningKey        string `mapstructure:"signingKey" yaml:"signingKey"`
-	TencentSecretID   string `mapstructure:"tencentSecretID" yaml:"tencentSecretID"`
-	TencentSecretKey  string `mapstructure:"tencentSecretKey" yaml:"tencentSecretKey"`
-	TencentAppID      string `mapstructure:"tencentAppID" yaml:"tencentAppID"`
-	TencentSignName   string `mapstructure:"tencentSignName" yaml:"tencentSignName"`
-	TencentTemplateID string `mapstructure:"tencentTemplateID" yaml:"tencentTemplateID"`
+	SigningKey                     string `mapstructure:"signingKey" yaml:"signingKey"`
+	TencentSecretID                string `mapstructure:"tencentSecretID" yaml:"tencentSecretID"`
+	TencentSecretKey               string `mapstructure:"tencentSecretKey" yaml:"tencentSecretKey"`
+	TencentAppID                   string `mapstructure:"tencentAppID" yaml:"tencentAppID"`
+	TencentSignName                string `mapstructure:"tencentSignName" yaml:"tencentSignName"`
+	TencentTemplateID              string `mapstructure:"tencentTemplateID" yaml:"tencentTemplateID"`
+	PhoneVerificationExpiryMinutes int    `mapstructure:"phoneVerificationExpiryMinutes" yaml:"phoneVerificationExpiryMinutes"`
 }

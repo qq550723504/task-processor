@@ -57,6 +57,9 @@ type Config struct {
 	TemplateID string
 	SignName   string
 	AppID      string
+	// Optional template text only (0 disables, 1..60 minutes). Must match the
+	// ZITADEL phone-code generator at deployment; this never sets code validity.
+	PhoneVerificationExpiryMinutes int
 }
 
 type Service struct {
@@ -69,7 +72,7 @@ func NewService(config Config, sender Sender) (*Service, error) {
 		strings.TrimSpace(config.TemplateID) == "" ||
 		strings.TrimSpace(config.SignName) == "" ||
 		strings.TrimSpace(config.AppID) == "" ||
-		sender == nil {
+		sender == nil || config.PhoneVerificationExpiryMinutes < 0 || config.PhoneVerificationExpiryMinutes > 60 {
 		return nil, ErrInvalidConfiguration
 	}
 	return &Service{config: config, sender: sender}, nil
@@ -88,6 +91,12 @@ func (s *Service) Deliver(ctx context.Context, body []byte, signature string) er
 	params := []string{payload.Args.OTP}
 	if expiryMinutes := expiryMinutes(payload.Args.Expiry); expiryMinutes != "" {
 		params = append(params, expiryMinutes)
+	} else if payload.ContextInfo.EventType == "user.human.phone.code.added" &&
+		len(payload.Args.Expiry) == 0 && s.config.PhoneVerificationExpiryMinutes > 0 {
+		// Core v4.17.1 SendPhoneVerificationCode supplies Code and Domain, but
+		// no Expiry. An explicit deployment value supports two-parameter SMS
+		// templates without inventing a TTL for MFA or malformed native data.
+		params = append(params, strconv.Itoa(s.config.PhoneVerificationExpiryMinutes))
 	}
 	if err := s.sender.Send(ctx, Message{
 		Phone:      payload.ContextInfo.RecipientPhoneNumber,

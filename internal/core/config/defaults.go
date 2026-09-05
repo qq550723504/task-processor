@@ -63,6 +63,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("listingkit.zitadel.sms.tencentAppID", defaults.ListingKit.Zitadel.SMS.TencentAppID)
 	v.SetDefault("listingkit.zitadel.sms.tencentSignName", defaults.ListingKit.Zitadel.SMS.TencentSignName)
 	v.SetDefault("listingkit.zitadel.sms.tencentTemplateID", defaults.ListingKit.Zitadel.SMS.TencentTemplateID)
+	v.SetDefault("listingkit.zitadel.sms.phoneVerificationExpiryMinutes", defaults.ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
 	v.SetDefault("workbench.enabled", defaults.Workbench.Enabled)
 
 	setListingControlPlaneDefaults(v, defaults)
