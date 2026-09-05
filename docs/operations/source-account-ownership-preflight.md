@@ -12,9 +12,9 @@ The stored ProfileRef is currently only a marker; the actual directory is
 as opaque references in the receipt. Nothing is created, moved, deleted or launched.
 Missing profiles (including disabled/deleted accounts) block; resolve their retention
 and runtime history explicitly rather than creating empty replacement profiles. The
-preflight also compares filesystem identity across accounts, so two account paths that
-resolve to the same underlying browser profile (for example through a bind mount) fail
-closed even when the visible path names differ.
+preflight derives an indexable filesystem identity for each account profile and rejects
+duplicates, so two account paths that point to the same underlying browser profile (for
+example through a bind mount) fail closed without pairwise scanning across all accounts.
 
 Provide these environment variables through the existing secret mechanism:
 
@@ -43,7 +43,7 @@ connections and read-only command, preserves the caller's receipt path and propa
 failure. Direct `go run` invocation above is equivalent. The receipt path must be
 absolute, its directory must already exist, and it must be outside the browser profile
 root. Symlink/junction aliases in the receipt-parent path are rejected, and the receipt
-parent ancestry is compared with the verified profile root/tenant/account filesystem
+parent ancestry is compared with the indexed profile root/tenant/account filesystem
 identities so direct profile aliases cannot become evidence destinations. Use a new
 output name for each attempt. Default total deadline is two minutes (maximum ten); each
 collection is capped at 100,000 rows. Exceeding the bound fails closed rather than
@@ -62,13 +62,16 @@ not a signature or authorization to mutate data. B must take its own complete be
 
 The final receipt is published exclusively from a synced temporary file using a hard
 link. An existing final file is never overwritten; unsupported filesystems fail closed.
-Publication observes the command context before the final hard link and before reporting
-success. Cancellation before the final link leaves no final receipt; if cancellation is
-observed immediately after linking, the final link is removed before the command returns.
-A process interruption earlier can leave a `.ownership-receipt-*.pending` file. Such
-files are not receipts. Rerun with a new output path; no database rollback or profile
-recovery is needed. Power-loss durability of the directory entry depends on the
-filesystem; a missing final file is handled by rerunning the read-only command.
+`WriteReceipt` owns the publication success decision: it observes cancellation before
+the final hard link and immediately after it; if cancellation is observed after linking
+but before success is committed, it removes that final link and returns an error. A nil
+return commits this evidence publication; cancellation arriving after that boundary does
+not retroactively turn the completed publication into a failed invocation. This avoids a
+caller-side race between a successful receipt publication and a later context check. A
+process interruption earlier can leave a `.ownership-receipt-*.pending` file. Such files
+are not receipts. Rerun with a new output path; no database rollback or profile recovery
+is needed. Power-loss durability of the directory entry depends on the filesystem; a
+missing final file is handled by rerunning the read-only command.
 
 Validation blocks on missing, removed, duplicate or ambiguous ownership; invalid
 noncanonical metadata; invalid/duplicate account identity; absent/non-directory or
