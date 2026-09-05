@@ -3,6 +3,62 @@
 Baseline: main `2fd42cc061fd689184892380771cdf292abeacb9`.
 Branch: `codex/issue-30-product-sourcing`.
 
+## Current Product Decision — R3-B (2026-09-05)
+
+Authority: the user's explicit R3-B instruction, also supplied to Codex P's P2-R
+work on [#307](https://github.com/qq550723504/task-processor/issues/307):
+**“旧商品／资产／任务数据不需要保留”** (old product, asset and task data need not
+be retained). At R3-B intake, Codex P had acknowledged this decision but its
+replacement Product Decision document was not yet committed. This record cites
+the user decision directly; it does not invent a document URL or claim a main
+merge. Codex P owns #307 and its authoritative decision document; R3-B does not
+edit that Issue or implement its cutover work.
+
+This decision supersedes earlier legacy-history requirements in this record and
+the [historical prerequisite draft](2026-09-05-publication-identity-cutover-issue-draft.md):
+
+- Do not require preservation/migration of old ProductSnapshot, publication,
+  version, receipt, ApprovedAsset/business asset references, or old tasks/results.
+- Do not require historical many-to-one mapping, Product stream merging, or a
+  retry across the cutover to return an old publication/version.
+- New-system replay/conflict, tenant isolation and explicit asset approval remain
+  mandatory. Source images must not be approved implicitly.
+
+#307's execution direction is now a hard cut without retaining old business
+state. **Not retaining data is not authorization to delete arbitrary data.**
+Organization/IAM, membership/access, stores, source accounts, browser login
+state/profiles, credentials, plans/entitlements/billing, real orders and remote
+platform state remain protected by default. Actual environment and the permitted
+data scope must still be identified and separately authorized.
+
+Before a real cutover, #307 must establish bounded data/reset scope, isolation of
+old entrypoints/writers/workers/retries and late results, protection of retained
+data and outstanding external effects, and proof that old/new business state is
+not mixed. Old tasks need not complete or migrate. The new controlled import,
+explicit asset approval and readiness path must be verified. No such operation
+or production wiring is authorized by this prepared PR.
+
+Finding 3939575683: the technical evidence remains valid when old and new state
+coexist; the unchanged characterization demonstrates identical facts appended as
+version 2 after version 1. **Classification: NOT_APPLICABLE to the canceled
+legacy-record replay requirement for an approved and verified data-reset mode.**
+Disposition: superseded by Product Decision, **not FIXED_BY_MIGRATION**. The test
+remains evidence against mixing old/new state; it does not certify reset/cutover
+safety. Remaining execution-safety conditions belong to #307 and are not waived.
+
+Both temporary gates remain unchanged: no production import of prepared HTTP,
+and no production reference to PublicationIdentity. They prohibit unapproved
+production wiring, not merely wiring before a history-preserving migration. Only
+an independently approved cutover PR can replace them after the current scope,
+old-execution isolation and new-system acceptance conditions are satisfied.
+
+R3-B changes this record and PR/review dispositions only. R2-B implementation,
+algorithms, contracts, tests, production routes and current runtime behavior are
+unchanged. Prepared-only merge eligibility requires final-HEAD independent review
+of isolation, HTTP correctness, unchanged runtime and this Product Decision.
+Even when eligible: **PRODUCTION_CUTOVER_NOT_AUTHORIZED**. No automatic merge,
+Issue closure, real data/profile operation, #303 change or public baseline change.
+
 This is local contract evidence, **not Issue #30 completion or production
 acceptance**. The user accepted the independent-review source-account ownership
 BLOCKER and authorized only independent preparation. Production composition and
@@ -33,12 +89,12 @@ A timeout/response loss after commit requires replay with the same command and
 source-run identity. Catalog owns conflict detection. The HTTP handler is not a
 substitute for application authorization, and its fake Importer is test-only.
 
-## BLOCKED
+## PRODUCTION_CUTOVER_NOT_AUTHORIZED
 
-- Publication Identity Cutover is a production rollout BLOCKER: no-run retries
-  spanning the historical checksum ID and prepared canonical-snapshot ID append
-  duplicate publication/version facts. This is reproduced, NOT repaired here.
-  See [the bounded prerequisite Issue draft](2026-09-05-publication-identity-cutover-issue-draft.md).
+- #307 tracks the current no-retention hard-cut conditions above: actual scope,
+  old-execution isolation, no mixed business state and new-path acceptance.
+  Returning old publication/version is no longer an acceptance criterion for an
+  approved and verified reset. Historical coexistence evidence remains intact.
 - Source-account ownership cannot currently be validated directly against the
   effective Organization. Existing account repository/crawler ownership is
   numeric. The accepted finding remains BLOCKER.
@@ -55,8 +111,9 @@ is open and supplies source-account ownership **preflight slice A only**, under
 retirement (D) outstanding. A preflight receipt does not clear this blocker.
 
 1. Organization-owned source-account contract and one-time ownership migration.
-2. Verified handling of missing/ambiguous owner mapping, old crawler readers,
-   persisted in-flight work and browser-profile references.
+2. Verified handling of missing/ambiguous source-account owner mapping and old
+   crawler readers; preserve browser-profile references/login state. Terminate or
+   isolate old tasks/retries/late results rather than migrating or resuming them.
 3. Reviewed cutover baseline and its failure/restart/authorization evidence.
 4. Only then: implement and wire the application Importer, validate actual
    account/store access before publication and on replay, run controlled HTTP
@@ -141,6 +198,9 @@ Cutover/deletion condition: prerequisite plus current-account application accept
 
 ## R1-B prepared HTTP contract and rollout boundary
 
+Historical R1-B record: legacy-retention classifications below are superseded by
+the Current Product Decision above; original technical evidence is retained.
+
 Baseline: remote PR HEAD 5704828ded; merged main 1b82592e1 without rewriting history.
 This is a bounded transport correction plus characterization tests/documents;
 no authorization implementation, persistent state transition or migration changes.
@@ -221,8 +281,9 @@ It does not load only host-buildable packages or introduce a generic analyzer.
   comments/strings and another package's same-name symbol are not references.
 
 This gate is temporary while publication cutover lacks independent approval.
-Only an independently approved cutover PR may replace it, together with reviewed
-replay/conflict/migration evidence and production-composition acceptance. It is
+Only an independently approved cutover PR may replace it, together with current
+data-scope/old-execution isolation evidence, new-system replay/conflict and
+production-composition acceptance. It is
 not a permanent ban on the current Product owner. No publication/product-key
 algorithm or legacy baseline changed.
 
@@ -269,11 +330,13 @@ Importer/transport errors. R1-B strict input/size/deadline tests remain in place
 
 ### Review and rollout status
 
-3939575683 remains BLOCKED for production rollout. The version 1 -> 2
-characterization is not safe cutover acceptance. No Importer/route/old handoff,
-source-account B/C/D, #303 implementation, profile or business data is changed.
-Final HEAD independent review must answer whether the complete HTTP wire contract
-is closed, whether maintained production paths bypass either temporary gate, and
-whether the prepared-only slice can merge with the rollout blocker still open.
-Passing CI first establishes READY_FOR_REVIEW; MERGE_CANDIDATE requires that
-independent isolation approval and closure of blockers within this slice.
+R2-B was accepted as a bounded implementation delivery; its HEAD 5af37d1d2821a81c59276330350caf5f052d03ed
+passed CI and completed automated Code Review without major issues. Those are
+historical receipts for that exact HEAD, not a claim about a later documentation
+commit. R3-B uses the Current Product Decision above for finding 3939575683 and
+retains the version 1 -> 2 characterization without treating it as acceptance.
+Final-HEAD independent review must determine whether prepared-only isolation and
+the complete HTTP contract remain effective, runtime behavior is unchanged, the
+new decision is accurate, and this slice may merge before #307 executes.
+Do not reintroduce canceled retention requirements or unrelated hardening as merge
+gates. MERGE_CANDIDATE — PREPARED_ONLY does not authorize production cutover.
