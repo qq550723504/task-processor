@@ -102,7 +102,7 @@ func (application *ServiceLifecycleApplication) execute(ctx context.Context, com
 
 	maxQuantity, err := application.policy.MaxQuantity(ctx, identity.EffectiveOrganizationID, command)
 	if err != nil {
-		return ServiceOperationResult{}, dependencyError(err)
+		return application.replayBeforeTransientFailure(ctx, replay, dependencyError(err))
 	}
 	if err := validateServiceQuantity(request.Quantity, maxQuantity); err != nil {
 		return ServiceOperationResult{}, err
@@ -113,10 +113,10 @@ func (application *ServiceLifecycleApplication) execute(ctx context.Context, com
 		return ServiceOperationResult{}, ErrNotFound
 	}
 	if err != nil {
-		return ServiceOperationResult{}, dependencyError(err)
+		return application.replayBeforeTransientFailure(ctx, replay, dependencyError(err))
 	}
 	if store == nil || store.OrganizationID() != identity.EffectiveOrganizationID || store.ID() != request.StoreID {
-		return ServiceOperationResult{}, dependencyError(errors.New("Store lifecycle read identity mismatch"))
+		return application.replayBeforeTransientFailure(ctx, replay, dependencyError(errors.New("Store lifecycle read identity mismatch")))
 	}
 
 	connectionStatus := ConnectionStatus("")
@@ -128,10 +128,7 @@ func (application *ServiceLifecycleApplication) execute(ctx context.Context, com
 			ConnectionRef:  store.ConnectionRef(),
 		}, connectionStatusTimeout)
 		if connectionStatus == ConnectionStatusUnavailable {
-			if result, found, replayErr := application.executor.ReplayServiceLifecycle(ctx, replay); replayErr != nil || found {
-				return result, replayErr
-			}
-			return ServiceOperationResult{}, ErrConnectionUnavailable
+			return application.replayBeforeTransientFailure(ctx, replay, ErrConnectionUnavailable)
 		}
 	}
 
@@ -149,6 +146,13 @@ func (application *ServiceLifecycleApplication) execute(ctx context.Context, com
 		OccurredAt:            application.now().UTC(),
 		RequestFingerprint:    fingerprint,
 	})
+}
+
+func (application *ServiceLifecycleApplication) replayBeforeTransientFailure(ctx context.Context, replay ServiceReplay, fallback error) (ServiceOperationResult, error) {
+	if result, found, replayErr := application.executor.ReplayServiceLifecycle(ctx, replay); replayErr != nil || found {
+		return result, replayErr
+	}
+	return ServiceOperationResult{}, fallback
 }
 
 func (application *ServiceLifecycleApplication) authorize(ctx context.Context) (authidentity.AuthenticatedIdentity, error) {
