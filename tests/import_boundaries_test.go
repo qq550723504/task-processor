@@ -5503,3 +5503,58 @@ func assertNoBannedSelectorsOutside(t *testing.T, root, allowedRoot string, bann
 		})
 	}
 }
+
+// Parse tracked Go declarations across build tags and nested modules, including tests.
+func TestLegacyConsumersStayWithinDrainBaseline(t *testing.T) {
+	sources := trackedProductionTextSources(t, []string{"."}, func(path string) bool {
+		return strings.HasSuffix(path, ".go") && !strings.Contains("/"+path, "/testdata/")
+	})
+	violations, err := legacyConsumerViolations(sources, legacyConsumerBaseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range violations {
+		t.Errorf("new legacy consumer: %s; EXTRACT behavior to its current owner or RETIRE the dependency", edge)
+	}
+	edges, err := phase3BannedImportDeclarationViolations(sources, []string{"task-processor/internal/compatibility", "task-processor/internal/tenantbridge"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := make(map[string]bool, len(edges))
+	for _, edge := range edges {
+		actual[edge] = true
+	}
+	for edge := range legacyConsumerBaseline {
+		if !actual[edge] {
+			t.Errorf("drained legacy consumer: remove %s from baseline and depguard exclusions", edge)
+		}
+	}
+}
+
+func TestCurrentOwnersDoNotImportLegacyListingKitRoot(t *testing.T) {
+	sources := trackedProductionTextSources(t, []string{"internal"}, func(path string) bool {
+		for _, owner := range []string{"product", "listing", "marketplace", "agent", "commercetool", "console", "businesstask"} {
+			if strings.HasPrefix(path, "internal/"+owner+"/") {
+				return strings.HasSuffix(path, ".go") && !strings.Contains(path, "/testdata/")
+			}
+		}
+		return false
+	})
+	// The exact root is the mixed legacy service owner. Existing extracted leaf
+	// contracts such as listingkit/core are drained independently by #29.
+	for _, source := range sources {
+		file, err := parser.ParseFile(token.NewFileSet(), source.path, source.text, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, spec := range file.Imports {
+			imported, err := decodeGoImportPath(spec.Path.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if imported == "task-processor/internal/listingkit" {
+				t.Errorf("%s imports root ListingKit; EXTRACT behavior into the current owner instead of legacy fallback", source.path)
+			}
+		}
+	}
+}
