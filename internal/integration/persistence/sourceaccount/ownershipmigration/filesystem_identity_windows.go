@@ -25,6 +25,18 @@ func directoryFilesystemIdentity(path string, _ os.FileInfo) (string, error) {
 	if err := validateWindowsDriveType(windows.GetDriveType(&volume[0])); err != nil {
 		return "", err
 	}
+	information, err := windowsFilesystemObjectInformation(path)
+	if err != nil {
+		return "", err
+	}
+	return windowsFilesystemObjectIdentity(information), nil
+}
+
+func windowsFilesystemObjectInformation(path string) (windows.ByHandleFileInformation, error) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return windows.ByHandleFileInformation{}, err
+	}
 	handle, err := windows.CreateFile(
 		name,
 		windows.FILE_READ_ATTRIBUTES,
@@ -35,14 +47,18 @@ func directoryFilesystemIdentity(path string, _ os.FileInfo) (string, error) {
 		0,
 	)
 	if err != nil {
-		return "", err
+		return windows.ByHandleFileInformation{}, err
 	}
 	defer windows.CloseHandle(handle)
 	var information windows.ByHandleFileInformation
 	if err = windows.GetFileInformationByHandle(handle, &information); err != nil {
-		return "", err
+		return windows.ByHandleFileInformation{}, err
 	}
-	return fmt.Sprintf("%08x:%08x:%08x", information.VolumeSerialNumber, information.FileIndexHigh, information.FileIndexLow), nil
+	return information, nil
+}
+
+func windowsFilesystemObjectIdentity(information windows.ByHandleFileInformation) string {
+	return fmt.Sprintf("%08x:%08x:%08x", information.VolumeSerialNumber, information.FileIndexHigh, information.FileIndexLow)
 }
 
 func validateWindowsDriveType(driveType uint32) error {

@@ -25,7 +25,9 @@ below each account exactly once and rejects every descendant symbolic link witho
 following it. Relative, absolute, broken, looping and deeply nested links all block;
 entry/metadata errors and cancellation block as well. Repeated backing ranges belonging
 to the same account are allowed; overlap between distinct accounts blocks even within
-one Organization.
+one Organization. Regular files with multiple links are indexed by device/inode only
+when their link count exceeds one; the same identity may repeat inside one account but
+blocks if it appears under another account.
 
 Windows extends the existing no-symlink/alias rule to descendants: it walks directory
 entry metadata under each verified account and rejects junctions, symlinks and directory
@@ -34,6 +36,8 @@ are checked because a junction can appear as `ModeIrregular` with `IsDir=false` 
 directory enumeration. Ordinary directories and files remain supported; file contents
 are never opened. Entry/attribute inspection failures block, and cancellation is checked
 for each visited entry. Cost depends on the directory-entry inventory, not account pairs.
+Regular files with multiple links receive the equivalent Windows volume/file identity
+check, rejecting cross-account hard links while retaining same-account links.
 
 Provide these environment variables through the existing secret mechanism:
 
@@ -129,6 +133,7 @@ separate evidence:
 | Distinct account-root identities with overlapping backing subtrees or nested mounts | Reject | `TestPreflightRejectsLiveOverlappingProfileSubtrees`, `TestProfileSubtreeMountMatrix` |
 | Linux relative/absolute, root/deep, broken/looping descendant symlink | Reject without receipt or mutation | `TestPreflightRejectsLinuxDescendantSymlinksWithoutPublicationOrMutation`, `TestPreflightRejectsBrokenAndLoopingLinuxDescendantSymlinks` |
 | Ordinary Linux descendant directories/files; traversal cancellation/read error | Accept; cancel/reject | `TestLinuxProfileEntryWalkAcceptsOrdinaryEntries`, `TestLinuxProfileEntryWalkHonorsCancellationDuringTraversal`, `TestLinuxProfileEntryWalkFailsClosedOnReadError` |
+| Linux/Windows cross-account hard-linked profile file; same-account hard link | Reject; accept | `TestPreflightRejectsCrossAccountLinuxHardLinks`, `TestPreflightAcceptsSameAccountLinuxHardLinks`, `TestPreflightRejectsCrossAccountWindowsHardLinks`, `TestPreflightAcceptsSameAccountWindowsHardLinks` |
 | Windows account descendants junctioned to a shared directory | Reject | `TestPreflightRejectsDescendantJunctionOverlap` (real disposable junctions) |
 | Ordinary Windows descendant directories and cancellation | Accept; cancel | `TestPreflightAcceptsOrdinaryWindowsDescendants` |
 | 100,000 account roots plus 100,000 disjoint nested mounts | Accept | `TestProfileSubtreeIndexAtInventoryLimit` (fixture, not fleet acceptance) |
@@ -194,6 +199,18 @@ deadline is checked at every visited entry. `filepath.WalkDir` retains the curre
 traversal state plus the entries for one directory. A real tmpfs check visited 4,096
 ordinary files once; this is traversal evidence, not a 100,000-profile benchmark. An
 unprivileged disposable Linux run confirmed unreadable descendants fail closed.
+
+The final incremental review also identified cross-account hard-linked profile files.
+Formal Windows NTFS and Linux tmpfs tests first returned usable evidence on `a84b6b70f`.
+The follow-up indexes only regular entries whose native link count exceeds one, keeping
+the usual case out of the identity map. Work remains O(total entries), with memory
+proportional to multiply-linked candidates rather than all profile files. Same-account
+hard links remain valid, while a repeated identity under another account blocks.
+Tests use `supportedTestTempDir`: Linux selects an actually supported `/dev/shm` or
+system temporary mount through the same mount resolver; other platforms retain their
+native temporary directory. This keeps ordinary tests repeatable in overlay-backed
+containers without bypassing production validation. Dedicated live mount tests still
+exercise the real filesystem path and production checks.
 
 The subsequent Windows review reproduced the same gap with two distinct account roots
 containing junctions to a shared directory. That real junction test failed before the

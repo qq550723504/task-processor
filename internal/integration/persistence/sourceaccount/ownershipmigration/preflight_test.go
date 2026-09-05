@@ -13,7 +13,7 @@ import (
 
 func fixture(t *testing.T) (Snapshot, string) {
 	t.Helper()
-	root := t.TempDir()
+	root := supportedTestTempDir(t)
 	if err := os.MkdirAll(filepath.Join(root, "101", "7"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestPreflightRejectsAliasAndCancellation(t *testing.T) {
 	if _, err := Preflight(ctx, s, root); err == nil {
 		t.Fatal("cancellation ignored")
 	}
-	alias := filepath.Join(t.TempDir(), "alias")
+	alias := filepath.Join(supportedTestTempDir(t), "alias")
 	if runtime.GOOS == "windows" {
 		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", "New-Item -ItemType Junction -Path $env:OWNERSHIP_TEST_ALIAS -Target $env:OWNERSHIP_TEST_ROOT | Out-Null")
 		cmd.Env = append(os.Environ(), "OWNERSHIP_TEST_ALIAS="+alias, "OWNERSHIP_TEST_ROOT="+root)

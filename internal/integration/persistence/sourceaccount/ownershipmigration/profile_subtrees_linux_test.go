@@ -70,7 +70,7 @@ func TestPreflightRejectsLinuxDescendantSymlinksWithoutPublicationOrMutation(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			receiptPath := filepath.Join(t.TempDir(), "receipt.json")
+			receiptPath := filepath.Join(supportedTestTempDir(t), "receipt.json")
 			r, err := Preflight(context.Background(), s, root)
 			if err == nil {
 				if targetErr := ValidateReceiptTarget(root, receiptPath, r); targetErr != nil {
@@ -147,6 +147,48 @@ func TestLinuxProfileEntryWalkAcceptsOrdinaryEntries(t *testing.T) {
 	}
 }
 
+func TestPreflightRejectsCrossAccountLinuxHardLinks(t *testing.T) {
+	s, root := twoAccountLinuxFixture(t)
+	first := filepath.Join(root, "101", "7", "Default", "Cookies")
+	second := filepath.Join(root, "202", "8", "Default", "Cookies")
+	if err := os.MkdirAll(filepath.Dir(second), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(first, []byte("shared fixture state"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(first, second); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Preflight(context.Background(), s, root)
+	if err == nil || r.Digest != "" {
+		t.Fatal("cross-account hard-linked profile state produced usable evidence")
+	}
+	left, leftErr := os.Stat(first)
+	right, rightErr := os.Stat(second)
+	if leftErr != nil || rightErr != nil || !os.SameFile(left, right) {
+		t.Fatalf("validation modified hard links: %v %v", leftErr, rightErr)
+	}
+}
+
+func TestPreflightAcceptsSameAccountLinuxHardLinks(t *testing.T) {
+	s, root := fixture(t)
+	profile := filepath.Join(root, "101", "7", "Default")
+	if err := os.MkdirAll(profile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	first := filepath.Join(profile, "Cookies")
+	if err := os.WriteFile(first, []byte("same-account fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(first, filepath.Join(profile, "Cookies.backup")); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := Preflight(context.Background(), s, root); err != nil || r.Digest == "" {
+		t.Fatalf("same-account hard links rejected: %v", err)
+	}
+}
+
 type cancelAfterChecksContext struct {
 	context.Context
 	checks   atomic.Int64
@@ -161,7 +203,7 @@ func (c *cancelAfterChecksContext) Err() error {
 }
 
 func TestLinuxProfileEntryWalkHonorsCancellationDuringTraversal(t *testing.T) {
-	profile := t.TempDir()
+	profile := supportedTestTempDir(t)
 	for i := 0; i < 20; i++ {
 		if err := os.Mkdir(filepath.Join(profile, fmt.Sprintf("entry-%02d", i)), 0700); err != nil {
 			t.Fatal(err)
@@ -178,7 +220,7 @@ func TestLinuxProfileEntryWalkFailsClosedOnReadError(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("run as an unprivileged user to verify directory read failure")
 	}
-	profile := t.TempDir()
+	profile := supportedTestTempDir(t)
 	unreadable := filepath.Join(profile, "unreadable")
 	if err := os.Mkdir(unreadable, 0000); err != nil {
 		t.Fatal(err)
@@ -190,7 +232,7 @@ func TestLinuxProfileEntryWalkFailsClosedOnReadError(t *testing.T) {
 }
 
 func TestLinuxProfileEntryWalkResourceBoundary(t *testing.T) {
-	profile := t.TempDir()
+	profile := supportedTestTempDir(t)
 	const entries = 4096
 	for i := 0; i < entries; i++ {
 		if err := os.WriteFile(filepath.Join(profile, fmt.Sprintf("entry-%04d", i)), nil, 0600); err != nil {

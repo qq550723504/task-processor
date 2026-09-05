@@ -125,7 +125,7 @@ func TestReceiptTargetRejectsLiveBindMountedProfileDescendant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mountPoint := filepath.Join(t.TempDir(), "profile-descendant-bind")
+	mountPoint := filepath.Join(supportedTestTempDir(t), "profile-descendant-bind")
 	if err = os.Mkdir(mountPoint, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestReceiptTargetRejectsLiveNestedMount(t *testing.T) {
 		t.Skipf("nested mount unavailable: %v %s", err, output)
 	}
 	defer func() { _ = exec.Command("sudo", "-n", "umount", descendant).Run() }()
-	outside := t.TempDir()
+	outside := supportedTestTempDir(t)
 	if output, err := exec.Command("sudo", "-n", "mount", "--bind", descendant, outside).CombinedOutput(); err != nil {
 		t.Skipf("external bind unavailable: %v %s", err, output)
 	}
@@ -193,7 +193,7 @@ func TestPreflightRejectsLiveOverlappingProfileSubtrees(t *testing.T) {
 			case "descendant bound to descendant":
 				bind(filepath.Join(first, "Default"), filepath.Join(second, "Default"))
 			case "shared external subtree":
-				shared := t.TempDir()
+				shared := supportedTestTempDir(t)
 				bind(shared, filepath.Join(first, "Default"))
 				bind(shared, filepath.Join(second, "Default"))
 			}

@@ -17,11 +17,12 @@ func validateProfileSubtrees(ctx context.Context, accounts []AccountEvidence) er
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	hardLinkOwners := make(map[string]int64)
 	for _, account := range accounts {
 		// Walk directory-entry metadata only. WalkDir never follows symlinks;
 		// reject descendant junction/mount reparse aliases before traversing them,
 		// extending the existing no-symlink profile contract below the account root.
-		err := filepath.WalkDir(account.ProfileDirectory, func(_ string, entry fs.DirEntry, walkErr error) error {
+		err := filepath.WalkDir(account.ProfileDirectory, func(path string, entry fs.DirEntry, walkErr error) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -43,6 +44,19 @@ func validateProfileSubtrees(ctx context.Context, accounts []AccountEvidence) er
 			// IsDir=false. Use the native directory/reparse attributes as well.
 			if attributes.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0 && attributes.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 				return fmt.Errorf("browser profile directory identity is unavailable or reparsed")
+			}
+			if info.Mode().IsRegular() {
+				information, err := windowsFilesystemObjectInformation(path)
+				if err != nil {
+					return fmt.Errorf("cannot identify browser profile entry")
+				}
+				if information.NumberOfLinks > 1 {
+					identity := windowsFilesystemObjectIdentity(information)
+					if owner, exists := hardLinkOwners[identity]; exists && owner != account.Previous.ID {
+						return fmt.Errorf("source accounts %d and %d share hard-linked browser profile state", owner, account.Previous.ID)
+					}
+					hardLinkOwners[identity] = account.Previous.ID
+				}
 			}
 			return nil
 		})

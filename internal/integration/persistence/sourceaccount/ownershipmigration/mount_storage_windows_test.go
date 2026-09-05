@@ -20,7 +20,7 @@ func TestWindowsStorageIsolation(t *testing.T) {
 			t.Fatalf("local drive type %d rejected: %v", kind, err)
 		}
 	}
-	dir := t.TempDir()
+	dir := supportedTestTempDir(t)
 	if _, err := directoryFilesystemIdentity(dir, nil); err != nil {
 		t.Fatalf("native local storage identity rejected: %v", err)
 	}

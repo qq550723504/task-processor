@@ -18,7 +18,7 @@ func TestReceiptExclusiveCompletePublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "receipt.json")
+	path := filepath.Join(supportedTestTempDir(t), "receipt.json")
 	if err = ValidateReceiptTarget(root, path, r); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestReceiptRejectsPartialOrTamperedEvidence(t *testing.T) {
 	}
 	r.Accounts[0].OrganizationID = "wrong-org"
 	for _, r := range []Receipt{r, {}} {
-		path := filepath.Join(t.TempDir(), "receipt.json")
+		path := filepath.Join(supportedTestTempDir(t), "receipt.json")
 		if err := WriteReceipt(context.Background(), path, r); err == nil {
 			t.Fatal("invalid evidence published")
 		}
@@ -80,7 +80,7 @@ func TestReceiptTargetRejectsProfileTreeAndAlias(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid := filepath.Join(t.TempDir(), "receipt.json")
+	valid := filepath.Join(supportedTestTempDir(t), "receipt.json")
 	if err = ValidateReceiptTarget(root, valid, r); err != nil {
 		t.Fatalf("valid outside target rejected: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestReceiptTargetRejectsProfileTreeAndAlias(t *testing.T) {
 		}
 	}
 
-	alias := filepath.Join(t.TempDir(), "profile-alias")
+	alias := filepath.Join(supportedTestTempDir(t), "profile-alias")
 	if runtime.GOOS == "windows" {
 		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", "New-Item -ItemType Junction -Path $env:OWNERSHIP_TEST_ALIAS -Target $env:OWNERSHIP_TEST_ROOT | Out-Null")
 		cmd.Env = append(os.Environ(), "OWNERSHIP_TEST_ALIAS="+alias, "OWNERSHIP_TEST_ROOT="+filepath.Join(root, "101", "7"))
@@ -141,7 +141,7 @@ func TestReceiptCancellationAfterLinkCleansFinalAndStaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "receipt.json")
+	path := filepath.Join(supportedTestTempDir(t), "receipt.json")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := WriteReceipt(cancelWhenPublishedContext{ctx, path, cancel}, path, r); !errors.Is(err, context.Canceled) {
@@ -159,7 +159,7 @@ func TestReceiptPublicationHonorsCancellationBeforeFinalLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "receipt.json")
+	path := filepath.Join(supportedTestTempDir(t), "receipt.json")
 	ctx, cancel := context.WithCancel(context.Background())
 	err = writeReceipt(ctx, path, r, cancel)
 	if !errors.Is(err, context.Canceled) {
@@ -180,7 +180,7 @@ func TestReceiptPublicationSuccessDecisionIsNotRetroactivelyCancelled(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "receipt.json")
+	path := filepath.Join(supportedTestTempDir(t), "receipt.json")
 	ctx, cancel := context.WithCancel(context.Background())
 	if err = WriteReceipt(ctx, path, r); err != nil {
 		t.Fatal(err)

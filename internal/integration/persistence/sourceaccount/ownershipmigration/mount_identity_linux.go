@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 type linuxMountLocation struct {
@@ -148,13 +149,14 @@ func validateProfileSubtrees(ctx context.Context, accounts []AccountEvidence) er
 }
 
 func validateLinuxProfileEntries(ctx context.Context, accounts []AccountEvidence) error {
+	hardLinkOwners := make(map[string]int64)
 	for _, account := range accounts {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		// WalkDir reads directory entries and metadata without following symlinks.
 		// Each account root is visited once; the shared profile root is not rescanned.
-		err := filepath.WalkDir(account.ProfileDirectory, func(_ string, entry fs.DirEntry, walkErr error) error {
+		err := filepath.WalkDir(account.ProfileDirectory, func(path string, entry fs.DirEntry, walkErr error) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -167,6 +169,25 @@ func validateLinuxProfileEntries(ctx context.Context, accounts []AccountEvidence
 			}
 			if entry.Type()&os.ModeSymlink != 0 || info.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("browser profile contains a descendant symlink")
+			}
+			if info.Mode().IsRegular() {
+				stat, ok := info.Sys().(*syscall.Stat_t)
+				if !ok || stat == nil {
+					return fmt.Errorf("browser profile entry identity is unavailable")
+				}
+				// Most files have one link and need no retained identity. Index only
+				// hard-link candidates, preserving same-account hard links while
+				// rejecting shared mutable state across accounts in O(total entries).
+				if stat.Nlink > 1 {
+					identity, err := directoryFilesystemIdentity(path, info)
+					if err != nil {
+						return fmt.Errorf("cannot identify browser profile entry")
+					}
+					if owner, exists := hardLinkOwners[identity]; exists && owner != account.Previous.ID {
+						return fmt.Errorf("source accounts %d and %d share hard-linked browser profile state", owner, account.Previous.ID)
+					}
+					hardLinkOwners[identity] = account.Previous.ID
+				}
 			}
 			return nil
 		})
