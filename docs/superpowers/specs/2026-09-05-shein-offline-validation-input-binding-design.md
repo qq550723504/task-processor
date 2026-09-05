@@ -54,7 +54,7 @@ Must：授权范围先于资料读取；hash 和校验用同一读取副本；�
 1. 在受组织/owner 限制的查询内先限结果大小，再加载 JSON；拟定包上限 2 MiB（新入口资源限额提案，不是 freshness TTL，也不声称现有包均符合）。PostgreSQL 用同一语句 CASE/长度检查避免将超限正文传给应用；不为预检跨两次读取。超限只返回 generic input-too-large，不回正文。具体适配器按 D1 确定，禁止无界加载后才检查。
 2. 校验存储 JSON 为有效 UTF-8，拒绝非法数值/编码、超深结构（64 层），严格解码为当前 Package 持久合同；未知字段拒绝，不能静默吞掉未来 freshness/规则字段。自定义 UnmarshalJSON 必须纳入严格解码测试，不能只假设外层 DisallowUnknownFields 会穿透它。若需拒绝重复 key/孤立 surrogate，使用成熟严格 JSON 校验能力或对应存储保证，不能让 Go 的替换行为伪造“相同”内容；该编解码保证属于后续绑定切片的验收。
 3. 解码到独占对象，复用当前 publishing 的 normalization/clone；私有 resolution maps 必须来自这一持久解码（当前为空），不得注入内存 resolver 状态。当前持久化合同中的公开 SKC/SKUValueAssignments 包含在 hash 内。若后续规则依赖不可重建的私有字段，停止并提升 binding 版本/字段合同；不得忽略该字段。
-4. 用 Go `encoding/json` 编码固定 struct：binding_version、marketplace、site、action、rule_version、完整规范 Package。标准库按 map key 稳定排序；struct 字段顺序冻结、默认转义冻结、不加缩进/尾随换行。数组保留原序、重复项和 null/empty 的持久解码结果，不擅自当集合排序。所有公开持久字段（含 Metadata、嵌套模板、价格/图片/备注）均覆盖；多绑定无关字段只导致保守失效，不排除可能影响结果的字段。没有新的通用 canonical JSON 框架。
+4. 用 Go `encoding/json` 编码固定 struct：binding_version、marketplace、site、action、rule_version、完整规范 Package。标准库按 map key 稳定排序；struct 字段顺序冻结、默认转义冻结、不加缩进/尾随换行。数组保留原序与重复项，不擅自当集合排序；nil/empty 按当前持久规范编码处理，`omitempty` 字段可合并，不能宣称保留原始 JSON 的 null/empty 区别。固定向量锁定该语义；若规则区分被折叠值，必须显式覆盖并升级 binding 版本，不能用此编码遗漏差异。所有公开持久字段（含 Metadata、嵌套模板、价格/图片/备注）均覆盖；多绑定无关字段只导致保守失效，不排除可能影响结果的字段。没有新的通用 canonical JSON 框架。
 5. 对该字节串做 SHA-256，并给 Validator 使用这次 hash 所对应的独占副本；Validator 可做纯 clone，但不得重新读取/装饰。Package.MarshalJSON 本身会 normalization，必须先在独占副本上完成并确认重复编码稳定。既不 hash 原对象再校验已改对象，也不向响应暴露 package/凭据/profile/原始缓存键。
 6. 序列化算法/Package JSON 语义/字段/normalization 变化需升级 binding_version；规则语义变化需升级 rule_version。只承诺指定版本 Go 编码合同，不承诺任意语言 JSON 都产生同摘要。加入跨 map 顺序、nil/empty、alias、SDK 嵌套结构的固定向量测试锁定版本。
 
@@ -90,7 +90,7 @@ task_id 仅资源定位符，不重建 Task-first Product 或 Task Dashboard；�
 拟议完整链（已存在能力与未实现环节明确区分）：
 
 1. **已有** `server_auth` 的 workbenchAuthenticationMiddleware → `authruntime/zitadel.Verifier` 验证 token/subject/expiry；清除伪造身份头。
-2. **提案 route 声明** `OrganizationAccessPolicyCachedRead`，复用 **已有** `workbenchcontext.Resolver.Resolve`。X-Organization-ID 是选择器，按 verified grants 选择 EffectiveOrganization；Home=A 可选择被授权的 B，TenantID 必须等于 B，roles 只取 B。无选择/无授权/过期/依赖失败时进入业务读取前失败关闭。遵守既有 60 秒缓存/撤权和 suspension deny overlay，不新增 IAM 或零缓存要求。
+2. **提案 route 声明** `OrganizationAccessPolicyCachedRead`，复用 **已有** `workbenchcontext.Resolver.Resolve`。`X-Requested-Organization-ID` 是既有选择器，按 verified grants 选择 EffectiveOrganization；Home=A 可选择被授权的 B，TenantID 必须等于 B，roles 只取 B。selector 缺省时沿用已批准默认选择：优先有 grant 的 Home，否则唯一获授权组织；多组织且无合法默认才要求显式选择。resolver 无法决定有效组织、无授权、过期或依赖失败时，在业务读取前失败关闭。遵守既有 60 秒缓存/撤权和 suspension deny overlay，不新增 IAM 或零缓存要求。
 3. **提案 role 装配**使用既有 read permission（viewer/operator/admin 读取能力），不靠 URL 自动匹配默认通过；route 测试验证具体授权映射。构造 `listing/task.Actor{TenantID: effectiveOrg, UserID: verifiedSubject, Roles: effectiveRoles}`，要求非空、匹配 verified identity，不调用 legacy requestContext/default tenant。系统管理员也先有 B grant，仅在 B 内按现有 TenantAdminChecker 决定 owner bypass。
 4. **未实现窄 port**由 `internal/listing/diagnostic` 拥有 `ReadOfflinePackage(ctx, actor, taskID)`，返回不可变持久 package bytes、exact row resource/org/owner 及已存在的相关 evidence；不扩 CanonicalSubject 为万能 reader。持久 adapter 复用严格 actor SQL/返回后校验模式。查询先 WHERE id AND verified organization AND owner 条件；admin 只可省 owner，不省 org。缺可信 owner 同样拒绝，不能退回 Request.UserID。返回后再检 task ID、org、owner，防错误替身/适配器。
 5. **D1 未满足**：所读行的 org 字段必须来自可证明的当前记录创建合同，不能仅靠 SQL tenant 字符串等于 selector。没有该前提就不加载旧敏感包，不静默回退 Legacy reader。若原表不具备可区分的可信记录集合，当前 adapter 不得在该表开放查询；需要协调方先指定当前生产者/存储准入边界，而不是本设计自造 allowlist 或 provenance 表。
@@ -118,7 +118,7 @@ task_id 仅资源定位符，不重建 Task-first Product 或 Task Dashboard；�
 | 场景 | 预期/后续验证 owner |
 | --- | --- |
 | Home A，选择 B，B viewer，自己的当前可信行 | resolver + handler + SQL 集成成功；A 的 admin 不带入 B |
-| 无 B grant / 缺角色 / 缺身份 / 空选择 | 在调用 reader 前失败；伪造 body/header tenant 无效 |
+| 无 B grant / 缺角色 / 缺身份 / 多组织无合法默认 | 在调用 reader 前失败；伪造 body/header tenant 无效；selector 缺省但有合法 Home/唯一组织时正常解析 |
 | B grant + A 资源 ID；B 他人资源；管理员无 B grant | org/owner SQL 不返回正文，统一资源不可读；admin 不跨 org |
 | legacy 空/数字 tenant、归属无证明或未知 owner | 不访问旧包；不把 numeric 文本与 Organization 数字 ID 相等当证明 |
 | 缺 package、未知字段/私有注入、非法 UTF-8/数值/JSON、超限 | 明确不可评估，无成功报告；测试解码失败与 canceled 分开 |
