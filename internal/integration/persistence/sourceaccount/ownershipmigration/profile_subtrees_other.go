@@ -2,10 +2,16 @@
 
 package ownershipmigration
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
-// Other ports retain their existing root identity checks; production subtree
-// evidence is provided by the Linux and Windows implementations.
+// Linux and Windows are the only hosts with complete descendant-alias checks.
+// Keep other ports buildable but never approve unchecked preflight evidence.
 func validateProfileSubtrees(ctx context.Context, _ []AccountEvidence) error {
-	return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return fmt.Errorf("profile subtree validation is unsupported on this platform")
 }

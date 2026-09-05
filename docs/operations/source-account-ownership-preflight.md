@@ -38,6 +38,9 @@ are never opened. Entry/attribute inspection failures block, and cancellation is
 for each visited entry. Cost depends on the directory-entry inventory, not account pairs.
 Regular files with multiple links receive the equivalent Windows volume/file identity
 check, rejecting cross-account hard links while retaining same-account links.
+Linux and Windows are the supported preflight runtime hosts. Other ports remain
+compileable but fail closed before producing a digest because equivalent descendant
+alias validation is not implemented.
 
 Provide these environment variables through the existing secret mechanism:
 
@@ -211,6 +214,11 @@ system temporary mount through the same mount resolver; other platforms retain t
 native temporary directory. This keeps ordinary tests repeatable in overlay-backed
 containers without bypassing production validation. Dedicated live mount tests still
 exercise the real filesystem path and production checks.
+
+The final review confirmed that buildability must not imply runtime support. Darwin and
+other non-Linux/non-Windows builds now return an explicit unsupported-platform error
+from subtree validation instead of approving unchecked profiles. Cross-compilation is
+still compile evidence only; runtime validation on those ports remains **NOT_RUN**.
 
 The subsequent Windows review reproduced the same gap with two distinct account roots
 containing junctions to a shared directory. That real junction test failed before the
