@@ -28,6 +28,16 @@ const storePayload = {
   createdAt: "2026-08-30T01:02:03Z",
   updatedAt: "2026-08-30T02:03:04Z",
 };
+const serviceLifecyclePayload = {
+  storeId,
+  recordStatus: "active",
+  serviceStatus: "active",
+  serviceStartedAt: "2026-09-05T01:02:03Z",
+  serviceExpiresAt: "2026-10-05T01:02:03Z",
+  version: 3,
+  quantity: "1",
+  resourceBalanceAfter: "2",
+};
 
 describe("buildWorkbenchUpstreamRequest", () => {
   it("fails closed before reading a Store body when the captured Organization differs from the selection cookie", async () => {
@@ -1162,6 +1172,89 @@ describe("strict Store Center request boundary", () => {
     expect(result).toBeInstanceOf(Response);
     if (result instanceof Response) expect(result.status).toBe(400);
   });
+
+  it.each([
+    ["activate", "{}"],
+    ["renew", JSON.stringify({ periods: 2 })],
+    ["reactivate", JSON.stringify({ periods: 3 })],
+  ] as const)(
+    "forwards the exact keyed %s service lifecycle contract",
+    async (action, body) => {
+      const result = await buildWorkbenchUpstreamRequest(
+        new Request(
+          `http://localhost/api/workbench/stores/${storeId}/${action}`,
+          {
+            method: "POST",
+            headers: storeHeaders({
+              "Idempotency-Key": operationKey,
+              "If-Match": '"2"',
+            }),
+            body,
+          },
+        ),
+        ["stores", storeId, action],
+        "server-token",
+      );
+
+      expect(result).not.toBeInstanceOf(Response);
+      if (result instanceof Response) return;
+      expect(result.url).toBe(
+        `http://localhost:8085/api/v1/workbench/stores/${storeId}/${action}`,
+      );
+      expect(result.responseContract).toBe("store-service-lifecycle");
+      expect(result.expectedStoreId).toBe(storeId);
+      expect(result.init.body).toBe(body);
+      const headers = new Headers(result.init.headers);
+      expect(headers.get("Idempotency-Key")).toBe(operationKey);
+      expect(headers.get("If-Match")).toBe('"2"');
+      expect(headers.get("Content-Type")).toBe("application/json");
+    },
+  );
+
+  it.each([
+    ["activate unknown body", "activate", '{"periods":1}'],
+    ["activate duplicate object", "activate", '{"x":1,"x":1}'],
+    ["renew missing periods", "renew", "{}"],
+    ["renew duplicate periods", "renew", '{"periods":1,"periods":1}'],
+    ["renew fractional periods", "renew", '{"periods":1.0}'],
+    ["renew zero periods", "renew", '{"periods":0}'],
+    ["reactivate excess periods", "reactivate", '{"periods":13}'],
+    ["reactivate unknown field", "reactivate", '{"periods":1,"tenant":"x"}'],
+  ] as const)("rejects invalid service body: %s", async (_name, action, body) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, {
+        method: "POST",
+        headers: storeHeaders({
+          "Idempotency-Key": operationKey,
+          "If-Match": '"2"',
+        }),
+        body,
+      }),
+      ["stores", storeId, action],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
+
+  it.each([
+    ["missing idempotency", { "If-Match": '"2"' }],
+    ["missing If-Match", { "Idempotency-Key": operationKey }],
+    ["invalid idempotency", { "Idempotency-Key": "bad", "If-Match": '"2"' }],
+    ["invalid If-Match", { "Idempotency-Key": operationKey, "If-Match": 'W/"2"' }],
+  ])("rejects service lifecycle headers: %s", async (_name, headers) => {
+    const result = await buildWorkbenchUpstreamRequest(
+      new Request(`http://localhost/api/workbench/stores/${storeId}/activate`, {
+        method: "POST",
+        headers: storeHeaders(headers),
+        body: "{}",
+      }),
+      ["stores", storeId, "activate"],
+      "server-token",
+    );
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(400);
+  });
 });
 
 describe("strict Store Center response boundary", () => {
@@ -1171,6 +1264,71 @@ describe("strict Store Center response boundary", () => {
     quota: { used: 1, reserved: 1, limit: 5, allowed: true, reason: "" },
     pagination: { page: 1, pageSize: 20, total: 1 },
   });
+
+  it("accepts only the exact service lifecycle success projection for the requested Store", async () => {
+    const accepted = await buildWorkbenchBrowserResponse(
+      Response.json(serviceLifecyclePayload),
+      "store-service-lifecycle",
+      storeId,
+    );
+    expect(accepted.status).toBe(200);
+    await expect(accepted.json()).resolves.toEqual(serviceLifecyclePayload);
+
+    for (const payload of [
+      { ...serviceLifecyclePayload, storeId: operationKey },
+      { ...serviceLifecyclePayload, recordStatus: "deleted" },
+      { ...serviceLifecyclePayload, serviceStatus: "expired" },
+      { ...serviceLifecyclePayload, quantity: "01" },
+      { ...serviceLifecyclePayload, quantity: "13" },
+      { ...serviceLifecyclePayload, resourceBalanceAfter: "-1" },
+      {
+        ...serviceLifecyclePayload,
+        resourceBalanceAfter: "9223372036854775808",
+      },
+      { ...serviceLifecyclePayload, serviceStartedAt: null },
+      { ...serviceLifecyclePayload, secret: "credential" },
+    ]) {
+      const rejected = await buildWorkbenchBrowserResponse(
+        Response.json(payload),
+        "store-service-lifecycle",
+        storeId,
+      );
+      expect(rejected.status).toBe(502);
+    }
+  });
+
+  it.each([
+    ["STORE_SERVICE_RESUME_REQUIRED", 409],
+    ["STORE_SERVICE_STATE_CORRUPT", 409],
+    ["STORE_CONNECTION_UNAVAILABLE", 503],
+    ["STORE_CONNECTION_NOT_CONNECTED", 422],
+    ["RESOURCE_QUANTITY_INVALID", 422],
+    ["RESOURCE_INSUFFICIENT_BALANCE", 409],
+    ["IDEMPOTENCY_KEY_CONFLICT", 409],
+    ["RESOURCE_CONCURRENCY_RETRY", 503],
+  ] as const)(
+    "preserves %s only with its documented HTTP status",
+    async (code, status) => {
+      const payload = { code, message: "safe", requestId: "req-1", fieldErrors: [] };
+      const accepted = await buildWorkbenchBrowserResponse(
+        Response.json(payload, { status }),
+        "store-service-lifecycle",
+        storeId,
+      );
+      expect(accepted.status).toBe(status);
+      await expect(accepted.json()).resolves.toEqual(payload);
+
+      const rejected = await buildWorkbenchBrowserResponse(
+        Response.json(payload, { status: status === 503 ? 409 : 503 }),
+        "store-service-lifecycle",
+        storeId,
+      );
+      expect(rejected.status).toBe(502);
+      await expect(rejected.json()).resolves.toMatchObject({
+        code: "DEPENDENCY_UNAVAILABLE",
+      });
+    },
+  );
 
   it.each(["array", "object"] as const)(
     "maps a Store success DTO with a 4000-level unknown %s to bounded 502 without rejecting",

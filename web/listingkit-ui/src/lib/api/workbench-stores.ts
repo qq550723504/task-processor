@@ -133,11 +133,41 @@ const workbenchStoreDeleteSchema = z
     version: positiveSafeIntegerSchema,
   })
   .strict();
+const servicePeriodsSchema = z.number().int().min(1).max(12);
+const workbenchStoreServiceLifecycleSchema = z
+  .object({
+    storeId: canonicalUUIDSchema,
+    recordStatus: z.literal("active"),
+    serviceStatus: z.literal("active"),
+    serviceStartedAt: utcRFC3339Schema,
+    serviceExpiresAt: utcRFC3339Schema,
+    version: positiveSafeIntegerSchema,
+    quantity: z
+      .string()
+      .regex(/^[1-9][0-9]*$/)
+      .refine((value) => BigInt(value) <= BigInt("12")),
+    resourceBalanceAfter: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .refine((value) => BigInt(value) <= BigInt("9223372036854775807")),
+  })
+  .strict()
+  .superRefine((result, refinement) => {
+    if (Date.parse(result.serviceExpiresAt) <= Date.parse(result.serviceStartedAt)) {
+      refinement.addIssue({
+        code: "custom",
+        message: "Service period is inconsistent",
+      });
+    }
+  });
 
 export type WorkbenchStore = z.infer<typeof workbenchStoreSchema>;
 export type WorkbenchStoreList = z.infer<typeof workbenchStoreListResponseSchema>;
 export type WorkbenchStoreDeleteResult = z.infer<
   typeof workbenchStoreDeleteSchema
+>;
+export type WorkbenchStoreServiceLifecycleResult = z.infer<
+  typeof workbenchStoreServiceLifecycleSchema
 >;
 export type WorkbenchStoreErrorCode =
   | "INVALID_REQUEST"
@@ -152,6 +182,14 @@ export type WorkbenchStoreErrorCode =
   | "STORE_ALREADY_EXISTS"
   | "STORE_VERSION_CONFLICT"
   | "STORE_INVALID_STATE"
+  | "STORE_SERVICE_RESUME_REQUIRED"
+  | "STORE_SERVICE_STATE_CORRUPT"
+  | "STORE_CONNECTION_UNAVAILABLE"
+  | "STORE_CONNECTION_NOT_CONNECTED"
+  | "RESOURCE_QUANTITY_INVALID"
+  | "RESOURCE_INSUFFICIENT_BALANCE"
+  | "IDEMPOTENCY_KEY_CONFLICT"
+  | "RESOURCE_CONCURRENCY_RETRY"
   | "SUBSCRIPTION_REQUIRED"
   | "STORE_LIMIT_REACHED"
   | "ORGANIZATION_CONTEXT_CHANGED"
@@ -287,6 +325,56 @@ export async function disableWorkbenchStore(
   return storeAction(storeId, "disable", version, expectedOrganizationId);
 }
 
+export async function activateWorkbenchStoreService(
+  storeId: string,
+  version: number,
+  idempotencyKey: string,
+  expectedOrganizationId: string,
+): Promise<WorkbenchStoreServiceLifecycleResult> {
+  return storeServiceLifecycleAction(
+    storeId,
+    "activate",
+    {},
+    version,
+    idempotencyKey,
+    expectedOrganizationId,
+  );
+}
+
+export async function renewWorkbenchStoreService(
+  storeId: string,
+  periods: number,
+  version: number,
+  idempotencyKey: string,
+  expectedOrganizationId: string,
+): Promise<WorkbenchStoreServiceLifecycleResult> {
+  return storeServiceLifecycleAction(
+    storeId,
+    "renew",
+    { periods: parseInput(servicePeriodsSchema, periods) },
+    version,
+    idempotencyKey,
+    expectedOrganizationId,
+  );
+}
+
+export async function reactivateWorkbenchStoreService(
+  storeId: string,
+  periods: number,
+  version: number,
+  idempotencyKey: string,
+  expectedOrganizationId: string,
+): Promise<WorkbenchStoreServiceLifecycleResult> {
+  return storeServiceLifecycleAction(
+    storeId,
+    "reactivate",
+    { periods: parseInput(servicePeriodsSchema, periods) },
+    version,
+    idempotencyKey,
+    expectedOrganizationId,
+  );
+}
+
 export async function deleteWorkbenchStore(
   storeId: string,
   version: number,
@@ -322,6 +410,35 @@ function storeAction(
       headers: { "If-Match": ifMatch(version) },
     },
     workbenchStoreSchema,
+    200,
+    expectedOrganizationId,
+  );
+}
+
+function storeServiceLifecycleAction(
+  storeId: string,
+  action: "activate" | "renew" | "reactivate",
+  payload: Record<string, never> | { periods: number },
+  version: number,
+  idempotencyKey: string,
+  expectedOrganizationId: string,
+) {
+  const parsedId = parseInput(canonicalUUIDSchema, storeId);
+  const parsedKey = parseInput(canonicalUUIDSchema, idempotencyKey);
+  return requestWorkbenchStores(
+    `/api/workbench/stores/${parsedId}/${action}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": parsedKey,
+        "If-Match": ifMatch(version),
+      },
+      body: JSON.stringify(payload),
+    },
+    workbenchStoreServiceLifecycleSchema.refine(
+      (result) => result.storeId === parsedId,
+    ),
     200,
     expectedOrganizationId,
   );

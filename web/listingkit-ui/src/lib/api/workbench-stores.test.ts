@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   WorkbenchAPIError,
+  activateWorkbenchStoreService as activateWorkbenchStoreServiceWithExpectedOrganization,
   createWorkbenchStore as createWorkbenchStoreWithExpectedOrganization,
   deleteWorkbenchStore as deleteWorkbenchStoreWithExpectedOrganization,
   disableWorkbenchStore as disableWorkbenchStoreWithExpectedOrganization,
   enableWorkbenchStore as enableWorkbenchStoreWithExpectedOrganization,
   getWorkbenchStore as getWorkbenchStoreWithExpectedOrganization,
   listWorkbenchStores as listWorkbenchStoresWithExpectedOrganization,
+  reactivateWorkbenchStoreService as reactivateWorkbenchStoreServiceWithExpectedOrganization,
+  renewWorkbenchStoreService as renewWorkbenchStoreServiceWithExpectedOrganization,
   updateWorkbenchStore as updateWorkbenchStoreWithExpectedOrganization,
 } from "@/lib/api/workbench-stores";
 
@@ -37,6 +40,39 @@ const enableWorkbenchStore = (id: string, version: number) =>
   enableWorkbenchStoreWithExpectedOrganization(id, version, ORGANIZATION_ID);
 const disableWorkbenchStore = (id: string, version: number) =>
   disableWorkbenchStoreWithExpectedOrganization(id, version, ORGANIZATION_ID);
+const activateWorkbenchStoreService = (id: string, version: number, key: string) =>
+  activateWorkbenchStoreServiceWithExpectedOrganization(
+    id,
+    version,
+    key,
+    ORGANIZATION_ID,
+  );
+const renewWorkbenchStoreService = (
+  id: string,
+  periods: number,
+  version: number,
+  key: string,
+) =>
+  renewWorkbenchStoreServiceWithExpectedOrganization(
+    id,
+    periods,
+    version,
+    key,
+    ORGANIZATION_ID,
+  );
+const reactivateWorkbenchStoreService = (
+  id: string,
+  periods: number,
+  version: number,
+  key: string,
+) =>
+  reactivateWorkbenchStoreServiceWithExpectedOrganization(
+    id,
+    periods,
+    version,
+    key,
+    ORGANIZATION_ID,
+  );
 const store = {
   id: STORE_ID,
   name: "North Shop",
@@ -59,6 +95,16 @@ const list = {
     reason: "",
   },
   pagination: { page: 2, pageSize: 20, total: 21 },
+};
+const serviceLifecycleResult = {
+  storeId: STORE_ID,
+  recordStatus: "active",
+  serviceStatus: "active",
+  serviceStartedAt: "2026-09-05T01:02:03Z",
+  serviceExpiresAt: "2026-10-05T01:02:03Z",
+  version: 3,
+  quantity: "1",
+  resourceBalanceAfter: "2",
 };
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -211,6 +257,85 @@ describe("workbench Store API", () => {
       expect(requestAt(index).headers.has("Content-Type")).toBe(false);
       expect(requestAt(index).headers.get("If-Match")).toBe(`"${version}"`);
       expect(requestAt(index).headers.has("Idempotency-Key")).toBe(false);
+    }
+  });
+
+  it("sends exact keyed service lifecycle requests", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(serviceLifecycleResult))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...serviceLifecycleResult, version: 4, quantity: "2" }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ ...serviceLifecycleResult, version: 5, quantity: "3" }),
+      );
+
+    await activateWorkbenchStoreService(STORE_ID, 2, CREATE_KEY);
+    await renewWorkbenchStoreService(STORE_ID, 2, 3, DELETE_KEY);
+    await reactivateWorkbenchStoreService(STORE_ID, 3, 4, CREATE_KEY);
+
+    expect(requestAt(0).input).toBe(
+      `/api/workbench/stores/${STORE_ID}/activate`,
+    );
+    expect(requestAt(1).input).toBe(
+      `/api/workbench/stores/${STORE_ID}/renew`,
+    );
+    expect(requestAt(2).input).toBe(
+      `/api/workbench/stores/${STORE_ID}/reactivate`,
+    );
+    expect(requestAt(0).init.body).toBe("{}");
+    expect(requestAt(1).init.body).toBe(JSON.stringify({ periods: 2 }));
+    expect(requestAt(2).init.body).toBe(JSON.stringify({ periods: 3 }));
+    for (const [index, expected] of [
+      [0, { version: 2, key: CREATE_KEY }],
+      [1, { version: 3, key: DELETE_KEY }],
+      [2, { version: 4, key: CREATE_KEY }],
+    ] as const) {
+      expect(requestAt(index).init.method).toBe("POST");
+      expect(requestAt(index).headers.get("Content-Type")).toBe(
+        "application/json",
+      );
+      expect(requestAt(index).headers.get("If-Match")).toBe(
+        `"${expected.version}"`,
+      );
+      expect(requestAt(index).headers.get("Idempotency-Key")).toBe(
+        expected.key,
+      );
+    }
+  });
+
+  it("rejects invalid service periods, versions, and operation keys before fetch", async () => {
+    for (const call of [
+      () => renewWorkbenchStoreService(STORE_ID, 0, 2, CREATE_KEY),
+      () => renewWorkbenchStoreService(STORE_ID, 13, 2, CREATE_KEY),
+      () => reactivateWorkbenchStoreService(STORE_ID, 1.5, 2, CREATE_KEY),
+      () => activateWorkbenchStoreService(STORE_ID, 0, CREATE_KEY),
+      () => activateWorkbenchStoreService(STORE_ID, 2, "not-a-key"),
+    ]) {
+      await expect(call()).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed service lifecycle success projections", async () => {
+    for (const payload of [
+      { ...serviceLifecycleResult, storeId: DELETE_KEY },
+      { ...serviceLifecycleResult, recordStatus: "deleted" },
+      { ...serviceLifecycleResult, serviceStatus: "expired" },
+      { ...serviceLifecycleResult, quantity: "01" },
+      { ...serviceLifecycleResult, quantity: "13" },
+      { ...serviceLifecycleResult, resourceBalanceAfter: "-1" },
+      {
+        ...serviceLifecycleResult,
+        resourceBalanceAfter: "9223372036854775808",
+      },
+      { ...serviceLifecycleResult, serviceExpiresAt: "2026-08-05T01:02:03Z" },
+      { ...serviceLifecycleResult, credential: "secret" },
+    ]) {
+      fetchMock.mockResolvedValueOnce(jsonResponse(payload));
+      await expect(
+        activateWorkbenchStoreService(STORE_ID, 2, CREATE_KEY),
+      ).rejects.toMatchObject({ code: "INVALID_WORKBENCH_RESPONSE" });
     }
   });
 
