@@ -38,7 +38,7 @@ func resolveConnectionStatus(ctx context.Context, provider ConnectionStatusProvi
 		return ConnectionStatusUnavailable
 	}
 	switch status {
-	case ConnectionStatusConnected, ConnectionStatusExpired, ConnectionStatusUnavailable:
+	case ConnectionStatusDisconnected, ConnectionStatusConnected, ConnectionStatusExpired, ConnectionStatusUnavailable:
 		return status
 	default:
 		return ConnectionStatusUnavailable

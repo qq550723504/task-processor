@@ -9,6 +9,7 @@ const defaultStoreServicePeriod = 30 * 24 * time.Hour
 
 var (
 	ErrConnectionNotFresh      = errors.New("store connection is not fresh")
+	ErrConnectionUnavailable   = errors.New("store connection status is unavailable")
 	ErrServiceAlreadyActive    = errors.New("store service is already active")
 	ErrServiceExpired          = errors.New("store service is expired")
 	ErrServiceNotExpired       = errors.New("store service is not expired")

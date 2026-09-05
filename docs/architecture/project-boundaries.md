@@ -332,7 +332,16 @@ the verified identity context, rechecks the lifecycle permission, computes the
 canonical request fingerprint, and checks the durable Operation before reading
 the server-owned quantity policy, Store snapshot, or volatile connection
 status. Only Activate queries the connection provider; Renew and Reactivate do
-not acquire that unrelated volatile dependency. The Phase 1 history migrator
+not acquire that unrelated volatile dependency.
+
+The Phase F lifecycle HTTP contract is explicit opt-in and remains absent from
+the production Store Center assembly until a real connection-status authority
+and the authority handoff are approved. Phase 1 fixes Activate at one period
+with an empty JSON object request, while Renew and Reactivate accept only a
+strict `periods` integer from 1 through 12; all three require an idempotency key
+and aggregate-version precondition.
+
+The Phase 1 history migrator
 accepts only a strict, approved `NoAuthoritativeHistorySource` manifest and
 persists its immutable token as per-row `confirmed_absent` evidence; it never
 infers absence from nullable fields or Store timestamps. Expanded service state
