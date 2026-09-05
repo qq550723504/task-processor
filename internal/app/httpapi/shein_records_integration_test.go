@@ -275,3 +275,23 @@ func TestSheinRecordConcurrentAndConflictingHTTP(t *testing.T) {
 	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
 	require.EqualValues(t, 1, count)
 }
+
+func TestSheinRecordOversizedGeneratedPackageHTTP(t *testing.T) {
+	db := recordTestDB(t)
+	repository, err := catalogstore.NewRepository(db)
+	require.NoError(t, err)
+	publisher, err := catalog.NewPublisher(repository)
+	require.NoError(t, err)
+	_, err = publisher.Publish(context.Background(), catalog.PublishRequest{
+		Identity: catalog.SnapshotIdentity{TenantID: "200", ProductKey: "product"}, PublicationID: "oversized-setup",
+		Snapshot: catalog.ProductSnapshot{Title: "Bottle", SellingPoints: []string{strings.Repeat("detail ", 350000)}},
+	})
+	require.NoError(t, err)
+	server, _ := recordApplication(t, db, &recordGrants{})
+	status, body := recordPost(t, server, "operator", "large-package", recordBody)
+	require.Equal(t, http.StatusRequestEntityTooLarge, status, string(body))
+	require.JSONEq(t, `{"error":"input_too_large"}`, string(body))
+	var count int64
+	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
+	require.Zero(t, count)
+}

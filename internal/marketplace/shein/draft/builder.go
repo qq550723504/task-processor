@@ -28,6 +28,9 @@ func (Builder) Build(ctx context.Context, snapshot catalog.ProductSnapshot, inpu
 	if err != nil {
 		return nil, err
 	}
+	if len(raw) > shein.MaxPersistedPackageBytes {
+		return nil, record.ErrTooLarge
+	}
 	if _, err = shein.DecodePersistedPackageStrict(raw); err != nil {
 		return nil, err
 	}
