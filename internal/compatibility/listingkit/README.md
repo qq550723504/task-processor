@@ -1,24 +1,34 @@
-# ListingKit Compatibility
+# ListingKit Legacy Drain
 
-Owns legacy ListingKit-compatible entrypoints, DTO bridges, and thin delegation layers while the real business logic moves into `internal/listing`, `internal/marketplace`, and `internal/product`.
+`internal/compatibility/listingkit` contains remaining historical ListingKit bridges that have not yet completed cutover. It is a **retirement zone**, not a target layer or extension point.
 
-The 1688 compatibility path lives at
-`internal/compatibility/listingkit/sourcehandoff`. It owns the existing
-command and HTTP handoff to ListingKit, including tenant/user identity checks,
-source and target-store validation, and request/response compatibility. It
-converts the legacy 1688 product shape through
-`internal/integration/crawler/a1688` before invoking product sourcing.
+Repository policy is `EXTRACT | RETIRE`; there is no long-term Compatibility class.
 
-Allowed here:
+## Current active debt
 
-- backward-compatible service entrypoints
-- DTO or response-shape translation
-- temporary adapters that delegate inward
+The 1688 handoff under `sourcehandoff/a1688` is still wired into production and currently bridges source input into legacy ListingKit task/request objects. GitHub #30 owns its `EXTRACT -> RETIRE` cutover:
 
-Avoid adding here:
+- preserve valid SourceEnvelope / source identity behavior;
+- preserve verified request identity and source/store access semantics;
+- preserve required publication/idempotency behavior;
+- move those behaviors to their current Product / Store / Organization / Application owners;
+- switch the production path;
+- remove the old ListingKit handoff route, wiring, and legacy-only tests.
 
-- new long-lived business rules
-- new marketplace-specific behavior
-- new crawler or sourcing ownership
+Other code in this tree is handled by #29/#300. For example, an adapter with no production caller should be deleted rather than retained as a precautionary compatibility surface.
 
-When in doubt, put new logic in the real owner package first and keep this layer thin.
+## Rules
+
+Do not add here:
+
+- new service entrypoints;
+- new DTO bridges for new features;
+- new marketplace or product rules;
+- new crawler/sourcing ownership;
+- new Agent/Tool/BusinessTask dependencies;
+- fallback to root ListingKit;
+- permanent dual-path behavior.
+
+When useful behavior is found here, extract it directly into the current owner and make the new caller depend on that owner. Do not wrap this package to keep it alive.
+
+See `docs/refactoring/legacy-hard-cut-policy.md`, `docs/refactoring/legacy-register.md`, #29, #30, and #300.
