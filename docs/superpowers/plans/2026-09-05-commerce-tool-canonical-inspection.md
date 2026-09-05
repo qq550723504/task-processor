@@ -298,6 +298,7 @@ git commit -m "feat(listing): expose scoped canonical subject reader"
 - Commerce Tool Principal 拒绝 tenant/user/role 首尾空白，而不是只拒绝全空白。
 - 配置化 platform-admin user/role 同时获得 `listingkit.admin.read`，且其 tenant-admin
   判定来自同一个 `ListingKitAuthorizer` 实例；
+- 历史 `admin` platform-admin alias 同样获得 `listingkit.admin.read` 并进入端到端矩阵；
 - 原始 Call.Arguments 在任何 clone/decode/PrincipalResolver 前执行 64 KiB exact/over-limit
   检查；over-limit 返回 `invalid_input`，不保留或哈希完整载荷，只记录固定 audit marker
   hash，并断言 Resolver/Authorizer/Executor 均未调用。
@@ -399,10 +400,12 @@ go test ./internal/product/catalog/tools/canonicalinspect -run 'Test(Definition|
 
 - 共享 Catalog repository 可继续发布和读取超过 8 MiB 的合法 snapshot；
 - B0 bounded reader 读取 exact-limit persisted JSON 可进入 decode path；
-- B0 bounded reader 对 over-limit persisted JSON 在 hash、unmarshal 和
-  `CloneProductSnapshot` 前失败；
+- B0 bounded reader 使用数据库侧 byte-length 条件投影；over-limit persisted JSON 不被
+  扫描进 Go，并在 hash、unmarshal 和 `CloneProductSnapshot` 前失败；
 - bounded guard 同时覆盖 current 和 versioned read；
 - bounded reader 的动态类型不实现 `SnapshotWriter`；
+- SQLite SQL capture 断言存在 `CASE WHEN LENGTH(snapshot_json) <= ?`；PostgreSQL 使用
+  `OCTET_LENGTH(snapshot_json::text)`；
 - 不把 B0 reader 的 8 MiB 上限误用为共享 Catalog 上限或 Tool 1 MiB 输出上限。
 
 运行：
@@ -531,6 +534,7 @@ port 测试。
 - same-tenant cross-owner `not_found`；
 - tenant admin/platform admin same-tenant 成功；
 - 配置化 platform-admin user/role same-tenant 成功并可通过 permission preflight；
+- 历史 `admin` alias same-tenant 成功；
 - platform admin cross-tenant `not_found`；
 - viewer 在 repository 前被 `permission_denied`；
 - task 没有 snapshot 时 `failed_precondition`；
@@ -709,6 +713,7 @@ PR 交付说明必须包含：
 - [ ] B0 bounded Catalog reader 在 hash/unmarshal/clone 前受 8 MiB 上限保护，且共享
   Catalog publication/read 仍兼容大快照。
 - [ ] permission preflight、task scope 与 Executor 共享配置化 admin 语义。
+- [ ] 内置、配置化和历史 alias 平台管理员均通过 permission matrix，且都不能跨 tenant。
 - [ ] task repository 不可用稳定映射为 `dependency_unavailable`。
 - [ ] 3 秒合同准确描述 Executor，不误称整个 Invoke wall-clock timeout。
 - [ ] 真实 SQLite + Casbin + Registry conformance tests 通过。

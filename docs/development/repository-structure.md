@@ -110,7 +110,7 @@
   - `internal/listing/task` 拥有 task-scoped resource resolution 与 tenant-admin checker 窄合同；现有 ListingKit persistence adapter 可以实现该 Port，但调用方不能依赖 legacy Task DTO 或全局默认权限实例。
 - `internal/product/catalog/tools/canonicalinspect`
   - `product.canonical.inspect` 是 Phase 2A 的只读 B0 Tool Adapter：通过 `internal/listing/task` 解析授权资源，只读取权威 `ProductSnapshot`，并输出严格、去除任意 authority metadata 的投影。
-  - 该包不拥有 task、repository、write/publish 能力、HTTP/worker/runtime；其 8 MiB Catalog 输入边界由只读 persistence adapter 执行，不是共享 Catalog 的全局限制；Phase 2B 之前没有用户可访问的 Agent Runtime。
+  - 该包不拥有 task、repository、write/publish 能力、HTTP/worker/runtime；其 8 MiB Catalog 输入边界由只读 persistence adapter 通过数据库侧条件投影执行，不是共享 Catalog 的全局限制；Phase 2B 之前没有用户可访问的 Agent Runtime。
 - `internal/integration/commercetoolauth`
   - 只负责把 `authidentity.AuthenticatedIdentity` 和现有 Casbin owner 适配到 Commerce Tool contracts，不复制 IAM policy。
 - `internal/shein` / `internal/temu` / `internal/amazon`

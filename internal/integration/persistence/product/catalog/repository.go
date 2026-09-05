@@ -174,9 +174,17 @@ func (r *repository) GetSnapshot(ctx context.Context, identity productcatalog.Sn
 		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotNotReady
 	}
 	var record SnapshotVersionRecord
-	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, version).
-		Take(&record).Error
+	query := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, version)
+	if r.maxEncodedSnapshotBytes > 0 {
+		sizeExpression := boundedSnapshotSizeExpression(query.Dialector.Name())
+		projection := fmt.Sprintf(
+			"tenant_id, product_key, version, publication_id, payload_hash, CASE WHEN %s <= ? THEN snapshot_json ELSE NULL END AS snapshot_json",
+			sizeExpression,
+		)
+		query = query.Select(projection, r.maxEncodedSnapshotBytes)
+	}
+	err := query.Take(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotNotReady
 	}
@@ -184,6 +192,13 @@ func (r *repository) GetSnapshot(ctx context.Context, identity productcatalog.Sn
 		return productcatalog.PublishedSnapshot{}, mapRepositoryError("load snapshot version", err)
 	}
 	return publishedFromRecord(record, r.maxEncodedSnapshotBytes)
+}
+
+func boundedSnapshotSizeExpression(dialect string) string {
+	if dialect == "postgres" {
+		return "OCTET_LENGTH(snapshot_json::text)"
+	}
+	return "LENGTH(snapshot_json)"
 }
 
 func loadPublication(tx *gorm.DB, identity productcatalog.SnapshotIdentity, publicationID string) (SnapshotVersionRecord, bool, error) {

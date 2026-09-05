@@ -46,6 +46,15 @@ func TestBoundedSnapshotReaderLimitsOnlyItsOwnMaterializationPath(t *testing.T) 
 				t.Fatalf("shared repository current read: %v", err)
 			}
 
+			var boundedVersionSelect string
+			callbackName := "test:capture-bounded-snapshot-select:" + t.Name()
+			if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+				if statement := tx.Statement.SQL.String(); strings.Contains(statement, "snapshot_json") {
+					boundedVersionSelect = statement
+				}
+			}); err != nil {
+				t.Fatalf("register query capture: %v", err)
+			}
 			bounded, err := NewBoundedSnapshotReader(db, maxEncodedSnapshotBytes)
 			if err != nil {
 				t.Fatalf("NewBoundedSnapshotReader(): %v", err)
@@ -55,6 +64,9 @@ func TestBoundedSnapshotReaderLimitsOnlyItsOwnMaterializationPath(t *testing.T) 
 			}
 			_, versionErr := bounded.GetSnapshot(context.Background(), identity, published.Version)
 			_, currentErr := bounded.GetCurrentSnapshot(context.Background(), identity)
+			if !strings.Contains(boundedVersionSelect, "CASE WHEN") || !strings.Contains(boundedVersionSelect, "snapshot_json") {
+				t.Fatalf("bounded reader select = %q, want database-side conditional payload projection", boundedVersionSelect)
+			}
 			if size == maxEncodedSnapshotBytes {
 				if versionErr != nil || currentErr != nil {
 					t.Fatalf("exact-limit read errors: versioned=%v current=%v", versionErr, currentErr)
@@ -65,6 +77,17 @@ func TestBoundedSnapshotReaderLimitsOnlyItsOwnMaterializationPath(t *testing.T) 
 				t.Fatalf("over-limit read errors: versioned=%v current=%v", versionErr, currentErr)
 			}
 		})
+	}
+}
+
+func TestBoundedSnapshotSizeExpressionUsesByteLengthPerDialect(t *testing.T) {
+	if got := boundedSnapshotSizeExpression("postgres"); got != "OCTET_LENGTH(snapshot_json::text)" {
+		t.Fatalf("postgres expression = %q", got)
+	}
+	for _, dialect := range []string{"sqlite", "mysql", "other"} {
+		if got := boundedSnapshotSizeExpression(dialect); got != "LENGTH(snapshot_json)" {
+			t.Fatalf("%s expression = %q", dialect, got)
+		}
 	}
 }
 

@@ -32,6 +32,7 @@ func TestCasbinAuthorizerDelegatesExistingListingKitPolicy(t *testing.T) {
 		{role: "listingkit_operator", allowed: true},
 		{role: "listingkit_admin", allowed: true},
 		{role: "platform_admin", allowed: true},
+		{role: "admin", allowed: true},
 		{role: "listingkit_viewer"},
 		{role: "unknown"},
 	}

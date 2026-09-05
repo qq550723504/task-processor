@@ -63,6 +63,8 @@ func TestListingKitAuthorizerUsesConfiguredPlatformAdminSemanticsConsistently(t 
 		require.True(t, authorizer.Authorize(identity.userID, identity.roles, PermissionListingKitAdminRead))
 		require.True(t, authorizer.IsTenantAdmin(identity.userID, identity.roles))
 	}
+	require.True(t, authorizer.Authorize("", []string{"admin"}, PermissionListingKitAdminRead))
+	require.True(t, authorizer.IsTenantAdmin("", []string{"admin"}))
 }
 
 func TestListingKitAuthorizerRestrictsPromptWritesToTenantAndPlatformAdmins(t *testing.T) {

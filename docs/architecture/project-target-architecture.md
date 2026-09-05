@@ -256,8 +256,9 @@ wire projection and stable error mapping; it owns neither task persistence nor
 canonical product facts, and it receives no write or publish port. Composition
 injects one configured Casbin authorizer into permission preflight, task owner
 scope, and the Executor's defensive scope check. A B0-only bounded read adapter
-checks persisted payload size before materialization without narrowing the
-shared Catalog repository's existing publication/read compatibility.
+uses a database-side byte-length conditional projection so oversized payloads
+are not scanned into Go, without narrowing the shared Catalog repository's
+existing publication/read compatibility.
 
 There is no user-accessible Tool or Agent runtime in Phase 2A. Runtime assembly,
 model orchestration, and public entrypoints remain gated on Phase 2B. The B0

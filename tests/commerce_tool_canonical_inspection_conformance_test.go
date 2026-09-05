@@ -125,6 +125,8 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	assertConformanceTitle(t, invokeConformance(t, bound, admin, "task-other"), "Bottle v1", first.Version)
 	platform := conformanceIdentity("tenant-a", "platform-a", "platform_admin")
 	assertConformanceTitle(t, invokeConformance(t, bound, platform, "task-other"), "Bottle v1", first.Version)
+	legacyPlatform := conformanceIdentity("tenant-a", "legacy-platform-a", "admin")
+	assertConformanceTitle(t, invokeConformance(t, bound, legacyPlatform, "task-other"), "Bottle v1", first.Version)
 	configuredRole := conformanceIdentity("tenant-a", "role-user", "configured-role")
 	assertConformanceTitle(t, invokeConformance(t, bound, configuredRole, "task-other"), "Bottle v1", first.Version)
 	configuredUser := conformanceIdentity("tenant-a", "configured-user", "listingkit_viewer")
@@ -138,11 +140,11 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("read-only tool changed durable state\nbefore=%#v\nafter=%#v", before, after)
 	}
-	if len(audits.records) != 11 {
-		t.Fatalf("audit records = %d, want 11", len(audits.records))
+	if len(audits.records) != 12 {
+		t.Fatalf("audit records = %d, want 12", len(audits.records))
 	}
-	if len(spanRecorder.Ended()) != 10 {
-		t.Fatalf("ended spans = %d, want 10 executor-bound calls", len(spanRecorder.Ended()))
+	if len(spanRecorder.Ended()) != 11 {
+		t.Fatalf("ended spans = %d, want 11 executor-bound calls", len(spanRecorder.Ended()))
 	}
 }
 

@@ -106,6 +106,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"platform_admin", PermissionWorkbenchStoreLifecycle},
 		{"platform_admin", PermissionWorkbenchStoreDelete},
 		{"admin", PermissionListingKitPlatformAdm},
+		{"admin", PermissionListingKitAdminRead},
 		{"admin", PermissionListingKitPromptWrite},
 		{"admin", PermissionLocalAgentWrite},
 		{"admin", PermissionImageAgentRead},

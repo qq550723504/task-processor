@@ -5,9 +5,9 @@
 状态：`IMPLEMENTATION_READY`
 
 独立评审：PR #295。Round 1 基于 commit
-`1086e5c176ea0bd98b0ac69e47b70b0083a4f6a5` 完成；Round 2 在实现后发现两个
-`BLOCKER` 和一个 `IMPLEMENTATION_TEST`，已按 15.2 节收敛根因并重新冻结。没有未处理
-Blocker，不再进行第三轮正常 Architecture Review。
+`1086e5c176ea0bd98b0ac69e47b70b0083a4f6a5` 完成；Round 2 与最终实现评审发现的
+Blocker/Implementation Test 已按 15.2、15.3 节收敛根因并重新冻结。没有未处理
+Blocker，也没有进行第三轮正常 Architecture Review。
 
 本设计是
 `docs/superpowers/specs/2026-08-31-commerce-tool-foundation-design.md`
@@ -62,7 +62,8 @@ version: v1.0.0
   再执行 tenant/owner 过滤。
 - tenant admin 和 platform admin 只能绕过当前 tenant 内的 owner 过滤，不能跨 tenant。
 - permission preflight、task query 和 Executor 二次校验必须共享同一个配置化 Casbin
-  `ListingKitAuthorizer`；配置的 platform-admin user/role 与内置角色语义一致。
+  `ListingKitAuthorizer`；配置的 platform-admin user/role 与内置 `platform_admin`、历史
+  `admin` alias 语义一致。
 - 不可见任务与不存在任务统一返回 `not_found`，不得暴露资源是否存在。
 - 新任务使用持久化的 `SourceSnapshotVersion` 读取不可变版本；旧任务版本为零时读取
   当时最新的完整已提交版本，并在输出中返回实际版本。
@@ -287,10 +288,10 @@ Schema 要求：
   metadata key 绕过保留字段策略；
 - 输出序列化上限为 1 MiB，与仓库现有 Agent snapshot 边界一致。超过上限返回
   `failed_precondition`，不得截断后伪装为完整商品；
-- 8 MiB encoded snapshot 上限只属于 B0 的 bounded read-only persistence adapter，并在
-  hash、JSON unmarshal 和 clone 前检查；共享 Catalog publication/repository 不增加全局
-  上限，以兼容已经持久化或被现有流程接受的大快照；Tool 自己仍执行更严格的 1 MiB
-  输出上限；
+- 8 MiB encoded snapshot 上限只属于 B0 的 bounded read-only persistence adapter；SQL
+  先按字节长度做条件投影，超限时不把 payload 扫描进 Go，再执行 hash、JSON unmarshal
+  和 clone；共享 Catalog publication/repository 不增加全局上限，以兼容已经持久化或被
+  现有流程接受的大快照；Tool 自己仍执行更严格的 1 MiB 输出上限；
 - Output Schema 必须严格声明全部返回字段并禁用 additional properties。
 
 ### 6.4 Business Task Binding
@@ -370,8 +371,9 @@ fallback，并且没有副作用；它不承诺 legacy current-read 永久返回
   execution timeout 之后。两者分别被 64 KiB raw input 与 1 MiB output 上限约束；不得
   把 Definition 的 3 秒描述为整个 `BoundToolSet.Invoke` 的严格 wall-clock 上限；
 - audit 使用 Registry 已有独立 `AuditTimeout`，不占用 3 秒 execution timeout；
-- B0 Catalog reader encoded snapshot：最多 8 MiB，且只在 B0 bounded reader 的
-  hash/unmarshal/clone 前检查；共享 Catalog reader/writer 不受此限制；
+- B0 Catalog reader encoded snapshot：最多 8 MiB；SQL 使用 byte-length 条件投影，超限
+  payload 不进入 Go，随后才执行 hash/unmarshal/clone；共享 Catalog reader/writer 不受
+  此限制；
 - 输出：最多 1 MiB，超限不截断；
 - Reader 调用次数：每次最多一次 task read 和一次 catalog read；
 - 不调用网络、模型、消息队列、Temporal、文件系统或 cache；
@@ -400,7 +402,7 @@ B0 不新增第三方依赖：
 | 审计任务与读取任务一致 | BusinessTaskID mismatch test，Reader 调用次数为零 |
 | cross-tenant 不可见 | SQLite real repository integration test |
 | cross-owner 不可见 | operator fixture integration test |
-| tenant/platform/configured admin 仅 tenant-wide | 同一配置化 authorizer 的 preflight、repository、Executor matrix tests |
+| tenant/platform/configured/legacy alias admin 仅 tenant-wide | 同一配置化 authorizer 的 preflight、repository、Executor matrix tests |
 | Tool 不直连 persistence/legacy DTO | AST/import guard + depguard |
 | Snapshot 是权威读取 | real catalog repository current/versioned tests |
 | 不存在隐式 current fallback | pinned reader missing/version unsupported tests |
@@ -409,7 +411,7 @@ B0 不新增第三方依赖：
 | output 无保留字段和任意 metadata | nested reserved metadata fixture |
 | cancellation/deadline 有界 | blocking Reader + Registry timeout test |
 | raw invocation 有界 | 64 KiB exact/over-limit test，断言不保留/哈希原始载荷且 PrincipalResolver 未调用 |
-| B0 Catalog 物化有界且不破坏兼容 | bounded reader exact/over-limit tests + shared repository large snapshot compatibility test |
+| B0 Catalog 物化有界且不破坏兼容 | database-side conditional projection assertion + bounded exact/over tests + shared large snapshot compatibility test |
 | output size 有界 | exact limit / over limit tests |
 | 无模型或外部依赖 | import guard + conformance test |
 
@@ -540,3 +542,25 @@ Action: oversized invocation state 不 clone、不保留、不哈希原始 Argum
 
 两项 Blocker 已按上述最小边界修复，且未新增 IAM、repository owner 或全局数据约束。
 设计重新达到 `IMPLEMENTATION_READY`；按“两轮正常评审”上限冻结此基线。
+
+### 15.3 Final Implementation Review 分类
+
+```text
+Finding: 历史 admin alias 拥有 listingkit.platform_admin，却没有 B0 所需的
+         listingkit.admin.read。
+Product requirement affected: 已承认平台管理员的核心 happy path。
+Classification: BLOCKER
+Reason: 命中“核心 happy path 按当前设计无法完成”；这是同一授权根因的 sibling path。
+Action: 为 admin alias 补齐 read permission，并加入 auth adapter 与真实 Registry
+        conformance matrix；tenant 边界仍由共享 checker 强制。
+
+Finding: bounded reader 在 Go 中检查长度前，GORM 已扫描完整 SnapshotJSON。
+Product requirement affected: 持久化读取的资源耗尽边界。
+Classification: IMPLEMENTATION_TEST
+Reason: 不改变所有权或错误合同，可由 persistence query projection 收敛。
+Action: bounded reader 使用数据库方 byte-length 条件投影，超限时返回 NULL payload；测试
+        同时断言 SQL 包含 CASE guard、exact 成功、over-limit 失败和共享 reader 兼容。
+```
+
+以上问题按实现证据修复，不引入第三轮正常 Architecture Review。冻结状态继续为
+`IMPLEMENTATION_READY`。
