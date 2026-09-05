@@ -38,6 +38,10 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	if err := catalogpersistence.AutoMigrate(db); err != nil {
 		t.Fatalf("migrate catalog: %v", err)
 	}
+	casbin, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	if err != nil {
+		t.Fatalf("NewListingKitAuthorizer(): %v", err)
+	}
 
 	catalogRepository, err := catalogpersistence.NewRepository(db)
 	if err != nil {
@@ -70,25 +74,21 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 		}
 	}
 
-	taskRepository := listingstore.NewTaskRepository(db)
+	taskRepository, err := listingstore.NewTaskRepositoryWithTenantAdminChecker(db, casbin)
+	if err != nil {
+		t.Fatalf("NewTaskRepositoryWithTenantAdminChecker(): %v", err)
+	}
 	subjects, ok := taskRepository.(listingtask.CanonicalSubjectReader)
 	if !ok {
 		t.Fatal("task repository does not implement CanonicalSubjectReader")
 	}
-	snapshots, ok := catalogRepository.(interface {
-		catalog.SnapshotReader
-		catalog.VersionedSnapshotReader
-	})
-	if !ok {
-		t.Fatal("catalog repository does not implement versioned reads")
+	snapshots, err := catalogpersistence.NewBoundedSnapshotReader(db, canonicalinspect.MaxCatalogSnapshotBytes)
+	if err != nil {
+		t.Fatalf("NewBoundedSnapshotReader(): %v", err)
 	}
-	executor, err := canonicalinspect.NewExecutor(subjects, snapshots)
+	executor, err := canonicalinspect.NewExecutor(subjects, snapshots, casbin)
 	if err != nil {
 		t.Fatalf("NewExecutor(): %v", err)
-	}
-	casbin, err := authz.NewListingKitAuthorizer(nil, nil)
-	if err != nil {
-		t.Fatalf("NewListingKitAuthorizer(): %v", err)
 	}
 	authorizer, err := commercetoolauth.NewCasbinAuthorizer(casbin)
 	if err != nil {
@@ -125,7 +125,12 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	assertConformanceTitle(t, invokeConformance(t, bound, admin, "task-other"), "Bottle v1", first.Version)
 	platform := conformanceIdentity("tenant-a", "platform-a", "platform_admin")
 	assertConformanceTitle(t, invokeConformance(t, bound, platform, "task-other"), "Bottle v1", first.Version)
+	configuredRole := conformanceIdentity("tenant-a", "role-user", "configured-role")
+	assertConformanceTitle(t, invokeConformance(t, bound, configuredRole, "task-other"), "Bottle v1", first.Version)
+	configuredUser := conformanceIdentity("tenant-a", "configured-user", "listingkit_viewer")
+	assertConformanceTitle(t, invokeConformance(t, bound, configuredUser, "task-other"), "Bottle v1", first.Version)
 	assertConformanceError(t, bound, conformanceIdentity("tenant-b", "platform-a", "platform_admin"), "task-owner", commercetool.ErrorNotFound)
+	assertConformanceError(t, bound, conformanceIdentity("tenant-b", "configured-user", "listingkit_viewer"), "task-owner", commercetool.ErrorNotFound)
 	assertConformanceError(t, bound, conformanceIdentity("tenant-a", "viewer-a", "listingkit_viewer"), "task-owner", commercetool.ErrorPermissionDenied)
 	assertConformanceError(t, bound, owner, "task-not-ready", commercetool.ErrorFailedPrecondition)
 
@@ -133,11 +138,11 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("read-only tool changed durable state\nbefore=%#v\nafter=%#v", before, after)
 	}
-	if len(audits.records) != 8 {
-		t.Fatalf("audit records = %d, want 8", len(audits.records))
+	if len(audits.records) != 11 {
+		t.Fatalf("audit records = %d, want 11", len(audits.records))
 	}
-	if len(spanRecorder.Ended()) != 7 {
-		t.Fatalf("ended spans = %d, want 7 executor-bound calls", len(spanRecorder.Ended()))
+	if len(spanRecorder.Ended()) != 10 {
+		t.Fatalf("ended spans = %d, want 10 executor-bound calls", len(spanRecorder.Ended()))
 	}
 }
 

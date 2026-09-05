@@ -97,9 +97,6 @@ func CloneProductSnapshot(snapshot ProductSnapshot) (ProductSnapshot, error) {
 	if err != nil {
 		return ProductSnapshot{}, fmt.Errorf("%w: encode snapshot: %v", ErrInvalidSnapshot, err)
 	}
-	if err := ValidateEncodedSnapshotSize(encoded); err != nil {
-		return ProductSnapshot{}, err
-	}
 	if string(encoded) == "{}" {
 		return ProductSnapshot{}, ErrInvalidSnapshot
 	}

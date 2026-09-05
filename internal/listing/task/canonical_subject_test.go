@@ -60,13 +60,13 @@ func TestCanReadCanonicalSubject(t *testing.T) {
 	}{
 		{name: "owner", actor: Actor{TenantID: "tenant-1", UserID: "owner-1", Roles: []string{"listingkit_operator"}}, want: true},
 		{name: "cross owner", actor: Actor{TenantID: "tenant-1", UserID: "owner-2", Roles: []string{"listingkit_operator"}}},
-		{name: "tenant admin", actor: Actor{TenantID: "tenant-1", UserID: "admin-1", Roles: []string{"listingkit_admin"}}, want: true},
-		{name: "platform admin same tenant", actor: Actor{TenantID: "tenant-1", UserID: "platform-1", Roles: []string{"platform_admin"}}, want: true},
+		{name: "configured admin same tenant", actor: Actor{TenantID: "tenant-1", UserID: "admin-1", Roles: []string{"configured-admin"}}, want: true},
 		{name: "platform admin cross tenant", actor: Actor{TenantID: "tenant-2", UserID: "platform-1", Roles: []string{"platform_admin"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := CanReadCanonicalSubject(tt.actor, subject); got != tt.want {
+			checker := tenantAdminCheckerStub{allowedRole: "configured-admin"}
+			if got := CanReadCanonicalSubject(tt.actor, subject, checker); got != tt.want {
 				t.Fatalf("CanReadCanonicalSubject() = %v, want %v", got, tt.want)
 			}
 		})
@@ -84,11 +84,23 @@ func TestCanonicalSubjectCloneDefensivelyCopiesSourceLineage(t *testing.T) {
 
 func TestCanonicalSubjectReaderContract(t *testing.T) {
 	var _ CanonicalSubjectReader = canonicalSubjectReaderStub{}
-	for _, err := range []error{ErrInvalidActor, ErrInvalidTaskID, ErrCanonicalSubjectNotFound, ErrCanonicalSubjectNotReady} {
+	var _ TenantAdminChecker = tenantAdminCheckerStub{}
+	for _, err := range []error{ErrInvalidActor, ErrInvalidTaskID, ErrCanonicalSubjectNotFound, ErrCanonicalSubjectNotReady, ErrCanonicalSubjectUnavailable} {
 		if err == nil {
 			t.Fatal("contract error must be non-nil")
 		}
 	}
+}
+
+type tenantAdminCheckerStub struct{ allowedRole string }
+
+func (s tenantAdminCheckerStub) IsTenantAdmin(_ string, roles []string) bool {
+	for _, role := range roles {
+		if role == s.allowedRole {
+			return true
+		}
+	}
+	return false
 }
 
 type canonicalSubjectReaderStub struct{}

@@ -2,8 +2,6 @@ package catalogpersistence
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,37 +19,9 @@ import (
 	productcatalog "task-processor/internal/product/catalog"
 )
 
-func TestRepositoryBoundsEncodedSnapshotBeforeTransactionAndMaterialization(t *testing.T) {
-	t.Run("publication", func(t *testing.T) {
-		db := openCatalogRepositoryTestDB(t).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
-		if err := AutoMigrate(db); err != nil {
-			t.Fatalf("AutoMigrate(): %v", err)
-		}
-		repository, err := NewRepository(db)
-		if err != nil {
-			t.Fatalf("NewRepository(): %v", err)
-		}
-		request := productcatalog.PublishRequest{
-			Identity:      productcatalog.SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-a"},
-			PublicationID: "publication-1",
-			Snapshot:      persistenceSnapshotWithEncodedSize(t, productcatalog.MaxEncodedSnapshotBytes+1),
-		}
-		if _, err := repository.PublishSnapshot(context.Background(), request); !errors.Is(err, productcatalog.ErrInvalidSnapshot) {
-			t.Fatalf("PublishSnapshot(over limit) error = %v", err)
-		}
-		var versions, heads int64
-		if err := db.Model(&SnapshotVersionRecord{}).Count(&versions).Error; err != nil {
-			t.Fatalf("count versions: %v", err)
-		}
-		if err := db.Model(&SnapshotHeadRecord{}).Count(&heads).Error; err != nil {
-			t.Fatalf("count heads: %v", err)
-		}
-		if versions != 0 || heads != 0 {
-			t.Fatalf("oversized publication changed storage: versions=%d heads=%d", versions, heads)
-		}
-	})
-
-	for _, size := range []int{productcatalog.MaxEncodedSnapshotBytes, productcatalog.MaxEncodedSnapshotBytes + 1} {
+func TestBoundedSnapshotReaderLimitsOnlyItsOwnMaterializationPath(t *testing.T) {
+	const maxEncodedSnapshotBytes = 8 << 20
+	for _, size := range []int{maxEncodedSnapshotBytes, maxEncodedSnapshotBytes + 1} {
 		t.Run(fmt.Sprintf("read_%d", size), func(t *testing.T) {
 			db := openCatalogRepositoryTestDB(t).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
 			if err := AutoMigrate(db); err != nil {
@@ -62,20 +32,30 @@ func TestRepositoryBoundsEncodedSnapshotBeforeTransactionAndMaterialization(t *t
 				t.Fatalf("NewRepository(): %v", err)
 			}
 			identity := productcatalog.SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-a"}
-			payload := persistenceEncodedSnapshot(t, size)
-			sum := sha256.Sum256(payload)
-			record := SnapshotVersionRecord{TenantID: identity.TenantID, ProductKey: identity.ProductKey, Version: 1, PublicationID: "publication-1", PayloadHash: hex.EncodeToString(sum[:]), SnapshotJSON: payload}
-			if err := db.Create(&record).Error; err != nil {
-				t.Fatalf("create version: %v", err)
+			published, err := repository.PublishSnapshot(context.Background(), productcatalog.PublishRequest{
+				Identity: identity, PublicationID: "publication-1", Snapshot: persistenceSnapshotWithEncodedSize(t, size),
+			})
+			if err != nil {
+				t.Fatalf("shared repository publication must remain compatible: %v", err)
 			}
-			if err := db.Create(&SnapshotHeadRecord{TenantID: identity.TenantID, ProductKey: identity.ProductKey, CurrentVersion: 1, PublicationID: "publication-1"}).Error; err != nil {
-				t.Fatalf("create head: %v", err)
+			sharedVersioned := repository.(productcatalog.VersionedSnapshotReader)
+			if _, err := sharedVersioned.GetSnapshot(context.Background(), identity, published.Version); err != nil {
+				t.Fatalf("shared repository versioned read: %v", err)
+			}
+			if _, err := repository.GetCurrentSnapshot(context.Background(), identity); err != nil {
+				t.Fatalf("shared repository current read: %v", err)
 			}
 
-			versioned := repository.(productcatalog.VersionedSnapshotReader)
-			_, versionErr := versioned.GetSnapshot(context.Background(), identity, 1)
-			_, currentErr := repository.GetCurrentSnapshot(context.Background(), identity)
-			if size == productcatalog.MaxEncodedSnapshotBytes {
+			bounded, err := NewBoundedSnapshotReader(db, maxEncodedSnapshotBytes)
+			if err != nil {
+				t.Fatalf("NewBoundedSnapshotReader(): %v", err)
+			}
+			if _, ok := any(bounded).(productcatalog.SnapshotWriter); ok {
+				t.Fatal("bounded reader exposes the Catalog write port")
+			}
+			_, versionErr := bounded.GetSnapshot(context.Background(), identity, published.Version)
+			_, currentErr := bounded.GetCurrentSnapshot(context.Background(), identity)
+			if size == maxEncodedSnapshotBytes {
 				if versionErr != nil || currentErr != nil {
 					t.Fatalf("exact-limit read errors: versioned=%v current=%v", versionErr, currentErr)
 				}

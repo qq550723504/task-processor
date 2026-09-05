@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-
-	"task-processor/internal/authz"
 )
 
 const (
@@ -17,10 +15,11 @@ const (
 )
 
 var (
-	ErrInvalidActor             = errors.New("invalid listing task actor")
-	ErrInvalidTaskID            = errors.New("invalid listing task id")
-	ErrCanonicalSubjectNotFound = errors.New("canonical subject not found")
-	ErrCanonicalSubjectNotReady = errors.New("canonical subject not ready")
+	ErrInvalidActor                = errors.New("invalid listing task actor")
+	ErrInvalidTaskID               = errors.New("invalid listing task id")
+	ErrCanonicalSubjectNotFound    = errors.New("canonical subject not found")
+	ErrCanonicalSubjectNotReady    = errors.New("canonical subject not ready")
+	ErrCanonicalSubjectUnavailable = errors.New("canonical subject repository unavailable")
 )
 
 // Actor is the trusted identity used to scope a task-owned resource lookup.
@@ -65,6 +64,12 @@ type CanonicalSubjectReader interface {
 	ReadCanonicalSubject(ctx context.Context, actor Actor, taskID string) (CanonicalSubject, error)
 }
 
+// TenantAdminChecker is the narrow authorization seam needed to decide
+// whether an identity may bypass owner scope inside its authenticated tenant.
+type TenantAdminChecker interface {
+	IsTenantAdmin(userID string, roles []string) bool
+}
+
 func ValidateActor(actor Actor) error {
 	if !canonicalString(actor.TenantID, MaxTenantIDBytes) ||
 		!canonicalString(actor.UserID, MaxUserIDBytes) ||
@@ -89,7 +94,7 @@ func ValidateTaskID(taskID string) error {
 // CanReadCanonicalSubject applies the task ownership invariant after storage
 // filtering. Administrative roles may bypass owner scope only within their
 // already authenticated tenant.
-func CanReadCanonicalSubject(actor Actor, subject CanonicalSubject) bool {
+func CanReadCanonicalSubject(actor Actor, subject CanonicalSubject, tenantAdmins TenantAdminChecker) bool {
 	if ValidateActor(actor) != nil ||
 		actor.TenantID != subject.TenantID ||
 		!canonicalString(subject.OwnerUserID, MaxUserIDBytes) {
@@ -98,7 +103,7 @@ func CanReadCanonicalSubject(actor Actor, subject CanonicalSubject) bool {
 	if actor.UserID == subject.OwnerUserID {
 		return true
 	}
-	return authz.IsListingKitTenantAdmin(actor.UserID, actor.Roles)
+	return tenantAdmins != nil && tenantAdmins.IsTenantAdmin(actor.UserID, actor.Roles)
 }
 
 func canonicalString(value string, maxBytes int) bool {

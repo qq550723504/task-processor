@@ -17,19 +17,27 @@ type snapshotReader interface {
 	catalog.VersionedSnapshotReader
 }
 
+// MaxCatalogSnapshotBytes is the B0 consumer-side materialization bound. It is
+// deliberately not a global Catalog publication or repository invariant.
+const MaxCatalogSnapshotBytes = 8 << 20
+
 type Executor struct {
-	subjects  listingtask.CanonicalSubjectReader
-	snapshots snapshotReader
+	subjects     listingtask.CanonicalSubjectReader
+	snapshots    snapshotReader
+	tenantAdmins listingtask.TenantAdminChecker
 }
 
-func NewExecutor(subjects listingtask.CanonicalSubjectReader, snapshots snapshotReader) (*Executor, error) {
+func NewExecutor(subjects listingtask.CanonicalSubjectReader, snapshots snapshotReader, tenantAdmins listingtask.TenantAdminChecker) (*Executor, error) {
 	if nilInterface(subjects) {
 		return nil, fmt.Errorf("canonical subject reader is nil")
 	}
 	if nilInterface(snapshots) {
 		return nil, fmt.Errorf("catalog snapshot reader is nil")
 	}
-	return &Executor{subjects: subjects, snapshots: snapshots}, nil
+	if nilInterface(tenantAdmins) {
+		return nil, fmt.Errorf("tenant admin checker is nil")
+	}
+	return &Executor{subjects: subjects, snapshots: snapshots, tenantAdmins: tenantAdmins}, nil
 }
 
 func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionEnvelope, raw json.RawMessage) (commercetool.ExecutionResult, error) {
@@ -56,7 +64,7 @@ func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionE
 	if err := ctx.Err(); err != nil {
 		return commercetool.ExecutionResult{}, deadlineError(err)
 	}
-	if subject.TaskID != input.TaskID || !listingtask.CanReadCanonicalSubject(actor, subject) {
+	if subject.TaskID != input.TaskID || !listingtask.CanReadCanonicalSubject(actor, subject, e.tenantAdmins) {
 		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorNotFound, "canonical product is not available", nil)
 	}
 	if subject.ProductKey == "" {
@@ -106,6 +114,8 @@ func mapSubjectError(err error) error {
 		return commercetool.NewError(commercetool.ErrorNotFound, "canonical product is not available", err)
 	case errors.Is(err, listingtask.ErrCanonicalSubjectNotReady):
 		return commercetool.NewError(commercetool.ErrorFailedPrecondition, "canonical product is not ready", err)
+	case errors.Is(err, listingtask.ErrCanonicalSubjectUnavailable):
+		return commercetool.NewError(commercetool.ErrorDependencyUnavailable, "canonical task repository is unavailable", err)
 	default:
 		return commercetool.NewError(commercetool.ErrorInternal, "canonical task lookup failed", err)
 	}

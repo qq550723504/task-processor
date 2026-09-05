@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -77,12 +78,15 @@ func (r *taskRepository) ReadCanonicalSubject(ctx context.Context, actor listing
 	actor.Roles = append([]string(nil), actor.Roles...)
 
 	var stored listingkit.Task
-	db := applyCanonicalSubjectAccessScope(r.db.WithContext(ctx), actor)
+	db := applyCanonicalSubjectAccessScope(r.db.WithContext(ctx), actor, r.tenantAdmins)
 	if err := db.Where("id = ?", taskID).First(&stored).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return listingtask.CanonicalSubject{}, listingtask.ErrCanonicalSubjectNotFound
 		}
-		return listingtask.CanonicalSubject{}, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return listingtask.CanonicalSubject{}, err
+		}
+		return listingtask.CanonicalSubject{}, fmt.Errorf("%w: read task: %v", listingtask.ErrCanonicalSubjectUnavailable, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return listingtask.CanonicalSubject{}, err
@@ -106,7 +110,7 @@ func (r *taskRepository) ReadCanonicalSubject(ctx context.Context, actor listing
 			}
 		}
 	}
-	if subject.TaskID != taskID || !listingtask.CanReadCanonicalSubject(actor, subject) {
+	if subject.TaskID != taskID || !listingtask.CanReadCanonicalSubject(actor, subject, r.tenantAdmins) {
 		return listingtask.CanonicalSubject{}, listingtask.ErrCanonicalSubjectNotFound
 	}
 	if subject.ProductKey == "" || subject.ProductKey != strings.TrimSpace(subject.ProductKey) {

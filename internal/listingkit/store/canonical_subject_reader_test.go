@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
+	"task-processor/internal/authz"
 	listingtask "task-processor/internal/listing/task"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
@@ -70,6 +71,34 @@ func TestTaskRepositoryCanonicalSubjectAccessMatrix(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryCanonicalSubjectUsesInjectedConfiguredAdminSemantics(t *testing.T) {
+	db := newCanonicalSubjectDB(t)
+	configured, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	if err != nil {
+		t.Fatalf("NewListingKitAuthorizer(): %v", err)
+	}
+	repository, err := store.NewTaskRepositoryWithTenantAdminChecker(db, configured)
+	if err != nil {
+		t.Fatalf("NewTaskRepositoryWithTenantAdminChecker(): %v", err)
+	}
+	reader := repository.(listingtask.CanonicalSubjectReader)
+	if err := db.Create(canonicalSubjectTask("task-other", "tenant-a", "owner-b", "product-b", 8)).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	for _, configuredActor := range []listingtask.Actor{
+		actor("tenant-a", "configured-user", "viewer"),
+		actor("tenant-a", "role-user", "configured-role"),
+	} {
+		if _, err := reader.ReadCanonicalSubject(context.Background(), configuredActor, "task-other"); err != nil {
+			t.Fatalf("configured admin read: %v", err)
+		}
+	}
+	if _, err := reader.ReadCanonicalSubject(context.Background(), actor("tenant-b", "configured-user", "viewer"), "task-other"); !errors.Is(err, listingtask.ErrCanonicalSubjectNotFound) {
+		t.Fatalf("configured admin cross-tenant error = %v", err)
+	}
+}
+
 func TestTaskRepositoryCanonicalSubjectLegacyOwnerAndDefensiveSource(t *testing.T) {
 	db := newCanonicalSubjectDB(t)
 	reader := store.NewTaskRepository(db).(listingtask.CanonicalSubjectReader)
@@ -120,6 +149,23 @@ func TestTaskRepositoryCanonicalSubjectRejectsInvalidOrUnready(t *testing.T) {
 	cancel()
 	if _, err := reader.ReadCanonicalSubject(canceled, actor("tenant-a", "owner-a", "listingkit_operator"), task.ID); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled error = %v", err)
+	}
+}
+
+func TestTaskRepositoryCanonicalSubjectMapsDatabaseFailure(t *testing.T) {
+	db := newCanonicalSubjectDB(t)
+	reader := store.NewTaskRepository(db).(listingtask.CanonicalSubjectReader)
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("DB(): %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+
+	_, err = reader.ReadCanonicalSubject(context.Background(), actor("tenant-a", "owner-a", "listingkit_operator"), "task-owner")
+	if !errors.Is(err, listingtask.ErrCanonicalSubjectUnavailable) {
+		t.Fatalf("ReadCanonicalSubject() error = %v, want ErrCanonicalSubjectUnavailable", err)
 	}
 }
 

@@ -16,11 +16,15 @@ import (
 
 func TestExecutorRejectsInvalidConstruction(t *testing.T) {
 	reader := &catalogReaderStub{}
-	if _, err := NewExecutor(nil, reader); err == nil {
+	checker := tenantAdminCheckerStub{}
+	if _, err := NewExecutor(nil, reader, checker); err == nil {
 		t.Fatal("NewExecutor(nil, reader) error = nil")
 	}
-	if _, err := NewExecutor(&subjectReaderStub{}, nil); err == nil {
+	if _, err := NewExecutor(&subjectReaderStub{}, nil, checker); err == nil {
 		t.Fatal("NewExecutor(subject, nil) error = nil")
+	}
+	if _, err := NewExecutor(&subjectReaderStub{}, reader, nil); err == nil {
+		t.Fatal("NewExecutor(subject, reader, nil) error = nil")
 	}
 }
 
@@ -32,7 +36,7 @@ func TestExecutorPinnedAndLegacyReadSelection(t *testing.T) {
 				Identity: catalog.SnapshotIdentity{TenantID: "tenant-1", ProductKey: "product-1"},
 				Version:  7, PublicationID: "publication-1", Snapshot: catalog.ProductSnapshot{Title: "Bottle"},
 			}}
-			executor, err := NewExecutor(subjects, catalogs)
+			executor, err := newTestExecutor(subjects, catalogs)
 			if err != nil {
 				t.Fatalf("NewExecutor(): %v", err)
 			}
@@ -64,7 +68,7 @@ func TestExecutorPinnedAndLegacyReadSelection(t *testing.T) {
 func TestExecutorRejectsBusinessTaskMismatchBeforeReaders(t *testing.T) {
 	subjects := &subjectReaderStub{subject: validSubject(1)}
 	catalogs := &catalogReaderStub{}
-	executor, _ := NewExecutor(subjects, catalogs)
+	executor, _ := newTestExecutor(subjects, catalogs)
 
 	_, err := invokeExecutor(t, executor, "task-input", "task-metadata", schemaPrincipal())
 
@@ -82,11 +86,26 @@ func TestExecutorRechecksSubjectScope(t *testing.T) {
 	for _, subject := range tests {
 		subjects := &subjectReaderStub{subject: subject}
 		catalogs := &catalogReaderStub{}
-		executor, _ := NewExecutor(subjects, catalogs)
+		executor, _ := newTestExecutor(subjects, catalogs)
 		_, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
 		if commercetool.CodeOf(err) != commercetool.ErrorNotFound || catalogs.currentCalls+catalogs.versionedCalls != 0 {
 			t.Fatalf("subject=%#v error=%v catalog calls=%d", subject, err, catalogs.currentCalls+catalogs.versionedCalls)
 		}
+	}
+}
+
+func TestExecutorRechecksSubjectScopeWithInjectedAdminSemantics(t *testing.T) {
+	subjects := &subjectReaderStub{subject: canonicalSubjectForConfiguredAdmin()}
+	catalogs := &catalogReaderStub{published: catalog.PublishedSnapshot{
+		Identity: catalog.SnapshotIdentity{TenantID: "tenant-1", ProductKey: "product-1"}, Version: 1,
+		Snapshot: catalog.ProductSnapshot{Title: "Bottle"},
+	}}
+	executor, err := NewExecutor(subjects, catalogs, tenantAdminCheckerStub{allow: true})
+	if err != nil {
+		t.Fatalf("NewExecutor(): %v", err)
+	}
+	if _, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal()); err != nil {
+		t.Fatalf("Invoke(): %v", err)
 	}
 }
 
@@ -100,6 +119,7 @@ func TestExecutorMapsStableDependencyErrors(t *testing.T) {
 		{name: "subject not found", subjectErr: listingtask.ErrCanonicalSubjectNotFound, want: commercetool.ErrorNotFound},
 		{name: "subject not ready", subjectErr: listingtask.ErrCanonicalSubjectNotReady, want: commercetool.ErrorFailedPrecondition},
 		{name: "invalid actor", subjectErr: listingtask.ErrInvalidActor, want: commercetool.ErrorIdentityIntegrity},
+		{name: "subject repository unavailable", subjectErr: listingtask.ErrCanonicalSubjectUnavailable, want: commercetool.ErrorDependencyUnavailable},
 		{name: "snapshot not ready", catalogErr: catalog.ErrSnapshotNotReady, want: commercetool.ErrorFailedPrecondition},
 		{name: "repository unavailable", catalogErr: catalog.ErrRepositoryUnavailable, want: commercetool.ErrorDependencyUnavailable},
 		{name: "repository state invalid", catalogErr: catalog.ErrRepositoryStateInvalid, want: commercetool.ErrorInternal},
@@ -109,7 +129,7 @@ func TestExecutorMapsStableDependencyErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			subjects := &subjectReaderStub{subject: validSubject(1), err: tt.subjectErr}
 			catalogs := &catalogReaderStub{err: tt.catalogErr}
-			executor, _ := NewExecutor(subjects, catalogs)
+			executor, _ := newTestExecutor(subjects, catalogs)
 			_, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
 			if commercetool.CodeOf(err) != tt.want {
 				t.Fatalf("CodeOf(error) = %s, want %s; error=%v", commercetool.CodeOf(err), tt.want, err)
@@ -127,7 +147,7 @@ func TestExecutorMapsOversizedProjectionToFailedPrecondition(t *testing.T) {
 		Identity: catalog.SnapshotIdentity{TenantID: "tenant-1", ProductKey: "product-1"}, Version: 1,
 		Snapshot: catalog.ProductSnapshot{Description: strings.Repeat("x", MaxOutputBytes)},
 	}}
-	executor, _ := NewExecutor(subjects, catalogs)
+	executor, _ := newTestExecutor(subjects, catalogs)
 	_, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
 	if commercetool.CodeOf(err) != commercetool.ErrorFailedPrecondition {
 		t.Fatalf("CodeOf(error) = %s, error=%v", commercetool.CodeOf(err), err)
@@ -168,6 +188,18 @@ func (s *catalogReaderStub) GetSnapshot(_ context.Context, _ catalog.SnapshotIde
 
 func validSubject(version uint64) listingtask.CanonicalSubject {
 	return listingtask.CanonicalSubject{TaskID: "task-1", TenantID: "tenant-1", OwnerUserID: "user-1", ProductKey: "product-1", SnapshotVersion: version, Source: &listingtask.SourceLineage{Key: "source-1"}}
+}
+
+func canonicalSubjectForConfiguredAdmin() listingtask.CanonicalSubject {
+	return listingtask.CanonicalSubject{TaskID: "task-1", TenantID: "tenant-1", OwnerUserID: "other-user", ProductKey: "product-1", SnapshotVersion: 1}
+}
+
+type tenantAdminCheckerStub struct{ allow bool }
+
+func (s tenantAdminCheckerStub) IsTenantAdmin(string, []string) bool { return s.allow }
+
+func newTestExecutor(subjects listingtask.CanonicalSubjectReader, catalogs snapshotReader) (*Executor, error) {
+	return NewExecutor(subjects, catalogs, tenantAdminCheckerStub{})
 }
 
 func schemaPrincipal() commercetool.Principal {

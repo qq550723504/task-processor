@@ -13,8 +13,9 @@ Schema 投影和确定性诊断，为 #134 提供首个真实领域纵向切片�
 ListingKit repository 复用现有 task table 实现该 Port；
 `internal/product/catalog/tools/canonicalinspect` 实现 Tool Definition、Schema、Executor
 和投影；`internal/integration/commercetoolauth` 复用 authidentity 与 Casbin；真实 SQLite
-conformance test 通过 Registry 调用完整链路。没有公网 endpoint、业务写入或 Agent
-Framework。
+conformance test 通过 Registry 调用完整链路。同一个配置化 `ListingKitAuthorizer` 注入
+permission preflight、task scope 和 Executor；8 MiB 物化上限只由 B0 的 bounded
+read-only Catalog adapter 执行。没有公网 endpoint、业务写入或 Agent Framework。
 
 **技术栈：** Go、GORM/SQLite/PostgreSQL query behavior、Casbin、OpenTelemetry、
 `santhosh-tekuri/jsonschema/v6`、现有 `internal/commercetool`。
@@ -68,11 +69,10 @@ tests/
   commerce_tool_canonical_inspection_conformance_test.go
 
 internal/product/catalog/
-  limits.go                                 # encoded snapshot 全局上限
-  publisher_test.go                         # publication 写前边界
+  publisher_test.go                         # 共享 publication 大快照兼容性
 
 internal/integration/persistence/product/catalog/
-  repository.go                             # unmarshal/clone 前边界
+  repository.go                             # 共享 repository + B0 bounded reader
   repository_contract_test.go
 
 internal/commercetool/
@@ -184,10 +184,10 @@ go test ./internal/listing/task -run 'Test(CanonicalSubject|Actor|CanRead)' -cou
 
 要求：
 
-- 只依赖标准库和现有 `internal/authz`；
+- 只依赖标准库；以 `TenantAdminChecker` 窄 Port 接收权限判定；
 - `Actor`、`SourceLineage`、`CanonicalSubject`、`CanonicalSubjectReader`；
 - `ValidateActor`、`ValidateTaskID`、`CanReadCanonicalSubject`；
-- admin 判定只调用 `authz.IsListingKitTenantAdmin`；
+- admin 判定只调用注入的 `TenantAdminChecker`，不依赖全局默认 authorizer；
 - 校验拒绝隐式 trim，不在领域边界静默改写 identity。
 
 **Step 3：运行测试和边界扫描**
@@ -231,6 +231,8 @@ git commit -m "feat(listing): define canonical task subject port"
 - canceled context 不返回 subject；
 - 返回 SourceLineage 不与 GORM-loaded request 共享可变指针；
 - 构造器返回值可 type assert 为 `listingtask.CanonicalSubjectReader`。
+- 配置化 platform-admin user/role 通过注入的同一 authorizer 获得同 tenant 读取能力；
+- 数据库临时故障映射为 `ErrCanonicalSubjectUnavailable`，不吞掉 context 错误。
 
 运行：
 
@@ -248,6 +250,7 @@ go test ./internal/listingkit/store -run 'TestTaskRepositoryCanonicalSubject' -c
 - 查询显式包含 actor tenant；
 - 非 admin 复用 PostgreSQL/SQLite owner JSON fallback helper；
 - 查询后再次调用 `listingtask.CanReadCanonicalSubject`；
+- query scope 与查询后校验使用构造时注入的同一个 `TenantAdminChecker`；
 - 把 legacy `core.ErrTaskNotFound`/GORM not found 归一化为目标 Port 错误；
 - 仅映射必要字段，不返回 `listingkit.Task`。
 
@@ -293,6 +296,8 @@ git commit -m "feat(listing): expose scoped canonical subject reader"
 - viewer/未知角色拒绝；
 - nil authorizer 构造失败；
 - Commerce Tool Principal 拒绝 tenant/user/role 首尾空白，而不是只拒绝全空白。
+- 配置化 platform-admin user/role 同时获得 `listingkit.admin.read`，且其 tenant-admin
+  判定来自同一个 `ListingKitAuthorizer` 实例；
 - 原始 Call.Arguments 在任何 clone/decode/PrincipalResolver 前执行 64 KiB exact/over-limit
   检查；over-limit 返回 `invalid_input`，并断言 Resolver/Authorizer/Executor 均未调用。
 
@@ -331,7 +336,7 @@ git commit -m "feat(commercetool): adapt trusted listing identity"
 
 ---
 
-### Task 4：定义 Tool、严格 Schema、安全投影与 Catalog 物化上限
+### Task 4：定义 Tool、严格 Schema、安全投影与 B0 Catalog 物化上限
 
 **文件：**
 
@@ -341,7 +346,6 @@ git commit -m "feat(commercetool): adapt trusted listing identity"
 - 新建：`internal/product/catalog/tools/canonicalinspect/schema_test.go`
 - 新建：`internal/product/catalog/tools/canonicalinspect/projection.go`
 - 新建：`internal/product/catalog/tools/canonicalinspect/projection_test.go`
-- 新建：`internal/product/catalog/limits.go`
 - 修改：`internal/product/catalog/publisher_test.go`
 - 修改：`internal/integration/persistence/product/catalog/repository.go`
 - 修改：`internal/integration/persistence/product/catalog/repository_contract_test.go`
@@ -386,17 +390,17 @@ go test ./internal/product/catalog/tools/canonicalinspect -run 'Test(Definition|
 - 1 MiB exact boundary 成功，超过 1 byte 失败且不截断；
 - 输出 JSON 不包含 Commerce Tool reserved authority field。
 
-**Step 3：先写 Catalog encoded payload 边界失败测试**
+**Step 3：先写 B0 encoded payload 边界与共享兼容失败测试**
 
 覆盖：
 
-- 8 MiB exact encoded snapshot publication 可进入现有 validation path；
-- 超过 8 MiB 在写入 transaction 前返回 `ErrInvalidSnapshot`；
-- repository 读取 exact-limit persisted JSON 可进入 decode path；
-- over-limit persisted JSON 在 unmarshal 和 `CloneProductSnapshot` 前失败；
-- guard 同时覆盖 current 和 versioned read；
-- 超限失败不改变 snapshot head/version rows；
-- 不把 Catalog 8 MiB 上限误用为 Tool 1 MiB 输出上限。
+- 共享 Catalog repository 可继续发布和读取超过 8 MiB 的合法 snapshot；
+- B0 bounded reader 读取 exact-limit persisted JSON 可进入 decode path；
+- B0 bounded reader 对 over-limit persisted JSON 在 hash、unmarshal 和
+  `CloneProductSnapshot` 前失败；
+- bounded guard 同时覆盖 current 和 versioned read；
+- bounded reader 的动态类型不实现 `SnapshotWriter`；
+- 不把 B0 reader 的 8 MiB 上限误用为共享 Catalog 上限或 Tool 1 MiB 输出上限。
 
 运行：
 
@@ -406,14 +410,15 @@ go test ./internal/product/catalog ./internal/integration/persistence/product/ca
 
 预期：当前 publication/read 尚无 encoded payload 上限。
 
-**Step 4：实现 Definition、Schema、Projection 与 Catalog guard**
+**Step 4：实现 Definition、Schema、Projection 与 B0 bounded reader**
 
 - 复用 `catalog.CloneProductSnapshot`；
 - 类型只用于 wire projection，不提供 persistence/write conversion；
 - Output 中不包含 TenantID/OwnerUserID；
 - Schema 使用现有 Registry compiler，不引入 schema generator 依赖。
-- `catalog.MaxEncodedSnapshotBytes` 固定为 8 MiB；publication 在 repository transaction
-  前验证，persistence reader 在 JSON decode/clone 前验证；
+- `canonicalinspect.MaxCatalogSnapshotBytes` 固定为 8 MiB；只注入
+  `catalogpersistence.NewBoundedSnapshotReader`，不得修改共享 Catalog publication/read
+  的兼容范围；
 - Tool output 仍固定 1 MiB，不能因 Catalog 上限较大而放宽。
 
 **Step 5：验证并提交**
@@ -422,7 +427,7 @@ go test ./internal/product/catalog ./internal/integration/persistence/product/ca
 gofmt -w internal/product/catalog/tools/canonicalinspect
 go test ./internal/product/catalog/tools/canonicalinspect -run 'Test(Definition|InputSchema|OutputSchema|SchemaParity|Projection)' -count=1
 go test ./internal/product/catalog ./internal/integration/persistence/product/catalog -run 'Test.*Snapshot.*Size|Test.*Encoded.*Limit' -count=1
-git add internal/product/catalog/tools/canonicalinspect internal/product/catalog/limits.go
+git add internal/product/catalog/tools/canonicalinspect
 git add internal/product/catalog/publisher_test.go internal/integration/persistence/product/catalog/repository.go
 git add internal/integration/persistence/product/catalog/repository_contract_test.go
 git commit -m "feat(product): define canonical inspection tool contract"
@@ -472,6 +477,7 @@ go test ./internal/product/catalog/tools/canonicalinspect -run 'TestExecutor' -c
 
 - 非 nil `listingtask.CanonicalSubjectReader`；
 - 同时实现 current/versioned 的 Catalog Reader；
+- 与 task repository 相同的非 nil `listingtask.TenantAdminChecker`；
 - 不接受 broad `catalog.Repository` 作为写能力依赖。
 
 执行严格按设计顺序，不自行重试、不调用模型、不修改状态。
@@ -504,8 +510,8 @@ port 测试。
 使用：
 
 - SQLite in-memory GORM；
-- `listingkit.Task` 现有 schema 与 `store.NewTaskRepository`；
-- `catalogpersistence.AutoMigrate/NewRepository`；
+- `listingkit.Task` 现有 schema 与注入配置 authorizer 的 task repository；
+- `catalogpersistence.AutoMigrate/NewRepository/NewBoundedSnapshotReader`；
 - `catalog.Publisher` 发布不可变 snapshot；
 - `commercetoolauth.ContextPrincipalResolver`；
 - `commercetoolauth.CasbinAuthorizer`；
@@ -521,6 +527,7 @@ port 测试。
 - owner 成功；
 - same-tenant cross-owner `not_found`；
 - tenant admin/platform admin same-tenant 成功；
+- 配置化 platform-admin user/role same-tenant 成功并可通过 permission preflight；
 - platform admin cross-tenant `not_found`；
 - viewer 在 repository 前被 `permission_denied`；
 - task 没有 snapshot 时 `failed_precondition`；
@@ -696,7 +703,10 @@ PR 交付说明必须包含：
 - [ ] diagnostics 只投影 Catalog Review/Warnings，不猜 marketplace readiness。
 - [ ] timeout/cancellation 传播，Executor 不重试。
 - [ ] raw Arguments 在 clone/decode 前受 64 KiB 上限保护。
-- [ ] Catalog encoded snapshot 在 unmarshal/clone 前受 8 MiB 上限保护。
+- [ ] B0 bounded Catalog reader 在 hash/unmarshal/clone 前受 8 MiB 上限保护，且共享
+  Catalog publication/read 仍兼容大快照。
+- [ ] permission preflight、task scope 与 Executor 共享配置化 admin 语义。
+- [ ] task repository 不可用稳定映射为 `dependency_unavailable`。
 - [ ] 3 秒合同准确描述 Executor，不误称整个 Invoke wall-clock timeout。
 - [ ] 真实 SQLite + Casbin + Registry conformance tests 通过。
 - [ ] 调用前后业务数据不变。

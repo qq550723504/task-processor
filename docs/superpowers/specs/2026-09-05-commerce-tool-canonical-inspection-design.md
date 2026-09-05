@@ -4,10 +4,10 @@
 
 状态：`IMPLEMENTATION_READY`
 
-独立评审：PR #295，commit `1086e5c176ea0bd98b0ac69e47b70b0083a4f6a5`。
-Code Review 与 Security Review 已完成，没有 Blocker。三项 P2 均按
-`IMPLEMENTATION_TEST` 纳入本文资源合同和实施计划，不重新打开已批准的所有权、权限或
-一致性架构。
+独立评审：PR #295。Round 1 基于 commit
+`1086e5c176ea0bd98b0ac69e47b70b0083a4f6a5` 完成；Round 2 在实现后发现两个
+`BLOCKER` 和一个 `IMPLEMENTATION_TEST`，已按 15.2 节收敛根因并重新冻结。没有未处理
+Blocker，不再进行第三轮正常 Architecture Review。
 
 本设计是
 `docs/superpowers/specs/2026-08-31-commerce-tool-foundation-design.md`
@@ -61,6 +61,8 @@ version: v1.0.0
 - 每次调用都重新解析可信 Principal、执行 Tool permission 检查，并在 task 查询边界
   再执行 tenant/owner 过滤。
 - tenant admin 和 platform admin 只能绕过当前 tenant 内的 owner 过滤，不能跨 tenant。
+- permission preflight、task query 和 Executor 二次校验必须共享同一个配置化 Casbin
+  `ListingKitAuthorizer`；配置的 platform-admin user/role 与内置角色语义一致。
 - 不可见任务与不存在任务统一返回 `not_found`，不得暴露资源是否存在。
 - 新任务使用持久化的 `SourceSnapshotVersion` 读取不可变版本；旧任务版本为零时读取
   当时最新的完整已提交版本，并在输出中返回实际版本。
@@ -139,8 +141,8 @@ BoundToolSet.Invoke
   -> product/catalog/tools/canonicalinspect.Executor
       -> listing/task.CanonicalSubjectReader
           -> existing ListingKit task repository implementation
-      -> product/catalog SnapshotReader + VersionedSnapshotReader
-          -> integration/persistence/product/catalog
+      -> product/catalog CompleteSnapshotReader
+          -> integration/persistence/product/catalog bounded read-only adapter
       -> read-only projection + deterministic diagnostics
 ```
 
@@ -204,9 +206,13 @@ type CanonicalSubjectReader interface {
 - Actor 的 tenant/user 必须非空、无首尾空白且受长度限制；roles 必须非空并复制；
 - task ID 必须非空、无首尾空白且不超过 128 bytes；
 - 查询始终显式包含 tenant；非 tenant admin/platform admin 时同时包含 owner；
-- 管理员判断只复用 `authz.IsListingKitTenantAdmin`，不引入第二套角色逻辑；
+- `internal/listing/task` 只声明 `TenantAdminChecker` 窄 Port，不依赖具体 IAM；composition
+  root 将执行 permission preflight 的同一个配置化 `ListingKitAuthorizer` 注入 task
+  repository 和 Executor；
 - 不存在、cross-tenant、cross-owner 均返回 `listingtask.ErrCanonicalSubjectNotFound`；
 - task 数据损坏或缺少 ProductKey 返回 `listingtask.ErrCanonicalSubjectNotReady`；
+- task persistence 临时故障返回 `listingtask.ErrCanonicalSubjectUnavailable`，保留
+  cancellation/deadline；
 - 返回值必须复制 SourceLineage，不能暴露 `listingkit.GenerateRequest` 指针。
 
 现有 task repository 在已有生产文件中实现此 Port，复用现有 task table、owner fallback
@@ -281,9 +287,10 @@ Schema 要求：
   metadata key 绕过保留字段策略；
 - 输出序列化上限为 1 MiB，与仓库现有 Agent snapshot 边界一致。超过上限返回
   `failed_precondition`，不得截断后伪装为完整商品；
-- Catalog 对新 publication 和持久化读取统一执行 8 MiB encoded snapshot 上限。写入时
-  在持久化前检查，读取时在 JSON unmarshal/clone 前检查；Tool 自己仍执行更严格的
-  1 MiB 输出上限；
+- 8 MiB encoded snapshot 上限只属于 B0 的 bounded read-only persistence adapter，并在
+  hash、JSON unmarshal 和 clone 前检查；共享 Catalog publication/repository 不增加全局
+  上限，以兼容已经持久化或被现有流程接受的大快照；Tool 自己仍执行更严格的 1 MiB
+  输出上限；
 - Output Schema 必须严格声明全部返回字段并禁用 additional properties。
 
 ### 6.4 Business Task Binding
@@ -362,7 +369,8 @@ fallback，并且没有副作用；它不承诺 legacy current-read 永久返回
   execution timeout 之后。两者分别被 64 KiB raw input 与 1 MiB output 上限约束；不得
   把 Definition 的 3 秒描述为整个 `BoundToolSet.Invoke` 的严格 wall-clock 上限；
 - audit 使用 Registry 已有独立 `AuditTimeout`，不占用 3 秒 execution timeout；
-- Catalog encoded snapshot：最多 8 MiB，read 必须在 unmarshal/clone 前检查；
+- B0 Catalog reader encoded snapshot：最多 8 MiB，且只在 B0 bounded reader 的
+  hash/unmarshal/clone 前检查；共享 Catalog reader/writer 不受此限制；
 - 输出：最多 1 MiB，超限不截断；
 - Reader 调用次数：每次最多一次 task read 和一次 catalog read；
 - 不调用网络、模型、消息队列、Temporal、文件系统或 cache；
@@ -391,7 +399,7 @@ B0 不新增第三方依赖：
 | 审计任务与读取任务一致 | BusinessTaskID mismatch test，Reader 调用次数为零 |
 | cross-tenant 不可见 | SQLite real repository integration test |
 | cross-owner 不可见 | operator fixture integration test |
-| tenant/platform admin 仅 tenant-wide | admin matrix tests |
+| tenant/platform/configured admin 仅 tenant-wide | 同一配置化 authorizer 的 preflight、repository、Executor matrix tests |
 | Tool 不直连 persistence/legacy DTO | AST/import guard + depguard |
 | Snapshot 是权威读取 | real catalog repository current/versioned tests |
 | 不存在隐式 current fallback | pinned reader missing/version unsupported tests |
@@ -400,7 +408,7 @@ B0 不新增第三方依赖：
 | output 无保留字段和任意 metadata | nested reserved metadata fixture |
 | cancellation/deadline 有界 | blocking Reader + Registry timeout test |
 | raw invocation 有界 | 64 KiB exact/over-limit test，断言 PrincipalResolver 未调用 |
-| Catalog 物化有界 | publication 与 raw persisted JSON exact/over-limit tests |
+| B0 Catalog 物化有界且不破坏兼容 | bounded reader exact/over-limit tests + shared repository large snapshot compatibility test |
 | output size 有界 | exact limit / over limit tests |
 | 无模型或外部依赖 | import guard + conformance test |
 
@@ -479,7 +487,8 @@ Product requirement affected: 持久化读取的资源耗尽边界。
 Classification: IMPLEMENTATION_TEST
 Reason: 问题真实，但不要求新增事务或恢复机制；Catalog publication/read 的 encoded
         payload guard 可以在实现阶段验证。
-Action: Task 4 增加 8 MiB Catalog 写前与读前 guard，并保留 Tool 1 MiB 输出 guard。
+Action: Task 4 增加 B0 专用 8 MiB bounded read guard，并保留 Tool 1 MiB 输出 guard；
+        Round 2 证明全局写前/读前 guard 会破坏兼容，因此不采纳全局限制。
 
 Finding: Definition 的 3 秒 timeout 当前不覆盖 input/output schema validation。
 Product requirement affected: timeout/deadline 的准确合同。
@@ -490,5 +499,36 @@ Action: 将合同明确为 3 秒 Executor timeout；测试 schema 阶段的独�
         timeout，不宣称严格端到端 3 秒。
 ```
 
-Security Review 没有 finding。以上三项均不命中 AGENTS.md 的 Blocker 后果，设计达到
-`IMPLEMENTATION_READY`。
+Security Review 没有 finding。Round 1 的三项均不命中 AGENTS.md 的 Blocker 后果。
+
+### 15.2 Round 2 Finding 分类与重新冻结
+
+```text
+Finding: 配置化 platform-admin user/role 只获得 listingkit.platform_admin，未获得
+         listingkit.admin.read；task scope 与 Executor 又调用未配置的默认 authorizer。
+Product requirement affected: 配置管理员的正确授权、同 tenant owner bypass 和核心 happy path。
+Classification: BLOCKER
+Reason: 命中“错误授权或绕过明确的访问控制”以及“核心 happy path 按当前设计无法完成”。
+Action: 配置管理员同时获得 listingkit.admin.read；ListingKitAuthorizer 实现窄
+        TenantAdminChecker；composition root 将同一个配置化实例注入 preflight adapter、
+        task repository 与 Executor，并用 configured user/role 及 cross-tenant 测试证明。
+
+Finding: 8 MiB 被实现为共享 Catalog publication/read 全局限制，会拒绝现有 durable
+         snapshot 的合法读取。
+Product requirement affected: 兼容 rollout、已有 canonical product 的持续可读性。
+Classification: BLOCKER
+Reason: 命中“核心 happy path 按当前设计无法完成”和“rollout / migration 按当前方案无法
+        安全完成”。
+Action: 删除共享 Catalog 上限；新增只暴露 CompleteSnapshotReader 的 B0 bounded adapter，
+        在 materialization 前执行 8 MiB 限制；测试共享 repository 仍能发布/读取大快照。
+
+Finding: Task Reader 的数据库故障作为未知错误进入 Tool internal。
+Product requirement affected: 稳定错误合同和可重试依赖故障。
+Classification: IMPLEMENTATION_TEST
+Reason: 不改变所有权、事务或状态机；可在现有 Port 和 adapter 中稳定映射。
+Action: 增加 ErrCanonicalSubjectUnavailable，保留 context 错误，Executor 映射为
+        dependency_unavailable，并用关闭数据库的真实 repository 测试证明。
+```
+
+两项 Blocker 已按上述最小边界修复，且未新增 IAM、repository owner 或全局数据约束。
+设计重新达到 `IMPLEMENTATION_READY`；按“两轮正常评审”上限冻结此基线。

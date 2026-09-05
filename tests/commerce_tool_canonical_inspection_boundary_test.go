@@ -20,9 +20,7 @@ func TestCommerceToolCanonicalInspectionUsesOnlyNarrowDomainPorts(t *testing.T) 
 		"task-processor/internal/listing/task":    {},
 		"task-processor/internal/product/catalog": {},
 	})
-	assertCanonicalInspectionImports(t, filepath.Join("..", "internal", "listing", "task"), map[string]struct{}{
-		"task-processor/internal/authz": {},
-	})
+	assertCanonicalInspectionImports(t, filepath.Join("..", "internal", "listing", "task"), map[string]struct{}{})
 }
 
 func TestCommerceToolCanonicalInspectionDeclaresNoMutationOrCompatibilityOwner(t *testing.T) {

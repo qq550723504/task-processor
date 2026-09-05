@@ -3,12 +3,11 @@ package catalog
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 )
 
-func TestPublisherBoundsEncodedSnapshotBeforeWriter(t *testing.T) {
+func TestPublisherDoesNotImposeConsumerSpecificSnapshotLimit(t *testing.T) {
 	writer := &sizeRecordingWriter{}
 	publisher, err := NewPublisher(writer)
 	if err != nil {
@@ -17,23 +16,14 @@ func TestPublisherBoundsEncodedSnapshotBeforeWriter(t *testing.T) {
 	request := PublishRequest{
 		Identity:      SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-a"},
 		PublicationID: "publication-1",
-		Snapshot:      snapshotWithEncodedSize(t, MaxEncodedSnapshotBytes),
+		Snapshot:      snapshotWithEncodedSize(t, (8<<20)+1),
 	}
 
 	if _, err := publisher.Publish(context.Background(), request); err != nil {
-		t.Fatalf("Publish(exact limit): %v", err)
+		t.Fatalf("Publish(large shared snapshot): %v", err)
 	}
 	if writer.calls != 1 {
 		t.Fatalf("writer calls = %d, want 1", writer.calls)
-	}
-
-	request.PublicationID = "publication-2"
-	request.Snapshot = snapshotWithEncodedSize(t, MaxEncodedSnapshotBytes+1)
-	if _, err := publisher.Publish(context.Background(), request); !errors.Is(err, ErrInvalidSnapshot) {
-		t.Fatalf("Publish(over limit) error = %v, want ErrInvalidSnapshot", err)
-	}
-	if writer.calls != 1 {
-		t.Fatalf("writer called for oversized snapshot: %d", writer.calls)
 	}
 }
 
