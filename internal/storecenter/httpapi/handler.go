@@ -732,7 +732,7 @@ func normalizePublicValue(value string, max int, required bool) (string, error) 
 
 func serviceLifecycleResponse(result storecenter.ServiceOperationResult, organizationID, operationID, storeID string, command storecenter.ServiceCommand, expectedQuantity int64) (ServiceLifecycleResponse, error) {
 	snapshot := result.Snapshot
-	if snapshot.OrganizationID != organizationID || snapshot.OperationID != operationID || snapshot.StoreID != storeID || snapshot.Command != command || snapshot.ResourceType != string(orgresource.ResourceStoreRenewalPeriod) || snapshot.StoreVersion <= 0 {
+	if snapshot.OrganizationID != organizationID || snapshot.OperationID != operationID || snapshot.StoreID != storeID || snapshot.Command != command || snapshot.ResourceType != string(orgresource.ResourceStoreRenewalPeriod) || snapshot.StoreVersion <= 0 || snapshot.ServiceState.RecordStatus != storecenter.RecordStatusActive || snapshot.ServiceState.ServiceStatus != storecenter.ServiceStatusActive {
 		return ServiceLifecycleResponse{}, storecenter.ErrDependencyUnavailable
 	}
 	quantity, err := parseCanonicalInt(snapshot.Quantity, 1, storecenter.Phase1MaxStoreServicePeriods)

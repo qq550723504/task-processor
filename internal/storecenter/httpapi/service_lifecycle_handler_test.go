@@ -164,6 +164,12 @@ func TestServiceLifecycleHandlerRejectsMismatchedApplicationResult(t *testing.T)
 		{name: "balance", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.BalanceAfter = "-1" }},
 		{name: "version", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.StoreVersion = 0 }},
 		{name: "state", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.ServiceState.ExpiresAt = nil }},
+		{name: "pending activation postcondition", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) {
+			snapshot.ServiceState = storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation}
+		}},
+		{name: "provisioning postcondition", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) {
+			snapshot.ServiceState = storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatusProvisioning}
+		}},
 		{name: "event", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.EventID = "not-a-uuid" }},
 	}
 	for _, test := range tests {
