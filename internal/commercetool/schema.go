@@ -443,7 +443,7 @@ func propertyNamesExcludeReservedAuthorityFields(schema map[string]any) bool {
 		return false
 	}
 	notSchema, ok := propertyNames["not"].(map[string]any)
-	if !ok {
+	if !ok || len(notSchema) != 1 {
 		return false
 	}
 	values, ok := notSchema["enum"].([]any)

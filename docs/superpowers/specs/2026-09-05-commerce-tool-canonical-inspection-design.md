@@ -560,6 +560,15 @@ Classification: IMPLEMENTATION_TEST
 Reason: 不改变所有权或错误合同，可由 persistence query projection 收敛。
 Action: bounded reader 使用数据库方 byte-length 条件投影，超限时返回 NULL payload；测试
         同时断言 SQL 包含 CASE guard、exact 成功、over-limit 失败和共享 reader 兼容。
+
+Finding: dynamic map 的 propertyNames.not 只检查 enum 内容，没有验证 negated schema 的
+         完整语义；附加不匹配字符串键的约束时会重新允许保留 authority 字段。
+Product requirement affected: 严格 Schema 必须在注册时排除全部保留 authority 字段。
+Classification: IMPLEMENTATION_TEST
+Reason: runtime scan 仍会拒绝攻击载荷，不产生错误授权或跨租户访问；问题可在 schema
+        注册校验与回归测试内收敛，不改变冻结架构。
+Action: 只承认精确的 not:{enum:[...]} 证明形状，拒绝带 type、ref 或组合关键字的
+        negated schema；回归测试证明无效组合在 Registry 编译阶段失败。
 ```
 
 以上问题按实现证据修复，不引入第三轮正常 Architecture Review。冻结状态继续为

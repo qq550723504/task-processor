@@ -143,6 +143,20 @@ func TestCompileSchemasAllowsTypedDynamicMapOnlyWhenPropertyNamesExcludeEveryAut
 	require.ErrorContains(t, err, "propertyNames must exclude every reserved authority field")
 }
 
+func TestCompileSchemasRejectsDynamicMapWhenPropertyNamesNegationHasAdditionalConstraints(t *testing.T) {
+	excluded := `["tenant_id","user_id","roles","permission","call_id","agent_id","agent_version","agent_run_id","business_task_id","trace_id","idempotency_key","tool_id","tool_version"]`
+	definition := validDefinition()
+	definition.InputSchema = json.RawMessage(fmt.Sprintf(`{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"type":"object","additionalProperties":false,
+		"properties":{"facts":{"type":"object","propertyNames":{"not":{"enum":%s,"type":"number"}},"additionalProperties":{"type":"string"}}}
+	}`, excluded))
+
+	_, err := compileSchemas(definition)
+
+	require.ErrorContains(t, err, "propertyNames must exclude every reserved authority field")
+}
+
 func TestCompileSchemasDoesNotAuditUnreferencedAnnotationBusinessData(t *testing.T) {
 	tests := []struct {
 		name   string
