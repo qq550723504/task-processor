@@ -11,15 +11,9 @@ import (
 	"testing"
 )
 
-func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
-	productRuntimeCommands := map[string]struct{}{
-		"image-agent-temporal-worker": {},
-		"listing-control-plane":       {},
-		"product-listing-api":         {},
-		"shein-listing":               {},
-		"temu-listing":                {},
-	}
-	operationalCommands := map[string]struct{}{
+// maintainedOperationalCommands is shared by classification, documentation and owner guards.
+func maintainedOperationalCommands() map[string]struct{} {
+	return map[string]struct{}{
 		"1688-local-agent":                   {},
 		"fingerprint-browser-installer":      {},
 		"listing-scheduler":                  {},
@@ -34,6 +28,17 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 		"store-service-history-migrate":      {},
 		"source-account-ownership-preflight": {},
 	}
+}
+
+func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
+	productRuntimeCommands := map[string]struct{}{
+		"image-agent-temporal-worker": {},
+		"listing-control-plane":       {},
+		"product-listing-api":         {},
+		"shein-listing":               {},
+		"temu-listing":                {},
+	}
+	operationalCommands := maintainedOperationalCommands()
 	document, err := os.ReadFile(filepath.Join("..", "docs", "development", "repository-structure.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -61,20 +66,7 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 }
 
 func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
-	operationalCommands := map[string]struct{}{
-		"fingerprint-browser-installer":      {},
-		"listing-scheduler":                  {},
-		"listingkit-identity-preflight":      {},
-		"listingkit-owner-scope-dry-run":     {},
-		"listingkit-owner-scope-exceptions":  {},
-		"listingkit-schema-migrate":          {},
-		"playwright-installer":               {},
-		"product-listing-api-schema-migrate": {},
-		"shein-import-platform-recovery":     {},
-		"shein-login-worker":                 {},
-		"store-service-history-migrate":      {},
-		"source-account-ownership-preflight": {},
-	}
+	operationalCommands := maintainedOperationalCommands()
 	ownerRoots := []string{".github", "deployments", "scripts"}
 	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
