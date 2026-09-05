@@ -23,6 +23,14 @@ pass. This retains near-linear/log-linear work rather than account-pair comparis
 and does not enumerate or read browser files. Repeated ranges belonging to the same
 account are allowed; overlap between distinct accounts blocks even within one Organization.
 
+Windows extends the existing no-symlink/alias rule to descendants: it walks directory
+entry metadata under each verified account and rejects junctions, symlinks and directory
+reparse mount points before following them. Native DIRECTORY/REPARSE_POINT attributes
+are checked because a junction can appear as `ModeIrregular` with `IsDir=false` in Go
+directory enumeration. Ordinary directories and files remain supported; file contents
+are never opened. Entry/attribute inspection failures block, and cancellation is checked
+for each visited entry. Cost depends on the directory-entry inventory, not account pairs.
+
 Provide these environment variables through the existing secret mechanism:
 
 - `SOURCE_ACCOUNT_PREFLIGHT_DSN`: business PostgreSQL database with `source_account`.
@@ -115,6 +123,8 @@ separate evidence:
 | Empty/malformed/uncovered/ambiguous mount relationship | Reject | `TestReceiptMountMatrix` |
 | Unrelated stacked mounts or nsfs file mounts; repeated identical backing location | Accept external target | `TestReceiptMountMatrix` |
 | Distinct account-root identities with overlapping backing subtrees or nested mounts | Reject | `TestPreflightRejectsLiveOverlappingProfileSubtrees`, `TestProfileSubtreeMountMatrix` |
+| Windows account descendants junctioned to a shared directory | Reject | `TestPreflightRejectsDescendantJunctionOverlap` (real disposable junctions) |
+| Ordinary Windows descendant directories and cancellation | Accept; cancel | `TestPreflightAcceptsOrdinaryWindowsDescendants` |
 | 100,000 account roots plus 100,000 disjoint nested mounts | Accept | `TestProfileSubtreeIndexAtInventoryLimit` (fixture, not fleet acceptance) |
 | Malformed removed metadata; valid tombstone with active owner; removed-only owner | Reject; retain without mapping; reject missing active owner | `TestPreflightRemovedMetadataValidation` |
 
@@ -141,7 +151,12 @@ account-root-to-descendant bind, descendant-to-descendant bind, and two accounts
 mounting the same external subtree. They now reject without usable receipts.
 Disjoint devices, similar non-child prefixes, same-account nested ranges and unrelated
 opaque mounts remain accepted. This completes the Linux mount-alias checks without
-changing Windows junction verification, receipt publication ownership or B/C/D scope.
+changing receipt publication ownership or B/C/D scope.
+
+The subsequent Windows review reproduced the same gap with two distinct account roots
+containing junctions to a shared directory. That real junction test failed before the
+Windows metadata walk and passes after it. This extends Windows alias verification
+below account roots without disabling the platform or reading profile file contents.
 
 Before B/C: freeze all 1688 admissions and source-account/mapping writers, drain and
 attest every old process queue/worker, reconcile Redis and local terminal outcomes,

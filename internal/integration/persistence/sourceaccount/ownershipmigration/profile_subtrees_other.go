@@ -1,11 +1,11 @@
-//go:build !linux
+//go:build !linux && !windows
 
 package ownershipmigration
 
 import "context"
 
-// Windows reparse aliases remain guarded by directory verification and indexed
-// file identities. This hook adds Linux mount-table evidence only.
+// Other ports retain their existing root identity checks; production subtree
+// evidence is provided by the Linux and Windows implementations.
 func validateProfileSubtrees(ctx context.Context, _ []AccountEvidence) error {
 	return ctx.Err()
 }
