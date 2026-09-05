@@ -129,7 +129,7 @@ A future externally required compatibility exception, if one is ever proven nece
 
 ## 6. Automated guard baseline (#300 slice)
 
-`tests/import_boundaries_test.go` enforces `TestLegacyConsumersStayWithinDrainBaseline` using the existing tracked-source/import parser. `tests/legacy_hard_cut_test.go` records the exact file-to-import drain edges at `main @ 2fd42cc06`. The baseline includes production, test, and intra-legacy callers across build tags and nested modules. Only fixture `testdata` trees are excluded. Stage new Go files before local verification; CI checks the committed tree.
+`tests/import_boundaries_test.go` enforces `TestLegacyConsumersStayWithinDrainBaseline` using the existing tracked-source/import parser. `tests/legacy_hard_cut_test.go` records the exact file-to-import drain edges at `main @ 2fd42cc06`. The baseline includes production, test, and intra-legacy callers across build tags and nested modules. Only fixture `testdata` trees are excluded. Stage new Go files before local verification; CI checks the committed tree and its workflow is triggered by `**/*.go` so nested-module source-only changes cannot bypass the guard.
 
 - New files and new imports in existing callers fail, including new compatibility domains and tenantbridge subpackages.
 - Remove a drained edge from the baseline in the same PR. Stale entries fail so removed callers cannot silently return. Remove its exact depguard file exclusion when its last import of that legacy root disappears.
