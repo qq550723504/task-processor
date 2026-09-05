@@ -5,7 +5,7 @@
 
 # Task and Acceptance
 
-Follow [Issue-driven development V1](../docs/engineering/issue-driven-development.md) and [AGENTS.md](../AGENTS.md). Keep the complete current delivery summary in this PR; update Issue progress only at milestones.
+Follow [Issue-driven development V1](https://github.com/qq550723504/task-processor/blob/main/docs/engineering/issue-driven-development.md) and [AGENTS.md](https://github.com/qq550723504/task-processor/blob/main/AGENTS.md). Keep the complete current delivery summary in this PR; update Issue progress only at milestones.
 
 - Execution Issue: Refs #<number>
 - Parent Issue / slice (if applicable):

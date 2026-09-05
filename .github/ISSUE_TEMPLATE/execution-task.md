@@ -6,7 +6,7 @@ labels: ""
 assignees: ""
 ---
 
-依据：[Issue 驱动派工规则 V1](../../docs/engineering/issue-driven-development.md)。TDD、Legacy 与架构准入沿用 [AGENTS.md](../../AGENTS.md)，普通任务不适用项写 N/A。
+依据：[Issue 驱动派工规则 V1](https://github.com/qq550723504/task-processor/blob/main/docs/engineering/issue-driven-development.md)。TDD、Legacy 与架构准入沿用 [AGENTS.md](https://github.com/qq550723504/task-processor/blob/main/AGENTS.md)，普通任务不适用项写 N/A。
 
 ## 目标
 
