@@ -266,7 +266,7 @@ fingerprints, and repository ports. Within that boundary:
   classification, compare-and-swap predicates, and atomic persistence. It
   delegates transition eligibility to `effectpolicy` instead of duplicating
   policy predicates.
-- Temporal, HTTP, tool, service, object-store, and ProductImage callers use the
+- Temporal, HTTP, tool, service, and object-store callers use the
   existing Image Agent repository ports. They do not import `effectpolicy`
   directly, so orchestration and delivery adapters cannot become a second
   transition owner.
