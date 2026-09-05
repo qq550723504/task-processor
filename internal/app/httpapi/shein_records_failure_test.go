@@ -177,3 +177,22 @@ func TestSheinRecordCancellationWhileDatabaseIsLocked(t *testing.T) {
 	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
 	require.Zero(t, count)
 }
+
+func TestSheinRecordApplicationDeadlineReturnsHTTPTimeout(t *testing.T) {
+	db := recordTestDB(t)
+	publishRecordProduct(t, db, "200", "product")
+	server, _ := recordApplication(t, db, &recordGrants{})
+	lock := db.Begin()
+	require.NoError(t, lock.Error)
+	require.NoError(t, lock.Exec("LOCK TABLE listing_shein_records IN ACCESS EXCLUSIVE MODE").Error)
+	defer lock.Rollback()
+	// No shorter client deadline: the application budget must expire while
+	// the real server still has time to transmit its bounded error response.
+	server.Client().Timeout = 2 * record.Timeout
+	status, body := recordPost(t, server, "operator", "application-deadline", recordBody)
+	require.Equal(t, http.StatusGatewayTimeout, status, string(body))
+	require.NoError(t, lock.Rollback().Error)
+	var count int64
+	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
+	require.Zero(t, count)
+}

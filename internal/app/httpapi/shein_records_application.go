@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/listing/record"
 	"task-processor/internal/marketplace/shein/draft"
 	"task-processor/internal/workbenchcontext"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -39,7 +40,9 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	}
 	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, sheinRecordRoutes(service), routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
 	server.ReadTimeout = record.Timeout
-	server.WriteTimeout = record.Timeout
+	// The transport deadline starts before the application deadline. Reserve
+	// bounded headroom so an expired operation can still return its HTTP 504.
+	server.WriteTimeout = record.Timeout + 2*time.Second
 	handler := server.Handler
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), record.Timeout)
