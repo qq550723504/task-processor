@@ -29,6 +29,23 @@ Fill this section for architecture-sensitive, security-sensitive, or product-con
 - [ ] `IMPLEMENTATION_TEST`, `BACKLOG`, `ACCEPTED_RISK`, and `NOT_APPLICABLE` findings do not block implementation.
 - [ ] If the design is `IMPLEMENTATION_READY`, non-blocking findings did not create another versioned design document.
 
+# Legacy Hard-Cut
+
+Fill this section whenever the PR touches an area recorded in `docs/refactoring/legacy-register.md`, root `internal/listingkit`, `internal/compatibility/*`, `internal/tenantbridge`, or an already-retired package/abstraction. Otherwise write `N/A`.
+
+```text
+Legacy decision: EXTRACT | RETIRE
+Reusable behavior:
+Current owner:
+Cutover/deletion condition:
+```
+
+- [ ] This PR does not add a third “compatibility” decision.
+- [ ] New code does not add a consumer of `internal/compatibility/*` or `internal/tenantbridge`.
+- [ ] Reusable behavior is extracted to the current owner instead of wrapped through the legacy owner.
+- [ ] No new legacy fallback, permanent dual-read, dual-write, bidirectional sync, or second business fact/state owner was introduced.
+- [ ] Old tests were preserved only when they still assert a current business/security/authorization/idempotency/platform/deterministic behavior.
+
 # Validation
 
 - [ ] `go test ...`
@@ -40,23 +57,20 @@ Validation notes:
 
 # Architecture Checklist
 
-Use this checklist for changes touching `internal/app`, `internal/listingkit`,
-`internal/publishing`, `internal/productenrich`, `internal/productimage`,
-`internal/amazonlisting`, or runtime assembly paths.
+Use this checklist for architecture-sensitive changes, especially changes touching `internal/app`, root `internal/listingkit`, marketplace/listing/product boundaries, Agent/Tool runtime, legacy drain paths, or runtime assembly.
 
 - [ ] The change keeps assembly logic and domain logic separate.
-- [ ] `internal/app/*` remains orchestration / assembly focused and does not absorb new business rules.
-- [ ] No new code imports deprecated compatibility paths:
-  - `task-processor/internal/app/processor`
-  - `task-processor/internal/app/state`
+- [ ] `internal/app/*` remains composition / assembly focused and does not absorb new business rules.
+- [ ] No new code imports retired paths or recreates retired package roots.
 - [ ] No domain `httpapi` package imports `task-processor/internal/app/httpapi`.
-- [ ] No new centralized `build*Module` wiring was added to `internal/app/httpapi/modules.go`.
-- [ ] `internal/app/httpapi/listingkit_support.go` only changed for assembly input adaptation, repo wiring, or explicit runtime bridging.
-- [ ] For ListingKit / SHEIN semantic fields, new code reads and writes canonical names first:
-  - Backend: `SDSDesignResult`, `DraftPayload`, `PreviewPayload`, `SubmissionState`, `FinalSubmissionDraft`
-  - Frontend/API: `sds_design_result`, `draft_payload`, `preview_payload`, `submission_state`, `final_submission_draft`
-  - Any legacy field usage is limited to explicit compatibility helpers, protocol types, or documented fallback boundaries.
-- [ ] If package boundaries changed, the corresponding architecture docs were updated.
+- [ ] No new centralized `build*Module` wiring was added where an existing composition contract should be reused.
+- [ ] Product facts remain owned by current `internal/product/*` boundaries.
+- [ ] Marketplace-specific rules land in the marketplace owner rather than root ListingKit.
+- [ ] Internal Task/Workflow remains execution infrastructure; BusinessTask/product UI semantics are not implemented by renaming legacy Task.
+- [ ] Agent/Tool code does not directly import GORM repositories, provider SDKs, marketplace clients, retired workflow owners, or legacy compatibility services.
+- [ ] Deterministic validation remains outside model authority.
+- [ ] No second submission state machine, durable retry owner, IAM/RBAC system, Tool Registry, Product/Listing/Asset fact source, or BusinessTask owner was introduced.
+- [ ] If package boundaries changed, the corresponding current authority docs/guards were updated.
 
 # Notes For Reviewers
 
@@ -68,7 +82,8 @@ Use this checklist for changes touching `internal/app`, `internal/listingkit`,
 Relevant docs when needed:
 
 - `AGENTS.md`
+- `docs/refactoring/legacy-hard-cut-policy.md`
+- `docs/refactoring/legacy-register.md`
+- `docs/architecture/project-target-architecture.md`
+- `docs/architecture/project-boundaries.md`
 - `docs/architecture/architecture-review-checklist.md`
-- `docs/architecture/httpapi-assembly-boundaries.md`
-- `docs/architecture/app-assembly-boundaries.md`
-- `docs/architecture/next-steps.md`
