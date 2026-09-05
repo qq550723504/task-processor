@@ -93,11 +93,13 @@ func clonePrincipal(principal Principal) Principal {
 }
 
 func (principal Principal) validate() error {
-	if strings.TrimSpace(principal.TenantID) == "" || strings.TrimSpace(principal.UserID) == "" || len(principal.Roles) == 0 {
+	if principal.TenantID == "" || principal.TenantID != strings.TrimSpace(principal.TenantID) ||
+		principal.UserID == "" || principal.UserID != strings.TrimSpace(principal.UserID) ||
+		len(principal.Roles) == 0 {
 		return NewError(ErrorIdentityIntegrity, "principal identity is invalid", nil)
 	}
 	for _, role := range principal.Roles {
-		if strings.TrimSpace(role) == "" {
+		if role == "" || role != strings.TrimSpace(role) {
 			return NewError(ErrorIdentityIntegrity, "principal identity is invalid", nil)
 		}
 	}

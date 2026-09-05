@@ -16,15 +16,40 @@ import (
 )
 
 type repository struct {
-	db        *gorm.DB
-	publishMu sync.Mutex
+	db                      *gorm.DB
+	maxEncodedSnapshotBytes int
+	publishMu               sync.Mutex
 }
+
+type boundedSnapshotReader struct{ delegate *repository }
 
 func NewRepository(db *gorm.DB) (productcatalog.Repository, error) {
 	if db == nil {
 		return nil, repositoryUnavailable("construct repository", errors.New("database is nil"))
 	}
 	return &repository{db: db}, nil
+}
+
+// NewBoundedSnapshotReader creates a read-only adapter whose raw persisted
+// payload is bounded before hashing, unmarshalling, or defensive cloning. The
+// shared Repository remains compatible with snapshots already accepted by the
+// Catalog publication path.
+func NewBoundedSnapshotReader(db *gorm.DB, maxEncodedSnapshotBytes int) (productcatalog.CompleteSnapshotReader, error) {
+	if db == nil {
+		return nil, repositoryUnavailable("construct bounded snapshot reader", errors.New("database is nil"))
+	}
+	if maxEncodedSnapshotBytes <= 0 {
+		return nil, errors.New("max encoded snapshot bytes must be positive")
+	}
+	return &boundedSnapshotReader{delegate: &repository{db: db, maxEncodedSnapshotBytes: maxEncodedSnapshotBytes}}, nil
+}
+
+func (r *boundedSnapshotReader) GetCurrentSnapshot(ctx context.Context, identity productcatalog.SnapshotIdentity) (productcatalog.PublishedSnapshot, error) {
+	return r.delegate.GetCurrentSnapshot(ctx, identity)
+}
+
+func (r *boundedSnapshotReader) GetSnapshot(ctx context.Context, identity productcatalog.SnapshotIdentity, version uint64) (productcatalog.PublishedSnapshot, error) {
+	return r.delegate.GetSnapshot(ctx, identity, version)
 }
 
 func AutoMigrate(db *gorm.DB) error {
@@ -73,7 +98,7 @@ func (r *repository) PublishSnapshot(ctx context.Context, request productcatalog
 			if existing.PayloadHash != payloadHash {
 				return productcatalog.ErrPublicationConflict
 			}
-			decoded, decodeErr := publishedFromRecord(existing)
+			decoded, decodeErr := publishedFromRecord(existing, 0)
 			if decodeErr != nil {
 				return decodeErr
 			}
@@ -149,16 +174,31 @@ func (r *repository) GetSnapshot(ctx context.Context, identity productcatalog.Sn
 		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotNotReady
 	}
 	var record SnapshotVersionRecord
-	err := r.db.WithContext(ctx).
-		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, version).
-		Take(&record).Error
+	query := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, version)
+	if r.maxEncodedSnapshotBytes > 0 {
+		sizeExpression := boundedSnapshotSizeExpression(query.Dialector.Name())
+		projection := fmt.Sprintf(
+			"tenant_id, product_key, version, publication_id, payload_hash, CASE WHEN %s <= ? THEN snapshot_json ELSE NULL END AS snapshot_json",
+			sizeExpression,
+		)
+		query = query.Select(projection, r.maxEncodedSnapshotBytes)
+	}
+	err := query.Take(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotNotReady
 	}
 	if err != nil {
 		return productcatalog.PublishedSnapshot{}, mapRepositoryError("load snapshot version", err)
 	}
-	return publishedFromRecord(record)
+	return publishedFromRecord(record, r.maxEncodedSnapshotBytes)
+}
+
+func boundedSnapshotSizeExpression(dialect string) string {
+	if dialect == "postgres" {
+		return "OCTET_LENGTH(snapshot_json::text)"
+	}
+	return "LENGTH(snapshot_json)"
 }
 
 func loadPublication(tx *gorm.DB, identity productcatalog.SnapshotIdentity, publicationID string) (SnapshotVersionRecord, bool, error) {
@@ -174,7 +214,10 @@ func loadPublication(tx *gorm.DB, identity productcatalog.SnapshotIdentity, publ
 	return record, true, nil
 }
 
-func publishedFromRecord(record SnapshotVersionRecord) (productcatalog.PublishedSnapshot, error) {
+func publishedFromRecord(record SnapshotVersionRecord, maxEncodedSnapshotBytes int) (productcatalog.PublishedSnapshot, error) {
+	if len(record.SnapshotJSON) == 0 || (maxEncodedSnapshotBytes > 0 && len(record.SnapshotJSON) > maxEncodedSnapshotBytes) {
+		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("decode snapshot publication", errors.New("encoded snapshot exceeds reader size limit"))
+	}
 	decodedHash, err := hex.DecodeString(record.PayloadHash)
 	if err != nil || len(decodedHash) != sha256.Size || hex.EncodeToString(decodedHash) != record.PayloadHash {
 		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("decode snapshot publication", errors.New("payload hash is not canonical SHA-256 hex"))
@@ -239,3 +282,4 @@ func repositoryStateInvalid(operation string, cause error) error {
 }
 
 var _ productcatalog.Repository = (*repository)(nil)
+var _ productcatalog.CompleteSnapshotReader = (*boundedSnapshotReader)(nil)

@@ -238,7 +238,6 @@ func visitSubschemas(schema map[string]any, path string, visit func(any, string)
 	singleKeywords := []string{
 		"additionalProperties",
 		"unevaluatedProperties",
-		"propertyNames",
 		"items",
 		"contains",
 		"not",
@@ -417,7 +416,11 @@ func requireStaticallySafeValueShape(schema map[string]any, path string) error {
 
 	if allowsObject {
 		additionalProperties, ok := schema["additionalProperties"].(bool)
-		if !ok || additionalProperties {
+		_, isSchema := schema["additionalProperties"].(map[string]any)
+		if isSchema && !propertyNamesExcludeReservedAuthorityFields(schema) {
+			return fmt.Errorf("schema at %s cannot prove object schema excludes reserved authority fields: propertyNames must exclude every reserved authority field", path)
+		}
+		if !isSchema && (!ok || additionalProperties) {
 			return fmt.Errorf("schema at %s cannot prove object schema excludes reserved authority fields: additionalProperties must be false", path)
 		}
 	}
@@ -432,6 +435,35 @@ func requireStaticallySafeValueShape(schema map[string]any, path string) error {
 	}
 
 	return nil
+}
+
+func propertyNamesExcludeReservedAuthorityFields(schema map[string]any) bool {
+	propertyNames, ok := schema["propertyNames"].(map[string]any)
+	if !ok {
+		return false
+	}
+	notSchema, ok := propertyNames["not"].(map[string]any)
+	if !ok || len(notSchema) != 1 {
+		return false
+	}
+	values, ok := notSchema["enum"].([]any)
+	if !ok {
+		return false
+	}
+	excluded := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		name, ok := value.(string)
+		if !ok {
+			return false
+		}
+		excluded[name] = struct{}{}
+	}
+	for _, reserved := range reservedAuthorityFields {
+		if _, ok := excluded[reserved]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func schemaTypeCapabilities(value any) (allowsObject, allowsArray, explicit, valid bool) {

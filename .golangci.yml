@@ -641,6 +641,44 @@ linters-settings:
           - "go.opentelemetry.io/otel/attribute$"
           - "go.opentelemetry.io/otel/trace$"
 
+      listing_task_canonical_subject_boundaries:
+        # Task-scoped product resolution is a platform-neutral domain port and
+        # must not depend on ListingKit DTOs, persistence, or Tool contracts.
+        list-mode: strict
+        files:
+          - "**/internal/listing/task/*.go"
+          - "**/internal/listing/task/**/*.go"
+        allow:
+          - "$gostd"
+          - "task-processor/internal/authz$"
+
+      canonical_inspection_tool_boundaries:
+        # The first canonical-product Tool is a read-only adapter over two
+        # narrow domain ports. Keep compatibility DTOs and concrete runtimes out.
+        list-mode: strict
+        files:
+          - "**/internal/product/catalog/tools/canonicalinspect/*.go"
+          - "**/internal/product/catalog/tools/canonicalinspect/**/*.go"
+        allow:
+          - "$gostd"
+          - "task-processor/internal/authz$"
+          - "task-processor/internal/commercetool$"
+          - "task-processor/internal/listing/task$"
+          - "task-processor/internal/product/catalog$"
+
+      commercetoolauth_boundaries:
+        # Trusted identity and Casbin remain adapters; policy stays with the
+        # existing auth owners and no domain DTO enters this package.
+        list-mode: strict
+        files:
+          - "**/internal/integration/commercetoolauth/*.go"
+          - "**/internal/integration/commercetoolauth/**/*.go"
+        allow:
+          - "$gostd"
+          - "task-processor/internal/authidentity$"
+          - "task-processor/internal/authz$"
+          - "task-processor/internal/commercetool$"
+
       imageagent_effectpolicy_boundaries:
         list-mode: strict
         files:

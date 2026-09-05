@@ -7,9 +7,18 @@ import (
 
 	"gorm.io/gorm"
 
+	listingtask "task-processor/internal/listing/task"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/shared/tenantctx"
 )
+
+func applyCanonicalSubjectAccessScope(db *gorm.DB, actor listingtask.Actor, tenantAdmins listingtask.TenantAdminChecker) *gorm.DB {
+	db = db.Where("tenant_id = ?", actor.TenantID)
+	if tenantAdmins != nil && tenantAdmins.IsTenantAdmin(actor.UserID, actor.Roles) {
+		return db
+	}
+	return applyTaskUserScope(db, actor.UserID)
+}
 
 func tenantScope(ctx context.Context, column string) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {

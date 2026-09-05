@@ -42,6 +42,13 @@ type VersionedSnapshotReader interface {
 	GetSnapshot(context.Context, SnapshotIdentity, uint64) (PublishedSnapshot, error)
 }
 
+// CompleteSnapshotReader exposes current and immutable historical reads
+// without granting the Catalog publication capability.
+type CompleteSnapshotReader interface {
+	SnapshotReader
+	VersionedSnapshotReader
+}
+
 // Repository combines Catalog's write and read ports for persistence adapters.
 type Repository interface {
 	SnapshotWriter

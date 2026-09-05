@@ -106,6 +106,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"platform_admin", PermissionWorkbenchStoreLifecycle},
 		{"platform_admin", PermissionWorkbenchStoreDelete},
 		{"admin", PermissionListingKitPlatformAdm},
+		{"admin", PermissionListingKitAdminRead},
 		{"admin", PermissionListingKitPromptWrite},
 		{"admin", PermissionLocalAgentWrite},
 		{"admin", PermissionImageAgentRead},
@@ -118,6 +119,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 
 	for _, role := range normalizeUnique(platformAdminRoles) {
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPlatformAdm); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(role, PermissionListingKitAdminRead); err != nil {
 			return nil, err
 		}
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPromptWrite); err != nil {
@@ -141,6 +145,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPlatformAdm); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(subject, PermissionListingKitAdminRead); err != nil {
 			return nil, err
 		}
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPromptWrite); err != nil {
@@ -201,11 +208,11 @@ func IsListingKitPlatformAdmin(userID string, roles []string) bool {
 	return DefaultListingKitAuthorizer().Authorize(userID, roles, PermissionListingKitPlatformAdm)
 }
 
-// IsListingKitTenantAdmin reports whether the identity may manage all data in
-// its current tenant. Platform administrators are included because they also
-// have tenant-wide access, while listingkit_operator remains owner-scoped.
-func IsListingKitTenantAdmin(userID string, roles []string) bool {
-	if IsListingKitPlatformAdmin(userID, roles) {
+// IsTenantAdmin reports whether the identity may bypass owner scope inside its
+// already authenticated tenant. It intentionally uses this authorizer's
+// configured users and roles instead of the process-wide default instance.
+func (a *ListingKitAuthorizer) IsTenantAdmin(userID string, roles []string) bool {
+	if a.Authorize(userID, roles, PermissionListingKitPlatformAdm) {
 		return true
 	}
 	for _, role := range normalizeUnique(roles) {
@@ -214,6 +221,13 @@ func IsListingKitTenantAdmin(userID string, roles []string) bool {
 		}
 	}
 	return false
+}
+
+// IsListingKitTenantAdmin reports whether the identity may manage all data in
+// its current tenant. Platform administrators are included because they also
+// have tenant-wide access, while listingkit_operator remains owner-scoped.
+func IsListingKitTenantAdmin(userID string, roles []string) bool {
+	return DefaultListingKitAuthorizer().IsTenantAdmin(userID, roles)
 }
 
 func userSubject(userID string) string {
