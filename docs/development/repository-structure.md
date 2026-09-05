@@ -19,14 +19,20 @@
 
 ## 顶层目录约定
 
+CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`，
+与 `TestCmdContainsOnlyOfficialEntrypoints` 及实际受维护路径一致。README 和 Code Guide
+只引用这里；受维护不等于已部署或通过生产验收。
+
 - `cmd/`
   - 只放受维护的产品运行入口或有明确所有者的运维入口。
-  - 当前四个产品运行入口为：
+  - 当前五个产品运行入口为：
+    - `image-agent-temporal-worker`
     - `listing-control-plane`
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前十二个运维入口为：
+  - 当前十三个运维入口为：
+    - `1688-local-agent`
     - `fingerprint-browser-installer`
     - `listing-scheduler`
     - `listingkit-identity-preflight`
@@ -39,6 +45,8 @@
     - `shein-login-worker`
     - `store-service-history-migrate`
     - `source-account-ownership-preflight`
+  - `image-agent-temporal-worker` 的构建归属为 `deployments/docker/Dockerfile.product-listing-api`，运行装配归 `internal/app/worker/imageagent`。
+  - `1688-local-agent` 的维护入口为 `scripts/1688-local-agent-acceptance.ps1`；归 1688 source runtime。列入清单不授权连接真实账号或执行该脚本。
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
   - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次，只有显式选择 `constraints` 且 Phase D 重验通过才会执行 PostgreSQL staged constraints。
@@ -100,8 +108,8 @@
   - SDS 登录态、浏览器状态和 auth/cookie JSON 必须放在仓库根 `.local/sds/` 或其他明确忽略的运行态目录，不能放在 `internal/sdslogin/data/`。
   - `TestInternalPackagesContainNoLocalArtifacts` 检查实际文件系统，包括 Git 忽略路径；`.gitignore` 不能作为在源码包下保留运行态文件的依据。
 - `internal/listingkit`
-  - 产品主域兼容 facade，承接 ListingKit 的任务、工作台、审核、提交编排、多租户产品能力。
-  - `internal/listingkit/httpapi` 是 ListingKit 专属 HTTP 装配、认证运行时和 AI client helper 的稳定归属地。
+  - CURRENT STATE：仍承接旧任务、工作台、审核、提交与 HTTP 能力；按 Legacy Register 执行 EXTRACT → RETIRE，不是长期产品 facade。
+  - `internal/listingkit/httpapi` 保留 ListingKit 专属 HTTP／角色适配 helper；当前 Organization 路由鉴权由 `internal/app/httpapi/server_auth.go` 装配，身份与组织解析归既有 authidentity/authruntime/workbenchcontext owner。
   - 新增平台规则、商品事实规则、可复用资产规则不应继续放入 root `internal/listingkit`。
 - `internal/commercetool`
   - 拥有框架中立的 Tool Definition、Schema、Registry、Agent Allowlist、Invocation Policy 和 Tool Audit Port。
@@ -131,7 +139,7 @@
 
 ### Phase 2 runtime foundation closure
 
-Phase 2 establishes three runtime ownership roots:
+Historical Phase 2 closure evidence (not a new dependency permission) establishes three runtime ownership roots:
 
 - `internal/app` owns lifecycle and provider registration, migration execution,
   final HTTP instrumentation, and ordered shutdown.
@@ -151,7 +159,7 @@ product, marketplace, listing, agent, or organization phase removes concrete
 runtime dependencies.
 
 - 平台实现逐步从历史目录收口到统一的平台边界，例如 `internal/marketplace/*` 或经过批准的目标包。
-- `internal/listingkit` 继续作为产品主域 facade 和编排中心，避免回流依赖历史平台 runtime。
+- `internal/listingkit` 按 [Legacy Register](../refactoring/legacy-register.md) 抽取有效行为到当前 owner，调用方切换后退休旧路径；不作为永久 facade。
 - `internal/app` 继续保持运行装配职责，避免混入产品或平台业务逻辑。
 - 生成型依赖基线和包地图只作为当前验证证据，不作为长期结构说明；需要时重新运行脚本生成。
 

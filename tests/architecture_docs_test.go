@@ -262,7 +262,8 @@ func TestProjectBoundaryDocumentKeepsPreviewPlacementAlignedWithStablePreviewBou
 
 	required := []string{
 		"| Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |",
-		"| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |",
+		"| Legacy preview facade / task-result aggregation | EXTRACT valid behavior to the current Listing owner, then RETIRE the facade |",
+		"legacy-hard-cut-policy.md",
 		"depguard: listing_preview_platform_neutral",
 		"TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets",
 	}
@@ -283,7 +284,8 @@ func TestProjectBoundaryDocumentDefines1688SourceHandoffOwnership(t *testing.T) 
 	for _, phrase := range []string{
 		"internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration",
 		"internal/integration/crawler/a1688 converts legacy crawler DTOs into adapter-local snapshots and internal/product/sourcing SourceEnvelope values",
-		"internal/compatibility/listingkit/sourcehandoff owns the 1688 to ListingKit application handoff",
+		"internal/compatibility/listingkit/sourcehandoff", "CURRENT STATE", "drain-only",
+		"internal/product/catalog", "internal/product/asset", "issue30-clean-slate-cutover.md",
 	} {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q", path, phrase)

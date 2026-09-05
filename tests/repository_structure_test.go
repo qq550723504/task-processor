@@ -34,6 +34,17 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 		"store-service-history-migrate":      {},
 		"source-account-ownership-preflight": {},
 	}
+	document, err := os.ReadFile(filepath.Join("..", "docs", "development", "repository-structure.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, commands := range []map[string]struct{}{productRuntimeCommands, operationalCommands} {
+		for command := range commands {
+			if !strings.Contains(string(document), "    - `"+command+"`") {
+				t.Errorf("repository-structure.md must list maintained command %s", command)
+			}
+		}
+	}
 
 	for _, line := range trackedFiles(t, "cmd") {
 		parts := strings.Split(filepath.ToSlash(line), "/")

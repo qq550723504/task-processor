@@ -7,7 +7,11 @@ It complements the project-wide refactoring authority:
 - [`project-target-architecture.md`](./project-target-architecture.md)
 - [`docs/refactoring/project-wide-refactoring-plan.md`](../refactoring/project-wide-refactoring-plan.md)
 
-When implementing broad refactoring, use these rules unless a newer ADR or refactoring document explicitly supersedes them.
+ACTIVE package rules are subject to the approved [Legacy Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md),
+[Legacy Register](../refactoring/legacy-register.md), and [Module Target Mapping](../refactoring/module-target-mapping.md).
+Legacy has only `EXTRACT | RETIRE`; existing code is not permission to add dependencies.
+Final UI belongs to [final-ui-ia-authority.md](../product/final-ui-ia-authority.md),
+not package topology. Approved contracts take precedence by responsibility and explicit supersession, not date or an old Active label.
 
 ## How To Use This Document
 
@@ -32,14 +36,18 @@ cmd
   -> platform / integration interfaces
 ```
 
-Current package names may not fully match the final target names yet. During migration, apply the same direction to existing packages:
+Current owners for new work:
 
 ```text
 cmd/*
   -> internal/app/*
-  -> internal/listingkit, internal/catalog, internal/asset, internal/publishing/*, internal/workspace/*, internal/{amazon,shein,temu,walmart}
-  -> internal/infra, internal/platform, internal/integration through interfaces
+  -> internal/listing/*, internal/product/*, internal/marketplace/*
+  -> domain-local ports implemented by internal/platform/* and internal/integration/*
 ```
+
+CURRENT STATE at `cae67730c5c0e645d708cb2f6814f14781962bb1`: root ListingKit, compatibility shells,
+historical marketplace roots and infra callers remain migration debt. They are
+not an additional target layer; use the mapping above to extract valid behavior.
 
 ## 3. Layer Ownership
 
@@ -85,33 +93,27 @@ Avoid:
 
 ### 3.3 `internal/listingkit`
 
-Current role: compatibility facade and listing orchestration surface.
+CURRENT STATE: root ListingKit still assembles legacy task/workflow, preview,
+export, revision, submission and API behavior. It is an `EXTRACT -> RETIRE`
+area under #29, not a permanent facade or a landing zone for new functionality.
 
-Allowed:
-
-- Task lifecycle and orchestration.
-- Workflow entrypoints and request normalization.
-- Preview/export aggregation.
-- Revision/history facade.
-- Submission coordination.
-- Studio/task workspace facade behavior.
-- API-facing shell models.
-- Cross-platform listing task concepts.
-
-Avoid:
-
-- New SHEIN category, attribute, sale-attribute, pricing, or publishing rules.
-- New SHEIN editor, repair, revision UX, inspection, or workspace rules.
-- New Amazon/TEMU/Walmart rules that can live in platform packages.
-- Direct ownership of product facts or reusable visual asset rules.
+Extract still-valid behavior into `internal/listing/*`, `internal/marketplace/*`,
+`internal/product/*`, integration adapters or app assembly according to ownership;
+switch callers and retire the old path. Do not add new consumers, wrappers,
+fallbacks or a second fact/state owner to preserve old Task/Workspace semantics.
 
 ### 3.4 Product modules
 
 Current examples:
 
-- `internal/catalog`
-- `internal/asset`
-- `internal/productimage`
+- `internal/product/catalog` — `ProductSnapshot`, immutable versions and publication
+- `internal/product/sourcing` — neutral envelopes, normalization, lineage and warnings
+- `internal/product/asset` — `ApprovedAsset` and explicit approval contracts
+- `internal/product/enrichment` — side-effect-free Proposals
+- `internal/product/image` — image capability ports; ImageAgent owns execution/approval
+
+The old `internal/catalog`, `internal/asset`, `internal/productimage`,
+`internal/productenrich` and `internal/imageasset` roots are retired and must stay absent.
 
 Own:
 
@@ -133,13 +135,11 @@ The adapter direction is explicit: internal/integration/crawler/a1688 converts l
 
 ### 3.5 Marketplace modules
 
-Current examples:
-
-- `internal/marketplace/shein/publishing`
-- `internal/marketplace/shein/workspace`
-- `internal/amazon`
-- `internal/shein`
-- `internal/temu`
+Current extracted examples are `internal/marketplace/shein/publishing` and
+`internal/marketplace/shein/workspace`. New marketplace rules use the owner under
+`internal/marketplace/<platform>/*` in the Module Target Mapping. CURRENT STATE:
+`internal/amazon`, `internal/shein` and `internal/temu` still contain historical
+implementations; their presence does not authorize new legacy dependencies.
 
 Own:
 
@@ -189,6 +189,8 @@ Must not depend on:
 
 #### Phase 2 closure boundary
 
+Historical closure observations below are bound to the [Phase 2 inventory](../refactoring/phase2-runtime-inventory.md), not current dependency permissions. Its live Legacy consumer register and import checks remain required.
+
 Application assembly owns lifecycle, provider registration, migration
 execution, instrumentation, and shutdown. Platform owns config mechanics,
 logging, database/Goose, Redis, RabbitMQ, worker pool, Temporal dial, feature
@@ -220,11 +222,18 @@ technologies; adding one requires a separate approved architecture decision.
 
 ### 3.7 `internal/compatibility/listingkit`
 
-Owns backward-compatible ListingKit entrypoints and cross-boundary DTO
-translation while the real business owners move into product, listing, and
-marketplace packages.
+CURRENT STATE: `internal/compatibility/listingkit/sourcehandoff` is a drain-only
+legacy 1688-to-ListingKit task path still wired by app HTTP composition on the
+baseline above. #30 owns extraction of identity, authorization, errors and source
+publication into current Product Sourcing/Catalog and application boundaries,
+then retirement of the old route/handoff. No new consumer is allowed.
 
-For the 1688 task path, internal/compatibility/listingkit/sourcehandoff owns the 1688 to ListingKit application handoff. It keeps the existing command, store-access, identity, request-shape, and HTTP compatibility behavior while delegating source facts to product sourcing.
+The approved [issue30-clean-slate-cutover.md](../product/issue30-clean-slate-cutover.md)
+and [#307](https://github.com/qq550723504/task-processor/issues/307) replace historical
+publication mapping/replay work with new controlled import, explicit asset
+approval and readiness in an approved clean business scope. Account/profile,
+Store, IAM and financial/effect evidence protections remain. This is neither
+runtime cutover evidence nor permission to delete data.
 
 ### 3.8 `internal/aicapability`
 
@@ -370,9 +379,7 @@ the separate Phase F and are not enabled by schema or constraint tooling.
 These import directions are forbidden by default:
 
 ```text
-internal/catalog        -> internal/listingkit
-internal/asset          -> internal/listingkit
-internal/productimage   -> internal/listingkit
+internal/product/*     -> internal/listingkit or internal/compatibility/*
 internal/publishing/*   -> internal/listingkit
 internal/workspace/*    -> internal/listingkit
 internal/amazon         -> internal/listingkit
@@ -395,15 +402,12 @@ domain/product/marketplace code -> concrete external clients when a local interf
 
 ## 5. Exception Policy
 
-Some legacy imports may exist temporarily during migration.
-
-If an exception is necessary:
-
-1. Add a short note in the related refactoring plan or PR description.
-2. Keep the exception narrow.
-3. Prefer an adapter or local interface.
-4. Add a follow-up cleanup task.
-5. Do not treat the exception as a precedent.
+Existing legacy imports are observed debt under the Legacy Register and exact
+non-growth guards, not approved extensions. New code must use current owners.
+If an externally observable contract or durable runtime state truly requires an
+exception, stop and establish an explicit reviewed Exception under the
+[Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md) before adding it.
+A PR note, follow-up task or adapter name alone does not authorize compatibility.
 
 ## 6. Placement Rules for New Code
 
@@ -412,26 +416,25 @@ Use this table when adding new code:
 | New code type | Preferred home |
 | --- | --- |
 | API route registration | owning module `internal/*/httpapi` first; `internal/app/httpapi` only for shared runtime aggregation |
-| Request parsing / response writing | `internal/listingkit/api` or API package owned by the module |
-| Task lifecycle | `internal/listingkit/task` during migration |
-| Workflow orchestration | `internal/listingkit/workflow` during migration |
+| Request parsing / response writing | API package owned by the current module |
+| Internal task lifecycle / workflow orchestration | existing runtime owner (Temporal/queue) and `internal/listing/*` contracts; no new legacy Task owner |
+| User-visible BusinessTask | #298 Product Projection; never a renamed internal Task |
 | Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |
-| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |
-| Export aggregation | `internal/listingkit/export` during migration |
-| Revision/history facade | `internal/listingkit/revision` during migration |
+| Legacy preview facade / task-result aggregation | EXTRACT valid behavior to the current Listing owner, then RETIRE the facade |
+| Export aggregation / revision history | current Listing/domain owner; extract valid behavior, do not extend legacy shells |
 | Submission state / retry / recovery | `internal/listing/submission`; do not recreate `internal/listingkit/submission` |
-| Product facts | `internal/catalog` |
-| Reusable asset facts | `internal/asset` |
-| Product image processing | `internal/productimage` or `internal/asset` depending on ownership |
+| Product facts | `internal/product/catalog.ProductSnapshot` |
+| Reusable asset facts | `internal/product/asset.ApprovedAsset`; explicit approval required |
+| Product image processing | `internal/product/image`; ImageAgent owns workflow/approval |
 | SHEIN publishing rules | `internal/marketplace/shein/publishing` |
 | SHEIN workspace/editor/repair rules | `internal/marketplace/shein/workspace` |
-| Amazon-specific rules | `internal/amazon` now; later `internal/marketplace/amazon` |
-| TEMU-specific rules | `internal/temu` now; later `internal/marketplace/temu` |
+| Amazon-specific rules | `internal/marketplace/amazon/*` |
+| TEMU-specific rules | `internal/marketplace/temu/*` target owner; no new historical-root dependency |
 | OpenAI client adapter | `internal/integration/openai`; app wires a domain-local port |
 | S3/object storage adapter | `internal/integration/s3`; app wires a domain-local port |
 
-For product modeling, keep `internal/catalog/canonical.Product` as the
-platform-neutral source of product facts. `internal/publishing/shein.Package`
+For product modeling, use `internal/product/catalog.ProductSnapshot` as the
+platform-neutral source of product facts. CURRENT STATE for the retained SHEIN shell: `internal/publishing/shein.Package`
 owns SHEIN workflow state, and its `DraftPayload` is the SHEIN draft contract
 for new reads and writes. `RequestDraft` and the package-level `SkcList` are
 compatibility/display surfaces during migration; they must not become a second
@@ -628,4 +631,4 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 
 Use `scripts/analyze-project-deps.ps1` to generate a dependency baseline and flag likely boundary violations.
 
-The script is advisory at first. Once known legacy exceptions are cataloged, it can be promoted into CI enforcement.
+The script is advisory evidence. Current enforcement already includes the Phase 3 retired-root guards and #300 exact legacy-consumer/import guards; see the Legacy Register. Do not infer new exceptions or change CI from this historical tooling note.
