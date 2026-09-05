@@ -1,0 +1,20 @@
+{
+  "url": "https://detail.1688.com/offer/123.html",
+  "source_account_id": 0,
+  "store_id": "store-1",
+  "product": {
+    "id": "123", "title": "Bottle", "url": "https://detail.1688.com/offer/123.html",
+    "images": ["https://img.test/main.jpg"], "main_image": "https://img.test/main.jpg",
+    "videos": [{"video_url":"https://video.test/1","cover_url":"https://img.test/cover.jpg"}],
+    "min_price": 12.5, "max_price": 19.5, "currency": "CNY", "min_order_quantity": 2, "unit": "piece",
+    "supplier": {"id":"supplier-1","name":"Supplier","company_name":"Supplier Ltd","location":"CN","shop_url":"https://shop.test/1","card_type":"gold","years_in_business":5,"rating":4.5,"response_rate":98,"is_gold_supplier":true,"is_verified":true},
+    "specifications": [{"name":"material","value":"steel"}],
+    "product_details": [{"content":"description","images":["https://img.test/detail.jpg"]}],
+    "pack_info": {"package_type":"box","weight":0.5,"package_images":["https://img.test/pack.jpg"],"instructions":"handle carefully"},
+    "variation_values": [{"name":"color","values":["red"]}],
+    "variants": [{"attributes":{"color":"red"},"name":"Red","image":"https://img.test/red.jpg","stock":3,"price":12.5}],
+    "sales_volume":100,"review_count":10,"rating":4.5,
+    "shipping":{"shipping_from":"CN","processing_time":"2 days"},
+    "category":"Drinkware","brand":"Example","keywords":["bottle"],"is_customized":true
+  }
+}
