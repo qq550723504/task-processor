@@ -1,4 +1,4 @@
-package canonicalinspect
+package tests
 
 import (
 	"context"
@@ -24,6 +24,7 @@ import (
 	"task-processor/internal/listingkit/core"
 	listingstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/product/catalog"
+	canonicalinspect "task-processor/internal/product/catalog/tools/canonicalinspect"
 )
 
 func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
@@ -81,7 +82,7 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	if !ok {
 		t.Fatal("catalog repository does not implement versioned reads")
 	}
-	executor, err := NewExecutor(subjects, snapshots)
+	executor, err := canonicalinspect.NewExecutor(subjects, snapshots)
 	if err != nil {
 		t.Fatalf("NewExecutor(): %v", err)
 	}
@@ -98,7 +99,7 @@ func TestRegistryConformanceCanonicalInspectionVerticalSlice(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	t.Cleanup(func() { _ = traceProvider.Shutdown(context.Background()) })
 	audits := &conformanceAuditRecorder{}
-	definition := Definition()
+	definition := canonicalinspect.Definition()
 	registry, err := commercetool.NewRegistry(commercetool.Tool{Definition: definition, Executor: executor})
 	if err != nil {
 		t.Fatalf("NewRegistry(): %v", err)
@@ -161,9 +162,9 @@ func conformanceIdentity(tenantID, userID, role string) authidentity.Authenticat
 func invokeConformance(t *testing.T, bound *commercetool.BoundToolSet, identity authidentity.AuthenticatedIdentity, taskID string) commercetool.Result {
 	t.Helper()
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), identity)
-	arguments, _ := json.Marshal(Input{TaskID: taskID})
+	arguments, _ := json.Marshal(canonicalinspect.Input{TaskID: taskID})
 	result, err := bound.Invoke(ctx, commercetool.Call{
-		Tool:      Definition().Ref,
+		Tool:      canonicalinspect.Definition().Ref,
 		Metadata:  commercetool.CallMetadata{CallID: "call-" + taskID + "-" + identity.UserID, AgentID: "fake.product-agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: taskID},
 		Arguments: arguments,
 	})
@@ -176,9 +177,9 @@ func invokeConformance(t *testing.T, bound *commercetool.BoundToolSet, identity 
 func assertConformanceError(t *testing.T, bound *commercetool.BoundToolSet, identity authidentity.AuthenticatedIdentity, taskID string, want commercetool.ErrorCode) {
 	t.Helper()
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), identity)
-	arguments, _ := json.Marshal(Input{TaskID: taskID})
+	arguments, _ := json.Marshal(canonicalinspect.Input{TaskID: taskID})
 	_, err := bound.Invoke(ctx, commercetool.Call{
-		Tool:      Definition().Ref,
+		Tool:      canonicalinspect.Definition().Ref,
 		Metadata:  commercetool.CallMetadata{CallID: "call-" + taskID + "-" + identity.UserID, AgentID: "fake.product-agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: taskID},
 		Arguments: arguments,
 	})
@@ -189,7 +190,7 @@ func assertConformanceError(t *testing.T, bound *commercetool.BoundToolSet, iden
 
 func assertConformanceTitle(t *testing.T, result commercetool.Result, title string, version uint64) {
 	t.Helper()
-	var output Output
+	var output canonicalinspect.Output
 	if err := json.Unmarshal(result.Output, &output); err != nil {
 		t.Fatalf("unmarshal output: %v", err)
 	}

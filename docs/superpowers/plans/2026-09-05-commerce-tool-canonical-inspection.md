@@ -63,7 +63,9 @@ internal/product/catalog/tools/canonicalinspect/
   projection_test.go
   executor.go
   executor_test.go
-  conformance_test.go
+
+tests/
+  commerce_tool_canonical_inspection_conformance_test.go
 
 internal/product/catalog/
   limits.go                                 # encoded snapshot 全局上限
@@ -491,7 +493,11 @@ git commit -m "feat(product): execute canonical inspection reads"
 
 **文件：**
 
-- 新建：`internal/product/catalog/tools/canonicalinspect/conformance_test.go`
+- 新建：`tests/commerce_tool_canonical_inspection_conformance_test.go`
+
+真实 integration adapters 的装配测试归仓库级 `tests` owner；现有 Phase 2 架构护栏禁止
+领域目录（包括 `_test.go`）导入 concrete infrastructure。Tool 包内只保留纯合同与 fake
+port 测试。
 
 **Step 1：先搭建真实依赖 fixture**
 
@@ -526,7 +532,7 @@ git commit -m "feat(product): execute canonical inspection reads"
 运行：
 
 ```powershell
-go test ./internal/product/catalog/tools/canonicalinspect -run 'TestRegistryConformance' -count=1 -v
+go test ./tests -run 'TestRegistryConformanceCanonicalInspectionVerticalSlice' -count=1 -v
 ```
 
 预期：在完整装配或行为未完成时失败。
@@ -536,14 +542,14 @@ go test ./internal/product/catalog/tools/canonicalinspect -run 'TestRegistryConf
 不新增生产 endpoint 或全局 registry。修复只能落在 Task 1-5 的 owner 中。
 
 ```powershell
-go test ./internal/product/catalog/tools/canonicalinspect -run 'TestRegistryConformance' -count=1
+go test ./tests -run 'TestRegistryConformanceCanonicalInspectionVerticalSlice|TestTargetDomainsDoNotImportConcreteInfrastructure' -count=1
 go test ./internal/product/catalog/tools/canonicalinspect ./internal/listing/task ./internal/listingkit/store ./internal/integration/commercetoolauth ./internal/commercetool -count=1
 ```
 
 **Step 4：提交**
 
 ```powershell
-git add internal/product/catalog/tools/canonicalinspect/conformance_test.go
+git add tests/commerce_tool_canonical_inspection_conformance_test.go
 git commit -m "test(commercetool): prove canonical inspection vertical slice"
 ```
 
