@@ -1,405 +1,325 @@
 # Project Target Architecture
 
-> Status: approved target architecture for project-wide modularization. This document complements [`project-boundaries.md`](./project-boundaries.md) by describing the intended end-state package shape, not just the dependency rules.
+> Status: approved target architecture for project-wide modularization.  
+> Legacy handling: `docs/refactoring/legacy-hard-cut-policy.md` and `docs/refactoring/legacy-register.md`.  
+> This document describes the intended end state; current runtime reality is tracked separately in `docs/refactoring/current-refactoring-status.md`.
 
 ## 1. Goal
 
-The project should converge toward a modular monolith organized by business domains first, with runtime infrastructure and external-system adapters clearly separated.
+The project converges toward a business-domain-first modular monolith with explicit Product, Listing, Marketplace, Agent/Tool, Organization, commercial/resource, runtime, and external-integration ownership.
 
-This target shape is intended to solve the current problems:
+The target architecture is designed to eliminate the historical problems where:
 
-- `internal/listingkit` still acts as the main complexity sink.
-- Marketplace rules are spread across generic packages and legacy facades.
-- Product facts, listing orchestration, platform-specific rules, runtime assembly, and external integrations are not consistently separated.
-- Crawlers such as Amazon and 1688 exist as useful capabilities but are not yet placed inside a stable long-term architecture.
+- root `internal/listingkit` becomes a complexity sink;
+- platform rules, Product facts, Listing orchestration, Task runtime and HTTP assembly mix ownership;
+- old Task-first product models leak into the final product experience;
+- migration bridges become permanent extension points;
+- Agent work creates duplicate facts, state machines, retry owners, RBAC, provider routing or marketplace clients.
 
-## 2. Final Top-level Shape
+**Compatibility is not a target architecture domain.** Existing compatibility/legacy code is drained through `EXTRACT | RETIRE` and disappears from the end state.
 
-Preferred project shape:
+## 2. Preferred top-level shape
+
+The exact directory tree may evolve, but the intended ownership shape is:
 
 ```text
 cmd/
-  product-listing-api/
-  product-listing-worker/
-  listingkit-temporal-worker/
-  tools/
 
 internal/
   app/
     httpapi/
-    worker/
     runtime/
+    worker/
+
+  product/
+    catalog/
+    sourcing/
+    enrichment/
+    asset/
+    image/
+
+  listing/
+    task/
+    workflow/
+    preview/
+    revision/
+    submission/
+    settings/
+
+  marketplace/
+    shein/
+    amazon/
+    temu/
+    ...
 
   commercetool/
+
+  agent/
+    runtime/
+    prompt/
+    ...
+
+  organization/
+  commercial/
+  ledger/
+  knowledge/
+  resourcecatalog/
+
+  integration/
+    identity/
+    authz/
+    crawler/
+      amazon/
+      a1688/
+    shein/
+    amazon/
+    temu/
+    ...
 
   platform/
     config/
     logging/
     metrics/
-    authz/
     database/
     redis/
     queue/
     temporal/
     objectstore/
 
-  integration/
-    openai/
-    s3/
-    playwright/
-    shein/
-    amazon/
-    temu/
-    walmart/
-    crawler/
-      amazon/
-      a1688/
-
-  compatibility/
-    listingkit/
-      sourcehandoff/
-
-  product/
-    catalog/
-    asset/
-    image/
-    ai/
-    sourcing/
-
-  listing/
-    task/
-    workflow/
-    preview/
-    export/
-    revision/
-    submission/
-    studio/
-    settings/
-
-  marketplace/
-    shein/
-      publishing/
-      workspace/
-      model/
-      api/
-    amazon/
-      publishing/
-      workspace/
-      model/
-      api/
-    temu/
-      publishing/
-      workspace/
-      model/
-      api/
-    walmart/
-      publishing/
-      workspace/
-      model/
-      api/
-
-  compatibility/
-    listingkit/
-
   shared/
-    errors/
-    timeutil/
-    pagination/
-    validation/
 
 web/
-  listingkit-ui/
-
-docs/
-  architecture/
-  refactoring/
-  api/
-  product/
+  ... final Product Projection defined by Figma authority ...
 ```
 
-This is the destination map, not a one-shot rename plan.
+There is intentionally no final `internal/compatibility/*` owner in this shape.
 
-## 3. Domain Responsibilities
+## 3. Core domain responsibilities
 
-### 3.1 `internal/listing/*`
+### 3.1 Product
 
-Owns listing-task business orchestration:
+`internal/product/*` owns reusable commerce product facts and capabilities:
 
-- task lifecycle
-- workflow entrypoints
-- preview aggregation
-- export aggregation
-- revision/history coordination
-- submission orchestration
-- studio orchestration
-- settings orchestration
+- `ProductSnapshot` / canonical product facts;
+- source identity, evidence, lineage and normalized sourcing;
+- enrichment Proposal behavior;
+- approved asset facts;
+- provider-neutral image capability.
 
-This domain is responsible for cross-platform listing flows, but it must not own marketplace-specific rules.
+Product does not depend on Listing, crawler implementations, root ListingKit, compatibility bridges, Agent frameworks, or marketplace SDKs.
 
-### 3.2 `internal/marketplace/*`
+### 3.2 Listing
 
-Owns marketplace-specific behavior and models.
+`internal/listing/*` owns marketplace-neutral Listing orchestration and stable listing facts/seams where they are genuinely cross-platform:
 
-Examples:
+- Platform Draft / Listing coordination;
+- preview/read models;
+- revision/history coordination;
+- submission orchestration around the existing single submission-state owner;
+- deterministic cross-platform seams.
 
-- category and attribute rules
-- publishing payload rules
-- editor and workspace rules
-- platform-specific validation
-- platform-specific DTOs and API surface models
+Listing is a domain capability, not a requirement for a top-level “Listing Center” product navigation.
 
-The project should prefer marketplace ownership over generic ListingKit ownership whenever behavior is specific to SHEIN, Amazon, TEMU, or Walmart.
+### 3.3 Marketplace
 
-### 3.3 `internal/product/*`
+`internal/marketplace/<platform>/*` owns platform-specific business behavior:
 
-Owns reusable product facts and content-production capabilities:
+- category/attribute rules;
+- platform validation adapters;
+- publishing payload rules;
+- platform-specific models and capability seams.
 
-- canonical product facts
-- asset bundle ownership
-- image-processing behavior
-- AI-assisted product enrichment
-- normalized sourcing flows
+SHEIN/TEMU/Amazon capabilities are projected mainly through Store Center / Store Products and AI Workbench according to final Figma IA. They do not each get an independent Workbench architecture.
 
-This domain should stay reusable across marketplaces and listing flows.
+### 3.4 Product Sourcing and crawlers
 
-### 3.4 `internal/product/sourcing`
-
-Owns normalized sourcing pipelines for external product-data inputs.
-
-Responsibilities:
-
-- unified sourcing service surface
-- source-result normalization
-- enrichment and fact extraction
-- image and asset candidate extraction
-- handoff into `product/catalog`, `product/asset`, and downstream listing flows
-
-This module should consume crawler outputs but should not implement crawling itself.
-
-### 3.5 `internal/integration/crawler/*`
-
-Owns external crawling adapters.
-
-Initial planned sources:
-
-- `integration/crawler/amazon`
-- `integration/crawler/a1688`
-
-Responsibilities:
-
-- page fetch / browser automation
-- anti-bot or source-specific runtime adaptation
-- source-specific DOM or payload parsing
-- raw extraction result output
-
-These adapters are sourcing inputs, not listing-domain owners and not marketplace publishing owners.
-
-### 3.6 `internal/platform/*`
-
-Owns runtime infrastructure used by the application itself:
-
-- config
-- logging
-- metrics
-- database access bootstrap
-- Redis bootstrap
-- queue bootstrap
-- Temporal runtime bootstrap
-- object-storage runtime support
-
-### 3.7 `internal/integration/*`
-
-Owns external-system adapters:
-
-- OpenAI
-- S3
-- Playwright
-- marketplace API clients
-- crawler adapters
-
-### 3.8 `internal/compatibility/listingkit`
-
-Owns backward-compatible facades during migration.
-
-Its long-term role:
-
-- keep old entrypoints stable while internals move
-- translate old DTOs or service entrypoints into new domain services
-- avoid forcing a single broad rename PR
-
-New business logic should not be added here unless it is genuinely compatibility-only.
-
-### 3.9 `internal/commercetool`
-
-Owns the framework-neutral commerce Tool contract: Tool Definition, Schema,
-Registry, Agent Allowlist, Invocation Policy, and Tool Audit Port. It owns the
-policy and invocation boundary, not business-domain implementations or runtime
-framework integration.
-
-`kernel/module.Registry` remains limited to startup contribution collection; it
-is not the Tool Runtime. A domain Tool adapter receives only narrow
-Service/Query ports and implements the Executor contract. The `internal/app`
-composition root constructs those adapters, injects the ports, and registers
-the resulting Tools with the commerce Registry.
-
-Phase 2A admits only `read`, `compute`, and `propose` risk classes. `write` and
-`publish` remain outside this phase until later governance adds their controls.
-The import boundary is enforced by `depguard: commercetool_boundaries`, a
-strict allowlist that keeps application, domain, framework, transport,
-workflow, persistence, and provider implementations outside this owner.
-
-The first bounded vertical slice is `product.canonical.inspect`. It accepts a
-task ID, resolves the authorized task-to-product binding through the
-provider-neutral `internal/listing/task` query port, and reads the immutable
-`internal/product/catalog.ProductSnapshot`. The Tool adapter owns only strict
-wire projection and stable error mapping; it owns neither task persistence nor
-canonical product facts, and it receives no write or publish port. Composition
-injects one configured Casbin authorizer into permission preflight, task owner
-scope, and the Executor's defensive scope check. A B0-only bounded read adapter
-uses a database-side byte-length conditional projection so oversized payloads
-are not scanned into Go, without narrowing the shared Catalog repository's
-existing publication/read compatibility.
-
-There is no user-accessible Tool or Agent runtime in Phase 2A. Runtime assembly,
-model orchestration, and public entrypoints remain gated on Phase 2B. The B0
-slice therefore proves domain and governance contracts without introducing an
-HTTP route, worker, queue, or second IAM implementation.
-
-## 4. Strategic Architectural Decisions
-
-### 4.1 Business-domain-first packaging
-
-The project should not converge to a purely technical layout such as `handler/service/repository` across the whole monolith.
-
-Reason:
-
-- The main complexity is business workflow and platform-rule ownership, not CRUD layering.
-- Business-domain-first packages make ownership, review, and migrations easier to explain.
-
-### 4.2 `listingkit` becomes a compatibility shell
-
-`internal/listingkit` should stop being the long-term home of new business logic.
-
-Migration intent:
-
-- first shrink it into a thin orchestration and compatibility facade
-- later move the compatibility role under `internal/compatibility/listingkit`
-
-### 4.3 Marketplace rules are grouped by marketplace
-
-The project should prefer:
+Crawler implementations live under Integration and output source-specific/raw extraction results:
 
 ```text
-internal/marketplace/shein/*
-internal/marketplace/amazon/*
-internal/marketplace/temu/*
-internal/marketplace/walmart/*
+integration/crawler/*
+        ↓
+product/sourcing
+        ↓
+ProductSnapshot / ApprovedAsset / downstream Listing
 ```
 
-instead of grouping all publishing logic or all workspace logic together across platforms.
+`product/sourcing` owns `SourceIdentity`, `SourceEnvelope`, normalization, lineage, warnings and handoff. Crawlers do not own canonical Product facts; Listing/Marketplace do not own crawling.
 
-Reason:
+### 3.5 Commerce Tool
 
-- platform rules are tightly coupled within the platform
-- ownership is clearer
-- incremental migration is easier
+`internal/commercetool` owns the framework-neutral Tool contract and governance:
 
-### 4.4 Crawlers are sourcing adapters, not publishing modules
+- definition/schema;
+- registry;
+- risk class;
+- allowlist/policy;
+- invocation/audit boundary;
+- stable error contract.
 
-Amazon and 1688 crawlers should be treated as data-source adapters for `product/sourcing`.
+Business behavior stays in the owning domain and is exposed through narrow adapters. Tools do not become a second implementation of Product/Marketplace/Listing logic.
 
-That avoids mixing:
+Agent/Tool code does not directly import GORM repositories, provider SDKs or marketplace clients.
 
-- Amazon as a source of product data
-- Amazon as a target marketplace for listing publication
+### 3.6 Agent / AI Capability
 
-These are related but distinct business concepts.
+Agent runtime owns bounded Agent execution semantics such as AgentRun/AgentStep, budgets, tool allowlists, checkpoints/interrupts and stop reasons.
 
-## 5. Dependency Direction
+AI Capability owns provider-neutral model capability/routing/policy/ledger/cost/fallback control-plane behavior.
 
-Preferred dependency direction:
+Agent does not own:
+
+- canonical Product/Listing/Asset facts;
+- BusinessTask product lifecycle;
+- Temporal durable workflow ownership;
+- marketplace submission state;
+- provider API-key/routing implementation;
+- an independent RBAC system.
+
+### 3.7 BusinessTask / product projection
+
+Final product semantics are:
+
+```text
+BusinessTask
+  -> AgentRun
+    -> AgentStep
+      -> ToolCall / ModelCall
+        -> Temporal / Queue / Internal Task
+```
+
+BusinessTask is the user-facing business goal/progress/decision/result object. Internal Task/Workflow remains execution infrastructure.
+
+The final UI/IA and user-facing names are governed by Figma `31:463` and `docs/product/final-ui-ia-authority.md`, not by historical ListingKit navigation.
+
+### 3.8 Organization / identity
+
+ZITADEL remains the trusted identity provider. Organization/membership/authorization semantics stay with current Organization/identity owners and existing RBAC boundaries.
+
+`internal/tenantbridge` is not target architecture. It is active legacy debt tracked for `EXTRACT -> RETIRE` by #301. New schemas/contracts use current Organization identity directly.
+
+### 3.9 App / Platform / Integration
+
+- `internal/app/*`: composition, bootstrap and lifecycle only.
+- `internal/platform/*`: runtime infrastructure owned by the application.
+- `internal/integration/*`: external systems and concrete adapters.
+- `internal/shared`: small stable primitives only.
+
+App must not accumulate business rules; Integration must not become the business owner of Product/Listing/Marketplace semantics.
+
+## 4. Legacy Hard-Cut
+
+The target architecture does not include an internal compatibility layer.
+
+Current legacy handling:
+
+```text
+EXTRACT
+  reusable behavior
+    -> current owner
+    -> switch callers
+    -> remove old dependency
+
+RETIRE
+  obsolete design
+    -> no extension
+    -> cut over
+    -> delete / keep absent
+```
+
+Consequences:
+
+- `internal/compatibility/*` is a retirement zone, not a final package layer;
+- root `internal/listingkit` is drained by #29, not converted into a permanent facade;
+- active 1688 → legacy ListingKit handoff is drained by #30;
+- `internal/tenantbridge` is drained by #301;
+- already removed `internal/productenrich`, `internal/productimage`, old `internal/catalog`, old `internal/asset`, and `internal/imageasset` remain absent;
+- new code does not add legacy fallback, permanent dual-read/write, bidirectional new↔old synchronization, or second fact/state owners.
+
+If a future externally observable contract or persisted runtime state truly requires temporary compatibility, it must be approved as a specific exception with owner, scope and deletion condition. It does not create a general Compatibility domain.
+
+## 5. Dependency direction
+
+Preferred dependency direction is owner-oriented, not layer-oriented:
 
 ```text
 cmd
   -> app
-  -> listing / product / marketplace
-  -> platform / integration
 
 app
-  -> listing / product / marketplace
-  -> commercetool
+  -> product / listing / marketplace / agent / commercetool / organization / commercial / ...
   -> platform / integration
-  -> shared
 
-commercetool
-  -> standard library / contract validation / tracing APIs
+Agent adapters
+  -> Commerce Tool contracts
+  -> narrow domain ports
 
 listing
   -> product
-  -> marketplace
-  -> shared
+  -> marketplace seams where required
 
 marketplace
-  -> product
-  -> integration
-  -> shared
+  -> product/domain contracts
+  -> integration through narrow adapters
 
 product
-  -> shared
+  -> shared / local contracts
 
 platform
   -> shared
 
 integration
-  -> shared
-
-compatibility
-  -> listing
-  -> marketplace
-  -> product
-  -> shared
+  -> shared / external SDKs
 ```
 
-Important consequences:
+Hard constraints:
 
-- `product` must not depend on `listing`.
-- `marketplace/*` must not depend on `compatibility/listingkit`.
-- `app/*` must remain wiring-focused.
-- `commercetool` must remain independent from application and domain
-  implementations; adapters cross the boundary only through Executor and
-  narrow Service/Query ports assembled at the composition root.
-- `compatibility/*` may depend inward on the new domains, but the new domains should not depend back on compatibility.
+- Product does not depend on Listing or legacy compatibility paths.
+- Marketplace does not depend on `internal/compatibility/listingkit`.
+- New architecture does not depend on `internal/tenantbridge`.
+- New Product/Agent/Tool/Console code does not depend on root ListingKit as a convenience service owner.
+- Agent/Tool does not bypass domain authorization or deterministic validation.
+- There is one owner for submission state, durable retry, IAM, Tool registry and canonical facts.
 
-For the 1688 source loop, internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots. The product boundary is enforced by the rule that internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration. The existing ListingKit command and HTTP compatibility path is owned by internal/compatibility/listingkit/sourcehandoff.
+## 6. Deterministic validation and side effects
 
-## 6. What This Architecture Enables
+Readiness/Validator is deterministic authority shared by UI/fixed pipeline/Tool/Agent. A model can propose a repair; it cannot reinterpret a failed validator as success.
 
-If the project converges toward this shape, it should become easier to:
+Agent evolution is read/compute/propose first. Write/publish side effects require independent approval/version/authorization/idempotency/audit/readiness gates. Agent Runtime does not create a second publication state machine.
 
-- review package ownership
-- move code without large multi-domain PRs
-- add new marketplaces without bloating `listingkit`
-- add new product-data sources without inventing new special-case package shapes
-- keep runtime assembly separate from business rules
-- gradually enforce dependency checks in CI
+## 7. Migration method
 
-## 7. Non-goals
+Do not execute another broad directory rewrite. For each legacy seam:
 
-This target architecture does not require:
+1. name the current owner;
+2. identify reusable behavior;
+3. classify `EXTRACT | RETIRE`;
+4. add/verify tests on the current contract;
+5. switch one bounded caller/path;
+6. remove the old dependency/path;
+7. add a guard so it cannot be reintroduced.
 
-- immediate broad directory renames
-- immediate package extraction for every domain
-- microservice splits
-- one-time migration of all legacy packages
-- replacing every old package name before behavior-preserving refactoring is complete
+Use `docs/refactoring/module-target-mapping.md` and `docs/refactoring/legacy-register.md` for the active drain inventory.
 
-## 8. Relationship to Existing Planning Documents
+## 8. Non-goals
 
-This document should be used together with:
+This architecture does not require:
 
-- [`project-boundaries.md`](./project-boundaries.md)
-- [`../refactoring/project-wide-refactoring-plan.md`](../refactoring/project-wide-refactoring-plan.md)
-- [`../refactoring/project-migration-roadmap.md`](../refactoring/project-migration-roadmap.md)
-- [`../refactoring/module-target-mapping.md`](../refactoring/module-target-mapping.md)
+- microservice decomposition;
+- immediate renaming of every historical package;
+- a generic MarketplaceAdapter framework;
+- a generic Listing Workspace;
+- a permanent compatibility/anti-corruption layer for internal legacy design;
+- duplicate Product/Listing/Asset facts for Agent convenience;
+- replacing Temporal with Agent Runtime;
+- Multi-Agent orchestration before one bounded Agent proves value.
 
-This document defines the desired destination shape.
+## 9. Authority relationship
+
+Use together with:
+
+- `docs/product/final-ui-ia-authority.md` — final UI/IA/Product Projection;
+- Product/architecture specs — business/safety/contracts;
+- `docs/refactoring/legacy-hard-cut-policy.md` — legacy treatment;
+- `docs/refactoring/legacy-register.md` — current legacy drain inventory;
+- `docs/refactoring/current-refactoring-status.md` — current implementation reality;
+- GitHub #137 — executable backlog order.
