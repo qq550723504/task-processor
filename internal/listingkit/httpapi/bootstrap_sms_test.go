@@ -16,4 +16,7 @@ func TestBuildZitadelSMSServicePassesPhoneExpiryConfiguration(t *testing.T) {
 	require.NotNil(t, buildZitadelSMSService(cfg))
 	cfg.PhoneVerificationExpiryMinutes = 61
 	require.Nil(t, buildZitadelSMSService(cfg))
+	// The configuration loader preserves malformed raw input with this sentinel.
+	cfg.PhoneVerificationExpiryMinutes = -1
+	require.Nil(t, buildZitadelSMSService(cfg))
 }

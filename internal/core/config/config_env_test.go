@@ -550,6 +550,43 @@ func TestBuildConfigReadsTencentSMSWebhookCredentials(t *testing.T) {
 	assert.Equal(t, 60, cfg.ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
 }
 
+func TestBuildConfigRejectsMalformedPhoneVerificationExpiry(t *testing.T) {
+	const envKey = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_PHONE_VERIFICATION_EXPIRY_MINUTES"
+	for _, value := range []string{"abc", "1.5", "true", "999999999999999999999999999999999"} {
+		t.Run("env/"+value, func(t *testing.T) {
+			t.Setenv(envKey, value)
+			require.Equal(t, -1, BuildConfig(newViper()).ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
+		})
+	}
+	for _, value := range []string{"abc", "1.5", "1.0", "true", "[]", "{}", `""`} {
+		t.Run("yaml/"+value, func(t *testing.T) {
+			t.Setenv(envKey, "")
+			v := newViper()
+			v.SetConfigType("yaml")
+			require.NoError(t, v.ReadConfig(strings.NewReader("listingkit:\n  zitadel:\n    sms:\n      phoneVerificationExpiryMinutes: "+value+"\n")))
+			require.Equal(t, -1, BuildConfig(v).ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
+		})
+	}
+}
+
+func TestBuildConfigPreservesValidPhoneVerificationExpiry(t *testing.T) {
+	const envKey = "TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_PHONE_VERIFICATION_EXPIRY_MINUTES"
+	for _, tc := range []struct {
+		raw  string
+		want int
+	}{{"0", 0}, {"1", 1}, {"60", 60}, {`"60"`, 60}, {"-1", -1}, {"61", 61}} {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Setenv(envKey, "")
+			v := newViper()
+			v.SetConfigType("yaml")
+			require.NoError(t, v.ReadConfig(strings.NewReader("listingkit:\n  zitadel:\n    sms:\n      phoneVerificationExpiryMinutes: "+tc.raw+"\n")))
+			require.Equal(t, tc.want, BuildConfig(v).ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
+		})
+	}
+	t.Setenv(envKey, "")
+	require.Zero(t, BuildConfig(newViper()).ListingKit.Zitadel.SMS.PhoneVerificationExpiryMinutes)
+}
+
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://legacy")
 	t.Setenv("OPENAI_API_KEY", "legacy")
