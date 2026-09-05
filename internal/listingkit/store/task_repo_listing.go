@@ -4,16 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 
+	listingtask "task-processor/internal/listing/task"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shared/tenantctx"
 )
+
+var _ listingtask.CanonicalSubjectReader = (*taskRepository)(nil)
 
 func (r *taskRepository) CreateTask(ctx context.Context, task *listingkit.Task) error {
 	if task != nil {
@@ -55,6 +59,60 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingki
 		return nil, core.ErrTaskNotFound
 	}
 	return &task, nil
+}
+
+// ReadCanonicalSubject resolves only the task-owned product identity needed by
+// provider-neutral readers. Actor scope is explicit and never inferred from
+// request payloads or ambient legacy identity values.
+func (r *taskRepository) ReadCanonicalSubject(ctx context.Context, actor listingtask.Actor, taskID string) (listingtask.CanonicalSubject, error) {
+	if err := listingtask.ValidateActor(actor); err != nil {
+		return listingtask.CanonicalSubject{}, err
+	}
+	if err := listingtask.ValidateTaskID(taskID); err != nil {
+		return listingtask.CanonicalSubject{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return listingtask.CanonicalSubject{}, err
+	}
+	actor.Roles = append([]string(nil), actor.Roles...)
+
+	var stored listingkit.Task
+	db := applyCanonicalSubjectAccessScope(r.db.WithContext(ctx), actor)
+	if err := db.Where("id = ?", taskID).First(&stored).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return listingtask.CanonicalSubject{}, listingtask.ErrCanonicalSubjectNotFound
+		}
+		return listingtask.CanonicalSubject{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return listingtask.CanonicalSubject{}, err
+	}
+
+	subject := listingtask.CanonicalSubject{
+		TaskID:          stored.ID,
+		TenantID:        stored.TenantID,
+		OwnerUserID:     listingkit.ResolveTaskUserID(&stored),
+		SnapshotVersion: stored.SourceSnapshotVersion,
+	}
+	if stored.Request != nil {
+		subject.ProductKey = stored.Request.ProductKey
+		if stored.Request.Source != nil {
+			subject.Source = &listingtask.SourceLineage{
+				Key:      stored.Request.Source.Key,
+				Type:     stored.Request.Source.Type,
+				Platform: stored.Request.Source.Platform,
+				ID:       stored.Request.Source.ID,
+				URL:      stored.Request.Source.URL,
+			}
+		}
+	}
+	if subject.TaskID != taskID || !listingtask.CanReadCanonicalSubject(actor, subject) {
+		return listingtask.CanonicalSubject{}, listingtask.ErrCanonicalSubjectNotFound
+	}
+	if subject.ProductKey == "" || subject.ProductKey != strings.TrimSpace(subject.ProductKey) {
+		return listingtask.CanonicalSubject{}, listingtask.ErrCanonicalSubjectNotReady
+	}
+	return subject.Clone(), nil
 }
 
 func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, int64, error) {
