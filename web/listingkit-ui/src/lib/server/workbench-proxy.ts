@@ -30,7 +30,8 @@ export type WorkbenchResponseContract =
   | "store-list"
   | "store-create"
   | "store-item"
-  | "store-delete";
+  | "store-delete"
+  | "store-service-lifecycle";
 
 type WorkbenchRequestContract =
   | "context-get"
@@ -42,7 +43,10 @@ type WorkbenchRequestContract =
   | "store-delete"
   | "store-enable"
   | "store-disable"
-  | "store-resume";
+  | "store-resume"
+  | "store-service-activate"
+  | "store-service-renew"
+  | "store-service-reactivate";
 
 type WorkbenchRouteDescriptor = {
   requestContract: WorkbenchRequestContract;
@@ -176,6 +180,34 @@ const deleteStoreResponseSchema = z
     version: positiveSafeIntegerSchema,
   })
   .strict();
+const canonicalPositiveDecimalSchema = z
+  .string()
+  .regex(/^[1-9][0-9]*$/)
+  .refine((value) => BigInt(value) <= BigInt("12"));
+const canonicalNonnegativeDecimalSchema = z
+  .string()
+  .regex(/^(0|[1-9][0-9]*)$/)
+  .refine((value) => BigInt(value) <= BigInt("9223372036854775807"));
+const serviceLifecycleResponseSchema = z
+  .object({
+    storeId: canonicalUUIDSchema,
+    recordStatus: z.literal("active"),
+    serviceStatus: z.literal("active"),
+    serviceStartedAt: utcRFC3339Schema,
+    serviceExpiresAt: utcRFC3339Schema,
+    version: positiveSafeIntegerSchema,
+    quantity: canonicalPositiveDecimalSchema,
+    resourceBalanceAfter: canonicalNonnegativeDecimalSchema,
+  })
+  .strict()
+  .superRefine((result, refinement) => {
+    if (Date.parse(result.serviceExpiresAt) <= Date.parse(result.serviceStartedAt)) {
+      refinement.addIssue({
+        code: "custom",
+        message: "Service period is inconsistent",
+      });
+    }
+  });
 
 const documentedWorkbenchErrorStatuses: Readonly<Record<string, number>> = {
   INVALID_REQUEST: 400,
@@ -190,6 +222,14 @@ const documentedWorkbenchErrorStatuses: Readonly<Record<string, number>> = {
   STORE_ALREADY_EXISTS: 409,
   STORE_VERSION_CONFLICT: 409,
   STORE_INVALID_STATE: 422,
+  STORE_SERVICE_RESUME_REQUIRED: 409,
+  STORE_SERVICE_STATE_CORRUPT: 409,
+  STORE_CONNECTION_UNAVAILABLE: 503,
+  STORE_CONNECTION_NOT_CONNECTED: 422,
+  RESOURCE_QUANTITY_INVALID: 422,
+  RESOURCE_INSUFFICIENT_BALANCE: 409,
+  IDEMPOTENCY_KEY_CONFLICT: 409,
+  RESOURCE_CONCURRENCY_RETRY: 503,
   SUBSCRIPTION_REQUIRED: 409,
   STORE_LIMIT_REACHED: 409,
   ORGANIZATION_CONTEXT_CHANGED: 409,
@@ -221,6 +261,24 @@ const workbenchRouteAllowlist = [
   ),
   routeDefinition("POST", "store-resume", "store-item", (path) =>
     storeActionPath(path, "resume"),
+  ),
+  routeDefinition(
+    "POST",
+    "store-service-activate",
+    "store-service-lifecycle",
+    (path) => storeActionPath(path, "activate"),
+  ),
+  routeDefinition(
+    "POST",
+    "store-service-renew",
+    "store-service-lifecycle",
+    (path) => storeActionPath(path, "renew"),
+  ),
+  routeDefinition(
+    "POST",
+    "store-service-reactivate",
+    "store-service-lifecycle",
+    (path) => storeActionPath(path, "reactivate"),
   ),
 ] as const satisfies readonly WorkbenchRouteDefinition[];
 
@@ -371,6 +429,36 @@ export async function buildWorkbenchUpstreamRequest(
         headers.set("If-Match", ifMatch);
         break;
       }
+      case "store-service-activate":
+      case "store-service-renew":
+      case "store-service-reactivate": {
+        if (!hasNoQuery(request)) {
+          return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
+        }
+        const idempotencyKey = readCanonicalUUIDHeader(
+          request.headers,
+          "Idempotency-Key",
+        );
+        const ifMatch = readIfMatchHeader(request.headers);
+        if (!idempotencyKey || !ifMatch) {
+          return protocolError(400, "INVALID_REQUEST", "Required header is invalid");
+        }
+        const rawBody = await readRequestBody(request, STORE_REQUEST_BODY_MAX_BYTES);
+        if (rawBody instanceof Response) return rawBody;
+        const action = route.requestContract.slice("store-service-".length) as
+          | "activate"
+          | "renew"
+          | "reactivate";
+        const payload = parseServiceLifecycleBody(rawBody, action);
+        if (!payload) {
+          return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+        }
+        body = JSON.stringify(payload);
+        headers.set("Content-Type", "application/json");
+        headers.set("Idempotency-Key", idempotencyKey);
+        headers.set("If-Match", ifMatch);
+        break;
+      }
       case "store-get":
         if (!hasNoQuery(request)) {
           return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
@@ -390,7 +478,8 @@ export async function buildWorkbenchUpstreamRequest(
     responseContract: route.responseContract,
     expectedStoreId:
       route.responseContract === "store-item" ||
-      route.responseContract === "store-delete"
+      route.responseContract === "store-delete" ||
+      route.responseContract === "store-service-lifecycle"
         ? path[1]
         : undefined,
   };
@@ -528,7 +617,16 @@ function storeItemPath(path: string[]) {
     : null;
 }
 
-function storeActionPath(path: string[], action: "enable" | "disable" | "resume") {
+function storeActionPath(
+  path: string[],
+  action:
+    | "enable"
+    | "disable"
+    | "resume"
+    | "activate"
+    | "renew"
+    | "reactivate",
+) {
   return path.length === 3 &&
     path[0] === "stores" &&
     isCanonicalUUID(path[1]!) &&
@@ -741,6 +839,46 @@ function parseStoreBody(body: Uint8Array, kind: "create" | "update") {
     : { name, platform: "shein", region };
 }
 
+function parseServiceLifecycleBody(
+  body: Uint8Array,
+  action: "activate" | "renew" | "reactivate",
+) {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    return null;
+  }
+  const errors: ParseError[] = [];
+  const root = parseTree(text, errors, {
+    allowEmptyContent: false,
+    allowTrailingComma: false,
+    disallowComments: true,
+  });
+  if (errors.length > 0 || root?.type !== "object") return null;
+  if (action === "activate") {
+    return root.children?.length === 0 ? {} : null;
+  }
+  if (root.children?.length !== 1) return null;
+  const property = root.children[0];
+  const key = property?.children?.[0];
+  const value = property?.children?.[1];
+  if (
+    property?.type !== "property" ||
+    property.children?.length !== 2 ||
+    key?.type !== "string" ||
+    key.value !== "periods" ||
+    value?.type !== "number" ||
+    !hasCanonicalIntegerNode(value, text, false)
+  ) {
+    return null;
+  }
+  const periods = Number(value.value);
+  return Number.isSafeInteger(periods) && periods >= 1 && periods <= 12
+    ? { periods }
+    : null;
+}
+
 function normalizeStoreValue(value: string, maximum: number, required: boolean) {
   if (hasUnicodeControl(value)) return null;
   const normalized = value.trim();
@@ -928,7 +1066,11 @@ function hasCanonicalStoreIntegerTokens(
   body: ParsedJSONBody,
 ) {
   if (!hasUniqueObjectKeys(body.root)) return false;
-  if (contract === "store-create" || contract === "store-item") {
+  if (
+    contract === "store-create" ||
+    contract === "store-item" ||
+    contract === "store-service-lifecycle"
+  ) {
     return hasCanonicalIntegerNode(
       findNodeAtLocation(body.root, ["version"]),
       body.text,
@@ -1052,16 +1194,22 @@ function parseSuccessfulPayload(
       ? listStoresResponseSchema
       : contract === "store-delete"
         ? deleteStoreResponseSchema
-        : storeResponseSchema;
+        : contract === "store-service-lifecycle"
+          ? serviceLifecycleResponseSchema
+          : storeResponseSchema;
   const expectedStatus = contract === "store-create" ? 201 : 200;
   if (status !== expectedStatus) return null;
   if (!hasCanonicalStoreIntegerTokens(contract, body)) return null;
   const parsed = parser.safeParse(body.payload);
   if (!parsed.success) return null;
   if (
-    (contract === "store-item" || contract === "store-delete") &&
+    (contract === "store-item" ||
+      contract === "store-delete" ||
+      contract === "store-service-lifecycle") &&
     expectedStoreId !== undefined &&
-    (!("id" in parsed.data) || parsed.data.id !== expectedStoreId)
+    (contract === "store-service-lifecycle"
+      ? !("storeId" in parsed.data) || parsed.data.storeId !== expectedStoreId
+      : !("id" in parsed.data) || parsed.data.id !== expectedStoreId)
   ) {
     return null;
   }
