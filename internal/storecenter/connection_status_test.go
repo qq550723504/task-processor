@@ -31,6 +31,7 @@ func TestConnectionStatusProviderResultsAreStrictlyProjected(t *testing.T) {
 		want   ConnectionStatus
 	}{
 		{name: "connected", status: ConnectionStatusConnected, want: ConnectionStatusConnected},
+		{name: "disconnected", status: ConnectionStatusDisconnected, want: ConnectionStatusDisconnected},
 		{name: "expired", status: ConnectionStatusExpired, want: ConnectionStatusExpired},
 		{name: "explicit unavailable", status: ConnectionStatusUnavailable, want: ConnectionStatusUnavailable},
 		{name: "invalid", status: ConnectionStatus("credential-valid"), want: ConnectionStatusUnavailable},

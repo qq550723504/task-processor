@@ -135,6 +135,35 @@ func TestServiceLifecycleApplicationRejectsUnavailableConnectionBeforeAtomicExec
 	}
 }
 
+func TestServiceLifecycleApplicationPreservesDisconnectedConnectionForAtomicDecision(t *testing.T) {
+	t.Parallel()
+	store := serviceLifecycleStore(t, "opaque-connection")
+	executor := &serviceLifecycleExecutorStub{executeErr: ErrConnectionNotFresh}
+	application, err := NewServiceLifecycleApplication(
+		serviceLifecycleStoreReaderFunc(func(context.Context, string, string) (*Store, error) { return store, nil }),
+		executor,
+		connectionStatusProviderFunc(func(context.Context, ConnectionStatusInput) (ConnectionStatus, error) {
+			return ConnectionStatusDisconnected, nil
+		}),
+		serviceLifecycleAuthorizerFunc(func(string, []string, string) bool { return true }),
+		serviceQuantityPolicyFunc(func(context.Context, string, ServiceCommand) (int64, error) { return 1, nil }),
+		time.Now,
+	)
+	if err != nil {
+		t.Fatalf("NewServiceLifecycleApplication() error = %v", err)
+	}
+
+	_, err = application.Activate(serviceLifecycleContext(), ServiceLifecycleApplicationRequest{
+		OperationID: testServiceOperationID, StoreID: testServiceStoreID, ExpectedStoreVersion: 2,
+	})
+	if !errors.Is(err, ErrConnectionNotFresh) {
+		t.Fatalf("Activate() error = %v, want ErrConnectionNotFresh", err)
+	}
+	if executor.executed.ConnectionStatus != ConnectionStatusDisconnected {
+		t.Fatalf("atomic executor connection status = %q, want disconnected", executor.executed.ConnectionStatus)
+	}
+}
+
 func TestServiceLifecycleApplicationRenewSkipsConnectionLookupAndBindsFingerprint(t *testing.T) {
 	t.Parallel()
 	store := serviceLifecycleStore(t, "opaque-connection")
