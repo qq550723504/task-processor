@@ -21,6 +21,21 @@ type linuxMountEntry struct {
 	device     string
 	root       string
 	mountPoint string
+	filesystem string
+}
+
+// Only local kernel filesystems with device-relative subtree identities are
+// supported by this bounded preflight. Independent network mounts can expose
+// the same export with different devices; source names cannot prove isolation.
+// Layered/userspace and unknown storage also require evidence we do not have.
+// Apply this check only to selected paths and protected nested mounts.
+func validateLinuxMountStorage(entry linuxMountEntry) error {
+	switch entry.filesystem {
+	case "ext2", "ext3", "ext4", "xfs", "btrfs", "tmpfs", "ramfs":
+		return nil
+	default:
+		return fmt.Errorf("cannot prove profile/receipt isolation on filesystem %q", entry.filesystem)
+	}
 }
 
 func receiptParentAliasesProfileSubtree(profileRoot, receiptParent string) (bool, error) {
@@ -55,6 +70,9 @@ func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent 
 		if !insidePath(profileRoot, entry.mountPoint) {
 			continue
 		}
+		if err := validateLinuxMountStorage(entry); err != nil {
+			return false, err
+		}
 		if !filepath.IsAbs(entry.root) {
 			return false, fmt.Errorf("cannot resolve protected mount backing path")
 		}
@@ -76,7 +94,7 @@ func indexLinuxMounts(entries []linuxMountEntry) map[string]linuxMountChoice {
 		choice, exists := index[entry.mountPoint]
 		if !exists {
 			choice.entry = entry
-		} else if entry.device != choice.entry.device || entry.root != choice.entry.root {
+		} else if entry.device != choice.entry.device || entry.root != choice.entry.root || entry.filesystem != choice.entry.filesystem {
 			choice.ambiguous = true
 		}
 		index[entry.mountPoint] = choice
@@ -99,6 +117,9 @@ func linuxFilesystemLocation(path string, mounts map[string]linuxMountChoice) (l
 	selected := choice.entry
 	if choice.ambiguous || !filepath.IsAbs(selected.root) {
 		return linuxMountLocation{}, fmt.Errorf("invalid or ambiguous backing location")
+	}
+	if err := validateLinuxMountStorage(selected); err != nil {
+		return linuxMountLocation{}, err
 	}
 	relative, err := filepath.Rel(selected.mountPoint, path)
 	if err != nil {
@@ -153,6 +174,9 @@ func validateProfileSubtreesFromMountInfo(ctx context.Context, accounts []Accoun
 		}
 		for p := entry.mountPoint; ; p = filepath.Dir(p) {
 			if owner, ok := owners[p]; ok {
+				if err := validateLinuxMountStorage(entry); err != nil {
+					return err
+				}
 				if !filepath.IsAbs(entry.root) {
 					return fmt.Errorf("cannot resolve protected profile mount")
 				}
@@ -212,6 +236,7 @@ func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {
 			device:     fields[2],
 			root:       decodeLinuxMountInfoPath(fields[3]),
 			mountPoint: decodeLinuxMountInfoPath(fields[4]),
+			filesystem: fields[separator+1],
 		}
 		// Unrelated mounts may legitimately have opaque roots (e.g. nsfs) or
 		// stacked mountpoints. Resolve backing-path ambiguity only where needed.

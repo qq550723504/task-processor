@@ -16,6 +16,15 @@ func directoryFilesystemIdentity(path string, _ os.FileInfo) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Remote/mapped shares cannot use local volume serials as isolation proof.
+	// Query only this path's volume, never enumerate unrelated network drives.
+	volume := make([]uint16, 32768)
+	if err := windows.GetVolumePathName(name, &volume[0], uint32(len(volume))); err != nil {
+		return "", fmt.Errorf("cannot resolve directory storage: %w", err)
+	}
+	if err := validateWindowsDriveType(windows.GetDriveType(&volume[0])); err != nil {
+		return "", err
+	}
 	handle, err := windows.CreateFile(
 		name,
 		windows.FILE_READ_ATTRIBUTES,
@@ -34,4 +43,13 @@ func directoryFilesystemIdentity(path string, _ os.FileInfo) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%08x:%08x:%08x", information.VolumeSerialNumber, information.FileIndexHigh, information.FileIndexLow), nil
+}
+
+func validateWindowsDriveType(driveType uint32) error {
+	switch driveType {
+	case windows.DRIVE_FIXED, windows.DRIVE_REMOVABLE, windows.DRIVE_RAMDISK, windows.DRIVE_CDROM:
+		return nil
+	default:
+		return fmt.Errorf("cannot prove profile/receipt isolation on remote or unknown storage")
+	}
 }

@@ -150,8 +150,31 @@ All three disposable Linux live cases first produced receipts on the prior head:
 account-root-to-descendant bind, descendant-to-descendant bind, and two accounts
 mounting the same external subtree. They now reject without usable receipts.
 Disjoint devices, similar non-child prefixes, same-account nested ranges and unrelated
-opaque mounts remain accepted. This completes the Linux mount-alias checks without
+opaque mounts remain accepted. These checks retain the local mount-alias protections without
 changing receipt publication ownership or B/C/D scope.
+
+R2-A (finding 3940190916) explicitly chooses rejection when related storage cannot
+prove isolation. Different client device numbers do not establish independent backing
+storage for network exports, and equal or different source strings are not proof.
+Linux accepts device-relative subtree checks on ext2/ext3/ext4, XFS, Btrfs, tmpfs and
+ramfs. Selected profile/receipt mounts and protected nested mounts on other storage
+fail closed, including NFS/CIFS, userspace filesystems, layered overlay and unknown
+types. Overlay's backing layers are not resolved by this bounded preflight; a container
+must expose supported profile and receipt volumes rather than use its overlay root.
+Unrelated unsupported mounts do not reject otherwise valid local paths. Windows
+rejects remote/mapped or unknown volumes before using local volume/file identities;
+existing local directory and junction checks remain. Neither platform enumerates
+network exports or treats source names as authoritative ownership identities.
+
+`TestUnprovableMountStorage` first failed on e4a3d57d8 and now covers selected root,
+account, descendant and receipt locations, independent devices, equal/different
+source names, and unrelated network mounts. This is mountinfo fixture evidence.
+`TestWindowsStorageIsolation` checks native API result policy plus a real disposable
+local directory, not a live network share. Linux bind/tmpfs tests use a disposable
+container with `/tmp` mounted as tmpfs; Windows junction tests use disposable NTFS
+directories. Real NFS/CIFS/mapped-share acceptance remains **NOT_RUN**. This is an
+explicit fail-closed support boundary, not acceptance of shared-storage risk or new
+network filesystem support. Receipt publication and the #30 BLOCKER are unchanged.
 
 The subsequent Windows review reproduced the same gap with two distinct account roots
 containing junctions to a shared directory. That real junction test failed before the
