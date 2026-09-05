@@ -135,3 +135,13 @@ Action:
 - 收到评审问题后先检查同根因的 sibling paths，再批量修复。
 - 修复改变状态机、事务边界、恢复协议或公共契约时，只有命中上述 `BLOCKER` 条件才退回设计阶段重新评审；非 Blocker 优先转为实现测试或 backlog。
 - 完成修改后运行与风险匹配的验证，在声明完成前确认测试结果。
+
+## Issue 驱动派工
+
+执行 Issue 时遵循 [Issue 驱动派工规则 V1](docs/engineering/issue-driven-development.md)，使用其中引用的 Issue / PR 模板。
+
+- 开工先读 Issue 当前正文、引用依据和适用规则，检查已有接单会话与关联 PR，并在 Issue 记录接单。
+- 一个有界任务同一时间只有一个写入负责人，使用独立分支 / worktree；范围内 review 与 CI 修复留在原 PR。
+- 授权范围内实现、隔离验证、提交、推送及维护 PR 可连续执行；默认不授权合并、部署或真实数据操作。
+- 进度写 Issue，验收映射、最终 HEAD、CI、独立评审与批准证据写 PR；本文件不保存滚动状态。
+- `IMPLEMENTATION_TEST` 在实现和验证层收敛、不必重开设计；当前切片 Must 未满足时仍阻止合并。
