@@ -26,6 +26,29 @@ func fixture(t *testing.T) (Snapshot, string) {
 	}, root
 }
 
+func TestPreflightRemovedMetadataValidation(t *testing.T) {
+	for _, value := range []string{"", "abc", "0101", "+101", " 101", "0", "-1", "9223372036854775808"} {
+		t.Run(value, func(t *testing.T) {
+			s, root := fixture(t)
+			s.Metadata = append(s.Metadata, OrganizationMetadata{OrganizationID: "removed", Value: []byte(value), OwnerRemoved: true})
+			if r, err := Preflight(context.Background(), s, root); err == nil || r.Digest != "" {
+				t.Fatal("malformed removed metadata produced a usable receipt")
+			}
+		})
+	}
+	s, root := fixture(t)
+	removed := OrganizationMetadata{OrganizationID: "removed", Value: []byte("101"), Sequence: 42, OwnerRemoved: true}
+	s.Metadata = append(s.Metadata, removed)
+	r, err := Preflight(context.Background(), s, root)
+	if err != nil || len(r.Metadata) != 2 || !reflect.DeepEqual(r.Metadata[1], removed) || r.Accounts[0].OrganizationID != "org-A" {
+		t.Fatalf("valid tombstone must remain evidence without competing with active owner: %+v %v", r, err)
+	}
+	s.Metadata = []OrganizationMetadata{removed}
+	if _, err := Preflight(context.Background(), s, root); err == nil {
+		t.Fatal("removed metadata contributed active ownership")
+	}
+}
+
 func TestPreflightPreservesProfileAndDisabledDeletedState(t *testing.T) {
 	s, root := fixture(t)
 	s.Accounts[0].Status, s.Accounts[0].Deleted = 1, 1

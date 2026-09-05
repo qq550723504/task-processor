@@ -93,12 +93,13 @@ func Preflight(ctx context.Context, s Snapshot, root string) (Receipt, error) {
 			return Receipt{}, fmt.Errorf("invalid or ambiguous Organization metadata")
 		}
 		seenOrgs[m.OrganizationID] = true
-		if m.OwnerRemoved {
-			continue
-		}
 		v, err := strconv.ParseInt(string(m.Value), 10, 64)
 		if err != nil || v <= 0 || strconv.FormatInt(v, 10) != string(m.Value) {
 			return Receipt{}, fmt.Errorf("invalid Organization mapping value")
+		}
+		// Tombstones remain evidence and must be well formed, but cannot own accounts.
+		if m.OwnerRemoved {
+			continue
 		}
 		if _, exists := owners[v]; exists {
 			return Receipt{}, fmt.Errorf("ambiguous Organization mapping")

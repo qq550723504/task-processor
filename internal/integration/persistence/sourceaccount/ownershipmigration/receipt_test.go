@@ -84,9 +84,22 @@ func TestReceiptTargetRejectsProfileTreeAndAlias(t *testing.T) {
 	if err = ValidateReceiptTarget(root, valid, r); err != nil {
 		t.Fatalf("valid outside target rejected: %v", err)
 	}
+	descendant := filepath.Join(root, "101", "7", "Default")
+	if err := os.Mkdir(descendant, 0700); err != nil {
+		t.Fatal(err)
+	}
+	prefixSibling := root + "-other"
+	if err := os.Mkdir(prefixSibling, 0700); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(prefixSibling) }()
+	if err := ValidateReceiptTarget(root, filepath.Join(prefixSibling, "receipt.json"), r); err != nil {
+		t.Fatalf("similar prefix is not containment: %v", err)
+	}
 	for _, path := range []string{
 		filepath.Join(root, "receipt.json"),
 		filepath.Join(root, "101", "7", "receipt.json"),
+		filepath.Join(descendant, "receipt.json"),
 	} {
 		if err = ValidateReceiptTarget(root, path, r); err == nil {
 			t.Fatalf("profile-contained receipt accepted: %s", path)
@@ -106,6 +119,37 @@ func TestReceiptTargetRejectsProfileTreeAndAlias(t *testing.T) {
 	defer func() { _ = os.Remove(alias) }()
 	if err = ValidateReceiptTarget(root, filepath.Join(alias, "receipt.json"), r); err == nil {
 		t.Fatal("aliased profile receipt target accepted")
+	}
+}
+
+type cancelWhenPublishedContext struct {
+	context.Context
+	path   string
+	cancel context.CancelFunc
+}
+
+func (c cancelWhenPublishedContext) Err() error {
+	if _, err := os.Stat(c.path); err == nil {
+		c.cancel()
+	}
+	return c.Context.Err()
+}
+
+func TestReceiptCancellationAfterLinkCleansFinalAndStaging(t *testing.T) {
+	s, root := fixture(t)
+	r, err := Preflight(context.Background(), s, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "receipt.json")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := WriteReceipt(cancelWhenPublishedContext{ctx, path, cancel}, path, r); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation at post-link check: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("post-link cancellation leaked final or staging file: %v %v", entries, err)
 	}
 }
 

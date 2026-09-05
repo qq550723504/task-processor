@@ -51,6 +51,13 @@ truncating. A larger installation needs a separately reviewed paged snapshot
 implementation, not an unbounded flag. Command errors suppress database connection
 details; troubleshoot connection/schema/permissions with existing operator tools.
 
+On Linux the mount table is read once and the receipt backing location is checked
+against both the profile root and every mount nested below it, including different
+devices. Empty, malformed, uncovered or ambiguous mount relationships fail closed.
+This inspects mount metadata and directory identities, not profile contents, and
+does not scan account pairs. Keep the mounted namespace stable during this read-only
+observation; the A receipt remains non-atomic evidence, not B fleet validation.
+
 On success, the command prints account count and SHA-256. The JSON includes each
 account's old ownership/status/deleted/profile reference, mapped Organization and exact
 verified profile directory, plus metadata sequences/removal flags and source observation
@@ -79,6 +86,37 @@ symlink/junction profile path (including ancestors); or two accounts sharing one
 filesystem profile identity. Duplicate Organization metadata is rejected rather than
 choosing a sequence and accidentally resurrecting a removed owner. The command reads all
 1688 account rows, including disabled/deleted, and does not activate them.
+
+Metadata format validation applies to every row, including `owner_removed=true`.
+A valid removed row remains in the receipt but never contributes an active mapping;
+an empty, nonnumeric, nonpositive, overflowing or noncanonical numeric value blocks.
+
+### R1-A regression matrix
+
+All filesystem tests below use disposable directories; no real browser profile is
+read, moved, deleted or recreated. Fixture coverage and live platform checks are
+separate evidence:
+
+| Receipt target / evidence | Expected | Test |
+| --- | --- | --- |
+| Root, account, descendant | Reject | `TestReceiptTargetRejectsProfileTreeAndAlias`, `TestReceiptMountMatrix` |
+| External directory, similar non-child prefix | Accept | Same tests |
+| Symlink (Linux), junction (Windows) | Reject | `TestReceiptTargetRejectsProfileTreeAndAlias` |
+| External bind of account / descendant | Reject | `TestReceiptMountMatrix`, `TestReceiptTargetRejectsLiveBindMountedProfileDescendant` |
+| Different-device nested mount externally bound, including child path | Reject | `TestReceiptMountMatrix`, `TestReceiptTargetRejectsLiveNestedMount` |
+| Unrelated mounted device | Accept | `TestReceiptMountMatrix` |
+| Empty/malformed/uncovered/ambiguous mount relationship | Reject | `TestReceiptMountMatrix` |
+| Malformed removed metadata; valid tombstone with active owner; removed-only owner | Reject; retain without mapping; reject missing active owner | `TestPreflightRemovedMetadataValidation` |
+
+R1-A TDD reproduced eight malformed removed values and both nested-device fixture
+cases on the handoff implementation before applying the fixes. Windows junction and
+Linux live mount checks passed locally; Linux ran in a disposable Docker container
+with `SYS_ADMIN`, using a read-only test-binary mount and no production volumes.
+Cross-platform builds are compile evidence only. Existing publication exclusivity,
+pre-link cancellation, success boundary, deterministic digest and disabled/deleted
+tests remain. `TestReceiptCancellationAfterLinkCleansFinalAndStaging` additionally
+exercises cancellation at the publisher's post-link check, without a second CLI
+decision. This evidence does not change #30's production cutover BLOCKER.
 
 Before B/C: freeze all 1688 admissions and source-account/mapping writers, drain and
 attest every old process queue/worker, reconcile Redis and local terminal outcomes,
