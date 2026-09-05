@@ -133,6 +133,45 @@ func TestServiceLifecycleApplicationRejectsUnavailableConnectionBeforeAtomicExec
 	if executor.executed != (ServiceExecution{}) {
 		t.Fatalf("unavailable connection reached atomic executor: %+v", executor.executed)
 	}
+	if executor.replayCalls != 2 {
+		t.Fatalf("unavailable connection replay calls = %d, want final durable replay", executor.replayCalls)
+	}
+}
+
+func TestServiceLifecycleApplicationReplaysConcurrentCommitBeforeReturningConnectionUnavailable(t *testing.T) {
+	t.Parallel()
+	store := serviceLifecycleStore(t, "opaque-connection")
+	want := ServiceOperationResult{Snapshot: ServiceOperationSnapshot{
+		OrganizationID: "org-a", OperationID: testServiceOperationID, StoreID: testServiceStoreID,
+		Command: ServiceCommandActivate, Quantity: "1", StoreVersion: 3,
+	}, Replayed: true}
+	executor := &serviceLifecycleExecutorStub{replaySequence: []serviceReplayOutcome{
+		{},
+		{result: want, found: true},
+	}}
+	application, err := NewServiceLifecycleApplication(
+		serviceLifecycleStoreReaderFunc(func(context.Context, string, string) (*Store, error) { return store, nil }),
+		executor,
+		connectionStatusProviderFunc(func(context.Context, ConnectionStatusInput) (ConnectionStatus, error) {
+			return ConnectionStatusUnavailable, nil
+		}),
+		serviceLifecycleAuthorizerFunc(func(string, []string, string) bool { return true }),
+		serviceQuantityPolicyFunc(func(context.Context, string, ServiceCommand) (int64, error) { return 1, nil }),
+		time.Now,
+	)
+	if err != nil {
+		t.Fatalf("NewServiceLifecycleApplication() error = %v", err)
+	}
+
+	got, err := application.Activate(serviceLifecycleContext(), ServiceLifecycleApplicationRequest{
+		OperationID: testServiceOperationID, StoreID: testServiceStoreID, ExpectedStoreVersion: 2,
+	})
+	if err != nil || got != want {
+		t.Fatalf("Activate() = (%+v, %v), want concurrent replay %+v", got, err, want)
+	}
+	if executor.executed != (ServiceExecution{}) {
+		t.Fatalf("concurrent replay reached atomic executor: %+v", executor.executed)
+	}
 }
 
 func TestServiceLifecycleApplicationPreservesDisconnectedConnectionForAtomicDecision(t *testing.T) {
@@ -246,16 +285,28 @@ type serviceLifecycleExecutorStub struct {
 	replayErr          error
 	replayCalls        int
 	replayFingerprints []string
+	replaySequence     []serviceReplayOutcome
 	executed           ServiceExecution
 	executeResult      ServiceOperationResult
 	executeErr         error
 }
 
+type serviceReplayOutcome struct {
+	result ServiceOperationResult
+	found  bool
+	err    error
+}
+
 func (s *serviceLifecycleExecutorStub) ReplayServiceLifecycle(_ context.Context, replay ServiceReplay) (ServiceOperationResult, bool, error) {
+	callIndex := s.replayCalls
 	s.replayCalls++
 	s.replayFingerprints = append(s.replayFingerprints, replay.RequestFingerprint)
 	if s.events != nil {
 		*s.events = append(*s.events, "replay")
+	}
+	if callIndex < len(s.replaySequence) {
+		outcome := s.replaySequence[callIndex]
+		return outcome.result, outcome.found, outcome.err
 	}
 	return s.replayResult, s.replayFound, s.replayErr
 }

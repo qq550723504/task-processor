@@ -128,6 +128,9 @@ func (application *ServiceLifecycleApplication) execute(ctx context.Context, com
 			ConnectionRef:  store.ConnectionRef(),
 		}, connectionStatusTimeout)
 		if connectionStatus == ConnectionStatusUnavailable {
+			if result, found, replayErr := application.executor.ReplayServiceLifecycle(ctx, replay); replayErr != nil || found {
+				return result, replayErr
+			}
 			return ServiceOperationResult{}, ErrConnectionUnavailable
 		}
 	}
