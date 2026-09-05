@@ -110,6 +110,8 @@ linters-settings:
           - "**/internal/console/**/*.go"
           - "**/internal/businesstask/*.go"
           - "**/internal/businesstask/**/*.go"
+          - "**/internal/storecenter/*.go"
+          - "**/internal/storecenter/**/*.go"
         deny:
           - pkg: "task-processor/internal/listingkit$"
             desc: "EXTRACT behavior to current owners; never wrap the legacy root service"

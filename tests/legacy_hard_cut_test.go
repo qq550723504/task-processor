@@ -180,12 +180,21 @@ func TestCurrentOwnerLegacyRootDepguardCoverage(t *testing.T) {
 	rules := loadDepguardRules(t, filepath.Join("..", ".golangci.yml"))
 	rule := requireDepguardRule(t, rules, "current_owners_legacy_listingkit_root")
 	var files []string
-	for _, owner := range []string{"product", "listing", "marketplace", "agent", "commercetool", "console", "businesstask"} {
+	for _, owner := range currentOwnerLegacyListingKitRoots {
 		files = append(files, "**/internal/"+owner+"/*.go", "**/internal/"+owner+"/**/*.go")
 	}
 	assertExactStringSet(t, "current owner coverage", rule.Files, files)
 	_, denied := depguardDenyPackageSet(rule)["task-processor/internal/listingkit$"]
 	require.True(t, denied, "mixed root service owner must be denied")
+}
+
+func TestCurrentOwnerLegacyRootGuardRejectsStoreCenterFixture(t *testing.T) {
+	violations, err := currentOwnerLegacyListingKitRootViolations([]listingKitImageBoundarySource{
+		{path: "internal/storecenter/revived.go", text: "package storecenter\nimport _ \"task-processor/internal/listingkit\"\n"},
+		{path: "internal/storecenter/current_leaf.go", text: "package storecenter\nimport _ \"task-processor/internal/listingkit/core\"\n"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"internal/storecenter/revived.go -> task-processor/internal/listingkit"}, violations)
 }
 
 func TestLegacyImportParserRejectsMalformedSources(t *testing.T) {

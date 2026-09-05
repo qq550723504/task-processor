@@ -5531,30 +5531,45 @@ func TestLegacyConsumersStayWithinDrainBaseline(t *testing.T) {
 	}
 }
 
+var currentOwnerLegacyListingKitRoots = []string{
+	"product", "listing", "marketplace", "agent", "commercetool", "console", "businesstask", "storecenter",
+}
+
 func TestCurrentOwnersDoNotImportLegacyListingKitRoot(t *testing.T) {
 	sources := trackedProductionTextSources(t, []string{"internal"}, func(path string) bool {
-		for _, owner := range []string{"product", "listing", "marketplace", "agent", "commercetool", "console", "businesstask"} {
+		for _, owner := range currentOwnerLegacyListingKitRoots {
 			if strings.HasPrefix(path, "internal/"+owner+"/") {
 				return strings.HasSuffix(path, ".go") && !strings.Contains(path, "/testdata/")
 			}
 		}
 		return false
 	})
-	// The exact root is the mixed legacy service owner. Existing extracted leaf
-	// contracts such as listingkit/core are drained independently by #29.
+	violations, err := currentOwnerLegacyListingKitRootViolations(sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, violation := range violations {
+		t.Errorf("%s; EXTRACT behavior into the current owner instead of legacy fallback", violation)
+	}
+}
+
+func currentOwnerLegacyListingKitRootViolations(sources []listingKitImageBoundarySource) ([]string, error) {
+	var violations []string
 	for _, source := range sources {
 		file, err := parser.ParseFile(token.NewFileSet(), source.path, source.text, parser.ImportsOnly)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		for _, spec := range file.Imports {
 			imported, err := decodeGoImportPath(spec.Path.Value)
 			if err != nil {
-				t.Fatal(err)
+				return nil, err
 			}
 			if imported == "task-processor/internal/listingkit" {
-				t.Errorf("%s imports root ListingKit; EXTRACT behavior into the current owner instead of legacy fallback", source.path)
+				violations = append(violations, filepath.ToSlash(source.path)+" -> "+imported)
 			}
 		}
 	}
+	sort.Strings(violations)
+	return violations, nil
 }
