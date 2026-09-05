@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
@@ -37,6 +38,13 @@ func createSheinRecord(c *gin.Context, service *record.Service) {
 	_ = controller.SetReadDeadline(deadline)
 	var input record.Input
 	raw, err := io.ReadAll(c.Request.Body)
+	var transportError net.Error
+	// The socket read deadline can fire before the context timer is scheduled.
+	// Preserve both cancellation and transport timeouts before JSON validation.
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &transportError) && transportError.Timeout()) {
+		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "deadline_exceeded"})
+		return
+	}
 	if err == nil {
 		var violations []error
 		violations, err = sigjson.UnmarshalStrict(raw, &input)

@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -192,6 +195,24 @@ func TestSheinRecordApplicationDeadlineReturnsHTTPTimeout(t *testing.T) {
 	status, body := recordPost(t, server, "operator", "application-deadline", recordBody)
 	require.Equal(t, http.StatusGatewayTimeout, status, string(body))
 	require.NoError(t, lock.Rollback().Error)
+	var count int64
+	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestSheinRecordSlowBodyReturnsHTTPTimeout(t *testing.T) {
+	db := recordTestDB(t)
+	server, _ := recordApplication(t, db, &recordGrants{})
+	conn, err := net.Dial("tcp", server.Listener.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+	require.NoError(t, conn.SetDeadline(time.Now().Add(2*record.Timeout)))
+	_, err = fmt.Fprintf(conn, "POST /api/listing/shein-records HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer operator\r\nX-Requested-Organization-ID: 200\r\nIdempotency-Key: slow-body\r\nContent-Length: %d\r\n\r\n{", len(recordBody))
+	require.NoError(t, err)
+	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusGatewayTimeout, response.StatusCode)
 	var count int64
 	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
 	require.Zero(t, count)
