@@ -5,83 +5,63 @@ on:
     branches:
       - main
     paths:
-      - ".github/scripts/**"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/listingkit-deploy.yml"
-      - ".github/workflows/listingkit-ui-deploy.yml"
-      - "cmd/product-listing-api/**"
-      - "cmd/**"
-      - "config/**"
-      - "deployments/docker/Dockerfile.product-listing-api"
-      - "deployments/docker/Dockerfile.listingkit-ui"
-      - "deployments/kubernetes/listingkit-workbench/README.md"
-      - "deployments/kubernetes/listingkit-workbench/base/**"
-      - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
-      - "deployments/kubernetes/listingkit-workbench/release-authority/**"
-      - "go.mod"
-      - "go.sum"
+      - "**"
       - "**/*.go"
-      - "tools/go.mod"
-      - "tools/go.sum"
-      - ".golangci.yml"
-      - "internal/app/httpapi/**"
-      - "internal/**"
-      - "internal/crawler/alibaba1688/**"
-      - "internal/listingkit/**"
-      - "internal/listingadmin/**"
-      - "internal/promptmgmt/**"
-      - "internal/listingsubscription/**"
-      - "prompts/**"
-      - "policy/listingkit-release-authority/**"
-      - "scripts/**"
-      - "Makefile"
-      - "docs/refactoring/code-health-decisions.md"
-      - "tests/**"
-      - "web/listingkit-ui/**"
+      - ".github/scripts/**"
   pull_request:
     paths:
-      - ".github/scripts/**"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/listingkit-deploy.yml"
-      - ".github/workflows/listingkit-ui-deploy.yml"
-      - "cmd/product-listing-api/**"
-      - "cmd/**"
-      - "config/**"
-      - "deployments/docker/Dockerfile.product-listing-api"
-      - "deployments/docker/Dockerfile.listingkit-ui"
-      - "deployments/kubernetes/listingkit-workbench/README.md"
-      - "deployments/kubernetes/listingkit-workbench/base/**"
-      - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
-      - "deployments/kubernetes/listingkit-workbench/release-authority/**"
-      - "go.mod"
-      - "go.sum"
+      - "**"
       - "**/*.go"
-      - "tools/go.mod"
-      - "tools/go.sum"
-      - ".golangci.yml"
-      - "internal/app/httpapi/**"
-      - "internal/**"
-      - "internal/crawler/alibaba1688/**"
-      - "internal/listingkit/**"
-      - "internal/listingadmin/**"
-      - "internal/promptmgmt/**"
-      - "internal/listingsubscription/**"
-      - "prompts/**"
-      - "policy/listingkit-release-authority/**"
-      - "scripts/**"
-      - "Makefile"
-      - "docs/refactoring/code-health-decisions.md"
-      - "tests/**"
-      - "web/listingkit-ui/**"
+      - ".github/scripts/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: listingkit-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   NODE_VERSION: "22"
 
 jobs:
+  changes:
+    name: CI Change Classification
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+      code_health: ${{ steps.classify.outputs.code_health }}
+      release_authority: ${{ steps.classify.outputs.release_authority }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Classify changed areas
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            node .github/scripts/ci-change-classifier.cjs --all >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "${BASE_SHA:-}" || -z "${HEAD_SHA:-}" ]]; then
+            echo "pull request classification requires base/head SHAs" >&2
+            exit 1
+          fi
+
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed-files.txt"
+          node .github/scripts/ci-change-classifier.cjs "$RUNNER_TEMP/changed-files.txt" | tee -a "$GITHUB_OUTPUT"
+
   development-admission-tests:
     name: Development Admission Policy Tests
     runs-on: ubuntu-latest
@@ -89,11 +69,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Test pull request scope policy
-        run: node --test .github/scripts/pr-scope-guard.test.cjs
+      - name: Test CI policy evaluators
+        run: node --test .github/scripts/pr-scope-guard.test.cjs .github/scripts/ci-change-classifier.test.cjs
 
   release-authority:
     name: Release Authority Policy
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.release_authority == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -107,6 +89,8 @@ jobs:
 
   backend:
     name: Backend Checks
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -127,8 +111,7 @@ jobs:
         run: ${{ runner.temp }}/bin/golangci-lint run --config .golangci.yml --enable-only depguard ./...
 
       - name: Run backend tests
-        run: |
-          go test ./... -count=1
+        run: go test ./... -count=1
 
       - name: Run listing concurrency race tests
         run: |
@@ -142,6 +125,8 @@ jobs:
 
   frontend:
     name: Frontend Checks
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -186,6 +171,8 @@ jobs:
 
   code-health:
     name: Code Health Ratchet
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.code_health == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -226,22 +213,73 @@ jobs:
           path: .local/code-health
           if-no-files-found: ignore
 
-  notify:
-    name: WeCom Notification
+  required-gate:
+    name: Required CI Gate
     needs:
+      - changes
       - development-admission-tests
+      - release-authority
       - backend
       - frontend
       - code-health
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    steps:
+      - name: Require all applicable CI jobs
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
+          RELEASE_RESULT: ${{ needs.release-authority.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          CODE_HEALTH_RESULT: ${{ needs.code-health.result }}
+        run: |
+          set -euo pipefail
+
+          require_success() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped)
+                printf '%-24s %s\n' "$name" "$result"
+                ;;
+              *)
+                printf '%-24s %s\n' "$name" "$result" >&2
+                return 1
+                ;;
+            esac
+          }
+
+          require_success "change classification" "$CHANGES_RESULT"
+          require_success "development admission tests" "$DEVELOPMENT_ADMISSION_TEST_RESULT"
+          require_success "release authority" "$RELEASE_RESULT"
+          require_success "backend" "$BACKEND_RESULT"
+          require_success "frontend" "$FRONTEND_RESULT"
+          require_success "code health" "$CODE_HEALTH_RESULT"
+
+  notify:
+    name: WeCom Notification
+    needs:
+      - changes
+      - development-admission-tests
+      - release-authority
+      - backend
+      - frontend
+      - code-health
+      - required-gate
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
     continue-on-error: true
     env:
       WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+      CHANGES_RESULT: ${{ needs.changes.result }}
       DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
+      RELEASE_AUTHORITY_RESULT: ${{ needs.release-authority.result }}
       BACKEND_RESULT: ${{ needs.backend.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
       CODE_HEALTH_RESULT: ${{ needs.code-health.result }}
+      REQUIRED_GATE_RESULT: ${{ needs.required-gate.result }}
       CI_BRANCH: ${{ github.head_ref || github.ref_name }}
       CI_EVENT: ${{ github.event_name }}
       CI_ACTOR: ${{ github.actor }}
@@ -266,13 +304,12 @@ jobs:
           frontend = os.environ.get("FRONTEND_RESULT", "unknown")
           code_health = os.environ.get("CODE_HEALTH_RESULT", "unknown")
           development_admission_tests = os.environ.get("DEVELOPMENT_ADMISSION_TEST_RESULT", "unknown")
-          results = [development_admission_tests, backend, frontend, code_health]
-
-          if all(result == "success" for result in results):
+          required_gate = os.environ.get("REQUIRED_GATE_RESULT", "unknown")
+          if required_gate == "success":
               overall = "✅ 成功"
-          elif any(result == "failure" for result in results):
+          elif required_gate == "failure":
               overall = "❌ 失败"
-          elif any(result == "cancelled" for result in results):
+          elif required_gate == "cancelled":
               overall = "⏹️ 已取消"
           else:
               overall = "⚠️ 未完整执行"
@@ -283,10 +320,13 @@ jobs:
               f"> 仓库：`{os.environ.get('REPOSITORY', '-')}`",
               f"> 分支：`{os.environ.get('CI_BRANCH') or '-'}`",
               f"> 事件：`{os.environ.get('CI_EVENT') or '-'}`",
+              f"> Change classification：`{os.environ.get('CHANGES_RESULT', 'unknown')}`",
               f"> Development Admission tests：`{development_admission_tests}`",
+              f"> Release Authority：`{os.environ.get('RELEASE_AUTHORITY_RESULT', 'unknown')}`",
               f"> Backend：`{backend}`",
               f"> Frontend：`{frontend}`",
               f"> Code Health：`{code_health}`",
+              f"> Required CI Gate：`{required_gate}`",
               f"> 提交：`{sha[:7] if sha else '-'}`",
               f"> 触发者：`{os.environ.get('CI_ACTOR') or '-'}`",
               f"> [查看 GitHub Actions 详情]({os.environ.get('CI_RUN_URL', '')})",
