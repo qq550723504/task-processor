@@ -173,3 +173,29 @@ func TestDiagnosticEncodingResourceFailuresAreZero(t *testing.T) {
 		})
 	}
 }
+
+func TestDiagnosticUnknownFreshnessReason(t *testing.T) {
+	req := diagnosticRequest(`{}`)
+	got, err := (DiagnosticValidator{}).Validate(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(got)
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	reasons, ok := wire["not_evaluated_reasons"].(map[string]any)
+	if !ok || reasons[contract.ExternalPackageFreshness] != "no_authoritative_package_freshness" {
+		t.Fatal("missing authoritative freshness absence reason")
+	}
+	req.Freshness = contract.ExternalFreshness{Status: contract.FreshnessValid, Coverage: []string{contract.ExternalPackageFreshness}, Evidence: &contract.FreshnessEvidence{SubjectDigest: got.Input.Digest, Source: "owner", PolicyVersion: "v1", ObservedAt: req.ReadAt, ValidUntil: req.ReadAt.Add(time.Minute)}}
+	fresh, err := (DiagnosticValidator{}).Validate(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = json.Marshal(fresh)
+	if strings.Contains(string(raw), "no_authoritative_package_freshness") {
+		t.Fatal("valid evidence labeled absent")
+	}
+}

@@ -59,16 +59,17 @@ type DiagnosticActionPolicy struct {
 	ReadinessBlockersAllowed bool `json:"readiness_blockers_allowed"`
 }
 type DiagnosticResult struct {
-	DiagnosticOnly bool                   `json:"diagnostic_only"`
-	Scope          string                 `json:"scope"`
-	Target         Target                 `json:"target"`
-	Action         Action                 `json:"action"`
-	RuleVersion    string                 `json:"rule_version"`
-	Input          BoundInput             `json:"input"`
-	Freshness      ExternalFreshness      `json:"external_freshness"`
-	NotEvaluated   []string               `json:"not_evaluated"`
-	OfflineChecks  OfflineChecks          `json:"offline_checks"`
-	ActionPolicy   DiagnosticActionPolicy `json:"action_policy"`
+	DiagnosticOnly      bool                   `json:"diagnostic_only"`
+	Scope               string                 `json:"scope"`
+	Target              Target                 `json:"target"`
+	Action              Action                 `json:"action"`
+	RuleVersion         string                 `json:"rule_version"`
+	Input               BoundInput             `json:"input"`
+	Freshness           ExternalFreshness      `json:"external_freshness"`
+	NotEvaluated        []string               `json:"not_evaluated"`
+	NotEvaluatedReasons map[string]string      `json:"not_evaluated_reasons,omitempty"`
+	OfflineChecks       OfflineChecks          `json:"offline_checks"`
+	ActionPolicy        DiagnosticActionPolicy `json:"action_policy"`
 }
 
 func ValidateBoundInput(input BoundInput, expected string) error {

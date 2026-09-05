@@ -65,6 +65,9 @@ func (DiagnosticValidator) Validate(request contract.BoundRequest[[]byte]) (cont
 		notEvaluated = append([]string{contract.ExternalPackageFreshness}, notEvaluated...)
 	}
 	result := contract.DiagnosticResult{DiagnosticOnly: true, Scope: "shein.offline_package", Target: request.Target, Action: request.Action, RuleVersion: DiagnosticRuleVersion, Input: bound, Freshness: request.Freshness.Clone(), NotEvaluated: notEvaluated, OfflineChecks: contract.OfflineChecks{Status: normalized.Status, Checks: normalized.Checks, Blockers: normalized.Blockers, Warnings: normalized.Warnings}, ActionPolicy: contract.DiagnosticActionPolicy{ReadinessBlockersAllowed: policy.SubmitActionAllowsReadinessBlockers(string(request.Action))}}
+	if request.Freshness.Status == contract.NotEvaluated {
+		result.NotEvaluatedReasons = map[string]string{contract.ExternalPackageFreshness: "no_authoritative_package_freshness"}
+	}
 	wire, err := json.Marshal(result)
 	if err != nil || len(wire) > MaxDiagnosticBytes {
 		return contract.DiagnosticResult{}, &contract.Error{Code: contract.EvaluationFailed, Field: "result", Message: "diagnostic encoding failed or exceeds size limit"}
