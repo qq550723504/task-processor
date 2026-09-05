@@ -777,6 +777,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.sms.tencentTemplateID": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID",
 		},
+		"listingkit.zitadel.sms.phoneVerificationExpiryMinutes": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_PHONE_VERIFICATION_EXPIRY_MINUTES",
+		},
 		"listingkit.zitadel.authorizationRequired": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
 		},

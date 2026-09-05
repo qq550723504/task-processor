@@ -41,6 +41,81 @@ linters:
 linters-settings:
   depguard:
     rules:
+      legacy_compatibility_consumer_freeze:
+        # Exact drain caller exclusions; import-boundary tests freeze each edge.
+        files:
+          - "**/*.go"
+          - "!**/internal/app/httpapi/composition_builder.go"
+          - "!**/internal/app/httpapi/http_module_test.go"
+          - "!**/internal/app/httpapi/types.go"
+          - "!**/internal/compatibility/listingkit/sourcehandoff/a1688/command.go"
+          - "!**/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi/handler.go"
+          - "!**/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi/handler_test.go"
+          - "!**/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi/http_module_test.go"
+          - "!**/internal/compatibility/listingkit/sourcehandoff/a1688/listingkit_task.go"
+          - "!**/tests/a1688_source_facts_flow_test.go"
+          - "!**/tests/a1688_source_to_task_flow_test.go"
+        deny:
+          - pkg: "task-processor/internal/compatibility$"
+          - pkg: "task-processor/internal/compatibility/"
+
+      legacy_tenantbridge_consumer_freeze:
+        # Exact drain caller exclusions; import-boundary tests freeze each edge.
+        files:
+          - "**/*.go"
+          - "!**/internal/app/httpapi/current_product_http_e2e_test.go"
+          - "!**/internal/app/httpapi/server_test.go"
+          - "!**/internal/app/runtime/listingkitidentitypreflight/runtime.go"
+          - "!**/internal/app/runtime/listingkitidentitypreflight/runtime_test.go"
+          - "!**/internal/compatibility/listingkit/sourcehandoff/a1688/command.go"
+          - "!**/internal/crawler/alibaba1688/api_service.go"
+          - "!**/internal/crawler/alibaba1688/api_service_test.go"
+          - "!**/internal/listingadmin/handler_helpers.go"
+          - "!**/internal/listingadmin/store_handler_test.go"
+          - "!**/internal/listingkit/api/admin_dispatch_event_handler.go"
+          - "!**/internal/listingkit/api/shein_sync_handler_support.go"
+          - "!**/internal/listingkit/api/shein_sync_handler_test.go"
+          - "!**/internal/listingkit/api/subscription_guard.go"
+          - "!**/internal/listingkit/httpapi/builders_legacy_tenant.go"
+          - "!**/internal/listingkit/httpapi/runtime_support_shein_adapter_helpers.go"
+          - "!**/internal/listingkit/httpapi/shein_sync_runtime_bridge_helpers.go"
+          - "!**/internal/listingkit/httpapi/shein_sync_runtime_strategy_helpers.go"
+          - "!**/internal/listingkit/httpapi/shein_sync_runtime_strategy_helpers_test.go"
+          - "!**/internal/listingkit/service_upload_logic.go"
+          - "!**/internal/listingkit/shein_settings.go"
+          - "!**/internal/listingkit/store_access_test.go"
+          - "!**/internal/listingkit/store_profile_service_test.go"
+          - "!**/internal/listingkit/task_lifecycle_service_support.go"
+          - "!**/internal/sheinlogin/tenant_context.go"
+          - "!**/internal/sheinlogin/tenant_context_test.go"
+          - "!**/internal/tenantbridge/bootstrap/configure.go"
+          - "!**/internal/tenantbridge/bootstrap/configure_test.go"
+        deny:
+          - pkg: "task-processor/internal/tenantbridge$"
+          - pkg: "task-processor/internal/tenantbridge/"
+
+      current_owners_legacy_listingkit_root:
+        files:
+          - "**/internal/product/*.go"
+          - "**/internal/product/**/*.go"
+          - "**/internal/listing/*.go"
+          - "**/internal/listing/**/*.go"
+          - "**/internal/marketplace/*.go"
+          - "**/internal/marketplace/**/*.go"
+          - "**/internal/agent/*.go"
+          - "**/internal/agent/**/*.go"
+          - "**/internal/commercetool/*.go"
+          - "**/internal/commercetool/**/*.go"
+          - "**/internal/console/*.go"
+          - "**/internal/console/**/*.go"
+          - "**/internal/businesstask/*.go"
+          - "**/internal/businesstask/**/*.go"
+          - "**/internal/storecenter/*.go"
+          - "**/internal/storecenter/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "EXTRACT behavior to current owners; never wrap the legacy root service"
+
       target_domain_concrete_infrastructure:
         files:
           - "**/internal/listing/*.go"

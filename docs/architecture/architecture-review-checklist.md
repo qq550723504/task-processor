@@ -426,3 +426,5 @@ The normal stopping condition is `IMPLEMENTATION_READY`, not zero findings:
 6. If implementation tests later prove a real state-machine, transaction, recovery, authorization, tenancy, or public-contract blocker, reopen the design from that evidence.
 
 Review comments should state the affected product requirement, project classification, reason, and action before requesting an architecture change.
+
+Legacy Hard-Cut guard slice (#300): `TestLegacyConsumersStayWithinDrainBaseline`, `TestCurrentOwnersDoNotImportLegacyListingKitRoot`, `TestLegacyPreviewAdapterStaysRetired`, `TestLegacyDrainDepguardRules`; depguard: `legacy_compatibility_consumer_freeze`, `legacy_tenantbridge_consumer_freeze`, `current_owners_legacy_listingkit_root`. Existing Phase 3 retired-root and import guards remain required.

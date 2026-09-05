@@ -66,7 +66,7 @@ func TestListingKitReleaseDocumentationRejectsMutationFenceUnderAnyHeading(t *te
 	}
 }
 
-func TestListingKitReleaseAuthorityCIIncludesWorkbenchReadmePath(t *testing.T) {
+func TestListingKitCITriggersAllChangedPaths(t *testing.T) {
 	t.Parallel()
 
 	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "ci.yml"))
@@ -86,13 +86,12 @@ func TestListingKitReleaseAuthorityCIIncludesWorkbenchReadmePath(t *testing.T) {
 	if err := yaml.Unmarshal(content, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	want := "deployments/kubernetes/listingkit-workbench/README.md"
 	for trigger, paths := range map[string][]string{
 		"push":         workflow.On.Push.Paths,
 		"pull_request": workflow.On.PullRequest.Paths,
 	} {
-		if !containsString(paths, want) {
-			t.Errorf("ListingKit CI %s paths must include supported release README %q", trigger, want)
+		if !containsAnyExact(paths, "**") {
+			t.Errorf("ListingKit CI %s trigger must cover all changed paths so the Required CI Gate is stable", trigger)
 		}
 	}
 }
@@ -152,10 +151,12 @@ func hasCommandContinuation(line string) bool {
 	return strings.HasSuffix(line, "\\") || strings.HasSuffix(line, "`") || strings.HasSuffix(line, "|")
 }
 
-func containsString(values []string, wanted string) bool {
+func containsAnyExact(values []string, candidates ...string) bool {
 	for _, value := range values {
-		if value == wanted {
-			return true
+		for _, candidate := range candidates {
+			if value == candidate {
+				return true
+			}
 		}
 	}
 	return false

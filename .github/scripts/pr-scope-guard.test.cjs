@@ -545,6 +545,8 @@ test("runs admission guard tests when policy files change", () => {
 
   assert.match(pushSection, /^\s+- "\.github\/scripts\/\*\*"\s*$/m);
   assert.match(pullRequestSection, /^\s+- "\.github\/scripts\/\*\*"\s*$/m);
+  assert.match(pushSection, /^\s+- "\*\*\/\*\.go"\s*$/m);
+  assert.match(pullRequestSection, /^\s+- "\*\*\/\*\.go"\s*$/m);
   assert.match(admissionJob, /name: Development Admission Policy Tests/);
   assert.match(
     admissionJob,

@@ -5503,3 +5503,73 @@ func assertNoBannedSelectorsOutside(t *testing.T, root, allowedRoot string, bann
 		})
 	}
 }
+
+// Parse tracked Go declarations across build tags and nested modules, including tests.
+func TestLegacyConsumersStayWithinDrainBaseline(t *testing.T) {
+	sources := trackedProductionTextSources(t, []string{"."}, func(path string) bool {
+		return strings.HasSuffix(path, ".go") && !strings.Contains("/"+path, "/testdata/")
+	})
+	violations, err := legacyConsumerViolations(sources, legacyConsumerBaseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range violations {
+		t.Errorf("new legacy consumer: %s; EXTRACT behavior to its current owner or RETIRE the dependency", edge)
+	}
+	edges, err := phase3BannedImportDeclarationViolations(sources, []string{"task-processor/internal/compatibility", "task-processor/internal/tenantbridge"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := make(map[string]bool, len(edges))
+	for _, edge := range edges {
+		actual[edge] = true
+	}
+	for edge := range legacyConsumerBaseline {
+		if !actual[edge] {
+			t.Errorf("drained legacy consumer: remove %s from baseline and depguard exclusions", edge)
+		}
+	}
+}
+
+var currentOwnerLegacyListingKitRoots = []string{
+	"product", "listing", "marketplace", "agent", "commercetool", "console", "businesstask", "storecenter",
+}
+
+func TestCurrentOwnersDoNotImportLegacyListingKitRoot(t *testing.T) {
+	sources := trackedProductionTextSources(t, []string{"internal"}, func(path string) bool {
+		for _, owner := range currentOwnerLegacyListingKitRoots {
+			if strings.HasPrefix(path, "internal/"+owner+"/") {
+				return strings.HasSuffix(path, ".go") && !strings.Contains(path, "/testdata/")
+			}
+		}
+		return false
+	})
+	violations, err := currentOwnerLegacyListingKitRootViolations(sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, violation := range violations {
+		t.Errorf("%s; EXTRACT behavior into the current owner instead of legacy fallback", violation)
+	}
+}
+
+func currentOwnerLegacyListingKitRootViolations(sources []listingKitImageBoundarySource) ([]string, error) {
+	var violations []string
+	for _, source := range sources {
+		file, err := parser.ParseFile(token.NewFileSet(), source.path, source.text, parser.ImportsOnly)
+		if err != nil {
+			return nil, err
+		}
+		for _, spec := range file.Imports {
+			imported, err := decodeGoImportPath(spec.Path.Value)
+			if err != nil {
+				return nil, err
+			}
+			if imported == "task-processor/internal/listingkit" {
+				violations = append(violations, filepath.ToSlash(source.path)+" -> "+imported)
+			}
+		}
+	}
+	sort.Strings(violations)
+	return violations, nil
+}

@@ -114,7 +114,10 @@ func phase3BannedImportDeclarationViolations(sources []listingKitImageBoundarySo
 			return nil, err
 		}
 		for _, spec := range parsed.Imports {
-			imported := strings.Trim(spec.Path.Value, "`\"")
+			imported, err := decodeGoImportPath(spec.Path.Value)
+			if err != nil {
+				return nil, err
+			}
 			for _, prefix := range banned {
 				if importMatchesPrefix(imported, prefix) {
 					violations = append(violations, path+" -> "+imported)
