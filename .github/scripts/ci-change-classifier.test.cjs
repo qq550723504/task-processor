@@ -110,6 +110,29 @@ test("classification diff disables rename detection so both source and destinati
   );
 });
 
+test("pull requests always run repository-wide Go architecture contracts", () => {
+  const workflowPath = path.join(__dirname, "..", "workflows", "ci.yml");
+  const workflow = fs.readFileSync(workflowPath, "utf8").replaceAll("\r\n", "\n");
+  const architectureJob = workflow.slice(
+    workflow.indexOf("\n  architecture-contracts:\n"),
+    workflow.indexOf("\n  release-authority:\n"),
+  );
+  const requiredGate = workflow.slice(
+    workflow.indexOf("\n  required-gate:\n"),
+    workflow.indexOf("\n  notify:\n"),
+  );
+
+  assert.match(architectureJob, /name: Architecture Contract Guards/);
+  assert.match(architectureJob, /if: \$\{\{ github\.event_name == 'pull_request' \}\}/);
+  assert.match(architectureJob, /run: go test \.\/tests\/\.\.\. -count=1/);
+  assert.match(requiredGate, /needs:[\s\S]*- architecture-contracts\b/);
+  assert.match(
+    requiredGate,
+    /ARCHITECTURE_CONTRACT_RESULT:\s*\$\{\{\s*needs\.architecture-contracts\.result\s*\}\}/,
+  );
+  assert.match(requiredGate, /require_success "architecture contracts" "\$ARCHITECTURE_CONTRACT_RESULT"/);
+});
+
 test("normalizes windows paths and emits github outputs", () => {
   const result = classifyChangedPaths(["web\\listingkit-ui\\src\\app.tsx"]);
   assert.equal(result.frontend, true);
