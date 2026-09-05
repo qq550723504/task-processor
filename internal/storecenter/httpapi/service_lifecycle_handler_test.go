@@ -163,6 +163,7 @@ func TestServiceLifecycleHandlerRejectsMismatchedApplicationResult(t *testing.T)
 		{name: "resource type", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.ResourceType = "ai_point" }},
 		{name: "balance", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.BalanceAfter = "-1" }},
 		{name: "version", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.StoreVersion = 0 }},
+		{name: "positive mismatched version", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.StoreVersion = 4 }},
 		{name: "state", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) { snapshot.ServiceState.ExpiresAt = nil }},
 		{name: "pending activation postcondition", mutate: func(snapshot *storecenter.ServiceOperationSnapshot) {
 			snapshot.ServiceState = storecenter.StoreServiceState{RecordStatus: storecenter.RecordStatusActive, ServiceStatus: storecenter.ServiceStatusPendingActivation}
