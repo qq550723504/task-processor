@@ -59,7 +59,9 @@ jobs:
             exit 1
           fi
 
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed-files.txt"
+          # Disable rename detection so a move across CI ownership boundaries is
+          # classified from both the removed source path and the added destination.
+          git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed-files.txt"
           node .github/scripts/ci-change-classifier.cjs "$RUNNER_TEMP/changed-files.txt" | tee -a "$GITHUB_OUTPUT"
 
   development-admission-tests:
