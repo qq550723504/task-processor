@@ -45,6 +45,9 @@ func (r *repository) PublishSnapshot(ctx context.Context, request productcatalog
 	if err != nil {
 		return productcatalog.PublishedSnapshot{}, fmt.Errorf("%w: encode snapshot: %v", productcatalog.ErrInvalidSnapshot, err)
 	}
+	if err := productcatalog.ValidateEncodedSnapshotSize(payload); err != nil {
+		return productcatalog.PublishedSnapshot{}, err
+	}
 	sum := sha256.Sum256(payload)
 	payloadHash := hex.EncodeToString(sum[:])
 
@@ -175,6 +178,9 @@ func loadPublication(tx *gorm.DB, identity productcatalog.SnapshotIdentity, publ
 }
 
 func publishedFromRecord(record SnapshotVersionRecord) (productcatalog.PublishedSnapshot, error) {
+	if err := productcatalog.ValidateEncodedSnapshotSize(record.SnapshotJSON); err != nil {
+		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("decode snapshot publication", err)
+	}
 	decodedHash, err := hex.DecodeString(record.PayloadHash)
 	if err != nil || len(decodedHash) != sha256.Size || hex.EncodeToString(decodedHash) != record.PayloadHash {
 		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("decode snapshot publication", errors.New("payload hash is not canonical SHA-256 hex"))

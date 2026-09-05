@@ -2,19 +2,109 @@ package catalogpersistence
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	productcatalog "task-processor/internal/product/catalog"
 )
+
+func TestRepositoryBoundsEncodedSnapshotBeforeTransactionAndMaterialization(t *testing.T) {
+	t.Run("publication", func(t *testing.T) {
+		db := openCatalogRepositoryTestDB(t).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+		if err := AutoMigrate(db); err != nil {
+			t.Fatalf("AutoMigrate(): %v", err)
+		}
+		repository, err := NewRepository(db)
+		if err != nil {
+			t.Fatalf("NewRepository(): %v", err)
+		}
+		request := productcatalog.PublishRequest{
+			Identity:      productcatalog.SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-a"},
+			PublicationID: "publication-1",
+			Snapshot:      persistenceSnapshotWithEncodedSize(t, productcatalog.MaxEncodedSnapshotBytes+1),
+		}
+		if _, err := repository.PublishSnapshot(context.Background(), request); !errors.Is(err, productcatalog.ErrInvalidSnapshot) {
+			t.Fatalf("PublishSnapshot(over limit) error = %v", err)
+		}
+		var versions, heads int64
+		if err := db.Model(&SnapshotVersionRecord{}).Count(&versions).Error; err != nil {
+			t.Fatalf("count versions: %v", err)
+		}
+		if err := db.Model(&SnapshotHeadRecord{}).Count(&heads).Error; err != nil {
+			t.Fatalf("count heads: %v", err)
+		}
+		if versions != 0 || heads != 0 {
+			t.Fatalf("oversized publication changed storage: versions=%d heads=%d", versions, heads)
+		}
+	})
+
+	for _, size := range []int{productcatalog.MaxEncodedSnapshotBytes, productcatalog.MaxEncodedSnapshotBytes + 1} {
+		t.Run(fmt.Sprintf("read_%d", size), func(t *testing.T) {
+			db := openCatalogRepositoryTestDB(t).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+			if err := AutoMigrate(db); err != nil {
+				t.Fatalf("AutoMigrate(): %v", err)
+			}
+			repository, err := NewRepository(db)
+			if err != nil {
+				t.Fatalf("NewRepository(): %v", err)
+			}
+			identity := productcatalog.SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-a"}
+			payload := persistenceEncodedSnapshot(t, size)
+			sum := sha256.Sum256(payload)
+			record := SnapshotVersionRecord{TenantID: identity.TenantID, ProductKey: identity.ProductKey, Version: 1, PublicationID: "publication-1", PayloadHash: hex.EncodeToString(sum[:]), SnapshotJSON: payload}
+			if err := db.Create(&record).Error; err != nil {
+				t.Fatalf("create version: %v", err)
+			}
+			if err := db.Create(&SnapshotHeadRecord{TenantID: identity.TenantID, ProductKey: identity.ProductKey, CurrentVersion: 1, PublicationID: "publication-1"}).Error; err != nil {
+				t.Fatalf("create head: %v", err)
+			}
+
+			versioned := repository.(productcatalog.VersionedSnapshotReader)
+			_, versionErr := versioned.GetSnapshot(context.Background(), identity, 1)
+			_, currentErr := repository.GetCurrentSnapshot(context.Background(), identity)
+			if size == productcatalog.MaxEncodedSnapshotBytes {
+				if versionErr != nil || currentErr != nil {
+					t.Fatalf("exact-limit read errors: versioned=%v current=%v", versionErr, currentErr)
+				}
+				return
+			}
+			if !errors.Is(versionErr, productcatalog.ErrRepositoryStateInvalid) || !errors.Is(currentErr, productcatalog.ErrRepositoryStateInvalid) {
+				t.Fatalf("over-limit read errors: versioned=%v current=%v", versionErr, currentErr)
+			}
+		})
+	}
+}
+
+func persistenceSnapshotWithEncodedSize(t *testing.T, size int) productcatalog.ProductSnapshot {
+	t.Helper()
+	return productcatalog.ProductSnapshot{Description: strings.Repeat("x", size-len(`{"description":""}`))}
+}
+
+func persistenceEncodedSnapshot(t *testing.T, size int) []byte {
+	t.Helper()
+	snapshot := persistenceSnapshotWithEncodedSize(t, size)
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	if len(payload) != size {
+		t.Fatalf("encoded size = %d, want %d", len(payload), size)
+	}
+	return payload
+}
 
 func TestRepositoryPublishesImmutableVersionsWithTenantProductIsolationAndIdempotency(t *testing.T) {
 	db := openCatalogRepositoryTestDB(t)
