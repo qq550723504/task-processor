@@ -11,15 +11,9 @@ import (
 	"testing"
 )
 
-func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
-	productRuntimeCommands := map[string]struct{}{
-		"image-agent-temporal-worker": {},
-		"listing-control-plane":       {},
-		"product-listing-api":         {},
-		"shein-listing":               {},
-		"temu-listing":                {},
-	}
-	operationalCommands := map[string]struct{}{
+// maintainedOperationalCommands is shared by classification, documentation and owner guards.
+func maintainedOperationalCommands() map[string]struct{} {
+	return map[string]struct{}{
 		"1688-local-agent":                   {},
 		"fingerprint-browser-installer":      {},
 		"listing-scheduler":                  {},
@@ -34,36 +28,80 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 		"store-service-history-migrate":      {},
 		"source-account-ownership-preflight": {},
 	}
+}
 
+func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
+	productRuntimeCommands := map[string]struct{}{
+		"image-agent-temporal-worker": {},
+		"listing-control-plane":       {},
+		"product-listing-api":         {},
+		"shein-listing":               {},
+		"temu-listing":                {},
+	}
+	operationalCommands := maintainedOperationalCommands()
+	document, err := os.ReadFile(filepath.Join("..", "docs", "development", "repository-structure.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := map[string]bool{}
+	inCommands, productCategory := false, false
+	for _, line := range strings.Split(string(document), "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if strings.HasPrefix(line, "- `") {
+			inCommands = line == "- `cmd/`"
+		}
+		if !inCommands {
+			continue
+		}
+		switch {
+		case strings.Contains(line, "产品运行入口为："):
+			productCategory = true
+		case strings.Contains(line, "运维入口为："):
+			productCategory = false
+		case strings.HasPrefix(line, "    - `") && strings.HasSuffix(line, "`"):
+			command := strings.TrimSuffix(strings.TrimPrefix(line, "    - `"), "`")
+			if _, duplicate := documented[command]; duplicate {
+				t.Errorf("repository-structure.md lists command %s more than once", command)
+			}
+			documented[command] = productCategory
+			commands := operationalCommands
+			if productCategory {
+				commands = productRuntimeCommands
+			}
+			if _, maintained := commands[command]; !maintained {
+				t.Errorf("repository-structure.md lists unmaintained or misclassified command %s", command)
+			}
+		}
+	}
+
+	trackedCommands := map[string]struct{}{}
 	for _, line := range trackedFiles(t, "cmd") {
 		parts := strings.Split(filepath.ToSlash(line), "/")
 		if len(parts) < 2 || parts[0] != "cmd" {
 			continue
 		}
 		name := parts[1]
+		trackedCommands[name] = struct{}{}
 		_, productRuntime := productRuntimeCommands[name]
 		_, operational := operationalCommands[name]
 		if productRuntime == operational {
 			t.Errorf("cmd/%s must belong to exactly one maintained command category; put one-off debug programs under hack/debug or long-lived developer tools under tools", name)
 		}
 	}
+	for _, commands := range []map[string]struct{}{productRuntimeCommands, operationalCommands} {
+		for command := range commands {
+			if _, listed := documented[command]; !listed {
+				t.Errorf("repository-structure.md must list maintained command %s", command)
+			}
+			if _, tracked := trackedCommands[command]; !tracked {
+				t.Errorf("maintained command %s has no tracked cmd directory", command)
+			}
+		}
+	}
 }
 
 func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
-	operationalCommands := map[string]struct{}{
-		"fingerprint-browser-installer":      {},
-		"listing-scheduler":                  {},
-		"listingkit-identity-preflight":      {},
-		"listingkit-owner-scope-dry-run":     {},
-		"listingkit-owner-scope-exceptions":  {},
-		"listingkit-schema-migrate":          {},
-		"playwright-installer":               {},
-		"product-listing-api-schema-migrate": {},
-		"shein-import-platform-recovery":     {},
-		"shein-login-worker":                 {},
-		"store-service-history-migrate":      {},
-		"source-account-ownership-preflight": {},
-	}
+	operationalCommands := maintainedOperationalCommands()
 	ownerRoots := []string{".github", "deployments", "scripts"}
 	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
@@ -75,6 +113,10 @@ func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
 		owned := false
 		for _, ownerRoot := range ownerRoots {
 			for _, file := range trackedFiles(t, ownerRoot) {
+				// A Pester assertion about a script is not that command's operational owner.
+				if strings.HasSuffix(strings.ToLower(file), ".tests.ps1") {
+					continue
+				}
 				contents, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
 				if err != nil {
 					t.Fatal(err)

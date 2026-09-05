@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/qq550723504/task-processor/actions/workflows/ci.yml/badge.svg)](https://github.com/qq550723504/task-processor/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://golang.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 `task-processor` 的长期产品目标是构建 **AI Commerce Agent Platform**：让用户从“操作一组电商软件功能”逐步转向“给 AI 一个跨境电商目标，由 Agent 调用受控的商品、内容、图片和平台能力完成工作”。
 
@@ -12,15 +11,22 @@
 
 ## 当前产品现实
 
+CURRENT STATE：以下实现说明核对于 `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`，
+不代表该提交已获生产验收。最终 UI / IA 以 [硕米最终产品 Authority](./docs/product/final-ui-ia-authority.md)
+为准；现存 ListingKit 壳层与内部 Task 不决定最终导航。
+
 **ListingKit 仍然是当前最成熟的主程序与产品执行入口。** 它负责把来自不同来源的商品信息整理成可复用、可审核、可差异化改造的标准商品资料包，并进一步完成平台适配、审核、草稿和发布。
 
-当前系统重点支持 `SHEIN` 主链路稳定化，并将 `1688` 商品、`SDS POD` 商品整理为统一商品资料。系统已经具备 Product Sourcing 的中立建模、Amazon/1688 source envelope、catalog/asset facts handoff，以及到 ListingKit 任务创建边界的窄桥接；近期重点仍是完成当前基线验证和受控真实链路闭环，而不是因为 Agent 战略同时扩多个来源或多个平台工作台。
+当前系统重点支持 `SHEIN` 主链路稳定化，并将 `1688` 商品、`SDS POD` 商品整理为统一商品资料。系统已有 `SourceEnvelope`、`sourcing.Publisher` → `catalog.Publisher` / `ProductSnapshot` 和 `ApprovedAsset` 合同。
+现存 1688 → ListingKit task handoff 是待抽取、退休的旧路径；新 import HTTP 合同已合入但未注册接线。
+当前 #30/#307 验收目标是新受控导入 → 新 Catalog snapshot → 显式资产批准 → readiness；
+详见 [Sourcing 指南](./docs/product/product-sourcing-handoff.md) 和 [clean-slate 决策](./docs/product/issue30-clean-slate-cutover.md)。
 
 ListingKit 会结合 AI 能力对商品标题、卖点、属性、图片和平台资料进行重构，让同一来源商品可以面向 SHEIN 等目标平台生成适配后的上架内容。Amazon、TEMU 等目标平台相关代码和 runtime 资产仍保留，但完整新平台工作台扩张目前应视为 deferred，不能按 SHEIN 主链路成熟度来理解。
 
 系统支持多租户隔离，已接入 `ZITADEL` 作为身份认证与租户边界基础设施。底层同时保留分布式任务处理、平台抓取、图片流水线、平台提交流程、RabbitMQ、Temporal，以及正在演进的 AI Capability Control Plane。
 
-长期上，ListingKit 将作为 AI Commerce Agent Platform 中的核心执行面之一，而不是整个产品边界的唯一名称：
+长期上，ListingKit 中有效能力抽取到当前领域与执行 owner。下图是能力分解，不是最终一级菜单，也不批准保留 root ListingKit 为永久 facade：
 
 ```text
 AI Commerce Agent Platform
@@ -37,21 +43,21 @@ AI Commerce Agent Platform
 
 ## Architecture and product authority
 
-长期产品方向和当前执行状态应按以下层级理解：
+按职责读取权威，而不是按文档日期或旧 Active 标签排序：
 
-1. [`docs/product/ai-commerce-agent-platform-strategy.md`](./docs/product/ai-commerce-agent-platform-strategy.md)：长期产品战略、产品边界与 Agent 路线图。
-2. [`docs/superpowers/specs/2026-08-06-ai-capability-agent-platform-design.md`](./docs/superpowers/specs/2026-08-06-ai-capability-agent-platform-design.md)：AI Control Plane 与 Agent Runtime 技术设计。
-3. [`docs/refactoring/current-refactoring-status.md`](./docs/refactoring/current-refactoring-status.md)：当前代码现实、Now / Next / Later 和重构门禁。
-4. [`docs/refactoring/next-phase-plan.md`](./docs/refactoring/next-phase-plan.md)：近期工程执行顺序。
-5. [`docs/product/product-sourcing-mvp-plan.md`](./docs/product/product-sourcing-mvp-plan.md)：Product Sourcing 专项计划。
-6. [`docs/refactoring/project-wide-refactoring-plan.md`](./docs/refactoring/project-wide-refactoring-plan.md)：长期代码结构方向。
+1. [最终 UI / IA Authority](./docs/product/final-ui-ia-authority.md)：用户可见导航、命名与产品投影；AI工作台的任务中心是 #298 BusinessTask，领域事实不等于顶层 Product/Listing Center。
+2. [产品战略](./docs/product/ai-commerce-agent-platform-strategy.md)与批准的领域合同：Product/Identity/Store/Resource、Tool/Agent 的事实、权限与副作用边界；从[架构索引](./docs/architecture/README.md)进入。
+3. [Legacy Policy](./docs/refactoring/legacy-hard-cut-policy.md)、[Register](./docs/refactoring/legacy-register.md) 与 [Mapping](./docs/refactoring/module-target-mapping.md)：EXTRACT / RETIRE，旧 owner 不是新功能落点。
+4. [当前状态](./docs/refactoring/current-refactoring-status.md)：绑定基线的实现现实与发布门禁。
+5. [#137](https://github.com/qq550723504/task-processor/issues/137) 和具体执行 Issue：工程顺序、依赖、范围与权限；遵循 [Issue 派工规则](./docs/engineering/issue-driven-development.md)。
+6. [Product Sourcing closeout](./docs/product/product-sourcing-mvp-plan.md)：专项验收指南；[next-phase-plan.md](./docs/refactoring/next-phase-plan.md) 仅为 HISTORICAL implementation record，不能作为近期执行队列。
 
-当长期战略和当前成熟度出现表面冲突时：**战略决定最终往哪里去，current status 决定现在允许做什么。** 不得使用长期 Agent 目标绕过当前稳定性、验证和发布门禁。
+最终原型不等于当前 release capability；已实现、已验证、已接线和生产验收分别取证。
 
 未来变化应继续保留这些规则：
 
 - `app` packages 只组装 runtime dependencies，不拥有业务规则。
-- ListingKit 保持 orchestration / compatibility / execution facade，不吸收新的 marketplace-specific 规则。
+- root ListingKit 与 compatibility 路径按 EXTRACT → RETIRE 收口，不作为新依赖或永久 facade；有效行为归当前 Product/Listing/Marketplace/App owner。
 - Marketplace-specific 规则属于对应 marketplace package。
 - Product facts、source identity 和 reusable assets 保持在 root ListingKit 之外。
 - Infrastructure 与外部 clients 通过小接口隐藏。
@@ -61,14 +67,9 @@ AI Commerce Agent Platform
 
 ## 当前正式运行入口
 
-当前受维护的正式 `cmd/` 入口以仓库结构测试和 CI 构建为准：
-
-- `cmd/product-listing-api`：统一 ListingKit HTTP API。
-- `cmd/listing-control-plane`：Listing Control Plane 运行时。
-- `cmd/shein-listing`：SHEIN listing worker/runtime。
-- `cmd/temu-listing`：TEMU listing worker/runtime。
-
-“正式运行入口”表示该 command 当前受维护并受结构测试约束，不表示所有目标平台产品体验都与 SHEIN 主链路同等成熟，也不表示独立 Agent Runtime 已经成为正式生产入口。历史爬虫、订阅、调试或一次性迁移入口不应继续放在 `cmd/` 下；需要保留时应放入 `hack/`、`tools/` 或对应业务模块，并同步更新 `docs/development/repository-structure.md` 与结构测试。
+完整的产品／运维 command 清单只维护在 [Repository Structure](./docs/development/repository-structure.md#顶层目录约定)，
+由 `TestCmdContainsOnlyOfficialEntrypoints` 对照实际代码约束，构建／脚本维护归属也在该处说明。
+受维护不表示已部署、平台体验同等成熟或已开放独立 Agent Runtime；不得把未合 PR 的入口当成 main 现实。
 
 ## 当前能力成熟度
 
@@ -76,7 +77,7 @@ AI Commerce Agent Platform
 | --- | --- | --- |
 | SHEIN 目标上架 | 生产主路径，稳定化中 | 当前产品与发布重点。价格、促销、readiness、缓存、保存草稿、发布、恢复和浏览器启动需要保持当前基线验证证据。 |
 | SDS POD | 活跃能力，稳定化中 | 作为 POD/design 能力处理，不作为普通 product-source 接入目标。 |
-| 1688 来源商品 | 已实现中立化和 ListingKit 任务桥接，受控验证待闭环 | 下一步应跑一条 import → envelope → facts → task → preview/readiness 的真实或受控链路。 |
+| 1688 来源商品 | 中立 Publisher 已实现；新 HTTP prepared-only；旧 handoff 待退休 | #30/#307：新导入 → Catalog → 显式资产批准 → readiness；环境范围、旧执行隔离及接线批准待验收。 |
 | Amazon 来源商品 | 已实现 source-envelope 边界验证路径 | 用于 source modeling 和测试，不代表完整 Amazon 目标工作台已开启。 |
 | TEMU 目标上架 | runtime / 部署资产保留，完整工作台 deferred | 维护已有 runtime 正确性，但不在当前阶段扩成 SHEIN 等级的完整工作台。 |
 | Amazon 目标上架 | 历史/目标代码保留，完整工作台 deferred | 不应作为当前扩张主线。 |
@@ -86,7 +87,7 @@ AI Commerce Agent Platform
 
 ## 业务场景
 
-### 当前核心业务流程
+### 业务能力流程（不是整条新路径已接线的声明）
 
 1. **导入来源商品**
    - 从 `1688` 商品链接导入现货型商品资料
@@ -174,7 +175,9 @@ ListingKit 的核心价值不是简单搬运商品，而是把同一个来源商
 
 更具体地说：
 
-- `ZITADEL resource owner` 是当前租户边界的主要来源，ListingKit 会基于这个值识别当前用户属于哪个租户
-- 前端 `ListingKit UI` 会先完成 `ZITADEL` 登录，代理层验证 session 或 bearer token 后，再把确认过的身份信息转发给 Go API
-- 转发的信息不仅包含用户身份，也包含租户标识和角色语义，后端再将其注入请求上下文，用于任务、工作台、资产和配置的访问控制
+- `resourceowner:id` / Home Organization 表示账号归属，不能当作当前 Effective Organization。
+- 当前 Organization 路由由 Go API 验证 bearer token，再按 route policy 解析获授权的 effective organization 和组织角色；请求的 Organization selector 本身不是权限证明。
+- `internal/app/httpapi/server_auth.go` 丢弃调用方 identity/tenant/role headers，解析成功后才设置 effective Organization 的上下文与下游 headers；Store/资源访问继续受领域权限和资源归属约束。
+- 部分旧路由仍使用 legacy auth middleware，`internal/tenantbridge` 仍有待 drain caller；它们不是当前 Organization 合同，也不允许新增 consumer。详见 [Auth and Tenancy](./docs/architecture/auth-and-tenancy.md)。
+
 - 系统设计按“认证 + 授权 + 租户隔离”三层组织，而不是只做一个登录门禁

@@ -2,12 +2,17 @@
 
 > Status: active current-state document.  
 > Last reviewed: 2026-09-05.  
-> Calibrated against: `main` at `f1c8bad612c8026063434ccd1169e69bd4c43168`.  
+> Calibrated against: `main` at `cae67730c5c0e645d708cb2f6814f14781962bb1`.
 > Scope: current product/repository reality, production-validation gates, Product/Marketplace/Console boundaries, Commerce Tool readiness, and the active Now / Next / Later direction for Task Processor / ListingKit / AI Commerce Agent Platform.
 
 ## 1. Current position
 
 `task-processor` is no longer accurately described as either a generic task processor or a ListingKit-only application. The long-term product is **AI Commerce Agent Platform**, while the current commercial execution surface still depends on mature deterministic Product/Listing/SHEIN flows.
+
+The following Now / Next / Later is a baseline-bound maturity and gate summary,
+not a separately maintained execution queue. Current ordering, dependency state
+and work assignment belong to [#137](https://github.com/qq550723504/task-processor/issues/137)
+and each execution Issue under [Issue-driven development](../engineering/issue-driven-development.md).
 
 The current posture is:
 
@@ -53,7 +58,7 @@ Never treat implemented, repository-validated, local-accepted, staging-validated
 
 ### 2.1 Product model
 
-The current user-facing business hierarchy is:
+The current domain fact hierarchy (not a top-level menu hierarchy) is:
 
 ```text
 Source Product / Source Evidence
@@ -73,7 +78,22 @@ Task and Workflow remain execution infrastructure:
 Workflow -> Task -> Child Task -> Queue / Retry / Adapter
 ```
 
-They may appear in advanced diagnostics, but they are not the long-term primary user business object. New UI or API work must not recreate a Task-first product model.
+Internal Task/Workflow may appear in diagnostics, but must not become primary
+navigation or a second domain fact owner. This does not reject the user-visible
+BusinessTask Center approved by [final UI / IA](../product/final-ui-ia-authority.md)
+and [#298](https://github.com/qq550723504/task-processor/issues/298):
+
+```text
+BusinessTask -> AgentRun -> AgentStep -> ToolCall / ModelCall
+                                      -> Temporal / Queue / Internal Task
+```
+
+BusinessTask is a product projection; AgentRun owns one run, and the existing
+execution owners retain durable work/retry. No BusinessTask ↔ legacy Task
+bidirectional synchronization or second fact owner is allowed. Product/Listing
+capabilities project into 店铺中心 / 店铺商品 and AI工作台; shared domain facts do
+not require a top-level Product Center / Listing Center. The final IA is not a
+claim that live Agent execution or every page is already released.
 
 ### 2.2 Product Domain hard-cut
 
@@ -110,6 +130,11 @@ This means the old backlog item “establish the ZITADEL role/tenant model” is
 
 The Shuomi Console Phase 1 product direction is also active. It is a UI/IA hard cut, not a capability hard cut: existing production capabilities remain reachable until their new Console replacement exists.
 
+The current request boundary is the server-verified Effective Organization,
+not `resourceowner:id` / Home Organization. [Auth and Tenancy](../architecture/auth-and-tenancy.md)
+separates current Organization routes from remaining legacy middleware and
+tenantbridge debt; neither authorizes new legacy consumers.
+
 ### 2.4 Store / Resource baseline
 
 The repository has moved beyond the old “tenant quota JSON / task limit” model.
@@ -129,7 +154,7 @@ Store lifecycle code may be implemented before production authority handoff. Mig
 | Capability | Current status | Current interpretation |
 | --- | --- | --- |
 | SHEIN target listing | Production main path; active stabilization/validation | The current commercial release focus. Readiness, pricing, submission, idempotency, recovery and real E2E evidence remain release-sensitive. |
-| 1688 product source | Neutral source model and guarded handoff implemented; controlled closeout pending | Durable lineage + one controlled import-to-product/listing path still need acceptance evidence. |
+| 1688 product source | Publisher implemented; old handoff wired; new HTTP prepared-only | #30/#307 require new import → Catalog → explicit asset approval → readiness, old-execution isolation and authorized cutover. |
 | SDS POD | Active specialized product/design capability | Keep as POD/design semantics, not a generic source abstraction. |
 | Amazon source | Source-envelope/modeling path exists | Does not mean Amazon target listing product is active. |
 | TEMU target | Runtime/platform assets retained; full shared-Listing expansion deferred | Maintain correctness; do not build an independent TEMU Workbench. |
@@ -193,7 +218,7 @@ GitHub #33 is the umbrella release gate.
 Current high-priority evidence:
 
 1. #28 — SHEIN end-to-end commercial validation.
-2. #30 — controlled 1688 path with durable lineage.
+2. #30/#307 — new controlled import, Catalog lineage, explicit asset approval/readiness and old-execution isolation; see [clean-slate decision](../product/issue30-clean-slate-cutover.md). Historical publication migration is cancelled; account/profile, IAM, Store and financial protections remain. No real deletion is authorized by that decision.
 3. #36 — Proposal → Human Review → Explicit Apply.
 4. #44 — release-critical E2E regression authority.
 5. #47 — reusable production regression / future Agent-eval dataset.
@@ -211,7 +236,7 @@ Required posture:
 - New product rules belong to the current Product or Marketplace owner.
 - ProductSnapshot and ApprovedAsset are authoritative read boundaries.
 - Missing facts/assets fail visibly; do not silently choose a source image or hidden default.
-- UI semantics should be Product/Listing-first rather than Task-first.
+- Product/Listing facts remain authoritative; final UI follows Figma/#298, including BusinessTask. Do not restore the internal Task Dashboard or infer top-level menus from domain names.
 
 ### 4.3 Finish Marketplace / Listing boundary hard-cut
 
@@ -322,7 +347,7 @@ After Product Agent/Tool contracts prove useful:
 
 ### 6.2 TEMU / Amazon expansion
 
-#31/#32 now mean **platform capabilities in the shared Listing Center**, not separate TEMU/Amazon Workbenches.
+#31/#32 mean shared Marketplace/Listing capabilities projected into 店铺中心 / 店铺商品 and AI工作台 under final UI authority. They do not create an independent top-level Listing Center or separate TEMU/Amazon Workbenches.
 
 Wait until:
 
@@ -344,7 +369,7 @@ Later work should add approved acquisition sources to existing resource authorit
 The following old abstractions must not be restarted as written:
 
 - generic independent Listing Workspace framework (#27 closed);
-- customer-facing Task Center as the primary product object (#35 closed);
+- old internal/customer Product Task Dashboard (#35 closed); this does not cancel #298 BusinessTask Center, which has distinct user-facing semantics;
 - separate publish-result fact model (#38 closed; current events/results are authoritative);
 - “build ZITADEL tenant/role model from scratch” (#39 closed; production acceptance moved to release gates);
 - “create deployment documentation” (#40 closed; production execution evidence remains);
@@ -362,13 +387,13 @@ Do not start work that:
 
 - recreates old ProductEnrich/ProductImage runtime ownership;
 - introduces another Product fact source or asset approval source;
-- makes Task/Workflow the default user navigation identity again;
+- makes internal Task/Workflow the default navigation identity or conflates it with approved BusinessTask;
 - builds independent TEMU/Amazon product workbenches;
 - creates another submission state machine or durable retry owner;
 - lets Agent Runtime import GORM repositories, provider SDKs or marketplace clients directly;
 - lets an Agent bypass deterministic readiness;
 - lets an Agent write/publish without explicit independent write-safety gates;
-- starts Multi-Agent before one bounded Product Agent proves measurable value;
+- starts Multi-Agent orchestration before one bounded Product Agent proves value; the final 智能市场 multi-specialist direction remains valid;
 - treats repository/local validation as production readiness;
 - starts a new source/platform expansion to avoid completing current commercial evidence.
 
@@ -385,7 +410,7 @@ Before approving the next release-sensitive or architecture-sensitive PR:
 [ ] Product facts remain owned by Product Domain.
 [ ] Approved assets remain owned by Product Asset/ImageAgent boundaries.
 [ ] No old ProductEnrich/ProductImage workflow is reintroduced.
-[ ] Task/Workflow remains execution infrastructure, not the new product IA.
+[ ] Internal Task/Workflow stays infrastructure; BusinessTask and final UI follow #298/Figma.
 [ ] Marketplace rules stay in marketplace/listing ownership.
 [ ] App packages contain assembly/lifecycle logic, not new business rules.
 [ ] No second submission state machine, scheduler, retry owner, RBAC system or Tool Registry is added.
@@ -400,14 +425,21 @@ Before approving the next release-sensitive or architecture-sensitive PR:
 
 ## 10. Source of truth summary
 
-Current order of authority:
+Authority is divided by responsibility, not chronology:
 
-1. `docs/product/ai-commerce-agent-platform-strategy.md` — long-term product direction and Agent phases.
-2. This file — current repository/product reality and Now / Next / Later gates.
-3. GitHub issue #137 — executable backlog order.
-4. GitHub issue #33 — Customer Trial / Production Readiness release gate.
-5. Current approved product/domain specs — bounded product/architecture contracts.
-6. Dated validation notes / exact CI runs — runtime, staging and production evidence.
-7. Completed implementation plans — historical execution evidence only.
+| Question | Authority |
+| --- | --- |
+| Final UI / IA / naming / user interaction | [Final UI Authority](../product/final-ui-ia-authority.md), current non-archived Figma `31:463`; #298 for BusinessTask scope |
+| Long-term strategy | [AI Commerce strategy](../product/ai-commerce-agent-platform-strategy.md) |
+| Canonical facts, state, permissions, idempotency, safety and side effects | Current approved Product/Identity/Store/Resource/Tool/Agent contracts; old UI sections cannot override final IA |
+| Legacy disposition | [Hard-Cut Policy](legacy-hard-cut-policy.md), [Register](legacy-register.md), [Mapping](module-target-mapping.md): EXTRACT / RETIRE only |
+| #30 historical data and cutover | [Clean-slate decision](../product/issue30-clean-slate-cutover.md) and [#307](https://github.com/qq550723504/task-processor/issues/307); no historical mapping/replay requirement or real-operation authorization |
+| Repository reality and evidence vocabulary | This baseline-bound CURRENT STATE document; not a replacement for current CI/runtime evidence |
+| Engineering order and assignment | [#137](https://github.com/qq550723504/task-processor/issues/137) and current execution Issue |
+| Release capability | #33 and exact-candidate CI/runtime/staging/production evidence |
+| Historical execution | Completed plans and dated validation, including [next-phase-plan.md](next-phase-plan.md); not new feature destinations |
 
-When strategy and current maturity appear to conflict: **strategy determines where the platform is going; this current-status document determines what the repository is ready to do now.**
+An approved domain contract is not demoted because its design was implemented.
+Historical implementation observations do not override a current Product Decision.
+The final prototype, merged code, production wiring and production acceptance
+remain separate facts.

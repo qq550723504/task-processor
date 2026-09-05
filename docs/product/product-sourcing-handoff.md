@@ -1,277 +1,116 @@
 # Product Sourcing Handoff
 
-> Status: active product-source expansion guide.
->
-> Last reviewed: 2026-07-09.
->
-> Scope: source identity, crawler handoff, source-result normalization, catalog/asset handoff, and ListingKit stop lines for new product-source work.
+> ACTIVE: owner and handoff guide under the current Product Domain contract.
+> CURRENT STATE observations: `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`.
+> Execution scope/order: [#30](https://github.com/qq550723504/task-processor/issues/30),
+> [#307](https://github.com/qq550723504/task-processor/issues/307) and
+> [#137](https://github.com/qq550723504/task-processor/issues/137).
 
-## 1. Purpose
+## 1. Authority and purpose
 
-The next growth direction is product-source expansion before full new sales-platform workbench expansion.
+New source work reuses the [Product Domain contract](../superpowers/specs/2026-09-01-internal-target-architecture-phase3-product-design.md),
+[current package mapping](../refactoring/module-target-mapping.md) and
+[Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md).
+Source adapters collect evidence; Product Sourcing normalizes it; Catalog owns
+canonical facts; Product Asset owns approved assets. Marketplace rules remain
+downstream. A source platform is not a target sales platform.
 
-This document defines how new product sources should enter the system without pushing source-specific logic into root `internal/listingkit` or marketplace publishing packages.
+The [clean-slate decision](issue30-clean-slate-cutover.md) replaces old source-to-task
+acceptance and historical publication migration requirements. It does not relax
+new-system idempotency, authorization, immutable history or explicit approval.
+Final navigation follows [final UI / IA](final-ui-ia-authority.md): shared domain
+facts do not require a top-level Listing Center or a platform Workbench.
 
-The main rule is:
+## 2. Current contracts and owners
 
-```text
-crawler/integration packages collect raw source data;
-product sourcing normalizes source identity and source facts;
-catalog and asset packages own platform-neutral product and asset facts;
-ListingKit consumes normalized product/source facts through a narrow orchestration boundary;
-marketplace packages adapt those facts to platform-specific publishing and workspace rules.
-```
-
-## 2. Current source classes
-
-Current and planned source classes:
-
-| Source class | Current examples | Primary owner |
+| Responsibility | Current owner | Boundary |
 | --- | --- | --- |
-| Marketplace/crawler source | `1688`, Amazon crawler facts | crawler/integration adapter plus product sourcing normalization |
-| POD/design source | `SDS` | SDS adapter plus product sourcing / asset normalization |
-| Warehouse/source catalog | planned overseas warehouse sources, such as 大建云仓 | product sourcing normalization plus catalog/asset handoff |
+| Fetching, parsing, provider DTOs | `internal/integration/crawler/a1688`, `internal/integration/crawler/amazon` | Adapter-local snapshots become neutral `SourceEnvelope`; no Product service/workflow ownership |
+| POD/design evidence | `internal/sds/adapter/product_source` | Preserve SDS specialization; not generic source onboarding |
+| Identity, normalization, provenance, warnings | `internal/product/sourcing` | `SourceIdentity`, `SourceEnvelope`, `Normalize`, `ToSnapshot`; no crawler/integration/runtime imports |
+| Canonical publication | `internal/product/sourcing.Publisher` → `internal/product/catalog.Publisher` | Explicit tenant/product/publication identity; Catalog owns `ProductSnapshot`, immutable versions and replay/conflict semantics |
+| Approved assets | `internal/product/asset` | `ApprovedAsset`, approval provenance and repository ports; source images remain candidates |
+| Image capabilities and execution | `internal/product/image` + `internal/imageagent` | Capability ports return candidates; ImageAgent owns image workflow/budget/retry/recovery/approval |
+| Access and orchestration | Current application + Organization/Store/source-account owners | Verified effective Organization and actor; recheck access before publication, including replay |
+| Platform adaptation/readiness/submission | `internal/marketplace/*` and existing Listing owners | Deterministic validation and one submission owner |
 
-A source is not the same thing as a target sales platform.
+`internal/catalog`, `internal/asset`, `internal/productimage`,
+`internal/productenrich` and `internal/imageasset` are retired roots; do not
+recreate them. Existing `internal/crawler`, root ListingKit and
+`internal/compatibility/*` are extraction/retirement areas, not preferred homes.
 
-- Source platform answers: where did the raw product/design facts come from?
-- Target platform answers: where will the Listing package be adapted or published?
+## 3. Identity and evidence
 
-## 3. Source identity
+Preserve source type/platform, source-native ID, canonical URL when available,
+source version/fingerprint, raw reference, warnings and trace/lineage according
+to [SourceEnvelope](../../internal/product/sourcing/source_envelope.go) and
+[SourceIdentity](../../internal/product/sourcing/source_identity.go).
+Do not manufacture missing product facts or confuse evidence metadata with
+authority. Adapter DTOs, browser clients and marketplace payloads stay outside
+the neutral model.
 
-Every source handoff should preserve a stable source identity before ListingKit or marketplace code sees the product.
+[Publication identity](../../internal/product/sourcing/publication_identity.go)
+is distinct from source identity. Use the approved deterministic helper and
+explicit publication contract; do not infer identity from legacy task results
+or introduce checksum fallback. New-system same explicit key plus same payload
+and effective lineage replays; changed payload conflicts. Content changes can
+produce a new content-addressed publication. Catalog owns the version result.
 
-Minimum identity fields:
+## 4. Target flow and observed implementation
 
-```text
-source_type        // crawler, pod_design, warehouse_catalog, manual_import, etc.
-source_platform    // 1688, sds, amazon, dajian, etc.
-source_id          // source-native product/design/listing identifier
-source_url         // optional canonical source URL when available
-source_version     // optional source-side version/hash/snapshot id
-source_fingerprint // normalized fingerprint for dedupe/idempotency when source_id is weak
-```
-
-Source identity must be stable enough to support:
-
-- deduplication,
-- re-import checks,
-- source refresh,
-- asset reuse,
-- cost/source-SDS mapping,
-- task lineage,
-- batch retry and recovery explanations.
-
-## 4. Package responsibilities
-
-### 4.1 Crawler and integration packages
-
-Preferred homes:
+The approved target is:
 
 ```text
-internal/integration/crawler/*
-internal/crawler/* during legacy migration
+explicit new import with verified effective Organization / actor / access
+  -> source adapter -> SourceEnvelope
+  -> sourcing.Publisher -> catalog.Publisher -> ProductSnapshot
+  -> explicit asset approval -> ApprovedAsset
+  -> deterministic marketplace/listing readiness
 ```
 
-Own:
+This is target acceptance, not completed wiring. On the baseline above:
 
-- raw collection from source systems,
-- browser/API/runtime client execution,
-- source-side pagination or fetch orchestration,
-- raw payload capture and technical retry behavior,
-- source-specific extraction that is required to make the raw payload usable.
+- [App composition](../../internal/app/httpapi/composition_builder.go) still wires
+  `internal/compatibility/listingkit/sourcehandoff/a1688` to
+  `/api/v1/product-sourcing/1688/listingkit/tasks`. The old command publishes
+  through the current Publisher before legacy task creation. This is CURRENT
+  STATE / drain-only debt under #30, not the new source contract.
+- [Catalog composition](../../internal/app/httpapi/product_catalog_composition.go)
+  already constructs the sourcing/Catalog Publisher and durable reader.
+- [Prepared HTTP contract](../../internal/app/productsourcing/httpapi/handler.go)
+  is merged but unregistered. Its Importer port must revalidate access; the
+  handler alone is not a complete application import service or rollout.
+- Source-account preflight from #303 is merged. This does not prove
+  Organization/profile migration or #30 production cutover is accepted.
 
-Must not own:
+Do not extend the old handoff, add consumers, wrap it for new sources, or
+automatically forward old requests into new imports. #30/#307 own separately
+approved cutover and route retirement; this guide does not authorize it.
 
-- ListingKit task orchestration,
-- marketplace publish payloads,
-- SHEIN/TEMU/Amazon workspace rules,
-- generic product identity semantics beyond raw extraction,
-- cross-source canonical product decisions.
+## 5. Acceptance and stop lines
 
-### 4.2 Product sourcing
+Use the [MVP closeout guide](product-sourcing-mvp-plan.md) and current Issue for
+the chosen slice. Required invariants remain:
 
-Preferred home:
+- Product packages do not import ListingKit, compatibility, crawler/integration,
+  HTTP runtime or concrete providers. Integration may consume the neutral contract.
+- New imports preserve warnings, durable lineage and exact Catalog identity.
+  Source images are not automatically approved; absent approval means not ready.
+- Organization/account/store ownership, disabled/deleted/revoked access and
+  cross-Organization isolation are checked by existing authorities.
+- Old product/asset/task state and late execution results cannot enter the new
+  approved business scope. Protected account/profile, IAM, Store, financial and
+  external-effect evidence is not disposable business data.
+- No legacy fallback, dual-read/write, second Product fact source, new submission
+  owner or new IAM is introduced.
 
-```text
-internal/product/sourcing
-```
+If an approved contract cannot satisfy the slice, name the concrete conflict
+and owner in its Issue. Do not revive old packages. No new source or target
+expansion is scheduled here; use #137 and a bounded execution Issue. Fixtures,
+local integration and production acceptance are separate evidence classes.
 
-Own:
+## 6. Historical evidence
 
-- source identity normalization,
-- source result envelopes,
-- source provenance and fingerprinting,
-- source-to-catalog handoff contracts,
-- source-to-asset handoff contracts,
-- source-level validation that is independent from target marketplace rules,
-- source facts readiness before ListingKit orchestration.
-
-Must not own:
-
-- marketplace category/attribute rules,
-- SHEIN/TEMU/Amazon publish payload construction,
-- ListingKit API DTO shells,
-- browser or external API client construction.
-
-### 4.3 Catalog
-
-Preferred home:
-
-```text
-internal/catalog
-```
-
-Own:
-
-- platform-neutral product facts,
-- canonical product title/description/attribute structures,
-- variant/option/spec facts,
-- product identity that is no longer source-runtime-specific,
-- facts that can be reused across multiple target platforms.
-
-Must not depend on:
-
-- root `internal/listingkit`,
-- marketplace workspace or publishing packages,
-- HTTP runtime assembly.
-
-### 4.4 Asset
-
-Preferred home:
-
-```text
-internal/asset
-internal/productimage when the current image pipeline owns the behavior
-```
-
-Own:
-
-- reusable image facts,
-- design/mockup/variant asset facts,
-- asset bundle construction,
-- platform-neutral image processing and normalization,
-- POD source image/template handoff.
-
-Must not own:
-
-- target-marketplace image policy unless it is explicitly platform-neutral,
-- SHEIN/TEMU/Amazon submit payload assembly,
-- ListingKit task persistence ordering.
-
-### 4.5 ListingKit
-
-Preferred home for compatibility/orchestration only:
-
-```text
-internal/listingkit
-```
-
-Own:
-
-- API-facing orchestration,
-- task and batch creation coordination,
-- compatibility DTO adaptation,
-- tenant/user context handoff,
-- references from source/catalog/asset facts into Listing tasks.
-
-Must not own:
-
-- new source-specific extraction rules,
-- canonical product facts,
-- reusable asset facts,
-- new marketplace publishing policy,
-- crawler runtime clients.
-
-### 4.6 Marketplace packages
-
-Preferred homes:
-
-```text
-internal/marketplace/shein/*
-internal/marketplace/amazon/*
-internal/marketplace/temu/*
-```
-
-Own:
-
-- target-platform category/attribute/image/SKU/price rules,
-- marketplace payload preparation,
-- workspace review/repair rules,
-- remote result and error interpretation,
-- target-specific readiness or blocker mapping.
-
-Must not own:
-
-- crawler/source execution,
-- cross-source product identity,
-- platform-neutral catalog facts.
-
-## 5. Recommended handoff flow
-
-Use this flow for new source work:
-
-```text
-raw source fetch
-  -> source adapter result
-  -> product sourcing normalized envelope
-  -> catalog facts + asset facts
-  -> ListingKit task/batch orchestration
-  -> marketplace-specific adaptation
-```
-
-A minimal normalized envelope should include:
-
-```text
-SourceIdentity
-RawSourceReference
-CanonicalProductCandidate
-AssetCandidates
-CostOrSupplierFacts, when available
-Warnings / MissingFacts
-Trace / Debug metadata for operator support
-```
-
-## 6. Stop lines for new source work
-
-Do not:
-
-- add `if source == ...` policy branches to root `internal/listingkit` unless it is temporary API-shell adaptation with a follow-up;
-- make crawler packages import root `internal/listingkit`;
-- make crawler packages import marketplace publishing/workspace packages;
-- put target-marketplace category or publish rules in `internal/product/sourcing`;
-- let source adapters construct SHEIN/TEMU/Amazon publish payloads;
-- use generated package maps or stale dependency baselines as source ownership evidence;
-- start full new sales-platform workbench expansion while product-source normalization is still unclear.
-
-## 7. Review checklist
-
-Before merging a product-source change, check:
-
-```text
-[ ] The source adapter can run without importing root internal/listingkit.
-[ ] Product/source identity is explicit and stable enough for dedupe or retry.
-[ ] Platform-neutral facts are handed to catalog and asset packages, not marketplace packages.
-[ ] Target-platform rules stay in marketplace packages.
-[ ] ListingKit only orchestrates or adapts DTOs around normalized facts.
-[ ] Tenant/source ownership is preserved through the handoff.
-[ ] Tests cover the normalized source envelope or the chosen source identity rule.
-```
-
-## 8. First safe slices
-
-Good first slices:
-
-1. Inventory current 1688 and SDS source identity fields and normalize naming.
-2. Add a small `internal/product/sourcing` envelope type that does not import ListingKit.
-3. Move one source-result normalization rule out of crawler or ListingKit into `internal/product/sourcing`.
-4. Add tests proving crawler/integration packages do not import ListingKit, marketplace publishing, or marketplace workspace packages.
-5. Document source-to-catalog and source-to-asset field gaps before implementing new source ingestion.
-
-Avoid first slices that require:
-
-- new marketplace publish runtime,
-- database schema changes,
-- broad DTO rewrites,
-- changes to public ListingKit API contracts,
-- product-source work and sales-platform expansion in the same PR.
+The [previous guide at the audit baseline](https://github.com/qq550723504/task-processor/blob/73aa79cb98def16536123dc1ea3f55c578ed253b/docs/product/product-sourcing-handoff.md)
+records the former ListingKit-task model. It is historical evidence, not a
+current expansion guide. Dated validation does not validate today's HEAD.

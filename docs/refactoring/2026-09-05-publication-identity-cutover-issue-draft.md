@@ -1,5 +1,21 @@
 # Draft prerequisite: Publication Identity Cutover
 
+> **SUPERSEDED — historical analysis, not an execution prerequisite.**
+> The draft below assumed retention of old publication/version/receipt history.
+> A dedicated [Issue #307](https://github.com/qq550723504/task-processor/issues/307)
+> was subsequently created; its current decision and
+> [PD-ISSUE30-CLEAN-SLATE-2026-09-05](../product/issue30-clean-slate-cutover.md)
+> cancel historical mapping, stream merging and cross-cutover old-version replay.
+> The original “no dedicated Issue” statement and analysis below describe the
+> original checkpoint only. Do not dispatch the cancelled migration work from it.
+> Current scope is new import → new Catalog snapshot → explicit asset approval →
+> readiness, with old execution isolation and separately authorized cutover.
+> Account/profile, IAM, Store and financial/effect evidence remain protected.
+> This replacement is a product decision, not a claim that migration was fixed,
+> cutover completed, or real data deletion was authorized.
+
+## Original draft (historical, retained verbatim)
+
 Status: DRAFT FOR CONFIRMATION; not a created Issue and not migration approval.
 Refs #30; preparation PR #304. Separate from source-account ownership #301/#303.
 

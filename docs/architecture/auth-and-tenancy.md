@@ -2,7 +2,7 @@
 
 > Status: supporting architecture context.
 >
-> Last reviewed: 2026-07-09.
+> CURRENT STATE: inspected at `main @ cae67730c5c0e645d708cb2f6814f14781962bb1` (2026-09-05); no production acceptance claimed.
 >
 > Scope: ZITADEL-backed authentication, tenant context propagation, authorization boundaries, and data isolation expectations for ListingKit.
 
@@ -10,28 +10,36 @@
 
 ListingKit is a multi-tenant system. Authentication, tenant identification, route authorization, and tenant-scoped data access must stay explicit because ListingKit tasks, workbench state, uploaded assets, store configuration, and source facts can belong to different business owners.
 
-This document records the current expected auth/tenancy shape. It is supporting architecture context, not yet a stable boundary guard document. Package ownership rules still come from `project-boundaries.md` and specialized boundary documents.
+This supporting document explains the current
+[Identity / Organization contract](../superpowers/specs/2026-08-30-shuomi-workbench-store-center-zitadel-multi-org-design.md)
+and [server auth assembly](../../internal/app/httpapi/server_auth.go). It does not
+introduce IAM policy. Package rules remain in `project-boundaries.md` and the
+[Legacy Register](../refactoring/legacy-register.md).
 
 ## 2. Current high-level model
 
-The current model is:
+For routes with an OrganizationAccessPolicy requiring resolution:
 
 ```text
-frontend / proxy authenticates with ZITADEL
-  -> trusted identity and tenant claims reach Go API
-  -> ListingKit HTTPAPI middleware parses identity and authorization context
-  -> tenant/user context is injected into request scope
-  -> domain/application code uses tenant-aware repositories and services
+authenticated UI/BFF forwards bearer token
+  -> Go ZITADEL verifier verifies token and constructs identity
+  -> route policy / target resolver selects and validates effective Organization
+  -> organization-scoped role authorization
+  -> domain access checks and Organization-scoped repositories
 ```
 
-The key boundary is:
+The Go API discards supplied identity/tenant/role headers before Organization
+resolution. `X-Requested-Organization-ID` is a selector, not authority; a route
+target resolver can select the target instead. Successful resolution writes
+`EffectiveOrganizationID` into verified context and downstream tenant headers.
+Missing identity, denied/revoked access or unavailable required dependencies
+fail closed under the route policy; no global tenant fallback is allowed.
 
-```text
-auth runtime parses and verifies identity;
-tenant context identifies the resource owner;
-domain services enforce tenant-aware access through repository/service contracts;
-ListingKit must not silently fall back to global data when tenant context is required.
-```
+CURRENT STATE also includes routes without Organization resolution. Where auth
+is required they use the legacy identity middleware, followed by existing role
+authorization. Public/OPTIONS behavior remains descriptor-specific. This is
+not evidence that all old routes have adopted the new Organization contract;
+do not add a second IAM or change route policy as a documentation fix.
 
 ## 3. Identity and tenant concepts
 
@@ -51,7 +59,12 @@ Typical fields:
 
 Tenant identity answers: which business boundary owns this request?
 
-The current tenant boundary is expected to come from the trusted ZITADEL resource owner or equivalent tenant claim passed through the authenticated request path.
+`resourceowner:id` / HomeOrganizationID identifies account ownership. It is
+not the current business tenant in the multi-Organization model. Business scope
+comes from the server-verified EffectiveOrganizationID, checked against project
+grants, organization roles and the route's access policy. A user can have access
+to multiple Organizations with different roles; home ownership is not a grant
+to access another Organization. ZITADEL remains the identity/authorization source.
 
 Tenant identity must be explicit when accessing:
 
@@ -77,13 +90,16 @@ Authorization should be evaluated at the route/module/service boundary before mu
 Current relevant area:
 
 ```text
-internal/listingkit/httpapi
+internal/app/httpapi/server_auth.go
+internal/authruntime/zitadel
+internal/workbenchcontext
+internal/authidentity
 ```
 
 Auth-related files in this area are expected to own:
 
 - middleware construction,
-- trusted header or bearer-token parsing,
+- bearer-token verification and verified identity propagation (untrusted identity headers are not authority),
 - route authorization wiring,
 - role/allowlist parsing helpers,
 - auth runtime configuration,
@@ -96,19 +112,23 @@ They should not own:
 - ListingKit task persistence ordering,
 - platform publish rules.
 
+`internal/listingkit/httpapi` still supplies ListingKit-specific route/role
+helpers to assembly. That retained code is CURRENT STATE, not a permanent
+new-feature facade; extraction follows the Legacy Register.
+
 ### Tenant context packages
 
 Current relevant areas include:
 
 ```text
+internal/authidentity
 internal/shared/tenantctx
-internal/tenantbridge
 ```
 
 Tenant context utilities should own:
 
 - typed tenant/user context propagation,
-- compatibility bridges for legacy tenant fields,
+- propagation of the already verified effective Organization into established tenant-aware contracts,
 - narrow helpers for extracting tenant state from request context.
 
 They should not own:
@@ -116,6 +136,13 @@ They should not own:
 - route authorization policy,
 - product or marketplace rules,
 - external auth provider runtime construction.
+
+`internal/tenantbridge` is separately classified as drain-only debt: it maps
+current Organizations to legacy numeric tenant identifiers for remaining callers.
+It is not an Organization membership authority or a utility for new code.
+No new consumer is allowed; owning domains must cut over to current identity.
+The #307 clean-slate decision does not cancel source-account ownership or
+profile preservation; see [protected scope](../product/issue30-clean-slate-cutover.md).
 
 ### Domain and repository layers
 
@@ -134,7 +161,7 @@ A tenant-aware request should preserve these values through the call chain:
 
 ```text
 Authenticated user identity
-Tenant/resource-owner identity
+Verified effective Organization (Home Organization retained separately)
 Authorization decision or role context
 Correlation/request id when available
 Source/store/task identifiers scoped to that tenant
@@ -168,7 +195,7 @@ Do not:
 - let marketplace packages parse HTTP auth/session details;
 - let product source normalization own auth provider concerns;
 - let app/runtime packages own business authorization policy;
-- use legacy tenant bridge helpers as a reason to skip tenant-aware repository contracts;
+- add tenantbridge callers, infer Organization from numeric IDs, or bypass tenant-aware repository contracts;
 - add broad auth behavior to root `internal/listingkit` when it belongs in HTTPAPI/auth runtime or tenant context utilities.
 
 ## 8. Review checklist
@@ -177,13 +204,19 @@ Before merging auth or tenant-sensitive changes, check:
 
 ```text
 [ ] The route has an explicit authentication and authorization posture.
-[ ] Tenant identity comes from trusted request context or trusted upstream claims.
+[ ] Effective Organization comes from server verification/resolution, not home/resource-owner or an unvalidated selector.
 [ ] Tenant-owned reads/writes include tenant criteria or an explicitly reviewed system-scope reason.
 [ ] Marketplace/product/source packages do not parse HTTP auth details directly.
 [ ] Runtime assembly does not own marketplace or product authorization policy.
-[ ] Legacy tenant compatibility is narrow and does not become the default model for new code.
+[ ] Existing legacy paths are identified as drain debt; new code adds no tenantbridge consumer.
 [ ] Tests cover denied/missing/wrong-tenant access when the path mutates or reveals tenant-owned state.
 ```
+
+Current code evidence includes
+[server auth tests](../../internal/app/httpapi/server_test.go),
+[Organization resolver](../../internal/workbenchcontext/resolver.go) and
+[dated multi-Organization verification](../verification/zitadel-multi-organization-authorization.md).
+The dated verification is evidence for its own baseline, not approval of today's HEAD.
 
 ## 9. Upgrade path to stable boundary document
 
