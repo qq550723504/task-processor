@@ -4,9 +4,11 @@ package ownershipmigration
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -34,11 +36,12 @@ func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent 
 	if err != nil {
 		return false, err
 	}
-	profileLocation, err := linuxFilesystemLocation(profileRoot, entries)
+	mounts := indexLinuxMounts(entries)
+	profileLocation, err := linuxFilesystemLocation(profileRoot, mounts)
 	if err != nil {
 		return false, err
 	}
-	receiptLocation, err := linuxFilesystemLocation(receiptParent, entries)
+	receiptLocation, err := linuxFilesystemLocation(receiptParent, mounts)
 	if err != nil {
 		return false, err
 	}
@@ -62,26 +65,39 @@ func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent 
 	return false, nil
 }
 
-func linuxFilesystemLocation(path string, entries []linuxMountEntry) (linuxMountLocation, error) {
-	path = filepath.Clean(path)
-	var selected *linuxMountEntry
-	ambiguous := false
-	for i := range entries {
-		entry := &entries[i]
-		if !insidePath(entry.mountPoint, path) {
-			continue
+type linuxMountChoice struct {
+	entry     linuxMountEntry
+	ambiguous bool
+}
+
+func indexLinuxMounts(entries []linuxMountEntry) map[string]linuxMountChoice {
+	index := make(map[string]linuxMountChoice, len(entries))
+	for _, entry := range entries {
+		choice, exists := index[entry.mountPoint]
+		if !exists {
+			choice.entry = entry
+		} else if entry.device != choice.entry.device || entry.root != choice.entry.root {
+			choice.ambiguous = true
 		}
-		if selected == nil || len(entry.mountPoint) > len(selected.mountPoint) {
-			selected = entry
-			ambiguous = false
-		} else if entry.mountPoint == selected.mountPoint && (entry.device != selected.device || entry.root != selected.root) {
-			ambiguous = true
+		index[entry.mountPoint] = choice
+	}
+	return index
+}
+
+func linuxFilesystemLocation(path string, mounts map[string]linuxMountChoice) (linuxMountLocation, error) {
+	path = filepath.Clean(path)
+	var choice linuxMountChoice
+	found := false
+	for p := path; ; p = filepath.Dir(p) {
+		if choice, found = mounts[p]; found || filepath.Dir(p) == p {
+			break
 		}
 	}
-	if selected == nil {
+	if !found {
 		return linuxMountLocation{}, fmt.Errorf("path is not covered by mountinfo")
 	}
-	if ambiguous || !filepath.IsAbs(selected.root) {
+	selected := choice.entry
+	if choice.ambiguous || !filepath.IsAbs(selected.root) {
 		return linuxMountLocation{}, fmt.Errorf("invalid or ambiguous backing location")
 	}
 	relative, err := filepath.Rel(selected.mountPoint, path)
@@ -96,6 +112,82 @@ func linuxFilesystemLocation(path string, entries []linuxMountEntry) (linuxMount
 		underlying = string(os.PathSeparator) + underlying
 	}
 	return linuxMountLocation{device: selected.device, path: filepath.Clean(underlying)}, nil
+}
+
+func validateProfileSubtrees(ctx context.Context, accounts []AccountEvidence) error {
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return fmt.Errorf("cannot inspect profile mount identities")
+	}
+	return validateProfileSubtreesFromMountInfo(ctx, accounts, data)
+}
+
+func validateProfileSubtreesFromMountInfo(ctx context.Context, accounts []AccountEvidence, data []byte) error {
+	entries, err := parseLinuxMountInfo(data)
+	if err != nil {
+		return err
+	}
+	mounts := indexLinuxMounts(entries)
+	owners := make(map[string]int64, len(accounts))
+	type ownedSubtree struct {
+		device, path string
+		accountID    int64
+	}
+	subtrees := make([]ownedSubtree, 0, len(accounts)+len(entries))
+	for _, account := range accounts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		location, err := linuxFilesystemLocation(account.ProfileDirectory, mounts)
+		if err != nil {
+			return err
+		}
+		owners[filepath.Clean(account.ProfileDirectory)] = account.Previous.ID
+		subtrees = append(subtrees, ownedSubtree{location.device, strings.TrimSuffix(location.path, "/") + "/", account.Previous.ID})
+	}
+	// Assign each nested mount to its containing account with ancestor map
+	// lookups, not a scan of accounts for each mount. Profile contents stay opaque.
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		for p := entry.mountPoint; ; p = filepath.Dir(p) {
+			if owner, ok := owners[p]; ok {
+				if !filepath.IsAbs(entry.root) {
+					return fmt.Errorf("cannot resolve protected profile mount")
+				}
+				subtrees = append(subtrees, ownedSubtree{entry.device, strings.TrimSuffix(filepath.Clean(entry.root), "/") + "/", owner})
+				break
+			}
+			if filepath.Dir(p) == p {
+				break
+			}
+		}
+	}
+	// Trailing separators make descendants contiguous in lexical order without
+	// confusing similar prefixes. Keep the broadest range for one account; any
+	// differently owned range inside it is overlap. O((accounts+mounts) log n),
+	// plus bounded path-depth lookups; never cross-account pairwise comparisons.
+	sort.Slice(subtrees, func(i, j int) bool {
+		if subtrees[i].device != subtrees[j].device {
+			return subtrees[i].device < subtrees[j].device
+		}
+		return subtrees[i].path < subtrees[j].path
+	})
+	var covering ownedSubtree
+	for _, subtree := range subtrees {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if covering.device == subtree.device && strings.HasPrefix(subtree.path, covering.path) {
+			if covering.accountID != subtree.accountID {
+				return fmt.Errorf("source accounts %d and %d have overlapping browser profile subtrees", covering.accountID, subtree.accountID)
+			}
+			continue
+		}
+		covering = subtree
+	}
+	return nil
 }
 
 func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {

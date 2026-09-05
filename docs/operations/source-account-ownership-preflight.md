@@ -16,6 +16,13 @@ preflight derives an indexable filesystem identity for each account profile and 
 duplicates, so two account paths that point to the same underlying browser profile (for
 example through a bind mount) fail closed without pairwise scanning across all accounts.
 
+Linux also checks each account's backing subtree and nested mounts for overlap with
+other accounts, even when the account-root inodes differ. Mountpoints and account
+ancestors are indexed; backing ranges are sorted by device/path and checked in one
+pass. This retains near-linear/log-linear work rather than account-pair comparisons,
+and does not enumerate or read browser files. Repeated ranges belonging to the same
+account are allowed; overlap between distinct accounts blocks even within one Organization.
+
 Provide these environment variables through the existing secret mechanism:
 
 - `SOURCE_ACCOUNT_PREFLIGHT_DSN`: business PostgreSQL database with `source_account`.
@@ -107,6 +114,8 @@ separate evidence:
 | Unrelated mounted device | Accept | `TestReceiptMountMatrix` |
 | Empty/malformed/uncovered/ambiguous mount relationship | Reject | `TestReceiptMountMatrix` |
 | Unrelated stacked mounts or nsfs file mounts; repeated identical backing location | Accept external target | `TestReceiptMountMatrix` |
+| Distinct account-root identities with overlapping backing subtrees or nested mounts | Reject | `TestPreflightRejectsLiveOverlappingProfileSubtrees`, `TestProfileSubtreeMountMatrix` |
+| 100,000 account roots plus 100,000 disjoint nested mounts | Accept | `TestProfileSubtreeIndexAtInventoryLimit` (fixture, not fleet acceptance) |
 | Malformed removed metadata; valid tombstone with active owner; removed-only owner | Reject; retain without mapping; reject missing active owner | `TestPreflightRemovedMetadataValidation` |
 
 R1-A TDD reproduced eight malformed removed values and both nested-device fixture
@@ -125,6 +134,14 @@ identical backing locations being rejected. The resolver now checks ambiguity at
 the selected root/receipt location, while retaining conservative checks of protected
 nested mounts; unrelated mount entries do not invalidate a safe external directory.
 Different possible backing locations at a selected mountpoint still fail closed.
+
+A later R1-A review identified account-subtree overlap beyond equal root identities.
+All three disposable Linux live cases first produced receipts on the prior head:
+account-root-to-descendant bind, descendant-to-descendant bind, and two accounts
+mounting the same external subtree. They now reject without usable receipts.
+Disjoint devices, similar non-child prefixes, same-account nested ranges and unrelated
+opaque mounts remain accepted. This completes the Linux mount-alias checks without
+changing Windows junction verification, receipt publication ownership or B/C/D scope.
 
 Before B/C: freeze all 1688 admissions and source-account/mapping writers, drain and
 attest every old process queue/worker, reconcile Redis and local terminal outcomes,

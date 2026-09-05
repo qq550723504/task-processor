@@ -140,6 +140,9 @@ func Preflight(ctx context.Context, s Snapshot, root string) (Receipt, error) {
 	}
 	// Observation times vary on a fresh read; bind source identities and all
 	// captured migration inputs while permitting same-input restart comparison.
+	if err := validateProfileSubtrees(ctx, r.Accounts); err != nil {
+		return Receipt{}, err
+	}
 	r.Digest = receiptDigest(r)
 	return r, nil
 }

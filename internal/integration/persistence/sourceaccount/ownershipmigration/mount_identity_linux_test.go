@@ -4,11 +4,60 @@ package ownershipmigration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestProfileSubtreeMountMatrix(t *testing.T) {
+	base := "36 25 0:42 / / rw - ext4 /dev/root rw\n"
+	accounts := []AccountEvidence{
+		{ProfileDirectory: "/profiles/101/7", Previous: LegacyAccount{ID: 7}},
+		{ProfileDirectory: "/profiles/202/8", Previous: LegacyAccount{ID: 8}},
+	}
+	for _, tc := range []struct {
+		name, extra string
+		invalid     bool
+	}{
+		{"distinct profiles", "", false},
+		{"descendant account bind", "50 36 0:42 /profiles/101/7/Default /profiles/202/8 rw - ext4 /dev/root rw\n", true},
+		{"reverse descendant account bind", "50 36 0:42 /profiles/202/8/Default /profiles/101/7 rw - ext4 /dev/root rw\n", true},
+		{"nested sharing across devices", "50 36 0:99 / /profiles/101/7/Default rw - tmpfs tmpfs rw\n51 36 0:99 / /profiles/202/8/Default rw - tmpfs tmpfs rw\n", true},
+		{"same account overlap", "50 36 0:42 /profiles/101/7 /profiles/101/7/Default rw - ext4 /dev/root rw\n", false},
+		{"separate devices", "50 36 0:99 / /profiles/101/7 rw - tmpfs tmpfs rw\n51 36 0:100 / /profiles/202/8 rw - tmpfs tmpfs rw\n", false},
+		{"similar backing prefix", "50 36 0:99 /a /profiles/101/7 rw - tmpfs tmpfs rw\n51 36 0:99 /a-sibling /profiles/202/8 rw - tmpfs tmpfs rw\n", false},
+		{"unrelated opaque root", "50 36 0:99 net:[1234] /run/netns/test rw - nsfs nsfs rw\n", false},
+		{"unknown protected root", "50 36 0:99 unknown /profiles/101/7/Default rw - nsfs nsfs rw\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateProfileSubtreesFromMountInfo(context.Background(), accounts, []byte(base+tc.extra)); (err != nil) != tc.invalid {
+				t.Fatalf("invalid=%v, error=%v", tc.invalid, err)
+			}
+		})
+	}
+}
+
+func TestProfileSubtreeIndexAtInventoryLimit(t *testing.T) {
+	accounts := make([]AccountEvidence, MaxRows)
+	var mounts strings.Builder
+	mounts.WriteString("36 25 0:42 / / rw - ext4 /dev/root rw\n")
+	for i := range accounts {
+		dir := fmt.Sprintf("/profiles/101/%d", i+1)
+		accounts[i] = AccountEvidence{ProfileDirectory: dir, Previous: LegacyAccount{ID: int64(i + 1)}}
+		fmt.Fprintf(&mounts, "%d 36 0:99 /private/%d %s/Default rw - tmpfs tmpfs rw\n", i+50, i+1, dir)
+	}
+	if err := validateProfileSubtreesFromMountInfo(context.Background(), accounts, []byte(mounts.String())); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := validateProfileSubtreesFromMountInfo(ctx, accounts, []byte(mounts.String())); err != context.Canceled {
+		t.Fatalf("cancellation: %v", err)
+	}
+}
 
 func TestReceiptMountMatrix(t *testing.T) {
 	base := "36 25 0:42 / / rw - ext4 /dev/root rw\n"
@@ -117,5 +166,53 @@ func TestReceiptTargetRejectsLiveNestedMount(t *testing.T) {
 	entries, err := os.ReadDir(descendant)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("validation modified disposable profile descendant: %v %v", entries, err)
+	}
+}
+
+func TestPreflightRejectsLiveOverlappingProfileSubtrees(t *testing.T) {
+	for _, kind := range []string{"account bound to descendant", "descendant bound to descendant", "shared external subtree"} {
+		t.Run(kind, func(t *testing.T) {
+			s, root := fixture(t)
+			first := filepath.Join(root, "101", "7")
+			second := filepath.Join(root, "202", "8")
+			for _, dir := range []string{filepath.Join(first, "Default"), filepath.Join(second, "Default")} {
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			bind := func(source, target string) {
+				t.Helper()
+				if output, err := exec.Command("sudo", "-n", "mount", "--bind", source, target).CombinedOutput(); err != nil {
+					t.Skipf("bind mount unavailable: %v %s", err, output)
+				}
+				t.Cleanup(func() { _ = exec.Command("sudo", "-n", "umount", target).Run() })
+			}
+			switch kind {
+			case "account bound to descendant":
+				bind(filepath.Join(first, "Default"), second)
+			case "descendant bound to descendant":
+				bind(filepath.Join(first, "Default"), filepath.Join(second, "Default"))
+			case "shared external subtree":
+				shared := t.TempDir()
+				bind(shared, filepath.Join(first, "Default"))
+				bind(shared, filepath.Join(second, "Default"))
+			}
+			a, err := os.Stat(first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.Stat(second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if os.SameFile(a, b) {
+				t.Fatal("fixture must have distinct account-root identities")
+			}
+			s.Accounts = append(s.Accounts, LegacyAccount{ID: 8, TenantID: 202, Platform: "1688", ProfileRef: "second"})
+			s.Metadata = append(s.Metadata, OrganizationMetadata{OrganizationID: "org-B", Value: []byte("202")})
+			if r, err := Preflight(context.Background(), s, root); err == nil || r.Digest != "" {
+				t.Fatal("overlapping profile subtrees produced a usable receipt")
+			}
+		})
 	}
 }
