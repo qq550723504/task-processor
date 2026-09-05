@@ -169,9 +169,50 @@ func TestStoreServiceExecutorClearsTerminalFailureBetweenTransactionRetries(t *t
 	assertTableCount(t, db, "saas_organization_resource_operations", 1)
 }
 
+func TestStoreServiceExecutorRejectsConnectionReferenceDriftWithoutSideEffects(t *testing.T) {
+	db, storeRepository := openStoreServiceTestDB(t)
+	store := seedPendingActivationStore(t, db, storeRepository, "org-a", "00000000-0000-4000-8000-000000000551")
+	seedResourceBucket(t, db, "org-a", 1)
+	executor, err := NewStoreServiceExecutor(db, TransactionConfig{}, &connectionChangedStoreServiceStore{delegate: storeRepository})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	_, err = executor.ExecuteServiceLifecycle(context.Background(), storecenter.ServiceExecution{
+		OrganizationID: "org-a", OperationID: "operation-connection-drift", StoreID: store.ID(),
+		Command: storecenter.ServiceCommandActivate, Quantity: 1, MaxQuantity: 12,
+		ExpectedStoreVersion: 2, ExpectedConnectionRef: store.ConnectionRef(), ConnectionStatus: storecenter.ConnectionStatusConnected,
+		ActorSubject: "operator", OccurredAt: now, RequestFingerprint: sixtyFourHex('f'),
+	})
+	if !errors.Is(err, storecenter.ErrConnectionSnapshotChanged) {
+		t.Fatalf("ExecuteServiceLifecycle() error = %v, want ErrConnectionSnapshotChanged", err)
+	}
+	assertResourceBucket(t, db, "org-a", 1, 0)
+	assertStoreServiceRow(t, db, store.ID(), 2, storecenter.ServiceStatusPendingActivation, time.Time{}, time.Time{})
+	assertTableCount(t, db, "saas_organization_resource_operations", 0)
+	assertTableCount(t, db, "saas_organization_resource_events", 0)
+	assertTableCount(t, db, "saas_organization_resource_audit_logs", 0)
+}
+
 type retryingStoreServiceStore struct {
 	delegate  *storecenter.GormStoreRepository
 	lockCalls int
+}
+
+type connectionChangedStoreServiceStore struct {
+	delegate *storecenter.GormStoreRepository
+}
+
+func (s *connectionChangedStoreServiceStore) LockServiceState(ctx context.Context, tx *gorm.DB, identity storecenter.ServiceStoreIdentity) (storecenter.ServiceStoreSnapshot, error) {
+	snapshot, err := s.delegate.LockServiceState(ctx, tx, identity)
+	if err == nil {
+		snapshot.ConnectionRef = "changed-after-provider-read"
+	}
+	return snapshot, err
+}
+
+func (s *connectionChangedStoreServiceStore) ApplyServiceState(ctx context.Context, tx *gorm.DB, mutation storecenter.ServiceStoreMutation) error {
+	return s.delegate.ApplyServiceState(ctx, tx, mutation)
 }
 
 func (s *retryingStoreServiceStore) LockServiceState(ctx context.Context, tx *gorm.DB, identity storecenter.ServiceStoreIdentity) (storecenter.ServiceStoreSnapshot, error) {

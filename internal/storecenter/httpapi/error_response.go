@@ -38,7 +38,7 @@ func mapStoreError(err error) protocolError {
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_SERVICE_RESUME_REQUIRED", "Store service must be resumed"
 	case errors.Is(err, storecenter.ErrInvalidServiceState):
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_SERVICE_STATE_CORRUPT", "Store service state is invalid"
-	case errors.Is(err, storecenter.ErrConnectionUnavailable):
+	case errors.Is(err, storecenter.ErrConnectionUnavailable), errors.Is(err, storecenter.ErrConnectionSnapshotChanged):
 		response.Status, response.Code, response.Message = http.StatusServiceUnavailable, "STORE_CONNECTION_UNAVAILABLE", "Store connection status is unavailable"
 	case errors.Is(err, storecenter.ErrConnectionNotFresh):
 		response.Status, response.Code, response.Message = http.StatusUnprocessableEntity, "STORE_CONNECTION_NOT_CONNECTED", "Store connection is not connected"

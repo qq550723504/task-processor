@@ -28,6 +28,7 @@ func TestMapStoreErrorUsesStableRedactedProtocolContract(t *testing.T) {
 		{name: "service transition", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidServiceTransition), status: http.StatusUnprocessableEntity, code: "STORE_INVALID_STATE"},
 		{name: "connection", err: fmt.Errorf("provider secret: %w", storecenter.ErrConnectionNotFresh), status: http.StatusUnprocessableEntity, code: "STORE_CONNECTION_NOT_CONNECTED"},
 		{name: "connection unavailable", err: fmt.Errorf("provider secret: %w", storecenter.ErrConnectionUnavailable), status: http.StatusServiceUnavailable, code: "STORE_CONNECTION_UNAVAILABLE"},
+		{name: "connection snapshot changed", err: fmt.Errorf("row secret: %w", storecenter.ErrConnectionSnapshotChanged), status: http.StatusServiceUnavailable, code: "STORE_CONNECTION_UNAVAILABLE"},
 		{name: "quantity", err: fmt.Errorf("request secret: %w", storecenter.ErrServiceQuantityExceeded), status: http.StatusUnprocessableEntity, code: "RESOURCE_QUANTITY_INVALID"},
 		{name: "balance", err: fmt.Errorf("balance secret: %w", orgresource.ErrInsufficientBalance), status: http.StatusConflict, code: "RESOURCE_INSUFFICIENT_BALANCE"},
 		{name: "idempotency", err: fmt.Errorf("operation secret: %w", orgresource.ErrIdempotencyKeyConflict), status: http.StatusConflict, code: "IDEMPOTENCY_KEY_CONFLICT"},
