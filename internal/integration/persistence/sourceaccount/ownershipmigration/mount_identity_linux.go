@@ -49,7 +49,13 @@ func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent 
 	// possibly on a different device. Inspect mount metadata, never profile files.
 	// One pass over mounts avoids per-account or pairwise filesystem scans.
 	for _, entry := range entries {
-		if insidePath(profileRoot, entry.mountPoint) && entry.device == receiptLocation.device && insidePath(entry.root, receiptLocation.path) {
+		if !insidePath(profileRoot, entry.mountPoint) {
+			continue
+		}
+		if !filepath.IsAbs(entry.root) {
+			return false, fmt.Errorf("cannot resolve protected mount backing path")
+		}
+		if entry.device == receiptLocation.device && insidePath(entry.root, receiptLocation.path) {
 			return true, nil
 		}
 	}
@@ -59,6 +65,7 @@ func receiptParentAliasesProfileSubtreeFromMountInfo(profileRoot, receiptParent 
 func linuxFilesystemLocation(path string, entries []linuxMountEntry) (linuxMountLocation, error) {
 	path = filepath.Clean(path)
 	var selected *linuxMountEntry
+	ambiguous := false
 	for i := range entries {
 		entry := &entries[i]
 		if !insidePath(entry.mountPoint, path) {
@@ -66,10 +73,16 @@ func linuxFilesystemLocation(path string, entries []linuxMountEntry) (linuxMount
 		}
 		if selected == nil || len(entry.mountPoint) > len(selected.mountPoint) {
 			selected = entry
+			ambiguous = false
+		} else if entry.mountPoint == selected.mountPoint && (entry.device != selected.device || entry.root != selected.root) {
+			ambiguous = true
 		}
 	}
 	if selected == nil {
 		return linuxMountLocation{}, fmt.Errorf("path is not covered by mountinfo")
+	}
+	if ambiguous || !filepath.IsAbs(selected.root) {
+		return linuxMountLocation{}, fmt.Errorf("invalid or ambiguous backing location")
 	}
 	relative, err := filepath.Rel(selected.mountPoint, path)
 	if err != nil {
@@ -88,7 +101,6 @@ func linuxFilesystemLocation(path string, entries []linuxMountEntry) (linuxMount
 func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	entries := make([]linuxMountEntry, 0, 32)
-	seenMountPoints := map[string]bool{}
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) < 10 {
@@ -109,12 +121,11 @@ func parseLinuxMountInfo(data []byte) ([]linuxMountEntry, error) {
 			root:       decodeLinuxMountInfoPath(fields[3]),
 			mountPoint: decodeLinuxMountInfoPath(fields[4]),
 		}
-		// Stacked entries at one mountpoint do not give this bounded resolver an
-		// unambiguous visible mount. Refuse rather than selecting by input order.
-		if !filepath.IsAbs(entry.root) || !filepath.IsAbs(entry.mountPoint) || seenMountPoints[entry.mountPoint] {
-			return nil, fmt.Errorf("invalid or ambiguous mountinfo paths")
+		// Unrelated mounts may legitimately have opaque roots (e.g. nsfs) or
+		// stacked mountpoints. Resolve backing-path ambiguity only where needed.
+		if !filepath.IsAbs(entry.mountPoint) {
+			return nil, fmt.Errorf("invalid mountinfo mountpoint")
 		}
-		seenMountPoints[entry.mountPoint] = true
 		entries = append(entries, entry)
 	}
 	if err := scanner.Err(); err != nil {

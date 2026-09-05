@@ -106,6 +106,7 @@ separate evidence:
 | Different-device nested mount externally bound, including child path | Reject | `TestReceiptMountMatrix`, `TestReceiptTargetRejectsLiveNestedMount` |
 | Unrelated mounted device | Accept | `TestReceiptMountMatrix` |
 | Empty/malformed/uncovered/ambiguous mount relationship | Reject | `TestReceiptMountMatrix` |
+| Unrelated stacked mounts or nsfs file mounts; repeated identical backing location | Accept external target | `TestReceiptMountMatrix` |
 | Malformed removed metadata; valid tombstone with active owner; removed-only owner | Reject; retain without mapping; reject missing active owner | `TestPreflightRemovedMetadataValidation` |
 
 R1-A TDD reproduced eight malformed removed values and both nested-device fixture
@@ -117,6 +118,13 @@ pre-link cancellation, success boundary, deterministic digest and disabled/delet
 tests remain. `TestReceiptCancellationAfterLinkCleansFinalAndStaging` additionally
 exercises cancellation at the publisher's post-link check, without a second CLI
 decision. This evidence does not change #30's production cutover BLOCKER.
+
+The first R1-A CI run exposed overly broad rejection of otherwise valid mount tables.
+Follow-up TDD reproduced unrelated stacked mounts, opaque nsfs roots and repeated
+identical backing locations being rejected. The resolver now checks ambiguity at
+the selected root/receipt location, while retaining conservative checks of protected
+nested mounts; unrelated mount entries do not invalidate a safe external directory.
+Different possible backing locations at a selected mountpoint still fail closed.
 
 Before B/C: freeze all 1688 admissions and source-account/mapping writers, drain and
 attest every old process queue/worker, reconcile Redis and local terminal outcomes,

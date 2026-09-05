@@ -32,6 +32,9 @@ func TestReceiptMountMatrix(t *testing.T) {
 		{"uncovered path", "/tmp/evidence", nested, false, true},
 		{"ambiguous mounts", "/tmp/evidence", base + "51 36 0:99 / / rw - tmpfs tmpfs rw\n", false, true},
 		{"relative mount root", "/tmp/evidence", base + "51 36 0:99 invalid /tmp/evidence rw - tmpfs tmpfs rw\n", false, true},
+		{"unrelated stacked mounts", "/tmp/evidence", base + "51 36 0:99 / /unrelated rw - tmpfs tmpfs rw\n52 51 0:100 / /unrelated rw - tmpfs tmpfs rw\n", false, false},
+		{"unrelated namespace file", "/tmp/evidence", base + "51 36 0:99 net:[1234] /run/netns/test rw - nsfs nsfs rw\n", false, false},
+		{"identical backing locations", "/tmp/evidence", base + "51 36 0:42 / / rw - ext4 /dev/root rw\n", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			alias, err := receiptParentAliasesProfileSubtreeFromMountInfo("/tmp/profiles", tc.parent, []byte(tc.mounts))
