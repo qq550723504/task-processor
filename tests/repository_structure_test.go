@@ -78,6 +78,10 @@ func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
 		owned := false
 		for _, ownerRoot := range ownerRoots {
 			for _, file := range trackedFiles(t, ownerRoot) {
+				// A Pester assertion about a script is not that command's operational owner.
+				if strings.HasSuffix(strings.ToLower(file), ".tests.ps1") {
+					continue
+				}
 				contents, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
 				if err != nil {
 					t.Fatal(err)
