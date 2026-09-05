@@ -53,6 +53,7 @@ function classifyChangedPaths(paths, { full = false } = {}) {
       path === "makefile" ||
       matchesPrefix(path, "cmd") ||
       matchesPrefix(path, "config") ||
+      matchesPrefix(path, "hack/debug") ||
       matchesPrefix(path, "internal") ||
       matchesPrefix(path, "prompts") ||
       matchesPrefix(path, "scripts") ||
@@ -60,7 +61,13 @@ function classifyChangedPaths(paths, { full = false } = {}) {
       matchesPrefix(path, "tools") ||
       path === "deployments/docker/dockerfile.product-listing-api";
 
-    const backend = architectureAuthority || backendSource;
+    // Go-owned contract tests validate workflow and rollout-manifest semantics that
+    // the release-policy shell checks intentionally do not duplicate.
+    const backendContract =
+      matchesPrefix(path, ".github/workflows") ||
+      matchesPrefix(path, "deployments/kubernetes/listingkit-workbench");
+
+    const backend = architectureAuthority || backendSource || backendContract;
 
     const frontend =
       matchesPrefix(path, "web/listingkit-ui") ||
@@ -70,7 +77,6 @@ function classifyChangedPaths(paths, { full = false } = {}) {
       backendSource ||
       frontend ||
       path === ".golangci.yml" ||
-      matchesPrefix(path, "scripts") ||
       path === "docs/refactoring/code-health-decisions.md";
 
     const releaseAuthority =
