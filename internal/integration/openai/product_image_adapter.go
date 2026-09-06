@@ -37,9 +37,11 @@ func DefaultProductImagePrompts() ProductImagePrompts {
 }
 
 type ProductImageAdapterConfig struct {
-	ImageClient  ai.ImageGenerator
-	ReviewClient ai.ChatCompleter
-	Prompts      ProductImagePrompts
+	ReviewMaxRetries *int
+	ReviewObserver   func(ProductImageReviewObservation)
+	ImageClient      ai.ImageGenerator
+	ReviewClient     ai.ChatCompleter
+	Prompts          ProductImagePrompts
 
 	Provider                   string
 	ImageModel                 string
@@ -59,6 +61,12 @@ type ProductImageAdapterConfig struct {
 	CostUpperBoundKnown      bool
 
 	GeneratedImageFetcher func(context.Context, string) ([]byte, error)
+}
+
+// ProductImageReviewObservation carries metadata only, never prompt or image content.
+type ProductImageReviewObservation struct {
+	PromptHash, PromptVersion, ProviderRequestID string
+	Usage                                        ai.Usage
 }
 
 type ProductImageAdapter struct {
@@ -184,9 +192,19 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 	}
 	temperature := float32(0)
 	response, err := a.config.ReviewClient.CreateChatCompletion(ctx, &ai.ChatCompletionRequest{
-		Model: a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
+		MaxRetries: a.config.ReviewMaxRetries,
+		Model:      a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
 		Messages: []ai.ChatCompletionMessage{{Role: "user", MultiContent: parts}},
 	})
+	if a.config.ReviewObserver != nil {
+		encoded, _ := json.Marshal(parts)
+		hash := sha256.Sum256(encoded)
+		observation := ProductImageReviewObservation{PromptHash: hex.EncodeToString(hash[:]), PromptVersion: a.config.Prompts.Version}
+		if response != nil {
+			observation.ProviderRequestID, observation.Usage = response.ID, response.Usage
+		}
+		a.config.ReviewObserver(observation)
+	}
 	if err != nil {
 		return productimage.Review{}, err
 	}

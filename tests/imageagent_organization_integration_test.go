@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/serviceerror"
@@ -27,6 +29,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	aistore "task-processor/internal/aicapability/store"
 	apphttpapi "task-processor/internal/app/httpapi"
 	imageworker "task-processor/internal/app/worker/imageagent"
 	"task-processor/internal/authidentity"
@@ -184,6 +187,7 @@ func newScope339Fixture(t *testing.T) *scope339Fixture {
 	require.NoError(t, imagestore.AutoMigrateOrganizationScope(db))
 	require.NoError(t, catalogstore.AutoMigrate(db))
 	require.NoError(t, db.AutoMigrate(&openai.AIClientCredential{}))
+	require.NoError(t, aistore.AutoMigrateInvocationLedger(db))
 	f := &scope339Fixture{db: db, iam: &scope339IAM{}, temporal: &scope339TemporalServer{}}
 	upstream := httptest.NewServer(f.iam)
 	t.Cleanup(upstream.Close)
@@ -491,7 +495,14 @@ type scope339NoPublication struct {
 	imageagent.ApprovedAssetPublisherV3
 }
 
-func (f *scope339Fixture) verifyActivity(t *testing.T, wf imagetemporal.WorkflowInput) {
+func (f *scope339Fixture) verifyActivity(t *testing.T, wf imagetemporal.WorkflowInput, modes ...string) {
+	mode := ""
+	if len(modes) > 0 {
+		mode = modes[0]
+	}
+	var logs bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&logs)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.providerCalls.Add(1)
 		require.Equal(t, "Bearer synthetic-B", r.Header.Get("Authorization"))
@@ -512,7 +523,11 @@ func (f *scope339Fixture) verifyActivity(t *testing.T, wf imagetemporal.Workflow
 	cfg := openai.NewClientConfig("static-must-not-be-used", "review-test", provider.URL+"/v1", 1)
 	manager, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"default": cfg, "image_gpt_image_2": cfg}, DefaultClient: "default"})
 	require.NoError(t, err)
-	capabilities, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db)
+	options := imageworker.OrganizationReviewOptions{Recorder: aistore.NewGormInvocationRecorder(f.db), Logger: logger}
+	if mode == "known_cost" {
+		options.Pricing = &imageworker.ReviewPricing{Version: "controlled-price-v1", MaximumCostMicros: 7}
+	}
+	capabilities, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db, options)
 	require.NoError(t, err)
 	executor := imagetools.NewProductImageSlotExecutor(imagetools.Dependencies{SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer, SceneRenderer: capabilities.SceneRenderer, Reviewer: capabilities.Reviewer, UsageQuoter: capabilities.UsageQuoter, ProfileResolver: capabilities.ProfileResolver})
 	repo := imagestore.NewOrganizationRepository(f.db)
@@ -603,11 +618,53 @@ func (f *scope339Fixture) verifyActivity(t *testing.T, wf imagetemporal.Workflow
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestActivityEnvironment()
 	env.RegisterActivity(activities.ReviewStagedSlotV3)
-	_, err = env.ExecuteActivity(activities.ReviewStagedSlotV3, input)
+	if mode == "record_failure" {
+		require.NoError(t, f.db.Callback().Create().Before("gorm:create").Register("review-ledger-fault", func(tx *gorm.DB) {
+			if tx.Statement.Table == "ai_invocations" {
+				tx.AddError(fmt.Errorf("controlled ledger failure"))
+			}
+		}))
+	}
+	if mode == "response_cancel" {
+		callCtx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		require.NoError(t, f.db.Callback().Create().After("gorm:create").Register("review-response-cancel", func(tx *gorm.DB) {
+			if tx.Statement.Table == "ai_invocations" {
+				cancel()
+			}
+		}))
+		_, err = activities.ReviewStagedSlotV3(callCtx, input)
+	} else {
+		_, err = env.ExecuteActivity(activities.ReviewStagedSlotV3, input)
+	}
 	require.Error(t, err)
-	require.Contains(t, err.Error(), imageagent.SlotReviewRequiredCode)
+	if mode == "unknown_cost" {
+		require.Contains(t, err.Error(), imageagent.BudgetQuoteUnavailableCode)
+		require.Zero(t, f.providerCalls.Load())
+		return
+	}
+	if mode != "response_cancel" {
+		require.Contains(t, err.Error(), imageagent.SlotReviewRequiredCode)
+	}
 	require.EqualValues(t, 1, f.providerCalls.Load())
 	require.EqualValues(t, readsBefore+1, artifacts.reads.Load())
+	var invocation struct{ TenantID, UserID, AgentRunID, BusinessTaskID, Outcome string }
+	if mode == "record_failure" {
+		var count int64
+		require.NoError(t, f.db.Table("ai_invocations").Count(&count).Error)
+		require.Zero(t, count)
+		require.Contains(t, logs.String(), "image_review_record_degraded")
+	} else {
+		require.NoError(t, f.db.Table("ai_invocations").Take(&invocation).Error)
+		require.Equal(t, "B", invocation.TenantID)
+		require.Equal(t, "actor", invocation.UserID)
+		require.Equal(t, input.RunID, invocation.AgentRunID)
+		require.Equal(t, input.Identity.BusinessTaskID, invocation.BusinessTaskID)
+		require.Equal(t, "succeeded", invocation.Outcome)
+	}
+	_, err = env.ExecuteActivity(activities.ReviewStagedSlotV3, input)
+	require.Error(t, err)
+	require.EqualValues(t, 1, f.providerCalls.Load(), "persisted outcome prevents repeated provider execution")
 	t.Log("actual HTTP Home A / selected B -> persisted scope -> converter -> SDK Activity -> service authorization -> B credentials -> Manager / adapter: provider HTTP=1; no generation or approval")
 }
 

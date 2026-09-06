@@ -55,6 +55,8 @@ type InvocationRecord struct {
 	TotalTokens          int
 	ImageCount           int
 	EstimatedCostMicros  int64
+	EstimatedCostKnown   bool
+	UsageKnown           bool
 	Currency             string
 	Outcome              InvocationOutcome
 	ErrorCategory        ErrorCategory

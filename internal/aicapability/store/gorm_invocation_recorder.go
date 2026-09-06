@@ -88,6 +88,8 @@ type invocationRow struct {
 	TotalTokens          int       `gorm:"column:total_tokens"`
 	ImageCount           int       `gorm:"column:image_count"`
 	EstimatedCostMicros  int64     `gorm:"column:estimated_cost_micros"`
+	EstimatedCostKnown   bool      `gorm:"column:estimated_cost_known"`
+	UsageKnown           bool      `gorm:"column:usage_known"`
 	Currency             string    `gorm:"column:currency;size:16"`
 	Outcome              string    `gorm:"column:outcome;size:32"`
 	ErrorCategory        string    `gorm:"column:error_category;size:64"`
@@ -113,6 +115,7 @@ func invocationRowFromRecord(record aicapability.InvocationRecord) invocationRow
 		cacheStatus = aicapability.CacheStatusNotApplicable
 	}
 	return invocationRow{
+		EstimatedCostKnown: record.EstimatedCostKnown, UsageKnown: record.UsageKnown,
 		InvocationID: trim(record.InvocationID), ParentInvocationID: trim(record.ParentInvocationID), AgentRunID: trim(record.AgentRunID),
 		TenantID: trim(record.TenantID), UserID: trim(record.UserID), BusinessTaskID: trim(record.BusinessTaskID), TraceID: trim(record.TraceID),
 		Capability: trim(string(record.Capability)), Operation: trim(string(record.Operation)), RouteMode: trim(string(record.RouteMode)), RouteOutcome: trim(string(record.RouteOutcome)), CacheStatus: string(cacheStatus),
