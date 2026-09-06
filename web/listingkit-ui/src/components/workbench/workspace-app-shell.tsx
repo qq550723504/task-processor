@@ -122,7 +122,7 @@ function WorkbenchFrame({ children, pathname }: { children: ReactNode; pathname:
   const mounted = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);
   const light = mounted && resolvedTheme === "light";
   function closeNavigation() { setMobileOpen(false); trigger.current?.focus(); }
-  return <div className="console-theme" onKeyDown={(event) => { if (mobileOpen && event.key === "Escape") { event.preventDefault(); closeNavigation(); } }}>
+  return <div onKeyDown={(event) => { if (mobileOpen && event.key === "Escape") { event.preventDefault(); closeNavigation(); } }}>
     <a className="sr-only focus:not-sr-only" href="#console-main">跳到页面内容</a>
     <div className="console-frame">
       <aside className="console-sidebar">
@@ -190,7 +190,7 @@ function DelegatedOperationIndicator({
 function AccessState({ action, code }: { action: () => void; code: string }) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-6">
-      <section className="max-w-md rounded-xl border bg-card p-6 text-center shadow-sm">
+      <section className="max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm">
         <h1 className="text-lg font-semibold" role="alert">
           {workbenchErrorMessage(code)}
         </h1>

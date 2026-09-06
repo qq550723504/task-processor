@@ -43,13 +43,15 @@ export function ApplicationFrame({ children }: Readonly<{ children: React.ReactN
   if (isWorkbenchRoute(pathname)) {
     return (
       <ThemeProvider defaultTheme="dark">
-        <QueryProvider>
-          <ToastProvider>
-            <WorkbenchContextProvider>
-              <WorkspaceAppShell>{children}</WorkspaceAppShell>
-            </WorkbenchContextProvider>
-          </ToastProvider>
-        </QueryProvider>
+        <div className="console-theme">
+          <QueryProvider>
+            <ToastProvider>
+              <WorkbenchContextProvider>
+                <WorkspaceAppShell>{children}</WorkspaceAppShell>
+              </WorkbenchContextProvider>
+            </ToastProvider>
+          </QueryProvider>
+        </div>
       </ThemeProvider>
     );
   }
