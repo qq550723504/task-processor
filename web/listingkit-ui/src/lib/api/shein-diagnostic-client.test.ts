@@ -24,3 +24,8 @@ it("keeps abort distinct from server diagnostics and sanitizes invalid responses
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("private SQL", { status: 500 })));
   await expect(fetchSheinDiagnostic(input)).rejects.toMatchObject({ status: 502, code: "INVALID_UPSTREAM_RESPONSE" });
 });
+it("preserves native network failures after response headers", async () => {
+  const network = new TypeError("connection terminated");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({ start(c) { c.error(network); } }), { headers: { "Content-Type": "application/json" } })));
+  await expect(fetchSheinDiagnostic(input)).rejects.toBe(network);
+});

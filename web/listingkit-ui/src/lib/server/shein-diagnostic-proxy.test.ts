@@ -76,6 +76,13 @@ describe("dedicated diagnostic proxy trust boundary", () => {
     expect((await proxySheinDiagnostic(request(), id, "token")).status).toBe(502);
     expect(cancel).toHaveBeenCalled();
   });
+  it("classifies upstream stream resets as dependency outages, without raw transport details", async () => {
+    vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:9876");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({ start(c) { c.error(new TypeError("private upstream reset")); } }), { headers: { "Content-Type": "application/json" } })));
+    const response = await proxySheinDiagnostic(request(), id, "token");
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ code: "DEPENDENCY_UNAVAILABLE", message: "Diagnostic upstream is unavailable", requestId: "", fieldErrors: [] });
+  });
   it("times out a stalled response stream and aborts upstream", async () => {
     vi.useFakeTimers(); vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:9876");
     const cancel = vi.fn(); const fetcher = vi.fn().mockResolvedValue(new Response(new ReadableStream({ cancel }), { headers: { "Content-Type": "application/json" } })); vi.stubGlobal("fetch", fetcher);
