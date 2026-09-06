@@ -15,6 +15,21 @@ export const diagnosticFixture = () => ({
 });
 
 describe("Shein diagnostic wire contract", () => {
+  it("validates adverse freshness metadata without losing bounded nonstandard coverage", () => {
+    const freshness = { status: "stale", coverage: ["owner_scope"], causes: ["stale", "subject_mismatch"] };
+    const payload = { error: "stale_input", freshness };
+    expect(parseSheinDiagnosticFailure(payload, 409)).toEqual(payload);
+    expect(parseSheinDiagnosticFailure({ error: "stale_input" }, 409)).not.toBeNull();
+    for (const patch of [
+      { coverage: [] }, { coverage: ["a", "a"] }, { coverage: [" "] }, { coverage: ["a".repeat(257)] },
+      { causes: [] }, { causes: ["subject_mismatch"] }, { causes: ["stale", "stale"] },
+      { causes: ["stale", "expired"] }, { status: "valid" }, { status: "expired" },
+    ]) expect(parseSheinDiagnosticFailure({ ...payload, freshness: { ...freshness, ...patch } }, 409)).toBeNull();
+    for (const status of ["stale", "expired"]) {
+      const value = { ...payload, freshness: { ...freshness, status, causes: [status, "expired_at_evaluation", "subject_mismatch"] } };
+      expect(parseSheinDiagnosticFailure(value, 409)).toEqual(value);
+    }
+  });
   it("rejects incomplete, duplicate or invented unchecked scopes and inconsistent reasons", () => {
     const value = diagnosticFixture();
     expect(parseSheinDiagnostic({ ...value, not_evaluated: [...value.not_evaluated].reverse() })).not.toBeNull();
