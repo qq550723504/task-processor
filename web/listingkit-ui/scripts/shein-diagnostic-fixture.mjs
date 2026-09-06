@@ -101,7 +101,7 @@ try {
     const value = await encode({ secret, salt: "authjs.session-token", maxAge: 1800, token: { sub: name, name: `Fixture ${name}`, accessToken, expiresAt: Math.floor(Date.now() / 1000) + 1800, identityVersion: 3, identity: { tenantId: "200", userId: name, roles: [role], userType: "zitadel" } } });
     sessions[name] = [{ name: "authjs.session-token", value, url: origin, httpOnly: true, sameSite: "Lax" }, { name: "shuomi_effective_organization", value: "200", url: origin, httpOnly: true, sameSite: "Lax" }];
   }
-  const manifest = { origin, goOrigin: seed.goOrigin, contextOrigin: seed.contextOrigin, recordId: seed.recordId, recordCount: seed.recordCount, otherRecordCount: seed.otherRecordCount, readonlyRecordId: seed.readonlyRecordId, organization300RecordId: seed.organization300RecordId, sessions, controlDirectory: dir, containerId, sessionBoundary: "synthetic Auth.js issuance and external Go verifier/grants only; no real ZITADEL login" };
+  const manifest = { webDirectory: web, completedWorkPath: "/api/workbench/completed-work?source=listing-local-preparation", origin, goOrigin: seed.goOrigin, contextOrigin: seed.contextOrigin, recordId: seed.recordId, recordCount: seed.recordCount, otherRecordCount: seed.otherRecordCount, readonlyRecordId: seed.readonlyRecordId, organization300RecordId: seed.organization300RecordId, sessions, controlDirectory: dir, containerId, sessionBoundary: "synthetic Auth.js issuance and external Go verifier/grants only; no real ZITADEL login" };
   await writeFile(join(dir, "fixture.json"), JSON.stringify(manifest, null, 2), { mode: 0o600 });
   await until(async () => (await fetch(`${origin}/api/auth/session`)).ok, "actual Next server");
   console.log(JSON.stringify({ manifest: join(dir, "fixture.json"), origin, recordId: seed.recordId }));
@@ -150,6 +150,43 @@ try {
     assert.equal(ownerSecond.next_cursor, null);
     assert.equal(new Set([...ownerFirst.items, ...ownerSecond.items].map((item) => item.record_id)).size, seed.recordCount);
     assert.ok(![...ownerFirst.items, ...ownerSecond.items].some((item) => item.record_id === seed.organization300RecordId));
+    if (process.argv.includes("--completed-work")) {
+      const completed = (name, query = "source=listing-local-preparation&limit=20", org = "200", expected = org) => fetch(`${origin}/api/workbench/completed-work?${query}`, { headers: { cookie: cookie(name, org), "X-Expected-Organization-ID": expected, Authorization: "Bearer forged" } });
+      const firstWork = await check("completed work actual BFF -> Go -> PG after real POST replay", await completed("owner"), 200);
+      const secondWork = await check("completed work second page", await completed("owner", `source=listing-local-preparation&limit=20&cursor=${encodeURIComponent(firstWork.next_cursor)}`), 200);
+      assert.deepEqual([...firstWork.items, ...secondWork.items].map((item) => item.source_record_id), [...ownerFirst.items, ...ownerSecond.items].map((item) => item.record_id));
+      assert.equal(firstWork.coverage, "listing-local-preparation-only");
+      assert.equal(firstWork.projection_version, "1");
+      assert.equal(new Set([...firstWork.items, ...secondWork.items].map((item) => item.source_record_id)).size, seed.recordCount);
+      for (const item of firstWork.items) {
+        assert.equal(item.completion_basis, "local_record_committed");
+        assert.equal(item.work_scope, "general");
+        assert.equal(item.title, "准备商品上架资料");
+        assert.equal(item.result.href, `/workbench/shein-records/${item.source_record_id}/diagnostic`);
+        for (const key of ["task_id", "store_id", "status", "progress", "operation_id", "owner_user_id"]) assert.ok(!(key in item));
+      }
+      const adminWork = await check("completed admin current organization", await completed("admin", "source=listing-local-preparation&limit=100"), 200);
+      assert.equal(adminWork.items.length, seed.recordCount + seed.otherRecordCount + 1);
+      const otherWork = await check("completed operator owner scope", await completed("other"), 200);
+      assert.equal(otherWork.items.length, seed.otherRecordCount);
+      assert.ok(otherWork.items.every((item) => !firstWork.items.some((owner) => owner.source_record_id === item.source_record_id)));
+      const emptyWork = await check("completed empty keeps coverage", await completed("owner", undefined, "100"), 200);
+      assert.deepEqual(emptyWork, { projection_version: "1", coverage: "listing-local-preparation-only", items: [], next_cursor: null });
+      const foreignWork = await check("completed second nonempty organization", await completed("owner", undefined, "300"), 200);
+      assert.deepEqual(foreignWork.items.map((item) => item.source_record_id), [seed.organization300RecordId]);
+      await check("completed scope cursor rejected", await completed("owner", `source=listing-local-preparation&cursor=${encodeURIComponent(firstWork.next_cursor)}`, "100"), 400, "invalid_request");
+      await check("completed organization drift", await completed("owner", undefined, "200", "100"), 409, "ORGANIZATION_CONTEXT_CHANGED");
+      await check("completed store-only denied", await completed("store"), 403, "PERMISSION_DENIED");
+      const revoked = await completed("revoked"); assert.match(revoked.headers.get("set-cookie"), /Max-Age=0/);
+      await check("completed revoked and clears cookie", revoked, 403, "ORGANIZATION_ACCESS_REVOKED");
+      await check("completed dependency failure", await completed("unavailable"), 503, "DEPENDENCY_UNAVAILABLE");
+      await check("completed unsupported lifecycle", await completed("owner", "source=listing-local-preparation&status=running"), 400, "invalid_request");
+      await check("completed missing session", await fetch(`${origin}/api/workbench/completed-work?source=listing-local-preparation`), 401, "AUTHENTICATION_REQUIRED");
+      const diagnostic = `/api/listing/shein-records/${firstWork.items[0].source_record_id}/offline-diagnostic?action=publish`;
+      const result = await check("completed result diagnostic reauthorizes owner", await fetch(`${origin}${diagnostic}`, { headers: { cookie: cookie("owner"), "X-Expected-Organization-ID": "200" } }), 200);
+      assert.equal(result.diagnostic_only, true);
+      await check("completed result reference grants no other-owner access", await fetch(`${origin}${diagnostic}`, { headers: { cookie: cookie("other"), "X-Expected-Organization-ID": "200" } }), 404, "not_found");
+    }
     const adminList = await check("organization admin list", await list("admin", "limit=100"), 200);
     assert.equal(adminList.items.length, seed.recordCount + seed.otherRecordCount + 1);
     const otherList = await check("operator owner scope", await list("other", "limit=100"), 200);
