@@ -71,7 +71,7 @@ type slotPublicationRecoveryDetails struct {
 }
 
 func (a *Activities) ExecuteSlot(ctx context.Context, input ExecuteSlotActivityInput) (imageagent.SlotExecutionResult, error) {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return imageagent.SlotExecutionResult{}, err
 	}
@@ -88,8 +88,11 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	if a.slotEffectsV3 == nil || a.stagedSlotExecutor == nil || a.artifactStore == nil || a.publicationOwner == nil {
 		return v3Result, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
-	ctx, err = restoreActivityIdentity(ctx, input.Identity)
+	ctx, err = a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
+		return v3Result, err
+	}
+	if err := a.validateOrganizationCatalog(ctx, input.Identity, input.RunID, input.AssetCatalog); err != nil {
 		return v3Result, err
 	}
 	stopHeartbeat := startExternalEffectHeartbeat(ctx)

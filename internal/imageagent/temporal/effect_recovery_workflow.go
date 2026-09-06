@@ -19,6 +19,9 @@ const (
 )
 
 func ImageAgentEffectRecoveryWorkflow(ctx workflow.Context, input EffectRecoveryWorkflowInput) (EffectRecoveryResult, error) {
+	if err := validateWorkflowScope(ctx, input.Identity, input.RunID); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
 		RetryPolicy: &sdktemporal.RetryPolicy{
@@ -83,7 +86,7 @@ func reconcileEffectRecovery(ctx workflow.Context, input EffectRecoveryWorkflowI
 }
 
 func signalEffectRecoveryCompletion(ctx workflow.Context, input EffectRecoveryWorkflowInput, result EffectRecoveryResult) error {
-	parentID := WorkflowID(input.Identity.TenantID, input.Identity.UserID, input.RunID)
+	parentID := scopedWorkflowID(input.Identity, input.RunID)
 	err := workflow.SignalExternalWorkflow(ctx, parentID, "", signalEffectRecoveryCompleted, EffectRecoveryCompletedSignal{
 		RunID: input.RunID, PlanRevision: input.PlanRevision, SlotID: input.Slot.ID, Attempt: input.Attempt, Result: result,
 	}).Get(ctx, nil)

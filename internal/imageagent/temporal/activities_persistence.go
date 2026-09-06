@@ -10,7 +10,7 @@ import (
 )
 
 func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotResultActivityInput) error {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (a *Activities) PersistSlotResult(ctx context.Context, input PersistSlotRes
 // It is intentionally absent from RegisterActivities until Task 6 selects the
 // final production wire.
 func (a *Activities) PersistSlotResultV3(ctx context.Context, input PersistSlotResultV3ActivityInput) error {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ type slotResultPersistedEventPayload struct {
 }
 
 func (a *Activities) PersistRunState(ctx context.Context, input PersistRunStateActivityInput) error {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func (a *Activities) PersistWorkflowFailureV2(ctx context.Context, input Persist
 }
 
 func (a *Activities) persistWorkflowFailure(ctx context.Context, runID string, identity imageagent.ExecutionIdentity, failureCode, failureMessage, commitID string) error {
-	ctx, err := restoreActivityIdentity(ctx, identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, runID, identity)
 	if err != nil {
 		return err
 	}
@@ -315,7 +315,7 @@ func (a *Activities) persistWorkflowFailure(ctx context.Context, runID string, i
 }
 
 func (a *Activities) PersistPlanRevision(ctx context.Context, input PersistPlanRevisionActivityInput) error {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -371,7 +371,7 @@ func cloneTemporalBlock(block *imageagent.Block) *imageagent.Block {
 }
 
 func (a *Activities) PersistPendingCommand(ctx context.Context, input PersistPendingCommandActivityInput) error {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}

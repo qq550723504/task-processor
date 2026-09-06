@@ -15,11 +15,12 @@ import (
 )
 
 type Service struct {
-	repository    Repository
-	workflows     WorkflowClient
-	catalogs      AuthorizedAssetCatalog
-	startGate     TenantStartGate
-	imagePolicies ImagePolicyAvailability
+	organizationScope bool
+	repository        Repository
+	workflows         WorkflowClient
+	catalogs          AuthorizedAssetCatalog
+	startGate         TenantStartGate
+	imagePolicies     ImagePolicyAvailability
 }
 
 // TenantStartGate admits a run before any durable run state or workflow is
@@ -98,7 +99,7 @@ func NewService(repository Repository, workflows WorkflowClient, catalogs Author
 }
 
 func (s *Service) Start(ctx context.Context, input StartRunInput) error {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return err
 	}
@@ -169,7 +170,8 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		return fmt.Errorf("%w: validate authorized image assets: %v", ErrValidation, err)
 	}
 	run := Run{
-		ID: input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
+		ScopeProtocol: identity.ScopeProtocol,
+		ID:            input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
 		ImagePolicyContext: input.ImagePolicyContext,
 		TenantID:           identity.TenantID, UserID: identity.UserID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
@@ -184,6 +186,10 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 	if err != nil {
 		return fmt.Errorf("initialize image agent run: %w", err)
 	}
+	identity, err = s.identityForRun(identity, projection.Run)
+	if err != nil {
+		return err
+	}
 	return s.workflows.StartManual(ctx, WorkflowStart{
 		Run: projection.Run, Plan: projection.Plan, Identity: identity,
 		MaxConcurrentSlots: projection.Run.MaxConcurrentSlots,
@@ -197,7 +203,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 // asset, and delegates to Start so admission, idempotent replay, and workflow
 // ingress reuse the generic run-creation semantics unchanged.
 func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (TaskRunLaunchResult, error) {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return TaskRunLaunchResult{}, err
 	}
@@ -273,7 +279,7 @@ func (s *Service) LaunchTaskRun(ctx context.Context, input TaskRunLaunchInput) (
 // creating a run. The workspace launcher uses it to force an explicit
 // source selection; crawler ordering never establishes user intent.
 func (s *Service) PreflightTaskRunAssets(ctx context.Context, input TaskRunAssetsInput) (TaskRunAssetPreflight, error) {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return TaskRunAssetPreflight{}, err
 	}
@@ -380,7 +386,7 @@ func validateTaskLaunchStyleIDs(catalog AssetCatalog, styleIDs []string) error {
 // RestartFailed exposes the same-request recovery path using only immutable,
 // owner-scoped inputs already persisted with the run.
 func (s *Service) RestartFailed(ctx context.Context, runID string) error {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return err
 	}
@@ -397,6 +403,10 @@ func (s *Service) RestartFailed(ctx context.Context, runID string) error {
 }
 
 func (s *Service) startExistingProjection(ctx context.Context, projection RunProjection, identity ExecutionIdentity) error {
+	identity, err := s.identityForRun(identity, projection.Run)
+	if err != nil {
+		return err
+	}
 	// The workflow is already durable (Temporal USE_EXISTING conflict policy
 	// keyed by run ID); StartManual on an existing projection is a re-dispatch
 	// of the same workflow, not a new paid execution.
@@ -427,7 +437,7 @@ func (s *Service) validateImagePolicyAvailable(ctx context.Context, marketplace 
 }
 
 func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return RunProjection{}, err
 	}
@@ -531,7 +541,7 @@ func (s *Service) Cancel(ctx context.Context, runID string, planRevision int64, 
 }
 
 func (s *Service) Resume(ctx context.Context, runID, actionID string) (CommandAcknowledgement, error) {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return CommandAcknowledgement{}, err
 	}
@@ -539,14 +549,21 @@ func (s *Service) Resume(ctx context.Context, runID, actionID string) (CommandAc
 	if runID == "" || ValidateActionID(actionID) != nil {
 		return CommandAcknowledgement{}, fmt.Errorf("%w: run ID and action ID are required", ErrValidation)
 	}
-	if _, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}); err != nil {
+	projection, err := s.repository.GetProjection(ctx, RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID})
+	if err != nil {
 		return CommandAcknowledgement{}, err
+	}
+	if s.organizationScope {
+		identity, err = s.identityForRun(identity, projection.Run)
+		if err != nil {
+			return CommandAcknowledgement{}, err
+		}
 	}
 	return s.workflows.Resume(ctx, ResumeCommand{RunID: runID, ActorID: identity.UserID, ActionID: actionID, Identity: identity})
 }
 
 func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int64, limit int) ([]RunEvent, error) {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +586,7 @@ func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int6
 }
 
 func (s *Service) commandIdentity(ctx context.Context, runID string, revision int64, actionID string) (ExecutionIdentity, error) {
-	identity, err := verifiedExecutionIdentity(ctx)
+	identity, err := s.executionIdentity(ctx)
 	if err != nil {
 		return ExecutionIdentity{}, err
 	}
@@ -584,8 +601,7 @@ func (s *Service) commandIdentity(ctx context.Context, runID string, revision in
 	if err != nil {
 		return ExecutionIdentity{}, err
 	}
-	identity.BusinessTaskID = projection.Run.BusinessTaskID
-	return identity, nil
+	return s.identityForRun(identity, projection.Run)
 }
 
 func verifiedExecutionIdentity(ctx context.Context) (ExecutionIdentity, error) {

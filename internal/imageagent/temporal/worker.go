@@ -31,7 +31,7 @@ func (c *Client) GetProjection(ctx context.Context, scope imageagent.RunScope, i
 	if c == nil || c.client == nil {
 		return imageagent.WorkflowProjection{}, fmt.Errorf("image agent temporal client is not configured")
 	}
-	if err := validateCommandIdentity(identity, scope.RunID); err != nil {
+	if err := c.validateCommandScope(identity, scope.RunID); err != nil {
 		return imageagent.WorkflowProjection{}, err
 	}
 	if strings.TrimSpace(scope.TenantID) != strings.TrimSpace(identity.TenantID) {
@@ -40,7 +40,7 @@ func (c *Client) GetProjection(ctx context.Context, scope imageagent.RunScope, i
 	if strings.TrimSpace(scope.OwnerUserID) != strings.TrimSpace(identity.UserID) {
 		return imageagent.WorkflowProjection{}, imageagent.ErrRunNotFound
 	}
-	encoded, err := c.client.QueryWorkflow(ctx, WorkflowID(identity.TenantID, identity.UserID, scope.RunID), "", QueryWorkflowProjection)
+	encoded, err := c.client.QueryWorkflow(ctx, scopedWorkflowID(identity, scope.RunID), "", QueryWorkflowProjection)
 	if err != nil {
 		return imageagent.WorkflowProjection{}, err
 	}
@@ -68,7 +68,8 @@ func (c *Client) ReplacePlan(ctx context.Context, command imageagent.ReplacePlan
 }
 
 type Client struct {
-	client sdkWorkflowClient
+	client            sdkWorkflowClient
+	organizationScope bool
 }
 
 func NewClient(client sdkWorkflowClient) *Client {
@@ -81,6 +82,20 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	}
 	if start.Run.Mode != imageagent.RunModeManual {
 		return fmt.Errorf("image agent workflow mode must be manual")
+	}
+	if err := c.validateIdentityScope(start.Identity); err != nil {
+		return err
+	}
+	if c.organizationScope {
+		start.Identity.RunID = start.Run.ID
+		if err := imageagent.ValidateOrganizationExecution(start.Identity, start.Run.ID); err != nil {
+			return err
+		}
+		if start.Run.ScopeProtocol != start.Identity.ScopeProtocol || start.Run.TenantID != start.Identity.TenantID || start.Run.UserID != start.Identity.UserID || start.Run.BusinessTaskID != start.Identity.BusinessTaskID {
+			return imageagent.ErrIdentityRequired
+		}
+	} else if start.Run.ScopeProtocol != "" {
+		return imageagent.ErrIdentityRequired
 	}
 	if err := imageagent.ValidateMaxConcurrentSlots(start.Run.MaxConcurrentSlots); err != nil {
 		return err
@@ -108,12 +123,12 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 	}
 	lifecycleDeadlineAt := startedAt.Add(V3WorkflowExecutionTimeout - V3LifecycleDeadlineSafetyMargin)
 	_, err = c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
-		ID:                       WorkflowID(start.Identity.TenantID, start.Identity.UserID, start.Run.ID),
-		TaskQueue:                TaskQueueV3,
+		ID:                       scopedWorkflowID(start.Identity, start.Run.ID),
+		TaskQueue:                c.taskQueue(),
 		WorkflowExecutionTimeout: V3WorkflowExecutionTimeout,
 		WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowIDReusePolicy:    enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
-	}, workflowNameImageAgent, WorkflowInput{
+	}, c.workflowName(), WorkflowInput{
 		RunID: start.Run.ID, Mode: imageagent.RunModeManual, Identity: start.Identity,
 		TargetPlatform: start.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(start.Run.ImagePolicyContext),
 		Plan: start.Plan, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(start.Run.MaxConcurrentSlots), WaitForCommands: true,
@@ -124,6 +139,9 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 }
 
 func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEffectCommand) error {
+	if err := c.validateIdentityScope(command.Identity); err != nil {
+		return err
+	}
 	if c == nil || c.client == nil {
 		return fmt.Errorf("image agent temporal client is not configured")
 	}
@@ -131,7 +149,7 @@ func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEf
 	if err != nil {
 		return err
 	}
-	return newRecoveryWorkflowStarter(c.client, TaskQueueV3)(ctx, EffectRecoveryWorkflowInput{
+	return newRecoveryWorkflowStarter(c.client, c.taskQueue())(ctx, EffectRecoveryWorkflowInput{
 		RunID: command.RunID, Identity: command.Identity, PlanRevision: command.PlanRevision,
 		TargetPlatform: projection.Run.TargetPlatform, ImagePolicyContext: policyContextPointer(projection.Run.ImagePolicyContext),
 		Slot: slot, Attempt: command.Attempt, ActionID: command.ActionID, AssetCatalog: projection.AssetCatalog,
@@ -186,7 +204,7 @@ func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (
 	if c == nil || c.client == nil {
 		return imageagent.CommandAcknowledgement{}, fmt.Errorf("image agent temporal client is not configured")
 	}
-	if err := validateCommandIdentity(command.Identity, command.RunID); err != nil {
+	if err := c.validateCommandScope(command.Identity, command.RunID); err != nil {
 		return imageagent.CommandAcknowledgement{}, err
 	}
 	if strings.TrimSpace(command.ActorID) != strings.TrimSpace(command.Identity.UserID) || imageagent.ValidateActionID(command.ActionID) != nil {
@@ -199,7 +217,7 @@ func (c *Client) Resume(ctx context.Context, command imageagent.ResumeCommand) (
 	}
 	handle, err := c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
 		UpdateID:   transportID,
-		WorkflowID: WorkflowID(command.Identity.TenantID, command.Identity.UserID, command.RunID),
+		WorkflowID: scopedWorkflowID(command.Identity, command.RunID),
 		UpdateName: updateResumeCommand, Args: []interface{}{input},
 		WaitForStage: sdkclient.WorkflowUpdateStageCompleted,
 	})
@@ -220,7 +238,7 @@ func (c *Client) executeAcceptedCommandUpdate(ctx context.Context, identity imag
 	}
 	_, err = c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
 		UpdateID:   transportID,
-		WorkflowID: WorkflowID(identity.TenantID, identity.UserID, runID),
+		WorkflowID: scopedWorkflowID(identity, runID),
 		UpdateName: updateName, Args: []interface{}{arg},
 		WaitForStage: sdkclient.WorkflowUpdateStageAccepted,
 	})
@@ -234,7 +252,7 @@ func (c *Client) executeCommandUpdate(ctx context.Context, identity imageagent.E
 	}
 	handle, err := c.client.UpdateWorkflow(ctx, sdkclient.UpdateWorkflowOptions{
 		UpdateID:   transportID,
-		WorkflowID: WorkflowID(identity.TenantID, identity.UserID, runID),
+		WorkflowID: scopedWorkflowID(identity, runID),
 		UpdateName: updateName, Args: []interface{}{arg},
 		WaitForStage: sdkclient.WorkflowUpdateStageCompleted,
 	})
@@ -286,7 +304,7 @@ func (c *Client) validateSignal(identity imageagent.ExecutionIdentity, runID str
 	if c == nil || c.client == nil {
 		return fmt.Errorf("image agent temporal client is not configured")
 	}
-	if err := validateCommandIdentity(identity, runID); err != nil {
+	if err := c.validateCommandScope(identity, runID); err != nil {
 		return err
 	}
 	if revision <= 0 || imageagent.ValidateActionID(actionID) != nil {
@@ -379,6 +397,15 @@ func NewCompatibilityCanaryWorker(client sdkclient.Client, taskQueue string) (sd
 }
 
 func (config WorkerConfig) selectedTaskQueue() (string, error) {
+	if config.WireMode == WorkerWireModeOrganization {
+		if config.TaskQueue != "" && config.TaskQueue != OrganizationTaskQueue {
+			return "", imageagent.ErrIdentityRequired
+		}
+		return OrganizationTaskQueue, nil
+	}
+	if config.TaskQueue == OrganizationTaskQueue {
+		return "", imageagent.ErrIdentityRequired
+	}
 	if err := validateWorkerWireMode(config.WireMode); err != nil {
 		return "", err
 	}
@@ -396,7 +423,7 @@ func (config WorkerConfig) selectedTaskQueue() (string, error) {
 
 func validateWorkerWireMode(mode WorkerWireMode) error {
 	switch mode {
-	case WorkerWireModeV2, WorkerWireModeV3:
+	case WorkerWireModeV2, WorkerWireModeV3, WorkerWireModeOrganization:
 		return nil
 	case "":
 		return fmt.Errorf("image agent temporal wire mode is required")
@@ -424,13 +451,22 @@ func RegisterWorkerForMode(registrar workerRegistrar, activities *Activities, mo
 	if err := validateWorkerWireMode(mode); err != nil {
 		return err
 	}
-	registrar.RegisterWorkflowWithOptions(ImageAgentWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageAgent})
+	if err := validateActivityMode(activities, mode); err != nil {
+		return err
+	}
+	name := workflowNameImageAgent
+	if mode == WorkerWireModeOrganization {
+		name = organizationWorkflowName
+	}
+	registrar.RegisterWorkflowWithOptions(ImageAgentWorkflow, sdkworkflow.RegisterOptions{Name: name})
 	if mode == WorkerWireModeV2 {
 		registrar.RegisterWorkflowWithOptions(ImageSlotWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameImageSlot})
 	} else {
 		registrar.RegisterWorkflowWithOptions(ImageSlotWorkflowV3, sdkworkflow.RegisterOptions{Name: "ImageSlotWorkflowV3"})
 		registrar.RegisterWorkflowWithOptions(ImageAgentEffectRecoveryWorkflow, sdkworkflow.RegisterOptions{Name: EffectRecoveryWorkflowName})
-		registrar.RegisterWorkflowWithOptions(ImageAgentCompatibilityCanaryWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameCompatibilityCanary})
+		if mode == WorkerWireModeV3 {
+			registrar.RegisterWorkflowWithOptions(ImageAgentCompatibilityCanaryWorkflow, sdkworkflow.RegisterOptions{Name: workflowNameCompatibilityCanary})
+		}
 	}
 	return RegisterActivitiesForMode(registrar, activities, mode)
 }
@@ -443,6 +479,13 @@ func newRecoveryWorkflowStarter(client sdkWorkflowClient, taskQueue string) Reco
 		taskQueue = strings.TrimSpace(taskQueue)
 		if taskQueue == "" {
 			return fmt.Errorf("image agent recovery workflow task queue is required")
+		}
+		if taskQueue == OrganizationTaskQueue {
+			if err := imageagent.ValidateOrganizationExecution(input.Identity, input.RunID); err != nil {
+				return err
+			}
+		} else if input.Identity.ScopeProtocol != "" || input.Identity.RunID != "" {
+			return imageagent.ErrIdentityRequired
 		}
 		_, err := client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 			ID:                       EffectRecoveryWorkflowIDForSlot(input.Identity, input.PlanRevision, input.RunID, input.Slot.ID, input.Attempt, input.ActionID),

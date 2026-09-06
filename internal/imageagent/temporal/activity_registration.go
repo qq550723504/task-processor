@@ -11,7 +11,7 @@ import (
 )
 
 func (a *Activities) PublishApproved(ctx context.Context, input PublishApprovedActivityInput) error {
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (a *Activities) PublishApprovedV3(ctx context.Context, input PublishApprove
 	if a.publisherV3 == nil {
 		return fmt.Errorf("image agent v3 approved asset publisher is required")
 	}
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -87,6 +87,9 @@ func RegisterActivitiesForMode(registrar activityRegistrar, activities *Activiti
 	}
 	if activities == nil {
 		return fmt.Errorf("image agent activities are required")
+	}
+	if err := validateActivityMode(activities, mode); err != nil {
+		return err
 	}
 	if err := validateWorkerWireMode(mode); err != nil {
 		return err
