@@ -114,3 +114,9 @@ Automatic runs compare actual persisted titles and versions before and after
 both ordinary replay and explicit lost-response confirmation. They verify
 non-title Catalog facts and existing Listing data, stop only owned processes and
 container, and require the Next port to be released before reporting cleanup.
+The fixture's Workbench context uses the existing StructuredAuditRecorder for
+LiveSwitch. Actual 200 -> 300 -> 200 switches verify the organization cookie,
+scoped Product collection and narrow audit events in task-private `audit.jsonl`.
+The `audit-missing`/`audit-unavailable`/`audit-restore` controls test absent or
+failing audit dependencies: a failed switch stays 503 and cannot change the
+effective-organization cookie. Production authorization/audit policy is unchanged.
