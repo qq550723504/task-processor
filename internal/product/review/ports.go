@@ -27,6 +27,7 @@ type Tx interface {
 }
 type Store interface {
 	Read(context.Context, Scope, string) (Record, error)
+	List(context.Context, Scope, PageRequest) (Page, error)
 	FindOperation(context.Context, Operation) (View, bool, error)
 	Run(context.Context, Operation, func(Tx) (View, error)) (View, error)
 }
