@@ -52,7 +52,7 @@ func review334Manager(t *testing.T, db *gorm.DB, endpoint string, logger *logrus
 	return manager
 }
 func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
-	for _, name := range []string{"success", "missing_usage", "semantic_score", "semantic_reasons", "provider_503", "provider_400", "deadline", "inbound_cancel", "record_failure", "record_db_failure", "both_fail", "response_cancel", "nil_authorization", "stale_config", "stale_route", "stale_price", "forged_cost", "known_quote", "config_drift", "missing_scope", "missing_run"} {
+	for _, name := range []string{"success", "missing_usage", "semantic_score", "semantic_reasons", "provider_503", "provider_400", "provider_401", "provider_429", "deadline", "inbound_cancel", "record_failure", "record_db_failure", "both_fail", "response_cancel", "nil_authorization", "stale_config", "stale_route", "stale_price", "forged_cost", "known_quote", "config_drift", "missing_scope", "missing_run"} {
 		t.Run(name, func(t *testing.T) {
 			f := newScope339Fixture(t)
 			var calls atomic.Int32
@@ -67,10 +67,16 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 					}
 					return
 				}
-				if name == "provider_503" || name == "provider_400" || name == "both_fail" {
+				if name == "provider_503" || name == "provider_400" || name == "provider_401" || name == "provider_429" || name == "both_fail" {
 					status := 503
 					if name == "provider_400" {
 						status = 400
+					}
+					if name == "provider_401" {
+						status = 401
+					}
+					if name == "provider_429" {
+						status = 429
 					}
 					w.WriteHeader(status)
 					fmt.Fprint(w, `{"error":{"message":"SENSITIVE-ERROR-BODY-SENTINEL","type":"server_error"}}`)
@@ -188,12 +194,18 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 				require.Equal(t, "B", row["tenant_id"])
 				require.Equal(t, "run-B", row["agent_run_id"])
 				require.Equal(t, false, row["estimated_cost_known"])
-				require.Equal(t, name != "missing_usage" && name != "provider_503" && name != "provider_400" && name != "deadline", row["usage_known"])
-				if name == "provider_503" || name == "provider_400" || name == "deadline" || name == "semantic_score" || name == "semantic_reasons" {
+				require.Equal(t, name != "missing_usage" && name != "provider_503" && name != "provider_400" && name != "provider_401" && name != "provider_429" && name != "deadline", row["usage_known"])
+				if name == "provider_503" || name == "provider_400" || name == "provider_401" || name == "provider_429" || name == "deadline" || name == "semantic_score" || name == "semantic_reasons" {
 					require.Equal(t, "failed", row["outcome"])
 					if name == "semantic_score" || name == "semantic_reasons" {
 						require.Equal(t, string(aicapability.ErrorInvalidProviderResponse), row["error_category"])
 						require.Equal(t, "invalid_review_output", row["error_code"])
+					}
+					if name == "provider_400" || name == "provider_401" {
+						require.Equal(t, string(aicapability.ErrorProviderRejected), row["error_category"])
+					}
+					if name == "provider_429" {
+						require.Equal(t, string(aicapability.ErrorRateLimited), row["error_category"])
 					}
 				} else {
 					require.Equal(t, "succeeded", row["outcome"])

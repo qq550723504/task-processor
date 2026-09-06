@@ -3,10 +3,12 @@ package imageagentworker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 	"unicode"
 
 	"github.com/google/uuid"
+	goopenai "github.com/sashabaranov/go-openai"
 	"github.com/sirupsen/logrus"
 	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
@@ -84,7 +86,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		record.PromptTokens, record.CompletionTokens, record.TotalTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens
 	}
 	if providerErr != nil {
-		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, aicapability.ErrorProviderUnavailable, "review_provider_failed"
+		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(providerErr), "review_provider_failed"
 		if errors.Is(providerErr, context.Canceled) {
 			record.ErrorCode = "canceled"
 		}
@@ -102,6 +104,30 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		settings.Logger.WithFields(logrus.Fields{"event": "image_review_record_degraded", "invocation_id": record.InvocationID, "outcome": record.Outcome, "record_status": "failed"}).Error("image review invocation recording failed")
 	}
 	return result, providerErr
+}
+
+func reviewProviderErrorCategory(err error) aicapability.ErrorCategory {
+	status := reviewProviderHTTPStatus(err)
+	switch {
+	case status == http.StatusTooManyRequests:
+		return aicapability.ErrorRateLimited
+	case status >= http.StatusBadRequest && status < http.StatusInternalServerError:
+		return aicapability.ErrorProviderRejected
+	default:
+		return aicapability.ErrorProviderUnavailable
+	}
+}
+
+func reviewProviderHTTPStatus(err error) int {
+	var apiErr *goopenai.APIError
+	if errors.As(err, &apiErr) && apiErr != nil {
+		return apiErr.HTTPStatusCode
+	}
+	var requestErr *goopenai.RequestError
+	if errors.As(err, &requestErr) && requestErr != nil {
+		return requestErr.HTTPStatusCode
+	}
+	return 0
 }
 
 func safeReviewReference(value string) string {
