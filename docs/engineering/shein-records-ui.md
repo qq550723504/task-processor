@@ -1,66 +1,100 @@
 # 任务中心：本地资料准备工作记录
 
-Refs #328 / PR #330。当前产品映射以 #328 正文和 R328-C1（issuecomment-5558848270）为准，替代旧独立 SHEIN 列表入口决定。#331 已合入，#329 已合入为 e0ba4afd4031ba7523ef7138e4055637ed7a19f8，对应 main CI 34029559189 成功。
+Refs #328 / PR #330；当前产品映射以 #328 正文、R328-C1（issuecomment-5558848270）及 #340 C340-H1 为准，替代旧独立 SHEIN 列表入口。#331 与 #329 已合入 main。本片已组合 #340 实际提交 503703a3ceef6e1fd5e3f8dcd0864add60fc6360；其 PR #341 未合入时，仍是最终 main 组合前置。
 
-## 当前交付边界
+## 已实现的用户路径
 
-任务中心两条现有登记路径 `/workbench/ai/tasks`、`/workbench/ai/tasks/completed` 已消费统一 ConsolePage、ConsoleToolbar、ConsoleState、Shell 和主题变量。当前仅完成布局及无数据接线的组件切片：运行页面明确“暂未启用”，不会查询投影或使用运行时假数据。导航仍不把该能力登记为 connected。#340 shared exports 已明确 planned，但尚未交付可 import 代码；实际 API 接线和最终联调继续等待该 owner，不阻止本片组件实现。
+现有 AI工作台 → 任务中心 `/workbench/ai/tasks` → 已完成 `/workbench/ai/tasks/completed` → 选择真实返回的工作记录 → 右侧工作结果“查看诊断” → 既有诊断 → “返回任务中心”。返回后重新读取当前授权范围，不复用上次列表作为授权凭据。
 
-展示组件使用 React 内容插槽，不定义第二份 wire schema、client 或 source→work projection。唯一合成成功 DTO 在 `task-center.test.tsx`，依据 #340 C340-H1，仅纠正 href；它不是接口或业务数据。列表选择、右侧详情、键盘焦点、空集合/未启用与覆盖范围可在组件层验证。
+两个页面复用 ConsolePage、ConsoleToolbar、ConsoleState、Shell、设计变量及企业 provider。任务中心与已完成项是实际连接页面；其余任务生命周期保持未接入。未配置现有受控来源时明确“暂未启用”，没有投影请求或运行时 fixture 回退。旧 `/workbench/shein-records` 独立入口继续404，诊断深链仍有效，不恢复旧首页卡片。
+
+#340 拥有并实际提供 `completed-work.ts` 的共享 DTO/严格解析与 `completed-work-client.ts` 的 fetchCompletedWork / typed error，以及同源 projection BFF。UI只消费实际模块，不复制 wire schema、client、source→work判断；测试中的合成 DTO 显式标注，仅用于组件/错误测试。
 
 ## Frame → 路由 / 组件 → 处置
 
-本轮先加载 figma-design-to-code，再实际读取 design context 和截图。参考文件 `tg48P46SSXl6TBy9lZwg63`、页面 `31:463`，未修改 Figma。
+本轮先加载 figma-design-to-code，再实际读取 design context 和截图。Figma文件 `tg48P46SSXl6TBy9lZwg63`、页面 `31:463`，未修改原稿。
 
-| Frame | 当前映射 | 处置 |
+| Frame | 映射 | 保留 / 差异 |
 | --- | --- | --- |
-| [427:3005 任务中心](https://www.figma.com/design/tg48P46SSXl6TBy9lZwg63?node-id=427-3005) | TaskCenterLayout / CompletedWorkResults / WorkResultDetail；上述两条任务中心路径 | 保留概览、状态切换、列表与右侧详情层级。仅消费本地资料准备完成记录，不伪造任务生命周期 |
-| [429:5323 店铺商品](https://www.figma.com/design/tg48P46SSXl6TBy9lZwg63?node-id=429-5323) | 本片不接该页面 | 原稿明确仅展示已发布商品；本地资料无 Store 关联，展示通用业务，不猜测店铺 |
-| #331 已验收框架 | Console Shell / tokens / Page-Toolbar-State / 原企业上下文 | 复用；main 同步冲突保留 ConsoleOverview，不恢复旧空首页或平台卡片 |
+| [427:3005 任务中心](https://www.figma.com/design/tg48P46SSXl6TBy9lZwg63?node-id=427-3005) | TaskCenterLayout / CompletedWorkResults / WorkResultDetail；两条现有任务中心路径 | 保留概览、状态切换、列表与右侧详情层级；仅显示真实本地资料准备完成记录 |
+| [429:5323 店铺商品](https://www.figma.com/design/tg48P46SSXl6TBy9lZwg63?node-id=429-5323) | 本片不挂载店铺商品 | 原稿仅展示已发布商品；没有 Store 关联则通用业务，不猜店铺归属 |
+| 已验收 #331 框架 | Console Shell / tokens / Page-Toolbar-State / 企业上下文 | 同步 main 保留 ConsoleOverview；任务中心导航最小接线，不重做导航/登录/主题 |
 
-1440×900 原稿：240px 侧栏、72px 顶栏、内容左右32px、概览88px、状态按钮38px、列表758px与详情356px、间隔22px；Noto Sans SC。局部 CSS module 使用已有语义变量，不新增主题框架。原稿低对比字色沿 Console 的 AA 适配；Toolbar 带标签/边框的通用容器比原稿状态行更高。390px 使用工程流式适配，不冒充已有 Figma 移动稿。
+1440×900 原稿：240px侧栏、72px顶栏、内容左右32px、概览88px、状态按钮38px、列表758px与详情356px、间隔22px；Noto Sans SC。局部 CSS module 仅消费现有 Console tokens。主题、字体栈和对比度沿共享框架，不建立第二套变量。
 
-| 参考 / 运行证据 | 范围 |
+| 对照区域 | 当前结果 / 分类 |
 | --- | --- |
-| [任务中心原稿](evidence/issue328/r328/figma-task-center.png)、[店铺商品边界原稿](evidence/issue328/r328/figma-store-products.png) | 当前设计参考图，含设计示例数据，不是实际经营结果 |
-| [1440未启用](evidence/issue328/r328/unavailable-1440.png)、[390未启用](evidence/issue328/r328/unavailable-390.png) | 本分支实际 Next 页面，由现有工作台点击任务中心进入；无投影API请求，axe无违规，无横向溢出 |
-| 已完成数据双栏 / 真实投影→诊断→返回 | NOT_RUN，待 #340 实际 BFF/client/启动器交接；不得用上面的图或组件fixture替代 |
+| Shell、导航、品牌、主题 | 复用已验收框架，任务中心/已完成高亮和面包屑来自现有登记；诊断仍是已有内部深链，不伪称对应新Figma终稿 |
+| 概览与状态行 | 三个概览统计明确未接入；通用业务卡无虚构店铺。ConsoleToolbar容器、刷新和coverage说明使数据区起点低于原稿，属于必要模板/范围提示适配 |
+| 列表与右侧详情 | 758/356比例、22间距；每页最多20条，列表滚动区域432px，避免批量记录使详情难以抵达。真实metadata、固定完成含义和重新授权入口替代原稿的假进度/AI建议。右侧内容比示例长，完整结果另附区域截图 |
+| 390px | 工程响应式：概览两列、状态/操作折行、列表和详情纵向排列；选择后焦点进入详情，返回记录列表恢复原行焦点；不是Figma移动稿 |
+| 未接入业务 | 运行中/待确认/暂停/全局统计/今日完成数/Chat/搜索/店铺筛选/AI建议明确不可用；不显示0、假进度或假成功 |
+
+## 设计与运行截图
+
+实际数据图绑定运行源码 `207282dfdc9a078de89a5c8893df1cc40cb9fc81`。后续若仅提交文档/PNG，不改变运行源码；最终HEAD及源码树关系在PR记录。参考图含Figma示例数字，不是实际经营数据。运行图为真实BFF→Go→隔离PG返回的本地记录。
+
+| 参考 | 实际 |
+| --- | --- |
+| [任务中心原稿1440](evidence/issue328/r328/figma-task-center.png) | [数据双栏1440×900](evidence/issue328/r328/completed-1440.png)、[完整右侧结果](evidence/issue328/r328/result-detail-1440.png) |
+| [店铺商品边界原稿](evidence/issue328/r328/figma-store-products.png) | 本片不接店铺商品、不制造发布状态 |
+| 390无移动终稿 | [390响应式完整页面](evidence/issue328/r328/completed-390.png) |
+| 共享浅色变量 | [浅色1440](evidence/issue328/r328/completed-light-1440.png) |
+| 实际空范围 / 错误 | [企业100空集合](evidence/issue328/r328/empty-1440.png)、[撤权](evidence/issue328/r328/actual-revoked-1440.png)、[权限不足](evidence/issue328/r328/actual-store-1440.png)、[超时](evidence/issue328/r328/actual-slow-1440.png)、[依赖故障](evidence/issue328/r328/actual-unavailable-1440.png) |
+
+[未启用1440](evidence/issue328/r328/unavailable-1440.png)、[未启用390](evidence/issue328/r328/unavailable-390.png)来自前一布局源码 e370d86f3b9ed33602198c0b98beb335c68a9717，仅证明当时未接线页面。当前无配置仍消费相同未启用布局，并有组件测试；不把旧截图当当前投影联调证据。
 
 ## 产品语义与隔离
 
-- coverage 仅为本地资料准备完成记录，不是企业全部任务。空集合也不证明其他业务为空。
-- “完成”只指本地资料创建已提交，不代表诊断通过或可发布。运行中、待确认、暂停、全局统计、今日完成数、Chat发起/搜索/筛选、AI建议均明确未接入，不用0或假进度替代。
-- source_record_id 不改称 task_id，不制造 AgentRun / BusinessTask；正确诊断链接为 `/workbench/shein-records/{source_record_id}/diagnostic`。
-- #340 独占 DTO、client、BFF 和对应共享fixture；#327 的 Go SQL/授权/cursor 仍是权威。前端不复制 projection 判定。
-- 展示组件在结果页成员变化时清空选择，覆盖 A→移除A→重新出现A。后续数据请求层必须按身份/企业/角色/请求序号重挂载，取消请求并清空分页、列表及详情；生产 scope、分页、撤权、迟到响应和诊断返回尚待接线验证。
-- `/workbench/shein-records` 独立列表继续404；原诊断深链有效。旧卡片及返回旧列表链接保持撤回。
+- coverage仅为本地资料准备完成记录，不是企业全部任务；实际空集合也不证明其他业务为空。
+- “完成”仅指本地资料创建已提交，不代表诊断通过或可发布。source_record_id不是task_id，无AgentRun、通用任务状态机、Store关系或第二事实源。
+- 使用服务器opaque cursor，刷新回首屏，不自动遍历；历史位置最多50个。快照版本保持精确字符串，不逐行请求Package或诊断。
+- 身份/企业/角色变化、切换中、退出/撤权销毁请求子树；分页/刷新使用新请求序号，取消旧请求并清空选择。A→移除A→再次A不会复活原选择。
+- gcTime/staleTime为0，不自动后台重试或窗口刷新；失败与成功空集合分开，原始错误不透出。上下文恢复只在同一user/org/roles恢复成功后重读，迟到恢复不能启动旧scope。
+- 诊断链接由#340严格绑定同一source UUID；打开时重新认证授权。记录出现在列表不授予未来访问权限；实际移除Listing权限后诊断403已验证。
 
-Legacy decision: RETIRE
-Reusable behavior: 原列表metadata精度、opaque cursor分页/刷新、取消/迟到响应和诊断授权测试作为提取依据。
-Current owner: 任务中心内容消费#340只读产品投影；领域事实仍归Listing。
-Cutover/deletion condition: 旧独立入口保持关闭，新布局不包旧页面、不增加兼容层。
+Legacy decision: EXTRACT
+Reusable behavior: 原metadata精度、opaque cursor分页/刷新、取消/迟到响应与同scope错误恢复。
+Current owner: 任务中心内容/请求子树消费#340只读投影；领域事实与授权仍归Listing/现有provider。
+Cutover/deletion condition: 已接新任务中心，旧独立入口保持撤回，原列表资产未挂载；不包旧页面、不增加兼容层。历史提交和截图保留为checkpoint。
 
-## 当前验证与重现
+## 验证证据
 
-前端目录运行：
+- 5项布局/选择TDD先红后绿；独立复核发现选择复活后补失败断言并修复。
+- 16项实际client接线TDD先红后绿；补共享decoder负例、实际provider/切换器、上下文恢复测试。
+- 当前关联14文件107项测试通过；涵盖shared provider/Shell/组织切换/诊断/新页面。局部eslint、typecheck、production build通过。
+- 新页面9项实际浏览器验证：1440/390导航→投影→选择→诊断重新授权→返回；前进/后退；分页/刷新；200→100→200；延迟实际HTTP响应；Go撤权/Store-only/超时/不可用；选中后移除权限再打开诊断403。
+- 页面axe（WCAG2/2.1 A/AA）无违规，无横向溢出；390 Escape关闭菜单并归还焦点。
+- 原诊断9项浏览器回归（真实正常链与显式合成故障分开）及旧入口关闭2项通过。
+- #340创建fixture使用真实Publisher/POST提交及同操作重放；本页面读其真实授权投影。外部身份与Auth.js会话签发为显式替身，Go/PG和BFF不是mock。真实ZITADEL、客户/生产环境、真实业务数据 NOT_RUN。
+- 最终CI/独立复核绑定最终完整SHA，写PR。#341尚未合入时，不能声称已完成main组合验收。
+
+## 可重复启动、访问与停止
+
+在包含本片与#340实际提交的checkout运行，需要已有Node/pnpm、Go、Docker和本地PostgreSQL镜像；不读取共享历史库。
 
 ```powershell
-npm.cmd exec -- vitest run src/components/workbench/task-center src/app/workbench/shein-records/entry-boundary.test.tsx src/components/workbench/shein-diagnostic src/components/workbench/workspace-app-shell.test.tsx
-npm.cmd run typecheck
-npm.cmd run build
+node web/listingkit-ui/scripts/shein-diagnostic-fixture.mjs --serve --completed-work
 ```
 
-组件5项先红后绿；独立复核发现选择复活后补失败断言并修正。关联54项组件测试通过；局部lint、typecheck、build通过。原入口关闭2项与诊断9项浏览器回归通过。最终完整 SHA 的 CI/独立复核状态维护在 PR；这些不是新投影全链验收。
+使用本次输出的manifest路径，第二个终端进入 `web/listingkit-ui`：
 
-本切片实际未启用页面的浏览器重现（原诊断 fixture，尚无 #340 投影）：
+```powershell
+$env:ISSUE328_FIXTURE_MANIFEST = '<本次fixture.json绝对路径>'
+npm.cmd exec -- playwright test --config playwright.task-center.config.ts
+```
 
-1. 仓库根运行 `node web/listingkit-ui/scripts/shein-diagnostic-fixture.mjs --serve`。使用任务隔离 Go / PostgreSQL，不连接共享历史库。
-2. 第二个 PowerShell 进入前端目录，将 `ISSUE328_FIXTURE_MANIFEST` 设为本次输出的 manifest 绝对路径，运行 `npm.cmd exec -- playwright test --config playwright.task-center.config.ts`。脚本用当前合成 session 从工作台点击任务中心与已完成，验证未启用、零投影请求、1440/390、axe及Escape归还焦点。
-3. 此阶段测试不显示合成成功DTO，不对外宣称投影可用。数据双栏仅在组件测试渲染批准DTO，最终真实浏览器用例在#340交付后补齐。
-4. 结束时在本次 manifest 的 `controlDirectory` 写空文件 `stop-fixture`，等待启动器正常核对内容/xmin并清理自有容器。
+脚本以合成会话从工作台点击现有任务中心/已完成，再选择服务返回记录；不会手工拼接fixture UUID直达诊断代替流程。需要本机手动体验可在同一命令附 `--debug --grep 1440px` 打开Playwright Inspector与受控浏览器，按步骤执行；不要复制/公开session或cookie。manifest中的origin仅在这次启动器运行期间有效，本文不提供已停止地址。
 
-本轮 fixture 已停止，Go TestSheinDiagnosticBrowserFixture PASS（332.04s），启动器正常退出0并删除自有容器。没有仍可访问的本轮地址。manifest/session/cookie/敏感trace不提交；真实ZITADEL、生产环境、真实账号与业务数据 NOT_RUN。
+正常清理：
+
+```powershell
+$fixtureInfo = Get-Content $env:ISSUE328_FIXTURE_MANIFEST -Raw | ConvertFrom-Json
+New-Item -ItemType File -Path (Join-Path $fixtureInfo.controlDirectory 'stop-fixture') | Out-Null
+```
+
+等待启动器退出0，确认Go内容/xmin只读断言通过、自有容器已删除。所有本轮资源均正常停止；manifest、session、cookie及敏感trace不提交。最终清理耗时和证据见PR。
 
 ## 历史检查点
 
-旧7c6cf76的工作台卡片→独立列表截图和流程均为已撤回的历史证据；a085c784修正撤回入口。保留历史图不代表当前可访问能力。本次接续保持原分支/PR，无 reset、强推、合并、关单或部署授权。
+旧7c6cf76的工作台卡片→独立列表流程和原图片均已撤回；a085c784修正继续保留。#331框架已交付，不能再引用原Paused描述作为当前状态。本片未合并、关单、部署或操作真实账号/业务数据；父Issue保持open。
