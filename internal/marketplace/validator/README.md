@@ -1,5 +1,52 @@
 # Deterministic Validator Contract — Issue #34, slice A
 
+## Content-bound diagnostics (Issue #318)
+
+The v1 API and strict Snapshot checks remain unchanged. The opt-in SHEIN
+`DiagnosticValidator.Validate(BoundRequest[[]byte])` uses rule version
+`shein.offline_package.v2` and binding version `shein.persisted-input.go-json.v1`.
+It accepts persisted JSON, not an in-memory Package with private resolver state.
+Both versions call one shared evaluator; neither retries the other version.
+
+`publishing/shein.DecodePersistedPackageStrict` creates the exclusive normalized
+copy used for both SHA-256 identity and rule evaluation. Raw input, normalized
+binding envelope, and encoded report each have a 2 MiB limit; JSON depth is 64.
+Duplicate/unknown/case-mismatched fields, invalid UTF-8 or surrogate pairs,
+numeric overflow/underflow, conflicting aliases and trailing values fail closed.
+Strict field decoding reuses pinned `sigs.k8s.io/json`; the root Package custom
+decoder is bypassed, with a test auditing reachable custom decoders. Numbers use
+the current Go schema's numeric semantics, including ordinary binary64 rounding.
+Private resolver maps cannot be supplied through persisted JSON.
+
+Binding hashes Go JSON encoding of the ordered envelope `binding_version`,
+`marketplace`, `site`, `action`, `rule_version`, `package`. Map keys are sorted;
+array order is significant. Existing Package normalization/MarshalJSON defines
+alias and nil/empty behavior; fixed vectors pin these and nested SDK fields.
+This is a versioned Go encoding, not a cross-language JSON canonicalization API.
+Future writers may use existing `json.Marshal(Package)` and must admit the bytes
+through `DecodePersistedPackageStrict`; encoding alone is not admission. This
+slice introduces no persistence writer/helper, schema or alternate encoder.
+
+ReadAt and EvaluatedAt must be supplied and ordered. They do not enter the digest
+and do not establish freshness. ExpectedDigest is an optional independent compare
+against loaded content, not CAS, a permission proof or an automatic self-check.
+External freshness must be explicitly `not_evaluated` with no evidence, or carry
+bounded owner/policy identifiers, subject digest, observation and exclusive expiry
+times. No current time or TTL is invented. Well-formed known adverse evidence
+returns StaleInput even for partial coverage; partial valid evidence is rejected.
+Evidence is a trusted caller assertion, not authenticated by this pure package.
+Consumers requiring freshness must call RequireFreshness and cannot treat unknown
+as valid. Live template, authorization, cookie, POD, human review, asset consent
+and submission gates remain explicitly not evaluated.
+
+The result is diagnostic_only with scoped offline_checks and separate action
+policy, never a top-level submission permission. Every operational error returns
+a zero result; business blockers remain successful diagnostic findings. The
+caller owns loading, deadlines and cancellation before/after bounded synchronous
+compute. No I/O, goroutines, clock, randomness, persistence or runtime wiring is
+introduced. Organization reads and writer ownership remain Issue #319; #315 is
+paused. v1 has no production HTTP/Tool callers to migrate in this slice.
+
 This is an offline, compute-only preparation slice under the Marketplace owner.
 Authority: Issue #34, `docs/architecture/project-target-architecture.md`, Product
 Phase 3 and the Legacy Hard-Cut Policy. It does not complete Issue #34.

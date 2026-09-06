@@ -6,6 +6,16 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
+// conflictingPersistedAliases keeps alias inspection at the existing semantic
+// codec boundary. Strict admission calls it before normalization can select one
+// of two conflicting persisted facts; it adds no historical fallback or reader.
+func conflictingPersistedAliases(pkg *Package) bool {
+	return (pkg.DraftPayload != nil && pkg.RequestDraft != nil && !equalPersistedAliases(pkg.DraftPayload, pkg.RequestDraft)) ||
+		(pkg.PreviewPayload != nil && pkg.PreviewProduct != nil && !equalPersistedAliases(pkg.PreviewPayload, pkg.PreviewProduct)) ||
+		(pkg.SubmissionState != nil && pkg.Submission != nil && !equalPersistedAliases(pkg.SubmissionState, pkg.Submission)) ||
+		(pkg.FinalSubmissionDraft != nil && pkg.FinalDraft != nil && !equalPersistedAliases(pkg.FinalSubmissionDraft, pkg.FinalDraft))
+}
+
 func NormalizePackageSemanticFields(pkg *Package) *Package {
 	if pkg == nil {
 		return nil
