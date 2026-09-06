@@ -16,6 +16,9 @@ async function openReport(page: Page) {
   await page.goto(pagePath);
   const actual = await response;
   expect(actual.status()).toBe(200);
+  expect(actual.request().method()).toBe("GET");
+  expect(actual.request().headers().authorization).toBeUndefined();
+  expect(actual.request().headers()["x-expected-organization-id"]).toBe("200");
   const payload = await actual.json();
   expect(payload.diagnostic_only).toBe(true);
   expect(payload.action).toBe("publish");
@@ -26,8 +29,11 @@ async function openReport(page: Page) {
 }
 
 test("actual browser → BFF → Go → isolated PG: refresh, digest, action and organization switch", async ({ page }, info) => {
+  const requestedOrigins = new Set<string>();
+  page.on("request", (request) => requestedOrigins.add(new URL(request.url()).origin));
   await page.setViewportSize({ width: 1440, height: 1000 });
   const first = await openReport(page);
+  expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations).toEqual([]);
   await page.screenshot({ path: info.outputPath("desktop-real-bff.png"), fullPage: true });
   let response = page.waitForResponse((r) => r.url().includes(diagnosticPath));
   await page.getByRole("button", { name: "重新检查", exact: true }).click();
@@ -45,13 +51,15 @@ test("actual browser → BFF → Go → isolated PG: refresh, digest, action and
   response = page.waitForResponse((r) => r.url().includes(diagnosticPath));
   await page.getByLabel("当前企业", { exact: true }).selectOption("100");
   expect((await response).status()).toBe(404);
-  await expect(page.getByRole("alert")).toContainText("资料不存在或当前账号不可读取");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("资料不存在或当前账号不可读取");
   await expect(page.getByText("发现需要处理的问题")).toHaveCount(0);
   response = page.waitForResponse((r) => r.url().includes(diagnosticPath));
   await page.getByLabel("当前企业", { exact: true }).selectOption("200");
   expect((await response).status()).toBe(200);
   await expect(page.getByLabel("检查动作")).toHaveValue("publish");
   await expect(page.getByText("发现需要处理的问题")).toBeVisible();
+  expect(requestedOrigins.has(fixture.goOrigin)).toBe(false);
+  expect(requestedOrigins.has(fixture.contextOrigin)).toBe(false);
 });
 
 test("actual 390px page: keyboard disclosure, no horizontal overflow and accessibility", async ({ page }, info) => {
@@ -71,8 +79,18 @@ test("actual 390px page: keyboard disclosure, no horizontal overflow and accessi
 test("actual controlled Store-only identity cannot read Listing diagnostics", async ({ page, context }) => {
   await context.addCookies(fixture.sessions.store);
   await page.goto(pagePath);
-  await expect(page.getByRole("alert")).toContainText("没有读取这份资料的权限");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("没有读取这份资料的权限");
   await expect(page.getByText("发现需要处理的问题")).toHaveCount(0);
+});
+
+test("actual Go identity timeout clears prior UI success", async ({ page, context }) => {
+  await openReport(page);
+  await context.addCookies(fixture.sessions.slow);
+  const response = page.waitForResponse((r) => r.url().includes(diagnosticPath));
+  await page.getByRole("button", { name: "重新检查", exact: true }).click();
+  await expect(page.getByText("发现需要处理的问题")).toHaveCount(0);
+  expect((await response).status()).toBe(504);
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("检查超时");
 });
 
 async function syntheticResponse(context: BrowserContext, payload: unknown, status: number) {
@@ -89,7 +107,7 @@ for (const [name, status, payload, text] of [
   test(`synthetic browser response only: ${name}`, async ({ page, context }) => {
     await syntheticResponse(context, payload, status);
     await page.goto(pagePath);
-    await expect(page.getByRole("alert")).toContainText(text);
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(text);
     await expect(page.getByText("发现需要处理的问题")).toHaveCount(0);
   });
 }

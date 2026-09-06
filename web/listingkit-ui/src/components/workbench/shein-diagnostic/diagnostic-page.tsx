@@ -33,10 +33,10 @@ function ScopedDiagnostic({ recordId, organizationId, organizationName, scope }:
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6">
-        <p className="text-sm text-muted-foreground">{organizationName}</p>
+        <p className="text-sm text-foreground/75">{organizationName}</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">SHEIN 资料诊断</h1>
         <p className="mt-3 flex items-center gap-2 text-sm font-medium"><ShieldCheck aria-hidden="true" className="size-4 shrink-0" />本地资料 / 仅离线检查</p>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">这是硕米保存的本地资料，不是已保存到 SHEIN 的商品。检查不会修改资料或向平台提交。</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground/75">这是硕米保存的本地资料，不是已保存到 SHEIN 的商品。检查不会修改资料或向平台提交。</p>
       </div>
       <Card className="mb-5 p-4 sm:p-5">
         <label className="grid max-w-sm gap-2 text-sm font-medium">
@@ -75,7 +75,7 @@ function DiagnosticRequest({ recordId, organizationId, scope, request, check }: 
       <div className="mb-4 flex flex-wrap gap-3">
         <Button onClick={() => check(request.action)}><RefreshCw aria-hidden="true" />重新检查</Button>
         <Button variant="outline" onClick={() => check(request.action, result.data.input.actual_digest)}>复核同一内容</Button>
-        <p className="w-full text-xs text-muted-foreground">重新检查读取当前内容；同内容复核会核对本次内容摘要，发生变化时提示。</p>
+        <p className="w-full text-xs text-foreground/75">重新检查读取当前内容；同内容复核会核对本次内容摘要，发生变化时提示。</p>
       </div>
       <DiagnosticReport report={result.data} recordId={recordId} />
     </>
@@ -121,5 +121,5 @@ function DiagnosticError({ error, retry }: { error: unknown; retry: () => void }
 }
 
 function ContextState({ message }: { message: string }) {
-  return <p className="p-6 text-sm text-muted-foreground" role="status">{message}</p>;
+  return <p className="p-6 text-sm text-foreground/75" role="status">{message}</p>;
 }
