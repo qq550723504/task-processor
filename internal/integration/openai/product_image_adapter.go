@@ -10,6 +10,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
 	"task-processor/internal/ai"
 	"task-processor/internal/integration/httpimage"
@@ -37,9 +38,11 @@ func DefaultProductImagePrompts() ProductImagePrompts {
 }
 
 type ProductImageAdapterConfig struct {
-	ImageClient  ai.ImageGenerator
-	ReviewClient ai.ChatCompleter
-	Prompts      ProductImagePrompts
+	ReviewMaxRetries *int
+	ReviewObserver   func(ProductImageReviewObservation)
+	ImageClient      ai.ImageGenerator
+	ReviewClient     ai.ChatCompleter
+	Prompts          ProductImagePrompts
 
 	Provider                   string
 	ImageModel                 string
@@ -59,6 +62,12 @@ type ProductImageAdapterConfig struct {
 	CostUpperBoundKnown      bool
 
 	GeneratedImageFetcher func(context.Context, string) ([]byte, error)
+}
+
+// ProductImageReviewObservation carries metadata only, never prompt or image content.
+type ProductImageReviewObservation struct {
+	PromptHash, PromptVersion, ProviderRequestID string
+	Usage                                        ai.Usage
 }
 
 type ProductImageAdapter struct {
@@ -184,9 +193,17 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 	}
 	temperature := float32(0)
 	response, err := a.config.ReviewClient.CreateChatCompletion(ctx, &ai.ChatCompletionRequest{
-		Model: a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
+		MaxRetries: a.config.ReviewMaxRetries,
+		Model:      a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
 		Messages: []ai.ChatCompletionMessage{{Role: "user", MultiContent: parts}},
 	})
+	if a.config.ReviewObserver != nil {
+		observation := ProductImageReviewObservation{PromptHash: hashReviewParts(parts), PromptVersion: a.config.Prompts.Version}
+		if response != nil {
+			observation.ProviderRequestID, observation.Usage = response.ID, response.Usage
+		}
+		a.config.ReviewObserver(observation)
+	}
 	if err != nil {
 		return productimage.Review{}, err
 	}
@@ -208,6 +225,125 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 		return productimage.Review{}, productimage.ErrOutputValidation
 	}
 	return productimage.Review{Score: payload.Score, NeedsHumanReview: payload.NeedsHumanReview, Reasons: payload.Reasons}, nil
+}
+
+const reviewHashWriteChunkBytes = 8 << 10
+
+type reviewHashWriter interface {
+	Write([]byte) (int, error)
+}
+
+// hashReviewParts preserves the JSON encoding previously used for the ledger
+// prompt hash, but never builds a second aggregate payload beside parts.
+func hashReviewParts(parts []ai.ChatCompletionContentPart) string {
+	hash := sha256.New()
+	writeReviewHashLiteral(hash, "[")
+	for index, part := range parts {
+		if index > 0 {
+			writeReviewHashLiteral(hash, ",")
+		}
+		writeReviewHashLiteral(hash, `{"type":`)
+		writeReviewHashJSONString(hash, part.Type)
+		if part.Text != "" {
+			writeReviewHashLiteral(hash, `,"text":`)
+			writeReviewHashJSONString(hash, part.Text)
+		}
+		if part.ImageURL != nil {
+			writeReviewHashLiteral(hash, `,"image_url":{"url":`)
+			writeReviewHashJSONString(hash, part.ImageURL.URL)
+			if part.ImageURL.Detail != "" {
+				writeReviewHashLiteral(hash, `,"detail":`)
+				writeReviewHashJSONString(hash, part.ImageURL.Detail)
+			}
+			writeReviewHashLiteral(hash, "}")
+		}
+		writeReviewHashLiteral(hash, "}")
+	}
+	writeReviewHashLiteral(hash, "]")
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func writeReviewHashJSONString(writer reviewHashWriter, value string) {
+	writeReviewHashLiteral(writer, `"`)
+	start := 0
+	for index := 0; index < len(value); {
+		byteValue := value[index]
+		if byteValue >= utf8.RuneSelf {
+			runeValue, size := utf8.DecodeRuneInString(value[index:])
+			if runeValue != utf8.RuneError || size != 1 {
+				if runeValue != '\u2028' && runeValue != '\u2029' {
+					index += size
+					continue
+				}
+				writeReviewHashStringRange(writer, value[start:index])
+				if runeValue == '\u2028' {
+					writeReviewHashLiteral(writer, `\u2028`)
+				} else {
+					writeReviewHashLiteral(writer, `\u2029`)
+				}
+				index += size
+				start = index
+				continue
+			}
+			writeReviewHashStringRange(writer, value[start:index])
+			writeReviewHashLiteral(writer, `\ufffd`)
+			index++
+			start = index
+			continue
+		}
+		escaped := ""
+		switch byteValue {
+		case '\\':
+			escaped = `\\`
+		case '"':
+			escaped = `\"`
+		case '\b':
+			escaped = `\b`
+		case '\f':
+			escaped = `\f`
+		case '\n':
+			escaped = `\n`
+		case '\r':
+			escaped = `\r`
+		case '\t':
+			escaped = `\t`
+		case '<':
+			escaped = `\u003c`
+		case '>':
+			escaped = `\u003e`
+		case '&':
+			escaped = `\u0026`
+		default:
+			if byteValue < 0x20 {
+				escaped = `\u00` + hex.EncodeToString([]byte{byteValue})
+			}
+		}
+		if escaped == "" {
+			index++
+			continue
+		}
+		writeReviewHashStringRange(writer, value[start:index])
+		writeReviewHashLiteral(writer, escaped)
+		index++
+		start = index
+	}
+	writeReviewHashStringRange(writer, value[start:])
+	writeReviewHashLiteral(writer, `"`)
+}
+
+func writeReviewHashLiteral(writer reviewHashWriter, value string) {
+	writeReviewHashStringRange(writer, value)
+}
+
+func writeReviewHashStringRange(writer reviewHashWriter, value string) {
+	for len(value) > 0 {
+		length := len(value)
+		if length > reviewHashWriteChunkBytes {
+			length = reviewHashWriteChunkBytes
+		}
+		_, _ = writer.Write([]byte(value[:length]))
+		value = value[length:]
+	}
 }
 
 func (a *ProductImageAdapter) authorize(authorization *productimage.UsageQuote, operation string, maximumOutputs int64) error {

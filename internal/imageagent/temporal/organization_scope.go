@@ -41,7 +41,7 @@ func (a *Activities) restoreExecutionIdentity(ctx context.Context, runID string,
 		return nil, err
 	}
 	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: run.TenantID, EffectiveOrganizationID: run.TenantID, UserID: run.UserID})
-	return aiidentity.WithIdentity(ctx, aiidentity.Identity{TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID, TraceID: identity.TraceID}), nil
+	return aiidentity.WithIdentity(ctx, aiidentity.Identity{AgentRunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID, TraceID: identity.TraceID}), nil
 }
 
 func validateWorkflowScope(ctx workflow.Context, identity imageagent.ExecutionIdentity, runID string) error {

@@ -83,7 +83,8 @@ const imageAgentOpenAIClientName = "image_gpt_image_2"
 const imageAgentReviewOpenAIClientName = "default"
 
 type routedOpenAIProductImageProvider struct {
-	manager *openaiclient.Manager
+	manager          *openaiclient.Manager
+	reviewGovernance *OrganizationReviewOptions
 }
 
 func newRoutedOpenAIProductImageProvider(manager *openaiclient.Manager) (*routedOpenAIProductImageProvider, error) {
@@ -118,6 +119,9 @@ func (p *routedOpenAIProductImageProvider) RenderScene(ctx context.Context, requ
 }
 
 func (p *routedOpenAIProductImageProvider) Review(ctx context.Context, request productimage.ReviewRequest) (productimage.Review, error) {
+	if p != nil && p.reviewGovernance != nil {
+		return p.recordedReview(ctx, request)
+	}
 	adapter, err := p.adapter(ctx, "review", request.Authorization)
 	if err != nil {
 		return productimage.Review{}, err
@@ -133,7 +137,7 @@ func (p *routedOpenAIProductImageProvider) QuoteUsage(ctx context.Context, reque
 	return adapter.QuoteUsage(ctx, request)
 }
 
-func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operation string, authorization *productimage.UsageQuote) (*openaiclient.ProductImageAdapter, error) {
+func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operation string, authorization *productimage.UsageQuote, options ...func(*openaiclient.ProductImageAdapterConfig)) (*openaiclient.ProductImageAdapter, error) {
 	if p == nil || p.manager == nil || ctx == nil {
 		return nil, productimage.ErrExternalCapabilityUnavailable
 	}
@@ -171,7 +175,7 @@ func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operatio
 	if err != nil {
 		return nil, fmt.Errorf("resolve image agent review client: %w", err)
 	}
-	return openaiclient.NewProductImageAdapter(openaiclient.ProductImageAdapterConfig{
+	config := openaiclient.ProductImageAdapterConfig{
 		ImageClient: images, ReviewClient: reviewer, Prompts: openaiclient.DefaultProductImagePrompts(),
 		Provider: imageRoute.ProviderID, ImageModel: imageRoute.ModelID, ReviewModel: reviewRoute.ModelID,
 		RouteReference: imageAgentRouteReference(imageRoute), CredentialReference: imageRoute.CredentialReference,
@@ -180,7 +184,16 @@ func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operatio
 		ReviewCredentialReference: reviewRoute.CredentialReference, ReviewConfigurationVersion: reviewRoute.ConfigurationVersion,
 		PricingVersion:      "unpriced-v1",
 		MaximumSceneOutputs: 1, CostUpperBoundKnown: false,
-	})
+	}
+	if operation == "review" && p.reviewGovernance != nil && p.reviewGovernance.Pricing != nil {
+		config.PricingVersion = p.reviewGovernance.Pricing.Version
+		config.ReviewCostMicros = p.reviewGovernance.Pricing.MaximumCostMicros
+		config.CostUpperBoundKnown = operation == "review"
+	}
+	for _, option := range options {
+		option(&config)
+	}
+	return openaiclient.NewProductImageAdapter(config)
 }
 
 func imageAgentRouteReference(route openaiclient.EffectiveClientRoute) string {

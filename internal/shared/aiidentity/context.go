@@ -9,6 +9,7 @@ import (
 // It is provider-neutral so queue workers and domain packages do not depend on
 // a concrete model client package just to carry request identity.
 type Identity struct {
+	AgentRunID     string
 	TenantID       string
 	UserID         string
 	BusinessTaskID string
@@ -22,6 +23,7 @@ func WithIdentity(ctx context.Context, identity Identity) context.Context {
 		ctx = context.Background()
 	}
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
+	identity.AgentRunID = strings.TrimSpace(identity.AgentRunID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
 	identity.BusinessTaskID = strings.TrimSpace(identity.BusinessTaskID)
 	identity.TraceID = strings.TrimSpace(identity.TraceID)
@@ -33,6 +35,7 @@ func FromContext(ctx context.Context) Identity {
 		return Identity{}
 	}
 	identity, _ := ctx.Value(contextKey{}).(Identity)
+	identity.AgentRunID = strings.TrimSpace(identity.AgentRunID)
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
 	identity.BusinessTaskID = strings.TrimSpace(identity.BusinessTaskID)

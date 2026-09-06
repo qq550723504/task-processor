@@ -183,6 +183,12 @@ func (c *reviewCapability) Review(ctx context.Context, request ReviewRequest) (R
 	if err != nil {
 		return Review{}, capabilityError(err)
 	}
+	return ValidateReview(review)
+}
+
+// ValidateReview is the semantic boundary shared by Review callers that need
+// to persist the final outcome before returning it through the public port.
+func ValidateReview(review Review) (Review, error) {
 	if math.IsNaN(review.Score) || math.IsInf(review.Score, 0) || review.Score < 0 || review.Score > 1 {
 		return Review{}, ErrOutputValidation
 	}
