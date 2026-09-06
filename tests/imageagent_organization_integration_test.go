@@ -306,6 +306,31 @@ func TestOrganizationScopeHTTPPersistenceAndActivity(t *testing.T) {
 	oldProjection, err := legacy.GetProjection(context.Background(), oldScope)
 	require.NoError(t, err)
 	require.Empty(t, oldProjection.Run.ScopeProtocol)
+	for _, tc := range []struct {
+		name       string
+		repository imageagent.Repository
+		projection imageagent.RunProjection
+	}{
+		{"organization cannot mutate historical", repo, oldProjection},
+		{"historical cannot mutate organization", legacy, stored},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			direct := tc.repository.(interface {
+				UpdateRun(context.Context, imageagent.RunScope, int64, imageagent.RunMutation) error
+				AppendPlan(context.Context, imageagent.RunScope, int64, imageagent.Plan) error
+			})
+			scope := imageagent.ScopeForRun(tc.projection.Run)
+			err := direct.UpdateRun(context.Background(), scope, tc.projection.Run.Version, imageagent.RunMutation{Status: imageagent.RunStatusFailed, CurrentNode: "must-not-write", ActivePlanRevision: 1})
+			require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+			// Also reject a replay of an existing plan before consulting its receipt.
+			require.ErrorIs(t, direct.AppendPlan(context.Background(), scope, 1, tc.projection.Plan), imageagent.ErrRunNotFound)
+			plan := tc.projection.Plan
+			plan.Revision = 2
+			plan.ParentRevision = 1
+			plan.IdempotencyKey = "must-not-append"
+			require.ErrorIs(t, direct.AppendPlan(context.Background(), scope, 1, plan), imageagent.ErrRunNotFound)
+		})
+	}
 	current, err := repo.GetProjection(context.Background(), scope)
 	require.NoError(t, err)
 	require.Equal(t, stored.Run, current.Run)

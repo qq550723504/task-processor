@@ -116,6 +116,7 @@ func (r *gormRepository) UpdateRun(ctx context.Context, scope imageagent.RunScop
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&runRecord{}).
 			Where("tenant_id = ? AND owner_user_id = ? AND id = ? AND version = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedVersion).
+			Where("scope_protocol = ?", r.scopeProtocol).
 			Updates(map[string]any{
 				"status":               string(mutation.Status),
 				"current_node":         mutation.CurrentNode,
@@ -157,6 +158,9 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := r.findRun(ctx, tx, scope); err != nil {
+			return err
+		}
 		if existing, found, err := findPlanByIdentity(ctx, tx, scope, planRow); err != nil {
 			return err
 		} else if found {
@@ -167,6 +171,7 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 		}
 		result := tx.Model(&runRecord{}).
 			Where("tenant_id = ? AND owner_user_id = ? AND id = ? AND active_plan_revision = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision).
+			Where("scope_protocol = ?", r.scopeProtocol).
 			Update("active_plan_revision", plan.Revision)
 		if result.Error != nil {
 			return fmt.Errorf("advance image agent plan revision: %w", result.Error)
