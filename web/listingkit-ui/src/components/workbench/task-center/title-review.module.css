@@ -3,6 +3,16 @@
 .accepted { color: var(--success); }
 .pendingMarker { background: var(--warning); }
 .acceptedMarker { background: var(--success); }
+.detailContent { font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.detailContent h3, .controls h3 { font-size: 15px; font-weight: 700; margin-top: 20px; }
+.detailContent section { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 4px; }
+.detailContent dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 8px 12px; margin: 16px 0; font-size: 12px; }
+.detailContent dt, .detailContent time, .controls p { color: var(--muted-foreground); }
+.detailContent details { margin-top: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; }
+.detailContent summary { cursor: pointer; }
+.detailContent li { margin: 12px 0; }
+.controls { overflow-wrap: anywhere; font-size: 13px; }
+.controls p { line-height: 1.75; margin-top: 10px; }
 .comparison h3, .comparison h4 { font-weight: 700; }
 .comparison h4 { font-size: 12px; margin-bottom: 8px; color: var(--muted-foreground); }
 .comparison p { white-space: pre-wrap; line-height: 1.75; }

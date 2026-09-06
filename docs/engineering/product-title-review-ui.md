@@ -44,9 +44,11 @@ LiveWrite；不证明任意自然语言真实性，不扩大 Threat Model。
 
 权威 owner：Product Review 管理 proposal/revision/decisions/receipt；Catalog 唯一商品
 writer，原 UoW 保证 Apply 原子性；#344 管理全部 wire/严格解码/HTTP 与错误语义。
-UI 没有数据库事务或本地持久账本。#344 当前仅锁定
-`src/lib/api/product-title-review.ts`、`product-title-review-client.ts`，导出/签名尚待交接。
-未实施前只允许无 wire 依赖的展示 slot；不虚构 import、复制 DTO 或运行时 fallback。
+UI 没有数据库事务或本地持久账本。直接消费 #344 已推送提交
+`ea6195309f4e16e0427118f9864e695202a85cba` 的
+`src/lib/api/product-title-review.ts`、`product-title-review-client.ts`。
+通过正常 merge 消费依赖，不复制 DTO/client；#344 后续修复和跨进程 fixture
+尚未作为本片已验证基线。组件样例只用于交互测试。
 
 | 事件/前置条件 | 浏览器效果 | 权威副作用及验证 |
 | --- | --- | --- |
@@ -60,6 +62,7 @@ UI 没有数据库事务或本地持久账本。#344 当前仅锁定
 | 已应用/拒绝 | 详情可读终态，动作停止，重新 GET 集合排除终态 | 不改原 Listing/平台状态；明确本次未操作平台 |
 | 切企业/用户/角色、退出、撤权、卸载 | scope key 重挂载；清列表/选择/编辑/意图/敏感结果，abort 等待 | 迟到响应检查 mounted/generation，不流入新 scope；取消不撤销提交 |
 | 403/上下文失败 | 隐藏敏感数据，显式恢复上下文后重新授权读取 | 不依据旧 admin/成功结果恢复权限 |
+| 集合 GET 与 POST 交错失败 | 普通集合错误只替换左列；保留独立详情及同 key 核实意图 | 权限拒绝则清空整个投影并释放页面锁；延迟集合失败测试 |
 | 未配置/空/网络/非法响应 | 分别显示 unavailable/empty/error，安全固定文案 | 无假数据或原始错误；不渲染任意 evidence 链接 |
 
 每个用户写意图只存于当前 scope 的内存；rerender/focus/reconnect/retry/effect 不 POST。
@@ -78,5 +81,7 @@ exact revision/冲突、双击、未知写显式核实、scope/撤权/卸载迟�
 不变、重建后新版本/receipt。1440 对照、390 长文本、焦点/dialog/axe 证据。
 最终 SHA 的 CI/独立完整切片复核在 PR 维护；SKIP/NOT_RUN 不等于 PASS。
 
-当前真实联调、TS 合同、运行截图尚 NOT_RUN，依赖 #344 实际交付。禁止以组件样例完成验收。
+TS 合同已接线，当前 Product 真实联调与 pending 运行截图仍 NOT_RUN，依赖 #343
+实际 Go 合同及 #344 跨进程 fixture。证据目录中的 completed/diagnostic 截图只证明
+此前既有只读路径回归；不能替代 Product 联调或本片最终 SHA 验收。
 Legacy decision: N/A，复用当前 Console owner；不消费 RETIRE 的 Task-first/Workspace。
