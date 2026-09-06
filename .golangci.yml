@@ -189,6 +189,7 @@ linters-settings:
           - "**/internal/product/enrichment/**/*.go"
           - "**/internal/product/asset/**/*.go"
           - "**/internal/product/image/**/*.go"
+          - "**/internal/product/review/*.go"
           - "**/internal/product/review/**/*.go"
         deny:
           - pkg: task-processor/internal/app

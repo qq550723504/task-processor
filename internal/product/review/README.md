@@ -54,7 +54,10 @@ not platform policy. Request <=32 KiB actual bytes, strict unknown/duplicate
 field rejection using existing sigs.k8s.io/json. No query parameters.
 10 s request/body/transaction budget; context reaches generation and SQL.
 Persisted proposal <=64 KiB and <=100 revisions; bound SQL projection before
-decode. Limits and rejected/canceled transport map to stable 400/403/404/409/
+decode. Pending/accepted saves reserve the worst-case decision/receipt space;
+edit cannot consume the final revision needed for acceptance. Strict wire checks
+reject malformed UTF-8 and unpaired UTF-16 escapes before JSON decoding.
+Limits and rejected/canceled transport map to stable 400/403/404/409/
 413/504 errors; dependency/unknown outcome 503. No raw dependency errors exposed.
 
 ## State and immutable history

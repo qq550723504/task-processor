@@ -126,6 +126,9 @@ func (r *Repository) Run(ctx context.Context, op review.Operation, fn func(revie
 func (t *transaction) Load(id string) (review.Record, error) { return load(t.db, t.op.Scope, id, true) }
 func (t *transaction) Replay() (review.View, bool, error)    { return replay(t.db, t.op) }
 func (t *transaction) Save(r review.Record) error {
+	if err := r.ValidateStorage(); err != nil {
+		return err
+	}
 	if r.Org != t.op.Scope.Org || !t.op.Scope.Admin && r.Owner != t.op.Scope.Actor {
 		return review.ErrForbidden
 	}

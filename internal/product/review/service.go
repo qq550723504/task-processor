@@ -124,7 +124,7 @@ func (s *Service) Get(ctx context.Context, id string) (View, error) {
 	return r.View(), nil
 }
 func (s *Service) Decide(ctx context.Context, key, id string, in DecisionInput) (View, error) {
-	return s.change(ctx, key, id, "decision", in, in.Action != "edit", func(tx Tx, r *Record, a Scope) error {
+	return s.change(ctx, key, id, "decision", in, in.Action != "edit", func(ctx context.Context, tx Tx, r *Record, a Scope) error {
 		if err := r.Decide(a.Actor, in); err != nil {
 			return err
 		}
@@ -153,7 +153,7 @@ func (s *Service) validatePatch(ctx context.Context, tx Tx, r *Record, a Scope) 
 	return base, nil
 }
 func (s *Service) Apply(ctx context.Context, key, id string, in ApplyInput) (View, error) {
-	return s.change(ctx, key, id, "apply", in, true, func(tx Tx, r *Record, a Scope) error {
+	return s.change(ctx, key, id, "apply", in, true, func(ctx context.Context, tx Tx, r *Record, a Scope) error {
 		if r.State != "accepted" || in.ExpectedRevision != r.Revision || in.ExpectedRevision == 0 {
 			return ErrConflict
 		}
@@ -177,7 +177,7 @@ func (s *Service) Apply(ctx context.Context, key, id string, in ApplyInput) (Vie
 		return nil
 	})
 }
-func (s *Service) change(ctx context.Context, key, id, kind string, input any, admin bool, mutate func(Tx, *Record, Scope) error) (View, error) {
+func (s *Service) change(ctx context.Context, key, id, kind string, input any, admin bool, mutate func(context.Context, Tx, *Record, Scope) error) (View, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	a, err := s.authorize(ctx, true, admin)
@@ -199,7 +199,7 @@ func (s *Service) change(ctx context.Context, key, id, kind string, input any, a
 		if v, found, e := tx.Replay(); e != nil || found {
 			return v, e
 		}
-		if e = mutate(tx, &r, a); e != nil {
+		if e = mutate(ctx, tx, &r, a); e != nil {
 			return View{}, e
 		}
 		if e = tx.Save(r); e != nil {

@@ -6,10 +6,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/review"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	sigjson "sigs.k8s.io/json"
@@ -65,6 +67,10 @@ func productReviewRequest(c *gin.Context, s *review.Service, kind string) {
 		return
 	}
 	if err == nil {
+		if !validReviewJSONUnicode(raw) {
+			reviewResponse(c, v, review.ErrInvalid)
+			return
+		}
 		var violations []error
 		violations, err = sigjson.UnmarshalStrict(raw, input)
 		if len(violations) > 0 {
@@ -85,6 +91,48 @@ func productReviewRequest(c *gin.Context, s *review.Service, kind string) {
 		v, err = s.Apply(ctx, keys[0], c.Param("proposal_id"), apply)
 	}
 	reviewResponse(c, v, err)
+}
+
+// encoding/json replaces malformed string encodings. Reject those encodings
+// before the established strict decoder, so an edit never silently changes text.
+func validReviewJSONUnicode(raw []byte) bool {
+	if !utf8.Valid(raw) {
+		return false
+	}
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' {
+			continue
+		}
+		i++
+		if i >= len(raw) {
+			return false
+		}
+		if raw[i] != 'u' {
+			continue
+		}
+		if i+4 >= len(raw) {
+			return false
+		}
+		code, e := strconv.ParseUint(string(raw[i+1:i+5]), 16, 16)
+		if e != nil {
+			return false
+		}
+		i += 4
+		if code >= 0xDC00 && code <= 0xDFFF {
+			return false
+		}
+		if code >= 0xD800 && code <= 0xDBFF {
+			if i+6 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' {
+				return false
+			}
+			low, e := strconv.ParseUint(string(raw[i+3:i+7]), 16, 16)
+			if e != nil || low < 0xDC00 || low > 0xDFFF {
+				return false
+			}
+			i += 6
+		}
+	}
+	return true
 }
 func reviewResponse(c *gin.Context, v review.View, err error) {
 	if err == nil {

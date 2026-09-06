@@ -114,6 +114,9 @@ func ValidateTitle(s string) error {
 	return nil
 }
 func (r *Record) Decide(actor string, d DecisionInput) error {
+	if d.Action == "edit" && r.Revision >= 99 {
+		return ErrConflict
+	}
 	if d.ExpectedRevision == 0 || d.ExpectedRevision != r.Revision || r.State == "applied" || r.State == "rejected" || r.Revision >= 100 {
 		return ErrConflict
 	}

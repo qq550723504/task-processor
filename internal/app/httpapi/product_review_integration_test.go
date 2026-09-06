@@ -331,6 +331,9 @@ func TestProductReviewHTTPStrictInputsAndScope(t *testing.T) {
 	titleCall(t, s, "POST", titleBasePath, "readonly", "B", "readonly", `{}`, 403)
 	titleCall(t, s, "POST", titleBasePath, "", "B", "anon", `{}`, 401)
 	v := titleCreate(t, s, "valid")
+	for _, body := range []string{"{\"action\":\"edit\",\"expected_revision\":1,\"title\":\"bad" + string([]byte{255}) + "\"}", `{"action":"edit","expected_revision":1,"title":"bad\ud800"}`, `{"action":"edit","expected_revision":1,"title":"bad\udc00"}`} {
+		titleCall(t, s, "POST", titleBasePath+"/"+v.ID+"/decisions", "operator", "B", uuid.NewString(), body, 400)
+	}
 	titleDecision(t, s, v, "edit", "operator", strings.Repeat("x", 4097), 413)
 	titleCall(t, s, "GET", titleBasePath+"/invalid", "operator", "B", "", "", 400)
 	titleCall(t, s, "GET", titleBasePath+"/"+v.ID+"?org=A", "operator", "B", "", "", 400)
@@ -408,6 +411,37 @@ func TestProductReviewPostgresBoundedSnapshotRead(t *testing.T) {
 	s := f.server(t)
 	titleCall(t, s, "POST", titleBasePath, "operator", "B", "bounded", `{"product_key":"product","base_version":2}`, 503)
 	require.Zero(t, f.g.calls.Load())
+}
+
+func TestProductReviewPostgresCapacityLeavesAcceptedApplyable(t *testing.T) {
+	f := newTitleFixture(t)
+	source := f.bindings[0].Source
+	source.RawReference.Metadata = map[string]string{"controlled-large-metadata": strings.Repeat("m", 60000)}
+	upstream, e := sourcing.NewPublisher(f.publisher)
+	require.NoError(t, e)
+	base, e := upstream.Publish(context.Background(), sourcing.PublishRequest{TenantID: "B", ProductKey: "product", PublicationID: "large-evidence", Envelope: source})
+	require.NoError(t, e)
+	f.bindings = []review.Binding{{Identity: base.Identity, Version: base.Version, PublicationID: base.PublicationID, Source: source}}
+	s := f.server(t)
+	v := titleCall(t, s, "POST", titleBasePath, "operator", "B", "large-create", `{"product_key":"product","base_version":2}`, 200)
+	var size int
+	require.NoError(t, f.db.Raw("SELECT octet_length(payload) FROM product_title_proposals WHERE org = ? AND id = ?", "B", v.ID).Scan(&size).Error)
+	require.Greater(t, size, 60000)
+	v = titleDecision(t, s, v, "accept", "admin", "", 200)
+	titleDecision(t, s, v, "edit", "operator", strings.Repeat("x", 4096), 413)
+	stored := titleCall(t, s, "GET", titleBasePath+"/"+v.ID, "admin", "B", "", "", 200)
+	require.Equal(t, v, stored)
+	result := titleApply(t, s, v, "large-apply", 200)
+	require.Equal(t, uint64(3), result.Receipt.ProductVersion)
+}
+
+func TestProductReviewJSONUnicode(t *testing.T) {
+	for _, raw := range []string{`{"title":"emoji\ud83d\ude00"}`, `{"title":"literal \\ud800"}`, `{"title":"replacement �"}`, `{"title":"中文"}`} {
+		require.True(t, validReviewJSONUnicode([]byte(raw)), raw)
+	}
+	for _, raw := range []string{`{"title":"\ud800"}`, `{"title":"\udc00"}`, `{"title":"\ud800\u0061"}`, `{"title":"` + string([]byte{255}) + `"}`} {
+		require.False(t, validReviewJSONUnicode([]byte(raw)))
+	}
 }
 func TestProductReviewPostgresPublisherRace(t *testing.T) {
 	for i := 0; i < 6; i++ {
