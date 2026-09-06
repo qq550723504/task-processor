@@ -1,6 +1,6 @@
 import { parseTree, type Node, type ParseError } from "jsonc-parser";
 
-export const SHEIN_DIAGNOSTIC_MAX_BYTES = 2 * 1024 * 1024;
+const SHEIN_DIAGNOSTIC_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Bound the bytes actually read, including errors and chunked responses. */
 export async function readSheinDiagnosticJSON(response: Response, signal?: AbortSignal): Promise<unknown> {

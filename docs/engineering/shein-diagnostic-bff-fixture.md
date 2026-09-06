@@ -12,7 +12,7 @@ Issue #323 的专用入口为 `GET /api/listing/shein-records/{record_id}/offlin
 - 成功字段保持 Go DTO 的 snake_case、版本、时间精度、digest、freshness、未评估范围和原因、checks/blockers/warnings，不重算规则/hash/TTL。必需数组拒绝 null/缺失。`diagnostic_only=true` 和 200 都不是发布许可。
 - Go 错误保留 `{error,freshness?}`：400 invalid_request/unsupported_action/unsupported_target；403 permission_denied；404 not_found；409 stale_input；413 input_too_large；422 invalid_input；500 evaluation_failed/unsupported_rule_version；503 unavailable；504 deadline_exceeded。freshness 仅 stale_input 可带，含 status/coverage/causes。
 - 身份/组织错误保留既有 Workbench `{code,message,requestId,fieldErrors}`。BFF 另有 502 DEPENDENCY_UNAVAILABLE（配置/连接），502 INVALID_UPSTREAM_RESPONSE（无效合同），504 DEADLINE_EXCEEDED（超时/取消）。错误 code 大小写保留。撤销/拒绝组织访问清理当前选择 cookie，沿用既有行为。
-- 成功和错误均 private/no-store、nosniff。实际响应流最多 2 MiB，不信 Content-Length；拒绝重复 JSON key、无效 UTF-8、意外字段、错误 HTTP status/code 组合。15 秒 BFF 总预算为 Go 5 秒请求预算及响应留空间；入站 abort 终止上游 fetch/读取。
+- 成功和错误均 private/no-store、nosniff。实际响应流最多 2 MiB，不信 Content-Length；拒绝重复 JSON key、无效 UTF-8、意外字段、错误 HTTP status/code 组合。专用入口在认证前启动 15 秒响应截止，并将剩余预算/入站 abort 传至业务代理，为 Go 5 秒请求预算及响应留空间。认证迟到完成不得启动业务请求，也不得向已返回响应写 cookie。Auth.js 内部 OIDC 刷新仍由既有单次 15 秒 timeout/有限重试约束；本片不接管或声称取消其内部刷新 I/O。
 
 ## 独占文件与 #324
 
