@@ -33,6 +33,13 @@ const diagnostic = z.strictObject({
   offline_checks: z.strictObject({ status: z.enum(["ready", "ready_with_warnings", "blocked"]), checks: z.array(check).min(1), blockers: z.array(check), warnings: z.array(check) }),
   action_policy: z.strictObject({ readiness_blockers_allowed: z.boolean() }),
 }).refine((value) => {
+  // Fixed unchecked scope set in the v2 wire contract, independent of rules.
+  const unchecked = ["online_template_freshness", "store_authorization", "cookie", "pod", "human_review", "approved_asset_provenance_and_consent", "submission_gate"];
+  if (value.external_freshness.status === "not_evaluated") unchecked.push("external_package_freshness");
+  const scopes = new Set(value.not_evaluated);
+  if (scopes.size !== value.not_evaluated.length || scopes.size !== unchecked.length || unchecked.some((scope) => !scopes.has(scope))) return false;
+  const reasonKeys = Object.keys(value.not_evaluated_reasons ?? {});
+  if (reasonKeys.some((key) => key !== "external_package_freshness" || !scopes.has(key))) return false;
   if (value.action_policy.readiness_blockers_allowed !== (value.action === "save_draft")) return false;
   const offline = value.offline_checks;
   // These are redundant projections of the *reported* checks, not another

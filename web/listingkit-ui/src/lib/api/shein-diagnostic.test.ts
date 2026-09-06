@@ -8,13 +8,24 @@ export const diagnosticFixture = () => ({
   rule_version: "shein.offline_package.v2",
   input: { actual_digest: `sha256:${"a".repeat(64)}`, binding_version: "shein.persisted-input.go-json.v1", read_at: "2026-09-06T01:02:03.123456789Z", evaluated_at: "2026-09-06T01:02:04Z" },
   external_freshness: { status: "not_evaluated", coverage: [] },
-  not_evaluated: ["external_package_freshness", "submission_gate"],
+  not_evaluated: ["external_package_freshness", "online_template_freshness", "store_authorization", "cookie", "pod", "human_review", "approved_asset_provenance_and_consent", "submission_gate"],
   not_evaluated_reasons: { external_package_freshness: "no_authoritative_package_freshness" },
   offline_checks: { status: "blocked", checks: [blocker], blockers: [blocker], warnings: [] },
   action_policy: { readiness_blockers_allowed: false },
 });
 
 describe("Shein diagnostic wire contract", () => {
+  it("rejects incomplete, duplicate or invented unchecked scopes and inconsistent reasons", () => {
+    const value = diagnosticFixture();
+    expect(parseSheinDiagnostic({ ...value, not_evaluated: [...value.not_evaluated].reverse() })).not.toBeNull();
+    for (const scope of value.not_evaluated) {
+      expect(parseSheinDiagnostic({ ...value, not_evaluated: value.not_evaluated.filter((item) => item !== scope) })).toBeNull();
+    }
+    for (const extra of ["submission_gate", "invented"]) {
+      expect(parseSheinDiagnostic({ ...value, not_evaluated: [...value.not_evaluated, extra] })).toBeNull();
+    }
+    expect(parseSheinDiagnostic({ ...value, not_evaluated_reasons: { ...value.not_evaluated_reasons, invented: "reason" } })).toBeNull();
+  });
   it("preserves nanoseconds, explicit unknown scope and empty arrays without inferring readiness", () => {
     const value = diagnosticFixture();
     expect(parseSheinDiagnostic(value)).toEqual(value);
@@ -39,7 +50,7 @@ describe("Shein diagnostic wire contract", () => {
     const base = diagnosticFixture();
     const valid = {
       ...base,
-      not_evaluated: ["submission_gate"], not_evaluated_reasons: undefined,
+      not_evaluated: base.not_evaluated.filter((scope) => scope !== "external_package_freshness"), not_evaluated_reasons: undefined,
       input: { ...base.input, evaluated_at: "2026-09-06T01:02:04.000000002Z" },
       external_freshness: { status: "valid", coverage: ["external_package_freshness"], evidence: {
         subject_digest: base.input.actual_digest, source: "owner", policy_version: "policy-v1",
