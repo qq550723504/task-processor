@@ -9,7 +9,7 @@ export const productTitleIDSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[
   .refine((v) => v !== "00000000-0000-0000-0000-000000000000");
 const version = z.string().max(19).regex(/^[1-9][0-9]*$/).refine((v) => /^[1-9][0-9]*$/.test(v) && BigInt(v) <= BigInt("9223372036854775807"));
 export const productTitleOrganizationSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
-export const productTitleKeySchema = text.min(1).refine((v) => bytes(v) <= 128 && v.trim() === v && !/\p{Cc}/u.test(v));
+const productTitleKeySchema = text.min(1).refine((v) => bytes(v) <= 128 && v.trim() === v && !/\p{Cc}/u.test(v));
 // A browser Header cannot preserve Unicode or distinguish a comma-joined pair
 // from one value. Use a single visible ASCII key (UUID recommended), unchanged.
 export const productTitleIdempotencyKeySchema = z.string().min(1).max(128).regex(/^[\x21-\x7e]+$/).refine((v) => !v.includes(","));
@@ -51,7 +51,7 @@ const domainStatuses = { invalid_request: 400, permission_denied: 403, not_found
 const statuses: Record<string, readonly number[]> = {
   INVALID_REQUEST: [400, 405], AUTHENTICATION_REQUIRED: [401], ORGANIZATION_SELECTION_REQUIRED: [409], ORGANIZATION_CONTEXT_CHANGED: [409],
   ORGANIZATION_ACCESS_DENIED: [403], ORGANIZATION_ACCESS_REVOKED: [403], ORGANIZATION_SUSPENDED: [403], PERMISSION_DENIED: [403],
-  DEPENDENCY_UNAVAILABLE: [502, 503], INVALID_UPSTREAM_RESPONSE: [502], DEADLINE_EXCEEDED: [504], RESULT_UNVERIFIED: [502, 504],
+  DEPENDENCY_UNAVAILABLE: [502, 503], INVALID_UPSTREAM_RESPONSE: [502], DEADLINE_EXCEEDED: [504], RESULT_UNVERIFIED: [502, 504], INPUT_TOO_LARGE: [413],
 };
 const communication = z.strictObject({ code: z.string(), message: text.max(2048), requestId: text.max(256), fieldErrors: z.array(z.never()), outcome: z.enum(["not_sent", "unknown"]) });
 export type ProductTitleReviewFailure = z.infer<typeof domain> | WorkbenchErrorEnvelope | z.infer<typeof communication>;

@@ -34,3 +34,9 @@ it("does not interpret the Next route context as a response projector", async ()
   const response = await Reflect.apply(GET, undefined, [incoming(), { params: Promise.resolve({}) }]);
   expect(response.status).toBe(200);
 });
+it("accepts the framework-wrapped Request on current Node", async () => {
+  auth.delay = 0; vi.useRealTimers(); vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:8181");
+  vi.mocked(fetch).mockResolvedValue(Response.json({ items: [], next_cursor: null }));
+  const wrapped = new Proxy(incoming(), { get(target, key) { const value = Reflect.get(target, key, target); return typeof value === "function" ? value.bind(target) : value; } });
+  expect((await GET(wrapped)).status).toBe(200);
+});

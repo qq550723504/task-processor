@@ -5,8 +5,9 @@ Product Review #333 contract, root AGENTS and Issue-driven development V1.
 Admission: IMPLEMENTATION_READY, round 1 read-only boundary_review. No BLOCKER.
 Unicode, trusted origin configuration, deadline/forwarded state, safe error
 envelopes and #343 DTO alignment are IMPLEMENTATION_TEST obligations.
-Go wire DTO: #343 current body, “N1-A 冻结的 planned Go HTTP 合同（2026-09-07）”.
-Planned is not implemented integration evidence; actual Go HEAD still pending.
+Go wire DTO: #343 review-v1 collection/detail/decision/apply HTTP contract.
+The real isolated integration consumes the Go owner's pushed implementation;
+exact tested Go/BFF HEADs and results are recorded in PR #349.
 
 ## Ownership and scope
 
@@ -19,7 +20,10 @@ Catalog owns publication in the existing shared PostgreSQL transaction. BFF has
 no durable storage, automatic retry, operation key generation or state machine.
 No UI changes. A separate test-only Go fixture and Node launcher own this task's
 cross-process acceptance; existing read-only Listing fixture remains read-only.
-Estimate: 16–24 scoped files, under 1,500 production lines. Reassess if exceeded.
+Scope: 26 files, under 1,500 production lines. This includes two existing Listing
+route wrappers and their regression tests: Node's native Request clone cannot
+consume Next's Proxy wrapper. Preserve URL/method/headers/body/signal explicitly
+on all three affected routes, without changing their existing read-only policies.
 
 ## Invariants and trust
 
@@ -90,3 +94,23 @@ No paid models, real IAM, shared database, deployment or real accounts. Same-use
 review and CachedRead are approved #333 risks, not new hardening blockers.
 Independent final full-boundary review, applicable CI and UI consumption handoff
 are required for completion. No merge/Issue close authorization.
+
+## Reproducible isolated fixture
+
+From `web/listingkit-ui`, after `pnpm install --frozen-lockfile`, run
+`node scripts/product-title-review-fixture.mjs`. Requires Node, Go and Docker;
+the checkout must contain #343's actual Go contract. Before that dependency is
+merged, `--go-repo <isolated-Go-checkout>` can select the Go owner's exact HEAD;
+add only this task's `product_title_review_browser_fixture_test.go` there.
+The runner records both HEADs, runs the real Go fixture test, starts loopback Next
+and a fresh Docker PostgreSQL container, then checks the whole browser boundary.
+
+`--serve --web-dir <UI-checkout>/web/listingkit-ui` supports #345 consumption of
+the same fixture. That UI checkout must include this BFF/client. The printed
+task-private `fixture.json` contains short-lived synthetic sessions; do not commit
+or publish it. Use `stop-fixture` in its control directory to stop a serve run.
+`evidence.json`, `go.log` and `cleanup.json` contain acceptance/exit evidence.
+Automatic runs compare actual persisted titles and versions before and after
+both ordinary replay and explicit lost-response confirmation. They verify
+non-title Catalog facts and existing Listing data, stop only owned processes and
+container, and require the Next port to be released before reporting cleanup.

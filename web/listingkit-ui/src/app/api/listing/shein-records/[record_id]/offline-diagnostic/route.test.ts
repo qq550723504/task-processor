@@ -46,6 +46,12 @@ it("does not start authentication for an already cancelled request", async () =>
   expect((await pending as Response).status).toBe(504);
   expect(auth.calls).not.toHaveBeenCalled();
 });
+it("accepts the framework-wrapped Request and preserves upstream denial", async () => {
+  auth.delay = 0; vi.useRealTimers();
+  vi.mocked(fetch).mockResolvedValue(Response.json({ error: "permission_denied" }, { status: 403 }));
+  const wrapped = new Proxy(incoming(), { get(target, key) { const value = Reflect.get(target, key, target); return typeof value === "function" ? value.bind(target) : value; } });
+  expect((await GET(wrapped, context)).status).toBe(403);
+});
 it("shares the remaining budget with proxy response streaming after authentication", async () => {
   auth.delay = 10000;
   const cancel = vi.fn();

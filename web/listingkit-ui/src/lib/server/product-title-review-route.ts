@@ -6,7 +6,9 @@ import { productReviewFailure, withProductReviewDeadline } from "./product-title
 
 export function handleProductTitleReview(request: NextRequest): Promise<Response> {
   return withProductReviewDeadline(request, async (signal, state) => {
-    const scoped = new NextRequest(request, { signal });
+    // Next can proxy the incoming Request; cloning its native private slots is
+    // invalid on current Node. Preserve the actual request fields explicitly.
+    const scoped = new NextRequest(request.url, { method: request.method, headers: request.headers, body: request.body, signal });
     const authenticated = serverAuth(async (sessionRequest) => {
       signal.throwIfAborted();
       return proxyProductTitleReview(scoped, readZitadelServerAccessToken(sessionRequest.auth), state);

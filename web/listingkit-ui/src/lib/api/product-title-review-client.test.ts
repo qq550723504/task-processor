@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from "vitest";
-import { applyProductTitleProposal, decideProductTitleProposal, fetchProductTitleProposal, fetchProductTitleProposals } from "./product-title-review-client";
+import { ProductTitleReviewError, applyProductTitleProposal, decideProductTitleProposal, fetchProductTitleProposal, fetchProductTitleProposals } from "./product-title-review-client";
 import { titleProposalFixture } from "@/test/product-title-review-fixture";
 const context = { organizationId: "B", proposalId: titleProposalFixture().proposal_id, idempotencyKey: "explicit-key" };
 afterEach(() => vi.unstubAllGlobals());
@@ -26,6 +26,7 @@ it.each(["network", "bad-json", "abort", "unknown-envelope"])("classifies dispat
 it("marks invalid/pre-aborted writes not_sent and does not generate keys", async () => {
   const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
   await expect(applyProductTitleProposal({ ...context, idempotencyKey: "", input: { expected_revision: "2" } })).rejects.toMatchObject({ outcome: "not_sent" });
+  await expect(applyProductTitleProposal({ ...context, idempotencyKey: "", input: { expected_revision: "2" } })).rejects.toBeInstanceOf(ProductTitleReviewError);
   const controller = new AbortController(); controller.abort();
   await expect(applyProductTitleProposal({ ...context, input: { expected_revision: "2" }, signal: controller.signal })).rejects.toMatchObject({ outcome: "not_sent" });
   expect(fetcher).not.toHaveBeenCalled();
