@@ -72,7 +72,12 @@ function comparableTimestamp(value: string) {
 export type SheinDiagnostic = z.infer<typeof diagnostic>;
 const failure = z.strictObject({
   error: z.enum(["invalid_request", "unsupported_action", "unsupported_target", "permission_denied", "not_found", "stale_input", "input_too_large", "invalid_input", "evaluation_failed", "unsupported_rule_version", "unavailable", "deadline_exceeded"]),
-  freshness: z.strictObject({ status: z.enum(["stale", "expired", "valid"]), coverage: z.array(text), causes: z.array(z.enum(["stale", "expired", "expired_at_evaluation", "subject_mismatch"])) }).optional(),
+  freshness: z.strictObject({
+    status: z.enum(["stale", "expired", "valid"]), coverage: z.array(evidenceIdentity).length(1),
+    causes: z.array(z.enum(["stale", "expired", "expired_at_evaluation", "subject_mismatch"])).min(1),
+  }).refine((value) => new Set(value.causes).size === value.causes.length &&
+    value.causes.includes("stale") === (value.status === "stale") &&
+    value.causes.includes("expired") === (value.status === "expired")).optional(),
 }).refine((value) => value.freshness === undefined || value.error === "stale_input");
 export type SheinDiagnosticFailure = z.infer<typeof failure> | WorkbenchErrorEnvelope;
 const diagnosticStatuses: Record<z.infer<typeof failure>["error"], number> = {
