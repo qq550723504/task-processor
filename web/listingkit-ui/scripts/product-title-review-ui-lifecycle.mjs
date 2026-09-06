@@ -112,6 +112,19 @@ try {
   await page.screenshot({ path: join(output, "regression-diagnostic-after-apply-1440.png") });
   const final = await observe(); assert.equal(final.nonTitleUnchanged, true); assert.equal(final.listingUnchanged, true);
   results.push("existing completed -> diagnostic remains readable after title Apply; real fixture verifies original Listing and non-title data unchanged");
+  const beforeIdentityChange = posted.length;
+  await context.clearCookies(); await context.addCookies(fixture.sessions.owner);
+  await enter(); await page.getByRole("button", { name: /查看详情/ }).first().click();
+  await detail.getByRole("button", { name: "编辑标题", exact: true }).waitFor();
+  await expect(detail.getByRole("button", { name: /接受提案|拒绝提案|应用到标准商品/ })).toHaveCount(0);
+  await detail.getByRole("button", { name: "编辑标题", exact: true }).click();
+  await detail.getByRole("textbox", { name: "编辑标题", exact: true }).fill("原用户尚未提交的文本");
+  await context.clearCookies(); await context.addCookies(fixture.sessions.other); await page.reload();
+  await expect(detail.getByText("提案不存在或当前身份不可读取", { exact: true })).toBeVisible();
+  await expect(page.getByText("原用户尚未提交的文本", { exact: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "编辑标题", exact: true })).toHaveCount(0);
+  assert.equal(posted.length, beforeIdentityChange);
+  results.push("actual operator session can edit own proposal but cannot approve/reject/apply; changing to another synthetic identity reauthorizes the URL, hides old private data and never POSTs");
   await writeFile(join(output, skipSwitch ? "browser-lifecycle-partial.json" : "browser-lifecycle-evidence.json"), JSON.stringify({ sourceHead: fixture.sourceHead, goHead: fixture.goHead, results, observations: final, notRun: skipSwitch ? ["organization switch and late response across scopes: fixture LiveSwitch audit dependency missing"] : [], faultBoundary: "browser delivery holds the actual BFF response after real Go success; no replacement body" }, null, 2));
   console.log(`PASS: ${results.length} actual browser lifecycle groups`);
 } finally { await browser.close(); }
