@@ -3,7 +3,10 @@ package openai
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -113,7 +116,10 @@ func TestProductImageAdapterReviewFailsClosedAndReturnsStructuredDecision(t *tes
 	t.Parallel()
 
 	chat := &productImageChatStub{response: &ai.ChatCompletionResponse{Choices: []ai.ChatCompletionChoice{{Message: ai.ChatCompletionMessage{Content: `{"score":0.82,"needs_human_review":true,"reasons":["edge artifact"]}`}}}}}
-	adapter, err := NewProductImageAdapter(validProductImageAdapterConfig(&productImageGeneratorStub{}, chat))
+	var observation ProductImageReviewObservation
+	config := validProductImageAdapterConfig(&productImageGeneratorStub{}, chat)
+	config.ReviewObserver = func(value ProductImageReviewObservation) { observation = value }
+	adapter, err := NewProductImageAdapter(config)
 	require.NoError(t, err)
 	reviewer, err := productimage.NewReviewCapability(adapter)
 	require.NoError(t, err)
@@ -133,10 +139,30 @@ func TestProductImageAdapterReviewFailsClosedAndReturnsStructuredDecision(t *tes
 	require.Len(t, chat.lastRequest.Messages, 1)
 	require.Len(t, chat.lastRequest.Messages[0].MultiContent, 3)
 	require.True(t, strings.HasPrefix(chat.lastRequest.Messages[0].MultiContent[2].ImageURL.URL, "data:image/png;base64,"))
+	encoded, err := json.Marshal(chat.lastRequest.Messages[0].MultiContent)
+	require.NoError(t, err)
+	expected := sha256.Sum256(encoded)
+	require.Equal(t, hex.EncodeToString(expected[:]), observation.PromptHash)
 
 	chat.response = &ai.ChatCompletionResponse{Choices: []ai.ChatCompletionChoice{{Message: ai.ChatCompletionMessage{Content: "not-json"}}}}
 	_, err = reviewer.Review(context.Background(), request)
 	require.ErrorIs(t, err, productimage.ErrOutputValidation)
+}
+
+func TestReviewPartsHashStreamsTheExistingCanonicalJSON(t *testing.T) {
+	t.Parallel()
+
+	parts := []ai.ChatCompletionContentPart{
+		{Type: "text", Text: "review <candidate> & preserve\nall details\x00\b\f\r\t\\\" > \u2028\u2029 " + string([]byte{0xff})},
+		{Type: "image_url", ImageURL: &ai.ChatCompletionContentPartImage{URL: "data:image/png;base64," + strings.Repeat("A", 1<<20), Detail: "high"}},
+	}
+	encoded, err := json.Marshal(parts)
+	require.NoError(t, err)
+	expected := sha256.Sum256(encoded)
+
+	actual := hashReviewParts(parts)
+
+	require.Equal(t, hex.EncodeToString(expected[:]), actual)
 }
 
 func TestProductImageAdapterQuotesExactTypedOperation(t *testing.T) {
