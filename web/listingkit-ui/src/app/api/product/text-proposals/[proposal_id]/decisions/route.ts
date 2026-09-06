@@ -1,0 +1,1 @@
+export { handleProductTitleReview as POST, rejectProductTitleReviewMethod as GET, rejectProductTitleReviewMethod as PUT, rejectProductTitleReviewMethod as PATCH, rejectProductTitleReviewMethod as DELETE, rejectProductTitleReviewMethod as HEAD, rejectProductTitleReviewMethod as OPTIONS } from "@/lib/server/product-title-review-route";
