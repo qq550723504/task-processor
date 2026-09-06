@@ -71,7 +71,7 @@ organization credentials, no static fallback. The existing routed Review,
 quoting and ProductImage adapter remain the consumer owned by #334.
 
 The integration test is `TestOrganizationScopeHTTPPersistenceAndActivity` in
-`internal/app/httpapi/imageagent_organization_integration_test.go`, enabled only
+`tests/imageagent_organization_integration_test.go`, enabled only
 with `ISSUE339_TEST_DSN` for a fresh task database. Its existing staged artifact
 and generation receipt are synthetic fixtures. Review itself uses actual
 budget authorization, quote, credential lookup and adapter HTTP; the provider

@@ -1,4 +1,4 @@
-package httpapi
+package tests
 
 import (
 	"context"
@@ -27,6 +27,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	apphttpapi "task-processor/internal/app/httpapi"
 	imageworker "task-processor/internal/app/worker/imageagent"
 	"task-processor/internal/authidentity"
 	zitadel "task-processor/internal/authruntime/zitadel"
@@ -156,7 +157,7 @@ type scope339Fixture struct {
 	authClient    *zitadel.AuthorizationClient
 	auth          *authz.ListingKitAuthorizer
 	temporal      *scope339TemporalServer
-	bindings      []OrganizationImageBinding
+	bindings      []apphttpapi.OrganizationImageBinding
 	providerCalls atomic.Int32
 }
 
@@ -194,14 +195,14 @@ func newScope339Fixture(t *testing.T) *scope339Fixture {
 	for _, org := range []string{"B", "C"} {
 		published, err := repo.PublishSnapshot(context.Background(), catalog.PublishRequest{Identity: catalog.SnapshotIdentity{TenantID: org, ProductKey: "product"}, PublicationID: "scope339-publication", Snapshot: catalog.ProductSnapshot{Title: "Controlled shoes", Images: []catalog.Image{{URL: "https://source.example/" + org + ".png", Role: "source", Width: 1200, Height: 1200}}}})
 		require.NoError(t, err)
-		f.bindings = append(f.bindings, OrganizationImageBinding{ContextID: "catalog-input", OwnerUserID: "actor", Identity: published.Identity, Version: published.Version, PublicationID: published.PublicationID})
+		f.bindings = append(f.bindings, apphttpapi.OrganizationImageBinding{ContextID: "catalog-input", OwnerUserID: "actor", Identity: published.Identity, Version: published.Version, PublicationID: published.PublicationID})
 	}
 	return f
 }
 func (f *scope339Fixture) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	resolver := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(f.authClient, workbenchcontext.NewGrantCache(time.Now)), "project", "v1", nil)
-	app, err := NewImageAgentOrganizationApplication(f.db, scope339Verifier{}, resolver, f.auth, imagetemporal.NewOrganizationClient(f.temporal), imageagent.TenantAllowlistStartGate{Enabled: true, AllowedTenantIDs: []string{"B", "C"}}, f.bindings)
+	app, err := apphttpapi.NewImageAgentOrganizationApplication(f.db, scope339Verifier{}, resolver, f.auth, imagetemporal.NewOrganizationClient(f.temporal), imageagent.TenantAllowlistStartGate{Enabled: true, AllowedTenantIDs: []string{"B", "C"}}, f.bindings)
 	require.NoError(t, err)
 	server := httptest.NewServer(app.Handler)
 	t.Cleanup(server.Close)
