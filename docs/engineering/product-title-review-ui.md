@@ -45,7 +45,7 @@ LiveWrite；不证明任意自然语言真实性，不扩大 Threat Model。
 权威 owner：Product Review 管理 proposal/revision/decisions/receipt；Catalog 唯一商品
 writer，原 UoW 保证 Apply 原子性；#344 管理全部 wire/严格解码/HTTP 与错误语义。
 UI 没有数据库事务或本地持久账本。直接消费 #344 已推送提交
-`64153bb71c32b75516977a6ab9898d2432a26d6d` 的
+`c95b27679bd4cd2c1e4aed06da0290fd05586273` 的
 `src/lib/api/product-title-review.ts`、`product-title-review-client.ts`。
 通过正常 merge 消费依赖，不复制 DTO/client；Go 合同来自 #343
 `3d59d669c5eda511c0724f66042bb54c2803be06`。组件样例只用于交互测试，真实
