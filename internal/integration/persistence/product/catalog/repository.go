@@ -19,6 +19,7 @@ type repository struct {
 	db                      *gorm.DB
 	maxEncodedSnapshotBytes int
 	publishMu               sync.Mutex
+	callerTransaction       bool
 }
 
 type boundedSnapshotReader struct{ delegate *repository }
@@ -77,7 +78,7 @@ func (r *repository) PublishSnapshot(ctx context.Context, request productcatalog
 	defer r.publishMu.Unlock()
 
 	var published productcatalog.PublishedSnapshot
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = r.transaction(ctx, func(tx *gorm.DB) error {
 		initialHead := SnapshotHeadRecord{TenantID: request.Identity.TenantID, ProductKey: request.Identity.ProductKey}
 		if createErr := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&initialHead).Error; createErr != nil {
 			return mapRepositoryError("ensure snapshot head", createErr)
@@ -106,6 +107,9 @@ func (r *repository) PublishSnapshot(ctx context.Context, request productcatalog
 			return nil
 		}
 
+		if request.ExpectedBaseVersion != nil && head.CurrentVersion != *request.ExpectedBaseVersion {
+			return productcatalog.ErrStaleSnapshot
+		}
 		nextVersion := head.CurrentVersion + 1
 
 		record := SnapshotVersionRecord{
@@ -262,6 +266,7 @@ func mapRepositoryError(operation string, err error) error {
 		productcatalog.ErrInvalidSnapshot,
 		productcatalog.ErrInvalidPublication,
 		productcatalog.ErrPublicationConflict,
+		productcatalog.ErrStaleSnapshot,
 		productcatalog.ErrSnapshotNotReady,
 		productcatalog.ErrRepositoryUnavailable,
 		productcatalog.ErrRepositoryStateInvalid,
