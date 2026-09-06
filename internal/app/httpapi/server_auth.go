@@ -311,6 +311,13 @@ func writeWorkbenchContextError(c *gin.Context, err error) {
 }
 
 func writeWorkbenchProtocolError(c *gin.Context, status int, code string, message string) {
+	// Authentication and organization providers may wrap deadline errors as
+	// dependency failures. The request context remains the deadline authority.
+	if c.Request.Context().Err() != nil {
+		status = http.StatusGatewayTimeout
+		code = "DEADLINE_EXCEEDED"
+		message = "Request deadline exceeded"
+	}
 	c.AbortWithStatusJSON(status, gin.H{
 		"code":        code,
 		"message":     message,

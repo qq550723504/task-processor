@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/listing/record"
 	"task-processor/internal/workbenchcontext"
@@ -216,4 +217,45 @@ func TestSheinRecordSlowBodyReturnsHTTPTimeout(t *testing.T) {
 	var count int64
 	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
 	require.Zero(t, count)
+}
+
+type recordDeadlineGrants struct{ recordGrants }
+
+func (*recordDeadlineGrants) Load(ctx context.Context, _ workbenchcontext.GrantSource, _ workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
+	<-ctx.Done()
+	return workbenchcontext.GrantResult{}, ctx.Err()
+}
+
+type recordDeadlineVerifier struct{}
+
+func (recordDeadlineVerifier) Verify(ctx context.Context, _ string) (authidentity.AuthenticatedIdentity, error) {
+	<-ctx.Done()
+	return authidentity.AuthenticatedIdentity{}, ctx.Err()
+}
+
+func TestSheinRecordAuthorizationDeadlineReturnsHTTPTimeout(t *testing.T) {
+	for _, stage := range []string{"authentication", "organization grants"} {
+		t.Run(stage, func(t *testing.T) {
+			db := recordTestDB(t)
+			auth, err := authz.NewListingKitAuthorizer(nil, nil)
+			require.NoError(t, err)
+			resolver := workbenchcontext.NewResolver(&recordDeadlineGrants{}, "project", "v1", nil)
+			application, _, err := NewSheinRecordApplication(db, recordVerifier{}, resolver, auth)
+			if stage == "authentication" {
+				application, _, err = NewSheinRecordApplication(db, recordDeadlineVerifier{}, resolver, auth)
+			}
+			require.NoError(t, err)
+			server := httptest.NewUnstartedServer(application.Handler)
+			server.Config.ReadTimeout = application.ReadTimeout
+			server.Config.WriteTimeout = application.WriteTimeout
+			server.Start()
+			defer server.Close()
+			server.Client().Timeout = 2 * record.Timeout
+			status, body := recordPost(t, server, "operator", "auth-deadline", recordBody)
+			require.Equal(t, http.StatusGatewayTimeout, status, string(body))
+			var count int64
+			require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
+			require.Zero(t, count)
+		})
+	}
 }
