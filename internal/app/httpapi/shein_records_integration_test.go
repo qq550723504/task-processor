@@ -40,8 +40,8 @@ type recordGrants struct {
 
 func (g *recordGrants) Load(_ context.Context, source workbenchcontext.GrantSource, request workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
 	g.calls.Add(1)
-	if source != workbenchcontext.GrantLive {
-		return workbenchcontext.GrantResult{}, fmt.Errorf("POST did not request live grants")
+	if source != workbenchcontext.GrantLive && source != workbenchcontext.GrantReadCached {
+		return workbenchcontext.GrantResult{}, fmt.Errorf("unexpected grant source")
 	}
 	roles := []string{"listingkit_operator"}
 	switch request.Subject {
@@ -51,6 +51,8 @@ func (g *recordGrants) Load(_ context.Context, source workbenchcontext.GrantSour
 		roles = []string{"listingkit_admin"}
 	case "readonly":
 		roles = []string{"admin"}
+	case "store":
+		roles = []string{"listingkit_viewer"}
 	}
 	grants := []authidentity.OrganizationGrant{{OrganizationID: "200", ProjectID: "project", Roles: roles}}
 	if request.Subject == "no-grant" || g.revoked.Load() {
@@ -121,6 +123,10 @@ func recordApplication(t *testing.T, db *gorm.DB, g *recordGrants) (*httptest.Se
 	return ts, reader
 }
 func recordPost(t *testing.T, server *httptest.Server, subject, key, body string) (int, []byte) {
+	return recordPostForOrganization(t, server, subject, key, "200", body)
+}
+
+func recordPostForOrganization(t *testing.T, server *httptest.Server, subject, key, organizationID, body string) (int, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/listing/shein-records", strings.NewReader(body))
 	require.NoError(t, err)
@@ -128,10 +134,32 @@ func recordPost(t *testing.T, server *httptest.Server, subject, key, body string
 		req.Header.Set("Authorization", "Bearer "+subject)
 	}
 	req.Header.Set("Idempotency-Key", key)
-	req.Header.Set("X-Requested-Organization-ID", "200")
+	req.Header.Set("X-Requested-Organization-ID", organizationID)
 	req.Header.Set("X-Tenant-ID", "forged")
 	req.Header.Set("X-User-ID", "forged")
 	req.Header.Set("X-User-Roles", "listingkit_admin")
+	response, err := server.Client().Do(req)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	raw, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	return response.StatusCode, raw
+}
+
+func recordGet(t *testing.T, server *httptest.Server, subject, rawQuery string) (int, []byte) {
+	t.Helper()
+	path := server.URL + "/api/listing/shein-records"
+	if rawQuery != "" {
+		path += "?" + rawQuery
+	}
+	req, err := http.NewRequest(http.MethodGet, path, nil)
+	require.NoError(t, err)
+	if subject != "" {
+		req.Header.Set("Authorization", "Bearer "+subject)
+	}
+	req.Header.Set("X-Requested-Organization-ID", "200")
+	req.Header.Set("X-Tenant-ID", "forged")
+	req.Header.Set("X-User-ID", "forged")
 	response, err := server.Client().Do(req)
 	require.NoError(t, err)
 	defer response.Body.Close()

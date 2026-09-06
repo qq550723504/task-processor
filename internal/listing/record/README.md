@@ -167,6 +167,35 @@ inside their disposable schema. Seam-only tests isolate evaluator errors/output
 encoding and do not substitute for the PostgreSQL chain. Absent DSN means SKIP,
 not database acceptance. Rollout approval and real production data remain separate.
 
+## Scoped collection HTTP — Issue #327
+
+The explicit application also mounts `GET /api/listing/shein-records`. It uses
+verified identity, `CachedRead` and the existing `listingkit.admin.read`
+permission. An operator sees only records owned by the current actor; an
+existing tenant administrator may bypass owner only inside the verified
+effective Organization. Authorization and scope are applied before metadata
+SQL on every page. The default production composition still mounts none of the
+SHEIN record routes.
+
+The only query fields are a single optional `limit` (default 20, range 1..100)
+and a single optional opaque `cursor`; the raw query is limited to 1 KiB.
+Ordering is fixed at `created_at DESC, id DESC`. The repository reads
+`limit+1`, returns no count, and uses keyset pagination. A cursor is canonical
+base64url JSON containing only version, UTC creation time and UUID. It is a
+position, not authority: the repository first verifies its exact anchor under
+the same Organization/owner SQL predicate and never checks global anchor
+existence. A malformed, missing-scope, cross-owner or cross-Organization anchor
+returns 400 rather than resetting to page one.
+
+Success is `{items, next_cursor}`. Items contain only `record_id`,
+`product_key`, decimal-string `snapshot_version`, `country`, `language` and
+`created_at`; the SQL does not select payload, operation, Organization or owner.
+The response is limited to 128 KiB and is never cached. An empty authorized
+scope is a successful empty page. Authentication, permission, grant dependency,
+deadline and invalid cursor failures remain distinct and never become an empty
+list. Two explicit indexes cover owner-scoped and Organization-admin keyset
+reads; `schema.sql` remains operator-applied only to an approved isolated store.
+
 ## Evidence and rollout
 
 Run `go test ./internal/app/httpapi -run TestSheinRecord -count=1` with

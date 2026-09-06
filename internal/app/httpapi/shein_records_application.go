@@ -39,11 +39,16 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	if err != nil {
 		return nil, nil, err
 	}
+	collection, err := record.NewCollectionService(repository, authorizer)
+	if err != nil {
+		return nil, nil, err
+	}
 	diagnostic, err := record.NewDiagnosticService(repository, sheinvalidator.DiagnosticValidator{}, authorizer, sheinvalidator.DiagnosticRuleVersion, sheinvalidator.BindingVersion)
 	if err != nil {
 		return nil, nil, err
 	}
-	routes := append(sheinRecordRoutes(service), sheinDiagnosticRoutes(diagnostic)...)
+	routes := append(sheinRecordRoutes(service), sheinRecordCollectionRoutes(collection)...)
+	routes = append(routes, sheinDiagnosticRoutes(diagnostic)...)
 	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
 	server.ReadTimeout = record.Timeout
 	// The transport deadline starts before the application deadline. Reserve
@@ -51,6 +56,10 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	server.WriteTimeout = record.Timeout + 2*time.Second
 	handler := server.Handler
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set the protected-metadata response policy before auth and organization
+		// middleware so their early failures cannot be cached or content-sniffed.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		ctx, cancel := context.WithTimeout(r.Context(), record.Timeout)
 		defer cancel()
 		handler.ServeHTTP(w, r.WithContext(ctx))
