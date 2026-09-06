@@ -99,11 +99,73 @@ external freshness evidence; #315 must explicitly use `not_evaluated` with
 Future evidence-producing builders require their own reviewed contract; this
 path cannot silently import stale cached templates or pretend to approve images.
 
-#315's agreed route is
-`GET /api/listing/shein-records/{record_id}/offline-diagnostic`; it is not mounted
-here. It consumes this reader and passes the same bytes to #318
-`DiagnosticValidator.Validate(BoundRequest[[]byte])`. The PostgreSQL HTTP test
-already exercises that computation and asserts real blockers/unknown freshness.
+## Read-only diagnostic HTTP — Issue #315
+
+The same explicit application now mounts
+`GET /api/listing/shein-records/{record_id}/offline-diagnostic?action=publish`.
+Default production composition still mounts neither record route. GET uses
+verified identity, `CachedRead`, `listingkit.admin.read`, and the existing
+record reader's organization/owner checks. It does not require POST write
+permission. Home organization and caller-supplied actor headers are not authority.
+Current cached grant TTL/revocation semantics remain owned by workbenchcontext.
+
+Only one explicit `action=save_draft|publish` and optional `expected_digest` are
+accepted; expected must be a nonempty lowercase `sha256:` digest when present.
+The UUID uses the 36-character representation. Query is limited to 1 KiB before
+parsing; duplicate/unknown/malformed parameters and any GET body are rejected.
+There is no site, tenant, rule version, time, Package or freshness parameter.
+
+`DiagnosticService` checks verified effective identity and read permission before
+one `Reader.ReadOfflinePackage` call, then sends those exact persisted bytes and
+the reader's ReadAt to the injected existing v2 evaluator. The explicit application
+pins current binding/rule constants. EvaluatedAt is server time, not clamped.
+Freshness is explicitly NotEvaluated under the current producer contract; read
+and creation times are never substituted for external freshness evidence.
+
+The transport explicitly projects all public diagnostic fields and nested checks.
+Lists remain arrays, including empty lists; optional evidence/reasons and empty
+check paths/messages/guidance retain v2 omission behavior. Errors never include
+the success DTO, raw error text, Package, actor, owner, SQL or credentials.
+Success is at most 2 MiB of encoded JSON with `Cache-Control: no-store`; all
+actions return diagnostic scope and retain blockers, never publication authority.
+
+| Failure | HTTP / error |
+| --- | --- |
+| Invalid query, UUID, digest or body | 400 / invalid_request |
+| Missing/unsupported action | 400 / unsupported_action |
+| Authentication/organization denial | Existing 401/403 workbench protocol |
+| Record read permission denial | 403 / permission_denied |
+| Missing, foreign-org or nonowner record | 404 / not_found |
+| Loaded content expected mismatch / known stale | 409 / stale_input |
+| Oversized stored payload | 413 / input_too_large |
+| Invalid persisted package | 422 / invalid_input |
+| Clock rollback, normalized/report encoding or size failure | 500 / evaluation_failed |
+| Reader/dependency fault | 503 / unavailable |
+| Cancellation or deadline | 504 / deadline_exceeded (workbench uses DEADLINE_EXCEEDED) |
+
+Typed stale errors retain only status, coverage and fixed causes; negative seam
+tests cover this existing evaluator contract, not an evidence producer. Five-second
+application/reader budgets and the existing transport response headroom apply.
+Context is checked before/after read, compute and response encoding. No escaped
+goroutine, write, report persistence, cache, retry owner or background task exists.
+
+Reproduce the controlled chain with `ISSUE319_TEST_DSN` pointing only to a fresh
+task-isolated PostgreSQL (the shared test helper's variable name is retained):
+`go test -v ./internal/app/httpapi -run TestSheinDiagnosticPostgresHTTPRoundTrip -count=1`.
+The fixture creates a unique schema, publishes via real Catalog Publisher, sends
+POST with verified Organization selection and Idempotency-Key, uses the returned
+record_id in GET, reconstructs the application/repository and repeats GET with
+expected_digest. It logs a synthetic response and compares it to computation over
+the actual durable bytes. It also runs GET through a PostgreSQL read-only
+transaction. No successful Listing row is manually inserted.
+
+`go test -race ./internal/app/httpapi -run 'TestShein(Diagnostic|Record)' -count=1`
+adds permissions, all-table row/content snapshots, concurrent reads, real DB lock
+and authentication/grant/slow-body timeouts, client cancellation and original POST
+regressions. Corruption tests alter only records previously created through POST
+inside their disposable schema. Seam-only tests isolate evaluator errors/output
+encoding and do not substitute for the PostgreSQL chain. Absent DSN means SKIP,
+not database acceptance. Rollout approval and real production data remain separate.
 
 ## Evidence and rollout
 
