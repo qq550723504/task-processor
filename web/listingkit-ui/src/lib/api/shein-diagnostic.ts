@@ -11,7 +11,7 @@ const timestamp = z.iso.datetime().regex(/T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/);
 const text = z.string();
 const evidenceIdentity = z.string().min(1).refine((value) => value.trim() === value && !/[\0\r\n\t]/.test(value) && new TextEncoder().encode(value).length <= 256);
 const check = z.strictObject({
-  rule: text, code: text, category: text,
+  rule: text.min(1), code: text, category: text,
   status: z.enum(["ready", "warning", "blocking"]),
   paths: z.array(text).optional(), message: text.optional(), guidance: text.optional(),
 });
@@ -30,9 +30,18 @@ const diagnostic = z.strictObject({
   input: z.strictObject({ actual_digest: sheinDigestSchema, binding_version: z.literal("shein.persisted-input.go-json.v1"), read_at: timestamp, evaluated_at: timestamp }),
   external_freshness: freshness, not_evaluated: z.array(text),
   not_evaluated_reasons: z.record(text, text).optional(),
-  offline_checks: z.strictObject({ status: z.enum(["ready", "ready_with_warnings", "blocked"]), checks: z.array(check), blockers: z.array(check), warnings: z.array(check) }),
+  offline_checks: z.strictObject({ status: z.enum(["ready", "ready_with_warnings", "blocked"]), checks: z.array(check).min(1), blockers: z.array(check), warnings: z.array(check) }),
   action_policy: z.strictObject({ readiness_blockers_allowed: z.boolean() }),
 }).refine((value) => {
+  if (value.action_policy.readiness_blockers_allowed !== (value.action === "save_draft")) return false;
+  const offline = value.offline_checks;
+  // These are redundant projections of the *reported* checks, not another
+  // rule evaluator. Never repair a contradiction or manufacture a readiness.
+  if (JSON.stringify(offline.blockers) !== JSON.stringify(offline.checks.filter((c) => c.status === "blocking")) ||
+      JSON.stringify(offline.warnings) !== JSON.stringify(offline.checks.filter((c) => c.status === "warning"))) return false;
+  if ((offline.status === "blocked" && offline.blockers.length === 0) ||
+      (offline.status === "ready_with_warnings" && (offline.blockers.length !== 0 || offline.warnings.length === 0)) ||
+      (offline.status === "ready" && (offline.blockers.length !== 0 || offline.warnings.length !== 0))) return false;
   if (comparableTimestamp(value.input.read_at) > comparableTimestamp(value.input.evaluated_at)) return false;
   if (value.external_freshness.status === "not_evaluated") {
     return value.not_evaluated.includes("external_package_freshness") &&
