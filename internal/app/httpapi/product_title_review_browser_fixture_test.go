@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/authz"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -150,8 +151,19 @@ func TestProductTitleReviewBrowserFixture(t *testing.T) {
 	create("owner", "300", "product", "organization300")
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, contextapi.NewModule(contextapi.NewHandlerWithWorkbenchAuthorizer(authorizer)).Register(registry))
-	contextApp := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, registry.Routes(), routeAuthDependencies{workbenchVerifier: identity, organizationResolver: resolver, authorizer: authorizer})
-	contextServer := httptest.NewServer(contextApp.Handler)
+	auditFile, err := os.OpenFile(filepath.Join(dir, "audit.jsonl"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auditFile.Close()) })
+	auditLogger := logrus.New()
+	auditLogger.SetOutput(auditFile)
+	auditLogger.SetFormatter(&logrus.JSONFormatter{})
+	audit := workbenchcontext.NewStructuredAuditRecorder(auditLogger)
+	contextApplication := func(recorder workbenchcontext.AuditRecorder) *http.Server {
+		return buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, registry.Routes(), routeAuthDependencies{workbenchVerifier: identity, organizationResolver: resolver, authorizer: authorizer, auditRecorder: recorder})
+	}
+	var currentContext atomic.Pointer[http.Server]
+	currentContext.Store(contextApplication(audit))
+	contextServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { currentContext.Load().Handler.ServeHTTP(w, r) }))
 	t.Cleanup(contextServer.Close)
 	writeJSON := func(name string, value any) {
 		data, e := json.Marshal(value)
@@ -183,11 +195,14 @@ func TestProductTitleReviewBrowserFixture(t *testing.T) {
 			t.Fatal("fixture maximum lifetime reached")
 		case <-ticker.C:
 			for name, action := range map[string]func(){
-				"restart":       func() { current.Store(application()) },
-				"lose-response": func() { dropNext.Store(true) },
-				"revoke":        func() { identity.revokeAdmin.Store(true) },
-				"restore":       func() { identity.revokeAdmin.Store(false) },
-				"observe":       observe,
+				"restart":           func() { current.Store(application()) },
+				"lose-response":     func() { dropNext.Store(true) },
+				"revoke":            func() { identity.revokeAdmin.Store(true) },
+				"restore":           func() { identity.revokeAdmin.Store(false) },
+				"observe":           observe,
+				"audit-missing":     func() { currentContext.Store(contextApplication(nil)) },
+				"audit-unavailable": func() { currentContext.Store(contextApplication(workbenchcontext.NewStructuredAuditRecorder(nil))) },
+				"audit-restore":     func() { currentContext.Store(contextApplication(audit)) },
 			} {
 				if _, e := os.Stat(filepath.Join(dir, name)); e == nil {
 					action()

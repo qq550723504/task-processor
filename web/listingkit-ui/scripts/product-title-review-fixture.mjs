@@ -143,6 +143,36 @@ try {
       await until(async () => { await access(join(dir, `${name}-done`)); return true; }, name, 15000);
     }
     async function observe() { await control("observe"); return JSON.parse(await readFile(join(dir, "observations.json"), "utf8")); }
+    const switchPath = "/api/workbench/context/effective-organization";
+    const auditEvents = async () => (await readFile(join(dir, "audit.jsonl"), "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    let selectedOrganization = "200";
+    for (const target of ["300", "200"]) {
+      const response = await call(switchPath, { name: "admin", org: selectedOrganization, method: "PUT", body: { organizationId: target }, headers: { "X-Requested-Organization-ID": target } });
+      const result = await check(`actual audited organization switch ${selectedOrganization} -> ${target}`, response, 200);
+      assert.equal(result.effectiveOrganizationId, target);
+      assert.ok(new RegExp(`shuomi_effective_organization=${target};`).test(response.headers.get("set-cookie") ?? ""), "switch updates the effective organization cookie");
+      selectedOrganization = target;
+      const scoped = await check(`Product collection after switching to ${target}`, await call(`${base}?view=actionable&limit=100`, { name: "admin", org: selectedOrganization }), 200);
+      assert.equal(scoped.items.length, target === "300" ? 1 : seed.ownerCount + 1);
+    }
+    const switched = await auditEvents(); assert.equal(switched.length, 2);
+    assert.deepEqual(switched.map((event) => event.effective_organization_id), ["300", "200"]);
+    for (const event of switched) {
+      assert.equal(event.subject, "admin"); assert.equal(event.home_organization_id, "200");
+      assert.equal(event.action, "organization.switch"); assert.equal(event.result, "SUCCESS");
+      assert.equal(event.resource, `/api/v1${switchPath.slice(4)}`); assert.ok(event.event_timestamp);
+      for (const key of Object.keys(event)) assert.ok(!/token|cookie|payload|credential|authorization_response/i.test(key));
+    }
+    for (const failure of ["audit-missing", "audit-unavailable"]) {
+      await control(failure);
+      const response = await call(switchPath, { name: "admin", org: selectedOrganization, method: "PUT", body: { organizationId: "300" }, headers: { "X-Requested-Organization-ID": "300" } });
+      await check(`${failure} switch stays fail closed`, response, 503, "DEPENDENCY_UNAVAILABLE");
+      assert.ok(!(response.headers.get("set-cookie") ?? "").includes("shuomi_effective_organization="), "failed audit cannot change the organization cookie");
+      const unchanged = await check(`${failure} retains selected organization`, await call("/api/workbench/context", { name: "admin", org: selectedOrganization }), 200);
+      assert.equal(unchanged.effectiveOrganizationId, "200");
+      assert.deepEqual(await auditEvents(), switched);
+      await control("audit-restore");
+    }
     const decisions = (id, action, revision, extra = {}) => call(`${base}/${id}/decisions`, { method: "POST", name: "admin", body: { action, expected_revision: revision }, ...extra });
     const apply = (id, revision, extra = {}) => call(`${base}/${id}/apply`, { method: "POST", name: "admin", body: { expected_revision: revision }, ...extra });
     const first = await check("actual collection first page", await call(`${base}?view=actionable`), 200);
