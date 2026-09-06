@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { proxyProductTitleReview } from "./product-title-review-proxy";
 import { titleProposalFixture } from "@/test/product-title-review-fixture";
+import { applyProductTitleProposal, decideProductTitleProposal } from "@/lib/api/product-title-review-client";
 
 const id = titleProposalFixture().proposal_id;
 const base = "/api/product/text-proposals";
@@ -15,6 +16,17 @@ function request(path = `${base}/${id}/decisions`, body = '{"action":"accept","e
 beforeEach(() => { vi.stubEnv("PRODUCT_REVIEW_API_ORIGIN", "http://127.0.0.1:9876"); vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "https://console.test"); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const call = (r: Request, token = "server-token") => proxyProductTitleReview(r, token, { forwarded: false });
+
+it.each(["decisions", "apply"])("client retains actual %s BFF capacity failure as not_sent", async (action) => {
+  const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+  const response = await call(request(`${base}/${id}/${action}`, " ".repeat(32769)));
+  expect(response.status).toBe(413); expect(fetcher).not.toHaveBeenCalled();
+  fetcher.mockResolvedValueOnce(response);
+  const scope = { organizationId: "B", proposalId: id, idempotencyKey: "intent" };
+  const pending = action === "apply" ? applyProductTitleProposal({ ...scope, input: { expected_revision: "2" } }) : decideProductTitleProposal({ ...scope, input: { action: "accept", expected_revision: "1" } });
+  await expect(pending).rejects.toMatchObject({ status: 413, outcome: "not_sent" });
+  expect(fetcher).toHaveBeenCalledOnce();
+});
 
 it("forwards exact numeric revision token and only trusted headers once", async () => {
   const fetcher = vi.fn().mockResolvedValue(Response.json(titleProposalFixture())); vi.stubGlobal("fetch", fetcher);

@@ -1,5 +1,6 @@
 import { PRODUCT_REVIEW_RESPONSE_BYTES, parseProductTitleProposal, parseProductTitleProposalList, parseProductTitleReviewFailure, productTitleApplySchema, productTitleCursorSchema, productTitleDecisionSchema, productTitleIDSchema, productTitleIdempotencyKeySchema } from "@/lib/api/product-title-review";
 import { readProductReviewJSON } from "@/lib/api/product-title-review-json";
+import { InvalidStrictJSONResponseError } from "@/lib/api/strict-json-response";
 import { configuredProductReviewOrigin, hasTrustedReviewWriteOrigin, reviewSelectedOrganization } from "./product-title-review-request";
 import { productReviewFailure, productReviewJSON, type ProductReviewDispatch } from "./product-title-review-deadline";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
@@ -67,7 +68,7 @@ export async function proxyProductTitleReview(request: Request, accessToken: str
     try { const encoded = await writeBody(request, action === "apply"); if (encoded === null) return reject(request); body = encoded; }
     catch (e) {
       if (request.signal.aborted) return reject(request, 504, "DEADLINE_EXCEEDED");
-      return reject(request, e instanceof InputTooLarge ? 413 : 400);
+      return e instanceof InputTooLarge ? reject(request, 413, "INPUT_TOO_LARGE") : reject(request);
     }
     headers.set("Content-Type", "application/json"); headers.set("Idempotency-Key", key!);
   }
@@ -88,8 +89,9 @@ export async function proxyProductTitleReview(request: Request, accessToken: str
     const response = productReviewJSON(failure, upstream.status);
     if ("code" in failure && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(failure.code)) response.cookies.set(WORKBENCH_COOKIE_NAME, "", { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV !== "development", maxAge: 0 });
     return response;
-  } catch {
+  } catch (error) {
     if (write && state.forwarded) return productReviewFailure(request.signal.aborted ? 504 : 502, "RESULT_UNVERIFIED", "unknown");
+    if (error instanceof InvalidStrictJSONResponseError && !request.signal.aborted) return invalidResponse();
     return productReviewFailure(request.signal.aborted ? 504 : 502, request.signal.aborted ? "DEADLINE_EXCEEDED" : "DEPENDENCY_UNAVAILABLE");
   }
 }

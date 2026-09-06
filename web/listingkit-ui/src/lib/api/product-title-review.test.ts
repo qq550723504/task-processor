@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { parseProductTitleProposal, parseProductTitleProposalList, productTitleDecisionSchema, productTitleApplySchema, parseProductTitleReviewFailure } from "./product-title-review";
+import { parseProductTitleProposal, parseProductTitleProposalList, productTitleDecisionSchema, productTitleApplySchema, parseProductTitleReviewFailure, type ProductTitleProposalListItem } from "./product-title-review";
 import { titleProposalFixture } from "@/test/product-title-review-fixture";
 
 it("consumes the sole #343 review-v1 DTO without rounding versions", () => {
@@ -11,7 +11,7 @@ it("consumes the sole #343 review-v1 DTO without rounding versions", () => {
   expect(parseProductTitleProposal({ ...value, apply_receipt: null })).toBeNull();
 });
 it("requires real coverage and canonical bounded versions, IDs and arrays", () => {
-  const item = { proposal_id: titleProposalFixture().proposal_id, product_key: "product", base_version: "1", proposal_revision: "1", state: "pending" };
+  const item: ProductTitleProposalListItem = { proposal_id: titleProposalFixture().proposal_id, product_key: "product", base_version: "1", proposal_revision: "1", state: "pending" };
   const list = { schema_version: 1, coverage: "product-title-proposals-only", items: [item], next_cursor: null };
   expect(parseProductTitleProposalList(list)).toEqual(list);
   for (const patch of [{ state: "applied" }, { base_version: "01" }, { base_version: "9223372036854775808" }, { proposal_id: "00000000-0000-0000-0000-000000000000" }]) {

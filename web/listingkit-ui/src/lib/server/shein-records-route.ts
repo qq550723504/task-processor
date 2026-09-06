@@ -20,7 +20,7 @@ export async function handleSheinRecordsGET(request: NextRequest, project?: (res
   let endResponse: () => void = () => undefined;
   const ended = new Promise<Response>((resolve) => { endResponse = () => resolve(deadlineResponse()); controller.signal.addEventListener("abort", endResponse, { once: true }); });
   try {
-    const scoped = new NextRequest(request, { signal: controller.signal });
+    const scoped = new NextRequest(request.url, { method: request.method, headers: request.headers, body: request.body, signal: controller.signal });
     const response = await Promise.race([Promise.resolve(authenticatedGET(scoped, { params: Promise.resolve({}) })).then((response) => response && project ? project(response, controller.signal) : response), ended]);
     return response ?? workbenchProtocolError(503, "DEPENDENCY_UNAVAILABLE", "Authentication is unavailable");
   } catch {

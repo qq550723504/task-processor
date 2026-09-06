@@ -32,3 +32,9 @@ it("late authentication cannot forward after the route already returned not_sent
   expect(await (await pending).json()).toMatchObject({ outcome: "not_sent" });
   finish(); await vi.advanceTimersByTimeAsync(1); expect(fetcher).not.toHaveBeenCalled();
 });
+it("handles a framework-wrapped Request without using native private slots on its proxy", async () => {
+  vi.stubEnv("PRODUCT_REVIEW_API_ORIGIN", "http://127.0.0.1:9999");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schema_version: 1, coverage: "product-title-proposals-only", items: [], next_cursor: null })));
+  const wrapped = new Proxy(req(`${base}?view=actionable`), { get(target, key) { const value = Reflect.get(target, key, target); return typeof value === "function" ? value.bind(target) : value; } });
+  expect((await listGET(wrapped)).status).toBe(200);
+});
