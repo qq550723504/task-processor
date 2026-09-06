@@ -2,6 +2,8 @@
 
 Issue #323 的专用入口为 `GET /api/listing/shein-records/{record_id}/offline-diagnostic`。它只消费 #322 的显式 Go 应用，不修改默认 Go 生产装配。
 
+Issue #327 在同一显式应用和 fixture 增加 `GET /api/listing/shein-records?limit=20&cursor=...`。列表返回当前组织/owner限定的既有 Listing 元数据；页面必须使用列表响应中的 `record_id` 导航，不能把 manifest 的 `recordId` 当列表来源。
+
 ## 请求与响应合同
 
 - `action` 必填且仅 `save_draft | publish`；`expected_digest` 可选，若出现须为 `sha256:` 加 64 位小写十六进制。不接受 body、重复或未知 query、非 UUID record ID。原始 query 最多 1,024 字节。
@@ -44,9 +46,10 @@ Go fixture 使用实际 Catalog Publisher，然后通过实际 HTTP POST 得到 
 - `origin`：实际 Next；`goOrigin`：诊断实际 Go；`contextOrigin`：实际 context Go。
 - `recordId`：owner 的实际 POST 记录；`readonlyRecordId`：先 POST 再在外部 grant 替身撤销写权限的记录。
 - `sessions.owner/other/admin/readonly/store/revoked/slow/unavailable`：独立合成身份。`store` 只有 Store read；`readonly` 有 Listing read 无 write；`slow/unavailable` 用于真实中间件超时/依赖不可用响应。
+- `recordCount=22` 是 owner 通过真实 POST 创建的资料数量；`otherRecordCount=3` 属于另一个 operator；read-only seed 也先在有 write 时真实 POST，再撤去 write。它们共同覆盖超过一页、owner/admin和read-only列表。
 - 组织 `200`（Fixture A）与 `100`（Fixture B），既有 OrganizationSwitcher 可通过实际 BFF/context PUT 切换。记录属于 200；切到 100 再读同 ID 返回 404。
 - `controlDirectory`：写入空文件 `restart` 后，等待 `restarted`，应用/repository 重建且 record ID 保留。写入 `stop-fixture` 让 launcher 正常退出，或前台 Ctrl+C。请等待进程结束及清理成功消息。
 
 退出时 Go fixture 比较所有业务表内容及 xmin 行版本，确保 GET/浏览器诊断没有业务写入，然后删除自己的随机 schema。Launcher 停止自己的 Next/Go 进程，并按创建时记录的容器 ID 停止自己的 `--rm` 容器；不操作其他容器。临时 evidence.json、go.log、go-regression.log、next.log 留在控制目录供追溯。异常退出若来不及清理，可使用 manifest 中的自有容器 ID 执行 `docker stop <containerId>`，先核对 ID，勿批量清理。
 
-自动模式验证实际 BFF GET、两 action、expected digest、一致性重读、非 owner/跨组织隔离、Listing read 与 Store read 区别、撤销、Go 超时、组织断言、缺 session、输入和 method 边界、真实 context、public session 不暴露 token。正常 Go suite 仅跳过这个显式启动 fixture；自动模式额外对同一隔离 PostgreSQL 执行相关 Go 回归，其测试使用各自随机 schema。
+自动模式验证列表两页、组织admin/operator/read-only/Store-only、合法空组织、cursor跨组织失败，并使用列表实际返回ID调用诊断；同时保留诊断两 action、expected digest、一致性重读、非 owner/跨组织隔离、撤销、Go超时、组织断言、缺session、输入和method边界、真实context、public session不暴露token。正常 Go suite 仅跳过这个显式启动 fixture；自动模式额外对同一隔离 PostgreSQL 执行相关 Go 回归，其测试使用各自随机 schema。
