@@ -1,0 +1,849 @@
+[
+  {
+    "case_id": "PS-001",
+    "layers": [
+      "deterministic",
+      "postgres"
+    ],
+    "basis": "#319 D1-CURRENT-PRODUCT-INPUT/V1; sourcing/normalize_test.go; source images are candidates, never ApprovedAsset",
+    "source": {
+      "Identity": {
+        "SourceType": " CRAWLER ",
+        "SourcePlatform": " 1688 ",
+        "SourceID": " SAMPLE-001 ",
+        "SourceVersion": " v1 "
+      },
+      "RawReference": {
+        "ReferenceType": "synthetic_product",
+        "ReferenceID": "raw-001",
+        "URL": "https://source.example.test/offer/SAMPLE-001",
+        "SnapshotID": "snapshot-001",
+        "Checksum": "sha256:synthetic-evidence-001",
+        "CapturedAt": "2026-09-01T12:00:00Z",
+        "Metadata": {
+          "collector": "offline-synthetic",
+          "etag": "v1"
+        }
+      },
+      "ProductCandidate": {
+        "Title": "Steel Bottle",
+        "Brand": "Example",
+        "CategoryPath": [
+          " Home ",
+          "",
+          " Drinkware "
+        ],
+        "Description": "Synthetic steel bottle",
+        "Attributes": {
+          "zeta": "last",
+          "alpha": "first"
+        }
+      },
+      "AssetCandidates": [
+        {
+          "SourceID": "image-001",
+          "URL": "https://images.example.test/source-001.jpg",
+          "MediaType": "image",
+          "Role": "primary",
+          "Width": 800,
+          "Height": 800
+        }
+      ],
+      "Trace": {
+        "SourceRunID": "run-001",
+        "RequestID": "request-001",
+        "Notes": [
+          "authored synthetic evidence"
+        ]
+      }
+    },
+    "expected_snapshot": {
+      "title": "Steel Bottle",
+      "brand": "Example",
+      "category_path": [
+        "Home",
+        "Drinkware"
+      ],
+      "description": "Synthetic steel bottle",
+      "attributes": [
+        {
+          "name": "alpha",
+          "value": "first"
+        },
+        {
+          "name": "zeta",
+          "value": "last"
+        }
+      ],
+      "images": [
+        {
+          "url": "https://images.example.test/source-001.jpg",
+          "role": "primary",
+          "width": 800,
+          "height": 800,
+          "trace": {
+            "sources": [
+              {
+                "type": "crawler",
+                "platform": "1688",
+                "source_id": "image-001",
+                "url": "https://images.example.test/source-001.jpg",
+                "source_run_id": "run-001",
+                "request_id": "request-001"
+              }
+            ]
+          }
+        }
+      ],
+      "sources": [
+        {
+          "type": "crawler",
+          "detail": "raw-001",
+          "platform": "1688",
+          "source_id": "SAMPLE-001",
+          "source_version": "v1",
+          "reference_type": "synthetic_product",
+          "url": "https://source.example.test/offer/SAMPLE-001",
+          "snapshot_id": "snapshot-001",
+          "checksum": "sha256:synthetic-evidence-001",
+          "captured_at": "2026-09-01T12:00:00Z",
+          "metadata": {
+            "collector": "offline-synthetic",
+            "etag": "v1"
+          },
+          "source_run_id": "run-001",
+          "request_id": "request-001",
+          "notes": [
+            "authored synthetic evidence"
+          ]
+        }
+      ]
+    },
+    "reports": [
+      {
+        "action": "publish",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": false
+      },
+      {
+        "action": "save_draft",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": true
+      }
+    ]
+  },
+  {
+    "case_id": "PS-002",
+    "layers": [
+      "deterministic",
+      "postgres"
+    ],
+    "basis": "sourcing/normalize_test.go: missing facts remain absent; #319 permits incomplete local draft",
+    "source": {
+      "Identity": {
+        "SourceType": " CRAWLER ",
+        "SourcePlatform": " 1688 ",
+        "SourceID": " SAMPLE-001 ",
+        "SourceVersion": " v1 "
+      },
+      "RawReference": {
+        "ReferenceType": "synthetic_product",
+        "ReferenceID": "raw-001",
+        "URL": "https://source.example.test/offer/SAMPLE-001",
+        "SnapshotID": "snapshot-001",
+        "Checksum": "sha256:synthetic-evidence-001",
+        "CapturedAt": "2026-09-01T12:00:00Z",
+        "Metadata": {
+          "collector": "offline-synthetic",
+          "etag": "v1"
+        }
+      },
+      "ProductCandidate": {
+        "Title": "",
+        "Brand": "Example",
+        "CategoryPath": [
+          " Home ",
+          "",
+          " Drinkware "
+        ],
+        "Description": "Synthetic steel bottle",
+        "Attributes": {
+          "zeta": "last",
+          "alpha": "first"
+        }
+      },
+      "AssetCandidates": [],
+      "Trace": {
+        "SourceRunID": "run-001",
+        "RequestID": "request-001",
+        "Notes": [
+          "authored synthetic evidence"
+        ]
+      },
+      "Warnings": [
+        {
+          "Code": " Missing_Title ",
+          "Field": " title ",
+          "Message": " title unavailable "
+        },
+        {
+          "Code": " Missing_Images ",
+          "Field": " images ",
+          "Message": " images unavailable "
+        }
+      ]
+    },
+    "expected_snapshot": {
+      "title": "",
+      "brand": "Example",
+      "category_path": [
+        "Home",
+        "Drinkware"
+      ],
+      "description": "Synthetic steel bottle",
+      "attributes": [
+        {
+          "name": "alpha",
+          "value": "first"
+        },
+        {
+          "name": "zeta",
+          "value": "last"
+        }
+      ],
+      "sources": [
+        {
+          "type": "crawler",
+          "detail": "raw-001",
+          "platform": "1688",
+          "source_id": "SAMPLE-001",
+          "source_version": "v1",
+          "reference_type": "synthetic_product",
+          "url": "https://source.example.test/offer/SAMPLE-001",
+          "snapshot_id": "snapshot-001",
+          "checksum": "sha256:synthetic-evidence-001",
+          "captured_at": "2026-09-01T12:00:00Z",
+          "metadata": {
+            "collector": "offline-synthetic",
+            "etag": "v1"
+          },
+          "source_run_id": "run-001",
+          "request_id": "request-001",
+          "notes": [
+            "authored synthetic evidence"
+          ]
+        }
+      ],
+      "warnings": [
+        {
+          "code": "missing_title",
+          "field": "title",
+          "message": "title unavailable"
+        },
+        {
+          "code": "missing_images",
+          "field": "images",
+          "message": "images unavailable"
+        }
+      ],
+      "review": {
+        "needs_review": true,
+        "reasons": [
+          "title unavailable",
+          "images unavailable"
+        ]
+      }
+    },
+    "reports": [
+      {
+        "action": "publish",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": false
+      },
+      {
+        "action": "save_draft",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": true
+      }
+    ]
+  },
+  {
+    "case_id": "PS-003",
+    "layers": [
+      "deterministic",
+      "postgres"
+    ],
+    "basis": "sourcing/normalize_test.go: structured warnings and raw lineage survive, review reasons deduplicate",
+    "source": {
+      "Identity": {
+        "SourceType": " CRAWLER ",
+        "SourcePlatform": " 1688 ",
+        "SourceID": " SAMPLE-001 ",
+        "SourceVersion": " v1 "
+      },
+      "RawReference": {
+        "ReferenceType": "synthetic_product",
+        "ReferenceID": "raw-001",
+        "URL": "https://source.example.test/offer/SAMPLE-001",
+        "SnapshotID": "snapshot-001",
+        "Checksum": "sha256:synthetic-evidence-001",
+        "CapturedAt": "2026-09-01T12:00:00Z",
+        "Metadata": {
+          "collector": "offline-synthetic",
+          "etag": "v1"
+        }
+      },
+      "ProductCandidate": {
+        "Title": "Steel Bottle",
+        "Brand": "",
+        "CategoryPath": [
+          " Home ",
+          "",
+          " Drinkware "
+        ],
+        "Description": "Synthetic steel bottle",
+        "Attributes": {
+          "zeta": "last",
+          "alpha": "first"
+        }
+      },
+      "AssetCandidates": [
+        {
+          "SourceID": "image-001",
+          "URL": "https://images.example.test/source-001.jpg",
+          "MediaType": "image",
+          "Role": "primary",
+          "Width": 800,
+          "Height": 800
+        }
+      ],
+      "Trace": {
+        "SourceRunID": "run-001",
+        "RequestID": "request-001",
+        "Notes": [
+          "authored synthetic evidence"
+        ]
+      },
+      "Warnings": [
+        {
+          "Code": " Missing_Brand ",
+          "Field": " brand ",
+          "Message": " brand unavailable "
+        },
+        {
+          "Code": "missing_brand",
+          "Field": "brand",
+          "Message": "brand unavailable"
+        }
+      ]
+    },
+    "expected_snapshot": {
+      "title": "Steel Bottle",
+      "brand": "",
+      "category_path": [
+        "Home",
+        "Drinkware"
+      ],
+      "description": "Synthetic steel bottle",
+      "attributes": [
+        {
+          "name": "alpha",
+          "value": "first"
+        },
+        {
+          "name": "zeta",
+          "value": "last"
+        }
+      ],
+      "images": [
+        {
+          "url": "https://images.example.test/source-001.jpg",
+          "role": "primary",
+          "width": 800,
+          "height": 800,
+          "trace": {
+            "sources": [
+              {
+                "type": "crawler",
+                "platform": "1688",
+                "source_id": "image-001",
+                "url": "https://images.example.test/source-001.jpg",
+                "source_run_id": "run-001",
+                "request_id": "request-001"
+              }
+            ]
+          }
+        }
+      ],
+      "sources": [
+        {
+          "type": "crawler",
+          "detail": "raw-001",
+          "platform": "1688",
+          "source_id": "SAMPLE-001",
+          "source_version": "v1",
+          "reference_type": "synthetic_product",
+          "url": "https://source.example.test/offer/SAMPLE-001",
+          "snapshot_id": "snapshot-001",
+          "checksum": "sha256:synthetic-evidence-001",
+          "captured_at": "2026-09-01T12:00:00Z",
+          "metadata": {
+            "collector": "offline-synthetic",
+            "etag": "v1"
+          },
+          "source_run_id": "run-001",
+          "request_id": "request-001",
+          "notes": [
+            "authored synthetic evidence"
+          ]
+        }
+      ],
+      "warnings": [
+        {
+          "code": "missing_brand",
+          "field": "brand",
+          "message": "brand unavailable"
+        },
+        {
+          "code": "missing_brand",
+          "field": "brand",
+          "message": "brand unavailable"
+        }
+      ],
+      "review": {
+        "needs_review": true,
+        "reasons": [
+          "brand unavailable"
+        ]
+      }
+    },
+    "reports": [
+      {
+        "action": "publish",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": false
+      },
+      {
+        "action": "save_draft",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": true
+      }
+    ]
+  },
+  {
+    "case_id": "PS-004",
+    "layers": [
+      "deterministic"
+    ],
+    "basis": "sourcing/normalize_test.go: strict source identity required; cannot enter Publisher/HTTP",
+    "source": {
+      "Identity": {
+        "SourceType": " CRAWLER ",
+        "SourcePlatform": "",
+        "SourceID": " SAMPLE-001 ",
+        "SourceVersion": " v1 "
+      },
+      "RawReference": {
+        "ReferenceType": "synthetic_product",
+        "ReferenceID": "raw-001",
+        "URL": "https://source.example.test/offer/SAMPLE-001",
+        "SnapshotID": "snapshot-001",
+        "Checksum": "sha256:synthetic-evidence-001",
+        "CapturedAt": "2026-09-01T12:00:00Z",
+        "Metadata": {
+          "collector": "offline-synthetic",
+          "etag": "v1"
+        }
+      },
+      "ProductCandidate": {
+        "Title": "Steel Bottle",
+        "Brand": "Example",
+        "CategoryPath": [
+          " Home ",
+          "",
+          " Drinkware "
+        ],
+        "Description": "Synthetic steel bottle",
+        "Attributes": {
+          "zeta": "last",
+          "alpha": "first"
+        }
+      },
+      "AssetCandidates": [
+        {
+          "SourceID": "image-001",
+          "URL": "https://images.example.test/source-001.jpg",
+          "MediaType": "image",
+          "Role": "primary",
+          "Width": 800,
+          "Height": 800
+        }
+      ],
+      "Trace": {
+        "SourceRunID": "run-001",
+        "RequestID": "request-001",
+        "Notes": [
+          "authored synthetic evidence"
+        ]
+      }
+    },
+    "source_error": "source_identity_required"
+  },
+  {
+    "case_id": "PS-005",
+    "layers": [
+      "deterministic"
+    ],
+    "basis": "validator/validator_test.go readyPackage; explicitly synthetic complete package, no HTTP assembler or consent claim",
+    "package": {
+      "category_id": 3001,
+      "product_type_id": 901,
+      "category_resolution": {
+        "status": "resolved",
+        "category_id": 3001
+      },
+      "attribute_resolution": {
+        "status": "resolved",
+        "resolved_count": 1
+      },
+      "resolved_attributes": [
+        {
+          "name": "material",
+          "attribute_id": 7001
+        }
+      ],
+      "sale_attribute_resolution": {
+        "status": "resolved",
+        "primary_attribute_id": 1001184
+      },
+      "draft_payload": {
+        "image_info": {
+          "main_image": "https://images.example.test/synthetic-main.jpg"
+        },
+        "skc_list": [
+          {
+            "supplier_code": "SKC-1",
+            "sale_attribute": {
+              "attribute_id": 1001184,
+              "attribute_value_id": 9001
+            },
+            "sku_list": [
+              {
+                "supplier_sku": "SKU-1",
+                "base_price": "22.50",
+                "site_price_list": [
+                  {
+                    "sub_site": "us",
+                    "base_price": "22.50"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "preview_payload": {},
+      "final_submission_draft": {
+        "confirmed": true,
+        "main_image_url": "https://images.example.test/synthetic-main.jpg",
+        "submit_mode": "publish",
+        "final_image_order": [
+          "https://images.example.test/synthetic-main.jpg"
+        ]
+      }
+    },
+    "reports": [
+      {
+        "action": "publish",
+        "status": "ready",
+        "blockers": [],
+        "warnings": [],
+        "exact": true,
+        "draft_allows_blockers": false
+      },
+      {
+        "action": "save_draft",
+        "status": "ready",
+        "blockers": [],
+        "warnings": [],
+        "exact": true,
+        "draft_allows_blockers": true
+      }
+    ]
+  },
+  {
+    "case_id": "PS-006",
+    "layers": [
+      "deterministic"
+    ],
+    "basis": "validator/validator_test.go TestValidateOfflineSHEIN: optional manual_notes is warning-only",
+    "package": {
+      "category_id": 3001,
+      "product_type_id": 901,
+      "category_resolution": {
+        "status": "resolved",
+        "category_id": 3001
+      },
+      "attribute_resolution": {
+        "status": "resolved",
+        "resolved_count": 1
+      },
+      "resolved_attributes": [
+        {
+          "name": "material",
+          "attribute_id": 7001
+        }
+      ],
+      "sale_attribute_resolution": {
+        "status": "resolved",
+        "primary_attribute_id": 1001184
+      },
+      "draft_payload": {
+        "image_info": {
+          "main_image": "https://images.example.test/synthetic-main.jpg"
+        },
+        "skc_list": [
+          {
+            "supplier_code": "SKC-1",
+            "sale_attribute": {
+              "attribute_id": 1001184,
+              "attribute_value_id": 9001
+            },
+            "sku_list": [
+              {
+                "supplier_sku": "SKU-1",
+                "base_price": "22.50",
+                "site_price_list": [
+                  {
+                    "sub_site": "us",
+                    "base_price": "22.50"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "preview_payload": {},
+      "final_submission_draft": {
+        "confirmed": true,
+        "main_image_url": "https://images.example.test/synthetic-main.jpg",
+        "submit_mode": "publish",
+        "final_image_order": [
+          "https://images.example.test/synthetic-main.jpg"
+        ]
+      },
+      "review_notes": [
+        "manual review"
+      ]
+    },
+    "reports": [
+      {
+        "action": "publish",
+        "status": "ready_with_warnings",
+        "blockers": [],
+        "warnings": [
+          "manual_notes/manual_notes"
+        ],
+        "exact": true,
+        "draft_allows_blockers": false
+      }
+    ]
+  },
+  {
+    "case_id": "PS-007",
+    "layers": [
+      "deterministic"
+    ],
+    "basis": "validator/validator_test.go TestValidateActionAndBusinessFailures; action policy never grants submission authority",
+    "package": {
+      "category_id": 3001,
+      "product_type_id": 901,
+      "category_resolution": {
+        "status": "resolved",
+        "category_id": 3001
+      },
+      "attribute_resolution": {
+        "status": "resolved",
+        "resolved_count": 1
+      },
+      "resolved_attributes": [
+        {
+          "name": "material",
+          "attribute_id": 7001
+        }
+      ],
+      "sale_attribute_resolution": {
+        "status": "resolved",
+        "primary_attribute_id": 1001184
+      },
+      "draft_payload": {
+        "image_info": {
+          "main_image": "https://images.example.test/synthetic-main.jpg"
+        },
+        "skc_list": [
+          {
+            "supplier_code": "SKC-1",
+            "sale_attribute": {
+              "attribute_id": 1001184,
+              "attribute_value_id": 9001
+            },
+            "sku_list": [
+              {
+                "supplier_sku": "SKU-1",
+                "base_price": "22.50",
+                "site_price_list": [
+                  {
+                    "sub_site": "us",
+                    "base_price": "22.50"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "preview_payload": {},
+      "final_submission_draft": {
+        "confirmed": false,
+        "main_image_url": "https://images.example.test/synthetic-main.jpg",
+        "submit_mode": "publish",
+        "final_image_order": [
+          "https://images.example.test/synthetic-main.jpg"
+        ]
+      }
+    },
+    "reports": [
+      {
+        "action": "publish",
+        "status": "blocked",
+        "blockers": [
+          "final_review/final_review"
+        ],
+        "warnings": [],
+        "exact": true,
+        "draft_allows_blockers": false
+      },
+      {
+        "action": "save_draft",
+        "status": "ready",
+        "blockers": [],
+        "warnings": [],
+        "exact": true,
+        "draft_allows_blockers": true
+      }
+    ]
+  },
+  {
+    "case_id": "PS-008",
+    "layers": [
+      "deterministic"
+    ],
+    "basis": "#318 approved Go JSON binding; existing independent TestDiagnosticFixedEncodingVectors empty vector; valid field change rejects old expected",
+    "package": {},
+    "reports": [
+      {
+        "action": "publish",
+        "status": "blocked",
+        "blockers": [
+          "category/missing_category",
+          "attributes/missing_required_attribute",
+          "attribute_review/missing_required_attribute",
+          "sale_attributes/missing_sale_attribute",
+          "images/image_upload_failed"
+        ],
+        "warnings": [],
+        "exact": false,
+        "draft_allows_blockers": false
+      }
+    ],
+    "binding": {
+      "digest": "sha256:5040e66f7fef34038805993a390b33bee3d409e1e07dd652402bdfebc483b6d1",
+      "equivalent": {
+        "review_notes": []
+      },
+      "changed": {
+        "spu_name": "changed fixed content"
+      }
+    }
+  },
+  {
+    "case_id": "PS-009",
+    "layers": [
+      "deterministic"
+    ],
+    "basis": "#318 binding design section 3.2: evaluated_at equal valid_until is expired; evidence retained, no successful report; explicit trusted caller seam only",
+    "package": {},
+    "freshness": {
+      "status": "valid",
+      "coverage": [
+        "external_package_freshness"
+      ],
+      "evidence": {
+        "subject_digest": "sha256:5040e66f7fef34038805993a390b33bee3d409e1e07dd652402bdfebc483b6d1",
+        "policy_version": "synthetic-owner.v1",
+        "source": "isolated-oracle",
+        "observed_at": "2026-09-05T23:00:00Z",
+        "valid_until": "2026-09-06T00:00:00Z"
+      }
+    },
+    "error_code": "stale_input",
+    "freshness_causes": [
+      "expired_at_evaluation"
+    ]
+  }
+]

@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from "vitest";
 import { fetchSheinRecords, SheinRecordListError } from "./shein-records-client";
+import type { SheinRecordListItem } from "./shein-records";
 
-const sheinRecordListFixture = () => ({ items: [{ record_id: "12345678-1234-4234-8234-123456789abc", product_key: "source-product", snapshot_version: "1", country: "US", language: "en", created_at: "2026-09-06T01:02:03Z" }], next_cursor: "opaque-cursor_1" });
+const item: SheinRecordListItem = { record_id: "12345678-1234-4234-8234-123456789abc", product_key: "source-product", snapshot_version: "1", country: "US", language: "en", created_at: "2026-09-06T01:02:03Z" };
+const sheinRecordListFixture = () => ({ items: [item], next_cursor: "opaque-cursor_1" });
 
 afterEach(() => vi.unstubAllGlobals());
 

@@ -1,0 +1,8 @@
+{
+  "dataset_id": "product-shein-shared",
+  "version": "1.0.0",
+  "content_digest": "sha256:032b074b65f7a7cbd15b702195055a69d40c220a9acb296c614e49fdcfe47945",
+  "rule_version": "shein.offline_package.v2",
+  "binding_version": "shein.persisted-input.go-json.v1",
+  "semantic_time": "2026-09-06T00:00:00Z"
+}

@@ -3,7 +3,7 @@ import { parseWorkbenchErrorEnvelopePayload, type WorkbenchErrorEnvelope } from 
 
 const boundedText = (maxBytes: number) => z.string().min(1).refine((value) => value.trim() === value && !/[\0\r\n\t]/.test(value) && new TextEncoder().encode(value).length <= maxBytes);
 const recordId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-const positiveInt64 = z.string().regex(/^[1-9][0-9]*$/).refine((value) => BigInt(value) <= BigInt("9223372036854775807"));
+const positiveInt64 = z.string().refine((value) => /^[1-9][0-9]*$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"));
 const timestamp = z.iso.datetime().regex(/T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/);
 const item = z.strictObject({
   record_id: recordId,
@@ -19,7 +19,10 @@ const list = z.strictObject({
 }).refine((value) => new Set(value.items.map((entry) => entry.record_id)).size === value.items.length);
 
 export type SheinRecordListItem = z.infer<typeof item>;
-export type SheinRecordList = z.infer<typeof list>;
+export type SheinRecordList = {
+  items: SheinRecordListItem[];
+  next_cursor: string | null;
+};
 
 const failure = z.strictObject({ error: z.enum(["invalid_request", "permission_denied", "unavailable", "deadline_exceeded"]) });
 export type SheinRecordListFailure = z.infer<typeof failure> | WorkbenchErrorEnvelope;

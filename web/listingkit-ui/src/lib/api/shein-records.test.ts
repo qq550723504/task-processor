@@ -26,6 +26,7 @@ describe("SHEIN record list wire contract", () => {
     { items: [], next_cursor: null, total: 1 },
     { items: [{ ...sheinRecordListFixture().items[0], snapshot_version: "9007199254740993" }, { ...sheinRecordListFixture().items[0] }], next_cursor: null },
     { items: [{ ...sheinRecordListFixture().items[0], snapshot_version: "01" }], next_cursor: null },
+    { items: [{ ...sheinRecordListFixture().items[0], snapshot_version: "abc" }], next_cursor: null },
     { items: [{ ...sheinRecordListFixture().items[0], snapshot_version: "9223372036854775808" }], next_cursor: null },
     { items: [{ ...sheinRecordListFixture().items[0], created_at: "2026-02-30T01:00:00Z" }], next_cursor: null },
     { items: [{ ...sheinRecordListFixture().items[0], organization_id: "200" }], next_cursor: null },

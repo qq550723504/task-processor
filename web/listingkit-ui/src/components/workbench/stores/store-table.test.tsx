@@ -52,17 +52,8 @@ describe("StoreTable", () => {
       />,
     );
 
-    const table = screen.getByRole("table", { name: "我的店铺列表" });
-    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
-      "店铺名称",
-      "平台",
-      "区域",
-      "外部店铺 ID",
-      "店铺状态",
-      "连接状态",
-      "更新时间",
-      "操作",
-    ]);
+    const table = screen.getByRole("list", { name: "我的店铺列表" });
+    expect(within(table).getAllByRole("listitem")).toHaveLength(4);
     expect(within(table).getAllByText("未设置")).toHaveLength(3);
     expect(within(table).getAllByText("SHEIN")).toHaveLength(4);
     expect(within(table).getByText("已启用")).toBeInTheDocument();

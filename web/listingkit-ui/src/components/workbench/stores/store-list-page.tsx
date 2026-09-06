@@ -5,6 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
+import { ConsolePage, ConsoleState, ConsoleToolbar } from "@/components/workbench/console/console-page";
+import { Card } from "@/components/ui/card";
+import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 import { StoreTable } from "@/components/workbench/stores/store-table";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -46,23 +49,11 @@ export function StoreListPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">店铺中心</p>
-          <h1 className="text-2xl font-semibold tracking-tight">我的店铺</h1>
-          {context.effectiveOrganization ? (
-            <p className="mt-1 text-sm text-muted-foreground">{context.effectiveOrganization.name}</p>
-          ) : null}
-        </div>
-        {canCreate ? (
-          <Button asChild>
-            <Link href="/workbench/stores/new"><Plus aria-hidden="true" />新建店铺</Link>
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
+    <ConsolePage title="我的店铺" breadcrumbs={findConsoleRoute("/workbench/stores")?.trail} description={<>统一管理店铺连接、授权与当前状态。{context.effectiveOrganization ? `当前企业：${context.effectiveOrganization.name}` : ""}</>} actions={canCreate ? <Button asChild><Link href="/workbench/stores/new"><Plus aria-hidden="true" />新建店铺</Link></Button> : undefined}>
+      {!stores.isPending && !stores.isError && data ? <div className="console-store-metrics">{[
+        ["当前筛选店铺", data.pagination.total], ["店铺额度已用", data.quota.used], ["预留额度", data.quota.reserved], ["额度上限", data.quota.limit ?? "未提供"],
+      ].map(([label, value]) => <Card className="console-store-metric" key={label}><h2>{label}</h2><p>{value}</p></Card>)}</div> : null}
+      <ConsoleToolbar>
         <label className="grid gap-1 text-sm font-medium">
           平台
           <Select aria-label="平台" value={filters.platform ?? ""} onChange={(event) => updateFilters({ ...filters, page: 1, platform: event.target.value === "shein" ? "shein" : undefined })}>
@@ -82,7 +73,7 @@ export function StoreListPage() {
           </Select>
         </label>
         {hasFilters && data?.items.length !== 0 ? <Button onClick={resetFilters} variant="ghost">清除筛选</Button> : null}
-      </div>
+      </ConsoleToolbar>
 
       {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除。界面不提供恢复；如需运营恢复，请由管理员通过数据库软删除恢复流程处理。</p> : null}
 
@@ -103,22 +94,22 @@ export function StoreListPage() {
           <Pagination filters={filters} onChange={updateFilters} page={data.pagination.page} pageSize={data.pagination.pageSize} total={data.pagination.total} />
         </div>
       ) : null}
-    </section>
+    </ConsolePage>
   );
 }
 
 function LoadingState() {
-  return <div className="mt-6 rounded-xl border bg-card p-6" role="status">正在加载店铺...</div>;
+  return <ConsoleState kind="loading" title="正在加载店铺..." />;
 }
 
 function ErrorState({ error, retry }: { error: unknown; retry: () => void }) {
   const code = error instanceof WorkbenchAPIError ? error.code : (error as { code?: string })?.code;
   const message = code === "PERMISSION_DENIED" ? "没有查看当前企业店铺的权限" : code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED" || code === "ORGANIZATION_SUSPENDED" ? "当前企业访问已不可用，请联系管理员" : "店铺服务暂时不可用，请稍后重试";
-  return <section className="mt-6 rounded-xl border bg-card p-6" role="alert"><h2 className="font-semibold">{message}</h2><Button className="mt-4" onClick={retry} variant="outline"><RefreshCw aria-hidden="true" />重试</Button></section>;
+  return <ConsoleState kind="error" title={message}><Button className="mt-4" onClick={retry} variant="outline"><RefreshCw aria-hidden="true" />重试</Button></ConsoleState>;
 }
 
 function EmptyState({ filtered, clearFilters }: { filtered: boolean; clearFilters: () => void }) {
-  return <section className="rounded-xl border bg-card p-8 text-center"><h2 className="font-semibold">{filtered ? "没有符合筛选条件的店铺" : "还没有店铺"}</h2><p className="mt-2 text-sm text-muted-foreground">{filtered ? "调整或清除筛选条件后再试。" : "新建店铺后会显示在这里。"}</p>{filtered ? <Button className="mt-4" onClick={clearFilters} variant="outline">清除筛选</Button> : null}</section>;
+  return <ConsoleState kind="empty" title={filtered ? "没有符合筛选条件的店铺" : "还没有店铺"}><p>{filtered ? "调整或清除筛选条件后再试。" : "新建店铺后会显示在这里。"}</p>{filtered ? <Button className="mt-4" onClick={clearFilters} variant="outline">清除筛选</Button> : null}</ConsoleState>;
 }
 
 function QuotaSummary({ quota }: { quota: { used: number; limit: number | null; allowed: boolean; reason: string } }) {

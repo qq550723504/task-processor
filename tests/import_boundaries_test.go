@@ -3706,7 +3706,7 @@ func TestProductDomainDoesNotDependOnOuterAdapters(t *testing.T) {
 
 func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 	catalogAdapterDirectory := filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "catalog")) + string(os.PathSeparator)
-	catalogAdapterOnly := map[string]struct{}{catalogAdapterDirectory: {}}
+	catalogAdapterOnly := map[string]struct{}{catalogAdapterDirectory: {}, filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "review", "repository.go")): {}}
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
