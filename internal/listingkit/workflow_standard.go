@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	productasset "task-processor/internal/product/asset"
+	"task-processor/internal/product/catalog"
 )
 
 type standardWorkflowState struct {
@@ -47,7 +48,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	stage.Complete()
 
 	result.CatalogProduct = &productSnapshot
-	canonicalProduct := canonicalProductFromSnapshot(productSnapshot)
+	canonicalProduct := catalog.ProjectCanonical(productSnapshot)
 	result.CanonicalProduct = canonicalProduct
 	if productSnapshot.Review != nil {
 		result.ReviewReasons = append(result.ReviewReasons, productSnapshot.Review.Reasons...)

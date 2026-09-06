@@ -140,7 +140,7 @@ func TestCanonicalProductProjectionPreservesSnapshotFacts(t *testing.T) {
 		Review: &catalog.ReviewState{NeedsReview: true},
 	}
 
-	got := canonicalProductFromSnapshot(snapshot)
+	got := catalog.ProjectCanonical(snapshot)
 	if got == nil || got.Title != "Bottle" || got.Attributes["material"].Value != "steel" {
 		t.Fatalf("canonical projection = %+v, want snapshot facts", got)
 	}
