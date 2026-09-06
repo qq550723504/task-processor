@@ -24,8 +24,8 @@ func TestOrganizationCredentialAdmissionChecksVerifiedScopeBeforeResolver(t *tes
 		{TenantID: "B", UserID: "other", EffectiveOrganizationID: "B"},
 		{TenantID: "C", UserID: "actor", EffectiveOrganizationID: "C"},
 	} {
-		ctx := openai.WithIdentity(context.Background(), openai.Identity{TenantID: "B", UserID: "actor"})
-		ctx = authidentity.WithAuthenticatedIdentity(ctx, verified)
+		ctx := authidentity.WithAuthenticatedIdentity(context.Background(), verified)
+		ctx = openai.WithIdentity(ctx, openai.Identity{TenantID: "B", UserID: "actor"})
 		_, err := admission.ResolveClientConfig(ctx, "default", nil)
 		require.ErrorIs(t, err, openai.ErrClientConfigurationUnavailable)
 	}
