@@ -5,7 +5,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   { label: "运营驾驶舱", href: "/workbench", availability: "unavailable", children: [pending("目标管理", "overview/goals"), pending("店铺矩阵", "overview/stores"), pending("经营预警", "overview/alerts"), pending("经营建议", "overview/advice")] },
   pending("AI工作台", "ai", [
     pending("硕米Chat", "ai/chat", [pending("新建会话", "ai/chat/new"), pending("最近会话", "ai/chat/recent"), pending("收藏会话", "ai/chat/saved")]),
-    pending("任务中心", "ai/tasks", [pending("进行中", "ai/tasks/running"), pending("待确认", "ai/tasks/pending"), pending("已完成", "ai/tasks/completed"), pending("异常任务", "ai/tasks/errors")]),
+    { label: "任务中心", href: "/workbench/ai/tasks", availability: "connected", children: [pending("进行中", "ai/tasks/running"), pending("待确认", "ai/tasks/pending"), { label: "已完成", href: "/workbench/ai/tasks/completed", availability: "connected" }, pending("异常任务", "ai/tasks/errors")] },
     pending("项目中心", "ai/projects"), pending("知识库", "ai/knowledge"), pending("我的报告", "ai/reports"),
   ]),
   pending("供应市场", "supply", [pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine"), pending("优选申请", "supply/applications")]),

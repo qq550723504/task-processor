@@ -15,5 +15,7 @@ describe("Figma Console navigation contract", () => {
     expect(findConsoleRoute("/workbench/ai/chat")?.node.availability).toBe("unavailable");
     expect(findConsoleRoute("/workbench/stores")?.node.availability).toBe("connected");
     expect(findConsoleRoute("/workbench/store-products")?.node.availability).toBe("unavailable");
+    expect(findConsoleRoute("/workbench/ai/tasks/completed")?.node.availability).toBe("connected");
+    expect(findConsoleRoute("/workbench/ai/tasks/running")?.node.availability).toBe("unavailable");
   });
 });

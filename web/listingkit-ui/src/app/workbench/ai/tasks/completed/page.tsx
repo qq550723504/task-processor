@@ -1,3 +1,5 @@
-import { TaskCenterLayout } from "@/components/workbench/task-center/task-center-layout";
+import { connection } from "next/server";
+import { CompletedWorkPageContent } from "@/components/workbench/task-center/completed-work-page";
+import { isSheinRecordsAvailable } from "@/lib/server/shein-records-availability";
 
-export default function CompletedWorkPage() { return <TaskCenterLayout completed />; }
+export default async function CompletedWorkPage() { await connection(); return <CompletedWorkPageContent available={isSheinRecordsAvailable()} completed />; }

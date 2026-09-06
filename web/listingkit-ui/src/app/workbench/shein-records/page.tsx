@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 export default function SheinRecordsPage() {
-  // #328 is paused until #331 approves the shared product projection.
+  // R328 uses the shared task center; this standalone entry stays withdrawn.
   // Backend configuration alone must not enable this withdrawn entry.
   notFound();
 }

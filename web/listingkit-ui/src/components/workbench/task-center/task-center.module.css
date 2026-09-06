@@ -20,7 +20,7 @@
 .panelHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .panelHeader h2 { font-size: 15px; font-weight: 700; border-radius: 3px; }
 .panelHeader span { color: var(--muted-foreground); font-size: 11px; }
-.rows { display: grid; gap: 14px; list-style: none; padding: 0; margin: 0; }
+.rows { display: grid; gap: 14px; list-style: none; padding: 4px; margin: -4px; max-height: 432px; overflow-y: auto; }
 .row { display: flex; width: 100%; text-align: left; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--secondary); cursor: pointer; min-height: 112px; overflow-wrap: anywhere; }
 .row[aria-pressed="true"] { border-color: var(--primary); background: var(--accent); }
 .rowMarker { display: block; width: 8px; min-height: 62px; align-self: stretch; border-radius: 4px; background: var(--console-purple); flex-shrink: 0; }
