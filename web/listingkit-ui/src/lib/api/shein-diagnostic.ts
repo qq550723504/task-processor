@@ -24,14 +24,17 @@ const freshness = z.union([
 ]);
 const diagnostic = z.strictObject({
   diagnostic_only: z.literal(true), scope: z.literal("shein.offline_package"),
-  target: z.strictObject({ marketplace: z.literal("shein"), site: text }),
+  target: z.strictObject({ marketplace: z.literal("shein"), site: z.literal("") }),
   action: sheinDiagnosticActionSchema, rule_version: z.literal("shein.offline_package.v2"),
   input: z.strictObject({ actual_digest: sheinDigestSchema, binding_version: z.literal("shein.persisted-input.go-json.v1"), read_at: timestamp, evaluated_at: timestamp }),
   external_freshness: freshness, not_evaluated: z.array(text),
   not_evaluated_reasons: z.record(text, text).optional(),
   offline_checks: z.strictObject({ status: z.enum(["ready", "ready_with_warnings", "blocked"]), checks: z.array(check), blockers: z.array(check), warnings: z.array(check) }),
   action_policy: z.strictObject({ readiness_blockers_allowed: z.boolean() }),
-});
+}).refine((value) => value.external_freshness.status !== "not_evaluated" || (
+  value.not_evaluated.includes("external_package_freshness") &&
+  value.not_evaluated_reasons?.external_package_freshness === "no_authoritative_package_freshness"
+));
 export type SheinDiagnostic = z.infer<typeof diagnostic>;
 const failure = z.strictObject({
   error: z.enum(["invalid_request", "unsupported_action", "unsupported_target", "permission_denied", "not_found", "stale_input", "input_too_large", "invalid_input", "evaluation_failed", "unsupported_rule_version", "unavailable", "deadline_exceeded"]),

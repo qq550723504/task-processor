@@ -21,6 +21,8 @@ describe("Shein diagnostic wire contract", () => {
   it.each([
     { diagnostic_only: false }, { rule_version: "v1" }, { action: "apply" },
     { not_evaluated: null }, { not_evaluated: undefined }, { payload: "private" },
+    { not_evaluated_reasons: undefined }, { not_evaluated_reasons: {} },
+    { not_evaluated: ["submission_gate"] }, { target: { marketplace: "shein", site: "unknown" } },
     { external_freshness: { status: "not_evaluated", coverage: null } },
     { offline_checks: { status: "ready", checks: null, blockers: [], warnings: [] } },
   ])("rejects malformed response %j", (patch) => {

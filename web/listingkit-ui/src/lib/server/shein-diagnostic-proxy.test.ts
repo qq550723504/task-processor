@@ -19,6 +19,30 @@ describe("dedicated diagnostic proxy trust boundary", () => {
     expect((await proxySheinDiagnostic(request(undefined, { "X-Expected-Organization-ID": "100" }), id, "server-token")).status).toBe(409);
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it("rejects invalid record IDs and body metadata without forwarding", async () => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    expect((await proxySheinDiagnostic(request(), "../secret", "token")).status).toBe(400);
+    expect((await proxySheinDiagnostic(request(undefined, { "Content-Length": "1" }), id, "token")).status).toBe(400);
+    expect((await proxySheinDiagnostic(request(undefined, { "Transfer-Encoding": "chunked" }), id, "token")).status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("propagates inbound cancellation to fetch and a stalled stream", async () => {
+    vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:9876");
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const fetcher = vi.fn().mockResolvedValue(new Response(new ReadableStream({ cancel }), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetcher);
+    const incoming = new Request(request(), { signal: controller.signal });
+    const pending = proxySheinDiagnostic(incoming, id, "token");
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    controller.abort();
+    expect((await pending).status).toBe(504);
+    expect(fetcher.mock.calls[0][1].signal.aborted).toBe(true);
+    expect(cancel).toHaveBeenCalledOnce();
+    fetcher.mockClear();
+    expect((await proxySheinDiagnostic(incoming, id, "token")).status).toBe(504);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it.each([undefined, "http://localhost:8085/api/v1", "https://user:pass@example.com", "https://example.com/?url=evil"])("fails closed for missing/non-origin config %s", async (origin) => {
     vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", origin);
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);

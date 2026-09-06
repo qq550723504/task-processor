@@ -42,7 +42,7 @@ export async function readSheinDiagnosticJSON(response: Response, signal?: Abort
           keys.add(key);
         }
       }
-      pending.push(...(node.children ?? []));
+      for (const child of node.children ?? []) pending.push(child);
     }
     return JSON.parse(raw);
   } catch (error) {
