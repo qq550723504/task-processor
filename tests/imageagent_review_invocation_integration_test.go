@@ -52,7 +52,7 @@ func review334Manager(t *testing.T, db *gorm.DB, endpoint string, logger *logrus
 	return manager
 }
 func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
-	for _, name := range []string{"success", "missing_usage", "provider_503", "provider_400", "deadline", "inbound_cancel", "record_failure", "record_db_failure", "both_fail", "response_cancel", "nil_authorization", "stale_config", "stale_route", "stale_price", "forged_cost", "known_quote", "config_drift", "missing_scope", "missing_run"} {
+	for _, name := range []string{"success", "missing_usage", "semantic_score", "semantic_reasons", "provider_503", "provider_400", "deadline", "inbound_cancel", "record_failure", "record_db_failure", "both_fail", "response_cancel", "nil_authorization", "stale_config", "stale_route", "stale_price", "forged_cost", "known_quote", "config_drift", "missing_scope", "missing_run"} {
 		t.Run(name, func(t *testing.T) {
 			f := newScope339Fixture(t)
 			var calls atomic.Int32
@@ -76,7 +76,14 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 					fmt.Fprint(w, `{"error":{"message":"SENSITIVE-ERROR-BODY-SENTINEL","type":"server_error"}}`)
 					return
 				}
-				payload := map[string]any{"id": "safe-request-id", "model": "review-test", "choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": `{"score":0.9,"needs_human_review":false,"reasons":[]}`}, "finish_reason": "stop"}}}
+				content := `{"score":0.9,"needs_human_review":false,"reasons":[]}`
+				if name == "semantic_score" {
+					content = `{"score":2,"needs_human_review":false,"reasons":[]}`
+				}
+				if name == "semantic_reasons" {
+					content = `{"score":0.9,"needs_human_review":true,"reasons":[]}`
+				}
+				payload := map[string]any{"id": "safe-request-id", "model": "review-test", "choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": content}, "finish_reason": "stop"}}}
 				if name != "missing_usage" {
 					payload["usage"] = map[string]int{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}
 				} else {
@@ -182,8 +189,12 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 				require.Equal(t, "run-B", row["agent_run_id"])
 				require.Equal(t, false, row["estimated_cost_known"])
 				require.Equal(t, name != "missing_usage" && name != "provider_503" && name != "provider_400" && name != "deadline", row["usage_known"])
-				if name == "provider_503" || name == "provider_400" || name == "deadline" {
+				if name == "provider_503" || name == "provider_400" || name == "deadline" || name == "semantic_score" || name == "semantic_reasons" {
 					require.Equal(t, "failed", row["outcome"])
+					if name == "semantic_score" || name == "semantic_reasons" {
+						require.Equal(t, string(aicapability.ErrorInvalidProviderResponse), row["error_category"])
+						require.Equal(t, "invalid_review_output", row["error_code"])
+					}
 				} else {
 					require.Equal(t, "succeeded", row["outcome"])
 				}

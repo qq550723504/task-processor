@@ -60,6 +60,9 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	}
 	started := time.Now().UTC()
 	result, providerErr := adapter.Review(ctx, request)
+	if providerErr == nil {
+		result, providerErr = productimage.ValidateReview(result)
+	}
 	if !observed {
 		return result, providerErr
 	}
