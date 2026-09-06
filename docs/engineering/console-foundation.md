@@ -2,6 +2,8 @@
 
 Refs #331。2026-09-06 实读 Figma `tg48P46SSXl6TBy9lZwg63` / `31:463`「硕米官网」：六个参考 Frame 的 design context + 截图，以及只读 Plugin API 的可见性、导航、尺寸、颜色、字体与 reactions。设计原稿未修改。
 
+[FV1最终视觉验收：本轮参考/运行图、门禁修复前后、差异分类及源码SHA](console-fv1.md)。以下保留基础映射及可重复运行流程。
+
 ## Frame → 当前组件 / 路由
 
 | 实读 Frame | 代码落点 | 保留 / 替换 |
