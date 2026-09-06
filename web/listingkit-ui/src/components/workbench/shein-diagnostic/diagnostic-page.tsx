@@ -1,6 +1,7 @@
 "use client";
 
 import { ConsolePage } from "@/components/workbench/console/console-page";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -32,7 +33,7 @@ function ScopedDiagnostic({ recordId, organizationId, organizationName, scope }:
     setRequest((previous) => ({ action, sequence: previous.sequence + 1, ...(expectedDigest ? { expectedDigest } : {}) }));
   }
   return (
-    <ConsolePage title="SHEIN 资料诊断" breadcrumbs={[{ label: "SHEIN 资料诊断" }]} description={organizationName}>
+    <ConsolePage title="SHEIN 资料诊断" breadcrumbs={[{ label: "SHEIN 资料诊断" }]} description={organizationName} actions={<Button asChild variant="outline"><Link href="/workbench/ai/tasks/completed" prefetch={false}>返回任务中心</Link></Button>}>
       <div className="mb-6">
 
         <p className="mt-3 flex items-center gap-2 text-sm font-medium"><ShieldCheck aria-hidden="true" className="size-4 shrink-0" />本地资料 / 仅离线检查</p>
