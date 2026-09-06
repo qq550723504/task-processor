@@ -42,7 +42,7 @@ export function ApplicationFrame({ children }: Readonly<{ children: React.ReactN
 
   if (isWorkbenchRoute(pathname)) {
     return (
-      <ThemeProvider>
+      <ThemeProvider defaultTheme="dark">
         <QueryProvider>
           <ToastProvider>
             <WorkbenchContextProvider>

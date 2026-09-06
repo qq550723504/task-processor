@@ -1,65 +1,21 @@
 "use client";
 
-import { Home, Menu, Store, X, type LucideIcon } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useTheme } from "next-themes";
+import { Menu, X } from "lucide-react";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
-import {
-  OrganizationSwitcher,
-  workbenchErrorMessage,
-} from "@/components/workbench/organization-switcher";
+import { OrganizationSwitcher, workbenchErrorMessage } from "@/components/workbench/organization-switcher";
 import { Button } from "@/components/ui/button";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarRail,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { ConsoleNavigation } from "@/components/workbench/console/console-navigation";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
 const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
-
-type WorkbenchNavItem = {
-  href: string;
-  icon: LucideIcon;
-  label: string;
-  match: "exact" | "prefix";
-};
-
-const WORKBENCH_NAV_GROUPS = [
-  {
-    label: "工作",
-    items: [
-      { label: "工作台", href: "/workbench", icon: Home, match: "exact" },
-    ],
-  },
-  {
-    label: "店铺中心",
-    items: [
-      {
-        label: "我的店铺",
-        href: "/workbench/stores",
-        icon: Store,
-        match: "prefix",
-      },
-    ],
-  },
-] as const satisfies readonly {
-  label: string;
-  items: readonly WorkbenchNavItem[];
-}[];
-
+const subscribeToHydration = () => () => {};
+const getClientHydrationSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
 export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/workbench";
   const router = useRouter();
@@ -138,7 +94,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <WorkbenchFrame pathname={pathname}>
+    <WorkbenchFrame key={pathname} pathname={pathname}>
       {context.selectionRequired ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
@@ -158,77 +114,40 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function WorkbenchFrame({
-  children,
-  pathname,
-}: {
-  children: ReactNode;
-  pathname: string;
-}) {
-  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+function WorkbenchFrame({ children, pathname }: { children: ReactNode; pathname: string }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   const context = useWorkbenchContext();
-
-  return (
-    <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader className="border-b border-sidebar-border p-4">
-          <Link className="font-semibold tracking-tight" href="/workbench">
-            硕米智能引擎
-          </Link>
-        </SidebarHeader>
-        <SidebarContent>
-          <WorkbenchNavigation ariaLabel="工作台导航" pathname={pathname} />
-        </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
-      <SidebarInset>
-        <header className="flex min-h-16 items-center gap-3 border-b bg-background px-4 sm:px-6">
-          <Button
-            aria-controls={MOBILE_NAVIGATION_ID}
-            aria-expanded={mobileNavigationOpen}
-            aria-label={
-              mobileNavigationOpen ? "关闭工作台导航" : "打开工作台导航"
-            }
-            className="md:hidden"
-            onClick={() => setMobileNavigationOpen((current) => !current)}
-            size="icon"
-            variant="ghost"
-          >
-            {mobileNavigationOpen ? (
-              <X aria-hidden="true" />
-            ) : (
-              <Menu aria-hidden="true" />
-            )}
-          </Button>
-          <SidebarTrigger
-            aria-label="折叠桌面导航"
-            className="hidden md:inline-flex"
-          />
-          <div className="ml-auto flex min-w-0 items-center gap-3">
-            <DelegatedOperationIndicator
-              effectiveOrganization={context.effectiveOrganization}
-              homeOrganizationId={context.homeOrganizationId}
-              organizations={context.organizations}
-            />
-            <OrganizationSwitcher />
+  const { resolvedTheme, setTheme } = useTheme();
+  const mounted = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);
+  const light = mounted && resolvedTheme === "light";
+  function closeNavigation() { setMobileOpen(false); trigger.current?.focus(); }
+  return <div className="console-theme" onKeyDown={(event) => { if (mobileOpen && event.key === "Escape") { event.preventDefault(); closeNavigation(); } }}>
+    <a className="sr-only focus:not-sr-only" href="#console-main">跳到页面内容</a>
+    <div className="console-frame">
+      <aside className="console-sidebar">
+        <Link href="/workbench" className="console-brand" prefetch={false}><Image src="/console/sumi-logo.png" alt="" width={42} height={42} unoptimized /><span><strong>硕米智能引擎</strong><small>SUMI AI ENGINE</small></span></Link>
+        <ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="工作台导航" />
+        <p className="console-sidebar-footer">SUMI AI ENGINE</p>
+      </aside>
+      <div className="console-body">
+        <header className="console-topbar">
+          <Button ref={trigger} className="md:hidden" variant="ghost" size="icon" aria-controls={MOBILE_NAVIGATION_ID} aria-expanded={mobileOpen} aria-label={mobileOpen ? "关闭工作台导航" : "打开工作台导航"} onClick={() => setMobileOpen((value) => !value)}>{mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</Button>
+          <div className="console-top-context"><p className="console-tagline">打造属于自己的AI电商团队</p><div className="console-organization"><OrganizationSwitcher /></div></div>
+          <div className="console-global-actions">
+            <Button disabled title="客服服务暂未接入" variant="outline">联系客服</Button>
+            <Button disabled title="通知服务暂未接入" variant="outline">通知</Button>
+            <button className="console-theme-toggle" type="button" role="switch" aria-label="浅色模式" aria-checked={light} onClick={() => setTheme(light ? "dark" : "light")}>{light ? "浅色" : "深色"}<span aria-hidden="true" /></button>
+            <details className="console-user"><summary>我的账户 ⌄</summary><div><p className="break-words text-xs text-muted-foreground">已登录账号</p><p className="mt-1 break-all text-sm">{context.user?.id}</p><a href="/api/zitadel-auth/logout">退出登录</a></div></details>
           </div>
         </header>
-        {mobileNavigationOpen ? (
-          <div className="border-b bg-background px-4 py-3 md:hidden">
-            <WorkbenchNavigation
-              ariaLabel="移动工作台导航"
-              id={MOBILE_NAVIGATION_ID}
-              onNavigate={() => setMobileNavigationOpen(false)}
-              pathname={pathname}
-            />
-          </div>
-        ) : null}
-        <main className="min-w-0 flex-1 bg-muted/20">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
-  );
+        {context.effectiveOrganization && context.effectiveOrganization.id !== context.homeOrganizationId ? <div className="console-delegation"><DelegatedOperationIndicator effectiveOrganization={context.effectiveOrganization} homeOrganizationId={context.homeOrganizationId} organizations={context.organizations} /></div> : null}
+        {mobileOpen ? <div className="console-mobile-nav" id={MOBILE_NAVIGATION_ID}><ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="移动工作台导航" onNavigate={closeNavigation} /></div> : null}
+        <main className="console-content" id="console-main" tabIndex={-1}>{children}</main>
+      </div>
+    </div>
+  </div>;
 }
-
 function DelegatedOperationIndicator({
   effectiveOrganization,
   homeOrganizationId,
@@ -266,56 +185,6 @@ function DelegatedOperationIndicator({
       </span>
     </p>
   );
-}
-
-function WorkbenchNavigation({
-  ariaLabel,
-  id,
-  onNavigate,
-  pathname,
-}: {
-  ariaLabel: string;
-  id?: string;
-  onNavigate?: () => void;
-  pathname: string;
-}) {
-  return (
-    <nav aria-label={ariaLabel} id={id}>
-      {WORKBENCH_NAV_GROUPS.map((group) => (
-        <SidebarGroup key={group.label}>
-          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {group.items.map((item) => {
-                const active = isActiveWorkbenchNavItem(pathname, item);
-                const Icon = item.icon;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={active}>
-                      <Link
-                        aria-current={active ? "page" : undefined}
-                        href={item.href}
-                        onClick={onNavigate}
-                      >
-                        <Icon data-icon="inline-start" />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
-    </nav>
-  );
-}
-
-function isActiveWorkbenchNavItem(pathname: string, item: WorkbenchNavItem) {
-  return item.match === "prefix"
-    ? pathname === item.href || pathname.startsWith(`${item.href}/`)
-    : pathname === item.href;
 }
 
 function AccessState({ action, code }: { action: () => void; code: string }) {
