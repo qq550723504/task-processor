@@ -87,7 +87,6 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 		return err
 	}
 	if c.organizationScope {
-		start.Identity.RunID = start.Run.ID
 		if err := imageagent.ValidateOrganizationExecution(start.Identity, start.Run.ID); err != nil {
 			return err
 		}
@@ -139,7 +138,7 @@ func (c *Client) StartManual(ctx context.Context, start imageagent.WorkflowStart
 }
 
 func (c *Client) RecoverEffect(ctx context.Context, command imageagent.RecoverEffectCommand) error {
-	if err := c.validateIdentityScope(command.Identity); err != nil {
+	if err := c.validateCommandScope(command.Identity, command.RunID); err != nil {
 		return err
 	}
 	if c == nil || c.client == nil {

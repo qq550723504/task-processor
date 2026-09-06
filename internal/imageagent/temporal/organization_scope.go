@@ -98,8 +98,8 @@ func (c *Client) validateCommandScope(identity imageagent.ExecutionIdentity, run
 	if err := c.validateIdentityScope(identity); err != nil {
 		return err
 	}
-	if identity.RunID != "" && identity.RunID != runID {
-		return imageagent.ErrIdentityRequired
+	if c.organizationScope {
+		return imageagent.ValidateOrganizationExecution(identity, runID)
 	}
 	return validateCommandIdentity(identity, runID)
 }
