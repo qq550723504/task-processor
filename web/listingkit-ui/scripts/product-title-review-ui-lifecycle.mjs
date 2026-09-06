@@ -13,7 +13,7 @@ async function observe() {
   await expect.poll(async () => { try { await access(join(fixture.controlDirectory, "observe-done")); return true; } catch { return false; } }).toBe(true);
   return JSON.parse(await readFile(join(fixture.controlDirectory, "observations.json"), "utf8"));
 }
-function deferred() { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; }
+function deferred() { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
 const browser = await chromium.launch();
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -35,16 +35,20 @@ try {
   }
   async function holdDecision() {
     const committed = deferred(), release = deferred(), finished = deferred();
+    const timer = setTimeout(() => committed.reject(new Error("Actual decision did not complete within 20 seconds")), 20000);
+    const reached = committed.promise.finally(() => clearTimeout(timer));
+    void reached.catch(() => undefined); // handled by the caller even if dispatch fails before it starts waiting
     const handler = async (route) => {
       try {
         const response = await route.fetch(); assert.equal(response.status(), 200);
         committed.resolve(); await release.promise;
         // Preserve the actual BFF response; a canceled browser may reject delivery.
         try { await route.fulfill({ response }); } catch { /* caller already canceled */ }
-      } finally { finished.resolve(); }
+      } catch (error) { committed.reject(error); }
+      finally { finished.resolve(); }
     };
     await page.route("**/api/product/text-proposals/*/decisions", handler);
-    return { committed: committed.promise, release: async () => { release.resolve(); await finished.promise; await page.unroute("**/api/product/text-proposals/*/decisions", handler); } };
+    return { committed: reached, release: async () => { release.resolve(); await finished.promise; await page.unroute("**/api/product/text-proposals/*/decisions", handler); } };
   }
   const results = [];
   await enter();
