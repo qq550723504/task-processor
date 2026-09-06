@@ -56,6 +56,10 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	server.WriteTimeout = record.Timeout + 2*time.Second
 	handler := server.Handler
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set the protected-metadata response policy before auth and organization
+		// middleware so their early failures cannot be cached or content-sniffed.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		ctx, cancel := context.WithTimeout(r.Context(), record.Timeout)
 		defer cancel()
 		handler.ServeHTTP(w, r.WithContext(ctx))

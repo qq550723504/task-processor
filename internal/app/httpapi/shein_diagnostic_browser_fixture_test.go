@@ -59,6 +59,7 @@ func (f browserFixtureIdentity) Load(ctx context.Context, source workbenchcontex
 			grants = []authidentity.OrganizationGrant{
 				{OrganizationID: "200", OrganizationName: "Fixture A", ProjectID: "project", Roles: []string{a.Role}},
 				{OrganizationID: "100", OrganizationName: "Fixture B", ProjectID: "project", Roles: []string{a.Role}},
+				{OrganizationID: "300", OrganizationName: "Fixture C", ProjectID: "project", Roles: []string{a.Role}},
 			}
 			break
 		}
@@ -80,6 +81,7 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	t.Setenv("ISSUE319_TEST_DSN", dsn)
 	db := recordTestDB(t)
 	publishRecordProduct(t, db, "200", "product")
+	publishRecordProduct(t, db, "300", "product")
 	f := browserFixtureIdentity{actors: map[string]browserFixtureActor{}}
 	tokens := map[string]string{}
 	for name, actor := range map[string]browserFixtureActor{
@@ -141,6 +143,10 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	require.NoError(t, json.Unmarshal(readWire, &readReceipt))
 	readActor.Role = "admin"
 	f.actors[tokens["readonly"]] = readActor
+	status, organizationWire := recordPostForOrganization(t, ts, tokens["owner"], "fixture-organization-300", "300", recordBody)
+	require.Equal(t, 201, status, string(organizationWire))
+	var organizationReceipt record.Receipt
+	require.NoError(t, json.Unmarshal(organizationWire, &organizationReceipt))
 	before := diagnosticBusinessState(t, db)
 	current.Store(application()) // new app, reader, repository and evaluator after actual POST
 	registry := kernelmodule.NewRegistry()
@@ -148,7 +154,7 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	contextApp := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, registry.Routes(), routeAuthDependencies{workbenchVerifier: f, organizationResolver: resolver, authorizer: authorizer, auditRecorder: workbenchcontext.NewStructuredAuditRecorder(logrus.New())})
 	contextServer := httptest.NewServer(contextApp.Handler)
 	t.Cleanup(contextServer.Close)
-	manifest, err := json.Marshal(map[string]any{"goOrigin": ts.URL, "contextOrigin": contextServer.URL, "recordId": receipt.RecordID, "recordCount": len(ownerRecordIDs), "otherRecordCount": len(otherRecordIDs), "readonlyRecordId": readReceipt.RecordID, "tokens": tokens})
+	manifest, err := json.Marshal(map[string]any{"goOrigin": ts.URL, "contextOrigin": contextServer.URL, "recordId": receipt.RecordID, "recordCount": len(ownerRecordIDs), "otherRecordCount": len(otherRecordIDs), "readonlyRecordId": readReceipt.RecordID, "organization300RecordId": organizationReceipt.RecordID, "tokens": tokens})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.json"), manifest, 0600))
 	ticker := time.NewTicker(100 * time.Millisecond)

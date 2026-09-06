@@ -123,6 +123,10 @@ func recordApplication(t *testing.T, db *gorm.DB, g *recordGrants) (*httptest.Se
 	return ts, reader
 }
 func recordPost(t *testing.T, server *httptest.Server, subject, key, body string) (int, []byte) {
+	return recordPostForOrganization(t, server, subject, key, "200", body)
+}
+
+func recordPostForOrganization(t *testing.T, server *httptest.Server, subject, key, organizationID, body string) (int, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/listing/shein-records", strings.NewReader(body))
 	require.NoError(t, err)
@@ -130,7 +134,7 @@ func recordPost(t *testing.T, server *httptest.Server, subject, key, body string
 		req.Header.Set("Authorization", "Bearer "+subject)
 	}
 	req.Header.Set("Idempotency-Key", key)
-	req.Header.Set("X-Requested-Organization-ID", "200")
+	req.Header.Set("X-Requested-Organization-ID", organizationID)
 	req.Header.Set("X-Tenant-ID", "forged")
 	req.Header.Set("X-User-ID", "forged")
 	req.Header.Set("X-User-Roles", "listingkit_admin")
