@@ -45,10 +45,11 @@ LiveWrite；不证明任意自然语言真实性，不扩大 Threat Model。
 权威 owner：Product Review 管理 proposal/revision/decisions/receipt；Catalog 唯一商品
 writer，原 UoW 保证 Apply 原子性；#344 管理全部 wire/严格解码/HTTP 与错误语义。
 UI 没有数据库事务或本地持久账本。直接消费 #344 已推送提交
-`ea6195309f4e16e0427118f9864e695202a85cba` 的
+`64153bb71c32b75516977a6ab9898d2432a26d6d` 的
 `src/lib/api/product-title-review.ts`、`product-title-review-client.ts`。
-通过正常 merge 消费依赖，不复制 DTO/client；#344 后续修复和跨进程 fixture
-尚未作为本片已验证基线。组件样例只用于交互测试。
+通过正常 merge 消费依赖，不复制 DTO/client；Go 合同来自 #343
+`3d59d669c5eda511c0724f66042bb54c2803be06`。组件样例只用于交互测试，真实
+浏览器运行使用 #344 唯一 `product-title-review-fixture.mjs`。
 
 | 事件/前置条件 | 浏览器效果 | 权威副作用及验证 |
 | --- | --- | --- |
@@ -81,7 +82,40 @@ exact revision/冲突、双击、未知写显式核实、scope/撤权/卸载迟�
 不变、重建后新版本/receipt。1440 对照、390 长文本、焦点/dialog/axe 证据。
 最终 SHA 的 CI/独立完整切片复核在 PR 维护；SKIP/NOT_RUN 不等于 PASS。
 
-TS 合同已接线，当前 Product 真实联调与 pending 运行截图仍 NOT_RUN，依赖 #343
-实际 Go 合同及 #344 跨进程 fixture。证据目录中的 completed/diagnostic 截图只证明
-此前既有只读路径回归；不能替代 Product 联调或本片最终 SHA 验收。
+真实浏览器脚本分别执行主流程及交错场景：`scripts/product-title-review-ui.mjs`、
+`scripts/product-title-review-ui-lifecycle.mjs`。后者仅延迟交付实际 BFF 响应以制造
+取消/跨 scope/卸载交错，不替换响应 body，也不绕过实际 Go 授权和提交。
+`restart` 控制是同一个 Go 进程内重建 application，不能称为进程重启。
+
+浏览器验收捕获的对比度问题来自把背景色 token 当成文字颜色；状态文字使用
+`--warning-foreground` / `--success-foreground`，保持现有主题定义。原生 dialog
+允许浏览器 chrome 获得焦点，页面背景控件保持 inert；验证 Tab 回到 modal、
+Escape 不发 POST、关闭后恢复触发按钮焦点。
+
+## 本地复现
+
+需要包含上述两个依赖的 checkout、Node/Go/Docker，先在 `web/listingkit-ui`
+执行 `pnpm install --frozen-lockfile`。启动独立服务：
+
+```text
+node scripts/product-title-review-fixture.mjs --serve
+```
+
+使用启动器打印的私有 manifest 路径，在另一个终端执行（仍位于同一前端目录）：
+
+```text
+node scripts/product-title-review-ui.mjs <private-fixture.json> <evidence-directory>
+node scripts/product-title-review-ui-lifecycle.mjs <private-fixture.json> <evidence-directory>
+```
+
+必须新建 fixture 才可完整重跑主流程；脚本会真实改变隔离提案状态。生命周期脚本
+应在主流程之后运行，使用同一个隔离数据库验证原已完成/诊断仍可读。
+正常停止是在 manifest 的 `controlDirectory` 新建空文件 `stop-fixture`，等待启动器
+退出 0 并检查 `cleanup.json` 的 `portReleased`、`goExit` 与 `containerStopped`。
+不要上传 manifest/session/cookie/raw trace。仅提交脱敏观察、截图和精确源码版本证据；
+最终运行/CI/独立复核绑定的 SHA 在 PR 维护。
+
+证据目录中的旧 `regression-completed-*` 是历史只读回归；Product 主链与生命周期
+报告及 `regression-diagnostic-after-apply-*` 才来自本片真实组合。外部身份发行、
+grant provider、CandidateGenerator 是明确的受控替身，真实 IAM/生产/付费模型不在验收范围。
 Legacy decision: N/A，复用当前 Console owner；不消费 RETIRE 的 Task-first/Workspace。

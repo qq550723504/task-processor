@@ -135,7 +135,7 @@ function ReviewError({ error, recover }: { error: unknown; recover?: () => void 
     AUTHENTICATION_REQUIRED: "登录状态已失效", ORGANIZATION_ACCESS_REVOKED: "当前企业访问已撤销", ORGANIZATION_ACCESS_DENIED: "当前企业访问被拒绝",
     ORGANIZATION_SUSPENDED: "当前企业已暂停访问", ORGANIZATION_CONTEXT_CHANGED: "企业上下文已变化", ORGANIZATION_SELECTION_REQUIRED: "请重新选择企业",
     stale_product_version: "资料已变化，请重新读取", operation_conflict: "资料已变化，请重新读取",
-    INVALID_REQUEST: "请求内容不合法，请检查标题与提案标识", invalid_request: "请求内容不合法，请检查标题与提案标识", input_too_large: "标题或请求内容过长",
+    INVALID_REQUEST: "请求内容不合法，请检查标题与提案标识", invalid_request: "请求内容不合法，请检查标题与提案标识", input_too_large: "标题或请求内容过长", INPUT_TOO_LARGE: "标题或请求内容过长",
     not_found: "提案不存在或当前身份不可读取", INVALID_UPSTREAM_RESPONSE: "提案响应不合法", DEADLINE_EXCEEDED: "读取提案超时", deadline_exceeded: "读取提案超时",
     DEPENDENCY_UNAVAILABLE: "标题提案服务暂不可用", unavailable: "标题提案服务暂不可用",
   };

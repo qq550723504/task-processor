@@ -229,3 +229,12 @@ it("collection permission denial clears an in-flight operation and releases the 
   await act(async () => write.resolve(proposal("accepted", "2")));
   expect(screen.queryByRole("button", { name: "应用到标准商品" })).not.toBeInTheDocument();
 });
+
+it("shows the handed-off 413 not_sent error without an unknown-result replay", async () => {
+  calls.decide.mockRejectedValue(new ProductTitleReviewError(413, "INPUT_TOO_LARGE", { code: "INPUT_TOO_LARGE", message: "private", requestId: "", fieldErrors: [] }, "not_sent"));
+  await open(); await userEvent.click(screen.getByRole("button", { name: "编辑标题" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存为待审核提案" }));
+  expect(await screen.findByText("标题或请求内容过长")).toBeVisible();
+  expect(screen.queryByText("结果待核实")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "编辑标题" })).toBeEnabled();
+});
