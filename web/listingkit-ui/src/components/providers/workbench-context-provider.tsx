@@ -32,7 +32,7 @@ type WorkbenchContextValue = {
   isSwitching: boolean;
   error: WorkbenchContextError | null;
   blockingError: WorkbenchContextError | null;
-  retry: () => void;
+  retry: () => Promise<WorkbenchContext | null>;
   switchOrganization: (organizationId: string) => void;
   registerOrganizationSwitchGuard: (
     guard: (target: WorkbenchOrganization) => boolean | Promise<boolean>,
@@ -164,9 +164,10 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       isSwitching: switchPreparing || switchMutation.isPending || storeMutationsPending > 0,
       error: queryError,
       blockingError,
-      retry: () => {
+      retry: async () => {
         setBlockingError(null);
-        void contextQuery.refetch();
+        const result = await contextQuery.refetch();
+        return result.isSuccess ? result.data : null;
       },
       switchOrganization,
       registerOrganizationSwitchGuard,

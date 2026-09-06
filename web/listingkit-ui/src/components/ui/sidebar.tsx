@@ -128,7 +128,7 @@ function SidebarGroupLabel({
     <div
       data-slot="sidebar-group-label"
       className={cn(
-        "flex h-8 items-center px-2 text-xs font-medium text-sidebar-foreground/70 transition-opacity group-data-[state=collapsed]/sidebar:sr-only",
+        "flex h-8 items-center px-2 text-xs font-medium text-sidebar-foreground/80 transition-opacity group-data-[state=collapsed]/sidebar:sr-only",
         className,
       )}
       {...props}
