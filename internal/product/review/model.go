@@ -104,6 +104,56 @@ func (r Record) View() View {
 func ValidKey(s string) bool {
 	return s != "" && len(s) <= 128 && s == strings.TrimSpace(s) && utf8.ValidString(s) && strings.IndexFunc(s, unicode.IsControl) < 0
 }
+
+func validState(state string) bool {
+	return state == "pending" || state == "accepted" || state == "rejected" || state == "applied"
+}
+
+// ValidateStoredRecord rejects persistence corruption before it can be
+// projected as an authoritative review state.
+func ValidateStoredRecord(r Record) error {
+	if !validID(r.ID) || !ValidKey(r.Org) || !ValidKey(r.Owner) || !ValidKey(r.Input.ProductKey) || r.Input.BaseVersion == 0 || r.Input.BaseVersion > 1<<63-1 || r.Revision == 0 || r.Revision > 1<<63-1 || !validState(r.State) {
+		return ErrUnavailable
+	}
+	for _, d := range r.History {
+		if (d.Action != "accept" && d.Action != "edit" && d.Action != "reject") || !ValidKey(d.Actor) || d.Revision == 0 || d.Revision > r.Revision || d.At.IsZero() {
+			return ErrUnavailable
+		}
+	}
+	if r.Receipt == nil {
+		if r.State == "applied" {
+			return ErrUnavailable
+		}
+		return nil
+	}
+	if r.State != "applied" || r.Receipt.ProposalID != r.ID || r.Receipt.Revision == 0 || r.Receipt.Revision > r.Revision || r.Receipt.ProductVersion == 0 || r.Receipt.ProductVersion > 1<<63-1 || !ValidKey(r.Receipt.PublicationID) || !ValidKey(r.Receipt.Actor) || r.Receipt.At.IsZero() {
+		return ErrUnavailable
+	}
+	return nil
+}
+
+// ValidateView applies the persistence-independent invariants required before
+// an operation replay or record view is emitted on the HTTP wire.
+func ValidateView(v View) error {
+	if !validID(v.ID) || !ValidKey(v.Owner) || !ValidKey(v.Input.ProductKey) || v.Input.BaseVersion == 0 || v.Input.BaseVersion > 1<<63-1 || v.Revision == 0 || v.Revision > 1<<63-1 || !validState(v.State) || v.Policy != "title-review-v1" {
+		return ErrUnavailable
+	}
+	for _, d := range v.History {
+		if (d.Action != "accept" && d.Action != "edit" && d.Action != "reject") || !ValidKey(d.Actor) || d.Revision == 0 || d.Revision > v.Revision || d.At.IsZero() {
+			return ErrUnavailable
+		}
+	}
+	if v.Receipt == nil {
+		if v.State == "applied" {
+			return ErrUnavailable
+		}
+		return nil
+	}
+	if v.State != "applied" || v.Receipt.ProposalID != v.ID || v.Receipt.Revision == 0 || v.Receipt.Revision > v.Revision || v.Receipt.ProductVersion == 0 || v.Receipt.ProductVersion > 1<<63-1 || !ValidKey(v.Receipt.PublicationID) || !ValidKey(v.Receipt.Actor) || v.Receipt.At.IsZero() {
+		return ErrUnavailable
+	}
+	return nil
+}
 func ValidateTitle(s string) error {
 	if len(s) > 4096 {
 		return ErrTooLarge

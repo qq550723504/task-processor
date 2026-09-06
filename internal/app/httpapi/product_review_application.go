@@ -43,6 +43,8 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	server.WriteTimeout = review.Timeout + 2*time.Second
 	handler := server.Handler
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		ctx, cancel := context.WithTimeout(r.Context(), review.Timeout)
 		defer cancel()
 		handler.ServeHTTP(w, r.WithContext(ctx))
