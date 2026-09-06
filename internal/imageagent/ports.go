@@ -5,6 +5,8 @@ import "context"
 // ExecutionIdentity is the tenant/user identity verified at the command edge
 // and durably captured in workflow input.
 type ExecutionIdentity struct {
+	ScopeProtocol  string
+	RunID          string
 	TenantID       string
 	UserID         string
 	BusinessTaskID string

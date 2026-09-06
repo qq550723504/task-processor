@@ -18,8 +18,11 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	if a.slotEffectsV3 == nil || a.stagedSlotExecutor == nil || a.artifactStore == nil || a.publicationOwner == nil {
 		return EffectRecoveryResult{}, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
+		return EffectRecoveryResult{}, err
+	}
+	if err := a.validateOrganizationCatalog(ctx, input.Identity, input.RunID, input.AssetCatalog); err != nil {
 		return EffectRecoveryResult{}, err
 	}
 	executionInput := imageagent.SlotExecutionInput{
@@ -108,7 +111,7 @@ func (a *Activities) PersistRecoveryBlockedEffectV3(ctx context.Context, input E
 	if a.slotEffectsV3 == nil {
 		return EffectRecoveryResult{}, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return EffectRecoveryResult{}, err
 	}
@@ -159,7 +162,7 @@ func (a *Activities) StartEffectRecoveryV3(ctx context.Context, input EffectReco
 	if a.recoveryWorkflowStarter == nil {
 		return fmt.Errorf("image agent effect recovery workflow starter is required")
 	}
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return err
 	}
@@ -170,7 +173,7 @@ func (a *Activities) ReconcileEffectRecoveryV3(ctx context.Context, input Effect
 	if a.slotEffectsV3 == nil {
 		return EffectRecoveryResult{}, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return EffectRecoveryResult{}, err
 	}

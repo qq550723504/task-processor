@@ -54,8 +54,9 @@ type authorizationPaginationRequest struct {
 }
 
 type authorizationSearchFilter struct {
-	InUserIDs *authorizationIDsFilter `json:"inUserIds,omitempty"`
-	ProjectID *authorizationIDFilter  `json:"projectId,omitempty"`
+	OrganizationID *authorizationIDFilter  `json:"organizationId,omitempty"`
+	InUserIDs      *authorizationIDsFilter `json:"inUserIds,omitempty"`
+	ProjectID      *authorizationIDFilter  `json:"projectId,omitempty"`
 }
 
 type authorizationIDsFilter struct {
@@ -107,6 +108,22 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 	subject string,
 	projectID string,
 ) ([]authidentity.OrganizationGrant, error) {
+	return c.listProjectAuthorizations(ctx, bearerToken, subject, projectID, "")
+}
+
+// ListServiceProjectAuthorizations is an explicit read-only service credential
+// contract. Unlike ListOwnProjectAuthorizations, it requires an exact target
+// organization. Its caller owns service credential acquisition and permission;
+// the credential must never be persisted in an execution payload.
+func (c *AuthorizationClient) ListServiceProjectAuthorizations(ctx context.Context, serviceToken, subject, projectID, organizationID string) ([]authidentity.OrganizationGrant, error) {
+	organizationID = strings.TrimSpace(organizationID)
+	if organizationID == "" {
+		return nil, errors.New("ZITADEL service authorization organization is required")
+	}
+	return c.listProjectAuthorizations(ctx, serviceToken, subject, projectID, organizationID)
+}
+
+func (c *AuthorizationClient) listProjectAuthorizations(ctx context.Context, bearerToken, subject, projectID, organizationID string) ([]authidentity.OrganizationGrant, error) {
 	if c == nil || strings.TrimSpace(c.apiURL) == "" {
 		return nil, errors.New("ZITADEL authorization API URL is required")
 	}
@@ -128,7 +145,7 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 	var firstTotalResult uint64
 	firstPage := true
 	for offset := 0; ; {
-		response, err := c.listAuthorizationPage(ctx, bearerToken, subject, projectID, offset)
+		response, err := c.listAuthorizationPage(ctx, bearerToken, subject, projectID, organizationID, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -165,6 +182,11 @@ func (c *AuthorizationClient) ListOwnProjectAuthorizations(
 			return nil, errors.New("ZITADEL authorization pagination exceeded its total result")
 		}
 		if returned == firstTotalResult {
+			for id := range grants {
+				if organizationID != "" && id != organizationID {
+					return nil, errors.New("ZITADEL service authorization scope mismatch")
+				}
+			}
 			return sortedOrganizationGrants(grants), nil
 		}
 		if len(*response.Authorizations) == 0 {
@@ -179,6 +201,7 @@ func (c *AuthorizationClient) listAuthorizationPage(
 	bearerToken string,
 	subject string,
 	projectID string,
+	organizationID string,
 	offset int,
 ) (authorizationListResponse, error) {
 	payload := authorizationListRequest{
@@ -192,6 +215,9 @@ func (c *AuthorizationClient) listAuthorizationPage(
 			{InUserIDs: &authorizationIDsFilter{IDs: []string{subject}}},
 			{ProjectID: &authorizationIDFilter{ID: projectID}},
 		},
+	}
+	if organizationID != "" {
+		payload.Filters = append(payload.Filters, authorizationSearchFilter{OrganizationID: &authorizationIDFilter{ID: organizationID}})
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

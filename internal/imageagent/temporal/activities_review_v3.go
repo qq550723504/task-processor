@@ -23,8 +23,11 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 	if !ok {
 		return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image agent executor cannot review staged candidates", imageagent.SlotReviewTransportRequiredCode, imageagent.ErrValidation)
 	}
-	ctx, err := restoreActivityIdentity(ctx, input.Identity)
+	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
+		return imageagent.SlotEffectV3PublishedResult{}, err
+	}
+	if err := a.validateOrganizationCatalog(ctx, input.Identity, input.RunID, input.AssetCatalog); err != nil {
 		return imageagent.SlotEffectV3PublishedResult{}, err
 	}
 	executionInput := slotExecutionInputV3(input)

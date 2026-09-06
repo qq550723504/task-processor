@@ -18,6 +18,7 @@ var errPublicationOwnerRequiresActivity = errors.New("publication owner requires
 type RecoveryWorkflowStarter func(context.Context, EffectRecoveryWorkflowInput) error
 
 type ActivityDependencies struct {
+	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
 	Repository               imageagent.Repository
 	SlotEffects              imageagent.SlotExternalEffectRepository
 	SlotExecutor             imageagent.SlotExecutor
@@ -32,6 +33,7 @@ type ActivityDependencies struct {
 }
 
 type Activities struct {
+	executionAuthorizer      imageagent.ExecutionAuthorizer
 	repository               imageagent.Repository
 	slotEffects              imageagent.SlotExternalEffectRepository
 	slotExecutor             imageagent.SlotExecutor
@@ -90,7 +92,8 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		}
 	}
 	return &Activities{
-		repository: dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,
+		executionAuthorizer: dependencies.ExecutionAuthorizer,
+		repository:          dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,
 		slotEffectsV3: dependencies.SlotEffectsV3, stagedSlotExecutor: dependencies.StagedSlotExecutor, artifactStore: dependencies.ArtifactStore,
 		publicationOwner: dependencies.PublicationOwner, publicationLeaseDuration: dependencies.PublicationLeaseDuration,
 		recoveryWorkflowStarter: dependencies.RecoveryWorkflowStarter,
@@ -98,6 +101,9 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 }
 
 func restoreActivityIdentity(ctx context.Context, identity imageagent.ExecutionIdentity) (context.Context, error) {
+	if identity.ScopeProtocol != "" || identity.RunID != "" {
+		return nil, imageagent.ErrIdentityRequired
+	}
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
 	identity.BusinessTaskID = strings.TrimSpace(identity.BusinessTaskID)

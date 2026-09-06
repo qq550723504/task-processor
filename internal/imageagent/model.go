@@ -76,6 +76,7 @@ type ImagePolicyContext struct {
 }
 
 type Run struct {
+	ScopeProtocol  string
 	ID             string
 	BusinessTaskID string
 	// TargetPlatform is the immutable marketplace selected when the run starts.

@@ -84,6 +84,9 @@ func activityWireForWorkflow(ctx workflow.Context) workflowActivityWire {
 }
 
 func ImageAgentWorkflow(ctx workflow.Context, input WorkflowInput) (WorkflowResult, error) {
+	if err := validateWorkflowScope(ctx, input.Identity, input.RunID); err != nil {
+		return WorkflowResult{}, err
+	}
 	if input.Mode != imageagent.RunModeManual {
 		return WorkflowResult{}, fmt.Errorf("image agent workflow mode must be manual")
 	}

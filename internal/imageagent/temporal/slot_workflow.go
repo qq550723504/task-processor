@@ -13,6 +13,9 @@ import (
 )
 
 func ImageSlotWorkflow(ctx workflow.Context, input SlotWorkflowInput) (SlotWorkflowResult, error) {
+	if input.Identity.ScopeProtocol != "" || input.Identity.RunID != "" {
+		return SlotWorkflowResult{}, imageagent.ErrIdentityRequired
+	}
 	activityName := activityWireForFrozenSlotWorkflow(ctx)
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
@@ -64,6 +67,9 @@ func slotExecutionErrorCode(err error) string {
 // The v2 child workflow above remains byte-for-byte compatible with histories
 // that execute imageagent.execute_slot.v2.
 func ImageSlotWorkflowV3(ctx workflow.Context, input SlotWorkflowV3Input) (SlotWorkflowV3Result, error) {
+	if err := validateWorkflowScope(ctx, input.Identity, input.RunID); err != nil {
+		return SlotWorkflowV3Result{}, err
+	}
 	activityName := strings.TrimSpace(input.ExecuteActivityName)
 	if activityName == "" {
 		return SlotWorkflowV3Result{}, fmt.Errorf("v3 execute activity name is required")

@@ -256,6 +256,9 @@ func (r *memoryRepository) applyMemoryProjectionMutation(input imageagent.Projec
 }
 
 func (r *gormRepository) InitializeRun(ctx context.Context, input imageagent.ProjectionInitialization) (imageagent.RunProjection, error) {
+	if input.Run.ScopeProtocol != r.scopeProtocol || input.Snapshot.Run.ScopeProtocol != r.scopeProtocol {
+		return imageagent.RunProjection{}, imageagent.ErrIdentityRequired
+	}
 	prepared, fingerprint, err := prepareInitialization(input)
 	if err != nil {
 		return imageagent.RunProjection{}, err
@@ -359,6 +362,9 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 	result.Run.Budget = authoritativeRun.Budget
 	result.Run.Usage = authoritativeRun.Usage
 	result.Run.StartedAt = authoritativeRun.StartedAt
+	if result.Run.ScopeProtocol != authoritativeRun.ScopeProtocol {
+		return imageagent.RunProjection{}, imageagent.ErrRevisionConflict
+	}
 	if err := imageagent.ValidateProjectionSnapshot(scope, result); err != nil {
 		return imageagent.RunProjection{}, err
 	}
@@ -366,6 +372,9 @@ func (r *gormRepository) GetProjection(ctx context.Context, scope imageagent.Run
 }
 
 func (r *gormRepository) CommitProjection(ctx context.Context, input imageagent.ProjectionCommit) (imageagent.RunProjection, error) {
+	if input.Snapshot.Run.ScopeProtocol != r.scopeProtocol {
+		return imageagent.RunProjection{}, imageagent.ErrIdentityRequired
+	}
 	if err := validateScope(input.Scope); err != nil {
 		return imageagent.RunProjection{}, err
 	}
@@ -639,6 +648,9 @@ func slotProjectionIndexByID(slots []imageagent.SlotProjection, slotID string) i
 }
 
 func validateProjectionPreconditions(current imageagent.RunProjection, persistedRun imageagent.Run, input imageagent.ProjectionCommit) error {
+	if current.Run.ScopeProtocol != persistedRun.ScopeProtocol || input.Snapshot.Run.ScopeProtocol != persistedRun.ScopeProtocol {
+		return imageagent.ErrRevisionConflict
+	}
 	if current.Run.Version != persistedRun.Version || current.Run.ActivePlanRevision != persistedRun.ActivePlanRevision {
 		return fmt.Errorf("%w: normalized run and public projection disagree", imageagent.ErrRevisionConflict)
 	}
