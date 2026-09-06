@@ -1,0 +1,144 @@
+package imageagentworker
+
+// Temporary baseline characterization, not a desired-behavior regression test.
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"task-processor/internal/aicapability"
+	aistore "task-processor/internal/aicapability/store"
+	"task-processor/internal/authidentity"
+	openai "task-processor/internal/integration/openai"
+	image "task-processor/internal/product/image"
+)
+
+func TestIssue334BaselineProbe(t *testing.T) {
+	dsn := os.Getenv("ISSUE334_TEST_DSN")
+	require.NotEmpty(t, dsn)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+	require.NoError(t, db.AutoMigrate(&openai.AIClientCredential{}))
+	require.NoError(t, aistore.AutoMigrateInvocationLedger(db))
+	recorder := aistore.NewGormInvocationRecorder(db)
+	require.NoError(t, recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{InvocationID: "probe-control", TenantID: "captured-home", Outcome: aicapability.InvocationSucceeded, StartedAt: time.Now(), FinishedAt: time.Now()}))
+	var rows int64
+	require.NoError(t, db.Table("ai_invocations").Count(&rows).Error)
+	require.EqualValues(t, 1, rows)
+	require.NoError(t, db.Exec("DELETE FROM ai_invocations WHERE invocation_id = ?", "probe-control").Error)
+	var calls atomic.Int64
+	var mode atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		switch mode.Load() {
+		case 1:
+			w.WriteHeader(503)
+			fmt.Fprint(w, `{"error":{"message":"controlled failure","type":"server_error"}}`)
+		case 2:
+			select {
+			case <-r.Context().Done():
+			case <-time.After(250 * time.Millisecond):
+			}
+		default:
+			fmt.Fprint(w, `{"id":"loopback-review","model":"review-test","choices":[{"index":0,"message":{"role":"assistant","content":"{\"score\":0.9,\"needs_human_review\":false,\"reasons\":[]}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`)
+		}
+	}))
+	defer server.Close()
+	config := openai.NewClientConfig("synthetic-only", "review-test", server.URL+"/v1", 1)
+	config.MaxRetries = 3
+	config.RetryDelay = time.Millisecond
+	credentials := openai.NewGormCredentialResolver(db)
+	for _, name := range []string{"default", imageAgentOpenAIClientName} {
+		require.NoError(t, credentials.SaveCredential(context.Background(), openai.AIClientCredential{TenantID: "captured-home", UserID: "actor", ClientName: name, APIKey: "synthetic-only", BaseURL: server.URL + "/v1", Model: "review-test", Enabled: true, TimeoutSecond: 1}))
+	}
+	manager, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"default": config, imageAgentOpenAIClientName: config}, DefaultClient: "default", ConfigResolver: credentials})
+	require.NoError(t, err)
+	capabilities, err := buildProductionImageCapabilities(imageCapabilityRuntime{OpenAIManager: manager, InvocationRecorder: recorder})
+	require.NoError(t, err)
+	// This is the actual captured shape, NOT a verified effective Organization.
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "captured-home", UserID: "actor"})
+	request := image.ReviewRequest{Product: image.ProductContext{ProductKey: "product-1", Title: "Steel bottle"}, Sources: []image.Asset{{URL: "https://source.example/a.png", SourceURL: "https://origin.example/a.png", SourceAssetID: "source-1", Role: image.RoleSource, Width: 1200, Height: 1200, Operations: []string{"source"}}}, Candidates: []image.Candidate{{Asset: image.Asset{URL: "https://generated.example/a.png", MediaType: "image/png", SourceURL: "https://source.example/a.png", SourceAssetID: "source-1", Role: image.RoleScene, Width: 1200, Height: 1200, Operations: []string{"render_scene"}}}}}
+	quote, err := capabilities.UsageQuoter.QuoteUsage(ctx, image.UsageQuoteRequest{Operation: "review", InputFingerprint: "probe-input", MaximumOutputs: 1})
+	require.NoError(t, err)
+	require.False(t, quote.CostUpperBoundKnown)
+	require.EqualValues(t, 1, quote.MaximumModelCalls)
+	for _, tc := range []struct {
+		name          string
+		mode          int32
+		scope         bool
+		authorization bool
+		stale         bool
+		cancel        bool
+		want          int64
+		wantError     bool
+	}{
+		{name: "captured_identity_nil_authorization", scope: true, want: 1},
+		{name: "empty_scope_nil_authorization", want: 1},
+		{name: "unknown_quote_authorization", scope: true, authorization: true, want: 1},
+		{name: "stale_configuration", scope: true, authorization: true, stale: true, wantError: true},
+		{name: "provider_503", scope: true, mode: 1, want: 4, wantError: true},
+		{name: "parent_deadline", scope: true, mode: 2, want: 1, wantError: true},
+		{name: "inbound_cancel", scope: true, cancel: true, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mode.Store(tc.mode)
+			calls.Store(0)
+			callCtx := context.Background()
+			if tc.scope {
+				callCtx = ctx
+			}
+			if tc.mode == 2 {
+				var cancel context.CancelFunc
+				callCtx, cancel = context.WithTimeout(callCtx, 100*time.Millisecond)
+				defer cancel()
+			}
+			if tc.cancel {
+				var cancel context.CancelFunc
+				callCtx, cancel = context.WithCancel(callCtx)
+				cancel()
+			}
+			req := request
+			if tc.authorization {
+				q := quote
+				if tc.stale {
+					q.ConfigurationVersion = "stale"
+				}
+				req.Authorization = &q
+			}
+			_, callErr := capabilities.Reviewer.Review(callCtx, req)
+			if tc.wantError {
+				require.Error(t, callErr)
+			} else {
+				require.NoError(t, callErr)
+			}
+			require.Equal(t, tc.want, calls.Load())
+			require.NoError(t, db.Table("ai_invocations").Count(&rows).Error)
+			require.Zero(t, rows)
+			t.Logf("HTTP=%d invocation_rows=%d error=%v", calls.Load(), rows, callErr)
+		})
+	}
+	t.Run("ledger_unavailable_is_unobserved", func(t *testing.T) {
+		require.NoError(t, db.Exec("DROP TABLE ai_invocations").Error)
+		require.Error(t, recorder.RecordInvocation(ctx, aicapability.InvocationRecord{InvocationID: "must-fail", StartedAt: time.Now(), FinishedAt: time.Now()}))
+		mode.Store(0)
+		calls.Store(0)
+		result, err := capabilities.Reviewer.Review(ctx, request)
+		require.NoError(t, err)
+		require.Equal(t, 0.9, result.Score)
+		require.EqualValues(t, 1, calls.Load())
+		t.Log("HTTP=1 result=success; real recorder rejects writes but production Review never uses it")
+	})
+}
