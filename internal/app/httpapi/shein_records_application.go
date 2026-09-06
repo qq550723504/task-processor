@@ -9,6 +9,7 @@ import (
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/listing/record"
 	"task-processor/internal/marketplace/shein/draft"
+	sheinvalidator "task-processor/internal/marketplace/shein/validator"
 	"task-processor/internal/workbenchcontext"
 	"time"
 
@@ -38,7 +39,12 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	if err != nil {
 		return nil, nil, err
 	}
-	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, sheinRecordRoutes(service), routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
+	diagnostic, err := record.NewDiagnosticService(repository, sheinvalidator.DiagnosticValidator{}, authorizer, sheinvalidator.DiagnosticRuleVersion, sheinvalidator.BindingVersion)
+	if err != nil {
+		return nil, nil, err
+	}
+	routes := append(sheinRecordRoutes(service), sheinDiagnosticRoutes(diagnostic)...)
+	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
 	server.ReadTimeout = record.Timeout
 	// The transport deadline starts before the application deadline. Reserve
 	// bounded headroom so an expired operation can still return its HTTP 504.

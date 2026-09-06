@@ -110,10 +110,14 @@ func TestSheinRecordDefaultProductionHasNoRoute(t *testing.T) {
 	server, routes := bundle.buildServerBundle(8080, appHTTPTestRouteAuthorization)
 	for _, route := range routes {
 		require.NotEqual(t, "/api/listing/shein-records", route.Path)
+		require.NotEqual(t, sheinDiagnosticPath, route.Path)
 	}
 	response := httptest.NewRecorder()
 	server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/listing/shein-records", strings.NewReader(recordBody)))
 	require.Equal(t, 404, response.Code)
+	getResponse := httptest.NewRecorder()
+	server.Handler.ServeHTTP(getResponse, httptest.NewRequest(http.MethodGet, "/api/listing/shein-records/00000000-0000-0000-0000-000000000001/offline-diagnostic?action=publish", nil))
+	require.Equal(t, 404, getResponse.Code)
 	auth, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	application, reader, err := NewSheinRecordApplication(nil, recordVerifier{}, workbenchcontext.NewResolver(&recordGrants{}, "project", "v1", nil), auth)
