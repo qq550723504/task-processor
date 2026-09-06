@@ -19,7 +19,10 @@ const list = z.strictObject({
 }).refine((value) => new Set(value.items.map((entry) => entry.record_id)).size === value.items.length);
 
 export type SheinRecordListItem = z.infer<typeof item>;
-export type SheinRecordList = z.infer<typeof list>;
+export type SheinRecordList = {
+  items: SheinRecordListItem[];
+  next_cursor: string | null;
+};
 
 const failure = z.strictObject({ error: z.enum(["invalid_request", "permission_denied", "unavailable", "deadline_exceeded"]) });
 export type SheinRecordListFailure = z.infer<typeof failure> | WorkbenchErrorEnvelope;
