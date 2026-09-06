@@ -33,6 +33,32 @@ describe("Shein diagnostic wire contract", () => {
     expect(parseSheinDiagnostic({ ...value, input: { ...value.input, read_at: "2026-02-30T01:00:00Z" } })).toBeNull();
     expect(parseSheinDiagnostic({ ...value, input: { ...value.input, actual_digest: "sha256:bad" } })).toBeNull();
   });
+  it("validates valid freshness against its own evaluation instant, with nanosecond precision", () => {
+    const base = diagnosticFixture();
+    const valid = {
+      ...base,
+      not_evaluated: ["submission_gate"], not_evaluated_reasons: undefined,
+      input: { ...base.input, evaluated_at: "2026-09-06T01:02:04.000000002Z" },
+      external_freshness: { status: "valid", coverage: ["external_package_freshness"], evidence: {
+        subject_digest: base.input.actual_digest, source: "owner", policy_version: "policy-v1",
+        observed_at: "2026-09-06T01:02:04.000000001Z", valid_until: "2026-09-06T01:02:04.000000003Z",
+      } },
+    };
+    expect(parseSheinDiagnostic(valid)).toEqual(valid);
+    for (const coverage of [[], ["other"], ["external_package_freshness", "other"]]) {
+      expect(parseSheinDiagnostic({ ...valid, external_freshness: { ...valid.external_freshness, coverage } })).toBeNull();
+    }
+    for (const patch of [
+      { subject_digest: `sha256:${"b".repeat(64)}` },
+      { source: "" }, { policy_version: " " },
+      { observed_at: "2026-09-06T01:02:04.000000003Z" },
+      { valid_until: "2026-09-06T01:02:04.000000002Z" },
+      { valid_until: "2026-09-06T01:02:04Z" },
+    ]) {
+      expect(parseSheinDiagnostic({ ...valid, external_freshness: { ...valid.external_freshness, evidence: { ...valid.external_freshness.evidence, ...patch } } })).toBeNull();
+    }
+    expect(parseSheinDiagnostic({ ...valid, not_evaluated: ["external_package_freshness"] })).toBeNull();
+  });
   it("preserves both error families and rejects status/code conflicts or extra private fields", () => {
     const stale = { error: "stale_input", freshness: { status: "valid", coverage: ["external_package_freshness"], causes: ["expired_at_evaluation"] } };
     expect(parseSheinDiagnosticFailure(stale, 409)).toEqual(stale);
