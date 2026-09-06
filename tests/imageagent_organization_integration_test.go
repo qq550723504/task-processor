@@ -334,8 +334,54 @@ func TestOrganizationScopeHTTPPersistenceAndActivity(t *testing.T) {
 	current, err := repo.GetProjection(context.Background(), scope)
 	require.NoError(t, err)
 	require.Equal(t, stored.Run, current.Run)
+	scope339AssertEffectMode(t, repo, legacy, stored)
+	scope339AssertEffectMode(t, legacy, repo, oldProjection)
 	f.verifyActivity(t, restored)
 	f.verifyRecoveryCommand(t)
+}
+
+func scope339AssertEffectMode(t *testing.T, owner, other imageagent.Repository, projection imageagent.RunProjection) {
+	t.Helper()
+	ctx := context.Background()
+	id := imageagent.SlotExternalEffectIdentity{RunScope: imageagent.ScopeForRun(projection.Run), PlanRevision: projection.Plan.Revision, SlotID: projection.Plan.Slots[0].ID, Attempt: 47}
+	reservation := imageagent.SlotEffectV3Reservation{Identity: id, IdempotencyKey: "protocol-effect339", InputFingerprint: "controlled-effect339"}
+	proper := owner.(imageagent.SlotExternalEffectV3Repository)
+	wrong := other.(imageagent.SlotExternalEffectV3Repository)
+	_, claimed, err := proper.ReserveSlotProviderV3(ctx, reservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	ownerKey, err := imageagent.ArtifactOwnerKey(id.OwnerUserID)
+	require.NoError(t, err)
+	hash := strings.Repeat("a", 64)
+	manifest := imageagent.StagingManifest{Assets: []imageagent.StagedAssetRef{{ObjectKey: fmt.Sprintf("image-agent/staging/%s/%s/%s/1/%s/47/0-%s.png", id.TenantID, ownerKey, id.RunID, id.SlotID, hash), SHA256: hash, SizeBytes: 1, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: projection.Plan.SourceAssetIDs[0], Operations: []string{"render_scene_model"}}}}
+	_, err = wrong.PrepareSlotStagingV3(ctx, reservation, manifest)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = wrong.CommitSlotStagedV3(ctx, reservation, "controlled-fingerprint")
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = wrong.RecordSlotReviewOutcomeV3(ctx, imageagent.SlotReviewUsageReservation{Identity: id}, imageagent.SlotReviewOutcomeNeedsHuman)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = wrong.BlockSlotEffectV3(ctx, imageagent.SlotEffectV3BlockTransition{Reservation: reservation, Phase: imageagent.SlotEffectV3RecoveryBlocked, Code: imageagent.SlotRecoveryBlockedCode})
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = wrong.(imageagent.RecoveryBlockedSlotEffectV3Repository).RestoreRecoveryBlockedEffectV3(ctx, reservation)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = wrong.(imageagent.ReviewRetrySlotEffectV3Repository).ResumeReviewRetrySlotV3(ctx, reservation)
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	unchanged, err := proper.GetSlotExternalEffectV3(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotEffectV3ProviderClaimed, unchanged.Phase)
+	oldReservation := imageagent.SlotExternalEffectReservation{Identity: id, IdempotencyKey: "protocol-v2-effect339", InputFingerprint: "controlled-v2-effect339"}
+	properV2 := owner.(imageagent.SlotExternalEffectRepository)
+	wrongV2 := other.(imageagent.SlotExternalEffectRepository)
+	_, claimed, err = properV2.ReserveSlotExternalEffect(ctx, oldReservation)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	_, err = wrongV2.StoreSlotGeneratedOutput(ctx, oldReservation, imageagent.SlotGeneratedOutput{SlotID: id.SlotID, Attempt: id.Attempt, SourceAssetID: projection.Plan.SourceAssetIDs[0], Assets: []imageagent.GeneratedAsset{{URL: "https://synthetic.example/existing.png", Width: 1, Height: 1}}})
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	_, err = wrongV2.CompleteSlotPublication(ctx, oldReservation, imageagent.SlotExecutionResult{SlotID: id.SlotID, Attempt: id.Attempt, Candidates: []imageagent.AssetCandidate{{AssetID: "controlled-existing", URL: "https://synthetic.example/existing.png"}}})
+	require.ErrorIs(t, err, imageagent.ErrRunNotFound)
+	v2Unchanged, err := properV2.GetSlotExternalEffect(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, imageagent.SlotExternalEffectProviderStarted, v2Unchanged.Phase)
 }
 
 func TestOrganizationScopeInitializationFailureAndStartResponseLoss(t *testing.T) {
@@ -363,6 +409,38 @@ func TestOrganizationScopeInitializationFailureAndStartResponseLoss(t *testing.T
 	var count int64
 	require.NoError(t, f.db.Table("image_agent_v2_runs").Count(&count).Error)
 	require.EqualValues(t, 1, count)
+}
+
+func TestOrganizationCredentialAdmissionChecksVerifiedScopeBeforeResolver(t *testing.T) {
+	f := newScope339Fixture(t)
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
+	defer provider.Close()
+	credentials := openai.NewGormCredentialResolver(f.db)
+	cfg := openai.NewClientConfig("synthetic-B", "review-test", provider.URL+"/v1", 1)
+	for _, name := range []string{"default", "image_gpt_image_2"} {
+		require.NoError(t, credentials.SaveCredential(context.Background(), openai.AIClientCredential{TenantID: "B", UserID: "actor", ClientName: name, APIKey: "synthetic-B", BaseURL: provider.URL + "/v1", Model: "review-test", Enabled: true, TimeoutSecond: 1}))
+	}
+	manager, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"default": cfg, "image_gpt_image_2": cfg}, DefaultClient: "default"})
+	require.NoError(t, err)
+	_, err = imageworker.BuildOrganizationImageCapabilities(manager, f.db)
+	require.NoError(t, err)
+	// This supplemental negative matrix deliberately creates mismatched contexts
+	// to test the App adapter. It is not the full-chain scope evidence above.
+	for _, verified := range []authidentity.AuthenticatedIdentity{
+		{}, {TenantID: "A", UserID: "actor", HomeOrganizationID: "A"},
+		{TenantID: "B", UserID: "other", EffectiveOrganizationID: "B"},
+		{TenantID: "C", UserID: "actor", EffectiveOrganizationID: "C"},
+	} {
+		ctx := authidentity.WithAuthenticatedIdentity(context.Background(), verified)
+		ctx = openai.WithIdentity(ctx, openai.Identity{TenantID: "B", UserID: "actor"})
+		_, err := manager.ResolveEffectiveClientRoute(ctx, "default")
+		require.ErrorIs(t, err, openai.ErrClientConfigurationUnavailable)
+	}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "B", UserID: "actor", HomeOrganizationID: "A", EffectiveOrganizationID: "B"})
+	_, err = manager.ResolveEffectiveClientRoute(ctx, "default")
+	require.NoError(t, err)
+	require.Zero(t, calls.Load())
 }
 
 func (f *scope339Fixture) verifyRecoveryCommand(t *testing.T) {
@@ -531,4 +609,29 @@ func (f *scope339Fixture) verifyActivity(t *testing.T, wf imagetemporal.Workflow
 	require.EqualValues(t, 1, f.providerCalls.Load())
 	require.EqualValues(t, readsBefore+1, artifacts.reads.Load())
 	t.Log("actual HTTP Home A / selected B -> persisted scope -> converter -> SDK Activity -> service authorization -> B credentials -> Manager / adapter: provider HTTP=1; no generation or approval")
+}
+
+func TestServiceAuthorizationRequiresExactOrganization(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		require.Equal(t, "Bearer synthetic-service", r.Header.Get("Authorization"))
+		var request struct {
+			Filters []map[string]json.RawMessage `json:"filters"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Len(t, request.Filters, 3)
+		require.JSONEq(t, `{"id":"org-b"}`, string(request.Filters[2]["organizationId"]))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"pagination":{"totalResult":"0"},"authorizations":[]}`))
+	}))
+	defer server.Close()
+	client := zitadel.NewAuthorizationClient(server.URL, server.Client())
+	_, err := client.ListServiceProjectAuthorizations(context.Background(), "synthetic-service", "actor", "project", "")
+	require.Error(t, err)
+	require.Zero(t, calls)
+	grants, err := client.ListServiceProjectAuthorizations(context.Background(), "synthetic-service", "actor", "project", "org-b")
+	require.NoError(t, err)
+	require.Empty(t, grants)
+	require.Equal(t, 1, calls)
 }

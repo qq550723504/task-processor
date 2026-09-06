@@ -29,7 +29,7 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 		if err != nil {
 			return err
 		}
-		if existingRow, findErr := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity); findErr == nil {
+		if existingRow, findErr := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity); findErr == nil {
 			existing, decodeErr := decodeSlotEffectV3Record(existingRow)
 			if decodeErr != nil {
 				return decodeErr
@@ -75,7 +75,7 @@ func (r *gormRepository) ReserveSlotProviderV3(ctx context.Context, reservation 
 			result = decision.Attempt
 			return nil
 		}
-		existing, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		existing, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			if errors.Is(err, imageagent.ErrRunNotFound) {
 				collision, collisionErr := findSlotEffectV3ByIdempotencyForUpdate(ctx, tx, reservation)
@@ -120,7 +120,7 @@ func (r *gormRepository) RecordSlotProviderNotDispatchedV3(ctx context.Context, 
 		if err != nil {
 			return err
 		}
-		effectRow, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		effectRow, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -176,7 +176,7 @@ func (r *gormRepository) transitionGormSlotBudget(ctx context.Context, reservati
 		if err != nil {
 			return err
 		}
-		effectRow, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		effectRow, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -296,7 +296,7 @@ func (r *gormRepository) PrepareSlotStagingV3(ctx context.Context, reservation i
 	}
 	var result imageagent.SlotEffectV3Attempt
 	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -336,7 +336,7 @@ func (r *gormRepository) CommitSlotStagedV3(ctx context.Context, reservation ima
 	}
 	var result imageagent.SlotEffectV3Attempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -375,7 +375,7 @@ func (r *gormRepository) ClaimSlotPublicationV3(ctx context.Context, request ima
 	var claim imageagent.PublicationClaim
 	claimed := false
 	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, request.Reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, request.Reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -417,7 +417,7 @@ func (r *gormRepository) RenewSlotPublicationV3(ctx context.Context, renewal ima
 	}
 	var claim imageagent.PublicationClaim
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, renewal.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, renewal.Identity)
 		if err != nil {
 			return err
 		}
@@ -460,7 +460,7 @@ func (r *gormRepository) CompleteSlotPublicationV3(ctx context.Context, completi
 	}
 	var result imageagent.SlotEffectV3Attempt
 	err = withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, completion.Reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, completion.Reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -495,7 +495,7 @@ func (r *gormRepository) BlockSlotEffectV3(ctx context.Context, transition image
 	}
 	var result imageagent.SlotEffectV3Attempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, transition.Reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, transition.Reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -537,7 +537,7 @@ func (r *gormRepository) RestoreRecoveryBlockedEffectV3(ctx context.Context, res
 	}
 	var result imageagent.SlotEffectV3Attempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -569,7 +569,7 @@ func (r *gormRepository) ResumeReviewRetrySlotV3(ctx context.Context, reservatio
 	}
 	var result imageagent.SlotEffectV3Attempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -619,7 +619,7 @@ func (r *gormRepository) BlockCorruptSlotEffectV3(ctx context.Context, identity 
 		if _, err := r.findRunForUpdate(ctx, tx, identity.RunScope); err != nil {
 			return err
 		}
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, identity)
 		if err != nil {
 			return err
 		}
@@ -657,7 +657,10 @@ func (r *gormRepository) BlockCorruptSlotEffectV3(ctx context.Context, identity 
 	return result, err
 }
 
-func findSlotEffectV3ForUpdate(ctx context.Context, db *gorm.DB, identity imageagent.SlotExternalEffectIdentity) (slotExternalEffectV3Record, error) {
+func (r *gormRepository) findSlotEffectV3ForUpdate(ctx context.Context, db *gorm.DB, identity imageagent.SlotExternalEffectIdentity) (slotExternalEffectV3Record, error) {
+	if _, err := r.findRunForUpdate(ctx, db, identity.RunScope); err != nil {
+		return slotExternalEffectV3Record{}, err
+	}
 	return findSlotEffectV3(ctx, db.Clauses(clause.Locking{Strength: "UPDATE"}), identity)
 }
 

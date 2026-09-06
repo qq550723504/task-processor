@@ -19,7 +19,7 @@ func (r *gormRepository) ReserveSlotReviewV3(ctx context.Context, reservation im
 		if err != nil {
 			return err
 		}
-		effectRow, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		effectRow, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -64,7 +64,7 @@ func (r *gormRepository) MarkSlotReviewBudgetUnknownV3(ctx context.Context, rese
 func (r *gormRepository) RecordSlotReviewOutcomeV3(ctx context.Context, reservation imageagent.SlotReviewUsageReservation, outcome imageagent.SlotReviewOutcome) (imageagent.SlotEffectV3Attempt, error) {
 	var result imageagent.SlotEffectV3Attempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func (r *gormRepository) transitionGormReview(ctx context.Context, reservation i
 		if err != nil {
 			return err
 		}
-		effectRow, err := findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
+		effectRow, err := r.findSlotEffectV3ForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}

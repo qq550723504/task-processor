@@ -131,7 +131,7 @@ func (r *gormRepository) ReserveSlotExternalEffect(ctx context.Context, reservat
 			result = slotEffectFromRecord(row)
 			return nil
 		}
-		existing, err := findSlotEffectForUpdate(ctx, tx, reservation.Identity)
+		existing, err := r.findSlotEffectForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -153,7 +153,7 @@ func (r *gormRepository) StoreSlotGeneratedOutput(ctx context.Context, reservati
 	}
 	var result imageagent.SlotExternalEffectAttempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -197,7 +197,7 @@ func (r *gormRepository) CompleteSlotPublication(ctx context.Context, reservatio
 	}
 	var result imageagent.SlotExternalEffectAttempt
 	err := withProjectionTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		row, err := findSlotEffectForUpdate(ctx, tx, reservation.Identity)
+		row, err := r.findSlotEffectForUpdate(ctx, tx, reservation.Identity)
 		if err != nil {
 			return err
 		}
@@ -329,7 +329,10 @@ func validateGormSlotEffectScope(ctx context.Context, repository *gormRepository
 	return nil
 }
 
-func findSlotEffectForUpdate(ctx context.Context, db *gorm.DB, identity imageagent.SlotExternalEffectIdentity) (slotExternalEffectRecord, error) {
+func (r *gormRepository) findSlotEffectForUpdate(ctx context.Context, db *gorm.DB, identity imageagent.SlotExternalEffectIdentity) (slotExternalEffectRecord, error) {
+	if _, err := r.findRunForUpdate(ctx, db, identity.RunScope); err != nil {
+		return slotExternalEffectRecord{}, err
+	}
 	return findSlotEffect(ctx, db.Clauses(clause.Locking{Strength: "UPDATE"}), identity)
 }
 
