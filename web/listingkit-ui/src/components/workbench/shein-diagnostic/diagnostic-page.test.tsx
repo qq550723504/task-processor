@@ -34,6 +34,7 @@ describe("diagnostic page request lifecycle (contract fixture)", () => {
     state.fetch.mockImplementation(async ({ action }) => diagnosticFixture(action));
     render(tree());
     expect(await screen.findByText("发现需要处理的问题")).toBeVisible();
+    expect(screen.getByRole("link", { name: "返回本地资料列表" })).toHaveAttribute("href", "/workbench/shein-records");
     expect(state.fetch.mock.calls[0][0]).toMatchObject({ recordId, organizationId: "org-a", action: "publish" });
     expect(state.fetch.mock.calls[0][0].expectedDigest).toBeUndefined();
     await user.click(screen.getByRole("button", { name: "重新检查" }));

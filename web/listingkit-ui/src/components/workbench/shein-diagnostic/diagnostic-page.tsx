@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
@@ -14,6 +15,10 @@ import { fetchSheinDiagnostic } from "@/lib/api/shein-diagnostic-client";
 import { DiagnosticReport } from "./diagnostic-report";
 
 export function SheinDiagnosticPage({ recordId }: { recordId: string }) {
+  return <><nav aria-label="资料导航" className="mx-auto w-full max-w-6xl px-4 pt-6 sm:px-6"><Button asChild variant="outline"><Link href="/workbench/shein-records" prefetch={false}>返回本地资料列表</Link></Button></nav><DiagnosticPageContent recordId={recordId} /></>;
+}
+
+function DiagnosticPageContent({ recordId }: { recordId: string }) {
   const context = useWorkbenchContext();
   if (context.isSwitching) return <ContextState message="正在切换企业，已清空诊断结果…" />;
   if (context.error || context.blockingError || !context.user || !context.effectiveOrganization || context.selectionRequired || context.isLoading) {
