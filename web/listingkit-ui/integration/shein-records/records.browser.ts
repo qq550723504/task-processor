@@ -16,7 +16,7 @@ for (const width of [1440, 390]) {
     });
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${fixture.origin}/workbench`);
-    await expect(page.getByRole("heading", { name: "工作台", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "经营全局，一屏掌握", exact: true })).toBeVisible();
     await expect(page.getByText("SHEIN 本地资料", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "查看本地资料" })).toHaveCount(0);
     await page.goto(`${fixture.origin}/workbench/shein-records`);

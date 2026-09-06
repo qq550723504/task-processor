@@ -14,7 +14,7 @@ afterEach(cleanup);
 
 it("does not advertise the withdrawn platform-specific workbench entry", async () => {
   render(await WorkbenchPage());
-  expect(screen.getByRole("heading", { name: "工作台" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "经营全局，一屏掌握" })).toBeVisible();
   expect(screen.queryByText("SHEIN 本地资料")).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "查看本地资料" })).not.toBeInTheDocument();
 });
