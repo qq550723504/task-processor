@@ -13,3 +13,11 @@ CREATE TABLE listing_shein_records (
  created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
  UNIQUE (organization_id, owner_user_id, operation_id)
 );
+
+-- The collection has two authorized read shapes. Keep both keyset paths
+-- bounded without loading payload: operator (organization + owner) and
+-- tenant admin (organization only).
+CREATE INDEX listing_shein_records_owner_collection_idx
+ ON listing_shein_records (organization_id, owner_user_id, created_at DESC, id DESC);
+CREATE INDEX listing_shein_records_admin_collection_idx
+ ON listing_shein_records (organization_id, created_at DESC, id DESC);

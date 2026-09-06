@@ -40,8 +40,8 @@ type recordGrants struct {
 
 func (g *recordGrants) Load(_ context.Context, source workbenchcontext.GrantSource, request workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
 	g.calls.Add(1)
-	if source != workbenchcontext.GrantLive {
-		return workbenchcontext.GrantResult{}, fmt.Errorf("POST did not request live grants")
+	if source != workbenchcontext.GrantLive && source != workbenchcontext.GrantReadCached {
+		return workbenchcontext.GrantResult{}, fmt.Errorf("unexpected grant source")
 	}
 	roles := []string{"listingkit_operator"}
 	switch request.Subject {
@@ -51,6 +51,8 @@ func (g *recordGrants) Load(_ context.Context, source workbenchcontext.GrantSour
 		roles = []string{"listingkit_admin"}
 	case "readonly":
 		roles = []string{"admin"}
+	case "store":
+		roles = []string{"listingkit_viewer"}
 	}
 	grants := []authidentity.OrganizationGrant{{OrganizationID: "200", ProjectID: "project", Roles: roles}}
 	if request.Subject == "no-grant" || g.revoked.Load() {
@@ -132,6 +134,28 @@ func recordPost(t *testing.T, server *httptest.Server, subject, key, body string
 	req.Header.Set("X-Tenant-ID", "forged")
 	req.Header.Set("X-User-ID", "forged")
 	req.Header.Set("X-User-Roles", "listingkit_admin")
+	response, err := server.Client().Do(req)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	raw, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	return response.StatusCode, raw
+}
+
+func recordGet(t *testing.T, server *httptest.Server, subject, rawQuery string) (int, []byte) {
+	t.Helper()
+	path := server.URL + "/api/listing/shein-records"
+	if rawQuery != "" {
+		path += "?" + rawQuery
+	}
+	req, err := http.NewRequest(http.MethodGet, path, nil)
+	require.NoError(t, err)
+	if subject != "" {
+		req.Header.Set("Authorization", "Bearer "+subject)
+	}
+	req.Header.Set("X-Requested-Organization-ID", "200")
+	req.Header.Set("X-Tenant-ID", "forged")
+	req.Header.Set("X-User-ID", "forged")
 	response, err := server.Client().Do(req)
 	require.NoError(t, err)
 	defer response.Body.Close()

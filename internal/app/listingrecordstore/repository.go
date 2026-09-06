@@ -37,6 +37,15 @@ type row struct {
 	PayloadSize     int
 }
 
+type collectionRow struct {
+	ID              string
+	ProductKey      string
+	SnapshotVersion uint64
+	Country         string
+	Language        string
+	CreatedAt       time.Time
+}
+
 const columns = `id, organization_id, owner_user_id, operation_id, product_key, snapshot_version, country, language, created_at, octet_length(payload) AS payload_size, CASE WHEN octet_length(payload) <= 2097152 THEN payload ELSE NULL END AS payload`
 
 func load(tx *gorm.DB, where string, args ...any) (record.Record, error) {
@@ -139,5 +148,70 @@ func (r *Repository) ReadOfflinePackage(ctx context.Context, actor listingtask.A
 	return got.Clone(), nil
 }
 
+func (r *Repository) List(ctx context.Context, actor listingtask.Actor, request record.PageRequest) (record.Page, error) {
+	if err := ctx.Err(); err != nil {
+		return record.Page{}, err
+	}
+	if listingtask.ValidateActor(actor) != nil || !r.auth.Authorize(actor.UserID, actor.Roles, authz.PermissionListingKitAdminRead) {
+		return record.Page{}, record.ErrForbidden
+	}
+	if err := request.Validate(); err != nil {
+		return record.Page{}, err
+	}
+
+	where := "organization_id = ? AND owner_user_id <> ''"
+	args := []any{actor.TenantID}
+	admin := r.auth.IsTenantAdmin(actor.UserID, actor.Roles)
+	if !admin {
+		where += " AND owner_user_id = ?"
+		args = append(args, actor.UserID)
+	}
+
+	if request.Cursor != nil {
+		var visible bool
+		anchorArgs := append(append([]any(nil), args...), request.Cursor.CreatedAt, request.Cursor.ID)
+		anchorSQL := "SELECT EXISTS(SELECT 1 FROM listing_shein_records WHERE " + where + " AND created_at = ? AND id = ?::uuid)"
+		if err := r.db.WithContext(ctx).Raw(anchorSQL, anchorArgs...).Row().Scan(&visible); err != nil {
+			return record.Page{}, err
+		}
+		if !visible {
+			return record.Page{}, record.ErrInvalid
+		}
+		where += " AND (created_at, id) < (?, ?::uuid)"
+		args = append(args, request.Cursor.CreatedAt, request.Cursor.ID)
+	}
+
+	query := "SELECT id, product_key, snapshot_version, country, language, created_at FROM listing_shein_records WHERE " + where + " ORDER BY created_at DESC, id DESC LIMIT ?"
+	args = append(args, request.Limit+1)
+	var rows []collectionRow
+	if err := r.db.WithContext(ctx).Raw(query, args...).Scan(&rows).Error; err != nil {
+		return record.Page{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return record.Page{}, err
+	}
+
+	more := len(rows) > request.Limit
+	if more {
+		rows = rows[:request.Limit]
+	}
+	items := make([]record.CollectionItem, 0, len(rows))
+	for _, item := range rows {
+		parsed, err := uuid.Parse(item.ID)
+		input := record.Input{ProductKey: item.ProductKey, SnapshotVersion: item.SnapshotVersion, Country: item.Country, Language: item.Language}
+		if err != nil || parsed.String() != item.ID || input.Validate() != nil || item.CreatedAt.IsZero() {
+			return record.Page{}, record.ErrUnavailable
+		}
+		items = append(items, record.CollectionItem{ID: item.ID, Input: input, CreatedAt: item.CreatedAt.UTC()})
+	}
+	page := record.Page{Items: items}
+	if more {
+		last := items[len(items)-1]
+		page.NextCursor = &record.PageCursor{ID: last.ID, CreatedAt: last.CreatedAt}
+	}
+	return page, nil
+}
+
 var _ record.Store = (*Repository)(nil)
 var _ record.Reader = (*Repository)(nil)
+var _ record.CollectionReader = (*Repository)(nil)

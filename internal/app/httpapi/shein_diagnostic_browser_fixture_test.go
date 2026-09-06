@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -113,6 +114,22 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	require.Equal(t, 201, status, string(wire))
 	var receipt record.Receipt
 	require.NoError(t, json.Unmarshal(wire, &receipt))
+	ownerRecordIDs := []string{receipt.RecordID}
+	for i := 1; i < 22; i++ {
+		status, wire = recordPost(t, ts, tokens["owner"], fmt.Sprintf("fixture-owner-%02d", i), recordBody)
+		require.Equal(t, 201, status, string(wire))
+		var created record.Receipt
+		require.NoError(t, json.Unmarshal(wire, &created))
+		ownerRecordIDs = append(ownerRecordIDs, created.RecordID)
+	}
+	otherRecordIDs := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		status, wire = recordPost(t, ts, tokens["other"], fmt.Sprintf("fixture-other-%02d", i), recordBody)
+		require.Equal(t, 201, status, string(wire))
+		var created record.Receipt
+		require.NoError(t, json.Unmarshal(wire, &created))
+		otherRecordIDs = append(otherRecordIDs, created.RecordID)
+	}
 	// Create a second real POST while this synthetic principal has write access,
 	// then revoke only write access in the external grant fixture before GET.
 	readActor := f.actors[tokens["readonly"]]
@@ -131,7 +148,7 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	contextApp := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, registry.Routes(), routeAuthDependencies{workbenchVerifier: f, organizationResolver: resolver, authorizer: authorizer, auditRecorder: workbenchcontext.NewStructuredAuditRecorder(logrus.New())})
 	contextServer := httptest.NewServer(contextApp.Handler)
 	t.Cleanup(contextServer.Close)
-	manifest, err := json.Marshal(map[string]any{"goOrigin": ts.URL, "contextOrigin": contextServer.URL, "recordId": receipt.RecordID, "readonlyRecordId": readReceipt.RecordID, "tokens": tokens})
+	manifest, err := json.Marshal(map[string]any{"goOrigin": ts.URL, "contextOrigin": contextServer.URL, "recordId": receipt.RecordID, "recordCount": len(ownerRecordIDs), "otherRecordCount": len(otherRecordIDs), "readonlyRecordId": readReceipt.RecordID, "tokens": tokens})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.json"), manifest, 0600))
 	ticker := time.NewTicker(100 * time.Millisecond)
