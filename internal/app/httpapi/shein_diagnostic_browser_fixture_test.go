@@ -116,6 +116,13 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	require.Equal(t, 201, status, string(wire))
 	var receipt record.Receipt
 	require.NoError(t, json.Unmarshal(wire, &receipt))
+	// The completed-work producer is a committed operation, not a synthetic Task.
+	// A real retry must return the same result and never add another list item.
+	status, replayWire := recordPost(t, ts, tokens["owner"], "fixture-post", recordBody)
+	require.Equal(t, 201, status, string(replayWire))
+	var replay record.Receipt
+	require.NoError(t, json.Unmarshal(replayWire, &replay))
+	require.Equal(t, receipt.RecordID, replay.RecordID)
 	ownerRecordIDs := []string{receipt.RecordID}
 	for i := 1; i < 22; i++ {
 		status, wire = recordPost(t, ts, tokens["owner"], fmt.Sprintf("fixture-owner-%02d", i), recordBody)

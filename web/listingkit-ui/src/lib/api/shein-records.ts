@@ -5,7 +5,7 @@ const boundedText = (maxBytes: number) => z.string().min(1).refine((value) => va
 const recordId = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const positiveInt64 = z.string().refine((value) => /^[1-9][0-9]*$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"));
 const timestamp = z.iso.datetime().regex(/T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/);
-const item = z.strictObject({
+export const sheinRecordListItemSchema = z.strictObject({
   record_id: recordId,
   product_key: boundedText(128),
   snapshot_version: positiveInt64,
@@ -14,11 +14,11 @@ const item = z.strictObject({
   created_at: timestamp,
 });
 const list = z.strictObject({
-  items: z.array(item).max(100),
+  items: z.array(sheinRecordListItemSchema).max(100),
   next_cursor: boundedText(512).nullable(),
 }).refine((value) => new Set(value.items.map((entry) => entry.record_id)).size === value.items.length);
 
-export type SheinRecordListItem = z.infer<typeof item>;
+export type SheinRecordListItem = z.infer<typeof sheinRecordListItemSchema>;
 export type SheinRecordList = {
   items: SheinRecordListItem[];
   next_cursor: string | null;

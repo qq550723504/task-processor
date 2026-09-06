@@ -27,3 +27,10 @@ it("does not start authentication for an already cancelled request", async () =>
   expect((await GET(incoming(controller.signal))).status).toBe(504);
   expect(auth.calls).not.toHaveBeenCalled();
 });
+
+it("does not interpret the Next route context as a response projector", async () => {
+  auth.delay = 0; vi.useRealTimers(); vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:8181");
+  vi.mocked(fetch).mockResolvedValue(Response.json({ items: [], next_cursor: null }));
+  const response = await Reflect.apply(GET, undefined, [incoming(), { params: Promise.resolve({}) }]);
+  expect(response.status).toBe(200);
+});
