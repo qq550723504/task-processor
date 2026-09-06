@@ -32,7 +32,7 @@ export function DiagnosticReport({ report, recordId }: { report: SheinDiagnostic
         <p className="mt-2 text-sm text-muted-foreground">以下范围未包含在本次离线结果中。读取时间不代表外部资料仍然有效。</p>
         <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {report.not_evaluated.map((item, index) => (
-            <li className="rounded-lg border bg-muted/30 p-3 text-sm" key={`${item}-${index}`}>
+            <li className="rounded-lg border border-border bg-muted/30 p-3 text-sm" key={`${item}-${index}`}>
               <p className="font-medium">{scopeLabel(item)}</p>
               <p className="mt-1 text-muted-foreground">{report.not_evaluated_reasons?.[item] === "no_authoritative_package_freshness" ? "没有权威的外部资料有效性证据。" : "本次离线检查未评估此范围。"}</p>
               <details className="mt-2 text-xs text-muted-foreground">
@@ -72,13 +72,13 @@ export function DiagnosticReport({ report, recordId }: { report: SheinDiagnostic
 function CheckGroup({ title, checks, tone }: { title: string; checks: SheinDiagnostic["offline_checks"]["checks"]; tone: "problem" | "warning" | "neutral" }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className="min-w-0 rounded-lg border bg-card p-5 shadow-sm sm:p-6">
+    <section aria-labelledby={id} className="min-w-0 rounded-lg border border-border bg-card p-5 shadow-sm sm:p-6">
       <h2 className="flex items-center gap-2 font-semibold" id={id}>
         {tone !== "neutral" ? <AlertTriangle aria-hidden="true" className={`size-4 ${tone === "problem" ? "text-destructive" : "text-amber-700 dark:text-amber-300"}`} /> : null}
         {title}（{checks.length}）
       </h2>
       {checks.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">本次没有{title}项。</p> : (
-        <ul className="mt-4 divide-y">
+        <ul className="mt-4 divide-y divide-border">
           {checks.map((check, index) => (
             <li key={`${check.rule}-${index}`} className="py-3 first:pt-0 last:pb-0">
               <details>

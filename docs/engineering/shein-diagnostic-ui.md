@@ -49,6 +49,18 @@ Refs #324；BFF 与跨进程 fixture 由 #323 独占，见 [BFF 合同和启动�
 
 浏览器截图由测试保存在仓库根 `.local/issue324-browser` 的相应测试目录。截图仅展示本次合成产品与受控身份下的真实服务端结果，不能视为真实登录或客户生产验收。PR 附桌面与窄屏截图、当次测试结果和独立复核证据。
 
+## 实际页面截图
+
+以下均为实际页面 → BFF → Go → 隔离 PostgreSQL，资料由实际 Publisher/POST 创建，身份为上述受控替身。桌面宽 1440px，窄屏宽 390px；窄屏截图保留了键盘展开问题后的焦点状态。截图不是运行时演示数据。
+
+![1440px 实际诊断页面](evidence/issue324/desktop-real-bff.png)
+
+![390px 实际诊断页面与键盘展开](evidence/issue324/narrow-real-bff.png)
+
+本次浏览器测试发现并修复了两处可访问性问题：诊断页灰色背景上的辅助文字，以及复用的 SidebarGroupLabel 默认文字透明度。后者仅将通用组件透明度从 70% 调到 80%，没有改导航、登录或 Shell 结构。两个视口均通过完整页面 axe 检查。
+
+后端当前部分检查说明仍包含“旧任务/兼容路径”、`preview_product` 和 `request_draft` 等历史措辞。页面原样呈现已批准的服务端诊断，不据此引入旧任务或兼容逻辑；后端规则文案归其 owner 的后续事项，本片不改规则或猜测替代语义。
+
 ## 产品与文件边界
 
 Authority：[最终 UI / IA](../product/final-ui-ia-authority.md) 与 #324 批准的有界深链。本页沿用现有 Shell 视觉变量，不宣称逐像素还原 Figma 或完成整体最终 Shell。
