@@ -1,7 +1,7 @@
 import { InvalidStrictJSONResponseError, readBoundedStrictJSON } from "./strict-json-response";
 import { parseSheinRecordListFailure, sheinRecordCursorSchema, sheinRecordLimitSchema, sheinRecordOrganizationSchema } from "./shein-records";
 import { SheinRecordListError } from "./shein-records-client";
-import { parseCompletedWorkList, type CompletedWorkList } from "./completed-work";
+import { parseCompletedWorkList, type CompletedWorkList, type CompletedWorkFailure } from "./completed-work";
 
 export { SheinRecordListError as CompletedWorkError } from "./shein-records-client";
 const invalidResponse = () => new SheinRecordListError(502, "INVALID_UPSTREAM_RESPONSE", { code: "INVALID_UPSTREAM_RESPONSE", message: "Completed work response is invalid", requestId: "", fieldErrors: [] });
@@ -32,7 +32,7 @@ export async function fetchCompletedWork(input: { organizationId: string; limit?
     if (!parsed) throw invalidResponse();
     return parsed;
   }
-  const failure = parseSheinRecordListFailure(payload, response.status);
+  const failure: CompletedWorkFailure | null = parseSheinRecordListFailure(payload, response.status);
   if (!failure) throw invalidResponse();
   throw new SheinRecordListError(response.status, "error" in failure ? failure.error : failure.code, failure);
 }

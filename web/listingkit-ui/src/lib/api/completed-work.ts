@@ -24,7 +24,12 @@ const list = z.strictObject({
   items: z.array(item).max(100), next_cursor: sheinRecordCursorSchema.nullable(),
 }).refine((value) => new Set(value.items.map((entry) => entry.source_record_id)).size === value.items.length);
 export type CompletedWorkItem = z.infer<typeof item>;
-export type CompletedWorkList = z.infer<typeof list>;
+export type CompletedWorkList = {
+  projection_version: "1";
+  coverage: "listing-local-preparation-only";
+  items: CompletedWorkItem[];
+  next_cursor: string | null;
+};
 export type CompletedWorkFailure = SheinRecordListFailure;
 
 export function parseCompletedWorkList(value: unknown): CompletedWorkList | null {
