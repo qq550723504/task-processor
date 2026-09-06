@@ -38,6 +38,7 @@ for (const width of [1440, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations).toEqual([]);
     await page.screenshot({ path: info.outputPath(`list-${width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`list-viewport-${width}.png`) });
     response = nextCollection(page);
     await page.getByRole("button", { name: "下一页", exact: true }).click();
     const second = await (await response).json();

@@ -37,7 +37,7 @@ Refs #328；集合合同、typed client、BFF 和跨进程 fixture 由 #327 维�
    ```
 
 4. 在 Inspector 单步至 `<origin>/workbench`，由测试安装本次合成session，**点击工作台卡片**进入列表，再选择服务端返回的行查看诊断。可暂停后手动体验下一页、上一页、刷新，以及企业200→100→200。未安装该合成session的普通浏览器仍走既有登录流程；不复制或公开cookie。
-5. 体验结束后停止调试测试，向本次manifest的controlDirectory写入空文件 `stop-fixture`（或在launcher按Ctrl+C）。等待Go核对业务表内容/xmin未变化、正常退出且本次随机容器/schema清理完成。旧地址不再是可访问入口，不清理其他数据库或容器。
+5. 体验结束后停止调试测试，向本次manifest的controlDirectory写入空文件 `stop-fixture`。保留launcher运行直至它完成Go业务表内容/xmin未变化核对、正常退出并清理本次随机容器/schema。不要用终端强制结束进程树代替正常停止。旧地址不再是可访问入口，不清理其他数据库或容器。
 
 浏览器验收从工作台开始，不直接goto诊断详情。检查真实分页、点击列表返回ID诊断、返回列表、跨企业空集合和重新读取、Store-only拒绝。截图由测试保存至仓库根 `.local/issue328-browser`，包含1440px/390px入口和列表；最终证据与实际运行结果留PR。
 
@@ -50,3 +50,14 @@ Refs #328；集合合同、typed client、BFF 和跨进程 fixture 由 #327 维�
 UI验证：`pnpm test src/components/workbench/shein-records src/components/workbench/shein-diagnostic`；相关provider/Shell/Store回归及lint/typecheck/test/build由最终交付验证。实际浏览器配置独立于默认公共首页e2e，缺少fixture会明确失败，不能静默连接生产或使用mock fallback。
 
 没有新增导航、登录、生成、编辑、发布、Apply或新Shell。未确认的体验改进只按“具体操作 → 观察结果 → 期望结果”记录，不在此片自动扩展。
+
+## 浏览器截图
+
+以下为真实 Next BFF → Go → 隔离 PostgreSQL 的受控合成数据截图；工作台点击、分页、诊断往返、企业切换和 Store-only 拒绝均由独立浏览器配置验证。截图不是正在运行的入口；请按上面的步骤启动本次环境。
+
+![1440px 工作台入口](evidence/issue328/workbench-1440.png)
+![1440px 本地资料列表](evidence/issue328/list-viewport-1440.png)
+![390px 工作台入口](evidence/issue328/workbench-390.png)
+![390px 本地资料列表](evidence/issue328/list-viewport-390.png)
+
+完整列表截图：[1440px](evidence/issue328/list-1440.png)、[390px](evidence/issue328/list-390.png)。最终验证 SHA、CI 与独立评审结果在关联 PR 中维护。

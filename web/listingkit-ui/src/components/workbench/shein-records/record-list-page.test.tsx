@@ -49,7 +49,7 @@ it("uses next/previous cursors and refresh resets to the first page", async () =
   await screen.findByText("source-product-2");
   await userEvent.click(screen.getByRole("button", { name: "刷新列表" }));
   await screen.findByText("source-product-1");
-  expect(state.fetch.mock.calls.at(-1)[0].cursor).toBeUndefined();
+  expect(state.fetch.mock.calls.at(-1)?.[0].cursor).toBeUndefined();
   expect(screen.getByText("第 1 页")).toBeVisible();
 });
 
@@ -118,7 +118,7 @@ it.each(["organization", "user", "roles", "logout", "revoked", "unmount"])("isol
   expect(screen.queryByText("source-product-2")).not.toBeInTheDocument();
   if (["organization", "user", "roles"].includes(kind)) {
     await screen.findByText("source-product-3");
-    expect(state.fetch.mock.calls.at(-1)[0].cursor).toBeUndefined();
+    expect(state.fetch.mock.calls.at(-1)?.[0].cursor).toBeUndefined();
     expect(screen.getByText("第 1 页")).toBeVisible();
   } else await waitFor(() => expect(client.getQueryCache().getAll()).toHaveLength(0));
 });

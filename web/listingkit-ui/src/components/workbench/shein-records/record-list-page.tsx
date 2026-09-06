@@ -21,7 +21,7 @@ export function SheinRecordListPage({ available }: { available: boolean }) {
     <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
       <Link href="/workbench" prefetch={false} className="rounded text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring">返回工作台</Link>
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">SHEIN 本地资料</h1>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">查看本地保存的资料及离线诊断。这里不是平台商品列表，资料不代表已发布或归属某个店铺。</p>
+      <p className="mt-2 text-sm leading-6 text-foreground">查看本地保存的资料及离线诊断。这里不是平台商品列表，资料不代表已发布或归属某个店铺。</p>
       {!available ? <Card className="mt-6 p-6"><h2 className="font-semibold">暂未启用</h2><p className="mt-2 text-sm text-muted-foreground">当前环境尚未装配本地资料读取能力。</p></Card>
         : context.isSwitching ? <ContextState message="正在切换企业，已清空资料列表…" />
         : context.error || context.blockingError || !context.user || !context.effectiveOrganization || context.selectionRequired || context.isLoading
@@ -74,8 +74,8 @@ function ListRequest({ organizationId, scope, position, refresh, next, previous 
           <Button size="sm" variant="outline" disabled={position.cursors.length <= 1} onClick={previous}><ChevronLeft aria-hidden="true" />上一页</Button>
           <Button size="sm" variant="outline" disabled={!records.next_cursor} onClick={() => { if (records.next_cursor) next(records.next_cursor); }}>下一页<ChevronRight aria-hidden="true" /></Button>
         </div>
-        <p className="w-full text-xs text-muted-foreground">最新创建的资料在前，每页最多 {PAGE_SIZE} 条。刷新会回到第一页。</p>
-        {position.page > 1 && position.cursors.length === 1 ? <p className="w-full text-xs text-muted-foreground">更早的分页位置已释放，可刷新回到首页。</p> : null}
+        <p className="w-full text-xs text-foreground">最新创建的资料在前，每页最多 {PAGE_SIZE} 条。刷新会回到第一页。</p>
+        {position.page > 1 && position.cursors.length === 1 ? <p className="w-full text-xs text-foreground">更早的分页位置已释放，可刷新回到首页。</p> : null}
       </div>
       {records.items.length === 0 ? <Card className="p-6 sm:p-8"><h2 className="font-semibold">当前范围内暂无本地资料</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">当前企业与账号可读取的本地资料为空；这不表示 SHEIN 平台没有商品。</p></Card>
         : <Card className="overflow-hidden"><ul aria-label="本地资料" className="divide-y divide-border">{records.items.map((record) => <RecordRow key={record.record_id} record={record} />)}</ul></Card>}
