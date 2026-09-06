@@ -78,6 +78,10 @@ describe("ApplicationFrame", () => {
     expect(screen.getByTestId("theme-provider")).toContainElement(
       screen.getByTestId("query-provider"),
     );
+    expect(screen.getByTestId("toast-provider").closest(".console-theme")).not.toBeNull();
+    expect(screen.getByTestId("workspace-app-shell").closest(".console-theme")).toBe(
+      screen.getByTestId("toast-provider").closest(".console-theme"),
+    );
     expect(screen.getByTestId("query-provider")).toContainElement(
       screen.getByTestId("toast-provider"),
     );
@@ -107,6 +111,7 @@ describe("ApplicationFrame", () => {
       screen.queryByTestId("workbench-context-provider"),
     ).not.toBeInTheDocument();
     expect(screen.queryByTestId("workspace-app-shell")).not.toBeInTheDocument();
+    expect(screen.getByTestId("toast-provider").closest(".console-theme")).toBeNull();
   });
 
   it("keeps public routes shell-free", () => {

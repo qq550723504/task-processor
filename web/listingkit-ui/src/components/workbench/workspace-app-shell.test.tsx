@@ -81,7 +81,7 @@ describe("WorkspaceAppShell", () => {
     expect(screen.queryByText("organization child")).not.toBeInTheDocument();
   });
 
-  it("renders the two implemented desktop navigation groups without extra menu items", async () => {
+  it("renders current Figma navigation and expands the real Store entry", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValue(Response.json(ACTIVE_CONTEXT)),
@@ -98,9 +98,10 @@ describe("WorkspaceAppShell", () => {
       name: "工作台导航",
     });
     expect(
-      within(navigationLandmark).getByRole("link", { name: "工作台" }),
+      within(navigationLandmark).getByRole("link", { name: "运营驾驶舱" }),
     ).toHaveAttribute("href", "/workbench");
-    expect(within(navigationLandmark).getAllByRole("link")).toHaveLength(2);
+    expect(within(navigationLandmark).getByRole("link", { name: "AI工作台" })).toHaveAttribute("href", "/workbench/ai");
+    await userEvent.click(within(navigationLandmark).getByRole("button", { name: "展开店铺中心" }));
     expect(screen.getByText("店铺中心")).toBeInTheDocument();
     expect(
       within(navigationLandmark).getByRole("link", { name: "我的店铺" }),
@@ -122,10 +123,7 @@ describe("WorkspaceAppShell", () => {
     });
     expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "false");
     expect(mobileNavigationButton).toHaveClass("md:hidden");
-    expect(screen.getByRole("button", { name: "折叠桌面导航" })).toHaveClass(
-      "hidden",
-      "md:inline-flex",
-    );
+    expect(screen.queryByRole("button", { name: "折叠桌面导航" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "移动工作台导航" }),
     ).not.toBeInTheDocument();
@@ -134,11 +132,16 @@ describe("WorkspaceAppShell", () => {
     await user.keyboard("[Enter]");
 
     expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("[Escape]");
+    expect(mobileNavigationButton).toHaveAttribute("aria-expanded", "false");
+    expect(mobileNavigationButton).toHaveFocus();
+    expect(screen.queryByRole("navigation", { name: "移动工作台导航" })).not.toBeInTheDocument();
+    await user.keyboard("[Enter]");
     const mobileNavigation = screen.getByRole("navigation", {
       name: "移动工作台导航",
     });
     const mobileWorkbenchLink = within(mobileNavigation).getByRole("link", {
-      name: "工作台",
+      name: "运营驾驶舱",
     });
     expect(mobileWorkbenchLink).toHaveAttribute("href", "/workbench");
     mobileWorkbenchLink.addEventListener("click", (event) =>
@@ -164,7 +167,7 @@ describe("WorkspaceAppShell", () => {
 
     const desktopNavigation = await screen.findByRole("navigation", { name: "工作台导航" });
     expect(within(desktopNavigation).getByRole("link", { name: "我的店铺" })).toHaveAttribute("aria-current", "page");
-    expect(within(desktopNavigation).getByRole("link", { name: "工作台" })).not.toHaveAttribute("aria-current");
+    expect(within(desktopNavigation).getByRole("link", { name: "运营驾驶舱" })).not.toHaveAttribute("aria-current");
     await user.click(screen.getByRole("button", { name: "打开工作台导航" }));
     expect(within(screen.getByRole("navigation", { name: "移动工作台导航" })).getByRole("link", { name: "我的店铺" })).toHaveAttribute("aria-current", "page");
   });
