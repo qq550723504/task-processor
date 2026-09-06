@@ -53,13 +53,14 @@ Refs #328 / PR #330；当前产品映射以 #328 正文、R328-C1（issuecomment
 - gcTime/staleTime为0，不自动后台重试或窗口刷新；失败与成功空集合分开，原始错误不透出。上下文恢复只在同一user/org/roles恢复成功后重读，迟到恢复不能启动旧scope。
 - 诊断链接由#340严格绑定同一source UUID；打开时重新认证授权。记录出现在列表不授予未来访问权限；实际移除Listing权限后诊断403已验证。
 
-Legacy decision: EXTRACT
+Legacy decision: RETIRE
 Reusable behavior: 原metadata精度、opaque cursor分页/刷新、取消/迟到响应与同scope错误恢复。
 Current owner: 任务中心内容/请求子树消费#340只读投影；领域事实与授权仍归Listing/现有provider。
-Cutover/deletion condition: 已接新任务中心，旧独立入口保持撤回，原列表资产未挂载；不包旧页面、不增加兼容层。历史提交和截图保留为checkpoint。
+Cutover/deletion condition: 已接新任务中心，旧独立入口保持404；无消费者的旧列表组件、三个专用测试文件、测试fixture及入口测试的无效mock已删除。分页有界、卸载取消和迟到响应等有效行为由任务中心测试覆盖。#327/#340的API/schema/client/共享fixture不变；历史提交和截图保留为checkpoint。
 
 ## 验证证据
 
+- 后续评审清理仅删除未挂载旧列表/专用测试fixture、补任务中心行为测试及文档；正式运行路径的组件和样式不变，以上设计截图仍适用。清理前后任务中心与入口边界测试均通过；清理后9文件68项测试、类型/lint/build及9项真实任务中心浏览器、2项旧入口404回归通过。本次隔离Go只读断言76.27s PASS，启动器正常退出0并删除自有容器；未重新运行的原诊断全套浏览器沿用前一源码证据，不冒充本轮重跑。
 - 5项布局/选择TDD先红后绿；独立复核发现选择复活后补失败断言并修复。
 - 16项实际client接线TDD先红后绿；补共享decoder负例、实际provider/切换器、上下文恢复测试。
 - 当前关联14文件107项测试通过；涵盖shared provider/Shell/组织切换/诊断/新页面。局部eslint、typecheck、production build通过。

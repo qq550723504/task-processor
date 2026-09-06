@@ -83,7 +83,7 @@ it("cancels a delayed next page on refresh and rejects its late result", async (
   expect(screen.queryByRole("button", { name: /synthetic-product-2/ })).not.toBeInTheDocument();
 });
 
-it.each(["organization", "user", "roles", "switching", "revoked", "logout"])("destroys old data/selection and cancels in-flight work on %s transition", async (kind) => {
+it.each(["organization", "user", "roles", "switching", "revoked", "logout", "unmount"])("destroys old data/selection and cancels in-flight work on %s transition", async (kind) => {
   const late = deferred<ReturnType<typeof completedWorkFixture>>();
   state.fetch.mockResolvedValueOnce(completedWorkFixture("next")).mockReturnValueOnce(late.promise).mockResolvedValue(completedWorkFixture(null, "3"));
   const view = render(tree()); await userEvent.click(await screen.findByRole("button", { name: /synthetic-product-1/ }));
@@ -95,11 +95,37 @@ it.each(["organization", "user", "roles", "switching", "revoked", "logout"])("de
   if (kind === "switching") state.context.isSwitching = true;
   if (kind === "revoked") state.context.blockingError = { code: "ORGANIZATION_ACCESS_REVOKED" };
   if (kind === "logout") state.context.user = null;
-  view.rerender(tree()); expect(signal.aborted).toBe(true);
+  if (kind === "unmount") view.unmount();
+  else view.rerender(tree());
+  expect(signal.aborted).toBe(true);
   await act(async () => late.resolve(completedWorkFixture(null, "2")));
   expect(screen.queryByRole("button", { name: /synthetic-product-2/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "查看诊断" })).not.toBeInTheDocument();
+  if (kind === "unmount") await waitFor(() => expect(client.getQueryCache().getAll()).toHaveLength(0));
 });
+
+it("bounds retained pagination and cache while allowing forward navigation and a fresh start", async () => {
+  state.fetch.mockImplementation(async ({ cursor }) => {
+    const page = cursor ? Number(cursor) : 1;
+    return completedWorkFixture(String(page + 1), String(page));
+  });
+  render(tree());
+  await screen.findByText("synthetic-product-1");
+  for (let page = 2; page <= 56; page++) {
+    await userEvent.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByText(`synthetic-product-${page}`);
+  }
+  await waitFor(() => expect(client.getQueryCache().getAll()).toHaveLength(1));
+  for (let page = 55; page >= 7; page--) {
+    await userEvent.click(screen.getByRole("button", { name: "上一页" }));
+    await screen.findByText(`synthetic-product-${page}`);
+  }
+  expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+  expect(screen.getByText("更早的分页位置已释放，可刷新回到第一页。")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "刷新记录" }));
+  await screen.findByText("synthetic-product-1");
+  expect(state.fetch.mock.calls.at(-1)?.[0].cursor).toBeUndefined();
+}, 30_000);
 it.each([true, false])("continues only after a successful same-scope context recovery (%s)", async (success) => {
   const recovery = deferred<unknown>();
   state.context.retry = vi.fn(() => recovery.promise);

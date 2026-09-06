@@ -8,7 +8,6 @@ vi.mock("next/server", () => ({ connection: vi.fn() }));
 // Even a configured backend cannot approve a product entry (#328 / #331).
 vi.mock("@/lib/server/shein-records-availability", () => ({ isSheinRecordsAvailable: () => true }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_HTTP_ERROR_FALLBACK;404"); } }));
-vi.mock("@/components/workbench/shein-records/record-list-page", () => ({ SheinRecordListPage: () => <p>collection mounted</p> }));
 
 afterEach(cleanup);
 
