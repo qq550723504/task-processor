@@ -12,7 +12,7 @@ export function diagnosticFixture(action: "publish" | "save_draft" = "publish") 
     rule_version: "shein.offline_package.v2" as const,
     input: { actual_digest: `sha256:${"a".repeat(64)}`, binding_version: "shein.persisted-input.go-json.v1" as const, read_at: "2026-09-06T04:00:00Z", evaluated_at: "2026-09-06T04:00:01Z" },
     external_freshness: { status: "not_evaluated" as const, coverage: [] as string[] },
-    not_evaluated: ["external_package_freshness", "online_template_freshness", "human_review", "approved_asset_provenance_and_consent", "submission_gate"],
+    not_evaluated: ["external_package_freshness", "online_template_freshness", "store_authorization", "cookie", "pod", "human_review", "approved_asset_provenance_and_consent", "submission_gate"],
     not_evaluated_reasons: { external_package_freshness: "no_authoritative_package_freshness" },
     offline_checks: { status: "blocked" as const, checks: [blocker, warning], blockers: [blocker], warnings: [warning] },
     action_policy: { readiness_blockers_allowed: action === "save_draft" },

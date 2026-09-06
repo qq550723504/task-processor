@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,24 @@ function DiagnosticRequest({ recordId, organizationId, scope, request, check }: 
 
 function DiagnosticError({ error, retry }: { error: unknown; retry: () => void }) {
   const context = useWorkbenchContext();
+  const mounted = useRef(false);
+  const [recovering, setRecovering] = useState(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  async function recoverContext() {
+    setRecovering(true);
+    const recovered = await context.retry();
+    // Action/context changes unmount this error. A late recovery must not
+    // restart the request that the user already left behind.
+    if (!mounted.current) return;
+    setRecovering(false);
+    const recoveredOrganization = recovered?.organizations.find((organization) => organization.id === recovered.effectiveOrganizationId);
+    if (recovered && !recovered.selectionRequired && recovered.user.id === context.user?.id &&
+      recoveredOrganization?.id === context.effectiveOrganization?.id &&
+      JSON.stringify(recoveredOrganization?.roles) === JSON.stringify(context.roles)) retry();
+  }
   const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "REQUEST_FAILED";
   const messages: Record<string, string> = {
     permission_denied: "没有读取这份资料的权限",
@@ -115,7 +133,7 @@ function DiagnosticError({ error, retry }: { error: unknown; retry: () => void }
         <h2 className="font-semibold">{messages[code] || "诊断请求失败，请稍后重试"}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{changed ? "内容绑定或外部资料有效性检查未通过，未自动重试。可明确选择检查当前内容，获取新的诊断。" : "本次未取得可用诊断，旧结果已隐藏。"}</p>
       </div>
-      <Button className="mt-4" variant="outline" onClick={contextError ? context.retry : retry}>{contextError ? "重新加载企业上下文" : changed ? "检查当前内容" : "重新检查"}</Button>
+      <Button className="mt-4" variant="outline" disabled={recovering} onClick={contextError ? recoverContext : retry}>{recovering ? "正在恢复企业上下文…" : contextError ? "重新加载企业上下文" : changed ? "检查当前内容" : "重新检查"}</Button>
     </Card>
   );
 }

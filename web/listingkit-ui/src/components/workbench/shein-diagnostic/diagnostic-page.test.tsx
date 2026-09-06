@@ -180,4 +180,23 @@ describe("diagnostic page request lifecycle (contract fixture)", () => {
     expect(state.context.retry).toHaveBeenCalledTimes(1);
     expect(state.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["action", "organization", "unmount"])("discards delayed recovery after %s changes", async (change) => {
+    const recovery = deferred<unknown>();
+    state.context.retry = vi.fn(() => recovery.promise);
+    state.fetch.mockRejectedValueOnce({ code: "ORGANIZATION_SUSPENDED" }).mockImplementation(async ({ action }) => diagnosticFixture(action));
+    const view = render(tree());
+    await userEvent.click(await screen.findByRole("button", { name: "重新加载企业上下文" }));
+    expect(screen.getByRole("button", { name: "正在恢复企业上下文…" })).toBeDisabled();
+    if (change === "action") await userEvent.selectOptions(screen.getByLabelText("检查动作"), "save_draft");
+    else if (change === "organization") {
+      state.context = { ...state.context, effectiveOrganization: { id: "org-b", name: "企业乙", roles: [] } };
+      view.rerender(tree());
+    } else view.unmount();
+    if (change !== "unmount") expect(await screen.findByText("发现需要处理的问题")).toBeVisible();
+    const count = state.fetch.mock.calls.length;
+    await act(async () => recovery.resolve({ user: { id: "reader" }, effectiveOrganizationId: "org-a", selectionRequired: false, organizations: [{ id: "org-a", roles: [] }] }));
+    expect(state.fetch).toHaveBeenCalledTimes(count);
+    if (change === "action") expect(screen.getByLabelText("检查动作")).toHaveValue("save_draft");
+  });
 });
