@@ -59,3 +59,27 @@ it("preserves typed Go errors without private upstream headers", async () => {
   expect(await response.json()).toEqual({ error: "unavailable" });
   expect(response.headers.has("set-cookie")).toBe(false);
 });
+
+it("propagates cancellation and bounds a stalled upstream response", async () => {
+  vi.useFakeTimers(); vi.stubEnv("SHEIN_RECORDS_API_ORIGIN", "http://127.0.0.1:9876");
+  const cancel = vi.fn();
+  const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response(new ReadableStream({ cancel }), { headers: { "Content-Type": "application/json" } })));
+  vi.stubGlobal("fetch", fetcher);
+  const incoming = new AbortController();
+  const pending = proxySheinRecords(new Request(request(), { signal: incoming.signal }), "token");
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+  incoming.abort();
+  expect((await pending).status).toBe(504);
+  expect(cancel).toHaveBeenCalledOnce();
+
+  const stalled = proxySheinRecords(request(), "token");
+  await vi.advanceTimersByTimeAsync(15001);
+  expect((await stalled).status).toBe(504);
+});
+
+it("rejects GET body metadata before forwarding", async () => {
+  const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+  expect((await proxySheinRecords(request(undefined, { "Content-Length": "1" }), "token")).status).toBe(400);
+  expect((await proxySheinRecords(request(undefined, { "Transfer-Encoding": "chunked" }), "token")).status).toBe(400);
+  expect(fetcher).not.toHaveBeenCalled();
+});

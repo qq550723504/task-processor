@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -166,4 +167,32 @@ func TestSheinRecordCollectionSQLIsScopedAndMetadataOnly(t *testing.T) {
 	require.Contains(t, joined, "organization_id =")
 	require.Contains(t, joined, "owner_user_id =")
 	require.Contains(t, joined, "order by created_at desc, id desc limit")
+}
+
+func TestSheinRecordCollectionUsesBothScopedIndexes(t *testing.T) {
+	db := recordTestDB(t)
+	for _, fixture := range []struct {
+		name, query, index, drop string
+		args                     []any
+	}{
+		{name: "operator", query: "EXPLAIN (COSTS OFF) SELECT id, product_key, snapshot_version, country, language, created_at FROM listing_shein_records WHERE organization_id = ? AND owner_user_id <> '' AND owner_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 21", args: []any{"200", "operator"}, index: "listing_shein_records_owner_collection_idx", drop: "listing_shein_records_admin_collection_idx"},
+		{name: "admin", query: "EXPLAIN (COSTS OFF) SELECT id, product_key, snapshot_version, country, language, created_at FROM listing_shein_records WHERE organization_id = ? AND owner_user_id <> '' ORDER BY created_at DESC, id DESC LIMIT 21", args: []any{"200"}, index: "listing_shein_records_admin_collection_idx", drop: "listing_shein_records_owner_collection_idx"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			var plan []struct {
+				Plan string `gorm:"column:QUERY PLAN"`
+			}
+			tx := db.WithContext(context.Background()).Begin()
+			require.NoError(t, tx.Error)
+			defer tx.Rollback()
+			require.NoError(t, tx.Exec("DROP INDEX "+fixture.drop).Error)
+			require.NoError(t, tx.Exec("SET LOCAL enable_seqscan = off").Error)
+			require.NoError(t, tx.Raw(fixture.query, fixture.args...).Scan(&plan).Error)
+			lines := make([]string, 0, len(plan))
+			for _, row := range plan {
+				lines = append(lines, row.Plan)
+			}
+			require.Contains(t, strings.Join(lines, "\n"), fixture.index)
+		})
+	}
 }
