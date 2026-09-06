@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"task-processor/internal/authidentity"
 	"time"
 
 	"gorm.io/gorm"
@@ -114,8 +113,7 @@ func (r *GormCredentialResolver) ResolveClientConfig(ctx context.Context, client
 	}
 	identity := IdentityFromContext(ctx)
 	if r.organizationScope {
-		verified, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-		if !ok || verified.EffectiveOrganizationID == "" || verified.EffectiveOrganizationID != identity.TenantID || verified.TenantID != identity.TenantID || verified.UserID != identity.UserID {
+		if identity.TenantID == "" || identity.UserID == "" {
 			return nil, ErrClientConfigurationUnavailable
 		}
 	}

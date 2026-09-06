@@ -3,6 +3,7 @@ package imageagentworker
 import (
 	"context"
 	"gorm.io/gorm"
+	"task-processor/internal/authidentity"
 	zitadel "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/imageagent"
@@ -56,8 +57,22 @@ func BuildOrganizationImageCapabilities(manager *openai.Manager, db *gorm.DB) (I
 	if manager == nil || db == nil {
 		return ImageCapabilities{}, imageagent.ErrIdentityRequired
 	}
-	manager.SetConfigResolver(openai.NewOrganizationCredentialResolver(db))
+	manager.SetConfigResolver(organizationCredentialAdmission{resolver: openai.NewOrganizationCredentialResolver(db)})
 	return buildProductionImageCapabilities(imageCapabilityRuntime{OpenAIManager: manager})
 }
 
 var _ imageagent.ExecutionAuthorizer = OrganizationExecutionAuthorizer{}
+
+// App owns the authenticated-to-provider identity boundary. The Integration
+// resolver consumes only its existing shared identity contract and never
+// imports application authentication policy.
+type organizationCredentialAdmission struct{ resolver openai.ClientConfigResolver }
+
+func (r organizationCredentialAdmission) ResolveClientConfig(ctx context.Context, name string, fallback *openai.ClientConfig) (*openai.ResolvedClientConfig, error) {
+	identity := openai.IdentityFromContext(ctx)
+	verified, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || verified.EffectiveOrganizationID == "" || verified.EffectiveOrganizationID != identity.TenantID || verified.TenantID != identity.TenantID || verified.UserID != identity.UserID || r.resolver == nil {
+		return nil, openai.ErrClientConfigurationUnavailable
+	}
+	return r.resolver.ResolveClientConfig(ctx, name, fallback)
+}
