@@ -33,6 +33,7 @@ const diagnostic = z.strictObject({
   offline_checks: z.strictObject({ status: z.enum(["ready", "ready_with_warnings", "blocked"]), checks: z.array(check), blockers: z.array(check), warnings: z.array(check) }),
   action_policy: z.strictObject({ readiness_blockers_allowed: z.boolean() }),
 }).refine((value) => {
+  if (comparableTimestamp(value.input.read_at) > comparableTimestamp(value.input.evaluated_at)) return false;
   if (value.external_freshness.status === "not_evaluated") {
     return value.not_evaluated.includes("external_package_freshness") &&
       value.not_evaluated_reasons?.external_package_freshness === "no_authoritative_package_freshness";

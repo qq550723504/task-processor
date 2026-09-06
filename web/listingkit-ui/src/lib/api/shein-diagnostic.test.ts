@@ -32,6 +32,7 @@ describe("Shein diagnostic wire contract", () => {
     const value = diagnosticFixture();
     expect(parseSheinDiagnostic({ ...value, input: { ...value.input, read_at: "2026-02-30T01:00:00Z" } })).toBeNull();
     expect(parseSheinDiagnostic({ ...value, input: { ...value.input, actual_digest: "sha256:bad" } })).toBeNull();
+    expect(parseSheinDiagnostic({ ...value, input: { ...value.input, read_at: "2026-09-06T01:02:04.000000001Z" } })).toBeNull();
   });
   it("validates valid freshness against its own evaluation instant, with nanosecond precision", () => {
     const base = diagnosticFixture();
@@ -45,6 +46,8 @@ describe("Shein diagnostic wire contract", () => {
       } },
     };
     expect(parseSheinDiagnostic(valid)).toEqual(valid);
+    expect(parseSheinDiagnostic({ ...valid, input: { ...valid.input, read_at: "2026-09-06T01:02:04.000000003Z" } })).toBeNull();
+    expect(parseSheinDiagnostic({ ...valid, input: { ...valid.input, read_at: valid.input.evaluated_at } })).not.toBeNull();
     for (const coverage of [[], ["other"], ["external_package_freshness", "other"]]) {
       expect(parseSheinDiagnostic({ ...valid, external_freshness: { ...valid.external_freshness, coverage } })).toBeNull();
     }
