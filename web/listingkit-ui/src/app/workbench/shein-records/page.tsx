@@ -1,8 +1,7 @@
-import { connection } from "next/server";
-import { SheinRecordListPage } from "@/components/workbench/shein-records/record-list-page";
-import { isSheinRecordsAvailable } from "@/lib/server/shein-records-availability";
+import { notFound } from "next/navigation";
 
-export default async function SheinRecordsPage() {
-  await connection();
-  return <SheinRecordListPage available={isSheinRecordsAvailable()} />;
+export default function SheinRecordsPage() {
+  // #328 is paused until #331 approves the shared product projection.
+  // Backend configuration alone must not enable this withdrawn entry.
+  notFound();
 }
