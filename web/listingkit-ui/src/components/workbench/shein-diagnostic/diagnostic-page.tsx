@@ -1,5 +1,7 @@
 "use client";
 
+import { ConsolePage } from "@/components/workbench/console/console-page";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -31,10 +33,9 @@ function ScopedDiagnostic({ recordId, organizationId, organizationName, scope }:
     setRequest((previous) => ({ action, sequence: previous.sequence + 1, ...(expectedDigest ? { expectedDigest } : {}) }));
   }
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+    <ConsolePage title="SHEIN 资料诊断" breadcrumbs={[{ label: "SHEIN 资料诊断" }]} description={organizationName} actions={<Button asChild variant="outline"><Link href="/workbench/ai/tasks/completed" prefetch={false}>返回任务中心</Link></Button>}>
       <div className="mb-6">
-        <p className="text-sm text-foreground/75">{organizationName}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">SHEIN 资料诊断</h1>
+
         <p className="mt-3 flex items-center gap-2 text-sm font-medium"><ShieldCheck aria-hidden="true" className="size-4 shrink-0" />本地资料 / 仅离线检查</p>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground/75">这是硕米保存的本地资料，不是已保存到 SHEIN 的商品。检查不会修改资料或向平台提交。</p>
       </div>
@@ -49,7 +50,7 @@ function ScopedDiagnostic({ recordId, organizationId, organizationName, scope }:
         <p className="mt-2 text-xs leading-5 text-muted-foreground">切换后读取该动作的当次结果；两种动作都只检查，不执行发布或保存。</p>
       </Card>
       <DiagnosticRequest key={`${request.action}:${request.sequence}`} recordId={recordId} organizationId={organizationId} scope={scope} request={request} check={check} />
-    </section>
+    </ConsolePage>
   );
 }
 

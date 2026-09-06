@@ -30,7 +30,12 @@ func (AIClientCredential) TableName() string {
 }
 
 type GormCredentialResolver struct {
-	db *gorm.DB
+	db                *gorm.DB
+	organizationScope bool
+}
+
+func NewOrganizationCredentialResolver(db *gorm.DB) *GormCredentialResolver {
+	return &GormCredentialResolver{db: db, organizationScope: true}
 }
 
 func NewGormCredentialResolver(db *gorm.DB) *GormCredentialResolver {
@@ -107,6 +112,11 @@ func (r *GormCredentialResolver) ResolveClientConfig(ctx context.Context, client
 		return nil, fmt.Errorf("ai credential resolver database is nil")
 	}
 	identity := IdentityFromContext(ctx)
+	if r.organizationScope {
+		if identity.TenantID == "" || identity.UserID == "" {
+			return nil, ErrClientConfigurationUnavailable
+		}
+	}
 	tenantID := strings.TrimSpace(identity.TenantID)
 	userID := strings.TrimSpace(identity.UserID)
 	clientName = normalizeClientName(clientName)
@@ -127,6 +137,9 @@ func (r *GormCredentialResolver) ResolveClientConfig(ctx context.Context, client
 		return nil, err
 	}
 	if credential == nil {
+		if r.organizationScope {
+			return nil, ErrClientConfigurationUnavailable
+		}
 		return nil, nil
 	}
 	return credential.toResolvedClientConfig(fallback), nil

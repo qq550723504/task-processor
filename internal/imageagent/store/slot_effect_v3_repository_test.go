@@ -1440,6 +1440,9 @@ func TestGormPostgresPublicationClaimLocksBeforeReadingWallClock(t *testing.T) {
 	reservation := v3Reservation("postgres-lock-order")
 	claimedAt := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT \* FROM "image_agent_v2_runs".*FOR UPDATE`).
+		WithArgs(reservation.Identity.TenantID, reservation.Identity.OwnerUserID, reservation.Identity.RunID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_user_id", "scope_protocol"}).AddRow(reservation.Identity.RunID, reservation.Identity.TenantID, reservation.Identity.OwnerUserID, ""))
 	mock.ExpectQuery(`SELECT \* FROM "image_agent_v3_slot_external_effects".*FOR UPDATE`).
 		WithArgs(reservation.Identity.TenantID, reservation.Identity.OwnerUserID, reservation.Identity.RunID, reservation.Identity.PlanRevision, reservation.Identity.SlotID, reservation.Identity.Attempt, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "owner_user_id", "run_id", "plan_revision", "slot_id", "attempt", "idempotency_key", "input_fingerprint", "phase", "staging_manifest_json", "staging_manifest_fingerprint", "publication_owner", "publication_lease_expires_at", "publication_fence", "publication_fingerprint", "result_fingerprint", "final_manifest_json", "published_json", "blocked_code", "provider_claimed_at", "staging_prepared_at", "staged_at", "published_at", "created_at", "updated_at"}).AddRow(reservation.Identity.TenantID, reservation.Identity.OwnerUserID, reservation.Identity.RunID, reservation.Identity.PlanRevision, reservation.Identity.SlotID, reservation.Identity.Attempt, reservation.IdempotencyKey, reservation.InputFingerprint, imageagent.SlotEffectV3ArtifactStaged, nil, nil, "", nil, 0, "", "", nil, nil, "", claimedAt, nil, claimedAt, nil, claimedAt, claimedAt))

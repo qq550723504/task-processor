@@ -20,68 +20,18 @@ const connectionLabels: Record<WorkbenchStore["connectionStatus"], string> = {
 };
 
 export function StoreTable({ stores, onDeleted, onRefreshStore }: { stores: WorkbenchStore[]; onDeleted?: () => void; onRefreshStore?: (storeId: string) => Promise<WorkbenchStore | null | undefined> }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <table aria-label="我的店铺列表" className="w-full min-w-[900px] text-sm">
-        <thead className="border-b bg-muted/40 text-left text-muted-foreground">
-          <tr>
-            {[
-              "店铺名称",
-              "平台",
-              "区域",
-              "外部店铺 ID",
-              "店铺状态",
-              "连接状态",
-              "更新时间",
-              "操作",
-            ].map((column) => (
-              <th className="px-4 py-3 font-medium" key={column} scope="col">
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {stores.map((store) => {
-            const timestamp = formatStoreTimestamp(store.updatedAt);
-            return (
-              <tr className="border-b last:border-0" key={store.id}>
-                <td className="px-4 py-3 font-medium">{store.name}</td>
-                <td className="px-4 py-3">SHEIN</td>
-                <td className="px-4 py-3">{store.region}</td>
-                <td className="px-4 py-3">{store.externalStoreId || "未设置"}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge>{lifecycleLabels[store.lifecycleStatus]}</StatusBadge>
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge>{connectionLabels[store.connectionStatus]}</StatusBadge>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  <time dateTime={timestamp ? store.updatedAt : ""}>{timestamp || "—"}</time>
-                </td>
-                <td className="px-4 py-3">
-                  <Link
-                    aria-label={`查看${store.name}`}
-                    className="text-primary underline-offset-4 hover:underline"
-                    href={`/workbench/stores/${store.id}`}
-                  >
-                    查看
-                  </Link>
-                  <div className="mt-2"><StoreLifecycleActions onDeleted={onDeleted} onRefreshStore={onRefreshStore ? () => onRefreshStore(store.id) : undefined} store={store} /></div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  return <ul aria-label="我的店铺列表" className="console-store-list">{stores.map((store) => {
+    const timestamp = formatStoreTimestamp(store.updatedAt);
+    return <li key={store.id} className="console-store-card">
+      <div className="console-store-card-header"><div className="console-store-identity"><span aria-hidden="true" className="console-store-avatar">S</span><div><h2>{store.name}</h2><p className="console-description">外部店铺 ID：<span>{store.externalStoreId || "未设置"}</span></p></div></div>
+        <div className="console-store-badges"><span>SHEIN</span><span>{store.region}</span><span>{lifecycleLabels[store.lifecycleStatus]}</span><span>{connectionLabels[store.connectionStatus]}</span></div>
+      </div>
+      <div className="console-store-card-footer"><dl><dt>更新时间</dt><dd><time dateTime={timestamp ? store.updatedAt : ""}>{timestamp || "—"}</time></dd></dl>
+        <div className="console-store-actions"><StoreLifecycleActions onDeleted={onDeleted} onRefreshStore={onRefreshStore ? () => onRefreshStore(store.id) : undefined} store={store} /><Link aria-label={`查看${store.name}`} className="console-store-detail" href={`/workbench/stores/${store.id}`}>进入店铺 →</Link></div>
+      </div>
+    </li>;
+  })}</ul>;
 }
-
-function StatusBadge({ children }: { children: string }) {
-  return <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">{children}</span>;
-}
-
 function formatStoreTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";

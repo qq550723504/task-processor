@@ -15,11 +15,33 @@ import (
 )
 
 type gormRepository struct {
-	db *gorm.DB
+	db            *gorm.DB
+	scopeProtocol string
 }
 
 func NewGormRepository(db *gorm.DB) imageagent.Repository {
 	return &gormRepository{db: db}
+}
+
+// NewOrganizationRepository is only for an explicitly admitted current scope
+// database. It never upgrades a historical run or supplies a missing protocol.
+func NewOrganizationRepository(db *gorm.DB) imageagent.Repository {
+	return &gormRepository{db: db, scopeProtocol: imageagent.OrganizationScopeProtocol}
+}
+
+func AutoMigrateOrganizationScope(db *gorm.DB) error {
+	if err := AutoMigrate(db); err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		"CREATE UNIQUE INDEX IF NOT EXISTS image_agent_org_run_identity ON image_agent_v2_runs (id) WHERE scope_protocol = 'image-agent.organization.v1'",
+		"CREATE UNIQUE INDEX IF NOT EXISTS image_agent_org_idempotency ON image_agent_v2_runs (owner_user_id, idempotency_key) WHERE scope_protocol = 'image-agent.organization.v1'",
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func AutoMigrate(db *gorm.DB) error {
@@ -30,6 +52,9 @@ func AutoMigrate(db *gorm.DB) error {
 }
 
 func (r *gormRepository) CreateRun(ctx context.Context, run *imageagent.Run) error {
+	if run == nil || run.ScopeProtocol != r.scopeProtocol {
+		return imageagent.ErrIdentityRequired
+	}
 	if err := validateRun(run); err != nil {
 		return err
 	}
@@ -91,6 +116,7 @@ func (r *gormRepository) UpdateRun(ctx context.Context, scope imageagent.RunScop
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&runRecord{}).
 			Where("tenant_id = ? AND owner_user_id = ? AND id = ? AND version = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedVersion).
+			Where("scope_protocol = ?", r.scopeProtocol).
 			Updates(map[string]any{
 				"status":               string(mutation.Status),
 				"current_node":         mutation.CurrentNode,
@@ -132,6 +158,9 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 	}
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := r.findRun(ctx, tx, scope); err != nil {
+			return err
+		}
 		if existing, found, err := findPlanByIdentity(ctx, tx, scope, planRow); err != nil {
 			return err
 		} else if found {
@@ -142,6 +171,7 @@ func (r *gormRepository) AppendPlan(ctx context.Context, scope imageagent.RunSco
 		}
 		result := tx.Model(&runRecord{}).
 			Where("tenant_id = ? AND owner_user_id = ? AND id = ? AND active_plan_revision = ?", scope.TenantID, scope.OwnerUserID, scope.RunID, expectedActiveRevision).
+			Where("scope_protocol = ?", r.scopeProtocol).
 			Update("active_plan_revision", plan.Revision)
 		if result.Error != nil {
 			return fmt.Errorf("advance image agent plan revision: %w", result.Error)
@@ -276,6 +306,9 @@ func (r *gormRepository) findRun(ctx context.Context, db *gorm.DB, scope imageag
 	if err != nil {
 		return runRecord{}, fmt.Errorf("get image agent run: %w", err)
 	}
+	if row.ScopeProtocol != r.scopeProtocol {
+		return runRecord{}, imageagent.ErrRunNotFound
+	}
 	return row, nil
 }
 
@@ -287,6 +320,9 @@ func (r *gormRepository) findRunForUpdate(ctx context.Context, db *gorm.DB, scop
 	}
 	if err != nil {
 		return runRecord{}, fmt.Errorf("lock image agent run: %w", err)
+	}
+	if row.ScopeProtocol != r.scopeProtocol {
+		return runRecord{}, imageagent.ErrRunNotFound
 	}
 	return row, nil
 }
@@ -309,7 +345,8 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 		return runRecord{}, fmt.Errorf("marshal run block: %w", err)
 	}
 	return runRecord{
-		TenantID: run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID,
+		ScopeProtocol: run.ScopeProtocol,
+		TenantID:      run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID,
 		PolicyContextJSON: policyContextJSON,
 		Mode:              string(run.Mode), IdempotencyKey: run.IdempotencyKey, Status: string(run.Status), CurrentNode: run.CurrentNode,
 		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(run.MaxConcurrentSlots), BudgetJSON: budgetJSON, UsageJSON: usageJSON, ReservedUsageJSON: []byte("{}"), BlockJSON: blockJSON, CreatedAt: run.StartedAt,
@@ -334,7 +371,8 @@ func recordToRun(row runRecord) (imageagent.Run, error) {
 		return imageagent.Run{}, fmt.Errorf("decode run block: %w", err)
 	}
 	return imageagent.Run{
-		ID: row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, Mode: imageagent.RunMode(row.Mode),
+		ScopeProtocol: row.ScopeProtocol,
+		ID:            row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, Mode: imageagent.RunMode(row.Mode),
 		ImagePolicyContext: policyContext,
 		IdempotencyKey:     row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
 		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(row.MaxConcurrentSlots), Budget: budget, Usage: usage, Block: block, StartedAt: row.CreatedAt.UTC(),

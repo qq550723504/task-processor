@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { diagnosticOrganizationSchema, parseSheinDiagnostic, parseSheinDiagnosticFailure, sheinDiagnosticActionSchema, sheinDigestSchema, sheinRecordIdSchema } from "@/lib/api/shein-diagnostic";
 import { InvalidSheinDiagnosticResponseError, readSheinDiagnosticJSON } from "@/lib/api/shein-diagnostic-json";
 import { WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
+import { configuredSheinRecordsOrigin } from "./shein-records-origin";
 
 const unavailable = () => workbenchProtocolError(502, "DEPENDENCY_UNAVAILABLE", "Diagnostic upstream is unavailable");
 const invalidResponse = () => workbenchProtocolError(502, "INVALID_UPSTREAM_RESPONSE", "Diagnostic upstream response is invalid");
@@ -18,15 +19,6 @@ function selectedOrganization(request: Request): string | null {
     return diagnosticOrganizationSchema.safeParse(value).success ? value : null;
   } catch { return null; }
 }
-function configuredOrigin() {
-  const raw = process.env.SHEIN_RECORDS_API_ORIGIN;
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && (raw === url.origin || raw === `${url.origin}/`) ? url.origin : null;
-  } catch { return null; }
-}
-
 /** Called only with the access token from the verified server session. */
 export async function proxySheinDiagnostic(request: Request, recordId: string, accessToken: string): Promise<Response> {
   if (request.method !== "GET") return workbenchProtocolError(405, "INVALID_REQUEST", "Method is not allowed");
@@ -50,7 +42,7 @@ export async function proxySheinDiagnostic(request: Request, recordId: string, a
   if (!action.success) return diagnosticError("unsupported_action");
   const expected = url.searchParams.get("expected_digest");
   if (expected !== null && !sheinDigestSchema.safeParse(expected).success) return diagnosticError("invalid_request");
-  const origin = configuredOrigin();
+  const origin = configuredSheinRecordsOrigin();
   if (!origin) return unavailable();
   const upstreamURL = new URL(url.pathname, origin);
   upstreamURL.searchParams.set("action", action.data);

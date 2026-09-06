@@ -76,6 +76,8 @@ const (
 
 func (mode WorkerWireMode) DefaultTaskQueue() (string, error) {
 	switch mode {
+	case WorkerWireModeOrganization:
+		return OrganizationTaskQueue, nil
 	case WorkerWireModeV2:
 		return TaskQueue, nil
 	case WorkerWireModeV3:
@@ -446,7 +448,7 @@ func publicationKey(runID string, revision int64) string {
 }
 
 func childWorkflowID(input SlotWorkflowInput) string {
-	return fmt.Sprintf("%s:plan:%d:slot:%s:attempt:%d", WorkflowID(input.Identity.TenantID, input.Identity.UserID, input.RunID), input.PlanRevision, input.Slot.ID, input.Attempt)
+	return fmt.Sprintf("%s:plan:%d:slot:%s:attempt:%d", scopedWorkflowID(input.Identity, input.RunID), input.PlanRevision, input.Slot.ID, input.Attempt)
 }
 
 // EffectRecoveryWorkflowID keeps the required Task 1 signature while still
@@ -488,7 +490,13 @@ func EffectRecoveryWorkflowIDForSlot(identity imageagent.ExecutionIdentity, plan
 		base = fmt.Sprintf("image-agent-effect-recovery:%s:%s:%s:%d:%s:%d", tenantID, userID, runID, planRevision, slotID, attempt)
 	}
 	if strings.TrimSpace(actionID) == "" {
+		if identity.ScopeProtocol == imageagent.OrganizationScopeProtocol {
+			return "organization-v1:" + base
+		}
 		return base
+	}
+	if identity.ScopeProtocol == imageagent.OrganizationScopeProtocol {
+		base = "organization-v1:" + base
 	}
 	return base + ":action:" + base64.RawURLEncoding.EncodeToString([]byte(actionID))
 }

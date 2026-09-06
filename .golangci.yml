@@ -189,6 +189,8 @@ linters-settings:
           - "**/internal/product/enrichment/**/*.go"
           - "**/internal/product/asset/**/*.go"
           - "**/internal/product/image/**/*.go"
+          - "**/internal/product/review/*.go"
+          - "**/internal/product/review/**/*.go"
         deny:
           - pkg: task-processor/internal/app
           - pkg: task-processor/internal/platform
@@ -529,9 +531,6 @@ linters-settings:
           - pkg: "task-processor/internal/asset$"
             desc: "Infrastructure packages must not depend on asset business rules"
           - pkg: "task-processor/internal/asset/"
-          - pkg: "task-processor/internal/product/catalog$"
-            desc: "Infrastructure packages outside the approved Catalog persistence adapter must not depend on Catalog business rules"
-          - pkg: "task-processor/internal/product/catalog/"
           - pkg: "task-processor/internal/listing$"
             desc: "Infrastructure packages must not depend on listing business rules"
           - pkg: "task-processor/internal/listing/"
@@ -566,6 +565,25 @@ linters-settings:
             desc: "Infrastructure packages must not depend on workspace business rules"
           - pkg: "task-processor/internal/workspace/"
 
+      infrastructure_catalog_boundary:
+        files:
+          - "**/internal/infra/*.go"
+          - "**/internal/infra/**/*.go"
+          - "**/internal/integration/*.go"
+          - "**/internal/integration/**/*.go"
+          - "**/internal/platform/*.go"
+          - "**/internal/platform/**/*.go"
+          - "**/internal/platformbase/*.go"
+          - "**/internal/platformbase/**/*.go"
+          - "**/internal/platformtask/*.go"
+          - "**/internal/platformtask/**/*.go"
+          - "!**/internal/integration/persistence/product/catalog/*.go"
+          - "!**/internal/integration/persistence/product/catalog/**/*.go"
+          - "!**/internal/integration/persistence/product/review/repository.go"
+        deny:
+          - pkg: "task-processor/internal/product/catalog$"
+            desc: "Only Catalog persistence and the admitted review UoW may consume Catalog ports"
+          - pkg: "task-processor/internal/product/catalog/"
       product_catalog_persistence_boundary:
         # This exact adapter implements the Catalog-owned repository ports. It may depend on Catalog, but no other business domain.
         files:
