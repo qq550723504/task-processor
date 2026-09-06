@@ -12,9 +12,11 @@ type SnapshotIdentity struct {
 // PublishRequest identifies one immutable publication attempt. PublicationID
 // is the idempotency identity within the tenant-qualified product stream.
 type PublishRequest struct {
-	Identity      SnapshotIdentity
-	PublicationID string
-	Snapshot      ProductSnapshot
+	// ExpectedBaseVersion enables atomic compare-and-publish; nil is unconditional.
+	ExpectedBaseVersion *uint64
+	Identity            SnapshotIdentity
+	PublicationID       string
+	Snapshot            ProductSnapshot
 }
 
 // PublishedSnapshot is one immutable version in a product snapshot stream.

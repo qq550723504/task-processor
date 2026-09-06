@@ -11,3 +11,5 @@ var (
 	ErrRepositoryUnavailable  = errors.New("product snapshot repository is unavailable")
 	ErrRepositoryStateInvalid = errors.New("product snapshot repository state is invalid")
 )
+
+var ErrStaleSnapshot = errors.New("catalog base version is stale")

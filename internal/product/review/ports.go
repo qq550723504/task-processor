@@ -1,0 +1,32 @@
+package review
+
+import (
+	"context"
+	"task-processor/internal/product/catalog"
+)
+
+type Scope struct {
+	Org, Actor string
+	Admin      bool
+}
+type Authorizer interface {
+	Authorize(string, []string, string) bool
+	IsTenantAdmin(string, []string) bool
+}
+type Operation struct {
+	Scope            Scope
+	Key, Fingerprint string
+}
+type Tx interface {
+	Load(string) (Record, error)
+	Replay() (View, bool, error)
+	Save(Record) error
+	Complete(View) error
+	Publisher() *catalog.Publisher
+	Reader() catalog.VersionedSnapshotReader
+}
+type Store interface {
+	Read(context.Context, Scope, string) (Record, error)
+	FindOperation(context.Context, Operation) (View, bool, error)
+	Run(context.Context, Operation, func(Tx) (View, error)) (View, error)
+}
