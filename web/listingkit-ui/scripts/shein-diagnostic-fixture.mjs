@@ -101,7 +101,7 @@ try {
     const value = await encode({ secret, salt: "authjs.session-token", maxAge: 1800, token: { sub: name, name: `Fixture ${name}`, accessToken, expiresAt: Math.floor(Date.now() / 1000) + 1800, identityVersion: 3, identity: { tenantId: "200", userId: name, roles: [role], userType: "zitadel" } } });
     sessions[name] = [{ name: "authjs.session-token", value, url: origin, httpOnly: true, sameSite: "Lax" }, { name: "shuomi_effective_organization", value: "200", url: origin, httpOnly: true, sameSite: "Lax" }];
   }
-  const manifest = { origin, goOrigin: seed.goOrigin, contextOrigin: seed.contextOrigin, recordId: seed.recordId, readonlyRecordId: seed.readonlyRecordId, sessions, controlDirectory: dir, containerId, sessionBoundary: "synthetic Auth.js issuance and external Go verifier/grants only; no real ZITADEL login" };
+  const manifest = { origin, goOrigin: seed.goOrigin, contextOrigin: seed.contextOrigin, recordId: seed.recordId, recordCount: seed.recordCount, otherRecordCount: seed.otherRecordCount, readonlyRecordId: seed.readonlyRecordId, sessions, controlDirectory: dir, containerId, sessionBoundary: "synthetic Auth.js issuance and external Go verifier/grants only; no real ZITADEL login" };
   await writeFile(join(dir, "fixture.json"), JSON.stringify(manifest, null, 2), { mode: 0o600 });
   await until(async () => (await fetch(`${origin}/api/auth/session`)).ok, "actual Next server");
   console.log(JSON.stringify({ manifest: join(dir, "fixture.json"), origin, recordId: seed.recordId }));
@@ -117,6 +117,7 @@ try {
     const cookie = (name, org = "200") => sessions[name].map((c) => `${c.name}=${c.name === "shuomi_effective_organization" ? org : c.value}`).join("; ");
     const path = `/api/listing/shein-records/${seed.recordId}/offline-diagnostic`;
     const get = (name, query = "action=publish", org = "200", expected = org) => fetch(`${origin}${path}?${query}`, { headers: { cookie: cookie(name, org), "X-Expected-Organization-ID": expected, Authorization: "Bearer forged", "X-User-ID": "admin", "X-Requested-Organization-ID": "100" } });
+    const list = (name, query = "limit=20", org = "200", expected = org) => fetch(`${origin}/api/listing/shein-records?${query}`, { headers: { cookie: cookie(name, org), "X-Expected-Organization-ID": expected, Authorization: "Bearer forged", "X-User-ID": "admin", "X-Requested-Organization-ID": "100" } });
     const report = [];
     async function check(name, response, status, code) {
       assert.equal(response.status, status, name);
@@ -126,7 +127,31 @@ try {
       report.push({ name, status, code: body.error ?? body.code ?? "diagnostic" });
       return body;
     }
-    const first = await check("owner actual BFF -> Go -> PG", await get("owner"), 200);
+    const ownerFirst = await check("owner list page 1 actual BFF -> Go -> PG", await list("owner"), 200);
+    assert.equal(ownerFirst.items.length, 20);
+    assert.equal(typeof ownerFirst.next_cursor, "string");
+    assert.equal(ownerFirst.items[0].snapshot_version, "1");
+    const ownerSecond = await check("owner list page 2", await list("owner", `limit=20&cursor=${encodeURIComponent(ownerFirst.next_cursor)}`), 200);
+    assert.equal(ownerSecond.items.length, seed.recordCount - 20);
+    assert.equal(ownerSecond.next_cursor, null);
+    assert.equal(new Set([...ownerFirst.items, ...ownerSecond.items].map((item) => item.record_id)).size, seed.recordCount);
+    const adminList = await check("organization admin list", await list("admin", "limit=100"), 200);
+    assert.equal(adminList.items.length, seed.recordCount + seed.otherRecordCount + 1);
+    const otherList = await check("operator owner scope", await list("other", "limit=100"), 200);
+    assert.equal(otherList.items.length, seed.otherRecordCount);
+    const readonlyList = await check("read permission without write lists", await list("readonly", "limit=100"), 200);
+    assert.equal(readonlyList.items.length, adminList.items.length);
+    const emptyOrganization = await check("authorized organization with no records", await list("owner", "limit=20", "100"), 200);
+    assert.deepEqual(emptyOrganization, { items: [], next_cursor: null });
+    await check("cursor cannot cross organization", await list("owner", `limit=20&cursor=${encodeURIComponent(ownerFirst.next_cursor)}`, "100"), 400, "invalid_request");
+    await check("store read cannot list", await list("store"), 403, "PERMISSION_DENIED");
+    await check("revoked grant cannot list", await list("revoked"), 403, "ORGANIZATION_ACCESS_REVOKED");
+    await check("invalid list limit", await list("owner", "limit=020"), 400, "invalid_request");
+    await check("duplicate list query", await list("owner", "limit=20&limit=20"), 400, "invalid_request");
+    await check("list organization assertion mismatch", await list("owner", "limit=20", "200", "100"), 409, "ORGANIZATION_CONTEXT_CHANGED");
+    await check("list dependency outage", await list("unavailable"), 503, "DEPENDENCY_UNAVAILABLE");
+    const discoveredPath = `/api/listing/shein-records/${ownerFirst.items[0].record_id}/offline-diagnostic`;
+    const first = await check("list-discovered record diagnostic", await fetch(`${origin}${discoveredPath}?action=publish`, { headers: { cookie: cookie("owner"), "X-Expected-Organization-ID": "200" } }), 200);
     assert.equal(first.diagnostic_only, true);
     assert.equal(first.external_freshness.status, "not_evaluated");
     assert.ok(first.not_evaluated.includes("submission_gate"));
@@ -171,6 +196,8 @@ try {
     await until(async () => { await access(join(dir, "restarted")); return true; }, "repository/application rebuild");
     const again = await check("after app/repository rebuild", await get("owner"), 200);
     assert.equal(again.input.actual_digest, first.input.actual_digest);
+    const listAgain = await check("collection after app/repository rebuild", await list("owner"), 200);
+    assert.equal(listAgain.items.length, 20);
     console.log("Running related Go regressions against the isolated PostgreSQL...");
     const regression = await run("go", ["test", "./internal/app/httpapi", "./internal/listing/record", "./internal/marketplace/shein/validator", "./internal/marketplace/validator", "-count=1"], { env: { ...process.env, ISSUE319_TEST_DSN: `host=127.0.0.1 port=${pgPort} user=postgres dbname=issue323_fixture sslmode=disable` } });
     await writeFile(join(dir, "go-regression.log"), regression);

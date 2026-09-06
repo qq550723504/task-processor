@@ -39,11 +39,16 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	if err != nil {
 		return nil, nil, err
 	}
+	collection, err := record.NewCollectionService(repository, authorizer)
+	if err != nil {
+		return nil, nil, err
+	}
 	diagnostic, err := record.NewDiagnosticService(repository, sheinvalidator.DiagnosticValidator{}, authorizer, sheinvalidator.DiagnosticRuleVersion, sheinvalidator.BindingVersion)
 	if err != nil {
 		return nil, nil, err
 	}
-	routes := append(sheinRecordRoutes(service), sheinDiagnosticRoutes(diagnostic)...)
+	routes := append(sheinRecordRoutes(service), sheinRecordCollectionRoutes(collection)...)
+	routes = append(routes, sheinDiagnosticRoutes(diagnostic)...)
 	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer})
 	server.ReadTimeout = record.Timeout
 	// The transport deadline starts before the application deadline. Reserve
