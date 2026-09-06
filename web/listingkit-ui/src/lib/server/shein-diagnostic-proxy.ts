@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { diagnosticOrganizationSchema, parseSheinDiagnostic, parseSheinDiagnosticFailure, sheinDiagnosticActionSchema, sheinDigestSchema, sheinRecordIdSchema } from "@/lib/api/shein-diagnostic";
-import { readSheinDiagnosticJSON } from "@/lib/api/shein-diagnostic-json";
+import { InvalidSheinDiagnosticResponseError, readSheinDiagnosticJSON } from "@/lib/api/shein-diagnostic-json";
 import { WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
 
 const unavailable = () => workbenchProtocolError(502, "DEPENDENCY_UNAVAILABLE", "Diagnostic upstream is unavailable");
@@ -68,7 +68,10 @@ export async function proxySheinDiagnostic(request: Request, recordId: string, a
     });
     let payload: unknown;
     try { payload = await readSheinDiagnosticJSON(upstream, controller.signal); }
-    catch { if (controller.signal.aborted) throw new Error("aborted"); return invalidResponse(); }
+    catch (error) {
+      if (controller.signal.aborted) throw error;
+      return error instanceof InvalidSheinDiagnosticResponseError ? invalidResponse() : unavailable();
+    }
     if (upstream.status === 200) {
       const result = parseSheinDiagnostic(payload);
       if (!result || result.action !== action.data || (expected !== null && result.input.actual_digest !== expected)) return invalidResponse();

@@ -1,5 +1,5 @@
 import { diagnosticOrganizationSchema, parseSheinDiagnostic, parseSheinDiagnosticFailure, sheinDiagnosticActionSchema, sheinDigestSchema, sheinRecordIdSchema, type SheinDiagnostic, type SheinDiagnosticAction, type SheinDiagnosticFailure } from "./shein-diagnostic";
-import { readSheinDiagnosticJSON } from "./shein-diagnostic-json";
+import { InvalidSheinDiagnosticResponseError, readSheinDiagnosticJSON } from "./shein-diagnostic-json";
 
 export class SheinDiagnosticError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly payload: SheinDiagnosticFailure) {
@@ -28,7 +28,11 @@ export async function fetchSheinDiagnostic(input: {
   });
   let payload: unknown;
   try { payload = await readSheinDiagnosticJSON(response, input.signal); }
-  catch { input.signal?.throwIfAborted(); throw invalidResponse(); }
+  catch (error) {
+    input.signal?.throwIfAborted();
+    if (error instanceof InvalidSheinDiagnosticResponseError) throw invalidResponse();
+    throw error;
+  }
   if (response.status === 200) {
     const parsed = parseSheinDiagnostic(payload);
     if (!parsed || parsed.action !== input.action || (input.expectedDigest !== undefined && parsed.input.actual_digest !== input.expectedDigest)) throw invalidResponse();
