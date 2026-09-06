@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseSheinDiagnostic, parseSheinDiagnosticFailure } from "./shein-diagnostic";
 
+const blocker = { rule: "fixture", code: "missing_asset", category: "asset", status: "blocking" };
 export const diagnosticFixture = () => ({
   diagnostic_only: true, scope: "shein.offline_package",
   target: { marketplace: "shein", site: "" }, action: "publish",
@@ -9,7 +10,7 @@ export const diagnosticFixture = () => ({
   external_freshness: { status: "not_evaluated", coverage: [] },
   not_evaluated: ["external_package_freshness", "submission_gate"],
   not_evaluated_reasons: { external_package_freshness: "no_authoritative_package_freshness" },
-  offline_checks: { status: "blocked", checks: [], blockers: [], warnings: [] },
+  offline_checks: { status: "blocked", checks: [blocker], blockers: [blocker], warnings: [] },
   action_policy: { readiness_blockers_allowed: false },
 });
 
@@ -71,5 +72,19 @@ describe("Shein diagnostic wire contract", () => {
     const auth = { code: "ORGANIZATION_ACCESS_REVOKED", message: "Denied", requestId: "request", fieldErrors: [] };
     expect(parseSheinDiagnosticFailure(auth, 403)).toEqual(auth);
     expect(parseSheinDiagnosticFailure(auth, 500)).toBeNull();
+  });
+  it("rejects contradictory policy, summary and redundant check partitions", () => {
+    const value = diagnosticFixture();
+    expect(parseSheinDiagnostic({ ...value, action_policy: { readiness_blockers_allowed: true } })).toBeNull();
+    expect(parseSheinDiagnostic({ ...value, action: "save_draft" })).toBeNull();
+    expect(parseSheinDiagnostic({ ...value, action: "save_draft", action_policy: { readiness_blockers_allowed: true } })).not.toBeNull();
+    for (const patch of [
+      { status: "ready" }, { blockers: [] }, { warnings: [blocker] },
+      { blockers: [{ ...blocker, message: "different" }] }, { checks: [] },
+    ]) expect(parseSheinDiagnostic({ ...value, offline_checks: { ...value.offline_checks, ...patch } })).toBeNull();
+    const warning = { ...blocker, status: "warning" };
+    const ready = { ...blocker, status: "ready" };
+    expect(parseSheinDiagnostic({ ...value, offline_checks: { status: "ready_with_warnings", checks: [warning], blockers: [], warnings: [warning] } })).not.toBeNull();
+    expect(parseSheinDiagnostic({ ...value, offline_checks: { status: "ready", checks: [ready], blockers: [], warnings: [] } })).not.toBeNull();
   });
 });
