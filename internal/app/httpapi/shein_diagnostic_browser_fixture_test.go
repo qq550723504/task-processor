@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -127,7 +128,7 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	current.Store(application()) // new app, reader, repository and evaluator after actual POST
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, contextapi.NewModule(contextapi.NewHandlerWithWorkbenchAuthorizer(authorizer)).Register(registry))
-	contextApp := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, registry.Routes(), routeAuthDependencies{workbenchVerifier: f, organizationResolver: resolver, authorizer: authorizer})
+	contextApp := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, registry.Routes(), routeAuthDependencies{workbenchVerifier: f, organizationResolver: resolver, authorizer: authorizer, auditRecorder: workbenchcontext.NewStructuredAuditRecorder(logrus.New())})
 	contextServer := httptest.NewServer(contextApp.Handler)
 	t.Cleanup(contextServer.Close)
 	manifest, err := json.Marshal(map[string]any{"goOrigin": ts.URL, "contextOrigin": contextServer.URL, "recordId": receipt.RecordID, "readonlyRecordId": readReceipt.RecordID, "tokens": tokens})

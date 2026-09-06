@@ -160,6 +160,11 @@ try {
     await check("actual GET body rejected", bodyResponse, 400, "invalid_request");
     const context = await fetch(`${origin}/api/workbench/context`, { headers: { cookie: cookie("owner") } });
     assert.equal(context.status, 200); assert.equal((await context.json()).organizations.length, 2);
+    const switched = await fetch(`${origin}/api/workbench/context/effective-organization`, { method: "PUT", headers: { cookie: cookie("owner"), "Content-Type": "application/json" }, body: JSON.stringify({ organizationId: "100" }) });
+    assert.equal(switched.status, 200, "real OrganizationSwitcher requires its audit dependency");
+    assert.equal((await switched.json()).effectiveOrganizationId, "100");
+    assert.match(switched.headers.get("set-cookie"), /shuomi_effective_organization=100/);
+    report.push({ name: "actual context switch and selection cookie", status: 200 });
     const publicSession = await fetch(`${origin}/api/auth/session`, { headers: { cookie: cookie("owner") } });
     assert.ok(!(await publicSession.text()).includes(seed.tokens.owner));
     await writeFile(join(dir, "restart"), "restart");
