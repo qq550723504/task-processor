@@ -38,6 +38,7 @@ try {
       const { page, context } = await open("u1", pageKind, width, theme);
       try {
         await expect(page.getByRole("heading", { name: pageKind === "profile" ? "Fixture u1" : "Enterprise B", exact: true })).toBeVisible();
+        await expect(page.getByRole("combobox", { name: "当前企业" })).toHaveValue("B");
         await expect(page.getByRole("switch", { name: "浅色模式" })).toHaveAttribute("aria-checked", String(theme === "light"));
         await expect(page.getByText("归属企业（Home）：A", { exact: true })).toBeVisible();
         if (pageKind === "profile") await expect(page.getByText(/@PHONE.INVALID/i)).toHaveCount(0);
