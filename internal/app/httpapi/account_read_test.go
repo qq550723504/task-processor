@@ -493,7 +493,7 @@ func TestAccountAuthenticationErrorsHaveBoundedRequestID(t *testing.T) {
 // This test always exercises real internal HTTP/reader assembly. When a task
 // directory is provided it also serves the separate Next/client acceptance run.
 func TestAccountBrowserFixture(t *testing.T) {
-	f := newAccountFixture(t)
+	f := newAccountFixtureWithIssuerPath(t, "/auth")
 	status, _ := f.request(t, "GET", "/api/v1/account/profile", "u1", "", "")
 	require.Equal(t, 200, status)
 	dir := os.Getenv("ISSUE346_FIXTURE_DIR")
@@ -522,7 +522,7 @@ func TestAccountBrowserFixture(t *testing.T) {
 		w.WriteHeader(204)
 	}))
 	defer control.Close()
-	data, err := json.Marshal(map[string]any{"goOrigin": f.server.URL, "providerOrigin": f.provider.URL, "controlOrigin": control.URL, "tokens": []string{"u1", "u2", "no-org", "grant-down", "down", "mismatch", "expired", "slow"}})
+	data, err := json.Marshal(map[string]any{"goOrigin": f.server.URL, "providerOrigin": f.provider.URL, "controlOrigin": control.URL, "tokens": []string{"u1", "u2", "no-org", "grant-down", "down", "mismatch", "expired", "slow", "invalid-user", "invalid-home"}})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.json"), data, 0600))
 	deadline := time.NewTimer(29 * time.Minute)
