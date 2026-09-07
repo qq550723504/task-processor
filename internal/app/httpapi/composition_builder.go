@@ -26,6 +26,7 @@ type httpFeatureCompositionBuilder struct {
 	buildImageAgent       imageAgentModuleBuilder
 	buildWorkbenchContext workbenchContextModuleBuilder
 	buildStoreCenter      storeCenterModuleBuilder
+	buildCommercialRead   commercialReadModuleBuilder
 }
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
@@ -43,6 +44,7 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 		buildImageAgent:       buildImageAgentModuleResult,
 		buildWorkbenchContext: buildDefaultWorkbenchContextModule,
 		buildStoreCenter:      buildDefaultStoreCenterModule,
+		buildCommercialRead:   buildCommercialReadModule,
 	}
 }
 
@@ -186,5 +188,13 @@ func (b httpFeatureCompositionBuilder) buildWorkbenchModules(logger *logrus.Logg
 	}
 	composition.storeCenterModule = storeResult.module
 	deps.addClosers(storeResult.closer)
+	if b.buildCommercialRead != nil {
+		commercialResult, commercialErr := b.buildCommercialRead(deps.shared.cfg, logger)
+		if commercialErr != nil {
+			return commercialErr
+		}
+		composition.commercialReadModule = commercialResult.module
+		deps.addClosers(commercialResult.closer)
+	}
 	return nil
 }
