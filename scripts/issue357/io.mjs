@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {readFile,writeFile,rename,mkdir,lstat,realpath} from 'node:fs/promises';
+import {readFile,writeFile,rename,mkdir,lstat,realpath,unlink} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createServer} from 'node:net';
 import assert from 'node:assert/strict';
@@ -17,7 +17,10 @@ export function run(command,args,options={}) {
   p.stdin?.end(options.input??'');
  });
 }
-export async function json(path,value) {await writeFile(`${path}.tmp`,JSON.stringify(value,null,2),{mode:0o600});await rename(`${path}.tmp`,path)}
+export async function json(path,value) {
+ try{await writeFile(`${path}.tmp`,JSON.stringify(value,null,2),{mode:0o600});await rename(`${path}.tmp`,path)}
+ catch(error){await unlink(`${path}.tmp`).catch(()=>{});throw error}
+}
 export async function readJSON(path) {return JSON.parse(await readFile(path,'utf8'))}
 export async function save(m){
  const {secrets,...publicManifest}=m;

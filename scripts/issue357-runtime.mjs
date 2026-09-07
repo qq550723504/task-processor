@@ -123,7 +123,8 @@ async function cleanup(m) {
  const ui=join(m.directory,'ui');await unlink(join(ui,'node_modules')).catch(e=>{if(e.code!=='ENOENT')throw e});
  assert.equal(resolve(ui),resolve(runDirectory(m.runId),'ui'));
  await rm(ui,{recursive:true,force:true});
- for(const name of ['bootstrap.pat','applications.json','provision.json','seed.json','runtime.json','services.json','compose.json','admin.credentials.json','viewer.credentials.json','no-org.credentials.json','owner-secrets.json'])await unlink(join(m.directory,name)).catch(e=>{if(e.code!=='ENOENT')throw e});
+ const privateFiles=['bootstrap.pat','applications.json','provision.json','seed.json','runtime.json','services.json','compose.json','admin.credentials.json','viewer.credentials.json','no-org.credentials.json','owner-secrets.json'];
+ for(const name of privateFiles.flatMap(name=>[name,`${name}.tmp`]))await unlink(join(m.directory,name)).catch(e=>{if(e.code!=='ENOENT')throw e});
  delete m.secrets;await json(join(m.directory,'cleanup.json'),evidence);m.status='stopped';await save(m);return evidence;
 }
 async function fresh() {
