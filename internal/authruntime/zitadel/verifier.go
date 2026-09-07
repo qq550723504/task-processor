@@ -18,6 +18,8 @@ import (
 var (
 	errResourceOwnerMissing = errors.New("ZITADEL resource owner is required")
 	errSubjectMissing       = errors.New("ZITADEL subject is required")
+	errResourceOwnerInvalid = errors.New("ZITADEL resource owner claim is invalid")
+	errSubjectInvalid       = errors.New("ZITADEL subject claim is invalid")
 	errTokenExpired         = errors.New("ZITADEL token introspection returned an expired token")
 )
 
@@ -28,6 +30,7 @@ type verificationFailureKind uint8
 const (
 	verificationInvalid verificationFailureKind = iota + 1
 	verificationDependencyUnavailable
+	verificationInvalidResponse
 )
 
 type verificationFailure struct {
@@ -48,12 +51,21 @@ func IsVerificationDependencyUnavailable(err error) bool {
 	return errors.As(err, &failure) && failure.kind == verificationDependencyUnavailable
 }
 
+func IsVerificationInvalidResponse(err error) bool {
+	var failure *verificationFailure
+	return errors.As(err, &failure) && failure.kind == verificationInvalidResponse
+}
+
 func invalidVerification(cause error) error {
 	return &verificationFailure{kind: verificationInvalid, cause: cause}
 }
 
 func unavailableVerification(cause error) error {
 	return &verificationFailure{kind: verificationDependencyUnavailable, cause: cause}
+}
+
+func invalidResponseVerification(cause error) error {
+	return &verificationFailure{kind: verificationInvalidResponse, cause: cause}
 }
 
 type Verifier interface {
@@ -90,9 +102,15 @@ func (v *verifier) Verify(ctx context.Context, token string) (authidentity.Authe
 	if tenantID == "" {
 		return authidentity.AuthenticatedIdentity{}, invalidVerification(errResourceOwnerMissing)
 	}
+	if !authidentity.IsBoundedIdentifier(tenantID) {
+		return authidentity.AuthenticatedIdentity{}, invalidResponseVerification(errResourceOwnerInvalid)
+	}
 	userID := strings.TrimSpace(payload.Subject)
 	if userID == "" {
 		return authidentity.AuthenticatedIdentity{}, invalidVerification(errSubjectMissing)
+	}
+	if !authidentity.IsBoundedIdentifier(userID) {
+		return authidentity.AuthenticatedIdentity{}, invalidResponseVerification(errSubjectInvalid)
 	}
 
 	identity := authidentity.AuthenticatedIdentity{

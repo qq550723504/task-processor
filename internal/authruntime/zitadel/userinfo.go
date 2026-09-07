@@ -22,7 +22,7 @@ type UserInfoClient struct {
 func NewUserInfoClient(issuer string, client *http.Client) *UserInfoClient {
 	result := &UserInfoClient{}
 	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(issuer), "/"))
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return result
 	}
 	result.endpoint = u.String() + "/oidc/v1/userinfo"

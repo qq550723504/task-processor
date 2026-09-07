@@ -123,6 +123,8 @@ try {
       await check("token revocation is not cached authorization", async () => { user = "expired"; await assert.rejects(getAccountProfile({ expectedUserId: user }), { status: 401, code: "AUTHENTICATION_REQUIRED" }); });
       await check("grant revoke cache window then expiry", async () => { user = "u1"; selected = "B"; await org(); await actualFetch(`${seed.controlOrigin}/revoke`, { method: "POST" }); await org(); await actualFetch(`${seed.controlOrigin}/expire`, { method: "POST" }); await assert.rejects(org(), { code: "ORGANIZATION_ACCESS_REVOKED" }); });
       await check("cancelled actual slow read cannot return profile", async () => { user = "slow"; const controller = new AbortController(); const pending = getAccountProfile({ expectedUserId: user, signal: controller.signal }); setTimeout(() => controller.abort(), 200); await assert.rejects(pending, { code: "DEADLINE_EXCEEDED" }); });
+      await check("invalid upstream subject cannot reach authorization", async () => { user = "invalid-user"; selected = "B"; await assert.rejects(org(), { status: 502, code: "INVALID_UPSTREAM_RESPONSE" }); });
+      await check("invalid upstream home organization cannot reach authorization", async () => { user = "invalid-home"; selected = "B"; await assert.rejects(org(), { status: 502, code: "INVALID_UPSTREAM_RESPONSE" }); });
     } finally { globalThis.fetch = actualFetch; }
     await writeFile(join(dir, "report.json"), JSON.stringify({ sourceHead, results, NOT_RUN: ["real IAM", "real login issuance", "production", "UI rendering (owned by #348)"], externalBoundary: manifest.externalBoundary }, null, 2));
     console.log(`PASS ${results.length} actual client/BFF/Go groups; report ${join(dir, "report.json")}`);

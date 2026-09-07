@@ -54,3 +54,30 @@ func TestUserInfoReadsOnlyVerifiedSelf(t *testing.T) {
 		})
 	}
 }
+
+func TestUserInfoPreservesIssuerPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/auth/oidc/v1/userinfo", r.URL.Path)
+		_, _ = w.Write([]byte(`{"sub":"u1"}`))
+	}))
+	defer server.Close()
+
+	profile, err := NewUserInfoClient(server.URL+"/auth/", server.Client()).ReadSelf(context.Background(), "fixture-token", "u1")
+
+	require.NoError(t, err)
+	require.Equal(t, "u1", profile.UserID)
+}
+
+func TestUserInfoRejectsUnsafeIssuer(t *testing.T) {
+	for _, issuer := range []string{
+		"ftp://issuer.example/auth",
+		"https://user@issuer.example/auth",
+		"https://issuer.example/auth?tenant=a",
+		"https://issuer.example/auth#fragment",
+	} {
+		t.Run(issuer, func(t *testing.T) {
+			_, err := NewUserInfoClient(issuer, http.DefaultClient).ReadSelf(context.Background(), "fixture-token", "u1")
+			require.Error(t, err)
+		})
+	}
+}
