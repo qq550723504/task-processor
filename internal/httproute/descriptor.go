@@ -42,5 +42,6 @@ type Descriptor struct {
 	AuthPolicy                 AuthPolicy
 	OrganizationAccessPolicy   OrganizationAccessPolicy
 	OrganizationTargetResolver OrganizationTargetResolver
+	RejectUnreadRequestBody    bool
 	Handler                    gin.HandlerFunc
 }

@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +32,7 @@ type accountFixture struct {
 	revoked      atomic.Bool
 	unavailable  atomic.Bool
 	clock        atomic.Int64
+	authReads    atomic.Int32
 	grantReads   atomic.Int32
 	profileReads atomic.Int32
 }
@@ -45,6 +48,7 @@ func newAccountFixture(t *testing.T) *accountFixture {
 		case "/.well-known/openid-configuration":
 			_ = json.NewEncoder(w).Encode(map[string]string{"introspection_endpoint": f.provider.URL + "/oauth/v2/introspect"})
 		case "/oauth/v2/introspect":
+			f.authReads.Add(1)
 			require.Equal(t, "POST", r.Method)
 			require.NoError(t, r.ParseForm())
 			token = r.Form.Get("token")
@@ -121,6 +125,190 @@ func newAccountFixture(t *testing.T) *accountFixture {
 	f.server = httptest.NewServer(server.Handler)
 	t.Cleanup(f.server.Close)
 	return f
+}
+
+func TestAccountOrganizationAdmissionPrecedesGrantResolution(t *testing.T) {
+	malformed := []struct {
+		name    string
+		path    string
+		body    string
+		chunked bool
+	}{
+		{name: "query", path: "/api/v1/account/organization?unexpected=1"},
+		{name: "force_query", path: "/api/v1/account/organization?"},
+		{name: "body", path: "/api/v1/account/organization", body: `{}`},
+		{name: "chunked_body", path: "/api/v1/account/organization", body: `{}`, chunked: true},
+	}
+	identities := []struct {
+		name  string
+		token string
+	}{
+		{name: "grant_allowed", token: "u1"},
+		{name: "grant_missing", token: "no-org"},
+		{name: "grant_lookup_failure", token: "grant-down"},
+	}
+
+	for _, requestCase := range malformed {
+		for _, identityCase := range identities {
+			t.Run(requestCase.name+"/"+identityCase.name, func(t *testing.T) {
+				f := newAccountFixture(t)
+				request, err := http.NewRequest(http.MethodGet, f.server.URL+requestCase.path, strings.NewReader(requestCase.body))
+				require.NoError(t, err)
+				request.Header.Set("Authorization", "Bearer "+identityCase.token)
+				request.Header.Set("X-Requested-Organization-ID", "B")
+				if requestCase.chunked {
+					request.ContentLength = -1
+					request.TransferEncoding = []string{"chunked"}
+				}
+
+				response, err := f.server.Client().Do(request)
+				require.NoError(t, err)
+				defer response.Body.Close()
+				var result map[string]any
+				require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+				require.Equal(t, http.StatusBadRequest, response.StatusCode, result)
+				require.Equal(t, "INVALID_REQUEST", result["code"])
+				require.EqualValues(t, 1, f.authReads.Load(), "authentication must still precede admission")
+				require.Zero(t, f.grantReads.Load(), "malformed requests must not resolve organization grants")
+			})
+		}
+	}
+}
+
+func TestAccountReadAdmissionPreservesAuthenticationAndLegalPaths(t *testing.T) {
+	t.Run("unauthenticated malformed organization request", func(t *testing.T) {
+		f := newAccountFixture(t)
+		request, err := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/account/organization?unexpected=1", strings.NewReader(`{}`))
+		require.NoError(t, err)
+		request.Header.Set("X-Requested-Organization-ID", "B")
+		response, err := f.server.Client().Do(request)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		var result map[string]any
+		require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+		require.Equal(t, http.StatusUnauthorized, response.StatusCode, result)
+		require.Equal(t, "AUTHENTICATION_REQUIRED", result["code"])
+		require.Zero(t, f.authReads.Load())
+		require.Zero(t, f.grantReads.Load())
+	})
+
+	t.Run("profile sibling rejects after authentication without grants", func(t *testing.T) {
+		for _, suffix := range []string{"?unexpected=1", "?"} {
+			f := newAccountFixture(t)
+			status, result := f.request(t, http.MethodGet, "/api/v1/account/profile"+suffix, "u1", "", "")
+			require.Equal(t, http.StatusBadRequest, status, result)
+			require.Equal(t, "INVALID_REQUEST", result["code"])
+			require.EqualValues(t, 1, f.authReads.Load())
+			require.Zero(t, f.grantReads.Load())
+			require.Zero(t, f.profileReads.Load())
+		}
+	})
+
+	t.Run("missing selector remains selection required without grants", func(t *testing.T) {
+		f := newAccountFixture(t)
+		status, result := f.request(t, http.MethodGet, "/api/v1/account/organization", "u1", "", "")
+		require.Equal(t, http.StatusConflict, status, result)
+		require.Equal(t, "ORGANIZATION_SELECTION_REQUIRED", result["code"])
+		require.EqualValues(t, 1, f.authReads.Load())
+		require.Zero(t, f.grantReads.Load())
+	})
+
+	for _, tc := range []struct {
+		name, token, code string
+		status            int
+	}{
+		{name: "allowed grant", token: "u1", status: http.StatusOK},
+		{name: "missing grant", token: "no-org", status: http.StatusForbidden, code: "ORGANIZATION_ACCESS_REVOKED"},
+		{name: "grant lookup failure", token: "grant-down", status: http.StatusServiceUnavailable, code: "DEPENDENCY_UNAVAILABLE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newAccountFixture(t)
+			status, result := f.request(t, http.MethodGet, "/api/v1/account/organization", tc.token, "B", "")
+			require.Equal(t, tc.status, status, result)
+			if tc.code != "" {
+				require.Equal(t, tc.code, result["code"])
+			}
+			require.EqualValues(t, 1, f.authReads.Load())
+			require.EqualValues(t, 1, f.grantReads.Load())
+		})
+	}
+}
+
+func TestAccountMalformedSlowBodiesAreRejectedWithoutWaitingForDrain(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, framing, partialBody string
+	}{
+		{name: "organization fixed length", path: "/api/v1/account/organization", framing: "Content-Length: 2\r\n", partialBody: "{"},
+		{name: "organization chunked", path: "/api/v1/account/organization", framing: "Transfer-Encoding: chunked\r\n", partialBody: "2\r\n{"},
+		{name: "profile fixed length sibling", path: "/api/v1/account/profile", framing: "Content-Length: 2\r\n", partialBody: "{"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newAccountFixture(t)
+			connection, err := net.Dial("tcp", f.server.Listener.Addr().String())
+			require.NoError(t, err)
+			defer connection.Close()
+			require.NoError(t, connection.SetDeadline(time.Now().Add(2*time.Second)))
+			_, err = fmt.Fprintf(connection, "GET %s HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer u1\r\nX-Requested-Organization-ID: B\r\n%s\r\n%s", tc.path, tc.framing, tc.partialBody)
+			require.NoError(t, err)
+
+			response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+			require.NoError(t, err, "rejection must not wait for the peer to finish an invalid body")
+			defer response.Body.Close()
+			require.True(t, response.Close, "unread request bytes must make the connection non-reusable")
+			var result map[string]any
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+			require.Equal(t, http.StatusBadRequest, response.StatusCode, result)
+			require.Equal(t, "INVALID_REQUEST", result["code"])
+			require.EqualValues(t, 1, f.authReads.Load())
+			require.Zero(t, f.grantReads.Load())
+			require.Zero(t, f.profileReads.Load())
+		})
+	}
+}
+
+func TestAccountAuthenticationFailuresDoNotWaitForInvalidSlowBodies(t *testing.T) {
+	for _, identityCase := range []struct {
+		name, token, code string
+		status            int
+		authReads         int32
+	}{
+		{name: "missing authentication", status: http.StatusUnauthorized, code: "AUTHENTICATION_REQUIRED"},
+		{name: "expired authentication", token: "expired", status: http.StatusUnauthorized, code: "AUTHENTICATION_REQUIRED", authReads: 1},
+		{name: "authentication dependency failure", token: "auth-down", status: http.StatusServiceUnavailable, code: "DEPENDENCY_UNAVAILABLE", authReads: 1},
+	} {
+		for _, requestCase := range []struct {
+			name, path, framing, partialBody string
+		}{
+			{name: "organization fixed length", path: "/api/v1/account/organization", framing: "Content-Length: 2\r\n", partialBody: "{"},
+			{name: "profile chunked sibling", path: "/api/v1/account/profile", framing: "Transfer-Encoding: chunked\r\n", partialBody: "2\r\n{"},
+		} {
+			t.Run(identityCase.name+"/"+requestCase.name, func(t *testing.T) {
+				f := newAccountFixture(t)
+				connection, err := net.Dial("tcp", f.server.Listener.Addr().String())
+				require.NoError(t, err)
+				defer connection.Close()
+				require.NoError(t, connection.SetDeadline(time.Now().Add(2*time.Second)))
+				authorization := ""
+				if identityCase.token != "" {
+					authorization = "Authorization: Bearer " + identityCase.token + "\r\n"
+				}
+				_, err = fmt.Fprintf(connection, "GET %s HTTP/1.1\r\nHost: localhost\r\n%sX-Requested-Organization-ID: B\r\n%s\r\n%s", requestCase.path, authorization, requestCase.framing, requestCase.partialBody)
+				require.NoError(t, err)
+
+				response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+				require.NoError(t, err, "authentication failure must not wait for the peer to finish an invalid body")
+				defer response.Body.Close()
+				require.True(t, response.Close, "unread request bytes must make the connection non-reusable")
+				var result map[string]any
+				require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+				require.Equal(t, identityCase.status, response.StatusCode, result)
+				require.Equal(t, identityCase.code, result["code"])
+				require.Equal(t, identityCase.authReads, f.authReads.Load())
+				require.Zero(t, f.grantReads.Load())
+				require.Zero(t, f.profileReads.Load())
+			})
+		}
+	}
 }
 
 func (f *accountFixture) request(t *testing.T, method, path, token, org, body string) (int, map[string]any) {

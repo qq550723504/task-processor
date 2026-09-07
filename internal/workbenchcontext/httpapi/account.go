@@ -18,6 +18,8 @@ const accountResponseMaxBytes = 16 * 1024
 
 var accountID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
+var errInvalidAccountReadRequest = errors.New("account read request must not include a query or body")
+
 type AccountProfile struct {
 	SchemaVersion       string  `json:"schemaVersion"`
 	UserID              string  `json:"userId"`
@@ -46,6 +48,9 @@ type AccountOrganization struct {
 // ResolveAccountOrganizationTarget requires an explicit selector. This prevents
 // the resolver's default Home selection from changing the meaning of this GET.
 func ResolveAccountOrganizationTarget(r *http.Request) (string, error) {
+	if err := validateAccountReadRequest(r); err != nil {
+		return "", err
+	}
 	if len(r.Header.Values("X-Requested-Organization-ID")) != 1 {
 		return "", workbenchcontext.ErrOrganizationSelectionRequired
 	}
@@ -133,7 +138,7 @@ func accountIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) 
 		accountError(c, 401, "AUTHENTICATION_REQUIRED")
 		return identity, false
 	}
-	if c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery || c.Request.ContentLength != 0 || len(c.Request.TransferEncoding) > 0 {
+	if err := validateAccountReadRequest(c.Request); err != nil {
 		accountError(c, 400, "INVALID_REQUEST")
 		return identity, false
 	}
@@ -142,6 +147,13 @@ func accountIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) 
 		return identity, false
 	}
 	return identity, true
+}
+
+func validateAccountReadRequest(r *http.Request) error {
+	if r.URL.RawQuery == "" && !r.URL.ForceQuery && r.ContentLength == 0 && len(r.TransferEncoding) == 0 {
+		return nil
+	}
+	return errInvalidAccountReadRequest
 }
 
 func accountJSON(c *gin.Context, value any) {

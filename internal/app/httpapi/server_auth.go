@@ -95,7 +95,13 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	if !requiresOrganization && !currentIdentity && !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}
-	handlers := make([]gin.HandlerFunc, 0, 4)
+	handlers := make([]gin.HandlerFunc, 0, 5)
+	if route.RejectUnreadRequestBody {
+		handlers = append(handlers, func(c *gin.Context) {
+			httproute.RejectUnreadRequestBody(c)
+			c.Next()
+		})
+	}
 	if requiresOrganization || currentIdentity {
 		handlers = append(handlers, workbenchAuthenticationMiddleware(dependencies.workbenchVerifier))
 	} else if dependencies.identityMiddleware != nil {
