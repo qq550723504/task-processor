@@ -1,0 +1,43 @@
+{
+  "sourceHead": "e364d74818cb6a13b03944c77d6005a81de1d5a6",
+  "goHead": "e364d74818cb6a13b03944c77d6005a81de1d5a6",
+  "results": [
+    "actual organization switch clears selection/editor; return does not restore old selection or POST",
+    "double click sends one actual POST; switch aborts waiting and late actual response cannot populate new scope; Catalog unchanged by acceptance",
+    "double click sends once; stop waiting after actual commit is unknown; only explicit verification sends same key/body; no new Product version",
+    "navigation unmount cancels waiting; late actual response does not overwrite completed page; re-entry never replays POST",
+    "existing completed -> diagnostic remains readable after title Apply; real fixture verifies original Listing and non-title data unchanged",
+    "actual operator session can edit own proposal but cannot approve/reject/apply; changing to another synthetic identity reauthorizes the URL, hides old private data and never POSTs"
+  ],
+  "observations": {
+    "cached": 56,
+    "listingUnchanged": true,
+    "live": 50,
+    "nonTitleUnchanged": true,
+    "postCount": 45,
+    "titles": {
+      "200/edit-product": "人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 ·",
+      "200/lost-product": "Suggested bottle title",
+      "200/product": "Suggested bottle title",
+      "200/revoked-product": "Original bottle",
+      "300/edit-product": "Original bottle",
+      "300/lost-product": "Original bottle",
+      "300/product": "Original bottle",
+      "300/revoked-product": "Original bottle",
+      "B/product": "Original bottle"
+    },
+    "versions": {
+      "200/edit-product": 2,
+      "200/lost-product": 2,
+      "200/product": 2,
+      "200/revoked-product": 1,
+      "300/edit-product": 1,
+      "300/lost-product": 1,
+      "300/product": 1,
+      "300/revoked-product": 1,
+      "B/product": 1
+    }
+  },
+  "notRun": [],
+  "faultBoundary": "browser delivery holds the actual BFF response after real Go success; no replacement body"
+}
