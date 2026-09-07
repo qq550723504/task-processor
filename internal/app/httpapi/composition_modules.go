@@ -23,6 +23,7 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.localAgentHTTPModule(),
 		c.workbenchContextModule,
 		c.storeCenterModule,
+		c.commercialReadModule,
 	}
 }
 

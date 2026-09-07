@@ -1,0 +1,45 @@
+{
+  "implementationHead": "d6c181018c58c291bae8ebe5939ab0cf1511622e",
+  "mainConsumed": "92c08125e",
+  "commercialDependency": "cbe23dd732fced833f81744073073068421382e1",
+  "gitTrees": {
+    "web/listingkit-ui": "da550ba0696be4d4fa442ba7b713eda0ee156ba0",
+    "internal": "1e1b45254f44edeef8644f65994f6b3b90f3f8ee",
+    "tests": "9a02e8f80962721e79282687f000200ab7cbd101"
+  },
+  "localChecks": {
+    "vitest": { "passedFiles": 253, "passedTests": 1774, "durationSeconds": 124.83 },
+    "typecheck": "PASS",
+    "eslint": { "errors": 0, "existingUnrelatedWarnings": 5 },
+    "knip": { "issues": [] },
+    "productionBuild": "PASS; both commercial routes generated",
+    "independentRelevantTests": { "passedFiles": 5, "passedTests": 48 }
+  },
+  "fixtureCleanup": {
+    "launcherExit": 0,
+    "passed": true,
+    "goExit": 0,
+    "nextPid": 5664,
+    "releasedNextPort": 58799,
+    "allSaasRowValuesAndXminUnchanged": true,
+    "zeroWriteSnapshotSha256": "1903ae21d60a569b9bc1e3f3cccd15bf6f365bdba4fbea6dbe882962e90702c4",
+    "integrationTestSeconds": 82.17,
+    "uniqueFixtureContainerRemoved": true,
+    "persistentVolume": false
+  },
+  "independentReview": {
+    "reviewer": "entitlements_admission",
+    "reviewedHead": "d6c181018c58c291bae8ebe5939ab0cf1511622e",
+    "codeAndDesign": "PASS; no new findings",
+    "resolvedFinding": "IMPLEMENTATION_TEST: unknown committed/reserved keep operation/byte units; red then green regression tests",
+    "finalEvidenceBinding": "See PR for evidence-only final HEAD review and current CI"
+  },
+  "limitations": [
+    "Finite store zero, trialing and unsafe text use component tests; not seeded by the real browser fixture",
+    "Long name screenshot is a DOM-only layout probe, not a different backend contract response",
+    "External session issuance/token/grants are substitutes; real Auth.js, Next, BFF, Go resolver/Casbin/owner and PostgreSQL run",
+    "Actual logout clears session and commercial read returns 401; real OIDC re-login is NOT_RUN because fixture issuer is deliberately unreachable",
+    "Real IAM, payment, customer data, production and OpenMeter NOT_RUN",
+    "Unmerged #345/#348 page/navigation/Shell combination NOT_RUN; retained merge-order gate"
+  ]
+}
