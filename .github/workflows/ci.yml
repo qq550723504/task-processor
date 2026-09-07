@@ -257,6 +257,7 @@ jobs:
       - changes
       - development-admission-tests
       - architecture-contracts
+      - isolated-runtime-contracts
       - release-authority
       - backend
       - frontend
@@ -270,6 +271,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
           ARCHITECTURE_CONTRACT_RESULT: ${{ needs.architecture-contracts.result }}
+          ISOLATED_RUNTIME_RESULT: ${{ needs.isolated-runtime-contracts.result }}
           RELEASE_RESULT: ${{ needs.release-authority.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
@@ -294,6 +296,7 @@ jobs:
           require_success "change classification" "$CHANGES_RESULT"
           require_success "development admission tests" "$DEVELOPMENT_ADMISSION_TEST_RESULT"
           require_success "architecture contracts" "$ARCHITECTURE_CONTRACT_RESULT"
+          require_success "isolated runtime contracts" "$ISOLATED_RUNTIME_RESULT"
           require_success "release authority" "$RELEASE_RESULT"
           require_success "backend" "$BACKEND_RESULT"
           require_success "frontend" "$FRONTEND_RESULT"
