@@ -17,8 +17,8 @@ export async function provider(m,path,body,method='POST') {
 }
 export async function createSubjects(m) {
  const me=await provider(m,'/auth/v1/users/me',undefined,'GET');assert.ok(me.user?.id,'INVALID_PROVIDER_RESPONSE');m.bootstrapUserId=me.user.id;
- // GetIAM is the supported v1 instance identity endpoint on the pinned version.
- const iam=await provider(m,'/admin/v1/iam',undefined,'GET');m.instanceId=iam.iam?.id;
+ // GetMyInstance's pinned admin.proto route (GetIAM belongs to Management).
+ const instance=await provider(m,'/admin/v1/instances/me',undefined,'GET');m.instanceId=instance.instance?.id;
  assert.ok(m.instanceId,'INVALID_INSTANCE');await save(m);
  for(const key of ['A','B','C','Empty','D']) {
   const name=`${m.project}-${key}`;const r=await provider(m,'/v2/organizations',{name});assert.ok(r.organizationId,'INVALID_PROVIDER_RESPONSE');m.organizations[key]={id:r.organizationId,name};await save(m);
