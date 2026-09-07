@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, context: DiagnosticRouteContext)
     controller.signal.addEventListener("abort", endResponse, { once: true });
   });
   try {
-    const scoped = new NextRequest(request, { signal: controller.signal });
+    const scoped = new NextRequest(request.url, { method: request.method, headers: request.headers, body: request.body, signal: controller.signal });
     const response = await Promise.race([authenticatedGET(scoped, context), ended]);
     return response ?? workbenchProtocolError(503, "DEPENDENCY_UNAVAILABLE", "Authentication is unavailable");
   } catch {
