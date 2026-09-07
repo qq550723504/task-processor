@@ -14,7 +14,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   pending("生态服务", "services", [pending("服务市场", "services/market"), pending("我的服务", "services/mine"), pending("申请加入", "services/join")]),
   pending("数据服务", "data", [pending("数据市场", "data/market"), pending("API管理", "data/api"), pending("我的数据", "data/mine")]),
   pending("店铺中心", "store-center", [{ label: "我的店铺", href: "/workbench/stores", availability: "connected" }, pending("店铺商品", "store-products"), pending("订单履约", "store-orders")]),
-  pending("套餐与权益", "plans", [pending("套餐方案", "plans/options"), pending("我的权益", "plans/entitlements"), pending("用量明细", "plans/usage"), pending("充值中心", "plans/top-up"), pending("账单与订单", "plans/orders")]),
+  pending("套餐与权益", "plans", [{ label: "套餐方案", href: "/workbench/plans/options", availability: "connected" }, { label: "我的权益", href: "/workbench/plans/entitlements", availability: "connected" }, pending("用量明细", "plans/usage"), pending("充值中心", "plans/top-up"), pending("账单与订单", "plans/orders")]),
   pending("我的账户", "account", [pending("账户资料", "account/profile"), pending("企业空间", "account/organization", [pending("成员与权限", "account/organization/members"), pending("资源与额度", "account/organization/resources"), pending("操作记录", "account/organization/audit")]), pending("推广与收益", "account/referrals")]),
 ];
 
