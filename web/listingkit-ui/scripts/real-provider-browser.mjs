@@ -1,16 +1,17 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile as execFileCallback } from "node:child_process";
 import { readFile, realpath, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium } from "@playwright/test";
-import { validateBrowserHandoff } from "./real-provider-browser-contract.mjs";
+import { promisify } from "node:util";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery } from "./real-provider-browser-contract.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
 const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const [manifestPath, runtimeSha, outputArgument] = process.argv.slice(2);
+const [manifestPath, runtimeSha, outputArgument, runtimeCheckout, cleanupFlag] = process.argv.slice(2);
+const execFile = promisify(execFileCallback);
 const report = { suite: "LOCAL_REAL_PROVIDER_ACCEPTANCE", status: "NOT_RUN", checks: [], screenshots: [], requests: [] };
 const profilePath = "/workbench/account/profile";
 const organizationPath = "/workbench/account/organization";
@@ -18,6 +19,7 @@ const entitlementPath = "/workbench/plans/entitlements";
 const commercialPath = "/api/workbench/commercial/overview";
 const selectionCookie = "shuomi_effective_organization";
 let manifest, output, browser, activeCase = "handoff";
+let controlsReady = false;
 const pageObservations = new WeakMap();
 const ensure = condition => { if (!condition) throw new Error("assertion_failed"); };
 
@@ -114,6 +116,11 @@ async function login(page, context, user, target = profilePath, bare = false) {
   const username = page.getByTestId("username-text-input");
   await username.waitFor({ state: "visible", timeout: 45000 });
   ensure(urlOf(page.url()).origin === manifest.origins.issuer && seen.has("official-login-v2"));
+  if (!report.screenshots.includes("official-login-empty.png")) {
+    ensure(await username.inputValue() === "" && await page.locator('input[type="password"]').count() === 0);
+    await page.screenshot({ path: path.join(output, "official-login-empty.png"), fullPage: true });
+    report.screenshots.push("official-login-empty.png");
+  }
   // Selectors belong to the pinned official Login V2; confirm visible form first.
   await username.fill(value.username);
   await page.getByTestId("submit-button").click();
@@ -161,12 +168,18 @@ async function logout(page, context, user) {
 async function holdRealResponse(page, pathname) {
   let release, received, finished;
   let inFlight = false;
+  let delivered = false, originalRequest, cancellationError;
+  const failed = request => {
+    if (request === originalRequest) cancellationError = request.failure()?.errorText;
+  };
+  page.on("requestfailed", failed);
   const gate = new Promise(resolve => { release = resolve; });
   const started = new Promise(resolve => { received = resolve; });
   const done = new Promise(resolve => { finished = resolve; });
   const target = `${manifest.origins.web}${pathname}`;
   const handler = async route => {
     inFlight = true;
+    originalRequest = route.request();
     try {
       // Every byte/status/header comes from the actual BFF. Only delivery waits.
       const response = await route.fetch({ maxRedirects: 0, timeout: 20000 });
@@ -174,13 +187,24 @@ async function holdRealResponse(page, pathname) {
       received(true);
       await gate;
       await route.fulfill({ response });
+      delivered = true;
     } catch { received(false); }
     finally { finished(); }
   };
   await page.route(target, handler, { times: 1 });
   return {
     ready: async () => ensure(await Promise.race([started, delay(22000, false, { ref: false })])),
-    release: async () => { release(); await page.unroute(target, handler); if (inFlight) await done; },
+    release: async () => {
+      release();
+      try {
+        await page.unroute(target, handler);
+        if (inFlight) {
+          await done;
+          const outcome = classifyLateResponseDelivery(delivered, cancellationError);
+          (report.lateResponses ??= []).push({ path: pathname, outcome });
+        }
+      } finally { page.off("requestfailed", failed); }
+    },
   };
 }
 
@@ -221,6 +245,90 @@ async function realRefresh(context) {
     ensure((await api(context, "/api/account/profile", "admin")).status === 200);
     report.tokenLifecycle = { status: "PASS", observedRenewal: true, elapsedMs: Date.now() - started, clock: "real" };
   });
+}
+
+async function control(command, user, organization) {
+  ensure(controlsReady);
+  const args = [path.join(runtimeCheckout, "scripts/issue357-runtime.mjs"), command, "--run", manifest.runId];
+  if (user) args.push("--user", user, "--org", organization);
+  await execFile(process.execPath, args, { cwd: runtimeCheckout, windowsHide: true, timeout: 120000, maxBuffer: 1048576 });
+  (report.controls ??= []).push({ command, user, organization, at: new Date().toISOString(), status: "PASS" });
+}
+
+async function ownerEvidence(kind) {
+  const raw = await readFile(path.join(path.dirname(manifestPath), `${kind}.json`));
+  ensure(raw.length < 262144);
+  const value = JSON.parse(raw.toString("utf8"));
+  ensure(value.schemaVersion === `issue357-${kind}-v1` && value.runId === manifest.runId && value.sourceSha === runtimeSha && value.webSha === report.sourceSha);
+  const zero = value.zeroWrite;
+  ensure(zero?.passed === true && typeof zero.before === "string" && /^[a-f0-9]{64}$/.test(zero.before) && zero.before === zero.after);
+  const evidence = { runId: value.runId, sourceSha: value.sourceSha, webSha: value.webSha, zeroWrite: { passed: true, before: zero.before, after: zero.after } };
+  if (kind === "check") ensure(value.healthPassed === true && value.realBrowser === "NOT_RUN_BY_CHECK");
+  else {
+    ensure(value.passed === true && value.resourcesReleased === true && value.portsReleased === true && value.applications?.passed === true && value.applications.goExit === 0);
+    evidence.cleanup = { passed: true, resourcesReleased: true, portsReleased: true, applications: { passed: true, goExit: 0 } };
+  }
+  return evidence;
+}
+
+async function controlCases() {
+  const contexts = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "en-US" });
+      contexts.push(context);
+      const page = await context.newPage();
+      await login(page, context, "admin");
+      await select(page, context, "B");
+      // Leave Console to avoid background context reads clearing the selection.
+      // Both API clients continue with their own naturally issued browser cookies.
+      await page.goto(manifest.origins.web);
+    }
+    const [cached, live] = contexts;
+    await check("M9_revocation", async () => {
+      ensure((await api(cached, "/api/account/organization", "admin", "B")).status === 200);
+      ensure((await api(live, commercialPath, "admin", "B")).status === 200);
+      let changed = false;
+      try {
+        await control("revoke", "admin", "B"); changed = true;
+        const confirmedAt = Date.now();
+        const commercial = await api(live, commercialPath, "admin", "B");
+        ensure(commercial.status === 403 && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(commercial.body.code));
+        let denied = false;
+        while (Date.now() - confirmedAt < 75000) {
+          const organization = await api(cached, "/api/account/organization", "admin", "B");
+          if (organization.status === 403) {
+            ensure(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(organization.body.code));
+            denied = true; break;
+          }
+          ensure(organization.status === 200 && Date.now() - confirmedAt <= 60000);
+          await delay(2000);
+        }
+        ensure(denied);
+        report.revocation = { liveCommercial: "DENIED", cachedAccount: "DENIED", elapsedMs: Date.now() - confirmedAt, policyMaxAgeSeconds: 60 };
+        ensure((await api(cached, "/api/account/profile", "admin")).status === 200);
+      } finally { if (changed) await control("restore", "admin", "B"); }
+      const restored = await live.request.put(`${manifest.origins.web}/api/workbench/context/effective-organization`, { data: { organizationId: manifest.organizations.B.id }, maxRedirects: 0 });
+      ensure(restored.status() === 200 && (await api(live, commercialPath, "admin", "B")).status === 200);
+    });
+    await check("M8_provider_failure", async () => {
+      let stopped = false;
+      try {
+        await control("provider-stop"); stopped = true;
+        const account = await api(cached, "/api/account/profile", "admin");
+        ensure([401, 502, 503, 504].includes(account.status));
+        const empty = await browser.newContext();
+        try {
+          const response = await empty.request.get(`${manifest.origins.web}/api/zitadel-auth/login`, { timeout: 30000, maxRedirects: 0 });
+          ensure(response.status() >= 500);
+          const result = await api(empty, "/api/auth/session");
+          ensure(!result.body?.identity && !result.body?.user && !hasToken(result.body));
+        } finally { await empty.close(); }
+      } finally { if (stopped) await control("provider-start"); }
+      await control("check");
+      await ownerEvidence("check");
+    });
+  } finally { for (const context of contexts) await context.close(); }
 }
 
 async function entries() {
@@ -351,8 +459,12 @@ async function core() {
 }
 
 try {
-  ensure(manifestPath && runtimeSha);
+  assertBrowserDiagnosticsDisabled(process.env);
+  ensure(manifestPath && runtimeSha && runtimeCheckout && (!cleanupFlag || cleanupFlag === "--stop-owned-run"));
   const webSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: uiRoot, encoding: "utf8", windowsHide: true }).trim();
+  ensure(execFileSync("git", ["status", "--porcelain"], { cwd: uiRoot, encoding: "utf8", windowsHide: true }).trim() === "");
+  ensure(execFileSync("git", ["rev-parse", "HEAD"], { cwd: runtimeCheckout, encoding: "utf8", windowsHide: true }).trim() === runtimeSha);
+  ensure(execFileSync("git", ["status", "--porcelain"], { cwd: runtimeCheckout, encoding: "utf8", windowsHide: true }).trim() === "");
   const raw = await readFile(manifestPath);
   ensure(raw.length < 262144);
   manifest = validateBrowserHandoff(JSON.parse(raw.toString("utf8")), { manifestPath, runtimeSha, webSha, temporaryRoot: tmpdir() });
@@ -360,11 +472,15 @@ try {
   ensure(await realpath(manifestPath) === path.resolve(manifestPath));
   output = path.resolve(outputArgument || path.join(uiRoot, "../../.local/issue358-browser", manifest.runId));
   await mkdir(output, { recursive: true });
-  Object.assign(report, { sourceSha: webSha, runtimeSha, runId: manifest.runId, origins: manifest.origins, startedAt: new Date().toISOString() });
+  Object.assign(report, { sourceSha: webSha, runtimeSha, runId: manifest.runId, origins: publicBrowserOrigins(manifest), startedAt: new Date().toISOString() });
+  controlsReady = true;
+  await check("M11_before_read_snapshot", async () => { await control("check"); report.beforeRead = await ownerEvidence("check"); });
+  const { chromium } = await import("@playwright/test");
   browser = await chromium.launch({ headless: true });
   await entries();
   await core();
-  for (const name of ["M8_provider_failure", "M9_revocation", "M11_owner_zero_write_cleanup"]) report.checks.push({ name, status: "NOT_RUN" });
+  await controlCases();
+  await check("M11_after_read_snapshot", async () => { await control("check"); report.afterRead = await ownerEvidence("check"); ensure(report.beforeRead.zeroWrite.after === report.afterRead.zeroWrite.after); });
   report.status = "INCOMPLETE";
   process.exitCode = 2;
 } catch {
@@ -373,6 +489,17 @@ try {
   process.exitCode = manifest ? 1 : 2;
 } finally {
   await browser?.close().catch(() => { report.browserCleanup = "FAIL"; process.exitCode = 1; });
+  if (controlsReady && cleanupFlag === "--stop-owned-run") {
+    try {
+      await check("M11_owner_zero_write_cleanup", async () => {
+        await control("stop"); report.cleanup = await ownerEvidence("cleanup");
+      });
+      if (report.status === "INCOMPLETE" && report.browserCleanup !== "FAIL") { report.status = "PASS"; process.exitCode = 0; }
+    } catch { report.status = "FAIL"; process.exitCode = 1; }
+  } else report.checks.push({ name: "M11_owner_zero_write_cleanup", status: "NOT_RUN" });
+  for (const prefix of ["M1_", "M2_", "M3_", "M4_", "M5_", "M6_", "M7_", "M8_", "M9_", "M10_"]) {
+    if (!report.checks.some(item => item.name.startsWith(prefix))) report.checks.push({ name: `${prefix}prerequisite_not_reached`, status: "NOT_RUN" });
+  }
   report.finishedAt = new Date().toISOString();
   if (output) await writeFile(path.join(output, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   console.log(`${report.status} ${report.suite}; case=${activeCase}`);

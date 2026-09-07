@@ -1,5 +1,21 @@
 import path from "node:path";
 
+export function publicBrowserOrigins(manifest) {
+  return { web: manifest.origins.web, go: manifest.origins.go, issuer: manifest.origins.issuer };
+}
+
+export function assertBrowserDiagnosticsDisabled(environment) {
+  if (Object.entries(environment).some(([key, value]) => value && (/^(DEBUG|PWDEBUG|DEBUG_FILE)$/i.test(key) || /^(PW|PLAYWRIGHT).*(DEBUG|LOG|TRACE)/i.test(key)))) {
+    throw new Error("issue358_browser_diagnostics_forbidden");
+  }
+}
+
+export function classifyLateResponseDelivery(delivered, cancellationError) {
+  if (delivered) return "delivered";
+  if (cancellationError === "net::ERR_ABORTED") return "cancelled";
+  throw new Error("issue358_late_response_unproven");
+}
+
 // Consumer of #357 schema v1, not a second runtime/seed or application DTO.
 export function validateBrowserHandoff(value, { manifestPath, runtimeSha, webSha, temporaryRoot }) {
   try {

@@ -85,7 +85,9 @@ From `web/listingkit-ui`, after installing the pinned lockfile:
 
 ```powershell
 pnpm.cmd exec vitest run scripts/real-provider-browser-contract.test.mjs
-node scripts/real-provider-browser.mjs <private-manifest.json> <exact-357-SHA> <evidence-directory>
+node scripts/real-provider-browser.mjs <private-manifest.json> <exact-357-SHA> <evidence-directory> <357-checkout>
+# Only for an exclusively owned run that this operator started:
+node scripts/real-provider-browser.mjs <private-manifest.json> <exact-357-SHA> <evidence-directory> <357-checkout> --stop-owned-run
 ```
 
 The first command only verifies handoff rejection boundaries, not authentication.
@@ -94,8 +96,13 @@ non-ready/old session fixtures, wrong SHAs, non-loopback origins and foreign
 credential paths. It never launches a substitute environment. Entry methods,
 returnTo, real password/code/session, self/organization/commerce, late delivery,
 renewal and logout/account changes are executable cases. Provider outage,
-revocation and owner cleanup integration remain pending the implemented control
-contract; the current runner exits INCOMPLETE even if its prepared cases pass.
+revocation and owner check/cleanup schema are prepared against the PLANNED owner
+contract and must be verified against its formal implemented handoff. The runner
+requires clean matching source checkouts and rejects Playwright debug/log/trace
+environment settings before importing the browser library or reading credentials.
+No cleanup flag means INCOMPLETE. The explicit flag invokes only the #357 CLI for
+this run and requires the exact-source normal cleanup/zero-write evidence before
+overall PASS; a failed browser case still remains FAIL even after successful stop.
 It has not yet been run against a real provider. Rolling execution is in the PR.
 
 ## Evidence and execution rules

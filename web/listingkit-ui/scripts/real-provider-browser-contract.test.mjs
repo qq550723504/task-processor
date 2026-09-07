@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { validateBrowserHandoff } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery } from "./real-provider-browser-contract.mjs";
 
 // Schema checks only. These objects never authenticate a browser or count as E2E.
 const sha = "a".repeat(40);
@@ -58,4 +58,23 @@ test("Home and effective organizations and the three subjects must stay distinct
 test("invalid handoff errors never echo private inputs", () => {
   const input = handoff(); input.origins.web = "http://private-password@remote.test";
   assert.throws(() => validate(input), error => error.message === "issue358_handoff_invalid");
+});
+test("extra owner metadata never reaches browser report origins", () => {
+  const input = handoff(); input.origins.privateMetadata = "private-sentinel";
+  const result = publicBrowserOrigins(validate(input));
+  assert.deepEqual(Object.keys(result).sort(), ["go", "issuer", "web"]);
+  assert.equal(JSON.stringify(result).includes("private-sentinel"), false);
+});
+test("diagnostic environment is rejected before loading the browser library", () => {
+  for (const environment of [{ DEBUG: "pw:api" }, { PWDEBUG: "1" }, { DEBUG_FILE: "private-trace.log" }, { PW_TEST_DEBUG_REPORTERS: "1" }]) {
+    assert.throws(() => assertBrowserDiagnosticsDisabled(environment), error => error.message === "issue358_browser_diagnostics_forbidden");
+  }
+  assert.doesNotThrow(() => assertBrowserDiagnosticsDisabled({ DEBUG: "", PLAYWRIGHT_BROWSERS_PATH: "cache" }));
+});
+test("failed late-response delivery cannot pass without observed browser cancellation", () => {
+  assert.equal(classifyLateResponseDelivery(true, null), "delivered");
+  assert.equal(classifyLateResponseDelivery(false, "net::ERR_ABORTED"), "cancelled");
+  for (const failure of [null, "", "private-error-detail", "net::ERR_CONNECTION_RESET"]) {
+    assert.throws(() => classifyLateResponseDelivery(false, failure), error => error.message === "issue358_late_response_unproven");
+  }
 });
