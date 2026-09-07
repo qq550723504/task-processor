@@ -162,8 +162,7 @@ func TestAuthorizationClientRequiresCompleteSuccessfulResponse(t *testing.T) {
 		expectedError string
 	}{
 		{name: "missing pagination", responseBody: `{}`, expectedError: "missing pagination"},
-		{name: "missing total result", responseBody: `{"pagination":{},"authorizations":[]}`, expectedError: "missing totalResult"},
-		{name: "missing authorizations", responseBody: `{"pagination":{"totalResult":"0"}}`, expectedError: "missing authorizations"},
+		{name: "nonzero total without rows", responseBody: `{"pagination":{"totalResult":"1"}}`, expectedError: "missing authorizations"},
 		{name: "null pagination", responseBody: `{"pagination":null,"authorizations":[]}`, expectedError: "missing pagination"},
 		{name: "null total result", responseBody: `{"pagination":{"totalResult":null},"authorizations":[]}`, expectedError: "missing totalResult"},
 		{name: "null authorizations", responseBody: `{"pagination":{"totalResult":"0"},"authorizations":null}`, expectedError: "missing authorizations"},
@@ -183,6 +182,18 @@ func TestAuthorizationClientRequiresCompleteSuccessfulResponse(t *testing.T) {
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedError)
+		})
+	}
+}
+
+func TestAuthorizationClientAcceptsOfficialOmittedZeroValues(t *testing.T) {
+	for _, body := range []string{`{"pagination":{"appliedLimit":"100"}}`, `{"pagination":{},"authorizations":[]}`, `{"pagination":{"totalResult":"0"}}`} {
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
+			defer server.Close()
+			grants, err := NewAuthorizationClient(server.URL, server.Client()).ListOwnProjectAuthorizations(context.Background(), "token", "no-org", "project")
+			require.NoError(t, err)
+			require.Empty(t, grants)
 		})
 	}
 }

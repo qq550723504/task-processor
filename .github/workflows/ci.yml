@@ -91,6 +91,25 @@ jobs:
       - name: Run repository-wide architecture contracts
         run: go test ./tests/... -count=1
 
+      - name: Compile isolated provider harness and test allocation guards
+        run: go test -tags issue357 ./internal/app/httpapi -run '^TestIssue357Config' -count=1 -v
+
+  isolated-runtime-contracts:
+    name: Isolated Runtime Windows Contracts
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Test ownership, native lock and process failure recovery
+        run: node --test scripts/issue357/*.test.mjs
+
   release-authority:
     name: Release Authority Policy
     needs: changes
