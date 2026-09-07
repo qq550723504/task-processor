@@ -35,7 +35,6 @@ async function request<T>(path: string, input: Scope, parse: (value: unknown) =>
       const failure = parseProductTitleReviewFailure(payload, response.status);
       if (failure) {
         const outcome = "outcome" in failure ? failure.outcome : write && response.status >= 500 ? "unknown" : "rejected";
-        if (outcome === "unknown") throw error(502, "RESULT_UNVERIFIED", outcome);
         throw new ProductTitleReviewError(response.status, "error" in failure ? failure.error : failure.code, failure, outcome);
       }
     }

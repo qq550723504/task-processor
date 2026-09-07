@@ -23,6 +23,16 @@ it.each(["network", "bad-json", "abort", "unknown-envelope"])("classifies dispat
   await expect(applyProductTitleProposal({ ...context, input: { expected_revision: "2" }, signal: controller.signal })).rejects.toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
   expect(fetcher).toHaveBeenCalledOnce();
 });
+it.each(["decision", "apply"])("preserves a validated 504 unknown response for %s without retrying", async (operation) => {
+  const payload = { code: "RESULT_UNVERIFIED", message: "Explicitly verify this operation", requestId: "request-504", fieldErrors: [], outcome: "unknown" } as const;
+  const fetcher = vi.fn().mockResolvedValue(Response.json(payload, { status: 504 }));
+  vi.stubGlobal("fetch", fetcher);
+  const pending = operation === "decision"
+    ? decideProductTitleProposal({ ...context, input: { action: "accept", expected_revision: "1" } })
+    : applyProductTitleProposal({ ...context, input: { expected_revision: "2" } });
+  await expect(pending).rejects.toMatchObject({ status: 504, code: "RESULT_UNVERIFIED", payload, outcome: "unknown" });
+  expect(fetcher).toHaveBeenCalledOnce();
+});
 it("marks invalid/pre-aborted writes not_sent and does not generate keys", async () => {
   const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
   await expect(applyProductTitleProposal({ ...context, idempotencyKey: "", input: { expected_revision: "2" } })).rejects.toMatchObject({ outcome: "not_sent" });
@@ -32,11 +42,13 @@ it("marks invalid/pre-aborted writes not_sent and does not generate keys", async
   expect(fetcher).not.toHaveBeenCalled();
 });
 it("retains confirmed rejection and BFF not-sent classifications", async () => {
+  const notSent = { code: "AUTHENTICATION_REQUIRED", message: "auth", requestId: "request-auth", fieldErrors: [], outcome: "not_sent" } as const;
   const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ error: "operation_conflict" }, { status: 409 }))
-    .mockResolvedValueOnce(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "auth", requestId: "r", fieldErrors: [], outcome: "not_sent" }, { status: 401 }));
+    .mockResolvedValueOnce(Response.json(notSent, { status: 401 }));
   vi.stubGlobal("fetch", fetcher);
-  await expect(applyProductTitleProposal({ ...context, input: { expected_revision: "2" } })).rejects.toMatchObject({ code: "operation_conflict", outcome: "rejected" });
-  await expect(applyProductTitleProposal({ ...context, input: { expected_revision: "2" } })).rejects.toMatchObject({ outcome: "not_sent" });
+  await expect(applyProductTitleProposal({ ...context, input: { expected_revision: "2" } })).rejects.toMatchObject({ status: 409, code: "operation_conflict", payload: { error: "operation_conflict" }, outcome: "rejected" });
+  await expect(applyProductTitleProposal({ ...context, input: { expected_revision: "2" } })).rejects.toMatchObject({ status: 401, code: "AUTHENTICATION_REQUIRED", payload: notSent, outcome: "not_sent" });
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 it("reads only the same-origin collection/detail and rejects a mismatched detail ID", async () => {
   const list = { schema_version: 1, coverage: "product-title-proposals-only", items: [], next_cursor: null };
