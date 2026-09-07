@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/authidentity"
+	"task-processor/internal/httproute"
 	"task-processor/internal/workbenchcontext"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,8 @@ import (
 const accountResponseMaxBytes = 16 * 1024
 
 var accountID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+var errInvalidAccountReadRequest = errors.New("account read request must not include a query or body")
 
 type AccountProfile struct {
 	SchemaVersion       string  `json:"schemaVersion"`
@@ -57,6 +60,10 @@ func ResolveAccountOrganizationTarget(r *http.Request) (string, error) {
 		return "", workbenchcontext.ErrOrganizationSelectionRequired
 	}
 	return selected, nil
+}
+
+func IsInvalidAccountReadRequest(err error) bool {
+	return errors.Is(err, errInvalidAccountReadRequest)
 }
 
 func (h *Handler) GetAccountProfile(c *gin.Context) {
@@ -137,6 +144,7 @@ func accountIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) 
 		return identity, false
 	}
 	if err := validateAccountReadRequest(c.Request); err != nil {
+		httproute.RejectUnreadRequestBody(c)
 		accountError(c, 400, "INVALID_REQUEST")
 		return identity, false
 	}
@@ -151,10 +159,7 @@ func validateAccountReadRequest(r *http.Request) error {
 	if r.URL.RawQuery == "" && !r.URL.ForceQuery && r.ContentLength == 0 && len(r.TransferEncoding) == 0 {
 		return nil
 	}
-	if r.Body != nil {
-		_ = r.Body.Close()
-	}
-	return errors.New("account read request must not include a query or body")
+	return errInvalidAccountReadRequest
 }
 
 func accountJSON(c *gin.Context, value any) {

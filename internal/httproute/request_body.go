@@ -36,3 +36,14 @@ func WithRequestBodyReadTimeoutResolver(timeout time.Duration, resolver Organiza
 		return resolver(request)
 	}
 }
+
+// RejectUnreadRequestBody prevents net/http from waiting to drain a request body
+// that a route has rejected without reading. The read deadline bounds a peer
+// that stops sending, while Connection: close prevents reuse of unread bytes.
+func RejectUnreadRequestBody(c *gin.Context) {
+	if c == nil || c.Request == nil || (c.Request.ContentLength == 0 && len(c.Request.TransferEncoding) == 0) {
+		return
+	}
+	c.Header("Connection", "close")
+	_ = http.NewResponseController(c.Writer).SetReadDeadline(time.Now())
+}

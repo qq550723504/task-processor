@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/httproute"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/workbenchcontext"
+	workbenchcontexthttpapi "task-processor/internal/workbenchcontext/httpapi"
 )
 
 type organizationIdentityResolver interface {
@@ -134,6 +135,9 @@ func organizationTargetResolutionMiddleware(route httproute.Descriptor, dependen
 	return func(c *gin.Context) {
 		target, err := route.OrganizationTargetResolver(c.Request)
 		if err != nil {
+			if workbenchcontexthttpapi.IsInvalidAccountReadRequest(err) {
+				httproute.RejectUnreadRequestBody(c)
+			}
 			if errors.Is(err, workbenchcontext.ErrOrganizationSelectionRequired) {
 				writeWorkbenchContextError(c, err)
 				return

@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -228,6 +230,38 @@ func TestAccountReadAdmissionPreservesAuthenticationAndLegalPaths(t *testing.T) 
 			}
 			require.EqualValues(t, 1, f.authReads.Load())
 			require.EqualValues(t, 1, f.grantReads.Load())
+		})
+	}
+}
+
+func TestAccountMalformedSlowBodiesAreRejectedWithoutWaitingForDrain(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, framing, partialBody string
+	}{
+		{name: "organization fixed length", path: "/api/v1/account/organization", framing: "Content-Length: 2\r\n", partialBody: "{"},
+		{name: "organization chunked", path: "/api/v1/account/organization", framing: "Transfer-Encoding: chunked\r\n", partialBody: "2\r\n{"},
+		{name: "profile fixed length sibling", path: "/api/v1/account/profile", framing: "Content-Length: 2\r\n", partialBody: "{"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newAccountFixture(t)
+			connection, err := net.Dial("tcp", f.server.Listener.Addr().String())
+			require.NoError(t, err)
+			defer connection.Close()
+			require.NoError(t, connection.SetDeadline(time.Now().Add(2*time.Second)))
+			_, err = fmt.Fprintf(connection, "GET %s HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer u1\r\nX-Requested-Organization-ID: B\r\n%s\r\n%s", tc.path, tc.framing, tc.partialBody)
+			require.NoError(t, err)
+
+			response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+			require.NoError(t, err, "rejection must not wait for the peer to finish an invalid body")
+			defer response.Body.Close()
+			require.True(t, response.Close, "unread request bytes must make the connection non-reusable")
+			var result map[string]any
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+			require.Equal(t, http.StatusBadRequest, response.StatusCode, result)
+			require.Equal(t, "INVALID_REQUEST", result["code"])
+			require.EqualValues(t, 1, f.authReads.Load())
+			require.Zero(t, f.grantReads.Load())
+			require.Zero(t, f.profileReads.Load())
 		})
 	}
 }
