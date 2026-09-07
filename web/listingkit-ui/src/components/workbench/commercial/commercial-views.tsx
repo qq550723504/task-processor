@@ -104,8 +104,8 @@ export function EntitlementsOverview({ data }: { data: CommercialOverview }) {
         <h3>{metricLabels[row.metric] ?? row.metric}</h3>
         <p className={styles.subtle}>{row.unit === "byte" ? "当前存储观测，无统计起止" : <>统计周期：<Timestamp value={row.window_start} /> 至 <Timestamp value={row.window_end} />（期末不含）</>}</p>
         <dl className={styles.facts}>
-          <div><dt>{row.unit === "byte" ? "当前已记账存储" : "已记账用量"}</dt><dd>{row.state === "unknown" ? "未知" : `${row.committed} ${units[row.unit]}`}</dd></div>
-          <div><dt>{row.unit === "byte" ? "待处理净字节变化" : "预留用量"}</dt><dd>{row.state === "unknown" ? "未知" : `${row.reserved} ${units[row.unit]}`}</dd></div>
+          <div><dt>{row.unit === "byte" ? "当前已记账存储" : "已记账用量"}</dt><dd>{row.state === "unknown" ? `未知（${units[row.unit]}）` : `${row.committed} ${units[row.unit]}`}</dd></div>
+          <div><dt>{row.unit === "byte" ? "待处理净字节变化" : "预留用量"}</dt><dd>{row.state === "unknown" ? `未知（${units[row.unit]}）` : `${row.reserved} ${units[row.unit]}`}</dd></div>
           <div><dt>数据状态</dt><dd>{row.state === "known" ? "已记录" : "未知（尚无记录）"}</dd></div>
           <div><dt>用量更新时间</dt><dd><Timestamp value={row.updated_at} missing="未知" /></dd></div>
         </dl>

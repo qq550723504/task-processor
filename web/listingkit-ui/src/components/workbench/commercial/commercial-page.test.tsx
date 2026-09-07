@@ -35,6 +35,14 @@ it("separates actual subscription, grants, resource balances and ledger observat
   expect(state.read).toHaveBeenCalledWith("org-B", expect.any(AbortSignal));
 });
 
+it.each([[1, "作业次"], [4, "字节"]] as const)("keeps the known unit visible when usage bucket %s is unknown", async (index, unit) => {
+  const data = commercialOverviewFixture();
+  data.usage[index] = { ...data.usage[index], state: "unknown", committed: null, reserved: null, updated_at: null };
+  state.read.mockResolvedValue(data); render(tree());
+  expect(await screen.findByText("企业实际合同")).toBeVisible();
+  expect(screen.getAllByText(`未知（${unit}）`).length).toBeGreaterThanOrEqual(2);
+});
+
 it("keeps approved plan descriptions separate from subscription and never invents a selling price", async () => {
   render(tree("options"));
   expect(await screen.findByText("基础方案 · 按需使用")).toBeVisible();
