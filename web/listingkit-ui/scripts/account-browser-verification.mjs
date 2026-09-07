@@ -110,10 +110,10 @@ try {
     const { page, context } = await open("u1", "organization");
     try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await fetch(`${fixture.controlOrigin}/revoke`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "企业访问已撤销" })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await context.close(); }
   });
-  await check("unauthenticated server navigation never requests a profile", async () => {
-    const context = await browser.newContext(); const page = await context.newPage(); let reads = 0;
-    page.on("request", request => { if (new URL(request.url()).pathname === "/api/account/profile") reads++; });
-    try { await page.goto(`${fixture.origin}/workbench/account/profile`); await expect(page).toHaveURL(/\/login\?/); expect(reads).toBe(0); } finally { await context.close(); }
+  await check("unauthenticated real proxy redirects to login before account HTML", async () => {
+    const context = await browser.newContext();
+    // Login issuance is outside this fixture: inspect the real proxy redirect before following OIDC.
+    try { const response = await context.request.get(`${fixture.origin}/workbench/account/profile`, { maxRedirects: 0 }); expect([302, 307]).toContain(response.status()); const target = new URL(response.headers().location, fixture.origin); expect(target.pathname).toBe("/login"); expect(target.searchParams.get("returnTo")).toBe("/workbench/account/profile"); } finally { await context.close(); }
   });
   for (const path of ["account/organization", "ai/tasks", "stores", "plans/options"]) await check(`actual no-membership enterprise gate: ${path}`, async () => {
     const context = await browser.newContext(); await context.addCookies(fixture.sessions["no-org"].filter(cookie => cookie.name === "authjs.session-token"));
