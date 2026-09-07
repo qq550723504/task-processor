@@ -27,6 +27,15 @@ const entries = fixture.items.map((item) => ({
 }));
 afterEach(cleanup);
 
+it("projects pending titles under the existing task center without completed-only coverage", () => {
+  render(<TaskCenterLayout pendingReview><p>提案区域</p></TaskCenterLayout>);
+  expect(screen.getByRole("navigation", { name: "任务状态" }).querySelector('[aria-current="page"]')).toHaveTextContent("待确认");
+  expect(screen.getByRole("link", { name: "全部" })).not.toHaveAttribute("aria-current");
+  expect(screen.getByText(/仅覆盖标准商品标题提案/)).toBeVisible();
+  expect(screen.queryByText(/仅覆盖本地资料准备完成记录/)).not.toBeInTheDocument();
+  expect(screen.getAllByText("统计暂未接入")).toHaveLength(3);
+});
+
 it("states bounded coverage and does not fabricate global metrics or lifecycle actions", () => {
   render(<TaskCenterLayout completed><p>结果区域</p></TaskCenterLayout>);
   expect(screen.getByRole("heading", { level: 1, name: "任务中心" })).toBeVisible();

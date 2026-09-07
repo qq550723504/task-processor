@@ -1,0 +1,59 @@
+{
+  "sourceHead": "e364d74818cb6a13b03944c77d6005a81de1d5a6",
+  "goHead": "e364d74818cb6a13b03944c77d6005a81de1d5a6",
+  "results": [
+    "pending desktop: axe zero violations",
+    "native confirmation: axe zero violations",
+    "real entry/GET/evidence, accept does not mutate Catalog, separate Apply creates one durable version and receipt; native modal keyboard cycle/Escape restore",
+    "reject is terminal without Catalog write; stale base Apply conflicts without overwrite",
+    "pending narrow long title: axe zero violations",
+    "confirmation narrow: axe zero violations",
+    "accepted edit clears approval, long-title revision 3 is pending, fresh acceptance revision 4 and explicit Apply persist edited title; 390 no horizontal overflow",
+    "actual commit/TCP response loss stays unknown even with receipt; reconstructed Go + explicit exact-key replay yields same version; refresh does not POST; non-title and original Listing unchanged",
+    "actual LiveWrite revocation rejects Apply, clears sensitive projection, leaves Catalog unchanged"
+  ],
+  "observations": {
+    "cached": 34,
+    "listingUnchanged": true,
+    "live": 42,
+    "nonTitleUnchanged": true,
+    "postCount": 41,
+    "titles": {
+      "200/edit-product": "人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 · 人工复核的不锈钢保温杯 · 轻便耐用款式 ·",
+      "200/lost-product": "Suggested bottle title",
+      "200/product": "Suggested bottle title",
+      "200/revoked-product": "Original bottle",
+      "300/edit-product": "Original bottle",
+      "300/lost-product": "Original bottle",
+      "300/product": "Original bottle",
+      "300/revoked-product": "Original bottle",
+      "B/product": "Original bottle"
+    },
+    "versions": {
+      "200/edit-product": 2,
+      "200/lost-product": 2,
+      "200/product": 2,
+      "200/revoked-product": 1,
+      "300/edit-product": 1,
+      "300/lost-product": 1,
+      "300/product": 1,
+      "300/revoked-product": 1,
+      "B/product": 1
+    }
+  },
+  "exercised": {
+    "applied": "05b27ee6-200e-4f0f-9d2d-e964e5032f03",
+    "rejected": "14c4c8de-a4cb-4659-9cd0-3f34899bca9b",
+    "stale": "343e581e-3ff1-4b8a-8654-48a733ca3515"
+  },
+  "externalSubstitutes": [
+    "session/token issuance",
+    "grant provider",
+    "CandidateGenerator"
+  ],
+  "notRun": [
+    "production",
+    "real IAM",
+    "paid model"
+  ]
+}
