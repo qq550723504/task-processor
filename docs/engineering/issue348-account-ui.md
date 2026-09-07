@@ -50,7 +50,7 @@ In a second terminal, supply the printed private path:
 node scripts/account-browser-verification.mjs C:/path/printed/by/fixture/fixture.json
 ```
 
-The browser script uses isolated Chromium contexts. It records eight desktop/mobile/theme screenshots with axe, overflow and keyboard checks; no-org/selection/grant outage profile reads; provider and identity errors; actual enterprise switching, late cancellation, logout and cache-expired revocation. The separately named synthetic long-name scenario overrides only its account response for a layout stress check and is not evidence of a real provider response.
+The browser script uses isolated Chromium contexts. It records eight desktop/mobile/theme screenshots with axe, overflow and keyboard checks, including Tab/Shift+Tab order for provenance/refresh and the account menu; no-org/selection/grant outage profile reads; provider and identity errors; actual enterprise switching, late cancellation, logout and cache-expired revocation. The separately named synthetic long-name scenario overrides only its account response for a layout stress check and is not evidence of a real provider response. Screenshot-only styling hides the Next development-tools portal so it cannot cover product text; it does not change application CSS or hide product elements.
 
 To inspect manually, open the printed origin in an isolated browser context and load a chosen synthetic cookie set from the private manifest locally. Do not paste cookies into Issue/PR, commit the manifest, export authenticated traces, or use a normal personal browser profile. The command and output screenshots are safe to share; the manifest and process logs stay temporary.
 

@@ -28,7 +28,8 @@ async function open(user, path, width = 1440, theme = "light", selection = true)
 async function snapshot(page, name) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: join(output, `${name}.png`), fullPage: true }); screenshots.push(`${name}.png`);
+  // Hide only the Next development-tools overlay in the exported image, not product UI.
+  await page.screenshot({ path: join(output, `${name}.png`), fullPage: true, style: "nextjs-portal { visibility: hidden; }" }); screenshots.push(`${name}.png`);
 }
 async function check(name, operation) { await operation(); results.push(name); console.log(`PASS ${name}`); }
 try {
@@ -49,6 +50,14 @@ try {
         }
         const provenance = page.getByText("资料来源与读取时间", { exact: true }); await provenance.focus(); await page.keyboard.press("Enter");
         await expect(page.getByText(/读取时间：/)).toBeVisible(); await page.keyboard.press("Enter");
+        await page.keyboard.press("Tab"); await expect(page.getByRole("button", { name: "刷新资料", exact: true })).toBeFocused();
+        await page.keyboard.press("Shift+Tab"); await expect(provenance).toBeFocused();
+        await page.getByRole("switch", { name: "浅色模式" }).focus(); await page.keyboard.press("Tab");
+        const accountMenu = page.locator(".console-user > summary"); await expect(accountMenu).toBeFocused(); await page.keyboard.press("Enter");
+        await page.keyboard.press("Tab"); await expect(page.locator(".console-user").getByRole("link", { name: "账户资料", exact: true })).toBeFocused();
+        await page.keyboard.press("Tab"); await expect(page.getByRole("link", { name: "退出登录", exact: true })).toBeFocused();
+        await page.keyboard.press("Shift+Tab"); await expect(page.locator(".console-user").getByRole("link", { name: "账户资料", exact: true })).toBeFocused();
+        await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Enter");
         await snapshot(page, `${pageKind}-${theme}-${width}`);
       } finally { await context.close(); }
     });
@@ -66,8 +75,8 @@ try {
     try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("combobox", { name: "当前企业" }).selectOption("C"); await expect(page.getByRole("heading", { name: "Enterprise C", exact: true })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); await snapshot(page, "organization-switched-C"); } finally { await context.close(); }
   });
   await check("actual identity changes reauthorize and clear old profile", async () => {
-    const { page, context } = await open("u1", "profile");
-    try { await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible(); await context.addCookies(fixture.sessions.u2); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "登录身份已变化" })).toBeVisible(); await expect(page.getByText("Fixture u1", { exact: true })).toHaveCount(0); } finally { await context.close(); }
+    const { page, context } = await open("u1", "organization");
+    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("navigation", { name: "工作台导航" }).getByRole("link", { name: "账户资料", exact: true }).click(); await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible(); await context.addCookies(fixture.sessions.u2); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "登录身份已变化" })).toBeVisible(); await expect(page.getByText("Fixture u1", { exact: true })).toHaveCount(0); } finally { await context.close(); }
   });
   await check("actual slow request is cancelled when leaving profile", async () => {
     const { page, context } = await open("slow", "profile");
@@ -100,6 +109,16 @@ try {
   await check("actual grant revoke after supported cache expiry clears enterprise data", async () => {
     const { page, context } = await open("u1", "organization");
     try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await fetch(`${fixture.controlOrigin}/revoke`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "企业访问已撤销" })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await context.close(); }
+  });
+  await check("unauthenticated server navigation never requests a profile", async () => {
+    const context = await browser.newContext(); const page = await context.newPage(); let reads = 0;
+    page.on("request", request => { if (new URL(request.url()).pathname === "/api/account/profile") reads++; });
+    try { await page.goto(`${fixture.origin}/workbench/account/profile`); await expect(page).toHaveURL(/\/login\?/); expect(reads).toBe(0); } finally { await context.close(); }
+  });
+  for (const path of ["account/organization", "ai/tasks", "stores", "plans/options"]) await check(`actual no-membership enterprise gate: ${path}`, async () => {
+    const context = await browser.newContext(); await context.addCookies(fixture.sessions["no-org"].filter(cookie => cookie.name === "authjs.session-token"));
+    const page = await context.newPage();
+    try { await page.goto(`${fixture.origin}/workbench/${path}`); await expect(page).toHaveURL(/\/workbench\/no-organization$/); } finally { await context.close(); }
   });
   report.status = "PASS";
 } catch (error) { report.status = "FAIL"; report.failure = error.message; throw error; }
