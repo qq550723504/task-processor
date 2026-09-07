@@ -265,3 +265,35 @@ func TestVerifierRejectsInactiveAndIncompleteIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifierRejectsMalformedOrOversizedIdentityClaims(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		subject         string
+		resourceOwnerID string
+	}{
+		{name: "malformed subject", subject: "/invalid", resourceOwnerID: "org-1"},
+		{name: "oversized subject", subject: strings.Repeat("u", 129), resourceOwnerID: "org-1"},
+		{name: "malformed resource owner", subject: "user-1", resourceOwnerID: "/invalid"},
+		{name: "oversized resource owner", subject: "user-1", resourceOwnerID: strings.Repeat("o", 129)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newAuthServer(t, map[string]any{
+				"active":                                true,
+				"sub":                                   tc.subject,
+				"urn:zitadel:iam:user:resourceowner:id": tc.resourceOwnerID,
+			})
+			defer server.Close()
+			verifier := NewVerifier(Config{IssuerURL: server.URL, ClientID: "api", HTTPClient: server.Client()})
+
+			_, err := verifier.Verify(context.Background(), "user-token")
+
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), tc.subject)
+			require.NotContains(t, err.Error(), tc.resourceOwnerID)
+			require.False(t, IsVerificationInvalid(err))
+			require.False(t, IsVerificationDependencyUnavailable(err))
+			require.True(t, IsVerificationInvalidResponse(err))
+		})
+	}
+}

@@ -38,6 +38,10 @@ type accountFixture struct {
 }
 
 func newAccountFixture(t *testing.T) *accountFixture {
+	return newAccountFixtureWithIssuerPath(t, "")
+}
+
+func newAccountFixtureWithIssuerPath(t *testing.T, issuerPath string) *accountFixture {
 	t.Helper()
 	f := &accountFixture{}
 	f.clock.Store(time.Now().Unix())
@@ -45,7 +49,7 @@ func newAccountFixture(t *testing.T) *accountFixture {
 		w.Header().Set("Content-Type", "application/json")
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		switch r.URL.Path {
-		case "/.well-known/openid-configuration":
+		case issuerPath + "/.well-known/openid-configuration":
 			_ = json.NewEncoder(w).Encode(map[string]string{"introspection_endpoint": f.provider.URL + "/oauth/v2/introspect"})
 		case "/oauth/v2/introspect":
 			f.authReads.Add(1)
@@ -56,8 +60,9 @@ func newAccountFixture(t *testing.T) *accountFixture {
 				w.WriteHeader(503)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"active": token != "expired", "sub": token, "exp": time.Now().Add(time.Hour).Unix(), "urn:zitadel:iam:user:resourceowner:id": "A"})
-		case "/oidc/v1/userinfo":
+			subject, homeOrganizationID := accountFixtureIdentity(token)
+			_ = json.NewEncoder(w).Encode(map[string]any{"active": token != "expired", "sub": subject, "exp": time.Now().Add(time.Hour).Unix(), "urn:zitadel:iam:user:resourceowner:id": homeOrganizationID})
+		case issuerPath + "/oidc/v1/userinfo":
 			f.profileReads.Add(1)
 			if token == "down" {
 				w.WriteHeader(503)
@@ -95,12 +100,13 @@ func newAccountFixture(t *testing.T) *accountFixture {
 				} `json:"filters"`
 			}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-			require.Equal(t, []string{token}, request.Filters[0].InUserIDs.IDs)
+			subject, _ := accountFixtureIdentity(token)
+			require.Equal(t, []string{subject}, request.Filters[0].InUserIDs.IDs)
 			require.Equal(t, "project", request.Filters[1].ProjectID.ID)
 			rows := []any{}
 			if !f.revoked.Load() && token != "no-org" {
 				for _, org := range []string{"B", "C"} {
-					rows = append(rows, map[string]any{"id": "grant-" + org, "project": map[string]string{"id": "project"}, "organization": map[string]string{"id": org, "name": "Enterprise " + org}, "user": map[string]string{"id": token}, "state": "STATE_ACTIVE", "roles": []any{map[string]string{"key": "listingkit_viewer"}}})
+					rows = append(rows, map[string]any{"id": "grant-" + org, "project": map[string]string{"id": "project"}, "organization": map[string]string{"id": org, "name": "Enterprise " + org}, "user": map[string]string{"id": subject}, "state": "STATE_ACTIVE", "roles": []any{map[string]string{"key": "listingkit_viewer"}}})
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"pagination": map[string]string{"totalResult": fmt.Sprint(len(rows))}, "authorizations": rows})
@@ -116,7 +122,7 @@ func newAccountFixture(t *testing.T) *accountFixture {
 	}
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
-	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
+	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL + issuerPath, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
 	built, err := buildWorkbenchContextModule(cfg, logger, factories)
 	require.NoError(t, err)
 	reg := kernelmodule.NewRegistry()
@@ -125,6 +131,69 @@ func newAccountFixture(t *testing.T) *accountFixture {
 	f.server = httptest.NewServer(server.Handler)
 	t.Cleanup(f.server.Close)
 	return f
+}
+
+func accountFixtureIdentity(token string) (string, string) {
+	switch token {
+	case "invalid-user":
+		return "/invalid", "A"
+	case "oversized-user":
+		return strings.Repeat("u", 129), "A"
+	case "invalid-home":
+		return token, "/invalid"
+	case "oversized-home":
+		return token, strings.Repeat("o", 129)
+	default:
+		return token, "A"
+	}
+}
+
+func TestAccountProfileSupportsIssuerPath(t *testing.T) {
+	f := newAccountFixtureWithIssuerPath(t, "/auth")
+
+	status, profile := f.request(t, http.MethodGet, "/api/v1/account/profile", "u1", "", "")
+
+	require.Equal(t, http.StatusOK, status, profile)
+	require.Equal(t, "u1", profile["userId"])
+	require.EqualValues(t, 1, f.profileReads.Load())
+}
+
+func TestAccountRejectsInvalidUpstreamIdentityBeforeDependentReads(t *testing.T) {
+	for _, token := range []string{"invalid-user", "oversized-user", "invalid-home", "oversized-home"} {
+		for _, dependencyState := range []string{"available", "missing", "failure"} {
+			t.Run(token+"/"+dependencyState, func(t *testing.T) {
+				f := newAccountFixture(t)
+				switch dependencyState {
+				case "missing":
+					f.revoked.Store(true)
+				case "failure":
+					f.unavailable.Store(true)
+				}
+
+				status, result := f.request(t, http.MethodGet, "/api/v1/account/organization", token, "B", "")
+
+				require.Equal(t, http.StatusBadGateway, status, result)
+				require.Equal(t, "INVALID_UPSTREAM_RESPONSE", result["code"])
+				require.EqualValues(t, 1, f.authReads.Load())
+				require.Zero(t, f.grantReads.Load())
+				require.Zero(t, f.profileReads.Load())
+			})
+		}
+	}
+
+	for _, token := range []string{"invalid-user", "oversized-user", "invalid-home", "oversized-home"} {
+		t.Run("profile/"+token, func(t *testing.T) {
+			f := newAccountFixture(t)
+
+			status, result := f.request(t, http.MethodGet, "/api/v1/account/profile", token, "", "")
+
+			require.Equal(t, http.StatusBadGateway, status, result)
+			require.Equal(t, "INVALID_UPSTREAM_RESPONSE", result["code"])
+			require.EqualValues(t, 1, f.authReads.Load())
+			require.Zero(t, f.grantReads.Load())
+			require.Zero(t, f.profileReads.Load())
+		})
+	}
 }
 
 func TestAccountOrganizationAdmissionPrecedesGrantResolution(t *testing.T) {

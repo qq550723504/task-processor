@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,8 +14,6 @@ import (
 )
 
 const accountResponseMaxBytes = 16 * 1024
-
-var accountID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 var errInvalidAccountReadRequest = errors.New("account read request must not include a query or body")
 
@@ -55,7 +52,7 @@ func ResolveAccountOrganizationTarget(r *http.Request) (string, error) {
 		return "", workbenchcontext.ErrOrganizationSelectionRequired
 	}
 	selected := r.Header.Get("X-Requested-Organization-ID")
-	if !accountID.MatchString(selected) {
+	if !authidentity.IsBoundedIdentifier(selected) {
 		return "", workbenchcontext.ErrOrganizationSelectionRequired
 	}
 	return selected, nil
@@ -103,7 +100,7 @@ func (h *Handler) GetAccountOrganization(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !accountID.MatchString(identity.EffectiveOrganizationID) {
+	if !authidentity.IsBoundedIdentifier(identity.EffectiveOrganizationID) {
 		accountError(c, 409, "ORGANIZATION_SELECTION_REQUIRED")
 		return
 	}
@@ -142,7 +139,7 @@ func accountIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) 
 		accountError(c, 400, "INVALID_REQUEST")
 		return identity, false
 	}
-	if !accountID.MatchString(identity.UserID) || !accountID.MatchString(identity.HomeOrganizationID) {
+	if !authidentity.IsBoundedIdentifier(identity.UserID) || !authidentity.IsBoundedIdentifier(identity.HomeOrganizationID) {
 		accountError(c, 502, "INVALID_UPSTREAM_RESPONSE")
 		return identity, false
 	}

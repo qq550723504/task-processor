@@ -172,7 +172,9 @@ func workbenchAuthenticationMiddleware(verifier zitadelruntime.Verifier) gin.Han
 		}
 		identity, err := verifier.Verify(c.Request.Context(), token)
 		if err != nil {
-			if zitadelruntime.IsVerificationDependencyUnavailable(err) {
+			if zitadelruntime.IsVerificationInvalidResponse(err) {
+				writeWorkbenchProtocolError(c, http.StatusBadGateway, "INVALID_UPSTREAM_RESPONSE", "Authentication provider returned an invalid response")
+			} else if zitadelruntime.IsVerificationDependencyUnavailable(err) {
 				writeWorkbenchContextError(c, workbenchcontext.ErrAuthorizationDependencyUnavailable)
 			} else {
 				writeWorkbenchContextError(c, workbenchcontext.ErrAuthenticationRequired)
