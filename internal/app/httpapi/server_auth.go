@@ -17,7 +17,6 @@ import (
 	"task-processor/internal/httproute"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/workbenchcontext"
-	workbenchcontexthttpapi "task-processor/internal/workbenchcontext/httpapi"
 )
 
 type organizationIdentityResolver interface {
@@ -96,7 +95,13 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 	if !requiresOrganization && !currentIdentity && !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}
-	handlers := make([]gin.HandlerFunc, 0, 4)
+	handlers := make([]gin.HandlerFunc, 0, 5)
+	if route.RejectUnreadRequestBody {
+		handlers = append(handlers, func(c *gin.Context) {
+			httproute.RejectUnreadRequestBody(c)
+			c.Next()
+		})
+	}
 	if requiresOrganization || currentIdentity {
 		handlers = append(handlers, workbenchAuthenticationMiddleware(dependencies.workbenchVerifier))
 	} else if dependencies.identityMiddleware != nil {
@@ -135,9 +140,6 @@ func organizationTargetResolutionMiddleware(route httproute.Descriptor, dependen
 	return func(c *gin.Context) {
 		target, err := route.OrganizationTargetResolver(c.Request)
 		if err != nil {
-			if workbenchcontexthttpapi.IsInvalidAccountReadRequest(err) {
-				httproute.RejectUnreadRequestBody(c)
-			}
 			if errors.Is(err, workbenchcontext.ErrOrganizationSelectionRequired) {
 				writeWorkbenchContextError(c, err)
 				return

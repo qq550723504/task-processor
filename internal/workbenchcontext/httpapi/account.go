@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"task-processor/internal/authidentity"
-	"task-processor/internal/httproute"
 	"task-processor/internal/workbenchcontext"
 
 	"github.com/gin-gonic/gin"
@@ -60,10 +59,6 @@ func ResolveAccountOrganizationTarget(r *http.Request) (string, error) {
 		return "", workbenchcontext.ErrOrganizationSelectionRequired
 	}
 	return selected, nil
-}
-
-func IsInvalidAccountReadRequest(err error) bool {
-	return errors.Is(err, errInvalidAccountReadRequest)
 }
 
 func (h *Handler) GetAccountProfile(c *gin.Context) {
@@ -144,7 +139,6 @@ func accountIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) 
 		return identity, false
 	}
 	if err := validateAccountReadRequest(c.Request); err != nil {
-		httproute.RejectUnreadRequestBody(c)
 		accountError(c, 400, "INVALID_REQUEST")
 		return identity, false
 	}

@@ -266,6 +266,51 @@ func TestAccountMalformedSlowBodiesAreRejectedWithoutWaitingForDrain(t *testing.
 	}
 }
 
+func TestAccountAuthenticationFailuresDoNotWaitForInvalidSlowBodies(t *testing.T) {
+	for _, identityCase := range []struct {
+		name, token, code string
+		status            int
+		authReads         int32
+	}{
+		{name: "missing authentication", status: http.StatusUnauthorized, code: "AUTHENTICATION_REQUIRED"},
+		{name: "expired authentication", token: "expired", status: http.StatusUnauthorized, code: "AUTHENTICATION_REQUIRED", authReads: 1},
+		{name: "authentication dependency failure", token: "auth-down", status: http.StatusServiceUnavailable, code: "DEPENDENCY_UNAVAILABLE", authReads: 1},
+	} {
+		for _, requestCase := range []struct {
+			name, path, framing, partialBody string
+		}{
+			{name: "organization fixed length", path: "/api/v1/account/organization", framing: "Content-Length: 2\r\n", partialBody: "{"},
+			{name: "profile chunked sibling", path: "/api/v1/account/profile", framing: "Transfer-Encoding: chunked\r\n", partialBody: "2\r\n{"},
+		} {
+			t.Run(identityCase.name+"/"+requestCase.name, func(t *testing.T) {
+				f := newAccountFixture(t)
+				connection, err := net.Dial("tcp", f.server.Listener.Addr().String())
+				require.NoError(t, err)
+				defer connection.Close()
+				require.NoError(t, connection.SetDeadline(time.Now().Add(2*time.Second)))
+				authorization := ""
+				if identityCase.token != "" {
+					authorization = "Authorization: Bearer " + identityCase.token + "\r\n"
+				}
+				_, err = fmt.Fprintf(connection, "GET %s HTTP/1.1\r\nHost: localhost\r\n%sX-Requested-Organization-ID: B\r\n%s\r\n%s", requestCase.path, authorization, requestCase.framing, requestCase.partialBody)
+				require.NoError(t, err)
+
+				response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+				require.NoError(t, err, "authentication failure must not wait for the peer to finish an invalid body")
+				defer response.Body.Close()
+				require.True(t, response.Close, "unread request bytes must make the connection non-reusable")
+				var result map[string]any
+				require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+				require.Equal(t, identityCase.status, response.StatusCode, result)
+				require.Equal(t, identityCase.code, result["code"])
+				require.Equal(t, identityCase.authReads, f.authReads.Load())
+				require.Zero(t, f.grantReads.Load())
+				require.Zero(t, f.profileReads.Load())
+			})
+		}
+	}
+}
+
 func (f *accountFixture) request(t *testing.T, method, path, token, org, body string) (int, map[string]any) {
 	t.Helper()
 	r, err := http.NewRequest(method, f.server.URL+path, strings.NewReader(body))
