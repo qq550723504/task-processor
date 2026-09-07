@@ -1,15 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCommercialOverview, parseCommercialOverview } from "./commercial";
+import {
+  CommercialReadError,
+  getCommercialOverview,
+  parseCommercialOverview,
+  type CommercialOverview,
+  type CommercialPlanOption,
+  type CommercialSubscription,
+  type CommercialEntitlement,
+  type CommercialLimit,
+  type CommercialUsage,
+  type UnsupportedCommercialValue,
+} from "./commercial";
 
-export function commercialFixture() {
-  const metrics = ["listingkit_generations_succeeded", "product_image_jobs_succeeded", "shein_drafts_succeeded", "shein_publishes_succeeded", "storage_bytes_current"];
-  return { organization_id: "org-B", observed_at: "2026-09-07T00:00:00Z", plans: [{code:"base_payg",name:"基础方案 · 按需使用",source:"approved_product_description",availability:"not_for_sale",price:null,currency:null}], subscription: null, entitlements: [], usage: metrics.map((metric,index) => ({module_code:index===4?"oss_storage":"listingkit",metric,source:"subscription_usage_ledger",unit:index===4?"byte":"operation",period_key:index===4?"__current__":"2026-09",window_start:index===4?null:"2026-09-01T00:00:00Z",window_end:index===4?null:"2026-10-01T00:00:00Z",state:"unknown",committed:null,reserved:null,updated_at:null})), resource_balance:{state:"unsupported",value:null},cash_balance:{state:"unsupported",value:null} };
+function commercialFixture(): CommercialOverview {
+  const metrics = ["listingkit_generations_succeeded", "product_image_jobs_succeeded", "shein_drafts_succeeded", "shein_publishes_succeeded", "storage_bytes_current"] as const;
+  const plan: CommercialPlanOption = {code:"base_payg",name:"基础方案 · 按需使用",source:"approved_product_description",availability:"not_for_sale",price:null,currency:null};
+  const unsupported: UnsupportedCommercialValue = {state:"unsupported",value:null};
+  const usage = metrics.map<CommercialUsage>((metric,index) => ({module_code:index===4?"oss_storage":"listingkit",metric,source:"subscription_usage_ledger",unit:index===4?"byte":"operation",period_key:index===4?"__current__":"2026-09",window_start:index===4?null:"2026-09-01T00:00:00Z",window_end:index===4?null:"2026-10-01T00:00:00Z",state:"unknown",committed:null,reserved:null,updated_at:null}));
+  return { organization_id: "org-B", observed_at: "2026-09-07T00:00:00Z", plans: [plan], subscription: null, entitlements: [], usage, resource_balance: unsupported, cash_balance: unsupported };
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("commercial contract", () => {
   it.each(["custom plan", "定制方案"])("preserves existing owner plan code %j", planCode => {
     const fixture = commercialFixture();
-    const subscription = { plan_code: planCode, plan_name: "Current paid contract", status: "active", effective_status: "active", starts_at: null, expires_at: null, updated_at: fixture.observed_at };
+    const subscription: CommercialSubscription = { plan_code: planCode, plan_name: "Current paid contract", status: "active", effective_status: "active", starts_at: null, expires_at: null, updated_at: fixture.observed_at };
     expect(parseCommercialOverview({ ...fixture, subscription })?.subscription?.plan_code).toBe(planCode);
     expect(parseCommercialOverview({ ...fixture, subscription: { ...subscription, plan_code: "界".repeat(43) } })).toBeNull();
   });
@@ -39,7 +53,9 @@ describe("commercial contract", () => {
     const fetchMock=vi.fn().mockResolvedValue(Response.json(commercialFixture())); vi.stubGlobal("fetch",fetchMock);
     await expect(getCommercialOverview("org-B")).resolves.toMatchObject({organization_id:"org-B"});
     expect(fetchMock.mock.calls[0][1]).toMatchObject({method:"GET",cache:"no-store",redirect:"manual",headers:{"X-Expected-Organization-ID":"org-B"}});
-    await expect(getCommercialOverview("org-C")).rejects.toMatchObject({code:"INVALID_UPSTREAM_RESPONSE"});
+    const failure = await getCommercialOverview("org-C").catch(error => error);
+    expect(failure).toBeInstanceOf(CommercialReadError);
+    expect(failure).toMatchObject({status:502,code:"INVALID_UPSTREAM_RESPONSE"});
   });
   it("refuses malformed and oversized actual bytes", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('{"organization_id":"org-B","organization_id":"org-C"}',{headers:{"content-type":"application/json"}})));
@@ -49,7 +65,8 @@ describe("commercial contract", () => {
   });
   it("rejects mismatched metric units and alias sources",()=>{
     const fixture=commercialFixture();
-    const grant={module_code:"listingkit",status:"active",effective_status:"active",starts_at:null,expires_at:null,updated_at:fixture.observed_at,limits_scope:"explicit_grant_only",uninterpreted_limit_count:0,limits:[{metric:"product_image_jobs_succeeded",source_key:"product_image_jobs",unit:"operation",kind:"finite",raw_value:"7",value:"7"}]};
+    const limit: CommercialLimit={metric:"product_image_jobs_succeeded",source_key:"product_image_jobs",unit:"operation",kind:"finite",raw_value:"7",value:"7"};
+    const grant: CommercialEntitlement={module_code:"listingkit",status:"active",effective_status:"active",starts_at:null,expires_at:null,updated_at:fixture.observed_at,limits_scope:"explicit_grant_only",uninterpreted_limit_count:0,limits:[limit]};
     expect(parseCommercialOverview({...fixture,entitlements:[grant]})).not.toBeNull();
     expect(parseCommercialOverview({...fixture,entitlements:[{...grant,limits:[{...grant.limits[0],unit:"byte"}]}]})).toBeNull();
     expect(parseCommercialOverview({...fixture,entitlements:[{...grant,limits:[{...grant.limits[0],source_key:"internal_secret"}]}]})).toBeNull();
