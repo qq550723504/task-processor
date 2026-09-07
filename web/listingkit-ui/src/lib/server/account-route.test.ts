@@ -63,5 +63,10 @@ describe("exported account routes", () => {
  it("reports missing backend configuration", async () => {
   vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "");expect((await (await GET(request())).json()).code).toBe("ACCOUNT_NOT_CONFIGURED");
  });
+ it.each(["profile", "organization"])("reports an unregistered %s capability as not configured", async kind => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("404 page not found", { status: 404, headers: { "Content-Type": "text/plain" } })));
+  const response = await GET(request(kind, { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B" }));
+  expect(response.status).toBe(503);expect((await response.json()).code).toBe("ACCOUNT_NOT_CONFIGURED");
+ });
  it("rejects all writes and implicit HEAD/OPTIONS", () => { for (const method of [POST, PUT, PATCH, DELETE, HEAD, OPTIONS]) expect(method().status).toBe(405); });
 });

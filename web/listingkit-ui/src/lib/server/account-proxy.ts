@@ -39,6 +39,11 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
     const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });
     if (organization) headers.set("X-Requested-Organization-ID", organization);
     const response = await fetch(`${origin}/api/v1/account/${kind}`, { method: "GET", headers, cache: "no-store", redirect: "manual", signal: controller.signal });
+    controller.signal.throwIfAborted();
+    if (response.status === 404) {
+      void response.body?.cancel().catch(() => undefined);
+      return accountFailure(503, "ACCOUNT_NOT_CONFIGURED");
+    }
     let payload: unknown;
     try { payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); }
     catch { throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); }

@@ -154,6 +154,10 @@ auth errors use the existing envelope. BFF never echoes raw upstream messages.
 Missing selected cookie is ORGANIZATION_SELECTION_REQUIRED; malformed/duplicate
 cookie or mismatched expected selector is ORGANIZATION_CONTEXT_CHANGED. No cookie
 is written by account GETs (late responses must not erase a new selection).
+When Workbench is disabled Go does not register these routes and returns 404.
+For these two fixed GET paths only, BFF maps upstream 404 to 503
+ACCOUNT_NOT_CONFIGURED (capability not provided), cancelling the upstream body.
+It does not interpret this as an absent user or diagnose a particular flag.
 No auto-retry, no persistent/browser/query cache in this client. Success and
 failure use private,no-store and nosniff. Consumer clears sensitive results on
 logout/user/org/role transitions, aborts prior requests and rejects late epochs;
@@ -258,3 +262,6 @@ Working-tree review: two IMPLEMENTATION_TEST findings were reproduced and fixed:
 oversized auth-stage requestId is bounded before authentication; malformed JSON,
 wrong content type and oversized client responses map to INVALID_UPSTREAM_RESPONSE.
 Neither finding expands the threat model or reopens architecture design.
+A final configuration-path check additionally classified unregistered account
+routes as IMPLEMENTATION_TEST: two failing plain-text 404 tests now verify the
+fixed capability-not-configured mapping before JSON parsing.
