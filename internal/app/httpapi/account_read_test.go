@@ -522,7 +522,7 @@ func TestAccountBrowserFixture(t *testing.T) {
 		w.WriteHeader(204)
 	}))
 	defer control.Close()
-	data, err := json.Marshal(map[string]any{"goOrigin": f.server.URL, "providerOrigin": f.provider.URL, "controlOrigin": control.URL, "tokens": []string{"u1", "u2", "no-org", "grant-down", "down", "mismatch", "expired", "slow", "invalid-user", "invalid-home"}})
+	data, err := json.Marshal(map[string]any{"goOrigin": f.server.URL, "providerOrigin": f.provider.URL, "issuerURL": f.provider.URL + "/auth", "controlOrigin": control.URL, "tokens": []string{"u1", "u2", "no-org", "grant-down", "down", "mismatch", "expired", "slow", "invalid-user", "invalid-home"}})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.json"), data, 0600))
 	deadline := time.NewTimer(29 * time.Minute)

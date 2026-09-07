@@ -85,7 +85,7 @@ try {
   port = await portProbe(); const origin = `http://127.0.0.1:${port}`; const secret = randomBytes(48).toString("base64url");
   next = start(process.execPath, [join(web, "node_modules/next/dist/bin/next"), "dev", "--hostname", "127.0.0.1", "--port", String(port)], "next.log", {
     cwd: web, env: { ...process.env, NODE_ENV: "development", AUTH_SECRET: secret, AUTH_URL: origin, LISTINGKIT_PUBLIC_BASE_URL: origin,
-      ZITADEL_ISSUER_URL: seed.providerOrigin, ZITADEL_CLIENT_ID: "fixture-client", ZITADEL_CLIENT_SECRET: "", LISTINGKIT_SERVICE_API_BASE: `${seed.goOrigin}/api/v1` },
+      ZITADEL_ISSUER_URL: seed.issuerURL, ZITADEL_CLIENT_ID: "fixture-client", ZITADEL_CLIENT_SECRET: "", LISTINGKIT_SERVICE_API_BASE: `${seed.goOrigin}/api/v1` },
   });
   const sessions = {};
   for (const user of seed.tokens) {
@@ -125,6 +125,7 @@ try {
       await check("cancelled actual slow read cannot return profile", async () => { user = "slow"; const controller = new AbortController(); const pending = getAccountProfile({ expectedUserId: user, signal: controller.signal }); setTimeout(() => controller.abort(), 200); await assert.rejects(pending, { code: "DEADLINE_EXCEEDED" }); });
       await check("invalid upstream subject cannot reach authorization", async () => { user = "invalid-user"; selected = "B"; await assert.rejects(org(), { status: 502, code: "INVALID_UPSTREAM_RESPONSE" }); });
       await check("invalid upstream home organization cannot reach authorization", async () => { user = "invalid-home"; selected = "B"; await assert.rejects(org(), { status: 502, code: "INVALID_UPSTREAM_RESPONSE" }); });
+      await check("authenticated logout uses the configured issuer discovery path", async () => { user = "u1"; selected = "B"; const response = await actualFetch(`${origin}/api/zitadel-auth/logout`, { headers: { cookie: cookie() }, redirect: "manual" }); assert.ok(response.status >= 300 && response.status < 400, await response.text()); });
     } finally { globalThis.fetch = actualFetch; }
     await writeFile(join(dir, "report.json"), JSON.stringify({ sourceHead, results, NOT_RUN: ["real IAM", "real login issuance", "production", "UI rendering (owned by #348)"], externalBoundary: manifest.externalBoundary }, null, 2));
     console.log(`PASS ${results.length} actual client/BFF/Go groups; report ${join(dir, "report.json")}`);
