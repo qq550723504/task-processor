@@ -64,14 +64,14 @@ cookie propagation. Exact source/real-execution evidence belongs in the PR.
 ## Runtime dependency
 
 Consume only an explicit #357 implemented, pushed full SHA and its matching
-runbook. PLANNED commands are not runnable evidence. At initial admission #357
-proposes `node scripts/issue357-runtime.mjs start [--web-dir <absolute-ui>]`,
+runbook. The implemented entry is
+`node scripts/issue357-runtime.mjs start [--web-dir <absolute-ui>]`,
 `check --run <uuid>`, `restart --run <uuid>`, `stop --run <uuid>` and a private
-temporary `task-processor-issue357/<uuid>/manifest.json`. The fixed PLANNED v1
+temporary `task-processor-issue357/<uuid>/manifest.json`. The fixed consumer v1
 schema uses sourceSha/webSha, origins.web/go/issuer, organizations.A/B/C/Empty/D
-and users.admin/viewer/no-org with private credentialFile paths. Planned
+and users.admin/viewer/no-org with private credentialFile paths. Implemented
 `revoke|restore --run <uuid> --user admin|viewer --org B|C|Empty` and 120-second
-actual token lifetimes still require implemented handoff. Do not guess values or
+actual token lifetimes are verified against each formal handoff. Do not guess values or
 create a second seed/fixture. Each owner gets a separate run or explicit exclusive
 instance handoff. Do not stop or mutate the producer's ongoing run.
 
@@ -106,8 +106,7 @@ non-ready/old session fixtures, wrong SHAs, non-loopback origins and foreign
 credential paths. It never launches a substitute environment. Entry methods,
 returnTo, real password/code/session, self/organization/commerce, late delivery,
 renewal and logout/account changes are executable cases. Provider outage,
-revocation and owner check/cleanup schema are prepared against the PLANNED owner
-contract and must be verified against its formal implemented handoff. The runner
+revocation and owner check/cleanup schema consume the formal owner contract. The runner
 requires clean matching source checkouts and rejects Playwright debug/log/trace
 environment settings before importing the browser library or reading credentials.
 The run's recorded `sourceDirty` and `webDirty` must both be explicitly false:
@@ -115,7 +114,7 @@ making a development checkout clean later cannot validate its earlier run.
 No cleanup flag means INCOMPLETE. The explicit flag invokes only the #357 CLI for
 this run and requires the exact-source normal cleanup/zero-write evidence before
 overall PASS; a failed browser case still remains FAIL even after successful stop.
-It has not yet been run against a real provider. Rolling execution is in the PR.
+Rolling real execution results and exact tested commits belong in the PR.
 
 ## Manual experience from clean checkouts
 
@@ -167,9 +166,15 @@ be run concurrently with manual grant changes or another browser test owner.
 
 ## Evidence and execution rules
 
-Use the installed Browser skill first. If the in-app browser demonstrably cannot
-reach the task loopback endpoint, record the exact safe failure and use this
-repository's Playwright dependency with a disposable empty Chromium context.
+Use the installed Browser skill for IN_APP_REAL_UX: normal official login,
+page interaction, logout and account change. The in-app browser has reached this
+task's loopback Login V2 successfully; do not claim an unsupported loopback.
+The L1-B coordinator explicitly permits the existing Playwright dependency as
+PLAYWRIGHT_EXECUTABLE_REGRESSION for independent empty contexts, their request
+clients and real-response delay controls, which the in-app API does not expose.
+Both evidence types consume the same exclusive #358 run and remain distinct.
+Finish the in-app experience before the automated matrix; do not run overlapping
+grant controls or share cookies between the two browser surfaces.
 Automated regression remains isolated from default fixture suites: do not inherit
 their webServer, storage state, synthetic identity setup, traces or screenshots
 on arbitrary failure. Browser traces, HAR, video, raw errors/network payloads and
