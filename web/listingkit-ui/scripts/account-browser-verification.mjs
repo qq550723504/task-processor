@@ -71,6 +71,14 @@ try {
     const { page, context } = await open(user, "profile");
     try { await expect(page.getByRole("alert").filter({ hasText: text })).toBeVisible(); await expect(page.getByText(/provider-private|@PHONE.INVALID/)).toHaveCount(0); } finally { await context.close(); }
   });
+  for (const user of ["invalid-user", "invalid-home"]) for (const pageKind of ["profile", "organization"]) await check(`invalid upstream identity fails closed: ${user} ${pageKind}`, async () => {
+    const { page, context } = await open(user, pageKind);
+    try {
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(pageKind === "profile" ? "资料响应无效" : "工作台访问状态无法确认");
+      await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0);
+    } finally { await context.close(); }
+  });
   await check("actual enterprise switch clears B and reads C", async () => {
     const { page, context } = await open("u1", "organization");
     try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("combobox", { name: "当前企业" }).selectOption("C"); await expect(page.getByRole("heading", { name: "Enterprise C", exact: true })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); await snapshot(page, "organization-switched-C"); } finally { await context.close(); }
