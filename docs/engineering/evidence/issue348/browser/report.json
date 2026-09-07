@@ -1,6 +1,6 @@
 {
-  "sourceHead": "c881e50b2e1fa883d403c7ed807d77b8f4342d42",
-  "dependencyFixtureHead": "c881e50b2e1fa883d403c7ed807d77b8f4342d42",
+  "sourceHead": "328e36a4f0c1c47e3e8fe615e706eb7451aece52",
+  "dependencyFixtureHead": "328e36a4f0c1c47e3e8fe615e706eb7451aece52",
   "externalBoundary": "synthetic Auth.js session issuance and external OIDC/UserInfo/Authorization HTTP only; real BFF/client/Go verifier/grants/cache/switch/audit",
   "results": [
     "profile light 1440: actual client/BFF/Go, no overflow, axe, keyboard",

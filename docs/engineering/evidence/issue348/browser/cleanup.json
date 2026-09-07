@@ -1,0 +1,10 @@
+{
+  "sourceHead": "328e36a4f0c1c47e3e8fe615e706eb7451aece52",
+  "approvedAccountDependencyHead": "7e59b876bf919c432d8104c28e2cde2831415e5d",
+  "stopMethod": "stop-fixture control file",
+  "launcherExit": 0,
+  "goExit": 0,
+  "portReleased": true,
+  "independentListenCheck": "no listener on fixture Next port after launcher exit",
+  "status": "PASS"
+}
