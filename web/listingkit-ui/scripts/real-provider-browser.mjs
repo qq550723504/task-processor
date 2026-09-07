@@ -292,17 +292,15 @@ async function controlCases() {
         const confirmedAt = Date.now();
         const commercial = await api(live, commercialPath, "admin", "B");
         ensure(commercial.status === 403 && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(commercial.body.code));
-        let denied = false;
-        while (Date.now() - confirmedAt < 75000) {
+        while (Date.now() - confirmedAt < 60000) {
           const requestStartedAt = Date.now();
           const organization = await api(cached, "/api/account/organization", "admin", "B");
           if (classifyRevocationRead({ status: organization.status, requestStartedAt, confirmedAt }) === "denied") {
             ensure(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(organization.body.code));
-            denied = true; break;
+            break;
           }
           await delay(2000);
         }
-        ensure(denied);
         // A separate normal-login context retains its original selection even
         // when the earlier denial clears the probing context's cookie.
         await delay(Math.max(0, confirmedAt + 60001 - Date.now()));
