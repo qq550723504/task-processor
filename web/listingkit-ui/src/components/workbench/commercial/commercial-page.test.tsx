@@ -30,7 +30,7 @@ it("separates actual subscription, grants, resource balances and ledger observat
   expect(screen.getByText(/当前存储观测，无统计起止/)).toBeVisible();
   expect(screen.getAllByText("未知").length).toBeGreaterThan(0);
   expect(screen.getByText(/仅展示已授予的限制/)).toBeVisible();
-  expect(screen.getByText(/现金余额：本片未提供/)).toBeVisible();
+  expect(screen.getByText(/现金余额：尚未提供/)).toBeVisible();
   expect(screen.queryByText(/8,650|300,000|5 家使用中|¥168/)).not.toBeInTheDocument();
   expect(state.read).toHaveBeenCalledWith("org-B", expect.any(AbortSignal));
 });

@@ -64,7 +64,7 @@ export function PlanOptions({ data }: { data: CommercialOverview }) {
         <li>购买、充值、续费、退款与提现暂未开放。</li>
       </ol></Panel>
       <Panel title="相关管理"><Button asChild variant="outline"><Link href="/workbench/plans/entitlements" prefetch={false}>查看当前权益</Link></Button>
-        <p className={styles.subtle}>钱包、用量明细、账单与订单暂未开放。</p><p className={styles.subtle}>成员资源分配不在本片范围。</p>
+        <p className={styles.subtle}>钱包、用量明细、账单与订单暂未开放。</p><p className={styles.subtle}>成员资源分配尚未开放。</p>
       </Panel>
     </div>
   </div>;
@@ -93,7 +93,7 @@ export function EntitlementsOverview({ data }: { data: CommercialOverview }) {
         </article>)}</div>}
       </Panel>
       <Panel title="资源分配在哪里？"><p className={styles.subtle}>本页只读展示企业信息。成员资源分配尚未开放。</p>
-        <p className={styles.subtle}>现金余额：本片未提供。现金、AI 点数与数据额度均不从订阅用量推算。</p>
+        <p className={styles.subtle}>现金余额：尚未提供。现金、AI 点数与数据额度均不从订阅用量推算。</p>
         <p className={styles.subtle}>钱包、充值与用量明细暂未开放。</p>
       </Panel>
     </div>
