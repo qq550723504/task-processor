@@ -69,6 +69,9 @@ Before dispatch, failure is not_sent. Known safe Go validation/authorization/
 conflict errors are rejected. After dispatch, network loss, timeout/cancellation,
 invalid/oversize/truncated response, redirect and ambiguous Go 5xx are unknown:
 return safe RESULT_UNVERIFIED communication envelope, never infer uncommitted.
+The client preserves the actual status, code, request ID and complete validated
+failure payload for every schema-valid envelope, including 504 unknown results.
+Only absent, malformed or untrusted responses use a synthetic safe envelope.
 Client additionally maps browser-to-BFF transport loss after fetch dispatch to
 unknown, including abort. Preserve no raw upstream text. Never retry any POST.
 Success returns validated Go DTO unchanged; accept does not send Apply.
