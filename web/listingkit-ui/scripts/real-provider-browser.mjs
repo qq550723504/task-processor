@@ -1,0 +1,379 @@
+import { execFileSync } from "node:child_process";
+import { readFile, realpath, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
+import { chromium } from "@playwright/test";
+import { validateBrowserHandoff } from "./real-provider-browser-contract.mjs";
+
+// No default server, inherited Playwright config, authentication fixtures, traces,
+// HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
+const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const [manifestPath, runtimeSha, outputArgument] = process.argv.slice(2);
+const report = { suite: "LOCAL_REAL_PROVIDER_ACCEPTANCE", status: "NOT_RUN", checks: [], screenshots: [], requests: [] };
+const profilePath = "/workbench/account/profile";
+const organizationPath = "/workbench/account/organization";
+const entitlementPath = "/workbench/plans/entitlements";
+const commercialPath = "/api/workbench/commercial/overview";
+const selectionCookie = "shuomi_effective_organization";
+let manifest, output, browser, activeCase = "handoff";
+const pageObservations = new WeakMap();
+const ensure = condition => { if (!condition) throw new Error("assertion_failed"); };
+
+async function check(name, operation) {
+  activeCase = name;
+  const started = Date.now();
+  try {
+    await operation();
+    report.checks.push({ name, status: "PASS", elapsedMs: Date.now() - started });
+    console.log(`PASS ${name}`);
+  } catch {
+    report.checks.push({ name, status: "FAIL", elapsedMs: Date.now() - started });
+    // Playwright error messages/call logs may contain a filled password or code.
+    throw new Error("case_failed");
+  }
+}
+
+async function json(response) {
+  const bytes = await response.body();
+  ensure(bytes.length <= 65536);
+  return JSON.parse(bytes.toString("utf8"));
+}
+function urlOf(raw) { return new URL(raw, manifest.origins.web); }
+async function api(context, pathname, user, organization) {
+  const headers = {};
+  if (user) headers["X-Expected-User-ID"] = manifest.users[user].id;
+  if (organization) headers["X-Expected-Organization-ID"] = manifest.organizations[organization].id;
+  // This request client shares only cookies naturally issued in this same context.
+  const response = await context.request.get(`${manifest.origins.web}${pathname}`, { headers, maxRedirects: 0, timeout: 20000 });
+  const body = await json(response);
+  return { status: response.status(), body };
+}
+function hasToken(value) {
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(value).some(([key, item]) => /^(?:access_?token|refresh_?token|id_?token)$/i.test(key) || hasToken(item));
+}
+async function session(context, user) {
+  const result = await api(context, "/api/auth/session");
+  ensure(result.status === 200 && !hasToken(result.body));
+  ensure(result.body.identity?.userId === manifest.users[user].id && !result.body.error);
+  ensure(result.body.identity?.tenantId === manifest.organizations.A.id);
+  ensure(Number.isFinite(result.body.expiresAt));
+  return result.body;
+}
+async function textContains(page, value) {
+  await page.getByText(value, { exact: false }).first().waitFor({ state: "visible", timeout: 30000 });
+}
+async function screenshot(page, name) {
+  ensure(urlOf(page.url()).origin === manifest.origins.web);
+  ensure(await page.locator('input[type="password"]').count() === 0);
+  await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: true });
+  report.screenshots.push(`${name}.png`);
+}
+async function credentials(user) {
+  const source = await realpath(manifest.users[user].credentialFile);
+  const root = await realpath(path.dirname(manifestPath));
+  const relative = path.relative(root, source);
+  ensure(relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+  const raw = await readFile(source);
+  ensure(raw.length < 8192);
+  const value = JSON.parse(raw.toString("utf8"));
+  ensure(typeof value.username === "string" && value.username.length > 0);
+  ensure(typeof value.password === "string" && value.password.length > 0);
+  return value;
+}
+
+function observe(page) {
+  const previous = pageObservations.get(page);
+  if (previous) { previous.clear(); return previous; }
+  const seen = new Set();
+  pageObservations.set(page, seen);
+  const endpoints = new Set(["/login", "/api/zitadel-auth/login", "/api/auth/callback/zitadel", "/api/zitadel-auth/logout", "/oauth/v2/authorize", "/oidc/v1/end_session", "/api/account/profile", "/api/account/organization", commercialPath, "/api/workbench/context", "/api/workbench/context/effective-organization"]);
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.origin === manifest.origins.issuer && url.pathname.startsWith("/ui/v2/login")) seen.add("official-login-v2");
+    if (url.origin === manifest.origins.issuer && url.pathname === "/oauth/v2/authorize") {
+      report.protocol = { codeFlow: url.searchParams.get("response_type") === "code", pkceS256: url.searchParams.get("code_challenge_method") === "S256", statePresent: url.searchParams.has("state"), noncePresent: url.searchParams.has("nonce") };
+    }
+    if (endpoints.has(url.pathname) && [manifest.origins.web, manifest.origins.issuer].includes(url.origin)) seen.add(url.pathname);
+  });
+  page.on("response", response => {
+    const url = new URL(response.url());
+    if (endpoints.has(url.pathname) && [manifest.origins.web, manifest.origins.issuer].includes(url.origin)) {
+      report.requests.push({ service: url.origin === manifest.origins.web ? "next" : "provider", path: url.pathname, method: response.request().method(), status: response.status() });
+    }
+  });
+  return seen;
+}
+
+async function login(page, context, user, target = profilePath, bare = false) {
+  const seen = observe(page);
+  const value = await credentials(user);
+  await page.goto(`${manifest.origins.web}${bare ? `/login?returnTo=${encodeURIComponent(target)}` : target}`, { waitUntil: "domcontentloaded" });
+  const username = page.getByTestId("username-text-input");
+  await username.waitFor({ state: "visible", timeout: 45000 });
+  ensure(urlOf(page.url()).origin === manifest.origins.issuer && seen.has("official-login-v2"));
+  // Selectors belong to the pinned official Login V2; confirm visible form first.
+  await username.fill(value.username);
+  await page.getByTestId("submit-button").click();
+  const password = page.getByTestId("password-text-input");
+  await password.waitFor({ state: "visible", timeout: 30000 });
+  ensure(urlOf(page.url()).origin === manifest.origins.issuer);
+  await password.fill(value.password);
+  await page.getByTestId("submit-button").click();
+  await page.waitForURL(url => url.origin === manifest.origins.web && url.pathname === target, { timeout: 45000 });
+  ensure(seen.has("/login") && seen.has("/api/zitadel-auth/login") && seen.has("/api/auth/callback/zitadel"));
+  ensure(report.protocol?.codeFlow && report.protocol?.pkceS256);
+  await session(context, user);
+  return seen;
+}
+
+async function select(page, context, key) {
+  const organization = manifest.organizations[key];
+  const switched = page.waitForResponse(response => new URL(response.url()).pathname === "/api/workbench/context/effective-organization" && response.request().method() === "PUT");
+  await page.getByRole("combobox", { name: "当前企业" }).selectOption(organization.id);
+  const response = await switched;
+  ensure(response.status() === 200 && (await response.json()).effectiveOrganizationId === organization.id);
+  await page.waitForFunction(id => document.querySelector('select')?.value === id && !document.querySelector('select')?.disabled, organization.id);
+  const result = await api(context, "/api/workbench/context");
+  ensure(result.status === 200 && result.body.effectiveOrganizationId === organization.id);
+  ensure(result.body.homeOrganizationId === manifest.organizations.A.id);
+}
+
+async function logout(page, context, user) {
+  const seen = observe(page);
+  await page.locator("summary").filter({ hasText: "我的账户" }).click();
+  await page.getByRole("link", { name: "退出登录", exact: true }).click();
+  await page.waitForURL(url => url.origin === manifest.origins.web && url.pathname === "/", { timeout: 45000 });
+  ensure(seen.has("/api/zitadel-auth/logout") && seen.has("/oidc/v1/end_session"));
+  // Must be before any context/API call can hide an incomplete logout cleanup.
+  const cookies = await context.cookies(manifest.origins.web);
+  ensure(!cookies.some(cookie => cookie.name === selectionCookie || /(?:authjs|next-auth)\.session-token/.test(cookie.name)));
+  const current = await api(context, "/api/auth/session");
+  ensure(current.status === 200 && !current.body?.identity && !current.body?.user && !hasToken(current.body));
+  for (const [route, organization] of [["/api/account/profile", undefined], ["/api/account/organization", "B"], [commercialPath, "B"]]) {
+    ensure((await api(context, route, user, organization)).status === 401);
+  }
+  await screenshot(page, `logout-${user}`);
+}
+
+async function holdRealResponse(page, pathname) {
+  let release, received, finished;
+  let inFlight = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { received = resolve; });
+  const done = new Promise(resolve => { finished = resolve; });
+  const target = `${manifest.origins.web}${pathname}`;
+  const handler = async route => {
+    inFlight = true;
+    try {
+      // Every byte/status/header comes from the actual BFF. Only delivery waits.
+      const response = await route.fetch({ maxRedirects: 0, timeout: 20000 });
+      ensure(response.status() === 200);
+      received(true);
+      await gate;
+      await route.fulfill({ response });
+    } catch { received(false); }
+    finally { finished(); }
+  };
+  await page.route(target, handler, { times: 1 });
+  return {
+    ready: async () => ensure(await Promise.race([started, delay(22000, false, { ref: false })])),
+    release: async () => { release(); await page.unroute(target, handler); if (inFlight) await done; },
+  };
+}
+
+async function lateSwitches(page, context) {
+  for (const [name, pagePath, apiPath, button] of [["account", organizationPath, "/api/account/organization", "刷新资料"], ["commercial", entitlementPath, commercialPath, "刷新数据"]]) {
+    await check(`M5_${name}_late_switch`, async () => {
+      await select(page, context, "B");
+      await page.goto(`${manifest.origins.web}${pagePath}`);
+      await textContains(page, name === "account" ? `当前有效企业：${manifest.organizations.B.id}` : "实际订阅");
+      const held = await holdRealResponse(page, apiPath);
+      try {
+        await page.getByRole("button", { name: button, exact: true }).click();
+        await held.ready();
+        await select(page, context, "C");
+        await textContains(page, name === "account" ? `当前有效企业：${manifest.organizations.C.id}` : "实际订阅");
+      } finally { await held.release(); }
+      const content = await page.locator("#console-main").innerText();
+      ensure(content.includes(manifest.organizations.C.id) && !content.includes(manifest.organizations.B.id));
+      const current = await api(context, apiPath, "admin", "C");
+      ensure(current.status === 200 && (current.body.effectiveOrganizationId ?? current.body.organization_id) === manifest.organizations.C.id);
+    });
+  }
+}
+
+async function realRefresh(context) {
+  await check("M10_real_token_lifecycle", async () => {
+    const initial = await session(context, "admin");
+    const started = Date.now();
+    // The #357 contract uses actual 120s tokens. Never modify exp or the clock.
+    ensure(initial.expiresAt * 1000 - started <= 150000);
+    let refreshed = false;
+    while (Date.now() - started < 150000) {
+      await delay(3000);
+      const current = await session(context, "admin");
+      if (current.expiresAt > initial.expiresAt) { refreshed = true; break; }
+    }
+    ensure(refreshed);
+    ensure((await api(context, "/api/account/profile", "admin")).status === 200);
+    report.tokenLifecycle = { status: "PASS", observedRenewal: true, elapsedMs: Date.now() - started, clock: "real" };
+  });
+}
+
+async function entries() {
+  const context = await browser.newContext();
+  try {
+    for (const method of ["otp", "password"]) {
+      await check(`M7_${method}_503`, async () => {
+        const response = await context.request.get(`${manifest.origins.web}/api/zitadel-auth/login?method=${method}`, { maxRedirects: 0 });
+        ensure(response.status() === 503 && (await json(response)).error === "login_capability_unavailable");
+      });
+    }
+    for (const [name, returnTo] of [["external", "https://invalid.example/workbench"], ["network_path", "//invalid.example/workbench"], ["backslash", "/\\invalid.example/workbench"], ["encoding", "/workbench/%"], ["unsupported", "/api/auth/session"]]) {
+      await check(`M7_returnTo_${name}`, async () => {
+        const response = await context.request.get(`${manifest.origins.web}/login?returnTo=${encodeURIComponent(returnTo)}`, { maxRedirects: 0 });
+        ensure([302, 303, 307].includes(response.status()));
+        const target = urlOf(response.headers().location);
+        ensure(target.origin === manifest.origins.web && target.pathname === "/api/zitadel-auth/login" && target.searchParams.get("returnTo") === "/");
+      });
+    }
+    for (const [name, query] of [["bare", ""], ["unknown", "method=unknown&"], ["repeated", "method=otp&method=password&"]]) {
+      await check(`M7_${name}_generic`, async () => {
+        const response = await context.request.get(`${manifest.origins.web}/login?${query}returnTo=${encodeURIComponent(profilePath)}`, { maxRedirects: 0 });
+        const target = urlOf(response.headers().location);
+        ensure(target.pathname === "/api/zitadel-auth/login" && target.searchParams.get("returnTo") === profilePath && !target.searchParams.has("method"));
+        const authorization = await context.request.get(target.toString(), { maxRedirects: 0 });
+        ensure([302, 303, 307].includes(authorization.status()));
+        const provider = new URL(authorization.headers().location);
+        ensure(provider.origin === manifest.origins.issuer && provider.pathname === "/oauth/v2/authorize");
+      });
+    }
+  } finally { await context.close(); }
+}
+
+async function core() {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "en-US" });
+  const page = await context.newPage();
+  page.setDefaultTimeout(20000);
+  try {
+    await check("M1_real_password_code_session", async () => {
+      ensure((await context.cookies()).length === 0);
+      await login(page, context, "admin");
+    });
+    await check("M2_self_before_selection", async () => {
+      const profile = await api(context, "/api/account/profile", "admin");
+      ensure(profile.status === 200 && profile.body.userId === manifest.users.admin.id && profile.body.homeOrganizationId === manifest.organizations.A.id && profile.body.source === "zitadel_userinfo");
+      await textContains(page, `账户 ID：${manifest.users.admin.id}`);
+      const current = await api(context, "/api/workbench/context");
+      ensure(current.body.selectionRequired === true && current.body.effectiveOrganizationId === null);
+      await screenshot(page, "admin-profile-unselected");
+    });
+    const quantities = [];
+    for (const key of ["B", "C", "Empty"]) {
+      await check(`M3_organization_${key}`, async () => {
+        await select(page, context, key);
+        await page.goto(`${manifest.origins.web}${organizationPath}`);
+        await textContains(page, `当前有效企业：${manifest.organizations[key].id}`);
+        const organization = await api(context, "/api/account/organization", "admin", key);
+        ensure(organization.status === 200 && organization.body.userId === manifest.users.admin.id && organization.body.homeOrganizationId === manifest.organizations.A.id && organization.body.effectiveOrganizationId === manifest.organizations[key].id);
+        if (key === "B") await screenshot(page, "admin-organization-B");
+        await page.goto(`${manifest.origins.web}${entitlementPath}`);
+        await textContains(page, "实际订阅");
+        const commercial = await api(context, commercialPath, "admin", key);
+        ensure(commercial.status === 200 && commercial.body.organization_id === manifest.organizations[key].id);
+        if (key === "Empty") {
+          ensure(commercial.body.subscription === null && commercial.body.usage.every(row => row.state === "unknown" && row.committed === null));
+          await textContains(page, "无订阅");
+        } else {
+          const quantity = commercial.body.usage.find(row => row.metric === "listingkit_generations_succeeded")?.committed;
+          ensure(quantity === (key === "B" ? "1" : "2")); quantities.push(quantity);
+        }
+        await screenshot(page, `admin-entitlements-${key}`);
+      });
+    }
+    ensure(quantities.length === 2 && quantities[0] !== quantities[1]);
+    await check("M3_D_denied", async () => {
+      const response = await context.request.put(`${manifest.origins.web}/api/workbench/context/effective-organization`, { data: { organizationId: manifest.organizations.D.id }, maxRedirects: 0 });
+      ensure(response.status() === 403);
+      const commercial = await api(context, commercialPath, "admin", "D");
+      ensure(commercial.status === 409 && commercial.body.code === "ORGANIZATION_CONTEXT_CHANGED");
+    });
+    await lateSwitches(page, context);
+    await realRefresh(context);
+    await check("M6_logout_admin", async () => {
+      await page.goto(`${manifest.origins.web}${profilePath}`);
+      await textContains(page, `账户 ID：${manifest.users.admin.id}`);
+      const held = await holdRealResponse(page, "/api/account/profile");
+      try {
+        await page.getByRole("button", { name: "刷新资料", exact: true }).click();
+        await held.ready();
+        await logout(page, context, "admin");
+      } finally { await held.release(); }
+      ensure(!(await page.locator("body").innerText()).includes(manifest.users.admin.id));
+    });
+    await check("M4_same_browser_viewer_password_login", async () => {
+      await login(page, context, "viewer", profilePath, true);
+      await textContains(page, `账户 ID：${manifest.users.viewer.id}`);
+      ensure(!(await page.locator("body").innerText()).includes(manifest.users.admin.id));
+      const current = await api(context, "/api/workbench/context");
+      ensure(current.body.effectiveOrganizationId === null && current.body.selectionRequired);
+      await select(page, context, "B");
+      ensure((await api(context, "/api/account/profile", "viewer")).status === 200);
+      ensure((await api(context, "/api/account/organization", "viewer", "B")).status === 200);
+      await page.goto(`${manifest.origins.web}${entitlementPath}`);
+      await textContains(page, "本次未取得数据");
+      ensure((await api(context, commercialPath, "viewer", "B")).status === 403);
+      ensure(!(await page.locator("body").innerText()).includes("实际套餐代码"));
+      await screenshot(page, "viewer-commercial-denied");
+    });
+    await check("M6_logout_viewer", () => logout(page, context, "viewer"));
+    await check("M2_no_org_self_and_sibling_gates", async () => {
+      await login(page, context, "no-org", profilePath, true);
+      await textContains(page, `账户 ID：${manifest.users["no-org"].id}`);
+      ensure((await api(context, "/api/account/profile", "no-org")).status === 200);
+      const current = await api(context, "/api/workbench/context");
+      ensure(current.status === 200 && current.body.organizations.length === 0 && current.body.effectiveOrganizationId === null);
+      await screenshot(page, "no-org-profile");
+      for (const route of [organizationPath, entitlementPath, "/workbench/plans/options", "/workbench/stores"]) {
+        await page.goto(`${manifest.origins.web}${route}`);
+        await page.waitForURL(url => url.pathname === "/workbench/no-organization");
+        ensure([403, 409].includes((await api(context, "/api/account/organization", "no-org", "B")).status));
+        ensure([403, 409].includes((await api(context, commercialPath, "no-org", "B")).status));
+      }
+    });
+    await page.goto(`${manifest.origins.web}${profilePath}`);
+    await textContains(page, `账户 ID：${manifest.users["no-org"].id}`);
+    await check("M6_logout_no_org", () => logout(page, context, "no-org"));
+  } finally { await context.close(); }
+}
+
+try {
+  ensure(manifestPath && runtimeSha);
+  const webSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: uiRoot, encoding: "utf8", windowsHide: true }).trim();
+  const raw = await readFile(manifestPath);
+  ensure(raw.length < 262144);
+  manifest = validateBrowserHandoff(JSON.parse(raw.toString("utf8")), { manifestPath, runtimeSha, webSha, temporaryRoot: tmpdir() });
+  // Realpath comparison also rejects a linked manifest outside this run.
+  ensure(await realpath(manifestPath) === path.resolve(manifestPath));
+  output = path.resolve(outputArgument || path.join(uiRoot, "../../.local/issue358-browser", manifest.runId));
+  await mkdir(output, { recursive: true });
+  Object.assign(report, { sourceSha: webSha, runtimeSha, runId: manifest.runId, origins: manifest.origins, startedAt: new Date().toISOString() });
+  browser = await chromium.launch({ headless: true });
+  await entries();
+  await core();
+  for (const name of ["M8_provider_failure", "M9_revocation", "M11_owner_zero_write_cleanup"]) report.checks.push({ name, status: "NOT_RUN" });
+  report.status = "INCOMPLETE";
+  process.exitCode = 2;
+} catch {
+  report.status = manifest ? "FAIL" : "NOT_RUN";
+  report.failure = activeCase;
+  process.exitCode = manifest ? 1 : 2;
+} finally {
+  await browser?.close().catch(() => { report.browserCleanup = "FAIL"; process.exitCode = 1; });
+  report.finishedAt = new Date().toISOString();
+  if (output) await writeFile(path.join(output, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`${report.status} ${report.suite}; case=${activeCase}`);
+}
