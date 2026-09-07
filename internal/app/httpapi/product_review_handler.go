@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
@@ -19,18 +20,78 @@ import (
 
 func productReviewRoutes(s *review.Service) []httproute.Descriptor {
 	base := "/api/product/text-proposals"
-	specs := []struct{ method, path, kind string }{{"POST", base, "create"}, {"GET", base + "/:proposal_id", "get"}, {"POST", base + "/:proposal_id/decisions", "decision"}, {"POST", base + "/:proposal_id/apply", "apply"}}
+	specs := []struct{ method, path, kind string }{{"POST", base, "create"}, {"GET", base, "list"}, {"GET", base + "/:proposal_id", "get"}, {"POST", base + "/:proposal_id/decisions", "decision"}, {"POST", base + "/:proposal_id/apply", "apply"}}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
 		policy, permission := httproute.OrganizationAccessPolicyLiveWrite, authz.PermissionListingKitAdminWrite
-		if spec.kind == "get" {
+		if spec.kind == "get" || spec.kind == "list" {
 			policy = httproute.OrganizationAccessPolicyCachedRead
 			permission = authz.PermissionListingKitAdminRead
 		}
-		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-review", Permission: permission, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: policy, Handler: func(c *gin.Context) { productReviewRequest(c, s, spec.kind) }})
+		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-review", Permission: permission, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: policy, Handler: func(c *gin.Context) {
+			if spec.kind == "list" {
+				listProductReviews(c, s)
+				return
+			}
+			productReviewRequest(c, s, spec.kind)
+		}})
 	}
 	return routes
 }
+
+func readProductReviewGETBody(c *gin.Context) error {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1))
+	var transport net.Error
+	if c.Request.Context().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &transport) && transport.Timeout() {
+		return context.DeadlineExceeded
+	}
+	if err != nil {
+		return review.ErrUnavailable
+	}
+	if len(body) != 0 {
+		return review.ErrInvalid
+	}
+	return nil
+}
+
+func listProductReviews(c *gin.Context, service *review.Service) {
+	if err := readProductReviewGETBody(c); err != nil {
+		writeProductReviewError(c, err)
+		return
+	}
+	rawQuery := c.Request.URL.RawQuery
+	if len(rawQuery) > maxProductReviewQueryBytes {
+		writeProductReviewError(c, review.ErrInvalid)
+		return
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		writeProductReviewError(c, review.ErrInvalid)
+		return
+	}
+	request, err := parseProductReviewCollectionQuery(query)
+	if err != nil {
+		writeProductReviewError(c, err)
+		return
+	}
+	page, err := service.List(c.Request.Context(), request)
+	if err != nil {
+		writeProductReviewError(c, err)
+		return
+	}
+	wire, err := marshalProductReviewPage(page)
+	if c.Request.Context().Err() != nil {
+		writeProductReviewError(c, c.Request.Context().Err())
+		return
+	}
+	if err != nil || len(wire) > maxProductReviewResponseBytes {
+		writeProductReviewError(c, review.ErrUnavailable)
+		return
+	}
+	setProductReviewHeaders(c)
+	c.Data(http.StatusOK, "application/json; charset=utf-8", wire)
+}
+
 func productReviewRequest(c *gin.Context, s *review.Service, kind string) {
 	ctx := c.Request.Context()
 	if c.Request.URL.RawQuery != "" {
@@ -40,6 +101,10 @@ func productReviewRequest(c *gin.Context, s *review.Service, kind string) {
 	var v review.View
 	var err error
 	if kind == "get" {
+		if err = readProductReviewGETBody(c); err != nil {
+			reviewResponse(c, v, err)
+			return
+		}
 		v, err = s.Get(ctx, c.Param("proposal_id"))
 		reviewResponse(c, v, err)
 		return
@@ -136,9 +201,24 @@ func validReviewJSONUnicode(raw []byte) bool {
 }
 func reviewResponse(c *gin.Context, v review.View, err error) {
 	if err == nil {
-		c.JSON(http.StatusOK, v)
+		wire, marshalErr := marshalProductReviewView(v)
+		if marshalErr != nil || len(wire) > maxProductReviewResponseBytes {
+			writeProductReviewError(c, review.ErrUnavailable)
+			return
+		}
+		setProductReviewHeaders(c)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", wire)
 		return
 	}
+	writeProductReviewError(c, err)
+}
+
+func setProductReviewHeaders(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+}
+
+func writeProductReviewError(c *gin.Context, err error) {
 	status, code := 503, "unavailable"
 	switch {
 	case errors.Is(err, review.ErrInvalid):
@@ -156,5 +236,6 @@ func reviewResponse(c *gin.Context, v review.View, err error) {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		status, code = 504, "deadline_exceeded"
 	}
+	setProductReviewHeaders(c)
 	c.JSON(status, gin.H{"error": code})
 }
