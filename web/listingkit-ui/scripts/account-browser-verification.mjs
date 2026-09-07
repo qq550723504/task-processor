@@ -110,6 +110,35 @@ try {
     const { page, context } = await open("u1", "organization");
     try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await fetch(`${fixture.controlOrigin}/revoke`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "企业访问已撤销" })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await context.close(); }
   });
+  await check("actual failed live enterprise switch clears old data and Shell metadata", async () => {
+    const { page, context } = await open("u1", "organization");
+    try {
+      await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible();
+      await fetch(`${fixture.controlOrigin}/revoke`, { method: "POST" });
+      await page.getByRole("combobox", { name: "当前企业" }).selectOption("C");
+      await expect(page.getByRole("alert").filter({ hasText: /企业/ })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("combobox", { name: "当前企业" })).toHaveCount(0);
+    } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await context.close(); }
+  });
+  await check("supplemental synthetic role-context transition through actual provider and profile client", async () => {
+    const { page, context } = await open("u1", "profile"); let release;
+    try {
+      await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible();
+      await page.clock.install();
+      await page.reload(); await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible();
+      await page.route("**/api/workbench/context", async route => {
+        const response = await route.fetch(); const value = await response.json();
+        await route.fulfill({ response, json: { ...value, organizations: value.organizations.map(org => ({ ...org, roles: ["synthetic_changed_role"] })) } });
+      });
+      let reading = false;
+      const gate = new Promise(resolveGate => { release = resolveGate; });
+      await page.route("**/api/account/profile", async route => { reading = true; await gate; await route.continue(); });
+      await page.clock.fastForward(31000); await expect.poll(() => reading).toBe(true);
+      await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toHaveCount(0);
+      release(); await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible();
+    } finally { release?.(); await context.close(); }
+  });
   await check("unauthenticated real proxy redirects to login before account HTML", async () => {
     const context = await browser.newContext();
     // Login issuance is outside this fixture: inspect the real proxy redirect before following OIDC.
