@@ -1,0 +1,485 @@
+{
+  "head": "d6c181018c58c291bae8ebe5939ab0cf1511622e",
+  "fixtureSourceHead": "d6c181018c58c291bae8ebe5939ab0cf1511622e",
+  "fixtureWebHead": "d6c181018c58c291bae8ebe5939ab0cf1511622e",
+  "sourceHashes": {
+    "src/components/workbench/commercial/commercial-page.tsx": "574e1ab4e7ae7b354aff5a28a35fdd5e2230a2e16957b6ef53902b6d11fe641e",
+    "src/components/workbench/commercial/commercial-views.tsx": "4db04f9b3c68510ae8761c78d51e840c9510c89a29ee30ca98c6f4980b0de7ab",
+    "src/components/workbench/commercial/commercial.module.css": "6a368bdf5e370b55d2648a7bdf21f08f90711c3c37658579b8491b2a26164693",
+    "src/lib/api/commercial.ts": "9314d90c1bb6dbcaeef2a8d36e9d4efae6e479a57a39d12ee6055fa5b519f39a",
+    "src/components/workbench/workspace-app-shell.tsx": "eb4d081017fd40787e6f7fef2cc87d2b0fb954c6b0e2e7384ab88f08874b378f",
+    "src/lib/workbench/console-navigation.ts": "d7efdcd3a3b2914d340dd934461fcb1e148f4c3dc5c1385f10c2e785d51a09bf"
+  },
+  "startedAt": "2026-09-07T01:54:28.444Z",
+  "checks": [
+    "options/1440/dark: no overflow; axe WCAG A/AA zero violations",
+    "options/1440/light: no overflow; axe WCAG A/AA zero violations",
+    "options/390/dark: no overflow; axe WCAG A/AA zero violations",
+    "options/390/light: no overflow; axe WCAG A/AA zero violations",
+    "entitlements/1440/dark: no overflow; axe WCAG A/AA zero violations",
+    "entitlements/1440/light: no overflow; axe WCAG A/AA zero violations",
+    "entitlements/390/dark: no overflow; axe WCAG A/AA zero violations",
+    "entitlements/390/light: no overflow; axe WCAG A/AA zero violations",
+    "actual home-A/effective org-B -> org-C -> org-B; distinct persisted usage, exact int64, signed byte delta, known zero, unknown with units, unlimited grants",
+    "actual empty/expired/disabled/future/custom subscription and missing grants",
+    "refresh reauthorizes: revoked, downgraded role, suspended, signed-out, provider/database failure discard old success",
+    "in-flight slow org-B refresh then org-C; old success/error absent after delay",
+    "keyboard refresh via Enter, Tab/Shift+Tab reachability; mobile menu Enter/Escape focus return",
+    "390 long unbroken name DOM-only layout probe; no contract/persistence modification",
+    "viewer subject denied; actual Auth.js logout clears session; commercial BFF returns 401 and no previous UI data",
+    "all commercial requests GET; only context selection PUT among workbench writes"
+  ],
+  "screenshots": [
+    "options-1440-dark.png",
+    "options-1440-light.png",
+    "options-390-dark.png",
+    "options-390-dark-full.png",
+    "options-390-light.png",
+    "options-390-light-full.png",
+    "entitlements-1440-dark.png",
+    "entitlements-1440-light.png",
+    "entitlements-390-dark.png",
+    "entitlements-390-dark-full.png",
+    "entitlements-390-light.png",
+    "entitlements-390-light-full.png",
+    "org-empty.png",
+    "org-expired.png",
+    "org-disabled.png",
+    "org-future.png",
+    "org-custom.png",
+    "revoked.png",
+    "role-downgraded.png",
+    "suspended.png",
+    "signed-out.png",
+    "provider-unavailable.png",
+    "database-unavailable.png",
+    "entitlements-keyboard-390.png",
+    "entitlements-390-long-name-layout-probe.png",
+    "viewer-subject-denied.png"
+  ],
+  "accessibility": [
+    {
+      "kind": "options",
+      "width": 1440,
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "kind": "options",
+      "width": 1440,
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "kind": "options",
+      "width": 390,
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "kind": "options",
+      "width": 390,
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "kind": "entitlements",
+      "width": 1440,
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "kind": "entitlements",
+      "width": 1440,
+      "theme": "light",
+      "violations": []
+    },
+    {
+      "kind": "entitlements",
+      "width": 390,
+      "theme": "dark",
+      "violations": []
+    },
+    {
+      "kind": "entitlements",
+      "width": 390,
+      "theme": "light",
+      "violations": []
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 403
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 403
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 403
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 503
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 503
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context/effective-organization",
+      "method": "PUT",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 403
+    },
+    {
+      "path": "/api/workbench/context",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/api/workbench/commercial/overview",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "notRun": [
+    "real IAM, payment, customer data, production",
+    "OpenMeter",
+    "unmerged #345/#348 page combination",
+    "external sign-in after logout: fixture issuer is deliberately unreachable; actual login redirects to Auth.js configuration error"
+  ],
+  "passed": true,
+  "finishedAt": "2026-09-07T01:54:46.056Z"
+}
