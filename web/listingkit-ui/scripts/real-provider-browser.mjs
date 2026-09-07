@@ -91,7 +91,7 @@ function observe(page) {
   if (previous) { previous.clear(); return previous; }
   const seen = new Set();
   pageObservations.set(page, seen);
-  const endpoints = new Set(["/login", "/api/zitadel-auth/login", "/api/auth/callback/zitadel", "/api/zitadel-auth/logout", "/oauth/v2/authorize", "/oidc/v1/end_session", "/api/account/profile", "/api/account/organization", commercialPath, "/api/workbench/context", "/api/workbench/context/effective-organization"]);
+  const endpoints = new Set(["/login", "/api/zitadel-auth/login", "/api/auth/callback/zitadel", "/api/zitadel-auth/logout", "/oauth/v2/authorize", "/oidc/v1/end_session", "/ui/v2/login/loginname", "/ui/v2/login/password", "/api/account/profile", "/api/account/organization", commercialPath, "/api/workbench/context", "/api/workbench/context/effective-organization"]);
   page.on("request", request => {
     const url = new URL(request.url());
     if (url.origin === manifest.origins.issuer && url.pathname.startsWith("/ui/v2/login")) seen.add("official-login-v2");
@@ -112,7 +112,8 @@ function observe(page) {
 async function login(page, context, user, target = profilePath, bare = false) {
   const seen = observe(page);
   const value = await credentials(user);
-  await page.goto(`${manifest.origins.web}${bare ? `/login?returnTo=${encodeURIComponent(target)}` : target}`, { waitUntil: "domcontentloaded" });
+  report.loginStage = "official_page_load";
+  await page.goto(`${manifest.origins.web}${bare ? `/login?returnTo=${encodeURIComponent(target)}` : target}`, { waitUntil: "load" });
   const username = page.getByTestId("username-text-input");
   await username.waitFor({ state: "visible", timeout: 45000 });
   ensure(urlOf(page.url()).origin === manifest.origins.issuer && seen.has("official-login-v2"));
@@ -122,17 +123,24 @@ async function login(page, context, user, target = profilePath, bare = false) {
     report.screenshots.push("official-login-empty.png");
   }
   // Selectors belong to the pinned official Login V2; confirm visible form first.
+  report.loginStage = "username_input";
   await username.fill(value.username);
+  report.loginStage = "username_submit";
   await page.getByTestId("submit-button").click();
+  report.loginStage = "password_form";
   const password = page.getByTestId("password-text-input");
   await password.waitFor({ state: "visible", timeout: 30000 });
   ensure(urlOf(page.url()).origin === manifest.origins.issuer);
+  report.loginStage = "password_input";
   await password.fill(value.password);
+  report.loginStage = "password_submit";
   await page.getByTestId("submit-button").click();
+  report.loginStage = "application_callback";
   await page.waitForURL(url => url.origin === manifest.origins.web && url.pathname === target, { timeout: 45000 });
   ensure(seen.has("/login") && seen.has("/api/zitadel-auth/login") && seen.has("/api/auth/callback/zitadel"));
   ensure(report.protocol?.codeFlow && report.protocol?.pkceS256);
   await session(context, user);
+  report.loginStage = "public_session_verified";
   return seen;
 }
 
@@ -502,5 +510,5 @@ try {
   }
   report.finishedAt = new Date().toISOString();
   if (output) await writeFile(path.join(output, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`${report.status} ${report.suite}; case=${activeCase}`);
+  console.log(`${report.status} ${report.suite}; case=${report.failure ?? activeCase}`);
 }
