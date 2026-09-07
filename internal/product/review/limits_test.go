@@ -36,7 +36,8 @@ type deadlineStore struct {
 	saw bool
 }
 
-func (d *deadlineStore) Read(context.Context, Scope, string) (Record, error) { panic("unused") }
+func (d *deadlineStore) Read(context.Context, Scope, string) (Record, error)    { panic("unused") }
+func (d *deadlineStore) List(context.Context, Scope, PageRequest) (Page, error) { panic("unused") }
 func (d *deadlineStore) FindOperation(context.Context, Operation) (View, bool, error) {
 	panic("unused")
 }

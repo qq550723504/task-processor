@@ -17,8 +17,8 @@ import (
 
 type Repository struct{ db *gorm.DB }
 type proposalRow struct {
-	Org, ID, Owner string
-	Payload        []byte
+	Org, ID, Owner, State string
+	Payload               []byte
 }
 
 func (proposalRow) TableName() string { return "product_title_proposals" }
@@ -51,7 +51,7 @@ func scoped(db *gorm.DB, a review.Scope, id string) *gorm.DB {
 	return q
 }
 func load(db *gorm.DB, a review.Scope, id string, lock bool) (review.Record, error) {
-	q := scoped(db, a, id).Select("org,id,owner,CASE WHEN octet_length(payload) <= ? THEN payload ELSE NULL END AS payload", review.MaxRecordBytes)
+	q := scoped(db, a, id).Select("org,id,owner,state,CASE WHEN octet_length(payload) <= ? THEN payload ELSE NULL END AS payload", review.MaxRecordBytes)
 	if lock {
 		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
@@ -63,14 +63,55 @@ func load(db *gorm.DB, a review.Scope, id string, lock bool) (review.Record, err
 	if err != nil {
 		return review.Record{}, err
 	}
-	var r review.Record
-	if len(row.Payload) == 0 || json.Unmarshal(row.Payload, &r) != nil || r.Org != row.Org || r.ID != row.ID || r.Owner != row.Owner {
-		return r, review.ErrUnavailable
-	}
-	return r, nil
+	return decodeProposalRow(row)
 }
 func (r *Repository) Read(ctx context.Context, a review.Scope, id string) (review.Record, error) {
 	return load(r.db.WithContext(ctx), a, id, false)
+}
+
+func decodeProposalRow(row proposalRow) (review.Record, error) {
+	var record review.Record
+	if len(row.Payload) == 0 || json.Unmarshal(row.Payload, &record) != nil || record.Org != row.Org || record.ID != row.ID || record.Owner != row.Owner || record.State != row.State || review.ValidateStoredRecord(record) != nil {
+		return record, review.ErrUnavailable
+	}
+	return record, nil
+}
+
+func (r *Repository) List(ctx context.Context, scope review.Scope, request review.PageRequest) (review.Page, error) {
+	if err := request.Validate(); err != nil {
+		return review.Page{}, err
+	}
+	query := r.db.WithContext(ctx).Where("org = ? AND state IN ?", scope.Org, []string{"pending", "accepted"})
+	if !scope.Admin {
+		query = query.Where("owner = ?", scope.Actor)
+	}
+	if request.Cursor != nil {
+		query = query.Where("id > ?", request.Cursor.ID)
+	}
+	var rows []proposalRow
+	err := query.Select("org,id,owner,state,CASE WHEN octet_length(payload) <= ? THEN payload ELSE NULL END AS payload", review.MaxRecordBytes).Order("id ASC").Limit(request.Limit + 1).Find(&rows).Error
+	if err != nil {
+		return review.Page{}, err
+	}
+	page := review.Page{Items: make([]review.CollectionItem, 0, min(len(rows), request.Limit))}
+	for index, row := range rows {
+		if index == request.Limit {
+			break
+		}
+		record, decodeErr := decodeProposalRow(row)
+		if decodeErr != nil {
+			return review.Page{}, decodeErr
+		}
+		item, itemErr := review.CollectionItemForPersistence(record)
+		if itemErr != nil {
+			return review.Page{}, itemErr
+		}
+		page.Items = append(page.Items, item)
+	}
+	if len(rows) > request.Limit {
+		page.NextCursor = &review.PageCursor{ID: page.Items[len(page.Items)-1].ID}
+	}
+	return page, nil
 }
 func replay(db *gorm.DB, op review.Operation) (review.View, bool, error) {
 	var row operationRow
@@ -126,6 +167,9 @@ func (r *Repository) Run(ctx context.Context, op review.Operation, fn func(revie
 func (t *transaction) Load(id string) (review.Record, error) { return load(t.db, t.op.Scope, id, true) }
 func (t *transaction) Replay() (review.View, bool, error)    { return replay(t.db, t.op) }
 func (t *transaction) Save(r review.Record) error {
+	if err := review.ValidateStoredRecord(r); err != nil {
+		return err
+	}
 	if err := r.ValidateStorage(); err != nil {
 		return err
 	}
@@ -139,12 +183,12 @@ func (t *transaction) Save(r review.Record) error {
 	if len(raw) > review.MaxRecordBytes {
 		return review.ErrTooLarge
 	}
-	row := proposalRow{r.Org, r.ID, r.Owner, raw}
+	row := proposalRow{Org: r.Org, ID: r.ID, Owner: r.Owner, State: r.State, Payload: raw}
 	// Domain owns transitions; the caller holds the row lock before updating.
 	if r.Revision == 1 && r.State == "pending" {
 		return t.db.Create(&row).Error
 	}
-	q := scoped(t.db.Model(&proposalRow{}), t.op.Scope, r.ID).Update("payload", raw)
+	q := scoped(t.db.Model(&proposalRow{}), t.op.Scope, r.ID).Updates(map[string]any{"payload": raw, "state": r.State})
 	if q.Error != nil {
 		return q.Error
 	}
