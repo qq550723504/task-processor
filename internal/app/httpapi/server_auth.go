@@ -91,11 +91,12 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 		return nil
 	}
 	requiresOrganization := routeRequiresOrganizationResolution(route.OrganizationAccessPolicy)
-	if !requiresOrganization && !listingkithttpapi.RouteRequiresZitadelAuth(route) {
+	currentIdentity := route.AuthPolicy == httproute.AuthPolicyCurrentIdentity
+	if !requiresOrganization && !currentIdentity && !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}
 	handlers := make([]gin.HandlerFunc, 0, 4)
-	if requiresOrganization {
+	if requiresOrganization || currentIdentity {
 		handlers = append(handlers, workbenchAuthenticationMiddleware(dependencies.workbenchVerifier))
 	} else if dependencies.identityMiddleware != nil {
 		handlers = append(handlers, dependencies.identityMiddleware)
@@ -105,6 +106,15 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 			handlers = append(handlers, organizationTargetResolutionMiddleware(route, dependencies))
 		}
 		handlers = append(handlers, organizationResolutionMiddleware(route, dependencies))
+	} else if currentIdentity {
+		handlers = append(handlers, func(c *gin.Context) {
+			identity, _ := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+			identity.TenantID, identity.EffectiveOrganizationID = "", ""
+			identity.Roles, identity.OrganizationGrants = nil, nil
+			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
+			c.Request.Header.Del("X-Requested-Organization-ID")
+			c.Next()
+		})
 	}
 	var roleAuth gin.HandlerFunc
 	if dependencies.roleMiddleware != nil {
@@ -124,6 +134,10 @@ func organizationTargetResolutionMiddleware(route httproute.Descriptor, dependen
 	return func(c *gin.Context) {
 		target, err := route.OrganizationTargetResolver(c.Request)
 		if err != nil {
+			if errors.Is(err, workbenchcontext.ErrOrganizationSelectionRequired) {
+				writeWorkbenchContextError(c, err)
+				return
+			}
 			if identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); ok {
 				_ = recordWorkbenchAudit(c, route, dependencies, identity, "", workbenchcontext.AuditResultInvalidRequest)
 			}

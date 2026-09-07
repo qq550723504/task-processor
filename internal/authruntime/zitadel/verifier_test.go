@@ -15,6 +15,37 @@ import (
 	"task-processor/internal/authidentity"
 )
 
+func TestVerifierDiscoveryWaitHonorsCallerDeadline(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	v := NewVerifier(Config{IssuerURL: server.URL, ClientID: "fixture", HTTPClient: server.Client()})
+	done := make(chan struct{})
+	go func() { defer close(done); _, _ = v.Verify(context.Background(), "first") }()
+	<-started
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	second := make(chan error, 1)
+	go func() { _, err := v.Verify(ctx, "second"); second <- err }()
+	select {
+	case err := <-second:
+		require.Error(t, err)
+	case <-time.After(200 * time.Millisecond):
+		t.Error("discovery lock ignored caller deadline")
+	}
+	close(release)
+	<-done
+}
+
 func TestVerifierClassifiesDependencyFailureSeparatelyFromInvalidToken(t *testing.T) {
 	t.Run("dependency transport", func(t *testing.T) {
 		verifier := NewVerifier(Config{

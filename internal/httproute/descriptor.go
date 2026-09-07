@@ -2,6 +2,7 @@ package httproute
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +19,8 @@ const (
 	AuthPolicyUnspecified      AuthPolicy = ""
 	AuthPolicyPublic           AuthPolicy = "public"
 	AuthPolicyVerifiedIdentity AuthPolicy = "verified_identity"
+	// AuthPolicyCurrentIdentity uses current authentication without legacy allowlists.
+	AuthPolicyCurrentIdentity AuthPolicy = "current_identity"
 )
 
 const (
@@ -30,6 +33,8 @@ const (
 
 // Descriptor describes a single HTTP route registration.
 type Descriptor struct {
+	// RequestTimeout bounds the complete request context, including authentication.
+	RequestTimeout             time.Duration
 	Method                     string
 	Path                       string
 	Module                     string

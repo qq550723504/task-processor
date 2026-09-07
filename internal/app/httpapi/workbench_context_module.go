@@ -86,6 +86,7 @@ func buildWorkbenchContextModule(cfg *config.Config, logger *logrus.Logger, fact
 	resolver := factories.newResolver(grantResolver, zitadelConfig.ProjectID, workbenchAuthorizationContractVersion, nil)
 	handler := factories.newHandler()
 	if handler != nil {
+		handler.SetSelfProfileReader(zitadel.NewUserInfoClient(zitadelConfig.IssuerURL, httpClient))
 		workbenchAuthorizer, authorizerErr := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
 		if authorizerErr != nil {
 			return workbenchContextBuildResult{}, fmt.Errorf("build workbench context authorizer: %w", authorizerErr)
