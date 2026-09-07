@@ -13,7 +13,7 @@ classified immediate logout selection-cookie removal as IMPLEMENTATION_TEST:
 assert it before any subsequent context response can clear a leftover selection.
 No production defect is claimed from static inspection alone.
 
-Initial slice: tests and this runbook; no production change proposed. Reuse
+Initial slice: tests and this runbook. Reuse
 `/login`, Auth.js, current BFFs, Shell and pages. Do not add authentication,
 authorization, recovery, UI or environment architecture. A real Next defect is
 first captured as RED, classified against the Issue Must, then minimally fixed
@@ -36,6 +36,16 @@ same browser context. Bootstrap/control credentials never enter the browser.
 Do not enable the existing acceptance-token file export or mock environment flags.
 
 ## Actual call paths and bounded matrix
+
+Actual #357 smoke later demonstrated the logout counterexample on the merged
+Console: after official end-session and return to `/`, before any API/context
+request, the Auth.js session cookie was gone but `shuomi_effective_organization`
+remained. Classification: IMPLEMENTATION_TEST, affected Must 5/6. Three RED tests
+cover official, discovery-unavailable and unconfigured signout. The minimal fix
+expires the existing application selection through Next's cookies API before
+the common logout handler branches; Auth.js/provider session ownership is intact.
+The normal-browser M6 assertion remains necessary to validate actual response
+cookie propagation. Exact source/real-execution evidence belongs in the PR.
 
 | Case / entry | Actual dependency and scope / effects | Required browser evidence |
 | --- | --- | --- |
