@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"task-processor/internal/authidentity"
@@ -62,10 +61,10 @@ type Verifier interface {
 }
 
 type verifier struct {
-	cfg       Config
-	mu        sync.Mutex
-	discovery discoveryDocument
-	now       func() time.Time
+	cfg           Config
+	discoveryGate chan struct{}
+	discovery     discoveryDocument
+	now           func() time.Time
 }
 
 func NewVerifier(cfg Config) Verifier {
@@ -73,7 +72,7 @@ func NewVerifier(cfg Config) Verifier {
 }
 
 func newVerifier(cfg Config) *verifier {
-	return &verifier{cfg: cfg, now: time.Now}
+	return &verifier{cfg: cfg, now: time.Now, discoveryGate: make(chan struct{}, 1)}
 }
 
 func (v *verifier) Verify(ctx context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
@@ -171,8 +170,12 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 }
 
 func (v *verifier) getDiscovery(ctx context.Context) (discoveryDocument, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	select {
+	case v.discoveryGate <- struct{}{}:
+		defer func() { <-v.discoveryGate }()
+	case <-ctx.Done():
+		return discoveryDocument{}, ctx.Err()
+	}
 
 	if v.discovery.IntrospectionEndpoint != "" {
 		return v.discovery, nil

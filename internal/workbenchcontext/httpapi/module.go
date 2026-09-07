@@ -47,5 +47,9 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 			Handler:                    m.handler.SwitchEffectiveOrganization,
 		},
 	)
+	reg.AddRoutes(
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/account/profile", Module: ModuleName, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 15 * time.Second, Handler: m.handler.GetAccountProfile},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/account/organization", Module: ModuleName, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyCachedRead, OrganizationTargetResolver: ResolveAccountOrganizationTarget, RequestTimeout: 15 * time.Second, Handler: m.handler.GetAccountOrganization},
+	)
 	return nil
 }

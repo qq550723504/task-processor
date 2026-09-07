@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -44,6 +45,24 @@ func mountRoutes(r *gin.Engine, routes []httproute.Descriptor, authorization rou
 func mountRoutesWithAuthDependencies(r *gin.Engine, routes []httproute.Descriptor, dependencies routeAuthDependencies) {
 	for _, route := range routes {
 		handlers := append(routeAuthHandlersWithDependencies(route, dependencies), route.Handler)
+		if route.RequestTimeout > 0 {
+			handlers = append([]gin.HandlerFunc{requestContextTimeout(route.RequestTimeout)}, handlers...)
+		}
 		r.Handle(route.Method, route.Path, handlers...)
+	}
+}
+
+func requestContextTimeout(timeout time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+		defer cancel()
+		c.Request = c.Request.WithContext(ctx)
+		// Bound identifiers before authentication can include them in an error.
+		if len(c.Request.Header.Get("X-Request-ID")) > 128 {
+			c.Request.Header.Del("X-Request-ID")
+		}
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Next()
 	}
 }
