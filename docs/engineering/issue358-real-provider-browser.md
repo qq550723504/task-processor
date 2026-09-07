@@ -110,6 +110,8 @@ revocation and owner check/cleanup schema are prepared against the PLANNED owner
 contract and must be verified against its formal implemented handoff. The runner
 requires clean matching source checkouts and rejects Playwright debug/log/trace
 environment settings before importing the browser library or reading credentials.
+The run's recorded `sourceDirty` and `webDirty` must both be explicitly false:
+making a development checkout clean later cannot validate its earlier run.
 No cleanup flag means INCOMPLETE. The explicit flag invokes only the #357 CLI for
 this run and requires the exact-source normal cleanup/zero-write evidence before
 overall PASS; a failed browser case still remains FAIL even after successful stop.

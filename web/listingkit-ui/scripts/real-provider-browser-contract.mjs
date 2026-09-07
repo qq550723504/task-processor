@@ -38,6 +38,7 @@ export function validateBrowserHandoff(value, { manifestPath, runtimeSha, webSha
     require(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.runId));
     require(/^[0-9a-f]{40}$/.test(runtimeSha) && /^[0-9a-f]{40}$/.test(webSha));
     require(value.sourceSha === runtimeSha && value.webSha === webSha);
+    require(value.sourceDirty === false && value.webDirty === false);
     require(!["sessions", "cookies", "storageState", "sessionToken"].some(key => key in value));
     const root = path.resolve(temporaryRoot, "task-processor-issue357", value.runId);
     require(path.resolve(manifestPath) === path.join(root, "manifest.json"));

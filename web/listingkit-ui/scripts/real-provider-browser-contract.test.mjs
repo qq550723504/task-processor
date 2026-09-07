@@ -12,7 +12,7 @@ const root = path.join(tmpdir(), "task-processor-issue357", runId);
 const manifestPath = path.join(root, "manifest.json");
 function handoff() {
   return {
-    schemaVersion: "issue357-v1", runId, status: "ready", sourceSha: sha, webSha,
+    schemaVersion: "issue357-v1", runId, status: "ready", sourceSha: sha, webSha, sourceDirty: false, webDirty: false,
     origins: { web: "http://localhost:43101", go: "http://127.0.0.1:43102", issuer: "http://localhost:43103" },
     instanceId: "instance-1", projectId: "project-1",
     organizations: Object.fromEntries(["A", "B", "C", "Empty", "D"].map(key => [key, { id: `org-${key}`, name: key }])),
@@ -35,6 +35,12 @@ test("planned, failed, stale source and absent exact SHA fail closed", () => {
     assert.throws(() => validate(input), /handoff_invalid/);
   }
   assert.throws(() => validate(handoff(), { runtimeSha: "" }), /handoff_invalid/);
+});
+
+test("development runs started from dirty or unproven source cannot become SHA acceptance", () => {
+  for (const overrides of [{ sourceDirty: true }, { webDirty: true }, { sourceDirty: undefined }, { webDirty: undefined }]) {
+    assert.throws(() => validate({ ...handoff(), ...overrides }), /handoff_invalid/);
+  }
 });
 test("shared origins, credentials in origin and non-loopback endpoints are rejected", () => {
   for (const value of ["https://auth.example.test", "http://user:secret@localhost:43101", "http://localhost:43101/path", "http://localhost:43101?secret=value", "http://127.0.0.2:43101", "http://localhost:43103"]) {
