@@ -56,7 +56,7 @@ func TestWorkbenchContextModuleRegistersBothPoliciesExactlyOnce(t *testing.T) {
 	require.NoError(t, module.Register(registry))
 
 	routes := registry.Routes()
-	require.Len(t, routes, 2)
+	require.Len(t, routes, 4)
 	require.Equal(t, http.MethodGet, routes[0].Method)
 	require.Equal(t, "/api/v1/workbench/context", routes[0].Path)
 	require.Equal(t, httproute.AuthPolicyVerifiedIdentity, routes[0].AuthPolicy)

@@ -15,6 +15,37 @@ import (
 	"task-processor/internal/authidentity"
 )
 
+func TestVerifierDiscoveryWaitHonorsCallerDeadline(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	v := NewVerifier(Config{IssuerURL: server.URL, ClientID: "fixture", HTTPClient: server.Client()})
+	done := make(chan struct{})
+	go func() { defer close(done); _, _ = v.Verify(context.Background(), "first") }()
+	<-started
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	second := make(chan error, 1)
+	go func() { _, err := v.Verify(ctx, "second"); second <- err }()
+	select {
+	case err := <-second:
+		require.Error(t, err)
+	case <-time.After(200 * time.Millisecond):
+		t.Error("discovery lock ignored caller deadline")
+	}
+	close(release)
+	<-done
+}
+
 func TestVerifierClassifiesDependencyFailureSeparatelyFromInvalidToken(t *testing.T) {
 	t.Run("dependency transport", func(t *testing.T) {
 		verifier := NewVerifier(Config{
@@ -231,6 +262,38 @@ func TestVerifierRejectsInactiveAndIncompleteIdentity(t *testing.T) {
 			_, err := verifier.Verify(context.Background(), "user-token")
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.expectedText)
+		})
+	}
+}
+
+func TestVerifierRejectsMalformedOrOversizedIdentityClaims(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		subject         string
+		resourceOwnerID string
+	}{
+		{name: "malformed subject", subject: "/invalid", resourceOwnerID: "org-1"},
+		{name: "oversized subject", subject: strings.Repeat("u", 129), resourceOwnerID: "org-1"},
+		{name: "malformed resource owner", subject: "user-1", resourceOwnerID: "/invalid"},
+		{name: "oversized resource owner", subject: "user-1", resourceOwnerID: strings.Repeat("o", 129)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newAuthServer(t, map[string]any{
+				"active":                                true,
+				"sub":                                   tc.subject,
+				"urn:zitadel:iam:user:resourceowner:id": tc.resourceOwnerID,
+			})
+			defer server.Close()
+			verifier := NewVerifier(Config{IssuerURL: server.URL, ClientID: "api", HTTPClient: server.Client()})
+
+			_, err := verifier.Verify(context.Background(), "user-token")
+
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), tc.subject)
+			require.NotContains(t, err.Error(), tc.resourceOwnerID)
+			require.False(t, IsVerificationInvalid(err))
+			require.False(t, IsVerificationDependencyUnavailable(err))
+			require.True(t, IsVerificationInvalidResponse(err))
 		})
 	}
 }

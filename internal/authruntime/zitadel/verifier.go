@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"task-processor/internal/authidentity"
@@ -19,6 +18,8 @@ import (
 var (
 	errResourceOwnerMissing = errors.New("ZITADEL resource owner is required")
 	errSubjectMissing       = errors.New("ZITADEL subject is required")
+	errResourceOwnerInvalid = errors.New("ZITADEL resource owner claim is invalid")
+	errSubjectInvalid       = errors.New("ZITADEL subject claim is invalid")
 	errTokenExpired         = errors.New("ZITADEL token introspection returned an expired token")
 )
 
@@ -29,6 +30,7 @@ type verificationFailureKind uint8
 const (
 	verificationInvalid verificationFailureKind = iota + 1
 	verificationDependencyUnavailable
+	verificationInvalidResponse
 )
 
 type verificationFailure struct {
@@ -49,6 +51,11 @@ func IsVerificationDependencyUnavailable(err error) bool {
 	return errors.As(err, &failure) && failure.kind == verificationDependencyUnavailable
 }
 
+func IsVerificationInvalidResponse(err error) bool {
+	var failure *verificationFailure
+	return errors.As(err, &failure) && failure.kind == verificationInvalidResponse
+}
+
 func invalidVerification(cause error) error {
 	return &verificationFailure{kind: verificationInvalid, cause: cause}
 }
@@ -57,15 +64,19 @@ func unavailableVerification(cause error) error {
 	return &verificationFailure{kind: verificationDependencyUnavailable, cause: cause}
 }
 
+func invalidResponseVerification(cause error) error {
+	return &verificationFailure{kind: verificationInvalidResponse, cause: cause}
+}
+
 type Verifier interface {
 	Verify(context.Context, string) (authidentity.AuthenticatedIdentity, error)
 }
 
 type verifier struct {
-	cfg       Config
-	mu        sync.Mutex
-	discovery discoveryDocument
-	now       func() time.Time
+	cfg           Config
+	discoveryGate chan struct{}
+	discovery     discoveryDocument
+	now           func() time.Time
 }
 
 func NewVerifier(cfg Config) Verifier {
@@ -73,7 +84,7 @@ func NewVerifier(cfg Config) Verifier {
 }
 
 func newVerifier(cfg Config) *verifier {
-	return &verifier{cfg: cfg, now: time.Now}
+	return &verifier{cfg: cfg, now: time.Now, discoveryGate: make(chan struct{}, 1)}
 }
 
 func (v *verifier) Verify(ctx context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
@@ -91,9 +102,15 @@ func (v *verifier) Verify(ctx context.Context, token string) (authidentity.Authe
 	if tenantID == "" {
 		return authidentity.AuthenticatedIdentity{}, invalidVerification(errResourceOwnerMissing)
 	}
+	if !authidentity.IsBoundedIdentifier(tenantID) {
+		return authidentity.AuthenticatedIdentity{}, invalidResponseVerification(errResourceOwnerInvalid)
+	}
 	userID := strings.TrimSpace(payload.Subject)
 	if userID == "" {
 		return authidentity.AuthenticatedIdentity{}, invalidVerification(errSubjectMissing)
+	}
+	if !authidentity.IsBoundedIdentifier(userID) {
+		return authidentity.AuthenticatedIdentity{}, invalidResponseVerification(errSubjectInvalid)
 	}
 
 	identity := authidentity.AuthenticatedIdentity{
@@ -171,8 +188,12 @@ func (v *verifier) introspect(ctx context.Context, token string) (*Introspection
 }
 
 func (v *verifier) getDiscovery(ctx context.Context) (discoveryDocument, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	select {
+	case v.discoveryGate <- struct{}{}:
+		defer func() { <-v.discoveryGate }()
+	case <-ctx.Done():
+		return discoveryDocument{}, ctx.Err()
+	}
 
 	if v.discovery.IntrospectionEndpoint != "" {
 		return v.discovery, nil

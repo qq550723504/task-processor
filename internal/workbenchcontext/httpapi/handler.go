@@ -19,6 +19,11 @@ const switchOrganizationRequestBodyMaxBytes = 4096
 // Handler exposes only the verified, resolved workbench identity projection.
 type Handler struct {
 	workbenchAuthorizer *authz.ListingKitAuthorizer
+	profileReader       authidentity.SelfProfileReader
+}
+
+func (h *Handler) SetSelfProfileReader(reader authidentity.SelfProfileReader) {
+	h.profileReader = reader
 }
 
 func NewHandler() *Handler { return &Handler{} }
