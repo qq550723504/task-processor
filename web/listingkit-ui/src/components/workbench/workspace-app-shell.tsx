@@ -20,12 +20,16 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/workbench";
   const router = useRouter();
   const context = useWorkbenchContext();
+  // Personal identity is bootstrapped by the server page, independently of enterprise grants.
+  const isPersonalProfile = pathname === "/workbench/account/profile";
+  const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
   const shouldRedirectToNoOrganization =
     !context.isLoading &&
     !context.error &&
     !context.blockingError &&
     context.organizations.length === 0 &&
+    !isPersonalProfile &&
     pathname !== NO_ORGANIZATION_ROUTE;
   const shouldLeaveNoOrganization =
     !context.isLoading &&
@@ -47,7 +51,9 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     }
   }, [router, shouldLeaveNoOrganization, shouldRedirectToNoOrganization]);
 
-  if (context.isLoading) {
+  if (authenticationError) return <AccessState action={redirectToLogin} code={authenticationError.code} />;
+
+  if (context.isLoading && !isPersonalProfile) {
     return (
       <main className="flex min-h-svh items-center justify-center bg-background px-6">
         <p className="text-sm text-muted-foreground" role="status">
@@ -57,7 +63,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (context.blockingError) {
+  if (context.blockingError && !isPersonalProfile) {
     return (
       <AccessState
         action={
@@ -70,7 +76,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (context.error) {
+  if (context.error && !isPersonalProfile) {
     return (
       <AccessState
         action={
@@ -95,7 +101,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
 
   return (
     <WorkbenchFrame key={pathname} pathname={pathname}>
-      {context.selectionRequired ? (
+      {context.selectionRequired && !isPersonalProfile ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
           role="status"
@@ -118,6 +124,7 @@ function WorkbenchFrame({ children, pathname }: { children: ReactNode; pathname:
   const [mobileOpen, setMobileOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const context = useWorkbenchContext();
+  const contextConfirmed = !context.isLoading && !context.isSwitching && !context.error && !context.blockingError;
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribeToHydration, getClientHydrationSnapshot, getServerHydrationSnapshot);
   const light = mounted && resolvedTheme === "light";
@@ -133,15 +140,15 @@ function WorkbenchFrame({ children, pathname }: { children: ReactNode; pathname:
       <div className="console-body">
         <header className="console-topbar">
           <Button ref={trigger} className="md:hidden" variant="ghost" size="icon" aria-controls={MOBILE_NAVIGATION_ID} aria-expanded={mobileOpen} aria-label={mobileOpen ? "关闭工作台导航" : "打开工作台导航"} onClick={() => setMobileOpen((value) => !value)}>{mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</Button>
-          <div className="console-top-context"><p className="console-tagline">打造属于自己的AI电商团队</p><div className="console-organization"><OrganizationSwitcher /></div></div>
+          <div className="console-top-context"><p className="console-tagline">打造属于自己的AI电商团队</p><div className="console-organization">{contextConfirmed ? <OrganizationSwitcher /> : <span className="text-xs text-muted-foreground">企业上下文尚未确认</span>}</div></div>
           <div className="console-global-actions">
             <Button disabled title="客服服务暂未接入" variant="outline">联系客服</Button>
             <Button disabled title="通知服务暂未接入" variant="outline">通知</Button>
             <button className="console-theme-toggle" type="button" role="switch" aria-label="浅色模式" aria-checked={light} onClick={() => setTheme(light ? "dark" : "light")}>{light ? "浅色" : "深色"}<span aria-hidden="true" /></button>
-            <details className="console-user"><summary>我的账户 ⌄</summary><div><p className="break-words text-xs text-muted-foreground">已登录账号</p><p className="mt-1 break-all text-sm">{context.user?.id}</p><a href="/api/zitadel-auth/logout">退出登录</a></div></details>
+            <details className="console-user"><summary>我的账户 ⌄</summary><div><p className="break-words text-xs text-muted-foreground">已登录账号</p><p className="mt-1 break-all text-sm">{contextConfirmed ? context.user?.id : null}</p><Link href="/workbench/account/profile" prefetch={false}>账户资料</Link><a href="/api/zitadel-auth/logout">退出登录</a></div></details>
           </div>
         </header>
-        {context.effectiveOrganization && context.effectiveOrganization.id !== context.homeOrganizationId ? <div className="console-delegation"><DelegatedOperationIndicator effectiveOrganization={context.effectiveOrganization} homeOrganizationId={context.homeOrganizationId} organizations={context.organizations} /></div> : null}
+        {contextConfirmed && context.effectiveOrganization && context.effectiveOrganization.id !== context.homeOrganizationId ? <div className="console-delegation"><DelegatedOperationIndicator effectiveOrganization={context.effectiveOrganization} homeOrganizationId={context.homeOrganizationId} organizations={context.organizations} /></div> : null}
         {mobileOpen ? <div className="console-mobile-nav" id={MOBILE_NAVIGATION_ID}><ConsoleNavigation key={pathname} pathname={pathname} ariaLabel="移动工作台导航" onNavigate={closeNavigation} /></div> : null}
         <main className="console-content" id="console-main" tabIndex={-1}>{children}</main>
       </div>

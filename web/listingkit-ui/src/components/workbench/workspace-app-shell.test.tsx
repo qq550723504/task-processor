@@ -61,6 +61,27 @@ function renderShell(child = <p>organization child</p>) {
 }
 
 describe("WorkspaceAppShell", () => {
+  function injectProfileContext(overrides: Record<string, unknown> = {}) {
+    injectedWorkbenchContext.value = { user: { id: "stale-user" }, homeOrganizationId: "org-a", organizations: [], effectiveOrganization: null, roles: [], selectionRequired: false, isLoading: false, isSwitching: false, error: null, blockingError: null, retry: vi.fn(), switchOrganization: vi.fn(), ...overrides };
+  }
+  it.each([{}, { isLoading: true }, { selectionRequired: true }, { error: { code: "DEPENDENCY_UNAVAILABLE" } }, { blockingError: { code: "ORGANIZATION_ACCESS_REVOKED" } }])("allows only exact profile through enterprise gates: %j", overrides => {
+    navigation.pathname = "/workbench/account/profile"; injectProfileContext(overrides);
+    render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>);
+    expect(screen.getByText("personal profile")).toBeVisible(); expect(navigation.replace).not.toHaveBeenCalled();
+  });
+  it.each(["/workbench/account", "/workbench/account/organization", "/workbench/account/profile/extra", "/workbench/plans/options", "/workbench/ai/tasks", "/workbench/stores"])("preserves enterprise gate for %s", path => {
+    navigation.pathname = path; injectProfileContext(); render(<WorkspaceAppShell><p>protected child</p></WorkspaceAppShell>);
+    expect(screen.queryByText("protected child")).not.toBeInTheDocument(); expect(navigation.replace).toHaveBeenCalledWith("/workbench/no-organization");
+  });
+  it.each(["error", "blockingError"])("keeps %s authentication denial above the profile exemption", field => {
+    navigation.pathname = "/workbench/account/profile"; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
+    render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>); expect(screen.queryByText("personal profile")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
+  });
+  it("hides stale identity, enterprise switcher and delegation metadata on grant failure", () => {
+    navigation.pathname = "/workbench/account/profile"; injectProfileContext({ error: { code: "DEPENDENCY_UNAVAILABLE" }, effectiveOrganization: { id: "org-b", name: "旧企业", roles: [] } });
+    render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>);
+    expect(screen.getByText("personal profile")).toBeVisible(); expect(screen.queryByText("stale-user")).not.toBeInTheDocument(); expect(screen.queryByRole("combobox")).not.toBeInTheDocument(); expect(screen.queryByLabelText("企业代管状态")).not.toBeInTheDocument();
+  });
   afterEach(() => {
     navigation.pathname = "/workbench";
     navigation.replace.mockReset();
