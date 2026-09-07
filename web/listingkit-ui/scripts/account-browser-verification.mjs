@@ -65,7 +65,13 @@ try {
   }
   for (const [user, selection] of [["no-org", false], ["u1", false], ["grant-down", false]]) await check(`profile independent of enterprise: ${user}, selection=${selection}`, async () => {
     const { page, context } = await open(user, "profile", 390, "light", selection);
-    try { await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible(); expect(page.url()).toContain("/account/profile"); await snapshot(page, `profile-${user}-no-selection`); } finally { await context.close(); }
+    try {
+      if (user === "no-org") await expect(page.getByText("暂无可用企业", { exact: true })).toBeVisible();
+      if (user === "u1") await expect(page.getByRole("combobox", { name: "当前企业" })).toHaveValue("");
+      await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible();
+      await expect(page.getByText("正在读取资料", { exact: true })).toHaveCount(0);
+      expect(page.url()).toContain("/account/profile"); await snapshot(page, `profile-${user}-no-selection`);
+    } finally { await context.close(); }
   });
   for (const [user, text] of [["down", "资料服务暂不可用"], ["mismatch", "资料响应无效"], ["expired", "登录状态已失效，请重新登录"]]) await check(`actual provider error: ${user}`, async () => {
     const { page, context } = await open(user, "profile");
