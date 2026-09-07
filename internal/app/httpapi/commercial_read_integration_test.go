@@ -30,12 +30,14 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/workbenchcontext"
+	contextapi "task-processor/internal/workbenchcontext/httpapi"
 )
 
 // This fixture creates its own loopback-only, disposable PostgreSQL. It never
@@ -81,7 +83,7 @@ type commercialGrantFixture struct {
 	calls atomic.Int32
 }
 
-func (g *commercialGrantFixture) ListOwnProjectAuthorizations(ctx context.Context, _, _, project string) ([]authidentity.OrganizationGrant, error) {
+func (g *commercialGrantFixture) ListOwnProjectAuthorizations(ctx context.Context, _, subject, project string) ([]authidentity.OrganizationGrant, error) {
 	g.calls.Add(1)
 	mode := g.mode.Load()
 	if mode == 1 {
@@ -98,10 +100,14 @@ func (g *commercialGrantFixture) ListOwnProjectAuthorizations(ctx context.Contex
 		}
 	}
 	grants := []authidentity.OrganizationGrant{}
-	for _, org := range []string{"org-B", "org-C", "org-custom", "org-empty", "org-expired", "org-disabled", "org-future"} {
-		grants = append(grants, authidentity.OrganizationGrant{OrganizationID: org, ProjectID: project, Roles: []string{"listingkit_operator"}})
+	role := "listingkit_operator"
+	if subject == "viewer" || mode == 4 {
+		role = "listingkit_viewer"
 	}
-	grants = append(grants, authidentity.OrganizationGrant{OrganizationID: "org-viewer", ProjectID: project, Roles: []string{"listingkit_viewer"}})
+	for _, org := range []string{"org-B", "org-C", "org-custom", "org-empty", "org-expired", "org-disabled", "org-future"} {
+		grants = append(grants, authidentity.OrganizationGrant{OrganizationID: org, OrganizationName: org, ProjectID: project, Roles: []string{role}})
+	}
+	grants = append(grants, authidentity.OrganizationGrant{OrganizationID: "org-viewer", OrganizationName: "org-viewer", ProjectID: project, Roles: []string{"listingkit_viewer"}})
 	return grants, nil
 }
 
@@ -187,12 +193,32 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, result.module.Register(registry))
 	require.Len(t, registry.Routes(), 1)
+	require.NoError(t, contextapi.NewModule(contextapi.NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())).Register(registry))
 	grants := &commercialGrantFixture{}
-	resolver := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(grants, workbenchcontext.NewGrantCache(nil)), "fixture-project", "fixture-contract", nil)
-	auth := routeAuthDependencies{workbenchVerifier: mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "fixture-user", HomeOrganizationID: "home-A", TokenExpiresAt: now.Add(time.Hour)}}, organizationResolver: resolver, authorizer: authz.DefaultListingKitAuthorizer(), auditRecorder: workbenchcontext.NewStructuredAuditRecorder(log), auditNow: time.Now}
+	var verifier zitadel.Verifier = mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "fixture-user", HomeOrganizationID: "home-A", TokenExpiresAt: now.Add(time.Hour)}}
+	browser := newCommercialBrowserFixture(t)
+	var suspension workbenchcontext.OrganizationBusinessStatusChecker
+	if browser != nil {
+		verifier = browser
+		suspension = browser
+	}
+	resolver := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(grants, workbenchcontext.NewGrantCache(nil)), "fixture-project", "fixture-contract", suspension)
+	auth := routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authz.DefaultListingKitAuthorizer(), auditRecorder: workbenchcontext.NewStructuredAuditRecorder(log), auditNow: time.Now}
 	appServer := buildHTTPServerFromRoutes(0, registry.Routes(), auth)
 	mux := http.NewServeMux()
-	mux.Handle("/", appServer.Handler)
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if browser != nil && browser.slow.Load() && r.URL.Path == "/api/v1/workbench/commercial/overview" {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+		}
+		appServer.Handler.ServeHTTP(w, r)
+	}))
+	if browser != nil {
+		mux.HandleFunc("/fixture/scenario", browser.control(db, grants))
+	}
 	mux.HandleFunc("/fixture/mode", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(405)
@@ -208,6 +234,12 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
+	if browser != nil {
+		browser.serve(t, server.URL)
+		require.Equal(t, before, commercialTableSnapshot(t, db), "browser fixture changed commercial business rows")
+		t.Logf("ZERO_WRITE browser: all saas table values/xmin unchanged: %s", before)
+		return
+	}
 	// Node starts an HTTP BFF around the actual Next route export. Auth.js token
 	// retrieval is explicitly substituted; API/Resolver/Casbin/owner/PG are real.
 	webDir, err := filepath.Abs(filepath.Join("..", "..", "..", "web", "listingkit-ui"))
