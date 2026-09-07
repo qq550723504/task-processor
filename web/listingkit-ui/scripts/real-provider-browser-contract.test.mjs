@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // Schema checks only. These objects never authenticate a browser or count as E2E.
 const sha = "a".repeat(40);
@@ -77,4 +77,35 @@ test("failed late-response delivery cannot pass without observed browser cancell
   for (const failure of [null, "", "private-error-detail", "net::ERR_CONNECTION_RESET"]) {
     assert.throws(() => classifyLateResponseDelivery(false, failure), error => error.message === "issue358_late_response_unproven");
   }
+});
+
+test("a read started inside the cache window may finish after the boundary", () => {
+  assert.equal(classifyRevocationRead({ status: 200, confirmedAt: 1000, requestStartedAt: 60999, responseCompletedAt: 62000 }), "cached");
+  assert.equal(classifyRevocationRead({ status: 403, confirmedAt: 1000, requestStartedAt: 61001, responseCompletedAt: 62000 }), "denied");
+  assert.throws(() => classifyRevocationRead({ status: 200, confirmedAt: 1000, requestStartedAt: 61001, responseCompletedAt: 62000 }), /revocation_not_converged/);
+});
+
+test("a failed or lost mutation response still attempts restoration and remains failed", async () => {
+  const actions = [];
+  await assert.rejects(withOwnerControlRestored(
+    async () => { actions.push("mutation-applied-response-lost"); throw new Error("control_failed"); },
+    async () => { actions.push("operation"); },
+    async () => { actions.push("restore"); },
+  ), /control_failed/);
+  assert.deepEqual(actions, ["mutation-applied-response-lost", "restore"]);
+});
+
+test("restoration runs after successful controls and failed assertions", async () => {
+  for (const fail of [false, true]) {
+    const actions = [];
+    const operation = withOwnerControlRestored(
+      async () => { actions.push("mutate"); },
+      async () => { actions.push("operation"); if (fail) throw new Error("assertion_failed"); return "result"; },
+      async () => { actions.push("restore"); },
+    );
+    if (fail) await assert.rejects(operation, /assertion_failed/);
+    else assert.equal(await operation, "result");
+    assert.deepEqual(actions, ["mutate", "operation", "restore"]);
+  }
+  await assert.rejects(withOwnerControlRestored(async () => {}, async () => {}, async () => { throw new Error("restore_failed"); }), /restore_failed/);
 });

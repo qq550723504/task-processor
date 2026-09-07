@@ -115,6 +115,54 @@ this run and requires the exact-source normal cleanup/zero-write evidence before
 overall PASS; a failed browser case still remains FAIL even after successful stop.
 It has not yet been run against a real provider. Rolling execution is in the PR.
 
+## Manual experience from clean checkouts
+
+Use Windows with Docker Desktop running and the repository's Node, Go and pnpm
+versions. Obtain the exact runtime and browser commits recorded together in the
+PR, in separate clean checkouts. Before #357 merges, the browser branch alone
+does not contain the runtime CLI. Let `$runtimeCheckout` point to the #357 root
+and `$browserCheckout` to this PR root; use absolute paths. Install the browser
+checkout's pinned dependencies, then start from the runtime checkout:
+
+```powershell
+pnpm.cmd --dir "$browserCheckout/web/listingkit-ui" install --frozen-lockfile
+Set-Location -LiteralPath $runtimeCheckout
+node scripts/issue357-runtime.mjs start --web-dir "$browserCheckout/web/listingkit-ui"
+```
+
+Retain the returned run UUID and private manifest path. Open only this ready
+run's `origins.web` in a new disposable browser profile. Use
+`/workbench/account/profile` to enter official Login V2. Read the private
+`users.admin.credentialFile` locally and type its username and password into the
+official form; do not paste credentials or the manifest into a terminal log,
+issue, chat, screenshot or browser storage. Each user credential file belongs to
+this run; no application session is pre-issued.
+
+On return, the profile shows Home A before enterprise selection. Select B, then
+C, and visit enterprise details and plan entitlements: the actual current-month
+usage differs (1 and 2). Empty has no subscription and unknown usage. Use the
+account menu's logout, then enter bare `/login?returnTo=/workbench/account/profile`
+and authenticate normally as viewer: profile and allowed enterprise reads work,
+commercial reads are denied. Repeat as no-org: self profile works and enterprise
+pages reach the existing no-organization gate. Never reuse a browser profile
+between two localhost runs, because browser cookies are host scoped across ports.
+
+Finish from the same runtime checkout, supplying only the UUID this operator
+started. Check verifies health and zero business writes; it does not claim a
+browser login. Stop removes the run's applications, containers, network, volumes
+and credentials and retains sanitized evidence; repeat stop is safe:
+
+```powershell
+node scripts/issue357-runtime.mjs check --run <owned-uuid>
+node scripts/issue357-runtime.mjs stop --run <owned-uuid>
+node scripts/issue357-runtime.mjs stop --run <owned-uuid>
+```
+
+A stopped run's URL is historical evidence, not an online environment. Start a
+new run for another manual experience. The automated entry above may instead
+exercise and stop its exclusively owned run with `--stop-owned-run`; it must not
+be run concurrently with manual grant changes or another browser test owner.
+
 ## Evidence and execution rules
 
 Use the installed Browser skill first. If the in-app browser demonstrably cannot

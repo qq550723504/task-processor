@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -274,47 +274,49 @@ async function ownerEvidence(kind) {
 async function controlCases() {
   const contexts = [];
   try {
-    for (let index = 0; index < 2; index++) {
+    for (let index = 0; index < 3; index++) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "en-US" });
       contexts.push(context);
       const page = await context.newPage();
       await login(page, context, "admin");
       await select(page, context, "B");
       // Leave Console to avoid background context reads clearing the selection.
-      // Both API clients continue with their own naturally issued browser cookies.
+      // API clients continue with their own naturally issued browser cookies.
       await page.goto(manifest.origins.web);
     }
-    const [cached, live] = contexts;
+    const [cached, live, afterWindow] = contexts;
     await check("M9_revocation", async () => {
       ensure((await api(cached, "/api/account/organization", "admin", "B")).status === 200);
       ensure((await api(live, commercialPath, "admin", "B")).status === 200);
-      let changed = false;
-      try {
-        await control("revoke", "admin", "B"); changed = true;
+      await withOwnerControlRestored(() => control("revoke", "admin", "B"), async () => {
         const confirmedAt = Date.now();
         const commercial = await api(live, commercialPath, "admin", "B");
         ensure(commercial.status === 403 && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(commercial.body.code));
         let denied = false;
         while (Date.now() - confirmedAt < 75000) {
+          const requestStartedAt = Date.now();
           const organization = await api(cached, "/api/account/organization", "admin", "B");
-          if (organization.status === 403) {
+          if (classifyRevocationRead({ status: organization.status, requestStartedAt, confirmedAt }) === "denied") {
             ensure(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(organization.body.code));
             denied = true; break;
           }
-          ensure(organization.status === 200 && Date.now() - confirmedAt <= 60000);
           await delay(2000);
         }
         ensure(denied);
-        report.revocation = { liveCommercial: "DENIED", cachedAccount: "DENIED", elapsedMs: Date.now() - confirmedAt, policyMaxAgeSeconds: 60 };
+        // A separate normal-login context retains its original selection even
+        // when the earlier denial clears the probing context's cookie.
+        await delay(Math.max(0, confirmedAt + 60001 - Date.now()));
+        const afterWindowStartedAt = Date.now();
+        const expiredCache = await api(afterWindow, "/api/account/organization", "admin", "B");
+        ensure(afterWindowStartedAt > confirmedAt + 60000 && expiredCache.status === 403 && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(expiredCache.body.code));
+        report.revocation = { liveCommercial: "DENIED", cachedAccount: "DENIED", afterCacheWindow: "DENIED", elapsedMs: Date.now() - confirmedAt, policyMaxAgeSeconds: 60 };
         ensure((await api(cached, "/api/account/profile", "admin")).status === 200);
-      } finally { if (changed) await control("restore", "admin", "B"); }
+      }, () => control("restore", "admin", "B"));
       const restored = await live.request.put(`${manifest.origins.web}/api/workbench/context/effective-organization`, { data: { organizationId: manifest.organizations.B.id }, maxRedirects: 0 });
       ensure(restored.status() === 200 && (await api(live, commercialPath, "admin", "B")).status === 200);
     });
     await check("M8_provider_failure", async () => {
-      let stopped = false;
-      try {
-        await control("provider-stop"); stopped = true;
+      await withOwnerControlRestored(() => control("provider-stop"), async () => {
         const account = await api(cached, "/api/account/profile", "admin");
         ensure([401, 502, 503, 504].includes(account.status));
         const empty = await browser.newContext();
@@ -324,7 +326,7 @@ async function controlCases() {
           const result = await api(empty, "/api/auth/session");
           ensure(!result.body?.identity && !result.body?.user && !hasToken(result.body));
         } finally { await empty.close(); }
-      } finally { if (stopped) await control("provider-start"); }
+      }, () => control("provider-start"));
       await control("check");
       await ownerEvidence("check");
     });

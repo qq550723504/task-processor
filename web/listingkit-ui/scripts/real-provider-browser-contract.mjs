@@ -16,6 +16,19 @@ export function classifyLateResponseDelivery(delivered, cancellationError) {
   throw new Error("issue358_late_response_unproven");
 }
 
+export function classifyRevocationRead({ status, confirmedAt, requestStartedAt }) {
+  if (status === 403) return "denied";
+  if (status === 200 && requestStartedAt - confirmedAt <= 60000) return "cached";
+  throw new Error("issue358_revocation_not_converged");
+}
+
+export async function withOwnerControlRestored(mutate, operation, restore) {
+  try {
+    await mutate();
+    return await operation();
+  } finally { await restore(); }
+}
+
 // Consumer of #357 schema v1, not a second runtime/seed or application DTO.
 export function validateBrowserHandoff(value, { manifestPath, runtimeSha, webSha, temporaryRoot }) {
   try {
