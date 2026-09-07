@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -114,6 +115,7 @@ func (g *titleGenerator) Generate(_ context.Context, r enrichment.GenerationRequ
 
 type titleGrants struct {
 	revoked atomic.Bool
+	failed  atomic.Bool
 	live    atomic.Int32
 	cached  atomic.Int32
 }
@@ -123,6 +125,9 @@ func (g *titleGrants) Load(_ context.Context, source workbenchcontext.GrantSourc
 		g.live.Add(1)
 	} else {
 		g.cached.Add(1)
+	}
+	if g.failed.Load() {
+		return workbenchcontext.GrantResult{}, fmt.Errorf("controlled grant dependency failure")
 	}
 	roles := []string{"listingkit_operator"}
 	if r.Subject == "admin" || r.Subject == "admin2" {
@@ -194,7 +199,14 @@ func newTitleFixture(t *testing.T) *titleFixture {
 	source := sourcing.SourceEnvelope{Identity: sourcing.SourceIdentity{SourceType: sourcing.SourceTypeManualImport, SourcePlatform: "fixture", SourceID: "source1", SourceVersion: "v1"}, RawReference: sourcing.RawSourceReference{ReferenceType: "captured", ReferenceID: "evidence1", SnapshotID: "capture1", Checksum: sourcing.RawSnapshotChecksum("controlled evidence"), CapturedAt: time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC)}, ProductCandidate: sourcing.ProductCandidate{Title: "Original bottle", Description: "unchanged description", Brand: "unchanged brand", Variants: []sourcing.ProductVariantCandidate{{SourceID: "v1", SKU: "sku", Price: 12, Currency: "USD", Stock: 8}}}, AssetCandidates: []sourcing.AssetCandidate{{URL: "https://example.invalid/image.png", MediaType: "image"}}, Warnings: []sourcing.SourceWarning{{Code: "review", Message: "source needs review"}}}
 	base, e := sourcePublisher.Publish(context.Background(), sourcing.PublishRequest{TenantID: "B", ProductKey: "product", PublicationID: "controlled-initial", Envelope: source})
 	require.NoError(t, e)
-	return &titleFixture{db, []review.Binding{{Identity: base.Identity, Version: base.Version, PublicationID: base.PublicationID, Source: source}}, &titleGenerator{}, &titleGrants{}, publisher, repo, base}
+	sourceA := source
+	sourceA.Identity.SourceID = "source-a"
+	sourceA.RawReference.ReferenceID = "evidence-a"
+	sourceA.RawReference.SnapshotID = "capture-a"
+	baseA, e := sourcePublisher.Publish(context.Background(), sourcing.PublishRequest{TenantID: "A", ProductKey: "product-a", PublicationID: "controlled-initial-a", Envelope: sourceA})
+	require.NoError(t, e)
+	bindings := []review.Binding{{Identity: base.Identity, Version: base.Version, PublicationID: base.PublicationID, Source: source}, {Identity: baseA.Identity, Version: baseA.Version, PublicationID: baseA.PublicationID, Source: sourceA}}
+	return &titleFixture{db, bindings, &titleGenerator{}, &titleGrants{}, publisher, repo, base}
 }
 func (f *titleFixture) server(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -239,12 +251,47 @@ func titleCall(t *testing.T, server *httptest.Server, method, path, actor, org, 
 	require.Equal(t, status, code, string(raw))
 	var v review.View
 	if code == 200 {
-		require.NoError(t, json.Unmarshal(raw, &v))
+		v = decodeTitleView(t, raw)
 	}
 	return v
 }
+
+func decodeTitleView(t *testing.T, raw []byte) review.View {
+	t.Helper()
+	var dto productReviewViewDTO
+	require.NoError(t, json.Unmarshal(raw, &dto))
+	require.Equal(t, productReviewSchemaVersion, dto.SchemaVersion)
+	require.Equal(t, productReviewCoverage, dto.Coverage)
+	baseVersion, err := strconv.ParseUint(dto.Input.BaseVersion, 10, 64)
+	require.NoError(t, err)
+	revision, err := strconv.ParseUint(dto.Revision, 10, 64)
+	require.NoError(t, err)
+	view := review.View{ID: dto.ProposalID, Owner: dto.Owner, Input: review.CreateInput{ProductKey: dto.Input.ProductKey, BaseVersion: baseVersion}, Before: dto.Before, Title: dto.After, OriginalTitle: dto.OriginalTitle, Policy: dto.Policy, State: dto.State, Revision: revision, Evidence: dto.Evidence, Quality: enrichment.QualityScore{Overall: dto.Quality.Overall, EvidenceCoverage: dto.Quality.EvidenceCoverage, RequiredFieldCoverage: dto.Quality.RequiredFieldCoverage}, Unresolved: dto.Unresolved}
+	for _, decision := range dto.Decisions {
+		decisionRevision, parseErr := strconv.ParseUint(decision.Revision, 10, 64)
+		require.NoError(t, parseErr)
+		at, parseErr := time.Parse(time.RFC3339Nano, decision.At)
+		require.NoError(t, parseErr)
+		view.History = append(view.History, review.Decision{Action: decision.Action, Actor: decision.Actor, Revision: decisionRevision, Before: decision.Before, After: decision.After, At: at})
+	}
+	if dto.ApplyReceipt != nil {
+		receiptRevision, parseErr := strconv.ParseUint(dto.ApplyReceipt.Revision, 10, 64)
+		require.NoError(t, parseErr)
+		productVersion, parseErr := strconv.ParseUint(dto.ApplyReceipt.ProductVersion, 10, 64)
+		require.NoError(t, parseErr)
+		at, parseErr := time.Parse(time.RFC3339Nano, dto.ApplyReceipt.At)
+		require.NoError(t, parseErr)
+		view.Receipt = &review.Receipt{ProposalID: dto.ApplyReceipt.ProposalID, Revision: receiptRevision, ProductVersion: productVersion, PublicationID: dto.ApplyReceipt.PublicationID, Actor: dto.ApplyReceipt.Actor, At: at}
+	}
+	return view
+}
 func titleCreate(t *testing.T, s *httptest.Server, key string) review.View {
 	return titleCall(t, s, "POST", titleBasePath, "operator", "B", key, `{"product_key":"product","base_version":1}`, 200)
+}
+func titleCreateFor(t *testing.T, s *httptest.Server, key, actor, org, productKey string) review.View {
+	body, err := json.Marshal(review.CreateInput{ProductKey: productKey, BaseVersion: 1})
+	require.NoError(t, err)
+	return titleCall(t, s, "POST", titleBasePath, actor, org, key, string(body), 200)
 }
 func titleDecision(t *testing.T, s *httptest.Server, v review.View, action, actor, title string, status int) review.View {
 	raw, e := json.Marshal(review.DecisionInput{Action: action, ExpectedRevision: v.Revision, Title: title})
@@ -326,6 +373,9 @@ func TestProductReviewHTTPStrictInputsAndScope(t *testing.T) {
 	for _, body := range []string{`{"product_key":"product","base_version":1,"actor":"admin"}`, `{"product_key":"product","base_version":1,"base_version":1}`, `{"product_key":"product","base_version":0}`, `{"product_key":"product","base_version":-1}`, `null`, `{"product_key":"product","base_version":9223372036854775808}`} {
 		titleCall(t, s, "POST", titleBasePath, "operator", "B", uuid.NewString(), body, 400)
 	}
+	// A valid integer above JavaScript's safe range reaches domain lookup
+	// exactly; it is absent, not malformed or rounded.
+	titleCall(t, s, "POST", titleBasePath, "operator", "B", "large-valid-version", `{"product_key":"product","base_version":9007199254740993}`, 404)
 	titleCall(t, s, "POST", titleBasePath, "operator", "B", "large", strings.Repeat("x", 32769), 413)
 	titleCall(t, s, "POST", titleBasePath, "viewer", "B", "viewer", `{}`, 403)
 	titleCall(t, s, "POST", titleBasePath, "readonly", "B", "readonly", `{}`, 403)
