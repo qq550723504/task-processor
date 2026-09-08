@@ -1,5 +1,14 @@
 const signalExitCodes = { SIGINT: 130, SIGTERM: 143, SIGBREAK: 149 };
 
+export function ownerControlExecOptions(platform = process.platform) {
+  return {
+    windowsHide: true,
+    detached: platform === "win32",
+    timeout: 120000,
+    maxBuffer: 1048576,
+  };
+}
+
 export function platformSignalMatrix(platform) {
   if (platform === "win32") return [
     { signal: "SIGINT", trigger: "Ctrl+C", supported: true, automated: false, reason: "windows_console_control" },

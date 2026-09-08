@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth } from "./real-provider-browser-contract.mjs";
-import { createOwnerMutationGuard, createRunFinalizer, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
+import { createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -283,7 +283,7 @@ async function queuedControl(command, user, organization) {
   const operation = async () => {
     const args = [path.join(runtimeCheckout, "scripts/issue357-runtime.mjs"), command, "--run", manifest.runId];
     if (user) args.push("--user", user, "--org", organization);
-    await execFile(process.execPath, args, { cwd: runtimeCheckout, windowsHide: true, timeout: 120000, maxBuffer: 1048576 });
+    await execFile(process.execPath, args, { cwd: runtimeCheckout, ...ownerControlExecOptions() });
     (report.controls ??= []).push({ command, user, organization, at: new Date().toISOString(), status: "PASS" });
   };
   const pending = controlQueue.then(operation, operation);

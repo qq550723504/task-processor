@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, test } from "vitest";
-import { createOwnerMutationGuard, createRunFinalizer, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
+import { createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
 
 const temporary = [];
 afterEach(async () => { while (temporary.length) await rm(temporary.pop(), { recursive: true, force: true }); });
@@ -48,6 +48,11 @@ test("signal platform matrix distinguishes catchable controls from forced termin
   const posix = platformSignalMatrix("linux");
   assert.deepEqual(posix.filter(item => item.supported).map(item => item.signal), ["SIGINT", "SIGTERM"]);
   assert.equal(posix.find(item => item.signal === "SIGKILL").supported, false);
+});
+
+test("Windows owner controls use a separate process group so Ctrl+C reaches the runner", () => {
+  assert.equal(ownerControlExecOptions("win32").detached, true);
+  assert.equal(ownerControlExecOptions("linux").detached, false);
 });
 
 test("signal before mutation closes and stops once without inventing a restore", async () => {
