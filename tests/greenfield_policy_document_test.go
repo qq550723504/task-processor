@@ -78,6 +78,25 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 		}
 	}
 
+	for path, required := range map[string][]string{
+		filepath.Join("..", "docs", "product", "product-sourcing-mvp-plan.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"fresh installation and empty business data",
+			"require legacy profile reuse, environment acceptance or old-execution cutover",
+		},
+		filepath.Join("..", "docs", "architecture", "README.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"greenfield-no-legacy-migration.md",
+		},
+	} {
+		contents := readGreenfieldPolicyDocument(t, path)
+		for _, requirement := range required {
+			if !strings.Contains(contents, requirement) {
+				t.Errorf("active sourcing authority %s must state %q", filepath.ToSlash(path), requirement)
+			}
+		}
+	}
+
 	policy := readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "refactoring", "legacy-hard-cut-policy.md"))
 	if !strings.Contains(policy, "only a new explicit product decision from the user") {
 		t.Error("Hard-Cut policy must reserve any change to the greenfield prohibition to a new explicit user product decision")
