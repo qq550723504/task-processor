@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, test } from "vitest";
-import { browserSignalOwnershipOptions, createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
+import { browserSignalOwnershipOptions, createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix, transitionRunStatus } from "./real-provider-browser-lifecycle.mjs";
 
 const temporary = [];
 afterEach(async () => { while (temporary.length) await rm(temporary.pop(), { recursive: true, force: true }); });
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
-function lifecycle({ cleanup = true, restoreFails = false, stopFails = false, timeout = 1000 } = {}) {
+function lifecycle({ cleanup = true, restoreFails = false, stopFails = false, persistFails = false, timeout = 1000 } = {}) {
   const events = [];
   let finalizer;
   const guard = createOwnerMutationGuard({
@@ -28,7 +28,7 @@ function lifecycle({ cleanup = true, restoreFails = false, stopFails = false, ti
       if (!result.ok) throw new Error("owner_recovery_failed");
     },
     stopOwnedRun: async () => { events.push("stop"); if (stopFails) throw new Error("stop_failed"); },
-    persistReport: async () => { events.push("persist"); },
+    persistReport: async () => { events.push("persist"); if (persistFails) throw new Error("persist_failed"); },
     onInterrupt: signal => events.push(`interrupt:${signal}`),
     onFailure: step => events.push(`failure:${step}`),
   });
@@ -61,6 +61,13 @@ test("the runner owns signals instead of allowing Playwright to exit first", () 
     handleSIGTERM: false,
     handleSIGHUP: false,
   });
+});
+
+test("interruption and failure are monotonic terminal report states", () => {
+  assert.equal(transitionRunStatus("INTERRUPTED", "INCOMPLETE"), "INTERRUPTED");
+  assert.equal(transitionRunStatus("FAIL", "PASS"), "FAIL");
+  assert.equal(transitionRunStatus("INCOMPLETE", "PASS"), "PASS");
+  assert.equal(transitionRunStatus("PASS", "INTERRUPTED"), "INTERRUPTED");
 });
 
 test("signal before mutation closes and stops once without inventing a restore", async () => {
@@ -150,6 +157,33 @@ test("normal completion restores exactly once and stops only with explicit clean
     assert.equal(events.filter(item => item === "stop").length, cleanup ? 1 : 0);
     assert.equal(events.at(-1), "persist");
   }
+});
+
+test("a signal received during normal report persistence rewrites the interrupted result", async () => {
+  const started = deferred(); const release = deferred(); const writes = [];
+  let finalizer;
+  finalizer = createRunFinalizer({
+    cleanupOwnedRun: false,
+    closeBrowser: async () => {}, recoverOwnerControls: async () => {}, stopOwnedRun: async () => {},
+    persistReport: async () => {
+      writes.push(finalizer.interrupted ? "INTERRUPTED" : "PASS");
+      if (writes.length === 1) { started.resolve(); await release.promise; }
+    },
+    onInterrupt: () => {},
+  });
+  const finishing = finalizer.finish();
+  await started.promise;
+  const interrupted = finalizer.requestInterrupt("SIGINT");
+  release.resolve();
+  assert.equal(await interrupted, await finishing);
+  assert.deepEqual(writes, ["PASS", "INTERRUPTED"]);
+});
+
+test("report persistence failure remains a finalization failure", async () => {
+  const { finalizer } = lifecycle({ persistFails: true });
+  const result = await finalizer.finish();
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.failures, ["report-persist"]);
 });
 
 async function runSignalChild(scenario, signal) {

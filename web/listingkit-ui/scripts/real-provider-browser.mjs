@@ -5,8 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth } from "./real-provider-browser-contract.mjs";
-import { browserSignalOwnershipOptions, createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isExpectedSettledView, isFinalApplicationLanding, retryOwnerHealth, shouldProbeUnavailableProvider } from "./real-provider-browser-contract.mjs";
+import { browserSignalOwnershipOptions, createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix, transitionRunStatus } from "./real-provider-browser-lifecycle.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -41,6 +41,7 @@ async function check(name, operation) {
   const started = Date.now();
   try {
     await operation();
+    finalizer?.throwIfInterrupted();
     report.checks.push({ name, status: "PASS", elapsedMs: Date.now() - started });
     console.log(`PASS ${name}`);
   } catch {
@@ -246,12 +247,31 @@ async function lateSwitches(page, context) {
         await select(page, context, "C");
         await textContains(page, name === "account" ? `当前有效企业：${manifest.organizations.C.id}` : "实际订阅");
       } finally { await held.release(); }
-      const content = await page.locator("#console-main").innerText();
-      ensure(content.includes(manifest.organizations.C.id) && !content.includes(manifest.organizations.B.id));
       const current = await api(context, apiPath, "admin", "C");
       ensure(current.status === 200 && (current.body.effectiveOrganizationId ?? current.body.organization_id) === manifest.organizations.C.id);
+      const usage = name === "commercial" ? current.body.usage?.find(row => row.metric === "listingkit_generations_succeeded") : undefined;
+      if (name === "commercial") ensure(usage?.committed === "2" && usage.unit === "operation");
+      await waitForStableView(page, {
+        required: [`当前有效企业：${manifest.organizations.C.id}`, ...(usage ? [`${usage.committed} 作业次`] : [])],
+        forbidden: [manifest.organizations.B.id, name === "commercial" ? "本次未取得数据" : "资料响应无效"],
+      });
     });
   }
+}
+
+async function waitForStableView(page, expectation, stableMs = 500, timeoutMs = 5000) {
+  const target = page.locator("#console-main");
+  const deadline = Date.now() + timeoutMs;
+  let stableSince;
+  while (Date.now() < deadline) {
+    const content = await target.innerText();
+    if (isExpectedSettledView(content, expectation)) {
+      stableSince ??= Date.now();
+      if (Date.now() - stableSince >= stableMs) return;
+    } else stableSince = undefined;
+    await pause(50);
+  }
+  ensure(false);
 }
 
 async function realRefresh(context) {
@@ -371,7 +391,7 @@ async function controlCases() {
         try {
           const response = await empty.request.get(`${manifest.origins.web}/api/zitadel-auth/login`, { timeout: 30000, maxRedirects: 0 });
           const outcome = classifyUnavailableLogin({ status: response.status(), location: response.headers().location, issuer: manifest.origins.issuer, web: manifest.origins.web });
-          if (outcome.endsWith("-redirect")) {
+          if (shouldProbeUnavailableProvider(outcome)) {
             let unavailableStatus;
             try {
               const unavailable = await empty.request.get(new URL(response.headers().location, manifest.origins.web).toString(), { timeout: 10000, maxRedirects: 0 });
@@ -525,10 +545,10 @@ function completeReport() {
     if (!report.checks.some(item => item.name.startsWith(prefix))) report.checks.push({ name: `${prefix}prerequisite_not_reached`, status: "NOT_RUN" });
   }
   if (finalizationFailures.length > 0) {
-    if (report.status !== "INTERRUPTED") report.status = "FAIL";
+    report.status = transitionRunStatus(report.status, "FAIL");
     process.exitCode = 1;
   } else if (report.status === "INCOMPLETE" && cleanupFlag === "--stop-owned-run") {
-    report.status = "PASS";
+    report.status = transitionRunStatus(report.status, "PASS");
     process.exitCode = 0;
   }
   report.finishedAt = new Date().toISOString();
@@ -595,7 +615,7 @@ try {
     persistReport: completeReport,
     onInterrupt: signal => {
       interruptController.abort(new Error("runner_interrupted"));
-      report.status = "INTERRUPTED";
+      report.status = transitionRunStatus(report.status, "INTERRUPTED");
       report.failure = `signal_${signal}`;
       report.interruption = {
         signal,
@@ -619,7 +639,8 @@ try {
   await core();
   await controlCases();
   await check("M11_after_read_snapshot", async () => { await control("check"); report.afterRead = await ownerEvidence("check"); ensure(report.beforeRead.zeroWrite.after === report.afterRead.zeroWrite.after); });
-  report.status = "INCOMPLETE";
+  finalizer.throwIfInterrupted();
+  report.status = transitionRunStatus(report.status, "INCOMPLETE");
   process.exitCode = 2;
 } catch {
   if (!finalizer?.interrupted) {
@@ -629,7 +650,11 @@ try {
   }
 } finally {
   if (finalizer) {
-    await finalizer.finish();
+    const result = await finalizer.finish();
+    if (!result.ok) {
+      report.status = transitionRunStatus(report.status, "FAIL");
+      process.exitCode = 1;
+    }
     if (!finalizer.interrupted) finalizer.removeProcessHandlers();
   } else {
     report.finishedAt = new Date().toISOString();

@@ -23,6 +23,10 @@ export function classifyLateResponseDelivery(delivered, cancellationError) {
   throw new Error("issue358_late_response_unproven");
 }
 
+export function isExpectedSettledView(content, { required = [], forbidden = [] }) {
+  return typeof content === "string" && required.every(value => content.includes(value)) && forbidden.every(value => !content.includes(value));
+}
+
 export function isFinalApplicationLanding(response, web) {
   try {
     const url = new URL(response.url);
@@ -57,6 +61,10 @@ export function classifyUnavailableProviderTarget(status) {
   if (status === undefined) return "unreachable";
   if ([500, 502, 503, 504].includes(status)) return "gateway-error";
   throw new Error("issue358_provider_target_failure_unproven");
+}
+
+export function shouldProbeUnavailableProvider(outcome) {
+  return outcome === "provider-redirect";
 }
 
 export async function retryOwnerHealth(operation, { attempts = 30, wait = () => new Promise(resolve => setTimeout(resolve, 2000)) } = {}) {

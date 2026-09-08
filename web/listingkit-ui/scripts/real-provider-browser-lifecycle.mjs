@@ -13,6 +13,12 @@ export function browserSignalOwnershipOptions() {
   return { handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false };
 }
 
+export function transitionRunStatus(current, next) {
+  if (next === "INTERRUPTED") return next;
+  if (["INTERRUPTED", "FAIL"].includes(current)) return current;
+  return next;
+}
+
 export function platformSignalMatrix(platform) {
   if (platform === "win32") return [
     { signal: "SIGINT", trigger: "Ctrl+C", supported: true, automated: false, reason: "windows_console_control" },
@@ -98,6 +104,7 @@ export function createRunFinalizer({
   let finalization;
   let installed;
   let exitScheduled = false;
+  let committed = false;
 
   const step = async (name, operation, failures) => {
     let timer;
@@ -116,11 +123,15 @@ export function createRunFinalizer({
     await step("browser-close", closeBrowser, failures);
     await step("owner-recovery", recoverOwnerControls, failures);
     if (cleanupOwnedRun) await step("owned-run-stop", stopOwnedRun, failures);
+    const signalBeforePersist = interruptSignal;
     await step("report-persist", persistReport, failures);
+    if (!signalBeforePersist && interruptSignal) await step("report-persist-after-interrupt", persistReport, failures);
+    committed = true;
     return { ok: failures.length === 0, failures, signal: interruptSignal };
   };
 
   const requestInterrupt = signal => {
+    if (committed) return finalization;
     if (!interruptSignal) { interruptSignal = signal; onInterrupt(signal); }
     if (!finalization) finalization = finalize();
     return finalization;
@@ -138,6 +149,7 @@ export function createRunFinalizer({
       for (const { signal, supported } of platformSignalMatrix(platform)) {
         if (!supported) continue;
         const handler = () => {
+          if (committed) return;
           const pending = requestInterrupt(signal);
           if (!exitScheduled) {
             exitScheduled = true;

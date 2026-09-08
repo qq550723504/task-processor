@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, browserExpectedHeaders, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, browserExpectedHeaders, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isExpectedSettledView, isFinalApplicationLanding, retryOwnerHealth, shouldProbeUnavailableProvider, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // Schema checks only. These objects never authenticate a browser or count as E2E.
 const sha = "a".repeat(40);
@@ -85,6 +85,13 @@ test("failed late-response delivery cannot pass without observed browser cancell
   }
 });
 
+test("post-release UI must retain the selected organization's facts without an error view", () => {
+  const expectation = { required: ["当前有效企业：org-C", "2 作业次"], forbidden: ["当前有效企业：org-B", "本次未取得数据"] };
+  assert.equal(isExpectedSettledView("当前有效企业：org-C\n资料生成作业\n2 作业次", expectation), true);
+  assert.equal(isExpectedSettledView("当前有效企业：org-C\n本次未取得数据", expectation), false);
+  assert.equal(isExpectedSettledView("当前有效企业：org-B\n2 作业次", expectation), false);
+});
+
 test("a read started inside the cache window may finish after the boundary", () => {
   assert.equal(classifyRevocationRead({ status: 200, confirmedAt: 1000, requestStartedAt: 60999, responseCompletedAt: 62000 }), "cached");
   assert.equal(classifyRevocationRead({ status: 403, confirmedAt: 1000, requestStartedAt: 61001, responseCompletedAt: 62000 }), "denied");
@@ -126,6 +133,11 @@ test("provider outage accepts only a bounded local failure or the exact unavaila
     { status: 307, location: "http://localhost:43103/ui/v2/login/loginname", issuer: "http://localhost:43103" },
     { status: 307, location: "http://invalid.example/oauth/v2/authorize", issuer: "http://localhost:43103" },
   ]) assert.throws(() => classifyUnavailableLogin(input), /provider_failure_unproven/);
+});
+
+test("only an actual provider redirect is probed after provider shutdown", () => {
+  assert.equal(shouldProbeUnavailableProvider("provider-redirect"), true);
+  for (const outcome of ["local-error", "local-error-redirect"]) assert.equal(shouldProbeUnavailableProvider(outcome), false);
 });
 
 test("provider restoration retries the owner health check within a fixed bound", async () => {
