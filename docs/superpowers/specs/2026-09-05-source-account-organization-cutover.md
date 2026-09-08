@@ -4,6 +4,216 @@ Baseline: main `2fd42cc06`; related issues: #30, #301, #300.
 Status: IMPLEMENTATION_READY (A, independent review round 1, frozen after correction);
 B–D require their implementation evidence before rollout.
 
+## B1 prepared-only transaction contract (Issue #362)
+
+Status: IMPLEMENTATION_READY (independent review round 2). This increment narrows the first part of B to
+the source-account PostgreSQL transaction kernel. It does not reopen A and does not
+authorize a real migration, reader cutover, route change, deployment or data operation.
+The clean-slate decision in
+[`docs/product/issue30-clean-slate-cutover.md`](../../product/issue30-clean-slate-cutover.md)
+supersedes the older B text below wherever it requires Product, Asset, Task or Redis
+result migration. B1 preserves source accounts and profile/login-state references only.
+
+### Narrow inventory and ownership
+
+- `internal/sourceaccount/gorm_repository.go` is the only production model for
+  `source_account`. Repository code reads 1688 rows and the two schema entry points
+  only call its `AutoMigrateRepository`; the repository contains no production
+  account writer. No second platform writer for this table was found in the current
+  tracked Go/SQL tree. Non-1688 rows are nevertheless treated as protected shared
+  rows because the table has a platform discriminator.
+- The live 1688 repository, profile resolver, HTTP service and old #30 handoff still
+  use numeric `TenantID`. B1 does not change those callers, their interfaces or their
+  runtime wiring. `internal/tenantbridge` gains no consumer.
+- Source Account remains the one business owner. The A receipt and the B1 database
+  receipt are migration evidence, not repositories and not authorization facts.
+  The legacy `source_account` representation is migration input only; the new target
+  does not extend, wrap or share its numeric ownership schema.
+- The tracked tree has no second platform writer, but that does not make the legacy
+  row the correct target: its model and every live caller are defined by numeric
+  `TenantID`. Adding a dormant Organization column there would let the retired reader
+  constrain the new design and create a compatibility-shaped dual representation.
+  B1 therefore writes `public.organization_source_accounts`, the dedicated eventual
+  1688 Source Account persistence owner. Its frozen columns are `id BIGINT PRIMARY
+  KEY`, nonempty `organization_id VARCHAR(128)`, canonical `platform VARCHAR(32)`
+  constrained to `1688`, nullable `label VARCHAR(128)`, nonempty original
+  `profile_ref VARCHAR(256)`, nonempty verified `profile_directory VARCHAR(1024)`,
+  nullable `proxy_ref VARCHAR(256)` and `login_url TEXT`, non-null `status SMALLINT`
+  and `deleted SMALLINT`, nullable `last_verified_at TIMESTAMPTZ`, and non-null
+  `created_at`/`updated_at TIMESTAMPTZ`. It has no numeric tenant column. The exact
+  A-verified directory is a target account field so C never derives a path from the
+  retired tenant ID and never treats the migration receipt as a runtime repository.
+  The scoped reader index is
+  `(organization_id, id, status, deleted)`; the primary key prevents one legacy
+  account identity from being copied under two Organizations. It is not a mirror or
+  fallback table. Until C it is prepared but unreachable from runtime; C performs one
+  reader switch and D retires the legacy table/path after its approved cutover. There
+  is no dual read, dual write, bidirectional synchronization or request-time conversion.
+- The target schema is 1688-specific because the legacy table is platform-shaped and
+  other-platform rows are protected. B1 reads only normalized platform `1688` from
+  the legacy source and never copies or alters other-platform rows. A later inventory
+  finding another writer cannot be solved by adding fields or adapters to the legacy
+  schema; it must stop B2 and preserve the isolated current-owner target.
+- The repository has no shared cross-domain Unit of Work. B1 reuses the package's
+  existing `database/sql` + pgx PostgreSQL boundary and executes target changes and
+  the receipt insert in one local transaction. It does not create a generic UoW,
+  Saga, journal service or runtime migration framework.
+
+### Request, before-image and target schema
+
+The internal B1 operation takes an explicit `(contract_version, idempotency_key)` and
+one complete, valid A `preflight_only` receipt plus the explicit account-source identity
+selected by the operator-facing B2 composition. That identity must exactly equal A's
+`AccountObservation.SourceID`; `current_database()` must equal A's observed database,
+and all B1 SQL is fully qualified to `public`. This binds the core to A's selected
+database/schema evidence without adding database discovery; B2 still owns the external
+environment/authority attestation. The A version, stage, non-atomic marker and digest
+are revalidated without changing A's canonical digest or its filesystem rules. The
+request fingerprint is a canonical SHA-256 over the B1 contract version, source
+identity, A digest and ordered account mapping/profile evidence; observation timestamps
+are not new identity inputs. An empty/over-128-byte key, mismatched source identity or
+database, invalid A receipt, empty account set, duplicate account, missing Organization,
+or more than A's `MaxRows` fails before mutation.
+Before hashing the A receipt, B1 measures its exact canonical JSON size one bounded
+record at a time and rejects more than 64 MiB; JSON escaping is therefore included
+without first materializing the whole encoded receipt. After taking the source lock,
+it asks PostgreSQL for the 1688 row count, largest variable-width field and aggregate
+variable-width bytes before selecting any text value. A field over 64 KiB or raw source
+text over 64 MiB fails without entering process memory. Once selected, source and target
+records are likewise measured one at a time and an encoded snapshot over 128 MiB fails
+before whole-snapshot digest marshaling. Prepared-result JSON has the same 128 MiB
+pre-marshal bound. Its INSERT returns `octet_length(result_json::text)` and the receipt
+reader checks that identical persisted JSONB metric before selecting the value, so an
+accepted receipt cannot reject its own replay because of a different size convention.
+
+Inside the PostgreSQL transaction B1 locks and rereads the complete current 1688
+inventory, ordered by account ID. Its before-image includes every current non-secret
+column: ID, legacy tenant, platform, label, `ProfileRef`, proxy reference, login URL,
+status, deleted flag, last verification time and creation/update times. The set and
+the A-captured fields must exactly equal the supplied A evidence. Added, removed or
+changed source rows fail closed. B1 computes and persists a canonical full-source
+digest; it never reads credentials, cookies or profile contents.
+
+Each target row contains account ID, mapped Organization, fixed platform `1688`, label,
+opaque `ProfileRef`, exact A-verified profile directory, proxy reference, login URL,
+status, deleted flag, last verification time and original creation/update times. It
+deliberately has no legacy tenant column.
+Account ID is globally unique in the target and `(organization_id, id)` is the
+reader scope. A pre-existing target without this operation's matching committed receipt
+is a conflict even when its fields equal the desired values; B1 never adopts an
+unexplained partial copy. The target digest covers the Organization and complete
+preserved non-secret account fields. The locked legacy source rows are not updated.
+
+The dedicated schema artifact creates `public.organization_source_accounts` and
+`public.source_account_ownership_migration_receipts`. The receipt table has one
+immutable terminal row per `(contract_version, idempotency_key)`, enforced by a
+composite primary key. It stores stage `prepared_only`, request fingerprint, A digest,
+source identity/database/schema, source digest, target digest, account count, canonical
+JSON result and transaction timestamp. Checks require version `1`, a 1–128 byte key,
+stage `prepared_only`, 64 lowercase-hex digests, `public` schema and an account count
+between 1 and A's `MaxRows`. The concrete columns are `contract_version SMALLINT`,
+`idempotency_key VARCHAR(128)`, `stage VARCHAR(32)`, `request_sha256 CHAR(64)`,
+`preflight_sha256 CHAR(64)`, `source_id VARCHAR(256)`, `source_database VARCHAR(128)`,
+`source_schema VARCHAR(63)`, `source_sha256 CHAR(64)`, `target_sha256 CHAR(64)`,
+`account_count INTEGER`, `result_json JSONB` and `prepared_at TIMESTAMPTZ`. There is
+no externally visible
+`pending` or `failed` receipt: all target inserts and the prepared receipt commit
+together, or neither is visible. Schema creation is an explicit internal/test call;
+it is not added to startup `AutoMigrate`, CLI, HTTP or worker assembly.
+The installer creates and validates the schema in one transaction, and B1 revalidates
+the exact target/receipt columns, named constraints, primary keys and scoped reader
+index while holding table locks. A pre-existing same-name table with any extra or
+missing column—including a nullable numeric `tenant_id`—fails closed; it is never
+adopted as a compatibility-shaped target.
+
+### Idempotency, concurrency and failure semantics
+
+1. B1 requires a caller deadline with at most ten minutes remaining, keeps the A
+   100,000-row cap, enforces the fixed request/source/receipt byte budgets above, and
+   sets transaction-local PostgreSQL lock/statement timeouts. Cancellation is checked
+   before the transaction and throughout bounded row work.
+2. Lock order is fixed. The transaction first takes PostgreSQL `SHARE` on
+   `public.source_account`, which conflicts with legacy INSERT/UPDATE/DELETE and closes
+   the phantom-row gap before the complete ordered 1688 reread. It then takes
+   `SHARE ROW EXCLUSIVE` on `public.organization_source_accounts` and
+   `public.source_account_ownership_migration_receipts` in that order before deciding
+   first execution versus replay. The latter lock self-conflicts, so concurrent B1
+   writers serialize; target account and receipt primary keys remain final guards.
+   A legacy writer already holding a conflicting lock completes first, after which B1
+   rereads and rejects the changed A set. A writer arriving later waits until B1 has
+   committed or rolled back. B2 still must keep the external freeze after commit.
+3. A committed receipt with the same key and fingerprint is returned only after the
+   current source and target digests/rows still match it. No rows are rewritten.
+   Same key with a different fingerprint is an idempotency conflict. A different key
+   encountering a prepared target is a target-ownership conflict, not another receipt.
+4. A source-set/field difference from A or the committed receipt is source drift. A
+   changed/missing Organization or changed preserved field after preparation is target
+   drift. Either blocks replay; a fresh A digest cannot bypass an existing target.
+5. Any validation error, guarded-update miss, injected mid-transaction failure,
+   deadline or cancellation before successful COMMIT rolls back both target and
+   receipt. B1 has no automatic transaction retry because an ambiguous COMMIT result
+   must not be converted into a blind second mutation attempt.
+6. A successful COMMIT is the state boundary. Cancellation observed afterward does
+   not turn durable prepared facts into rollback. If the caller loses the COMMIT
+   acknowledgement or an injected post-commit response fails, it opens a fresh
+   context and calls the receipt read API with the same identity/fingerprint. That
+   API validates the persisted receipt plus source/target equality and determines the
+   outcome without writing. Missing evidence means unknown/not prepared; it does not
+   authorize an automatic replay.
+
+The receipt lifecycle ends at `prepared_only`. It is not rollout-ready, does not
+certify current ZITADEL projection freshness, writer/admission freeze, multi-host
+profile agreement or live account authorization, and is not consumed by production.
+B2 must supply those operation-gate facts and explicit environment authority before
+invoking this kernel. C remains responsible for Organization reader/access semantics
+and exact profile-directory reuse; B1 only preserves `ProfileRef` and the A-verified
+directory evidence without filesystem I/O.
+
+### Verification allocation and invariants
+
+The implementation must first demonstrate RED tests, then GREEN against a disposable,
+task-exclusive PostgreSQL instance. The real database suite must prove:
+
+- enabled, disabled and deleted 1688 inputs produce Organization-only target rows with
+  every non-secret field preserved and no numeric tenant; the legacy rows remain byte
+  for byte unchanged, the A `ProfileRef` and verified profile directory remain exact
+  evidence, and B1 performs no filesystem read/write/create/delete operation;
+- non-1688 accounts, unrelated 1688 accounts in rejected requests, and unrelated
+  tables remain unchanged;
+- invalid/missing/ambiguous A evidence, source drift, unexplained target ownership,
+  same-key/different-payload and committed target drift all reject without partial
+  changes;
+- same-key/same-payload replay returns the same persisted JSON/timestamp without a
+  second update, while concurrent identical calls produce at most one legal prepared
+  result and every other successful call reads that result;
+- a fault after at least one target insert, a pre-commit cancellation and a database
+  error roll back the whole transaction; a post-commit injected response loss is
+  resolved by a new service/read context and the durable receipt;
+- schema installation is repeatable only for the exact frozen schema; missing or extra
+  columns/constraints, a changed primary key/index or a legacy numeric owner column
+  reject before account/receipt mutation;
+- real concurrent legacy INSERT, UPDATE and DELETE transactions either complete before
+  the B1 table lock and make the A set fail closed, or wait until B1 finishes; no
+  phantom row can be omitted from a committed receipt;
+- PostgreSQL rejects an over-limit source field and over-limit aggregate source text
+  before target/receipt writes; escape-heavy A/source/target JSON also rejects before
+  a whole digest/result marshal, and the persisted receipt limit is identical on write
+  and read rather than relying on the row cap or raw text length as a memory bound;
+- normal and failure paths drop their task-specific schema/database and stop/remove
+  disposable PostgreSQL resources. Mock, SQLite, compile-only and in-memory tests do
+  not count as this evidence.
+
+Adjacent regression checks must show no changes to the production Source Account
+reader, 1688/Amazon shared task protocol, #30 route/handoff, A digest/`preflight_only`
+semantics, startup migration list or tenantbridge/Legacy guards.
+
+Legacy decision: EXTRACT. Reusable behavior is A's validated mapping, source-account
+before-image/status/profile evidence and exact replay/conflict semantics. Current owner
+is the Organization-only 1688 Source Account target plus its offline PostgreSQL
+ownership-migration adapter. The cutover condition is a separately authorized B2
+operation gate followed by C's one-time reader switch and D numeric-owner retirement;
+B1 adds no compatibility path and new code never depends on the legacy model.
+
 ## Authority and scope
 
 Read AGENTS.md, #30/#301/#300, legacy-hard-cut-policy.md, legacy-register.md,
@@ -47,7 +257,8 @@ tenantbridge/bootstrap itself). A adds zero consumers; C must remove 1688 import
 ## Contract and target schema
 
 Business account: `ID int64`, `OrganizationID string`, existing platform/status/deleted
-and non-secret metadata, opaque `ProfileRef`. Numeric source ownership exists only
+and non-secret metadata, opaque `ProfileRef`, and the verified runtime profile directory
+carried by the current owner rather than derived from legacy ownership. Numeric source ownership exists only
 in migration input/receipt, never in the new business contract. Account identity is
 OrganizationID + account ID. Repository Get/Validate require both, recheck the returned
 owner, reject empty Organization, unavailable/deleted/wrong owner and disabled accounts.
@@ -55,12 +266,14 @@ Verified effective Organization comes from existing authidentity/authz, never a 
 or parse of TenantID. Worker checks current account access immediately before browser use.
 No account/Organization ownership cache; revocation uses current checks.
 
-C target SQL is the existing source-account record with nonempty organization_id,
-tenant_id removed for migrated 1688 ownership, and an Organization/platform index.
-Because other-platform records must not be changed and old handoff cannot be wrapped,
-B/C must choose an isolated 1688 target table if inventory finds other platform writers.
-Do not apply speculative live DDL in A. A defines the migration receipt schema in Go/JSON;
-it is audit input, not a second source-account repository or runtime authority.
+C target SQL is `public.organization_source_accounts`, the isolated target frozen by
+the B1 contract above. It contains nonempty Organization ownership and the preserved
+non-secret account/profile fields, but no numeric tenant. The legacy
+`public.source_account` row is read-only migration input and is never extended to keep
+its reader working. C can only switch once to the isolated target; D then retires the
+numeric table/path. Do not apply speculative live DDL in A. A defines the migration
+receipt schema in Go/JSON; it is audit input, not a second source-account repository or
+runtime authority.
 
 1688 version-2 tasks/results carry OrganizationID and source account ID; Redis scope
 uses a collision-free encoded Organization component. Numeric legacy JSON must be
@@ -91,22 +304,20 @@ has no database effect. Publish receipt only after all validations; an existing 
 file is not overwritten. Different input gives a different digest. This command does
 not establish projection freshness or certify all runtime volumes: B must do that.
 
-**B: backfill + validation.** Before mutation, freeze source-account writes and Organization
-mapping changes; verify the correct authoritative ZITADEL instance, projection watermark
-and current Organization existence/removal. Re-read A evidence under the freeze. All browser
-hosts/volumes must agree with the receipt. Freeze 1688 admissions and drain every instance
-while keeping existing workers alive. Enumerate pending/running/retry/in-memory work and
-Redis results, including unscoped keys. Unscoped/unknown owner is BLOCKER, never guessed.
-Backfill SQL and receipt in one transaction (existing GORM transaction or database/sql),
-keyed by migration version + account ID + source digest. Same key/different payload fails.
-Persist checkpoints and per-row before/after counts/digests, including disabled/deleted.
-Restart reuses committed receipts and verifies target equality; no upsert overwrites a
-changed owner. SQL rollback is sufficient before commit; lost response re-reads receipt.
-Across SQL/Redis use a bounded operator-driven migration journal, not a new Saga service:
-export/checksum retained terminal results; CAS each exact source payload into version-2
-namespace with remaining TTL (never extend retention), verify receipt, then retire old
-key after C switch. No application dual write/read. Failed compare or expired evidence
-requires a fresh inventory; no blind retry. Filesystem is read-only throughout.
+**B: account preparation + operation gate.** B1 is exactly the prepared-only PostgreSQL
+kernel frozen above: legacy account rows are locked/read, Organization-only target rows
+and one terminal receipt commit atomically, and no runtime reader changes. B2, in a
+separate task, must freeze source-account writes and Organization mapping changes; verify
+the explicitly selected authoritative ZITADEL instance, projection watermark and current
+Organization existence/removal; reread A evidence under that freeze; and prove all browser
+hosts/volumes agree with the receipt. Same key/different payload, changed source/target
+and unexplained target rows fail closed; lost response is resolved by the committed
+receipt rather than an upsert or blind retry. Filesystem access remains read-only.
+
+Per `PD-ISSUE30-CLEAN-SLATE-2026-09-05`, B does **not** migrate, export, checksum, CAS,
+retain or replay old Product/Asset/Task/Redis terminal results and does not build a SQL/
+Redis journal. Old-job admission/replay rejection and writer quiescence remain later
+cutover prerequisites where required by C/#30, not B1 persistence work.
 
 **C: reader cutover.** Requires validated B receipt, zero active legacy work with every
 instance attested, and no old writers/retry owners. Frozen admissions stay frozen until
@@ -158,7 +369,8 @@ A TDD: no numeric fallback, missing/ambiguous/removed/malformed mapping, duplica
 stable digest after restart/reordering, changed mapping changes digest, disabled/deleted
 flags retained, exact profile path reuse and no filesystem mutation, missing/alias paths
 rejected; read-only transaction/rollback and row limits. Command only emits a receipt on success.
-B: transactional rollback/lost-response/restart, CAS conflicts, metadata drift, counts/checksums.
+B1: PostgreSQL target/receipt atomicity, full source/target digests, idempotency conflicts,
+source/target drift, legacy-writer and B1 concurrency, cancellation and lost-response readback.
 C: wrong Organization, disabled/deleted, authorization revocation, cross-Organization result
 isolation, legacy job rejection, real browser profile reuse, no bridge imports; Amazon regression.
 D: retirement/import guards, retained business assets and migration receipts.
