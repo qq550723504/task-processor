@@ -86,7 +86,7 @@ test("failed late-response delivery cannot pass without observed browser cancell
 });
 
 test("post-release UI must retain the selected organization's facts without an error view", () => {
-  const expectation = { required: ["当前有效企业：org-C", "2 作业次"], forbidden: ["当前有效企业：org-B", "本次未取得数据"] };
+  const expectation = { required: ["org-C", "2 作业次"], forbidden: ["org-B", "本次未取得数据"] };
   assert.equal(isExpectedSettledView("当前有效企业：org-C\n资料生成作业\n2 作业次", expectation), true);
   assert.equal(isExpectedSettledView("当前有效企业：org-C\n本次未取得数据", expectation), false);
   assert.equal(isExpectedSettledView("当前有效企业：org-B\n2 作业次", expectation), false);

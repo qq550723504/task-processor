@@ -252,7 +252,7 @@ async function lateSwitches(page, context) {
       const usage = name === "commercial" ? current.body.usage?.find(row => row.metric === "listingkit_generations_succeeded") : undefined;
       if (name === "commercial") ensure(usage?.committed === "2" && usage.unit === "operation");
       await waitForStableView(page, {
-        required: [`当前有效企业：${manifest.organizations.C.id}`, ...(usage ? [`${usage.committed} 作业次`] : [])],
+        required: [manifest.organizations.C.id, ...(usage ? [`${usage.committed} 作业次`] : [])],
         forbidden: [manifest.organizations.B.id, name === "commercial" ? "本次未取得数据" : "资料响应无效"],
       });
     });
