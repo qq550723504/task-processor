@@ -335,7 +335,7 @@ async function controlCases() {
           if (outcome.endsWith("-redirect")) {
             let unavailableStatus;
             try {
-              const unavailable = await empty.request.get(response.headers().location, { timeout: 10000, maxRedirects: 0 });
+              const unavailable = await empty.request.get(new URL(response.headers().location, manifest.origins.web).toString(), { timeout: 10000, maxRedirects: 0 });
               unavailableStatus = unavailable.status();
             } catch { /* connection refusal is the expected unavailable-provider boundary */ }
             classifyUnavailableProviderTarget(unavailableStatus);

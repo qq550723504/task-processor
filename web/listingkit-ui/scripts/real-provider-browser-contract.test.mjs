@@ -120,6 +120,7 @@ test("provider outage accepts only a bounded local failure or the exact unavaila
   assert.equal(classifyUnavailableLogin({ status: 503 }), "local-error");
   assert.equal(classifyUnavailableLogin({ status: 307, location: "http://localhost:43103/oauth/v2/authorize?private=omitted", issuer: "http://localhost:43103" }), "provider-redirect");
   assert.equal(classifyUnavailableLogin({ status: 307, location: "http://localhost:43101/api/auth/error?private=omitted", issuer: "http://localhost:43103", web: "http://localhost:43101" }), "local-error-redirect");
+  assert.equal(classifyUnavailableLogin({ status: 307, location: "/api/auth/error?private=omitted", issuer: "http://localhost:43103", web: "http://localhost:43101" }), "local-error-redirect");
   for (const input of [
     { status: 200 },
     { status: 307, location: "http://localhost:43103/ui/v2/login/loginname", issuer: "http://localhost:43103" },
