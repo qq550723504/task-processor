@@ -3,6 +3,7 @@ package sourceaccountregistry
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -38,7 +39,7 @@ func (r *Repository) Run(ctx context.Context, operation sourceaccountregistry.Op
 	if err := ctx.Err(); err != nil {
 		return sourceaccountregistry.MutationResult{}, err
 	}
-	db := r.db.WithContext(ctx).Begin()
+	db := r.db.WithContext(ctx).Begin(&sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if db.Error != nil {
 		return sourceaccountregistry.MutationResult{}, mapError(ctx, db.Error)
 	}

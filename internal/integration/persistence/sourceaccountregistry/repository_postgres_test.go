@@ -212,11 +212,16 @@ func TestSourceAccountRegistryPostgresCommitFailureIsOutcomeUnknown(t *testing.T
 }
 
 func TestSourceAccountRegistryPostgresConcurrencyAndCapacity(t *testing.T) {
-	db := openRegistryPostgres(t)
+	db, dsn := openRegistryPostgresWithDSN(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if err := sourceaccountregistry.Migrate(ctx, db); err != nil {
 		t.Fatal(err)
+	}
+	db = openRegistryGORM(t, registryDSNWithDefaultIsolation(t, dsn, "repeatable read"))
+	var defaultIsolation string
+	if err := db.Raw(`SHOW default_transaction_isolation`).Scan(&defaultIsolation).Error; err != nil || defaultIsolation != "repeatable read" {
+		t.Fatalf("default transaction isolation = %q, err=%v", defaultIsolation, err)
 	}
 	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
 	service := newRegistryService(t, db, now)
@@ -465,6 +470,18 @@ func registryDSNWithSearchPath(t *testing.T, dsn, searchPath string) string {
 	}
 	query := parsed.Query()
 	query.Set("search_path", searchPath)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func registryDSNWithDefaultIsolation(t *testing.T, dsn, isolation string) string {
+	t.Helper()
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	query.Set("default_transaction_isolation", isolation)
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
 }
