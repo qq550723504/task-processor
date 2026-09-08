@@ -57,7 +57,7 @@ cookie propagation. Exact source/real-execution evidence belongs in the PR.
 | M6 logout and another account | Actual logout link -> serverAuth + signOut -> discovered official end-session; same browser subsequently enters bare login | Application session invalid, account/commercial APIs 401, selection absent, old content removed; official logout path observed; subsequent normal login has new subject and no old scope. Do not claim global token revocation |
 | M7 returnTo/method | Existing normalization at page, login API and Auth.js redirect callback | Valid workbench target retained; external/protocol-relative/backslash/malformed/unsupported paths safe; otp/password 503; missing/unknown/repeated method generic; no dedicated-method UI |
 | M8 provider failure and configuration | #357 owned provider/runtime controls, current error paths | No forged success/demo or unbounded redirect loop; missing configuration fails closed. Separate executable existing-entry checks from provider acceptance |
-| M9 revocation and restoration | #357 CLI changes only registered test-user grants; real provider API | Commercial live denial after provider confirms revoke; account/context convergence by documented <=60s bound plus bounded request time; record real timestamps and provider consistency, restore in finally; no fake clock |
+| M9 revocation and restoration | #357 CLI changes only registered test-user grants; real provider API | Commercial live denial after provider confirms revoke; account/context convergence by documented <=60s bound plus bounded request time; record real timestamps and provider consistency, register restoration before mutation and restore on normal or catchable-signal finalization; no fake clock |
 | M10 token lifecycle | #357 short real provider lifetime + offline_access/refresh application contract, current Auth.js refresh/exchange | Observe real expiry/renewal with wall time; current identity preserved or expired session safely rejected according to existing contract; no token values exported or JWT manipulation |
 | M11 business zero writes and cleanup | #357 all-saas row values/xmin snapshots and normal stop | Before/after equality; IAM session/audit and test grant changes separately classified; exact owned PIDs/ports/containers/network/volumes cleaned; repeat stop per owner contract |
 
@@ -94,7 +94,7 @@ this slice verifies them and returns any counterexample to that owner.
 From `web/listingkit-ui`, after installing the pinned lockfile:
 
 ```powershell
-pnpm.cmd exec vitest run scripts/real-provider-browser-contract.test.mjs
+pnpm.cmd exec vitest run scripts/real-provider-browser-contract.test.mjs scripts/real-provider-browser-lifecycle.test.mjs
 node scripts/real-provider-browser.mjs <private-manifest.json> <exact-357-SHA> <evidence-directory> <357-checkout>
 # Only for an exclusively owned run that this operator started:
 node scripts/real-provider-browser.mjs <private-manifest.json> <exact-357-SHA> <evidence-directory> <357-checkout> --stop-owned-run
@@ -115,6 +115,21 @@ No cleanup flag means INCOMPLETE. The explicit flag invokes only the #357 CLI fo
 this run and requires the exact-source normal cleanup/zero-write evidence before
 overall PASS; a failed browser case still remains FAIL even after successful stop.
 Rolling real execution results and exact tested commits belong in the PR.
+
+The runner serializes every owner control and registers its recovery command
+before `revoke` or `provider-stop`. Normal completion and catchable process
+signals use the same single finalizer: close the browser, wait for an in-flight
+owner command to settle, restore every registered owner control in reverse
+order, optionally stop the exact owned run, then persist the sanitized report.
+Recovery and stop are both bounded; either failure keeps the result non-success
+and the report retains only safe run/user/organization recovery commands.
+
+On Windows, Ctrl+C (`SIGINT`) and Ctrl+Break (`SIGBREAK`) use this recovery path.
+Windows forced termination is not a catchable `SIGTERM`/`SIGKILL` contract. On
+POSIX, `SIGINT` and `SIGTERM` use the recovery path; `SIGKILL` cannot be caught.
+After an unsupported forced termination, use only the report/manifest's exact
+run ID with the #357 owner CLI to restore any recorded owner control and stop
+that run. Never generalize a process or resource cleanup from a missing report.
 
 ## Manual experience from clean checkouts
 
