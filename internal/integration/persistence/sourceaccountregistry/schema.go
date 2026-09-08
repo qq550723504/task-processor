@@ -93,7 +93,7 @@ var expectedConstraints = map[string][]string{
 		"source_account_resources_version_check|c|CHECK (version > 0)",
 	},
 	OperationTable: {
-		"source_account_operations_account_fkey|f|FOREIGN KEY (organization_id, account_id) REFERENCES source_account_resources(organization_id, id) ON DELETE RESTRICT",
+		"source_account_operations_account_fkey|f|FOREIGN KEY (organization_id, account_id) REFERENCES public.source_account_resources(organization_id, id) ON DELETE RESTRICT",
 		"source_account_operations_actor_subject_check|c|CHECK (octet_length(actor_subject::text) >= 1 AND octet_length(actor_subject::text) <= 256 AND actor_subject::text = btrim(actor_subject::text))",
 		"source_account_operations_fingerprint_check|c|CHECK (request_fingerprint ~ '^[0-9a-f]{64}$'::text)",
 		"source_account_operations_kind_check|c|CHECK (kind::text = ANY (ARRAY['register'::character varying, 'enable'::character varying, 'disable'::character varying]::text[]))",
@@ -117,7 +117,7 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
 			return fmt.Errorf("install source account registry schema: %w", err)
 		}
 	}
-	return verifySchema(ctx, tx)
+	return verifySchemaWithCanonicalSearchPath(ctx, tx)
 }
 
 func VerifySchema(ctx context.Context, db *gorm.DB) error {
@@ -128,7 +128,28 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("get source account registry database: %w", err)
 	}
-	return verifySchema(ctx, sqlDB)
+	tx, err := sqlDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("begin source account registry schema verification: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return verifySchemaWithCanonicalSearchPath(ctx, tx)
+}
+
+func verifySchemaWithCanonicalSearchPath(ctx context.Context, tx *sql.Tx) (resultErr error) {
+	var originalSearchPath string
+	if err := tx.QueryRowContext(ctx, `SELECT current_setting('search_path')`).Scan(&originalSearchPath); err != nil {
+		return fmt.Errorf("read source account registry schema verification search_path: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT set_config('search_path', 'pg_catalog', true)`); err != nil {
+		return fmt.Errorf("set source account registry schema verification search_path: %w", err)
+	}
+	defer func() {
+		if _, err := tx.ExecContext(ctx, `SELECT set_config('search_path', $1, true)`, originalSearchPath); err != nil && resultErr == nil {
+			resultErr = fmt.Errorf("restore source account registry schema verification search_path: %w", err)
+		}
+	}()
+	return verifySchema(ctx, tx)
 }
 
 func verifySchema(ctx context.Context, query schemaQuery) error {

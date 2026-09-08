@@ -359,18 +359,18 @@ func TestSourceAccountRegistryRuntimeAlwaysUsesVerifiedPublicSchema(t *testing.T
 	if err := db.Exec(`CREATE SCHEMA shadow`).Error; err != nil {
 		t.Fatal(err)
 	}
-	shadowFirstDB := openRegistryGORM(t, registryDSNWithSearchPath(t, dsn, "shadow,public,pg_catalog"))
-	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
-	service := newRegistryService(t, shadowFirstDB, now)
-
-	// Add valid shadow tables only after construction. Schema admission still
-	// verifies public, and every later runtime query must remain bound there.
 	if err := db.Exec(`CREATE TABLE shadow.source_account_resources (LIKE public.source_account_resources INCLUDING ALL)`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`CREATE TABLE shadow.source_account_operations (LIKE public.source_account_operations INCLUDING ALL)`).Error; err != nil {
 		t.Fatal(err)
 	}
+	shadowOnlyDB := openRegistryGORM(t, registryDSNWithSearchPath(t, dsn, "shadow,pg_catalog"))
+	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
+	service := newRegistryService(t, shadowOnlyDB, now)
+
+	// Schema admission and runtime queries remain bound to public even when
+	// public is absent from search_path and valid same-name shadows pre-exist.
 
 	requestContext := registryIdentity(now, "org-public", "actor-1", "listingkit_operator")
 	key := uuid.NewString()
@@ -405,9 +405,9 @@ func TestSourceAccountRegistrySchemaHistoryAlwaysUsesPublic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	shadowFirstDB := openRegistryGORM(t, registryDSNWithSearchPath(t, dsn, "shadow,public,pg_catalog"))
-	if err := sourceaccountregistry.Migrate(ctx, shadowFirstDB); err != nil {
-		t.Fatalf("shadow-first Migrate() error = %v", err)
+	shadowOnlyDB := openRegistryGORM(t, registryDSNWithSearchPath(t, dsn, "shadow,pg_catalog"))
+	if err := sourceaccountregistry.Migrate(ctx, shadowOnlyDB); err != nil {
+		t.Fatalf("public-excluded Migrate() error = %v", err)
 	}
 	assertSchemaTableExists(t, db, "public", "goose_source_account_registry_version", true)
 	assertSchemaTableExists(t, db, "shadow", "goose_source_account_registry_version", false)
