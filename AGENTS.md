@@ -29,7 +29,7 @@
 4. 旧测试不是 Architecture Authority；只保留仍然有效的业务、安全、权限、幂等、平台或确定性行为，旧实现细节测试应删除/改写。
 5. ProductEnrich/ProductImage 旧 task/queue/worker/API、Task-first Product 模型、旧 Listing Workspace/Task Dashboard、平台独立 Workbench 等已 hard-cut 的设计不得通过兼容层重新进入新代码。
 6. 新的 Product/Agent/Tool/Marketplace/Console 代码不得直接依赖已登记为 `RETIRE` 的 legacy abstraction。
-7. 如果未来确实发现外部可观察契约或持久化运行态必须临时兼容，必须先停下来建立显式、可评审的 Exception；不得自行增加“临时”兼容路径。
+7. 如果未来发现具体、当前的外部可观察契约或持久化运行态似乎要求兼容，必须停下来报告用户；当前没有可执行的 legacy migration/compatibility Exception，只有用户新的明确产品决定可以改变本禁令，Reviewer 或 Agent 无权自行放行。不得自行增加“临时”兼容路径。
 
 PR 触碰 Legacy 时必须说明：
 

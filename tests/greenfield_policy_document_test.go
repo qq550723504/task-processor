@@ -82,6 +82,14 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 	if !strings.Contains(policy, "only a new explicit product decision from the user") {
 		t.Error("Hard-Cut policy must reserve any change to the greenfield prohibition to a new explicit user product decision")
 	}
+
+	agents := readGreenfieldPolicyDocument(t, filepath.Join("..", "AGENTS.md"))
+	if strings.Contains(agents, "必须先停下来建立显式、可评审的 Exception") {
+		t.Error("AGENTS must not retain an executable legacy compatibility Exception path")
+	}
+	if !strings.Contains(agents, "只有用户新的明确产品决定可以改变本禁令") {
+		t.Error("AGENTS must reserve any change to the greenfield prohibition to a new explicit user product decision")
+	}
 }
 
 func readGreenfieldPolicyDocument(t *testing.T, path string) string {
