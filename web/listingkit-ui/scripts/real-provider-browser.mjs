@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -160,8 +160,10 @@ async function select(page, context, key) {
 
 async function logout(page, context, user) {
   const seen = observe(page);
+  const landed = page.waitForResponse(response => isFinalApplicationLanding({ url: response.url(), status: response.status() }, manifest.origins.web) && response.request().method() === "GET", { timeout: 45000 });
   await page.locator("summary").filter({ hasText: "我的账户" }).click();
   await page.getByRole("link", { name: "退出登录", exact: true }).click();
+  await landed;
   await page.waitForURL(url => url.origin === manifest.origins.web && url.pathname === "/", { timeout: 45000 });
   ensure(seen.has("/api/zitadel-auth/logout") && seen.has("/oidc/v1/end_session"));
   // Must be before any context/API call can hide an incomplete logout cleanup.

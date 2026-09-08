@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, browserExpectedHeaders, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, browserExpectedHeaders, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // Schema checks only. These objects never authenticate a browser or count as E2E.
 const sha = "a".repeat(40);
@@ -147,4 +147,15 @@ test("status-only probes retain the same expected identity and organization head
   const input = handoff();
   assert.deepEqual(browserExpectedHeaders(input, "admin"), { "X-Expected-User-ID": "user-admin" });
   assert.deepEqual(browserExpectedHeaders(input, "admin", "B"), { "X-Expected-User-ID": "user-admin", "X-Expected-Organization-ID": "org-B" });
+});
+
+test("logout cookie inspection waits for the final application landing response", () => {
+  const web = "http://localhost:43101";
+  assert.equal(isFinalApplicationLanding({ url: `${web}/`, status: 200 }, web), true);
+  for (const response of [
+    { url: `${web}/`, status: 307 },
+    { url: "http://localhost:43103/", status: 302 },
+    { url: `${web}/api/zitadel-auth/logout`, status: 307 },
+    { url: `${web}/?returnTo=%2F`, status: 200 },
+  ]) assert.equal(isFinalApplicationLanding(response, web), false);
 });

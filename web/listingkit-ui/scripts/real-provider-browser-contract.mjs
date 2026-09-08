@@ -23,6 +23,13 @@ export function classifyLateResponseDelivery(delivered, cancellationError) {
   throw new Error("issue358_late_response_unproven");
 }
 
+export function isFinalApplicationLanding(response, web) {
+  try {
+    const url = new URL(response.url);
+    return response.status === 200 && url.origin === web && url.pathname === "/" && url.search === "";
+  } catch { return false; }
+}
+
 export function classifyRevocationRead({ status, confirmedAt, requestStartedAt }) {
   if (status === 403) return "denied";
   if (status === 200 && requestStartedAt - confirmedAt <= 60000) return "cached";
