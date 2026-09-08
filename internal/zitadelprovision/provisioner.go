@@ -27,6 +27,9 @@ type Config struct {
 	// grant before users can authenticate to the project. Nil preserves the
 	// existing provisioning default.
 	HasProjectCheck *bool
+	// ProjectRoleCheck is an explicit project-level login gate. Nil retains true.
+	// A caller disabling it must still authorize all organization access separately.
+	ProjectRoleCheck *bool
 	// BootstrapLoginName identifies the local human account that should receive
 	// the operator role before the first browser login. Empty disables bootstrap.
 	BootstrapLoginName string
@@ -56,6 +59,10 @@ type Result struct {
 }
 
 type LocalApplicationConfig struct {
+	// LocalOrigin opts into a strictly paired callback/logout on a local port.
+	// Empty preserves the fixed historical localhost:3000 acceptance URLs.
+	LocalOrigin            string
+	EnableRefreshToken     bool
 	APIName                string
 	OIDCName               string
 	RedirectURIs           []string
@@ -155,15 +162,15 @@ func Provision(ctx context.Context, cfg Config) (Result, error) {
 		if !cfg.CreateProject {
 			return Result{}, fmt.Errorf("project %s not found; pass -create-project to create it", projectName)
 		}
-		createdID, err := client.createProject(ctx, projectName, cfg.HasProjectCheck)
+		createdID, err := client.createProject(ctx, projectName, cfg.HasProjectCheck, cfg.ProjectRoleCheck)
 		if err != nil {
 			return Result{}, err
 		}
 		projectID = createdID
 		createdProject = true
 	}
-	if cfg.HasProjectCheck != nil && !createdProject {
-		if err := client.updateProject(ctx, projectID, projectName, *cfg.HasProjectCheck); err != nil {
+	if (cfg.HasProjectCheck != nil || cfg.ProjectRoleCheck != nil) && !createdProject {
+		if err := client.updateProject(ctx, projectID, projectName, cfg.HasProjectCheck, cfg.ProjectRoleCheck); err != nil {
 			return Result{}, err
 		}
 	}
@@ -208,9 +215,8 @@ func ProvisionLocalApplications(ctx context.Context, cfg Config, appCfg LocalApp
 	if len(appCfg.RedirectURIs) == 0 || len(appCfg.PostLogoutRedirectURIs) == 0 {
 		return LocalApplicationResult{}, errors.New("local OIDC redirect URIs are required")
 	}
-	if !equalStrings(appCfg.RedirectURIs, []string{"http://localhost:3000/api/auth/callback/zitadel"}) ||
-		!equalStrings(appCfg.PostLogoutRedirectURIs, []string{"http://localhost:3000"}) {
-		return LocalApplicationResult{}, errors.New("local OIDC redirects must use the fixed localhost acceptance URLs")
+	if err := validateLocalApplicationURLs(appCfg); err != nil {
+		return LocalApplicationResult{}, err
 	}
 	provisioned, err := Provision(ctx, cfg)
 	if err != nil {
@@ -732,7 +738,7 @@ func validateExistingOIDCApplication(ctx context.Context, client client, project
 	if equalStrings(config.RedirectURIs, cfg.RedirectURIs) &&
 		equalStrings(config.PostLogoutRedirectURIs, cfg.PostLogoutRedirectURIs) &&
 		equalStrings(config.ResponseTypes, []string{"OIDC_RESPONSE_TYPE_CODE"}) &&
-		equalStrings(config.GrantTypes, []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"}) &&
+		equalStrings(config.GrantTypes, localOIDCGrantTypes(cfg)) &&
 		(config.AppType == "" || config.AppType == "OIDC_APP_TYPE_WEB") &&
 		(config.AuthMethodType == "" || config.AuthMethodType == "OIDC_AUTH_METHOD_TYPE_BASIC") &&
 		(config.AccessTokenType == "" || config.AccessTokenType == "OIDC_TOKEN_TYPE_BEARER") &&
@@ -837,7 +843,7 @@ func (c client) createOIDCApplication(ctx context.Context, projectID string, cfg
 		"name":                     cfg.OIDCName,
 		"redirectUris":             cfg.RedirectURIs,
 		"responseTypes":            []string{"OIDC_RESPONSE_TYPE_CODE"},
-		"grantTypes":               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+		"grantTypes":               localOIDCGrantTypes(cfg),
 		"appType":                  "OIDC_APP_TYPE_WEB",
 		"authMethodType":           "OIDC_AUTH_METHOD_TYPE_BASIC",
 		"version":                  "OIDC_VERSION_1_0",
@@ -859,7 +865,7 @@ func (c client) updateOIDCApplicationConfig(ctx context.Context, projectID, appI
 	return c.doJSON(ctx, http.MethodPut, path, map[string]any{
 		"redirectUris":             cfg.RedirectURIs,
 		"responseTypes":            []string{"OIDC_RESPONSE_TYPE_CODE"},
-		"grantTypes":               []string{"OIDC_GRANT_TYPE_AUTHORIZATION_CODE"},
+		"grantTypes":               localOIDCGrantTypes(cfg),
 		"appType":                  "OIDC_APP_TYPE_WEB",
 		"authMethodType":           "OIDC_AUTH_METHOD_TYPE_BASIC",
 		"accessTokenType":          "OIDC_TOKEN_TYPE_BEARER",
@@ -1440,7 +1446,7 @@ func (c client) findProject(ctx context.Context, name string) (string, error) {
 	return "", nil
 }
 
-func (c client) createProject(ctx context.Context, name string, hasProjectCheck *bool) (string, error) {
+func (c client) createProject(ctx context.Context, name string, hasProjectCheck, roleCheck *bool) (string, error) {
 	var response struct {
 		ID string `json:"id"`
 	}
@@ -1451,7 +1457,7 @@ func (c client) createProject(ctx context.Context, name string, hasProjectCheck 
 	if err := c.doJSON(ctx, http.MethodPost, "/management/v1/projects", map[string]any{
 		"name":                 name,
 		"projectRoleAssertion": true,
-		"projectRoleCheck":     true,
+		"projectRoleCheck":     projectCheckOrDefault(roleCheck),
 		"hasProjectCheck":      projectHasProjectCheck,
 	}, &response); err != nil {
 		return "", err
@@ -1462,13 +1468,13 @@ func (c client) createProject(ctx context.Context, name string, hasProjectCheck 
 	return response.ID, nil
 }
 
-func (c client) updateProject(ctx context.Context, projectID, name string, hasProjectCheck bool) error {
+func (c client) updateProject(ctx context.Context, projectID, name string, hasProjectCheck, roleCheck *bool) error {
 	var response map[string]any
 	return c.doJSON(ctx, http.MethodPut, "/management/v1/projects/"+url.PathEscape(projectID), map[string]any{
 		"name":                 name,
 		"projectRoleAssertion": true,
-		"projectRoleCheck":     true,
-		"hasProjectCheck":      hasProjectCheck,
+		"projectRoleCheck":     projectCheckOrDefault(roleCheck),
+		"hasProjectCheck":      projectCheckOrDefault(hasProjectCheck),
 	}, &response)
 }
 

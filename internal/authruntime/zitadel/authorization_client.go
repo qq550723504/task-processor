@@ -263,10 +263,24 @@ func (c *AuthorizationClient) listAuthorizationPage(
 		return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing pagination")
 	}
 	if result.Pagination.TotalResult == nil {
-		return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing totalResult")
+		// Official ProtoJSON omits a zero total and an empty repeated field.
+		// An explicit null remains invalid under this adapter's strict contract.
+		var fields struct {
+			Pagination map[string]json.RawMessage `json:"pagination"`
+		}
+		if json.Unmarshal(responseBody, &fields) != nil || fields.Pagination["totalResult"] != nil {
+			return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing totalResult")
+		}
+		zero := zitadelprotojson.Uint64(0)
+		result.Pagination.TotalResult = &zero
 	}
 	if result.Authorizations == nil {
-		return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing authorizations")
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(responseBody, &fields) != nil || fields["authorizations"] != nil || *result.Pagination.TotalResult != 0 {
+			return authorizationListResponse{}, errors.New("ZITADEL authorization response is missing authorizations")
+		}
+		empty := []authorizationRecordV2{}
+		result.Authorizations = &empty
 	}
 	return result, nil
 }
