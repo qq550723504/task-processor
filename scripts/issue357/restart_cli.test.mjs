@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdir,rm} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {tmpdir} from 'node:os';
 import {childEnvironment,makeManifest} from './contract.mjs';
 import {json,readJSON,port} from './io.mjs';
 
@@ -27,7 +28,7 @@ async function fixture(plan) {
 }
 async function invoke(m,planPath,action='restart') {
  try {
-  const result=await execute(process.execPath,[cli,action,'--run',m.runId],{cwd:repo,windowsHide:true,env:{...childEnvironment(),NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,ISSUE357_TEST_RESTART_PLAN:planPath}});
+  const result=await execute(process.execPath,[cli,action,'--run',m.runId],{cwd:repo,windowsHide:true,env:{...childEnvironment(),TEMP:tmpdir(),TMP:tmpdir(),NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,ISSUE357_TEST_RESTART_PLAN:planPath}});
   return {code:0,stdout:result.stdout,stderr:result.stderr};
  }catch(error){return {code:error.code,stdout:error.stdout??'',stderr:error.stderr??''}}
 }
