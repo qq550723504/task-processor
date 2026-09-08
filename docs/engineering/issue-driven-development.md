@@ -4,7 +4,7 @@
 
 核心规则：**一个有界执行 Issue，同一时间一个实现负责人，独立分支／worktree，通常一个主要 PR；范围内 review 和 CI 修复留在原 PR，独立跨范围问题才新建 Issue。**
 
-[PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) 是新业务 Issue 的当前产品基线：全新安装、空业务数据和当前模型。不得仅因旧 Issue/PR/设计/测试记录而派发历史数据迁移/backfill、旧 ID 映射、legacy wrapper/adapter、tenantbridge consumer、fallback、双读/双写/同步或第二事实源。若声称存在外部可观察兼容义务，必须先有具体当前证据及显式、已评审的 Exception。
+[PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) 是新业务 Issue 的当前产品基线：全新安装、空业务数据和当前模型。不得仅因旧 Issue/PR/设计/测试记录而派发历史数据迁移/backfill、旧 ID 映射、legacy wrapper/adapter、tenantbridge consumer、fallback、双读/双写/同步或第二事实源。若声称存在外部可观察兼容义务，必须先有具体当前证据并报告用户；只有用户新的明确产品决定可以改变本禁令，Reviewer 或 Agent 无权自行放行。
 
 本规则只增加派工和交付流程，不另建架构或安全规则。TDD、架构敏感准入、finding 分类及最多两轮正常架构评审沿用 [AGENTS.md](../../AGENTS.md)；Legacy 处理沿用 [Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md) 与 [Legacy Register](../refactoring/legacy-register.md)，只有 `EXTRACT | RETIRE`，没有 Compatibility 类别。发现批准依据与适用 guard 冲突时，报告具体冲突及最小处理范围，不降低验收、不自行扩大修改范围。
 

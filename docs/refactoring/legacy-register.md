@@ -18,7 +18,7 @@ There is currently **no Compatibility category**. A directory or type named `com
 
 [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) controls all future business work: use a fresh installation, empty business data and current models. Rows below that describe a historical migration/cutover are evidence of existing debt only; they do not authorize old-data migration/backfill, old-ID mapping, legacy wrapper/adapter, fallback, dual read/write/synchronization, tenantbridge consumer or a second fact source. Existing legacy code is still only `EXTRACT | RETIRE`.
 
-An external compatibility obligation is never inferred from a row, historical Issue/PR, test or code. It requires concrete current evidence plus an explicit, reviewed Exception.
+An external compatibility obligation is never inferred from a row, historical Issue/PR, test or code. Concrete current evidence must be reported to the user; there is no executable legacy-migration/compatibility Exception, and only a new explicit product decision from the user can change that prohibition. Reviewers and Agents cannot authorize it themselves.
 
 ## 1. Repository scan summary
 

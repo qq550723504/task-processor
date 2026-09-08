@@ -22,7 +22,7 @@ There is currently **no legacy compatibility class**.
 
 Do not create compatibility layers, fallback paths, dual models, dual state machines, or bidirectional synchronization merely to preserve an obsolete internal design.
 
-If a future task proves that an externally observable contract or persisted/runtime state truly requires temporary compatibility, that requirement must be introduced as an explicit, reviewed exception. It is not implied by this policy and must not be anticipated in advance.
+If a future task identifies a concrete current externally observable contract that appears to require compatibility, report it to the user. It is not implied by this policy and must not be anticipated in advance: there is no executable legacy-migration/compatibility Exception, and only a new explicit product decision from the user can change that prohibition. Reviewers and Agents cannot authorize it themselves.
 
 ---
 
@@ -144,7 +144,7 @@ new Listing -> old Listing implementation fallback
 
 A hard cut means that after cutover the current owner is authoritative.
 
-Under PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08, do not design a legacy migration transition. Only concrete current evidence of an externally observable obligation plus an explicit, reviewed Exception can authorize one; it must then have a named removal condition and cannot silently become permanent architecture.
+Under PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08, do not design a legacy migration transition. Concrete current evidence of an externally observable obligation must be reported to the user; there is no executable Exception, and only a new explicit product decision from the user can change that prohibition. Reviewers and Agents cannot authorize it themselves.
 
 ---
 
@@ -178,7 +178,7 @@ Do not modify the new architecture merely to keep an obsolete test green.
 
 The current product baseline is **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**: new business work starts from a fresh installation and empty business data. Do not create an old-data migration/backfill, old-ID mapping, legacy Service wrapper, compatibility adapter, fallback, dual read/write/synchronization, tenantbridge consumer or second fact source.
 
-Normal schema evolution inside the new system remains allowed; it does not authorize importing old-system business history. A claimed externally observable compatibility obligation requires concrete current evidence and an explicit, reviewed Exception before implementation. Historical Issues, PRs, plans, tests and code do not create that obligation.
+Normal schema evolution inside the new system remains allowed; it does not authorize importing old-system business history. A claimed externally observable compatibility obligation requires concrete current evidence reported to the user; only a new explicit product decision from the user can change this prohibition. Historical Issues, PRs, plans, tests and code do not create that obligation, and Reviewers or Agents cannot authorize it themselves.
 
 ---
 
@@ -224,7 +224,7 @@ Every implementation that encounters legacy code must answer, in order:
 
 `Keep legacy compatibility` is not a valid third answer under the current baseline.
 
-If a future external compatibility requirement is discovered, stop and create an explicit exception instead of introducing a hidden fallback.
+If a future external compatibility requirement is discovered, stop and report its concrete current evidence to the user instead of introducing a hidden fallback. Only a new explicit product decision from the user can change the prohibition; neither review nor agent action can do so.
 
 ---
 

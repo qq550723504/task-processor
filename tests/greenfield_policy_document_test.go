@@ -56,6 +56,32 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			t.Errorf("%s must not retain the superseded migration authorization %q", filepath.ToSlash(path), forbidden)
 		}
 	}
+
+	moduleMap := readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "refactoring", "module-target-mapping.md"))
+	for _, required := range []string{
+		"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+		"current package areas to current target owners",
+		"no legacy numeric mapping, old-data migration/backfill or cutover",
+		"current Console, account, plans and review surfaces",
+	} {
+		if !strings.Contains(moduleMap, required) {
+			t.Errorf("active module map must state %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"#301: freeze new consumers, migrate/backfill/cut over",
+		"#30 owns active 1688 handoff cutover",
+		"after controlled acceptance",
+	} {
+		if strings.Contains(moduleMap, forbidden) {
+			t.Errorf("active module map must not retain the superseded instruction %q", forbidden)
+		}
+	}
+
+	policy := readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "refactoring", "legacy-hard-cut-policy.md"))
+	if !strings.Contains(policy, "only a new explicit product decision from the user") {
+		t.Error("Hard-Cut policy must reserve any change to the greenfield prohibition to a new explicit user product decision")
+	}
 }
 
 func readGreenfieldPolicyDocument(t *testing.T, path string) string {
