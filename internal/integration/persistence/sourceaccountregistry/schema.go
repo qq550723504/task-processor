@@ -13,6 +13,8 @@ import (
 const (
 	ResourceTable  = "source_account_resources"
 	OperationTable = "source_account_operations"
+	resourceTable  = "public." + ResourceTable
+	operationTable = "public." + OperationTable
 )
 
 var installationStatements = []string{

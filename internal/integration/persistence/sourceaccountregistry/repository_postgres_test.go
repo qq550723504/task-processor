@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -348,7 +349,61 @@ func TestSourceAccountRegistrySchemaDriftFailsReadOnlyConstruction(t *testing.T)
 	}
 }
 
+func TestSourceAccountRegistryRuntimeAlwaysUsesVerifiedPublicSchema(t *testing.T) {
+	db, dsn := openRegistryPostgresWithDSN(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if err := sourceaccountregistry.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE SCHEMA shadow`).Error; err != nil {
+		t.Fatal(err)
+	}
+	shadowFirstDB := openRegistryGORM(t, registryDSNWithSearchPath(t, dsn, "shadow,public,pg_catalog"))
+	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
+	service := newRegistryService(t, shadowFirstDB, now)
+
+	// Add valid shadow tables only after construction. Schema admission still
+	// verifies public, and every later runtime query must remain bound there.
+	if err := db.Exec(`CREATE TABLE shadow.source_account_resources (LIKE public.source_account_resources INCLUDING ALL)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE shadow.source_account_operations (LIKE public.source_account_operations INCLUDING ALL)`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	requestContext := registryIdentity(now, "org-public", "actor-1", "listingkit_operator")
+	key := uuid.NewString()
+	created, err := service.Register(requestContext, key, registry.RegisterInput{DisplayName: "Public owner", Platform: "1688"})
+	if err != nil || created.Replayed {
+		t.Fatalf("Register() = %#v, %v", created, err)
+	}
+	if _, err := service.Register(requestContext, key, registry.RegisterInput{DisplayName: "Public owner", Platform: "1688"}); err != nil {
+		t.Fatalf("Register() replay error = %v", err)
+	}
+	if _, err := service.Get(requestContext, created.Account.ID); err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if page, err := service.List(requestContext, registry.PageRequest{Limit: 20}); err != nil || len(page.Items) != 1 {
+		t.Fatalf("List() = %#v, %v", page, err)
+	}
+	if _, err := service.Disable(requestContext, uuid.NewString(), created.Account.ID, created.Account.Version); err != nil {
+		t.Fatalf("Disable() error = %v", err)
+	}
+
+	assertCount(t, db, "public.source_account_resources", "organization_id = ?", []any{"org-public"}, 1)
+	assertCount(t, db, "public.source_account_operations", "organization_id = ?", []any{"org-public"}, 2)
+	assertCount(t, db, "shadow.source_account_resources", "organization_id = ?", []any{"org-public"}, 0)
+	assertCount(t, db, "shadow.source_account_operations", "organization_id = ?", []any{"org-public"}, 0)
+}
+
 func openRegistryPostgres(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, _ := openRegistryPostgresWithDSN(t)
+	return db
+}
+
+func openRegistryPostgresWithDSN(t *testing.T) (*gorm.DB, string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -361,6 +416,11 @@ func openRegistryPostgres(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return openRegistryGORM(t, dsn), dsn
+}
+
+func openRegistryGORM(t *testing.T, dsn string) *gorm.DB {
+	t.Helper()
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		t.Fatal(err)
@@ -374,6 +434,18 @@ func openRegistryPostgres(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(32)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return db
+}
+
+func registryDSNWithSearchPath(t *testing.T, dsn, searchPath string) string {
+	t.Helper()
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	query.Set("search_path", searchPath)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func newRegistryService(t *testing.T, db *gorm.DB, now time.Time) *registry.Service {

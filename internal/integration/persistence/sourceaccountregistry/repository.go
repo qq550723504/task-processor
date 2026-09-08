@@ -74,7 +74,7 @@ func (r *Repository) Read(ctx context.Context, scope sourceaccountregistry.Scope
 		return sourceaccountregistry.Account{}, sourceaccountregistry.ErrUnavailable
 	}
 	var row accountRow
-	err := r.db.WithContext(ctx).Table(ResourceTable).Where("organization_id = ? AND id = ?", scope.OrganizationID, id).Take(&row).Error
+	err := r.db.WithContext(ctx).Table(resourceTable).Where("organization_id = ? AND id = ?", scope.OrganizationID, id).Take(&row).Error
 	if err != nil {
 		return sourceaccountregistry.Account{}, mapError(ctx, err)
 	}
@@ -85,7 +85,7 @@ func (r *Repository) List(ctx context.Context, scope sourceaccountregistry.Scope
 	if r == nil || r.db == nil || request.Limit < 1 || request.Limit > sourceaccountregistry.MaxPageLimit {
 		return sourceaccountregistry.Page{}, sourceaccountregistry.ErrUnavailable
 	}
-	query := r.db.WithContext(ctx).Table(ResourceTable).Where("organization_id = ?", scope.OrganizationID)
+	query := r.db.WithContext(ctx).Table(resourceTable).Where("organization_id = ?", scope.OrganizationID)
 	if request.After != nil {
 		query = query.Where("(created_at > ?) OR (created_at = ? AND id > ?)", request.After.CreatedAt.UTC(), request.After.CreatedAt.UTC(), request.After.ID)
 	}
@@ -128,7 +128,7 @@ func (t *transaction) Replay() (sourceaccountregistry.Account, bool, error) {
 	}
 	t.replayChecked = true
 	var operation operationRow
-	err := t.db.Table(OperationTable).Where("organization_id = ? AND actor_subject = ? AND idempotency_key = ?", t.operation.Scope.OrganizationID, t.operation.Scope.ActorSubject, t.operation.Key).Take(&operation).Error
+	err := t.db.Table(operationTable).Where("organization_id = ? AND actor_subject = ? AND idempotency_key = ?", t.operation.Scope.OrganizationID, t.operation.Scope.ActorSubject, t.operation.Key).Take(&operation).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return sourceaccountregistry.Account{}, false, nil
 	}
@@ -139,7 +139,7 @@ func (t *transaction) Replay() (sourceaccountregistry.Account, bool, error) {
 		return sourceaccountregistry.Account{}, false, sourceaccountregistry.ErrIdempotencyConflict
 	}
 	var account accountRow
-	if err := t.db.Table(ResourceTable).Where("organization_id = ? AND id = ?", t.operation.Scope.OrganizationID, operation.AccountID).Take(&account).Error; err != nil {
+	if err := t.db.Table(resourceTable).Where("organization_id = ? AND id = ?", t.operation.Scope.OrganizationID, operation.AccountID).Take(&account).Error; err != nil {
 		return sourceaccountregistry.Account{}, false, mapError(t.db.Statement.Context, err)
 	}
 	result, err := account.account()
@@ -159,7 +159,7 @@ func (t *transaction) CountForCreate() (int, error) {
 		return 0, mapError(t.db.Statement.Context, err)
 	}
 	var count int64
-	if err := t.db.Table(ResourceTable).Where("organization_id = ?", t.operation.Scope.OrganizationID).Count(&count).Error; err != nil {
+	if err := t.db.Table(resourceTable).Where("organization_id = ?", t.operation.Scope.OrganizationID).Count(&count).Error; err != nil {
 		return 0, mapError(t.db.Statement.Context, err)
 	}
 	if count < 0 || count > int64(^uint(0)>>1) {
@@ -175,7 +175,7 @@ func (t *transaction) Insert(account sourceaccountregistry.Account) error {
 	if err := account.Validate(); err != nil {
 		return err
 	}
-	return mapError(t.db.Statement.Context, t.db.Table(ResourceTable).Create(accountRowFrom(account)).Error)
+	return mapError(t.db.Statement.Context, t.db.Table(resourceTable).Create(accountRowFrom(account)).Error)
 }
 
 func (t *transaction) LoadForUpdate(id string) (sourceaccountregistry.Account, error) {
@@ -200,7 +200,7 @@ func (t *transaction) Save(account sourceaccountregistry.Account, expectedVersio
 	if err := account.Validate(); err != nil {
 		return err
 	}
-	result := t.db.Table(ResourceTable).Where("organization_id = ? AND id = ? AND version = ?", account.OrganizationID, account.ID, expectedVersion).Updates(map[string]any{
+	result := t.db.Table(resourceTable).Where("organization_id = ? AND id = ? AND version = ?", account.OrganizationID, account.ID, expectedVersion).Updates(map[string]any{
 		"management_status": account.ManagementStatus, "version": account.Version, "updated_by": account.UpdatedBy, "updated_at": account.UpdatedAt,
 	})
 	if result.Error != nil {
@@ -221,7 +221,7 @@ func (t *transaction) Complete(account sourceaccountregistry.Account) error {
 		IdempotencyKey: t.operation.Key, Kind: string(t.operation.Kind), RequestFingerprint: t.operation.Fingerprint,
 		AccountID: account.ID, ResultingVersion: account.Version, ResultingManagementStatus: string(account.ManagementStatus), CreatedAt: account.UpdatedAt.UTC(),
 	}
-	if err := t.db.Table(OperationTable).Create(&row).Error; err != nil {
+	if err := t.db.Table(operationTable).Create(&row).Error; err != nil {
 		return mapError(t.db.Statement.Context, err)
 	}
 	t.completed = true

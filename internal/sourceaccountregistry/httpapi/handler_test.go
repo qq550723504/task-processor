@@ -81,6 +81,9 @@ func TestCreateReplayIs200AndInputIsStrict(t *testing.T) {
 		{name: "wrong content type", body: `{"displayName":"A","platform":"1688"}`, contentType: "text/plain"},
 		{name: "query", body: `{"displayName":"A","platform":"1688"}`, contentType: "application/json", query: "legacy=true"},
 		{name: "too large", body: strings.Repeat("a", requestBodyMaxBytes+1), contentType: "application/json"},
+		{name: "unpaired high surrogate", body: `{"displayName":"bad\ud800","platform":"1688"}`, contentType: "application/json"},
+		{name: "unpaired low surrogate", body: `{"displayName":"bad\udc00","platform":"1688"}`, contentType: "application/json"},
+		{name: "high surrogate followed by scalar", body: `{"displayName":"bad\ud800\u0061","platform":"1688"}`, contentType: "application/json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,6 +106,16 @@ func TestCreateReplayIs200AndInputIsStrict(t *testing.T) {
 			}
 			assertProtectedHeaders(t, recorder)
 		})
+	}
+
+	service.registerResult.Replayed = false
+	recorder = httptest.NewRecorder()
+	ctx = testContext(recorder, http.MethodPost, "/api/v1/workbench/source-accounts", `{"displayName":"emoji\ud83d\ude00","platform":"1688"}`, now, "org-b")
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Request.Header.Set("Idempotency-Key", uuid.NewString())
+	handler.Create(ctx)
+	if recorder.Code != http.StatusCreated || service.registerInput.DisplayName != "emoji😀" {
+		t.Fatalf("valid surrogate pair status=%d input=%#v body=%s", recorder.Code, service.registerInput, recorder.Body.String())
 	}
 }
 
