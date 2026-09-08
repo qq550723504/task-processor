@@ -189,6 +189,46 @@ func TestDetailAndLifecycleUseVersionedCurrentContract(t *testing.T) {
 	}
 }
 
+func TestMountedHandlerDeadlineWinsSuccessfulServiceResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
+	account := httpTestAccount(t, now)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	service := &blockingGetService{
+		fakeService: &fakeService{account: account},
+		started:     started,
+		release:     release,
+	}
+	handler := mustHandler(t, service)
+	router := gin.New()
+	router.GET("/api/v1/workbench/source-accounts/:source_account_id", handler.Get)
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	identity := authidentity.AuthenticatedIdentity{
+		TenantID: "org-b", EffectiveOrganizationID: "org-b", UserID: "actor-1",
+		Roles: []string{"listingkit_operator"}, TokenExpiresAt: now.Add(time.Hour),
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/workbench/source-accounts/"+account.ID, nil)
+	request = request.WithContext(authidentity.WithAuthenticatedIdentity(requestContext, identity))
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		router.ServeHTTP(response, request)
+	}()
+
+	<-started
+	cancel()
+	close(release)
+	<-done
+
+	if response.Code != http.StatusGatewayTimeout || !strings.Contains(response.Body.String(), `"code":"DEADLINE_EXCEEDED"`) {
+		t.Fatalf("deadline response status=%d body=%s", response.Code, response.Body.String())
+	}
+	assertProtectedHeaders(t, response)
+}
+
 func TestHandlerMapsErrorsWithoutDependencyLeakage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	now := time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC)
@@ -283,6 +323,18 @@ type fakeService struct {
 	lifecycleKey    string
 	lifecycleID     string
 	expectedVersion int64
+}
+
+type blockingGetService struct {
+	*fakeService
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingGetService) Get(context.Context, string) (sourceaccountregistry.Account, error) {
+	close(s.started)
+	<-s.release
+	return s.account, nil
 }
 
 func (s *fakeService) Register(_ context.Context, key string, input sourceaccountregistry.RegisterInput) (sourceaccountregistry.MutationResult, error) {

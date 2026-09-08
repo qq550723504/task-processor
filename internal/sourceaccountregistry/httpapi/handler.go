@@ -139,6 +139,9 @@ func (h *Handler) Get(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
+	if requestEndedBeforeSuccess(c) {
+		return
+	}
 	protectedHeaders(c)
 	c.Header("ETag", quoteVersion(account.Version))
 	c.JSON(http.StatusOK, DetailResponse{SchemaVersion: 1, Account: response})
@@ -190,6 +193,9 @@ func (h *Handler) List(c *gin.Context) {
 		}
 		nextCursor = &encoded
 	}
+	if requestEndedBeforeSuccess(c) {
+		return
+	}
 	protectedHeaders(c)
 	c.JSON(http.StatusOK, PageResponse{SchemaVersion: 1, Items: items, NextCursor: nextCursor})
 }
@@ -239,9 +245,20 @@ func writeMutation(c *gin.Context, status int, result sourceaccountregistry.Muta
 		writeError(c, err)
 		return
 	}
+	if requestEndedBeforeSuccess(c) {
+		return
+	}
 	protectedHeaders(c)
 	c.Header("ETag", quoteVersion(result.Account.Version))
 	c.JSON(status, MutationResponse{SchemaVersion: 1, Account: response, Replayed: result.Replayed})
+}
+
+func requestEndedBeforeSuccess(c *gin.Context) bool {
+	if err := c.Request.Context().Err(); err != nil {
+		writeError(c, err)
+		return true
+	}
+	return false
 }
 
 func projectAccount(account sourceaccountregistry.Account, organizationID, id string) (SourceAccountResponse, error) {
