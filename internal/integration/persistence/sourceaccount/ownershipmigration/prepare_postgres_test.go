@@ -161,6 +161,45 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
 	})
 
+	t.Run("rejects source text outside byte budgets before writes", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			limits prepareSourceResourceLimits
+		}{
+			{
+				name: "one field exceeds its byte limit",
+				limits: prepareSourceResourceLimits{
+					maxFieldBytes:    8,
+					maxSnapshotBytes: maxPrepareSourceSnapshotBytes,
+				},
+			},
+			{
+				name: "aggregate text exceeds the snapshot limit",
+				limits: prepareSourceResourceLimits{
+					maxFieldBytes:    maxPrepareSourceFieldBytes,
+					maxSnapshotBytes: 32,
+				},
+			},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				request := fixture.resetAndSeed(t)
+				preparer, err := NewPreparer(fixture.db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				preparer.sourceResourceLimits = test.limits
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				if _, _, err = preparer.Prepare(ctx, request); !errors.Is(err, ErrResourceLimit) {
+					t.Fatalf("Prepare() resource error = %v", err)
+				}
+				fixture.assertCount(t, "public.organization_source_accounts", 0)
+				fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
+			})
+		}
+	})
+
 	t.Run("rejects a different selected database before mutation", func(t *testing.T) {
 		request := fixture.resetAndSeed(t)
 		request.Preflight.AccountObservation.Database = "different_database"
