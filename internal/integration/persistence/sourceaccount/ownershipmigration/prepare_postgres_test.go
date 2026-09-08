@@ -163,21 +163,19 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 
 	t.Run("rejects source text outside byte budgets before writes", func(t *testing.T) {
 		tests := []struct {
-			name   string
-			limits prepareSourceResourceLimits
+			name string
+			set  func(*prepareResourceLimits)
 		}{
 			{
 				name: "one field exceeds its byte limit",
-				limits: prepareSourceResourceLimits{
-					maxFieldBytes:    8,
-					maxSnapshotBytes: maxPrepareSourceSnapshotBytes,
+				set: func(limits *prepareResourceLimits) {
+					limits.maxFieldBytes = 8
 				},
 			},
 			{
 				name: "aggregate text exceeds the snapshot limit",
-				limits: prepareSourceResourceLimits{
-					maxFieldBytes:    maxPrepareTextFieldBytes,
-					maxSnapshotBytes: 32,
+				set: func(limits *prepareResourceLimits) {
+					limits.maxSourceTextBytes = 32
 				},
 			},
 		}
@@ -188,7 +186,7 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				preparer.sourceResourceLimits = test.limits
+				test.set(&preparer.resourceLimits)
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 				if _, _, err = preparer.Prepare(ctx, request); !errors.Is(err, ErrResourceLimit) {
@@ -198,6 +196,160 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 				fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
 			})
 		}
+	})
+
+	t.Run("rejects escape-expanded source and target snapshots before whole digest", func(t *testing.T) {
+		t.Run("source", func(t *testing.T) {
+			request := fixture.resetAndSeed(t)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if _, err := fixture.db.ExecContext(ctx, `UPDATE public.source_account SET login_url = $1 WHERE id = 1`, strings.Repeat("\x01", 64)); err != nil {
+				t.Fatal(err)
+			}
+			tx, err := fixture.db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = lockPrepareTables(ctx, tx); err != nil {
+				_ = tx.Rollback()
+				t.Fatal(err)
+			}
+			source, err := readPrepareSource(ctx, tx, defaultPrepareResourceLimits())
+			if err != nil {
+				_ = tx.Rollback()
+				t.Fatal(err)
+			}
+			encodedBytes, err := measureJSONArray(source, maxPrepareSnapshotJSONBytes, "test source snapshot")
+			if rollbackErr := tx.Rollback(); err == nil && rollbackErr != nil {
+				err = rollbackErr
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			preparer, err := NewPreparer(fixture.db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preparer.resourceLimits.maxSnapshotJSONBytes = encodedBytes - 1
+			if _, _, err = preparer.Prepare(ctx, request); !errors.Is(err, ErrResourceLimit) {
+				t.Fatalf("Prepare() escaped source error = %v", err)
+			}
+			fixture.assertCount(t, "public.organization_source_accounts", 0)
+			fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
+		})
+
+		t.Run("target", func(t *testing.T) {
+			request := fixture.resetAndSeed(t)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if _, err := fixture.db.ExecContext(ctx, `INSERT INTO public.organization_source_accounts (id, organization_id, platform, profile_ref, profile_directory, login_url, status, deleted, created_at, updated_at) VALUES (1, 'org-a', '1688', 'profile-a', $1, $2, 0, 0, '2026-09-01T00:00:00Z', '2026-09-08T00:00:00Z')`, prepareTestProfileDirectory("101", "1"), strings.Repeat("\x01", 64)); err != nil {
+				t.Fatal(err)
+			}
+			tx, err := fixture.db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := readPrepareTarget(ctx, tx, defaultPrepareResourceLimits())
+			encodedBytes := int64(0)
+			if err == nil {
+				encodedBytes, err = measureJSONArray(target, maxPrepareSnapshotJSONBytes, "test target snapshot")
+			}
+			if rollbackErr := tx.Rollback(); err == nil && rollbackErr != nil {
+				err = rollbackErr
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			preparer, err := NewPreparer(fixture.db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preparer.resourceLimits.maxSnapshotJSONBytes = encodedBytes - 1
+			if _, _, err = preparer.Prepare(ctx, request); !errors.Is(err, ErrResourceLimit) {
+				t.Fatalf("Prepare() escaped target error = %v", err)
+			}
+			fixture.assertCount(t, "public.organization_source_accounts", 1)
+			fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
+		})
+	})
+
+	t.Run("uses one persisted JSON byte boundary for receipt write and read", func(t *testing.T) {
+		fixture.resetAndSeed(t)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		timestamp := time.Date(2026, 9, 8, 2, 3, 4, 5000, time.UTC)
+		receipt := PreparedReceipt{
+			ContractVersion: PreparedContractVersion,
+			IdempotencyKey:  "receipt-boundary",
+			Stage:           PreparedStage,
+			RequestSHA256:   strings.Repeat("a", 64),
+			PreflightSHA256: strings.Repeat("b", 64),
+			SourceID:        "issue362/source",
+			SourceDatabase:  fixture.database,
+			SourceSchema:    preparedSourceSchema,
+			SourceSHA256:    strings.Repeat("c", 64),
+			TargetSHA256:    strings.Repeat("d", 64),
+			AccountCount:    1,
+			Accounts: []PreparedAccountEvidence{{
+				ID: 1, LegacyTenantID: 101, OrganizationID: "org-a", Platform: "1688",
+				Label: stringPointer("\x01<&\""), ProfileRef: "profile-a", ProfileDirectory: prepareTestProfileDirectory("101", "1"),
+				CreatedAt: timestamp, UpdatedAt: timestamp,
+			}},
+			PreparedAt: timestamp,
+		}
+		tx, err := fixture.db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		limits := defaultPrepareResourceLimits()
+		if err = insertPreparedReceipt(ctx, tx, receipt, limits); err != nil {
+			_ = tx.Rollback()
+			t.Fatal(err)
+		}
+		var persistedBytes int64
+		if err = tx.QueryRowContext(ctx, `SELECT octet_length(result_json::text) FROM public.source_account_ownership_migration_receipts WHERE contract_version = $1 AND idempotency_key = $2`, receipt.ContractVersion, receipt.IdempotencyKey).Scan(&persistedBytes); err != nil {
+			_ = tx.Rollback()
+			t.Fatal(err)
+		}
+		if err = tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+
+		limits.maxReceiptJSONBytes = persistedBytes
+		readTx, err := fixture.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, found, err := readPreparedReceiptRow(ctx, readTx, receipt.ContractVersion, receipt.IdempotencyKey, limits)
+		_ = readTx.Rollback()
+		if err != nil || !found || !preparedReceiptsEqual(receipt, stored) {
+			t.Fatalf("boundary receipt read = %#v, %v, %v", stored, found, err)
+		}
+
+		limits.maxReceiptJSONBytes = persistedBytes - 1
+		readTx, err = fixture.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = readPreparedReceiptRow(ctx, readTx, receipt.ContractVersion, receipt.IdempotencyKey, limits)
+		_ = readTx.Rollback()
+		if !errors.Is(err, ErrResourceLimit) {
+			t.Fatalf("under-boundary receipt read error = %v", err)
+		}
+
+		if _, err = fixture.db.ExecContext(ctx, `DELETE FROM public.source_account_ownership_migration_receipts`); err != nil {
+			t.Fatal(err)
+		}
+		writeTx, err := fixture.db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = insertPreparedReceipt(ctx, writeTx, receipt, limits)
+		_ = writeTx.Rollback()
+		if !errors.Is(err, ErrResourceLimit) {
+			t.Fatalf("under-boundary receipt write error = %v", err)
+		}
+		fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
 	})
 
 	t.Run("rejects a different selected database before mutation", func(t *testing.T) {
@@ -553,6 +705,10 @@ type preparePostgresFixture struct {
 	db        *sql.DB
 	database  string
 	container *tcpostgres.PostgresContainer
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 func newPreparePostgres(t *testing.T) *preparePostgresFixture {

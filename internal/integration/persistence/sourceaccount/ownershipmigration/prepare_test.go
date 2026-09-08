@@ -3,6 +3,7 @@ package ownershipmigration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -99,17 +100,57 @@ func TestPreparedTargetDigestDoesNotReintroduceLegacyOwnership(t *testing.T) {
 		ProfileRef: "profile-a", ProfileDirectory: prepareTestProfileDirectory("101", "1"),
 		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC),
 	}
-	first, err := digestPreparedTarget([]PreparedAccountEvidence{account})
+	first, err := digestPreparedTarget([]PreparedAccountEvidence{account}, maxPrepareSnapshotJSONBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	account.LegacyTenantID = 999
-	second, err := digestPreparedTarget([]PreparedAccountEvidence{account})
+	second, err := digestPreparedTarget([]PreparedAccountEvidence{account}, maxPrepareSnapshotJSONBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first != second {
 		t.Fatalf("target digest depends on retired numeric owner: %s != %s", first, second)
+	}
+}
+
+func TestPrepareRequestJSONBudgetCountsEscapingBeforeWholeMarshal(t *testing.T) {
+	plain := validPrepareTestRequest("migration-1")
+	escaped := clonePrepareRequest(t, plain)
+	plain.Preflight.Accounts[0].ProfileDirectory += "aaaa"
+	escaped.Preflight.Accounts[0].ProfileDirectory += "\x01\x01\x01\x01"
+	plain.Preflight.Digest = receiptDigest(plain.Preflight)
+	escaped.Preflight.Digest = receiptDigest(escaped.Preflight)
+
+	plainBytes, err := measurePreflightReceiptJSON(plain.Preflight, maxPrepareRequestBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escapedBytes, err := measurePreflightReceiptJSON(escaped.Preflight, maxPrepareRequestBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := escaped.Preflight
+	canonical.Digest = ""
+	canonical.AccountObservation.At = time.Time{}
+	canonical.MetadataObservation.At = time.Time{}
+	payload, err := json.Marshal(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if escapedBytes != int64(len(payload)) {
+		t.Fatalf("measured escaped receipt bytes = %d, marshal bytes = %d", escapedBytes, len(payload))
+	}
+	if escapedBytes <= plainBytes {
+		t.Fatalf("escaped bytes = %d, plain bytes = %d", escapedBytes, plainBytes)
+	}
+
+	limits := defaultPrepareResourceLimits()
+	limits.maxRequestJSONBytes = plainBytes
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err = validatePrepareRequestWithLimits(ctx, escaped, limits); !errors.Is(err, ErrResourceLimit) {
+		t.Fatalf("validatePrepareRequestWithLimits() error = %v", err)
 	}
 }
 
