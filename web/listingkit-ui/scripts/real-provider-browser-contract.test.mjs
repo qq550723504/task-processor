@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, browserExpectedHeaders, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // Schema checks only. These objects never authenticate a browser or count as E2E.
 const sha = "a".repeat(40);
@@ -141,4 +141,10 @@ test("a provider redirect is failed only by connection refusal or a bounded gate
   assert.equal(classifyUnavailableProviderTarget(undefined), "unreachable");
   for (const status of [500, 502, 503, 504]) assert.equal(classifyUnavailableProviderTarget(status), "gateway-error");
   for (const status of [200, 302, 401, 404]) assert.throws(() => classifyUnavailableProviderTarget(status), /provider_target_failure_unproven/);
+});
+
+test("status-only probes retain the same expected identity and organization headers", () => {
+  const input = handoff();
+  assert.deepEqual(browserExpectedHeaders(input, "admin"), { "X-Expected-User-ID": "user-admin" });
+  assert.deepEqual(browserExpectedHeaders(input, "admin", "B"), { "X-Expected-User-ID": "user-admin", "X-Expected-Organization-ID": "org-B" });
 });

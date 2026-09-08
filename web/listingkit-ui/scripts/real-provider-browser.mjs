@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -44,16 +44,14 @@ async function json(response) {
 }
 function urlOf(raw) { return new URL(raw, manifest.origins.web); }
 async function api(context, pathname, user, organization) {
-  const headers = {};
-  if (user) headers["X-Expected-User-ID"] = manifest.users[user].id;
-  if (organization) headers["X-Expected-Organization-ID"] = manifest.organizations[organization].id;
+  const headers = browserExpectedHeaders(manifest, user, organization);
   // This request client shares only cookies naturally issued in this same context.
   const response = await context.request.get(`${manifest.origins.web}${pathname}`, { headers, maxRedirects: 0, timeout: 20000 });
   const body = await json(response);
   return { status: response.status(), body };
 }
-async function apiStatus(context, pathname) {
-  const response = await context.request.get(`${manifest.origins.web}${pathname}`, { maxRedirects: 0, timeout: 20000 });
+async function apiStatus(context, pathname, user, organization) {
+  const response = await context.request.get(`${manifest.origins.web}${pathname}`, { headers: browserExpectedHeaders(manifest, user, organization), maxRedirects: 0, timeout: 20000 });
   return response.status();
 }
 function hasToken(value) {
@@ -327,7 +325,7 @@ async function controlCases() {
     });
     await check("M8_provider_failure", async () => {
       await withOwnerControlRestored(() => control("provider-stop"), async () => {
-        ensure([401, 502, 503, 504].includes(await apiStatus(cached, "/api/account/profile")));
+        ensure([401, 502, 503, 504].includes(await apiStatus(cached, "/api/account/profile", "admin")));
         const empty = await browser.newContext();
         try {
           const response = await empty.request.get(`${manifest.origins.web}/api/zitadel-auth/login`, { timeout: 30000, maxRedirects: 0 });

@@ -4,6 +4,13 @@ export function publicBrowserOrigins(manifest) {
   return { web: manifest.origins.web, go: manifest.origins.go, issuer: manifest.origins.issuer };
 }
 
+export function browserExpectedHeaders(manifest, user, organization) {
+  return {
+    ...(user ? { "X-Expected-User-ID": manifest.users[user].id } : {}),
+    ...(organization ? { "X-Expected-Organization-ID": manifest.organizations[organization].id } : {}),
+  };
+}
+
 export function assertBrowserDiagnosticsDisabled(environment) {
   if (Object.entries(environment).some(([key, value]) => value && (/^(DEBUG|PWDEBUG|DEBUG_FILE)$/i.test(key) || /^(PW|PLAYWRIGHT).*(DEBUG|LOG|TRACE)/i.test(key)))) {
     throw new Error("issue358_browser_diagnostics_forbidden");
