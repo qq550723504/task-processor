@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +30,9 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
+		if err = InstallPreparedSchema(ctx, fixture.db); err != nil {
+			t.Fatalf("repeat InstallPreparedSchema() error = %v", err)
+		}
 		result, replayed, err := preparer.Prepare(ctx, request)
 		if err != nil {
 			t.Fatalf("Prepare() error = %v", err)
@@ -63,6 +67,7 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		fixture.assertCount(t, "public.organization_source_accounts", 3)
 		fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 1)
 		fixture.assertTargetHasNoLegacyTenant(t)
+		fixture.assertPreparedSchema(t)
 		versions := fixture.rowVersions(t)
 
 		replayedResult, wasReplay, err := preparer.Prepare(ctx, request)
@@ -179,7 +184,16 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 			set  func(*Preparer, context.CancelFunc)
 		}{
 			{name: "failure after target insert", set: func(p *Preparer, _ context.CancelFunc) {
-				p.afterTargetInsert = func(int) error { return errors.New("injected target failure") }
+				p.afterTargetInsert = func(context.Context, *sql.Tx, int) error { return errors.New("injected target failure") }
+			}},
+			{name: "database error after target insert", set: func(p *Preparer, _ context.CancelFunc) {
+				p.afterTargetInsert = func(ctx context.Context, tx *sql.Tx, inserted int) error {
+					if inserted != 1 {
+						return nil
+					}
+					_, err := tx.ExecContext(ctx, "INSERT INTO public.organization_source_accounts SELECT * FROM public.organization_source_accounts WHERE id = 1")
+					return err
+				}
 			}},
 			{name: "cancellation after locks", set: func(p *Preparer, cancel context.CancelFunc) {
 				p.afterLocks = func() error { cancel(); return nil }
@@ -401,6 +415,64 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects schema drift without writes", func(t *testing.T) {
+		cases := []struct {
+			name       string
+			statements []string
+		}{
+			{name: "legacy numeric owner column", statements: []string{
+				"ALTER TABLE public.organization_source_accounts ADD COLUMN tenant_id BIGINT",
+			}},
+			{name: "changed named constraint", statements: []string{
+				"ALTER TABLE public.organization_source_accounts DROP CONSTRAINT organization_source_accounts_platform_1688",
+				"ALTER TABLE public.organization_source_accounts ADD CONSTRAINT organization_source_accounts_platform_1688 CHECK (platform = 'not-1688') NOT VALID",
+			}},
+			{name: "changed primary key", statements: []string{
+				"ALTER TABLE public.organization_source_accounts DROP CONSTRAINT organization_source_accounts_pkey",
+				"ALTER TABLE public.organization_source_accounts ADD CONSTRAINT organization_source_accounts_pkey UNIQUE (id)",
+			}},
+			{name: "extra unique constraint", statements: []string{
+				"ALTER TABLE public.organization_source_accounts ADD CONSTRAINT unexpected_platform_unique UNIQUE (platform)",
+			}},
+			{name: "changed reader index", statements: []string{
+				"DROP INDEX public.idx_organization_source_accounts_reader",
+				"CREATE INDEX idx_organization_source_accounts_reader ON public.organization_source_accounts (organization_id, id, status)",
+			}},
+			{name: "changed receipt constraint", statements: []string{
+				"ALTER TABLE public.source_account_ownership_migration_receipts DROP CONSTRAINT source_account_ownership_receipts_stage_prepared",
+				"ALTER TABLE public.source_account_ownership_migration_receipts ADD CONSTRAINT source_account_ownership_receipts_stage_prepared CHECK (stage = 'not-prepared') NOT VALID",
+			}},
+		}
+		for _, test := range cases {
+			t.Run(test.name, func(t *testing.T) {
+				request := fixture.resetAndSeed(t)
+				before := fixture.tableJSON(t, "public.source_account", "id")
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				for _, statement := range test.statements {
+					if _, err := fixture.db.ExecContext(ctx, statement); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := InstallPreparedSchema(ctx, fixture.db); err == nil {
+					t.Fatal("InstallPreparedSchema() accepted schema drift")
+				}
+				preparer, err := NewPreparer(fixture.db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err = preparer.Prepare(ctx, request); err == nil {
+					t.Fatal("Prepare() accepted schema drift")
+				}
+				if after := fixture.tableJSON(t, "public.source_account", "id"); before != after {
+					t.Fatalf("legacy source changed:\n before=%s\n after=%s", before, after)
+				}
+				fixture.assertCount(t, "public.organization_source_accounts", 0)
+				fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
+			})
+		}
+	})
+
 	t.Run("enforces Organization only target schema and protects other platforms", func(t *testing.T) {
 		request := fixture.resetAndSeed(t)
 		before := fixture.tableJSON(t, "public.source_account", "id")
@@ -449,7 +521,7 @@ func newPreparePostgres(t *testing.T) *preparePostgresFixture {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	container, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		tcpostgres.WithDatabase("issue362"),
 		tcpostgres.WithUsername("issue362"),
 		tcpostgres.WithPassword("issue362"),
@@ -553,6 +625,72 @@ func (f *preparePostgresFixture) assertTargetHasNoLegacyTenant(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("organization target tenant_id columns = %d, want 0", count)
+	}
+}
+
+func (f *preparePostgresFixture) assertPreparedSchema(t *testing.T) {
+	t.Helper()
+	targetWant := []string{
+		"id|bigint||NO",
+		"organization_id|character varying|128|NO",
+		"platform|character varying|32|NO",
+		"label|character varying|128|YES",
+		"profile_ref|character varying|256|NO",
+		"profile_directory|character varying|1024|NO",
+		"proxy_ref|character varying|256|YES",
+		"login_url|text||YES",
+		"status|smallint||NO",
+		"deleted|smallint||NO",
+		"last_verified_at|timestamp with time zone||YES",
+		"created_at|timestamp with time zone||NO",
+		"updated_at|timestamp with time zone||NO",
+	}
+	receiptWant := []string{
+		"contract_version|smallint||NO",
+		"idempotency_key|character varying|128|NO",
+		"stage|character varying|32|NO",
+		"request_sha256|character|64|NO",
+		"preflight_sha256|character|64|NO",
+		"source_id|character varying|256|NO",
+		"source_database|character varying|128|NO",
+		"source_schema|character varying|63|NO",
+		"source_sha256|character|64|NO",
+		"target_sha256|character|64|NO",
+		"account_count|integer||NO",
+		"result_json|jsonb||NO",
+		"prepared_at|timestamp with time zone||NO",
+	}
+	f.assertColumns(t, "organization_source_accounts", targetWant)
+	f.assertColumns(t, "source_account_ownership_migration_receipts", receiptWant)
+	var readerIndex int
+	if err := f.db.QueryRow("SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'organization_source_accounts' AND indexdef LIKE '%(organization_id, id, status, deleted)%'").Scan(&readerIndex); err != nil {
+		t.Fatal(err)
+	}
+	if readerIndex != 1 {
+		t.Fatalf("Organization target reader indexes = %d, want 1", readerIndex)
+	}
+}
+
+func (f *preparePostgresFixture) assertColumns(t *testing.T, table string, want []string) {
+	t.Helper()
+	rows, err := f.db.Query("SELECT column_name, data_type, COALESCE(character_maximum_length::text, ''), is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position", table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	got := make([]string, 0, len(want))
+	for rows.Next() {
+		var name, dataType, maximumLength, nullable string
+		if err = rows.Scan(&name, &dataType, &maximumLength, &nullable); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, strings.Join([]string{name, dataType, maximumLength, nullable}, "|"))
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("%s columns:\n got: %v\nwant: %v", table, got, want)
 	}
 }
 

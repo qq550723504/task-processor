@@ -109,6 +109,11 @@ no externally visible
 `pending` or `failed` receipt: all target inserts and the prepared receipt commit
 together, or neither is visible. Schema creation is an explicit internal/test call;
 it is not added to startup `AutoMigrate`, CLI, HTTP or worker assembly.
+The installer creates and validates the schema in one transaction, and B1 revalidates
+the exact target/receipt columns, named constraints, primary keys and scoped reader
+index while holding table locks. A pre-existing same-name table with any extra or
+missing column—including a nullable numeric `tenant_id`—fails closed; it is never
+adopted as a compatibility-shaped target.
 
 ### Idempotency, concurrency and failure semantics
 
@@ -172,6 +177,9 @@ task-exclusive PostgreSQL instance. The real database suite must prove:
 - a fault after at least one target insert, a pre-commit cancellation and a database
   error roll back the whole transaction; a post-commit injected response loss is
   resolved by a new service/read context and the durable receipt;
+- schema installation is repeatable only for the exact frozen schema; missing or extra
+  columns/constraints, a changed primary key/index or a legacy numeric owner column
+  reject before account/receipt mutation;
 - real concurrent legacy INSERT, UPDATE and DELETE transactions either complete before
   the B1 table lock and make the A set fail closed, or wait until B1 finishes; no
   phantom row can be omitted from a committed receipt;
