@@ -3638,6 +3638,7 @@ func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
 	for _, domainRoot := range []string{
 		filepath.Join("..", "internal", "amazonlisting", "httpapi"),
 		filepath.Join("..", "internal", "listingkit", "httpapi"),
+		filepath.Join("..", "internal", "sourceaccountregistry", "httpapi"),
 	} {
 		t.Run(filepath.Base(domainRoot), func(t *testing.T) {
 			assertNoBannedImports(t, domainRoot, []string{
@@ -3660,12 +3661,36 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 		filepath.Join("..", "internal", "publishing"),
 		filepath.Join("..", "internal", "sds"),
 		filepath.Join("..", "internal", "shein"),
+		filepath.Join("..", "internal", "sourceaccountregistry"),
 		filepath.Join("..", "internal", "temu"),
 	} {
 		t.Run(filepath.Base(domainRoot), func(t *testing.T) {
 			assertNoBannedImports(t, domainRoot, []string{
 				`"task-processor/internal/app/httpapi"`,
 			}, nil)
+		})
+	}
+
+	// SA1 is a clean-room current owner. Keep the no-legacy constraint in this
+	// already-governed business-boundary test so it is reviewed with the domain.
+	targets := []string{
+		filepath.Join("..", "internal", "sourceaccountregistry"),
+		filepath.Join("..", "internal", "integration", "persistence", "sourceaccountregistry"),
+		filepath.Join("..", "internal", "app", "schema", "sourceaccountregistry"),
+		filepath.Join("..", "internal", "app", "runtime", "sourceaccountregistryschemainit"),
+		filepath.Join("..", "internal", "app", "httpapi", "source_account_application.go"),
+		filepath.Join("..", "cmd", "source-account-registry-schema-init"),
+	}
+	banned := []string{
+		"task-processor/internal/sourceaccount",
+		"task-processor/internal/integration/persistence/sourceaccount",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/compatibility",
+		"task-processor/internal/tenantbridge",
+	}
+	for _, target := range targets {
+		t.Run(filepath.ToSlash(target), func(t *testing.T) {
+			assertNoBannedImportPrefixes(t, target, banned, nil)
 		})
 	}
 }
@@ -3871,40 +3896,41 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowedHTTPPackages := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "authruntime", "zitadel")) + string(os.PathSeparator):    {},
-		filepath.Clean(filepath.Join(root, "app", "httpapi")) + string(os.PathSeparator):            {},
-		filepath.Clean(filepath.Join(root, "amazonlisting", "api")) + string(os.PathSeparator):      {},
-		filepath.Clean(filepath.Join(root, "amazonlisting", "httpapi")) + string(os.PathSeparator):  {},
-		filepath.Clean(filepath.Join(root, "httproute")) + string(os.PathSeparator):                 {},
-		filepath.Clean(filepath.Join(root, "imageagent", "httpapi")) + string(os.PathSeparator):     {},
-		filepath.Clean(filepath.Join(root, "kernel", "module")) + string(os.PathSeparator):          {},
-		filepath.Clean(filepath.Join(root, "listingkit", "api")) + string(os.PathSeparator):         {},
-		filepath.Clean(filepath.Join(root, "listingkit", "httpapi")) + string(os.PathSeparator):     {},
-		filepath.Clean(filepath.Join(root, "promptmgmt", "api")) + string(os.PathSeparator):         {},
-		filepath.Clean(filepath.Join(root, "sds", "httpapi")) + string(os.PathSeparator):            {},
-		filepath.Clean(filepath.Join(root, "sdslogin")) + string(os.PathSeparator):                  {},
-		filepath.Clean(filepath.Join(root, "sheinlogin")) + string(os.PathSeparator):                {},
-		filepath.Clean(filepath.Join(root, "taskrpcapi")) + string(os.PathSeparator):                {},
-		filepath.Clean(filepath.Join(root, "amazonlisting", "interfaces.go")):                       {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "category_handler.go")):                  {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "filter_rule_handler.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "generation_topic_catalog_handler.go")):  {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "generation_topic_override_handler.go")): {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "generation_topic_policy_handler.go")):   {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "handler_helpers.go")):                   {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "import_task_handler.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "operation_strategy_handler.go")):        {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "pricing_rule_handler.go")):              {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "product_data_handler.go")):              {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "product_import_mapping_handler.go")):    {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "profit_rule_handler.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "request_context.go")):                   {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "scheduled_task_config_handler.go")):     {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "sensitive_word_handler.go")):            {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "store_handler.go")):                     {},
-		filepath.Clean(filepath.Join(root, "listingadmin", "store_statistics_handler.go")):          {},
-		filepath.Clean(filepath.Join(root, "listingkit", "studio_session_handler.go")):              {},
-		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
+		filepath.Clean(filepath.Join(root, "authruntime", "zitadel")) + string(os.PathSeparator):           {},
+		filepath.Clean(filepath.Join(root, "app", "httpapi")) + string(os.PathSeparator):                   {},
+		filepath.Clean(filepath.Join(root, "amazonlisting", "api")) + string(os.PathSeparator):             {},
+		filepath.Clean(filepath.Join(root, "amazonlisting", "httpapi")) + string(os.PathSeparator):         {},
+		filepath.Clean(filepath.Join(root, "httproute")) + string(os.PathSeparator):                        {},
+		filepath.Clean(filepath.Join(root, "imageagent", "httpapi")) + string(os.PathSeparator):            {},
+		filepath.Clean(filepath.Join(root, "kernel", "module")) + string(os.PathSeparator):                 {},
+		filepath.Clean(filepath.Join(root, "listingkit", "api")) + string(os.PathSeparator):                {},
+		filepath.Clean(filepath.Join(root, "listingkit", "httpapi")) + string(os.PathSeparator):            {},
+		filepath.Clean(filepath.Join(root, "promptmgmt", "api")) + string(os.PathSeparator):                {},
+		filepath.Clean(filepath.Join(root, "sds", "httpapi")) + string(os.PathSeparator):                   {},
+		filepath.Clean(filepath.Join(root, "sourceaccountregistry", "httpapi")) + string(os.PathSeparator): {},
+		filepath.Clean(filepath.Join(root, "sdslogin")) + string(os.PathSeparator):                         {},
+		filepath.Clean(filepath.Join(root, "sheinlogin")) + string(os.PathSeparator):                       {},
+		filepath.Clean(filepath.Join(root, "taskrpcapi")) + string(os.PathSeparator):                       {},
+		filepath.Clean(filepath.Join(root, "amazonlisting", "interfaces.go")):                              {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "category_handler.go")):                         {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "filter_rule_handler.go")):                      {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "generation_topic_catalog_handler.go")):         {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "generation_topic_override_handler.go")):        {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "generation_topic_policy_handler.go")):          {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "handler_helpers.go")):                          {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "import_task_handler.go")):                      {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "operation_strategy_handler.go")):               {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "pricing_rule_handler.go")):                     {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "product_data_handler.go")):                     {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "product_import_mapping_handler.go")):           {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "profit_rule_handler.go")):                      {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "request_context.go")):                          {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "scheduled_task_config_handler.go")):            {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "sensitive_word_handler.go")):                   {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "store_handler.go")):                            {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "store_statistics_handler.go")):                 {},
+		filepath.Clean(filepath.Join(root, "listingkit", "studio_session_handler.go")):                     {},
+		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                           {},
 	}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "storecenter", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "listingsubscription", "httpapi"))+string(os.PathSeparator)] = struct{}{}

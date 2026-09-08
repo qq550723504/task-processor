@@ -14,19 +14,20 @@ import (
 // maintainedOperationalCommands is shared by classification, documentation and owner guards.
 func maintainedOperationalCommands() map[string]struct{} {
 	return map[string]struct{}{
-		"1688-local-agent":                   {},
-		"fingerprint-browser-installer":      {},
-		"listing-scheduler":                  {},
-		"listingkit-identity-preflight":      {},
-		"listingkit-owner-scope-dry-run":     {},
-		"listingkit-owner-scope-exceptions":  {},
-		"listingkit-schema-migrate":          {},
-		"playwright-installer":               {},
-		"product-listing-api-schema-migrate": {},
-		"shein-import-platform-recovery":     {},
-		"shein-login-worker":                 {},
-		"store-service-history-migrate":      {},
-		"source-account-ownership-preflight": {},
+		"1688-local-agent":                    {},
+		"fingerprint-browser-installer":       {},
+		"listing-scheduler":                   {},
+		"listingkit-identity-preflight":       {},
+		"listingkit-owner-scope-dry-run":      {},
+		"listingkit-owner-scope-exceptions":   {},
+		"listingkit-schema-migrate":           {},
+		"playwright-installer":                {},
+		"product-listing-api-schema-migrate":  {},
+		"shein-import-platform-recovery":      {},
+		"shein-login-worker":                  {},
+		"store-service-history-migrate":       {},
+		"source-account-ownership-preflight":  {},
+		"source-account-registry-schema-init": {},
 	}
 }
 

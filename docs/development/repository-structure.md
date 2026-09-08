@@ -31,7 +31,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前十三个运维入口为：
+  - 当前十四个运维入口为：
     - `1688-local-agent`
     - `fingerprint-browser-installer`
     - `listing-scheduler`
@@ -45,6 +45,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
     - `shein-login-worker`
     - `store-service-history-migrate`
     - `source-account-ownership-preflight`
+    - `source-account-registry-schema-init`
   - `image-agent-temporal-worker` 的构建归属为 `deployments/docker/Dockerfile.product-listing-api`，运行装配归 `internal/app/worker/imageagent`。
   - `1688-local-agent` 的维护入口为 `scripts/1688-local-agent-acceptance.ps1`；归 1688 source runtime。列入清单不授权连接真实账号或执行该脚本。
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
@@ -52,6 +53,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
   - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次，只有显式选择 `constraints` 且 Phase D 重验通过才会执行 PostgreSQL staged constraints。
   - 不再新增临时调试可执行程序。
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，属于 #301 Source Account 迁移的只读运维预检；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。
+  - `source-account-registry-schema-init` 由 `scripts/source-account-registry-local-acceptance.ps1` 维护，只初始化 #368 当前 Source Account registry 的空库 schema；不读取、迁移或兼容旧 Source Account 数据。
   - 历史爬虫、订阅、兼容 API、地址复制、一次性迁移或调试入口不得回流到 `cmd/`；确需保留时放到 `hack/`、`tools/` 或业务模块内。
   - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。
 - `hack/`
