@@ -534,6 +534,8 @@ func writeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, sourceaccountregistry.ErrInvalid):
 		writeProtocolError(c, http.StatusBadRequest, "INVALID_REQUEST", "Request is invalid")
+	case errors.Is(err, sourceaccountregistry.ErrAuthenticationRequired):
+		writeProtocolError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED", "Authentication is required")
 	case errors.Is(err, sourceaccountregistry.ErrForbidden):
 		writeProtocolError(c, http.StatusForbidden, "PERMISSION_DENIED", "Permission is denied")
 	case errors.Is(err, sourceaccountregistry.ErrNotFound):

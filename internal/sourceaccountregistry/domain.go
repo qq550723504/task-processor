@@ -20,16 +20,17 @@ const (
 )
 
 var (
-	ErrInvalid              = errors.New("invalid source account request")
-	ErrForbidden            = errors.New("source account permission denied")
-	ErrNotFound             = errors.New("source account not found")
-	ErrIdempotencyConflict  = errors.New("source account idempotency conflict")
-	ErrVersionConflict      = errors.New("source account version conflict")
-	ErrInvalidTransition    = errors.New("source account invalid transition")
-	ErrResourceLimitReached = errors.New("source account resource limit reached")
-	ErrTooLarge             = errors.New("source account input too large")
-	ErrUnavailable          = errors.New("source account dependency unavailable")
-	ErrOutcomeUnknown       = errors.New("source account transaction outcome unknown")
+	ErrInvalid                = errors.New("invalid source account request")
+	ErrAuthenticationRequired = errors.New("source account authentication required")
+	ErrForbidden              = errors.New("source account permission denied")
+	ErrNotFound               = errors.New("source account not found")
+	ErrIdempotencyConflict    = errors.New("source account idempotency conflict")
+	ErrVersionConflict        = errors.New("source account version conflict")
+	ErrInvalidTransition      = errors.New("source account invalid transition")
+	ErrResourceLimitReached   = errors.New("source account resource limit reached")
+	ErrTooLarge               = errors.New("source account input too large")
+	ErrUnavailable            = errors.New("source account dependency unavailable")
+	ErrOutcomeUnknown         = errors.New("source account transaction outcome unknown")
 )
 
 type Platform string

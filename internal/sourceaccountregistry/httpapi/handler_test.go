@@ -198,6 +198,7 @@ func TestHandlerMapsErrorsWithoutDependencyLeakage(t *testing.T) {
 		code   string
 	}{
 		{sourceaccountregistry.ErrInvalid, 400, "INVALID_REQUEST"},
+		{sourceaccountregistry.ErrAuthenticationRequired, 401, "AUTHENTICATION_REQUIRED"},
 		{sourceaccountregistry.ErrForbidden, 403, "PERMISSION_DENIED"},
 		{sourceaccountregistry.ErrNotFound, 404, "SOURCE_ACCOUNT_NOT_FOUND"},
 		{sourceaccountregistry.ErrIdempotencyConflict, 409, "IDEMPOTENCY_CONFLICT"},

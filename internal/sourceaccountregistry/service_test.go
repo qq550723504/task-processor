@@ -107,8 +107,8 @@ func TestRegisterRejectsInvalidOrUnauthorizedInput(t *testing.T) {
 		authorizer *fakeAuthorizer
 		want       error
 	}{
-		{name: "missing identity", ctx: context.Background(), key: uuid.NewString(), input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: allowAllAuthorizer(), want: ErrForbidden},
-		{name: "expired", ctx: identityContext(now.Add(-time.Hour), "org-b", "actor-1", "listingkit_operator"), key: uuid.NewString(), input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: allowAllAuthorizer(), want: ErrForbidden},
+		{name: "missing identity", ctx: context.Background(), key: uuid.NewString(), input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: allowAllAuthorizer(), want: ErrAuthenticationRequired},
+		{name: "expired", ctx: identityContext(now.Add(-time.Hour), "org-b", "actor-1", "listingkit_operator"), key: uuid.NewString(), input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: allowAllAuthorizer(), want: ErrAuthenticationRequired},
 		{name: "tenant mismatch", ctx: authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-b", UserID: "actor-1", Roles: []string{"listingkit_operator"}, TokenExpiresAt: now.Add(time.Hour)}), key: uuid.NewString(), input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: allowAllAuthorizer(), want: ErrForbidden},
 		{name: "viewer", ctx: identityContext(now, "org-b", "actor-1", "listingkit_viewer"), key: uuid.NewString(), input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: &fakeAuthorizer{allowed: map[string]bool{}}, want: ErrForbidden},
 		{name: "noncanonical key", ctx: identityContext(now, "org-b", "actor-1", "listingkit_operator"), key: "NOT-A-UUID", input: RegisterInput{DisplayName: "Primary", Platform: "1688"}, authorizer: allowAllAuthorizer(), want: ErrInvalid},

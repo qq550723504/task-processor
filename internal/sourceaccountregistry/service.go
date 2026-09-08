@@ -300,7 +300,10 @@ func (s *Service) authorize(ctx context.Context, permission string) (Scope, erro
 		return Scope{}, err
 	}
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
-	if !ok || !validScopeValue(identity.EffectiveOrganizationID, MaxOrganizationIDBytes) || !validScopeValue(identity.UserID, MaxActorSubjectBytes) || identity.TenantID != identity.EffectiveOrganizationID || identity.TokenExpiresAt.IsZero() || !s.now().Before(identity.TokenExpiresAt) {
+	if !ok || identity.TokenExpiresAt.IsZero() || !s.now().Before(identity.TokenExpiresAt) {
+		return Scope{}, ErrAuthenticationRequired
+	}
+	if !validScopeValue(identity.EffectiveOrganizationID, MaxOrganizationIDBytes) || !validScopeValue(identity.UserID, MaxActorSubjectBytes) || identity.TenantID != identity.EffectiveOrganizationID {
 		return Scope{}, ErrForbidden
 	}
 	if !s.authorizer.Authorize("", identity.Roles, permission) {
