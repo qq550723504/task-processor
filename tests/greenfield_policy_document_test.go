@@ -82,14 +82,15 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 		filepath.Join("..", "docs", "product", "product-sourcing-mvp-plan.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"fresh installation and empty business data",
-			"require legacy profile reuse, environment acceptance or old-execution cutover",
+			"It does not require legacy profile reuse, environment acceptance or old-execution cutover gates.",
+			"Do not build migration, old-ID mapping, wrapper, fallback, dual-read, dual-write, synchronization or second-fact machinery.",
 		},
 		filepath.Join("..", "docs", "architecture", "README.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"greenfield-no-legacy-migration.md",
 		},
 	} {
-		contents := readGreenfieldPolicyDocument(t, path)
+		contents := strings.Join(strings.Fields(readGreenfieldPolicyDocument(t, path)), " ")
 		for _, requirement := range required {
 			if !strings.Contains(contents, requirement) {
 				t.Errorf("active sourcing authority %s must state %q", filepath.ToSlash(path), requirement)
