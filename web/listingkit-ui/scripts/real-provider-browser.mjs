@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth } from "./real-provider-browser-contract.mjs";
+import { createOwnerMutationGuard, createRunFinalizer, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -20,10 +21,22 @@ const commercialPath = "/api/workbench/commercial/overview";
 const selectionCookie = "shuomi_effective_organization";
 let manifest, output, browser, activeCase = "handoff";
 let controlsReady = false;
+let finalizer;
+let controlQueue = Promise.resolve();
+let ownedStopPromise;
+const finalizationFailures = [];
+const interruptController = new AbortController();
 const pageObservations = new WeakMap();
+const ownerMutationStates = new Map();
+const ownerMutations = createOwnerMutationGuard({
+  interrupted: () => finalizer?.interrupted === true,
+  onState: state => ownerMutationStates.set(state.key, state),
+});
 const ensure = condition => { if (!condition) throw new Error("assertion_failed"); };
+const pause = milliseconds => delay(milliseconds, undefined, { signal: interruptController.signal });
 
 async function check(name, operation) {
+  finalizer?.throwIfInterrupted();
   activeCase = name;
   const started = Date.now();
   try {
@@ -249,7 +262,8 @@ async function realRefresh(context) {
     ensure(initial.expiresAt * 1000 - started <= 150000);
     let refreshed = false;
     while (Date.now() - started < 150000) {
-      await delay(3000);
+      await pause(3000);
+      finalizer?.throwIfInterrupted();
       const current = await session(context, "admin");
       if (current.expiresAt > initial.expiresAt) { refreshed = true; break; }
     }
@@ -260,11 +274,21 @@ async function realRefresh(context) {
 }
 
 async function control(command, user, organization) {
+  finalizer?.throwIfInterrupted();
+  return queuedControl(command, user, organization);
+}
+
+async function queuedControl(command, user, organization) {
   ensure(controlsReady);
-  const args = [path.join(runtimeCheckout, "scripts/issue357-runtime.mjs"), command, "--run", manifest.runId];
-  if (user) args.push("--user", user, "--org", organization);
-  await execFile(process.execPath, args, { cwd: runtimeCheckout, windowsHide: true, timeout: 120000, maxBuffer: 1048576 });
-  (report.controls ??= []).push({ command, user, organization, at: new Date().toISOString(), status: "PASS" });
+  const operation = async () => {
+    const args = [path.join(runtimeCheckout, "scripts/issue357-runtime.mjs"), command, "--run", manifest.runId];
+    if (user) args.push("--user", user, "--org", organization);
+    await execFile(process.execPath, args, { cwd: runtimeCheckout, windowsHide: true, timeout: 120000, maxBuffer: 1048576 });
+    (report.controls ??= []).push({ command, user, organization, at: new Date().toISOString(), status: "PASS" });
+  };
+  const pending = controlQueue.then(operation, operation);
+  controlQueue = pending.catch(() => {});
+  return pending;
 }
 
 async function ownerEvidence(kind) {
@@ -277,8 +301,8 @@ async function ownerEvidence(kind) {
   const evidence = { runId: value.runId, sourceSha: value.sourceSha, webSha: value.webSha, zeroWrite: { passed: true, before: zero.before, after: zero.after } };
   if (kind === "check") ensure(value.healthPassed === true && value.realBrowser === "NOT_RUN_BY_CHECK");
   else {
-    ensure(value.passed === true && value.resourcesReleased === true && value.portsReleased === true && value.applications?.passed === true && value.applications.goExit === 0);
-    evidence.cleanup = { passed: true, resourcesReleased: true, portsReleased: true, applications: { passed: true, goExit: 0 } };
+    ensure(value.passed === true && value.resourcesReleased === true && value.portsReleased === true && value.applications?.passed === true && value.applications.goExit === 0 && value.applications.nextExit === 0);
+    evidence.cleanup = { passed: true, resourcesReleased: true, portsReleased: true, applications: { passed: true, goExit: 0, nextExit: 0 } };
   }
   return evidence;
 }
@@ -300,7 +324,12 @@ async function controlCases() {
     await check("M9_revocation", async () => {
       ensure((await api(cached, "/api/account/organization", "admin", "B")).status === 200);
       ensure((await api(live, commercialPath, "admin", "B")).status === 200);
-      await withOwnerControlRestored(() => control("revoke", "admin", "B"), async () => {
+      await ownerMutations.run({
+        key: "grant-admin-B",
+        recoveryCommand: `node scripts/issue357-runtime.mjs restore --run ${manifest.runId} --user admin --org B`,
+        mutate: () => control("revoke", "admin", "B"),
+        restore: () => queuedControl("restore", "admin", "B"),
+      }, async () => {
         const confirmedAt = Date.now();
         const commercial = await api(live, commercialPath, "admin", "B");
         ensure(commercial.status === 403 && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(commercial.body.code));
@@ -311,22 +340,32 @@ async function controlCases() {
             ensure(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(organization.body.code));
             break;
           }
-          await delay(2000);
+          await pause(2000);
+          finalizer?.throwIfInterrupted();
         }
         // A separate normal-login context retains its original selection even
         // when the earlier denial clears the probing context's cookie.
-        await delay(Math.max(0, confirmedAt + 60001 - Date.now()));
+        await pause(Math.max(0, confirmedAt + 60001 - Date.now()));
+        finalizer?.throwIfInterrupted();
         const afterWindowStartedAt = Date.now();
         const expiredCache = await api(afterWindow, "/api/account/organization", "admin", "B");
         ensure(afterWindowStartedAt > confirmedAt + 60000 && expiredCache.status === 403 && ["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"].includes(expiredCache.body.code));
         report.revocation = { liveCommercial: "DENIED", cachedAccount: "DENIED", afterCacheWindow: "DENIED", elapsedMs: Date.now() - confirmedAt, policyMaxAgeSeconds: 60 };
         ensure((await api(cached, "/api/account/profile", "admin")).status === 200);
-      }, () => control("restore", "admin", "B"));
+      });
       const restored = await live.request.put(`${manifest.origins.web}/api/workbench/context/effective-organization`, { data: { organizationId: manifest.organizations.B.id }, maxRedirects: 0 });
       ensure(restored.status() === 200 && (await api(live, commercialPath, "admin", "B")).status === 200);
     });
     await check("M8_provider_failure", async () => {
-      await withOwnerControlRestored(() => control("provider-stop"), async () => {
+      await ownerMutations.run({
+        key: "provider",
+        recoveryCommand: `node scripts/issue357-runtime.mjs provider-start --run ${manifest.runId}`,
+        mutate: () => control("provider-stop"),
+        restore: async () => {
+          await queuedControl("provider-start");
+          await retryOwnerHealth(() => queuedControl("check"));
+        },
+      }, async () => {
         ensure([401, 502, 503, 504].includes(await apiStatus(cached, "/api/account/profile", "admin")));
         const empty = await browser.newContext();
         try {
@@ -343,9 +382,6 @@ async function controlCases() {
           const result = await api(empty, "/api/auth/session");
           ensure(!result.body?.identity && !result.body?.user && !hasToken(result.body));
         } finally { await empty.close(); }
-      }, async () => {
-        await control("provider-start");
-        await retryOwnerHealth(() => control("check"));
       });
       await ownerEvidence("check");
     });
@@ -479,6 +515,44 @@ async function core() {
   } finally { await context.close(); }
 }
 
+function completeReport() {
+  report.ownerRecovery = ownerMutations.snapshot();
+  report.finalization = { failures: [...finalizationFailures] };
+  if (cleanupFlag !== "--stop-owned-run" && !report.checks.some(item => item.name === "M11_owner_zero_write_cleanup")) {
+    report.checks.push({ name: "M11_owner_zero_write_cleanup", status: "NOT_RUN" });
+  }
+  for (const prefix of ["M1_", "M2_", "M3_", "M4_", "M5_", "M6_", "M7_", "M8_", "M9_", "M10_"]) {
+    if (!report.checks.some(item => item.name.startsWith(prefix))) report.checks.push({ name: `${prefix}prerequisite_not_reached`, status: "NOT_RUN" });
+  }
+  if (finalizationFailures.length > 0) {
+    if (report.status !== "INTERRUPTED") report.status = "FAIL";
+    process.exitCode = 1;
+  } else if (report.status === "INCOMPLETE" && cleanupFlag === "--stop-owned-run") {
+    report.status = "PASS";
+    process.exitCode = 0;
+  }
+  report.finishedAt = new Date().toISOString();
+  return writeFile(path.join(output, "report.json"), `${JSON.stringify(report, null, 2)}\n`).then(() => {
+    console.log(`${report.status} ${report.suite}; case=${report.failure ?? activeCase}`);
+  });
+}
+
+function stopOwnedRuntime() {
+  if (!ownedStopPromise) ownedStopPromise = (async () => {
+    const started = Date.now();
+    try {
+      await queuedControl("stop");
+      report.cleanup = await ownerEvidence("cleanup");
+      report.checks.push({ name: "M11_owner_zero_write_cleanup", status: "PASS", elapsedMs: Date.now() - started });
+      console.log("PASS M11_owner_zero_write_cleanup");
+    } catch {
+      report.checks.push({ name: "M11_owner_zero_write_cleanup", status: "FAIL", elapsedMs: Date.now() - started });
+      throw new Error("owned_run_stop_failed");
+    }
+  })();
+  return ownedStopPromise;
+}
+
 try {
   assertBrowserDiagnosticsDisabled(process.env);
   ensure(manifestPath && runtimeSha && runtimeCheckout && (!cleanupFlag || cleanupFlag === "--stop-owned-run"));
@@ -493,8 +567,51 @@ try {
   ensure(await realpath(manifestPath) === path.resolve(manifestPath));
   output = path.resolve(outputArgument || path.join(uiRoot, "../../.local/issue358-browser", manifest.runId));
   await mkdir(output, { recursive: true });
-  Object.assign(report, { sourceSha: webSha, runtimeSha, runId: manifest.runId, origins: publicBrowserOrigins(manifest), startedAt: new Date().toISOString() });
+  Object.assign(report, {
+    sourceSha: webSha,
+    runtimeSha,
+    runId: manifest.runId,
+    origins: publicBrowserOrigins(manifest),
+    signalSupport: platformSignalMatrix(process.platform),
+    startedAt: new Date().toISOString(),
+  });
   controlsReady = true;
+  finalizer = createRunFinalizer({
+    cleanupOwnedRun: cleanupFlag === "--stop-owned-run",
+    stepTimeoutMs: 250000,
+    closeBrowser: async () => {
+      if (!browser) return;
+      const activeBrowser = browser;
+      browser = undefined;
+      await activeBrowser.close();
+    },
+    recoverOwnerControls: async () => {
+      await controlQueue;
+      const result = await ownerMutations.recoverAll();
+      report.ownerRecovery = ownerMutations.snapshot();
+      if (!result.ok) throw new Error("owner_recovery_failed");
+    },
+    stopOwnedRun: stopOwnedRuntime,
+    persistReport: completeReport,
+    onInterrupt: signal => {
+      interruptController.abort(new Error("runner_interrupted"));
+      report.status = "INTERRUPTED";
+      report.failure = `signal_${signal}`;
+      report.interruption = {
+        signal,
+        receivedAt: new Date().toISOString(),
+        cleanupRequested: cleanupFlag === "--stop-owned-run",
+        ownerStatesAtSignal: [...ownerMutationStates.values()],
+        ownedRunRecoveryCommand: `node scripts/issue357-runtime.mjs stop --run ${manifest.runId}`,
+      };
+      process.exitCode = 1;
+    },
+    onFailure: step => {
+      finalizationFailures.push(step);
+      if (report.interruption) report.interruption.failures = [...finalizationFailures];
+    },
+  });
+  finalizer.installProcessHandlers();
   await check("M11_before_read_snapshot", async () => { await control("check"); report.beforeRead = await ownerEvidence("check"); });
   const { chromium } = await import("@playwright/test");
   browser = await chromium.launch({ headless: true });
@@ -505,23 +622,18 @@ try {
   report.status = "INCOMPLETE";
   process.exitCode = 2;
 } catch {
-  report.status = manifest ? "FAIL" : "NOT_RUN";
-  report.failure = activeCase;
-  process.exitCode = manifest ? 1 : 2;
-} finally {
-  await browser?.close().catch(() => { report.browserCleanup = "FAIL"; process.exitCode = 1; });
-  if (controlsReady && cleanupFlag === "--stop-owned-run") {
-    try {
-      await check("M11_owner_zero_write_cleanup", async () => {
-        await control("stop"); report.cleanup = await ownerEvidence("cleanup");
-      });
-      if (report.status === "INCOMPLETE" && report.browserCleanup !== "FAIL") { report.status = "PASS"; process.exitCode = 0; }
-    } catch { report.status = "FAIL"; process.exitCode = 1; }
-  } else report.checks.push({ name: "M11_owner_zero_write_cleanup", status: "NOT_RUN" });
-  for (const prefix of ["M1_", "M2_", "M3_", "M4_", "M5_", "M6_", "M7_", "M8_", "M9_", "M10_"]) {
-    if (!report.checks.some(item => item.name.startsWith(prefix))) report.checks.push({ name: `${prefix}prerequisite_not_reached`, status: "NOT_RUN" });
+  if (!finalizer?.interrupted) {
+    report.status = manifest ? "FAIL" : "NOT_RUN";
+    report.failure = activeCase;
+    process.exitCode = manifest ? 1 : 2;
   }
-  report.finishedAt = new Date().toISOString();
-  if (output) await writeFile(path.join(output, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`${report.status} ${report.suite}; case=${report.failure ?? activeCase}`);
+} finally {
+  if (finalizer) {
+    await finalizer.finish();
+    if (!finalizer.interrupted) finalizer.removeProcessHandlers();
+  } else {
+    report.finishedAt = new Date().toISOString();
+    if (output) await writeFile(path.join(output, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`${report.status} ${report.suite}; case=${report.failure ?? activeCase}`);
+  }
 }
