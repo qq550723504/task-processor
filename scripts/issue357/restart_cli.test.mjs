@@ -27,8 +27,11 @@ async function fixture(plan) {
  return {m,planPath};
 }
 async function invoke(m,planPath,action='restart') {
+ const env=childEnvironment();
+ for(const key of Object.keys(env))if(['temp','tmp'].includes(key.toLowerCase()))delete env[key];
+ env.TEMP=tmpdir();env.TMP=tmpdir();
  try {
-  const result=await execute(process.execPath,[cli,action,'--run',m.runId],{cwd:repo,windowsHide:true,env:{...childEnvironment(),TEMP:tmpdir(),TMP:tmpdir(),NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,ISSUE357_TEST_RESTART_PLAN:planPath}});
+  const result=await execute(process.execPath,[cli,action,'--run',m.runId],{cwd:repo,windowsHide:true,env:{...env,NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,ISSUE357_TEST_RESTART_PLAN:planPath}});
   return {code:0,stdout:result.stdout,stderr:result.stderr};
  }catch(error){return {code:error.code,stdout:error.stdout??'',stderr:error.stderr??''}}
 }
