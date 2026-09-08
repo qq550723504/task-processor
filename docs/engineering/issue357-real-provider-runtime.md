@@ -181,9 +181,17 @@ only for cleanup when creation response is lost. No automatic recovery beyond
 bounded official health polling. One exclusive run lock owns setup/revoke/stop.
 
 READY is written atomically only after all bootstrap checks and applications are
-healthy. Lifecycle: creating -> provider-ready -> seeded -> ready -> stopping ->
-stopped; any partial phase -> failed -> stopping. Failure leaves a safe status and
-owned cleanup manifest. A source/config mismatch, unowned resource, invalid path,
+healthy. Lifecycle: creating -> provider-ready -> seeded -> ready -> restarting ->
+ready, or restart-failed -> stopping -> stopped; bootstrap partial phases use
+failed -> stopping. Restart persists `restarting` and the next stage before it
+stops applications or begins each later stage. It persists `restart-failed` with
+a safe stage/code on failure. If that error save also fails, the last persisted
+`restarting` state remains non-ready. An initial transition-save failure stops
+before any application side effect. Only successful final health plus an atomic
+ready save prints READY. `check` and `start --run` reject every non-ready status
+and never treat an older check report as current success; explicit `stop` remains
+the recovery path. Failure leaves a safe status and owned cleanup manifest. A
+source/config mismatch, unowned resource, invalid path,
 DSN outside assigned commercial DB, wrong discovery issuer or occupied port fails
 closed. Stop never deletes by a broad prefix. Abrupt termination requires explicit
 stop of the same manifest; it does not count as successful normal cleanup.

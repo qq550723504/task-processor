@@ -9,6 +9,7 @@ import {composeConfiguration,proxyConfiguration,images} from './issue357/compose
 import {run,json,readJSON,save,load,privateDirectory,port,until,processIdentity,sameProcess,lock,pause,dockerEndpoint} from './issue357/io.mjs';
 import {provider,createSubjects,grantSubjects,authorizationControl} from './issue357/provider.mjs';
 import {discoverRunProcesses} from './issue357/processes.mjs';
+import {restartRuntime} from './issue357/restart.mjs';
 
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const argv=process.argv.slice(2),action=argv[0];
@@ -170,12 +171,19 @@ try {
    assert.equal(m.status,'ready','RUN_NOT_READY');
    if(action==='check'){console.log(JSON.stringify(await health(m)));return}
    if(action==='start'){await assertFingerprint(m);await health(m);console.log(`READY ${m.origins.web}`);return}
-   await inventory(m,true);
-   if(action==='revoke'||action==='restore'){await authorizationControl(m,arg('--user'),arg('--org'),action);console.log(`CONTROL_OK ${action}`);return}
-   if(action==='provider-stop'||action==='provider-start') {await run('docker',['container',action==='provider-stop'?'stop':'start',m.resources[`${m.project}-zitadel-api`].id]);console.log(`CONTROL_OK ${action}`);return}
+   if(action==='revoke'||action==='restore'){await inventory(m,true);await authorizationControl(m,arg('--user'),arg('--org'),action);console.log(`CONTROL_OK ${action}`);return}
+   if(action==='provider-stop'||action==='provider-start') {await inventory(m,true);await run('docker',['container',action==='provider-stop'?'stop':'start',m.resources[`${m.project}-zitadel-api`].id]);console.log(`CONTROL_OK ${action}`);return}
    if(action==='restart'){
-    await assertFingerprint(m);await stopApplications(m);await run('docker',['container','restart',...['identity-db','commercial-db','zitadel-api','zitadel-login','proxy'].map(s=>m.resources[`${m.project}-${s}`].id)]);
-    await until(async()=>{const r=await fetch(`${m.origins.issuer}/debug/ready`);return r.ok},'PROVIDER_RESTART');await startApplications(m);await health(m);console.log(`READY ${m.origins.web}`);return;
+    let operations;
+    if(process.env.ISSUE357_TEST_RESTART_PLAN){const test=await import('./issue357/restart_test_control.mjs');operations=await test.restartTestOperations(m,process.env.ISSUE357_TEST_RESTART_PLAN)}
+    else {
+     await inventory(m,true);
+     operations={assertFingerprint,save,stopApplications,
+      restartContainers:async()=>run('docker',['container','restart',...['identity-db','commercial-db','zitadel-api','zitadel-login','proxy'].map(s=>m.resources[`${m.project}-${s}`].id)]),
+      waitProvider:async()=>until(async()=>{const r=await fetch(`${m.origins.issuer}/debug/ready`);return r.ok},'PROVIDER_RESTART'),
+      startApplications,health};
+    }
+    await restartRuntime(m,operations);console.log(`READY ${m.origins.web}`);return;
    }
    throw new Error('INVALID_COMMAND');
   });
