@@ -17,10 +17,15 @@ import (
 )
 
 const (
-	PreparedContractVersion = 1
-	PreparedStage           = "prepared_only"
-	preparedSourceSchema    = "public"
-	maxPrepareDeadline      = 10 * time.Minute
+	PreparedContractVersion       = 1
+	PreparedStage                 = "prepared_only"
+	preparedSourceSchema          = "public"
+	maxPrepareDeadline            = 10 * time.Minute
+	maxPrepareTextFieldBytes      = 64 * 1024
+	maxPrepareSourceSnapshotBytes = 64 * 1024 * 1024
+	maxPrepareRequestBytes        = 64 * 1024 * 1024
+	maxPreparedReceiptBytes       = 128 * 1024 * 1024
+	prepareRequestRecordOverhead  = 256
 )
 
 var (
@@ -28,6 +33,7 @@ var (
 	ErrSourceDrift         = errors.New("source account ownership migration source drift")
 	ErrTargetConflict      = errors.New("source account ownership migration target conflict")
 	ErrTargetDrift         = errors.New("source account ownership migration target drift")
+	ErrResourceLimit       = errors.New("source account ownership migration resource limit exceeded")
 )
 
 //go:embed prepared_schema.sql
@@ -83,16 +89,22 @@ type validatedPrepareRequest struct {
 	evidenceByID  map[int64]AccountEvidence
 }
 
+type prepareSourceResourceLimits struct {
+	maxFieldBytes    int64
+	maxSnapshotBytes int64
+}
+
 // Preparer is intentionally not wired into startup, HTTP, worker or runtime
 // repository construction. B2 owns the operator-facing operation gate.
 type Preparer struct {
 	db *sql.DB
 
 	// Test-only fault and concurrency seams. Production construction leaves them nil.
-	afterLocks        func() error
-	afterTargetInsert func(context.Context, *sql.Tx, int) error
-	beforeCommit      func() error
-	afterCommit       func() error
+	afterLocks           func() error
+	afterTargetInsert    func(context.Context, *sql.Tx, int) error
+	beforeCommit         func() error
+	afterCommit          func() error
+	sourceResourceLimits prepareSourceResourceLimits
 }
 
 func InstallPreparedSchema(ctx context.Context, db *sql.DB) error {
@@ -126,7 +138,13 @@ func NewPreparer(db *sql.DB) (*Preparer, error) {
 	if db == nil {
 		return nil, errors.New("source account ownership migration database is nil")
 	}
-	return &Preparer{db: db}, nil
+	return &Preparer{
+		db: db,
+		sourceResourceLimits: prepareSourceResourceLimits{
+			maxFieldBytes:    maxPrepareTextFieldBytes,
+			maxSnapshotBytes: maxPrepareSourceSnapshotBytes,
+		},
+	}, nil
 }
 
 func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt PreparedReceipt, replayed bool, err error) {
@@ -188,7 +206,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 			return PreparedReceipt{}, false, ErrTargetConflict
 		}
 	}
-	source, err := readPrepareSource(ctx, tx)
+	source, err := readPrepareSource(ctx, tx, p.sourceResourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -324,7 +342,7 @@ func (p *Preparer) ReadPreparedReceipt(ctx context.Context, request PrepareReque
 	if err = validateStoredReceiptIdentity(stored, request); err != nil {
 		return PreparedReceipt{}, false, err
 	}
-	source, err := readPrepareSource(ctx, tx)
+	source, err := readPrepareSource(ctx, tx, p.sourceResourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -376,15 +394,28 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 	if request.Preflight.Version != 1 || request.Preflight.Stage != "preflight_only" || request.Preflight.SnapshotConsistency != "separate_non_atomic_snapshots" {
 		return validatedPrepareRequest{}, errors.New("invalid source account ownership preflight contract")
 	}
-	if request.Preflight.Digest == "" || request.Preflight.Digest != receiptDigest(request.Preflight) {
-		return validatedPrepareRequest{}, errors.New("invalid source account ownership preflight digest")
-	}
 	if request.Preflight.AccountObservation.Database == "" || strings.TrimSpace(request.Preflight.AccountObservation.Database) != request.Preflight.AccountObservation.Database || utf8.RuneCountInString(request.Preflight.AccountObservation.Database) > 128 ||
-		request.Preflight.MetadataObservation.SourceID == "" || request.Preflight.MetadataObservation.Database == "" || request.Preflight.AccountObservation.At.IsZero() || request.Preflight.MetadataObservation.At.IsZero() {
+		request.Preflight.MetadataObservation.SourceID == "" || strings.TrimSpace(request.Preflight.MetadataObservation.SourceID) != request.Preflight.MetadataObservation.SourceID || utf8.RuneCountInString(request.Preflight.MetadataObservation.SourceID) > 256 ||
+		request.Preflight.MetadataObservation.Database == "" || strings.TrimSpace(request.Preflight.MetadataObservation.Database) != request.Preflight.MetadataObservation.Database || utf8.RuneCountInString(request.Preflight.MetadataObservation.Database) > 128 ||
+		request.Preflight.AccountObservation.At.IsZero() || request.Preflight.MetadataObservation.At.IsZero() {
 		return validatedPrepareRequest{}, errors.New("incomplete source account ownership preflight observation")
 	}
 	if len(request.Preflight.Accounts) == 0 || len(request.Preflight.Accounts) > MaxRows || len(request.Preflight.Metadata) > MaxRows {
 		return validatedPrepareRequest{}, errors.New("invalid source account ownership preflight row count")
+	}
+	requestBytes := int64(0)
+	if err := consumePrepareRequestBytes(&requestBytes,
+		request.IdempotencyKey,
+		request.SourceID,
+		request.Preflight.Stage,
+		request.Preflight.SnapshotConsistency,
+		request.Preflight.AccountObservation.SourceID,
+		request.Preflight.AccountObservation.Database,
+		request.Preflight.MetadataObservation.SourceID,
+		request.Preflight.MetadataObservation.Database,
+		request.Preflight.Digest,
+	); err != nil {
+		return validatedPrepareRequest{}, err
 	}
 
 	owners := make(map[int64]string, len(request.Preflight.Metadata))
@@ -396,6 +427,9 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 		}
 		if metadata.OrganizationID == "" || strings.TrimSpace(metadata.OrganizationID) != metadata.OrganizationID || utf8.RuneCountInString(metadata.OrganizationID) > 128 || metadata.OrganizationID <= previousOrganization {
 			return validatedPrepareRequest{}, errors.New("invalid or unordered Organization metadata")
+		}
+		if err := consumePrepareRequestRecordBytes(&requestBytes, metadata.OrganizationID, string(metadata.Value)); err != nil {
+			return validatedPrepareRequest{}, err
 		}
 		previousOrganization = metadata.OrganizationID
 		if _, exists := seenOrganizations[metadata.OrganizationID]; exists {
@@ -432,7 +466,13 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 		if strings.TrimSpace(evidence.ProfileDirectory) == "" || utf8.RuneCountInString(evidence.ProfileDirectory) > 1024 || !filepath.IsAbs(evidence.ProfileDirectory) {
 			return validatedPrepareRequest{}, fmt.Errorf("invalid profile directory for source account %d", account.ID)
 		}
+		if err := consumePrepareRequestRecordBytes(&requestBytes, evidence.OrganizationID, evidence.ProfileDirectory, account.Platform, account.ProfileRef); err != nil {
+			return validatedPrepareRequest{}, err
+		}
 		evidenceByID[account.ID] = evidence
+	}
+	if request.Preflight.Digest == "" || request.Preflight.Digest != receiptDigest(request.Preflight) {
+		return validatedPrepareRequest{}, errors.New("invalid source account ownership preflight digest")
 	}
 	fingerprint := struct {
 		ContractVersion int               `json:"contract_version"`
@@ -445,6 +485,25 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 		return validatedPrepareRequest{}, err
 	}
 	return validatedPrepareRequest{request: request, requestSHA256: requestSHA256, evidenceByID: evidenceByID}, nil
+}
+
+func consumePrepareRequestBytes(total *int64, values ...string) error {
+	for _, value := range values {
+		valueBytes := int64(len(value))
+		if valueBytes > maxPrepareTextFieldBytes || *total > maxPrepareRequestBytes-valueBytes {
+			return fmt.Errorf("%w: preflight request text exceeds byte budget", ErrResourceLimit)
+		}
+		*total += valueBytes
+	}
+	return nil
+}
+
+func consumePrepareRequestRecordBytes(total *int64, values ...string) error {
+	if *total > maxPrepareRequestBytes-prepareRequestRecordOverhead {
+		return fmt.Errorf("%w: preflight request exceeds byte budget", ErrResourceLimit)
+	}
+	*total += prepareRequestRecordOverhead
+	return consumePrepareRequestBytes(total, values...)
 }
 
 type prepareSourceAccount struct {
@@ -462,7 +521,10 @@ type prepareSourceAccount struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
-func readPrepareSource(ctx context.Context, tx *sql.Tx) ([]prepareSourceAccount, error) {
+func readPrepareSource(ctx context.Context, tx *sql.Tx, limits prepareSourceResourceLimits) ([]prepareSourceAccount, error) {
+	if err := validatePrepareTextResourceBounds(ctx, tx, `SELECT count(*), COALESCE(MAX(GREATEST(COALESCE(octet_length(platform), 0), COALESCE(octet_length(label), 0), COALESCE(octet_length(profile_ref), 0), COALESCE(octet_length(proxy_ref), 0), COALESCE(octet_length(login_url), 0))), 0), COALESCE(SUM(COALESCE(octet_length(platform), 0) + COALESCE(octet_length(label), 0) + COALESCE(octet_length(profile_ref), 0) + COALESCE(octet_length(proxy_ref), 0) + COALESCE(octet_length(login_url), 0)), 0) FROM public.source_account WHERE LOWER(platform) = '1688'`, limits, "legacy source account"); err != nil {
+		return nil, err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT id, tenant_id, platform, label, profile_ref, proxy_ref, login_url, status, deleted, last_verified_at, created_at, updated_at FROM public.source_account WHERE LOWER(platform) = '1688' ORDER BY id LIMIT $1`, MaxRows+1)
 	if err != nil {
 		return nil, fmt.Errorf("read legacy source accounts: %w", err)
@@ -495,6 +557,26 @@ func readPrepareSource(ctx context.Context, tx *sql.Tx) ([]prepareSourceAccount,
 	return accounts, nil
 }
 
+func validatePrepareTextResourceBounds(ctx context.Context, tx *sql.Tx, query string, limits prepareSourceResourceLimits, owner string) error {
+	if limits.maxFieldBytes <= 0 || limits.maxSnapshotBytes <= 0 {
+		return fmt.Errorf("%w: invalid %s byte limits", ErrResourceLimit, owner)
+	}
+	var rowCount, largestFieldBytes, snapshotBytes int64
+	if err := tx.QueryRowContext(ctx, query).Scan(&rowCount, &largestFieldBytes, &snapshotBytes); err != nil {
+		return fmt.Errorf("measure %s text: %w", owner, err)
+	}
+	if rowCount > MaxRows {
+		return fmt.Errorf("%w: %s row count %d exceeds %d", ErrResourceLimit, owner, rowCount, MaxRows)
+	}
+	if largestFieldBytes > limits.maxFieldBytes {
+		return fmt.Errorf("%w: %s field bytes %d exceeds %d", ErrResourceLimit, owner, largestFieldBytes, limits.maxFieldBytes)
+	}
+	if snapshotBytes > limits.maxSnapshotBytes {
+		return fmt.Errorf("%w: %s text bytes %d exceeds %d", ErrResourceLimit, owner, snapshotBytes, limits.maxSnapshotBytes)
+	}
+	return nil
+}
+
 func compareSourceToPreflight(source []prepareSourceAccount, validated validatedPrepareRequest) error {
 	if len(source) != len(validated.request.Preflight.Accounts) {
 		return ErrSourceDrift
@@ -525,6 +607,10 @@ func buildPreparedAccounts(source []prepareSourceAccount, evidenceByID map[int64
 }
 
 func readPrepareTarget(ctx context.Context, tx *sql.Tx) ([]PreparedAccountEvidence, error) {
+	limits := prepareSourceResourceLimits{maxFieldBytes: maxPrepareTextFieldBytes, maxSnapshotBytes: maxPrepareSourceSnapshotBytes}
+	if err := validatePrepareTextResourceBounds(ctx, tx, `SELECT count(*), COALESCE(MAX(GREATEST(COALESCE(octet_length(organization_id), 0), COALESCE(octet_length(platform), 0), COALESCE(octet_length(label), 0), COALESCE(octet_length(profile_ref), 0), COALESCE(octet_length(profile_directory), 0), COALESCE(octet_length(proxy_ref), 0), COALESCE(octet_length(login_url), 0))), 0), COALESCE(SUM(COALESCE(octet_length(organization_id), 0) + COALESCE(octet_length(platform), 0) + COALESCE(octet_length(label), 0) + COALESCE(octet_length(profile_ref), 0) + COALESCE(octet_length(profile_directory), 0) + COALESCE(octet_length(proxy_ref), 0) + COALESCE(octet_length(login_url), 0)), 0) FROM public.organization_source_accounts`, limits, "Organization source account target"); err != nil {
+		return nil, err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT id, organization_id, platform, label, profile_ref, profile_directory, proxy_ref, login_url, status, deleted, last_verified_at, created_at, updated_at FROM public.organization_source_accounts ORDER BY id LIMIT $1`, MaxRows+1)
 	if err != nil {
 		return nil, fmt.Errorf("read Organization source account target: %w", err)
@@ -568,6 +654,9 @@ func insertPreparedReceipt(ctx context.Context, tx *sql.Tx, receipt PreparedRece
 	if err != nil {
 		return fmt.Errorf("marshal prepared receipt: %w", err)
 	}
+	if len(resultJSON) > maxPreparedReceiptBytes {
+		return fmt.Errorf("%w: prepared receipt bytes %d exceeds %d", ErrResourceLimit, len(resultJSON), maxPreparedReceiptBytes)
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO public.source_account_ownership_migration_receipts (contract_version, idempotency_key, stage, request_sha256, preflight_sha256, source_id, source_database, source_schema, source_sha256, target_sha256, account_count, result_json, prepared_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		receipt.ContractVersion, receipt.IdempotencyKey, receipt.Stage, receipt.RequestSHA256, receipt.PreflightSHA256, receipt.SourceID, receipt.SourceDatabase, receipt.SourceSchema, receipt.SourceSHA256, receipt.TargetSHA256, receipt.AccountCount, resultJSON, receipt.PreparedAt)
 	if err != nil {
@@ -585,13 +674,21 @@ func readPrepareTransactionTimestamp(ctx context.Context, tx *sql.Tx) (time.Time
 }
 
 func readPreparedReceiptRow(ctx context.Context, tx *sql.Tx, version int, key string) (PreparedReceipt, bool, error) {
-	var resultJSON []byte
-	var row PreparedReceipt
-	err := tx.QueryRowContext(ctx, `SELECT contract_version, idempotency_key, stage, request_sha256, preflight_sha256, source_id, source_database, source_schema, source_sha256, target_sha256, account_count, result_json, prepared_at FROM public.source_account_ownership_migration_receipts WHERE contract_version = $1 AND idempotency_key = $2`, version, key).
-		Scan(&row.ContractVersion, &row.IdempotencyKey, &row.Stage, &row.RequestSHA256, &row.PreflightSHA256, &row.SourceID, &row.SourceDatabase, &row.SourceSchema, &row.SourceSHA256, &row.TargetSHA256, &row.AccountCount, &resultJSON, &row.PreparedAt)
+	var resultBytes int64
+	err := tx.QueryRowContext(ctx, `SELECT octet_length(result_json::text) FROM public.source_account_ownership_migration_receipts WHERE contract_version = $1 AND idempotency_key = $2`, version, key).Scan(&resultBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PreparedReceipt{}, false, nil
 	}
+	if err != nil {
+		return PreparedReceipt{}, false, fmt.Errorf("measure source account ownership migration receipt: %w", err)
+	}
+	if resultBytes > maxPreparedReceiptBytes {
+		return PreparedReceipt{}, false, fmt.Errorf("%w: prepared receipt bytes %d exceeds %d", ErrResourceLimit, resultBytes, maxPreparedReceiptBytes)
+	}
+	var resultJSON []byte
+	var row PreparedReceipt
+	err = tx.QueryRowContext(ctx, `SELECT contract_version, idempotency_key, stage, request_sha256, preflight_sha256, source_id, source_database, source_schema, source_sha256, target_sha256, account_count, result_json, prepared_at FROM public.source_account_ownership_migration_receipts WHERE contract_version = $1 AND idempotency_key = $2`, version, key).
+		Scan(&row.ContractVersion, &row.IdempotencyKey, &row.Stage, &row.RequestSHA256, &row.PreflightSHA256, &row.SourceID, &row.SourceDatabase, &row.SourceSchema, &row.SourceSHA256, &row.TargetSHA256, &row.AccountCount, &resultJSON, &row.PreparedAt)
 	if err != nil {
 		return PreparedReceipt{}, false, fmt.Errorf("read source account ownership migration receipt: %w", err)
 	}

@@ -74,6 +74,13 @@ identity, A digest and ordered account mapping/profile evidence; observation tim
 are not new identity inputs. An empty/over-128-byte key, mismatched source identity or
 database, invalid A receipt, empty account set, duplicate account, missing Organization,
 or more than A's `MaxRows` fails before mutation.
+Before hashing the A receipt, B1 also accounts for variable-width request fields and
+per-record JSON overhead and rejects more than 64 MiB. After taking the source lock,
+it asks PostgreSQL for the 1688 row count, largest variable-width field and aggregate
+variable-width bytes before selecting any text value. A field over 64 KiB or a source
+snapshot over 64 MiB fails with the resource-limit error without materializing the
+snapshot in the process. The same bounded read protects target verification, and a
+prepared receipt over 128 MiB is neither inserted nor decoded.
 
 Inside the PostgreSQL transaction B1 locks and rereads the complete current 1688
 inventory, ordered by account ID. Its before-image includes every current non-secret
@@ -118,8 +125,9 @@ adopted as a compatibility-shaped target.
 ### Idempotency, concurrency and failure semantics
 
 1. B1 requires a caller deadline with at most ten minutes remaining, keeps the A
-   100,000-row cap, and sets transaction-local PostgreSQL lock/statement timeouts.
-   Cancellation is checked before the transaction and throughout bounded row work.
+   100,000-row cap, enforces the fixed request/source/receipt byte budgets above, and
+   sets transaction-local PostgreSQL lock/statement timeouts. Cancellation is checked
+   before the transaction and throughout bounded row work.
 2. Lock order is fixed. The transaction first takes PostgreSQL `SHARE` on
    `public.source_account`, which conflicts with legacy INSERT/UPDATE/DELETE and closes
    the phantom-row gap before the complete ordered 1688 reread. It then takes
@@ -183,6 +191,8 @@ task-exclusive PostgreSQL instance. The real database suite must prove:
 - real concurrent legacy INSERT, UPDATE and DELETE transactions either complete before
   the B1 table lock and make the A set fail closed, or wait until B1 finishes; no
   phantom row can be omitted from a committed receipt;
+- PostgreSQL rejects an over-limit source field and over-limit aggregate source text
+  before target/receipt writes, rather than relying on the row cap as a memory bound;
 - normal and failure paths drop their task-specific schema/database and stop/remove
   disposable PostgreSQL resources. Mock, SQLite, compile-only and in-memory tests do
   not count as this evidence.

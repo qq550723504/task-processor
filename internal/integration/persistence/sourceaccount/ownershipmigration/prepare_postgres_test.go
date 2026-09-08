@@ -176,7 +176,7 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 			{
 				name: "aggregate text exceeds the snapshot limit",
 				limits: prepareSourceResourceLimits{
-					maxFieldBytes:    maxPrepareSourceFieldBytes,
+					maxFieldBytes:    maxPrepareTextFieldBytes,
 					maxSnapshotBytes: 32,
 				},
 			},
