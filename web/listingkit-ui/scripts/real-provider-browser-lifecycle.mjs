@@ -9,6 +9,10 @@ export function ownerControlExecOptions(platform = process.platform) {
   };
 }
 
+export function browserSignalOwnershipOptions() {
+  return { handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false };
+}
+
 export function platformSignalMatrix(platform) {
   if (platform === "win32") return [
     { signal: "SIGINT", trigger: "Ctrl+C", supported: true, automated: false, reason: "windows_console_control" },

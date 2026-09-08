@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { validateBrowserHandoff, publicBrowserOrigins, browserExpectedHeaders, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, isFinalApplicationLanding, retryOwnerHealth } from "./real-provider-browser-contract.mjs";
-import { createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
+import { browserSignalOwnershipOptions, createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -614,7 +614,7 @@ try {
   finalizer.installProcessHandlers();
   await check("M11_before_read_snapshot", async () => { await control("check"); report.beforeRead = await ownerEvidence("check"); });
   const { chromium } = await import("@playwright/test");
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, ...browserSignalOwnershipOptions() });
   await entries();
   await core();
   await controlCases();

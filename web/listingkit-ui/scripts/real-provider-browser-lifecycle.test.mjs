@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, test } from "vitest";
-import { createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
+import { browserSignalOwnershipOptions, createOwnerMutationGuard, createRunFinalizer, ownerControlExecOptions, platformSignalMatrix } from "./real-provider-browser-lifecycle.mjs";
 
 const temporary = [];
 afterEach(async () => { while (temporary.length) await rm(temporary.pop(), { recursive: true, force: true }); });
@@ -53,6 +53,14 @@ test("signal platform matrix distinguishes catchable controls from forced termin
 test("Windows owner controls use a separate process group so Ctrl+C reaches the runner", () => {
   assert.equal(ownerControlExecOptions("win32").detached, true);
   assert.equal(ownerControlExecOptions("linux").detached, false);
+});
+
+test("the runner owns signals instead of allowing Playwright to exit first", () => {
+  assert.deepEqual(browserSignalOwnershipOptions(), {
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false,
+  });
 });
 
 test("signal before mutation closes and stops once without inventing a restore", async () => {
