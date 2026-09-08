@@ -93,6 +93,26 @@ func TestValidatePrepareRequestRejectsInvalidAuthorityAndMappingEvidence(t *test
 	}
 }
 
+func TestPreparedTargetDigestDoesNotReintroduceLegacyOwnership(t *testing.T) {
+	account := PreparedAccountEvidence{
+		ID: 1, LegacyTenantID: 101, OrganizationID: "org-a", Platform: "1688",
+		ProfileRef: "profile-a", ProfileDirectory: prepareTestProfileDirectory("101", "1"),
+		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC),
+	}
+	first, err := digestPreparedTarget([]PreparedAccountEvidence{account})
+	if err != nil {
+		t.Fatal(err)
+	}
+	account.LegacyTenantID = 999
+	second, err := digestPreparedTarget([]PreparedAccountEvidence{account})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("target digest depends on retired numeric owner: %s != %s", first, second)
+	}
+}
+
 func validPrepareTestRequest(key string) PrepareRequest {
 	observedAt := time.Date(2026, 9, 8, 1, 2, 3, 0, time.UTC)
 	receipt := Receipt{

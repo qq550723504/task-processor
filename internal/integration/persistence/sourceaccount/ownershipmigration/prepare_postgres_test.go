@@ -42,11 +42,20 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		if result.Accounts[0].OrganizationID != "org-a" || result.Accounts[0].ProfileRef != "profile-a" || result.Accounts[0].ProfileDirectory != prepareTestProfileDirectory("101", "1") {
 			t.Fatalf("enabled target = %#v", result.Accounts[0])
 		}
+		if result.Accounts[0].Label == nil || *result.Accounts[0].Label != "enabled" || result.Accounts[0].ProxyRef == nil || *result.Accounts[0].ProxyRef != "proxy-a" || result.Accounts[0].LoginURL == nil || result.Accounts[0].LastVerifiedAt == nil {
+			t.Fatalf("enabled metadata was not preserved = %#v", result.Accounts[0])
+		}
 		if result.Accounts[1].Status != 1 || result.Accounts[1].Deleted != 0 {
 			t.Fatalf("disabled target = %#v", result.Accounts[1])
 		}
+		if result.Accounts[1].Label != nil || result.Accounts[1].ProxyRef != nil || result.Accounts[1].LoginURL != nil {
+			t.Fatalf("SQL NULL metadata was not preserved = %#v", result.Accounts[1])
+		}
 		if result.Accounts[2].Status != 0 || result.Accounts[2].Deleted != 1 {
 			t.Fatalf("deleted target = %#v", result.Accounts[2])
+		}
+		if result.Accounts[2].ProxyRef == nil || *result.Accounts[2].ProxyRef != "" || result.Accounts[2].LoginURL == nil || *result.Accounts[2].LoginURL != "" {
+			t.Fatalf("empty non-NULL metadata was not preserved = %#v", result.Accounts[2])
 		}
 		if after := fixture.tableJSON(t, "public.source_account", "id"); before != after {
 			t.Fatalf("legacy source changed:\n before=%s\n after=%s", before, after)
@@ -95,6 +104,12 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		if _, _, err = preparer.Prepare(ctx, changedPayload); !errors.Is(err, ErrIdempotencyConflict) {
 			t.Fatalf("same key/different payload error = %v", err)
 		}
+		changedCapturedField := clonePrepareRequest(t, request)
+		changedCapturedField.Preflight.Accounts[0].Previous.Status = 1
+		changedCapturedField.Preflight.Digest = receiptDigest(changedCapturedField.Preflight)
+		if _, _, err = preparer.Prepare(ctx, changedCapturedField); !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("same key/different captured source field error = %v", err)
+		}
 		differentKey := clonePrepareRequest(t, request)
 		differentKey.IdempotencyKey = "migration-2"
 		if _, _, err = preparer.Prepare(ctx, differentKey); !errors.Is(err, ErrTargetConflict) {
@@ -136,6 +151,23 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 		}
 		if _, _, err = preparer.Prepare(ctx, request); !errors.Is(err, ErrSourceDrift) {
 			t.Fatalf("Prepare() drift error = %v", err)
+		}
+		fixture.assertCount(t, "public.organization_source_accounts", 0)
+		fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
+	})
+
+	t.Run("rejects a different selected database before mutation", func(t *testing.T) {
+		request := fixture.resetAndSeed(t)
+		request.Preflight.AccountObservation.Database = "different_database"
+		request.Preflight.Digest = receiptDigest(request.Preflight)
+		preparer, err := NewPreparer(fixture.db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if _, _, err = preparer.Prepare(ctx, request); err == nil {
+			t.Fatal("Prepare() database mismatch error = nil")
 		}
 		fixture.assertCount(t, "public.organization_source_accounts", 0)
 		fixture.assertCount(t, "public.source_account_ownership_migration_receipts", 0)
@@ -270,7 +302,7 @@ func TestPreparedOwnershipPostgresTransactionKernel(t *testing.T) {
 			sql  string
 		}{
 			{name: "insert", sql: `INSERT INTO public.source_account (id, tenant_id, platform, label, profile_ref, status, deleted, created_at, updated_at) VALUES (9, 909, '1688', 'late', 'profile-late', 0, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z')`},
-			{name: "update", sql: `UPDATE public.source_account SET label = 'writer-drift' WHERE id = 1`},
+			{name: "update", sql: `UPDATE public.source_account SET status = 1 WHERE id = 1`},
 			{name: "delete", sql: `DELETE FROM public.source_account WHERE id = 3`},
 		}
 		for _, operation := range operations {
