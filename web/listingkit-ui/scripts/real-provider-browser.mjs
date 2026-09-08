@@ -331,8 +331,8 @@ async function controlCases() {
         const empty = await browser.newContext();
         try {
           const response = await empty.request.get(`${manifest.origins.web}/api/zitadel-auth/login`, { timeout: 30000, maxRedirects: 0 });
-          const outcome = classifyUnavailableLogin({ status: response.status(), location: response.headers().location, issuer: manifest.origins.issuer });
-          if (outcome === "provider-redirect") {
+          const outcome = classifyUnavailableLogin({ status: response.status(), location: response.headers().location, issuer: manifest.origins.issuer, web: manifest.origins.web });
+          if (outcome.endsWith("-redirect")) {
             let unavailableStatus;
             try {
               const unavailable = await empty.request.get(response.headers().location, { timeout: 10000, maxRedirects: 0 });

@@ -29,11 +29,12 @@ export async function withOwnerControlRestored(mutate, operation, restore) {
   } finally { await restore(); }
 }
 
-export function classifyUnavailableLogin({ status, location, issuer }) {
+export function classifyUnavailableLogin({ status, location, issuer, web }) {
   if ([500, 502, 503, 504].includes(status)) return "local-error";
   if ([302, 303, 307].includes(status) && location && issuer) {
     const target = new URL(location);
     if (target.origin === issuer && target.pathname === "/oauth/v2/authorize") return "provider-redirect";
+    if (target.origin === web && target.pathname === "/api/auth/error") return "local-error-redirect";
   }
   throw new Error("issue358_provider_failure_unproven");
 }
