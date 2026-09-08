@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // No default server, inherited Playwright config, authentication fixtures, traces,
 // HAR, video, retries or raw exception output. Only #357 starts/stops the runtime.
@@ -51,6 +51,10 @@ async function api(context, pathname, user, organization) {
   const response = await context.request.get(`${manifest.origins.web}${pathname}`, { headers, maxRedirects: 0, timeout: 20000 });
   const body = await json(response);
   return { status: response.status(), body };
+}
+async function apiStatus(context, pathname) {
+  const response = await context.request.get(`${manifest.origins.web}${pathname}`, { maxRedirects: 0, timeout: 20000 });
+  return response.status();
 }
 function hasToken(value) {
   if (!value || typeof value !== "object") return false;
@@ -323,17 +327,26 @@ async function controlCases() {
     });
     await check("M8_provider_failure", async () => {
       await withOwnerControlRestored(() => control("provider-stop"), async () => {
-        const account = await api(cached, "/api/account/profile", "admin");
-        ensure([401, 502, 503, 504].includes(account.status));
+        ensure([401, 502, 503, 504].includes(await apiStatus(cached, "/api/account/profile")));
         const empty = await browser.newContext();
         try {
           const response = await empty.request.get(`${manifest.origins.web}/api/zitadel-auth/login`, { timeout: 30000, maxRedirects: 0 });
-          ensure(response.status() >= 500);
+          const outcome = classifyUnavailableLogin({ status: response.status(), location: response.headers().location, issuer: manifest.origins.issuer });
+          if (outcome === "provider-redirect") {
+            let unavailableStatus;
+            try {
+              const unavailable = await empty.request.get(response.headers().location, { timeout: 10000, maxRedirects: 0 });
+              unavailableStatus = unavailable.status();
+            } catch { /* connection refusal is the expected unavailable-provider boundary */ }
+            classifyUnavailableProviderTarget(unavailableStatus);
+          }
           const result = await api(empty, "/api/auth/session");
           ensure(!result.body?.identity && !result.body?.user && !hasToken(result.body));
         } finally { await empty.close(); }
-      }, () => control("provider-start"));
-      await control("check");
+      }, async () => {
+        await control("provider-start");
+        await retryOwnerHealth(() => control("check"));
+      });
       await ownerEvidence("check");
     });
   } finally { for (const context of contexts) await context.close(); }

@@ -29,6 +29,29 @@ export async function withOwnerControlRestored(mutate, operation, restore) {
   } finally { await restore(); }
 }
 
+export function classifyUnavailableLogin({ status, location, issuer }) {
+  if ([500, 502, 503, 504].includes(status)) return "local-error";
+  if ([302, 303, 307].includes(status) && location && issuer) {
+    const target = new URL(location);
+    if (target.origin === issuer && target.pathname === "/oauth/v2/authorize") return "provider-redirect";
+  }
+  throw new Error("issue358_provider_failure_unproven");
+}
+
+export function classifyUnavailableProviderTarget(status) {
+  if (status === undefined) return "unreachable";
+  if ([500, 502, 503, 504].includes(status)) return "gateway-error";
+  throw new Error("issue358_provider_target_failure_unproven");
+}
+
+export async function retryOwnerHealth(operation, { attempts = 30, wait = () => new Promise(resolve => setTimeout(resolve, 2000)) } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { await operation(); return; }
+    catch { if (attempt < attempts) await wait(); }
+  }
+  throw new Error("issue358_owner_health_not_restored");
+}
+
 // Consumer of #357 schema v1, not a second runtime/seed or application DTO.
 export function validateBrowserHandoff(value, { manifestPath, runtimeSha, webSha, temporaryRoot }) {
   try {

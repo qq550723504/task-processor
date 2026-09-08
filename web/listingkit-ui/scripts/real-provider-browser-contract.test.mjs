@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
+import { validateBrowserHandoff, publicBrowserOrigins, assertBrowserDiagnosticsDisabled, classifyLateResponseDelivery, classifyRevocationRead, classifyUnavailableLogin, classifyUnavailableProviderTarget, retryOwnerHealth, withOwnerControlRestored } from "./real-provider-browser-contract.mjs";
 
 // Schema checks only. These objects never authenticate a browser or count as E2E.
 const sha = "a".repeat(40);
@@ -114,4 +114,29 @@ test("restoration runs after successful controls and failed assertions", async (
     assert.deepEqual(actions, ["mutate", "operation", "restore"]);
   }
   await assert.rejects(withOwnerControlRestored(async () => {}, async () => {}, async () => { throw new Error("restore_failed"); }), /restore_failed/);
+});
+
+test("provider outage accepts only a bounded local failure or the exact unavailable provider redirect", () => {
+  assert.equal(classifyUnavailableLogin({ status: 503 }), "local-error");
+  assert.equal(classifyUnavailableLogin({ status: 307, location: "http://localhost:43103/oauth/v2/authorize?private=omitted", issuer: "http://localhost:43103" }), "provider-redirect");
+  for (const input of [
+    { status: 200 },
+    { status: 307, location: "http://localhost:43103/ui/v2/login/loginname", issuer: "http://localhost:43103" },
+    { status: 307, location: "http://invalid.example/oauth/v2/authorize", issuer: "http://localhost:43103" },
+  ]) assert.throws(() => classifyUnavailableLogin(input), /provider_failure_unproven/);
+});
+
+test("provider restoration retries the owner health check within a fixed bound", async () => {
+  let attempts = 0;
+  await retryOwnerHealth(async () => { attempts++; if (attempts < 3) throw new Error("not_ready"); }, { attempts: 3, wait: async () => {} });
+  assert.equal(attempts, 3);
+  attempts = 0;
+  await assert.rejects(retryOwnerHealth(async () => { attempts++; throw new Error("not_ready"); }, { attempts: 2, wait: async () => {} }), /owner_health_not_restored/);
+  assert.equal(attempts, 2);
+});
+
+test("a provider redirect is failed only by connection refusal or a bounded gateway status", () => {
+  assert.equal(classifyUnavailableProviderTarget(undefined), "unreachable");
+  for (const status of [500, 502, 503, 504]) assert.equal(classifyUnavailableProviderTarget(status), "gateway-error");
+  for (const status of [200, 302, 401, 404]) assert.throws(() => classifyUnavailableProviderTarget(status), /provider_target_failure_unproven/);
 });
