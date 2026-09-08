@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 const mockedAuthState = vi.hoisted(() => ({
   signOutResult: new Response(null, { status: 302 }),
 }));
+const cookieStore = vi.hoisted(() => ({ delete: vi.fn() }));
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => cookieStore) }));
 
 const mockedServerToken = vi.hoisted(() => ({
   idToken: "",
@@ -81,6 +83,7 @@ describe("GET /api/zitadel-auth/logout", () => {
     mockedZitadelHelpers.discovery = undefined;
     mockedZitadelHelpers.discoveryError = null;
     mockedZitadelHelpers.publicOrigin = "http://localhost:3000";
+    cookieStore.delete.mockClear();
   });
 
   it("falls back to a local signout when OIDC discovery fails", async () => {
@@ -119,4 +122,29 @@ describe("GET /api/zitadel-auth/logout", () => {
         "https://auth.shuomiai.com/oidc/v1/end_session?client_id=client-1&post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A3000&id_token_hint=server-id-token",
     });
   });
+
+  it.each(["official", "discovery-unavailable", "not-configured"])(
+    "clears enterprise selection before %s signout can redirect",
+    async (scenario) => {
+      if (scenario !== "not-configured") {
+        mockedZitadelHelpers.options = {
+          issuerUrl: "https://auth.shuomiai.com",
+          clientId: "client-1",
+          postLogoutRedirectUri: "http://localhost:3000",
+          scopes: "openid profile",
+        };
+        mockedZitadelHelpers.discovery = {
+          end_session_endpoint: "https://auth.shuomiai.com/oidc/v1/end_session",
+        };
+      }
+      if (scenario === "discovery-unavailable") mockedZitadelHelpers.discoveryError = new Error("unavailable");
+      vi.mocked(signOut).mockImplementationOnce(async () => {
+        expect(cookieStore.delete).toHaveBeenCalledExactlyOnceWith("shuomi_effective_organization");
+        return mockedAuthState.signOutResult as never;
+      });
+
+      await callGET();
+      expect(cookieStore.delete).toHaveBeenCalledExactlyOnceWith("shuomi_effective_organization");
+    },
+  );
 });

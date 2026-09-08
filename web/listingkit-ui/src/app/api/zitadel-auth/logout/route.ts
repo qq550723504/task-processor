@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { serverAuth, signOut } from "@/auth";
 import {
   fetchZitadelDiscovery,
@@ -5,10 +6,14 @@ import {
   resolvePublicAppOrigin,
 } from "@/lib/server/zitadel-auth";
 import { readZitadelServerIDToken } from "@/lib/server/zitadel-server-token";
+import { WORKBENCH_COOKIE_NAME } from "@/lib/server/workbench-proxy";
 
 export const dynamic = "force-dynamic";
 
 const authenticatedGET = serverAuth(async (request) => {
+  // Auth.js clears its own session cookies; the application owns this selection.
+  // Expire it before every signOut branch, including unavailable provider/config.
+  (await cookies()).delete(WORKBENCH_COOKIE_NAME);
   const options = getZitadelAuthOptions();
   const postLogoutTarget = options?.postLogoutRedirectUri || resolvePublicAppOrigin();
 
