@@ -19,7 +19,7 @@
 
 ## 顶层目录约定
 
-CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`，
+CURRENT STATE：以下完整 command 清单核对于 `main @ 7d7a19c32765570364eab0dc664197014e76bce0` 加 #364 B2 rehearsal 增量，
 与 `TestCmdContainsOnlyOfficialEntrypoints` 及实际受维护路径一致。README 和 Code Guide
 只引用这里；受维护不等于已部署或通过生产验收。
 
@@ -31,7 +31,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前十三个运维入口为：
+  - 当前十四个运维入口为：
     - `1688-local-agent`
     - `fingerprint-browser-installer`
     - `listing-scheduler`
@@ -45,6 +45,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
     - `shein-login-worker`
     - `store-service-history-migrate`
     - `source-account-ownership-preflight`
+    - `source-account-ownership-rehearsal`
   - `image-agent-temporal-worker` 的构建归属为 `deployments/docker/Dockerfile.product-listing-api`，运行装配归 `internal/app/worker/imageagent`。
   - `1688-local-agent` 的维护入口为 `scripts/1688-local-agent-acceptance.ps1`；归 1688 source runtime。列入清单不授权连接真实账号或执行该脚本。
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
@@ -52,6 +53,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
   - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次，只有显式选择 `constraints` 且 Phase D 重验通过才会执行 PostgreSQL staged constraints。
   - 不再新增临时调试可执行程序。
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，属于 #301 Source Account 迁移的只读运维预检；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。
+  - `source-account-ownership-rehearsal` 由 `scripts/source-account-ownership-rehearsal.ps1` 维护，仅创建、验证并清理命令自身的 PostgreSQL 18 与临时 profile fixture；没有外部数据库或生产模式。运行说明见 `docs/operations/source-account-ownership-rehearsal.md`。
   - 历史爬虫、订阅、兼容 API、地址复制、一次性迁移或调试入口不得回流到 `cmd/`；确需保留时放到 `hack/`、`tools/` 或业务模块内。
   - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。
 - `hack/`

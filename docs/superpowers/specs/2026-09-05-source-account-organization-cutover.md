@@ -314,6 +314,15 @@ hosts/volumes agree with the receipt. Same key/different payload, changed source
 and unexplained target rows fail closed; lost response is resolved by the committed
 receipt rather than an upsert or blind retry. Filesystem access remains read-only.
 
+**B2 rehearsal-only increment (#364).** The current implementation slice is narrowed by
+the [B2 isolated rehearsal contract](2026-09-08-source-account-b2-rehearsal-contract.md).
+It composes A and B1 only against a command-owned disposable PostgreSQL 18 fixture and
+has no positive path for an existing, shared or production environment. Its synthetic
+metadata and concrete table locks verify the local mechanics, not real ZITADEL authority,
+projection freshness, fleet/profile evidence or production freeze. Those original B2
+operation-gate requirements remain a later separately scoped and authorized delivery;
+missing evidence fails closed and is not replaced with a provider/framework in #364.
+
 Per `PD-ISSUE30-CLEAN-SLATE-2026-09-05`, B does **not** migrate, export, checksum, CAS,
 retain or replay old Product/Asset/Task/Redis terminal results and does not build a SQL/
 Redis journal. Old-job admission/replay rejection and writer quiescence remain later

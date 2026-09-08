@@ -27,6 +27,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"shein-login-worker":                 {},
 		"store-service-history-migrate":      {},
 		"source-account-ownership-preflight": {},
+		"source-account-ownership-rehearsal": {},
 	}
 }
 
