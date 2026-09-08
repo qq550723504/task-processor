@@ -1,7 +1,7 @@
 # Legacy Hard-Cut Policy
 
 > Status: Active architecture policy  
-> Effective: 2026-09-05  
+> Effective: 2026-09-05; supplemented by [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md)<br>
 > Scope: all refactoring, new Product/Marketplace/Agent/Tool/Console work, code review, and AI-assisted development
 
 ## 1. Decision
@@ -144,7 +144,7 @@ new Listing -> old Listing implementation fallback
 
 A hard cut means that after cutover the current owner is authoritative.
 
-If a migration requires an explicitly bounded transition, it must have a named migration/cutover plan and removal condition; it must not silently become permanent architecture.
+Under PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08, do not design a legacy migration transition. Only concrete current evidence of an externally observable obligation plus an explicit, reviewed Exception can authorize one; it must then have a named removal condition and cannot silently become permanent architecture.
 
 ---
 
@@ -174,27 +174,11 @@ Do not modify the new architecture merely to keep an obsolete test green.
 
 ---
 
-## 6. Data migration rule
+## 6. Greenfield data rule
 
-Do not maintain two internal facts indefinitely.
+The current product baseline is **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**: new business work starts from a fresh installation and empty business data. Do not create an old-data migration/backfill, old-ID mapping, legacy Service wrapper, compatibility adapter, fallback, dual read/write/synchronization, tenantbridge consumer or second fact source.
 
-Preferred migration:
-
-```text
-old persisted representation
-  -> one-time/bounded migration or backfill
-  -> current authoritative representation
-  -> cutover
-  -> retire old read/write path
-```
-
-Forbidden by default:
-
-- permanent dual write;
-- permanent dual read with fallback;
-- new code treating both old and new tables/models as equal authorities.
-
-Any future exception requires a task-specific reviewed migration contract with a removal condition.
+Normal schema evolution inside the new system remains allowed; it does not authorize importing old-system business history. A claimed externally observable compatibility obligation requires concrete current evidence and an explicit, reviewed Exception before implementation. Historical Issues, PRs, plans, tests and code do not create that obligation.
 
 ---
 

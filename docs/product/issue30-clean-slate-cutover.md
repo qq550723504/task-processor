@@ -1,5 +1,8 @@
 # #30 / #307：不保留旧业务数据的 1688 Hard-Cut
 
+> **SUPERSEDED — historical evidence, not a current execution entrypoint.**
+> [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](greenfield-no-legacy-migration.md) replaces this document's environment inventory, cutover, migration and gate direction. Future work starts from a fresh installation and empty business data; it must not use this document to authorize legacy migration, profile reuse, old-ID mapping, compatibility paths or real-environment operations. The historical analysis below is retained without claiming that it was completed or incorrect.
+
 Product Decision：**PD-ISSUE30-CLEAN-SLATE-2026-09-05**。
 状态：**DECISION_RECORDED / WAITING_FOR_ENVIRONMENT_SCOPE**。
 来源：用户在 P2-R 任务中的明确决定（2026-09-05）：

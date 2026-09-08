@@ -42,6 +42,12 @@ Cutover/deletion condition:
 
 “继续兼容旧内部设计”不是当前允许的默认决策。
 
+## 全新系统产品基线
+
+[PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](docs/product/greenfield-no-legacy-migration.md) 适用于后续全部业务任务：按全新安装、空业务数据、当前模型和当前产品需求设计。不得新增旧数据迁移、旧 ID 映射、旧 Service 包装、compatibility adapter、fallback、双读/双写/同步、tenantbridge consumer 或第二事实源。历史 A/B1/B2、#364/PR #366 与旧 C/D 仅是历史证据，不构成实现前置或迁移授权。
+
+现有合格能力和成熟开源组件仍可按当前 owner 复用；发现旧代码只作 `EXTRACT | RETIRE`。若主张存在外部可观察兼容义务，先提供具体当前证据并建立显式、可评审 Exception；不得以旧 Issue、PR、设计、测试或代码默认推定。该产品决定不授权真实环境的数据访问、迁移、删除或清理。
+
 ## 开发准入与停止条件
 
 开始编码前，先判断任务是有界修改还是架构敏感修改。满足以下任一条件即属于架构敏感修改：
