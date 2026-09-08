@@ -1,6 +1,6 @@
 import {spawn} from 'node:child_process';
 import {readFile,writeFile,rename,mkdir,lstat,realpath,unlink} from 'node:fs/promises';
-import {join,resolve} from 'node:path';
+import {dirname,join} from 'node:path';
 import {createServer} from 'node:net';
 import assert from 'node:assert/strict';
 import {childEnvironment,runDirectory,validateManifest} from './contract.mjs';
@@ -34,9 +34,14 @@ export async function save(m){
  await json(join(m.directory,'manifest.json'),publicManifest);
 }
 export async function load(id) {
- const dir=runDirectory(id);assert.ok(!(await lstat(dir)).isSymbolicLink(),'INVALID_RUN');assert.equal((await realpath(dir)).toLowerCase(),resolve(dir).toLowerCase(),'INVALID_RUN');
+ const dir=runDirectory(id),root=dirname(dir);
+ assert.ok(!(await lstat(root)).isSymbolicLink(),'INVALID_RUN');assert.ok(!(await lstat(dir)).isSymbolicLink(),'INVALID_RUN');
+ const physicalRoot=(await realpath(root)).toLowerCase(),physicalDirectory=(await realpath(dir)).toLowerCase();
+ assert.equal(dirname(physicalDirectory),physicalRoot,'INVALID_RUN');
  const path=join(dir,'manifest.json');assert.ok(!(await lstat(path)).isSymbolicLink(),'INVALID_RUN');
- const m=validateManifest(await readJSON(path));
+ const manifest=await readJSON(path);assert.equal(typeof manifest.directory,'string','INVALID_RUN');assert.ok(!(await lstat(manifest.directory)).isSymbolicLink(),'INVALID_RUN');
+ assert.equal((await realpath(manifest.directory)).toLowerCase(),physicalDirectory,'INVALID_RUN');
+ manifest.directory=dir;const m=validateManifest(manifest);
  try{m.secrets=await readJSON(join(dir,'owner-secrets.json'))}catch(e){if(e.code!=='ENOENT')throw e}
  return m;
 }
