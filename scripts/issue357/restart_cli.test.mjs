@@ -6,18 +6,19 @@ import {randomUUID} from 'node:crypto';
 import {mkdir,rm} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {tmpdir} from 'node:os';
 import {childEnvironment,makeManifest} from './contract.mjs';
 import {json,readJSON,port} from './io.mjs';
 
 const execute=promisify(execFile);
 const repo=dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const cli=join(repo,'scripts','issue357-runtime.mjs');
+const subprocessTempRoot=(await execute(process.execPath,['--input-type=module','--eval',"import {tmpdir} from 'node:os';process.stdout.write(tmpdir())"],{env:childEnvironment(),windowsHide:true})).stdout;
 
 async function fixture(plan) {
  const ports={issuer:0,web:0,go:0,database:0};
  for(const key of Object.keys(ports)){let selected;do{selected=await port()}while(Object.values(ports).includes(selected));ports[key]=selected}
  const id=randomUUID(),m=makeManifest(id,ports,'a'.repeat(40),'b'.repeat(40));
+ m.directory=join(subprocessTempRoot,'task-processor-issue357',id);
  m.status='ready';m.sourceDirectory=repo;m.webDirectory=repo;m.resources={};
  await mkdir(m.directory,{recursive:true});
  await json(join(m.directory,'manifest.json'),{...m,secrets:undefined});
@@ -28,8 +29,6 @@ async function fixture(plan) {
 }
 async function invoke(m,planPath,action='restart') {
  const env=childEnvironment();
- for(const key of Object.keys(env))if(['temp','tmp'].includes(key.toLowerCase()))delete env[key];
- env.TEMP=tmpdir();env.TMP=tmpdir();
  try {
   const result=await execute(process.execPath,[cli,action,'--run',m.runId],{cwd:repo,windowsHide:true,env:{...env,NODE_TEST_CONTEXT:process.env.NODE_TEST_CONTEXT,ISSUE357_TEST_RESTART_PLAN:planPath}});
   return {code:0,stdout:result.stdout,stderr:result.stderr};
