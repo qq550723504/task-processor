@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdir,writeFile,rm,lstat,readFile} from 'node:fs/promises';
+import {mkdir,writeFile,rm,lstat,readFile,rename} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {join} from 'node:path';
@@ -31,4 +31,13 @@ test('atomic rename failure erases its secret temporary file',{skip:process.plat
   await assert.rejects(()=>json(path,{password:'synthetic-secret'}));
   await assert.rejects(()=>lstat(path+'.tmp'),{code:'ENOENT'});
  }finally{holder.stdin.end();await once(holder,'close');assert.equal(await readFile(path,'utf8'),'original');await rm(directory,{recursive:true,force:true})}
+});
+
+test('atomic writer retries a transient Windows rename conflict',{skip:process.platform!=='win32'},async()=>{
+ const directory=runDirectory(randomUUID());await mkdir(directory,{recursive:true});
+ const path=join(directory,'runtime.json');let calls=0;
+ try {
+  await json(path,{version:2},async(...args)=>{calls++;if(calls===1)throw Object.assign(new Error('transient conflict'),{code:'EPERM'});return rename(...args)});
+  assert.equal(calls,2);assert.deepEqual(JSON.parse(await readFile(path,'utf8')),{version:2});
+ }finally{await rm(directory,{recursive:true,force:true})}
 });

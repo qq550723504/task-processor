@@ -17,8 +17,14 @@ export function run(command,args,options={}) {
   p.stdin?.end(options.input??'');
  });
 }
-export async function json(path,value) {
- try{await writeFile(`${path}.tmp`,JSON.stringify(value,null,2),{mode:0o600});await rename(`${path}.tmp`,path)}
+export async function json(path,value,renameFile=rename) {
+ try{
+  await writeFile(`${path}.tmp`,JSON.stringify(value,null,2),{mode:0o600});
+  for(let attempt=0;;attempt++)try{await renameFile(`${path}.tmp`,path);break}catch(error){
+   if(process.platform!=='win32'||!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt===4)throw error;
+   await pause(25*2**attempt);
+  }
+ }
  catch(error){await unlink(`${path}.tmp`).catch(()=>{});throw error}
 }
 export async function readJSON(path) {return JSON.parse(await readFile(path,'utf8'))}
