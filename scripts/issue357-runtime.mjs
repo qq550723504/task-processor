@@ -10,6 +10,7 @@ import {run,json,readJSON,save,load,privateDirectory,port,until,processIdentity,
 import {provider,createSubjects,grantSubjects,authorizationControl} from './issue357/provider.mjs';
 import {discoverRunProcesses} from './issue357/processes.mjs';
 import {restartRuntime} from './issue357/restart.mjs';
+import {waitForProvider} from './issue357/readiness.mjs';
 
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const argv=process.argv.slice(2),action=argv[0];
@@ -180,7 +181,7 @@ try {
      await inventory(m,true);
      operations={assertFingerprint,save,stopApplications,
       restartContainers:async()=>run('docker',['container','restart',...['identity-db','commercial-db','zitadel-api','zitadel-login','proxy'].map(s=>m.resources[`${m.project}-${s}`].id)]),
-      waitProvider:async()=>until(async()=>{const r=await fetch(`${m.origins.issuer}/debug/ready`);return r.ok},'PROVIDER_RESTART'),
+      waitProvider:async()=>waitForProvider(m.origins.issuer),
       startApplications,health};
     }
     await restartRuntime(m,operations);console.log(`READY ${m.origins.web}`);return;
