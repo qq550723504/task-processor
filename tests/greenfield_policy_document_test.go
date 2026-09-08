@@ -92,13 +92,19 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 		filepath.Join("..", "docs", "product", "product-sourcing-handoff.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"fresh installation and empty business data",
+			"it does not authorize migration, profile reuse, wrappers, mappings or cutover machinery.",
+			"historical evidence only; it is not a prerequisite for a fresh-install source path.",
+			"The new path has no old product/asset/task state, legacy profile or late-result dependency.",
 		},
 		filepath.Join("..", "docs", "refactoring", "current-refactoring-status.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"greenfield-no-legacy-migration.md",
+			"profile reuse and cutover are not current gates.",
 		},
 		filepath.Join("..", "docs", "refactoring", "legacy-register.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"current entitlement facts are created by their current owners, not carried over",
+			"Do not restore task-count quota as resource authority or migrate legacy quota values.",
 		},
 	} {
 		contents := strings.Join(strings.Fields(readGreenfieldPolicyDocument(t, path)), " ")
