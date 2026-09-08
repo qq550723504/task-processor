@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -24,8 +25,8 @@ const (
 	maxPrepareTextFieldBytes      = 64 * 1024
 	maxPrepareSourceSnapshotBytes = 64 * 1024 * 1024
 	maxPrepareRequestBytes        = 64 * 1024 * 1024
+	maxPrepareSnapshotJSONBytes   = 128 * 1024 * 1024
 	maxPreparedReceiptBytes       = 128 * 1024 * 1024
-	prepareRequestRecordOverhead  = 256
 )
 
 var (
@@ -89,9 +90,22 @@ type validatedPrepareRequest struct {
 	evidenceByID  map[int64]AccountEvidence
 }
 
-type prepareSourceResourceLimits struct {
-	maxFieldBytes    int64
-	maxSnapshotBytes int64
+type prepareResourceLimits struct {
+	maxFieldBytes        int64
+	maxSourceTextBytes   int64
+	maxRequestJSONBytes  int64
+	maxSnapshotJSONBytes int64
+	maxReceiptJSONBytes  int64
+}
+
+func defaultPrepareResourceLimits() prepareResourceLimits {
+	return prepareResourceLimits{
+		maxFieldBytes:        maxPrepareTextFieldBytes,
+		maxSourceTextBytes:   maxPrepareSourceSnapshotBytes,
+		maxRequestJSONBytes:  maxPrepareRequestBytes,
+		maxSnapshotJSONBytes: maxPrepareSnapshotJSONBytes,
+		maxReceiptJSONBytes:  maxPreparedReceiptBytes,
+	}
 }
 
 // Preparer is intentionally not wired into startup, HTTP, worker or runtime
@@ -100,11 +114,11 @@ type Preparer struct {
 	db *sql.DB
 
 	// Test-only fault and concurrency seams. Production construction leaves them nil.
-	afterLocks           func() error
-	afterTargetInsert    func(context.Context, *sql.Tx, int) error
-	beforeCommit         func() error
-	afterCommit          func() error
-	sourceResourceLimits prepareSourceResourceLimits
+	afterLocks        func() error
+	afterTargetInsert func(context.Context, *sql.Tx, int) error
+	beforeCommit      func() error
+	afterCommit       func() error
+	resourceLimits    prepareResourceLimits
 }
 
 func InstallPreparedSchema(ctx context.Context, db *sql.DB) error {
@@ -139,16 +153,13 @@ func NewPreparer(db *sql.DB) (*Preparer, error) {
 		return nil, errors.New("source account ownership migration database is nil")
 	}
 	return &Preparer{
-		db: db,
-		sourceResourceLimits: prepareSourceResourceLimits{
-			maxFieldBytes:    maxPrepareTextFieldBytes,
-			maxSnapshotBytes: maxPrepareSourceSnapshotBytes,
-		},
+		db:             db,
+		resourceLimits: defaultPrepareResourceLimits(),
 	}, nil
 }
 
 func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt PreparedReceipt, replayed bool, err error) {
-	validated, err := validatePrepareRequest(ctx, request)
+	validated, err := validatePrepareRequestWithLimits(ctx, request, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -177,7 +188,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 	if err = verifyPrepareDatabase(ctx, tx, request.Preflight.AccountObservation.Database); err != nil {
 		return PreparedReceipt{}, false, err
 	}
-	stored, found, err := readPreparedReceiptRow(ctx, tx, request.ContractVersion, request.IdempotencyKey)
+	stored, found, err := readPreparedReceiptRow(ctx, tx, request.ContractVersion, request.IdempotencyKey, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -191,7 +202,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 	}
 	var target []PreparedAccountEvidence
 	if !found {
-		target, err = readPrepareTarget(ctx, tx)
+		target, err = readPrepareTarget(ctx, tx, p.resourceLimits)
 		if err != nil {
 			return PreparedReceipt{}, false, err
 		}
@@ -206,7 +217,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 			return PreparedReceipt{}, false, ErrTargetConflict
 		}
 	}
-	source, err := readPrepareSource(ctx, tx, p.sourceResourceLimits)
+	source, err := readPrepareSource(ctx, tx, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -226,11 +237,11 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 		if !preparedAccountsEqual(stored.Accounts, expectedTarget) {
 			return PreparedReceipt{}, false, ErrTargetDrift
 		}
-		target, readErr := readPrepareTarget(ctx, tx)
+		target, readErr := readPrepareTarget(ctx, tx, p.resourceLimits)
 		if readErr != nil {
 			return PreparedReceipt{}, false, readErr
 		}
-		if err = validateStoredTarget(stored, target); err != nil {
+		if err = validateStoredTarget(stored, target, p.resourceLimits.maxSnapshotJSONBytes); err != nil {
 			return PreparedReceipt{}, false, err
 		}
 		if err = tx.Commit(); err != nil {
@@ -240,7 +251,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 	}
 
 	target = expectedTarget
-	targetSHA256, err := digestPreparedTarget(target)
+	targetSHA256, err := digestPreparedTarget(target, p.resourceLimits.maxSnapshotJSONBytes)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -276,7 +287,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 		Accounts:        target,
 		PreparedAt:      preparedAt,
 	}
-	if err = insertPreparedReceipt(ctx, tx, receipt); err != nil {
+	if err = insertPreparedReceipt(ctx, tx, receipt, p.resourceLimits); err != nil {
 		return PreparedReceipt{}, false, err
 	}
 	if p.beforeCommit != nil {
@@ -301,7 +312,7 @@ func (p *Preparer) Prepare(ctx context.Context, request PrepareRequest) (receipt
 }
 
 func (p *Preparer) ReadPreparedReceipt(ctx context.Context, request PrepareRequest) (PreparedReceipt, bool, error) {
-	validated, err := validatePrepareRequest(ctx, request)
+	validated, err := validatePrepareRequestWithLimits(ctx, request, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -322,12 +333,12 @@ func (p *Preparer) ReadPreparedReceipt(ctx context.Context, request PrepareReque
 	if err = verifyPrepareDatabase(ctx, tx, request.Preflight.AccountObservation.Database); err != nil {
 		return PreparedReceipt{}, false, err
 	}
-	stored, found, err := readPreparedReceiptRow(ctx, tx, request.ContractVersion, request.IdempotencyKey)
+	stored, found, err := readPreparedReceiptRow(ctx, tx, request.ContractVersion, request.IdempotencyKey, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
 	if !found {
-		target, readErr := readPrepareTarget(ctx, tx)
+		target, readErr := readPrepareTarget(ctx, tx, p.resourceLimits)
 		if readErr != nil {
 			return PreparedReceipt{}, false, readErr
 		}
@@ -342,7 +353,7 @@ func (p *Preparer) ReadPreparedReceipt(ctx context.Context, request PrepareReque
 	if err = validateStoredReceiptIdentity(stored, request); err != nil {
 		return PreparedReceipt{}, false, err
 	}
-	source, err := readPrepareSource(ctx, tx, p.sourceResourceLimits)
+	source, err := readPrepareSource(ctx, tx, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
@@ -360,17 +371,21 @@ func (p *Preparer) ReadPreparedReceipt(ctx context.Context, request PrepareReque
 	if !preparedAccountsEqual(stored.Accounts, expectedTarget) {
 		return PreparedReceipt{}, false, ErrTargetDrift
 	}
-	target, err := readPrepareTarget(ctx, tx)
+	target, err := readPrepareTarget(ctx, tx, p.resourceLimits)
 	if err != nil {
 		return PreparedReceipt{}, false, err
 	}
-	if err = validateStoredTarget(stored, target); err != nil {
+	if err = validateStoredTarget(stored, target, p.resourceLimits.maxSnapshotJSONBytes); err != nil {
 		return PreparedReceipt{}, false, err
 	}
 	return stored, true, nil
 }
 
 func validatePrepareRequest(ctx context.Context, request PrepareRequest) (validatedPrepareRequest, error) {
+	return validatePrepareRequestWithLimits(ctx, request, defaultPrepareResourceLimits())
+}
+
+func validatePrepareRequestWithLimits(ctx context.Context, request PrepareRequest, limits prepareResourceLimits) (validatedPrepareRequest, error) {
 	if err := ctx.Err(); err != nil {
 		return validatedPrepareRequest{}, err
 	}
@@ -403,21 +418,6 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 	if len(request.Preflight.Accounts) == 0 || len(request.Preflight.Accounts) > MaxRows || len(request.Preflight.Metadata) > MaxRows {
 		return validatedPrepareRequest{}, errors.New("invalid source account ownership preflight row count")
 	}
-	requestBytes := int64(0)
-	if err := consumePrepareRequestBytes(&requestBytes,
-		request.IdempotencyKey,
-		request.SourceID,
-		request.Preflight.Stage,
-		request.Preflight.SnapshotConsistency,
-		request.Preflight.AccountObservation.SourceID,
-		request.Preflight.AccountObservation.Database,
-		request.Preflight.MetadataObservation.SourceID,
-		request.Preflight.MetadataObservation.Database,
-		request.Preflight.Digest,
-	); err != nil {
-		return validatedPrepareRequest{}, err
-	}
-
 	owners := make(map[int64]string, len(request.Preflight.Metadata))
 	seenOrganizations := make(map[string]struct{}, len(request.Preflight.Metadata))
 	previousOrganization := ""
@@ -428,8 +428,8 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 		if metadata.OrganizationID == "" || strings.TrimSpace(metadata.OrganizationID) != metadata.OrganizationID || utf8.RuneCountInString(metadata.OrganizationID) > 128 || metadata.OrganizationID <= previousOrganization {
 			return validatedPrepareRequest{}, errors.New("invalid or unordered Organization metadata")
 		}
-		if err := consumePrepareRequestRecordBytes(&requestBytes, metadata.OrganizationID, string(metadata.Value)); err != nil {
-			return validatedPrepareRequest{}, err
+		if len(metadata.Value) > maxPrepareTextFieldBytes {
+			return validatedPrepareRequest{}, fmt.Errorf("%w: Organization mapping value exceeds field byte budget", ErrResourceLimit)
 		}
 		previousOrganization = metadata.OrganizationID
 		if _, exists := seenOrganizations[metadata.OrganizationID]; exists {
@@ -466,10 +466,10 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 		if strings.TrimSpace(evidence.ProfileDirectory) == "" || utf8.RuneCountInString(evidence.ProfileDirectory) > 1024 || !filepath.IsAbs(evidence.ProfileDirectory) {
 			return validatedPrepareRequest{}, fmt.Errorf("invalid profile directory for source account %d", account.ID)
 		}
-		if err := consumePrepareRequestRecordBytes(&requestBytes, evidence.OrganizationID, evidence.ProfileDirectory, account.Platform, account.ProfileRef); err != nil {
-			return validatedPrepareRequest{}, err
-		}
 		evidenceByID[account.ID] = evidence
+	}
+	if _, err := measurePreflightReceiptJSON(request.Preflight, limits.maxRequestJSONBytes); err != nil {
+		return validatedPrepareRequest{}, err
 	}
 	if request.Preflight.Digest == "" || request.Preflight.Digest != receiptDigest(request.Preflight) {
 		return validatedPrepareRequest{}, errors.New("invalid source account ownership preflight digest")
@@ -480,6 +480,9 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 		PreflightSHA256 string            `json:"preflight_sha256"`
 		Accounts        []AccountEvidence `json:"accounts"`
 	}{request.ContractVersion, request.SourceID, request.Preflight.Digest, request.Preflight.Accounts}
+	if _, err := measureJSONValue(fingerprint, limits.maxRequestJSONBytes, "source account ownership migration request fingerprint"); err != nil {
+		return validatedPrepareRequest{}, err
+	}
 	requestSHA256, err := digestJSON(fingerprint)
 	if err != nil {
 		return validatedPrepareRequest{}, err
@@ -487,23 +490,94 @@ func validatePrepareRequest(ctx context.Context, request PrepareRequest) (valida
 	return validatedPrepareRequest{request: request, requestSHA256: requestSHA256, evidenceByID: evidenceByID}, nil
 }
 
-func consumePrepareRequestBytes(total *int64, values ...string) error {
-	for _, value := range values {
-		valueBytes := int64(len(value))
-		if valueBytes > maxPrepareTextFieldBytes || *total > maxPrepareRequestBytes-valueBytes {
-			return fmt.Errorf("%w: preflight request text exceeds byte budget", ErrResourceLimit)
-		}
-		*total += valueBytes
+func measurePreflightReceiptJSON(receipt Receipt, limit int64) (int64, error) {
+	canonical := receipt
+	canonical.Digest = ""
+	canonical.AccountObservation.At = time.Time{}
+	canonical.MetadataObservation.At = time.Time{}
+	accountBytes, err := measureJSONArray(canonical.Accounts, limit, "source account ownership preflight accounts")
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	metadataBytes, err := measureJSONArray(canonical.Metadata, limit, "source account ownership preflight metadata")
+	if err != nil {
+		return 0, err
+	}
+	canonical.Accounts = nil
+	canonical.Metadata = nil
+	baseBytes, err := measureJSONValue(canonical, limit, "source account ownership preflight receipt")
+	if err != nil {
+		return 0, err
+	}
+	return replaceNullJSONArrays(baseBytes, limit, "source account ownership preflight receipt", accountBytes, metadataBytes)
 }
 
-func consumePrepareRequestRecordBytes(total *int64, values ...string) error {
-	if *total > maxPrepareRequestBytes-prepareRequestRecordOverhead {
-		return fmt.Errorf("%w: preflight request exceeds byte budget", ErrResourceLimit)
+func measurePreparedReceiptJSON(receipt PreparedReceipt, limit int64) (int64, error) {
+	accountBytes, err := measureJSONArray(receipt.Accounts, limit, "prepared source account receipt accounts")
+	if err != nil {
+		return 0, err
 	}
-	*total += prepareRequestRecordOverhead
-	return consumePrepareRequestBytes(total, values...)
+	withoutAccounts := receipt
+	withoutAccounts.Accounts = nil
+	baseBytes, err := measureJSONValue(withoutAccounts, limit, "prepared source account receipt")
+	if err != nil {
+		return 0, err
+	}
+	return replaceNullJSONArrays(baseBytes, limit, "prepared source account receipt", accountBytes)
+}
+
+func measureJSONArray[T any](values []T, limit int64, owner string) (int64, error) {
+	if limit <= 0 {
+		return 0, fmt.Errorf("%w: invalid %s JSON byte limit", ErrResourceLimit, owner)
+	}
+	if values == nil {
+		return 4, nil
+	}
+	total := int64(2)
+	for index, value := range values {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return 0, fmt.Errorf("measure %s JSON: %w", owner, err)
+		}
+		addition := int64(len(payload))
+		if index != 0 {
+			addition++
+		}
+		if addition > limit-total {
+			return 0, fmt.Errorf("%w: %s JSON exceeds %d bytes", ErrResourceLimit, owner, limit)
+		}
+		total += addition
+	}
+	return total, nil
+}
+
+func measureJSONValue(value any, limit int64, owner string) (int64, error) {
+	if limit <= 0 {
+		return 0, fmt.Errorf("%w: invalid %s JSON byte limit", ErrResourceLimit, owner)
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return 0, fmt.Errorf("measure %s JSON: %w", owner, err)
+	}
+	if int64(len(payload)) > limit {
+		return 0, fmt.Errorf("%w: %s JSON exceeds %d bytes", ErrResourceLimit, owner, limit)
+	}
+	return int64(len(payload)), nil
+}
+
+func replaceNullJSONArrays(baseBytes, limit int64, owner string, arrayBytes ...int64) (int64, error) {
+	nullBytes := int64(4 * len(arrayBytes))
+	if baseBytes < nullBytes {
+		return 0, fmt.Errorf("measure %s JSON: invalid null-array base", owner)
+	}
+	total := baseBytes - nullBytes
+	for _, size := range arrayBytes {
+		if size > limit-total {
+			return 0, fmt.Errorf("%w: %s JSON exceeds %d bytes", ErrResourceLimit, owner, limit)
+		}
+		total += size
+	}
+	return total, nil
 }
 
 type prepareSourceAccount struct {
@@ -521,7 +595,7 @@ type prepareSourceAccount struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
-func readPrepareSource(ctx context.Context, tx *sql.Tx, limits prepareSourceResourceLimits) ([]prepareSourceAccount, error) {
+func readPrepareSource(ctx context.Context, tx *sql.Tx, limits prepareResourceLimits) ([]prepareSourceAccount, error) {
 	if err := validatePrepareTextResourceBounds(ctx, tx, `SELECT count(*), COALESCE(MAX(GREATEST(COALESCE(octet_length(platform), 0), COALESCE(octet_length(label), 0), COALESCE(octet_length(profile_ref), 0), COALESCE(octet_length(proxy_ref), 0), COALESCE(octet_length(login_url), 0))), 0), COALESCE(SUM(COALESCE(octet_length(platform), 0) + COALESCE(octet_length(label), 0) + COALESCE(octet_length(profile_ref), 0) + COALESCE(octet_length(proxy_ref), 0) + COALESCE(octet_length(login_url), 0)), 0) FROM public.source_account WHERE LOWER(platform) = '1688'`, limits, "legacy source account"); err != nil {
 		return nil, err
 	}
@@ -554,11 +628,14 @@ func readPrepareSource(ctx context.Context, tx *sql.Tx, limits prepareSourceReso
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate legacy source accounts: %w", err)
 	}
+	if _, err = measureJSONArray(accounts, limits.maxSnapshotJSONBytes, "legacy source account snapshot"); err != nil {
+		return nil, err
+	}
 	return accounts, nil
 }
 
-func validatePrepareTextResourceBounds(ctx context.Context, tx *sql.Tx, query string, limits prepareSourceResourceLimits, owner string) error {
-	if limits.maxFieldBytes <= 0 || limits.maxSnapshotBytes <= 0 {
+func validatePrepareTextResourceBounds(ctx context.Context, tx *sql.Tx, query string, limits prepareResourceLimits, owner string) error {
+	if limits.maxFieldBytes <= 0 || limits.maxSourceTextBytes <= 0 {
 		return fmt.Errorf("%w: invalid %s byte limits", ErrResourceLimit, owner)
 	}
 	var rowCount, largestFieldBytes, snapshotBytes int64
@@ -571,8 +648,8 @@ func validatePrepareTextResourceBounds(ctx context.Context, tx *sql.Tx, query st
 	if largestFieldBytes > limits.maxFieldBytes {
 		return fmt.Errorf("%w: %s field bytes %d exceeds %d", ErrResourceLimit, owner, largestFieldBytes, limits.maxFieldBytes)
 	}
-	if snapshotBytes > limits.maxSnapshotBytes {
-		return fmt.Errorf("%w: %s text bytes %d exceeds %d", ErrResourceLimit, owner, snapshotBytes, limits.maxSnapshotBytes)
+	if snapshotBytes > limits.maxSourceTextBytes {
+		return fmt.Errorf("%w: %s text bytes %d exceeds %d", ErrResourceLimit, owner, snapshotBytes, limits.maxSourceTextBytes)
 	}
 	return nil
 }
@@ -606,8 +683,7 @@ func buildPreparedAccounts(source []prepareSourceAccount, evidenceByID map[int64
 	return target
 }
 
-func readPrepareTarget(ctx context.Context, tx *sql.Tx) ([]PreparedAccountEvidence, error) {
-	limits := prepareSourceResourceLimits{maxFieldBytes: maxPrepareTextFieldBytes, maxSnapshotBytes: maxPrepareSourceSnapshotBytes}
+func readPrepareTarget(ctx context.Context, tx *sql.Tx, limits prepareResourceLimits) ([]PreparedAccountEvidence, error) {
 	if err := validatePrepareTextResourceBounds(ctx, tx, `SELECT count(*), COALESCE(MAX(GREATEST(COALESCE(octet_length(organization_id), 0), COALESCE(octet_length(platform), 0), COALESCE(octet_length(label), 0), COALESCE(octet_length(profile_ref), 0), COALESCE(octet_length(profile_directory), 0), COALESCE(octet_length(proxy_ref), 0), COALESCE(octet_length(login_url), 0))), 0), COALESCE(SUM(COALESCE(octet_length(organization_id), 0) + COALESCE(octet_length(platform), 0) + COALESCE(octet_length(label), 0) + COALESCE(octet_length(profile_ref), 0) + COALESCE(octet_length(profile_directory), 0) + COALESCE(octet_length(proxy_ref), 0) + COALESCE(octet_length(login_url), 0)), 0) FROM public.organization_source_accounts`, limits, "Organization source account target"); err != nil {
 		return nil, err
 	}
@@ -637,6 +713,9 @@ func readPrepareTarget(ctx context.Context, tx *sql.Tx) ([]PreparedAccountEviden
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate Organization source account target: %w", err)
 	}
+	if _, err = measureJSONArray(target, limits.maxSnapshotJSONBytes, "Organization source account target snapshot"); err != nil {
+		return nil, err
+	}
 	return target, nil
 }
 
@@ -649,18 +728,26 @@ func insertPrepareTarget(ctx context.Context, tx *sql.Tx, account PreparedAccoun
 	return nil
 }
 
-func insertPreparedReceipt(ctx context.Context, tx *sql.Tx, receipt PreparedReceipt) error {
+func insertPreparedReceipt(ctx context.Context, tx *sql.Tx, receipt PreparedReceipt, limits prepareResourceLimits) error {
+	measuredBytes, err := measurePreparedReceiptJSON(receipt, limits.maxReceiptJSONBytes)
+	if err != nil {
+		return err
+	}
 	resultJSON, err := json.Marshal(receipt)
 	if err != nil {
 		return fmt.Errorf("marshal prepared receipt: %w", err)
 	}
-	if len(resultJSON) > maxPreparedReceiptBytes {
-		return fmt.Errorf("%w: prepared receipt bytes %d exceeds %d", ErrResourceLimit, len(resultJSON), maxPreparedReceiptBytes)
+	if int64(len(resultJSON)) != measuredBytes {
+		return errors.New("prepared receipt JSON size measurement mismatch")
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO public.source_account_ownership_migration_receipts (contract_version, idempotency_key, stage, request_sha256, preflight_sha256, source_id, source_database, source_schema, source_sha256, target_sha256, account_count, result_json, prepared_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		receipt.ContractVersion, receipt.IdempotencyKey, receipt.Stage, receipt.RequestSHA256, receipt.PreflightSHA256, receipt.SourceID, receipt.SourceDatabase, receipt.SourceSchema, receipt.SourceSHA256, receipt.TargetSHA256, receipt.AccountCount, resultJSON, receipt.PreparedAt)
+	var persistedJSONBytes int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO public.source_account_ownership_migration_receipts (contract_version, idempotency_key, stage, request_sha256, preflight_sha256, source_id, source_database, source_schema, source_sha256, target_sha256, account_count, result_json, prepared_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING octet_length(result_json::text)`,
+		receipt.ContractVersion, receipt.IdempotencyKey, receipt.Stage, receipt.RequestSHA256, receipt.PreflightSHA256, receipt.SourceID, receipt.SourceDatabase, receipt.SourceSchema, receipt.SourceSHA256, receipt.TargetSHA256, receipt.AccountCount, resultJSON, receipt.PreparedAt).Scan(&persistedJSONBytes)
 	if err != nil {
 		return fmt.Errorf("insert source account ownership migration receipt: %w", err)
+	}
+	if persistedJSONBytes > limits.maxReceiptJSONBytes {
+		return fmt.Errorf("%w: persisted prepared receipt bytes %d exceeds %d", ErrResourceLimit, persistedJSONBytes, limits.maxReceiptJSONBytes)
 	}
 	return nil
 }
@@ -673,7 +760,7 @@ func readPrepareTransactionTimestamp(ctx context.Context, tx *sql.Tx) (time.Time
 	return preparedAtUnknownZone.UTC(), nil
 }
 
-func readPreparedReceiptRow(ctx context.Context, tx *sql.Tx, version int, key string) (PreparedReceipt, bool, error) {
+func readPreparedReceiptRow(ctx context.Context, tx *sql.Tx, version int, key string, limits prepareResourceLimits) (PreparedReceipt, bool, error) {
 	var resultBytes int64
 	err := tx.QueryRowContext(ctx, `SELECT octet_length(result_json::text) FROM public.source_account_ownership_migration_receipts WHERE contract_version = $1 AND idempotency_key = $2`, version, key).Scan(&resultBytes)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -682,8 +769,8 @@ func readPreparedReceiptRow(ctx context.Context, tx *sql.Tx, version int, key st
 	if err != nil {
 		return PreparedReceipt{}, false, fmt.Errorf("measure source account ownership migration receipt: %w", err)
 	}
-	if resultBytes > maxPreparedReceiptBytes {
-		return PreparedReceipt{}, false, fmt.Errorf("%w: prepared receipt bytes %d exceeds %d", ErrResourceLimit, resultBytes, maxPreparedReceiptBytes)
+	if resultBytes > limits.maxReceiptJSONBytes {
+		return PreparedReceipt{}, false, fmt.Errorf("%w: persisted prepared receipt bytes %d exceeds %d", ErrResourceLimit, resultBytes, limits.maxReceiptJSONBytes)
 	}
 	var resultJSON []byte
 	var row PreparedReceipt
@@ -696,6 +783,9 @@ func readPreparedReceiptRow(ctx context.Context, tx *sql.Tx, version int, key st
 	var result PreparedReceipt
 	if err = json.Unmarshal(resultJSON, &result); err != nil {
 		return PreparedReceipt{}, false, fmt.Errorf("decode source account ownership migration receipt: %w", err)
+	}
+	if _, err = measurePreparedReceiptJSON(result, limits.maxReceiptJSONBytes); err != nil {
+		return PreparedReceipt{}, false, err
 	}
 	if !preparedReceiptsEqual(rowWithoutAccounts(row), rowWithoutAccounts(result)) || result.AccountCount != len(result.Accounts) {
 		return PreparedReceipt{}, false, fmt.Errorf("source account ownership migration receipt row mismatch: row=%#v result=%#v", rowWithoutAccounts(row), rowWithoutAccounts(result))
@@ -729,7 +819,7 @@ func countPreparedReceipts(ctx context.Context, tx *sql.Tx) (int, error) {
 	return count, nil
 }
 
-func validateStoredTarget(receipt PreparedReceipt, target []PreparedAccountEvidence) error {
+func validateStoredTarget(receipt PreparedReceipt, target []PreparedAccountEvidence, maxJSONBytes int64) error {
 	if len(target) != receipt.AccountCount || len(receipt.Accounts) != receipt.AccountCount {
 		return ErrTargetDrift
 	}
@@ -738,7 +828,7 @@ func validateStoredTarget(receipt PreparedReceipt, target []PreparedAccountEvide
 		// for receipt equality; the target digest below deliberately excludes it.
 		target[index].LegacyTenantID = receipt.Accounts[index].LegacyTenantID
 	}
-	targetSHA256, err := digestPreparedTarget(target)
+	targetSHA256, err := digestPreparedTarget(target, maxJSONBytes)
 	if err != nil {
 		return err
 	}
@@ -821,18 +911,14 @@ func nullableTime(value sql.NullTime) *time.Time {
 }
 
 func preparedAccountsEqual(left, right []PreparedAccountEvidence) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
+	return reflect.DeepEqual(left, right)
 }
 
 func preparedReceiptsEqual(left, right PreparedReceipt) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
+	return reflect.DeepEqual(left, right)
 }
 
-func digestPreparedTarget(accounts []PreparedAccountEvidence) (string, error) {
+func digestPreparedTarget(accounts []PreparedAccountEvidence, maxJSONBytes int64) (string, error) {
 	target := make([]struct {
 		ID               int64      `json:"id"`
 		OrganizationID   string     `json:"organization_id"`
@@ -869,6 +955,9 @@ func digestPreparedTarget(accounts []PreparedAccountEvidence) (string, error) {
 			ProxyRef: account.ProxyRef, LoginURL: account.LoginURL, Status: account.Status, Deleted: account.Deleted,
 			LastVerifiedAt: account.LastVerifiedAt, CreatedAt: account.CreatedAt, UpdatedAt: account.UpdatedAt,
 		})
+	}
+	if _, err := measureJSONArray(target, maxJSONBytes, "Organization source account target digest"); err != nil {
+		return "", err
 	}
 	return digestJSON(target)
 }

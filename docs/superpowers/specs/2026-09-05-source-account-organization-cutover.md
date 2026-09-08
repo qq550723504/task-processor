@@ -74,13 +74,17 @@ identity, A digest and ordered account mapping/profile evidence; observation tim
 are not new identity inputs. An empty/over-128-byte key, mismatched source identity or
 database, invalid A receipt, empty account set, duplicate account, missing Organization,
 or more than A's `MaxRows` fails before mutation.
-Before hashing the A receipt, B1 also accounts for variable-width request fields and
-per-record JSON overhead and rejects more than 64 MiB. After taking the source lock,
+Before hashing the A receipt, B1 measures its exact canonical JSON size one bounded
+record at a time and rejects more than 64 MiB; JSON escaping is therefore included
+without first materializing the whole encoded receipt. After taking the source lock,
 it asks PostgreSQL for the 1688 row count, largest variable-width field and aggregate
-variable-width bytes before selecting any text value. A field over 64 KiB or a source
-snapshot over 64 MiB fails with the resource-limit error without materializing the
-snapshot in the process. The same bounded read protects target verification, and a
-prepared receipt over 128 MiB is neither inserted nor decoded.
+variable-width bytes before selecting any text value. A field over 64 KiB or raw source
+text over 64 MiB fails without entering process memory. Once selected, source and target
+records are likewise measured one at a time and an encoded snapshot over 128 MiB fails
+before whole-snapshot digest marshaling. Prepared-result JSON has the same 128 MiB
+pre-marshal bound. Its INSERT returns `octet_length(result_json::text)` and the receipt
+reader checks that identical persisted JSONB metric before selecting the value, so an
+accepted receipt cannot reject its own replay because of a different size convention.
 
 Inside the PostgreSQL transaction B1 locks and rereads the complete current 1688
 inventory, ordered by account ID. Its before-image includes every current non-secret
@@ -192,7 +196,9 @@ task-exclusive PostgreSQL instance. The real database suite must prove:
   the B1 table lock and make the A set fail closed, or wait until B1 finishes; no
   phantom row can be omitted from a committed receipt;
 - PostgreSQL rejects an over-limit source field and over-limit aggregate source text
-  before target/receipt writes, rather than relying on the row cap as a memory bound;
+  before target/receipt writes; escape-heavy A/source/target JSON also rejects before
+  a whole digest/result marshal, and the persisted receipt limit is identical on write
+  and read rather than relying on the row cap or raw text length as a memory bound;
 - normal and failure paths drop their task-specific schema/database and stop/remove
   disposable PostgreSQL resources. Mock, SQLite, compile-only and in-memory tests do
   not count as this evidence.
