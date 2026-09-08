@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import {resolve,join} from 'node:path';
+import {lstat,realpath} from 'node:fs/promises';
+import {join} from 'node:path';
 import {json,readJSON,save} from './io.mjs';
 
 export async function restartTestOperations(m,planPath) {
  assert.equal(process.env.NODE_TEST_CONTEXT,'child-v8','TEST_CONTROL_FORBIDDEN');
- assert.equal(resolve(planPath),resolve(join(m.directory,'restart-test-plan.json')),'TEST_CONTROL_FORBIDDEN');
+ const expectedPlan=join(m.directory,'restart-test-plan.json');
+ assert.ok(!(await lstat(planPath)).isSymbolicLink(),'TEST_CONTROL_FORBIDDEN');
+ assert.equal((await realpath(planPath)).toLowerCase(),(await realpath(expectedPlan)).toLowerCase(),'TEST_CONTROL_FORBIDDEN');
  assert.equal(m.sourceSha,'a'.repeat(40),'TEST_CONTROL_FORBIDDEN');
  assert.equal(m.webSha,'b'.repeat(40),'TEST_CONTROL_FORBIDDEN');
  assert.deepEqual(m.resources,{},'TEST_CONTROL_FORBIDDEN');
