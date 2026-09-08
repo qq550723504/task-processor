@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	VersionTableName = "goose_source_account_registry_version"
-	baselineVersion  = int64(2026090901)
+	VersionTableName     = "goose_source_account_registry_version"
+	versionTableRelation = "public." + VersionTableName
+	baselineVersion      = int64(2026090901)
 )
 
 func Migrations() []*goose.Migration {
@@ -34,7 +35,7 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 	if err != nil {
 		return fmt.Errorf("get source account registry database: %w", err)
 	}
-	runner, err := platformmigration.NewWithVersionTable(goose.DialectPostgres, sqlDB, VersionTableName, Migrations()...)
+	runner, err := platformmigration.NewWithVersionTable(goose.DialectPostgres, sqlDB, versionTableRelation, Migrations()...)
 	if err != nil {
 		return fmt.Errorf("create source account registry migration runner: %w", err)
 	}

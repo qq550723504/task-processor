@@ -154,6 +154,29 @@ func TestNewWithVersionTableKeepsIndependentHistory(t *testing.T) {
 	}
 }
 
+func TestVersionTableValidationAllowsOnlySafePostgresQualification(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		dialect goose.Dialect
+		table   string
+		want    bool
+	}{
+		{name: "unqualified", dialect: goose.DialectSQLite3, table: "goose_source_account_registry_version", want: true},
+		{name: "qualified postgres", dialect: goose.DialectPostgres, table: "public.goose_source_account_registry_version", want: true},
+		{name: "qualified sqlite", dialect: goose.DialectSQLite3, table: "main.goose_source_account_registry_version", want: false},
+		{name: "empty schema", dialect: goose.DialectPostgres, table: ".goose_version", want: false},
+		{name: "empty table", dialect: goose.DialectPostgres, table: "public.", want: false},
+		{name: "extra qualification", dialect: goose.DialectPostgres, table: "database.public.goose_version", want: false},
+		{name: "injection", dialect: goose.DialectPostgres, table: "public.goose_version;drop_table", want: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validVersionTableName(tt.dialect, tt.table); got != tt.want {
+				t.Fatalf("validVersionTableName(%q, %q) = %t, want %t", tt.dialect, tt.table, got, tt.want)
+			}
+		})
+	}
+}
+
 func openRunnerTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	return openRunnerTestDBAtPath(t, filepath.Join(t.TempDir(), "runner.sqlite"))

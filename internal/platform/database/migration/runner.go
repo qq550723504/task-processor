@@ -22,6 +22,7 @@ type Runner struct {
 var sqliteUpMu sync.Mutex
 
 var versionTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
+var postgresQualifiedVersionTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}\.[a-z][a-z0-9_]{0,62}$`)
 
 func New(dialect goose.Dialect, db *sql.DB, migrations ...*goose.Migration) (*Runner, error) {
 	return newRunner(dialect, db, "", migrations...)
@@ -30,10 +31,14 @@ func New(dialect goose.Dialect, db *sql.DB, migrations ...*goose.Migration) (*Ru
 // NewWithVersionTable constructs a runner whose applied-version history is
 // isolated from other schema owners sharing the same database.
 func NewWithVersionTable(dialect goose.Dialect, db *sql.DB, versionTable string, migrations ...*goose.Migration) (*Runner, error) {
-	if !versionTableNamePattern.MatchString(versionTable) {
+	if !validVersionTableName(dialect, versionTable) {
 		return nil, fmt.Errorf("invalid migration version table %q", versionTable)
 	}
 	return newRunner(dialect, db, versionTable, migrations...)
+}
+
+func validVersionTableName(dialect goose.Dialect, versionTable string) bool {
+	return versionTableNamePattern.MatchString(versionTable) || dialect == goose.DialectPostgres && postgresQualifiedVersionTableNamePattern.MatchString(versionTable)
 }
 
 func newRunner(dialect goose.Dialect, db *sql.DB, versionTable string, migrations ...*goose.Migration) (*Runner, error) {

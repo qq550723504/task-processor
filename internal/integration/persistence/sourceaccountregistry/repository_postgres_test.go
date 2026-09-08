@@ -397,6 +397,27 @@ func TestSourceAccountRegistryRuntimeAlwaysUsesVerifiedPublicSchema(t *testing.T
 	assertCount(t, db, "shadow.source_account_operations", "organization_id = ?", []any{"org-public"}, 0)
 }
 
+func TestSourceAccountRegistrySchemaHistoryAlwaysUsesPublic(t *testing.T) {
+	db, dsn := openRegistryPostgresWithDSN(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if err := db.Exec(`CREATE SCHEMA shadow`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	shadowFirstDB := openRegistryGORM(t, registryDSNWithSearchPath(t, dsn, "shadow,public,pg_catalog"))
+	if err := sourceaccountregistry.Migrate(ctx, shadowFirstDB); err != nil {
+		t.Fatalf("shadow-first Migrate() error = %v", err)
+	}
+	assertSchemaTableExists(t, db, "public", "goose_source_account_registry_version", true)
+	assertSchemaTableExists(t, db, "shadow", "goose_source_account_registry_version", false)
+
+	if err := sourceaccountregistry.Migrate(ctx, db); err != nil {
+		t.Fatalf("public-first repeat Migrate() error = %v", err)
+	}
+	assertPublicTableInventory(t, db, []string{"goose_source_account_registry_version", "source_account_operations", "source_account_resources"})
+}
+
 func openRegistryPostgres(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, _ := openRegistryPostgresWithDSN(t)
@@ -471,12 +492,17 @@ func registryIdentity(now time.Time, organizationID, actor, role string) context
 
 func assertTableExists(t *testing.T, db *gorm.DB, table string, want bool) {
 	t.Helper()
+	assertSchemaTableExists(t, db, "public", table, want)
+}
+
+func assertSchemaTableExists(t *testing.T, db *gorm.DB, schema, table string, want bool) {
+	t.Helper()
 	var count int64
-	if err := db.Raw(`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?`, table).Scan(&count).Error; err != nil {
+	if err := db.Raw(`SELECT count(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?`, schema, table).Scan(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if got := count == 1; got != want {
-		t.Fatalf("table %s exists=%t, want %t", table, got, want)
+		t.Fatalf("table %s.%s exists=%t, want %t", schema, table, got, want)
 	}
 }
 

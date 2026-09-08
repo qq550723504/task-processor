@@ -13,6 +13,9 @@ func TestSchemaHistoryIsDedicatedAndImmutable(t *testing.T) {
 	if VersionTableName != "goose_source_account_registry_version" {
 		t.Fatalf("VersionTableName = %q", VersionTableName)
 	}
+	if versionTableRelation != "public.goose_source_account_registry_version" {
+		t.Fatalf("versionTableRelation = %q", versionTableRelation)
+	}
 	migrations := Migrations()
 	if len(migrations) != 1 || migrations[0].Version != 2026090901 || migrations[0].DownFnContext != nil {
 		t.Fatalf("Migrations() = %#v", migrations)
