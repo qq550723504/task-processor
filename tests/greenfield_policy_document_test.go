@@ -89,12 +89,33 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"greenfield-no-legacy-migration.md",
 		},
+		filepath.Join("..", "docs", "product", "product-sourcing-handoff.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"fresh installation and empty business data",
+		},
+		filepath.Join("..", "docs", "refactoring", "current-refactoring-status.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"greenfield-no-legacy-migration.md",
+		},
+		filepath.Join("..", "docs", "refactoring", "legacy-register.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+		},
 	} {
 		contents := strings.Join(strings.Fields(readGreenfieldPolicyDocument(t, path)), " ")
 		for _, requirement := range required {
 			if !strings.Contains(contents, requirement) {
 				t.Errorf("active sourcing authority %s must state %q", filepath.ToSlash(path), requirement)
 			}
+		}
+	}
+
+	for path, forbidden := range map[string]string{
+		filepath.Join("..", "docs", "refactoring", "legacy-register.md"):            "migration facts needed to preserve valid current value",
+		filepath.Join("..", "docs", "product", "product-sourcing-handoff.md"):      "#30/#307 own separately approved cutover",
+		filepath.Join("..", "docs", "refactoring", "current-refactoring-status.md"): "#30 historical data and cutover",
+	} {
+		if strings.Contains(readGreenfieldPolicyDocument(t, path), forbidden) {
+			t.Errorf("active authority %s must not retain superseded instruction %q", filepath.ToSlash(path), forbidden)
 		}
 	}
 
