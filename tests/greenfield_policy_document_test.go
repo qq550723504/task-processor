@@ -119,12 +119,38 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"project-migration-roadmap.md",
 			"historical reference, not a current implementation authority",
+			"next-phase-plan.md",
+			"historical reference, not a current execution authority",
+			"current product-source flow",
 		},
 		filepath.Join("..", "docs", "refactoring", "project-migration-roadmap.md"): {
 			"SUPERSEDED",
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"not an implementation authority for the current greenfield product",
 			"Do not create compatibility facades, shims or bridges from this roadmap.",
+		},
+		filepath.Join("..", "docs", "refactoring", "listingkit-boundary-checkpoint.md"): {
+			"SUPERSEDED FOR GREENFIELD",
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"not a current implementation authority",
+		},
+		filepath.Join("..", "docs", "refactoring", "project-wide-refactoring-plan.md"): {
+			"SUPERSEDED FOR GREENFIELD",
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"not a current implementation authority",
+		},
+		filepath.Join("..", "docs", "refactoring", "legacy-register.md"): {
+			"only a new explicit user product decision can permit a compatibility exception",
+		},
+		filepath.Join("..", "docs", "architecture", "project-boundaries.md"): {
+			"only a new explicit user product decision can permit a compatibility exception",
+		},
+		filepath.Join("..", "docs", "architecture", "project-target-architecture.md"): {
+			"only a new explicit user product decision can permit a compatibility exception",
+		},
+		filepath.Join("..", "docs", "superpowers", "specs", "2026-09-02-shuomi-console-phase1-hard-cut-design.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"PR #283 V7 and PR #284 V7 are historical evidence, not implementation baselines for the current greenfield product",
 		},
 		filepath.Join("..", "README.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
@@ -134,7 +160,7 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 	} {
 		contents := strings.Join(strings.Fields(readGreenfieldPolicyDocument(t, path)), " ")
 		for _, requirement := range required {
-			if !strings.Contains(contents, requirement) {
+			if !strings.Contains(strings.ToLower(contents), strings.ToLower(requirement)) {
 				t.Errorf("active sourcing authority %s must state %q", filepath.ToSlash(path), requirement)
 			}
 		}

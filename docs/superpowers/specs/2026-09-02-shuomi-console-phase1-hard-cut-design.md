@@ -4,11 +4,13 @@
 **状态：** IMPLEMENTATION_READY / 冻结产品基线  
 
 > **登录决策更新（2026-09-05）：** 本文中与现有用户登录、专用 `otp_login` / `password_login` 和 Login V2 Fork 登录职责有关的 Phase1 决策，已由 `2026-09-05-shuomi-login-phase1-zitadel-native-simplification.md` 替代。Console 其他产品决策及手机号注册边界不受该补充影响。
+>
+> **Greenfield 基线更新（2026-09-09）：** [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../../product/greenfield-no-legacy-migration.md) 优先。PR #283 V7 and PR #284 V7 are historical evidence, not implementation baselines for the current greenfield product; 不得从其中引入旧数据迁移、backfill、双写、fallback 或 compatibility 机制。
 
 **代码库：** `qq550723504/task-processor`  
 **设计来源：** Figma 文件 `tg48P46SSXl6TBy9lZwg63`，页面 `31:463`
 
-> 本文只保留 Console 第一阶段的产品口径、页面边界、能力迁移规则和高层架构决策。手机号自助注册/首次业务开通的详细可靠性设计以 **PR #283 V7** 为唯一实现基线；企业资源账本和店铺服务生命周期的详细一致性设计以 **PR #284 V7** 为唯一实现基线。本文不再定义这两个领域的数据库状态机、幂等算法、补偿或清理协议。
+> 本文只保留 Console 第一阶段的产品口径、页面边界、能力迁移规则和高层架构决策。PR #283 V7 与 PR #284 V7 仅保留为历史证据，不是当前 greenfield 产品的实现基线。本文不再定义这两个领域的数据库状态机、幂等算法、补偿或清理协议。
 
 ---
 

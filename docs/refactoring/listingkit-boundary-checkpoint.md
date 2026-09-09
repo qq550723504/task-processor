@@ -1,6 +1,6 @@
 # ListingKit Boundary Checkpoint
 
-> Status: current checkpoint for the ListingKit slimming and boundary-guard wave.
+> Status: **SUPERSEDED FOR GREENFIELD**. This is historical boundary evidence, not a current implementation authority. [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) requires current owners and `EXTRACT | RETIRE`; do not follow this checkpoint's legacy compatibility directions for new work.
 >
 > Last reviewed: 2026-07-11.
 

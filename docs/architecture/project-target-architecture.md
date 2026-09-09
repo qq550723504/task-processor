@@ -269,7 +269,7 @@ Consequences:
 - already removed `internal/productenrich`, `internal/productimage`, old `internal/catalog`, old `internal/asset`, and `internal/imageasset` remain absent;
 - new code does not add legacy fallback, permanent dual-read/write, bidirectional new↔old synchronization, or second fact/state owners.
 
-If a future externally observable contract or persisted runtime state truly requires temporary compatibility, it must be approved as a specific exception with owner, scope and deletion condition. It does not create a general Compatibility domain.
+If concrete, current externally observable contract evidence appears, stop and report it to the user. Only a new explicit user product decision can permit a compatibility exception. It does not create a general Compatibility domain.
 
 ## 5. Dependency direction
 

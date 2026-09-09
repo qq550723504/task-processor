@@ -403,10 +403,10 @@ domain/product/marketplace code -> concrete external clients when a local interf
 
 Existing legacy imports are observed debt under the Legacy Register and exact
 non-growth guards, not approved extensions. New code must use current owners.
-If an externally observable contract or durable runtime state truly requires an
-exception, stop and establish an explicit reviewed Exception under the
-[Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md) before adding it.
-A PR note, follow-up task or adapter name alone does not authorize compatibility.
+If concrete, current externally observable contract evidence appears, stop and
+report it to the user. Only a new explicit user product decision can permit a
+compatibility exception. A PR note, follow-up task or adapter name alone does
+not authorize compatibility.
 
 ## 6. Placement Rules for New Code
 

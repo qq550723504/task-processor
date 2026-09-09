@@ -131,7 +131,7 @@ Cutover/deletion condition:
 Related issue/PR:
 ```
 
-A future externally required compatibility exception, if one is ever proven necessary, must be documented separately and must not silently become a new register category.
+If concrete, current externally observable contract evidence appears, stop and report it to the user. Only a new explicit user product decision can permit a compatibility exception; it must not silently become a new register category.
 
 ## 6. Automated guard baseline (#300 slice)
 

@@ -1,5 +1,7 @@
 # Task Processor Project-wide Refactoring Plan
 
+> Status: **SUPERSEDED FOR GREENFIELD**. This is historical planning evidence, not a current implementation authority. [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) requires current owners and `EXTRACT | RETIRE`; do not follow compatibility-facade or bridge directions in this plan for new work.
+
 > Scope: this document captures a project-level refactoring direction for `task-processor`, beyond the existing ListingKit-only restructuring notes. It is intended to guide incremental refactoring without forcing a high-risk rewrite.
 
 ## 1. Current Diagnosis

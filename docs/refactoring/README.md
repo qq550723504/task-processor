@@ -11,14 +11,14 @@ The current product baseline is [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](.
 ### Current execution authority
 
 - [current-refactoring-status.md](./current-refactoring-status.md) - current product maturity, Now / Next / Later status, active focus, deferred work, and validation gates.
-- [next-phase-plan.md](./next-phase-plan.md) - active execution plan for current-baseline validation, SHEIN stabilization, Product Sourcing MVP closeout, HTTPAPI runtime closure, and boundary guard stabilization.
-- [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - current approved ListingKit stop-lines, remaining root ownership, and submission / marketplace boundary checkpoints.
+- [next-phase-plan.md](./next-phase-plan.md) - historical reference, not a current execution authority; use the current-status document and current product decisions instead.
+- [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - historical reference, not a current implementation authority for greenfield work.
 - [../product/product-sourcing-mvp-plan.md](../product/product-sourcing-mvp-plan.md) - Product Sourcing implementation and closeout plan.
 - [../product/product-sourcing-handoff.md](../product/product-sourcing-handoff.md) - Product Sourcing ownership boundaries and handoff expectations.
 
 ### Long-term architecture authority
 
-- [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
+- [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - historical reference, not a current implementation authority for greenfield work.
 - [../architecture/project-target-architecture.md](../architecture/project-target-architecture.md) - approved target architecture shape.
 - [project-migration-roadmap.md](./project-migration-roadmap.md) - historical reference, not a current implementation authority; it is superseded for greenfield work by the current product baseline and Hard-Cut policy.
 - [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
@@ -76,7 +76,7 @@ The current active direction is:
 
 1. Keep the project as a modular monolith first; do not split microservices before package boundaries are stable.
 2. Stabilize the SHEIN production path and keep exact validation evidence visible before release decisions.
-3. Close the implemented Product Sourcing MVP with focused tests and one controlled 1688 source-to-task path before starting another source.
+3. Close the implemented Product Sourcing MVP with focused tests and its current product-source flow; do not route new work through a legacy ListingKit handoff.
 4. Select exactly one next product source after the current loop is closed; 大建云仓 / warehouse catalog remains a candidate, not an active multi-source expansion.
 5. Extract current-owner behavior and RETIRE legacy ListingKit ownership; keep task flow, preview/export aggregation, revision/history, persistence ordering, and API shell responsibilities only with their current owners.
 6. Keep marketplace-specific rules in marketplace-specific packages.
@@ -89,9 +89,9 @@ The current active direction is:
 ## Current refactoring documents
 
 - [current-refactoring-status.md](./current-refactoring-status.md) - active product maturity, Now / Next / Later status, and strategic focus.
-- [next-phase-plan.md](./next-phase-plan.md) - active next-phase goals: baseline validation, SHEIN stabilization, Product Sourcing MVP closeout, HTTPAPI runtime closure, and boundary guard stabilization.
-- [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - current ListingKit boundary stop-lines and approved seam directions.
-- [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
+- [next-phase-plan.md](./next-phase-plan.md) - historical reference, not a current execution authority.
+- [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - historical reference, not a current implementation authority for greenfield work.
+- [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - historical reference, not a current implementation authority for greenfield work.
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - earlier broad execution plan; historical/reference when it conflicts with current checkpoint docs.
 - [project-migration-roadmap.md](./project-migration-roadmap.md) - historical reference, not a current implementation authority for greenfield work.
 - [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
