@@ -29,6 +29,7 @@ func validateSourceEnvelopePreflight(envelope SourceEnvelope) error {
 		envelope.Identity.SourceFingerprint,
 		envelope.Identity.Platform,
 		envelope.Identity.Region,
+		envelope.Identity.ProductID,
 		envelope.RawReference.ReferenceType,
 		envelope.RawReference.ReferenceID,
 		envelope.RawReference.URL,

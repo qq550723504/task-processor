@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -248,6 +249,9 @@ func TestInternalProducerRejectsUnboundedEnvelopeShapeBeforeMaterialization(t *t
 		"overlong scalar": func(command *PublicationCommand) {
 			command.Envelope.ProductCandidate.Description = strings.Repeat("x", MaxSourceEnvelopeStringBytes+1)
 		},
+		"legacy identity product id": func(command *PublicationCommand) {
+			command.Envelope.Identity.ProductID = strings.Repeat("p", MaxSourceEnvelopeStringBytes+1)
+		},
 		"overlong map key": func(command *PublicationCommand) {
 			command.Envelope.RawReference.Metadata = map[string]string{strings.Repeat("k", MaxSourceEnvelopeStringBytes+1): "value"}
 		},
@@ -324,6 +328,111 @@ func TestSourceEnvelopePreflightRejectsGrossShapeWithoutAllocatingCopies(t *test
 	})
 	require.ErrorIs(t, validationErr, ErrSourcePublicationTooLarge)
 	require.Zero(t, allocations)
+}
+
+func TestSourceEnvelopePreflightCoversEveryStringField(t *testing.T) {
+	mutations := sourceEnvelopeStringMutations(reflect.TypeOf(SourceEnvelope{}), nil, "SourceEnvelope")
+	require.NotEmpty(t, mutations)
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			store := &publicationStoreStub{}
+			producer, err := NewInternalProducer(admissionFunc(func(context.Context) (PublicationScope, error) {
+				return PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, nil
+			}), store, ProducerDescriptor{Kind: ControlledSnapshotProducerKind, Version: ControlledSnapshotProducerVersion})
+			require.NoError(t, err)
+			command := validPublicationCommand()
+			mutation.apply(&command.Envelope)
+			_, err = producer.Publish(context.Background(), command)
+			require.ErrorIs(t, err, ErrSourcePublicationTooLarge)
+			require.Zero(t, store.publishCalls)
+		})
+	}
+}
+
+type sourceEnvelopePathStep struct {
+	field        int
+	sliceElement bool
+}
+
+type sourceEnvelopeStringMutation struct {
+	name  string
+	apply func(*SourceEnvelope)
+}
+
+func sourceEnvelopeStringMutations(current reflect.Type, steps []sourceEnvelopePathStep, path string) []sourceEnvelopeStringMutation {
+	if current == reflect.TypeOf(time.Time{}) {
+		return nil
+	}
+	mutations := make([]sourceEnvelopeStringMutation, 0)
+	for index := 0; index < current.NumField(); index++ {
+		field := current.Field(index)
+		fieldSteps := append(append([]sourceEnvelopePathStep(nil), steps...), sourceEnvelopePathStep{field: index})
+		fieldPath := path + "." + field.Name
+		switch field.Type.Kind() {
+		case reflect.String:
+			mutations = append(mutations, sourceEnvelopeStringMutation{name: fieldPath, apply: sourceEnvelopeStringSetter(fieldSteps)})
+		case reflect.Struct:
+			mutations = append(mutations, sourceEnvelopeStringMutations(field.Type, fieldSteps, fieldPath)...)
+		case reflect.Slice:
+			switch field.Type.Elem().Kind() {
+			case reflect.String:
+				mutations = append(mutations, sourceEnvelopeStringMutation{name: fieldPath + "[]", apply: sourceEnvelopeStringSliceSetter(fieldSteps)})
+			case reflect.Struct:
+				fieldSteps[len(fieldSteps)-1].sliceElement = true
+				mutations = append(mutations, sourceEnvelopeStringMutations(field.Type.Elem(), fieldSteps, fieldPath+"[]")...)
+			}
+		case reflect.Map:
+			if field.Type.Key().Kind() == reflect.String && field.Type.Elem().Kind() == reflect.String {
+				mutations = append(mutations,
+					sourceEnvelopeStringMutation{name: fieldPath + "{key}", apply: sourceEnvelopeStringMapSetter(fieldSteps, true)},
+					sourceEnvelopeStringMutation{name: fieldPath + "{value}", apply: sourceEnvelopeStringMapSetter(fieldSteps, false)},
+				)
+			}
+		}
+	}
+	return mutations
+}
+
+func sourceEnvelopeStringSetter(steps []sourceEnvelopePathStep) func(*SourceEnvelope) {
+	return func(envelope *SourceEnvelope) {
+		target := sourceEnvelopePathValue(reflect.ValueOf(envelope).Elem(), steps)
+		target.SetString(strings.Repeat("x", MaxSourceEnvelopeStringBytes+1))
+	}
+}
+
+func sourceEnvelopeStringSliceSetter(steps []sourceEnvelopePathStep) func(*SourceEnvelope) {
+	return func(envelope *SourceEnvelope) {
+		target := sourceEnvelopePathValue(reflect.ValueOf(envelope).Elem(), steps)
+		values := reflect.MakeSlice(target.Type(), 1, 1)
+		values.Index(0).SetString(strings.Repeat("x", MaxSourceEnvelopeStringBytes+1))
+		target.Set(values)
+	}
+}
+
+func sourceEnvelopeStringMapSetter(steps []sourceEnvelopePathStep, oversizedKey bool) func(*SourceEnvelope) {
+	return func(envelope *SourceEnvelope) {
+		target := sourceEnvelopePathValue(reflect.ValueOf(envelope).Elem(), steps)
+		values := reflect.MakeMapWithSize(target.Type(), 1)
+		key, value := "key", "value"
+		if oversizedKey {
+			key = strings.Repeat("k", MaxSourceEnvelopeStringBytes+1)
+		} else {
+			value = strings.Repeat("v", MaxSourceEnvelopeStringBytes+1)
+		}
+		values.SetMapIndex(reflect.ValueOf(key), reflect.ValueOf(value))
+		target.Set(values)
+	}
+}
+
+func sourceEnvelopePathValue(current reflect.Value, steps []sourceEnvelopePathStep) reflect.Value {
+	for _, step := range steps {
+		current = current.Field(step.field)
+		if step.sliceElement {
+			current.Set(reflect.MakeSlice(current.Type(), 1, 1))
+			current = current.Index(0)
+		}
+	}
+	return current
 }
 
 func TestInternalProducerAcceptsExactEnvelopeAndSnapshotLimits(t *testing.T) {
