@@ -9,7 +9,7 @@ import (
 )
 
 func TestListingKitAuthorizerAllowsOperationalRolesToWriteProductSourcing(t *testing.T) {
-	authorizer, err := NewListingKitAuthorizer(nil, nil)
+	authorizer, err := NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
 	require.NoError(t, err)
 
 	require.True(t, authorizer.Authorize("", []string{"listingkit_operator"}, PermissionProductSourcingWrite))
@@ -17,6 +17,8 @@ func TestListingKitAuthorizerAllowsOperationalRolesToWriteProductSourcing(t *tes
 	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionProductSourcingWrite))
 	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionLocalAgentWrite))
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionProductSourcingWrite))
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionProductSourcingWrite))
+	require.True(t, authorizer.Authorize("", []string{"configured-role"}, PermissionProductSourcingWrite))
 	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionProductSourcingWrite))
 }
 

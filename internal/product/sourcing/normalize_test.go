@@ -27,8 +27,15 @@ func TestNormalizePreservesEvidenceLineageAndWarnings(t *testing.T) {
 			CapturedAt:    capturedAt,
 			Metadata:      map[string]string{"etag": "v1", "collector": "crawler"},
 		},
-		Warnings: []SourceWarning{{Code: " Missing_Title ", Field: " title ", Message: " missing "}},
-		Trace:    SourceTrace{SourceRunID: "run-1", RequestID: "request-1", Notes: []string{"crawler evidence"}},
+		ProductCandidate: ProductCandidate{
+			CategoryPath: []string{"one"}, Attributes: map[string]string{"color": "blue"},
+			Variants: []ProductVariantCandidate{{Attributes: map[string]string{"size": "m"}}},
+		},
+		AssetCandidates:     []AssetCandidate{{URL: "https://example.test/one.png"}},
+		SupplierOrCostFacts: SupplierOrCostFacts{Facts: map[string]string{"currency": "USD"}},
+		Warnings:            []SourceWarning{{Code: " Missing_Title ", Field: " title ", Message: " missing "}},
+		MissingFacts:        []MissingFact{{Field: " weight ", Reason: " unavailable "}},
+		Trace:               SourceTrace{SourceRunID: "run-1", RequestID: "request-1", Notes: []string{"crawler evidence"}},
 	}
 	wantRawReference := in.RawReference
 	wantTrace := in.Trace
@@ -53,8 +60,15 @@ func TestNormalizePreservesEvidenceLineageAndWarnings(t *testing.T) {
 		t.Fatalf("Normalize() mutated input warning code to %q", in.Warnings[0].Code)
 	}
 	out.RawReference.Metadata["etag"] = "mutated"
-	if in.RawReference.Metadata["etag"] != "v1" {
-		t.Fatalf("Normalize() returned aliased source metadata: input etag = %q", in.RawReference.Metadata["etag"])
+	out.ProductCandidate.CategoryPath[0] = "mutated"
+	out.ProductCandidate.Attributes["color"] = "mutated"
+	out.ProductCandidate.Variants[0].Attributes["size"] = "mutated"
+	out.AssetCandidates[0].URL = "mutated"
+	out.SupplierOrCostFacts.Facts["currency"] = "mutated"
+	if in.RawReference.Metadata["etag"] != "v1" || in.ProductCandidate.CategoryPath[0] != "one" ||
+		in.ProductCandidate.Attributes["color"] != "blue" || in.ProductCandidate.Variants[0].Attributes["size"] != "m" ||
+		in.AssetCandidates[0].URL != "https://example.test/one.png" || in.SupplierOrCostFacts.Facts["currency"] != "USD" {
+		t.Fatalf("Normalize() returned aliased nested evidence: %+v", in)
 	}
 }
 

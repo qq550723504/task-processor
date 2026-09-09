@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"gorm.io/gorm"
@@ -58,6 +59,45 @@ func AutoMigrate(db *gorm.DB) error {
 		return repositoryUnavailable("migrate schema", errors.New("database is nil"))
 	}
 	return mapRepositoryError("migrate schema", db.AutoMigrate(&SnapshotVersionRecord{}, &SnapshotHeadRecord{}))
+}
+
+// LockPublicationSlot serializes a caller-owned transaction with every Catalog
+// publication in the exact Organization/Product stream, then reports whether
+// Catalog already owns the publication identity. Holding Catalog's head row
+// lock until the caller commits prevents a check/publish gap from adopting a
+// concurrently committed orphan fact.
+func LockPublicationSlot(ctx context.Context, db *gorm.DB, identity productcatalog.SnapshotIdentity, publicationID string) (bool, error) {
+	if db == nil {
+		return false, repositoryUnavailable("lock snapshot publication", errors.New("database is nil"))
+	}
+	if _, ok := db.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return false, repositoryUnavailable("lock snapshot publication", errors.New("Catalog requires a live caller transaction"))
+	}
+	if err := productcatalog.ValidateSnapshotIdentity(identity); err != nil {
+		return false, err
+	}
+	if publicationID == "" || publicationID != strings.TrimSpace(publicationID) {
+		return false, productcatalog.ErrInvalidPublication
+	}
+	tx := db.WithContext(ctx)
+	initialHead := SnapshotHeadRecord{TenantID: identity.TenantID, ProductKey: identity.ProductKey}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&initialHead).Error; err != nil {
+		return false, mapRepositoryError("ensure snapshot head", err)
+	}
+	var head SnapshotHeadRecord
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("tenant_id = ? AND product_key = ?", identity.TenantID, identity.ProductKey).
+		Take(&head).Error; err != nil {
+		return false, mapRepositoryError("lock snapshot head", err)
+	}
+	var count int64
+	err := tx.Model(&SnapshotVersionRecord{}).
+		Where("tenant_id = ? AND product_key = ? AND publication_id = ?", identity.TenantID, identity.ProductKey, publicationID).
+		Count(&count).Error
+	if err != nil {
+		return false, mapRepositoryError("check snapshot publication", err)
+	}
+	return count > 0, nil
 }
 
 func (r *repository) PublishSnapshot(ctx context.Context, request productcatalog.PublishRequest) (productcatalog.PublishedSnapshot, error) {

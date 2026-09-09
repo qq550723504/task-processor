@@ -10,9 +10,48 @@ envelope into `internal/product/catalog.ProductSnapshot`.
 Owns:
 
 - `SourceIdentity`, `SourceEnvelope`, raw references, warnings, and trace data
+- explicit missing facts, admitted producer kind/version, and immutable source
+  publication identity
 - strict source identity validation and deterministic fingerprints
 - provider-neutral source request/result contracts
 - `Normalize(SourceEnvelope)` and `ToSnapshot(SourceEnvelope)`
+- the in-process `InternalProducer` contract and its exact read-only evidence
+  projection
+
+## Atomic source publication
+
+`internal/app/productsourcing.NewInternalProducer` is the admitted in-process
+composition for `controlled_snapshot/v1`. It does not register an HTTP route or
+call a provider. Every publish, replay, verify, and read refreshes live
+Organization roles and requires `product_sourcing.write`; Organization and actor
+come only from verified context.
+
+`internal/integration/persistence/product/sourcing` stores the normalized
+envelope and an operation receipt. In one PostgreSQL transaction it delegates
+snapshot/version/head writes to Catalog's transaction writer, then persists the
+exact Catalog version binding. `(organization_id, publication_id)` is the
+operation key. The canonical input hash covers producer kind/version,
+`SourceIdentity`, the normalized envelope, ProductKey, and expected base
+version. Same-key/same-hash calls replay; a different hash conflicts.
+The durable boundary requires the current `SourceType`/`SourcePlatform`/
+`SourceID` identity and rejects the retired `Platform`/`Region`/`ProductID`/
+`StoreID` aliases. Before checking for an orphan Catalog publication, the
+transaction locks Catalog's Product stream through the Catalog owner, so a
+concurrent Catalog writer cannot create a fact in the check/publish window.
+
+`InternalProducer.Read` is the downstream evidence contract: after fresh
+authorization it returns the immutable envelope, derived snapshot, and receipt
+bound to one ProductKey and CatalogVersion. `Verify` additionally re-derives the
+canonical hash from the original command and is the read-only recovery path for
+response loss or unknown COMMIT outcome.
+
+Envelope and derived snapshot encodings are each capped at 2 MiB; the complete
+operation is capped at 10 seconds. Before normalization or JSON materialization,
+the internal producer also enforces the server-owned 8 KiB per-string, 256
+per-collection, 1,024 aggregate-item, and 2 MiB aggregate-string budgets across
+every nested envelope path. Schema setup is explicit via the composed
+`productsourcing.InstallSchema`; ordinary calls never execute DDL. Source images
+remain Catalog source candidates and do not create ApprovedAsset facts.
 
 Does not own:
 
@@ -20,6 +59,8 @@ Does not own:
 - crawler clients, request planning, fetch orchestration, or runtime details
 - asset/image conversion, storage, or workflow orchestration
 - ProductEnrich, ListingKit, marketplace payloads, or compatibility shims
+- public/browser routes, provider acquisition, source-account ownership, or
+  ApprovedAsset approval
 
 Concrete source adapters currently live in:
 

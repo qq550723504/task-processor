@@ -17,6 +17,7 @@ type SourceEnvelope struct {
 	AssetCandidates     []AssetCandidate
 	SupplierOrCostFacts SupplierOrCostFacts
 	Warnings            []SourceWarning
+	MissingFacts        []MissingFact
 	Trace               SourceTrace
 }
 
@@ -24,7 +25,30 @@ type SourceEnvelope struct {
 func (e SourceEnvelope) Normalize() SourceEnvelope {
 	e.Identity = NormalizeSourceIdentity(e.Identity)
 	e.RawReference.Metadata = cloneSourceMetadata(e.RawReference.Metadata)
+	e.ProductCandidate.CategoryPath = append([]string(nil), e.ProductCandidate.CategoryPath...)
+	e.ProductCandidate.Attributes = cloneSourceMetadata(e.ProductCandidate.Attributes)
+	if len(e.ProductCandidate.Variants) == 0 {
+		e.ProductCandidate.Variants = nil
+	} else {
+		variants := make([]ProductVariantCandidate, len(e.ProductCandidate.Variants))
+		for i := range e.ProductCandidate.Variants {
+			variants[i] = e.ProductCandidate.Variants[i]
+			variants[i].Attributes = cloneSourceMetadata(e.ProductCandidate.Variants[i].Attributes)
+		}
+		e.ProductCandidate.Variants = variants
+	}
+	e.AssetCandidates = append([]AssetCandidate(nil), e.AssetCandidates...)
+	e.SupplierOrCostFacts.Facts = cloneSourceMetadata(e.SupplierOrCostFacts.Facts)
 	e.Trace.Notes = append([]string(nil), e.Trace.Notes...)
+	if len(e.MissingFacts) == 0 {
+		e.MissingFacts = nil
+	} else {
+		missing := make([]MissingFact, len(e.MissingFacts))
+		for i := range e.MissingFacts {
+			missing[i] = e.MissingFacts[i].Normalize()
+		}
+		e.MissingFacts = missing
+	}
 	if len(e.Warnings) == 0 {
 		e.Warnings = nil
 		return e
@@ -35,6 +59,20 @@ func (e SourceEnvelope) Normalize() SourceEnvelope {
 	}
 	e.Warnings = warnings
 	return e
+}
+
+// MissingFact preserves an explicit absence discovered by the admitted source
+// producer. It is evidence; it must never be replaced with a guessed default.
+type MissingFact struct {
+	Field  string
+	Reason string
+}
+
+// Normalize returns bounded-shape metadata without inventing a missing value.
+func (f MissingFact) Normalize() MissingFact {
+	f.Field = strings.TrimSpace(f.Field)
+	f.Reason = strings.TrimSpace(f.Reason)
+	return f
 }
 
 // RawSourceReference points back to raw source evidence without forcing product
