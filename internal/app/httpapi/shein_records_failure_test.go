@@ -71,13 +71,11 @@ func TestSheinRecordCommitFailureAndUnknownOutcomeHTTP(t *testing.T) {
 			status, body := recordPost(t, server, "operator", "commit-fault", recordBody)
 			require.Equal(t, 503, status, string(body))
 			require.NotContains(t, string(body), "connection")
-			var before int64
-			require.NoError(t, db.Table("listing_shein_records").Count(&before).Error)
 			expected := int64(0)
 			if committed {
 				expected = 1
 			}
-			require.Equal(t, expected, before)
+			requireDraftS1RowCounts(t, db, expected)
 			var prior string
 			if committed {
 				require.NoError(t, db.Raw("SELECT id FROM listing_shein_records").Row().Scan(&prior))
@@ -96,9 +94,7 @@ func TestSheinRecordCommitFailureAndUnknownOutcomeHTTP(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, stored.Payload)
 			require.Equal(t, "operator", stored.OwnerUserID)
-			var after int64
-			require.NoError(t, db.Table("listing_shein_records").Count(&after).Error)
-			require.EqualValues(t, 1, after)
+			requireDraftS1RowCounts(t, db, 1)
 		})
 	}
 }
@@ -147,9 +143,7 @@ func TestSheinRecordCancellationAndIsolatedSource(t *testing.T) {
 	require.Equal(t, 504, out.Code)
 	_, err = reader.ReadOfflinePackage(ctx, recordActor("operator", "listingkit_operator"), "none")
 	require.ErrorIs(t, err, context.Canceled)
-	var count int64
-	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
-	require.Zero(t, count)
+	requireDraftS1RowCounts(t, db, 0)
 	// A different explicitly bound storage scope cannot see another scope's
 	// Product, even when organization/key/version have exactly the same strings.
 	empty := recordTestDB(t)
@@ -184,9 +178,7 @@ func TestSheinRecordCancellationWhileDatabaseIsLocked(t *testing.T) {
 	// lock. A request that ignores cancellation would keep this server alive.
 	server.Close()
 	require.NoError(t, lock.Rollback().Error)
-	var count int64
-	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
-	require.Zero(t, count)
+	requireDraftS1RowCounts(t, db, 0)
 }
 
 func TestSheinRecordApplicationDeadlineReturnsHTTPTimeout(t *testing.T) {
@@ -203,9 +195,7 @@ func TestSheinRecordApplicationDeadlineReturnsHTTPTimeout(t *testing.T) {
 	status, body := recordPost(t, server, "operator", "application-deadline", recordBody)
 	require.Equal(t, http.StatusGatewayTimeout, status, string(body))
 	require.NoError(t, lock.Rollback().Error)
-	var count int64
-	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
-	require.Zero(t, count)
+	requireDraftS1RowCounts(t, db, 0)
 }
 
 func TestSheinRecordSlowBodyReturnsHTTPTimeout(t *testing.T) {
@@ -221,9 +211,7 @@ func TestSheinRecordSlowBodyReturnsHTTPTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer response.Body.Close()
 	require.Equal(t, http.StatusGatewayTimeout, response.StatusCode)
-	var count int64
-	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
-	require.Zero(t, count)
+	requireDraftS1RowCounts(t, db, 0)
 }
 
 type recordDeadlineGrants struct{ recordGrants }
@@ -260,9 +248,7 @@ func TestSheinRecordAuthorizationDeadlineReturnsHTTPTimeout(t *testing.T) {
 			server.Client().Timeout = 2 * record.Timeout
 			status, body := recordPost(t, server, "operator", "auth-deadline", recordBody)
 			require.Equal(t, http.StatusGatewayTimeout, status, string(body))
-			var count int64
-			require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
-			require.Zero(t, count)
+			requireDraftS1RowCounts(t, db, 0)
 		})
 	}
 }

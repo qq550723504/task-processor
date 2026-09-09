@@ -37,8 +37,10 @@ type sheinRecordCollectionItemDTO struct {
 	RecordID        string `json:"record_id"`
 	ProductKey      string `json:"product_key"`
 	SnapshotVersion string `json:"snapshot_version"`
+	StoreID         string `json:"store_id"`
 	Country         string `json:"country"`
 	Language        string `json:"language"`
+	Action          string `json:"action"`
 	CreatedAt       string `json:"created_at"`
 }
 
@@ -161,7 +163,7 @@ func decodeSheinRecordCursor(value string) (record.PageCursor, error) {
 func marshalSheinRecordPage(page record.Page) ([]byte, error) {
 	items := make([]sheinRecordCollectionItemDTO, 0, len(page.Items))
 	for _, item := range page.Items {
-		items = append(items, sheinRecordCollectionItemDTO{RecordID: item.ID, ProductKey: item.Input.ProductKey, SnapshotVersion: strconv.FormatUint(item.Input.SnapshotVersion, 10), Country: item.Input.Country, Language: item.Input.Language, CreatedAt: item.CreatedAt.UTC().Format(time.RFC3339Nano)})
+		items = append(items, sheinRecordCollectionItemDTO{RecordID: item.ID, ProductKey: item.Input.ProductKey, SnapshotVersion: strconv.FormatUint(item.Input.SnapshotVersion, 10), StoreID: item.Input.StoreID, Country: item.Input.Country, Language: item.Input.Language, Action: string(item.Input.Action), CreatedAt: item.CreatedAt.UTC().Format(time.RFC3339Nano)})
 	}
 	var next *string
 	if page.NextCursor != nil {

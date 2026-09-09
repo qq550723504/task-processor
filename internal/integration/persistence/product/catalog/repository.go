@@ -183,8 +183,8 @@ func (r *repository) GetSnapshot(ctx context.Context, identity productcatalog.Sn
 	if r.maxEncodedSnapshotBytes > 0 {
 		sizeExpression := boundedSnapshotSizeExpression(query.Dialector.Name())
 		projection := fmt.Sprintf(
-			"tenant_id, product_key, version, publication_id, payload_hash, CASE WHEN %s <= ? THEN snapshot_json ELSE NULL END AS snapshot_json",
-			sizeExpression,
+			"tenant_id, product_key, version, publication_id, payload_hash, %s AS snapshot_bytes, CASE WHEN %s <= ? THEN snapshot_json ELSE NULL END AS snapshot_json",
+			sizeExpression, sizeExpression,
 		)
 		query = query.Select(projection, r.maxEncodedSnapshotBytes)
 	}
@@ -219,6 +219,9 @@ func loadPublication(tx *gorm.DB, identity productcatalog.SnapshotIdentity, publ
 }
 
 func publishedFromRecord(record SnapshotVersionRecord, maxEncodedSnapshotBytes int) (productcatalog.PublishedSnapshot, error) {
+	if maxEncodedSnapshotBytes > 0 && record.SnapshotBytes > int64(maxEncodedSnapshotBytes) {
+		return productcatalog.PublishedSnapshot{}, productcatalog.ErrSnapshotTooLarge
+	}
 	if len(record.SnapshotJSON) == 0 || (maxEncodedSnapshotBytes > 0 && len(record.SnapshotJSON) > maxEncodedSnapshotBytes) {
 		return productcatalog.PublishedSnapshot{}, repositoryStateInvalid("decode snapshot publication", errors.New("encoded snapshot exceeds reader size limit"))
 	}
@@ -268,6 +271,7 @@ func mapRepositoryError(operation string, err error) error {
 		productcatalog.ErrPublicationConflict,
 		productcatalog.ErrStaleSnapshot,
 		productcatalog.ErrSnapshotNotReady,
+		productcatalog.ErrSnapshotTooLarge,
 		productcatalog.ErrRepositoryUnavailable,
 		productcatalog.ErrRepositoryStateInvalid,
 	} {

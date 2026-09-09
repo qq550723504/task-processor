@@ -16,6 +16,28 @@ const MaxDiagnosticBytes = 2 << 20
 
 type DiagnosticValidator struct{}
 
+// ExactApprovedAssetValidator is the DRAFT-S1 composition of the existing
+// offline validator. The caller has already loaded and hash-bound the exact
+// versioned ApprovedAsset inventory, so that one concern is no longer reported
+// as unevaluated. Provider/store freshness and every remote gate remain
+// explicitly not_evaluated.
+type ExactApprovedAssetValidator struct{}
+
+func (ExactApprovedAssetValidator) Validate(request contract.BoundRequest[[]byte]) (contract.DiagnosticResult, error) {
+	result, err := (DiagnosticValidator{}).Validate(request)
+	if err != nil {
+		return contract.DiagnosticResult{}, err
+	}
+	filtered := make([]string, 0, len(result.NotEvaluated))
+	for _, item := range result.NotEvaluated {
+		if item != "approved_asset_provenance_and_consent" {
+			filtered = append(filtered, item)
+		}
+	}
+	result.NotEvaluated = filtered
+	return result, nil
+}
+
 // Validate consumes persisted bytes, never arbitrary resolver-owned memory.
 // Callers own access checks, evidence acquisition and cancellation before/after
 // this bounded synchronous computation. This method has no clock or I/O.

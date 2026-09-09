@@ -74,8 +74,8 @@ func sharedPost(t *testing.T, server *httptest.Server, subject, org, operation s
 
 func TestSharedRegressionPostgres(t *testing.T) {
 	m, cases := loadSharedRegression(t, "postgres")
-	if os.Getenv("ISSUE319_TEST_DSN") == "" {
-		t.Skip("layer=postgres result=SKIP: ISSUE319_TEST_DSN must target task-isolated PostgreSQL; not acceptance PASS")
+	if os.Getenv("ISSUE376_TEST_DSN") == "" {
+		t.Skip("layer=postgres result=SKIP: ISSUE376_TEST_DSN must target task-isolated PostgreSQL; not acceptance PASS")
 	}
 	consumed := []string{}
 	for _, c := range cases {
@@ -103,6 +103,8 @@ func TestSharedRegressionPostgres(t *testing.T) {
 			require.Equal(t, publicationID, published.PublicationID)
 			require.EqualValues(t, 1, published.Version)
 			require.Equal(t, *c.Snapshot, published.Snapshot)
+			prepareRecordStore(t, db, "200")
+			prepareApprovedAssets(t, db, "200", c.CaseID, published.Version)
 			replayedPublication, err := publisher.Publish(context.Background(), request)
 			require.NoError(t, err)
 			require.Equal(t, published, replayedPublication)
@@ -141,7 +143,7 @@ func TestSharedRegressionPostgres(t *testing.T) {
 				require.Equal(t, 200, status, string(raw))
 				var got contract.DiagnosticResult
 				sharedDecode(t, raw, &got)
-				assertSharedReport(t, m, want, got) // Oracle is shared data, never another evaluator result.
+				assertSharedReport(t, m, want, got, true) // Oracle is shared data, adjusted only for the controlled exact approved image.
 				assertSharedTimes(t, start, end, got)
 				first[want.Action] = got
 			}
@@ -156,7 +158,7 @@ func TestSharedRegressionPostgres(t *testing.T) {
 				require.Equal(t, 200, status, string(raw))
 				var again contract.DiagnosticResult
 				sharedDecode(t, raw, &again)
-				assertSharedReport(t, m, want, again)
+				assertSharedReport(t, m, want, again, true)
 				assertSharedTimes(t, start, time.Now().UTC(), again)
 				require.False(t, again.Input.ReadAt.Before(previous.Input.ReadAt))
 				require.Equal(t, previous.Input.Digest, again.Input.Digest)
@@ -228,9 +230,16 @@ func assertSharedOrganizationSwitch(t *testing.T, db *gorm.DB, server *httptest.
 	t.Helper()
 	_, err := publisher.Publish(context.Background(), catalog.PublishRequest{Identity: catalog.SnapshotIdentity{TenantID: "300", ProductKey: c.CaseID}, PublicationID: uuid.NewString(), Snapshot: *c.Snapshot})
 	require.NoError(t, err)
+	const otherStoreID = "44444444-4444-4444-8444-444444444444"
+	prepareRecordStoreID(t, db, "300", otherStoreID)
+	prepareApprovedAssets(t, db, "300", c.CaseID, input.SnapshotVersion)
 	ids := map[string]string{}
 	for _, org := range []string{"200", "300"} {
-		status, raw := sharedPost(t, server, "switcher", org, "same-operation-in-two-organizations", input)
+		scopedInput := input
+		if org == "300" {
+			scopedInput.StoreID = otherStoreID
+		}
+		status, raw := sharedPost(t, server, "switcher", org, "same-operation-in-two-organizations", scopedInput)
 		require.Equal(t, 201, status, string(raw))
 		var receipt record.Receipt
 		sharedDecode(t, raw, &receipt)
@@ -239,7 +248,7 @@ func assertSharedOrganizationSwitch(t *testing.T, db *gorm.DB, server *httptest.
 		require.NoError(t, err)
 		require.Equal(t, org, stored.OrganizationID)
 		require.Equal(t, "switcher", stored.OwnerUserID)
-		require.Equal(t, input, stored.Input)
+		require.Equal(t, scopedInput, stored.Input)
 	}
 	require.NotEqual(t, ids["200"], ids["300"])
 	before := diagnosticBusinessState(t, db)
