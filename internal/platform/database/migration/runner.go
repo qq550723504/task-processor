@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"sync"
 
 	"github.com/pressly/goose/v3"
@@ -20,8 +21,31 @@ type Runner struct {
 // development and tests only: this mutex cannot coordinate separate processes.
 var sqliteUpMu sync.Mutex
 
+var versionTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
+var postgresQualifiedVersionTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}\.[a-z][a-z0-9_]{0,62}$`)
+
 func New(dialect goose.Dialect, db *sql.DB, migrations ...*goose.Migration) (*Runner, error) {
+	return newRunner(dialect, db, "", migrations...)
+}
+
+// NewWithVersionTable constructs a runner whose applied-version history is
+// isolated from other schema owners sharing the same database.
+func NewWithVersionTable(dialect goose.Dialect, db *sql.DB, versionTable string, migrations ...*goose.Migration) (*Runner, error) {
+	if !validVersionTableName(dialect, versionTable) {
+		return nil, fmt.Errorf("invalid migration version table %q", versionTable)
+	}
+	return newRunner(dialect, db, versionTable, migrations...)
+}
+
+func validVersionTableName(dialect goose.Dialect, versionTable string) bool {
+	return versionTableNamePattern.MatchString(versionTable) || dialect == goose.DialectPostgres && postgresQualifiedVersionTableNamePattern.MatchString(versionTable)
+}
+
+func newRunner(dialect goose.Dialect, db *sql.DB, versionTable string, migrations ...*goose.Migration) (*Runner, error) {
 	providerOptions := []goose.ProviderOption{goose.WithGoMigrations(migrations...)}
+	if versionTable != "" {
+		providerOptions = append(providerOptions, goose.WithTableName(versionTable))
+	}
 	var upMu sync.Locker
 	if dialect == goose.DialectPostgres {
 		sessionLocker, err := lock.NewPostgresSessionLocker()

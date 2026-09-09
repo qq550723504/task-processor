@@ -136,6 +136,8 @@ linters-settings:
           - "**/internal/ledger/**/*.go"
           - "**/internal/organization/*.go"
           - "**/internal/organization/**/*.go"
+          - "**/internal/sourceaccountregistry/*.go"
+          - "**/internal/sourceaccountregistry/**/*.go"
         deny:
           - pkg: "task-processor/internal/platform$"
             desc: "domains depend on local ports, never platform implementations"
@@ -663,6 +665,8 @@ linters-settings:
           - "**/internal/sds/**/*.go"
           - "**/internal/shein/*.go"
           - "**/internal/shein/**/*.go"
+          - "**/internal/sourceaccountregistry/*.go"
+          - "**/internal/sourceaccountregistry/**/*.go"
           - "**/internal/temu/*.go"
           - "**/internal/temu/**/*.go"
         deny:
@@ -670,6 +674,37 @@ linters-settings:
             desc: "Domain and business packages must not depend on the app HTTP API root"
           - pkg: "task-processor/internal/app/httpapi/"
             desc: "Domain and business packages must not depend on app HTTP API subpackages"
+
+      source_account_registry_clean_room:
+        # SA1 is a clean-room current owner. It must not migrate, wrap, or keep
+        # any old Source Account, ListingKit, compatibility, or tenant-bridge path alive.
+        files:
+          - "**/internal/sourceaccountregistry/*.go"
+          - "**/internal/sourceaccountregistry/**/*.go"
+          - "**/internal/integration/persistence/sourceaccountregistry/*.go"
+          - "**/internal/integration/persistence/sourceaccountregistry/**/*.go"
+          - "**/internal/app/schema/sourceaccountregistry/*.go"
+          - "**/internal/app/schema/sourceaccountregistry/**/*.go"
+          - "**/internal/app/runtime/sourceaccountregistryschemainit/*.go"
+          - "**/internal/app/runtime/sourceaccountregistryschemainit/**/*.go"
+          - "**/internal/app/httpapi/source_account_application.go"
+          - "**/cmd/source-account-registry-schema-init/*.go"
+        deny:
+          - pkg: "task-processor/internal/sourceaccount$"
+            desc: "SA1 must not depend on the old Source Account owner"
+          - pkg: "task-processor/internal/sourceaccount/"
+          - pkg: "task-processor/internal/integration/persistence/sourceaccount$"
+            desc: "SA1 must not depend on old Source Account persistence or ownership migration"
+          - pkg: "task-processor/internal/integration/persistence/sourceaccount/"
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "SA1 must not depend on ListingKit"
+          - pkg: "task-processor/internal/listingkit/"
+          - pkg: "task-processor/internal/compatibility$"
+            desc: "SA1 has no compatibility path"
+          - pkg: "task-processor/internal/compatibility/"
+          - pkg: "task-processor/internal/tenantbridge$"
+            desc: "SA1 uses current organization admission, not the legacy tenant bridge"
+          - pkg: "task-processor/internal/tenantbridge/"
 
       platform_registration_boundaries:
         # Keep platform registration modules independent from marketplace business and HTTP assembly packages.
