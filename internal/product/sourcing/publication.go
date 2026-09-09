@@ -266,6 +266,11 @@ func (p *InternalProducer) prepare(ctx context.Context, command PublicationComma
 	if err := validateSourceEnvelopePreflight(command.Envelope); err != nil {
 		return AtomicPublication{}, err
 	}
+	if strings.TrimSpace(command.Envelope.Identity.SourceType) == "" ||
+		strings.TrimSpace(command.Envelope.Identity.SourcePlatform) == "" ||
+		strings.TrimSpace(command.Envelope.Identity.SourceID) == "" {
+		return AtomicPublication{}, ErrInvalidSourcePublication
+	}
 
 	envelope, err := Normalize(command.Envelope)
 	if err != nil {

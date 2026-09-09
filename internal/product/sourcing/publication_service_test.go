@@ -222,6 +222,41 @@ func TestInternalProducerRejectsInvalidScopeAndOversizedFactsBeforeStore(t *test
 	}
 }
 
+func TestInternalProducerRejectsLegacyDerivedPublicationIdentity(t *testing.T) {
+	producer, err := NewInternalProducer(admissionFunc(func(context.Context) (PublicationScope, error) {
+		return PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, nil
+	}), &publicationStoreStub{}, ProducerDescriptor{Kind: ControlledSnapshotProducerKind, Version: ControlledSnapshotProducerVersion})
+	require.NoError(t, err)
+
+	for name, mutate := range map[string]func(*SourceIdentity){
+		"legacy only": func(identity *SourceIdentity) {
+			*identity = SourceIdentity{Platform: "1688", ProductID: "legacy-product"}
+		},
+		"source type derived": func(identity *SourceIdentity) {
+			identity.SourceType = ""
+			identity.Platform = "1688"
+		},
+		"source platform derived": func(identity *SourceIdentity) {
+			identity.SourcePlatform = ""
+			identity.Platform = "1688"
+		},
+		"source id derived": func(identity *SourceIdentity) {
+			identity.SourceID = ""
+			identity.ProductID = "legacy-product"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := &publicationStoreStub{}
+			producer.store = store
+			command := validPublicationCommand()
+			mutate(&command.Envelope.Identity)
+			_, publishErr := producer.Publish(context.Background(), command)
+			require.ErrorIs(t, publishErr, ErrInvalidSourcePublication)
+			require.Zero(t, store.publishCalls)
+		})
+	}
+}
+
 func TestInternalProducerRejectsUnboundedEnvelopeShapeBeforeMaterialization(t *testing.T) {
 	newProducer := func(store *publicationStoreStub) *InternalProducer {
 		producer, err := NewInternalProducer(admissionFunc(func(context.Context) (PublicationScope, error) {
