@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"gorm.io/gorm"
@@ -58,6 +59,30 @@ func AutoMigrate(db *gorm.DB) error {
 		return repositoryUnavailable("migrate schema", errors.New("database is nil"))
 	}
 	return mapRepositoryError("migrate schema", db.AutoMigrate(&SnapshotVersionRecord{}, &SnapshotHeadRecord{}))
+}
+
+// PublicationExists reports whether Catalog already owns an immutable
+// publication identity in the exact Organization/Product stream. It is used by
+// caller-owned transaction adapters to reject orphaned cross-owner facts rather
+// than silently adopting them.
+func PublicationExists(ctx context.Context, db *gorm.DB, identity productcatalog.SnapshotIdentity, publicationID string) (bool, error) {
+	if db == nil {
+		return false, repositoryUnavailable("check snapshot publication", errors.New("database is nil"))
+	}
+	if err := productcatalog.ValidateSnapshotIdentity(identity); err != nil {
+		return false, err
+	}
+	if publicationID == "" || publicationID != strings.TrimSpace(publicationID) {
+		return false, productcatalog.ErrInvalidPublication
+	}
+	var count int64
+	err := db.WithContext(ctx).Model(&SnapshotVersionRecord{}).
+		Where("tenant_id = ? AND product_key = ? AND publication_id = ?", identity.TenantID, identity.ProductKey, publicationID).
+		Count(&count).Error
+	if err != nil {
+		return false, mapRepositoryError("check snapshot publication", err)
+	}
+	return count > 0, nil
 }
 
 func (r *repository) PublishSnapshot(ctx context.Context, request productcatalog.PublishRequest) (productcatalog.PublishedSnapshot, error) {
