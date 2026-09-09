@@ -105,11 +105,13 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"current entitlement facts are created by their current owners, not carried over",
 			"Do not restore task-count quota as resource authority or migrate legacy quota values.",
+			"only a new explicit user product decision can permit a compatibility exception",
 		},
 		filepath.Join("..", "docs", "architecture", "project-boundaries.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"fresh installation and empty business data",
 			"does not authorize legacy profile reuse, migration or cutover",
+			"only a new explicit user product decision can permit a compatibility exception",
 		},
 		filepath.Join("..", "docs", "architecture", "auth-and-tenancy.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
@@ -138,12 +140,6 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			"SUPERSEDED FOR GREENFIELD",
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"not a current implementation authority",
-		},
-		filepath.Join("..", "docs", "refactoring", "legacy-register.md"): {
-			"only a new explicit user product decision can permit a compatibility exception",
-		},
-		filepath.Join("..", "docs", "architecture", "project-boundaries.md"): {
-			"only a new explicit user product decision can permit a compatibility exception",
 		},
 		filepath.Join("..", "docs", "architecture", "project-target-architecture.md"): {
 			"only a new explicit user product decision can permit a compatibility exception",
