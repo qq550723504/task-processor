@@ -150,6 +150,22 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 		}
 	}
 
+	refactoringIndex := readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "refactoring", "README.md"))
+	currentDirection := strings.ToLower(documentSection(t, refactoringIndex, "## Current active direction", "## Current refactoring documents"))
+	for _, required := range []string{
+		"extract current-owner behavior and retire legacy listingkit ownership",
+		"a shrinking extraction/retire surface",
+	} {
+		if !strings.Contains(currentDirection, required) {
+			t.Errorf("current refactoring direction must state %q", required)
+		}
+	}
+	for _, forbidden := range []string{"compatibility facade", "compatibility surface"} {
+		if strings.Contains(currentDirection, forbidden) {
+			t.Errorf("current refactoring direction must not retain %q", forbidden)
+		}
+	}
+
 	policy := readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "refactoring", "legacy-hard-cut-policy.md"))
 	if !strings.Contains(policy, "only a new explicit product decision from the user") {
 		t.Error("Hard-Cut policy must reserve any change to the greenfield prohibition to a new explicit user product decision")
@@ -171,4 +187,18 @@ func readGreenfieldPolicyDocument(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(contents)
+}
+
+func documentSection(t *testing.T, contents, start, end string) string {
+	t.Helper()
+	startOffset := strings.Index(contents, start)
+	if startOffset < 0 {
+		t.Fatalf("document missing section %q", start)
+	}
+	section := contents[startOffset:]
+	endOffset := strings.Index(section, end)
+	if endOffset < 0 {
+		t.Fatalf("document missing section boundary %q", end)
+	}
+	return section[:endOffset]
 }

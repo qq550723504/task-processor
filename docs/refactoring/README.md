@@ -78,12 +78,12 @@ The current active direction is:
 2. Stabilize the SHEIN production path and keep exact validation evidence visible before release decisions.
 3. Close the implemented Product Sourcing MVP with focused tests and one controlled 1688 source-to-task path before starting another source.
 4. Select exactly one next product source after the current loop is closed; 大建云仓 / warehouse catalog remains a candidate, not an active multi-source expansion.
-5. Reduce root `internal/listingkit` into orchestration, compatibility facade, task flow, preview/export aggregation, revision/history, persistence ordering, and API shell responsibilities.
+5. Extract current-owner behavior and RETIRE legacy ListingKit ownership; keep task flow, preview/export aggregation, revision/history, persistence ordering, and API shell responsibilities only with their current owners.
 6. Keep marketplace-specific rules in marketplace-specific packages.
 7. Keep product facts, product-source identity, source normalization, and reusable visual assets outside root ListingKit.
 8. Hide infrastructure and external clients behind small interfaces.
 9. Prefer small, testable migrations over broad rewrites.
-10. For submission refactoring, prefer `internal/listing/submission` for generic mechanics, `internal/marketplace/*/publishing` or approved `internal/publishing/*` seams for marketplace rules, and keep `internal/listingkit` as a shrinking orchestration and compatibility surface.
+10. For submission refactoring, prefer `internal/listing/submission` for generic mechanics and `internal/marketplace/*/publishing` or approved `internal/publishing/*` seams for marketplace rules; keep `internal/listingkit` as a shrinking extraction/RETIRE surface.
 11. Defer full TEMU / Amazon / Walmart workbench expansion until the SHEIN template, source loop, CI/race/build gates, and runtime smoke tests are stable.
 
 ## Current refactoring documents
@@ -108,10 +108,10 @@ The current active direction is:
 
 ## Refactoring principles
 
-1. **Backward compatibility**: preserve API and behavior compatibility unless a migration explicitly changes them.
+1. **Hard-Cut**: apply `EXTRACT | RETIRE`; do not create legacy compatibility facades, shims, bridges, wrappers, fallbacks, or dual paths.
 2. **Small steps**: each refactoring task should be independently reviewable and testable.
 3. **Test first**: capture or run relevant tests before and after each migration.
-4. **Incremental migration**: avoid one-shot rewrites and package renames.
+4. **Incremental change**: avoid one-shot rewrites and package renames.
 5. **Boundary ownership**: new business rules should be placed in the package that owns the business concept.
 6. **No silent authority drift**: if the active execution direction changes, update `current-refactoring-status.md` and add or update a decision record.
 7. **Evidence discipline**: do not claim a baseline is green unless the exact workflow, command output, or validation note is visible.
