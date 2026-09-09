@@ -115,6 +115,17 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"legacy profile preservation is not a current requirement",
 		},
+		filepath.Join("..", "docs", "refactoring", "README.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"project-migration-roadmap.md",
+			"historical reference, not a current implementation authority",
+		},
+		filepath.Join("..", "docs", "refactoring", "project-migration-roadmap.md"): {
+			"SUPERSEDED",
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"not an implementation authority for the current greenfield product",
+			"Do not create compatibility facades, shims or bridges from this roadmap.",
+		},
 		filepath.Join("..", "README.md"): {
 			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
 			"greenfield-no-legacy-migration.md",

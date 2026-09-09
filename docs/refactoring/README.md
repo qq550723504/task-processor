@@ -6,6 +6,8 @@ This directory contains architecture and refactoring plans for the Task Processo
 
 Use the documents in this order when they disagree.
 
+The current product baseline is [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md): design for a fresh installation with empty business data and current owners only.
+
 ### Current execution authority
 
 - [current-refactoring-status.md](./current-refactoring-status.md) - current product maturity, Now / Next / Later status, active focus, deferred work, and validation gates.
@@ -18,7 +20,7 @@ Use the documents in this order when they disagree.
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
 - [../architecture/project-target-architecture.md](../architecture/project-target-architecture.md) - approved target architecture shape.
-- [project-migration-roadmap.md](./project-migration-roadmap.md) - staged migration sequence from the current layout to the approved target architecture.
+- [project-migration-roadmap.md](./project-migration-roadmap.md) - historical reference, not a current implementation authority; it is superseded for greenfield work by the current product baseline and Hard-Cut policy.
 - [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
 
 ### Strategic decision records
@@ -28,6 +30,7 @@ Use the documents in this order when they disagree.
 ### Historical execution references
 
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - earlier broad execution plan. Keep for detailed historical PR slices, but do not treat it as the active sprint queue when it conflicts with `current-refactoring-status.md`, `next-phase-plan.md`, or `listingkit-boundary-checkpoint.md`.
+- [project-migration-roadmap.md](./project-migration-roadmap.md) - historical reference, not a current implementation authority; do not use its legacy compatibility directions for a greenfield task.
 - [listingkit-refactoring-progress-2026-06-24.md](./listingkit-refactoring-progress-2026-06-24.md) - dated progress snapshot and backend Control Plane closeout evidence. Treat it as evidence, not the current execution queue.
 - Older local plans remain useful for background and task breakdowns, but should not override the current execution authority unless a newer ADR or refactoring document explicitly says so.
 
@@ -90,7 +93,7 @@ The current active direction is:
 - [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - current ListingKit boundary stop-lines and approved seam directions.
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - earlier broad execution plan; historical/reference when it conflicts with current checkpoint docs.
-- [project-migration-roadmap.md](./project-migration-roadmap.md) - staged migration sequence from the current layout to the approved target architecture.
+- [project-migration-roadmap.md](./project-migration-roadmap.md) - historical reference, not a current implementation authority for greenfield work.
 - [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
 - [product-sourcing-inventory.md](./product-sourcing-inventory.md) - Amazon / 1688 source-flow inventory and first migration slices for `product/sourcing` plus crawler adapters.
 - [listing-preview-migration-map.md](./listing-preview-migration-map.md) - first detailed migration inventory for moving preview ownership out of legacy ListingKit.
