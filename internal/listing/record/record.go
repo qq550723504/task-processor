@@ -216,6 +216,9 @@ func (s *Service) Create(ctx context.Context, operation string, input Input) (Re
 	if errors.Is(err, productasset.ErrApprovedAssetsNotReady) {
 		return Receipt{}, ErrNotReady
 	}
+	if errors.Is(err, productasset.ErrInventoryTooLarge) {
+		return Receipt{}, ErrTooLarge
+	}
 	if err != nil {
 		return Receipt{}, err
 	}

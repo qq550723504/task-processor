@@ -34,7 +34,7 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	if err != nil {
 		return nil, nil, err
 	}
-	assets, err := assetstore.NewRepository(currentProductDB)
+	assets, err := assetstore.NewBoundedApprovedInventoryReader(currentProductDB, record.MaxPayloadBytes)
 	if err != nil {
 		return nil, nil, err
 	}

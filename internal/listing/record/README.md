@@ -34,7 +34,9 @@ After authorization, the service reads these exact current facts:
 3. ApprovedAsset inventory by Organization, product key, `shein`, and the same
    Product version.
 
-There is no latest/unversioned Asset fallback. Missing exact approval is
+The Product/Asset persistence adapter measures both the largest raw Asset row
+and the complete inventory envelope in PostgreSQL before transferring or JSON
+decoding matching payloads. There is no latest/unversioned Asset fallback. Missing exact approval is
 `422 not_ready`; missing Product/Store is `404 not_found`. Product JSON,
 ApprovedAsset inventory JSON, generated Package, and persisted diagnostic are
 independently bounded to 2 MiB. Dependency/corrupt-source failure is 503,

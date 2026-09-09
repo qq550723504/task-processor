@@ -405,6 +405,39 @@ func TestDraftS1CorruptExactApprovedAssetDoesNotCreateReceipt(t *testing.T) {
 	require.JSONEq(t, `{"error":"unavailable"}`, string(body))
 	requireDraftS1RowCounts(t, db, 0)
 }
+
+func TestDraftS1BoundsExactApprovedAssetsBeforePersistenceDecode(t *testing.T) {
+	for _, shape := range []string{"single row", "aggregate inventory"} {
+		t.Run(shape, func(t *testing.T) {
+			db := recordTestDB(t)
+			publishRecordProductOnly(t, db, "200", "product")
+			prepareRecordStore(t, db, "200")
+			repository, err := assetstore.NewRepository(db)
+			require.NoError(t, err)
+			assets := []productasset.ApprovedAsset{{ID: "large-0", RunID: "bounded-run", PlanRevision: 1, SlotID: "slot-0", Attempt: 1, Role: productasset.RoleMain, URL: "https://controlled.invalid/main.jpg"}}
+			if shape == "aggregate inventory" {
+				assets = make([]productasset.ApprovedAsset, 3)
+				for index := range assets {
+					assets[index] = productasset.ApprovedAsset{ID: fmt.Sprintf("large-%d", index), RunID: "bounded-run", PlanRevision: 1, SlotID: fmt.Sprintf("slot-%d", index), Attempt: 1, Role: productasset.RoleGallery, URL: "https://controlled.invalid/" + strings.Repeat("x", 700000)}
+				}
+			}
+			_, err = repository.CommitApproval(context.Background(), productasset.ApprovalCommit{TenantID: "200", ProductKey: "product", TargetPlatform: "shein", SourceSnapshotVersion: 1, ActionID: "bounded-" + strings.ReplaceAll(shape, " ", "-"), Assets: assets})
+			require.NoError(t, err)
+			padding := listingrecord.MaxPayloadBytes
+			if shape == "aggregate inventory" {
+				padding = 700000
+			}
+			invalidOversizedShape := []byte(`{"id":[],"padding":"` + strings.Repeat("x", padding) + `"}`)
+			require.NoError(t, db.Table("product_approved_assets").Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND source_snapshot_version = ? AND asset_id = ?", "200", "product", "shein", 1, "large-0").Update("payload_json", invalidOversizedShape).Error)
+
+			server, _ := recordApplication(t, db, &recordGrants{})
+			status, body := recordPost(t, server, "operator", "bounded-"+strings.ReplaceAll(shape, " ", "-"), recordBody)
+			require.Equal(t, http.StatusRequestEntityTooLarge, status, string(body))
+			require.JSONEq(t, `{"error":"input_too_large"}`, string(body))
+			requireDraftS1RowCounts(t, db, 0)
+		})
+	}
+}
 func TestSheinRecordConcurrentAndConflictingHTTP(t *testing.T) {
 	db := recordTestDB(t)
 	publishRecordProduct(t, db, "200", "product")
