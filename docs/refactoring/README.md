@@ -82,7 +82,7 @@ The current active direction is:
 6. Keep marketplace-specific rules in marketplace-specific packages.
 7. Keep product facts, product-source identity, source normalization, and reusable visual assets outside root ListingKit.
 8. Hide infrastructure and external clients behind small interfaces.
-9. Prefer small, testable migrations over broad rewrites.
+9. Prefer small, testable current-owner changes over broad rewrites; any schema evolution is normal new-system schema evolution, never legacy-data migration.
 10. For submission refactoring, prefer `internal/listing/submission` for generic mechanics and `internal/marketplace/*/publishing` or approved `internal/publishing/*` seams for marketplace rules; keep `internal/listingkit` as a shrinking extraction/RETIRE surface.
 11. Defer full TEMU / Amazon / Walmart workbench expansion until the SHEIN template, source loop, CI/race/build gates, and runtime smoke tests are stable.
 
@@ -110,7 +110,7 @@ The current active direction is:
 
 1. **Hard-Cut**: apply `EXTRACT | RETIRE`; do not create legacy compatibility facades, shims, bridges, wrappers, fallbacks, or dual paths.
 2. **Small steps**: each refactoring task should be independently reviewable and testable.
-3. **Test first**: capture or run relevant tests before and after each migration.
+3. **Test first**: capture or run relevant tests before and after each current-owner change; normal new-system schema evolution must not be mistaken for legacy migration.
 4. **Incremental change**: avoid one-shot rewrites and package renames.
 5. **Boundary ownership**: new business rules should be placed in the package that owns the business concept.
 6. **No silent authority drift**: if the active execution direction changes, update `current-refactoring-status.md` and add or update a decision record.

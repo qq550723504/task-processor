@@ -155,14 +155,23 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 	for _, required := range []string{
 		"extract current-owner behavior and retire legacy listingkit ownership",
 		"a shrinking extraction/retire surface",
+		"prefer small, testable current-owner changes over broad rewrites",
 	} {
 		if !strings.Contains(currentDirection, required) {
 			t.Errorf("current refactoring direction must state %q", required)
 		}
 	}
-	for _, forbidden := range []string{"compatibility facade", "compatibility surface"} {
+	for _, forbidden := range []string{"compatibility facade", "compatibility surface", "prefer small, testable migrations over broad rewrites"} {
 		if strings.Contains(currentDirection, forbidden) {
 			t.Errorf("current refactoring direction must not retain %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"before and after each current-owner change",
+		"normal new-system schema evolution",
+	} {
+		if !strings.Contains(strings.ToLower(refactoringIndex), required) {
+			t.Errorf("refactoring principles must state %q", required)
 		}
 	}
 
