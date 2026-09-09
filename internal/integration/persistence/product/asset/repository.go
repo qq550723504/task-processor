@@ -146,28 +146,13 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 
 	var actionID string
 	var err error
-	versionBound := scope.SourceSnapshotVersion > 0
 	if scope.SourceSnapshotVersion > 0 {
 		var head ApprovedInventoryVersionHeadRecord
 		err := r.db.WithContext(ctx).
 			Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, scope.SourceSnapshotVersion).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Legacy approvals predate snapshot binding. They may be used only when
-			// their records are also explicitly unversioned; a versioned approval
-			// must never be substituted for a pinned task.
-			var legacy ApprovedInventoryHeadRecord
-			legacyErr := r.db.WithContext(ctx).
-				Where("tenant_id = ? AND product_key = ? AND target_platform = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform).
-				Take(&legacy).Error
-			if legacyErr == nil {
-				actionID = legacy.ActionID
-				versionBound = false
-			} else if errors.Is(legacyErr, gorm.ErrRecordNotFound) {
-				return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
-			} else {
-				return productasset.ApprovedAssetInventory{}, mapRepositoryError("load legacy approved inventory head", legacyErr)
-			}
+			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
 		} else if err != nil {
 			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load versioned approved inventory head", err)
 		} else {
@@ -190,7 +175,7 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	var records []ApprovedAssetRecord
 	recordQuery := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND action_id = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, actionID)
-	if versionBound {
+	if scope.SourceSnapshotVersion > 0 {
 		recordQuery = recordQuery.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
 	}
 	err = recordQuery.Order("slot_id ASC, attempt ASC, asset_id ASC").Find(&records).Error
@@ -199,13 +184,6 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	}
 	if len(records) == 0 {
 		return productasset.ApprovedAssetInventory{}, repositoryStateInvalid("load approved asset inventory", errors.New("inventory head has no approved assets"))
-	}
-	if scope.SourceSnapshotVersion > 0 && !versionBound {
-		for _, record := range records {
-			if record.SourceSnapshotVersion != 0 {
-				return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
-			}
-		}
 	}
 	approved := make([]productasset.ApprovedAsset, len(records))
 	for index, record := range records {
