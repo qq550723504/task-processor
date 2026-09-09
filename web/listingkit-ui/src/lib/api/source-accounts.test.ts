@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  type SourceAccount,
   SourceAccountAPIError,
   createSourceAccount,
   disableSourceAccount,
@@ -24,7 +25,7 @@ const account = {
   version: MAX_VERSION,
   createdAt: "2026-09-09T01:02:03Z",
   updatedAt: "2026-09-09T02:03:04Z",
-};
+} satisfies SourceAccount;
 
 const fetchMock = vi.fn<typeof fetch>();
 

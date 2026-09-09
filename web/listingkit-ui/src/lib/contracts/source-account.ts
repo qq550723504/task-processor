@@ -21,7 +21,7 @@ export const sourceAccountIdSchema = z
   .string()
   .refine(isCanonicalSourceAccountId);
 
-export const sourceAccountDisplayNameSchema = z
+const sourceAccountDisplayNameSchema = z
   .string()
   .refine(isValidSourceAccountDisplayName);
 

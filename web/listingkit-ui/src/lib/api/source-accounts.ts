@@ -45,14 +45,24 @@ const sourceAccountErrorStatuses: Readonly<Record<string, readonly number[]>> = 
 };
 
 export type SourceAccount = z.infer<typeof sourceAccountSchema>;
-export type SourceAccountMutationResult = z.infer<
+type SourceAccountMutationWire = z.infer<
   typeof sourceAccountMutationResponseSchema
+>;
+export type SourceAccountMutationResult = Omit<
+  SourceAccountMutationWire,
+  "account"
 > & {
+  account: SourceAccount;
   etag: string;
 };
-export type SourceAccountDetailResult = z.infer<
+type SourceAccountDetailWire = z.infer<
   typeof sourceAccountDetailResponseSchema
+>;
+export type SourceAccountDetailResult = Omit<
+  SourceAccountDetailWire,
+  "account"
 > & {
+  account: SourceAccount;
   etag: string;
 };
 export type SourceAccountPage = z.infer<typeof sourceAccountPageResponseSchema>;
