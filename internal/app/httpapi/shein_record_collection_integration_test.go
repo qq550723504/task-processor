@@ -57,6 +57,8 @@ func TestSheinRecordCollectionPostgresPaginationAndScope(t *testing.T) {
 	for _, item := range first.Items {
 		require.Contains(t, ownerIDs, item.RecordID)
 		require.Equal(t, "1", item.SnapshotVersion)
+		require.Equal(t, recordStoreID, item.StoreID)
+		require.Equal(t, "save_draft", item.Action)
 	}
 	status, raw = recordGet(t, server, "operator", "limit=20&cursor="+url.QueryEscape(*first.NextCursor))
 	require.Equal(t, http.StatusOK, status, string(raw))

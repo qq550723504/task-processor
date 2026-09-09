@@ -78,7 +78,7 @@ func TestSheinDiagnosticBrowserFixture(t *testing.T) {
 	}
 	require.NotEmpty(t, dir)
 	require.True(t, strings.HasPrefix(dsn, "host=127.0.0.1 ") && strings.Contains(dsn, " dbname=issue323_fixture "), "only explicit task-isolated loopback PostgreSQL")
-	t.Setenv("ISSUE319_TEST_DSN", dsn)
+	t.Setenv("ISSUE376_TEST_DSN", dsn)
 	db := recordTestDB(t)
 	publishRecordProduct(t, db, "200", "product")
 	publishRecordProduct(t, db, "300", "product")

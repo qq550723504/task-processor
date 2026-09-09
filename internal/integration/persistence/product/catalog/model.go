@@ -9,6 +9,7 @@ type SnapshotVersionRecord struct {
 	PublicationID string `gorm:"size:128;not null;uniqueIndex:ux_product_snapshot_publication,priority:3"`
 	PayloadHash   string `gorm:"size:64;not null"`
 	SnapshotJSON  []byte `gorm:"type:json;not null"`
+	SnapshotBytes int64  `gorm:"->;-:migration"`
 }
 
 func (SnapshotVersionRecord) TableName() string { return "product_snapshot_versions" }

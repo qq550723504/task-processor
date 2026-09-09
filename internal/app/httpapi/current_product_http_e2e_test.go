@@ -102,7 +102,7 @@ func TestHTTPE2E_ListingKitFailsClosedWhenPersistentApprovedAssetsAreMissing(t *
 	const productKey = "listingkit-no-approved-assets"
 	db := openCurrentE2ESQLite(t, filepath.Join(t.TempDir(), "listingkit-no-assets.sqlite"))
 	repositories := prepareCurrentE2EListingKitPersistence(t, db)
-	seedCurrentE2EProductSnapshot(t, db, productKey, catalog.ProductSnapshot{
+	_ = seedCurrentE2EProductSnapshot(t, db, productKey, catalog.ProductSnapshot{
 		Title: "No approved assets", Images: []catalog.Image{{URL: "https://source.example.test/unapproved.png", Role: "primary"}},
 		Variants: []catalog.Variant{{SKU: "NO-ASSET-1", Stock: 1, IsDefault: true, Price: &catalog.Price{Currency: "USD", Amount: 10}}},
 	})
@@ -128,7 +128,7 @@ func TestHTTPE2E_ImageAgentApprovalPublishesExactlyOnceBeforeListingKitRead(t *t
 	db := openCurrentE2ESQLite(t, filepath.Join(t.TempDir(), "listingkit-published-assets.sqlite"))
 	repositories := prepareCurrentE2EListingKitPersistence(t, db)
 	require.NoError(t, imageagentstore.AutoMigrate(db))
-	seedCurrentE2EProductSnapshot(t, db, productKey, catalog.ProductSnapshot{
+	published := seedCurrentE2EProductSnapshot(t, db, productKey, catalog.ProductSnapshot{
 		Title: "Publisher-backed product", Brand: "Boundary",
 		CategoryPath:  []string{"Electronics", "Accessories"},
 		Description:   "A complete product description supplied by the immutable snapshot.",
@@ -137,7 +137,7 @@ func TestHTTPE2E_ImageAgentApprovalPublishesExactlyOnceBeforeListingKitRead(t *t
 	})
 
 	imageAgentRepository := imageagentstore.NewGormRepository(db)
-	projection := persistCurrentE2EAwaitingApprovalProjection(t, imageAgentRepository, productKey, approvedURL)
+	projection := persistCurrentE2EAwaitingApprovalProjection(t, imageAgentRepository, productKey, published.Version, approvedURL)
 	approvedAssets, err := assetpersistence.NewRepository(db)
 	require.NoError(t, err)
 	publisher, err := assetpublication.NewV2Publisher(imageAgentRepository, approvedAssets)
@@ -591,16 +591,17 @@ func prepareCurrentE2EListingKitPersistence(t *testing.T, db *gorm.DB) listingki
 	return repositories
 }
 
-func seedCurrentE2EProductSnapshot(t *testing.T, db *gorm.DB, productKey string, snapshot catalog.ProductSnapshot) {
+func seedCurrentE2EProductSnapshot(t *testing.T, db *gorm.DB, productKey string, snapshot catalog.ProductSnapshot) catalog.PublishedSnapshot {
 	t.Helper()
 	repository, err := catalogpersistence.NewRepository(db)
 	require.NoError(t, err)
-	_, err = repository.PublishSnapshot(context.Background(), catalog.PublishRequest{
+	published, err := repository.PublishSnapshot(context.Background(), catalog.PublishRequest{
 		Identity:      catalog.SnapshotIdentity{TenantID: "app-http-test-tenant", ProductKey: productKey},
 		PublicationID: "current-e2e-snapshot-" + productKey,
 		Snapshot:      snapshot,
 	})
 	require.NoError(t, err)
+	return published
 }
 
 func startCurrentE2EListingKitServer(t *testing.T, db *gorm.DB, repositories listingkithttpapi.BuildServiceRepositories, uploadRoot string) (*httptest.Server, *http.Client) {
@@ -674,7 +675,7 @@ func mustCurrentE2EPNG(t *testing.T) []byte {
 	return data
 }
 
-func persistCurrentE2EAwaitingApprovalProjection(t *testing.T, repository imageagent.Repository, productKey, approvedURL string) imageagent.RunProjection {
+func persistCurrentE2EAwaitingApprovalProjection(t *testing.T, repository imageagent.Repository, productKey string, sourceSnapshotVersion uint64, approvedURL string) imageagent.RunProjection {
 	t.Helper()
 	ctx := context.Background()
 	run := imageagent.Run{
@@ -691,7 +692,7 @@ func persistCurrentE2EAwaitingApprovalProjection(t *testing.T, repository imagea
 	}
 	catalog := imageagent.AssetCatalog{
 		Assets:         []imageagent.AuthorizedAsset{{ID: "source-main", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example.test/main.png"}},
-		ProductContext: imageagent.ProductContextRef{ProductID: productKey},
+		ProductContext: imageagent.ProductContextRef{ProductID: productKey, SourceSnapshotVersion: sourceSnapshotVersion},
 	}
 	scope := imageagent.ScopeForRun(run)
 	projection, err := repository.InitializeRun(ctx, imageagent.ProjectionInitialization{

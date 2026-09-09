@@ -82,7 +82,7 @@ go test -v ./internal/app/httpapi -run '^TestSharedRegression' -count=1
 Each run logs dataset/version/hash, actual Git HEAD, rule/binding, layer, then Go
 PASS/FAIL/SKIP and case results. During development HEAD alone does not identify
 uncommitted changes; only clean final-HEAD runs count as candidate evidence.
-Absent `ISSUE319_TEST_DSN` yields explicit PostgreSQL **SKIP**, never acceptance
+Absent `ISSUE376_TEST_DSN` yields explicit PostgreSQL **SKIP**, never acceptance
 PASS. Existing backend CI runs `go test ./...`; no PostgreSQL service/DSN is
 configured there. Its default SKIP is recorded separately from controlled PG
 evidence. No CI policy, classifier, Required Gate or runner is changed.
@@ -101,13 +101,13 @@ try {
     Start-Sleep -Seconds 1
   }
   if ($LASTEXITCODE -ne 0) { throw 'Isolated PostgreSQL failed readiness' }
-  $env:ISSUE319_TEST_DSN = "host=127.0.0.1 port=$qaPort user=postgres password=issue335-isolated dbname=issue335 sslmode=disable"
+  $env:ISSUE376_TEST_DSN = "host=127.0.0.1 port=$qaPort user=postgres password=issue335-isolated dbname=issue335 sslmode=disable"
   go test -race -v ./internal/app/httpapi -run '^TestSharedRegression' -count=1
   if ($LASTEXITCODE -ne 0) { throw 'Shared regression failed' }
   go test -race ./internal/app/httpapi -run '^TestShein(Diagnostic|Record)' -count=1
   if ($LASTEXITCODE -ne 0) { throw 'Existing adjacent regression failed' }
 } finally {
-  Remove-Item Env:ISSUE319_TEST_DSN -ErrorAction SilentlyContinue
+  Remove-Item Env:ISSUE376_TEST_DSN -ErrorAction SilentlyContinue
   docker stop $qaName
   docker rm $qaName
 }

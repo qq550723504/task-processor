@@ -25,10 +25,15 @@ func TestOnlyCurrentAdapterOwnsListingRecordTable(t *testing.T) {
 			return err
 		}
 		normalized := filepath.ToSlash(path)
-		if strings.Contains(string(raw), "listing_shein_records") && !strings.Contains(normalized, "/app/listingrecordstore/") {
+		if (strings.Contains(string(raw), "listing_shein_records") || strings.Contains(string(raw), "listing_shein_record_operations")) && !strings.Contains(normalized, "/app/listingrecordstore/") {
 			t.Errorf("second table owner: %s", path)
 		}
-		if !strings.Contains(normalized, "/listing/record/") && !strings.Contains(normalized, "/marketplace/shein/draft/") {
+		isDraftS1Owner := strings.Contains(normalized, "/listing/record/") ||
+			strings.Contains(normalized, "/marketplace/shein/draft/") ||
+			strings.Contains(normalized, "/app/listingrecordstore/") ||
+			strings.HasSuffix(normalized, "/app/httpapi/shein_records_application.go") ||
+			strings.HasSuffix(normalized, "/app/httpapi/shein_records_handler.go")
+		if !isDraftS1Owner {
 			return nil
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, raw, parser.ImportsOnly)

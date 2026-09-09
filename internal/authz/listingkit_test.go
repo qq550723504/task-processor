@@ -131,3 +131,29 @@ func TestListingKitAuthorizerUsesOnlyEffectiveOrganizationRolesForStorePermissio
 	require.False(t, authorizer.Authorize(identity.UserID, identity.Roles, PermissionWorkbenchStoreCreate))
 	require.False(t, authorizer.Authorize(identity.UserID, identity.Roles, PermissionWorkbenchStoreDelete))
 }
+
+func TestListingKitAuthorizerEnforcesSourceAccountPermissionMatrix(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	require.NoError(t, err)
+
+	tests := []struct {
+		role       string
+		wantRead   bool
+		wantManage bool
+	}{
+		{role: "listingkit_viewer", wantRead: true},
+		{role: "listingkit_operator", wantRead: true, wantManage: true},
+		{role: "listingkit_admin", wantRead: true, wantManage: true},
+		{role: "platform_admin", wantRead: true, wantManage: true},
+		{role: "admin"},
+		{role: "configured-role", wantRead: true, wantManage: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			require.Equal(t, tt.wantRead, authorizer.Authorize("", []string{tt.role}, PermissionWorkbenchSourceAccountRead))
+			require.Equal(t, tt.wantManage, authorizer.Authorize("", []string{tt.role}, PermissionWorkbenchSourceAccountManage))
+		})
+	}
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchSourceAccountRead))
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchSourceAccountManage))
+}

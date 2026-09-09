@@ -5,19 +5,25 @@ import (
 	"context"
 	"encoding/json"
 	"task-processor/internal/listing/record"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
+	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/publishing/shein"
 )
 
 type Builder struct{}
 
-func (Builder) Build(ctx context.Context, snapshot catalog.ProductSnapshot, input record.Input) ([]byte, error) {
+func (Builder) Build(ctx context.Context, snapshot catalog.ProductSnapshot, inventory productasset.ApprovedAssetInventory, input record.Input) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	product := catalog.ProjectCanonical(snapshot)
-	// Source imagery is not ApprovedAsset. No source-image fallback is allowed.
-	product.Images = nil
+	// Source imagery is not ApprovedAsset. Replace it completely with the exact
+	// version-bound approved inventory supplied by Product/Asset.
+	product.Images = make([]canonical.Image, 0, len(inventory.Assets))
+	for _, approved := range inventory.Assets {
+		product.Images = append(product.Images, canonical.Image{URL: approved.URL, Role: string(approved.Role)})
+	}
 	for i := range product.Variants {
 		product.Variants[i].Images = nil
 	}

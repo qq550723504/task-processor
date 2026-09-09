@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/marketplace/shein/draft"
 	sheinvalidator "task-processor/internal/marketplace/shein/validator"
 	contract "task-processor/internal/marketplace/validator"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -43,7 +44,7 @@ func TestSharedRegressionDeterministic(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, *c.Snapshot, cloned)
 				require.NoError(t, catalog.ValidatePublishRequest(catalog.PublishRequest{Identity: catalog.SnapshotIdentity{TenantID: "200", ProductKey: c.CaseID}, PublicationID: c.CaseID, Snapshot: cloned}))
-				raw, err = (draft.Builder{}).Build(context.Background(), cloned, sharedRecordInput(c, 1))
+				raw, err = (draft.Builder{}).Build(context.Background(), cloned, sharedApprovedInventory(c, 1), sharedRecordInput(c, 1))
 				require.NoError(t, err)
 				assertSharedIncompletePackage(t, raw, c)
 				after, err := json.Marshal(c.Source)
@@ -72,7 +73,7 @@ func TestSharedRegressionDeterministic(t *testing.T) {
 					req := sharedBoundRequest(m, raw, want.Action)
 					got, err := (sheinvalidator.DiagnosticValidator{}).Validate(req)
 					require.NoError(t, err)
-					assertSharedReport(t, m, want, got)
+					assertSharedReport(t, m, want, got, c.Source != nil)
 					require.Equal(t, m.SemanticTime, got.Input.ReadAt)
 					require.Equal(t, m.SemanticTime, got.Input.EvaluatedAt)
 					require.False(t, digests[got.Input.Digest], "different actions must have different bindings")
@@ -109,7 +110,14 @@ func TestSharedRegressionDeterministic(t *testing.T) {
 }
 
 func sharedRecordInput(c sharedCase, version uint64) record.Input {
-	return record.Input{ProductKey: c.CaseID, SnapshotVersion: version, Country: "US", Language: "en"}
+	return record.Input{ProductKey: c.CaseID, SnapshotVersion: version, StoreID: "11111111-1111-4111-8111-111111111111", Country: "US", Language: "en", Action: contract.SaveDraft}
+}
+
+func sharedApprovedInventory(c sharedCase, version uint64) productasset.ApprovedAssetInventory {
+	return productasset.ApprovedAssetInventory{
+		Scope:  productasset.InventoryScope{TenantID: "200", ProductKey: c.CaseID, TargetPlatform: "shein", SourceSnapshotVersion: version},
+		Assets: []productasset.ApprovedAsset{{ID: "controlled-approved-main", RunID: "controlled-run", PlanRevision: 1, SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: "https://fixtures.invalid/approved/main.jpg"}},
+	}
 }
 
 func sharedBoundRequest(m sharedManifest, raw []byte, action contract.Action) contract.BoundRequest[[]byte] {
@@ -120,14 +128,15 @@ func assertSharedIncompletePackage(t *testing.T, raw []byte, c sharedCase) {
 	t.Helper()
 	pkg, err := sheinpub.DecodePersistedPackageStrict(raw)
 	require.NoError(t, err)
-	require.Empty(t, pkg.Images)
-	require.False(t, sheinpub.HasSubmitImage(pkg), "source URL must not become approved submit imagery")
+	require.NotNil(t, pkg.Images)
+	require.Contains(t, pkg.Images.MainImage, "https://fixtures.invalid/")
+	require.True(t, sheinpub.HasSubmitImage(pkg), "controlled approved image must become draft imagery")
 	for _, image := range c.Source.AssetCandidates {
 		require.NotContains(t, string(raw), image.URL)
 	}
 }
 
-func assertSharedReport(t *testing.T, m sharedManifest, want sharedReport, got contract.DiagnosticResult) {
+func assertSharedReport(t *testing.T, m sharedManifest, want sharedReport, got contract.DiagnosticResult, hasExactApprovedImage bool) {
 	t.Helper()
 	require.True(t, got.DiagnosticOnly)
 	require.Equal(t, "shein.offline_package", got.Scope)
@@ -156,16 +165,21 @@ func assertSharedReport(t *testing.T, m sharedManifest, want sharedReport, got c
 		return out
 	}
 	blockers, warnings := keys(got.OfflineChecks.Blockers), keys(got.OfflineChecks.Warnings)
+	expectedBlockers := append([]string(nil), want.Blockers...)
+	if hasExactApprovedImage {
+		expectedBlockers = slices.DeleteFunc(expectedBlockers, func(value string) bool { return value == "images/image_upload_failed" })
+		require.NotContains(t, blockers, "images/image_upload_failed", "the exact approved main image must discharge the image blocker")
+	}
 	if want.Exact {
 		rules := []string{}
 		for _, check := range got.OfflineChecks.Checks {
 			rules = append(rules, check.Rule)
 		}
 		require.ElementsMatch(t, []string{"category", "category_review", "attributes", "attribute_review", "sale_attributes", "request_draft", "preview_product", "images", "final_images", "variant_image_coverage", "variants", "pricing", "final_review", "manual_notes", "source_facts"}, rules, "complete synthetic rule inventory")
-		require.ElementsMatch(t, want.Blockers, blockers)
+		require.ElementsMatch(t, expectedBlockers, blockers)
 		require.ElementsMatch(t, want.Warnings, warnings)
 	} else {
-		for _, key := range want.Blockers {
+		for _, key := range expectedBlockers {
 			require.Contains(t, blockers, key)
 		}
 		for _, key := range want.Warnings {

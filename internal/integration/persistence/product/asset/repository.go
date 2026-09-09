@@ -15,7 +15,8 @@ import (
 )
 
 type repository struct {
-	db *gorm.DB
+	db                        *gorm.DB
+	maxApprovedInventoryBytes int
 }
 
 func NewRepository(db *gorm.DB) (productasset.Repository, error) {
@@ -23,6 +24,17 @@ func NewRepository(db *gorm.DB) (productasset.Repository, error) {
 		return nil, repositoryUnavailable("construct repository", errors.New("database is nil"))
 	}
 	return &repository{db: db}, nil
+}
+
+// NewBoundedApprovedInventoryReader creates the current exact-inventory read
+// adapter with a persistence boundary. PostgreSQL measures both the largest
+// raw JSON row and the complete inventory wire size before any matching
+// payload is transferred into a Go slice or decoded.
+func NewBoundedApprovedInventoryReader(db *gorm.DB, maxBytes int) (productasset.ApprovedInventoryReader, error) {
+	if db == nil || maxBytes <= 0 {
+		return nil, repositoryUnavailable("construct bounded inventory reader", errors.New("database and positive byte limit are required"))
+	}
+	return &repository{db: db, maxApprovedInventoryBytes: maxBytes}, nil
 }
 
 func AutoMigrate(db *gorm.DB) error {
@@ -146,28 +158,13 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 
 	var actionID string
 	var err error
-	versionBound := scope.SourceSnapshotVersion > 0
 	if scope.SourceSnapshotVersion > 0 {
 		var head ApprovedInventoryVersionHeadRecord
 		err := r.db.WithContext(ctx).
 			Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND source_snapshot_version = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, scope.SourceSnapshotVersion).
 			Take(&head).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Legacy approvals predate snapshot binding. They may be used only when
-			// their records are also explicitly unversioned; a versioned approval
-			// must never be substituted for a pinned task.
-			var legacy ApprovedInventoryHeadRecord
-			legacyErr := r.db.WithContext(ctx).
-				Where("tenant_id = ? AND product_key = ? AND target_platform = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform).
-				Take(&legacy).Error
-			if legacyErr == nil {
-				actionID = legacy.ActionID
-				versionBound = false
-			} else if errors.Is(legacyErr, gorm.ErrRecordNotFound) {
-				return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
-			} else {
-				return productasset.ApprovedAssetInventory{}, mapRepositoryError("load legacy approved inventory head", legacyErr)
-			}
+			return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
 		} else if err != nil {
 			return productasset.ApprovedAssetInventory{}, mapRepositoryError("load versioned approved inventory head", err)
 		} else {
@@ -186,11 +183,16 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 		}
 		actionID = head.ActionID
 	}
+	if r.maxApprovedInventoryBytes > 0 {
+		if err := r.enforceApprovedInventoryReadBound(ctx, scope, actionID); err != nil {
+			return productasset.ApprovedAssetInventory{}, err
+		}
+	}
 
 	var records []ApprovedAssetRecord
 	recordQuery := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND action_id = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, actionID)
-	if versionBound {
+	if scope.SourceSnapshotVersion > 0 {
 		recordQuery = recordQuery.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
 	}
 	err = recordQuery.Order("slot_id ASC, attempt ASC, asset_id ASC").Find(&records).Error
@@ -199,13 +201,6 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 	}
 	if len(records) == 0 {
 		return productasset.ApprovedAssetInventory{}, repositoryStateInvalid("load approved asset inventory", errors.New("inventory head has no approved assets"))
-	}
-	if scope.SourceSnapshotVersion > 0 && !versionBound {
-		for _, record := range records {
-			if record.SourceSnapshotVersion != 0 {
-				return productasset.ApprovedAssetInventory{}, productasset.ErrApprovedAssetsNotReady
-			}
-		}
 	}
 	approved := make([]productasset.ApprovedAsset, len(records))
 	for index, record := range records {
@@ -219,6 +214,42 @@ func (r *repository) GetApprovedInventory(ctx context.Context, scope productasse
 		}
 	}
 	return productasset.CloneApprovedAssetInventory(productasset.ApprovedAssetInventory{Scope: scope, Assets: approved}), nil
+}
+
+type approvedInventorySize struct {
+	AssetCount        int64
+	MaxPayloadBytes   int64
+	TotalPayloadBytes int64
+}
+
+func (r *repository) enforceApprovedInventoryReadBound(ctx context.Context, scope productasset.InventoryScope, actionID string) error {
+	scopeJSON, err := json.Marshal(scope)
+	if err != nil {
+		return repositoryStateInvalid("encode approved inventory scope", err)
+	}
+	query := r.db.WithContext(ctx).Model(&ApprovedAssetRecord{}).
+		Where("tenant_id = ? AND product_key = ? AND target_platform = ? AND action_id = ?", scope.TenantID, scope.ProductKey, scope.TargetPlatform, actionID)
+	if scope.SourceSnapshotVersion > 0 {
+		query = query.Where("source_snapshot_version = ?", scope.SourceSnapshotVersion)
+	}
+	var size approvedInventorySize
+	result := query.Select(`COUNT(*) AS asset_count, COALESCE(MAX(octet_length(CAST(payload_json AS text))), 0) AS max_payload_bytes, COALESCE(SUM(octet_length(CAST(payload_json AS text))), 0) AS total_payload_bytes`).Scan(&size)
+	if result.Error != nil {
+		return mapRepositoryError("measure approved asset inventory", result.Error)
+	}
+	limit := int64(r.maxApprovedInventoryBytes)
+	// json.Marshal(ApprovedAssetInventory) emits this fixed envelope around the
+	// already-canonical persisted asset JSON values. Commas add count-1 bytes.
+	envelopeBytes := int64(len(`{"scope":,"assets":[]}`) + len(scopeJSON))
+	commaBytes := size.AssetCount - 1
+	if commaBytes < 0 {
+		commaBytes = 0
+	}
+	if size.MaxPayloadBytes > limit || size.TotalPayloadBytes > limit || envelopeBytes > limit || commaBytes > limit ||
+		size.TotalPayloadBytes > limit-envelopeBytes || commaBytes > limit-envelopeBytes-size.TotalPayloadBytes {
+		return productasset.ErrInventoryTooLarge
+	}
+	return nil
 }
 
 func advanceCurrentInventoryHead(tx *gorm.DB, commit productasset.ApprovalCommit) error {
@@ -322,6 +353,7 @@ func mapRepositoryError(operation string, err error) error {
 		productasset.ErrInvalidInventoryScope,
 		productasset.ErrApprovalConflict,
 		productasset.ErrApprovedAssetsNotReady,
+		productasset.ErrInventoryTooLarge,
 		productasset.ErrRepositoryUnavailable,
 		productasset.ErrRepositoryStateInvalid,
 	} {
@@ -360,3 +392,4 @@ func validatePersistedAsset(record ApprovedAssetRecord, approved productasset.Ap
 }
 
 var _ productasset.Repository = (*repository)(nil)
+var _ productasset.ApprovedInventoryReader = (*repository)(nil)

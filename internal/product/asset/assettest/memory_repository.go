@@ -202,6 +202,41 @@ func ExerciseRepositoryContract(t *testing.T, factory RepositoryFactory) {
 		}
 	})
 
+	t.Run("versioned request does not fall back to an unversioned approval", func(t *testing.T) {
+		repo := factory(t)
+		unversioned := contractCommit("tenant-a", "product-versioned-miss", "approve-unversioned", "asset-unversioned")
+		unversioned.TargetPlatform = "shein"
+		assertNoError(t, commitOnly(repo, unversioned))
+
+		_, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{
+			TenantID:              "tenant-a",
+			ProductKey:            "product-versioned-miss",
+			TargetPlatform:        "shein",
+			SourceSnapshotVersion: 7,
+		})
+		if !errors.Is(err, asset.ErrApprovedAssetsNotReady) {
+			t.Fatalf("GetApprovedInventory(versioned miss) error = %v, want ErrApprovedAssetsNotReady", err)
+		}
+	})
+
+	t.Run("versioned inventory remains organization isolated", func(t *testing.T) {
+		repo := factory(t)
+		commit := contractCommit("tenant-a", "product-versioned-org", "approve-v3", "asset-v3")
+		commit.TargetPlatform = "amazon"
+		commit.SourceSnapshotVersion = 3
+		assertNoError(t, commitOnly(repo, commit))
+
+		_, err := repo.GetApprovedInventory(context.Background(), asset.InventoryScope{
+			TenantID:              "tenant-b",
+			ProductKey:            "product-versioned-org",
+			TargetPlatform:        "amazon",
+			SourceSnapshotVersion: 3,
+		})
+		if !errors.Is(err, asset.ErrApprovedAssetsNotReady) {
+			t.Fatalf("GetApprovedInventory(cross-tenant versioned) error = %v, want ErrApprovedAssetsNotReady", err)
+		}
+	})
+
 	t.Run("target platform approvals remain isolated", func(t *testing.T) {
 		repo := factory(t)
 		amazon := contractCommit("tenant-a", "product-targeted", "approve-amazon", "asset-amazon")
