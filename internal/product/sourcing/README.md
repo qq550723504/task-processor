@@ -41,9 +41,12 @@ canonical hash from the original command and is the read-only recovery path for
 response loss or unknown COMMIT outcome.
 
 Envelope and derived snapshot encodings are each capped at 2 MiB; the complete
-operation is capped at 10 seconds. Schema setup is explicit via the composed
-`productsourcing.InstallSchema`; ordinary calls never execute DDL. Source
-images remain Catalog source candidates and do not create ApprovedAsset facts.
+operation is capped at 10 seconds. Before normalization or JSON materialization,
+the internal producer also enforces the server-owned 8 KiB per-string, 256
+per-collection, 1,024 aggregate-item, and 2 MiB aggregate-string budgets across
+every nested envelope path. Schema setup is explicit via the composed
+`productsourcing.InstallSchema`; ordinary calls never execute DDL. Source images
+remain Catalog source candidates and do not create ApprovedAsset facts.
 
 Does not own:
 

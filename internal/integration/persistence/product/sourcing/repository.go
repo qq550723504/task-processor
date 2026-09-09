@@ -255,6 +255,7 @@ func (r *repository) verifyLoaded(db *gorm.DB, publication sourcing.AtomicPublic
 		receipt.CatalogPublicationID != publication.PublicationID || receipt.CatalogPublicationID != evidence.CatalogPublicationID ||
 		receipt.EnvelopeHash != envelopeHash || evidence.EnvelopeHash != envelopeHash ||
 		receipt.SnapshotHash != snapshotHash || evidence.SnapshotHash != snapshotHash ||
+		receipt.ActorID != evidence.ActorID || !authidentity.IsBoundedIdentifier(receipt.ActorID) ||
 		evidence.EnvelopeBytes > sourcing.MaxEncodedEnvelopeBytes || evidence.SnapshotBytes > sourcing.MaxEncodedSnapshotBytes ||
 		len(evidence.EnvelopeJSON) == 0 || len(evidence.SnapshotJSON) == 0 ||
 		digest(evidence.EnvelopeJSON) != evidence.EnvelopeHash || digest(evidence.SnapshotJSON) != evidence.SnapshotHash ||

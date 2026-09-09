@@ -263,6 +263,9 @@ func (p *InternalProducer) prepare(ctx context.Context, command PublicationComma
 	if _, admitted := p.admitted[command.Producer]; !admitted {
 		return AtomicPublication{}, ErrSourceProducerNotAdmitted
 	}
+	if err := validateSourceEnvelopePreflight(command.Envelope); err != nil {
+		return AtomicPublication{}, err
+	}
 
 	envelope, err := Normalize(command.Envelope)
 	if err != nil {

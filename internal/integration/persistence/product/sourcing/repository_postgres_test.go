@@ -282,6 +282,13 @@ func TestPostgresAtomicPublicationCancelAndCorruptFacts(t *testing.T) {
 	}
 	_, err = store.Read(context.Background(), "org-a", "pub-corrupt-hash")
 	require.ErrorIs(t, err, sourcing.ErrSourcePublicationStateInvalid)
+
+	actorMismatch := atomicFixture(t, "pub-actor-mismatch", "product-actor-mismatch", uint64Pointer(0))
+	_, err = store.Publish(context.Background(), actorMismatch)
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&receiptRecord{}).Where("organization_id = ? AND publication_id = ?", "org-a", "pub-actor-mismatch").Update("actor_id", "actor-b").Error)
+	_, err = store.Read(context.Background(), "org-a", "pub-actor-mismatch")
+	require.ErrorIs(t, err, sourcing.ErrSourcePublicationStateInvalid)
 }
 
 func TestPostgresAtomicPublicationRejectsOrphanCatalogAndStaleBaseWithoutEvidence(t *testing.T) {
@@ -317,9 +324,20 @@ func TestPostgresAtomicPublicationAcceptsExactTwoMiBBoundaries(t *testing.T) {
 	require.NoError(t, err)
 
 	envelopePublication := atomicFixture(t, "pub-limit-envelope", "product-limit-envelope", uint64Pointer(0))
-	envelopePublication.Envelope.SupplierOrCostFacts.Facts = map[string]string{"padding": ""}
+	envelopePublication.Envelope.SupplierOrCostFacts.Facts = make(map[string]string, sourcing.MaxSourceEnvelopeCollectionItems)
+	keys := make([]string, sourcing.MaxSourceEnvelopeCollectionItems)
+	for index := range keys {
+		keys[index] = fmt.Sprintf("padding-%03d", index)
+		envelopePublication.Envelope.SupplierOrCostFacts.Facts[keys[index]] = ""
+	}
 	envelopePublication = refreshAtomic(t, envelopePublication)
-	envelopePublication.Envelope.SupplierOrCostFacts.Facts["padding"] = strings.Repeat("x", sourcing.MaxEncodedEnvelopeBytes-len(envelopePublication.EnvelopeJSON))
+	remaining := sourcing.MaxEncodedEnvelopeBytes - len(envelopePublication.EnvelopeJSON)
+	for _, key := range keys {
+		added := min(remaining, sourcing.MaxSourceEnvelopeStringBytes)
+		envelopePublication.Envelope.SupplierOrCostFacts.Facts[key] = strings.Repeat("x", added)
+		remaining -= added
+	}
+	require.Zero(t, remaining)
 	envelopePublication = refreshAtomic(t, envelopePublication)
 	require.Len(t, envelopePublication.EnvelopeJSON, sourcing.MaxEncodedEnvelopeBytes)
 	require.Less(t, len(envelopePublication.SnapshotJSON), sourcing.MaxEncodedSnapshotBytes)
@@ -327,15 +345,27 @@ func TestPostgresAtomicPublicationAcceptsExactTwoMiBBoundaries(t *testing.T) {
 	require.NoError(t, err)
 
 	snapshotPublication := atomicFixture(t, "pub-limit-snapshot", "product-limit-snapshot", uint64Pointer(0))
-	snapshotPublication.Envelope.Warnings = []sourcing.SourceWarning{{Code: "source_warning", Field: "field", Message: "x"}}
+	snapshotPublication.Envelope.Warnings = make([]sourcing.SourceWarning, sourcing.MaxSourceEnvelopeCollectionItems)
+	for index := range snapshotPublication.Envelope.Warnings {
+		snapshotPublication.Envelope.Warnings[index] = sourcing.SourceWarning{Code: "source_warning", Field: "field", Message: fmt.Sprintf("message-%03d", index)}
+	}
 	snapshotPublication = refreshAtomic(t, snapshotPublication)
 	delta := sourcing.MaxEncodedSnapshotBytes - len(snapshotPublication.SnapshotJSON)
 	require.Positive(t, delta)
 	if delta%2 != 0 {
 		snapshotPublication.Envelope.Warnings[0].Field += "x"
-		delta--
+		snapshotPublication = refreshAtomic(t, snapshotPublication)
+		delta = sourcing.MaxEncodedSnapshotBytes - len(snapshotPublication.SnapshotJSON)
 	}
-	snapshotPublication.Envelope.Warnings[0].Message += strings.Repeat("x", delta/2)
+	require.Zero(t, delta%2)
+	remaining = delta / 2
+	for index := range snapshotPublication.Envelope.Warnings {
+		capacity := sourcing.MaxSourceEnvelopeStringBytes - len(snapshotPublication.Envelope.Warnings[index].Message)
+		added := min(remaining, capacity)
+		snapshotPublication.Envelope.Warnings[index].Message += strings.Repeat("x", added)
+		remaining -= added
+	}
+	require.Zero(t, remaining)
 	snapshotPublication = refreshAtomic(t, snapshotPublication)
 	require.Len(t, snapshotPublication.SnapshotJSON, sourcing.MaxEncodedSnapshotBytes)
 	require.Less(t, len(snapshotPublication.EnvelopeJSON), sourcing.MaxEncodedEnvelopeBytes)

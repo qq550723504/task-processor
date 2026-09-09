@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +221,111 @@ func TestInternalProducerRejectsInvalidScopeAndOversizedFactsBeforeStore(t *test
 	}
 }
 
+func TestInternalProducerRejectsUnboundedEnvelopeShapeBeforeMaterialization(t *testing.T) {
+	newProducer := func(store *publicationStoreStub) *InternalProducer {
+		producer, err := NewInternalProducer(admissionFunc(func(context.Context) (PublicationScope, error) {
+			return PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, nil
+		}), store, ProducerDescriptor{Kind: ControlledSnapshotProducerKind, Version: ControlledSnapshotProducerVersion})
+		require.NoError(t, err)
+		return producer
+	}
+	items := func() []string {
+		values := make([]string, MaxSourceEnvelopeCollectionItems+1)
+		for index := range values {
+			values[index] = fmt.Sprintf("item-%d", index)
+		}
+		return values
+	}
+	metadata := func() map[string]string {
+		values := make(map[string]string, MaxSourceEnvelopeCollectionItems+1)
+		for index := 0; index <= MaxSourceEnvelopeCollectionItems; index++ {
+			values[fmt.Sprintf("key-%d", index)] = "value"
+		}
+		return values
+	}
+
+	for name, mutate := range map[string]func(*PublicationCommand){
+		"overlong scalar": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.Description = strings.Repeat("x", MaxSourceEnvelopeStringBytes+1)
+		},
+		"overlong map key": func(command *PublicationCommand) {
+			command.Envelope.RawReference.Metadata = map[string]string{strings.Repeat("k", MaxSourceEnvelopeStringBytes+1): "value"}
+		},
+		"overlong map value": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.Attributes = map[string]string{"key": strings.Repeat("v", MaxSourceEnvelopeStringBytes+1)}
+		},
+		"category path": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.CategoryPath = items()
+		},
+		"raw metadata": func(command *PublicationCommand) {
+			command.Envelope.RawReference.Metadata = metadata()
+		},
+		"product attributes": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.Attributes = metadata()
+		},
+		"variants": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.Variants = make([]ProductVariantCandidate, MaxSourceEnvelopeCollectionItems+1)
+		},
+		"variant attributes": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.Variants = []ProductVariantCandidate{{SourceID: "variant-1", Attributes: metadata()}}
+		},
+		"asset candidates": func(command *PublicationCommand) {
+			command.Envelope.AssetCandidates = make([]AssetCandidate, MaxSourceEnvelopeCollectionItems+1)
+		},
+		"supplier facts": func(command *PublicationCommand) {
+			command.Envelope.SupplierOrCostFacts.Facts = metadata()
+		},
+		"trace notes": func(command *PublicationCommand) {
+			command.Envelope.Trace.Notes = items()
+		},
+		"missing facts": func(command *PublicationCommand) {
+			command.Envelope.MissingFacts = make([]MissingFact, MaxSourceEnvelopeCollectionItems+1)
+		},
+		"warnings": func(command *PublicationCommand) {
+			command.Envelope.Warnings = make([]SourceWarning, MaxSourceEnvelopeCollectionItems+1)
+		},
+		"aggregate collection items": func(command *PublicationCommand) {
+			command.Envelope.ProductCandidate.CategoryPath = items()[:MaxSourceEnvelopeCollectionItems]
+			command.Envelope.ProductCandidate.Attributes = metadata()
+			delete(command.Envelope.ProductCandidate.Attributes, fmt.Sprintf("key-%d", MaxSourceEnvelopeCollectionItems))
+			command.Envelope.ProductCandidate.Variants = make([]ProductVariantCandidate, MaxSourceEnvelopeCollectionItems)
+			command.Envelope.AssetCandidates = make([]AssetCandidate, MaxSourceEnvelopeCollectionItems)
+			command.Envelope.Warnings = []SourceWarning{{Code: "over-aggregate"}}
+		},
+		"aggregate string bytes": func(command *PublicationCommand) {
+			command.Envelope.RawReference.Metadata = make(map[string]string, MaxSourceEnvelopeCollectionItems/2)
+			command.Envelope.ProductCandidate.Attributes = make(map[string]string, MaxSourceEnvelopeCollectionItems/2)
+			for index := 0; index < MaxSourceEnvelopeCollectionItems/2; index++ {
+				command.Envelope.RawReference.Metadata[fmt.Sprintf("raw-%03d", index)] = strings.Repeat("r", MaxSourceEnvelopeStringBytes)
+				command.Envelope.ProductCandidate.Attributes[fmt.Sprintf("attribute-%03d", index)] = strings.Repeat("a", MaxSourceEnvelopeStringBytes)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := &publicationStoreStub{}
+			command := validPublicationCommand()
+			mutate(&command)
+			_, err := newProducer(store).Publish(context.Background(), command)
+			require.ErrorIs(t, err, ErrSourcePublicationTooLarge)
+			require.Zero(t, store.publishCalls)
+		})
+	}
+}
+
+func TestSourceEnvelopePreflightRejectsGrossShapeWithoutAllocatingCopies(t *testing.T) {
+	envelope := validPublicationCommand().Envelope
+	envelope.RawReference.Metadata = make(map[string]string, MaxSourceEnvelopeCollectionItems+1)
+	for index := 0; index <= MaxSourceEnvelopeCollectionItems; index++ {
+		envelope.RawReference.Metadata[fmt.Sprintf("key-%d", index)] = "value"
+	}
+	var validationErr error
+	allocations := testing.AllocsPerRun(100, func() {
+		validationErr = validateSourceEnvelopePreflight(envelope)
+	})
+	require.ErrorIs(t, validationErr, ErrSourcePublicationTooLarge)
+	require.Zero(t, allocations)
+}
+
 func TestInternalProducerAcceptsExactEnvelopeAndSnapshotLimits(t *testing.T) {
 	newProducer := func(store *publicationStoreStub) *InternalProducer {
 		producer, err := NewInternalProducer(admissionFunc(func(context.Context) (PublicationScope, error) {
@@ -232,12 +338,23 @@ func TestInternalProducerAcceptsExactEnvelopeAndSnapshotLimits(t *testing.T) {
 	t.Run("envelope", func(t *testing.T) {
 		store := &publicationStoreStub{}
 		command := validPublicationCommand()
-		command.Envelope.SupplierOrCostFacts.Facts = map[string]string{"padding": ""}
+		command.Envelope.SupplierOrCostFacts.Facts = make(map[string]string, MaxSourceEnvelopeCollectionItems)
+		keys := make([]string, MaxSourceEnvelopeCollectionItems)
+		for index := range keys {
+			keys[index] = fmt.Sprintf("padding-%03d", index)
+			command.Envelope.SupplierOrCostFacts.Facts[keys[index]] = ""
+		}
 		normalized, err := Normalize(command.Envelope)
 		require.NoError(t, err)
 		encoded, err := json.Marshal(normalized)
 		require.NoError(t, err)
-		command.Envelope.SupplierOrCostFacts.Facts["padding"] = strings.Repeat("x", MaxEncodedEnvelopeBytes-len(encoded))
+		remaining := MaxEncodedEnvelopeBytes - len(encoded)
+		for _, key := range keys {
+			added := min(remaining, MaxSourceEnvelopeStringBytes)
+			command.Envelope.SupplierOrCostFacts.Facts[key] = strings.Repeat("x", added)
+			remaining -= added
+		}
+		require.Zero(t, remaining)
 		_, err = newProducer(store).Publish(context.Background(), command)
 		require.NoError(t, err)
 		require.Len(t, store.last.EnvelopeJSON, MaxEncodedEnvelopeBytes)
@@ -247,7 +364,10 @@ func TestInternalProducerAcceptsExactEnvelopeAndSnapshotLimits(t *testing.T) {
 	t.Run("snapshot", func(t *testing.T) {
 		store := &publicationStoreStub{}
 		command := validPublicationCommand()
-		command.Envelope.Warnings = []SourceWarning{{Code: "source_warning", Field: "field", Message: "x"}}
+		command.Envelope.Warnings = make([]SourceWarning, MaxSourceEnvelopeCollectionItems)
+		for index := range command.Envelope.Warnings {
+			command.Envelope.Warnings[index] = SourceWarning{Code: "source_warning", Field: "field", Message: fmt.Sprintf("message-%03d", index)}
+		}
 		snapshot, err := ToSnapshot(command.Envelope)
 		require.NoError(t, err)
 		encoded, err := json.Marshal(snapshot)
@@ -256,9 +376,21 @@ func TestInternalProducerAcceptsExactEnvelopeAndSnapshotLimits(t *testing.T) {
 		require.Positive(t, delta)
 		if delta%2 != 0 {
 			command.Envelope.Warnings[0].Field += "x"
-			delta--
+			snapshot, err = ToSnapshot(command.Envelope)
+			require.NoError(t, err)
+			encoded, err = json.Marshal(snapshot)
+			require.NoError(t, err)
+			delta = MaxEncodedSnapshotBytes - len(encoded)
 		}
-		command.Envelope.Warnings[0].Message += strings.Repeat("x", delta/2)
+		require.Zero(t, delta%2)
+		remaining := delta / 2
+		for index := range command.Envelope.Warnings {
+			capacity := MaxSourceEnvelopeStringBytes - len(command.Envelope.Warnings[index].Message)
+			added := min(remaining, capacity)
+			command.Envelope.Warnings[index].Message += strings.Repeat("x", added)
+			remaining -= added
+		}
+		require.Zero(t, remaining)
 		_, err = newProducer(store).Publish(context.Background(), command)
 		require.NoError(t, err)
 		require.Len(t, store.last.SnapshotJSON, MaxEncodedSnapshotBytes)
