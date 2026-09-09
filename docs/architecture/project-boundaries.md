@@ -228,12 +228,11 @@ baseline above. #30 owns extraction of identity, authorization, errors and sourc
 publication into current Product Sourcing/Catalog and application boundaries,
 then retirement of the old route/handoff. No new consumer is allowed.
 
-The approved [issue30-clean-slate-cutover.md](../product/issue30-clean-slate-cutover.md)
-and [#307](https://github.com/qq550723504/task-processor/issues/307) replace historical
-publication mapping/replay work with new controlled import, explicit asset
-approval and readiness in an approved clean business scope. Account/profile,
-Store, IAM and financial/effect evidence protections remain. This is neither
-runtime cutover evidence nor permission to delete data.
+**PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08** governs this path: future work
+starts from a fresh installation and empty business data. The current Product
+Sourcing/Catalog owners retain authorization, Store, IAM and financial/effect
+facts; this boundary does not authorize legacy profile reuse, migration or
+cutover, real-environment operation, or deletion of existing data.
 
 ### 3.8 `internal/aicapability`
 

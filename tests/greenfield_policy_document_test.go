@@ -106,6 +106,20 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 			"current entitlement facts are created by their current owners, not carried over",
 			"Do not restore task-count quota as resource authority or migrate legacy quota values.",
 		},
+		filepath.Join("..", "docs", "architecture", "project-boundaries.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"fresh installation and empty business data",
+			"does not authorize legacy profile reuse, migration or cutover",
+		},
+		filepath.Join("..", "docs", "architecture", "auth-and-tenancy.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"legacy profile preservation is not a current requirement",
+		},
+		filepath.Join("..", "README.md"): {
+			"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+			"greenfield-no-legacy-migration.md",
+			"历史 profile 和 cutover gate 不是当前验收前置。",
+		},
 	} {
 		contents := strings.Join(strings.Fields(readGreenfieldPolicyDocument(t, path)), " ")
 		for _, requirement := range required {
