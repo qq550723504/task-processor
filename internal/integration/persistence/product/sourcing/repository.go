@@ -65,7 +65,7 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 		return sourcing.PublicationReceipt{}, err
 	}
 	var receipt sourcing.PublicationReceipt
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.writeTransaction(ctx, func(tx *gorm.DB) error {
 		if err := advisoryLock(tx, publication.OrganizationID, publication.PublicationID); err != nil {
 			return err
 		}
@@ -153,6 +153,38 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 		return sourcing.PublicationReceipt{}, fmt.Errorf("%w: %v", sourcing.ErrSourcePublicationOutcomeUnknown, err)
 	}
 	return receipt, nil
+}
+
+// writeTransaction keeps the COMMIT boundary observable. GORM's callback
+// Transaction returns body and commit errors through the same channel, but the
+// recovery contract must distinguish a failure known before COMMIT from an
+// acknowledgement failure after COMMIT was attempted.
+func (r *repository) writeTransaction(ctx context.Context, fn func(*gorm.DB) error) (err error) {
+	tx := r.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	commitAttempted := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if !commitAttempted {
+				_ = tx.Rollback().Error
+			}
+			panic(recovered)
+		}
+		if err != nil && !commitAttempted {
+			_ = tx.Rollback().Error
+		}
+	}()
+
+	if err = fn(tx); err != nil {
+		return err
+	}
+	commitAttempted = true
+	if commitErr := tx.Commit().Error; commitErr != nil {
+		return fmt.Errorf("%w: commit acknowledgement: %v", sourcing.ErrSourcePublicationOutcomeUnknown, commitErr)
+	}
+	return nil
 }
 
 func (r *repository) Verify(ctx context.Context, publication sourcing.AtomicPublication) (sourcing.PublicationReceipt, error) {

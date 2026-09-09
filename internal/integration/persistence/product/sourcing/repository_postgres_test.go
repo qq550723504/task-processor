@@ -2,6 +2,7 @@ package sourcingpersistence
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -42,6 +44,76 @@ func postgresFixture(t *testing.T) *gorm.DB {
 		return InstallSchema(tx)
 	}))
 	return db
+}
+
+func TestWriteTransactionClassifiesCommitErrorAsOutcomeUnknown(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	mock.ExpectBegin()
+	mock.ExpectCommit().WillReturnError(errors.New("commit response lost"))
+
+	repository := &repository{db: db}
+	err = repository.writeTransaction(context.Background(), func(*gorm.DB) error { return nil })
+	require.ErrorIs(t, err, sourcing.ErrSourcePublicationOutcomeUnknown)
+	require.ErrorContains(t, err, "commit response lost")
+	mock.ExpectClose()
+	require.NoError(t, sqlDB.Close())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+type commitResponseLossPool struct {
+	*sql.DB
+	mu       sync.Mutex
+	failNext bool
+}
+
+func (p *commitResponseLossPool) BeginTx(ctx context.Context, options *sql.TxOptions) (gorm.ConnPool, error) {
+	tx, err := p.DB.BeginTx(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	p.mu.Lock()
+	fail := p.failNext
+	p.failNext = false
+	p.mu.Unlock()
+	if fail {
+		return &commitResponseLossTx{Tx: tx}, nil
+	}
+	return tx, nil
+}
+
+type commitResponseLossTx struct{ *sql.Tx }
+
+func (tx *commitResponseLossTx) Commit() error {
+	if err := tx.Tx.Commit(); err != nil {
+		return err
+	}
+	return errors.New("commit response lost after server commit")
+}
+
+func TestPostgresCommitResponseLossReturnsUnknownAndVerifyFindsPublication(t *testing.T) {
+	db := postgresFixture(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	faultDB := db.Session(&gorm.Session{NewDB: true})
+	pool := &commitResponseLossPool{DB: sqlDB, failNext: true}
+	faultDB.ConnPool = pool
+	faultDB.Statement.ConnPool = pool
+
+	faultStore, err := NewRepository(faultDB, testCatalogBridgeFactory)
+	require.NoError(t, err)
+	publication := atomicFixture(t, "pub-commit-response-loss", "product-commit-response-loss", uint64Pointer(0))
+	_, err = faultStore.Publish(context.Background(), publication)
+	require.ErrorIs(t, err, sourcing.ErrSourcePublicationOutcomeUnknown)
+
+	verificationStore, err := NewRepository(db, testCatalogBridgeFactory)
+	require.NoError(t, err)
+	receipt, err := verificationStore.Verify(context.Background(), publication)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), receipt.CatalogVersion)
+	assertCounts(t, db, 1, 1, 1, 1)
 }
 
 type testCatalogBridge struct{ db *gorm.DB }
