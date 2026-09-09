@@ -176,6 +176,18 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 		}
 	}
 
+	consolePhaseOne := strings.Join(strings.Fields(readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "superpowers", "specs", "2026-09-02-shuomi-console-phase1-hard-cut-design.md"))), " ")
+	for _, forbidden := range []string{
+		"唯一实现基线",
+		"实现细节以 #283 V7 为准",
+		"实现细节以 #284 V7 为准",
+		"#283/#284 Implementation Baseline",
+	} {
+		if strings.Contains(consolePhaseOne, forbidden) {
+			t.Errorf("Console Phase1 spec must not retain superseded V7 authority %q", forbidden)
+		}
+	}
+
 	refactoringIndex := readGreenfieldPolicyDocument(t, filepath.Join("..", "docs", "refactoring", "README.md"))
 	currentDirection := strings.ToLower(documentSection(t, refactoringIndex, "## Current active direction", "## Current refactoring documents"))
 	for _, required := range []string{

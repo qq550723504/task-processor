@@ -192,7 +192,7 @@ ZITADEL 官方 Login V2
 → Generic Login / OTP / Password / Reset / Session / OIDC
 
 硕米手机号自助注册与首次业务开通
-→ 详细设计见 PR #283 V7
+→ 依当前 greenfield Product Decision 与 current owners 实施；PR #283 V7 仅作历史证据
 ```
 
 上线 Gate：
@@ -386,7 +386,7 @@ Password Decoy User
 登录 Temporal Workflow
 ```
 
-手机号自助注册时不可避免的临时 Registration Intent、Provider Provisioning 和首次业务开通边界，以 **PR #283 V7** 为唯一实现基线。
+手机号自助注册时不可避免的临时 Registration Intent、Provider Provisioning 和首次业务开通边界，依当前 greenfield Product Decision 与 current owners 实施；**PR #283 V7** 仅作历史证据。
 
 ---
 
@@ -573,18 +573,17 @@ PR #281
 → Console Product Decisions、Figma、页面、术语、能力迁移、系统边界
 
 PR #283 V7
-→ 手机号自助注册 + Registration Intent + Onboarding + Consent + base_payg + 首次体验 Grant 触发 + 最后角色授予
+→ 上述历史设计证据；不作为当前实现授权
 
 PR #284 V7
-→ 企业资源账本 + trusted Grant + Reservation/Settlement + Store Activate/Renew/Reactivate
+→ 上述历史设计证据；不作为当前实现授权
 ```
 
 若三份设计发生冲突：
 
 - **产品行为/命名/Phase1 范围**以 #281 最新 Product Decision 为准；
-- 身份注册/Onboarding 的实现细节以 #283 V7 为准；
-- 资源/店铺服务一致性实现细节以 #284 V7 为准；
-- 下游 V7 必须同步已确认的新 Product Decision，不能保留相反的历史假设。
+- 身份注册、Onboarding、资源和店铺服务的实现细节以当前 greenfield Product Decision 与 current owners 为准；
+- PR #283 V7 与 PR #284 V7 仅可用于理解历史证据，不能保留或恢复相反的历史机制。
 
 ---
 
@@ -597,10 +596,10 @@ PR #284 V7
 - Phase1 用户核心路径无法闭环；
 - 已有生产能力因为 Hard Cut 被无替代删除；
 - 页面承诺了实际上没有 authority/capability/resource acquisition 的动作；
-- #281 Product Decision 与 #283/#284 Implementation Baseline 直接矛盾；
+- 当前 Product Decision 与 current-owner contract 直接矛盾；
 - 跨租户/越权或明确泄露不应公开的账户/业务资料。
 
-Provider finality、Registration recovery、Resource locking、Migration concurrency 等具体实现问题必须回所属 #283/#284，不在 #281 重建第二份协议。
+Provider finality、Registration recovery、Resource locking 和 normal new-system schema evolution 等具体实现问题必须回当前 owner，不在 #281 重建第二份协议或恢复 legacy migration。
 
 ---
 
