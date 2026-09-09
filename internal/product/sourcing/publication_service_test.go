@@ -244,6 +244,18 @@ func TestInternalProducerRejectsLegacyDerivedPublicationIdentity(t *testing.T) {
 			identity.SourceID = ""
 			identity.ProductID = "legacy-product"
 		},
+		"legacy platform retained": func(identity *SourceIdentity) {
+			identity.Platform = "legacy-platform"
+		},
+		"legacy region retained": func(identity *SourceIdentity) {
+			identity.Region = "legacy-region"
+		},
+		"legacy product id retained": func(identity *SourceIdentity) {
+			identity.ProductID = "legacy-product"
+		},
+		"legacy store id retained": func(identity *SourceIdentity) {
+			identity.StoreID = 7
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := &publicationStoreStub{}
@@ -255,6 +267,21 @@ func TestInternalProducerRejectsLegacyDerivedPublicationIdentity(t *testing.T) {
 			require.Zero(t, store.publishCalls)
 		})
 	}
+}
+
+func TestInternalProducerPersistsOnlyCurrentSourceIdentity(t *testing.T) {
+	store := &publicationStoreStub{}
+	producer, err := NewInternalProducer(admissionFunc(func(context.Context) (PublicationScope, error) {
+		return PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, nil
+	}), store, ProducerDescriptor{Kind: ControlledSnapshotProducerKind, Version: ControlledSnapshotProducerVersion})
+	require.NoError(t, err)
+
+	_, err = producer.Publish(context.Background(), validPublicationCommand())
+	require.NoError(t, err)
+	require.Empty(t, store.last.Envelope.Identity.Platform)
+	require.Empty(t, store.last.Envelope.Identity.Region)
+	require.Empty(t, store.last.Envelope.Identity.ProductID)
+	require.Zero(t, store.last.Envelope.Identity.StoreID)
 }
 
 func TestInternalProducerRejectsUnboundedEnvelopeShapeBeforeMaterialization(t *testing.T) {
@@ -488,7 +515,7 @@ func TestInternalProducerAcceptsExactEnvelopeAndSnapshotLimits(t *testing.T) {
 			keys[index] = fmt.Sprintf("padding-%03d", index)
 			command.Envelope.SupplierOrCostFacts.Facts[keys[index]] = ""
 		}
-		normalized, err := Normalize(command.Envelope)
+		normalized, err := NormalizePublicationEnvelope(command.Envelope)
 		require.NoError(t, err)
 		encoded, err := json.Marshal(normalized)
 		require.NoError(t, err)

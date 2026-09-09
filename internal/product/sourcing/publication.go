@@ -189,7 +189,7 @@ func (p *InternalProducer) Read(ctx context.Context, publicationID string) (Pers
 	if err != nil {
 		return PersistedPublication{}, err
 	}
-	envelope, err := Normalize(persisted.Envelope)
+	envelope, err := NormalizePublicationEnvelope(persisted.Envelope)
 	if err != nil {
 		return PersistedPublication{}, ErrSourcePublicationStateInvalid
 	}
@@ -266,13 +266,7 @@ func (p *InternalProducer) prepare(ctx context.Context, command PublicationComma
 	if err := validateSourceEnvelopePreflight(command.Envelope); err != nil {
 		return AtomicPublication{}, err
 	}
-	if strings.TrimSpace(command.Envelope.Identity.SourceType) == "" ||
-		strings.TrimSpace(command.Envelope.Identity.SourcePlatform) == "" ||
-		strings.TrimSpace(command.Envelope.Identity.SourceID) == "" {
-		return AtomicPublication{}, ErrInvalidSourcePublication
-	}
-
-	envelope, err := Normalize(command.Envelope)
+	envelope, err := NormalizePublicationEnvelope(command.Envelope)
 	if err != nil {
 		return AtomicPublication{}, fmt.Errorf("%w: %v", ErrInvalidSourcePublication, err)
 	}

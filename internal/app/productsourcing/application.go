@@ -97,8 +97,8 @@ func (b *catalogBridge) Read(ctx context.Context, organizationID, productKey str
 	return sourcingpersistence.CatalogBinding{Version: published.Version, PublicationID: published.PublicationID, SnapshotJSON: raw}, true, nil
 }
 
-func (b *catalogBridge) PublicationExists(ctx context.Context, organizationID, productKey, publicationID string) (bool, error) {
-	return catalogpersistence.PublicationExists(ctx, b.db, catalog.SnapshotIdentity{TenantID: organizationID, ProductKey: productKey}, publicationID)
+func (b *catalogBridge) LockPublicationSlot(ctx context.Context, organizationID, productKey, publicationID string) (bool, error) {
+	return catalogpersistence.LockPublicationSlot(ctx, b.db, catalog.SnapshotIdentity{TenantID: organizationID, ProductKey: productKey}, publicationID)
 }
 
 var _ sourcingpersistence.CatalogBridge = (*catalogBridge)(nil)

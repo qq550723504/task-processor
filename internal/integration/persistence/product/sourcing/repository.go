@@ -32,7 +32,7 @@ type CatalogBinding struct {
 type CatalogBridge interface {
 	Publish(context.Context, sourcing.AtomicPublication) (CatalogBinding, error)
 	Read(context.Context, string, string, uint64) (CatalogBinding, bool, error)
-	PublicationExists(context.Context, string, string, string) (bool, error)
+	LockPublicationSlot(context.Context, string, string, string) (bool, error)
 }
 
 type CatalogBridgeFactory func(*gorm.DB) (CatalogBridge, error)
@@ -92,7 +92,7 @@ func (r *repository) Publish(ctx context.Context, publication sourcing.AtomicPub
 		if err != nil {
 			return err
 		}
-		catalogExists, err := catalogBridge.PublicationExists(ctx, publication.OrganizationID, publication.ProductKey, publication.PublicationID)
+		catalogExists, err := catalogBridge.LockPublicationSlot(ctx, publication.OrganizationID, publication.ProductKey, publication.PublicationID)
 		if err != nil {
 			return err
 		}
@@ -267,6 +267,14 @@ func (r *repository) verifyLoaded(db *gorm.DB, publication sourcing.AtomicPublic
 	if json.Unmarshal(evidence.EnvelopeJSON, &storedEnvelope) != nil || json.Unmarshal(evidence.SnapshotJSON, &storedSnapshotJSON) != nil {
 		return sourcing.PublicationReceipt{}, sourcing.ErrSourcePublicationStateInvalid
 	}
+	normalizedEnvelope, err := sourcing.NormalizePublicationEnvelope(storedEnvelope)
+	if err != nil {
+		return sourcing.PublicationReceipt{}, sourcing.ErrSourcePublicationStateInvalid
+	}
+	normalizedEnvelopeJSON, err := json.Marshal(normalizedEnvelope)
+	if err != nil || string(normalizedEnvelopeJSON) != string(evidence.EnvelopeJSON) {
+		return sourcing.PublicationReceipt{}, sourcing.ErrSourcePublicationStateInvalid
+	}
 	bridge, err := r.catalog(db)
 	if err != nil {
 		return sourcing.PublicationReceipt{}, err
@@ -325,7 +333,7 @@ func validateAtomic(publication sourcing.AtomicPublication) error {
 	if envelopeErr != nil || snapshotErr != nil || string(envelopeJSON) != string(publication.EnvelopeJSON) || string(snapshotJSON) != string(publication.SnapshotJSON) {
 		return sourcing.ErrInvalidSourcePublication
 	}
-	normalized, err := sourcing.Normalize(publication.Envelope)
+	normalized, err := sourcing.NormalizePublicationEnvelope(publication.Envelope)
 	if err != nil {
 		return sourcing.ErrInvalidSourcePublication
 	}

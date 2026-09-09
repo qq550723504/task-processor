@@ -84,13 +84,13 @@ func (b *testCatalogBridge) Read(ctx context.Context, organizationID, productKey
 	return CatalogBinding{Version: published.Version, PublicationID: published.PublicationID, SnapshotJSON: raw}, true, err
 }
 
-func (b *testCatalogBridge) PublicationExists(ctx context.Context, organizationID, productKey, publicationID string) (bool, error) {
-	return catalogpersistence.PublicationExists(ctx, b.db, catalog.SnapshotIdentity{TenantID: organizationID, ProductKey: productKey}, publicationID)
+func (b *testCatalogBridge) LockPublicationSlot(ctx context.Context, organizationID, productKey, publicationID string) (bool, error) {
+	return catalogpersistence.LockPublicationSlot(ctx, b.db, catalog.SnapshotIdentity{TenantID: organizationID, ProductKey: productKey}, publicationID)
 }
 
 func atomicFixture(t *testing.T, publicationID, productKey string, expected *uint64) sourcing.AtomicPublication {
 	t.Helper()
-	envelope, err := sourcing.Normalize(sourcing.SourceEnvelope{
+	envelope, err := sourcing.NormalizePublicationEnvelope(sourcing.SourceEnvelope{
 		Identity:         sourcing.SourceIdentity{SourceType: sourcing.SourceTypeManualImport, SourcePlatform: "controlled", SourceID: "source-1", SourceVersion: "v1"},
 		RawReference:     sourcing.RawSourceReference{ReferenceType: "snapshot", ReferenceID: "raw-1", Checksum: "sha256:abc"},
 		ProductCandidate: sourcing.ProductCandidate{Title: "Bottle", Attributes: map[string]string{"color": "blue"}},
@@ -289,6 +289,30 @@ func TestPostgresAtomicPublicationCancelAndCorruptFacts(t *testing.T) {
 	require.NoError(t, db.Model(&receiptRecord{}).Where("organization_id = ? AND publication_id = ?", "org-a", "pub-actor-mismatch").Update("actor_id", "actor-b").Error)
 	_, err = store.Read(context.Background(), "org-a", "pub-actor-mismatch")
 	require.ErrorIs(t, err, sourcing.ErrSourcePublicationStateInvalid)
+
+	legacyIdentity := atomicFixture(t, "pub-legacy-identity", "product-legacy-identity", uint64Pointer(0))
+	_, err = store.Publish(context.Background(), legacyIdentity)
+	require.NoError(t, err)
+	legacyEnvelope := legacyIdentity.Envelope
+	legacyEnvelope.Identity.Platform = "legacy-platform"
+	legacyEnvelopeJSON, err := json.Marshal(legacyEnvelope)
+	require.NoError(t, err)
+	legacyInputHash, err := sourcing.CanonicalPublicationInputHash(
+		legacyIdentity.Producer, legacyEnvelope, legacyEnvelopeJSON,
+		legacyIdentity.ProductKey, legacyIdentity.ExpectedBaseVersion,
+	)
+	require.NoError(t, err)
+	legacyEnvelopeHash := digest(legacyEnvelopeJSON)
+	for _, model := range []any{&publicationRecord{}, &receiptRecord{}} {
+		require.NoError(t, db.Model(model).
+			Where("organization_id = ? AND publication_id = ?", "org-a", "pub-legacy-identity").
+			Updates(map[string]any{"input_hash": legacyInputHash, "envelope_hash": legacyEnvelopeHash}).Error)
+	}
+	require.NoError(t, db.Model(&publicationRecord{}).
+		Where("organization_id = ? AND publication_id = ?", "org-a", "pub-legacy-identity").
+		Update("envelope_json", legacyEnvelopeJSON).Error)
+	_, err = store.Read(context.Background(), "org-a", "pub-legacy-identity")
+	require.ErrorIs(t, err, sourcing.ErrSourcePublicationStateInvalid)
 }
 
 func TestPostgresAtomicPublicationRejectsOrphanCatalogAndStaleBaseWithoutEvidence(t *testing.T) {
@@ -316,6 +340,61 @@ func TestPostgresAtomicPublicationRejectsOrphanCatalogAndStaleBaseWithoutEvidenc
 	require.NoError(t, db.Model(&receiptRecord{}).Count(&receipts).Error)
 	require.Zero(t, evidence)
 	require.Zero(t, receipts)
+}
+
+func TestPostgresAtomicPublicationDoesNotAdoptConcurrentOrphanCatalogPublication(t *testing.T) {
+	db := postgresFixture(t)
+	reachedCatalogBoundary := make(chan struct{})
+	releaseCatalogBoundary := make(chan struct{})
+	store := &repository{db: db, catalog: testCatalogBridgeFactory, now: time.Now, fault: func(stage string) error {
+		if stage == "before_catalog" {
+			close(reachedCatalogBoundary)
+			<-releaseCatalogBoundary
+		}
+		return nil
+	}}
+	publication := atomicFixture(t, "pub-catalog-race", "product-catalog-race", uint64Pointer(0))
+
+	sourceResult := make(chan error, 1)
+	go func() {
+		_, publishErr := store.Publish(context.Background(), publication)
+		sourceResult <- publishErr
+	}()
+	<-reachedCatalogBoundary
+
+	catalogStore, err := catalogpersistence.NewRepository(db)
+	require.NoError(t, err)
+	publisher, err := catalog.NewPublisher(catalogStore)
+	require.NoError(t, err)
+	concurrentCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	_, concurrentErr := publisher.Publish(concurrentCtx, catalog.PublishRequest{
+		Identity:            catalog.SnapshotIdentity{TenantID: publication.OrganizationID, ProductKey: publication.ProductKey},
+		PublicationID:       publication.PublicationID,
+		ExpectedBaseVersion: publication.ExpectedBaseVersion,
+		Snapshot:            publication.Snapshot,
+	})
+	cancel()
+	close(releaseCatalogBoundary)
+	sourceErr := <-sourceResult
+
+	if concurrentErr == nil {
+		require.ErrorIs(t, sourceErr, sourcing.ErrSourcePublicationStateInvalid,
+			"source publication must not adopt a Catalog fact committed after its orphan check")
+		return
+	}
+	require.ErrorIs(t, concurrentErr, context.DeadlineExceeded)
+	require.NoError(t, sourceErr)
+
+	// Once the atomic source transaction releases Catalog's stream lock, an
+	// ordinary Catalog replay with the same payload remains idempotent.
+	_, err = publisher.Publish(context.Background(), catalog.PublishRequest{
+		Identity:            catalog.SnapshotIdentity{TenantID: publication.OrganizationID, ProductKey: publication.ProductKey},
+		PublicationID:       publication.PublicationID,
+		ExpectedBaseVersion: publication.ExpectedBaseVersion,
+		Snapshot:            publication.Snapshot,
+	})
+	require.NoError(t, err)
+	assertCounts(t, db, 1, 1, 1, 1)
 }
 
 func TestPostgresAtomicPublicationAcceptsExactTwoMiBBoundaries(t *testing.T) {
@@ -394,7 +473,7 @@ func uint64Pointer(value uint64) *uint64 { return &value }
 
 func refreshAtomic(t *testing.T, publication sourcing.AtomicPublication) sourcing.AtomicPublication {
 	t.Helper()
-	envelope, err := sourcing.Normalize(publication.Envelope)
+	envelope, err := sourcing.NormalizePublicationEnvelope(publication.Envelope)
 	require.NoError(t, err)
 	snapshot, err := sourcing.ToSnapshot(envelope)
 	require.NoError(t, err)

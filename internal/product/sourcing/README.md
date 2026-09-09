@@ -33,6 +33,11 @@ exact Catalog version binding. `(organization_id, publication_id)` is the
 operation key. The canonical input hash covers producer kind/version,
 `SourceIdentity`, the normalized envelope, ProductKey, and expected base
 version. Same-key/same-hash calls replay; a different hash conflicts.
+The durable boundary requires the current `SourceType`/`SourcePlatform`/
+`SourceID` identity and rejects the retired `Platform`/`Region`/`ProductID`/
+`StoreID` aliases. Before checking for an orphan Catalog publication, the
+transaction locks Catalog's Product stream through the Catalog owner, so a
+concurrent Catalog writer cannot create a fact in the check/publish window.
 
 `InternalProducer.Read` is the downstream evidence contract: after fresh
 authorization it returns the immutable envelope, derived snapshot, and receipt
