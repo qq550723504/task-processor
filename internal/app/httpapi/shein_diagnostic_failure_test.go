@@ -32,7 +32,7 @@ func TestSheinDiagnosticPersistedFailuresPostgres(t *testing.T) {
 		payload string
 		status  int
 		code    string
-	}{{`{"future_field":true}`, 422, "invalid_input"}, {`{"spu_name":"a","spu_name":"b"}`, 422, "invalid_input"}, {`{"preview_payload":{"spu_name":"` + strings.Repeat("x", 1100000) + `"}}`, 500, "evaluation_failed"}, {`{"metadata":{"variant_image_coverage_status":"blocked","variant_image_coverage_message":"` + strings.Repeat("x", 1100000) + `"}}`, 500, "evaluation_failed"}} {
+	}{{`{"future_field":true}`, 503, "unavailable"}, {`{"spu_name":"a","spu_name":"b"}`, 503, "unavailable"}, {`{"preview_payload":{"spu_name":"` + strings.Repeat("x", 1100000) + `"}}`, 503, "unavailable"}, {`{"metadata":{"variant_image_coverage_status":"blocked","variant_image_coverage_message":"` + strings.Repeat("x", 1100000) + `"}}`, 503, "unavailable"}} {
 		require.NoError(t, db.Exec("UPDATE listing_shein_records SET payload=? WHERE id=?", []byte(tc.payload), receipt.RecordID).Error)
 		status, body := diagnosticGet(t, ts, receipt.RecordID, "action=publish", "operator", "200")
 		require.Equal(t, tc.status, status)

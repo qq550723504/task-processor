@@ -2,14 +2,17 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	recordstore "task-processor/internal/app/listingrecordstore"
 	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
+	assetstore "task-processor/internal/integration/persistence/product/asset"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
 	"task-processor/internal/listing/record"
 	"task-processor/internal/marketplace/shein/draft"
 	sheinvalidator "task-processor/internal/marketplace/shein/validator"
+	"task-processor/internal/storecenter"
 	"task-processor/internal/workbenchcontext"
 	"time"
 
@@ -17,8 +20,8 @@ import (
 )
 
 // NewSheinRecordApplication assembles an explicit application instance for the
-// #319 current-source contract. currentProductDB MUST be the separately admitted
-// Catalog storage scope with known writers (D1-CURRENT-PRODUCT-INPUT/V1).
+// #376 DRAFT-S1 contract. currentProductDB MUST be the explicitly admitted
+// Product/Asset, Store Center and Listing storage boundary with known writers.
 // This is deliberately absent from default runtime composition/configuration:
 // there is no boolean that admits the shared historical Catalog, no implicit
 // database opening and no migration. Production source binding requires a
@@ -27,7 +30,15 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	if currentProductDB == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, nil, record.ErrUnavailable
 	}
-	source, err := catalogstore.NewBoundedSnapshotReader(currentProductDB, 8<<20)
+	source, err := catalogstore.NewBoundedSnapshotReader(currentProductDB, record.MaxPayloadBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	assets, err := assetstore.NewRepository(currentProductDB)
+	if err != nil {
+		return nil, nil, err
+	}
+	stores, err := storecenter.NewGormStoreRepository(currentProductDB)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -35,7 +46,11 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 	if err != nil {
 		return nil, nil, err
 	}
-	service, err := record.NewService(source, repository, draft.Builder{}, authorizer)
+	service, err := record.NewService(record.ServiceDependencies{
+		Products: source, Assets: assets, Stores: sheinRecordStoreReader{repository: stores}, Records: repository,
+		Builder: draft.Builder{}, Evaluator: sheinvalidator.ExactApprovedAssetValidator{}, Authorizer: authorizer,
+		Now: time.Now, RuleRevision: sheinvalidator.DiagnosticRuleVersion, PolicyRevision: sheinvalidator.BindingVersion,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -65,4 +80,23 @@ func NewSheinRecordApplication(currentProductDB *gorm.DB, verifier zitadelruntim
 		handler.ServeHTTP(w, r.WithContext(ctx))
 	})
 	return server, repository, nil
+}
+
+type sheinRecordStoreReader struct{ repository storecenter.Repository }
+
+func (r sheinRecordStoreReader) GetStoreReference(ctx context.Context, organizationID, storeID string) (record.StoreReference, error) {
+	stored, err := r.repository.Get(ctx, organizationID, storeID)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return record.StoreReference{}, err
+	}
+	if errors.Is(err, storecenter.ErrNotFound) {
+		return record.StoreReference{}, record.ErrNotFound
+	}
+	if err != nil {
+		return record.StoreReference{}, record.ErrUnavailable
+	}
+	if stored == nil || stored.OrganizationID() != organizationID || stored.ID() != storeID {
+		return record.StoreReference{}, record.ErrNotFound
+	}
+	return record.StoreReference{OrganizationID: stored.OrganizationID(), StoreID: stored.ID(), Platform: string(stored.Platform())}, nil
 }

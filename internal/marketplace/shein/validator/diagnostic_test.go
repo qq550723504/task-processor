@@ -18,6 +18,38 @@ func diagnosticRequest(raw string) contract.BoundRequest[[]byte] {
 	return contract.BoundRequest[[]byte]{Input: []byte(raw), Target: contract.Target{Marketplace: "shein"}, Action: contract.Publish, RuleVersion: DiagnosticRuleVersion, BindingVersion: BindingVersion, ReadAt: now, EvaluatedAt: now, Freshness: contract.ExternalFreshness{Status: contract.NotEvaluated}}
 }
 
+func TestExactApprovedAssetValidatorDischargesOnlyExactAssetConcern(t *testing.T) {
+	request := diagnosticRequest(`{"spu_name":"controlled"}`)
+	want, err := (ExactApprovedAssetValidator{}).Validate(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := (ExactApprovedAssetValidator{}).Validate(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(want, again) {
+		t.Fatal("exact-asset composition is not deterministic")
+	}
+	if containsDiagnosticConcern(want.NotEvaluated, "approved_asset_provenance_and_consent") {
+		t.Fatal("exact approved asset concern remained unevaluated")
+	}
+	for _, concern := range []string{"online_template_freshness", "store_authorization", "cookie", "pod", "human_review", "submission_gate"} {
+		if !containsDiagnosticConcern(want.NotEvaluated, concern) {
+			t.Fatalf("remote concern %q was incorrectly discharged", concern)
+		}
+	}
+}
+
+func containsDiagnosticConcern(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDiagnosticFixedEncodingVectors(t *testing.T) {
 	for _, raw := range []string{`{}`, `{"review_notes":null}`, `{"review_notes":[]}`} {
 		got, err := (DiagnosticValidator{}).Validate(diagnosticRequest(raw))

@@ -1,219 +1,109 @@
-# Local SHEIN records — Issue #319
+# SHEIN DRAFT-S1 local records — Issue #376
 
-Authority: [D1-CURRENT-PRODUCT-INPUT/V1](https://github.com/qq550723504/task-processor/issues/319#issuecomment-5553109689).
-Second narrow review is IMPLEMENTATION_READY for repository/application/database
-integration. Final SHA, tests, CI and code review live in the Issue/PR.
+This package owns the immutable local result of the first SHEIN draft slice.
+The frozen architecture authority is Issue #372 R2 plus its PA-1 acceptance;
+Issue #376 is the bounded implementation slice. The route is deliberately not
+part of default production composition.
 
-`POST /api/listing/shein-records` saves an immutable **local incomplete draft**.
-It does not call SHEIN, approve assets, Apply, submit, charge, or create a Task.
-`NewSheinRecordApplication` in `internal/app/httpapi` builds a real HTTP server
-using the existing verified identity / Organization middleware and configured
-authorizer. It requires an explicitly bound current Product database and does
-not open databases or migrate schemas. Default runtime composition never calls
-it and cannot supply its shared historical Catalog through a feature flag.
+## Admitted call chain
 
-## Allowed source and authorization
-
-For this delivery the only allowed source is an isolated temporary PostgreSQL,
-starting with empty Catalog tables. Upstream setup calls the real
-`catalog.Publisher.Publish` and Catalog persistence adapter with server-owned
-Organization/actor context and synthetic product content. Tests retain the
-returned identity, publication and immutable version. Publisher is not IAM.
-
-The resource identity includes the explicitly bound storage scope, verified
-effective Organization, product key, and nonzero fixed version. No latest,
-Task, legacy cache, tenant mapping, timestamp cutoff or trust flag is accepted.
-Numeric Organization strings are valid when verified. Within this allowed
-scope Product is organization-shared, irrespective of its setup author.
-
-The route uses `LiveWrite` and `listingkit.admin.write`. The use case separately
-checks `listingkit.admin.read` and `listingkit.admin.write` **before Product SQL**.
-Only roles of the selected Organization apply; Home is not the resource scope.
-Every replay reauthorizes and reads/checks the exact Product version. Neither
-permission implies the other. Existing grant expiration/revocation behavior is
-unchanged. Other Product consumers do not inherit this limited access policy.
-
-Request header: exactly one `Idempotency-Key` (1–128 bytes). Strict JSON body,
-at most 1 KiB, no query parameters:
+`POST /api/listing/shein-records` runs only through verified identity and
+effective-Organization middleware, `LiveWrite`, and
+`listingkit.admin.write`. The body is strict JSON, at most 1 KiB, with exactly:
 
 ```json
-{"product_key":"product-key","snapshot_version":1,"country":"US","language":"en"}
+{
+  "product_key": "product-key",
+  "snapshot_version": 1,
+  "store_id": "11111111-1111-4111-8111-111111111111",
+  "country": "US",
+  "language": "en",
+  "action": "save_draft"
+}
 ```
 
-The initial finite option set is explicitly **US/en only**, with no defaults.
-Unknown/duplicate/case-mismatched body fields fail. Tenant/user/Package,
-freshness and admission fields cannot be submitted. The server and handler
-bound body reads and work to five seconds without extending earlier deadlines;
-the Catalog consumer uses the existing 8 MiB bounded version reader.
-Response is `201 {"record_id":"UUID"}` (also on same-operation replay).
-Invalid requests return 400, permissions 403, unreadable source/record 404,
-operation conflicts 409, size rejection 413, dependency/unknown commit 503,
-and cancellation/deadline 504. Errors never return payload, digest or SQL.
+`action` is `save_draft` or `publish`; the initial locale is exactly `US/en`.
+One canonical `Idempotency-Key` (1–128 bytes) is required. Organization,
+owner, Package, diagnostic, freshness, trust and evidence are server-owned.
+The end-to-end deadline is 10 seconds and never extends an earlier deadline.
 
-## Ownership, persistence and retry
+After authorization, the service reads these exact current facts:
 
-Listing owns `Service`, `Prepared`, input/record contracts and the reader port.
-The concrete PostgreSQL adapter and explicit `schema.sql` live in
-`internal/app/listingrecordstore`. Current guards prohibit GORM in Listing and
-Listing imports in generic integration packages; the narrow application adapter
-implements the Listing port without relaxing either guard. Existing authz owns
-admin policy. No domain imports this application adapter.
+1. SHEIN Store reference by effective Organization plus canonical Store UUID;
+2. immutable Product Snapshot by Organization, product key and nonzero version;
+3. ApprovedAsset inventory by Organization, product key, `shein`, and the same
+   Product version.
 
-Only `Service` can populate a nonzero `Prepared` value. The concrete adapter has
-one INSERT, no public arbitrary-row constructor, no UPDATE/UPSERT mutation or
-DELETE API. `listing_shein_records` binds org, actor, operation, source key and
-version, fixed options and 1..2 MiB payload in one transaction. The unique key
-is `(organization_id, owner_user_id, operation_id)`. No Product/Asset/Task write
-occurs. The schema is explicitly applied only in isolated tests, never at runtime.
+There is no latest/unversioned Asset fallback. Missing exact approval is
+`422 not_ready`; missing Product/Store is `404 not_found`. Product JSON,
+ApprovedAsset inventory JSON, generated Package, and persisted diagnostic are
+independently bounded to 2 MiB. Dependency/corrupt-source failure is 503,
+size rejection 413, idempotency conflict 409, and cancellation/deadline 504.
 
-Concurrent inserts use that exact unique constraint and a scoped conflict read.
-The same request returns the original record without rebuilding or replacing
-bytes; different source/options conflict. Unknown COMMIT outcome or a lost
-HTTP response causes no compensation or deletion: a reauthorized retry locates
-the durable operation. Restart requires no in-memory lock or recovery worker.
-Cancellation before commit rolls back; cancellation after commit may leave the
-record committed and the retry protocol still applies. No Saga/Outbox is needed.
+## Pure draft and diagnostic
 
-`ReadOfflinePackage(ctx, listingtask.Actor, recordID)` returns detached bytes,
-exact org/owner/source identity, creation time and read time. The caller must
-supply its verified effective actor (future #315 uses `CachedRead`). SQL filters
-ID + org + nonempty owner and owner equality unless the configured authorizer
-grants the existing org-local admin bypass. Admin never bypasses org. The same
-SELECT uses `octet_length`/CASE before transmitting payload, followed by identity
-and scope checks. Unknown Task IDs, absent rows and denied owners are unreadable.
+The draft builder reuses `catalog.ProjectCanonical`, the existing SHEIN
+assembler, and strict persisted-Package decoder. It replaces every Product and
+variant source image with the exact ApprovedAsset inventory before assembly.
+It has no network/provider/AI resolver, goroutine, cache, retry loop or hidden
+database write.
 
-## Package and #315 handoff
+The current offline evaluator is reused. The exact ApprovedAsset read discharges
+only `approved_asset_provenance_and_consent`; template freshness, Store remote
+authorization, cookie, POD, human review and submission remain explicitly
+`not_evaluated`. The stored result is diagnostic-only, never submit authority.
 
-`catalog.ProjectCanonical` EXTRACTs the existing pure snapshot projection;
-existing ListingKit call sites now invoke that owner. The SHEIN draft builder
-clears both product and variant source images and constructs the existing
-`NewAssembler(AssemblerConfig{})` without external resolvers, model, pricing,
-size or brand authorization context. Missing assets/templates remain blockers.
+## Durable idempotency and transaction
 
-Encoding uses existing `json.Marshal(Package)` and then #318
-`DecodePersistedPackageStrict` admission (2 MiB / 64 levels). No second encoder,
-hash, normalization rule or evaluator exists here. Stored bytes are exactly the
-admitted output, including Package evidence fields. This builder produces no
-external freshness evidence; #315 must explicitly use `not_evaluated` with
-`no_authoritative_package_freshness`. CreatedAt/ReadAt are not ObservedAt/expiry.
-Future evidence-producing builders require their own reviewed contract; this
-path cannot silently import stale cached templates or pretend to approve images.
+`listing_shein_records` contains immutable source/input hashes, exact Asset
+version/hash, Store/action, rule and policy revisions, Package hash/bytes,
+diagnostic hash/status/bytes and ownership. A separate
+`listing_shein_record_operations` receipt owns the unique
+`(organization_id, operation_id)` idempotency identity.
 
-## Read-only diagnostic HTTP — Issue #315
+The PostgreSQL adapter writes receipt plus immutable record in one transaction.
+The receipt foreign key is deferred so concurrent contenders can claim the
+operation first; a loser loads the committed original only when owner and the
+complete canonical input hash match. The hash binds Organization, owner,
+Product coordinates/hash, exact ApprovedAsset hash, Store, options/action and
+rule/policy revisions. Same key with any changed fact conflicts. Unknown COMMIT
+is not compensated: retry reauthorizes and resolves the durable receipt.
+Cancellation before commit rolls back both tables; no recovery worker, Saga,
+outbox, fallback, dual read/write or second fact source exists.
 
-The same explicit application now mounts
-`GET /api/listing/shein-records/{record_id}/offline-diagnostic?action=publish`.
-Default production composition still mounts neither record route. GET uses
-verified identity, `CachedRead`, `listingkit.admin.read`, and the existing
-record reader's organization/owner checks. It does not require POST write
-permission. Home organization and caller-supplied actor headers are not authority.
-Current cached grant TTL/revocation semantics remain owned by workbenchcontext.
+The schema is a greenfield operator-applied schema for an explicitly admitted
+database. Runtime code never migrates it. There is no old-row migration,
+legacy wrapper, compatibility DTO, historical Catalog admission or Task-first
+workflow.
 
-Only one explicit `action=save_draft|publish` and optional `expected_digest` are
-accepted; expected must be a nonempty lowercase `sha256:` digest when present.
-The UUID uses the 36-character representation. Query is limited to 1 KiB before
-parsing; duplicate/unknown/malformed parameters and any GET body are rejected.
-There is no site, tenant, rule version, time, Package or freshness parameter.
+## Read surfaces
 
-`DiagnosticService` checks verified effective identity and read permission before
-one `Reader.ReadOfflinePackage` call, then sends those exact persisted bytes and
-the reader's ReadAt to the injected existing v2 evaluator. The explicit application
-pins current binding/rule constants. EvaluatedAt is server time, not clamped.
-Freshness is explicitly NotEvaluated under the current producer contract; read
-and creation times are never substituted for external freshness evidence.
+The existing owner/org-scoped reader, offline diagnostic GET, and keyset
+collection GET read the immutable record. Collection items include record ID,
+Product/version, Store/action, locale and creation time; they never expose
+payload, diagnostic, hashes, operation, owner or Organization. Tenant-admin
+owner bypass never bypasses Organization. GET paths do not mutate rows.
 
-The transport explicitly projects all public diagnostic fields and nested checks.
-Lists remain arrays, including empty lists; optional evidence/reasons and empty
-check paths/messages/guidance retain v2 omission behavior. Errors never include
-the success DTO, raw error text, Package, actor, owner, SQL or credentials.
-Success is at most 2 MiB of encoded JSON with `Cache-Control: no-store`; all
-actions return diagnostic scope and retain blockers, never publication authority.
+## Reproduction and rollout boundary
 
-| Failure | HTTP / error |
-| --- | --- |
-| Invalid query, UUID, digest or body | 400 / invalid_request |
-| Missing/unsupported action | 400 / unsupported_action |
-| Authentication/organization denial | Existing 401/403 workbench protocol |
-| Record read permission denial | 403 / permission_denied |
-| Missing, foreign-org or nonowner record | 404 / not_found |
-| Loaded content expected mismatch / known stale | 409 / stale_input |
-| Oversized stored payload | 413 / input_too_large |
-| Invalid persisted package | 422 / invalid_input |
-| Clock rollback, normalized/report encoding or size failure | 500 / evaluation_failed |
-| Reader/dependency fault | 503 / unavailable |
-| Cancellation or deadline | 504 / deadline_exceeded (workbench uses DEADLINE_EXCEEDED) |
+Point `ISSUE376_TEST_DSN` only at a fresh, task-exclusive PostgreSQL database.
+Each test creates and drops its own schema. Missing DSN is an explicit SKIP and
+is not PostgreSQL acceptance.
 
-Typed stale errors retain only status, coverage and fixed causes; negative seam
-tests cover this existing evaluator contract, not an evidence producer. Five-second
-application/reader budgets and the existing transport response headroom apply.
-Context is checked before/after read, compute and response encoding. No escaped
-goroutine, write, report persistence, cache, retry owner or background task exists.
+```powershell
+$env:ISSUE376_TEST_DSN = 'host=127.0.0.1 port=55476 user=issue376 password=issue376-local-only dbname=issue376_draft_s1 sslmode=disable'
+go test -v ./internal/listing/record ./internal/marketplace/shein/draft ./internal/marketplace/shein/validator
+go test -v ./internal/app/httpapi -run 'Test(SheinRecord|DraftS1|SharedRegression)' -count=1
+go test -race ./internal/app/httpapi -run 'Test(SheinRecordConcurrentAndConflictingHTTP|DraftS1ExactApprovedAssetMissDoesNotUseUnversionedHead)' -count=1
+```
 
-Reproduce the controlled chain with `ISSUE319_TEST_DSN` pointing only to a fresh
-task-isolated PostgreSQL (the shared test helper's variable name is retained):
-`go test -v ./internal/app/httpapi -run TestSheinDiagnosticPostgresHTTPRoundTrip -count=1`.
-The fixture creates a unique schema, publishes via real Catalog Publisher, sends
-POST with verified Organization selection and Idempotency-Key, uses the returned
-record_id in GET, reconstructs the application/repository and repeats GET with
-expected_digest. It logs a synthetic response and compares it to computation over
-the actual durable bytes. It also runs GET through a PostgreSQL read-only
-transaction. No successful Listing row is manually inserted.
+Controlled test URLs, identities and Store IDs are fixtures only. This slice
+does not permit production/shared data, provider calls, AI calls, remote writes,
+deployment, merge or Issue closure.
 
-`go test -race ./internal/app/httpapi -run 'TestShein(Diagnostic|Record)' -count=1`
-adds permissions, all-table row/content snapshots, concurrent reads, real DB lock
-and authentication/grant/slow-body timeouts, client cancellation and original POST
-regressions. Corruption tests alter only records previously created through POST
-inside their disposable schema. Seam-only tests isolate evaluator errors/output
-encoding and do not substitute for the PostgreSQL chain. Absent DSN means SKIP,
-not database acceptance. Rollout approval and real production data remain separate.
-
-## Scoped collection HTTP — Issue #327
-
-The explicit application also mounts `GET /api/listing/shein-records`. It uses
-verified identity, `CachedRead` and the existing `listingkit.admin.read`
-permission. An operator sees only records owned by the current actor; an
-existing tenant administrator may bypass owner only inside the verified
-effective Organization. Authorization and scope are applied before metadata
-SQL on every page. The default production composition still mounts none of the
-SHEIN record routes.
-
-The only query fields are a single optional `limit` (default 20, range 1..100)
-and a single optional opaque `cursor`; the raw query is limited to 1 KiB.
-Ordering is fixed at `created_at DESC, id DESC`. The repository reads
-`limit+1`, returns no count, and uses keyset pagination. A cursor is canonical
-base64url JSON containing only version, UTC creation time and UUID. It is a
-position, not authority: the repository first verifies its exact anchor under
-the same Organization/owner SQL predicate and never checks global anchor
-existence. A malformed, missing-scope, cross-owner or cross-Organization anchor
-returns 400 rather than resetting to page one.
-
-Success is `{items, next_cursor}`. Items contain only `record_id`,
-`product_key`, decimal-string `snapshot_version`, `country`, `language` and
-`created_at`; the SQL does not select payload, operation, Organization or owner.
-The response is limited to 128 KiB and is never cached. An empty authorized
-scope is a successful empty page. Authentication, permission, grant dependency,
-deadline and invalid cursor failures remain distinct and never become an empty
-list. Two explicit indexes cover owner-scoped and Organization-admin keyset
-reads; `schema.sql` remains operator-applied only to an approved isolated store.
-
-## Evidence and rollout
-
-Run `go test ./internal/app/httpapi -run TestSheinRecord -count=1` with
-`ISSUE319_TEST_DSN` naming a **task-isolated PostgreSQL**. Each test creates and
-removes its own random schema. Without this variable the PG tests explicitly
-skip; this is not database acceptance. Add `-race` for concurrent verification.
-Driver-level fault injection tests the real transaction before/after COMMIT;
-it does not simulate a real network partition. The normal creation path never
-seeds the Listing table. Negative constraint tests mutate only isolated rows
-previously created via HTTP. Production default-route tests run without this DSN.
-
-The authorized online/shared historical Catalog set is empty. Real source
-binding, writer isolation and customer enablement remain an explicit future
-environment rollout gate (#30/#307 coordination), not a prerequisite for this
-repository-level delivery. No production data, migration, deployment, merge or
-Issue closure is authorized.
-
-Legacy decision: EXTRACT. Reusable behavior: pure Product projection and current
-SHEIN assembler. Current owner: Product projection, Marketplace draft builder,
-Listing records, Application persistence/HTTP. Cutover: old projection calls
-switch in this slice; no new legacy dependency or historical record import.
+Legacy decision: EXTRACT. Reusable behavior: Product projection, Product/Asset
+exact inventory reader, Store Center repository, SHEIN assembler/validator,
+verified auth/org middleware. Current owner: Product, Product/Asset, Store
+Center, Marketplace/SHEIN, Listing record, and the explicit application adapter.
+Cutover/deletion condition: DRAFT-S1 has no dependency on any registered RETIRE
+owner and introduces no compatibility path.

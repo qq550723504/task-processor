@@ -71,6 +71,9 @@ func createSheinRecord(c *gin.Context, service *record.Service) {
 		case errors.Is(err, record.ErrNotFound):
 			status = 404
 			code = "not_found"
+		case errors.Is(err, record.ErrNotReady):
+			status = http.StatusUnprocessableEntity
+			code = "not_ready"
 		case errors.Is(err, record.ErrConflict):
 			status = 409
 			code = "operation_conflict"
