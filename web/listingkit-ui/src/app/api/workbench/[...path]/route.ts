@@ -1,4 +1,4 @@
-import type { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
 import {
@@ -6,6 +6,7 @@ import {
   buildWorkbenchUpstreamRequest,
   workbenchProtocolError,
 } from "@/lib/server/workbench-proxy";
+import { readZitadelIdentityFromSession } from "@/lib/server/zitadel-auth";
 import { readZitadelServerAccessToken } from "@/lib/server/zitadel-server-token";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +14,30 @@ export const dynamic = "force-dynamic";
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
 type AuthenticatedWorkbenchRequest = NextRequest & { auth?: unknown };
+type WorkbenchDispatchState = {
+  dispatched: boolean;
+  requestId: string;
+  sourceRequest: boolean;
+  sourceMutation: boolean;
+};
+type WorkbenchRouteContext = {
+  params: Promise<{ path: string[] }>;
+  dispatchState: WorkbenchDispatchState;
+};
 
 async function proxyWorkbenchRequest(
   request: AuthenticatedWorkbenchRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  { params, dispatchState }: WorkbenchRouteContext,
 ) {
+  if (request.signal.aborted) return deadlineFailure(dispatchState);
+  const { path } = await params;
+  if (request.signal.aborted) return deadlineFailure(dispatchState);
+  const session = request.auth as never;
+  const identity = readZitadelIdentityFromSession(session);
+  const actorSubject =
+    typeof identity?.userId === "string" ? identity.userId : "";
   const accessToken = readZitadelServerAccessToken(request.auth as never);
-  if (!accessToken) {
+  if (!accessToken || (isSourceMutation(request.method, path) && !actorSubject)) {
     return workbenchProtocolError(
       401,
       "AUTHENTICATION_REQUIRED",
@@ -27,46 +45,173 @@ async function proxyWorkbenchRequest(
     );
   }
 
-  const { path } = await params;
   const upstreamRequest = await buildWorkbenchUpstreamRequest(
     request,
     path,
     accessToken,
+    actorSubject,
   );
   if (upstreamRequest instanceof Response) {
-    return upstreamRequest;
+    return request.signal.aborted
+      ? deadlineFailure(dispatchState)
+      : upstreamRequest;
   }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  dispatchState.requestId = upstreamRequest.requestId;
+  dispatchState.sourceRequest = upstreamRequest.responseContract.startsWith(
+    "source-account-",
+  );
+  dispatchState.sourceMutation = upstreamRequest.sourceMutation;
+  if (request.signal.aborted) return deadlineFailure(dispatchState);
   try {
+    dispatchState.dispatched = true;
     const upstream = await fetch(upstreamRequest.url, {
       ...upstreamRequest.init,
       redirect: "manual",
-      signal: controller.signal,
+      signal: request.signal,
     });
-    return await buildWorkbenchBrowserResponse(
+    const response = await buildWorkbenchBrowserResponse(
       upstream,
       upstreamRequest.responseContract,
       upstreamRequest.expectedStoreId,
+      {
+        sourceMutation: upstreamRequest.sourceMutation,
+        requestId: upstreamRequest.requestId,
+        signal: request.signal,
+      },
     );
+    return request.signal.aborted ? deadlineFailure(dispatchState) : response;
   } catch {
+    if (request.signal.aborted) return deadlineFailure(dispatchState);
+    if (dispatchState.sourceMutation && dispatchState.dispatched) {
+      return unknownMutationFailure(dispatchState.requestId);
+    }
     return workbenchProtocolError(
       502,
       "DEPENDENCY_UNAVAILABLE",
       "Workbench upstream is unavailable",
+      dispatchState.requestId,
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
-const authenticatedProxyRequest = serverAuth(proxyWorkbenchRequest);
+const authenticatedProxyRequest = serverAuth(async (request, context) =>
+  proxyWorkbenchRequest(
+    request as AuthenticatedWorkbenchRequest,
+    context as unknown as WorkbenchRouteContext,
+  ),
+) as (
+  request: NextRequest,
+  context: WorkbenchRouteContext,
+) => Promise<Response | void> | Response | void;
 
-export const GET = authenticatedProxyRequest;
-export const PUT = authenticatedProxyRequest;
-export const POST = authenticatedProxyRequest;
-export const DELETE = authenticatedProxyRequest;
+async function handleWorkbenchRequest(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  const dispatchState: WorkbenchDispatchState = {
+    dispatched: false,
+    requestId: "",
+    sourceRequest: isSourceRequestURL(request.url),
+    sourceMutation: isSourceMutationURL(request.method, request.url),
+  };
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  request.signal.addEventListener("abort", abort, { once: true });
+  if (request.signal.aborted) abort();
+  const timeout = setTimeout(abort, UPSTREAM_TIMEOUT_MS);
+  let resolveAbort = () => {};
+  const aborted = new Promise<Response>((resolve) => {
+    resolveAbort = () => resolve(deadlineFailure(dispatchState));
+    controller.signal.addEventListener("abort", resolveAbort, { once: true });
+  });
+  try {
+    const scopedRequest = new NextRequest(request, { signal: controller.signal });
+    const result = await Promise.race([
+      authenticatedProxyRequest(scopedRequest, {
+        ...context,
+        dispatchState,
+      }),
+      aborted,
+    ]);
+    return result ?? workbenchProtocolError(
+      503,
+      "DEPENDENCY_UNAVAILABLE",
+      "Workbench upstream is unavailable",
+      dispatchState.requestId,
+    );
+  } catch {
+    return controller.signal.aborted
+      ? deadlineFailure(dispatchState)
+      : workbenchProtocolError(
+          502,
+          "DEPENDENCY_UNAVAILABLE",
+          "Workbench upstream is unavailable",
+          dispatchState.requestId,
+        );
+  } finally {
+    clearTimeout(timeout);
+    request.signal.removeEventListener("abort", abort);
+    controller.signal.removeEventListener("abort", resolveAbort);
+  }
+}
+
+export const GET = handleWorkbenchRequest;
+export const PUT = handleWorkbenchRequest;
+export const POST = handleWorkbenchRequest;
+export const DELETE = handleWorkbenchRequest;
+
+function isSourceMutation(method: string, path: string[]) {
+  return (
+    method.toUpperCase() === "POST" &&
+    path[0] === "source-accounts" &&
+    (path.length === 1 ||
+      (path.length === 3 && ["enable", "disable"].includes(path[2] ?? "")))
+  );
+}
+
+function isSourceRequestURL(rawURL: string) {
+  const path = new URL(rawURL).pathname.split("/").filter(Boolean);
+  return (
+    path[0] === "api" &&
+    path[1] === "workbench" &&
+    path[2] === "source-accounts"
+  );
+}
+
+function isSourceMutationURL(method: string, rawURL: string) {
+  if (method.toUpperCase() !== "POST") return false;
+  const path = new URL(rawURL).pathname.split("/").filter(Boolean).slice(2);
+  return isSourceMutation(method, path);
+}
+
+function deadlineFailure(state: WorkbenchDispatchState) {
+  if (state.sourceMutation && state.dispatched) {
+    return unknownMutationFailure(state.requestId);
+  }
+  if (state.sourceRequest) {
+    return workbenchProtocolError(
+      504,
+      "DEADLINE_EXCEEDED",
+      "Workbench request deadline exceeded",
+      state.requestId,
+    );
+  }
+  return workbenchProtocolError(
+    502,
+    "DEPENDENCY_UNAVAILABLE",
+    "Workbench upstream is unavailable",
+    state.requestId,
+  );
+}
+
+function unknownMutationFailure(requestId: string) {
+  return workbenchProtocolError(
+    503,
+    "OUTCOME_UNKNOWN",
+    "Source Account mutation outcome is unknown",
+    requestId,
+  );
+}
 
 function rejectUnsupportedRequest() {
   return workbenchProtocolError(

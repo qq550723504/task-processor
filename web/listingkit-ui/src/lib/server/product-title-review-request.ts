@@ -1,5 +1,5 @@
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
-import { resolvePublicAppOrigin } from "./zitadel-auth";
+import { hasTrustedSameOriginWrite } from "./same-origin-write";
 
 function exactOrigin(raw: string | undefined): string | null {
   if (!raw) return null;
@@ -15,12 +15,7 @@ export function configuredProductReviewOrigin(): string | null {
 }
 
 export function hasTrustedReviewWriteOrigin(request: Request): boolean {
-  const configured = process.env.LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
-    process.env.TASK_PROCESSOR_LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim();
-  const origin = configured && exactOrigin(resolvePublicAppOrigin());
-  const site = request.headers.get("sec-fetch-site");
-  return !!origin && request.headers.get("origin") === origin && (site === null || site === "same-origin");
+  return hasTrustedSameOriginWrite(request);
 }
 
 export function reviewSelectedOrganization(request: Request): string | null {
