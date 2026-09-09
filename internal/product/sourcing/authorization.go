@@ -47,7 +47,7 @@ func (a *ContextAuthorizer) Authorize(ctx context.Context) (PublicationScope, er
 	if err != nil {
 		return PublicationScope{}, err
 	}
-	if !a.permissions.Authorize("", roles, authz.PermissionProductSourcingWrite) {
+	if !a.permissions.Authorize(identity.UserID, roles, authz.PermissionProductSourcingWrite) {
 		return PublicationScope{}, ErrPublicationForbidden
 	}
 	return PublicationScope{OrganizationID: identity.EffectiveOrganizationID, ActorID: identity.UserID}, nil

@@ -127,6 +127,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPromptWrite); err != nil {
 			return nil, err
 		}
+		if _, err := enforcer.AddPolicy(role, PermissionProductSourcingWrite); err != nil {
+			return nil, err
+		}
 		if _, err := enforcer.AddPolicy(role, PermissionLocalAgentWrite); err != nil {
 			return nil, err
 		}
@@ -151,6 +154,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			return nil, err
 		}
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPromptWrite); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(subject, PermissionProductSourcingWrite); err != nil {
 			return nil, err
 		}
 		if _, err := enforcer.AddPolicy(subject, PermissionLocalAgentWrite); err != nil {

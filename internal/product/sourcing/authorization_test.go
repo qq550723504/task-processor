@@ -43,6 +43,33 @@ func TestContextAuthorizerUsesTrustedEffectiveOrganizationAndFreshRoles(t *testi
 	require.Equal(t, 1, calls)
 }
 
+func TestContextAuthorizerHonorsConfiguredPlatformAdministrators(t *testing.T) {
+	permissions, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name   string
+		userID string
+		roles  []string
+	}{
+		{name: "configured user", userID: "configured-user"},
+		{name: "configured role", userID: "actor-a", roles: []string{"configured-role"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authorizer, newErr := NewContextAuthorizer(liveRolesFunc(func(_ context.Context, org, actor string) ([]string, error) {
+				require.Equal(t, "org-a", org)
+				require.Equal(t, test.userID, actor)
+				return test.roles, nil
+			}), permissions)
+			require.NoError(t, newErr)
+			scope, authorizeErr := authorizer.Authorize(publicationIdentityContext(authidentity.AuthenticatedIdentity{
+				TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: test.userID, TokenExpiresAt: time.Now().Add(time.Hour),
+			}))
+			require.NoError(t, authorizeErr)
+			require.Equal(t, PublicationScope{OrganizationID: "org-a", ActorID: test.userID}, scope)
+		})
+	}
+}
+
 func TestContextAuthorizerRejectsInvalidContextRevocationAndDependencyFailure(t *testing.T) {
 	permissions, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
