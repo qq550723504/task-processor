@@ -1,7 +1,7 @@
 # Legacy Hard-Cut Policy
 
 > Status: Active architecture policy  
-> Effective: 2026-09-05  
+> Effective: 2026-09-05; supplemented by [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md)<br>
 > Scope: all refactoring, new Product/Marketplace/Agent/Tool/Console work, code review, and AI-assisted development
 
 ## 1. Decision
@@ -22,7 +22,7 @@ There is currently **no legacy compatibility class**.
 
 Do not create compatibility layers, fallback paths, dual models, dual state machines, or bidirectional synchronization merely to preserve an obsolete internal design.
 
-If a future task proves that an externally observable contract or persisted/runtime state truly requires temporary compatibility, that requirement must be introduced as an explicit, reviewed exception. It is not implied by this policy and must not be anticipated in advance.
+If a future task identifies a concrete current externally observable contract that appears to require compatibility, report it to the user. It is not implied by this policy and must not be anticipated in advance: there is no executable legacy-migration/compatibility Exception, and only a new explicit product decision from the user can change that prohibition. Reviewers and Agents cannot authorize it themselves.
 
 ---
 
@@ -144,7 +144,7 @@ new Listing -> old Listing implementation fallback
 
 A hard cut means that after cutover the current owner is authoritative.
 
-If a migration requires an explicitly bounded transition, it must have a named migration/cutover plan and removal condition; it must not silently become permanent architecture.
+Under PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08, do not design a legacy migration transition. Concrete current evidence of an externally observable obligation must be reported to the user; there is no executable Exception, and only a new explicit product decision from the user can change that prohibition. Reviewers and Agents cannot authorize it themselves.
 
 ---
 
@@ -174,27 +174,11 @@ Do not modify the new architecture merely to keep an obsolete test green.
 
 ---
 
-## 6. Data migration rule
+## 6. Greenfield data rule
 
-Do not maintain two internal facts indefinitely.
+The current product baseline is **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**: new business work starts from a fresh installation and empty business data. Do not create an old-data migration/backfill, old-ID mapping, legacy Service wrapper, compatibility adapter, fallback, dual read/write/synchronization, tenantbridge consumer or second fact source.
 
-Preferred migration:
-
-```text
-old persisted representation
-  -> one-time/bounded migration or backfill
-  -> current authoritative representation
-  -> cutover
-  -> retire old read/write path
-```
-
-Forbidden by default:
-
-- permanent dual write;
-- permanent dual read with fallback;
-- new code treating both old and new tables/models as equal authorities.
-
-Any future exception requires a task-specific reviewed migration contract with a removal condition.
+Normal schema evolution inside the new system remains allowed; it does not authorize importing old-system business history. A claimed externally observable compatibility obligation requires concrete current evidence reported to the user; only a new explicit product decision from the user can change this prohibition. Historical Issues, PRs, plans, tests and code do not create that obligation, and Reviewers or Agents cannot authorize it themselves.
 
 ---
 
@@ -240,7 +224,7 @@ Every implementation that encounters legacy code must answer, in order:
 
 `Keep legacy compatibility` is not a valid third answer under the current baseline.
 
-If a future external compatibility requirement is discovered, stop and create an explicit exception instead of introducing a hidden fallback.
+If a future external compatibility requirement is discovered, stop and report its concrete current evidence to the user instead of introducing a hidden fallback. Only a new explicit product decision from the user can change the prohibition; neither review nor agent action can do so.
 
 ---
 

@@ -4,6 +4,8 @@
 
 核心规则：**一个有界执行 Issue，同一时间一个实现负责人，独立分支／worktree，通常一个主要 PR；范围内 review 和 CI 修复留在原 PR，独立跨范围问题才新建 Issue。**
 
+[PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) 是新业务 Issue 的当前产品基线：全新安装、空业务数据和当前模型。不得仅因旧 Issue/PR/设计/测试记录而派发历史数据迁移/backfill、旧 ID 映射、legacy wrapper/adapter、tenantbridge consumer、fallback、双读/双写/同步或第二事实源。若声称存在外部可观察兼容义务，必须先有具体当前证据并报告用户；只有用户新的明确产品决定可以改变本禁令，Reviewer 或 Agent 无权自行放行。
+
 本规则只增加派工和交付流程，不另建架构或安全规则。TDD、架构敏感准入、finding 分类及最多两轮正常架构评审沿用 [AGENTS.md](../../AGENTS.md)；Legacy 处理沿用 [Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md) 与 [Legacy Register](../refactoring/legacy-register.md)，只有 `EXTRACT | RETIRE`，没有 Compatibility 类别。发现批准依据与适用 guard 冲突时，报告具体冲突及最小处理范围，不降低验收、不自行扩大修改范围。
 
 入口：[执行 Issue 模板](../../.github/ISSUE_TEMPLATE/execution-task.md) · [PR 模板](../../.github/pull_request_template.md)。普通有界任务可填 N/A，不强迫补写 PRD、Threat Model 或 Accepted Risk。
@@ -93,4 +95,4 @@ Codex 启动指令示例：
 
 Ready 和 Issue 创建都不会自动启动 Agent；用户将编号交给执行会话后接单。协调方维护当前范围和决策，实现者交付并报告缺失条件。
 
-本规则不改变 #303 的现有收口范围或分支，不要求其重新准入，也不是其合并的新前置；#304/#307/#308 的实现与决策不变。后续新业务派工在 #303 收口后应用本方式。不得为落地规则批量重写既有 Issue/PR，或新增自动派工服务、机器人、状态扫描器、公共 CI、标签/看板配置及保护规则变更。
+历史 Issue/PR 记录仍是证据，不批量改写。特别是历史 A/B1/B2、#364/PR #366 与旧 C/D 迁移 gate 在 PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08 下都不是未来业务派工前置。不得新增自动派工服务、机器人、状态扫描器、公共 CI、标签/看板配置及保护规则变更。

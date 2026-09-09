@@ -1,5 +1,8 @@
 # Source Account / 1688 Organization Ownership Cutover
 
+> **SUPERSEDED — historical evidence, not a current execution entrypoint.**
+> [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../../product/greenfield-no-legacy-migration.md) cancels this document's A/B1/B2/C/D migration and compatibility direction. It must not authorize source-account/profile migration, old-ID mapping, tenantbridge use, reader cutover, fallback, dual authority or real-environment work. The frozen material below remains historical evidence; #364/PR #366 are not completed product delivery or future prerequisites.
+
 Baseline: main `2fd42cc06`; related issues: #30, #301, #300.
 Status: IMPLEMENTATION_READY (A, independent review round 1, frozen after correction);
 B–D require their implementation evidence before rollout.

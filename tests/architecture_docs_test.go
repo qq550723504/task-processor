@@ -281,15 +281,21 @@ func TestProjectBoundaryDocumentDefines1688SourceHandoffOwnership(t *testing.T) 
 		t.Fatalf("read %s: %v", path, err)
 	}
 
+	normalized := strings.Join(strings.Fields(string(content)), " ")
 	for _, phrase := range []string{
 		"internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration",
 		"internal/integration/crawler/a1688 converts legacy crawler DTOs into adapter-local snapshots and internal/product/sourcing SourceEnvelope values",
 		"internal/compatibility/listingkit/sourcehandoff", "CURRENT STATE", "drain-only",
-		"internal/product/catalog", "internal/product/asset", "issue30-clean-slate-cutover.md",
+		"internal/product/catalog", "internal/product/asset",
+		"PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08",
+		"does not authorize legacy profile reuse, migration or cutover",
 	} {
-		if !strings.Contains(string(content), phrase) {
+		if !strings.Contains(normalized, phrase) {
 			t.Errorf("%s must mention %q", path, phrase)
 		}
+	}
+	if strings.Contains(normalized, "issue30-clean-slate-cutover.md") {
+		t.Errorf("%s must not retain the superseded clean-slate execution entrypoint", path)
 	}
 }
 

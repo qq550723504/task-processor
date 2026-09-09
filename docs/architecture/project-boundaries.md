@@ -228,12 +228,11 @@ baseline above. #30 owns extraction of identity, authorization, errors and sourc
 publication into current Product Sourcing/Catalog and application boundaries,
 then retirement of the old route/handoff. No new consumer is allowed.
 
-The approved [issue30-clean-slate-cutover.md](../product/issue30-clean-slate-cutover.md)
-and [#307](https://github.com/qq550723504/task-processor/issues/307) replace historical
-publication mapping/replay work with new controlled import, explicit asset
-approval and readiness in an approved clean business scope. Account/profile,
-Store, IAM and financial/effect evidence protections remain. This is neither
-runtime cutover evidence nor permission to delete data.
+**PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08** governs this path: future work
+starts from a fresh installation and empty business data. The current Product
+Sourcing/Catalog owners retain authorization, Store, IAM and financial/effect
+facts; this boundary does not authorize legacy profile reuse, migration or
+cutover, real-environment operation, or deletion of existing data.
 
 ### 3.8 `internal/aicapability`
 
@@ -404,10 +403,10 @@ domain/product/marketplace code -> concrete external clients when a local interf
 
 Existing legacy imports are observed debt under the Legacy Register and exact
 non-growth guards, not approved extensions. New code must use current owners.
-If an externally observable contract or durable runtime state truly requires an
-exception, stop and establish an explicit reviewed Exception under the
-[Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md) before adding it.
-A PR note, follow-up task or adapter name alone does not authorize compatibility.
+If concrete, current externally observable contract evidence appears, stop and
+report it to the user. Only a new explicit user product decision can permit a
+compatibility exception. A PR note, follow-up task or adapter name alone does
+not authorize compatibility.
 
 ## 6. Placement Rules for New Code
 

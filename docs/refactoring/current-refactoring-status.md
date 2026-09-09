@@ -154,7 +154,7 @@ Store lifecycle code may be implemented before production authority handoff. Mig
 | Capability | Current status | Current interpretation |
 | --- | --- | --- |
 | SHEIN target listing | Production main path; active stabilization/validation | The current commercial release focus. Readiness, pricing, submission, idempotency, recovery and real E2E evidence remain release-sensitive. |
-| 1688 product source | Publisher implemented; old handoff wired; new HTTP prepared-only | #30/#307 require new import → Catalog → explicit asset approval → readiness, old-execution isolation and authorized cutover. |
+| 1688 product source | Publisher implemented; old handoff wired; new HTTP prepared-only | **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08** requires a fresh-install new import → Catalog → explicit asset approval → readiness. Historical handoff/cutover gates are not current prerequisites. |
 | SDS POD | Active specialized product/design capability | Keep as POD/design semantics, not a generic source abstraction. |
 | Amazon source | Source-envelope/modeling path exists | Does not mean Amazon target listing product is active. |
 | TEMU target | Runtime/platform assets retained; full shared-Listing expansion deferred | Maintain correctness; do not build an independent TEMU Workbench. |
@@ -218,7 +218,7 @@ GitHub #33 is the umbrella release gate.
 Current high-priority evidence:
 
 1. #28 — SHEIN end-to-end commercial validation.
-2. #30/#307 — new controlled import, Catalog lineage, explicit asset approval/readiness and old-execution isolation; see [clean-slate decision](../product/issue30-clean-slate-cutover.md). Historical publication migration is cancelled; account/profile, IAM, Store and financial protections remain. No real deletion is authorized by that decision.
+2. #30 — new controlled import, Catalog lineage and explicit asset approval/readiness under [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md). Future work starts from a fresh installation and empty business data; historical publication migration, profile reuse and cutover are not current gates. No real operation is authorized by this decision.
 3. #36 — Proposal → Human Review → Explicit Apply.
 4. #44 — release-critical E2E regression authority.
 5. #47 — reusable production regression / future Agent-eval dataset.
@@ -433,7 +433,7 @@ Authority is divided by responsibility, not chronology:
 | Long-term strategy | [AI Commerce strategy](../product/ai-commerce-agent-platform-strategy.md) |
 | Canonical facts, state, permissions, idempotency, safety and side effects | Current approved Product/Identity/Store/Resource/Tool/Agent contracts; old UI sections cannot override final IA |
 | Legacy disposition | [Hard-Cut Policy](legacy-hard-cut-policy.md), [Register](legacy-register.md), [Mapping](module-target-mapping.md): EXTRACT / RETIRE only |
-| #30 historical data and cutover | [Clean-slate decision](../product/issue30-clean-slate-cutover.md) and [#307](https://github.com/qq550723504/task-processor/issues/307); no historical mapping/replay requirement or real-operation authorization |
+| #30 fresh-install data boundary | [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md); no historical mapping/replay, profile reuse, cutover or real-operation authorization |
 | Repository reality and evidence vocabulary | This baseline-bound CURRENT STATE document; not a replacement for current CI/runtime evidence |
 | Engineering order and assignment | [#137](https://github.com/qq550723504/task-processor/issues/137) and current execution Issue |
 | Release capability | #33 and exact-candidate CI/runtime/staging/production evidence |

@@ -1,6 +1,6 @@
 # Project Migration Roadmap
 
-> Status: active project-level migration roadmap aligned with [`../architecture/project-target-architecture.md`](../architecture/project-target-architecture.md).
+> Status: **SUPERSEDED**. This is historical refactoring evidence, not an implementation authority for the current greenfield product. [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) requires a fresh installation with empty business data and current owners only. Do not create compatibility facades, shims or bridges from this roadmap. Apply the current [Hard-Cut policy](./legacy-hard-cut-policy.md) and [module target mapping](./module-target-mapping.md) instead.
 
 ## 1. Purpose
 

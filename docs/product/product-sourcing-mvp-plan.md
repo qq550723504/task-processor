@@ -1,10 +1,10 @@
 # Product Sourcing MVP Status and Closeout Plan
 
-> ACTIVE: acceptance guide under current Product / #30 / #307 contracts.
+> ACTIVE: acceptance guide under the current Product contracts and
+> **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**.
 > CURRENT STATE: inspection at `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`.
 > This file does not maintain a second execution queue. Use the current
 > [#30](https://github.com/qq550723504/task-processor/issues/30),
-> [#307](https://github.com/qq550723504/task-processor/issues/307) and
 > [#137](https://github.com/qq550723504/task-processor/issues/137) bodies for scope,
 > dependencies, owners and permission.
 
@@ -17,7 +17,8 @@ a legacy ListingKit task is not the target acceptance criterion.
 Read [Product Sourcing Handoff](product-sourcing-handoff.md) for owner/code links,
 the [Product Domain contract](../superpowers/specs/2026-09-01-internal-target-architecture-phase3-product-design.md)
 for canonical facts and approval, and the
-[clean-slate decision](issue30-clean-slate-cutover.md) for data protection.
+[greenfield baseline](greenfield-no-legacy-migration.md) for the fresh-install
+data boundary.
 Use [current status](../refactoring/current-refactoring-status.md) for maturity
 and [final UI / IA](final-ui-ia-authority.md) for projection, not permission to
 enable an unvalidated capability.
@@ -29,36 +30,35 @@ enable an unvalidated capability.
 | Neutral sourcing | Envelope, normalization, deterministic identity, lineage/warnings and `ToSnapshot` exist | Exact-candidate tests and controlled new import evidence |
 | Source adapters | Amazon/1688 mappings are adapter-owned under `internal/integration/crawler/*`; SDS remains specialized | Does not open Amazon target listing or new source expansion |
 | Canonical facts | `sourcing.Publisher` → `catalog.Publisher` and durable Catalog composition exist | New-system replay/conflict, immutable history and authorized publication |
-| Old 1688 route | App HTTP wires the compatibility task handoff consuming the current Publisher | EXTRACT valid behavior, then RETIRE in a separately approved cutover PR |
+| Old 1688 route | Historical compatibility task handoff is legacy evidence | RETIRE it; it is not a current acceptance gate or a source for new dependencies |
 | New import HTTP | `internal/app/productsourcing/httpapi` is merged, prepared and unregistered | Current-owner application access/orchestration and approved wiring; no production acceptance claimed |
-| Source-account ownership | #303 preflight is merged | Independent account/Organization/profile/access acceptance; merge is not cutover |
+| Source-account ownership | #303 preflight is historical evidence | New source access must use current authorization; legacy profile reuse is not a prerequisite |
 | Asset/readiness | Product Asset and ImageAgent approval contracts exist | Source images remain candidates; demonstrate explicit approval and readiness |
-| Overall #30 closeout | Not complete | #307 environment/scope, old-execution isolation, new import and explicit approvals remain gates |
+| Overall #30 closeout | Not complete | Fresh-install new import, current authorization and explicit approvals are the remaining acceptance evidence |
 
 Retired `internal/catalog`, `internal/asset`, `internal/productenrich` and
 `internal/productimage` are not build/test targets. Current owners are
 `internal/product/{catalog,asset,enrichment,image}`. Legacy code is observed
 debt, not permission to extend it.
 
-## 3. Data decision and cutover limits
+## 3. Fresh-install data boundary
 
-#307 cancels migration of old ProductSnapshot/publication/version, old approved
-assets and task/results, historical mapping/stream merging and cross-cutover
-replay returning old versions. Do not build alias/resolver/migration machinery
-for cancelled requirements or describe them as a repaired defect.
+**PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08** governs this guide. Future
+work starts from a fresh installation and empty business data. It does not
+require legacy profile reuse, environment acceptance or old-execution cutover
+gates. Do not build migration, old-ID mapping, wrapper, fallback, dual-read,
+dual-write, synchronization or second-fact machinery.
 
-The decision protects Organization/IAM, permissions, accounts, Store, existing
-browser profiles/login state/credentials, plans/entitlements, financial ledgers
-and unresolved external effects, orders, remote platform state and data outside
-the approved business scope. “Do not retain” is not permission to delete a
-database, bucket, queue, Redis or profile directory.
+Current Organization/IAM, permissions, accounts, Store, plans/entitlements,
+financial ledgers, unresolved external effects, orders and remote platform state
+remain their current owners' facts. This document neither authorizes real
+environment operations nor permits deletion of a database, bucket, queue, Redis
+or profile directory.
 
-The environment owner must confirm exact scope and protected/shared resources.
-Application owners must isolate old writers/retries, reject late results and
-prove the new scope cannot read or revive old business state. Wiring, cleanup
-and real runtime execution require separate approval. Existing prepared-path
-gates cannot simply be removed because historical retention was cancelled.
-Full steps and unresolved conditions live in the clean-slate decision and #307.
+The fresh-install boundary is not an authorization to operate on a prior
+environment. Wiring and real runtime execution still require their own approval;
+historical migration and environment preflight records do not add acceptance
+gates to the new product path.
 
 ## 4. Verification for an authorized implementation slice
 
@@ -87,7 +87,7 @@ For a controlled new import, record:
    adapter failures and cancellation/error propagation as applicable.
 6. Explicit asset approval identity/result; not-ready response before approval.
 7. Deterministic readiness and the existing marketplace/submission owner.
-8. Old-execution rejection and protected-scope evidence required by #307.
+8. The new path has no legacy task, queue, worker, profile or migration dependency.
 
 Fixtures do not require uncontrolled browser automation. Real source access,
 local integration and production verification remain separate evidence classes.
@@ -97,8 +97,8 @@ Do not expose credentials or sensitive raw data in public reports.
 
 #30 remains incomplete until its current acceptance has evidence: authorized
 new import, durable facts/lineage, new-system idempotency and tenant isolation,
-explicit asset approval/readiness, old-execution isolation and approved
-route/handoff retirement. Record blockers by owner and affected gate. A merge
+explicit asset approval/readiness and current Product-owner wiring. Record
+blockers by owner and affected gate. A merge
 does not authorize Issue closure, deployment or data operations.
 
 Select any next source through #137 and a bounded execution Issue after the
