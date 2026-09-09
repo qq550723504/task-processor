@@ -73,7 +73,7 @@ func TestBoundedSnapshotReaderLimitsOnlyItsOwnMaterializationPath(t *testing.T) 
 				}
 				return
 			}
-			if !errors.Is(versionErr, productcatalog.ErrRepositoryStateInvalid) || !errors.Is(currentErr, productcatalog.ErrRepositoryStateInvalid) {
+			if !errors.Is(versionErr, productcatalog.ErrSnapshotTooLarge) || !errors.Is(currentErr, productcatalog.ErrSnapshotTooLarge) {
 				t.Fatalf("over-limit read errors: versioned=%v current=%v", versionErr, currentErr)
 			}
 		})
@@ -88,6 +88,37 @@ func TestBoundedSnapshotSizeExpressionUsesByteLengthPerDialect(t *testing.T) {
 		if got := boundedSnapshotSizeExpression(dialect); got != "LENGTH(snapshot_json)" {
 			t.Fatalf("%s expression = %q", dialect, got)
 		}
+	}
+}
+
+func TestBoundedSnapshotReaderKeepsCorruptPayloadDistinctFromOversize(t *testing.T) {
+	db := openCatalogRepositoryTestDB(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("AutoMigrate(): %v", err)
+	}
+	repository, err := NewRepository(db)
+	if err != nil {
+		t.Fatalf("NewRepository(): %v", err)
+	}
+	identity := productcatalog.SnapshotIdentity{TenantID: "tenant-a", ProductKey: "product-a"}
+	published, err := repository.PublishSnapshot(context.Background(), productcatalog.PublishRequest{
+		Identity: identity, PublicationID: "publication-1", Snapshot: productcatalog.ProductSnapshot{Title: "Bottle"},
+	})
+	if err != nil {
+		t.Fatalf("PublishSnapshot(): %v", err)
+	}
+	if err := db.Model(&SnapshotVersionRecord{}).
+		Where("tenant_id = ? AND product_key = ? AND version = ?", identity.TenantID, identity.ProductKey, published.Version).
+		Update("snapshot_json", []byte(`{"title":"tampered"}`)).Error; err != nil {
+		t.Fatalf("tamper snapshot: %v", err)
+	}
+	bounded, err := NewBoundedSnapshotReader(db, 2<<20)
+	if err != nil {
+		t.Fatalf("NewBoundedSnapshotReader(): %v", err)
+	}
+	_, err = bounded.GetSnapshot(context.Background(), identity, published.Version)
+	if !errors.Is(err, productcatalog.ErrRepositoryStateInvalid) || errors.Is(err, productcatalog.ErrSnapshotTooLarge) {
+		t.Fatalf("corrupt read error = %v, want only ErrRepositoryStateInvalid", err)
 	}
 }
 

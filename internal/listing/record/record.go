@@ -194,6 +194,9 @@ func (s *Service) Create(ctx context.Context, operation string, input Input) (Re
 	if errors.Is(err, catalog.ErrSnapshotNotReady) {
 		return Receipt{}, ErrNotFound
 	}
+	if errors.Is(err, catalog.ErrSnapshotTooLarge) {
+		return Receipt{}, ErrTooLarge
+	}
 	if err != nil {
 		return Receipt{}, err
 	}

@@ -406,6 +406,42 @@ func TestDraftS1CorruptExactApprovedAssetDoesNotCreateReceipt(t *testing.T) {
 	requireDraftS1RowCounts(t, db, 0)
 }
 
+func TestDraftS1MapsBoundedExactProductToPermanentTooLarge(t *testing.T) {
+	db := recordTestDB(t)
+	repository, err := catalogstore.NewRepository(db)
+	require.NoError(t, err)
+	publisher, err := catalog.NewPublisher(repository)
+	require.NoError(t, err)
+	published, err := publisher.Publish(context.Background(), catalog.PublishRequest{
+		Identity:      catalog.SnapshotIdentity{TenantID: "200", ProductKey: "product"},
+		PublicationID: "oversized-product",
+		Snapshot:      catalog.ProductSnapshot{Description: strings.Repeat("x", listingrecord.MaxPayloadBytes)},
+	})
+	require.NoError(t, err)
+	prepareRecordStore(t, db, "200")
+	prepareApprovedAssets(t, db, "200", "product", published.Version)
+
+	server, _ := recordApplication(t, db, &recordGrants{})
+	status, body := recordPost(t, server, "operator", "bounded-product", recordBody)
+	require.Equal(t, http.StatusRequestEntityTooLarge, status, string(body))
+	require.JSONEq(t, `{"error":"input_too_large"}`, string(body))
+	requireDraftS1RowCounts(t, db, 0)
+}
+
+func TestDraftS1KeepsCorruptExactProductUnavailable(t *testing.T) {
+	db := recordTestDB(t)
+	published := publishRecordProduct(t, db, "200", "product")
+	require.NoError(t, db.Table("product_snapshot_versions").
+		Where("tenant_id = ? AND product_key = ? AND version = ?", "200", "product", published.Version).
+		Update("snapshot_json", []byte(`{"title":"tampered"}`)).Error)
+
+	server, _ := recordApplication(t, db, &recordGrants{})
+	status, body := recordPost(t, server, "operator", "corrupt-product", recordBody)
+	require.Equal(t, http.StatusServiceUnavailable, status, string(body))
+	require.JSONEq(t, `{"error":"unavailable"}`, string(body))
+	requireDraftS1RowCounts(t, db, 0)
+}
+
 func TestDraftS1BoundsExactApprovedAssetsBeforePersistenceDecode(t *testing.T) {
 	for _, shape := range []string{"single row", "aggregate inventory"} {
 		t.Run(shape, func(t *testing.T) {
@@ -492,18 +528,24 @@ func TestSheinRecordOversizedGeneratedPackageHTTP(t *testing.T) {
 	require.NoError(t, err)
 	publisher, err := catalog.NewPublisher(repository)
 	require.NoError(t, err)
+	snapshot := catalog.ProductSnapshot{Title: "Bottle", SellingPoints: []string{strings.Repeat("x", listingrecord.MaxPayloadBytes)}}
+	encoded, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.Greater(t, len(encoded), listingrecord.MaxPayloadBytes)
+	snapshot.SellingPoints[0] = snapshot.SellingPoints[0][:len(snapshot.SellingPoints[0])-(len(encoded)-listingrecord.MaxPayloadBytes)]
+	encoded, err = json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.Len(t, encoded, listingrecord.MaxPayloadBytes)
 	_, err = publisher.Publish(context.Background(), catalog.PublishRequest{
 		Identity: catalog.SnapshotIdentity{TenantID: "200", ProductKey: "product"}, PublicationID: "oversized-setup",
-		Snapshot: catalog.ProductSnapshot{Title: "Bottle", SellingPoints: []string{strings.Repeat("detail ", 350000)}},
+		Snapshot: snapshot,
 	})
 	require.NoError(t, err)
 	prepareRecordStore(t, db, "200")
 	prepareApprovedAssets(t, db, "200", "product", 1)
 	server, _ := recordApplication(t, db, &recordGrants{})
 	status, body := recordPost(t, server, "operator", "large-package", recordBody)
-	require.Equal(t, http.StatusServiceUnavailable, status, string(body))
-	require.JSONEq(t, `{"error":"unavailable"}`, string(body))
-	var count int64
-	require.NoError(t, db.Table("listing_shein_records").Count(&count).Error)
-	require.Zero(t, count)
+	require.Equal(t, http.StatusRequestEntityTooLarge, status, string(body))
+	require.JSONEq(t, `{"error":"input_too_large"}`, string(body))
+	requireDraftS1RowCounts(t, db, 0)
 }
