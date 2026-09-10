@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -15,9 +16,12 @@ import (
 
 const (
 	MaxExecutionPayloadBytes = 2 << 20
-	MinExecutionLease        = time.Second
-	MaxExecutionLease        = time.Hour
-	providerExecutionDomain  = "task-processor/submission/provider-execution/v1"
+	// MaxExecutionEvidenceReasonCharacters matches PostgreSQL VARCHAR(512)
+	// semantics. It is a Unicode character limit, not a UTF-8 byte limit.
+	MaxExecutionEvidenceReasonCharacters = 512
+	MinExecutionLease                    = time.Second
+	MaxExecutionLease                    = time.Hour
+	providerExecutionDomain              = "task-processor/submission/provider-execution/v1"
 )
 
 var (
@@ -306,7 +310,7 @@ func ValidatePersistedExecutionAttempt(attempt ExecutionAttempt) error {
 
 func validatePersistedExecutionEvidence(evidence ExecutionEvidence, createdAt time.Time) error {
 	if !authidentity.IsBoundedIdentifier(evidence.Reference) || !isExecutionDigest(evidence.Fingerprint) ||
-		evidence.ObservedAt.IsZero() || evidence.ObservedAt.Before(createdAt) {
+		evidence.ObservedAt.IsZero() || evidence.ObservedAt.Before(createdAt) || !validExecutionEvidenceReason(evidence.Reason) {
 		return ErrExecutionUnavailable
 	}
 	switch evidence.Kind {
@@ -331,13 +335,19 @@ func validatePersistedExecutionEvidence(evidence ExecutionEvidence, createdAt ti
 
 func validateExecutionEvidence(attempt ExecutionAttempt, evidence ExecutionEvidence, now time.Time) error {
 	if !authidentity.IsBoundedIdentifier(evidence.Reference) || !isExecutionDigest(evidence.Fingerprint) ||
-		evidence.ObservedAt.IsZero() || evidence.ObservedAt.Before(attempt.CreatedAt) || evidence.ObservedAt.After(now) {
+		evidence.ObservedAt.IsZero() || evidence.ObservedAt.Before(attempt.CreatedAt) || evidence.ObservedAt.After(now) ||
+		!validExecutionEvidenceReason(evidence.Reason) {
 		return ErrExecutionEvidenceRequired
 	}
 	if evidence.Outcome == ExecutionFailedDefinitive && strings.TrimSpace(evidence.Reason) == "" {
 		return ErrExecutionEvidenceRequired
 	}
 	return nil
+}
+
+func validExecutionEvidenceReason(reason string) bool {
+	return utf8.ValidString(reason) && !strings.ContainsRune(reason, '\x00') &&
+		utf8.RuneCountInString(reason) <= MaxExecutionEvidenceReasonCharacters
 }
 
 func finishExecution(attempt ExecutionAttempt, evidence ExecutionEvidence, now time.Time) ExecutionAttempt {

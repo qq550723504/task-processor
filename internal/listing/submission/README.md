@@ -16,11 +16,16 @@ Current stable ownership:
   expiry are conservative `outcome_unknown` transitions, never unsent retries
 - unknown-outcome resolution through qualified provider read-back/adoption or a
   separately authorized manual decision with auditable no-side-effect evidence;
-  the kernel exposes no unknown-to-resend transition
+  the kernel exposes no unknown-to-resend transition; evidence reasons preserve
+  caller text but must be valid UTF-8, exclude PostgreSQL-incompatible NUL, and
+  contain at most 512 Unicode characters, matching PostgreSQL `VARCHAR(512)`
+  without truncation
 - PostgreSQL execution repository/UoW under
   `internal/integration/persistence/listing/submission`, including
   Organization-qualified keys and predicates, same-intent replay/conflict,
-  cross-intent target serialization, stale-fence rejection, and atomic rollback
+  cross-intent target serialization, stale-fence rejection, atomic rollback, and
+  constructor-time fail-closed verification of both tables' complete column and
+  constraint contracts
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)

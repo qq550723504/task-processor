@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -373,6 +374,210 @@ func TestRepositoryPostgresExecutionContract(t *testing.T) {
 		require.Nil(t, replay.Permit)
 		require.Equal(t, submission.ExecutionClaimed, replay.Attempt.Status)
 	})
+
+	t.Run("evidence reason character bound is enforced before persistence", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		kernel, err := submission.NewExecutionKernel(repository,
+			submission.WithExecutionClock(func() time.Time { return now }),
+			submission.WithManualResolutionAuthorizer(manualAuthorizerFunc(func(context.Context, submission.ExecutionScope, string) (string, error) {
+				return "operator-a", nil
+			})),
+		)
+		require.NoError(t, err)
+		tooLong := strings.Repeat("界", 513)
+		atBoundary := strings.Repeat("界", 512)
+
+		provider, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-reason-provider", "listing-reason-provider", `{"title":"one"}`))
+		require.NoError(t, err)
+		providerRejected := providerEvidence(submission.ExecutionFailedDefinitive, "provider-rejected", now)
+		providerRejected.Reason = tooLong
+		_, err = kernel.Complete(ctx, permitClaim("org-a", provider.Permit), providerRejected)
+		require.ErrorIs(t, err, submission.ErrExecutionEvidenceRequired)
+		persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, provider.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionClaimed, persisted.Status)
+		replay, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-reason-provider", "listing-reason-provider", `{"title":"one"}`))
+		require.NoError(t, err)
+		require.True(t, replay.Replayed)
+		require.Nil(t, replay.Permit)
+		_, err = kernel.Acquire(ctx, executionCommand("org-a", "intent-reason-blocked", "listing-reason-provider", `{"title":"two"}`))
+		require.ErrorIs(t, err, submission.ErrExecutionTargetClaimed)
+		providerRejected.Reason = atBoundary
+		completed, err := kernel.Complete(ctx, permitClaim("org-a", provider.Permit), providerRejected)
+		require.NoError(t, err)
+		require.Equal(t, atBoundary, completed.Evidence.Reason)
+		completedReplay, err := kernel.Complete(ctx, permitClaim("org-a", provider.Permit), providerRejected)
+		require.NoError(t, err)
+		require.Equal(t, completed, completedReplay)
+
+		readbackCommand := executionCommand("org-a", "intent-reason-readback", "listing-reason-readback", `{"title":"one"}`)
+		readback, err := kernel.Acquire(ctx, readbackCommand)
+		require.NoError(t, err)
+		_, err = kernel.MarkUnknown(ctx, permitClaim("org-a", readback.Permit), submission.UnknownResponseLost)
+		require.NoError(t, err)
+		readbackRejected := readBackEvidence(submission.ExecutionFailedDefinitive, "readback-rejected", now)
+		readbackRejected.Reason = tooLong
+		_, err = kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, readback.Attempt.AttemptID, readback.Attempt.FenceEpoch, readbackRejected)
+		require.ErrorIs(t, err, submission.ErrExecutionEvidenceRequired)
+		persisted, err = kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, readback.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionOutcomeUnknown, persisted.Status)
+		readbackReplay, err := kernel.Acquire(ctx, readbackCommand)
+		require.NoError(t, err)
+		require.True(t, readbackReplay.Replayed)
+		require.Nil(t, readbackReplay.Permit)
+		_, err = kernel.Acquire(ctx, executionCommand("org-a", "intent-reason-readback-blocked", "listing-reason-readback", `{"title":"two"}`))
+		require.ErrorIs(t, err, submission.ErrExecutionTargetClaimed)
+		readbackRejected.Reason = atBoundary
+		resolved, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, readback.Attempt.AttemptID, readback.Attempt.FenceEpoch, readbackRejected)
+		require.NoError(t, err)
+		require.Equal(t, atBoundary, resolved.Evidence.Reason)
+		resolvedReplay, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, readback.Attempt.AttemptID, readback.Attempt.FenceEpoch, readbackRejected)
+		require.NoError(t, err)
+		require.Equal(t, resolved, resolvedReplay)
+
+		manualCommand := executionCommand("org-a", "intent-reason-manual", "listing-reason-manual", `{"title":"one"}`)
+		manual, err := kernel.Acquire(ctx, manualCommand)
+		require.NoError(t, err)
+		_, err = kernel.MarkUnknown(ctx, permitClaim("org-a", manual.Permit), submission.UnknownExecutionCancelled)
+		require.NoError(t, err)
+		manualCancelled := submission.ExecutionEvidence{
+			Kind: submission.EvidenceManualResolution, Outcome: submission.ExecutionCancelled,
+			Reference: "incident-reason", Fingerprint: executionTestDigest("manual-reason"),
+			Reason: tooLong, ObservedAt: now,
+		}
+		_, err = kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, manual.Attempt.AttemptID, manual.Attempt.FenceEpoch, manualCancelled)
+		require.ErrorIs(t, err, submission.ErrExecutionEvidenceRequired)
+		persisted, err = kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, manual.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionOutcomeUnknown, persisted.Status)
+		manualReplay, err := kernel.Acquire(ctx, manualCommand)
+		require.NoError(t, err)
+		require.True(t, manualReplay.Replayed)
+		require.Nil(t, manualReplay.Permit)
+		_, err = kernel.Acquire(ctx, executionCommand("org-a", "intent-reason-manual-blocked", "listing-reason-manual", `{"title":"two"}`))
+		require.ErrorIs(t, err, submission.ErrExecutionTargetClaimed)
+		manualCancelled.Reason = atBoundary
+		cancelled, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, manual.Attempt.AttemptID, manual.Attempt.FenceEpoch, manualCancelled)
+		require.NoError(t, err)
+		require.Equal(t, atBoundary, cancelled.Evidence.Reason)
+		cancelledReplay, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, manual.Attempt.AttemptID, manual.Attempt.FenceEpoch, manualCancelled)
+		require.NoError(t, err)
+		require.Equal(t, cancelled, cancelledReplay)
+	})
+}
+
+func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+
+	mutations := []struct {
+		name       string
+		statements []string
+	}{
+		{
+			name:       "wrong column type with unchanged name",
+			statements: []string{"ALTER TABLE public." + AttemptTable + " ALTER COLUMN evidence_reason TYPE TEXT"},
+		},
+		{
+			name:       "wrong nullability with unchanged name",
+			statements: []string{"ALTER TABLE public." + AttemptTable + " ALTER COLUMN evidence_reason SET NOT NULL"},
+		},
+		{
+			name:       "wrong target column length with unchanged name",
+			statements: []string{"ALTER TABLE public." + TargetFenceTable + " ALTER COLUMN subject_id TYPE VARCHAR(127)"},
+		},
+		{
+			name:       "wrong target nullability with unchanged name",
+			statements: []string{"ALTER TABLE public." + TargetFenceTable + " ALTER COLUMN updated_at DROP NOT NULL"},
+		},
+		{
+			name: "missing organization-qualified primary key",
+			statements: []string{
+				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_attempt_fkey",
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_pkey",
+			},
+		},
+		{
+			name: "wrong same-name intent uniqueness",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_intent_unique",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_intent_unique UNIQUE (organization_id, action, intent_key)",
+			},
+		},
+		{
+			name: "wrong same-name provider-key uniqueness",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_provider_key_unique",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_provider_key_unique UNIQUE (organization_id, action, provider_execution_key)",
+			},
+		},
+		{
+			name: "wrong same-name target primary key without organization",
+			statements: []string{
+				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_pkey",
+				"ALTER TABLE public." + TargetFenceTable + " ADD CONSTRAINT listing_submission_target_fences_pkey PRIMARY KEY (platform, store_id, subject_id)",
+			},
+		},
+		{
+			name: "wrong same-name target foreign key",
+			statements: []string{
+				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_attempt_fkey",
+				"ALTER TABLE public." + TargetFenceTable + " ADD CONSTRAINT listing_submission_target_fences_attempt_fkey FOREIGN KEY (organization_id, current_attempt_id) REFERENCES public." + AttemptTable + " (organization_id, attempt_id) ON DELETE CASCADE",
+			},
+		},
+		{
+			name: "same-name state constraint retains keywords but is relaxed",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_state_shape_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_state_shape_check CHECK ((status = 'claimed' AND unknown_reason IS NULL AND evidence_kind IS NULL AND finished_at IS NULL) OR (status = 'outcome_unknown' AND unknown_reason IN ('response_lost', 'lease_expired', 'execution_cancelled') AND evidence_kind IS NULL AND finished_at IS NULL) OR (status IN ('succeeded', 'failed_definitive', 'cancelled') AND unknown_reason IS NULL AND evidence_kind IS NOT NULL AND evidence_outcome = status AND evidence_reference IS NOT NULL AND evidence_fingerprint IS NOT NULL AND evidence_observed_at IS NOT NULL AND finished_at IS NOT NULL) OR true)",
+			},
+		},
+		{
+			name: "same-name status constraint changes literal case",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_status_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_status_check CHECK (status IN ('CLAIMED', 'outcome_unknown', 'succeeded', 'failed_definitive', 'cancelled'))",
+			},
+		},
+		{
+			name: "same-name digest constraint changes regex literal case",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_digest_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_digest_check CHECK (payload_fingerprint ~ '^[0-9A-F]{64}$' AND provider_execution_key ~ '^subk1_v1_[0-9A-F]{64}$' AND claim_token_hash ~ '^[0-9A-F]{64}$' AND (evidence_fingerprint IS NULL OR evidence_fingerprint ~ '^[0-9A-F]{64}$'))",
+			},
+		},
+		{
+			name: "same-name constraint is not validated",
+			statements: []string{
+				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_epoch_check",
+				"ALTER TABLE public." + TargetFenceTable + " ADD CONSTRAINT listing_submission_target_fences_epoch_check CHECK (epoch > 0) NOT VALID",
+			},
+		},
+	}
+
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			reinstallExecutionSchema(t, db)
+			for _, statement := range tc.statements {
+				require.NoError(t, db.Exec(statement).Error)
+			}
+			repository, err := NewRepository(db)
+			require.Nil(t, repository)
+			require.ErrorIs(t, err, submission.ErrExecutionUnavailable)
+		})
+	}
+
+	t.Run("correct schema is admitted", func(t *testing.T) {
+		reinstallExecutionSchema(t, db)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		require.NotNil(t, repository)
+	})
 }
 
 func executionKernel(t *testing.T, db *gorm.DB, clock func() time.Time) *submission.ExecutionKernel {
@@ -423,6 +628,12 @@ func (f manualAuthorizerFunc) AuthorizeManualResolution(ctx context.Context, sco
 func resetExecutionTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.Exec("TRUNCATE TABLE "+TargetFenceTable+", "+AttemptTable+" CASCADE").Error)
+}
+
+func reinstallExecutionSchema(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Exec("DROP TABLE IF EXISTS public."+TargetFenceTable+", public."+AttemptTable+" CASCADE").Error)
+	require.NoError(t, InstallSchema(db))
 }
 
 func openExecutionPostgres(t *testing.T, ctx context.Context) (*gorm.DB, interface{ Close() error }) {

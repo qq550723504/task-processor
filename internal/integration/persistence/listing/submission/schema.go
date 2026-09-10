@@ -2,8 +2,8 @@ package submissionpersistence
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"slices"
 
 	"gorm.io/gorm"
 )
@@ -97,14 +97,113 @@ var schemaStatements = []string{
 )`,
 }
 
-var expectedColumns = map[string][]string{
+type columnContract struct {
+	name    string
+	typeSQL string
+	notNull bool
+}
+
+var expectedColumns = map[string][]columnContract{
 	AttemptTable: {
-		"organization_id", "attempt_id", "intent_key", "platform", "store_id", "subject_id", "action",
-		"payload_fingerprint", "provider_execution_key", "status", "fence_epoch", "claim_token_hash", "claim_owner_id", "lease_expires_at",
-		"unknown_reason", "evidence_kind", "evidence_outcome", "evidence_reference", "evidence_fingerprint", "evidence_reason",
-		"evidence_authorized_by", "evidence_observed_at", "created_at", "updated_at", "finished_at",
+		{name: "organization_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "attempt_id", typeSQL: "uuid", notNull: true},
+		{name: "intent_key", typeSQL: "character varying(128)", notNull: true},
+		{name: "platform", typeSQL: "character varying(128)", notNull: true},
+		{name: "store_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "subject_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "action", typeSQL: "character varying(128)", notNull: true},
+		{name: "payload_fingerprint", typeSQL: "character(64)", notNull: true},
+		{name: "provider_execution_key", typeSQL: "character varying(73)", notNull: true},
+		{name: "status", typeSQL: "character varying(32)", notNull: true},
+		{name: "fence_epoch", typeSQL: "bigint", notNull: true},
+		{name: "claim_token_hash", typeSQL: "character(64)", notNull: true},
+		{name: "claim_owner_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "lease_expires_at", typeSQL: "timestamp with time zone", notNull: true},
+		{name: "unknown_reason", typeSQL: "character varying(32)"},
+		{name: "evidence_kind", typeSQL: "character varying(32)"},
+		{name: "evidence_outcome", typeSQL: "character varying(32)"},
+		{name: "evidence_reference", typeSQL: "character varying(128)"},
+		{name: "evidence_fingerprint", typeSQL: "character(64)"},
+		{name: "evidence_reason", typeSQL: "character varying(512)"},
+		{name: "evidence_authorized_by", typeSQL: "character varying(128)"},
+		{name: "evidence_observed_at", typeSQL: "timestamp with time zone"},
+		{name: "created_at", typeSQL: "timestamp with time zone", notNull: true},
+		{name: "updated_at", typeSQL: "timestamp with time zone", notNull: true},
+		{name: "finished_at", typeSQL: "timestamp with time zone"},
 	},
-	TargetFenceTable: {"organization_id", "platform", "store_id", "subject_id", "epoch", "current_attempt_id", "current_status", "updated_at"},
+	TargetFenceTable: {
+		{name: "organization_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "platform", typeSQL: "character varying(128)", notNull: true},
+		{name: "store_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "subject_id", typeSQL: "character varying(128)", notNull: true},
+		{name: "epoch", typeSQL: "bigint", notNull: true},
+		{name: "current_attempt_id", typeSQL: "uuid", notNull: true},
+		{name: "current_status", typeSQL: "character varying(32)", notNull: true},
+		{name: "updated_at", typeSQL: "timestamp with time zone", notNull: true},
+	},
+}
+
+type constraintContract struct {
+	kind            string
+	exactDefinition string
+}
+
+var expectedConstraints = map[string]map[string]constraintContract{
+	AttemptTable: {
+		"listing_submission_execution_attempts_pkey": {
+			kind: "p", exactDefinition: "PRIMARY KEY (organization_id, attempt_id)",
+		},
+		"listing_submission_execution_attempts_intent_unique": {
+			kind: "u", exactDefinition: "UNIQUE (organization_id, intent_key)",
+		},
+		"listing_submission_execution_attempts_provider_key_unique": {
+			kind: "u", exactDefinition: "UNIQUE (organization_id, provider_execution_key)",
+		},
+		"listing_submission_execution_attempts_id_v7_check": {
+			kind: "c", exactDefinition: `CHECK ((SUBSTRING((attempt_id)::text FROM 15 FOR 1) = '7'::text))`,
+		},
+		"listing_submission_execution_attempts_identity_check": {
+			kind: "c", exactDefinition: `CHECK ((((octet_length((organization_id)::text) >= 1) AND (octet_length((organization_id)::text) <= 128)) AND ((organization_id)::text = btrim((organization_id)::text)) AND ((octet_length((intent_key)::text) >= 1) AND (octet_length((intent_key)::text) <= 128)) AND ((intent_key)::text = btrim((intent_key)::text)) AND ((octet_length((platform)::text) >= 1) AND (octet_length((platform)::text) <= 128)) AND ((platform)::text = btrim((platform)::text)) AND ((octet_length((store_id)::text) >= 1) AND (octet_length((store_id)::text) <= 128)) AND ((store_id)::text = btrim((store_id)::text)) AND ((octet_length((subject_id)::text) >= 1) AND (octet_length((subject_id)::text) <= 128)) AND ((subject_id)::text = btrim((subject_id)::text)) AND ((octet_length((action)::text) >= 1) AND (octet_length((action)::text) <= 128)) AND ((action)::text = btrim((action)::text)) AND ((octet_length((claim_owner_id)::text) >= 1) AND (octet_length((claim_owner_id)::text) <= 128)) AND ((claim_owner_id)::text = btrim((claim_owner_id)::text))))`,
+		},
+		"listing_submission_execution_attempts_digest_check": {
+			kind: "c", exactDefinition: `CHECK (((payload_fingerprint ~ '^[0-9a-f]{64}$'::text) AND ((provider_execution_key)::text ~ '^subk1_v1_[0-9a-f]{64}$'::text) AND (claim_token_hash ~ '^[0-9a-f]{64}$'::text) AND ((evidence_fingerprint IS NULL) OR (evidence_fingerprint ~ '^[0-9a-f]{64}$'::text))))`,
+		},
+		"listing_submission_execution_attempts_status_check": {
+			kind: "c", exactDefinition: `CHECK (((status)::text = ANY ((ARRAY['claimed'::character varying, 'outcome_unknown'::character varying, 'succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])))`,
+		},
+		"listing_submission_execution_attempts_fence_check": {
+			kind: "c", exactDefinition: `CHECK ((fence_epoch > 0))`,
+		},
+		"listing_submission_execution_attempts_timestamp_check": {
+			kind: "c", exactDefinition: `CHECK (((updated_at >= created_at) AND (lease_expires_at > created_at) AND ((finished_at IS NULL) OR (finished_at >= created_at))))`,
+		},
+		"listing_submission_execution_attempts_state_shape_check": {
+			kind: "c", exactDefinition: `CHECK (((((status)::text = 'claimed'::text) AND (unknown_reason IS NULL) AND (evidence_kind IS NULL) AND (finished_at IS NULL)) OR (((status)::text = 'outcome_unknown'::text) AND ((unknown_reason)::text = ANY ((ARRAY['response_lost'::character varying, 'lease_expired'::character varying, 'execution_cancelled'::character varying])::text[])) AND (evidence_kind IS NULL) AND (finished_at IS NULL)) OR (((status)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (unknown_reason IS NULL) AND (evidence_kind IS NOT NULL) AND ((evidence_outcome)::text = (status)::text) AND (evidence_reference IS NOT NULL) AND (evidence_fingerprint IS NOT NULL) AND (evidence_observed_at IS NOT NULL) AND (finished_at IS NOT NULL))))`,
+		},
+		"listing_submission_execution_attempts_evidence_check": {
+			kind: "c", exactDefinition: `CHECK (((evidence_kind IS NULL) OR (((evidence_kind)::text = 'provider_response'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'provider_readback'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'manual_resolution'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (evidence_authorized_by IS NOT NULL) AND (evidence_reason IS NOT NULL))))`,
+		},
+		"listing_submission_execution_attempts_definitive_reason_check": {
+			kind: "c", exactDefinition: `CHECK ((((evidence_outcome)::text <> ALL ((ARRAY['failed_definitive'::character varying, 'cancelled'::character varying])::text[])) OR (evidence_reason IS NOT NULL)))`,
+		},
+	},
+	TargetFenceTable: {
+		"listing_submission_target_fences_pkey": {
+			kind: "p", exactDefinition: "PRIMARY KEY (organization_id, platform, store_id, subject_id)",
+		},
+		"listing_submission_target_fences_attempt_fkey": {
+			kind: "f", exactDefinition: "FOREIGN KEY (organization_id, current_attempt_id) REFERENCES public.listing_submission_execution_attempts(organization_id, attempt_id) ON DELETE RESTRICT",
+		},
+		"listing_submission_target_fences_identity_check": {
+			kind: "c", exactDefinition: `CHECK ((((octet_length((organization_id)::text) >= 1) AND (octet_length((organization_id)::text) <= 128)) AND ((organization_id)::text = btrim((organization_id)::text)) AND ((octet_length((platform)::text) >= 1) AND (octet_length((platform)::text) <= 128)) AND ((platform)::text = btrim((platform)::text)) AND ((octet_length((store_id)::text) >= 1) AND (octet_length((store_id)::text) <= 128)) AND ((store_id)::text = btrim((store_id)::text)) AND ((octet_length((subject_id)::text) >= 1) AND (octet_length((subject_id)::text) <= 128)) AND ((subject_id)::text = btrim((subject_id)::text))))`,
+		},
+		"listing_submission_target_fences_epoch_check": {
+			kind: "c", exactDefinition: `CHECK ((epoch > 0))`,
+		},
+		"listing_submission_target_fences_status_check": {
+			kind: "c", exactDefinition: `CHECK (((current_status)::text = ANY ((ARRAY['claimed'::character varying, 'outcome_unknown'::character varying, 'succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])))`,
+		},
+	},
 }
 
 func InstallSchema(db *gorm.DB) error {
@@ -125,30 +224,108 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	if db == nil || db.Dialector.Name() != "postgres" {
 		return fmt.Errorf("verify submission execution schema: PostgreSQL database is required")
 	}
-	return verifySchema(ctx, db.WithContext(ctx))
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return verifySchema(ctx, tx)
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 }
 
 func verifySchema(ctx context.Context, db *gorm.DB) error {
+	if err := db.WithContext(ctx).Exec(`SELECT set_config('search_path', 'pg_catalog', true)`).Error; err != nil {
+		return fmt.Errorf("set submission execution schema verification search_path: %w", err)
+	}
 	for _, table := range []string{AttemptTable, TargetFenceTable} {
-		rows, err := db.WithContext(ctx).Raw(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? ORDER BY ordinal_position`, table).Rows()
-		if err != nil {
-			return fmt.Errorf("inspect submission execution schema: %w", err)
+		if err := verifyColumns(ctx, db, table, expectedColumns[table]); err != nil {
+			return err
 		}
-		var columns []string
-		for rows.Next() {
-			var column string
-			if err := rows.Scan(&column); err != nil {
-				_ = rows.Close()
-				return fmt.Errorf("scan submission execution schema: %w", err)
-			}
-			columns = append(columns, column)
+		if err := verifyConstraints(ctx, db, table, expectedConstraints[table]); err != nil {
+			return err
 		}
-		closeErr := rows.Close()
-		if closeErr != nil {
-			return closeErr
+	}
+	return nil
+}
+
+func verifyColumns(ctx context.Context, db *gorm.DB, table string, expected []columnContract) error {
+	rows, err := db.WithContext(ctx).Raw(`
+SELECT attribute.attname, pg_catalog.format_type(attribute.atttypid, attribute.atttypmod), attribute.attnotnull
+FROM pg_catalog.pg_attribute AS attribute
+JOIN pg_catalog.pg_class AS relation ON relation.oid = attribute.attrelid
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname = 'public' AND relation.relname = ?
+  AND attribute.attnum > 0 AND NOT attribute.attisdropped
+ORDER BY attribute.attnum`, table).Rows()
+	if err != nil {
+		return fmt.Errorf("inspect submission execution columns for public.%s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var actual []columnContract
+	for rows.Next() {
+		var column columnContract
+		if err := rows.Scan(&column.name, &column.typeSQL, &column.notNull); err != nil {
+			return fmt.Errorf("scan submission execution columns for public.%s: %w", table, err)
 		}
-		if !slices.Equal(columns, expectedColumns[table]) {
-			return fmt.Errorf("submission execution schema mismatch for public.%s columns: got %v", table, columns)
+		actual = append(actual, column)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate submission execution columns for public.%s: %w", table, err)
+	}
+	if len(actual) != len(expected) {
+		return fmt.Errorf("submission execution schema mismatch for public.%s columns: got %d, want %d", table, len(actual), len(expected))
+	}
+	for index := range expected {
+		if actual[index] != expected[index] {
+			return fmt.Errorf("submission execution schema mismatch for public.%s column %d: got %+v, want %+v", table, index+1, actual[index], expected[index])
+		}
+	}
+	return nil
+}
+
+func verifyConstraints(ctx context.Context, db *gorm.DB, table string, expected map[string]constraintContract) error {
+	rows, err := db.WithContext(ctx).Raw(`
+SELECT constraint_row.conname, constraint_row.contype::text, pg_catalog.pg_get_constraintdef(constraint_row.oid, false),
+       constraint_row.convalidated, constraint_row.condeferrable, constraint_row.condeferred
+FROM pg_catalog.pg_constraint AS constraint_row
+JOIN pg_catalog.pg_class AS relation ON relation.oid = constraint_row.conrelid
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname = 'public' AND relation.relname = ?
+ORDER BY constraint_row.conname`, table).Rows()
+	if err != nil {
+		return fmt.Errorf("inspect submission execution constraints for public.%s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	type observedConstraint struct {
+		kind, definition                string
+		validated, deferrable, deferred bool
+	}
+	actual := make(map[string]observedConstraint)
+	for rows.Next() {
+		var name string
+		var observed observedConstraint
+		if err := rows.Scan(&name, &observed.kind, &observed.definition, &observed.validated, &observed.deferrable, &observed.deferred); err != nil {
+			return fmt.Errorf("scan submission execution constraints for public.%s: %w", table, err)
+		}
+		actual[name] = observed
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate submission execution constraints for public.%s: %w", table, err)
+	}
+	if len(actual) != len(expected) {
+		return fmt.Errorf("submission execution schema mismatch for public.%s constraints: got %d, want %d", table, len(actual), len(expected))
+	}
+	for name, contract := range expected {
+		observed, found := actual[name]
+		if !found {
+			return fmt.Errorf("submission execution schema missing constraint public.%s.%s", table, name)
+		}
+		if observed.kind != contract.kind {
+			return fmt.Errorf("submission execution constraint public.%s.%s has kind %s, want %s", table, name, observed.kind, contract.kind)
+		}
+		if !observed.validated || observed.deferrable || observed.deferred {
+			return fmt.Errorf("submission execution constraint public.%s.%s must be validated and immediate", table, name)
+		}
+		if observed.definition != contract.exactDefinition {
+			return fmt.Errorf("submission execution constraint public.%s.%s definition mismatch: got %s", table, name, observed.definition)
 		}
 	}
 	return nil

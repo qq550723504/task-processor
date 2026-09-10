@@ -2,6 +2,7 @@ package submission
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,6 +172,126 @@ func TestTerminalReplayCanonicalizesEvidenceTimestamp(t *testing.T) {
 	replayed, err := CompleteClaimedExecution(completed, evidence, now.Add(time.Second))
 	require.NoError(t, err)
 	require.Equal(t, completed, replayed)
+}
+
+func TestExecutionEvidenceReasonCharacterBoundaries(t *testing.T) {
+	type transition func(ExecutionAttempt, ExecutionEvidence, time.Time) (ExecutionAttempt, error)
+	tests := []struct {
+		name           string
+		status         ExecutionStatus
+		evidence       ExecutionEvidence
+		transition     transition
+		reasonRequired bool
+	}{
+		{
+			name: "provider response failure", status: ExecutionClaimed,
+			evidence:   ExecutionEvidence{Kind: EvidenceProviderResponse, Outcome: ExecutionFailedDefinitive},
+			transition: CompleteClaimedExecution, reasonRequired: true,
+		},
+		{
+			name: "provider response success optional reason", status: ExecutionClaimed,
+			evidence:   ExecutionEvidence{Kind: EvidenceProviderResponse, Outcome: ExecutionSucceeded},
+			transition: CompleteClaimedExecution,
+		},
+		{
+			name: "provider readback failure", status: ExecutionOutcomeUnknown,
+			evidence:   ExecutionEvidence{Kind: EvidenceProviderReadBack, Outcome: ExecutionFailedDefinitive},
+			transition: ResolveUnknownExecution, reasonRequired: true,
+		},
+		{
+			name: "provider readback success optional reason", status: ExecutionOutcomeUnknown,
+			evidence:   ExecutionEvidence{Kind: EvidenceProviderReadBack, Outcome: ExecutionSucceeded},
+			transition: ResolveUnknownExecution,
+		},
+		{
+			name: "manual cancellation", status: ExecutionOutcomeUnknown,
+			evidence:   ExecutionEvidence{Kind: EvidenceManualResolution, Outcome: ExecutionCancelled, AuthorizedBy: "operator-1"},
+			transition: ResolveUnknownExecution, reasonRequired: true,
+		},
+	}
+	validReasons := []struct {
+		name   string
+		reason string
+	}{
+		{name: "ASCII within boundary", reason: strings.Repeat("a", 511)},
+		{name: "ASCII at boundary", reason: strings.Repeat("a", 512)},
+		{name: "multibyte within boundary", reason: strings.Repeat("界", 511)},
+		{name: "multibyte at boundary", reason: strings.Repeat("界", 512)},
+	}
+	invalidReasons := []struct {
+		name   string
+		reason string
+	}{
+		{name: "ASCII over boundary", reason: strings.Repeat("a", 513)},
+		{name: "multibyte over boundary", reason: strings.Repeat("界", 513)},
+		{name: "invalid UTF-8", reason: string([]byte{'o', 'k', 0xff})},
+		{name: "PostgreSQL NUL", reason: "ok\x00"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, reasonCase := range validReasons {
+				t.Run(reasonCase.name, func(t *testing.T) {
+					attempt := executionAttemptFixture(t, tc.status)
+					now := attempt.CreatedAt.Add(2 * time.Minute)
+					evidence := tc.evidence
+					evidence.Reference = "evidence-1"
+					evidence.Fingerprint = digestExecutionValue("evidence-1")
+					evidence.Reason = reasonCase.reason
+					evidence.ObservedAt = now
+
+					terminal, err := tc.transition(attempt, evidence, now)
+					require.NoError(t, err)
+					require.Equal(t, reasonCase.reason, terminal.Evidence.Reason)
+					require.Equal(t, evidence.Fingerprint, terminal.Evidence.Fingerprint)
+					require.Equal(t, evidence.Reference, terminal.Evidence.Reference)
+					require.NoError(t, ValidatePersistedExecutionAttempt(terminal))
+
+					replayed, err := tc.transition(terminal, evidence, now.Add(time.Second))
+					require.NoError(t, err)
+					require.Equal(t, terminal, replayed)
+				})
+			}
+
+			for _, reasonCase := range invalidReasons {
+				t.Run(reasonCase.name, func(t *testing.T) {
+					attempt := executionAttemptFixture(t, tc.status)
+					now := attempt.CreatedAt.Add(2 * time.Minute)
+					evidence := tc.evidence
+					evidence.Reference = "evidence-1"
+					evidence.Fingerprint = digestExecutionValue("evidence-1")
+					evidence.Reason = reasonCase.reason
+					evidence.ObservedAt = now
+
+					_, err := tc.transition(attempt, evidence, now)
+					require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+					require.Equal(t, tc.status, attempt.Status)
+
+					persistedEvidence := evidence
+					persistedEvidence.Reason = "valid reason"
+					terminal, err := tc.transition(attempt, persistedEvidence, now)
+					require.NoError(t, err)
+					corruptedEvidence := *terminal.Evidence
+					corruptedEvidence.Reason = reasonCase.reason
+					terminal.Evidence = &corruptedEvidence
+					require.ErrorIs(t, ValidatePersistedExecutionAttempt(terminal), ErrExecutionUnavailable)
+				})
+			}
+
+			attempt := executionAttemptFixture(t, tc.status)
+			now := attempt.CreatedAt.Add(2 * time.Minute)
+			evidence := tc.evidence
+			evidence.Reference = "evidence-1"
+			evidence.Fingerprint = digestExecutionValue("evidence-1")
+			evidence.ObservedAt = now
+			_, err := tc.transition(attempt, evidence, now)
+			if tc.reasonRequired {
+				require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func executionAttemptFixture(t *testing.T, status ExecutionStatus) ExecutionAttempt {
