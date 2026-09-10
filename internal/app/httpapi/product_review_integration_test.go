@@ -396,6 +396,18 @@ func TestProductReviewHTTPPostgresLifecycle(t *testing.T) {
 	require.Positive(t, f.grants.cached.Load())
 }
 
+func TestProductReviewHTTPCreateUsesOneDatabaseConnection(t *testing.T) {
+	f := newTitleFixture(t)
+	raw, err := f.db.DB()
+	require.NoError(t, err)
+	raw.SetMaxOpenConns(1)
+	raw.SetMaxIdleConns(1)
+
+	v := titleCreate(t, f.server(t), "single-connection-create")
+	require.Equal(t, "pending", v.State)
+	require.Equal(t, uint64(1), v.Revision)
+}
+
 func TestProductReviewHTTPRevokedBetweenRouteAndSourceRead(t *testing.T) {
 	f := newTitleFixture(t)
 	s := f.server(t)
