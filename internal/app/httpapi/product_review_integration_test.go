@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
@@ -114,15 +115,17 @@ func (g *titleGenerator) Generate(_ context.Context, r enrichment.GenerationRequ
 }
 
 type titleGrants struct {
-	revoked atomic.Bool
-	failed  atomic.Bool
-	live    atomic.Int32
-	cached  atomic.Int32
+	revoked  atomic.Bool
+	failed   atomic.Bool
+	live     atomic.Int32
+	cached   atomic.Int32
+	revokeAt atomic.Int32
 }
 
 func (g *titleGrants) Load(_ context.Context, source workbenchcontext.GrantSource, r workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
+	liveCall := int32(0)
 	if source == workbenchcontext.GrantLive {
-		g.live.Add(1)
+		liveCall = g.live.Add(1)
 	} else {
 		g.cached.Add(1)
 	}
@@ -140,7 +143,7 @@ func (g *titleGrants) Load(_ context.Context, source workbenchcontext.GrantSourc
 		roles = []string{"admin"}
 	}
 	grants := []authidentity.OrganizationGrant{{OrganizationID: "B", ProjectID: "project", Roles: roles}, {OrganizationID: "A", ProjectID: "project", Roles: []string{"listingkit_admin"}}}
-	if g.revoked.Load() {
+	if g.revoked.Load() || g.revokeAt.Load() > 0 && liveCall >= g.revokeAt.Load() {
 		grants = nil
 	}
 	return workbenchcontext.GrantResult{Source: source, Grants: grants}, nil
@@ -157,20 +160,27 @@ func (titleVerifier) Verify(_ context.Context, token string) (authidentity.Authe
 }
 
 type titleFixture struct {
-	db        *gorm.DB
-	bindings  []review.Binding
-	g         *titleGenerator
-	grants    *titleGrants
-	publisher *catalog.Publisher
-	reader    catalog.Repository
-	base      catalog.PublishedSnapshot
+	db             *gorm.DB
+	source         sourcing.SourceEnvelope
+	sourceProducer *sourcing.InternalProducer
+	g              *titleGenerator
+	grants         *titleGrants
+	publisher      *catalog.Publisher
+	reader         catalog.Repository
+	base           catalog.PublishedSnapshot
+}
+
+type titleSetupLiveAccess struct{}
+
+func (titleSetupLiveAccess) ResolveLiveRoles(context.Context, string, string) ([]string, error) {
+	return []string{"listingkit_admin"}, nil
 }
 
 func newTitleFixture(t *testing.T) *titleFixture {
 	t.Helper()
-	dsn := os.Getenv("ISSUE333_TEST_DSN")
+	dsn := os.Getenv("ISSUE382_TEST_DSN")
 	if dsn == "" {
-		t.Skip("requires isolated PostgreSQL ISSUE333_TEST_DSN")
+		t.Skip("requires isolated PostgreSQL ISSUE382_TEST_DSN")
 	}
 	cfg := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
 	root, e := gorm.Open(postgres.Open(dsn), cfg)
@@ -186,33 +196,63 @@ func newTitleFixture(t *testing.T) *titleFixture {
 		raw, _ = root.DB()
 		_ = raw.Close()
 	})
-	require.NoError(t, catalogstore.AutoMigrate(db))
-	sql, e := os.ReadFile("../../integration/persistence/product/review/schema.sql")
-	require.NoError(t, e)
-	require.NoError(t, db.Exec(string(sql)).Error)
+	require.NoError(t, InstallProductReviewSchema(db))
 	repo, e := catalogstore.NewRepository(db)
 	require.NoError(t, e)
 	publisher, e := catalog.NewPublisher(repo)
 	require.NoError(t, e)
-	sourcePublisher, e := sourcing.NewPublisher(publisher)
+	authorizer, e := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
+	require.NoError(t, e)
+	sourceProducer, e := productsourcing.NewInternalProducer(db, titleSetupLiveAccess{}, authorizer)
 	require.NoError(t, e)
 	source := sourcing.SourceEnvelope{Identity: sourcing.SourceIdentity{SourceType: sourcing.SourceTypeManualImport, SourcePlatform: "fixture", SourceID: "source1", SourceVersion: "v1"}, RawReference: sourcing.RawSourceReference{ReferenceType: "captured", ReferenceID: "evidence1", SnapshotID: "capture1", Checksum: sourcing.RawSnapshotChecksum("controlled evidence"), CapturedAt: time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC)}, ProductCandidate: sourcing.ProductCandidate{Title: "Original bottle", Description: "unchanged description", Brand: "unchanged brand", Variants: []sourcing.ProductVariantCandidate{{SourceID: "v1", SKU: "sku", Price: 12, Currency: "USD", Stock: 8}}}, AssetCandidates: []sourcing.AssetCandidate{{URL: "https://example.invalid/image.png", MediaType: "image"}}, Warnings: []sourcing.SourceWarning{{Code: "review", Message: "source needs review"}}}
-	base, e := sourcePublisher.Publish(context.Background(), sourcing.PublishRequest{TenantID: "B", ProductKey: "product", PublicationID: "controlled-initial", Envelope: source})
-	require.NoError(t, e)
+	publish := func(org, actor, key, publicationID string, envelope sourcing.SourceEnvelope) catalog.PublishedSnapshot {
+		ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
+			TenantID: org, EffectiveOrganizationID: org, UserID: actor, Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour),
+		})
+		receipt, publishErr := sourceProducer.Publish(ctx, sourcing.PublicationCommand{
+			PublicationID: publicationID,
+			Producer:      sourcing.ProducerDescriptor{Kind: sourcing.ControlledSnapshotProducerKind, Version: sourcing.ControlledSnapshotProducerVersion},
+			ProductKey:    key, Envelope: envelope,
+		})
+		require.NoError(t, publishErr)
+		exactReader, readerErr := catalogstore.NewBoundedSnapshotReader(db, sourcing.MaxEncodedSnapshotBytes)
+		require.NoError(t, readerErr)
+		published, readErr := exactReader.GetSnapshot(context.Background(), catalog.SnapshotIdentity{TenantID: org, ProductKey: key}, receipt.CatalogVersion)
+		require.NoError(t, readErr)
+		return published
+	}
+	base := publish("B", "seed", "product", "controlled-initial", source)
 	sourceA := source
 	sourceA.Identity.SourceID = "source-a"
 	sourceA.RawReference.ReferenceID = "evidence-a"
 	sourceA.RawReference.SnapshotID = "capture-a"
-	baseA, e := sourcePublisher.Publish(context.Background(), sourcing.PublishRequest{TenantID: "A", ProductKey: "product-a", PublicationID: "controlled-initial-a", Envelope: sourceA})
-	require.NoError(t, e)
-	bindings := []review.Binding{{Identity: base.Identity, Version: base.Version, PublicationID: base.PublicationID, Source: source}, {Identity: baseA.Identity, Version: baseA.Version, PublicationID: baseA.PublicationID, Source: sourceA}}
-	return &titleFixture{db, bindings, &titleGenerator{}, &titleGrants{}, publisher, repo, base}
+	_ = publish("A", "seed", "product-a", "controlled-initial-a", sourceA)
+	return &titleFixture{db: db, source: source, sourceProducer: sourceProducer, g: &titleGenerator{}, grants: &titleGrants{}, publisher: publisher, reader: repo, base: base}
+}
+
+func (f *titleFixture) publishSource(t *testing.T, org, key, publicationID string, source sourcing.SourceEnvelope) catalog.PublishedSnapshot {
+	t.Helper()
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{
+		TenantID: org, EffectiveOrganizationID: org, UserID: "seed", Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour),
+	})
+	receipt, err := f.sourceProducer.Publish(ctx, sourcing.PublicationCommand{
+		PublicationID: publicationID,
+		Producer:      sourcing.ProducerDescriptor{Kind: sourcing.ControlledSnapshotProducerKind, Version: sourcing.ControlledSnapshotProducerVersion},
+		ProductKey:    key, Envelope: source,
+	})
+	require.NoError(t, err)
+	exactReader, err := catalogstore.NewBoundedSnapshotReader(f.db, sourcing.MaxEncodedSnapshotBytes)
+	require.NoError(t, err)
+	published, err := exactReader.GetSnapshot(context.Background(), catalog.SnapshotIdentity{TenantID: org, ProductKey: key}, receipt.CatalogVersion)
+	require.NoError(t, err)
+	return published
 }
 func (f *titleFixture) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	auth, e := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
 	require.NoError(t, e)
-	app, e := NewProductReviewApplication(f.db, titleVerifier{}, workbenchcontext.NewResolver(f.grants, "project", "v1", nil), auth, f.g, f.bindings)
+	app, e := NewProductReviewApplication(f.db, titleVerifier{}, workbenchcontext.NewResolver(f.grants, "project", "v1", nil), auth, f.g)
 	require.NoError(t, e)
 	ts := httptest.NewUnstartedServer(app.Handler)
 	ts.Config.ReadTimeout = app.ReadTimeout
@@ -304,7 +344,9 @@ func titleApply(t *testing.T, s *httptest.Server, v review.View, key string, sta
 func TestProductReviewHTTPPostgresLifecycle(t *testing.T) {
 	f := newTitleFixture(t)
 	s := f.server(t)
+	liveBeforeCreate := f.grants.live.Load()
 	v := titleCreate(t, s, "create")
+	require.Equal(t, liveBeforeCreate+2, f.grants.live.Load(), "create must resolve the route and SRC-1 read independently")
 	require.Equal(t, "Original bottle", v.Before)
 	require.Equal(t, "pending", v.State)
 	require.Len(t, v.Evidence, 1)
@@ -349,6 +391,81 @@ func TestProductReviewHTTPPostgresLifecycle(t *testing.T) {
 	require.Positive(t, f.grants.live.Load())
 	require.Positive(t, f.grants.cached.Load())
 }
+
+func TestProductReviewHTTPRevokedBetweenRouteAndSourceRead(t *testing.T) {
+	f := newTitleFixture(t)
+	s := f.server(t)
+	f.grants.revokeAt.Store(f.grants.live.Load() + 2)
+	titleCall(t, s, "POST", titleBasePath, "operator", "B", "revoked-second-check", `{"product_key":"product","base_version":1}`, 403)
+	require.Zero(t, f.g.calls.Load())
+}
+
+func TestProductReviewHTTPEachEvidenceUseRefreshesSourceAuthorizationWithoutSourceWrites(t *testing.T) {
+	f := newTitleFixture(t)
+	s := f.server(t)
+	var sourceRowsBefore int64
+	require.NoError(t, f.db.Table("product_source_publications").Count(&sourceRowsBefore).Error)
+
+	before := f.grants.live.Load()
+	v := titleCreate(t, s, "fresh-create")
+	require.Equal(t, before+2, f.grants.live.Load())
+	require.Equal(t, "pending", v.State)
+
+	before = f.grants.live.Load()
+	v = titleDecision(t, s, v, "accept", "admin", "", 200)
+	require.Equal(t, before+2, f.grants.live.Load())
+
+	before = f.grants.live.Load()
+	titleApply(t, s, v, "fresh-apply", 200)
+	require.Equal(t, before+2, f.grants.live.Load())
+
+	var sourceRowsAfter int64
+	require.NoError(t, f.db.Table("product_source_publications").Count(&sourceRowsAfter).Error)
+	require.Equal(t, sourceRowsBefore, sourceRowsAfter, "Review must never write SRC-1 publications")
+}
+
+func TestProductReviewHTTPCorruptSourceEvidenceFailsClosed(t *testing.T) {
+	f := newTitleFixture(t)
+	require.NoError(t, f.db.Exec(
+		"UPDATE product_source_publications SET snapshot_json = ? WHERE organization_id = ? AND publication_id = ?",
+		[]byte(`{}`), "B", f.base.PublicationID,
+	).Error)
+	titleCall(t, f.server(t), "POST", titleBasePath, "operator", "B", "corrupt-source", `{"product_key":"product","base_version":1}`, 503)
+	require.Zero(t, f.g.calls.Load())
+}
+
+func TestProductReviewApplicationRequiresExplicitSchema(t *testing.T) {
+	dsn := os.Getenv("ISSUE382_TEST_DSN")
+	if dsn == "" {
+		t.Skip("requires isolated PostgreSQL ISSUE382_TEST_DSN")
+	}
+	cfg := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
+	root, err := gorm.Open(postgres.Open(dsn), cfg)
+	require.NoError(t, err)
+	schema := "review382_uninitialized_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	require.NoError(t, root.Exec("CREATE SCHEMA "+schema).Error)
+	db, err := gorm.Open(postgres.Open(dsn+" search_path="+schema), cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		raw, _ := db.DB()
+		_ = raw.Close()
+		_ = root.Exec("DROP SCHEMA " + schema + " CASCADE").Error
+		raw, _ = root.DB()
+		_ = raw.Close()
+	})
+	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+	_, err = NewProductReviewApplication(db, titleVerifier{}, workbenchcontext.NewResolver(&titleGrants{}, "project", "v1", nil), authorizer, &titleGenerator{})
+	require.ErrorIs(t, err, review.ErrUnavailable)
+	var tableCount int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM information_schema.tables WHERE table_schema = ?", schema).Scan(&tableCount).Error)
+	require.Zero(t, tableCount, "application construction must not execute DDL")
+
+	require.NoError(t, InstallProductReviewSchema(db))
+	app, err := NewProductReviewApplication(db, titleVerifier{}, workbenchcontext.NewResolver(&titleGrants{}, "project", "v1", nil), authorizer, &titleGenerator{})
+	require.NoError(t, err)
+	require.NotNil(t, app)
+}
 func TestProductReviewRejectedStaleAndEvidence(t *testing.T) {
 	f := newTitleFixture(t)
 	s := f.server(t)
@@ -358,11 +475,12 @@ func TestProductReviewRejectedStaleAndEvidence(t *testing.T) {
 	_, e := f.publisher.Publish(context.Background(), catalog.PublishRequest{Identity: f.base.Identity, PublicationID: "concurrent", Snapshot: catalog.ProductSnapshot{Title: "other change"}})
 	require.NoError(t, e)
 	titleApply(t, s, stale, "stale-apply", 409)
-	f.bindings[0].Source.RawReference.SnapshotID = "wrong-binding"
 	s2 := f.server(t)
-	titleDecision(t, s2, stale, "edit", "operator", "edit with mismatched evidence", 404)
-	titleCall(t, s2, "POST", titleBasePath, "operator", "B", "wrong", `{"product_key":"product","base_version":1}`, 404)
-	titleCall(t, s, "POST", titleBasePath, "operator", "B", "unbound", `{"product_key":"product","base_version":2}`, 404)
+	titleDecision(t, s2, stale, "edit", "operator", "edit after stale Catalog head", 200)
+	// Version 2 was written directly through Catalog and has no SRC-1 evidence.
+	// The combination is unavailable rather than silently falling back to a
+	// process-memory binding or treating the mixed state as a valid source.
+	titleCall(t, s, "POST", titleBasePath, "operator", "B", "unbound", `{"product_key":"product","base_version":2}`, 503)
 	current, e := f.reader.GetCurrentSnapshot(context.Background(), f.base.Identity)
 	require.NoError(t, e)
 	require.Equal(t, uint64(2), current.Version)
@@ -451,13 +569,12 @@ func TestProductReviewPostgresTwoProposalsCompete(t *testing.T) {
 
 func TestProductReviewPostgresBoundedSnapshotRead(t *testing.T) {
 	f := newTitleFixture(t)
-	source := f.bindings[0].Source
+	source := f.source
 	source.ProductCandidate.Description = strings.Repeat("x", 2<<20)
-	upstream, e := sourcing.NewPublisher(f.publisher)
+	snapshot, e := sourcing.ToSnapshot(source)
 	require.NoError(t, e)
-	base, e := upstream.Publish(context.Background(), sourcing.PublishRequest{TenantID: "B", ProductKey: "product", PublicationID: "large", Envelope: source})
+	_, e = f.publisher.Publish(context.Background(), catalog.PublishRequest{Identity: f.base.Identity, ExpectedBaseVersion: &f.base.Version, PublicationID: "large", Snapshot: snapshot})
 	require.NoError(t, e)
-	f.bindings = []review.Binding{{Identity: base.Identity, Version: base.Version, PublicationID: base.PublicationID, Source: source}}
 	s := f.server(t)
 	titleCall(t, s, "POST", titleBasePath, "operator", "B", "bounded", `{"product_key":"product","base_version":2}`, 503)
 	require.Zero(t, f.g.calls.Load())
@@ -465,13 +582,12 @@ func TestProductReviewPostgresBoundedSnapshotRead(t *testing.T) {
 
 func TestProductReviewPostgresCapacityLeavesAcceptedApplyable(t *testing.T) {
 	f := newTitleFixture(t)
-	source := f.bindings[0].Source
-	source.RawReference.Metadata = map[string]string{"controlled-large-metadata": strings.Repeat("m", 60000)}
-	upstream, e := sourcing.NewPublisher(f.publisher)
-	require.NoError(t, e)
-	base, e := upstream.Publish(context.Background(), sourcing.PublishRequest{TenantID: "B", ProductKey: "product", PublicationID: "large-evidence", Envelope: source})
-	require.NoError(t, e)
-	f.bindings = []review.Binding{{Identity: base.Identity, Version: base.Version, PublicationID: base.PublicationID, Source: source}}
+	source := f.source
+	source.RawReference.Metadata = map[string]string{}
+	for index := 0; index < 8; index++ {
+		source.RawReference.Metadata[fmt.Sprintf("controlled-large-metadata-%d", index)] = strings.Repeat("m", 7500)
+	}
+	f.publishSource(t, "B", "product", "large-evidence", source)
 	s := f.server(t)
 	v := titleCall(t, s, "POST", titleBasePath, "operator", "B", "large-create", `{"product_key":"product","base_version":2}`, 200)
 	var size int

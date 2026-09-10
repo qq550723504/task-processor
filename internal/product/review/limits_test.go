@@ -57,7 +57,7 @@ func TestMutationUsesServiceDeadline(t *testing.T) {
 	d := &deadlineStore{}
 	auth, e := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, e)
-	s := &Service{store: d, auth: auth, bindings: map[bindingKey]Binding{{"B", "p", 1}: {Identity: catalog.SnapshotIdentity{TenantID: "B", ProductKey: "p"}, Version: 1}}}
+	s := &Service{store: d, auth: auth, reader: d, sourceReader: &sourcePublicationReaderStub{}}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "a", TenantID: "B", EffectiveOrganizationID: "B", Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour)})
 	_, e = s.Apply(ctx, "op", "00000000-0000-0000-0000-000000000001", ApplyInput{ExpectedRevision: 2})
 	require.ErrorIs(t, e, context.Canceled)

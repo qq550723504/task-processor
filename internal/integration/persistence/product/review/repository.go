@@ -4,6 +4,7 @@ package reviewpersistence
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+//go:embed schema.sql
+var schemaSQL string
 
 type Repository struct{ db *gorm.DB }
 type proposalRow struct {
@@ -42,6 +46,15 @@ func NewRepository(db *gorm.DB) (*Repository, error) {
 		return nil, review.ErrUnavailable
 	}
 	return &Repository{db}, nil
+}
+
+// InstallSchema initializes the Review-owned tables for an empty task schema.
+// Application construction and request handling never execute DDL.
+func InstallSchema(db *gorm.DB) error {
+	if db == nil || db.Dialector.Name() != "postgres" {
+		return review.ErrUnavailable
+	}
+	return db.Exec(schemaSQL).Error
 }
 func scoped(db *gorm.DB, a review.Scope, id string) *gorm.DB {
 	q := db.Where("org = ? AND id = ?", a.Org, id)

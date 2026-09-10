@@ -15,22 +15,18 @@ import (
 )
 
 type Service struct {
-	reader   catalog.VersionedSnapshotReader
-	store    Store
-	proposer enrichment.Proposer
-	auth     Authorizer
-	bindings map[bindingKey]Binding
+	reader       catalog.VersionedSnapshotReader
+	sourceReader SourcePublicationReader
+	store        Store
+	proposer     enrichment.Proposer
+	auth         Authorizer
 }
 
-func NewService(reader catalog.VersionedSnapshotReader, store Store, proposer enrichment.Proposer, auth Authorizer, bindings []Binding) (*Service, error) {
-	if reader == nil || store == nil || proposer == nil || auth == nil {
+func NewService(reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationReader, store Store, proposer enrichment.Proposer, auth Authorizer) (*Service, error) {
+	if reader == nil || sourceReader == nil || store == nil || proposer == nil || auth == nil {
 		return nil, ErrUnavailable
 	}
-	bound, err := cloneBindings(bindings)
-	if err != nil {
-		return nil, err
-	}
-	return &Service{reader, store, proposer, auth, bound}, nil
+	return &Service{reader: reader, sourceReader: sourceReader, store: store, proposer: proposer, auth: auth}, nil
 }
 func (s *Service) authorize(ctx context.Context, write, admin bool) (Scope, error) {
 	if err := ctx.Err(); err != nil {

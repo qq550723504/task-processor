@@ -18,7 +18,7 @@ import (
 	sigjson "sigs.k8s.io/json"
 )
 
-func productReviewRoutes(s *review.Service) []httproute.Descriptor {
+func productReviewRoutes(s *review.Service, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
 	base := "/api/product/text-proposals"
 	specs := []struct{ method, path, kind string }{{"POST", base, "create"}, {"GET", base, "list"}, {"GET", base + "/:proposal_id", "get"}, {"POST", base + "/:proposal_id/decisions", "decision"}, {"POST", base + "/:proposal_id/apply", "apply"}}
 	routes := make([]httproute.Descriptor, 0, len(specs))
@@ -29,6 +29,18 @@ func productReviewRoutes(s *review.Service) []httproute.Descriptor {
 			permission = authz.PermissionListingKitAdminRead
 		}
 		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-review", Permission: permission, AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: policy, Handler: func(c *gin.Context) {
+			if spec.kind != "get" && spec.kind != "list" {
+				if bind == nil {
+					writeProductReviewError(c, review.ErrUnavailable)
+					return
+				}
+				ctx, err := bind(c.Request.Context(), c.GetHeader("Authorization"))
+				if err != nil {
+					writeProductReviewError(c, err)
+					return
+				}
+				c.Request = c.Request.WithContext(ctx)
+			}
 			if spec.kind == "list" {
 				listProductReviews(c, s)
 				return
