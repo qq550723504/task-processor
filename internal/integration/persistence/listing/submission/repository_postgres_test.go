@@ -348,6 +348,78 @@ func TestRepositoryPostgresExecutionContract(t *testing.T) {
 		require.Zero(t, count)
 	})
 
+	t.Run("write uow forces synchronous commit locally", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 52, 0, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+
+		sqlDB, err := db.DB()
+		require.NoError(t, err)
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+		t.Cleanup(func() {
+			if cleanupErr := db.Exec("SET synchronous_commit = on").Error; cleanupErr != nil {
+				t.Errorf("restore synchronous_commit: %v", cleanupErr)
+			}
+			if cleanupErr := db.Exec("DROP TRIGGER IF EXISTS require_submission_synchronous_commit ON public." + AttemptTable).Error; cleanupErr != nil {
+				t.Errorf("drop synchronous commit trigger: %v", cleanupErr)
+			}
+			if cleanupErr := db.Exec("DROP FUNCTION IF EXISTS public.require_submission_synchronous_commit()").Error; cleanupErr != nil {
+				t.Errorf("drop synchronous commit function: %v", cleanupErr)
+			}
+			sqlDB.SetMaxOpenConns(8)
+			sqlDB.SetMaxIdleConns(2)
+		})
+		require.NoError(t, db.Exec(`
+CREATE FUNCTION public.require_submission_synchronous_commit() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF current_setting('synchronous_commit') <> 'on' THEN
+        RAISE EXCEPTION 'submission write requires synchronous_commit=on';
+    END IF;
+    RETURN NEW;
+END
+$$`).Error)
+		require.NoError(t, db.Exec("CREATE TRIGGER require_submission_synchronous_commit BEFORE INSERT ON public."+AttemptTable+" FOR EACH ROW EXECUTE FUNCTION public.require_submission_synchronous_commit()").Error)
+		require.NoError(t, db.Exec("SET synchronous_commit = off").Error)
+
+		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-sync-commit", "listing-sync-commit", `{"title":"one"}`))
+		require.NoError(t, err)
+		require.NotNil(t, acquired.Permit)
+
+		var setting string
+		require.NoError(t, db.Raw("SHOW synchronous_commit").Scan(&setting).Error)
+		require.Equal(t, "off", setting, "SET LOCAL must not leak into the pooled session")
+	})
+
+	t.Run("synchronous commit setup failure creates no permit", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 54, 0, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		repository.fault = func(stage string) error {
+			if stage == "synchronous_commit" {
+				return errors.New("injected synchronous commit setup failure")
+			}
+			return nil
+		}
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+
+		failed, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-sync-failure", "listing-sync-failure", `{"title":"one"}`))
+		require.ErrorIs(t, err, submission.ErrExecutionUnavailable)
+		require.Nil(t, failed.Permit)
+
+		var count int64
+		require.NoError(t, db.Table(AttemptTable).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Table(TargetFenceTable).Count(&count).Error)
+		require.Zero(t, count)
+	})
+
 	t.Run("commit acknowledgement loss exposes no permit and replay cannot resend", func(t *testing.T) {
 		resetExecutionTables(t, db)
 		now := time.Date(2026, 9, 10, 2, 55, 0, 0, time.UTC)

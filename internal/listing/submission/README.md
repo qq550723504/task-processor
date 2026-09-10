@@ -9,7 +9,8 @@ Current stable ownership:
   deterministic provider execution key, target fence, claim owner/token/lease,
   and evidence-bound terminal result
 - one-time `SendPermit` issuance: only the first successfully committed intent,
-  attempt, target fence, and claim transaction can return a permit; replay and
+  attempt, target fence, and claim transaction with transaction-local
+  `synchronous_commit=on` can return a permit; setup failure, replay, and
   commit-outcome-unknown paths never issue another permit
 - execution states `claimed -> succeeded | failed_definitive |
   outcome_unknown`; timeout, response loss, cancellation after claim, and lease

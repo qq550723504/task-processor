@@ -317,6 +317,14 @@ func (r *Repository) write(ctx context.Context, fn func(*gorm.DB) (mutation, err
 			_ = tx.Rollback().Error
 		}
 	}()
+	if r.fault != nil {
+		if err := r.fault("synchronous_commit"); err != nil {
+			return submission.ExecutionAttempt{}, mapError(ctx, err)
+		}
+	}
+	if err := tx.Exec("SET LOCAL synchronous_commit = on").Error; err != nil {
+		return submission.ExecutionAttempt{}, mapError(ctx, err)
+	}
 	result, err := fn(tx)
 	if err != nil {
 		return submission.ExecutionAttempt{}, mapError(ctx, err)
