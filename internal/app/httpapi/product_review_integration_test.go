@@ -284,12 +284,18 @@ func (f *titleFixture) server(t *testing.T) *httptest.Server {
 	return f.serverWithVerifier(t, titleVerifier{})
 }
 
+func (f *titleFixture) application(t *testing.T, verifier titleVerifier) *http.Server {
+	t.Helper()
+	auth, err := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
+	require.NoError(t, err)
+	app, err := NewProductReviewApplication(f.db, verifier, workbenchcontext.NewResolver(f.grants, "project", "v1", nil), auth, f.g)
+	require.NoError(t, err)
+	return app
+}
+
 func (f *titleFixture) serverWithVerifier(t *testing.T, verifier titleVerifier) *httptest.Server {
 	t.Helper()
-	auth, e := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
-	require.NoError(t, e)
-	app, e := NewProductReviewApplication(f.db, verifier, workbenchcontext.NewResolver(f.grants, "project", "v1", nil), auth, f.g)
-	require.NoError(t, e)
+	app := f.application(t, verifier)
 	ts := httptest.NewUnstartedServer(app.Handler)
 	ts.Config.ReadTimeout = app.ReadTimeout
 	ts.Config.WriteTimeout = app.WriteTimeout
@@ -426,6 +432,40 @@ func TestProductReviewHTTPPostgresLifecycle(t *testing.T) {
 	titleApply(t, s2, v, "apply", 403)
 	require.Positive(t, f.grants.live.Load())
 	require.Positive(t, f.grants.cached.Load())
+}
+
+func TestProductReviewApplicationCallerOwnsServerListenerAndDatabaseLifecycle(t *testing.T) {
+	f := newTitleFixture(t)
+	app := f.application(t, titleVerifier{})
+	rawDB, err := f.db.DB()
+	require.NoError(t, err)
+
+	closedListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	require.NoError(t, closedListener.Close())
+	require.Error(t, app.Serve(closedListener))
+	require.NoError(t, rawDB.PingContext(context.Background()), "listen failure must not close the caller-owned database")
+
+	listener, err := net.Listen("tcp", app.Addr)
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() { done <- app.Serve(listener) }()
+	response, err := http.Get("http://" + listener.Addr().String() + titleBasePath)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
+
+	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, app.Shutdown(shutdown))
+	require.ErrorIs(t, <-done, http.ErrServerClosed)
+	require.NoError(t, rawDB.PingContext(context.Background()), "server shutdown must not close the caller-owned database")
+
+	rebuilt := f.application(t, titleVerifier{})
+	rebuiltResponse := httptest.NewRecorder()
+	rebuilt.Handler.ServeHTTP(rebuiltResponse, httptest.NewRequest(http.MethodGet, titleBasePath, nil))
+	require.Equal(t, http.StatusUnauthorized, rebuiltResponse.Code)
+	require.NoError(t, rawDB.PingContext(context.Background()), "application reconstruction must reuse the caller-owned database")
 }
 
 func TestProductReviewHTTPCreateUsesOneDatabaseConnection(t *testing.T) {
@@ -682,8 +722,13 @@ func TestProductReviewApplicationRequiresExplicitSchema(t *testing.T) {
 	})
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
-	_, err = NewProductReviewApplication(db, titleVerifier{}, workbenchcontext.NewResolver(&titleGrants{}, "project", "v1", nil), authorizer, &titleGenerator{})
+	generator := &titleGenerator{}
+	_, err = NewProductReviewApplication(db, titleVerifier{}, workbenchcontext.NewResolver(&titleGrants{}, "project", "v1", nil), authorizer, generator)
 	require.ErrorIs(t, err, review.ErrUnavailable)
+	require.Zero(t, generator.calls.Load(), "application construction must not invoke the provider")
+	rawDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, rawDB.PingContext(context.Background()), "construction failure must not close the caller-owned database")
 	var tableCount int64
 	require.NoError(t, db.Raw("SELECT count(*) FROM information_schema.tables WHERE table_schema = ?", schema).Scan(&tableCount).Error)
 	require.Zero(t, tableCount, "application construction must not execute DDL")

@@ -48,6 +48,19 @@ func TestSourceAccountApplicationPostgresAcceptance(t *testing.T) {
 	if afterTables := sourceAccountApplicationTables(t, db); afterTables != beforeTables {
 		t.Fatalf("application construction changed schema:\nbefore=%s\nafter=%s", beforeTables, afterTables)
 	}
+	closedListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closedListener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.Serve(closedListener); err == nil {
+		t.Fatal("Serve() with a closed caller-owned listener returned nil")
+	}
+	if err := db.Exec("SELECT 1").Error; err != nil {
+		t.Fatalf("caller-owned database was not usable after listen failure: %v", err)
+	}
 	baseURL, stop := serveSourceAccountApplication(t, application)
 
 	key := "0198c5c0-1111-7111-8111-111111111111"
@@ -101,6 +114,22 @@ func TestSourceAccountApplicationPostgresAcceptance(t *testing.T) {
 		t.Fatalf("discarded response status=%d", recorder.status)
 	}
 	stop()
+	if err := db.Exec("SELECT 1").Error; err != nil {
+		t.Fatalf("caller-owned database was not usable after server shutdown: %v", err)
+	}
+	sameDBRebuilt, err := NewSourceAccountApplication(db, authFixture, resolver, authorizer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameDBURL, stopSameDB := serveSourceAccountApplication(t, sameDBRebuilt)
+	status, body = sourceAccountRequest(t, sameDBURL, "token-admin", "org-b", http.MethodGet, "/api/v1/workbench/source-accounts", "", "", "")
+	if status != http.StatusOK || !bytes.Contains(body, []byte(created.Account.ID)) {
+		t.Fatalf("same-database rebuild status=%d body=%s", status, body)
+	}
+	stopSameDB()
+	if err := db.Exec("SELECT 1").Error; err != nil {
+		t.Fatalf("caller-owned database was not usable after rebuilt server shutdown: %v", err)
+	}
 	initialSQLDB, err := db.DB()
 	if err != nil {
 		t.Fatal(err)

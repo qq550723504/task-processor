@@ -83,6 +83,9 @@ func TestNewSourceAccountApplicationRequiresExplicitSchemaWithoutDDL(t *testing.
 			t.Fatalf("application construction created %s", table)
 		}
 	}
+	if err := sqlDB.PingContext(context.Background()); err != nil {
+		t.Fatalf("caller-owned database was not usable after construction failure: %v", err)
+	}
 }
 
 func TestNewSourceAccountApplicationRejectsNilDatabase(t *testing.T) {
