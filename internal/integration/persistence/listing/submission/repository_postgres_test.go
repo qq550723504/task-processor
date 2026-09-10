@@ -524,6 +524,108 @@ $$`).Error)
 		}
 	})
 
+	t.Run("database identity values match persisted domain validation", func(t *testing.T) {
+		const (
+			attemptIdentityConstraint = "listing_submission_execution_attempts_identity_check"
+			attemptIDConstraint       = "listing_submission_execution_attempts_id_v7_check"
+			targetIdentityConstraint  = "listing_submission_target_fences_identity_check"
+		)
+		attemptCases := []struct {
+			name       string
+			constraint string
+			mutate     func(*executionAttemptRow)
+		}{
+			{name: "attempt organization internal space", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.OrganizationID = "bad org" }},
+			{name: "attempt intent internal space", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.IntentKey = "bad key" }},
+			{name: "attempt platform internal space", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.Platform = "bad platform" }},
+			{name: "attempt platform uppercase", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.Platform = "SHEIN" }},
+			{name: "attempt store internal space", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.StoreID = "bad store" }},
+			{name: "attempt subject internal space", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.SubjectID = "bad subject" }},
+			{name: "attempt action internal space", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.Action = "bad action" }},
+			{name: "attempt action uppercase", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.Action = "SAVE_DRAFT" }},
+			{name: "attempt claim owner invalid prefix", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.ClaimOwnerID = "-worker" }},
+			{name: "attempt UUIDv7 non-RFC4122 variant", constraint: attemptIDConstraint, mutate: func(row *executionAttemptRow) { row.AttemptID = "01890f5e-7b3d-7cc0-78a1-123456789abc" }},
+		}
+		for _, tc := range attemptCases {
+			t.Run(tc.name, func(t *testing.T) {
+				resetExecutionTables(t, db)
+				now := time.Date(2026, 9, 10, 2, 58, 0, 0, time.UTC)
+				kernel := executionKernel(t, db, func() time.Time { return now })
+				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "identity-source", "identity-source", `{"title":"one"}`))
+				require.NoError(t, err)
+				row := attemptRowFrom(acquired.Attempt, submission.ExecutionClaimTokenHash(acquired.Permit.ClaimToken))
+				row.AttemptID = "01890f5e-7b3d-7cc0-98a1-123456789abc"
+				row.IntentKey = "identity-candidate"
+				row.SubjectID = "identity-candidate"
+				row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat("e", 64)
+				row.FenceEpoch++
+				tc.mutate(&row)
+
+				err = db.Table(attemptTable).Create(&row).Error
+				require.Error(t, err, "PostgreSQL must reject identity values rejected by the domain")
+				var postgresErr *pgconn.PgError
+				require.ErrorAs(t, err, &postgresErr)
+				require.Equal(t, "23514", postgresErr.Code)
+				require.Equal(t, tc.constraint, postgresErr.ConstraintName)
+			})
+		}
+
+		targetCases := []struct {
+			name   string
+			mutate func(*targetFenceRow)
+		}{
+			{name: "target organization internal space", mutate: func(row *targetFenceRow) { row.OrganizationID = "bad org" }},
+			{name: "target platform internal space", mutate: func(row *targetFenceRow) { row.Platform = "bad platform" }},
+			{name: "target platform uppercase", mutate: func(row *targetFenceRow) { row.Platform = "SHEIN" }},
+			{name: "target store internal space", mutate: func(row *targetFenceRow) { row.StoreID = "bad store" }},
+			{name: "target subject internal space", mutate: func(row *targetFenceRow) { row.SubjectID = "bad subject" }},
+		}
+		for _, tc := range targetCases {
+			t.Run(tc.name, func(t *testing.T) {
+				resetExecutionTables(t, db)
+				now := time.Date(2026, 9, 10, 2, 58, 0, 0, time.UTC)
+				kernel := executionKernel(t, db, func() time.Time { return now })
+				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "target-identity-source", "target-identity-source", `{"title":"one"}`))
+				require.NoError(t, err)
+				row := targetFenceRow{
+					OrganizationID: acquired.Attempt.OrganizationID, Platform: "shein", StoreID: "store-other", SubjectID: "subject-other",
+					Epoch: acquired.Attempt.FenceEpoch, CurrentAttemptID: acquired.Attempt.AttemptID,
+					CurrentStatus: string(acquired.Attempt.Status), UpdatedAt: acquired.Attempt.UpdatedAt,
+				}
+				tc.mutate(&row)
+
+				err = db.Table(targetTable).Create(&row).Error
+				require.Error(t, err, "PostgreSQL must reject target identities rejected by the domain")
+				var postgresErr *pgconn.PgError
+				require.ErrorAs(t, err, &postgresErr)
+				require.Equal(t, "23514", postgresErr.Code)
+				require.Equal(t, targetIdentityConstraint, postgresErr.ConstraintName)
+			})
+		}
+
+		t.Run("ASCII boundary identifiers remain accepted", func(t *testing.T) {
+			resetExecutionTables(t, db)
+			now := time.Date(2026, 9, 10, 2, 58, 0, 0, time.UTC)
+			boundary := strings.Repeat("a", 128)
+			reservation, err := submission.NewExecutionReservation(submission.AcquireExecutionCommand{
+				Scope: submission.ExecutionScope{OrganizationID: boundary}, IntentKey: boundary,
+				Target: submission.ExecutionTarget{Platform: boundary, StoreID: boundary, SubjectID: boundary},
+				Action: boundary, Payload: []byte(`{"title":"one"}`), ClaimOwnerID: boundary, Lease: time.Minute,
+			}, "01890f5e-7b3d-7cc0-98a1-123456789abc", "boundary-claim-token", now)
+			require.NoError(t, err)
+			reservation.Attempt.FenceEpoch = 1
+			attempt := attemptRowFrom(reservation.Attempt, reservation.ClaimTokenHash)
+			require.NoError(t, db.Table(attemptTable).Create(&attempt).Error)
+			fence := targetFenceRow{
+				OrganizationID: reservation.Attempt.OrganizationID, Platform: reservation.Attempt.Target.Platform,
+				StoreID: reservation.Attempt.Target.StoreID, SubjectID: reservation.Attempt.Target.SubjectID,
+				Epoch: 1, CurrentAttemptID: reservation.Attempt.AttemptID,
+				CurrentStatus: string(reservation.Attempt.Status), UpdatedAt: reservation.Attempt.UpdatedAt,
+			}
+			require.NoError(t, db.Table(targetTable).Create(&fence).Error)
+		})
+	})
+
 	t.Run("database evidence values match persisted domain validation", func(t *testing.T) {
 		const (
 			definitiveReasonConstraint = "listing_submission_execution_attempts_definitive_reason_check"
@@ -651,6 +753,69 @@ $$`).Error)
 				persisted, err := repository.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, row.AttemptID)
 				require.NoError(t, err)
 				require.Equal(t, tc.reason, persisted.Evidence.Reason)
+			})
+		}
+	})
+
+	t.Run("provider authorizer metadata is rejected before PostgreSQL mutation", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			kind    submission.EvidenceKind
+			outcome submission.ExecutionStatus
+		}{
+			{name: "response success", kind: submission.EvidenceProviderResponse, outcome: submission.ExecutionSucceeded},
+			{name: "response definitive failure", kind: submission.EvidenceProviderResponse, outcome: submission.ExecutionFailedDefinitive},
+			{name: "readback success", kind: submission.EvidenceProviderReadBack, outcome: submission.ExecutionSucceeded},
+			{name: "readback definitive failure", kind: submission.EvidenceProviderReadBack, outcome: submission.ExecutionFailedDefinitive},
+		}
+		authorizers := []struct {
+			name  string
+			value string
+		}{
+			{name: "nonempty", value: "caller-claimed-operator"},
+			{name: "whitespace", value: " \t\n"},
+		}
+		for index, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				for authorizerIndex, authorizer := range authorizers {
+					t.Run(authorizer.name, func(t *testing.T) {
+						resetExecutionTables(t, db)
+						caseIndex := index*len(authorizers) + authorizerIndex
+						now := time.Date(2026, 9, 10, 2, 59, caseIndex, 0, time.UTC)
+						kernel := executionKernel(t, db, func() time.Time { return now })
+						command := executionCommand("org-a", "provider-authorizer-"+string(rune('a'+caseIndex)), "provider-authorizer-target", `{"title":"one"}`)
+						acquired, err := kernel.Acquire(ctx, command)
+						require.NoError(t, err)
+						if tc.kind == submission.EvidenceProviderReadBack {
+							_, err = kernel.MarkUnknown(ctx, permitClaim("org-a", acquired.Permit), submission.UnknownResponseLost)
+							require.NoError(t, err)
+						}
+						evidence := providerEvidence(tc.outcome, "provider-authorizer", now)
+						evidence.Kind = tc.kind
+						evidence.AuthorizedBy = authorizer.value
+						if tc.kind == submission.EvidenceProviderResponse {
+							_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), evidence)
+						} else {
+							_, err = kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID, acquired.Attempt.FenceEpoch, evidence)
+						}
+						require.ErrorIs(t, err, submission.ErrExecutionEvidenceRequired)
+
+						persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+						require.NoError(t, err)
+						if tc.kind == submission.EvidenceProviderResponse {
+							require.Equal(t, submission.ExecutionClaimed, persisted.Status)
+						} else {
+							require.Equal(t, submission.ExecutionOutcomeUnknown, persisted.Status)
+						}
+						require.Nil(t, persisted.Evidence)
+						replay, err := kernel.Acquire(ctx, command)
+						require.NoError(t, err)
+						require.True(t, replay.Replayed)
+						require.Nil(t, replay.Permit)
+						_, err = kernel.Acquire(ctx, executionCommand("org-a", "blocked-"+string(rune('a'+caseIndex)), "provider-authorizer-target", `{"title":"two"}`))
+						require.ErrorIs(t, err, submission.ErrExecutionTargetClaimed)
+					})
+				}
 			})
 		}
 	})
@@ -786,6 +951,27 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		name       string
 		statements []string
 	}{
+		{
+			name: "attempt identity constraint keeps only the old trim and length checks",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_identity_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_identity_check CHECK (octet_length(organization_id) BETWEEN 1 AND 128 AND organization_id = btrim(organization_id) AND octet_length(intent_key) BETWEEN 1 AND 128 AND intent_key = btrim(intent_key) AND octet_length(platform) BETWEEN 1 AND 128 AND platform = btrim(platform) AND octet_length(store_id) BETWEEN 1 AND 128 AND store_id = btrim(store_id) AND octet_length(subject_id) BETWEEN 1 AND 128 AND subject_id = btrim(subject_id) AND octet_length(action) BETWEEN 1 AND 128 AND action = btrim(action) AND octet_length(claim_owner_id) BETWEEN 1 AND 128 AND claim_owner_id = btrim(claim_owner_id))",
+			},
+		},
+		{
+			name: "target identity constraint keeps only the old trim and length checks",
+			statements: []string{
+				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_identity_check",
+				"ALTER TABLE public." + TargetFenceTable + " ADD CONSTRAINT listing_submission_target_fences_identity_check CHECK (octet_length(organization_id) BETWEEN 1 AND 128 AND organization_id = btrim(organization_id) AND octet_length(platform) BETWEEN 1 AND 128 AND platform = btrim(platform) AND octet_length(store_id) BETWEEN 1 AND 128 AND store_id = btrim(store_id) AND octet_length(subject_id) BETWEEN 1 AND 128 AND subject_id = btrim(subject_id))",
+			},
+		},
+		{
+			name: "attempt id constraint checks version but not RFC4122 variant",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_id_v7_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_id_v7_check CHECK (substring(attempt_id::text FROM 15 FOR 1) = '7')",
+			},
+		},
 		{
 			name:       "wrong column type with unchanged name",
 			statements: []string{"ALTER TABLE public." + AttemptTable + " ALTER COLUMN evidence_reason TYPE TEXT"},

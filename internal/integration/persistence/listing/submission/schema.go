@@ -47,15 +47,18 @@ var schemaStatements = []string{
     CONSTRAINT listing_submission_execution_attempts_pkey PRIMARY KEY (organization_id, attempt_id),
     CONSTRAINT listing_submission_execution_attempts_intent_unique UNIQUE (organization_id, intent_key),
     CONSTRAINT listing_submission_execution_attempts_provider_key_unique UNIQUE (organization_id, provider_execution_key),
-    CONSTRAINT listing_submission_execution_attempts_id_v7_check CHECK (substring(attempt_id::text FROM 15 FOR 1) = '7'),
+    CONSTRAINT listing_submission_execution_attempts_id_v7_check CHECK (
+        substring(attempt_id::text FROM 15 FOR 1) = '7' AND
+        substring(attempt_id::text FROM 20 FOR 1) ~ '^[89ab]$'
+    ),
     CONSTRAINT listing_submission_execution_attempts_identity_check CHECK (
-        octet_length(organization_id) BETWEEN 1 AND 128 AND organization_id = btrim(organization_id) AND
-        octet_length(intent_key) BETWEEN 1 AND 128 AND intent_key = btrim(intent_key) AND
-        octet_length(platform) BETWEEN 1 AND 128 AND platform = btrim(platform) AND
-        octet_length(store_id) BETWEEN 1 AND 128 AND store_id = btrim(store_id) AND
-        octet_length(subject_id) BETWEEN 1 AND 128 AND subject_id = btrim(subject_id) AND
-        octet_length(action) BETWEEN 1 AND 128 AND action = btrim(action) AND
-        octet_length(claim_owner_id) BETWEEN 1 AND 128 AND claim_owner_id = btrim(claim_owner_id)
+        organization_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+        intent_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+        platform ~ '^[a-z0-9][a-z0-9._:-]{0,127}$' AND
+        store_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+        subject_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+        action ~ '^[a-z0-9][a-z0-9._:-]{0,127}$' AND
+        claim_owner_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
     ),
     CONSTRAINT listing_submission_execution_attempts_digest_check CHECK (
         payload_fingerprint ~ '^[0-9a-f]{64}$' AND
@@ -101,10 +104,10 @@ var schemaStatements = []string{
     CONSTRAINT listing_submission_target_fences_pkey PRIMARY KEY (organization_id, platform, store_id, subject_id),
     CONSTRAINT listing_submission_target_fences_attempt_fkey FOREIGN KEY (organization_id, current_attempt_id) REFERENCES public.listing_submission_execution_attempts (organization_id, attempt_id) ON DELETE RESTRICT,
     CONSTRAINT listing_submission_target_fences_identity_check CHECK (
-        octet_length(organization_id) BETWEEN 1 AND 128 AND organization_id = btrim(organization_id) AND
-        octet_length(platform) BETWEEN 1 AND 128 AND platform = btrim(platform) AND
-        octet_length(store_id) BETWEEN 1 AND 128 AND store_id = btrim(store_id) AND
-        octet_length(subject_id) BETWEEN 1 AND 128 AND subject_id = btrim(subject_id)
+        organization_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+        platform ~ '^[a-z0-9][a-z0-9._:-]{0,127}$' AND
+        store_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+        subject_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
     ),
     CONSTRAINT listing_submission_target_fences_epoch_check CHECK (epoch > 0),
     CONSTRAINT listing_submission_target_fences_status_check CHECK (current_status IN ('claimed', 'outcome_unknown', 'succeeded', 'failed_definitive', 'cancelled'))
@@ -176,10 +179,10 @@ var expectedConstraints = map[string]map[string]constraintContract{
 			kind: "u", exactDefinition: "UNIQUE (organization_id, provider_execution_key)",
 		},
 		"listing_submission_execution_attempts_id_v7_check": {
-			kind: "c", exactDefinition: `CHECK ((SUBSTRING((attempt_id)::text FROM 15 FOR 1) = '7'::text))`,
+			kind: "c", exactDefinition: `CHECK (((SUBSTRING((attempt_id)::text FROM 15 FOR 1) = '7'::text) AND (SUBSTRING((attempt_id)::text FROM 20 FOR 1) ~ '^[89ab]$'::text)))`,
 		},
 		"listing_submission_execution_attempts_identity_check": {
-			kind: "c", exactDefinition: `CHECK ((((octet_length((organization_id)::text) >= 1) AND (octet_length((organization_id)::text) <= 128)) AND ((organization_id)::text = btrim((organization_id)::text)) AND ((octet_length((intent_key)::text) >= 1) AND (octet_length((intent_key)::text) <= 128)) AND ((intent_key)::text = btrim((intent_key)::text)) AND ((octet_length((platform)::text) >= 1) AND (octet_length((platform)::text) <= 128)) AND ((platform)::text = btrim((platform)::text)) AND ((octet_length((store_id)::text) >= 1) AND (octet_length((store_id)::text) <= 128)) AND ((store_id)::text = btrim((store_id)::text)) AND ((octet_length((subject_id)::text) >= 1) AND (octet_length((subject_id)::text) <= 128)) AND ((subject_id)::text = btrim((subject_id)::text)) AND ((octet_length((action)::text) >= 1) AND (octet_length((action)::text) <= 128)) AND ((action)::text = btrim((action)::text)) AND ((octet_length((claim_owner_id)::text) >= 1) AND (octet_length((claim_owner_id)::text) <= 128)) AND ((claim_owner_id)::text = btrim((claim_owner_id)::text))))`,
+			kind: "c", exactDefinition: `CHECK ((((organization_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND ((intent_key)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND ((platform)::text ~ '^[a-z0-9][a-z0-9._:-]{0,127}$'::text) AND ((store_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND ((subject_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND ((action)::text ~ '^[a-z0-9][a-z0-9._:-]{0,127}$'::text) AND ((claim_owner_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text)))`,
 		},
 		"listing_submission_execution_attempts_digest_check": {
 			kind: "c", exactDefinition: `CHECK (((payload_fingerprint ~ '^[0-9a-f]{64}$'::text) AND ((provider_execution_key)::text ~ '^subk1_v1_[0-9a-f]{64}$'::text) AND (claim_token_hash ~ '^[0-9a-f]{64}$'::text) AND ((evidence_fingerprint IS NULL) OR (evidence_fingerprint ~ '^[0-9a-f]{64}$'::text))))`,
@@ -214,7 +217,7 @@ var expectedConstraints = map[string]map[string]constraintContract{
 			kind: "f", exactDefinition: "FOREIGN KEY (organization_id, current_attempt_id) REFERENCES public.listing_submission_execution_attempts(organization_id, attempt_id) ON DELETE RESTRICT",
 		},
 		"listing_submission_target_fences_identity_check": {
-			kind: "c", exactDefinition: `CHECK ((((octet_length((organization_id)::text) >= 1) AND (octet_length((organization_id)::text) <= 128)) AND ((organization_id)::text = btrim((organization_id)::text)) AND ((octet_length((platform)::text) >= 1) AND (octet_length((platform)::text) <= 128)) AND ((platform)::text = btrim((platform)::text)) AND ((octet_length((store_id)::text) >= 1) AND (octet_length((store_id)::text) <= 128)) AND ((store_id)::text = btrim((store_id)::text)) AND ((octet_length((subject_id)::text) >= 1) AND (octet_length((subject_id)::text) <= 128)) AND ((subject_id)::text = btrim((subject_id)::text))))`,
+			kind: "c", exactDefinition: `CHECK ((((organization_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND ((platform)::text ~ '^[a-z0-9][a-z0-9._:-]{0,127}$'::text) AND ((store_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND ((subject_id)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text)))`,
 		},
 		"listing_submission_target_fences_epoch_check": {
 			kind: "c", exactDefinition: `CHECK ((epoch > 0))`,

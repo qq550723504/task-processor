@@ -212,6 +212,9 @@ func CompleteClaimedExecution(attempt ExecutionAttempt, evidence ExecutionEviden
 	}
 	now = canonicalExecutionTime(now)
 	evidence.ObservedAt = canonicalExecutionTime(evidence.ObservedAt)
+	if (evidence.Kind == EvidenceProviderResponse || evidence.Kind == EvidenceProviderReadBack) && evidence.AuthorizedBy != "" {
+		return ExecutionAttempt{}, ErrExecutionEvidenceRequired
+	}
 	if isExecutionTerminal(attempt.Status) {
 		if sameExecutionEvidence(attempt.Evidence, &evidence) && attempt.Status == evidence.Outcome {
 			return attempt, nil
@@ -239,6 +242,9 @@ func ResolveUnknownExecution(attempt ExecutionAttempt, evidence ExecutionEvidenc
 	}
 	now = canonicalExecutionTime(now)
 	evidence.ObservedAt = canonicalExecutionTime(evidence.ObservedAt)
+	if (evidence.Kind == EvidenceProviderResponse || evidence.Kind == EvidenceProviderReadBack) && evidence.AuthorizedBy != "" {
+		return ExecutionAttempt{}, ErrExecutionEvidenceRequired
+	}
 	if isExecutionTerminal(attempt.Status) {
 		if sameExecutionEvidence(attempt.Evidence, &evidence) && attempt.Status == evidence.Outcome {
 			return attempt, nil

@@ -164,6 +164,48 @@ func TestClaimCompletionAndUnknownResolutionEvidenceGate(t *testing.T) {
 	require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
 }
 
+func TestProviderEvidenceRejectsCallerAuthorizerMetadata(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     ExecutionStatus
+		kind       EvidenceKind
+		outcome    ExecutionStatus
+		transition func(ExecutionAttempt, ExecutionEvidence, time.Time) (ExecutionAttempt, error)
+	}{
+		{name: "response success", status: ExecutionClaimed, kind: EvidenceProviderResponse, outcome: ExecutionSucceeded, transition: CompleteClaimedExecution},
+		{name: "response definitive failure", status: ExecutionClaimed, kind: EvidenceProviderResponse, outcome: ExecutionFailedDefinitive, transition: CompleteClaimedExecution},
+		{name: "readback success", status: ExecutionOutcomeUnknown, kind: EvidenceProviderReadBack, outcome: ExecutionSucceeded, transition: ResolveUnknownExecution},
+		{name: "readback definitive failure", status: ExecutionOutcomeUnknown, kind: EvidenceProviderReadBack, outcome: ExecutionFailedDefinitive, transition: ResolveUnknownExecution},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, authorizedBy := range []string{"caller-claimed-operator", " \t\n"} {
+				attempt := executionAttemptFixture(t, tc.status)
+				now := attempt.CreatedAt.Add(time.Minute)
+				evidence := ExecutionEvidence{
+					Kind: tc.kind, Outcome: tc.outcome, Reference: "provider-evidence",
+					Fingerprint: digestExecutionValue("provider-evidence"), AuthorizedBy: authorizedBy, ObservedAt: now,
+				}
+				if tc.outcome == ExecutionFailedDefinitive {
+					evidence.Reason = "provider rejected the request"
+				}
+
+				_, err := tc.transition(attempt, evidence, now)
+				require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+				require.Equal(t, tc.status, attempt.Status)
+				require.Nil(t, attempt.Evidence)
+
+				validEvidence := evidence
+				validEvidence.AuthorizedBy = ""
+				terminal, err := tc.transition(attempt, validEvidence, now)
+				require.NoError(t, err)
+				_, err = tc.transition(terminal, evidence, now.Add(time.Second))
+				require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+			}
+		})
+	}
+}
+
 func TestExpiredClaimCannotComplete(t *testing.T) {
 	claimed := executionAttemptFixture(t, ExecutionClaimed)
 	evidence := ExecutionEvidence{
