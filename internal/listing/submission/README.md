@@ -36,7 +36,11 @@ Current stable ownership:
   identity/generated attributes), constraint contracts, and no user-defined
   triggers or extra uniqueness-imposing indexes (non-unique operational indexes
   are allowed); each new intent and target-fence insert must affect exactly one row;
-  database state-shape checks reject NULL-required or stray partial evidence
+  database state-shape checks reject NULL-required or stray partial evidence;
+  provider keys must match the existing length-prefixed SHA-256 derivation, and
+  terminal evidence must be observed no later than finalization; terminal
+  update/finalization times agree, provider-response finalization precedes lease
+  expiry, and persisted timestamps must be finite and nonzero
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)

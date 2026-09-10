@@ -717,7 +717,7 @@ $$`).Error)
 				row.AttemptID = []string{"01890f5e-7b3d-7cc0-98a1-123456789abc", "01890f5e-7b3d-7cc0-98a1-123456789abd", "01890f5e-7b3d-7cc0-98a1-123456789abe"}[index]
 				row.IntentKey = tc.intent
 				row.SubjectID = "listing-" + tc.intent
-				row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat([]string{"a", "b", "c"}[index], 64)
+				row.ProviderExecutionKey = executionTestProviderKey(t, row.OrganizationID, row.IntentKey)
 				row.FenceEpoch++
 				tc.mutate(&row)
 
@@ -755,6 +755,13 @@ $$`).Error)
 			{name: "attempt action uppercase", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.Action = "SAVE_DRAFT" }},
 			{name: "attempt claim owner invalid prefix", constraint: attemptIdentityConstraint, mutate: func(row *executionAttemptRow) { row.ClaimOwnerID = "-worker" }},
 			{name: "attempt UUIDv7 non-RFC4122 variant", constraint: attemptIDConstraint, mutate: func(row *executionAttemptRow) { row.AttemptID = "01890f5e-7b3d-7cc0-78a1-123456789abc" }},
+			{name: "non derived provider key", constraint: "listing_submission_execution_attempts_provider_key_check", mutate: func(row *executionAttemptRow) { row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat("e", 64) }},
+			{name: "provider key derived for another organization", constraint: "listing_submission_execution_attempts_provider_key_check", mutate: func(row *executionAttemptRow) {
+				row.ProviderExecutionKey = executionTestProviderKey(t, "org-b", row.IntentKey)
+			}},
+			{name: "provider key derived for another intent", constraint: "listing_submission_execution_attempts_provider_key_check", mutate: func(row *executionAttemptRow) {
+				row.ProviderExecutionKey = executionTestProviderKey(t, row.OrganizationID, "another-intent")
+			}},
 		}
 		for _, tc := range attemptCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -767,7 +774,7 @@ $$`).Error)
 				row.AttemptID = "01890f5e-7b3d-7cc0-98a1-123456789abc"
 				row.IntentKey = "identity-candidate"
 				row.SubjectID = "identity-candidate"
-				row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat("e", 64)
+				row.ProviderExecutionKey = executionTestProviderKey(t, row.OrganizationID, row.IntentKey)
 				row.FenceEpoch++
 				tc.mutate(&row)
 
@@ -836,6 +843,25 @@ $$`).Error)
 		})
 	})
 
+	t.Run("domain derived provider key vectors are accepted", func(t *testing.T) {
+		keys := make(map[string]bool)
+		for _, pair := range [][2]string{{"a", "b"}, {"ab", "c"}, {"a", "bc"}, {"b", "b"}, {"Org.A_:-", "Intent.B_:-"}, {strings.Repeat("A", 128), strings.Repeat("b", 128)}} {
+			t.Run(pair[0]+"/"+pair[1], func(t *testing.T) {
+				resetExecutionTables(t, db)
+				now := time.Date(2026, 9, 10, 5, 0, 0, 0, time.UTC)
+				kernel := executionKernel(t, db, func() time.Time { return now })
+				acquired, err := kernel.Acquire(ctx, executionCommand(pair[0], pair[1], "key-vector", `{"title":"one"}`))
+				require.NoError(t, err)
+				require.NotNil(t, acquired.Permit)
+				require.False(t, keys[acquired.Attempt.ProviderExecutionKey], "length-prefixed organization/intent tuples must not alias")
+				keys[acquired.Attempt.ProviderExecutionKey] = true
+				persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: pair[0]}, acquired.Attempt.AttemptID)
+				require.NoError(t, err)
+				require.Equal(t, acquired.Attempt, persisted)
+			})
+		}
+	})
+
 	t.Run("database evidence values match persisted domain validation", func(t *testing.T) {
 		const (
 			definitiveReasonConstraint = "listing_submission_execution_attempts_definitive_reason_check"
@@ -900,6 +926,13 @@ $$`).Error)
 				},
 			},
 			{
+				name: "evidence observed after finalization", constraint: evidenceValueConstraint,
+				mutate: func(row *executionAttemptRow) {
+					observedAt := row.FinishedAt.Add(time.Microsecond)
+					row.EvidenceObservedAt = &observedAt
+				},
+			},
+			{
 				name: "evidence observed before attempt creation", constraint: evidenceValueConstraint,
 				mutate: func(row *executionAttemptRow) {
 					observedAt := row.CreatedAt.Add(-time.Microsecond)
@@ -915,7 +948,7 @@ $$`).Error)
 				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-source", "listing-source", `{"title":"one"}`))
 				require.NoError(t, err)
 
-				row := terminalExecutionRow(acquired, "01890f5e-7b3d-7cc0-98a1-123456789abf", "intent-invalid-evidence", "listing-invalid-evidence")
+				row := terminalExecutionRow(t, acquired, "01890f5e-7b3d-7cc0-98a1-123456789abf", "intent-invalid-evidence", "listing-invalid-evidence")
 				tc.mutate(&row)
 				err = db.Table(attemptTable).Create(&row).Error
 				require.Error(t, err, "invalid evidence row must be rejected by PostgreSQL, not only by read-back validation")
@@ -953,7 +986,7 @@ $$`).Error)
 				kernel := executionKernel(t, db, func() time.Time { return now })
 				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-source", "listing-source", `{"title":"one"}`))
 				require.NoError(t, err)
-				row := terminalExecutionRow(acquired, acquired.Attempt.AttemptID, acquired.Attempt.IntentKey, acquired.Attempt.Target.SubjectID)
+				row := terminalExecutionRow(t, acquired, acquired.Attempt.AttemptID, acquired.Attempt.IntentKey, acquired.Attempt.Target.SubjectID)
 				tc.mutate(&row)
 				require.NoError(t, db.Table(attemptTable).
 					Where("organization_id = ? AND attempt_id = ?", acquired.Attempt.OrganizationID, acquired.Attempt.AttemptID).
@@ -963,6 +996,65 @@ $$`).Error)
 				persisted, err := repository.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, row.AttemptID)
 				require.NoError(t, err)
 				require.Equal(t, tc.reason, persisted.Evidence.Reason)
+			})
+		}
+	})
+
+	t.Run("database time values match readable transition facts", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 5, 0, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "time-values", "time-values", `{"title":"one"}`))
+		require.NoError(t, err)
+		_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), providerEvidence(submission.ExecutionSucceeded, "time-values", now))
+		require.NoError(t, err)
+		for _, column := range []string{"created_at", "updated_at", "lease_expires_at", "evidence_observed_at", "finished_at"} {
+			for _, value := range []string{"'infinity'::timestamptz", "'-infinity'::timestamptz", "make_timestamptz(1,1,1,0,0,0,'UTC')"} {
+				t.Run(column+"/"+value, func(t *testing.T) {
+					tx := db.Begin()
+					defer func() { _ = tx.Rollback().Error }()
+					err := tx.Exec("UPDATE " + attemptTable + " SET " + column + " = " + value).Error
+					require.Error(t, err)
+					var pgErr *pgconn.PgError
+					require.ErrorAs(t, err, &pgErr)
+					require.Equal(t, "23514", pgErr.Code)
+				})
+			}
+		}
+		for _, value := range []string{"'infinity'::timestamptz", "'-infinity'::timestamptz", "make_timestamptz(1,1,1,0,0,0,'UTC')"} {
+			t.Run("fence/"+value, func(t *testing.T) {
+				tx := db.Begin()
+				defer func() { _ = tx.Rollback().Error }()
+				err := tx.Exec("UPDATE " + targetTable + " SET updated_at = " + value).Error
+				require.Error(t, err)
+				var pgErr *pgconn.PgError
+				require.ErrorAs(t, err, &pgErr)
+				require.Equal(t, "23514", pgErr.Code)
+			})
+		}
+		for _, kind := range []submission.EvidenceKind{submission.EvidenceProviderResponse, submission.EvidenceProviderReadBack, submission.EvidenceManualResolution} {
+			t.Run(string(kind), func(t *testing.T) {
+				tx := db.Begin()
+				defer func() { _ = tx.Rollback().Error }()
+				if kind == submission.EvidenceManualResolution {
+					require.NoError(t, tx.Exec("UPDATE "+attemptTable+" SET evidence_kind = ?, evidence_reason = 'verified', evidence_authorized_by = 'operator-a'", kind).Error)
+				} else {
+					require.NoError(t, tx.Exec("UPDATE "+attemptTable+" SET evidence_kind = ?", kind).Error)
+				}
+				err := tx.Exec("UPDATE " + attemptTable + " SET updated_at = lease_expires_at, finished_at = lease_expires_at").Error
+				if kind == submission.EvidenceProviderResponse {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err, "qualified resolution may happen after the lease")
+				}
+			})
+		}
+		for _, offset := range []string{"'-1 microsecond'", "'1 microsecond'"} {
+			t.Run("terminal update differs "+offset, func(t *testing.T) {
+				tx := db.Begin()
+				defer func() { _ = tx.Rollback().Error }()
+				err := tx.Exec("UPDATE " + attemptTable + " SET updated_at = finished_at + interval " + offset).Error
+				require.Error(t, err)
 			})
 		}
 	})
@@ -1225,6 +1317,32 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		statements []string
 	}{
 		{
+			name:       "missing attempt finite time constraint",
+			statements: []string{"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_finite_time_check"},
+		},
+		{
+			name:       "missing terminal time constraint",
+			statements: []string{"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_terminal_time_check"},
+		},
+		{
+			name:       "missing target finite time constraint",
+			statements: []string{"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_time_check"},
+		},
+		{
+			name: "provider key constraint permits non derived keys",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_provider_key_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_provider_key_check CHECK (provider_execution_key ~ '^subk1_v1_[0-9a-f]{64}$')",
+			},
+		},
+		{
+			name: "evidence constraint permits observation after finalization",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_evidence_value_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_evidence_value_check CHECK ((evidence_kind IS NULL OR (evidence_reference ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND evidence_observed_at >= created_at)) IS TRUE)",
+			},
+		},
+		{
 			name:       "attempt standalone unique index",
 			statements: []string{"CREATE UNIQUE INDEX unexpected_attempt_unique ON public." + AttemptTable + " (intent_key)"},
 		},
@@ -1409,6 +1527,26 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		require.NotNil(t, repository)
 	})
 
+	t.Run("schema time contracts are independent of session timezone", func(t *testing.T) {
+		reinstallExecutionSchema(t, db)
+		for _, zone := range []string{"UTC", "Asia/Shanghai", "America/New_York"} {
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Exec("SELECT set_config('TimeZone', ?, true)", zone).Error; err != nil {
+					return err
+				}
+				if err := VerifySchema(ctx, tx); err != nil {
+					return err
+				}
+				var actual string
+				if err := tx.Raw("SHOW TimeZone").Scan(&actual).Error; err != nil {
+					return err
+				}
+				require.Equal(t, zone, actual, "verification must not change the caller timezone")
+				return nil
+			}))
+		}
+	})
+
 	t.Run("non unique operational indexes are admitted", func(t *testing.T) {
 		reinstallExecutionSchema(t, db)
 		require.NoError(t, db.Exec("CREATE INDEX operational_attempt_status ON public."+AttemptTable+" (status)").Error)
@@ -1466,14 +1604,23 @@ func executionKernel(t *testing.T, db *gorm.DB, clock func() time.Time) *submiss
 	return kernel
 }
 
-func terminalExecutionRow(source submission.ExecutionAcquisition, attemptID, intentKey, subjectID string) executionAttemptRow {
+func executionTestProviderKey(t *testing.T, organizationID, intentKey string) string {
+	t.Helper()
+	reservation, err := submission.NewExecutionReservation(executionCommand(organizationID, intentKey, "key-fixture", `{"title":"one"}`),
+		"01890f5e-7b3d-7cc0-98a1-123456789abc", "fixture-token", time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	return reservation.Attempt.ProviderExecutionKey
+}
+
+func terminalExecutionRow(t *testing.T, source submission.ExecutionAcquisition, attemptID, intentKey, subjectID string) executionAttemptRow {
+	t.Helper()
 	row := attemptRowFrom(source.Attempt, submission.ExecutionClaimTokenHash(source.Permit.ClaimToken))
 	kind, outcome := string(submission.EvidenceProviderResponse), string(submission.ExecutionSucceeded)
 	reference, fingerprint := "provider-reference", executionTestDigest("provider-reference")
 	observedAt, finishedAt := row.UpdatedAt, row.UpdatedAt
 	row.AttemptID, row.IntentKey, row.SubjectID = attemptID, intentKey, subjectID
 	if attemptID != source.Attempt.AttemptID {
-		row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat("d", 64)
+		row.ProviderExecutionKey = executionTestProviderKey(t, row.OrganizationID, row.IntentKey)
 		row.FenceEpoch++
 	}
 	row.Status = outcome

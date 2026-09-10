@@ -85,6 +85,59 @@ func TestValidateExecutionReplayRequiresExactImmutableIntent(t *testing.T) {
 	}
 }
 
+func TestExecutionPersistedEvidenceCannotPostdateFinalization(t *testing.T) {
+	for _, kind := range []EvidenceKind{EvidenceProviderResponse, EvidenceProviderReadBack, EvidenceManualResolution} {
+		t.Run(string(kind), func(t *testing.T) {
+			attempt := executionAttemptFixture(t, ExecutionClaimed)
+			finishedAt := attempt.CreatedAt.Add(time.Minute)
+			evidence := ExecutionEvidence{Kind: kind, Outcome: ExecutionSucceeded, Reference: "receipt", Fingerprint: digestExecutionValue("receipt"), ObservedAt: finishedAt}
+			if kind == EvidenceManualResolution {
+				evidence.AuthorizedBy, evidence.Reason = "operator-a", "verified"
+			}
+			terminal := finishExecution(attempt, evidence, finishedAt)
+			require.NoError(t, ValidatePersistedExecutionAttempt(terminal), "observation at finalization is valid")
+			terminal.Evidence.ObservedAt = finishedAt.Add(time.Microsecond)
+			require.ErrorIs(t, ValidatePersistedExecutionAttempt(terminal), ErrExecutionUnavailable)
+		})
+	}
+}
+
+func TestExecutionPersistedTerminalTimesMatchTransitions(t *testing.T) {
+	for _, kind := range []EvidenceKind{EvidenceProviderResponse, EvidenceProviderReadBack, EvidenceManualResolution} {
+		for _, outcome := range []ExecutionStatus{ExecutionSucceeded, ExecutionFailedDefinitive, ExecutionCancelled} {
+			if outcome == ExecutionCancelled && kind != EvidenceManualResolution {
+				continue
+			}
+			t.Run(string(kind)+"/"+string(outcome), func(t *testing.T) {
+				attempt := executionAttemptFixture(t, ExecutionClaimed)
+				finishedAt := attempt.CreatedAt.Add(time.Minute)
+				evidence := ExecutionEvidence{Kind: kind, Outcome: outcome, Reference: "receipt", Fingerprint: digestExecutionValue("receipt"), ObservedAt: finishedAt, Reason: "verified"}
+				if kind == EvidenceManualResolution {
+					evidence.AuthorizedBy = "operator-a"
+				}
+				terminal := finishExecution(attempt, evidence, finishedAt)
+				require.NoError(t, ValidatePersistedExecutionAttempt(terminal))
+				future := terminal
+				futureEvidence := evidence
+				futureEvidence.ObservedAt = finishedAt.Add(time.Microsecond)
+				future.Evidence = &futureEvidence
+				require.ErrorIs(t, ValidatePersistedExecutionAttempt(future), ErrExecutionUnavailable)
+				for _, delta := range []time.Duration{-time.Microsecond, time.Microsecond} {
+					invalid := terminal
+					invalid.UpdatedAt = finishedAt.Add(delta)
+					require.ErrorIs(t, ValidatePersistedExecutionAttempt(invalid), ErrExecutionUnavailable, "terminal update and finalization must be the same fact")
+				}
+				late := finishExecution(attempt, evidence, attempt.LeaseExpiresAt)
+				if kind == EvidenceProviderResponse {
+					require.ErrorIs(t, ValidatePersistedExecutionAttempt(late), ErrExecutionUnavailable)
+				} else {
+					require.NoError(t, ValidatePersistedExecutionAttempt(late), "readback/manual may resolve after lease expiry")
+				}
+			})
+		}
+	}
+}
+
 func TestClaimedAttemptTransitionsConservatively(t *testing.T) {
 	base := executionAttemptFixture(t, ExecutionClaimed)
 	now := base.CreatedAt.Add(time.Minute)

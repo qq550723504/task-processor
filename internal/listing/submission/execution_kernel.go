@@ -304,7 +304,10 @@ func ValidatePersistedExecutionAttempt(attempt ExecutionAttempt) error {
 		}
 	case ExecutionSucceeded, ExecutionFailedDefinitive, ExecutionCancelled:
 		if attempt.UnknownReason != "" || attempt.Evidence == nil || attempt.FinishedAt == nil ||
-			attempt.Evidence.Outcome != attempt.Status || attempt.FinishedAt.Before(attempt.CreatedAt) ||
+			attempt.Evidence.Outcome != attempt.Status || attempt.FinishedAt.IsZero() || !attempt.UpdatedAt.Equal(*attempt.FinishedAt) ||
+			attempt.FinishedAt.Before(attempt.CreatedAt) ||
+			attempt.Evidence.ObservedAt.After(*attempt.FinishedAt) ||
+			(attempt.Evidence.Kind == EvidenceProviderResponse && !attempt.FinishedAt.Before(attempt.LeaseExpiresAt)) ||
 			validatePersistedExecutionEvidence(*attempt.Evidence, attempt.CreatedAt) != nil {
 			return ErrExecutionUnavailable
 		}
