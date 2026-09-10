@@ -1,10 +1,10 @@
 # Product Sourcing Handoff
 
-> ACTIVE: owner and handoff guide under the current Product Domain contract.
+> ACTIVE: owner and handoff guide under the current Product Domain contract and
+> **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**.
 > CURRENT STATE observations: `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`.
-> Execution scope/order: [#30](https://github.com/qq550723504/task-processor/issues/30),
-> [#307](https://github.com/qq550723504/task-processor/issues/307) and
-> [#137](https://github.com/qq550723504/task-processor/issues/137).
+> Execution scope/order: [#30](https://github.com/qq550723504/task-processor/issues/30)
+> and [#137](https://github.com/qq550723504/task-processor/issues/137).
 
 ## 1. Authority and purpose
 
@@ -15,9 +15,11 @@ Source adapters collect evidence; Product Sourcing normalizes it; Catalog owns
 canonical facts; Product Asset owns approved assets. Marketplace rules remain
 downstream. A source platform is not a target sales platform.
 
-The [clean-slate decision](issue30-clean-slate-cutover.md) replaces old source-to-task
-acceptance and historical publication migration requirements. It does not relax
-new-system idempotency, authorization, immutable history or explicit approval.
+The [greenfield baseline](greenfield-no-legacy-migration.md) governs this guide:
+future work starts from a fresh installation and empty business data. It does not
+relax new-system idempotency, authorization, immutable history or explicit
+approval, and it does not authorize migration, profile reuse, wrappers, mappings
+or cutover machinery.
 Final navigation follows [final UI / IA](final-ui-ia-authority.md): shared domain
 facts do not require a top-level Listing Center or a platform Workbench.
 
@@ -80,12 +82,13 @@ This is target acceptance, not completed wiring. On the baseline above:
 - [Prepared HTTP contract](../../internal/app/productsourcing/httpapi/handler.go)
   is merged but unregistered. Its Importer port must revalidate access; the
   handler alone is not a complete application import service or rollout.
-- Source-account preflight from #303 is merged. This does not prove
-  Organization/profile migration or #30 production cutover is accepted.
+- Source-account preflight from #303 is historical evidence only; it is not a
+  prerequisite for a fresh-install source path.
 
 Do not extend the old handoff, add consumers, wrap it for new sources, or
-automatically forward old requests into new imports. #30/#307 own separately
-approved cutover and route retirement; this guide does not authorize it.
+automatically forward old requests into new imports. RETIRE the legacy route as
+a separate current-owner change; this guide does not authorize a migration,
+cutover or real-environment operation.
 
 ## 5. Acceptance and stop lines
 
@@ -98,9 +101,9 @@ the chosen slice. Required invariants remain:
   Source images are not automatically approved; absent approval means not ready.
 - Organization/account/store ownership, disabled/deleted/revoked access and
   cross-Organization isolation are checked by existing authorities.
-- Old product/asset/task state and late execution results cannot enter the new
-  approved business scope. Protected account/profile, IAM, Store, financial and
-  external-effect evidence is not disposable business data.
+- The new path has no old product/asset/task state, legacy profile or late-result
+  dependency. Current IAM, Store, financial and external-effect facts remain with
+  their current owners and are not disposable business data.
 - No legacy fallback, dual-read/write, second Product fact source, new submission
   owner or new IAM is introduced.
 

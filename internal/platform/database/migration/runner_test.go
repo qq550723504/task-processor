@@ -129,6 +129,54 @@ func TestNewRejectsUnknownDialect(t *testing.T) {
 	}
 }
 
+func TestNewWithVersionTableKeepsIndependentHistory(t *testing.T) {
+	db := openRunnerTestDB(t)
+	migration := goose.NewGoMigration(2026090901, &goose.GoFunc{RunDB: func(context.Context, *sql.DB) error { return nil }}, nil)
+	runner, err := NewWithVersionTable(goose.DialectSQLite3, db, "goose_source_account_registry_version", migration)
+	if err != nil {
+		t.Fatalf("NewWithVersionTable() error = %v", err)
+	}
+	if _, err := runner.Up(context.Background()); err != nil {
+		t.Fatalf("Up() error = %v", err)
+	}
+	var custom, shared int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'goose_source_account_registry_version'`).Scan(&custom); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'goose_db_version'`).Scan(&shared); err != nil {
+		t.Fatal(err)
+	}
+	if custom != 1 || shared != 0 {
+		t.Fatalf("version tables custom=%d shared=%d", custom, shared)
+	}
+	if _, err := NewWithVersionTable(goose.DialectSQLite3, db, "", migration); err == nil {
+		t.Fatal("empty version table accepted")
+	}
+}
+
+func TestVersionTableValidationAllowsOnlySafePostgresQualification(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		dialect goose.Dialect
+		table   string
+		want    bool
+	}{
+		{name: "unqualified", dialect: goose.DialectSQLite3, table: "goose_source_account_registry_version", want: true},
+		{name: "qualified postgres", dialect: goose.DialectPostgres, table: "public.goose_source_account_registry_version", want: true},
+		{name: "qualified sqlite", dialect: goose.DialectSQLite3, table: "main.goose_source_account_registry_version", want: false},
+		{name: "empty schema", dialect: goose.DialectPostgres, table: ".goose_version", want: false},
+		{name: "empty table", dialect: goose.DialectPostgres, table: "public.", want: false},
+		{name: "extra qualification", dialect: goose.DialectPostgres, table: "database.public.goose_version", want: false},
+		{name: "injection", dialect: goose.DialectPostgres, table: "public.goose_version;drop_table", want: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validVersionTableName(tt.dialect, tt.table); got != tt.want {
+				t.Fatalf("validVersionTableName(%q, %q) = %t, want %t", tt.dialect, tt.table, got, tt.want)
+			}
+		})
+	}
+}
+
 func openRunnerTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	return openRunnerTestDBAtPath(t, filepath.Join(t.TempDir(), "runner.sqlite"))

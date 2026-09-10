@@ -9,19 +9,21 @@ import (
 )
 
 const (
-	PermissionListingKitAdminRead     = "listingkit.admin.read"
-	PermissionListingKitAdminWrite    = "listingkit.admin.write"
-	PermissionListingKitPromptWrite   = "listingkit.prompt.write"
-	PermissionListingKitPlatformAdm   = "listingkit.platform_admin"
-	PermissionProductSourcingWrite    = "product_sourcing.write"
-	PermissionLocalAgentWrite         = "local_agent.write"
-	PermissionImageAgentRead          = "listingkit.image_agent.read"
-	PermissionImageAgentWrite         = "listingkit.image_agent.write"
-	PermissionWorkbenchStoreRead      = "workbench.store.read"
-	PermissionWorkbenchStoreCreate    = "workbench.store.create"
-	PermissionWorkbenchStoreUpdate    = "workbench.store.update"
-	PermissionWorkbenchStoreLifecycle = "workbench.store.lifecycle"
-	PermissionWorkbenchStoreDelete    = "workbench.store.delete"
+	PermissionListingKitAdminRead          = "listingkit.admin.read"
+	PermissionListingKitAdminWrite         = "listingkit.admin.write"
+	PermissionListingKitPromptWrite        = "listingkit.prompt.write"
+	PermissionListingKitPlatformAdm        = "listingkit.platform_admin"
+	PermissionProductSourcingWrite         = "product_sourcing.write"
+	PermissionLocalAgentWrite              = "local_agent.write"
+	PermissionImageAgentRead               = "listingkit.image_agent.read"
+	PermissionImageAgentWrite              = "listingkit.image_agent.write"
+	PermissionWorkbenchStoreRead           = "workbench.store.read"
+	PermissionWorkbenchStoreCreate         = "workbench.store.create"
+	PermissionWorkbenchStoreUpdate         = "workbench.store.update"
+	PermissionWorkbenchStoreLifecycle      = "workbench.store.lifecycle"
+	PermissionWorkbenchStoreDelete         = "workbench.store.delete"
+	PermissionWorkbenchSourceAccountRead   = "workbench.source_account.read"
+	PermissionWorkbenchSourceAccountManage = "workbench.source_account.manage"
 )
 
 var workbenchStorePermissions = []string{
@@ -30,6 +32,11 @@ var workbenchStorePermissions = []string{
 	PermissionWorkbenchStoreUpdate,
 	PermissionWorkbenchStoreLifecycle,
 	PermissionWorkbenchStoreDelete,
+}
+
+var workbenchSourceAccountPermissions = []string{
+	PermissionWorkbenchSourceAccountRead,
+	PermissionWorkbenchSourceAccountManage,
 }
 
 const listingKitModel = `
@@ -70,6 +77,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 
 	for _, policy := range [][]string{
 		{"listingkit_viewer", PermissionWorkbenchStoreRead},
+		{"listingkit_viewer", PermissionWorkbenchSourceAccountRead},
 		{"listingkit_operator", PermissionListingKitAdminRead},
 		{"listingkit_operator", PermissionListingKitAdminWrite},
 		{"listingkit_operator", PermissionProductSourcingWrite},
@@ -80,6 +88,8 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_operator", PermissionWorkbenchStoreCreate},
 		{"listingkit_operator", PermissionWorkbenchStoreUpdate},
 		{"listingkit_operator", PermissionWorkbenchStoreLifecycle},
+		{"listingkit_operator", PermissionWorkbenchSourceAccountRead},
+		{"listingkit_operator", PermissionWorkbenchSourceAccountManage},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
 		{"listingkit_admin", PermissionListingKitPromptWrite},
@@ -92,6 +102,8 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_admin", PermissionWorkbenchStoreUpdate},
 		{"listingkit_admin", PermissionWorkbenchStoreLifecycle},
 		{"listingkit_admin", PermissionWorkbenchStoreDelete},
+		{"listingkit_admin", PermissionWorkbenchSourceAccountRead},
+		{"listingkit_admin", PermissionWorkbenchSourceAccountManage},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
 		{"platform_admin", PermissionListingKitPromptWrite},
@@ -105,6 +117,8 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"platform_admin", PermissionWorkbenchStoreUpdate},
 		{"platform_admin", PermissionWorkbenchStoreLifecycle},
 		{"platform_admin", PermissionWorkbenchStoreDelete},
+		{"platform_admin", PermissionWorkbenchSourceAccountRead},
+		{"platform_admin", PermissionWorkbenchSourceAccountManage},
 		{"admin", PermissionListingKitPlatformAdm},
 		{"admin", PermissionListingKitAdminRead},
 		{"admin", PermissionListingKitPromptWrite},
@@ -127,6 +141,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPromptWrite); err != nil {
 			return nil, err
 		}
+		if _, err := enforcer.AddPolicy(role, PermissionProductSourcingWrite); err != nil {
+			return nil, err
+		}
 		if _, err := enforcer.AddPolicy(role, PermissionLocalAgentWrite); err != nil {
 			return nil, err
 		}
@@ -137,6 +154,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			return nil, err
 		}
 		for _, permission := range workbenchStorePermissions {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
+		for _, permission := range workbenchSourceAccountPermissions {
 			if _, err := enforcer.AddPolicy(role, permission); err != nil {
 				return nil, err
 			}
@@ -153,6 +175,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPromptWrite); err != nil {
 			return nil, err
 		}
+		if _, err := enforcer.AddPolicy(subject, PermissionProductSourcingWrite); err != nil {
+			return nil, err
+		}
 		if _, err := enforcer.AddPolicy(subject, PermissionLocalAgentWrite); err != nil {
 			return nil, err
 		}
@@ -163,6 +188,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			return nil, err
 		}
 		for _, permission := range workbenchStorePermissions {
+			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
+				return nil, err
+			}
+		}
+		for _, permission := range workbenchSourceAccountPermissions {
 			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
 				return nil, err
 			}

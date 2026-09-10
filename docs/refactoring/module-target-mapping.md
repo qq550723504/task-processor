@@ -1,12 +1,13 @@
 # Module Target Mapping
 
-> Status: active migration mapping from current package areas to current target owners.  
+> Status: active current-owner and retirement mapping.<br>
 > Legacy policy: `docs/refactoring/legacy-hard-cut-policy.md`  
+> Product baseline: `PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08`
 > Scan baseline: `main @ 6e3b87208e2c4e51039b95145a2377edfbb9b1cb`
 
 ## 1. Purpose
 
-This document maps mixed or historical package areas toward the current modular-monolith owners. It is a migration aid, not a requirement to rename everything at once.
+This document maps current package areas to current target owners. It is an ownership/retirement aid, not a requirement to rename everything at once or migrate old business data, IDs, profiles or runtime state.
 
 Current target ownership domains include:
 
@@ -29,10 +30,10 @@ Current target ownership domains include:
 
 ## 2. Mapping table
 
-| Current area | Current role | Target owner / destination | Migration rule |
+| Current area | Current role | Target owner / destination | Current owner / retirement rule |
 | --- | --- | --- | --- |
 | `internal/listingkit` | mixed legacy listing orchestration/API/runtime | `internal/listing/*`, `internal/marketplace/*`, `internal/product/*`, `internal/integration/*`, `internal/app/*` according to ownership | #29: extract valid behavior, switch caller, retire old path. Do not preserve root ListingKit as permanent facade. |
-| `internal/compatibility/listingkit` | remaining historical migration bridges | current real owner above | Drain only. No new consumer or feature landing. #30 owns active 1688 handoff cutover; #300 owns guard/obvious cleanup. |
+| `internal/compatibility/listingkit` | remaining historical drain paths | current real owner above | Drain only. No new consumer or feature landing. A future #30 owner may EXTRACT valid behavior or RETIRE the handoff; it must not migrate old tasks/data or add a compatibility path. #300 owns guard/obvious cleanup. |
 | `internal/listingadmin` | listing-admin behavior | `internal/listing/settings` or `internal/app/httpapi` | Split business policy from transport/assembly. |
 | `internal/listingsubscription` | listing-era plans/entitlements/usage behavior | `internal/commercial/*`, current resource/entitlement owners, narrow listing policy where truly listing-specific | Do not restore old task-quota authority. |
 | `internal/platformtask` | task execution helpers | `internal/listing/task` or runtime owner such as Temporal/queue | Business task semantics and runtime execution stay separate. |
@@ -74,9 +75,9 @@ Current target ownership domains include:
 | `internal/ports` / `internal/domain` / `internal/model` | broad aggregation packages | local owning domains | Prefer local contracts/models over global catch-alls. |
 | `internal/scheduler` | scheduling runtime | app worker / platform queue/Temporal | Runtime only. |
 | `internal/sourceaccount` | source-account metadata/access/persistence | Product sourcing account + persistence adapter | Source access is not Organization membership. |
-| `internal/tenantbridge` | active Organization ↔ legacy numeric tenant mapping | current Organization identity + each consuming domain's current persistence ownership | #301: freeze new consumers, migrate/backfill/cut over, then delete package. Never move it to another compatibility facade. |
+| `internal/tenantbridge` | active Organization ↔ legacy numeric tenant mapping | current Organization identity + each consuming domain's current persistence ownership | #301: freeze new consumers; new domains use native Organization identity; RETIRE legacy callers and package by owner; it allows no legacy numeric mapping, old-data migration/backfill or cutover. Never move it to another compatibility facade. |
 | `internal/zitadelprovision` | ZITADEL management/provisioning | integration identity provisioning + app operational entrypoint | External client stays in integration; app owns lifecycle. |
-| `web/listingkit-ui` | current legacy ListingKit/Task-first product shell | final Figma Product Projection, especially #298 and Store Center surfaces | Existing release paths may run until replacement; new product work does not target old IA; page-level cutover then retire. |
+| `web/listingkit-ui` | current web app with legacy ListingKit/Task-first responsibilities and valid current surfaces | final Figma Product Projection, especially #298 and Store Center surfaces | Retire only the specific Task-first/legacy dependencies. Keep current Console, account, plans and review surfaces as current product work; do not rebuild them merely because of this path name. |
 
 ## 3. Crawler / sourcing direction
 
@@ -98,7 +99,7 @@ Rules:
 - marketplace publishing does not own source crawling;
 - Product packages do not import crawler/integration/legacy ListingKit packages directly.
 
-For the active 1688 legacy path, #30 extracts required behavior out of `internal/compatibility/listingkit/sourcehandoff/a1688` and retires the old ListingKit task handoff after controlled acceptance.
+For the active 1688 legacy path, a future #30 owner may extract independently valid behavior out of `internal/compatibility/listingkit/sourcehandoff/a1688` and RETIRE the old ListingKit task handoff. It must not require old-task/data migration, profile reuse or a compatibility transition.
 
 ## 4. ListingKit direction
 
@@ -112,7 +113,7 @@ When touching them:
 4. switch callers;
 5. remove the legacy dependency/path.
 
-Do not add a new internal compatibility wrapper just because a broad cutover is inconvenient.
+Do not add a new internal compatibility wrapper just because retirement is inconvenient.
 
 ## 5. Immediate landing zones
 
@@ -140,9 +141,9 @@ The active rules from `legacy-register.md` are mandatory:
 - retired package roots stay absent;
 - existing legacy consumer counts should monotonically decrease;
 - reusable behavior is extracted, not wrapped;
-- cutover does not leave permanent fallback/dual-read/dual-write paths.
+- retirement does not leave permanent fallback/dual-read/dual-write paths.
 
-## 7. Migration usage
+## 7. Existing code usage
 
 Before moving or reusing code:
 
@@ -154,4 +155,4 @@ Before moving or reusing code:
 
 ## 6. Phase 2 closure landing rules
 
-Runtime ownership remains with Platform/Integration and application assembly. Legacy business consumers drain to their current owners: the product owner uses `internal/product/*` and keeps the retired Product roots absent; the marketplace owner extracts platform rules under `internal/marketplace/*`; the organization owner handles current identity contracts while #301 coordinates tenantbridge consumer cutover. #29 owns the remaining ListingKit extraction. These are EXTRACT destinations followed by RETIRE, never new compatibility landing zones.
+Runtime ownership remains with Platform/Integration and application assembly. Legacy business consumers drain to their current owners: the product owner uses `internal/product/*` and keeps the retired Product roots absent; the marketplace owner extracts platform rules under `internal/marketplace/*`; the organization owner handles current identity contracts while #301 coordinates tenantbridge consumer retirement. #29 owns the remaining ListingKit extraction. These are EXTRACT destinations followed by RETIRE, never new compatibility landing zones.

@@ -4,11 +4,13 @@
 **状态：** IMPLEMENTATION_READY / 冻结产品基线  
 
 > **登录决策更新（2026-09-05）：** 本文中与现有用户登录、专用 `otp_login` / `password_login` 和 Login V2 Fork 登录职责有关的 Phase1 决策，已由 `2026-09-05-shuomi-login-phase1-zitadel-native-simplification.md` 替代。Console 其他产品决策及手机号注册边界不受该补充影响。
+>
+> **Greenfield 基线更新（2026-09-09）：** [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../../product/greenfield-no-legacy-migration.md) 优先。PR #283 V7 and PR #284 V7 are historical evidence, not implementation baselines for the current greenfield product; 不得从其中引入旧数据迁移、backfill、双写、fallback 或 compatibility 机制。
 
 **代码库：** `qq550723504/task-processor`  
 **设计来源：** Figma 文件 `tg48P46SSXl6TBy9lZwg63`，页面 `31:463`
 
-> 本文只保留 Console 第一阶段的产品口径、页面边界、能力迁移规则和高层架构决策。手机号自助注册/首次业务开通的详细可靠性设计以 **PR #283 V7** 为唯一实现基线；企业资源账本和店铺服务生命周期的详细一致性设计以 **PR #284 V7** 为唯一实现基线。本文不再定义这两个领域的数据库状态机、幂等算法、补偿或清理协议。
+> 本文只保留 Console 第一阶段的产品口径、页面边界、能力迁移规则和高层架构决策。PR #283 V7 与 PR #284 V7 仅保留为历史证据，不是当前 greenfield 产品的实现基线。本文不再定义这两个领域的数据库状态机、幂等算法、补偿或清理协议。
 
 ---
 
@@ -190,7 +192,7 @@ ZITADEL 官方 Login V2
 → Generic Login / OTP / Password / Reset / Session / OIDC
 
 硕米手机号自助注册与首次业务开通
-→ 详细设计见 PR #283 V7
+→ 依当前 greenfield Product Decision 与 current owners 实施；PR #283 V7 仅作历史证据
 ```
 
 上线 Gate：
@@ -384,7 +386,7 @@ Password Decoy User
 登录 Temporal Workflow
 ```
 
-手机号自助注册时不可避免的临时 Registration Intent、Provider Provisioning 和首次业务开通边界，以 **PR #283 V7** 为唯一实现基线。
+手机号自助注册时不可避免的临时 Registration Intent、Provider Provisioning 和首次业务开通边界，依当前 greenfield Product Decision 与 current owners 实施；**PR #283 V7** 仅作历史证据。
 
 ---
 
@@ -571,18 +573,17 @@ PR #281
 → Console Product Decisions、Figma、页面、术语、能力迁移、系统边界
 
 PR #283 V7
-→ 手机号自助注册 + Registration Intent + Onboarding + Consent + base_payg + 首次体验 Grant 触发 + 最后角色授予
+→ 上述历史设计证据；不作为当前实现授权
 
 PR #284 V7
-→ 企业资源账本 + trusted Grant + Reservation/Settlement + Store Activate/Renew/Reactivate
+→ 上述历史设计证据；不作为当前实现授权
 ```
 
 若三份设计发生冲突：
 
 - **产品行为/命名/Phase1 范围**以 #281 最新 Product Decision 为准；
-- 身份注册/Onboarding 的实现细节以 #283 V7 为准；
-- 资源/店铺服务一致性实现细节以 #284 V7 为准；
-- 下游 V7 必须同步已确认的新 Product Decision，不能保留相反的历史假设。
+- 身份注册、Onboarding、资源和店铺服务的实现细节以当前 greenfield Product Decision 与 current owners 为准；
+- PR #283 V7 与 PR #284 V7 仅可用于理解历史证据，不能保留或恢复相反的历史机制。
 
 ---
 
@@ -595,10 +596,10 @@ PR #284 V7
 - Phase1 用户核心路径无法闭环；
 - 已有生产能力因为 Hard Cut 被无替代删除；
 - 页面承诺了实际上没有 authority/capability/resource acquisition 的动作；
-- #281 Product Decision 与 #283/#284 Implementation Baseline 直接矛盾；
+- 当前 Product Decision 与 current-owner contract 直接矛盾；
 - 跨租户/越权或明确泄露不应公开的账户/业务资料。
 
-Provider finality、Registration recovery、Resource locking、Migration concurrency 等具体实现问题必须回所属 #283/#284，不在 #281 重建第二份协议。
+Provider finality、Registration recovery、Resource locking 和 normal new-system schema evolution 等具体实现问题必须回当前 owner，不在 #281 重建第二份协议或恢复 legacy migration。
 
 ---
 

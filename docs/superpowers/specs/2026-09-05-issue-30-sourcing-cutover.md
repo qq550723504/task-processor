@@ -1,5 +1,8 @@
 # Issue 30 sourcing cutover
 
+> **SUPERSEDED — historical evidence, not a current execution entrypoint.**
+> [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../../product/greenfield-no-legacy-migration.md) cancels this document's migration/cutover prerequisites. Future #30 work must not use it to require legacy source-account/profile migration, old-ID mapping, tenantbridge expansion, compatibility handoff, fallback or real-environment operations. The original review record is retained below as historical evidence.
+
 Status: independent review round 1 complete; account-access cutover blocked.
 Baseline: main 2fd42cc06.
 

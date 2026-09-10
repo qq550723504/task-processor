@@ -25,10 +25,12 @@ boundary rules unless they explicitly supersede a stable document.
   and execution Issues own scheduling and scope under the
   [dispatch rules](../engineering/issue-driven-development.md).
 - [Sourcing guide](../product/product-sourcing-handoff.md) and
-  [closeout](../product/product-sourcing-mvp-plan.md) distinguish current legacy
-  wiring, prepared imports and target acceptance. [Clean-slate / #307](../product/issue30-clean-slate-cutover.md)
-  supersedes historical publication migration, while protecting account/profile,
-  IAM, Store and financial/effect evidence; it grants no real deletion authority.
+  [closeout](../product/product-sourcing-mvp-plan.md) distinguish current Product
+  wiring, prepared imports and target acceptance. The
+  [greenfield baseline](../product/greenfield-no-legacy-migration.md)
+  (**PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**) requires a fresh installation
+  and empty business data; historical migration, profile-reuse and environment
+  preflight guidance is not a current acceptance prerequisite.
 - [next-phase-plan.md](../refactoring/next-phase-plan.md): HISTORICAL implementation
   record, not an execution queue. The [Publication Identity draft](../refactoring/2026-09-05-publication-identity-cutover-issue-draft.md)
   is SUPERSEDED under #307, not a migration prerequisite.
