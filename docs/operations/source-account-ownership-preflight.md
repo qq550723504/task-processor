@@ -1,5 +1,8 @@
 # Source-account ownership preflight (slice A)
 
+> **SUPERSEDED — historical evidence, not a runnable current operation.**
+> [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) cancels the source-account migration direction that this preflight supported. Do not run it for future work or infer permission to inspect profiles, databases or other real environments. The retained command and evidence below are historical only; no legacy migration, old-ID mapping, profile reuse, tenantbridge consumer or compatibility path is authorized.
+
 This is a read-only preview, not a backfill or a production cutover gate. The full
 inventory, target contract and A–D rollout dependencies are in
 [the design](../superpowers/specs/2026-09-05-source-account-organization-cutover.md).

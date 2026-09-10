@@ -19,8 +19,11 @@ CURRENT STATE：以下实现说明核对于 `main @ cae67730c5c0e645d708cb2f6814
 
 当前系统重点支持 `SHEIN` 主链路稳定化，并将 `1688` 商品、`SDS POD` 商品整理为统一商品资料。系统已有 `SourceEnvelope`、`sourcing.Publisher` → `catalog.Publisher` / `ProductSnapshot` 和 `ApprovedAsset` 合同。
 现存 1688 → ListingKit task handoff 是待抽取、退休的旧路径；新 import HTTP 合同已合入但未注册接线。
-当前 #30/#307 验收目标是新受控导入 → 新 Catalog snapshot → 显式资产批准 → readiness；
-详见 [Sourcing 指南](./docs/product/product-sourcing-handoff.md) 和 [clean-slate 决策](./docs/product/issue30-clean-slate-cutover.md)。
+当前 Product Sourcing 验收目标是全新安装、空业务数据下的新受控导入 → 新 Catalog
+snapshot → 显式资产批准 → readiness；详见
+[PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](./docs/product/greenfield-no-legacy-migration.md)
+与 [Sourcing 指南](./docs/product/product-sourcing-handoff.md)。历史 profile 和 cutover
+gate 不是当前验收前置。
 
 ListingKit 会结合 AI 能力对商品标题、卖点、属性、图片和平台资料进行重构，让同一来源商品可以面向 SHEIN 等目标平台生成适配后的上架内容。Amazon、TEMU 等目标平台相关代码和 runtime 资产仍保留，但完整新平台工作台扩张目前应视为 deferred，不能按 SHEIN 主链路成熟度来理解。
 
@@ -47,7 +50,7 @@ AI Commerce Agent Platform
 
 1. [最终 UI / IA Authority](./docs/product/final-ui-ia-authority.md)：用户可见导航、命名与产品投影；AI工作台的任务中心是 #298 BusinessTask，领域事实不等于顶层 Product/Listing Center。
 2. [产品战略](./docs/product/ai-commerce-agent-platform-strategy.md)与批准的领域合同：Product/Identity/Store/Resource、Tool/Agent 的事实、权限与副作用边界；从[架构索引](./docs/architecture/README.md)进入。
-3. [Legacy Policy](./docs/refactoring/legacy-hard-cut-policy.md)、[Register](./docs/refactoring/legacy-register.md) 与 [Mapping](./docs/refactoring/module-target-mapping.md)：EXTRACT / RETIRE，旧 owner 不是新功能落点。
+3. [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](./docs/product/greenfield-no-legacy-migration.md)、[Legacy Policy](./docs/refactoring/legacy-hard-cut-policy.md)、[Register](./docs/refactoring/legacy-register.md) 与 [Mapping](./docs/refactoring/module-target-mapping.md)：EXTRACT / RETIRE，旧 owner 不是新功能落点。
 4. [当前状态](./docs/refactoring/current-refactoring-status.md)：绑定基线的实现现实与发布门禁。
 5. [#137](https://github.com/qq550723504/task-processor/issues/137) 和具体执行 Issue：工程顺序、依赖、范围与权限；遵循 [Issue 派工规则](./docs/engineering/issue-driven-development.md)。
 6. [Product Sourcing closeout](./docs/product/product-sourcing-mvp-plan.md)：专项验收指南；[next-phase-plan.md](./docs/refactoring/next-phase-plan.md) 仅为 HISTORICAL implementation record，不能作为近期执行队列。
@@ -77,7 +80,7 @@ AI Commerce Agent Platform
 | --- | --- | --- |
 | SHEIN 目标上架 | 生产主路径，稳定化中 | 当前产品与发布重点。价格、促销、readiness、缓存、保存草稿、发布、恢复和浏览器启动需要保持当前基线验证证据。 |
 | SDS POD | 活跃能力，稳定化中 | 作为 POD/design 能力处理，不作为普通 product-source 接入目标。 |
-| 1688 来源商品 | 中立 Publisher 已实现；新 HTTP prepared-only；旧 handoff 待退休 | #30/#307：新导入 → Catalog → 显式资产批准 → readiness；环境范围、旧执行隔离及接线批准待验收。 |
+| 1688 来源商品 | 中立 Publisher 已实现；新 HTTP prepared-only；旧 handoff 待退休 | 全新安装下的新导入 → Catalog → 显式资产批准 → readiness；历史 profile 和 cutover gates 不是当前验收前置。 |
 | Amazon 来源商品 | 已实现 source-envelope 边界验证路径 | 用于 source modeling 和测试，不代表完整 Amazon 目标工作台已开启。 |
 | TEMU 目标上架 | runtime / 部署资产保留，完整工作台 deferred | 维护已有 runtime 正确性，但不在当前阶段扩成 SHEIN 等级的完整工作台。 |
 | Amazon 目标上架 | 历史/目标代码保留，完整工作台 deferred | 不应作为当前扩张主线。 |

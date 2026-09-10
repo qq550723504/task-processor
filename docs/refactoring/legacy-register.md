@@ -1,6 +1,6 @@
 # Legacy Register
 
-> Status: Active migration register  
+> Status: Active legacy handling register
 > Policy: `docs/refactoring/legacy-hard-cut-policy.md`  
 > Last reviewed: 2026-09-05  
 > Repository scan baseline: `main @ 6e3b87208e2c4e51039b95145a2377edfbb9b1cb`
@@ -13,6 +13,12 @@ Current repository policy has only two legacy decisions:
 - `RETIRE` — obsolete design is not extended or internally supported; remove it after cutover.
 
 There is currently **no Compatibility category**. A directory or type named `compatibility`, `legacy`, `bridge`, `adapter`, or `facade` does not create an exception to this rule.
+
+## Greenfield baseline
+
+[PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) controls all future business work: use a fresh installation, empty business data and current models. Rows below that describe a historical migration/cutover are evidence of existing debt only; they do not authorize old-data migration/backfill, old-ID mapping, legacy wrapper/adapter, fallback, dual read/write/synchronization, tenantbridge consumer or a second fact source. Existing legacy code is still only `EXTRACT | RETIRE`.
+
+An external compatibility obligation is never inferred from a row, historical Issue/PR, test or code. Concrete current evidence must be reported to the user; there is no executable legacy-migration/compatibility Exception, and only a new explicit product decision from the user can change that prohibition. Reviewers and Agents cannot authorize it themselves.
 
 ## 1. Repository scan summary
 
@@ -60,17 +66,17 @@ These areas are drain targets. New Product, Marketplace, Agent, Tool, BusinessTa
 | old `internal/imageasset` | RETIRE | Production package root is absent | independently valid image/asset helpers only | `internal/product/image` or `internal/product/asset` by ownership | Keep absent; do not recreate as convenience package. |
 | `internal/compatibility/listingkit` as a long-term facade / landing zone | RETIRE | Directory still exists as a drain-only retirement zone | only behavior needed by current owners; no compatibility ownership itself | `internal/listing/*`, `internal/marketplace/*`, `internal/product/*`, `internal/integration/*`, `internal/app/*` | #29/#30/#300 drain callers and delete shells. No new consumers. |
 | `internal/compatibility/listingkit/preview_adapter.go` | RETIRE | Removed by the #300 guard slice after confirming no production caller | none required after current `internal/listing/preview` projection exists | `internal/listing/preview` | Keep adapter and dedicated test absent; current callers use the preview owner directly. |
-| `internal/compatibility/listingkit/sourcehandoff/a1688` | EXTRACT | Active production wiring in `internal/app/httpapi`; exposes `/api/v1/product-sourcing/1688/listingkit/tasks` and creates legacy ListingKit task/request objects | SourceEnvelope construction, publication/idempotency identity, bounded product key, verified identity checks, source/store access checks, useful error semantics | `internal/product/sourcing` + Store/Organization/Application boundaries + downstream Listing seam | #30 performs `EXTRACT -> RETIRE`; after controlled 1688 → ProductSnapshot/ApprovedAsset → readiness cutover, remove route/wiring/tests and legacy handoff. No fallback. |
+| `internal/compatibility/listingkit/sourcehandoff/a1688` | EXTRACT | Active production wiring in `internal/app/httpapi`; exposes `/api/v1/product-sourcing/1688/listingkit/tasks` and creates legacy ListingKit task/request objects | SourceEnvelope construction, publication/idempotency identity, bounded product key, verified identity checks, source/store access checks, useful error semantics | `internal/product/sourcing` + Store/Organization/Application boundaries + downstream Listing seam | Historical #30 cutover plans are superseded by PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08. A future current-owner task may extract valid behavior or RETIRE this path; it must not migrate old tasks/data or add a wrapper, mapping or fallback. |
 | root `internal/listingkit` mixed ownership | EXTRACT | Still a large active production orchestration/API/runtime owner | deterministic marketplace rules, listing orchestration primitives, readiness/submission semantics, valid transport/runtime behavior | `internal/listing/*`, `internal/marketplace/*`, `internal/product/*`, `internal/integration/*`, `internal/app/*` | #29 drains ownership. After each caller cutover, retire old path; root ListingKit is not a permanent facade. |
 | marketplace rules still owned by root ListingKit | EXTRACT | Remaining rule/policy ownership is part of #29 hard-cut | deterministic platform rules/policies/readiness logic | `internal/marketplace/*` / stable Listing seams | Move rule to current owner and switch callers. Do not wrap the old rule owner. |
-| `internal/tenantbridge` Organization ↔ legacy Yudao numeric tenant mapping | EXTRACT | Active GORM-backed production bridge used by ListingKit, SHEIN login, 1688 crawler/admin and other legacy paths | only the ownership/mapping facts required to migrate existing rows/callers safely | current Organization/identity ownership + each domain's current persistence boundary | Freeze consumer count; no new caller. Create dedicated drain/cutover work, migrate callers/data ownership, then RETIRE the bridge. |
+| `internal/tenantbridge` Organization ↔ legacy Yudao numeric tenant mapping | EXTRACT | Active GORM-backed production bridge used by ListingKit, SHEIN login, 1688 crawler/admin and other legacy paths | only independently valid current-identity behavior, never numeric mapping for a new system | current Organization/identity ownership + each domain's current persistence boundary | Freeze consumer count; no new tenantbridge consumer. Future work creates current Organization-owned facts and RETIREs the bridge without old-data migration, old-ID mapping, fallback or dual authority. |
 | `web/listingkit-ui` Task-first / CreateListingKitTask product projection | RETIRE | Still the only current web app and serves existing commercial paths | reusable UI primitives or domain projections only when aligned with final Figma IA | #298 / final Figma Product Projection; Store Center / AI Workbench / current product pages | Existing released paths may run while replacement is incomplete, but new product design targets Figma directly. Retire old pages after page-level cutover; no BusinessTask ↔ legacy Task dual product model. |
 | Generic independent Listing Workspace (#27) | RETIRE | Backlog abstraction already closed | independently valid Product/Listing UI behavior only if required by current IA | final Product Projection pages defined by Figma authority | Do not revive a generic top-level Listing Workspace. |
 | Old Product Task Center / unified internal Task Dashboard (#35) | RETIRE | Old issue closed; final UI now has a different BusinessTask Center | diagnostics may be projected if useful | #298 BusinessTask Product Projection; internal execution remains with Workflow/Task owners | BusinessTask is a new user-facing object, not a renamed legacy Task. No bidirectional sync. |
 | Task-first Product architecture | RETIRE | Superseded by Product/Listing facts + BusinessTask | none as an ownership model | Product/Listing domain facts + BusinessTask projection | Internal Task/Workflow stays execution infrastructure. |
 | Platform-specific TEMU/Amazon Workbench expansion model | RETIRE | Superseded product projection | marketplace clients, rules, submission adapters and other valid capability code | shared Marketplace/Listing capability; Store Center / AI Workbench projection | #31/#32 expand capabilities without copying Workbenches. |
 | Independent top-level Product Center / Listing Center assumption | RETIRE | Conflicts with final Figma IA | Product/Listing facts and useful screens only | Figma `31:463`; `docs/product/final-ui-ia-authority.md` | Domain facts remain; obsolete navigation assumptions do not. |
-| Old tenant quota / task-limit resource model (#42) | RETIRE | Superseded | migration facts needed to preserve valid current value only | Resource Ledger / Store Service / entitlement owners | Do not restore task-count quota as resource authority. |
+| Old tenant quota / task-limit resource model (#42) | RETIRE | Superseded by **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08** | none; current entitlement facts are created by their current owners, not carried over | Resource Ledger / Store Service / entitlement owners | Do not restore task-count quota as resource authority or migrate legacy quota values. |
 | “Build ZITADEL tenant/role model from scratch” backlog abstraction (#39) | RETIRE | Superseded by current identity/Organization implementation | existing verified identity/organization behavior | current ZITADEL + Organization/RBAC boundaries | Remaining work is release/staging/production acceptance. |
 | Separate Product/Asset/Listing fact source introduced for Agent convenience | RETIRE | Forbidden architectural duplication | none | existing canonical domain owners | Agent output is Proposal/trace, never a second business fact source. |
 | Parallel Agent RBAC / Tool Registry / durable retry/state-machine ownership | RETIRE | Forbidden architectural duplication | none | current authorization, #133 Tool Registry, Temporal/queue/submission owners | Do not isolate Agent code by cloning platform contracts. |
@@ -90,7 +96,7 @@ These areas are drain targets. New Product, Marketplace, Agent, Tool, BusinessTa
 - Do not add new consumers of legacy numeric tenant resolution.
 - New schemas and new domain contracts use current Organization identity directly.
 - Existing callers are drained by their owning domain, not hidden behind a new facade.
-- A one-time migration/backfill or explicit cutover is preferred over permanent dual-read/dual-write.
+- Under PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08, drain and RETIRE without legacy migration/backfill, old-ID mapping or cutover. Normal schema evolution inside the new system remains separate.
 
 ### `web/listingkit-ui`
 
@@ -125,7 +131,7 @@ Cutover/deletion condition:
 Related issue/PR:
 ```
 
-A future externally required compatibility exception, if one is ever proven necessary, must be documented separately and must not silently become a new register category.
+If concrete, current externally observable contract evidence appears, stop and report it to the user. Only a new explicit user product decision can permit a compatibility exception; it must not silently become a new register category.
 
 ## 6. Automated guard baseline (#300 slice)
 

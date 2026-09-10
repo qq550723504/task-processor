@@ -140,9 +140,10 @@ They should not own:
 `internal/tenantbridge` is separately classified as drain-only debt: it maps
 current Organizations to legacy numeric tenant identifiers for remaining callers.
 It is not an Organization membership authority or a utility for new code.
-No new consumer is allowed; owning domains must cut over to current identity.
-The #307 clean-slate decision does not cancel source-account ownership or
-profile preservation; see [protected scope](../product/issue30-clean-slate-cutover.md).
+No new consumer is allowed; owning domains use current identity directly and
+RETIRE remaining legacy callers. Under **PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08**,
+legacy profile preservation is not a current requirement; current source-account
+ownership and authorization remain with their current owners.
 
 ### Domain and repository layers
 
