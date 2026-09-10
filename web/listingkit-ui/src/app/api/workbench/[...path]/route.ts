@@ -115,15 +115,15 @@ async function handleWorkbenchRequest(
     sourceMutation: isSourceMutationURL(request.method, request.url),
   };
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  request.signal.addEventListener("abort", abort, { once: true });
-  if (request.signal.aborted) abort();
-  const timeout = setTimeout(abort, UPSTREAM_TIMEOUT_MS);
   let resolveAbort = () => {};
   const aborted = new Promise<Response>((resolve) => {
     resolveAbort = () => resolve(deadlineFailure(dispatchState));
     controller.signal.addEventListener("abort", resolveAbort, { once: true });
   });
+  const abort = () => controller.abort();
+  request.signal.addEventListener("abort", abort, { once: true });
+  if (request.signal.aborted) abort();
+  const timeout = setTimeout(abort, UPSTREAM_TIMEOUT_MS);
   try {
     const scopedRequest = new NextRequest(request, { signal: controller.signal });
     const result = await Promise.race([

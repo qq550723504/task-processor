@@ -385,6 +385,43 @@ describe("/api/workbench BFF", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns the Source Account deadline when the request was already canceled before blocked auth", async () => {
+    vi.useFakeTimers();
+    let releaseAuth = () => {};
+    authState.gate = new Promise<void>((resolve) => {
+      releaseAuth = resolve;
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const pending = call(
+      POST,
+      new NextRequest("http://localhost/api/workbench/source-accounts", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          cookie: "shuomi_effective_organization=org-b",
+          Origin: "http://localhost",
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+          "X-Expected-Organization-ID": "org-b",
+          "X-Expected-User-ID": "user-a",
+        },
+        body: JSON.stringify({ displayName: "Primary 1688", platform: "1688" }),
+      }),
+      ["source-accounts"],
+    );
+    const outcome = Promise.race([
+      pending.then((response) => response.status),
+      new Promise<string>((resolve) => {
+        setTimeout(() => resolve("still-pending"), 1);
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(15_002);
+    releaseAuth();
+
+    await expect(outcome).resolves.toBe(504);
+  });
+
   it("maps a network loss after mutation dispatch to OUTCOME_UNKNOWN", async () => {
     authState.session = { accessToken: "private-token" };
     authState.token = "private-token";
