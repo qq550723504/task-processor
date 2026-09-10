@@ -265,6 +265,39 @@ func verifySchema(ctx context.Context, db *gorm.DB) error {
 		if err := verifyConstraints(ctx, db, table, expectedConstraints[table]); err != nil {
 			return err
 		}
+		if err := verifyNoUserTriggers(ctx, db, table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyNoUserTriggers(ctx context.Context, db *gorm.DB, table string) error {
+	rows, err := db.WithContext(ctx).Raw(`
+SELECT trigger_row.tgname
+FROM pg_catalog.pg_trigger AS trigger_row
+JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_row.tgrelid
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname = 'public' AND relation.relname = ? AND NOT trigger_row.tgisinternal
+ORDER BY trigger_row.tgname`, table).Rows()
+	if err != nil {
+		return fmt.Errorf("inspect submission execution triggers for public.%s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var triggers []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("scan submission execution triggers for public.%s: %w", table, err)
+		}
+		triggers = append(triggers, name)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate submission execution triggers for public.%s: %w", table, err)
+	}
+	if len(triggers) != 0 {
+		return fmt.Errorf("submission execution relation public.%s has unexpected user triggers: %v", table, triggers)
 	}
 	return nil
 }

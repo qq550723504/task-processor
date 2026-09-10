@@ -255,6 +255,112 @@ func TestRepositoryPostgresExecutionContract(t *testing.T) {
 		require.Equal(t, submission.UnknownLeaseExpired, persisted.UnknownReason)
 	})
 
+	t.Run("lease expiry during persistence never returns live authority", func(t *testing.T) {
+		for _, elapsed := range []time.Duration{time.Second, time.Second + time.Microsecond} {
+			name := "at expiry"
+			if elapsed > time.Second {
+				name = "after expiry"
+			}
+			t.Run("acquire "+name, func(t *testing.T) {
+				resetExecutionTables(t, db)
+				base := time.Date(2026, 9, 10, 2, 29, 0, 0, time.UTC)
+				now := base
+				repository, err := NewRepository(db)
+				require.NoError(t, err)
+				repository.fault = func(stage string) error {
+					if stage == "before_commit" {
+						now = base.Add(elapsed)
+					}
+					return nil
+				}
+				const attemptID = "01890f5e-7b3d-7cc0-98a1-123456789abc"
+				kernel, err := submission.NewExecutionKernel(repository,
+					submission.WithExecutionClock(func() time.Time { return now }),
+					submission.WithExecutionIDGenerator(func() (string, error) { return attemptID, nil }),
+					submission.WithExecutionClaimTokenGenerator(func() (string, error) { return "lease-expiry-token", nil }),
+				)
+				require.NoError(t, err)
+				command := executionCommand("org-a", "lease-expiry-intent", "lease-expiry-target", `{"title":"one"}`)
+				command.Lease = time.Second
+
+				acquisition, err := kernel.Acquire(ctx, command)
+				require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+				require.Nil(t, acquisition.Permit)
+				repository.fault = nil
+
+				persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, attemptID)
+				require.NoError(t, err)
+				require.Equal(t, submission.ExecutionClaimed, persisted.Status)
+				require.Equal(t, base.Add(time.Second), persisted.LeaseExpiresAt)
+				replay, err := kernel.Acquire(ctx, command)
+				require.NoError(t, err)
+				require.True(t, replay.Replayed)
+				require.Nil(t, replay.Permit)
+				_, err = kernel.Acquire(ctx, executionCommand("org-a", "lease-expiry-blocked", "lease-expiry-target", `{"title":"two"}`))
+				require.ErrorIs(t, err, submission.ErrExecutionTargetClaimed)
+			})
+		}
+
+		t.Run("renew rechecks the old lease after locking", func(t *testing.T) {
+			resetExecutionTables(t, db)
+			base := time.Date(2026, 9, 10, 2, 29, 10, 0, time.UTC)
+			serviceNow, transactionNow := base, base
+			repository, err := NewRepository(db)
+			require.NoError(t, err)
+			repository.now = func() time.Time { return transactionNow }
+			kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return serviceNow }))
+			require.NoError(t, err)
+			command := executionCommand("org-a", "renew-lock-expiry", "renew-lock-expiry", `{"title":"one"}`)
+			command.Lease = time.Second
+			acquired, err := kernel.Acquire(ctx, command)
+			require.NoError(t, err)
+
+			serviceNow = base.Add(500 * time.Millisecond)
+			transactionNow = acquired.Attempt.LeaseExpiresAt
+			renewed, err := kernel.Renew(ctx, permitClaim("org-a", acquired.Permit), time.Second)
+			require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+			require.Equal(t, submission.ExecutionAttempt{}, renewed)
+			persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+			require.NoError(t, err)
+			require.Equal(t, submission.ExecutionOutcomeUnknown, persisted.Status)
+			require.Equal(t, submission.UnknownLeaseExpired, persisted.UnknownReason)
+		})
+
+		t.Run("renew refuses a new lease that expires before return", func(t *testing.T) {
+			resetExecutionTables(t, db)
+			base := time.Date(2026, 9, 10, 2, 29, 20, 0, time.UTC)
+			serviceNow, transactionNow := base, base
+			repository, err := NewRepository(db)
+			require.NoError(t, err)
+			repository.now = func() time.Time { return transactionNow }
+			kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return serviceNow }))
+			require.NoError(t, err)
+			command := executionCommand("org-a", "renew-return-expiry", "renew-return-expiry", `{"title":"one"}`)
+			command.Lease = time.Second
+			acquired, err := kernel.Acquire(ctx, command)
+			require.NoError(t, err)
+
+			serviceNow = base.Add(500 * time.Millisecond)
+			transactionNow = serviceNow
+			repository.fault = func(stage string) error {
+				if stage == "before_commit" {
+					serviceNow = base.Add(2 * time.Second)
+				}
+				return nil
+			}
+			renewed, err := kernel.Renew(ctx, permitClaim("org-a", acquired.Permit), time.Second)
+			require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+			require.Equal(t, submission.ExecutionAttempt{}, renewed)
+			repository.fault = nil
+			persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+			require.NoError(t, err)
+			require.Equal(t, submission.ExecutionClaimed, persisted.Status)
+			require.Equal(t, base.Add(1500*time.Millisecond), persisted.LeaseExpiresAt)
+			_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), providerEvidence(submission.ExecutionSucceeded, "renew-expired", serviceNow))
+			require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+		})
+	})
+
 	t.Run("qualified resolution releases target to the next fenced intent", func(t *testing.T) {
 		resetExecutionTables(t, db)
 		now := time.Date(2026, 9, 10, 2, 30, 0, 0, time.UTC)
@@ -820,6 +926,68 @@ $$`).Error)
 		}
 	})
 
+	t.Run("write interception after admission rolls back without a permit", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 59, 30, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec(`
+CREATE FUNCTION public.skip_submission_fence_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN NULL;
+END
+$$`).Error)
+		require.NoError(t, db.Exec("CREATE TRIGGER skip_submission_fence_insert BEFORE INSERT ON public."+TargetFenceTable+" FOR EACH ROW EXECUTE FUNCTION public.skip_submission_fence_insert()").Error)
+		t.Cleanup(func() {
+			_ = db.Exec("DROP TRIGGER IF EXISTS skip_submission_fence_insert ON public." + TargetFenceTable).Error
+			_ = db.Exec("DROP FUNCTION IF EXISTS public.skip_submission_fence_insert()").Error
+		})
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+
+		for _, intent := range []string{"trigger-skipped-fence-a", "trigger-skipped-fence-b"} {
+			acquired, err := kernel.Acquire(ctx, executionCommand("org-a", intent, "trigger-skipped-fence", `{"title":"one"}`))
+			require.ErrorIs(t, err, submission.ErrExecutionUnavailable)
+			require.Nil(t, acquired.Permit)
+		}
+		var count int64
+		require.NoError(t, db.Table(attemptTable).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Table(targetTable).Count(&count).Error)
+		require.Zero(t, count)
+	})
+
+	t.Run("attempt insert interception after admission leaves no half state", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 59, 31, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec(`
+CREATE FUNCTION public.skip_submission_attempt_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN NULL;
+END
+$$`).Error)
+		require.NoError(t, db.Exec("CREATE TRIGGER skip_submission_attempt_insert BEFORE INSERT ON public."+AttemptTable+" FOR EACH ROW EXECUTE FUNCTION public.skip_submission_attempt_insert()").Error)
+		t.Cleanup(func() {
+			_ = db.Exec("DROP TRIGGER IF EXISTS skip_submission_attempt_insert ON public." + AttemptTable).Error
+			_ = db.Exec("DROP FUNCTION IF EXISTS public.skip_submission_attempt_insert()").Error
+		})
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+
+		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "trigger-skipped-attempt", "trigger-skipped-attempt", `{"title":"one"}`))
+		require.ErrorIs(t, err, submission.ErrExecutionUnavailable)
+		require.Nil(t, acquired.Permit)
+		var count int64
+		require.NoError(t, db.Table(attemptTable).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Table(targetTable).Count(&count).Error)
+		require.Zero(t, count)
+	})
+
 	t.Run("commit acknowledgement loss exposes no permit and replay cannot resend", func(t *testing.T) {
 		resetExecutionTables(t, db)
 		now := time.Date(2026, 9, 10, 2, 55, 0, 0, time.UTC)
@@ -951,6 +1119,20 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		name       string
 		statements []string
 	}{
+		{
+			name: "attempt table has an unexpected user trigger",
+			statements: []string{
+				"CREATE OR REPLACE FUNCTION public.unexpected_submission_trigger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+				"CREATE TRIGGER unexpected_submission_attempt_trigger BEFORE INSERT ON public." + AttemptTable + " FOR EACH ROW EXECUTE FUNCTION public.unexpected_submission_trigger()",
+			},
+		},
+		{
+			name: "target table has an unexpected user trigger",
+			statements: []string{
+				"CREATE OR REPLACE FUNCTION public.unexpected_submission_trigger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+				"CREATE TRIGGER unexpected_submission_target_trigger BEFORE INSERT ON public." + TargetFenceTable + " FOR EACH ROW EXECUTE FUNCTION public.unexpected_submission_trigger()",
+			},
+		},
 		{
 			name: "attempt identity constraint keeps only the old trim and length checks",
 			statements: []string{
@@ -1134,6 +1316,7 @@ func executionKernel(t *testing.T, db *gorm.DB, clock func() time.Time) *submiss
 	t.Helper()
 	repository, err := NewRepository(db)
 	require.NoError(t, err)
+	repository.now = clock
 	kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(clock))
 	require.NoError(t, err)
 	return kernel

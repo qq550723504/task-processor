@@ -132,6 +132,9 @@ func (k *ExecutionKernel) Acquire(ctx context.Context, command AcquireExecutionC
 	if attempt.AttemptID != reservation.Attempt.AttemptID || attempt.Status != ExecutionClaimed {
 		return ExecutionAcquisition{}, ErrExecutionUnavailable
 	}
+	if !canonicalExecutionTime(k.now()).Before(attempt.LeaseExpiresAt) {
+		return ExecutionAcquisition{}, ErrExecutionClaimRejected
+	}
 	result.Permit = &SendPermit{
 		AttemptID: attempt.AttemptID, FenceEpoch: attempt.FenceEpoch, ClaimToken: claimToken,
 		ClaimOwnerID: attempt.ClaimOwnerID, ProviderExecutionKey: attempt.ProviderExecutionKey, LeaseExpiresAt: attempt.LeaseExpiresAt,
@@ -168,7 +171,14 @@ func (k *ExecutionKernel) Renew(ctx context.Context, claim ExecutionClaim, lease
 		return ExecutionAttempt{}, ErrExecutionInvalid
 	}
 	now := canonicalExecutionTime(k.now())
-	return k.repository.Renew(ctx, claim, canonicalExecutionTime(now.Add(lease)), now)
+	renewed, err := k.repository.Renew(ctx, claim, canonicalExecutionTime(now.Add(lease)), now)
+	if err != nil {
+		return ExecutionAttempt{}, err
+	}
+	if !canonicalExecutionTime(k.now()).Before(renewed.LeaseExpiresAt) {
+		return ExecutionAttempt{}, ErrExecutionClaimRejected
+	}
+	return renewed, nil
 }
 
 func (k *ExecutionKernel) MarkUnknown(ctx context.Context, claim ExecutionClaim, reason UnknownReason) (ExecutionAttempt, error) {

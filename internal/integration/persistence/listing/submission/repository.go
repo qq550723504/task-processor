@@ -24,6 +24,7 @@ const (
 type Repository struct {
 	db    *gorm.DB
 	fault func(string) error
+	now   func() time.Time
 }
 
 func NewRepository(db *gorm.DB) (*Repository, error) {
@@ -35,7 +36,7 @@ func NewRepository(db *gorm.DB) (*Repository, error) {
 	if err := VerifySchema(ctx, db); err != nil {
 		return nil, fmt.Errorf("%w: %v", submission.ErrExecutionUnavailable, err)
 	}
-	return &Repository{db: db}, nil
+	return &Repository{db: db, now: time.Now}, nil
 }
 
 func (r *Repository) Acquire(ctx context.Context, reservation submission.ExecutionReservation) (submission.ExecutionAttempt, bool, error) {
@@ -109,8 +110,12 @@ func (r *Repository) Acquire(ctx context.Context, reservation submission.Executi
 			attempt.FenceEpoch = 1
 		}
 		row := attemptRowFrom(attempt, reservation.ClaimTokenHash)
-		if err := tx.WithContext(ctx).Table(attemptTable).Create(&row).Error; err != nil {
-			return mutation{}, err
+		created := tx.WithContext(ctx).Table(attemptTable).Create(&row)
+		if created.Error != nil {
+			return mutation{}, created.Error
+		}
+		if created.RowsAffected != 1 {
+			return mutation{}, submission.ErrExecutionUnavailable
 		}
 		fence = targetFenceRow{
 			OrganizationID: attempt.OrganizationID, Platform: attempt.Target.Platform, StoreID: attempt.Target.StoreID,
@@ -127,8 +132,14 @@ func (r *Repository) Acquire(ctx context.Context, reservation submission.Executi
 			if updated.RowsAffected != 1 {
 				return mutation{}, submission.ErrExecutionUnavailable
 			}
-		} else if err := tx.WithContext(ctx).Table(targetTable).Create(&fence).Error; err != nil {
-			return mutation{}, err
+		} else {
+			created = tx.WithContext(ctx).Table(targetTable).Create(&fence)
+			if created.Error != nil {
+				return mutation{}, created.Error
+			}
+			if created.RowsAffected != 1 {
+				return mutation{}, submission.ErrExecutionUnavailable
+			}
 		}
 		acquired = true
 		return mutation{attempt: attempt}, nil
@@ -159,20 +170,48 @@ func (r *Repository) Get(ctx context.Context, scope submission.ExecutionScope, a
 }
 
 func (r *Repository) Renew(ctx context.Context, claim submission.ExecutionClaim, leaseExpiresAt, now time.Time) (submission.ExecutionAttempt, error) {
-	return r.claimMutation(ctx, claim, now, func(attempt submission.ExecutionAttempt) (submission.ExecutionAttempt, error, error) {
+	lease := leaseExpiresAt.Sub(now)
+	if r == nil || r.now == nil {
+		return submission.ExecutionAttempt{}, submission.ErrExecutionUnavailable
+	}
+	if lease < submission.MinExecutionLease || lease > submission.MaxExecutionLease {
+		return submission.ExecutionAttempt{}, submission.ErrExecutionInvalid
+	}
+	return r.write(ctx, func(tx *gorm.DB) (mutation, error) {
+		attempt, _, tokenHash, err := r.lockCurrentAttempt(ctx, tx, claim.Scope.OrganizationID, claim.AttemptID)
+		if err != nil {
+			return mutation{}, err
+		}
+		if attempt.FenceEpoch != claim.FenceEpoch || attempt.ClaimOwnerID != claim.OwnerID || subtle.ConstantTimeCompare([]byte(tokenHash), []byte(submission.ExecutionClaimTokenHash(claim.Token))) != 1 {
+			return mutation{}, submission.ErrExecutionClaimRejected
+		}
+		now = r.now().UTC().Truncate(time.Microsecond)
+		if now.IsZero() {
+			return mutation{}, submission.ErrExecutionUnavailable
+		}
 		if attempt.Status != submission.ExecutionClaimed {
-			return attempt, nil, submission.ErrExecutionClaimRejected
+			return mutation{attempt: attempt, afterCommitErr: submission.ErrExecutionClaimRejected}, nil
 		}
 		if !now.Before(attempt.LeaseExpiresAt) {
 			unknown, err := submission.TransitionExecutionToUnknown(attempt, submission.UnknownLeaseExpired, now)
-			return unknown, err, submission.ErrExecutionClaimRejected
+			if err != nil {
+				return mutation{}, err
+			}
+			if err := r.persistAttemptAndFence(ctx, tx, unknown); err != nil {
+				return mutation{}, err
+			}
+			return mutation{attempt: unknown, afterCommitErr: submission.ErrExecutionClaimRejected}, nil
 		}
+		leaseExpiresAt = now.Add(lease).UTC().Truncate(time.Microsecond)
 		if !leaseExpiresAt.After(attempt.LeaseExpiresAt) {
-			return attempt, submission.ErrExecutionInvalid, nil
+			return mutation{}, submission.ErrExecutionInvalid
 		}
 		attempt.LeaseExpiresAt = leaseExpiresAt
 		attempt.UpdatedAt = now
-		return attempt, nil, nil
+		if err := r.persistAttemptAndFence(ctx, tx, attempt); err != nil {
+			return mutation{}, err
+		}
+		return mutation{attempt: attempt}, nil
 	})
 }
 
