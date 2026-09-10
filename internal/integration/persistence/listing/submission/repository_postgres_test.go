@@ -1579,6 +1579,62 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 	})
 }
 
+func TestRepositoryPostgresExecutionCollations(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+	require.NoError(t, db.Exec("CREATE COLLATION public.execution_case_insensitive (provider = icu, locale = 'und-u-ks-level2', deterministic = false)").Error)
+	require.NoError(t, db.Exec("CREATE COLLATION public.execution_deterministic (provider = icu, locale = 'und-u-ks-level2', deterministic = true)").Error)
+	var equal bool
+	require.NoError(t, db.Raw("SELECT 'CLAIMED' = 'claimed' COLLATE public.execution_case_insensitive").Scan(&equal).Error)
+	require.True(t, equal, "the drift fixture must actually relax byte equality")
+	installWithCollation := func(t *testing.T, table, column, typeSQL, collation string) {
+		t.Helper()
+		require.NoError(t, db.Exec("DROP TABLE IF EXISTS public."+TargetFenceTable+", public."+AttemptTable+" CASCADE").Error)
+		for _, statement := range schemaStatements {
+			if strings.HasPrefix(statement, "CREATE TABLE public."+table+" (") {
+				definition := "\n    " + column + " " + typeSQL
+				require.Equal(t, 1, strings.Count(statement, definition))
+				statement = strings.Replace(statement, definition, definition+" COLLATE "+collation, 1)
+			}
+			require.NoError(t, db.Exec(statement).Error)
+		}
+	}
+
+	for _, column := range []struct{ table, name, typeSQL string }{
+		{AttemptTable, "status", "VARCHAR(32)"},
+		{TargetFenceTable, "current_status", "VARCHAR(32)"},
+		{AttemptTable, "intent_key", "VARCHAR(128)"},
+		{AttemptTable, "evidence_reason", "VARCHAR(512)"},
+		{AttemptTable, "claim_token_hash", "CHAR(64)"},
+		{TargetFenceTable, "subject_id", "VARCHAR(128)"},
+	} {
+		t.Run(column.table+"/"+column.name, func(t *testing.T) {
+			installWithCollation(t, column.table, column.name, column.typeSQL, "public.execution_case_insensitive")
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Exec("SELECT set_config('search_path', 'pg_catalog', true)").Error; err != nil {
+					return err
+				}
+				return verifyConstraints(ctx, tx, column.table, expectedConstraints[column.table])
+			}), "constraint text alone cannot detect this drift")
+			repository, err := NewRepository(db)
+			require.ErrorContains(t, err, "deterministic collation")
+			require.Nil(t, repository)
+			require.ErrorContains(t, VerifySchema(ctx, db), "deterministic collation")
+		})
+	}
+	for _, collation := range []string{"pg_catalog.\"C\"", "public.execution_deterministic"} {
+		t.Run("admit/"+collation, func(t *testing.T) {
+			installWithCollation(t, AttemptTable, "status", "VARCHAR(32)", collation)
+			repository, err := NewRepository(db)
+			require.NoError(t, err)
+			require.NotNil(t, repository)
+			require.NoError(t, db.Raw("SELECT 'CLAIMED' = 'claimed' COLLATE "+collation).Scan(&equal).Error)
+			require.False(t, equal)
+		})
+	}
+}
+
 func TestVerifyColumnsRejectsGeneratedAttributes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
