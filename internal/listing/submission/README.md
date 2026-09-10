@@ -32,8 +32,8 @@ Current stable ownership:
   Organization-qualified keys and predicates, same-intent replay/conflict,
   cross-intent target serialization, stale-fence rejection, atomic rollback, and
   constructor-time fail-closed verification that both relations are ordinary
-  permanent/logged tables without row security in a UTF8 database, with their
-  complete column contracts (including no
+  permanent/logged tables without inheritance or row security in a UTF8 database,
+  with their complete column contracts (including no
   identity/generated attributes and deterministic text equality), constraint
   contracts, and no user-defined
   triggers, rewrite rules or extra uniqueness-imposing indexes (non-unique

@@ -1581,6 +1581,82 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 	})
 }
 
+func TestRepositoryPostgresExecutionInheritance(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+	t.Run("descendant duplicate bypasses an active fence", func(t *testing.T) {
+		reinstallExecutionSchema(t, db)
+		now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+		// Pre-DDL instance is solely a diagnostic of why admission must reject
+		// inheritance. Runtime DDL monitoring is not promised by the repository.
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		first, err := kernel.Acquire(ctx, executionCommand("org-a", "first", "target", `{"title":"one"}`))
+		require.NoError(t, err)
+		_, err = kernel.Complete(ctx, permitClaim("org-a", first.Permit), providerEvidence(submission.ExecutionSucceeded, "first-result", now))
+		require.NoError(t, err)
+		var stale targetFenceRow
+		require.NoError(t, db.Table(targetTable).Take(&stale).Error)
+		second, err := kernel.Acquire(ctx, executionCommand("org-a", "second", "target", `{"title":"one"}`))
+		require.NoError(t, err)
+		require.NotNil(t, second.Permit)
+		var active targetFenceRow
+		require.NoError(t, db.Table(targetTable).Take(&active).Error)
+		probe, err := NewRepository(db)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec("CREATE TABLE public.execution_fence_child () INHERITS (public."+TargetFenceTable+")").Error)
+		require.NoError(t, db.Table("public.execution_fence_child").Create(&active).Error)
+		require.NoError(t, db.Exec("UPDATE ONLY public."+TargetFenceTable+" SET epoch = ?, current_attempt_id = ?, current_status = ?, updated_at = ?", stale.Epoch, stale.CurrentAttemptID, stale.CurrentStatus, stale.UpdatedAt).Error)
+		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+			selected, found, selectErr := probe.findTarget(ctx, tx, "org-a", first.Attempt.Target, true)
+			require.NoError(t, selectErr)
+			require.True(t, found)
+			require.Equal(t, stale, selected, "the actual production Take selects the stale parent fence")
+			var source string
+			require.NoError(t, tx.Table(targetTable).Select("tableoid::regclass::text").Where("current_attempt_id = ?", selected.CurrentAttemptID).Scan(&source).Error)
+			require.Equal(t, TargetFenceTable, source)
+			return nil
+		}))
+		third, err := kernel.Acquire(ctx, executionCommand("org-a", "third", "target", `{"title":"one"}`))
+		require.NoError(t, err)
+		require.NotNil(t, third.Permit)
+		var claimed int64
+		require.NoError(t, db.Table(targetTable).Where("current_status = ?", "claimed").Count(&claimed).Error)
+		require.EqualValues(t, 2, claimed, "parent and descendant now contain competing active fences")
+		require.Equal(t, second.Permit.FenceEpoch, third.Permit.FenceEpoch)
+		var secondStatus string
+		require.NoError(t, db.Table(attemptTable).Select("status").Where("attempt_id = ?", second.Attempt.AttemptID).Scan(&secondStatus).Error)
+		require.Equal(t, "claimed", secondStatus)
+		require.True(t, second.Permit.LeaseExpiresAt.After(now))
+		repository, err := NewRepository(db)
+		require.ErrorContains(t, err, "inheritance")
+		require.Nil(t, repository)
+	})
+	for _, table := range []string{AttemptTable, TargetFenceTable} {
+		t.Run(table, func(t *testing.T) {
+			reinstallExecutionSchema(t, db)
+			child := table + "_child"
+			require.NoError(t, db.Exec("CREATE TABLE public."+child+" () INHERITS (public."+table+")").Error)
+			repository, err := NewRepository(db)
+			require.ErrorContains(t, err, "inheritance")
+			require.Nil(t, repository)
+			require.ErrorContains(t, VerifySchema(ctx, db), "inheritance")
+			require.NoError(t, db.Exec("DROP TABLE public."+child).Error)
+			repository, err = NewRepository(db)
+			require.NoError(t, err, "a stale relhassubclass flag must not reject an inheritance-free table")
+			require.NotNil(t, repository)
+			parent := table + "_parent"
+			require.NoError(t, db.Exec("CREATE TABLE public."+parent+" ()").Error)
+			require.NoError(t, db.Exec("ALTER TABLE public."+table+" INHERIT public."+parent).Error)
+			repository, err = NewRepository(db)
+			require.ErrorContains(t, err, "inheritance")
+			require.Nil(t, repository)
+			require.NoError(t, db.Exec("ALTER TABLE public."+table+" NO INHERIT public."+parent).Error)
+			require.NoError(t, VerifySchema(ctx, db))
+		})
+	}
+}
+
 func TestRepositoryPostgresExecutionDatabaseAdmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

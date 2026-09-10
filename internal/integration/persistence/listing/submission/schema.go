@@ -396,14 +396,16 @@ ORDER BY trigger_row.tgname`, table).Rows()
 
 func verifyRelation(ctx context.Context, db *gorm.DB, table string) error {
 	var kind, persistence string
-	var partition, rowSecurity, forceRowSecurity bool
+	var partition, rowSecurity, forceRowSecurity, inheritance bool
 	err := db.WithContext(ctx).Raw(`
 SELECT relation.relkind::text, relation.relpersistence::text, relation.relispartition,
-       relation.relrowsecurity, relation.relforcerowsecurity
+       relation.relrowsecurity, relation.relforcerowsecurity,
+       EXISTS (SELECT 1 FROM pg_catalog.pg_inherits AS inheritance
+               WHERE inheritance.inhparent = relation.oid OR inheritance.inhrelid = relation.oid)
 FROM pg_catalog.pg_class AS relation
 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
 WHERE namespace.nspname = 'public' AND relation.relname = ?`, table).
-		Row().Scan(&kind, &persistence, &partition, &rowSecurity, &forceRowSecurity)
+		Row().Scan(&kind, &persistence, &partition, &rowSecurity, &forceRowSecurity, &inheritance)
 	if err != nil {
 		return fmt.Errorf("inspect submission execution relation public.%s: %w", table, err)
 	}
@@ -412,6 +414,9 @@ WHERE namespace.nspname = 'public' AND relation.relname = ?`, table).
 	}
 	if rowSecurity || forceRowSecurity {
 		return fmt.Errorf("submission execution relation public.%s must not enable or force row security", table)
+	}
+	if inheritance {
+		return fmt.Errorf("submission execution relation public.%s must not participate in inheritance", table)
 	}
 	return nil
 }
