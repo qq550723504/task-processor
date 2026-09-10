@@ -20,8 +20,10 @@ func (f admissionFunc) Authorize(ctx context.Context) (PublicationScope, error) 
 type publicationStoreStub struct {
 	publishCalls int
 	verifyCalls  int
+	readCalls    int
 	last         AtomicPublication
 	receipt      PublicationReceipt
+	persisted    PersistedPublication
 	err          error
 	deadline     time.Time
 }
@@ -66,7 +68,8 @@ func (s *publicationStoreStub) result(publication AtomicPublication) Publication
 }
 
 func (s *publicationStoreStub) Read(context.Context, string, string) (PersistedPublication, error) {
-	return PersistedPublication{}, s.err
+	s.readCalls++
+	return s.persisted, s.err
 }
 
 func validPublicationCommand() PublicationCommand {
@@ -176,6 +179,38 @@ func TestInternalProducerReauthorizesPublishAndReadOnlyVerify(t *testing.T) {
 	require.Equal(t, 3, authCalls)
 	require.Equal(t, 1, store.publishCalls)
 	require.Equal(t, 0, store.verifyCalls)
+}
+
+func TestInternalReaderRetainsFreshAuthorizationAndCompleteValidation(t *testing.T) {
+	authorized := true
+	authCalls := 0
+	authorizer := admissionFunc(func(context.Context) (PublicationScope, error) {
+		authCalls++
+		if !authorized {
+			return PublicationScope{}, ErrPublicationForbidden
+		}
+		return PublicationScope{OrganizationID: "org-a", ActorID: "actor-a"}, nil
+	})
+	store := &publicationStoreStub{}
+	producer, err := NewInternalProducer(authorizer, store, ProducerDescriptor{Kind: "controlled_snapshot", Version: "v1"})
+	require.NoError(t, err)
+	receipt, err := producer.Publish(context.Background(), validPublicationCommand())
+	require.NoError(t, err)
+	store.persisted = PersistedPublication{Receipt: receipt, Envelope: store.last.Envelope, Snapshot: store.last.Snapshot}
+
+	reader, err := NewInternalReader(authorizer, store)
+	require.NoError(t, err)
+	persisted, err := reader.Read(context.Background(), receipt.PublicationID)
+	require.NoError(t, err)
+	require.Equal(t, store.last.Envelope, persisted.Envelope)
+	require.Equal(t, store.last.Snapshot, persisted.Snapshot)
+	require.Equal(t, 1, store.readCalls)
+
+	authorized = false
+	_, err = reader.Read(context.Background(), receipt.PublicationID)
+	require.ErrorIs(t, err, ErrPublicationForbidden)
+	require.Equal(t, 1, store.readCalls)
+	require.Equal(t, 3, authCalls)
 }
 
 func TestInternalProducerRejectsInvalidScopeAndOversizedFactsBeforeStore(t *testing.T) {

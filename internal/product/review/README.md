@@ -81,11 +81,15 @@ Fingerprint = operation kind + proposal ID + exact input, canonical JSON hash.
 Same key/different payload conflicts; same key/same payload returns stored safe
 response. Authorize and scope-check before replay. Replay precedes fresh stale
 checks, so later head/revision movement cannot turn committed success into write.
-PG transaction-scoped advisory lock serializes operation creation; proposal row
-lock serializes decisions/applies. No provider call during PG locks: generation
-may race before create UoW, but only one proposal/result persists per operation.
+An operation-only preflight takes and releases the advisory lock without writes;
+stable replay/conflict returns there. A new mutation then performs source
+authorization and carries a private short-lived proof into the final UoW. PG
+transaction-scoped advisory lock serializes operation creation; proposal row lock
+serializes decisions/applies. No provider call occurs while a PG connection or
+lock is held. Generation may race before create UoW, but only one proposal/result
+persists per operation.
 
-Apply UoW: lock operation → scoped proposal FOR UPDATE → receipt replay → exact
+Apply UoW: lock operation → receipt replay → scoped proposal FOR UPDATE → exact
 accepted revision validation → bounded base read → real Catalog Publisher using
 transaction-bound Catalog repository → save applied proposal/audit + operation
 receipt → COMMIT. Existing Catalog algorithm locks the same head used by normal

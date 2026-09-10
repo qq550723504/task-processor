@@ -4,6 +4,8 @@ package reviewpersistence
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
+	_ "embed"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -15,7 +17,16 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type Repository struct{ db *gorm.DB }
+//go:embed schema.sql
+var schemaSQL string
+
+type TransactionSourceReaderFactory func(*gorm.DB) (review.SourcePublicationReader, error)
+
+type Repository struct {
+	db                  *gorm.DB
+	sourceReaderFactory TransactionSourceReaderFactory
+	beforeOperationLock func()
+}
 type proposalRow struct {
 	Org, ID, Owner, State string
 	Payload               []byte
@@ -35,13 +46,23 @@ type transaction struct {
 	op        review.Operation
 	publisher *catalog.Publisher
 	reader    catalog.VersionedSnapshotReader
+	source    review.SourcePublicationReader
 }
 
-func NewRepository(db *gorm.DB) (*Repository, error) {
-	if db == nil || db.Dialector.Name() != "postgres" {
+func NewRepository(db *gorm.DB, sourceReaderFactory TransactionSourceReaderFactory) (*Repository, error) {
+	if db == nil || db.Dialector.Name() != "postgres" || sourceReaderFactory == nil {
 		return nil, review.ErrUnavailable
 	}
-	return &Repository{db}, nil
+	return &Repository{db: db, sourceReaderFactory: sourceReaderFactory}, nil
+}
+
+// InstallSchema initializes the Review-owned tables for an empty task schema.
+// Application construction and request handling never execute DDL.
+func InstallSchema(db *gorm.DB) error {
+	if db == nil || db.Dialector.Name() != "postgres" {
+		return review.ErrUnavailable
+	}
+	return db.Exec(schemaSQL).Error
 }
 func scoped(db *gorm.DB, a review.Scope, id string) *gorm.DB {
 	q := db.Where("org = ? AND id = ?", a.Org, id)
@@ -131,17 +152,39 @@ func replay(db *gorm.DB, op review.Operation) (review.View, bool, error) {
 	}
 	return v, true, nil
 }
-func (r *Repository) FindOperation(ctx context.Context, op review.Operation) (review.View, bool, error) {
-	return replay(r.db.WithContext(ctx), op)
+func operationLockKey(op review.Operation) int64 {
+	raw, _ := json.Marshal([]string{op.Scope.Org, op.Scope.Actor, op.Key})
+	sum := sha256.Sum256(raw)
+	return int64(binary.BigEndian.Uint64(sum[:8]))
+}
+
+func lockOperation(db *gorm.DB, op review.Operation) error {
+	return db.Exec("SELECT pg_advisory_xact_lock(?)", operationLockKey(op)).Error
+}
+
+// Preflight serializes only on the operation identity. It performs no business
+// write and releases both its transaction connection and advisory lock before
+// the caller invokes an external authorization provider.
+func (r *Repository) Preflight(ctx context.Context, op review.Operation) (review.View, bool, error) {
+	var result review.View
+	var found bool
+	err := r.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		if err := lockOperation(db, op); err != nil {
+			return err
+		}
+		var err error
+		result, found, err = replay(db, op)
+		return err
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return result, found, err
 }
 func (r *Repository) Run(ctx context.Context, op review.Operation, fn func(review.Tx) (review.View, error)) (review.View, error) {
 	var result review.View
 	err := r.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
-		// Canonical length framing avoids concatenation collisions. Hash collisions
-		// merely serialize unrelated operations; SQL primary keys remain authoritative.
-		raw, _ := json.Marshal([]string{op.Scope.Org, op.Scope.Actor, op.Key})
-		sum := sha256.Sum256(raw)
-		if e := db.Exec("SELECT pg_advisory_xact_lock(?)", int64(binary.BigEndian.Uint64(sum[:8]))).Error; e != nil {
+		if r.beforeOperationLock != nil {
+			r.beforeOperationLock()
+		}
+		if e := lockOperation(db, op); e != nil {
 			return e
 		}
 		writer, e := catalogstore.NewTransactionWriter(db)
@@ -156,9 +199,13 @@ func (r *Repository) Run(ctx context.Context, op review.Operation, fn func(revie
 		if e != nil {
 			return e
 		}
-		result, e = fn(&transaction{db, op, publisher, reader})
+		source, e := r.sourceReaderFactory(db)
+		if e != nil {
+			return e
+		}
+		result, e = fn(&transaction{db, op, publisher, reader, source})
 		return e
-	})
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return review.View{}, err
 	}
@@ -207,5 +254,6 @@ func (t *transaction) Complete(v review.View) error {
 	}
 	return t.db.Create(&operationRow{t.op.Scope.Org, t.op.Scope.Actor, t.op.Key, t.op.Fingerprint, raw}).Error
 }
-func (t *transaction) Publisher() *catalog.Publisher           { return t.publisher }
-func (t *transaction) Reader() catalog.VersionedSnapshotReader { return t.reader }
+func (t *transaction) Publisher() *catalog.Publisher                { return t.publisher }
+func (t *transaction) Reader() catalog.VersionedSnapshotReader      { return t.reader }
+func (t *transaction) SourceReader() review.SourcePublicationReader { return t.source }

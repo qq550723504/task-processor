@@ -19,13 +19,15 @@ func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
 	}
 }
 
-// Temporary prerequisite gate, not permission to keep the old route forever.
-// Replace this with the old-route/import absence guard only after ownership
-// cutover review and controlled application acceptance.
-func TestIssue30PreparedHTTPContractIsNotWiredBeforePrerequisite(t *testing.T) {
-	for _, root := range []string{"internal", "cmd"} {
-		assertNoBannedImportPrefixes(t, filepath.Join("..", root), []string{"task-processor/internal/app/productsourcing"}, nil)
+// REV-1 admits one isolated Product Review composition to the in-process
+// productsourcing capability. Every other HTTP application and every command
+// remains barred from wiring it until separately accepted.
+func TestIssue30InternalProducerIsOnlyWiredByAdmittedProductReview(t *testing.T) {
+	allowed := map[string]struct{}{
+		filepath.Join("..", "internal", "app", "httpapi", "product_review_application.go"): {},
 	}
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal"), []string{"task-processor/internal/app/productsourcing"}, allowed)
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{"task-processor/internal/app/productsourcing"}, nil)
 }
 
 func TestIssue30LegacyImportGuardDetectsAliasesAndSubpackages(t *testing.T) {

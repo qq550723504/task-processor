@@ -38,8 +38,8 @@ type deadlineStore struct {
 
 func (d *deadlineStore) Read(context.Context, Scope, string) (Record, error)    { panic("unused") }
 func (d *deadlineStore) List(context.Context, Scope, PageRequest) (Page, error) { panic("unused") }
-func (d *deadlineStore) FindOperation(context.Context, Operation) (View, bool, error) {
-	panic("unused")
+func (d *deadlineStore) Preflight(context.Context, Operation) (View, bool, error) {
+	return View{}, false, nil
 }
 func (d *deadlineStore) Run(_ context.Context, _ Operation, fn func(Tx) (View, error)) (View, error) {
 	return fn(d)
@@ -49,6 +49,7 @@ func (d *deadlineStore) Load(string) (Record, error) {
 }
 func (d *deadlineStore) Replay() (View, bool, error)             { return View{}, false, nil }
 func (d *deadlineStore) Reader() catalog.VersionedSnapshotReader { return d }
+func (d *deadlineStore) SourceReader() SourcePublicationReader   { return &sourcePublicationReaderStub{} }
 func (d *deadlineStore) GetSnapshot(ctx context.Context, _ catalog.SnapshotIdentity, _ uint64) (catalog.PublishedSnapshot, error) {
 	_, d.saw = ctx.Deadline()
 	return catalog.PublishedSnapshot{}, context.Canceled
@@ -57,7 +58,8 @@ func TestMutationUsesServiceDeadline(t *testing.T) {
 	d := &deadlineStore{}
 	auth, e := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, e)
-	s := &Service{store: d, auth: auth, bindings: map[bindingKey]Binding{{"B", "p", 1}: {Identity: catalog.SnapshotIdentity{TenantID: "B", ProductKey: "p"}, Version: 1}}}
+	source := &sourcePublicationReaderStub{}
+	s := &Service{store: d, auth: auth, reader: d, sourceReader: source}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "a", TenantID: "B", EffectiveOrganizationID: "B", Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour)})
 	_, e = s.Apply(ctx, "op", "00000000-0000-0000-0000-000000000001", ApplyInput{ExpectedRevision: 2})
 	require.ErrorIs(t, e, context.Canceled)

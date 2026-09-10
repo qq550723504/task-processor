@@ -44,11 +44,26 @@ type repository struct {
 	now     func() time.Time
 }
 
+type transactionReader struct{ repository *repository }
+
 func NewRepository(db *gorm.DB, catalog CatalogBridgeFactory) (sourcing.PublicationStore, error) {
 	if db == nil || db.Dialector.Name() != "postgres" || catalog == nil {
 		return nil, sourcing.ErrSourcePublicationUnavailable
 	}
 	return &repository{db: db, catalog: catalog, now: time.Now}, nil
+}
+
+// NewTransactionReader binds exact source-evidence reads to a live
+// caller-owned transaction. It never begins, commits, or rolls back a
+// transaction and exposes no source mutation capability.
+func NewTransactionReader(tx *gorm.DB, catalog CatalogBridgeFactory) (sourcing.PublicationReadStore, error) {
+	if tx == nil || tx.Dialector.Name() != "postgres" || catalog == nil {
+		return nil, sourcing.ErrSourcePublicationUnavailable
+	}
+	if _, ok := tx.Statement.ConnPool.(gorm.TxCommitter); !ok {
+		return nil, sourcing.ErrSourcePublicationUnavailable
+	}
+	return &transactionReader{repository: &repository{db: tx, catalog: catalog, now: time.Now}}, nil
 }
 
 // InstallSchema is an explicit empty-database initializer. Ordinary publish
@@ -222,47 +237,65 @@ func (r *repository) Read(ctx context.Context, organizationID, publicationID str
 	}
 	var persisted sourcing.PersistedPublication
 	err := r.readTransaction(ctx, func(tx *gorm.DB) error {
-		receipt, receiptFound, err := loadReceipt(tx, organizationID, publicationID)
-		if err != nil {
-			return err
-		}
-		evidence, evidenceFound, err := loadEvidence(tx, organizationID, publicationID)
-		if err != nil {
-			return err
-		}
-		if !receiptFound && !evidenceFound {
-			return sourcing.ErrSourcePublicationNotFound
-		}
-		if !receiptFound || !evidenceFound {
-			return sourcing.ErrSourcePublicationStateInvalid
-		}
-		var envelope sourcing.SourceEnvelope
-		if json.Unmarshal(evidence.EnvelopeJSON, &envelope) != nil || json.Unmarshal(evidence.SnapshotJSON, &persisted.Snapshot) != nil {
-			return sourcing.ErrSourcePublicationStateInvalid
-		}
-		inputHash, err := sourcing.CanonicalPublicationInputHash(
-			sourcing.ProducerDescriptor{Kind: evidence.ProducerKind, Version: evidence.ProducerVersion},
-			envelope, evidence.EnvelopeJSON, evidence.ProductKey, evidence.ExpectedBaseVersion,
-		)
-		if err != nil || inputHash != evidence.InputHash || inputHash != receipt.InputHash {
-			return sourcing.ErrSourcePublicationStateInvalid
-		}
-		publication := sourcing.AtomicPublication{
-			OrganizationID: evidence.OrganizationID, ActorID: evidence.ActorID,
-			PublicationID: evidence.PublicationID, InputHash: evidence.InputHash,
-			Producer:   sourcing.ProducerDescriptor{Kind: evidence.ProducerKind, Version: evidence.ProducerVersion},
-			ProductKey: evidence.ProductKey, ExpectedBaseVersion: cloneVersion(evidence.ExpectedBaseVersion),
-			Envelope: envelope, EnvelopeJSON: evidence.EnvelopeJSON,
-			Snapshot: persisted.Snapshot, SnapshotJSON: evidence.SnapshotJSON,
-		}
-		persisted.Receipt, err = r.verifyLoaded(tx, publication, receipt, evidence)
-		persisted.Envelope = envelope
+		var err error
+		persisted, err = r.read(ctx, tx, organizationID, publicationID)
 		return err
 	})
 	if err != nil {
 		return sourcing.PersistedPublication{}, mapError(err)
 	}
 	return persisted, nil
+}
+
+func (r *transactionReader) Read(ctx context.Context, organizationID, publicationID string) (sourcing.PersistedPublication, error) {
+	if r == nil || r.repository == nil || !authidentity.IsBoundedIdentifier(organizationID) || !authidentity.IsBoundedIdentifier(publicationID) {
+		return sourcing.PersistedPublication{}, sourcing.ErrInvalidSourcePublication
+	}
+	persisted, err := r.repository.read(ctx, r.repository.db, organizationID, publicationID)
+	if err != nil {
+		return sourcing.PersistedPublication{}, mapError(err)
+	}
+	return persisted, nil
+}
+
+func (r *repository) read(ctx context.Context, tx *gorm.DB, organizationID, publicationID string) (sourcing.PersistedPublication, error) {
+	var persisted sourcing.PersistedPublication
+	receipt, receiptFound, err := loadReceipt(tx, organizationID, publicationID)
+	if err != nil {
+		return persisted, err
+	}
+	evidence, evidenceFound, err := loadEvidence(tx, organizationID, publicationID)
+	if err != nil {
+		return persisted, err
+	}
+	if !receiptFound && !evidenceFound {
+		return persisted, sourcing.ErrSourcePublicationNotFound
+	}
+	if !receiptFound || !evidenceFound {
+		return persisted, sourcing.ErrSourcePublicationStateInvalid
+	}
+	var envelope sourcing.SourceEnvelope
+	if json.Unmarshal(evidence.EnvelopeJSON, &envelope) != nil || json.Unmarshal(evidence.SnapshotJSON, &persisted.Snapshot) != nil {
+		return persisted, sourcing.ErrSourcePublicationStateInvalid
+	}
+	inputHash, err := sourcing.CanonicalPublicationInputHash(
+		sourcing.ProducerDescriptor{Kind: evidence.ProducerKind, Version: evidence.ProducerVersion},
+		envelope, evidence.EnvelopeJSON, evidence.ProductKey, evidence.ExpectedBaseVersion,
+	)
+	if err != nil || inputHash != evidence.InputHash || inputHash != receipt.InputHash {
+		return persisted, sourcing.ErrSourcePublicationStateInvalid
+	}
+	publication := sourcing.AtomicPublication{
+		OrganizationID: evidence.OrganizationID, ActorID: evidence.ActorID,
+		PublicationID: evidence.PublicationID, InputHash: evidence.InputHash,
+		Producer:   sourcing.ProducerDescriptor{Kind: evidence.ProducerKind, Version: evidence.ProducerVersion},
+		ProductKey: evidence.ProductKey, ExpectedBaseVersion: cloneVersion(evidence.ExpectedBaseVersion),
+		Envelope: envelope, EnvelopeJSON: evidence.EnvelopeJSON,
+		Snapshot: persisted.Snapshot, SnapshotJSON: evidence.SnapshotJSON,
+	}
+	persisted.Receipt, err = r.verifyLoaded(tx.WithContext(ctx), publication, receipt, evidence)
+	persisted.Envelope = envelope
+	return persisted, err
 }
 
 func (r *repository) readTransaction(ctx context.Context, fn func(*gorm.DB) error) error {

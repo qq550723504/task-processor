@@ -19,8 +19,6 @@ import (
 	"task-processor/internal/authz"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/catalog"
-	"task-processor/internal/product/review"
-	"task-processor/internal/product/sourcing"
 	"task-processor/internal/workbenchcontext"
 	contextapi "task-processor/internal/workbenchcontext/httpapi"
 )
@@ -54,8 +52,8 @@ func TestProductTitleReviewBrowserFixture(t *testing.T) {
 	}
 	require.NotEmpty(t, dir)
 	require.True(t, strings.HasPrefix(dsn, "host=127.0.0.1 ") && strings.Contains(dsn, " dbname=issue344_fixture "), "requires task-only loopback database")
-	t.Setenv("ISSUE333_TEST_DSN", dsn)
-	f := newTitleFixture(t) // actual Sourcing/Catalog Publisher and exact bindings
+	t.Setenv("ISSUE382_TEST_DSN", dsn)
+	f := newTitleFixture(t) // actual SRC-1/Catalog publication and exact reads
 	schema, err := os.ReadFile("../listingrecordstore/schema.sql")
 	require.NoError(t, err)
 	require.NoError(t, f.db.Exec(string(schema)).Error)
@@ -69,19 +67,15 @@ func TestProductTitleReviewBrowserFixture(t *testing.T) {
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
 	resolver := workbenchcontext.NewResolver(identity, "project", "v1", nil)
-	sourcePublisher, err := sourcing.NewPublisher(f.publisher)
-	require.NoError(t, err)
 	bases := []catalog.PublishedSnapshot{f.base}
 	for _, org := range []string{"200", "300"} {
 		for _, key := range []string{"product", "edit-product", "lost-product", "revoked-product"} {
-			p, e := sourcePublisher.Publish(context.Background(), sourcing.PublishRequest{TenantID: org, ProductKey: key, PublicationID: "fixture-initial-" + key, Envelope: f.bindings[0].Source})
-			require.NoError(t, e)
+			p := f.publishSource(t, org, key, "fixture-initial-"+key, f.source)
 			bases = append(bases, p)
-			f.bindings = append(f.bindings, review.Binding{Identity: p.Identity, Version: p.Version, PublicationID: p.PublicationID, Source: f.bindings[0].Source})
 		}
 	}
 	application := func() *http.Server {
-		app, e := NewProductReviewApplication(f.db, identity, resolver, authorizer, f.g, f.bindings)
+		app, e := NewProductReviewApplication(f.db, identity, resolver, authorizer, f.g)
 		require.NoError(t, e)
 		return app
 	}

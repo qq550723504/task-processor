@@ -30,6 +30,18 @@ func NewInternalProducer(db *gorm.DB, live sourcing.LiveOrganizationAccess, perm
 	return sourcing.NewInternalProducer(authorizer, store, sourcing.ProducerDescriptor{Kind: sourcing.ControlledSnapshotProducerKind, Version: sourcing.ControlledSnapshotProducerVersion})
 }
 
+// NewTransactionReader composes the admitted read-only source capability on a
+// caller-owned PostgreSQL transaction. The returned reader consumes only the
+// private request proof minted before the Review transaction and cannot call a
+// provider or publish source evidence.
+func NewTransactionReader(tx *gorm.DB) (*sourcing.InternalReader, error) {
+	store, err := sourcingpersistence.NewTransactionReader(tx, newCatalogBridge)
+	if err != nil {
+		return nil, err
+	}
+	return sourcing.NewInternalReader(sourcing.NewReadProofAuthorizer(), store)
+}
+
 // InstallSchema initializes the two current owners atomically for an empty
 // task database. It is never called by NewInternalProducer or request paths.
 func InstallSchema(db *gorm.DB) error {

@@ -2,62 +2,47 @@ package review
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"reflect"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
-// Binding is injected by the admitted upstream setup, never decoded from HTTP.
-// Exact publications, not all rows in a tenant, form this application's input set.
-type Binding struct {
-	Identity      catalog.SnapshotIdentity
-	Version       uint64
-	PublicationID string
-	Source        sourcing.SourceEnvelope
-}
-
-func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotReader, org string, in CreateInput) (catalog.PublishedSnapshot, sourcing.SourceEnvelope, error) {
-	key := bindingKey{org, in.ProductKey, in.BaseVersion}
-	b, ok := s.bindings[key]
-	if !ok {
-		return catalog.PublishedSnapshot{}, sourcing.SourceEnvelope{}, ErrNotFound
-	}
-	p, err := reader.GetSnapshot(ctx, b.Identity, b.Version)
+func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationReader, org string, in CreateInput) (catalog.PublishedSnapshot, sourcing.SourceEnvelope, error) {
+	p, err := reader.GetSnapshot(ctx, catalog.SnapshotIdentity{TenantID: org, ProductKey: in.ProductKey}, in.BaseVersion)
 	if err != nil {
-		return p, b.Source, err
+		return p, sourcing.SourceEnvelope{}, err
 	}
-	expected, err := sourcing.ToSnapshot(b.Source)
-	if err != nil || p.Identity != b.Identity || p.Version != b.Version || p.PublicationID != b.PublicationID || !reflect.DeepEqual(p.Snapshot.Sources, expected.Sources) {
-		return p, b.Source, ErrNotFound
+	if p.Identity.TenantID != org || p.Identity.ProductKey != in.ProductKey || p.Version != in.BaseVersion || !ValidKey(p.PublicationID) {
+		return p, sourcing.SourceEnvelope{}, ErrConflict
 	}
-	return p, b.Source, nil
-}
-
-type bindingKey struct {
-	org, key string
-	version  uint64
-}
-
-func cloneBindings(bindings []Binding) (map[bindingKey]Binding, error) {
-	raw, err := json.Marshal(bindings)
+	if sourceReader == nil {
+		return p, sourcing.SourceEnvelope{}, ErrUnavailable
+	}
+	persisted, err := sourceReader.Read(ctx, p.PublicationID)
 	if err != nil {
-		return nil, ErrInvalid
+		return p, sourcing.SourceEnvelope{}, mapSourceReadError(err)
 	}
-	var copyBindings []Binding
-	if json.Unmarshal(raw, &copyBindings) != nil {
-		return nil, ErrInvalid
+	receipt := persisted.Receipt
+	if receipt.OrganizationID != p.Identity.TenantID || receipt.ProductKey != p.Identity.ProductKey ||
+		receipt.PublicationID != p.PublicationID || receipt.CatalogPublicationID != p.PublicationID ||
+		receipt.CatalogVersion != p.Version || !reflect.DeepEqual(persisted.Snapshot, p.Snapshot) {
+		return p, sourcing.SourceEnvelope{}, ErrConflict
 	}
-	result := map[bindingKey]Binding{}
-	for _, b := range copyBindings {
-		if catalog.ValidateSnapshotIdentity(b.Identity) != nil || b.Version == 0 || b.Version > 1<<63-1 || !ValidKey(b.PublicationID) || !b.Source.Identity.Valid() {
-			return nil, ErrInvalid
-		}
-		key := bindingKey{b.Identity.TenantID, b.Identity.ProductKey, b.Version}
-		if _, exists := result[key]; exists {
-			return nil, ErrInvalid
-		}
-		result[key] = b
+	return p, persisted.Envelope, nil
+}
+
+func mapSourceReadError(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return err
+	case errors.Is(err, sourcing.ErrPublicationForbidden):
+		return ErrForbidden
+	case errors.Is(err, sourcing.ErrSourcePublicationNotFound):
+		return ErrNotFound
+	case errors.Is(err, sourcing.ErrSourcePublicationConflict):
+		return ErrConflict
+	default:
+		return ErrUnavailable
 	}
-	return result, nil
 }
