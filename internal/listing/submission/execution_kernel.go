@@ -164,7 +164,7 @@ func NewExecutionReservation(command AcquireExecutionCommand, attemptID, claimTo
 			OrganizationID: organizationID, AttemptID: attemptID, IntentKey: intentKey,
 			Target: target, Action: action, PayloadFingerprint: payloadFingerprint,
 			ProviderExecutionKey: providerKey, ClaimOwnerID: claimOwnerID, Status: ExecutionClaimed,
-			LeaseExpiresAt: now.Add(command.Lease), CreatedAt: now, UpdatedAt: now,
+			LeaseExpiresAt: canonicalExecutionTime(now.Add(command.Lease)), CreatedAt: now, UpdatedAt: now,
 		},
 		ClaimTokenHash: ExecutionClaimTokenHash(claimToken),
 	}, nil

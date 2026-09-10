@@ -11,7 +11,9 @@ Current stable ownership:
 - one-time `SendPermit` issuance: only the first successfully committed intent,
   attempt, target fence, and claim transaction with transaction-local
   `synchronous_commit=on` can return a permit; setup failure, replay, and
-  commit-outcome-unknown paths never issue another permit
+  commit-outcome-unknown paths never issue another permit; initial and renewed
+  lease deadlines are canonicalized to PostgreSQL microsecond precision before
+  persistence and return
 - execution states `claimed -> succeeded | failed_definitive |
   outcome_unknown`; timeout, response loss, cancellation after claim, and lease
   expiry are conservative `outcome_unknown` transitions, never unsent retries
@@ -26,7 +28,8 @@ Current stable ownership:
   Organization-qualified keys and predicates, same-intent replay/conflict,
   cross-intent target serialization, stale-fence rejection, atomic rollback, and
   constructor-time fail-closed verification that both relations are ordinary
-  permanent/logged tables with their complete column and constraint contracts;
+  permanent/logged tables with their complete column contracts (including no
+  identity/generated attributes) and constraint contracts;
   database state-shape checks reject NULL-required or stray partial evidence
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)

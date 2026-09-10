@@ -45,6 +45,24 @@ func TestNewExecutionReservationBindsStableIdentityAndPayload(t *testing.T) {
 	require.Equal(t, reservation.Attempt.ProviderExecutionKey, other.Attempt.ProviderExecutionKey)
 }
 
+func TestNewExecutionReservationCanonicalizesComputedLeaseExpiration(t *testing.T) {
+	now := time.Date(2026, 9, 10, 1, 2, 3, 456789123, time.FixedZone("test", 8*60*60))
+	command := AcquireExecutionCommand{
+		Scope:        ExecutionScope{OrganizationID: "org-1"},
+		IntentKey:    "submit-product-lease-precision",
+		Target:       ExecutionTarget{Platform: "shein", StoreID: "store-1", SubjectID: "listing-lease-precision"},
+		Action:       "save_draft",
+		Payload:      []byte(`{"title":"shirt"}`),
+		ClaimOwnerID: "worker-1",
+		Lease:        5*time.Minute + 789*time.Nanosecond,
+	}
+
+	reservation, err := NewExecutionReservation(command, "019938d8-b580-7d04-90f0-2f69c118eb49", "claim-token", now)
+	require.NoError(t, err)
+	require.Equal(t, now.UTC().Truncate(time.Microsecond), reservation.Attempt.CreatedAt)
+	require.Equal(t, now.UTC().Truncate(time.Microsecond).Add(command.Lease).Truncate(time.Microsecond), reservation.Attempt.LeaseExpiresAt)
+}
+
 func TestValidateExecutionReplayRequiresExactImmutableIntent(t *testing.T) {
 	base := executionAttemptFixture(t, ExecutionClaimed)
 	require.NoError(t, ValidateExecutionReplay(base, base))

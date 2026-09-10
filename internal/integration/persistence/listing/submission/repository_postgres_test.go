@@ -220,6 +220,41 @@ func TestRepositoryPostgresExecutionContract(t *testing.T) {
 		require.ErrorIs(t, err, submission.ErrExecutionIntentConflict)
 	})
 
+	t.Run("lease deadlines match committed PostgreSQL precision", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 27, 0, 456789500, time.FixedZone("test", 8*60*60))
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		command := executionCommand("org-a", "intent-lease-precision", "listing-lease-precision", `{"title":"one"}`)
+		command.Lease = time.Minute + 789*time.Nanosecond
+
+		acquired, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+		expectedInitial := now.UTC().Truncate(time.Microsecond).Add(command.Lease).Truncate(time.Microsecond)
+		require.Equal(t, expectedInitial, acquired.Attempt.LeaseExpiresAt)
+		require.Equal(t, expectedInitial, acquired.Permit.LeaseExpiresAt)
+		persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, expectedInitial, persisted.LeaseExpiresAt)
+
+		now = now.Add(30*time.Second + 321*time.Nanosecond)
+		renewLease := 2*time.Minute + 999*time.Nanosecond
+		renewed, err := kernel.Renew(ctx, permitClaim("org-a", acquired.Permit), renewLease)
+		require.NoError(t, err)
+		expectedRenewed := now.UTC().Truncate(time.Microsecond).Add(renewLease).Truncate(time.Microsecond)
+		require.Equal(t, expectedRenewed, renewed.LeaseExpiresAt)
+		persisted, err = kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, expectedRenewed, persisted.LeaseExpiresAt)
+
+		now = expectedRenewed
+		_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), providerEvidence(submission.ExecutionSucceeded, "at-expiry", now))
+		require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+		persisted, err = kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionOutcomeUnknown, persisted.Status)
+		require.Equal(t, submission.UnknownLeaseExpired, persisted.UnknownReason)
+	})
+
 	t.Run("qualified resolution releases target to the next fenced intent", func(t *testing.T) {
 		resetExecutionTables(t, db)
 		now := time.Date(2026, 9, 10, 2, 30, 0, 0, time.UTC)
@@ -637,6 +672,10 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 			statements: []string{"ALTER TABLE public." + TargetFenceTable + " ALTER COLUMN updated_at DROP NOT NULL"},
 		},
 		{
+			name:       "target epoch becomes an identity column",
+			statements: []string{"ALTER TABLE public." + TargetFenceTable + " ALTER COLUMN epoch ADD GENERATED ALWAYS AS IDENTITY"},
+		},
+		{
 			name:       "target fence table is unlogged",
 			statements: []string{"ALTER TABLE public." + TargetFenceTable + " SET UNLOGGED"},
 		},
@@ -737,6 +776,21 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, repository)
 	})
+}
+
+func TestVerifyColumnsRejectsGeneratedAttributes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+	const table = "listing_submission_generated_column_probe"
+	require.NoError(t, db.Exec("CREATE TABLE public."+table+" (source BIGINT NOT NULL, computed BIGINT GENERATED ALWAYS AS (source + 1) STORED)").Error)
+	t.Cleanup(func() { _ = db.Exec("DROP TABLE IF EXISTS public." + table).Error })
+
+	err := verifyColumns(ctx, db, table, []columnContract{
+		{name: "source", typeSQL: "bigint", notNull: true},
+		{name: "computed", typeSQL: "bigint"},
+	})
+	require.Error(t, err)
 }
 
 func executionKernel(t *testing.T, db *gorm.DB, clock func() time.Time) *submission.ExecutionKernel {

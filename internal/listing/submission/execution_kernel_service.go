@@ -168,7 +168,7 @@ func (k *ExecutionKernel) Renew(ctx context.Context, claim ExecutionClaim, lease
 		return ExecutionAttempt{}, ErrExecutionInvalid
 	}
 	now := canonicalExecutionTime(k.now())
-	return k.repository.Renew(ctx, claim, now.Add(lease), now)
+	return k.repository.Renew(ctx, claim, canonicalExecutionTime(now.Add(lease)), now)
 }
 
 func (k *ExecutionKernel) MarkUnknown(ctx context.Context, claim ExecutionClaim, reason UnknownReason) (ExecutionAttempt, error) {

@@ -99,9 +99,11 @@ var schemaStatements = []string{
 }
 
 type columnContract struct {
-	name    string
-	typeSQL string
-	notNull bool
+	name      string
+	typeSQL   string
+	notNull   bool
+	identity  string
+	generated string
 }
 
 var expectedColumns = map[string][]columnContract{
@@ -268,7 +270,8 @@ WHERE namespace.nspname = 'public' AND relation.relname = ?`, table).
 
 func verifyColumns(ctx context.Context, db *gorm.DB, table string, expected []columnContract) error {
 	rows, err := db.WithContext(ctx).Raw(`
-SELECT attribute.attname, pg_catalog.format_type(attribute.atttypid, attribute.atttypmod), attribute.attnotnull
+SELECT attribute.attname, pg_catalog.format_type(attribute.atttypid, attribute.atttypmod), attribute.attnotnull,
+       attribute.attidentity::text, attribute.attgenerated::text
 FROM pg_catalog.pg_attribute AS attribute
 JOIN pg_catalog.pg_class AS relation ON relation.oid = attribute.attrelid
 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
@@ -283,7 +286,7 @@ ORDER BY attribute.attnum`, table).Rows()
 	var actual []columnContract
 	for rows.Next() {
 		var column columnContract
-		if err := rows.Scan(&column.name, &column.typeSQL, &column.notNull); err != nil {
+		if err := rows.Scan(&column.name, &column.typeSQL, &column.notNull, &column.identity, &column.generated); err != nil {
 			return fmt.Errorf("scan submission execution columns for public.%s: %w", table, err)
 		}
 		actual = append(actual, column)
