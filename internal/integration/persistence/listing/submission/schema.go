@@ -296,6 +296,9 @@ func verifySchema(ctx context.Context, db *gorm.DB) error {
 		if err := verifyNoUserTriggers(ctx, db, table); err != nil {
 			return err
 		}
+		if err := verifyNoRewriteRules(ctx, db, table); err != nil {
+			return err
+		}
 		if err := verifyUniqueIndexes(ctx, db, table); err != nil {
 			return err
 		}
@@ -332,6 +335,24 @@ ORDER BY index_relation.relname`, table).Rows()
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate submission execution unique indexes for public.%s: %w", table, err)
+	}
+	return nil
+}
+
+func verifyNoRewriteRules(ctx context.Context, db *gorm.DB, table string) error {
+	var exists bool
+	err := db.WithContext(ctx).Raw(`
+SELECT EXISTS (
+  SELECT 1 FROM pg_catalog.pg_rewrite AS rule
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = rule.ev_class
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'public' AND relation.relname = ?
+)`, table).Row().Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("inspect submission execution rewrite rules for public.%s: %w", table, err)
+	}
+	if exists {
+		return fmt.Errorf("submission execution relation public.%s has unexpected rewrite rules", table)
 	}
 	return nil
 }

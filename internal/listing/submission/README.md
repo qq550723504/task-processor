@@ -35,7 +35,7 @@ Current stable ownership:
   permanent/logged tables with their complete column contracts (including no
   identity/generated attributes and deterministic text equality), constraint
   contracts, and no user-defined
-  triggers or extra uniqueness-imposing indexes (non-unique operational indexes
+  triggers, rewrite rules or extra uniqueness-imposing indexes (non-unique operational indexes
   are allowed); each new intent and target-fence insert must affect exactly one row;
   database state-shape checks reject NULL-required or stray partial evidence;
   provider keys must match the existing length-prefixed SHA-256 derivation, and

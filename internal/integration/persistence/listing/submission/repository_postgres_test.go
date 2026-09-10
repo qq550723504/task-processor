@@ -1579,6 +1579,46 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 	})
 }
 
+func TestRepositoryPostgresExecutionRewriteRules(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+
+	t.Run("redirected insert can acknowledge a missing fence", func(t *testing.T) {
+		reinstallExecutionSchema(t, db)
+		// Deliberately retain a pre-DDL repository to demonstrate why admission
+		// must reject this fixture. Continuous DDL monitoring is not its contract.
+		kernel := executionKernel(t, db, time.Now)
+		require.NoError(t, db.Exec("CREATE TABLE public.execution_rule_shadow (LIKE public."+TargetFenceTable+")").Error)
+		require.NoError(t, db.Exec("CREATE RULE redirect_fence AS ON INSERT TO public."+TargetFenceTable+" DO INSTEAD INSERT INTO public.execution_rule_shadow VALUES (NEW.*)").Error)
+		for _, intent := range []string{"first-intent", "second-intent"} {
+			acquired, err := kernel.Acquire(ctx, executionCommand("org-a", intent, "same-target", `{"title":"one"}`))
+			require.NoError(t, err)
+			require.NotNil(t, acquired.Permit, "the rewritten INSERT reports one affected row")
+		}
+		var canonicalCount, shadowCount int64
+		require.NoError(t, db.Table(targetTable).Count(&canonicalCount).Error)
+		require.NoError(t, db.Table("public.execution_rule_shadow").Count(&shadowCount).Error)
+		require.Zero(t, canonicalCount)
+		require.EqualValues(t, 2, shadowCount)
+		repository, err := NewRepository(db)
+		require.ErrorContains(t, err, "rewrite rules")
+		require.Nil(t, repository)
+	})
+	for _, table := range []string{AttemptTable, TargetFenceTable} {
+		for _, event := range []string{"INSERT", "UPDATE", "DELETE"} {
+			t.Run(table+"/"+event, func(t *testing.T) {
+				reinstallExecutionSchema(t, db)
+				require.NoError(t, db.Exec("CREATE RULE suppress_write AS ON "+event+" TO public."+table+" DO INSTEAD NOTHING").Error)
+				repository, err := NewRepository(db)
+				require.ErrorContains(t, err, "rewrite rules")
+				require.Nil(t, repository)
+				require.ErrorContains(t, VerifySchema(ctx, db), "rewrite rules")
+			})
+		}
+	}
+}
+
 func TestRepositoryPostgresExecutionCollations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
