@@ -268,6 +268,42 @@ func verifySchema(ctx context.Context, db *gorm.DB) error {
 		if err := verifyNoUserTriggers(ctx, db, table); err != nil {
 			return err
 		}
+		if err := verifyUniqueIndexes(ctx, db, table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyUniqueIndexes(ctx context.Context, db *gorm.DB, table string) error {
+	rows, err := db.WithContext(ctx).Raw(`
+SELECT index_relation.relname, COALESCE(constraint_row.conname, '')
+FROM pg_catalog.pg_index AS index_row
+JOIN pg_catalog.pg_class AS relation ON relation.oid = index_row.indrelid
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+JOIN pg_catalog.pg_class AS index_relation ON index_relation.oid = index_row.indexrelid
+LEFT JOIN pg_catalog.pg_constraint AS constraint_row
+  ON constraint_row.conrelid = relation.oid AND constraint_row.conindid = index_row.indexrelid
+  AND constraint_row.contype IN ('p', 'u')
+WHERE namespace.nspname = 'public' AND relation.relname = ?
+  AND (index_row.indisunique OR index_row.indisexclusion)
+ORDER BY index_relation.relname`, table).Rows()
+	if err != nil {
+		return fmt.Errorf("inspect submission execution unique indexes for public.%s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var indexName, constraintName string
+		if err := rows.Scan(&indexName, &constraintName); err != nil {
+			return fmt.Errorf("scan submission execution unique indexes for public.%s: %w", table, err)
+		}
+		contract, found := expectedConstraints[table][constraintName]
+		if !found || contract.kind != "p" && contract.kind != "u" {
+			return fmt.Errorf("submission execution relation public.%s has unexpected unique index %s", table, indexName)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate submission execution unique indexes for public.%s: %w", table, err)
 	}
 	return nil
 }

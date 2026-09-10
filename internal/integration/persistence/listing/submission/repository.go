@@ -185,9 +185,9 @@ func (r *Repository) Renew(ctx context.Context, claim submission.ExecutionClaim,
 		if attempt.FenceEpoch != claim.FenceEpoch || attempt.ClaimOwnerID != claim.OwnerID || subtle.ConstantTimeCompare([]byte(tokenHash), []byte(submission.ExecutionClaimTokenHash(claim.Token))) != 1 {
 			return mutation{}, submission.ErrExecutionClaimRejected
 		}
-		now = r.now().UTC().Truncate(time.Microsecond)
-		if now.IsZero() {
-			return mutation{}, submission.ErrExecutionUnavailable
+		now, err = r.mutationTime(attempt)
+		if err != nil {
+			return mutation{}, err
 		}
 		if attempt.Status != submission.ExecutionClaimed {
 			return mutation{attempt: attempt, afterCommitErr: submission.ErrExecutionClaimRejected}, nil
@@ -215,8 +215,8 @@ func (r *Repository) Renew(ctx context.Context, claim submission.ExecutionClaim,
 	})
 }
 
-func (r *Repository) MarkUnknown(ctx context.Context, claim submission.ExecutionClaim, reason submission.UnknownReason, now time.Time) (submission.ExecutionAttempt, error) {
-	return r.claimMutation(ctx, claim, now, func(attempt submission.ExecutionAttempt) (submission.ExecutionAttempt, error, error) {
+func (r *Repository) MarkUnknown(ctx context.Context, claim submission.ExecutionClaim, reason submission.UnknownReason, _ time.Time) (submission.ExecutionAttempt, error) {
+	return r.claimMutation(ctx, claim, func(attempt submission.ExecutionAttempt, now time.Time) (submission.ExecutionAttempt, error, error) {
 		updated, err := submission.TransitionExecutionToUnknown(attempt, reason, now)
 		return updated, err, nil
 	})
@@ -239,6 +239,10 @@ func (r *Repository) Complete(ctx context.Context, claim submission.ExecutionCla
 			return mutation{attempt: attempt, afterCommitErr: submission.ErrExecutionClaimRejected}, nil
 		}
 		if _, err := r.lockCurrentFence(ctx, tx, attempt); err != nil {
+			return mutation{}, err
+		}
+		now, err = r.mutationTime(attempt)
+		if err != nil {
 			return mutation{}, err
 		}
 		if attempt.Status == submission.ExecutionClaimed && !now.Before(attempt.LeaseExpiresAt) {
@@ -278,6 +282,10 @@ func (r *Repository) ResolveUnknown(ctx context.Context, scope submission.Execut
 		if _, err := r.lockCurrentFence(ctx, tx, attempt); err != nil {
 			return mutation{}, err
 		}
+		now, err = r.mutationTime(attempt)
+		if err != nil {
+			return mutation{}, err
+		}
 		updated, err := submission.ResolveUnknownExecution(attempt, evidence, now)
 		if err != nil {
 			return mutation{}, err
@@ -301,6 +309,10 @@ func (r *Repository) Expire(ctx context.Context, scope submission.ExecutionScope
 		if attempt.Status == submission.ExecutionOutcomeUnknown {
 			return mutation{attempt: attempt}, nil
 		}
+		now, err = r.mutationTime(attempt)
+		if err != nil {
+			return mutation{}, err
+		}
 		if attempt.Status != submission.ExecutionClaimed || now.Before(attempt.LeaseExpiresAt) {
 			return mutation{}, submission.ErrExecutionInvalidTransition
 		}
@@ -315,7 +327,7 @@ func (r *Repository) Expire(ctx context.Context, scope submission.ExecutionScope
 	})
 }
 
-func (r *Repository) claimMutation(ctx context.Context, claim submission.ExecutionClaim, now time.Time, transition func(submission.ExecutionAttempt) (submission.ExecutionAttempt, error, error)) (submission.ExecutionAttempt, error) {
+func (r *Repository) claimMutation(ctx context.Context, claim submission.ExecutionClaim, transition func(submission.ExecutionAttempt, time.Time) (submission.ExecutionAttempt, error, error)) (submission.ExecutionAttempt, error) {
 	return r.write(ctx, func(tx *gorm.DB) (mutation, error) {
 		attempt, _, tokenHash, err := r.lockCurrentAttempt(ctx, tx, claim.Scope.OrganizationID, claim.AttemptID)
 		if err != nil {
@@ -324,7 +336,11 @@ func (r *Repository) claimMutation(ctx context.Context, claim submission.Executi
 		if attempt.FenceEpoch != claim.FenceEpoch || attempt.ClaimOwnerID != claim.OwnerID || subtle.ConstantTimeCompare([]byte(tokenHash), []byte(submission.ExecutionClaimTokenHash(claim.Token))) != 1 {
 			return mutation{}, submission.ErrExecutionClaimRejected
 		}
-		updated, transitionErr, afterCommitErr := transition(attempt)
+		now, err := r.mutationTime(attempt)
+		if err != nil {
+			return mutation{}, err
+		}
+		updated, transitionErr, afterCommitErr := transition(attempt, now)
 		if transitionErr != nil {
 			return mutation{}, transitionErr
 		}
@@ -335,6 +351,19 @@ func (r *Repository) claimMutation(ctx context.Context, claim submission.Executi
 		}
 		return mutation{attempt: updated, afterCommitErr: afterCommitErr}, nil
 	})
+}
+
+// mutationTime is sampled only after all rows needed by the mutation are locked.
+// A clock behind the last durable update cannot safely advance that attempt.
+func (r *Repository) mutationTime(attempt submission.ExecutionAttempt) (time.Time, error) {
+	if r.now == nil {
+		return time.Time{}, submission.ErrExecutionUnavailable
+	}
+	now := r.now().UTC().Truncate(time.Microsecond)
+	if now.IsZero() || now.Before(attempt.UpdatedAt) {
+		return time.Time{}, submission.ErrExecutionUnavailable
+	}
+	return now, nil
 }
 
 type mutation struct {

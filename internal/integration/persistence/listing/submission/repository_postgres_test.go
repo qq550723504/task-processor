@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,107 @@ import (
 
 	"task-processor/internal/listing/submission"
 )
+
+func TestRepositoryPostgresMutationLockTime(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+	require.NoError(t, InstallSchema(db))
+	for _, name := range []string{"complete expired attempt lock", "complete expired fence lock", "complete after renewal", "mark unknown after renewal", "resolve unknown", "expire"} {
+		t.Run(name, func(t *testing.T) {
+			resetExecutionTables(t, db)
+			base := time.Date(2026, 9, 10, 4, 0, 0, 0, time.UTC)
+			serviceNow := base
+			var transactionNanos atomic.Int64
+			transactionNanos.Store(base.UnixNano())
+			repository, err := NewRepository(db)
+			require.NoError(t, err)
+			repository.now = func() time.Time { return time.Unix(0, transactionNanos.Load()).UTC() }
+			kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return serviceNow }))
+			require.NoError(t, err)
+			command := executionCommand("org-a", "lock-time", "lock-time", `{"title":"one"}`)
+			command.Lease = time.Second
+			acquired, err := kernel.Acquire(ctx, command)
+			require.NoError(t, err)
+			claim := permitClaim("org-a", acquired.Permit)
+			scope := submission.ExecutionScope{OrganizationID: "org-a"}
+			serviceNow = base.Add(500 * time.Millisecond)
+			transactionNanos.Store(serviceNow.UnixNano())
+			_, err = kernel.Renew(ctx, claim, 2*time.Second)
+			require.NoError(t, err)
+			if name == "resolve unknown" {
+				_, err = kernel.MarkUnknown(ctx, claim, submission.UnknownResponseLost)
+				require.NoError(t, err)
+			}
+			// The caller captured time before the competing renewal. The actual
+			// mutation must use time after its PostgreSQL lock wait instead.
+			serviceNow = base.Add(250 * time.Millisecond)
+			lockedNow := base.Add(time.Second)
+			wantStatus := submission.ExecutionSucceeded
+			var wantErr error
+			if strings.Contains(name, "expired") || name == "expire" {
+				lockedNow = base.Add(2500 * time.Millisecond)
+				wantStatus = submission.ExecutionOutcomeUnknown
+				if name != "expire" {
+					wantErr = submission.ErrExecutionClaimRejected
+				}
+			} else if name == "mark unknown after renewal" {
+				wantStatus = submission.ExecutionOutcomeUnknown
+			}
+			holder := db.WithContext(ctx).Begin()
+			require.NoError(t, holder.Error)
+			t.Cleanup(func() { _ = holder.Rollback().Error })
+			var holderPID int
+			require.NoError(t, holder.Raw("SELECT pg_backend_pid()").Scan(&holderPID).Error)
+			lockTable := attemptTable
+			if name == "complete expired fence lock" {
+				lockTable = targetTable
+			}
+			require.NoError(t, holder.Exec("SELECT 1 FROM "+lockTable+" FOR UPDATE").Error)
+			completed := make(chan error, 1)
+			go func() {
+				var mutationErr error
+				switch name {
+				case "mark unknown after renewal":
+					_, mutationErr = kernel.MarkUnknown(ctx, claim, submission.UnknownResponseLost)
+				case "resolve unknown":
+					_, mutationErr = kernel.ResolveUnknown(ctx, scope, claim.AttemptID, claim.FenceEpoch, readBackEvidence(submission.ExecutionSucceeded, "readback-lock-time", base))
+				case "expire":
+					_, mutationErr = kernel.Expire(ctx, scope, claim.AttemptID)
+				default:
+					_, mutationErr = kernel.Complete(ctx, claim, providerEvidence(submission.ExecutionSucceeded, "response-lock-time", base))
+				}
+				completed <- mutationErr
+			}()
+			require.Eventually(t, func() bool {
+				var blocked bool
+				return db.Raw("SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE ? = ANY(pg_catalog.pg_blocking_pids(pid)))", holderPID).Scan(&blocked).Error == nil && blocked
+			}, 5*time.Second, 10*time.Millisecond, "mutation must actually wait for the held PostgreSQL lock")
+			transactionNanos.Store(lockedNow.UnixNano())
+			require.NoError(t, holder.Commit().Error)
+			select {
+			case err = <-completed:
+			case <-time.After(5 * time.Second):
+				t.Fatal("mutation did not finish after releasing its PostgreSQL lock")
+			}
+			require.ErrorIs(t, err, wantErr)
+			persisted, err := kernel.Get(ctx, scope, claim.AttemptID)
+			require.NoError(t, err)
+			require.Equal(t, wantStatus, persisted.Status)
+			require.Equal(t, lockedNow, persisted.UpdatedAt)
+			if wantStatus == submission.ExecutionSucceeded {
+				require.Equal(t, &lockedNow, persisted.FinishedAt)
+			} else {
+				require.Nil(t, persisted.FinishedAt)
+				require.Nil(t, persisted.Evidence)
+			}
+			var fence targetFenceRow
+			require.NoError(t, db.Table(targetTable).Take(&fence).Error)
+			require.Equal(t, string(wantStatus), fence.CurrentStatus)
+			require.Equal(t, lockedNow, fence.UpdatedAt.UTC())
+		})
+	}
+}
 
 func TestRepositoryPostgresExecutionContract(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -356,6 +458,7 @@ func TestRepositoryPostgresExecutionContract(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, submission.ExecutionClaimed, persisted.Status)
 			require.Equal(t, base.Add(1500*time.Millisecond), persisted.LeaseExpiresAt)
+			transactionNow = serviceNow
 			_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), providerEvidence(submission.ExecutionSucceeded, "renew-expired", serviceNow))
 			require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
 		})
@@ -403,6 +506,7 @@ func TestRepositoryPostgresExecutionContract(t *testing.T) {
 		now := time.Date(2026, 9, 10, 2, 35, 0, 0, time.UTC)
 		repository, err := NewRepository(db)
 		require.NoError(t, err)
+		repository.now = func() time.Time { return now }
 		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
 		require.NoError(t, err)
 		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`))
@@ -1020,6 +1124,7 @@ $$`).Error)
 		now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
 		repository, err := NewRepository(db)
 		require.NoError(t, err)
+		repository.now = func() time.Time { return now }
 		kernel, err := submission.NewExecutionKernel(repository,
 			submission.WithExecutionClock(func() time.Time { return now }),
 			submission.WithManualResolutionAuthorizer(manualAuthorizerFunc(func(context.Context, submission.ExecutionScope, string) (string, error) {
@@ -1119,6 +1224,14 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		name       string
 		statements []string
 	}{
+		{
+			name:       "attempt standalone unique index",
+			statements: []string{"CREATE UNIQUE INDEX unexpected_attempt_unique ON public." + AttemptTable + " (intent_key)"},
+		},
+		{
+			name:       "target standalone partial unique index",
+			statements: []string{"CREATE UNIQUE INDEX unexpected_target_unique ON public." + TargetFenceTable + " (current_status) WHERE current_status = 'claimed'"},
+		},
 		{
 			name: "attempt table has an unexpected user trigger",
 			statements: []string{
@@ -1294,6 +1407,37 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 		repository, err := NewRepository(db)
 		require.NoError(t, err)
 		require.NotNil(t, repository)
+	})
+
+	t.Run("non unique operational indexes are admitted", func(t *testing.T) {
+		reinstallExecutionSchema(t, db)
+		require.NoError(t, db.Exec("CREATE INDEX operational_attempt_status ON public."+AttemptTable+" (status)").Error)
+		require.NoError(t, db.Exec("CREATE INDEX operational_target_time ON public."+TargetFenceTable+" (updated_at)").Error)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		require.NotNil(t, repository)
+		kernel, err := submission.NewExecutionKernel(repository)
+		require.NoError(t, err)
+		attemptIDs := make(map[string]bool)
+		for _, organizationID := range []string{"org-a", "org-b"} {
+			command := executionCommand(organizationID, "same-intent", "same-target", `{"title":"one"}`)
+			acquired, err := kernel.Acquire(ctx, command)
+			require.NoError(t, err)
+			require.NotNil(t, acquired.Permit)
+			require.Equal(t, organizationID, acquired.Attempt.OrganizationID)
+			attemptIDs[acquired.Attempt.AttemptID] = true
+			replay, err := kernel.Acquire(ctx, command)
+			require.NoError(t, err)
+			require.True(t, replay.Replayed)
+			require.Nil(t, replay.Permit)
+			require.Equal(t, acquired.Attempt, replay.Attempt)
+			var fence targetFenceRow
+			require.NoError(t, db.Table(targetTable).Where("organization_id = ?", organizationID).Take(&fence).Error)
+			require.Equal(t, acquired.Attempt.AttemptID, fence.CurrentAttemptID)
+			require.Equal(t, acquired.Permit.FenceEpoch, fence.Epoch)
+			require.Equal(t, string(submission.ExecutionClaimed), fence.CurrentStatus)
+		}
+		require.Len(t, attemptIDs, 2)
 	})
 }
 

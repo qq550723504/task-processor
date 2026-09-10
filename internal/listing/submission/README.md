@@ -13,7 +13,7 @@ Current stable ownership:
   `synchronous_commit=on` can return a permit; setup failure, replay, and
   commit-outcome-unknown paths never issue another permit; initial and renewed
   lease deadlines are canonicalized to PostgreSQL microsecond precision before
-  persistence, renewal rechecks time after acquiring the durable row locks, and
+  persistence, mutations recheck time after acquiring all durable row locks, and
   an already-expired post-transaction result is never returned as live authority
 - execution states `claimed -> succeeded | failed_definitive |
   outcome_unknown`; timeout, response loss, cancellation after claim, and lease
@@ -34,7 +34,8 @@ Current stable ownership:
   constructor-time fail-closed verification that both relations are ordinary
   permanent/logged tables with their complete column contracts (including no
   identity/generated attributes), constraint contracts, and no user-defined
-  triggers; each new intent and target-fence insert must affect exactly one row;
+  triggers or extra uniqueness-imposing indexes (non-unique operational indexes
+  are allowed); each new intent and target-fence insert must affect exactly one row;
   database state-shape checks reject NULL-required or stray partial evidence
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
