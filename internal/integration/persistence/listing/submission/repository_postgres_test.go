@@ -3,6 +3,7 @@ package submissionpersistence
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
@@ -1576,6 +1578,77 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 			require.Equal(t, string(submission.ExecutionClaimed), fence.CurrentStatus)
 		}
 		require.Len(t, attemptIDs, 2)
+	})
+}
+
+func TestRepositoryPostgresExecutionDatabaseAdmission(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+	t.Run("ordinary role loses visibility and writes without RLS policy", func(t *testing.T) {
+		reinstallExecutionSchema(t, db)
+		kernel := executionKernel(t, db, time.Now)
+		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "rls-intent", "rls-target", `{"title":"one"}`))
+		require.NoError(t, err)
+		require.NoError(t, db.Exec("CREATE ROLE execution_rls_probe NOLOGIN NOSUPERUSER NOBYPASSRLS").Error)
+		require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO execution_rls_probe").Error)
+		require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON public."+AttemptTable+", public."+TargetFenceTable+" TO execution_rls_probe").Error)
+		require.NoError(t, db.Exec("ALTER TABLE public."+AttemptTable+" ENABLE ROW LEVEL SECURITY").Error)
+		require.NoError(t, db.Exec("ALTER TABLE public."+AttemptTable+" FORCE ROW LEVEL SECURITY").Error)
+		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+			require.NoError(t, tx.Exec("SET LOCAL ROLE execution_rls_probe").Error)
+			var bypass bool
+			require.NoError(t, tx.Raw("SELECT rolsuper OR rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user").Scan(&bypass).Error)
+			require.False(t, bypass)
+			var count int64
+			require.NoError(t, tx.Table(attemptTable).Count(&count).Error)
+			require.Zero(t, count, "the committed attempt is hidden by RLS")
+			writeErr := tx.Transaction(func(writeTx *gorm.DB) error {
+				row := attemptRowFrom(acquired.Attempt, submission.ExecutionClaimTokenHash(acquired.Permit.ClaimToken))
+				return writeTx.Table(attemptTable).Create(&row).Error
+			})
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, writeErr, &pgErr)
+			require.Equal(t, "42501", pgErr.Code, "RLS rejects insertion before uniqueness is considered")
+			repository, admissionErr := NewRepository(tx)
+			require.ErrorContains(t, admissionErr, "row security")
+			require.Nil(t, repository)
+			return nil
+		}))
+	})
+	for _, table := range []string{AttemptTable, TargetFenceTable} {
+		for _, mode := range []string{"ENABLE", "FORCE"} {
+			t.Run(table+"/"+mode+" RLS", func(t *testing.T) {
+				reinstallExecutionSchema(t, db)
+				require.NoError(t, db.Exec("ALTER TABLE public."+table+" "+mode+" ROW LEVEL SECURITY").Error)
+				repository, err := NewRepository(db)
+				require.ErrorContains(t, err, "row security")
+				require.Nil(t, repository)
+				require.ErrorContains(t, VerifySchema(ctx, db), "row security")
+			})
+		}
+	}
+	t.Run("SQL_ASCII cannot uphold UTF8 evidence", func(t *testing.T) {
+		require.NoError(t, db.Exec("CREATE DATABASE execution_ascii TEMPLATE template0 ENCODING 'SQL_ASCII' LC_COLLATE 'C' LC_CTYPE 'C'").Error)
+		dsn, err := url.Parse(db.Dialector.(*postgres.Dialector).DSN)
+		require.NoError(t, err)
+		dsn.Path = "/execution_ascii"
+		asciiDB, err := gorm.Open(postgres.Open(dsn.String()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+		require.NoError(t, err)
+		sqlDB, err := asciiDB.DB()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = sqlDB.Close() })
+		// Install raw contract DDL to test admission of an already-existing schema.
+		for _, statement := range schemaStatements {
+			require.NoError(t, asciiDB.Exec(statement).Error)
+		}
+		var invalid string
+		require.NoError(t, asciiDB.Raw("SELECT convert_from(decode('ff', 'hex'), 'SQL_ASCII')").Scan(&invalid).Error)
+		require.False(t, utf8.ValidString(invalid), "SQL_ASCII really permits invalid UTF8 text")
+		repository, err := NewRepository(asciiDB)
+		require.ErrorContains(t, err, "UTF8")
+		require.Nil(t, repository)
+		require.ErrorContains(t, VerifySchema(ctx, asciiDB), "UTF8")
 	})
 }
 

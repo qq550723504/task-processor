@@ -280,6 +280,13 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 }
 
 func verifySchema(ctx context.Context, db *gorm.DB) error {
+	var encoding string
+	if err := db.WithContext(ctx).Raw("SHOW server_encoding").Row().Scan(&encoding); err != nil {
+		return fmt.Errorf("inspect submission execution database encoding: %w", err)
+	}
+	if encoding != "UTF8" {
+		return fmt.Errorf("submission execution database requires UTF8 encoding, got %s", encoding)
+	}
 	if err := db.WithContext(ctx).Exec(`SELECT set_config('search_path', 'pg_catalog', true)`).Error; err != nil {
 		return fmt.Errorf("set submission execution schema verification search_path: %w", err)
 	}
@@ -389,18 +396,22 @@ ORDER BY trigger_row.tgname`, table).Rows()
 
 func verifyRelation(ctx context.Context, db *gorm.DB, table string) error {
 	var kind, persistence string
-	var partition bool
+	var partition, rowSecurity, forceRowSecurity bool
 	err := db.WithContext(ctx).Raw(`
-SELECT relation.relkind::text, relation.relpersistence::text, relation.relispartition
+SELECT relation.relkind::text, relation.relpersistence::text, relation.relispartition,
+       relation.relrowsecurity, relation.relforcerowsecurity
 FROM pg_catalog.pg_class AS relation
 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
 WHERE namespace.nspname = 'public' AND relation.relname = ?`, table).
-		Row().Scan(&kind, &persistence, &partition)
+		Row().Scan(&kind, &persistence, &partition, &rowSecurity, &forceRowSecurity)
 	if err != nil {
 		return fmt.Errorf("inspect submission execution relation public.%s: %w", table, err)
 	}
 	if kind != "r" || persistence != "p" || partition {
 		return fmt.Errorf("submission execution relation public.%s must be an ordinary permanent table: kind=%s persistence=%s partition=%t", table, kind, persistence, partition)
+	}
+	if rowSecurity || forceRowSecurity {
+		return fmt.Errorf("submission execution relation public.%s must not enable or force row security", table)
 	}
 	return nil
 }

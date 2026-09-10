@@ -32,10 +32,12 @@ Current stable ownership:
   Organization-qualified keys and predicates, same-intent replay/conflict,
   cross-intent target serialization, stale-fence rejection, atomic rollback, and
   constructor-time fail-closed verification that both relations are ordinary
-  permanent/logged tables with their complete column contracts (including no
+  permanent/logged tables without row security in a UTF8 database, with their
+  complete column contracts (including no
   identity/generated attributes and deterministic text equality), constraint
   contracts, and no user-defined
-  triggers, rewrite rules or extra uniqueness-imposing indexes (non-unique operational indexes
+  triggers, rewrite rules or extra uniqueness-imposing indexes (non-unique
+  operational indexes
   are allowed); each new intent and target-fence insert must affect exactly one row;
   database state-shape checks reject NULL-required or stray partial evidence;
   provider keys must match the existing length-prefixed SHA-256 derivation, and
