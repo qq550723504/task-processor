@@ -116,6 +116,11 @@ describe("/api/workbench BFF", () => {
   });
 
   it("uses the merged serverAuth wrapper and reads the token from request.auth", async () => {
+    authMocks.wrapper.mockClear();
+    vi.resetModules();
+    const { GET: authenticatedGET } = await import(
+      "@/app/api/workbench/[...path]/route"
+    );
     const session = { user: { id: "user-1" }, accessToken: "private-token" };
     authState.session = session;
     authState.token = "private-token";
@@ -131,7 +136,7 @@ describe("/api/workbench BFF", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await call(
-      GET,
+      authenticatedGET,
       new NextRequest("http://localhost/api/workbench/context", {
         headers: { authorization: "Bearer browser-token" },
       }),
