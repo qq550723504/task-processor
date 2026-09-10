@@ -3732,6 +3732,8 @@ func TestProductDomainDoesNotDependOnOuterAdapters(t *testing.T) {
 func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 	catalogAdapterDirectory := filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "catalog")) + string(os.PathSeparator)
 	catalogAdapterOnly := map[string]struct{}{catalogAdapterDirectory: {}, filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "product", "review", "repository.go")): {}}
+	submissionAdapterDirectory := filepath.Clean(filepath.Join("..", "internal", "integration", "persistence", "listing", "submission")) + string(os.PathSeparator)
+	submissionAdapterOnly := map[string]struct{}{submissionAdapterDirectory: {}}
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
 		filepath.Join("..", "internal", "integration"),
@@ -3755,11 +3757,55 @@ func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 				"task-processor/internal/shein",
 				"task-processor/internal/temu",
 				"task-processor/internal/workspace",
-			}, nil)
+			}, submissionAdapterOnly)
 			assertNoBannedImportPrefixes(t, infraRoot, []string{
 				"task-processor/internal/product/catalog",
 			}, catalogAdapterOnly)
 		})
+	}
+}
+
+func TestListingSubmissionPersistenceAdapterImplementsOnlySubmissionPort(t *testing.T) {
+	adapterRoot := filepath.Join("..", "internal", "integration", "persistence", "listing", "submission")
+	assertNoBannedImportPrefixes(t, adapterRoot, []string{
+		"task-processor/internal/amazon",
+		"task-processor/internal/amazonlisting",
+		"task-processor/internal/asset",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/pricing",
+		"task-processor/internal/product",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/sds",
+		"task-processor/internal/shein",
+		"task-processor/internal/temu",
+		"task-processor/internal/workspace",
+	}, nil)
+
+	index, err := loadGoFileIndex(adapterRoot, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundSubmissionPort := false
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if !importMatchesPrefix(importPath, "task-processor/internal/listing") {
+				continue
+			}
+			if importPath != "task-processor/internal/listing/submission" {
+				t.Errorf("%s imports Listing sibling %s; the adapter may implement only Listing Submission-owned ports", path, importPath)
+			}
+			foundSubmissionPort = true
+		}
+	}
+	if !foundSubmissionPort {
+		t.Fatal("Listing Submission persistence adapter must implement the Submission-owned repository port")
 	}
 }
 

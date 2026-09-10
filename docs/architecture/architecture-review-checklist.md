@@ -93,9 +93,11 @@ consider the applicable guards, including:
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestInfrastructureCatalogGuardRejectsNonAdapterFixture`
 - `TestProductCatalogPersistenceAdapterImplementsOnlyApprovedBusinessPort`
+- `TestListingSubmissionPersistenceAdapterImplementsOnlySubmissionPort`
 - `TestProductCatalogPersistenceGuardRejectsEverySiblingProductDomainFixture`
 - `depguard: infrastructure_business_boundaries`
 - `depguard: product_catalog_persistence_boundary`
+- `depguard: listing_submission_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`

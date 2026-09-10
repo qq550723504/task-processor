@@ -4,6 +4,23 @@ Owns submit, retry, recovery, state, and submission orchestration that is generi
 
 Current stable ownership:
 
+- provider-neutral durable execution kernel (`ExecutionKernel`) with an
+  Organization-scoped business intent, canonical payload fingerprint, versioned
+  deterministic provider execution key, target fence, claim owner/token/lease,
+  and evidence-bound terminal result
+- one-time `SendPermit` issuance: only the first successfully committed intent,
+  attempt, target fence, and claim transaction can return a permit; replay and
+  commit-outcome-unknown paths never issue another permit
+- execution states `claimed -> succeeded | failed_definitive |
+  outcome_unknown`; timeout, response loss, cancellation after claim, and lease
+  expiry are conservative `outcome_unknown` transitions, never unsent retries
+- unknown-outcome resolution through qualified provider read-back/adoption or a
+  separately authorized manual decision with auditable no-side-effect evidence;
+  the kernel exposes no unknown-to-resend transition
+- PostgreSQL execution repository/UoW under
+  `internal/integration/persistence/listing/submission`, including
+  Organization-qualified keys and predicates, same-intent replay/conflict,
+  cross-intent target serialization, stale-fence rejection, and atomic rollback
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)
@@ -67,6 +84,11 @@ Current stable ownership:
 Does not own yet:
 
 - full submit orchestration and platform routing
+- provider authorization, Store ownership/connection/entitlement, platform
+  finality/read-back implementations, or selection of an authorized manual
+  operator; those remain future application/adapter gates
+- public API/runtime/schema-init mounting; the durable kernel is an isolated
+  internal capability until a separately admitted adapter is available
 - SHEIN-specific submit package loading and remote confirmation details
 - Temporal-facing submit workflow adapters beyond generic submit-in-progress error shaping
 - repository-specific durable retry/reblock persistence adapters

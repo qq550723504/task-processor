@@ -1,0 +1,453 @@
+package submissionpersistence
+
+import (
+	"context"
+	"errors"
+	"os"
+	"runtime"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	"task-processor/internal/listing/submission"
+)
+
+func TestRepositoryPostgresExecutionContract(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, _ := openExecutionPostgres(t, ctx)
+	require.NoError(t, InstallSchema(db))
+
+	t.Run("first acquisition returns the only permit and replay is read only", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		command := executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`)
+
+		first, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+		require.NotNil(t, first.Permit)
+		require.False(t, first.Replayed)
+		require.Equal(t, int64(1), first.Attempt.FenceEpoch)
+		require.Equal(t, submission.ExecutionClaimed, first.Attempt.Status)
+
+		replay, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+		require.True(t, replay.Replayed)
+		require.Nil(t, replay.Permit, "a replay must never create a second legal sender")
+		require.Equal(t, first.Attempt, replay.Attempt)
+
+		changed := command
+		changed.Payload = []byte(`{"title":"different"}`)
+		_, err = kernel.Acquire(ctx, changed)
+		require.ErrorIs(t, err, submission.ErrExecutionIntentConflict)
+
+		rebuilt := executionKernel(t, db, func() time.Time { return now.Add(time.Minute) })
+		persisted, err := rebuilt.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, first.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, first.Attempt, persisted)
+	})
+
+	t.Run("same target concurrency yields one committed claim", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 10, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		commands := []submission.AcquireExecutionCommand{
+			executionCommand("org-a", "intent-a", "listing-shared", `{"title":"one"}`),
+			executionCommand("org-a", "intent-b", "listing-shared", `{"title":"two"}`),
+		}
+		start := make(chan struct{})
+		type result struct {
+			acquisition submission.ExecutionAcquisition
+			err         error
+		}
+		results := make(chan result, len(commands))
+		var ready sync.WaitGroup
+		ready.Add(len(commands))
+		for _, command := range commands {
+			command := command
+			go func() {
+				ready.Done()
+				<-start
+				acquisition, err := kernel.Acquire(ctx, command)
+				results <- result{acquisition, err}
+			}()
+		}
+		ready.Wait()
+		close(start)
+
+		permits, busy := 0, 0
+		for range commands {
+			var result result
+			select {
+			case result = <-results:
+			case <-time.After(5 * time.Second):
+				t.Fatal("bounded wait expired while synchronizing target-fence competitors")
+			}
+			switch {
+			case result.err == nil && result.acquisition.Permit != nil:
+				permits++
+			case errors.Is(result.err, submission.ErrExecutionTargetClaimed):
+				busy++
+			default:
+				t.Fatalf("unexpected concurrent result: acquisition=%+v err=%v", result.acquisition, result.err)
+			}
+		}
+		require.Equal(t, 1, permits)
+		require.Equal(t, 1, busy)
+	})
+
+	t.Run("same intent concurrency yields one permit and one replay", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 15, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		command := executionCommand("org-a", "intent-shared", "listing-shared", `{"title":"one"}`)
+		start := make(chan struct{})
+		type result struct {
+			acquisition submission.ExecutionAcquisition
+			err         error
+		}
+		results := make(chan result, 2)
+		var ready sync.WaitGroup
+		ready.Add(2)
+		for range 2 {
+			go func() {
+				ready.Done()
+				<-start
+				acquisition, err := kernel.Acquire(ctx, command)
+				results <- result{acquisition, err}
+			}()
+		}
+		ready.Wait()
+		close(start)
+
+		permits, replays := 0, 0
+		for range 2 {
+			var result result
+			select {
+			case result = <-results:
+			case <-time.After(5 * time.Second):
+				t.Fatal("bounded wait expired while synchronizing same-intent competitors")
+			}
+			require.NoError(t, result.err)
+			if result.acquisition.Permit != nil {
+				permits++
+			}
+			if result.acquisition.Replayed {
+				replays++
+				require.Nil(t, result.acquisition.Permit)
+			}
+		}
+		require.Equal(t, 1, permits)
+		require.Equal(t, 1, replays)
+	})
+
+	t.Run("response loss and lease expiry remain unknown without resend", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 20, 0, 0, time.UTC)
+		clock := func() time.Time { return now }
+		kernel := executionKernel(t, db, clock)
+		command := executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`)
+		command.Lease = time.Second
+		acquired, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+
+		now = now.Add(2 * time.Second)
+		expired, err := kernel.Expire(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionOutcomeUnknown, expired.Status)
+		require.Equal(t, submission.UnknownLeaseExpired, expired.UnknownReason)
+
+		late := providerEvidence(submission.ExecutionSucceeded, "late", now)
+		_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), late)
+		require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+
+		replay, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+		require.True(t, replay.Replayed)
+		require.Nil(t, replay.Permit)
+		_, err = kernel.Acquire(ctx, executionCommand("org-a", "intent-b", "listing-a", `{"title":"two"}`))
+		require.ErrorIs(t, err, submission.ErrExecutionTargetClaimed)
+	})
+
+	t.Run("claim owner token lease and duplicate completion are fenced", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 25, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		command := executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`)
+		command.Lease = time.Minute
+		acquired, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+
+		wrongOwner := permitClaim("org-a", acquired.Permit)
+		wrongOwner.OwnerID = "worker-other"
+		_, err = kernel.MarkUnknown(ctx, wrongOwner, submission.UnknownResponseLost)
+		require.ErrorIs(t, err, submission.ErrExecutionClaimRejected)
+
+		now = now.Add(30 * time.Second)
+		renewed, err := kernel.Renew(ctx, permitClaim("org-a", acquired.Permit), 2*time.Minute)
+		require.NoError(t, err)
+		require.Equal(t, now.Add(2*time.Minute), renewed.LeaseExpiresAt)
+
+		now = now.Add(time.Minute)
+		now = now.Add(789 * time.Nanosecond)
+		evidence := providerEvidence(submission.ExecutionSucceeded, "response-a", now)
+		completed, err := kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), evidence)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionSucceeded, completed.Status)
+		duplicate, err := kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), evidence)
+		require.NoError(t, err)
+		require.Equal(t, completed, duplicate)
+
+		next, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-b", "listing-a", `{"title":"two"}`))
+		require.NoError(t, err)
+		require.Equal(t, int64(2), next.Attempt.FenceEpoch)
+		duplicate, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), evidence)
+		require.NoError(t, err)
+		require.Equal(t, completed, duplicate)
+		conflicting := evidence
+		conflicting.Fingerprint = executionTestDigest("different")
+		conflicting.Reference = "different-response"
+		_, err = kernel.Complete(ctx, permitClaim("org-a", acquired.Permit), conflicting)
+		require.ErrorIs(t, err, submission.ErrExecutionIntentConflict)
+	})
+
+	t.Run("qualified resolution releases target to the next fenced intent", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 30, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		first, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`))
+		require.NoError(t, err)
+		unknown, err := kernel.MarkUnknown(ctx, permitClaim("org-a", first.Permit), submission.UnknownResponseLost)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionOutcomeUnknown, unknown.Status)
+
+		now = now.Add(time.Minute)
+		resolved, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, first.Attempt.AttemptID, first.Attempt.FenceEpoch,
+			readBackEvidence(submission.ExecutionSucceeded, "readback-a", now))
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionSucceeded, resolved.Status)
+
+		duplicate, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, first.Attempt.AttemptID, first.Attempt.FenceEpoch,
+			readBackEvidence(submission.ExecutionSucceeded, "readback-a", now))
+		require.NoError(t, err)
+		require.Equal(t, resolved, duplicate)
+
+		second, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-b", "listing-a", `{"title":"two"}`))
+		require.NoError(t, err)
+		require.NotNil(t, second.Permit)
+		require.Equal(t, int64(2), second.Attempt.FenceEpoch)
+		replayedAfterFenceAdvance, err := kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, first.Attempt.AttemptID, first.Attempt.FenceEpoch,
+			readBackEvidence(submission.ExecutionSucceeded, "readback-a", now))
+		require.NoError(t, err)
+		require.Equal(t, resolved, replayedAfterFenceAdvance)
+
+		_, err = kernel.Complete(ctx, permitClaim("org-a", first.Permit), providerEvidence(submission.ExecutionSucceeded, "late-overwrite", now))
+		require.Error(t, err)
+		current, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, second.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionClaimed, current.Status)
+	})
+
+	t.Run("manual cancellation requires an outer authorization decision and no-side-effect evidence", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 35, 0, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`))
+		require.NoError(t, err)
+		_, err = kernel.MarkUnknown(ctx, permitClaim("org-a", acquired.Permit), submission.UnknownExecutionCancelled)
+		require.NoError(t, err)
+		now = now.Add(time.Minute)
+		manual := submission.ExecutionEvidence{
+			Kind: submission.EvidenceManualResolution, Outcome: submission.ExecutionCancelled,
+			Reference: "incident-42", Fingerprint: executionTestDigest("not-sent"),
+			Reason: "operator verified that the provider never received the request", ObservedAt: now,
+		}
+		_, err = kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID, acquired.Attempt.FenceEpoch, manual)
+		require.ErrorIs(t, err, submission.ErrExecutionEvidenceRequired)
+
+		forged := manual
+		forged.AuthorizedBy = "caller-claimed-operator"
+		_, err = kernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID, acquired.Attempt.FenceEpoch, forged)
+		require.ErrorIs(t, err, submission.ErrExecutionInvalid)
+
+		authorizedKernel, err := submission.NewExecutionKernel(repository,
+			submission.WithExecutionClock(func() time.Time { return now }),
+			submission.WithManualResolutionAuthorizer(manualAuthorizerFunc(func(_ context.Context, scope submission.ExecutionScope, attemptID string) (string, error) {
+				require.Equal(t, "org-a", scope.OrganizationID)
+				require.Equal(t, acquired.Attempt.AttemptID, attemptID)
+				return "operator-a", nil
+			})),
+		)
+		require.NoError(t, err)
+		cancelled, err := authorizedKernel.ResolveUnknown(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID, acquired.Attempt.FenceEpoch, manual)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionCancelled, cancelled.Status)
+		require.Equal(t, "operator-a", cancelled.Evidence.AuthorizedBy)
+	})
+
+	t.Run("organization scope is present on every read and mutation", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 40, 0, 0, time.UTC)
+		kernel := executionKernel(t, db, func() time.Time { return now })
+		acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`))
+		require.NoError(t, err)
+
+		_, err = kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-b"}, acquired.Attempt.AttemptID)
+		require.ErrorIs(t, err, submission.ErrExecutionNotFound)
+		wrongClaim := permitClaim("org-b", acquired.Permit)
+		_, err = kernel.MarkUnknown(ctx, wrongClaim, submission.UnknownResponseLost)
+		require.ErrorIs(t, err, submission.ErrExecutionNotFound)
+
+		persisted, err := kernel.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, acquired.Attempt.AttemptID)
+		require.NoError(t, err)
+		require.Equal(t, submission.ExecutionClaimed, persisted.Status)
+	})
+
+	t.Run("precommit failure and cancelled context create no half state", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 50, 0, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		repository.fault = func(stage string) error {
+			if stage == "before_commit" {
+				return errors.New("injected commit failure")
+			}
+			return nil
+		}
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+		command := executionCommand("org-a", "intent-a", "listing-a", `{"title":"one"}`)
+		failed, err := kernel.Acquire(ctx, command)
+		require.ErrorIs(t, err, submission.ErrExecutionUnavailable)
+		require.Nil(t, failed.Permit)
+
+		repository.fault = nil
+		var count int64
+		require.NoError(t, db.Table(AttemptTable).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Table(TargetFenceTable).Count(&count).Error)
+		require.Zero(t, count)
+
+		cancelled, cancelCall := context.WithCancel(ctx)
+		cancelCall()
+		failed, err = kernel.Acquire(cancelled, command)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, failed.Permit)
+		require.NoError(t, db.Table(AttemptTable).Count(&count).Error)
+		require.Zero(t, count)
+	})
+
+	t.Run("commit acknowledgement loss exposes no permit and replay cannot resend", func(t *testing.T) {
+		resetExecutionTables(t, db)
+		now := time.Date(2026, 9, 10, 2, 55, 0, 0, time.UTC)
+		repository, err := NewRepository(db)
+		require.NoError(t, err)
+		repository.fault = func(stage string) error {
+			if stage == "after_commit" {
+				return errors.New("commit acknowledgement lost")
+			}
+			return nil
+		}
+		kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(func() time.Time { return now }))
+		require.NoError(t, err)
+		command := executionCommand("org-a", "intent-ack-loss", "listing-a", `{"title":"one"}`)
+
+		uncertain, err := kernel.Acquire(ctx, command)
+		require.ErrorIs(t, err, submission.ErrExecutionOutcomeUnknown)
+		require.Nil(t, uncertain.Permit)
+
+		repository.fault = nil
+		replay, err := kernel.Acquire(ctx, command)
+		require.NoError(t, err)
+		require.True(t, replay.Replayed)
+		require.Nil(t, replay.Permit)
+		require.Equal(t, submission.ExecutionClaimed, replay.Attempt.Status)
+	})
+}
+
+func executionKernel(t *testing.T, db *gorm.DB, clock func() time.Time) *submission.ExecutionKernel {
+	t.Helper()
+	repository, err := NewRepository(db)
+	require.NoError(t, err)
+	kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(clock))
+	require.NoError(t, err)
+	return kernel
+}
+
+func executionCommand(org, intent, subject, payload string) submission.AcquireExecutionCommand {
+	return submission.AcquireExecutionCommand{
+		Scope: submission.ExecutionScope{OrganizationID: org}, IntentKey: intent,
+		Target: submission.ExecutionTarget{Platform: "shein", StoreID: "store-a", SubjectID: subject},
+		Action: "save_draft", Payload: []byte(payload), ClaimOwnerID: "worker-a", Lease: 5 * time.Minute,
+	}
+}
+
+func permitClaim(org string, permit *submission.SendPermit) submission.ExecutionClaim {
+	return submission.ExecutionClaim{Scope: submission.ExecutionScope{OrganizationID: org}, AttemptID: permit.AttemptID, FenceEpoch: permit.FenceEpoch, OwnerID: permit.ClaimOwnerID, Token: permit.ClaimToken}
+}
+
+func providerEvidence(outcome submission.ExecutionStatus, reference string, now time.Time) submission.ExecutionEvidence {
+	evidence := submission.ExecutionEvidence{Kind: submission.EvidenceProviderResponse, Outcome: outcome, Reference: reference, Fingerprint: executionTestDigest(reference), ObservedAt: now}
+	if outcome == submission.ExecutionFailedDefinitive {
+		evidence.Reason = "provider rejected the request before applying a side effect"
+	}
+	return evidence
+}
+
+func readBackEvidence(outcome submission.ExecutionStatus, reference string, now time.Time) submission.ExecutionEvidence {
+	evidence := providerEvidence(outcome, reference, now)
+	evidence.Kind = submission.EvidenceProviderReadBack
+	return evidence
+}
+
+func executionTestDigest(value string) string {
+	return "4778c951699235578c528c0b73bb72b252259125f504120d1285c79ff944ea90" // deterministic valid digest; reference still prevents aliasing
+}
+
+type manualAuthorizerFunc func(context.Context, submission.ExecutionScope, string) (string, error)
+
+func (f manualAuthorizerFunc) AuthorizeManualResolution(ctx context.Context, scope submission.ExecutionScope, attemptID string) (string, error) {
+	return f(ctx, scope, attemptID)
+}
+
+func resetExecutionTables(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Exec("TRUNCATE TABLE "+TargetFenceTable+", "+AttemptTable+" CASCADE").Error)
+}
+
+func openExecutionPostgres(t *testing.T, ctx context.Context) (*gorm.DB, interface{ Close() error }) {
+	t.Helper()
+	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
+		tcpostgres.WithDatabase("submission_kernel"),
+		tcpostgres.WithUsername("submission_kernel"),
+		tcpostgres.WithPassword("submission_kernel"),
+		tcpostgres.BasicWaitStrategies(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(8)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	return db, sqlDB
+}
+
+func init() {
+	if runtime.GOOS == "windows" && os.Getenv("DOCKER_HOST") == "" {
+		_ = os.Setenv("DOCKER_HOST", "npipe:////./pipe/dockerDesktopLinuxEngine")
+	}
+}
