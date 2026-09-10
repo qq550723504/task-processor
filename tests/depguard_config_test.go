@@ -671,11 +671,13 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 		}
 	}
 	for _, pattern := range []string{
+		`- "!**/internal/integration/persistence/listing/submission/*.go"`,
+		`- "!**/internal/integration/persistence/listing/submission/**/*.go"`,
 		`- "!**/internal/integration/persistence/product/catalog/*.go"`,
 		`- "!**/internal/integration/persistence/product/catalog/**/*.go"`,
 	} {
 		if !strings.Contains(config, pattern) {
-			t.Errorf("%s must exclude only the approved Catalog persistence adapter with %s", configPath, pattern)
+			t.Errorf("%s must exclude the exact approved domain persistence adapters with %s", configPath, pattern)
 		}
 	}
 
@@ -727,6 +729,32 @@ func TestInfrastructureBusinessDepguardPatternCoversInfrastructureTrees(t *testi
 	}
 	if _, denied := adapterDeny["task-processor/internal/product/catalog$"]; denied {
 		t.Error("product_catalog_persistence_boundary must allow the adapter to implement Catalog-owned ports")
+	}
+
+	submissionRule := requireDepguardRule(t, loadDepguardRules(t, configPath), "listing_submission_persistence_boundary")
+	submissionFiles := stringSet(submissionRule.Files)
+	for _, pattern := range []string{
+		"**/internal/integration/persistence/listing/submission/*.go",
+		"**/internal/integration/persistence/listing/submission/**/*.go",
+	} {
+		if _, ok := submissionFiles[pattern]; !ok {
+			t.Errorf("listing_submission_persistence_boundary must cover only the approved adapter with %s", pattern)
+		}
+	}
+	submissionDeny := depguardDenyPackageSet(submissionRule)
+	for _, packagePath := range []string{
+		"task-processor/internal/amazonlisting$",
+		"task-processor/internal/listingkit$",
+		"task-processor/internal/marketplace$",
+		"task-processor/internal/product$",
+		"task-processor/internal/publishing$",
+	} {
+		if _, ok := submissionDeny[packagePath]; !ok {
+			t.Errorf("listing_submission_persistence_boundary must keep adapter free of %s", packagePath)
+		}
+	}
+	if _, denied := submissionDeny["task-processor/internal/listing/submission$"]; denied {
+		t.Error("listing_submission_persistence_boundary must allow the adapter to implement Submission-owned ports")
 	}
 }
 

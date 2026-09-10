@@ -4,6 +4,46 @@ Owns submit, retry, recovery, state, and submission orchestration that is generi
 
 Current stable ownership:
 
+- provider-neutral durable execution kernel (`ExecutionKernel`) with an
+  Organization-scoped business intent, canonical payload fingerprint, versioned
+  deterministic provider execution key, target fence, claim owner/token/lease,
+  and evidence-bound terminal result
+- one-time `SendPermit` issuance: only the first successfully committed intent,
+  attempt, target fence, and claim transaction with transaction-local
+  `synchronous_commit=on` can return a permit; setup failure, replay, and
+  commit-outcome-unknown paths never issue another permit; initial and renewed
+  lease deadlines are canonicalized to PostgreSQL microsecond precision before
+  persistence, mutations recheck time after acquiring all durable row locks, and
+  an already-expired post-transaction result is never returned as live authority
+- execution states `claimed -> succeeded | failed_definitive |
+  outcome_unknown`; timeout, response loss, cancellation after claim, and lease
+  expiry are conservative `outcome_unknown` transitions, never unsent retries
+- unknown-outcome resolution through qualified provider read-back/adoption or a
+  separately authorized manual decision with auditable no-side-effect evidence;
+  the kernel exposes no unknown-to-resend transition; evidence reasons preserve
+  caller text but must be valid UTF-8, exclude PostgreSQL-incompatible NUL, and
+  contain at most 512 Unicode characters, matching PostgreSQL `VARCHAR(512)`
+  without truncation; required definitive/manual reasons reject the same
+  Unicode whitespace set as Go `strings.TrimSpace`, while valid evidence
+  reference, manual-authorizer, and observed-at bounds are enforced by both the
+  domain and database contracts
+- PostgreSQL execution repository/UoW under
+  `internal/integration/persistence/listing/submission`, including
+  Organization-qualified keys and predicates, same-intent replay/conflict,
+  cross-intent target serialization, stale-fence rejection, atomic rollback, and
+  constructor-time fail-closed verification that both relations are ordinary
+  permanent/logged tables without inheritance or row security in a UTF8 database,
+  with their complete column contracts (including no
+  identity/generated attributes and deterministic text equality), constraint
+  contracts, and no user-defined
+  triggers, rewrite rules or extra uniqueness-imposing indexes (non-unique
+  operational indexes
+  are allowed); each new intent and target-fence insert must affect exactly one row;
+  database state-shape checks reject NULL-required or stray partial evidence;
+  provider keys must match the existing length-prefixed SHA-256 derivation, and
+  terminal evidence must be observed no later than finalization; terminal
+  update/finalization times agree, provider-response finalization precedes lease
+  expiry, and persisted timestamps must be finite and nonzero
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)
@@ -67,6 +107,11 @@ Current stable ownership:
 Does not own yet:
 
 - full submit orchestration and platform routing
+- provider authorization, Store ownership/connection/entitlement, platform
+  finality/read-back implementations, or selection of an authorized manual
+  operator; those remain future application/adapter gates
+- public API/runtime/schema-init mounting; the durable kernel is an isolated
+  internal capability until a separately admitted adapter is available
 - SHEIN-specific submit package loading and remote confirmation details
 - Temporal-facing submit workflow adapters beyond generic submit-in-progress error shaping
 - repository-specific durable retry/reblock persistence adapters
