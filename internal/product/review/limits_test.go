@@ -49,6 +49,7 @@ func (d *deadlineStore) Load(string) (Record, error) {
 }
 func (d *deadlineStore) Replay() (View, bool, error)             { return View{}, false, nil }
 func (d *deadlineStore) Reader() catalog.VersionedSnapshotReader { return d }
+func (d *deadlineStore) SourceReader() SourcePublicationReader   { return &sourcePublicationReaderStub{} }
 func (d *deadlineStore) GetSnapshot(ctx context.Context, _ catalog.SnapshotIdentity, _ uint64) (catalog.PublishedSnapshot, error) {
 	_, d.saw = ctx.Deadline()
 	return catalog.PublishedSnapshot{}, context.Canceled

@@ -233,6 +233,40 @@ func TestPostgresAtomicPublicationReplayReadRestartAndIsolation(t *testing.T) {
 	assertCounts(t, db, 1, 1, 1, 1)
 }
 
+func TestPostgresTransactionReaderUsesCallerConnectionAndRejectsRootDB(t *testing.T) {
+	db := postgresFixture(t)
+	store, err := NewRepository(db, testCatalogBridgeFactory)
+	require.NoError(t, err)
+	publication := atomicFixture(t, "pub-transaction-reader", "product-transaction-reader", uint64Pointer(0))
+	_, err = store.Publish(context.Background(), publication)
+	require.NoError(t, err)
+
+	_, err = NewTransactionReader(db, testCatalogBridgeFactory)
+	require.ErrorIs(t, err, sourcing.ErrSourcePublicationUnavailable)
+
+	raw, err := db.DB()
+	require.NoError(t, err)
+	raw.SetMaxOpenConns(1)
+	raw.SetMaxIdleConns(1)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		reader, readerErr := NewTransactionReader(tx, testCatalogBridgeFactory)
+		if readerErr != nil {
+			return readerErr
+		}
+		persisted, readerErr := reader.Read(context.Background(), "org-a", "pub-transaction-reader")
+		if readerErr != nil {
+			return readerErr
+		}
+		require.Equal(t, publication.PublicationID, persisted.Receipt.PublicationID)
+		require.Equal(t, publication.Snapshot, persisted.Snapshot)
+		return nil
+	}))
+
+	persisted, err := store.Read(context.Background(), "org-a", "pub-transaction-reader")
+	require.NoError(t, err)
+	require.Equal(t, publication.PublicationID, persisted.Receipt.PublicationID)
+}
+
 func TestPostgresAtomicPublicationConcurrencyAndExpectedVersionRace(t *testing.T) {
 	db := postgresFixture(t)
 	store, err := NewRepository(db, testCatalogBridgeFactory)

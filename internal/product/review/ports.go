@@ -31,6 +31,7 @@ type Tx interface {
 	Complete(View) error
 	Publisher() *catalog.Publisher
 	Reader() catalog.VersionedSnapshotReader
+	SourceReader() SourcePublicationReader
 }
 type Store interface {
 	Read(context.Context, Scope, string) (Record, error)

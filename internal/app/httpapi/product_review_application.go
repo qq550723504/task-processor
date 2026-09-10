@@ -65,7 +65,10 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	if err != nil {
 		return nil, err
 	}
-	store, err := reviewstore.NewRepository(db)
+	live := &productReviewLiveOrganizationAccess{resolver: resolver, now: time.Now}
+	store, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
+		return productsourcing.NewTransactionReader(tx, live, auth)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +76,6 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	if err != nil {
 		return nil, err
 	}
-	live := &productReviewLiveOrganizationAccess{resolver: resolver, now: time.Now}
 	sourceReader, err := productsourcing.NewInternalProducer(db, live, auth)
 	if err != nil {
 		return nil, err

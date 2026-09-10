@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/product/sourcing"
 )
 
-func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotReader, org string, in CreateInput) (catalog.PublishedSnapshot, sourcing.SourceEnvelope, error) {
+func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationReader, org string, in CreateInput) (catalog.PublishedSnapshot, sourcing.SourceEnvelope, error) {
 	p, err := reader.GetSnapshot(ctx, catalog.SnapshotIdentity{TenantID: org, ProductKey: in.ProductKey}, in.BaseVersion)
 	if err != nil {
 		return p, sourcing.SourceEnvelope{}, err
@@ -16,7 +16,10 @@ func (s *Service) source(ctx context.Context, reader catalog.VersionedSnapshotRe
 	if p.Identity.TenantID != org || p.Identity.ProductKey != in.ProductKey || p.Version != in.BaseVersion || !ValidKey(p.PublicationID) {
 		return p, sourcing.SourceEnvelope{}, ErrConflict
 	}
-	persisted, err := s.sourceReader.Read(ctx, p.PublicationID)
+	if sourceReader == nil {
+		return p, sourcing.SourceEnvelope{}, ErrUnavailable
+	}
+	persisted, err := sourceReader.Read(ctx, p.PublicationID)
 	if err != nil {
 		return p, sourcing.SourceEnvelope{}, mapSourceReadError(err)
 	}

@@ -101,10 +101,14 @@ type PublicationAuthorizer interface {
 	Authorize(context.Context) (PublicationScope, error)
 }
 
+type PublicationReadStore interface {
+	Read(context.Context, string, string) (PersistedPublication, error)
+}
+
 type PublicationStore interface {
+	PublicationReadStore
 	Publish(context.Context, AtomicPublication) (PublicationReceipt, error)
 	Verify(context.Context, AtomicPublication) (PublicationReceipt, error)
-	Read(context.Context, string, string) (PersistedPublication, error)
 }
 
 // InternalProducer is the admitted in-process entry. It has no HTTP/provider
@@ -113,6 +117,21 @@ type InternalProducer struct {
 	authorizer PublicationAuthorizer
 	store      PublicationStore
 	admitted   map[ProducerDescriptor]struct{}
+}
+
+// InternalReader is the admitted read-only entry for exact persisted source
+// evidence. The supplied store decides whether the read owns a transaction or
+// participates in a caller-owned transaction.
+type InternalReader struct {
+	authorizer PublicationAuthorizer
+	store      PublicationReadStore
+}
+
+func NewInternalReader(authorizer PublicationAuthorizer, store PublicationReadStore) (*InternalReader, error) {
+	if authorizer == nil || store == nil {
+		return nil, ErrSourcePublicationUnavailable
+	}
+	return &InternalReader{authorizer: authorizer, store: store}, nil
 }
 
 func NewInternalProducer(authorizer PublicationAuthorizer, store PublicationStore, admitted ...ProducerDescriptor) (*InternalProducer, error) {
@@ -169,15 +188,29 @@ func (p *InternalProducer) Verify(ctx context.Context, command PublicationComman
 
 // Read returns one exact persisted publication after fresh authorization.
 func (p *InternalProducer) Read(ctx context.Context, publicationID string) (PersistedPublication, error) {
+	if p == nil {
+		return PersistedPublication{}, ErrSourcePublicationUnavailable
+	}
+	return readPersistedPublication(ctx, p.authorizer, p.store, publicationID)
+}
+
+func (r *InternalReader) Read(ctx context.Context, publicationID string) (PersistedPublication, error) {
+	if r == nil {
+		return PersistedPublication{}, ErrSourcePublicationUnavailable
+	}
+	return readPersistedPublication(ctx, r.authorizer, r.store, publicationID)
+}
+
+func readPersistedPublication(ctx context.Context, authorizer PublicationAuthorizer, store PublicationReadStore, publicationID string) (PersistedPublication, error) {
 	ctx, cancel := publicationContext(ctx)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return PersistedPublication{}, err
 	}
-	if p == nil || p.authorizer == nil || p.store == nil {
+	if authorizer == nil || store == nil {
 		return PersistedPublication{}, ErrSourcePublicationUnavailable
 	}
-	scope, err := p.authorizer.Authorize(ctx)
+	scope, err := authorizer.Authorize(ctx)
 	if err != nil {
 		return PersistedPublication{}, err
 	}
@@ -185,7 +218,7 @@ func (p *InternalProducer) Read(ctx context.Context, publicationID string) (Pers
 	if !authidentity.IsBoundedIdentifier(scope.OrganizationID) || !authidentity.IsBoundedIdentifier(scope.ActorID) || !authidentity.IsBoundedIdentifier(publicationID) {
 		return PersistedPublication{}, ErrInvalidSourcePublication
 	}
-	persisted, err := p.store.Read(ctx, scope.OrganizationID, publicationID)
+	persisted, err := store.Read(ctx, scope.OrganizationID, publicationID)
 	if err != nil {
 		return PersistedPublication{}, err
 	}

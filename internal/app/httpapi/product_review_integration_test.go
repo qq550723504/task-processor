@@ -403,9 +403,47 @@ func TestProductReviewHTTPCreateUsesOneDatabaseConnection(t *testing.T) {
 	raw.SetMaxOpenConns(1)
 	raw.SetMaxIdleConns(1)
 
-	v := titleCreate(t, f.server(t), "single-connection-create")
+	s := f.server(t)
+	v := titleCreate(t, s, "single-connection-create")
 	require.Equal(t, "pending", v.State)
 	require.Equal(t, uint64(1), v.Revision)
+	v = titleDecision(t, s, v, "edit", "operator", "Single connection edit", 200)
+	require.Equal(t, "pending", v.State)
+	v = titleDecision(t, s, v, "accept", "admin", "", 200)
+	require.Equal(t, "accepted", v.State)
+	v = titleApply(t, s, v, "single-connection-apply", 200)
+	require.Equal(t, "applied", v.State)
+	require.Equal(t, uint64(2), v.Receipt.ProductVersion)
+}
+
+func TestProductReviewHTTPBoundedPoolBurstDoesNotStarve(t *testing.T) {
+	f := newTitleFixture(t)
+	raw, err := f.db.DB()
+	require.NoError(t, err)
+	raw.SetMaxOpenConns(2)
+	raw.SetMaxIdleConns(2)
+	s := f.server(t)
+
+	const requests = 6
+	start := make(chan struct{})
+	statuses := make(chan int, requests)
+	errors := make(chan error, requests)
+	for index := 0; index < requests; index++ {
+		go func(index int) {
+			<-start
+			status, _, requestErr := titleRequest(s, "POST", titleBasePath, "operator", "B", fmt.Sprintf("bounded-pool-%d", index), `{"product_key":"product","base_version":1}`)
+			statuses <- status
+			errors <- requestErr
+		}(index)
+	}
+	close(start)
+	for range requests {
+		require.NoError(t, <-errors)
+		require.Equal(t, http.StatusOK, <-statuses)
+	}
+	var proposals int64
+	require.NoError(t, f.db.Table("product_title_proposals").Count(&proposals).Error)
+	require.Equal(t, int64(requests), proposals)
 }
 
 func TestProductReviewHTTPRevokedBetweenRouteAndSourceRead(t *testing.T) {
@@ -442,12 +480,21 @@ func TestProductReviewHTTPEachEvidenceUseRefreshesSourceAuthorizationWithoutSour
 	require.Equal(t, "pending", v.State)
 
 	before = f.grants.live.Load()
+	v = titleDecision(t, s, v, "edit", "operator", "Human reviewed title", 200)
+	require.Equal(t, before+2, f.grants.live.Load())
+
+	before = f.grants.live.Load()
 	v = titleDecision(t, s, v, "accept", "admin", "", 200)
 	require.Equal(t, before+2, f.grants.live.Load())
 
 	before = f.grants.live.Load()
 	titleApply(t, s, v, "fresh-apply", 200)
 	require.Equal(t, before+2, f.grants.live.Load())
+
+	rejected := titleCreate(t, s, "reject-without-source-recheck")
+	before = f.grants.live.Load()
+	titleDecision(t, s, rejected, "reject", "admin", "", 200)
+	require.Equal(t, before+1, f.grants.live.Load(), "Reject needs only the route resolution, without an SRC recheck")
 
 	var sourceRowsAfter int64
 	require.NoError(t, f.db.Table("product_source_publications").Count(&sourceRowsAfter).Error)

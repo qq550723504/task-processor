@@ -73,7 +73,7 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	if v, found, e := s.store.FindOperation(ctx, op); e != nil || found {
 		return v, e
 	}
-	base, source, err := s.source(ctx, s.reader, a.Org, in)
+	base, source, err := s.source(ctx, s.reader, s.sourceReader, a.Org, in)
 	if err != nil {
 		return View{}, err
 	}
@@ -93,7 +93,7 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 		if v, found, e := tx.Replay(); e != nil || found {
 			return v, e
 		}
-		rechecked, _, e := s.source(ctx, tx.Reader(), a.Org, in)
+		rechecked, _, e := s.source(ctx, tx.Reader(), tx.SourceReader(), a.Org, in)
 		if e != nil {
 			return View{}, e
 		}
@@ -144,7 +144,7 @@ func (s *Service) validatePatch(ctx context.Context, tx Tx, r *Record, a Scope) 
 	if err := ValidateTitle(r.Title); err != nil {
 		return catalog.PublishedSnapshot{}, err
 	}
-	base, source, err := s.source(ctx, tx.Reader(), a.Org, r.Input)
+	base, source, err := s.source(ctx, tx.Reader(), tx.SourceReader(), a.Org, r.Input)
 	if err != nil {
 		return base, err
 	}

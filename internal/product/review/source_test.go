@@ -52,7 +52,7 @@ func TestSourceDerivesPublicationFromExactCatalogVersion(t *testing.T) {
 	}}
 	service := &Service{reader: exactCatalogReaderStub{published: published}, sourceReader: source}
 
-	base, envelope, err := service.source(context.Background(), service.reader, "org", CreateInput{ProductKey: "product", BaseVersion: 7})
+	base, envelope, err := service.source(context.Background(), service.reader, service.sourceReader, "org", CreateInput{ProductKey: "product", BaseVersion: 7})
 	require.NoError(t, err)
 	require.Equal(t, "source-publication", source.requested)
 	require.Equal(t, published, base)
@@ -84,7 +84,7 @@ func TestSourceRejectsCatalogAndSourceBindingMismatch(t *testing.T) {
 			}, Snapshot: published.Snapshot}
 			test.mutate(&value)
 			service := &Service{reader: exactCatalogReaderStub{published: published}, sourceReader: &sourcePublicationReaderStub{value: value}}
-			_, _, err := service.source(context.Background(), service.reader, "org", CreateInput{ProductKey: "product", BaseVersion: 7})
+			_, _, err := service.source(context.Background(), service.reader, service.sourceReader, "org", CreateInput{ProductKey: "product", BaseVersion: 7})
 			require.ErrorIs(t, err, ErrConflict)
 		})
 	}
@@ -116,7 +116,7 @@ func TestSourceMapsExactBoundaryFailures(t *testing.T) {
 				sourceReader.err = test.err
 			}
 			service := &Service{reader: catalogReader, sourceReader: sourceReader}
-			_, _, err := service.source(context.Background(), service.reader, "org", CreateInput{ProductKey: "product", BaseVersion: 7})
+			_, _, err := service.source(context.Background(), service.reader, service.sourceReader, "org", CreateInput{ProductKey: "product", BaseVersion: 7})
 			require.ErrorIs(t, err, test.want)
 		})
 	}
