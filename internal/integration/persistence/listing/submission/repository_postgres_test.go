@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"gorm.io/driver/postgres"
@@ -420,6 +421,74 @@ $$`).Error)
 		require.Zero(t, count)
 	})
 
+	t.Run("database rejects null required state fields", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			intent string
+			mutate func(*executionAttemptRow)
+		}{
+			{
+				name:   "outcome unknown without reason",
+				intent: "intent-null-unknown-reason",
+				mutate: func(row *executionAttemptRow) {
+					row.Status = string(submission.ExecutionOutcomeUnknown)
+					row.UnknownReason = nil
+				},
+			},
+			{
+				name:   "terminal evidence without outcome",
+				intent: "intent-null-evidence-outcome",
+				mutate: func(row *executionAttemptRow) {
+					kind := string(submission.EvidenceProviderResponse)
+					reference, fingerprint := "provider-reference", executionTestDigest("provider-reference")
+					observedAt, finishedAt := row.UpdatedAt, row.UpdatedAt
+					row.Status = string(submission.ExecutionSucceeded)
+					row.EvidenceKind = &kind
+					row.EvidenceOutcome = nil
+					row.EvidenceReference = &reference
+					row.EvidenceFingerprint = &fingerprint
+					row.EvidenceObservedAt = &observedAt
+					row.FinishedAt = &finishedAt
+				},
+			},
+			{
+				name:   "claimed state with stray evidence field",
+				intent: "intent-claimed-stray-evidence",
+				mutate: func(row *executionAttemptRow) {
+					reason := "must not be hidden by read-back mapping"
+					row.EvidenceReason = &reason
+				},
+			},
+		}
+		for index, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				resetExecutionTables(t, db)
+				now := time.Date(2026, 9, 10, 2, 55+index, 0, 0, time.UTC)
+				kernel := executionKernel(t, db, func() time.Time { return now })
+				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-source", "listing-source", `{"title":"one"}`))
+				require.NoError(t, err)
+
+				row := attemptRowFrom(acquired.Attempt, submission.ExecutionClaimTokenHash(acquired.Permit.ClaimToken))
+				row.AttemptID = []string{"01890f5e-7b3d-7cc0-98a1-123456789abc", "01890f5e-7b3d-7cc0-98a1-123456789abd", "01890f5e-7b3d-7cc0-98a1-123456789abe"}[index]
+				row.IntentKey = tc.intent
+				row.SubjectID = "listing-" + tc.intent
+				row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat([]string{"a", "b", "c"}[index], 64)
+				row.FenceEpoch++
+				tc.mutate(&row)
+
+				err = db.Table(attemptTable).Create(&row).Error
+				require.Error(t, err, "invalid state row must be rejected by PostgreSQL, not only by read-back validation")
+				var postgresErr *pgconn.PgError
+				require.ErrorAs(t, err, &postgresErr)
+				require.Equal(t, "23514", postgresErr.Code)
+				require.Equal(t, "listing_submission_execution_attempts_state_shape_check", postgresErr.ConstraintName)
+				var count int64
+				require.NoError(t, db.Table(attemptTable).Where("organization_id = ? AND intent_key = ?", "org-a", tc.intent).Count(&count).Error)
+				require.Zero(t, count)
+			})
+		}
+	})
+
 	t.Run("commit acknowledgement loss exposes no permit and replay cannot resend", func(t *testing.T) {
 		resetExecutionTables(t, db)
 		now := time.Date(2026, 9, 10, 2, 55, 0, 0, time.UTC)
@@ -618,6 +687,13 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 			statements: []string{
 				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_state_shape_check",
 				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_state_shape_check CHECK ((status = 'claimed' AND unknown_reason IS NULL AND evidence_kind IS NULL AND finished_at IS NULL) OR (status = 'outcome_unknown' AND unknown_reason IN ('response_lost', 'lease_expired', 'execution_cancelled') AND evidence_kind IS NULL AND finished_at IS NULL) OR (status IN ('succeeded', 'failed_definitive', 'cancelled') AND unknown_reason IS NULL AND evidence_kind IS NOT NULL AND evidence_outcome = status AND evidence_reference IS NOT NULL AND evidence_fingerprint IS NOT NULL AND evidence_observed_at IS NOT NULL AND finished_at IS NOT NULL) OR true)",
+			},
+		},
+		{
+			name: "same-name state constraint accepts null required fields",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_state_shape_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_state_shape_check CHECK ((status = 'claimed' AND unknown_reason IS NULL AND evidence_kind IS NULL AND finished_at IS NULL) OR (status = 'outcome_unknown' AND unknown_reason IN ('response_lost', 'lease_expired', 'execution_cancelled') AND evidence_kind IS NULL AND finished_at IS NULL) OR (status IN ('succeeded', 'failed_definitive', 'cancelled') AND unknown_reason IS NULL AND evidence_kind IS NOT NULL AND evidence_outcome = status AND evidence_reference IS NOT NULL AND evidence_fingerprint IS NOT NULL AND evidence_observed_at IS NOT NULL AND finished_at IS NOT NULL))",
 			},
 		},
 		{

@@ -63,9 +63,10 @@ var schemaStatements = []string{
     CONSTRAINT listing_submission_execution_attempts_fence_check CHECK (fence_epoch > 0),
     CONSTRAINT listing_submission_execution_attempts_timestamp_check CHECK (updated_at >= created_at AND lease_expires_at > created_at AND (finished_at IS NULL OR finished_at >= created_at)),
     CONSTRAINT listing_submission_execution_attempts_state_shape_check CHECK (
-        (status = 'claimed' AND unknown_reason IS NULL AND evidence_kind IS NULL AND finished_at IS NULL) OR
-        (status = 'outcome_unknown' AND unknown_reason IN ('response_lost', 'lease_expired', 'execution_cancelled') AND evidence_kind IS NULL AND finished_at IS NULL) OR
+        ((status = 'claimed' AND unknown_reason IS NULL AND evidence_kind IS NULL AND evidence_outcome IS NULL AND evidence_reference IS NULL AND evidence_fingerprint IS NULL AND evidence_reason IS NULL AND evidence_authorized_by IS NULL AND evidence_observed_at IS NULL AND finished_at IS NULL) OR
+        (status = 'outcome_unknown' AND unknown_reason IN ('response_lost', 'lease_expired', 'execution_cancelled') AND evidence_kind IS NULL AND evidence_outcome IS NULL AND evidence_reference IS NULL AND evidence_fingerprint IS NULL AND evidence_reason IS NULL AND evidence_authorized_by IS NULL AND evidence_observed_at IS NULL AND finished_at IS NULL) OR
         (status IN ('succeeded', 'failed_definitive', 'cancelled') AND unknown_reason IS NULL AND evidence_kind IS NOT NULL AND evidence_outcome = status AND evidence_reference IS NOT NULL AND evidence_fingerprint IS NOT NULL AND evidence_observed_at IS NOT NULL AND finished_at IS NOT NULL)
+        ) IS TRUE
     ),
     CONSTRAINT listing_submission_execution_attempts_evidence_check CHECK (
         evidence_kind IS NULL OR
@@ -73,7 +74,7 @@ var schemaStatements = []string{
         (evidence_kind = 'provider_readback' AND evidence_outcome IN ('succeeded', 'failed_definitive') AND evidence_authorized_by IS NULL) OR
         (evidence_kind = 'manual_resolution' AND evidence_outcome IN ('succeeded', 'failed_definitive', 'cancelled') AND evidence_authorized_by IS NOT NULL AND evidence_reason IS NOT NULL)
     ),
-    CONSTRAINT listing_submission_execution_attempts_definitive_reason_check CHECK (evidence_outcome NOT IN ('failed_definitive', 'cancelled') OR evidence_reason IS NOT NULL)
+    CONSTRAINT listing_submission_execution_attempts_definitive_reason_check CHECK (evidence_outcome IS NULL OR evidence_outcome NOT IN ('failed_definitive', 'cancelled') OR evidence_reason IS NOT NULL)
 )`,
 	`CREATE TABLE public.listing_submission_target_fences (
     organization_id VARCHAR(128) NOT NULL,
@@ -178,13 +179,13 @@ var expectedConstraints = map[string]map[string]constraintContract{
 			kind: "c", exactDefinition: `CHECK (((updated_at >= created_at) AND (lease_expires_at > created_at) AND ((finished_at IS NULL) OR (finished_at >= created_at))))`,
 		},
 		"listing_submission_execution_attempts_state_shape_check": {
-			kind: "c", exactDefinition: `CHECK (((((status)::text = 'claimed'::text) AND (unknown_reason IS NULL) AND (evidence_kind IS NULL) AND (finished_at IS NULL)) OR (((status)::text = 'outcome_unknown'::text) AND ((unknown_reason)::text = ANY ((ARRAY['response_lost'::character varying, 'lease_expired'::character varying, 'execution_cancelled'::character varying])::text[])) AND (evidence_kind IS NULL) AND (finished_at IS NULL)) OR (((status)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (unknown_reason IS NULL) AND (evidence_kind IS NOT NULL) AND ((evidence_outcome)::text = (status)::text) AND (evidence_reference IS NOT NULL) AND (evidence_fingerprint IS NOT NULL) AND (evidence_observed_at IS NOT NULL) AND (finished_at IS NOT NULL))))`,
+			kind: "c", exactDefinition: `CHECK ((((((status)::text = 'claimed'::text) AND (unknown_reason IS NULL) AND (evidence_kind IS NULL) AND (evidence_outcome IS NULL) AND (evidence_reference IS NULL) AND (evidence_fingerprint IS NULL) AND (evidence_reason IS NULL) AND (evidence_authorized_by IS NULL) AND (evidence_observed_at IS NULL) AND (finished_at IS NULL)) OR (((status)::text = 'outcome_unknown'::text) AND ((unknown_reason)::text = ANY ((ARRAY['response_lost'::character varying, 'lease_expired'::character varying, 'execution_cancelled'::character varying])::text[])) AND (evidence_kind IS NULL) AND (evidence_outcome IS NULL) AND (evidence_reference IS NULL) AND (evidence_fingerprint IS NULL) AND (evidence_reason IS NULL) AND (evidence_authorized_by IS NULL) AND (evidence_observed_at IS NULL) AND (finished_at IS NULL)) OR (((status)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (unknown_reason IS NULL) AND (evidence_kind IS NOT NULL) AND ((evidence_outcome)::text = (status)::text) AND (evidence_reference IS NOT NULL) AND (evidence_fingerprint IS NOT NULL) AND (evidence_observed_at IS NOT NULL) AND (finished_at IS NOT NULL))) IS TRUE))`,
 		},
 		"listing_submission_execution_attempts_evidence_check": {
 			kind: "c", exactDefinition: `CHECK (((evidence_kind IS NULL) OR (((evidence_kind)::text = 'provider_response'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'provider_readback'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'manual_resolution'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (evidence_authorized_by IS NOT NULL) AND (evidence_reason IS NOT NULL))))`,
 		},
 		"listing_submission_execution_attempts_definitive_reason_check": {
-			kind: "c", exactDefinition: `CHECK ((((evidence_outcome)::text <> ALL ((ARRAY['failed_definitive'::character varying, 'cancelled'::character varying])::text[])) OR (evidence_reason IS NOT NULL)))`,
+			kind: "c", exactDefinition: `CHECK (((evidence_outcome IS NULL) OR ((evidence_outcome)::text <> ALL ((ARRAY['failed_definitive'::character varying, 'cancelled'::character varying])::text[])) OR (evidence_reason IS NOT NULL)))`,
 		},
 	},
 	TargetFenceTable: {
