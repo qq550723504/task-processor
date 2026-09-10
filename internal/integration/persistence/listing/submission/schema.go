@@ -11,6 +11,10 @@ import (
 const (
 	AttemptTable     = "listing_submission_execution_attempts"
 	TargetFenceTable = "listing_submission_target_fences"
+	// executionEvidenceTrimSpaceCharacters is the Unicode White_Space set used
+	// by Go strings.TrimSpace. Required evidence reasons use this exact set in
+	// PostgreSQL so write-time and read-time validation cannot disagree.
+	executionEvidenceTrimSpaceCharacters = "\t\n\v\f\r \u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 )
 
 var schemaStatements = []string{
@@ -72,9 +76,18 @@ var schemaStatements = []string{
         evidence_kind IS NULL OR
         (evidence_kind = 'provider_response' AND evidence_outcome IN ('succeeded', 'failed_definitive') AND evidence_authorized_by IS NULL) OR
         (evidence_kind = 'provider_readback' AND evidence_outcome IN ('succeeded', 'failed_definitive') AND evidence_authorized_by IS NULL) OR
-        (evidence_kind = 'manual_resolution' AND evidence_outcome IN ('succeeded', 'failed_definitive', 'cancelled') AND evidence_authorized_by IS NOT NULL AND evidence_reason IS NOT NULL)
+        (evidence_kind = 'manual_resolution' AND evidence_outcome IN ('succeeded', 'failed_definitive', 'cancelled') AND evidence_authorized_by IS NOT NULL AND evidence_authorized_by ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND evidence_reason IS NOT NULL)
     ),
-    CONSTRAINT listing_submission_execution_attempts_definitive_reason_check CHECK (evidence_outcome IS NULL OR evidence_outcome NOT IN ('failed_definitive', 'cancelled') OR evidence_reason IS NOT NULL)
+    CONSTRAINT listing_submission_execution_attempts_evidence_value_check CHECK (
+        (evidence_kind IS NULL OR (
+            evidence_reference ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND
+            evidence_observed_at >= created_at
+        )) IS TRUE
+    ),
+    CONSTRAINT listing_submission_execution_attempts_definitive_reason_check CHECK (
+        (evidence_kind = 'manual_resolution' OR evidence_outcome IN ('failed_definitive', 'cancelled')) IS NOT TRUE OR
+        (evidence_reason IS NOT NULL AND btrim(evidence_reason, '` + executionEvidenceTrimSpaceCharacters + `') <> '')
+    )
 )`,
 	`CREATE TABLE public.listing_submission_target_fences (
     organization_id VARCHAR(128) NOT NULL,
@@ -184,10 +197,13 @@ var expectedConstraints = map[string]map[string]constraintContract{
 			kind: "c", exactDefinition: `CHECK ((((((status)::text = 'claimed'::text) AND (unknown_reason IS NULL) AND (evidence_kind IS NULL) AND (evidence_outcome IS NULL) AND (evidence_reference IS NULL) AND (evidence_fingerprint IS NULL) AND (evidence_reason IS NULL) AND (evidence_authorized_by IS NULL) AND (evidence_observed_at IS NULL) AND (finished_at IS NULL)) OR (((status)::text = 'outcome_unknown'::text) AND ((unknown_reason)::text = ANY ((ARRAY['response_lost'::character varying, 'lease_expired'::character varying, 'execution_cancelled'::character varying])::text[])) AND (evidence_kind IS NULL) AND (evidence_outcome IS NULL) AND (evidence_reference IS NULL) AND (evidence_fingerprint IS NULL) AND (evidence_reason IS NULL) AND (evidence_authorized_by IS NULL) AND (evidence_observed_at IS NULL) AND (finished_at IS NULL)) OR (((status)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (unknown_reason IS NULL) AND (evidence_kind IS NOT NULL) AND ((evidence_outcome)::text = (status)::text) AND (evidence_reference IS NOT NULL) AND (evidence_fingerprint IS NOT NULL) AND (evidence_observed_at IS NOT NULL) AND (finished_at IS NOT NULL))) IS TRUE))`,
 		},
 		"listing_submission_execution_attempts_evidence_check": {
-			kind: "c", exactDefinition: `CHECK (((evidence_kind IS NULL) OR (((evidence_kind)::text = 'provider_response'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'provider_readback'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'manual_resolution'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (evidence_authorized_by IS NOT NULL) AND (evidence_reason IS NOT NULL))))`,
+			kind: "c", exactDefinition: `CHECK (((evidence_kind IS NULL) OR (((evidence_kind)::text = 'provider_response'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'provider_readback'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying])::text[])) AND (evidence_authorized_by IS NULL)) OR (((evidence_kind)::text = 'manual_resolution'::text) AND ((evidence_outcome)::text = ANY ((ARRAY['succeeded'::character varying, 'failed_definitive'::character varying, 'cancelled'::character varying])::text[])) AND (evidence_authorized_by IS NOT NULL) AND ((evidence_authorized_by)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND (evidence_reason IS NOT NULL))))`,
+		},
+		"listing_submission_execution_attempts_evidence_value_check": {
+			kind: "c", exactDefinition: `CHECK ((((evidence_kind IS NULL) OR (((evidence_reference)::text ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'::text) AND (evidence_observed_at >= created_at))) IS TRUE))`,
 		},
 		"listing_submission_execution_attempts_definitive_reason_check": {
-			kind: "c", exactDefinition: `CHECK (((evidence_outcome IS NULL) OR ((evidence_outcome)::text <> ALL ((ARRAY['failed_definitive'::character varying, 'cancelled'::character varying])::text[])) OR (evidence_reason IS NOT NULL)))`,
+			kind: "c", exactDefinition: `CHECK ((((((evidence_kind)::text = 'manual_resolution'::text) OR ((evidence_outcome)::text = ANY ((ARRAY['failed_definitive'::character varying, 'cancelled'::character varying])::text[]))) IS NOT TRUE) OR ((evidence_reason IS NOT NULL) AND (btrim((evidence_reason)::text, '` + executionEvidenceTrimSpaceCharacters + `'::text) <> ''::text))))`,
 		},
 	},
 	TargetFenceTable: {

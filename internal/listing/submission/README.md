@@ -22,7 +22,10 @@ Current stable ownership:
   the kernel exposes no unknown-to-resend transition; evidence reasons preserve
   caller text but must be valid UTF-8, exclude PostgreSQL-incompatible NUL, and
   contain at most 512 Unicode characters, matching PostgreSQL `VARCHAR(512)`
-  without truncation
+  without truncation; required definitive/manual reasons reject the same
+  Unicode whitespace set as Go `strings.TrimSpace`, while valid evidence
+  reference, manual-authorizer, and observed-at bounds are enforced by both the
+  domain and database contracts
 - PostgreSQL execution repository/UoW under
   `internal/integration/persistence/listing/submission`, including
   Organization-qualified keys and predicates, same-intent replay/conflict,

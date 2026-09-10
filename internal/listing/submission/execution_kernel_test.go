@@ -235,6 +235,7 @@ func TestExecutionEvidenceReasonCharacterBoundaries(t *testing.T) {
 		{name: "ASCII at boundary", reason: strings.Repeat("a", 512)},
 		{name: "multibyte within boundary", reason: strings.Repeat("界", 511)},
 		{name: "multibyte at boundary", reason: strings.Repeat("界", 512)},
+		{name: "content with surrounding Unicode whitespace", reason: "\t\u00a0verified\u3000\n"},
 	}
 	invalidReasons := []struct {
 		name   string
@@ -305,6 +306,11 @@ func TestExecutionEvidenceReasonCharacterBoundaries(t *testing.T) {
 			_, err := tc.transition(attempt, evidence, now)
 			if tc.reasonRequired {
 				require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+				for _, reason := range []string{"", " \t\n", "\u0085\u00a0\u1680\u2007\u202f\u3000"} {
+					evidence.Reason = reason
+					_, err = tc.transition(attempt, evidence, now)
+					require.ErrorIs(t, err, ErrExecutionEvidenceRequired)
+				}
 			} else {
 				require.NoError(t, err)
 			}

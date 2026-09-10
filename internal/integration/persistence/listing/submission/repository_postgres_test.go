@@ -524,6 +524,137 @@ $$`).Error)
 		}
 	})
 
+	t.Run("database evidence values match persisted domain validation", func(t *testing.T) {
+		const (
+			definitiveReasonConstraint = "listing_submission_execution_attempts_definitive_reason_check"
+			evidenceConstraint         = "listing_submission_execution_attempts_evidence_check"
+			evidenceValueConstraint    = "listing_submission_execution_attempts_evidence_value_check"
+		)
+		require.Empty(t, strings.TrimSpace(executionEvidenceTrimSpaceCharacters))
+		tests := []struct {
+			name       string
+			constraint string
+			mutate     func(*executionAttemptRow)
+		}{
+			{
+				name: "provider response definitive failure with empty reason", constraint: definitiveReasonConstraint,
+				mutate: func(row *executionAttemptRow) {
+					empty, failed := "", string(submission.ExecutionFailedDefinitive)
+					row.Status, row.EvidenceOutcome, row.EvidenceReason = failed, &failed, &empty
+				},
+			},
+			{
+				name: "provider readback definitive failure with Unicode whitespace reason", constraint: definitiveReasonConstraint,
+				mutate: func(row *executionAttemptRow) {
+					kind, failed, whitespace := string(submission.EvidenceProviderReadBack), string(submission.ExecutionFailedDefinitive), executionEvidenceTrimSpaceCharacters
+					row.Status, row.EvidenceKind, row.EvidenceOutcome, row.EvidenceReason = failed, &kind, &failed, &whitespace
+				},
+			},
+			{
+				name: "manual success with whitespace reason", constraint: definitiveReasonConstraint,
+				mutate: func(row *executionAttemptRow) {
+					kind, authorizedBy, whitespace := string(submission.EvidenceManualResolution), "operator-a", "\u1680\u2007\u202f"
+					row.EvidenceKind, row.EvidenceAuthorizedBy, row.EvidenceReason = &kind, &authorizedBy, &whitespace
+				},
+			},
+			{
+				name: "manual cancellation with empty reason", constraint: definitiveReasonConstraint,
+				mutate: func(row *executionAttemptRow) {
+					kind, cancelled, authorizedBy, empty := string(submission.EvidenceManualResolution), string(submission.ExecutionCancelled), "operator-a", ""
+					row.Status, row.EvidenceKind, row.EvidenceOutcome = cancelled, &kind, &cancelled
+					row.EvidenceAuthorizedBy, row.EvidenceReason = &authorizedBy, &empty
+				},
+			},
+			{
+				name: "blank evidence reference", constraint: evidenceValueConstraint,
+				mutate: func(row *executionAttemptRow) { empty := ""; row.EvidenceReference = &empty },
+			},
+			{
+				name: "invalid evidence reference", constraint: evidenceValueConstraint,
+				mutate: func(row *executionAttemptRow) { invalid := "bad reference"; row.EvidenceReference = &invalid },
+			},
+			{
+				name: "blank manual authorizer", constraint: evidenceConstraint,
+				mutate: func(row *executionAttemptRow) {
+					kind, authorizedBy, reason := string(submission.EvidenceManualResolution), "", "verified"
+					row.EvidenceKind, row.EvidenceAuthorizedBy, row.EvidenceReason = &kind, &authorizedBy, &reason
+				},
+			},
+			{
+				name: "invalid manual authorizer", constraint: evidenceConstraint,
+				mutate: func(row *executionAttemptRow) {
+					kind, authorizedBy, reason := string(submission.EvidenceManualResolution), "-operator", "verified"
+					row.EvidenceKind, row.EvidenceAuthorizedBy, row.EvidenceReason = &kind, &authorizedBy, &reason
+				},
+			},
+			{
+				name: "evidence observed before attempt creation", constraint: evidenceValueConstraint,
+				mutate: func(row *executionAttemptRow) {
+					observedAt := row.CreatedAt.Add(-time.Microsecond)
+					row.EvidenceObservedAt = &observedAt
+				},
+			},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				resetExecutionTables(t, db)
+				now := time.Date(2026, 9, 10, 2, 59, 0, 0, time.UTC)
+				kernel := executionKernel(t, db, func() time.Time { return now })
+				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-source", "listing-source", `{"title":"one"}`))
+				require.NoError(t, err)
+
+				row := terminalExecutionRow(acquired, "01890f5e-7b3d-7cc0-98a1-123456789abf", "intent-invalid-evidence", "listing-invalid-evidence")
+				tc.mutate(&row)
+				err = db.Table(attemptTable).Create(&row).Error
+				require.Error(t, err, "invalid evidence row must be rejected by PostgreSQL, not only by read-back validation")
+				var postgresErr *pgconn.PgError
+				require.ErrorAs(t, err, &postgresErr)
+				require.Equal(t, "23514", postgresErr.Code)
+				require.Equal(t, tc.constraint, postgresErr.ConstraintName)
+			})
+		}
+
+		positiveReasons := []struct {
+			name   string
+			mutate func(*executionAttemptRow)
+			reason string
+		}{
+			{
+				name: "provider success keeps optional whitespace reason", reason: executionEvidenceTrimSpaceCharacters,
+				mutate: func(row *executionAttemptRow) {
+					reason := executionEvidenceTrimSpaceCharacters
+					row.EvidenceReason = &reason
+				},
+			},
+			{
+				name: "manual success keeps surrounding Unicode whitespace", reason: "\u00a0verified\u3000",
+				mutate: func(row *executionAttemptRow) {
+					kind, authorizedBy, reason := string(submission.EvidenceManualResolution), "operator-a", "\u00a0verified\u3000"
+					row.EvidenceKind, row.EvidenceAuthorizedBy, row.EvidenceReason = &kind, &authorizedBy, &reason
+				},
+			},
+		}
+		for _, tc := range positiveReasons {
+			t.Run(tc.name, func(t *testing.T) {
+				resetExecutionTables(t, db)
+				now := time.Date(2026, 9, 10, 2, 59, 0, 0, time.UTC)
+				kernel := executionKernel(t, db, func() time.Time { return now })
+				acquired, err := kernel.Acquire(ctx, executionCommand("org-a", "intent-source", "listing-source", `{"title":"one"}`))
+				require.NoError(t, err)
+				row := terminalExecutionRow(acquired, acquired.Attempt.AttemptID, acquired.Attempt.IntentKey, acquired.Attempt.Target.SubjectID)
+				tc.mutate(&row)
+				require.NoError(t, db.Table(attemptTable).
+					Where("organization_id = ? AND attempt_id = ?", acquired.Attempt.OrganizationID, acquired.Attempt.AttemptID).
+					Updates(row.mutableValues()).Error)
+				repository, err := NewRepository(db)
+				require.NoError(t, err)
+				persisted, err := repository.Get(ctx, submission.ExecutionScope{OrganizationID: "org-a"}, row.AttemptID)
+				require.NoError(t, err)
+				require.Equal(t, tc.reason, persisted.Evidence.Reason)
+			})
+		}
+	})
+
 	t.Run("commit acknowledgement loss exposes no permit and replay cannot resend", func(t *testing.T) {
 		resetExecutionTables(t, db)
 		now := time.Date(2026, 9, 10, 2, 55, 0, 0, time.UTC)
@@ -750,6 +881,26 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 			},
 		},
 		{
+			name: "same-name evidence constraint accepts invalid manual authorizer",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_evidence_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_evidence_check CHECK (evidence_kind IS NULL OR (evidence_kind = 'provider_response' AND evidence_outcome IN ('succeeded', 'failed_definitive') AND evidence_authorized_by IS NULL) OR (evidence_kind = 'provider_readback' AND evidence_outcome IN ('succeeded', 'failed_definitive') AND evidence_authorized_by IS NULL) OR (evidence_kind = 'manual_resolution' AND evidence_outcome IN ('succeeded', 'failed_definitive', 'cancelled') AND evidence_authorized_by IS NOT NULL AND evidence_reason IS NOT NULL))",
+			},
+		},
+		{
+			name: "missing evidence value constraint",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_evidence_value_check",
+			},
+		},
+		{
+			name: "same-name definitive reason constraint accepts blank reason",
+			statements: []string{
+				"ALTER TABLE public." + AttemptTable + " DROP CONSTRAINT listing_submission_execution_attempts_definitive_reason_check",
+				"ALTER TABLE public." + AttemptTable + " ADD CONSTRAINT listing_submission_execution_attempts_definitive_reason_check CHECK (evidence_outcome IS NULL OR evidence_outcome NOT IN ('failed_definitive', 'cancelled') OR evidence_reason IS NOT NULL)",
+			},
+		},
+		{
 			name: "same-name constraint is not validated",
 			statements: []string{
 				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_epoch_check",
@@ -800,6 +951,25 @@ func executionKernel(t *testing.T, db *gorm.DB, clock func() time.Time) *submiss
 	kernel, err := submission.NewExecutionKernel(repository, submission.WithExecutionClock(clock))
 	require.NoError(t, err)
 	return kernel
+}
+
+func terminalExecutionRow(source submission.ExecutionAcquisition, attemptID, intentKey, subjectID string) executionAttemptRow {
+	row := attemptRowFrom(source.Attempt, submission.ExecutionClaimTokenHash(source.Permit.ClaimToken))
+	kind, outcome := string(submission.EvidenceProviderResponse), string(submission.ExecutionSucceeded)
+	reference, fingerprint := "provider-reference", executionTestDigest("provider-reference")
+	observedAt, finishedAt := row.UpdatedAt, row.UpdatedAt
+	row.AttemptID, row.IntentKey, row.SubjectID = attemptID, intentKey, subjectID
+	if attemptID != source.Attempt.AttemptID {
+		row.ProviderExecutionKey = "subk1_v1_" + strings.Repeat("d", 64)
+		row.FenceEpoch++
+	}
+	row.Status = outcome
+	row.UnknownReason = nil
+	row.EvidenceKind, row.EvidenceOutcome = &kind, &outcome
+	row.EvidenceReference, row.EvidenceFingerprint = &reference, &fingerprint
+	row.EvidenceReason, row.EvidenceAuthorizedBy = nil, nil
+	row.EvidenceObservedAt, row.FinishedAt = &observedAt, &finishedAt
+	return row
 }
 
 func executionCommand(org, intent, subject, payload string) submission.AcquireExecutionCommand {
