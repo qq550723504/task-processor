@@ -24,8 +24,8 @@ Current stable ownership:
   `internal/integration/persistence/listing/submission`, including
   Organization-qualified keys and predicates, same-intent replay/conflict,
   cross-intent target serialization, stale-fence rejection, atomic rollback, and
-  constructor-time fail-closed verification of both tables' complete column and
-  constraint contracts
+  constructor-time fail-closed verification that both relations are ordinary
+  permanent/logged tables with their complete column and constraint contracts
 - generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)

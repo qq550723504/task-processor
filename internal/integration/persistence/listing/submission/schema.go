@@ -234,12 +234,33 @@ func verifySchema(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("set submission execution schema verification search_path: %w", err)
 	}
 	for _, table := range []string{AttemptTable, TargetFenceTable} {
+		if err := verifyRelation(ctx, db, table); err != nil {
+			return err
+		}
 		if err := verifyColumns(ctx, db, table, expectedColumns[table]); err != nil {
 			return err
 		}
 		if err := verifyConstraints(ctx, db, table, expectedConstraints[table]); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func verifyRelation(ctx context.Context, db *gorm.DB, table string) error {
+	var kind, persistence string
+	var partition bool
+	err := db.WithContext(ctx).Raw(`
+SELECT relation.relkind::text, relation.relpersistence::text, relation.relispartition
+FROM pg_catalog.pg_class AS relation
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname = 'public' AND relation.relname = ?`, table).
+		Row().Scan(&kind, &persistence, &partition)
+	if err != nil {
+		return fmt.Errorf("inspect submission execution relation public.%s: %w", table, err)
+	}
+	if kind != "r" || persistence != "p" || partition {
+		return fmt.Errorf("submission execution relation public.%s must be an ordinary permanent table: kind=%s persistence=%s partition=%t", table, kind, persistence, partition)
 	}
 	return nil
 }

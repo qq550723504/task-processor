@@ -496,6 +496,17 @@ func TestNewRepositoryRejectsPostgresSchemaDrift(t *testing.T) {
 			statements: []string{"ALTER TABLE public." + TargetFenceTable + " ALTER COLUMN updated_at DROP NOT NULL"},
 		},
 		{
+			name:       "target fence table is unlogged",
+			statements: []string{"ALTER TABLE public." + TargetFenceTable + " SET UNLOGGED"},
+		},
+		{
+			name: "both durable tables are unlogged",
+			statements: []string{
+				"ALTER TABLE public." + TargetFenceTable + " SET UNLOGGED",
+				"ALTER TABLE public." + AttemptTable + " SET UNLOGGED",
+			},
+		},
+		{
 			name: "missing organization-qualified primary key",
 			statements: []string{
 				"ALTER TABLE public." + TargetFenceTable + " DROP CONSTRAINT listing_submission_target_fences_attempt_fkey",
