@@ -35,6 +35,8 @@ func mapSourceReadError(err error) error {
 		return err
 	case errors.Is(err, sourcing.ErrPublicationForbidden):
 		return ErrForbidden
+	case errors.Is(err, sourcing.ErrSourcePublicationNotFound):
+		return ErrNotFound
 	case errors.Is(err, sourcing.ErrSourcePublicationConflict):
 		return ErrConflict
 	default:

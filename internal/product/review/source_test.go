@@ -101,7 +101,7 @@ func TestSourceMapsExactBoundaryFailures(t *testing.T) {
 	}{
 		{"catalog missing", catalog.ErrSnapshotNotReady, catalog.ErrSnapshotNotReady},
 		{"source forbidden", sourcing.ErrPublicationForbidden, ErrForbidden},
-		{"source absent behind catalog", sourcing.ErrSourcePublicationNotFound, ErrUnavailable},
+		{"source publication missing", sourcing.ErrSourcePublicationNotFound, ErrNotFound},
 		{"source corrupt", sourcing.ErrSourcePublicationStateInvalid, ErrUnavailable},
 		{"source dependency", sourcing.ErrSourcePublicationUnavailable, ErrUnavailable},
 		{"canceled", context.Canceled, context.Canceled},

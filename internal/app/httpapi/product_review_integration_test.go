@@ -101,8 +101,9 @@ func TestProductReviewPostgresCanceledLock(t *testing.T) {
 }
 
 type titleGenerator struct {
-	calls  atomic.Int32
-	failed atomic.Bool
+	calls         atomic.Int32
+	failed        atomic.Bool
+	afterGenerate func()
 }
 
 func (g *titleGenerator) Generate(_ context.Context, r enrichment.GenerationRequest) (enrichment.Candidate, error) {
@@ -111,6 +112,9 @@ func (g *titleGenerator) Generate(_ context.Context, r enrichment.GenerationRequ
 		return enrichment.Candidate{}, enrichment.ErrExternalCapabilityUnavailable
 	}
 	id, e := enrichment.CanonicalEvidenceID(r.Source)
+	if g.afterGenerate != nil {
+		g.afterGenerate()
+	}
 	return enrichment.Candidate{Changes: []enrichment.FieldChange{{Field: "title", Value: "Suggested bottle title", EvidenceIDs: []string{id}}}}, e
 }
 
@@ -346,7 +350,7 @@ func TestProductReviewHTTPPostgresLifecycle(t *testing.T) {
 	s := f.server(t)
 	liveBeforeCreate := f.grants.live.Load()
 	v := titleCreate(t, s, "create")
-	require.Equal(t, liveBeforeCreate+2, f.grants.live.Load(), "create must resolve the route and SRC-1 read independently")
+	require.Equal(t, liveBeforeCreate+3, f.grants.live.Load(), "create must resolve the route and recheck SRC-1 inside the Review UoW")
 	require.Equal(t, "Original bottle", v.Before)
 	require.Equal(t, "pending", v.State)
 	require.Len(t, v.Evidence, 1)
@@ -400,6 +404,20 @@ func TestProductReviewHTTPRevokedBetweenRouteAndSourceRead(t *testing.T) {
 	require.Zero(t, f.g.calls.Load())
 }
 
+func TestProductReviewHTTPRevokedBeforeCreateCommitWritesNothing(t *testing.T) {
+	f := newTitleFixture(t)
+	f.g.afterGenerate = func() {
+		f.grants.revokeAt.Store(f.grants.live.Load() + 1)
+	}
+	titleCall(t, f.server(t), "POST", titleBasePath, "operator", "B", "revoked-before-commit", `{"product_key":"product","base_version":1}`, 403)
+	require.Equal(t, int32(1), f.g.calls.Load())
+	for _, table := range []string{"product_title_proposals", "product_title_operations"} {
+		var count int64
+		require.NoError(t, f.db.Table(table).Count(&count).Error)
+		require.Zero(t, count, table)
+	}
+}
+
 func TestProductReviewHTTPEachEvidenceUseRefreshesSourceAuthorizationWithoutSourceWrites(t *testing.T) {
 	f := newTitleFixture(t)
 	s := f.server(t)
@@ -408,7 +426,7 @@ func TestProductReviewHTTPEachEvidenceUseRefreshesSourceAuthorizationWithoutSour
 
 	before := f.grants.live.Load()
 	v := titleCreate(t, s, "fresh-create")
-	require.Equal(t, before+2, f.grants.live.Load())
+	require.Equal(t, before+3, f.grants.live.Load())
 	require.Equal(t, "pending", v.State)
 
 	before = f.grants.live.Load()
@@ -478,9 +496,8 @@ func TestProductReviewRejectedStaleAndEvidence(t *testing.T) {
 	s2 := f.server(t)
 	titleDecision(t, s2, stale, "edit", "operator", "edit after stale Catalog head", 200)
 	// Version 2 was written directly through Catalog and has no SRC-1 evidence.
-	// The combination is unavailable rather than silently falling back to a
-	// process-memory binding or treating the mixed state as a valid source.
-	titleCall(t, s, "POST", titleBasePath, "operator", "B", "unbound", `{"product_key":"product","base_version":2}`, 503)
+	// The exact source publication is missing, with no process-memory fallback.
+	titleCall(t, s, "POST", titleBasePath, "operator", "B", "unbound", `{"product_key":"product","base_version":2}`, 404)
 	current, e := f.reader.GetCurrentSnapshot(context.Background(), f.base.Identity)
 	require.NoError(t, e)
 	require.Equal(t, uint64(2), current.Version)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"reflect"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/product/catalog"
@@ -91,6 +92,14 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	return s.store.Run(ctx, op, func(tx Tx) (View, error) {
 		if v, found, e := tx.Replay(); e != nil || found {
 			return v, e
+		}
+		rechecked, _, e := s.source(ctx, tx.Reader(), a.Org, in)
+		if e != nil {
+			return View{}, e
+		}
+		if rechecked.Identity != base.Identity || rechecked.Version != base.Version ||
+			rechecked.PublicationID != base.PublicationID || !reflect.DeepEqual(rechecked.Snapshot, base.Snapshot) {
+			return View{}, ErrConflict
 		}
 		if e := tx.Save(r); e != nil {
 			return View{}, e
