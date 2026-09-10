@@ -11,10 +11,26 @@ import {
   parseWorkbenchContextPayload,
   parseWorkbenchErrorEnvelopePayload,
 } from "@/lib/api/workbench-context";
+import {
+  isCanonicalSourceAccountCursor,
+  isCanonicalSourceAccountId,
+  isCanonicalSourceAccountOperationId,
+  isStrongSourceAccountETag,
+  SOURCE_ACCOUNT_CURSOR_MAX_BYTES,
+  SOURCE_ACCOUNT_QUERY_MAX_BYTES,
+  SOURCE_ACCOUNT_REQUEST_BODY_MAX_BYTES,
+  SOURCE_ACCOUNT_RESPONSE_MAX_BYTES,
+  sourceAccountCreateRequestSchema,
+  sourceAccountDetailResponseSchema,
+  sourceAccountMutationResponseSchema,
+  sourceAccountPageResponseSchema,
+} from "@/lib/contracts/source-account";
 import { newRequestLogId } from "@/lib/server/request-log";
+import { hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
+const EXPECTED_USER_ID_HEADER = "X-Expected-User-ID";
 
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 const SWITCH_REQUEST_BODY_MAX_BYTES = 4 * 1024;
@@ -31,7 +47,11 @@ export type WorkbenchResponseContract =
   | "store-create"
   | "store-item"
   | "store-delete"
-  | "store-service-lifecycle";
+  | "store-service-lifecycle"
+  | "source-account-list"
+  | "source-account-create"
+  | "source-account-detail"
+  | "source-account-mutation";
 
 type WorkbenchRequestContract =
   | "context-get"
@@ -46,7 +66,12 @@ type WorkbenchRequestContract =
   | "store-resume"
   | "store-service-activate"
   | "store-service-renew"
-  | "store-service-reactivate";
+  | "store-service-reactivate"
+  | "source-account-list"
+  | "source-account-create"
+  | "source-account-detail"
+  | "source-account-enable"
+  | "source-account-disable";
 
 type WorkbenchRouteDescriptor = {
   requestContract: WorkbenchRequestContract;
@@ -67,6 +92,8 @@ type WorkbenchUpstreamRequest = {
   init: RequestInit;
   responseContract: WorkbenchResponseContract;
   expectedStoreId?: string;
+  requestId: string;
+  sourceMutation: boolean;
 };
 
 type ParsedJSONBody = {
@@ -233,6 +260,36 @@ const documentedWorkbenchErrorStatuses: Readonly<Record<string, number>> = {
   SUBSCRIPTION_REQUIRED: 409,
   STORE_LIMIT_REACHED: 409,
   ORGANIZATION_CONTEXT_CHANGED: 409,
+  IDENTITY_CONTEXT_CHANGED: 409,
+  SOURCE_ACCOUNT_NOT_FOUND: 404,
+  IDEMPOTENCY_CONFLICT: 409,
+  VERSION_CONFLICT: 409,
+  INVALID_TRANSITION: 409,
+  RESOURCE_LIMIT_REACHED: 409,
+  INPUT_TOO_LARGE: 413,
+  OUTCOME_UNKNOWN: 503,
+  DEADLINE_EXCEEDED: 504,
+};
+
+const sourceAccountErrorStatuses: Readonly<Record<string, number>> = {
+  INVALID_REQUEST: 400,
+  AUTHENTICATION_REQUIRED: 401,
+  ORGANIZATION_SELECTION_REQUIRED: 409,
+  ORGANIZATION_ACCESS_DENIED: 403,
+  ORGANIZATION_ACCESS_REVOKED: 403,
+  ORGANIZATION_SUSPENDED: 403,
+  PERMISSION_DENIED: 403,
+  SOURCE_ACCOUNT_NOT_FOUND: 404,
+  IDEMPOTENCY_CONFLICT: 409,
+  VERSION_CONFLICT: 409,
+  INVALID_TRANSITION: 409,
+  RESOURCE_LIMIT_REACHED: 409,
+  ORGANIZATION_CONTEXT_CHANGED: 409,
+  IDENTITY_CONTEXT_CHANGED: 409,
+  INPUT_TOO_LARGE: 413,
+  DEPENDENCY_UNAVAILABLE: 503,
+  OUTCOME_UNKNOWN: 503,
+  DEADLINE_EXCEEDED: 504,
 };
 
 const workbenchRouteAllowlist = [
@@ -280,12 +337,37 @@ const workbenchRouteAllowlist = [
     "store-service-lifecycle",
     (path) => storeActionPath(path, "reactivate"),
   ),
+  routeDefinition("GET", "source-account-list", "source-account-list", (path) =>
+    exactPath(path, "source-accounts") ? "source-accounts" : null,
+  ),
+  routeDefinition("POST", "source-account-create", "source-account-create", (path) =>
+    exactPath(path, "source-accounts") ? "source-accounts" : null,
+  ),
+  routeDefinition(
+    "GET",
+    "source-account-detail",
+    "source-account-detail",
+    sourceAccountItemPath,
+  ),
+  routeDefinition(
+    "POST",
+    "source-account-disable",
+    "source-account-mutation",
+    (path) => sourceAccountActionPath(path, "disable"),
+  ),
+  routeDefinition(
+    "POST",
+    "source-account-enable",
+    "source-account-mutation",
+    (path) => sourceAccountActionPath(path, "enable"),
+  ),
 ] as const satisfies readonly WorkbenchRouteDefinition[];
 
 export async function buildWorkbenchUpstreamRequest(
   request: Request,
   path: string[],
   accessToken: string,
+  authenticatedActorSubject = "",
 ): Promise<WorkbenchUpstreamRequest | Response> {
   const route = resolveAllowlistedRoute(request.method, path);
   if (!route) {
@@ -296,7 +378,8 @@ export async function buildWorkbenchUpstreamRequest(
     );
   }
   if (
-    route.requestContract.startsWith("store-") &&
+    (route.requestContract.startsWith("store-") ||
+      route.requestContract.startsWith("source-account-")) &&
     new URL(request.url).pathname !==
       `/api/workbench/${route.upstreamPath}`
   ) {
@@ -311,7 +394,8 @@ export async function buildWorkbenchUpstreamRequest(
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
   });
-  headers.set("X-Request-ID", readRequestId(request.headers));
+  const requestId = readRequestId(request.headers);
+  headers.set("X-Request-ID", requestId);
   let body: string | undefined;
   let query = "";
 
@@ -326,9 +410,14 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = readSelectedOrganization(request);
+    const selectedOrganization = route.requestContract.startsWith("source-account-")
+      ? readSourceSelectedOrganization(request)
+      : readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
-    if (route.requestContract.startsWith("store-")) {
+    if (
+      route.requestContract.startsWith("store-") ||
+      route.requestContract.startsWith("source-account-")
+    ) {
       const expectedOrganization = readExpectedOrganizationAssertion(
         request.headers,
       );
@@ -464,6 +553,78 @@ export async function buildWorkbenchUpstreamRequest(
           return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
         }
         break;
+      case "source-account-list": {
+        if (!(await requestHasNoBody(request))) {
+          return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+        }
+        const parsedQuery = parseSourceAccountListQuery(request.url);
+        if (parsedQuery === null) {
+          return protocolError(400, "INVALID_REQUEST", "Query is invalid");
+        }
+        query = `?${parsedQuery}`;
+        break;
+      }
+      case "source-account-detail":
+        if (!hasExactNoQuery(request) || !(await requestHasNoBody(request))) {
+          return protocolError(400, "INVALID_REQUEST", "Request is invalid");
+        }
+        break;
+      case "source-account-create": {
+        const assertion = validateSourceMutationBoundary(
+          request,
+          authenticatedActorSubject,
+        );
+        if (assertion) return assertion;
+        if (!hasExactNoQuery(request)) {
+          return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
+        }
+        if (request.headers.get("content-type") !== "application/json") {
+          return protocolError(400, "INVALID_REQUEST", "Content-Type is invalid");
+        }
+        const idempotencyKey = readSourceAccountOperationHeader(
+          request.headers,
+          "Idempotency-Key",
+        );
+        if (!idempotencyKey) {
+          return protocolError(400, "INVALID_REQUEST", "Idempotency-Key is invalid");
+        }
+        const rawBody = await readRequestBody(
+          request,
+          SOURCE_ACCOUNT_REQUEST_BODY_MAX_BYTES,
+          "INPUT_TOO_LARGE",
+        );
+        if (rawBody instanceof Response) return rawBody;
+        const payload = parseSourceAccountCreateBody(rawBody);
+        if (!payload) {
+          return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+        }
+        body = JSON.stringify(payload);
+        headers.set("Content-Type", "application/json");
+        headers.set("Idempotency-Key", idempotencyKey);
+        break;
+      }
+      case "source-account-enable":
+      case "source-account-disable": {
+        const assertion = validateSourceMutationBoundary(
+          request,
+          authenticatedActorSubject,
+        );
+        if (assertion) return assertion;
+        if (!hasExactNoQuery(request) || !(await requestHasNoBody(request))) {
+          return protocolError(400, "INVALID_REQUEST", "Request is invalid");
+        }
+        const idempotencyKey = readSourceAccountOperationHeader(
+          request.headers,
+          "Idempotency-Key",
+        );
+        const ifMatch = readSourceAccountIfMatch(request.headers);
+        if (!idempotencyKey || !ifMatch) {
+          return protocolError(400, "INVALID_REQUEST", "Required header is invalid");
+        }
+        headers.set("Idempotency-Key", idempotencyKey);
+        headers.set("If-Match", ifMatch);
+        break;
+      }
     }
   }
 
@@ -479,9 +640,16 @@ export async function buildWorkbenchUpstreamRequest(
     expectedStoreId:
       route.responseContract === "store-item" ||
       route.responseContract === "store-delete" ||
-      route.responseContract === "store-service-lifecycle"
+      route.responseContract === "store-service-lifecycle" ||
+      route.responseContract === "source-account-detail" ||
+      route.responseContract === "source-account-mutation"
         ? path[1]
         : undefined,
+    requestId,
+    sourceMutation:
+      route.requestContract === "source-account-create" ||
+      route.requestContract === "source-account-enable" ||
+      route.requestContract === "source-account-disable",
   };
 }
 
@@ -489,19 +657,42 @@ export async function buildWorkbenchBrowserResponse(
   upstream: Response,
   contract: WorkbenchResponseContract = "context",
   expectedStoreId?: string,
+  options: {
+    sourceMutation?: boolean;
+    requestId?: string;
+    signal?: AbortSignal;
+  } = {},
 ) {
+  const sourceContract = contract.startsWith("source-account-");
+  const invalidSource = () =>
+    sourceProtocolFailure(Boolean(options.sourceMutation), options.requestId ?? "");
   let body: Uint8Array;
   try {
+    if (
+      sourceContract &&
+      !/^application\/json(?:\s*;|$)/i.test(
+        upstream.headers.get("content-type") ?? "",
+      )
+    ) {
+      void upstream.body?.cancel().catch(() => undefined);
+      throw new InvalidUpstreamBodyError();
+    }
+    const responseLimit = sourceContract
+      ? SOURCE_ACCOUNT_RESPONSE_MAX_BYTES
+      : UPSTREAM_RESPONSE_MAX_BYTES;
     const contentLength = readContentLength(upstream.headers);
-    if (contentLength !== null && contentLength > UPSTREAM_RESPONSE_MAX_BYTES) {
+    if (contentLength !== null && contentLength > responseLimit) {
       void upstream.body?.cancel().catch(() => undefined);
       throw new BodyTooLargeError();
     }
     body = await readBodyWithinLimit(
       upstream.body,
-      UPSTREAM_RESPONSE_MAX_BYTES,
+      responseLimit,
+      undefined,
+      options.signal,
     );
   } catch {
+    if (sourceContract) return invalidSource();
     return protocolError(
       502,
       "DEPENDENCY_UNAVAILABLE",
@@ -516,12 +707,17 @@ export async function buildWorkbenchBrowserResponse(
       ? parseWorkbenchErrorEnvelopePayload(payload)
       : null;
   if (!upstream.ok) {
-    if (!parsedError?.success) return invalidUpstreamResponse();
+    if (!parsedError?.success) {
+      return sourceContract ? invalidSource() : invalidUpstreamResponse();
+    }
+    const documentedStatus = sourceContract
+      ? sourceAccountErrorStatuses[parsedError.data.code]
+      : documentedWorkbenchErrorStatuses[parsedError.data.code];
     if (
-      documentedWorkbenchErrorStatuses[parsedError.data.code] !== undefined &&
-      documentedWorkbenchErrorStatuses[parsedError.data.code] !== upstream.status
+      (sourceContract && documentedStatus === undefined) ||
+      (documentedStatus !== undefined && documentedStatus !== upstream.status)
     ) {
-      return invalidUpstreamResponse();
+      return sourceContract ? invalidSource() : invalidUpstreamResponse();
     }
     const response = new NextResponse(JSON.stringify(parsedError.data), {
       status: upstream.status,
@@ -544,12 +740,19 @@ export async function buildWorkbenchBrowserResponse(
     expectedStoreId,
   );
   if (!validatedPayload) {
-    return invalidUpstreamResponse();
+    return sourceContract ? invalidSource() : invalidUpstreamResponse();
+  }
+  const sourceETag = sourceContract
+    ? readSourceResponseETag(upstream.headers, validatedPayload, contract)
+    : null;
+  if (sourceContract && contract !== "source-account-list" && !sourceETag) {
+    return invalidSource();
   }
   const response = new NextResponse(JSON.stringify(validatedPayload), {
     status: upstream.status,
     headers: safeJSONHeaders(),
   });
+  if (sourceETag) response.headers.set("ETag", sourceETag);
 
   if (contract === "context" || contract === "context-switch") {
     const effectiveOrganizationId = validatedPayload.effectiveOrganizationId;
@@ -572,8 +775,9 @@ export function workbenchProtocolError(
   status: number,
   code: string,
   message: string,
+  requestId = "",
 ) {
-  return protocolError(status, code, message);
+  return protocolError(status, code, message, requestId);
 }
 
 function resolveAllowlistedRoute(
@@ -635,6 +839,23 @@ function storeActionPath(
     : null;
 }
 
+function sourceAccountItemPath(path: string[]) {
+  return path.length === 2 &&
+    path[0] === "source-accounts" &&
+    isCanonicalSourceAccountId(path[1]!)
+    ? `source-accounts/${path[1]}`
+    : null;
+}
+
+function sourceAccountActionPath(path: string[], action: "enable" | "disable") {
+  return path.length === 3 &&
+    path[0] === "source-accounts" &&
+    isCanonicalSourceAccountId(path[1]!) &&
+    path[2] === action
+    ? `source-accounts/${path[1]}/${action}`
+    : null;
+}
+
 function isSafePathSegment(value: string) {
   return Boolean(
     value &&
@@ -689,17 +910,22 @@ function parseSwitchOrganizationBody(body: Uint8Array) {
   return isSafeOrganizationId(organizationId) ? organizationId : "";
 }
 
-async function readRequestBody(request: Request, limit: number) {
+async function readRequestBody(
+  request: Request,
+  limit: number,
+  tooLargeCode = "INVALID_REQUEST",
+) {
   const contentLength = readContentLength(request.headers);
   if (contentLength !== null && contentLength > limit) {
     void request.body?.cancel().catch(() => undefined);
-    return protocolError(413, "INVALID_REQUEST", "Request body is too large");
+    return protocolError(413, tooLargeCode, "Request body is too large");
   }
   try {
     return await readBodyWithinLimit(
       request.body,
       limit,
       REQUEST_BODY_READ_TIMEOUT_MS,
+      request.signal,
     );
   } catch (error) {
     if (error instanceof BodyReadTimeoutError) {
@@ -710,7 +936,7 @@ async function readRequestBody(request: Request, limit: number) {
       );
     }
     if (error instanceof BodyTooLargeError) {
-      return protocolError(413, "INVALID_REQUEST", "Request body is too large");
+      return protocolError(413, tooLargeCode, "Request body is too large");
     }
     return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
   }
@@ -740,6 +966,109 @@ function readExpectedOrganizationAssertion(headers: Headers) {
 
 function hasNoQuery(request: Request) {
   return new URL(request.url).searchParams.size === 0;
+}
+
+function readSourceSelectedOrganization(request: Request) {
+  const matches = (request.headers.get("cookie") ?? "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(`${WORKBENCH_COOKIE_NAME}=`));
+  if (matches.length !== 1) {
+    return protocolError(
+      409,
+      matches.length === 0
+        ? "ORGANIZATION_SELECTION_REQUIRED"
+        : "ORGANIZATION_CONTEXT_CHANGED",
+      "Organization context changed",
+    );
+  }
+  let selected: string;
+  try {
+    selected = decodeURIComponent(
+      matches[0]!.slice(WORKBENCH_COOKIE_NAME.length + 1),
+    );
+  } catch {
+    return protocolError(
+      409,
+      "ORGANIZATION_CONTEXT_CHANGED",
+      "Organization context changed",
+    );
+  }
+  return isSafeOrganizationId(selected)
+    ? selected
+    : protocolError(
+        409,
+        "ORGANIZATION_CONTEXT_CHANGED",
+        "Organization context changed",
+      );
+}
+
+function hasExactNoQuery(request: Request) {
+  const url = new URL(request.url);
+  return url.search === "" && !request.url.endsWith("?");
+}
+
+function parseSourceAccountListQuery(rawURL: string) {
+  const url = new URL(rawURL);
+  const rawQuery = url.search.startsWith("?") ? url.search.slice(1) : url.search;
+  if (utf8Length(rawQuery) > SOURCE_ACCOUNT_QUERY_MAX_BYTES) return null;
+  const values = new Map<string, string>();
+  for (const [key, value] of url.searchParams) {
+    if (!["limit", "cursor"].includes(key) || values.has(key) || value === "") {
+      return null;
+    }
+    values.set(key, value);
+  }
+  const limit = values.get("limit") ?? "20";
+  if (!validCanonicalInteger(limit, 1, 100)) return null;
+  const cursor = values.get("cursor");
+  if (
+    cursor !== undefined &&
+    (utf8Length(cursor) > SOURCE_ACCOUNT_CURSOR_MAX_BYTES ||
+      !isCanonicalSourceAccountCursor(cursor))
+  ) {
+    return null;
+  }
+  const rebuilt = new URLSearchParams({ limit });
+  if (cursor !== undefined) rebuilt.set("cursor", cursor);
+  return rebuilt.toString();
+}
+
+function validateSourceMutationBoundary(
+  request: Request,
+  authenticatedActorSubject: string,
+) {
+  if (!hasTrustedSameOriginWrite(request)) {
+    return protocolError(403, "PERMISSION_DENIED", "Same-origin request is required");
+  }
+  const assertedActor = request.headers.get(EXPECTED_USER_ID_HEADER);
+  if (
+    !assertedActor ||
+    assertedActor.includes(",") ||
+    !isSafeOrganizationId(assertedActor)
+  ) {
+    return protocolError(400, "INVALID_REQUEST", "Expected user is invalid");
+  }
+  if (assertedActor !== authenticatedActorSubject) {
+    return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
+  }
+  return null;
+}
+
+function parseSourceAccountCreateBody(body: Uint8Array) {
+  const parsed = parseJSONBody(body);
+  if (!parsed || parsed.root.children?.length !== 2) return null;
+  const keys = new Set(parsed.root.children.map((property) => property.children?.[0]?.value));
+  if (keys.size !== 2 || !keys.has("displayName") || !keys.has("platform")) {
+    return null;
+  }
+  const payload = sourceAccountCreateRequestSchema.safeParse(parsed.payload);
+  return payload.success ? payload.data : null;
+}
+
+function readSourceAccountIfMatch(headers: Headers) {
+  const value = headers.get("If-Match") ?? "";
+  return isStrongSourceAccountETag(value) ? value : "";
 }
 
 function parseStoreListQuery(search: URLSearchParams) {
@@ -897,6 +1226,11 @@ function readCanonicalUUIDHeader(headers: Headers, name: string) {
   return value && isCanonicalUUID(value) ? value : "";
 }
 
+function readSourceAccountOperationHeader(headers: Headers, name: string) {
+  const value = headers.get(name);
+  return value && isCanonicalSourceAccountOperationId(value) ? value : "";
+}
+
 function readRequestId(headers: Headers) {
   const value = headers.get("X-Request-ID")?.trim() ?? "";
   if (
@@ -929,6 +1263,7 @@ async function requestHasNoBody(request: Request) {
       request.body,
       0,
       REQUEST_BODY_READ_TIMEOUT_MS,
+      request.signal,
     );
     return body.byteLength === 0;
   } catch {
@@ -954,6 +1289,7 @@ async function readBodyWithinLimit(
   stream: ReadableStream<Uint8Array> | null,
   limit: number,
   timeoutMs?: number,
+  signal?: AbortSignal,
 ) {
   if (!stream) return new Uint8Array();
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -966,15 +1302,19 @@ async function readBodyWithinLimit(
       })
     : undefined;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const cancel = () => void reader?.cancel().catch(() => undefined);
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     reader = stream.getReader();
+    signal?.addEventListener("abort", cancel, { once: true });
     while (true) {
+      signal?.throwIfAborted();
       const next = reader.read();
       const { done, value } = deadline
         ? await Promise.race([next, deadline])
         : await next;
+      signal?.throwIfAborted();
       if (done) break;
       if (total + value.byteLength > limit) {
         void reader.cancel().catch(() => undefined);
@@ -990,6 +1330,7 @@ async function readBodyWithinLimit(
     throw error;
   } finally {
     if (timeout) clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
     reader?.releaseLock();
   }
   const joined = new Uint8Array(total);
@@ -1040,6 +1381,10 @@ function isCanonicalUUID(value: string) {
       value,
     )
   );
+}
+
+function utf8Length(value: string) {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function isUTCRFC3339Timestamp(value: string) {
@@ -1189,6 +1534,14 @@ function parseSuccessfulPayload(
     const parsed = parseWorkbenchContextPayload(body.payload);
     return parsed.success ? parsed.data : null;
   }
+  if (contract.startsWith("source-account-")) {
+    return parseSourceAccountSuccessfulPayload(
+      contract,
+      status,
+      body.payload,
+      expectedStoreId,
+    );
+  }
   const parser =
     contract === "store-list"
       ? listStoresResponseSchema
@@ -1216,12 +1569,78 @@ function parseSuccessfulPayload(
   return parsed.data;
 }
 
+function parseSourceAccountSuccessfulPayload(
+  contract: WorkbenchResponseContract,
+  status: number,
+  payload: Record<string, unknown>,
+  expectedAccountId?: string,
+): Record<string, unknown> | null {
+  if (contract === "source-account-list") {
+    if (status !== 200) return null;
+    const parsed = sourceAccountPageResponseSchema.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+  }
+  if (contract === "source-account-detail") {
+    if (status !== 200) return null;
+    const parsed = sourceAccountDetailResponseSchema.safeParse(payload);
+    return parsed.success && parsed.data.account.id === expectedAccountId
+      ? parsed.data
+      : null;
+  }
+  if (contract === "source-account-create") {
+    const parsed = sourceAccountMutationResponseSchema.safeParse(payload);
+    if (!parsed.success) return null;
+    const statusMatchesReplay =
+      (status === 201 && !parsed.data.replayed) ||
+      (status === 200 && parsed.data.replayed);
+    return statusMatchesReplay ? parsed.data : null;
+  }
+  if (contract === "source-account-mutation") {
+    if (status !== 200) return null;
+    const parsed = sourceAccountMutationResponseSchema.safeParse(payload);
+    return parsed.success && parsed.data.account.id === expectedAccountId
+      ? parsed.data
+      : null;
+  }
+  return null;
+}
+
+function readSourceResponseETag(
+  headers: Headers,
+  payload: Record<string, unknown>,
+  contract: WorkbenchResponseContract,
+) {
+  if (contract === "source-account-list") return null;
+  const account = payload.account;
+  if (!account || typeof account !== "object" || Array.isArray(account)) return "";
+  const version = (account as Record<string, unknown>).version;
+  if (typeof version !== "string") return "";
+  const etag = headers.get("ETag") ?? "";
+  return etag === `"${version}"` && isStrongSourceAccountETag(etag) ? etag : "";
+}
+
 function invalidUpstreamResponse() {
   return protocolError(
     502,
     "DEPENDENCY_UNAVAILABLE",
     "Workbench upstream response is invalid",
   );
+}
+
+function sourceProtocolFailure(sourceMutation: boolean, requestId: string) {
+  return sourceMutation
+    ? protocolError(
+        503,
+        "OUTCOME_UNKNOWN",
+        "Source Account mutation outcome is unknown",
+        requestId,
+      )
+    : protocolError(
+        502,
+        "INVALID_UPSTREAM_RESPONSE",
+        "Source Account upstream response is invalid",
+        requestId,
+      );
 }
 
 function clearSelectionCookie(response: NextResponse) {
@@ -1234,9 +1653,14 @@ function clearSelectionCookie(response: NextResponse) {
   });
 }
 
-function protocolError(status: number, code: string, message: string) {
+function protocolError(
+  status: number,
+  code: string,
+  message: string,
+  requestId = "",
+) {
   return NextResponse.json(
-    { code, message, requestId: "", fieldErrors: [] },
+    { code, message, requestId, fieldErrors: [] },
     { status, headers: safeJSONHeaders() },
   );
 }
@@ -1251,3 +1675,4 @@ function safeJSONHeaders() {
 
 class BodyTooLargeError extends Error {}
 class BodyReadTimeoutError extends Error {}
+class InvalidUpstreamBodyError extends Error {}
