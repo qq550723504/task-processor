@@ -119,17 +119,34 @@ func (g *titleGenerator) Generate(_ context.Context, r enrichment.GenerationRequ
 }
 
 type titleGrants struct {
-	revoked  atomic.Bool
-	failed   atomic.Bool
-	live     atomic.Int32
-	cached   atomic.Int32
-	revokeAt atomic.Int32
+	revoked   atomic.Bool
+	failed    atomic.Bool
+	live      atomic.Int32
+	cached    atomic.Int32
+	revokeAt  atomic.Int32
+	blockAt   atomic.Int32
+	blocked   chan struct{}
+	release   chan struct{}
+	blockOnce sync.Once
 }
 
-func (g *titleGrants) Load(_ context.Context, source workbenchcontext.GrantSource, r workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
+type providerResult struct {
+	status int
+	err    error
+}
+
+func (g *titleGrants) Load(ctx context.Context, source workbenchcontext.GrantSource, r workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
 	liveCall := int32(0)
 	if source == workbenchcontext.GrantLive {
 		liveCall = g.live.Add(1)
+		if g.blockAt.Load() == liveCall {
+			g.blockOnce.Do(func() { close(g.blocked) })
+			select {
+			case <-g.release:
+			case <-ctx.Done():
+				return workbenchcontext.GrantResult{}, ctx.Err()
+			}
+		}
 	} else {
 		g.cached.Add(1)
 	}
@@ -154,13 +171,24 @@ func (g *titleGrants) Load(_ context.Context, source workbenchcontext.GrantSourc
 }
 func (*titleGrants) Invalidate(string, string) {}
 
-type titleVerifier struct{}
+func (g *titleGrants) blockLiveCall(call int32) (<-chan struct{}, chan struct{}) {
+	g.blocked = make(chan struct{})
+	g.release = make(chan struct{})
+	g.blockAt.Store(call)
+	return g.blocked, g.release
+}
 
-func (titleVerifier) Verify(_ context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
+type titleVerifier struct{ expiresAt time.Time }
+
+func (verifier titleVerifier) Verify(_ context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
 	if token == "bad" {
 		return authidentity.AuthenticatedIdentity{}, fmt.Errorf("bad token")
 	}
-	return authidentity.AuthenticatedIdentity{UserID: token, HomeOrganizationID: "A", Roles: []string{"listingkit_admin"}, TokenExpiresAt: time.Now().Add(time.Hour)}, nil
+	expiresAt := verifier.expiresAt
+	if expiresAt.IsZero() {
+		expiresAt = time.Now().Add(time.Hour)
+	}
+	return authidentity.AuthenticatedIdentity{UserID: token, HomeOrganizationID: "A", Roles: []string{"listingkit_admin"}, TokenExpiresAt: expiresAt}, nil
 }
 
 type titleFixture struct {
@@ -253,10 +281,14 @@ func (f *titleFixture) publishSource(t *testing.T, org, key, publicationID strin
 	return published
 }
 func (f *titleFixture) server(t *testing.T) *httptest.Server {
+	return f.serverWithVerifier(t, titleVerifier{})
+}
+
+func (f *titleFixture) serverWithVerifier(t *testing.T, verifier titleVerifier) *httptest.Server {
 	t.Helper()
 	auth, e := authz.NewListingKitAuthorizer([]string{"operator"}, nil)
 	require.NoError(t, e)
-	app, e := NewProductReviewApplication(f.db, titleVerifier{}, workbenchcontext.NewResolver(f.grants, "project", "v1", nil), auth, f.g)
+	app, e := NewProductReviewApplication(f.db, verifier, workbenchcontext.NewResolver(f.grants, "project", "v1", nil), auth, f.g)
 	require.NoError(t, e)
 	ts := httptest.NewUnstartedServer(app.Handler)
 	ts.Config.ReadTimeout = app.ReadTimeout
@@ -416,6 +448,107 @@ func TestProductReviewHTTPCreateUsesOneDatabaseConnection(t *testing.T) {
 	require.Equal(t, uint64(2), v.Receipt.ProductVersion)
 }
 
+func TestProductReviewProviderRunsOutsideReviewLocksAndConnections(t *testing.T) {
+	f := newTitleFixture(t)
+	s := f.server(t)
+	v := titleDecision(t, s, titleCreate(t, s, "provider-lock-create"), "accept", "admin", "", 200)
+
+	blocked, release := f.grants.blockLiveCall(f.grants.live.Load() + 2)
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	done := make(chan providerResult, 1)
+	go func() {
+		status, _, err := titleRequest(s, "POST", titleBasePath+"/"+v.ID+"/apply", "admin", "B", "provider-lock-apply", fmt.Sprintf(`{"expected_revision":%d}`, v.Revision))
+		done <- providerResult{status: status, err: err}
+	}()
+	select {
+	case <-blocked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("source authorization provider was not reached")
+	}
+
+	raw, err := f.db.DB()
+	require.NoError(t, err)
+	require.Zero(t, raw.Stats().InUse, "a blocked provider call must not retain a Review database connection")
+	var advisoryLocks int64
+	require.NoError(t, f.db.Raw("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())").Scan(&advisoryLocks).Error)
+	require.Zero(t, advisoryLocks, "a blocked provider call must not retain the operation advisory lock")
+	lock := f.db.Begin()
+	require.NoError(t, lock.Error)
+	var lockedID string
+	require.NoError(t, lock.Raw("SELECT id FROM product_title_proposals WHERE org = ? AND id = ? FOR UPDATE NOWAIT", "B", v.ID).Scan(&lockedID).Error)
+	require.Equal(t, v.ID, lockedID, "a blocked provider call must not retain the proposal row lock")
+	require.NoError(t, lock.Rollback().Error)
+
+	close(release)
+	released = true
+	result := <-done
+	require.NoError(t, result.err)
+	require.Equal(t, http.StatusOK, result.status)
+}
+
+func TestProductReviewCommittedReplayAndConflictSkipSourcePreauthorization(t *testing.T) {
+	f := newTitleFixture(t)
+	s := f.server(t)
+	created := titleCreate(t, s, "preflight-create")
+	beforeLive := f.grants.live.Load()
+	beforeGeneration := f.g.calls.Load()
+	replayed := titleCreate(t, s, "preflight-create")
+	require.Equal(t, created, replayed)
+	require.Equal(t, beforeLive+1, f.grants.live.Load(), "committed replay needs only current Review route authorization")
+	require.Equal(t, beforeGeneration, f.g.calls.Load())
+
+	beforeLive = f.grants.live.Load()
+	titleCall(t, s, "POST", titleBasePath, "operator", "B", "preflight-create", `{"product_key":"product","base_version":2}`, 409)
+	require.Equal(t, beforeLive+1, f.grants.live.Load(), "changed payload must conflict before source authorization")
+	require.Equal(t, beforeGeneration, f.g.calls.Load())
+}
+
+func TestProductReviewLockWaitRechecksIdentityAndProofExpiry(t *testing.T) {
+	f := newTitleFixture(t)
+	setup := f.server(t)
+	v := titleDecision(t, setup, titleCreate(t, setup, "proof-expiry-create"), "accept", "admin", "", 200)
+
+	blocked, releaseProvider := f.grants.blockLiveCall(f.grants.live.Load() + 2)
+	expiresAt := time.Now().Add(750 * time.Millisecond)
+	s := f.serverWithVerifier(t, titleVerifier{expiresAt: expiresAt})
+	done := make(chan providerResult, 1)
+	go func() {
+		status, _, err := titleRequest(s, "POST", titleBasePath+"/"+v.ID+"/apply", "admin", "B", "proof-expiry-apply", fmt.Sprintf(`{"expected_revision":%d}`, v.Revision))
+		done <- providerResult{status: status, err: err}
+	}()
+	select {
+	case <-blocked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("source authorization provider was not reached")
+	}
+	proposalLock := f.db.Begin()
+	require.NoError(t, proposalLock.Error)
+	require.NoError(t, proposalLock.Exec("SELECT 1 FROM product_title_proposals WHERE org = ? AND id = ? FOR UPDATE", "B", v.ID).Error)
+	close(releaseProvider)
+	if wait := time.Until(expiresAt.Add(25 * time.Millisecond)); wait > 0 {
+		<-time.After(wait)
+	}
+	require.NoError(t, proposalLock.Rollback().Error)
+	result := <-done
+	require.NoError(t, result.err)
+	require.Equal(t, http.StatusForbidden, result.status)
+
+	stored := titleCall(t, setup, "GET", titleBasePath+"/"+v.ID, "admin", "B", "", "", 200)
+	require.Equal(t, "accepted", stored.State)
+	require.Nil(t, stored.Receipt)
+	current, err := f.reader.GetCurrentSnapshot(context.Background(), f.base.Identity)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), current.Version)
+	var operations int64
+	require.NoError(t, f.db.Table("product_title_operations").Where("operation_key = ?", "proof-expiry-apply").Count(&operations).Error)
+	require.Zero(t, operations)
+}
+
 func TestProductReviewHTTPBoundedPoolBurstDoesNotStarve(t *testing.T) {
 	f := newTitleFixture(t)
 	raw, err := f.db.DB()
@@ -466,6 +599,23 @@ func TestProductReviewHTTPRevokedBeforeCreateCommitWritesNothing(t *testing.T) {
 		require.NoError(t, f.db.Table(table).Count(&count).Error)
 		require.Zero(t, count, table)
 	}
+}
+
+func TestProductReviewHTTPGrantDependencyFailureAfterGenerationWritesNothing(t *testing.T) {
+	f := newTitleFixture(t)
+	f.g.afterGenerate = func() {
+		f.grants.failed.Store(true)
+	}
+	titleCall(t, f.server(t), "POST", titleBasePath, "operator", "B", "dependency-before-commit", `{"product_key":"product","base_version":1}`, 503)
+	require.Equal(t, int32(1), f.g.calls.Load())
+	for _, table := range []string{"product_title_proposals", "product_title_operations"} {
+		var count int64
+		require.NoError(t, f.db.Table(table).Count(&count).Error)
+		require.Zero(t, count, table)
+	}
+	current, err := f.reader.GetCurrentSnapshot(context.Background(), f.base.Identity)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), current.Version)
 }
 
 func TestProductReviewHTTPEachEvidenceUseRefreshesSourceAuthorizationWithoutSourceWrites(t *testing.T) {

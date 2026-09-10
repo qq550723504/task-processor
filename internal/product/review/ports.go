@@ -20,6 +20,13 @@ type Authorizer interface {
 type SourcePublicationReader interface {
 	Read(context.Context, string) (sourcing.PersistedPublication, error)
 }
+
+// SourcePublicationGateway performs the root, freshly authorized SRC-1 read
+// and can mint the private request proof consumed by a transaction-bound read.
+type SourcePublicationGateway interface {
+	SourcePublicationReader
+	AuthorizeRead(context.Context) (context.Context, error)
+}
 type Operation struct {
 	Scope            Scope
 	Key, Fingerprint string
@@ -36,6 +43,6 @@ type Tx interface {
 type Store interface {
 	Read(context.Context, Scope, string) (Record, error)
 	List(context.Context, Scope, PageRequest) (Page, error)
-	FindOperation(context.Context, Operation) (View, bool, error)
+	Preflight(context.Context, Operation) (View, bool, error)
 	Run(context.Context, Operation, func(Tx) (View, error)) (View, error)
 }

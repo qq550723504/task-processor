@@ -24,6 +24,13 @@ func (transactionSourceReaderStub) Read(context.Context, string) (sourcing.Persi
 	return sourcing.PersistedPublication{}, errors.New("unused source reader")
 }
 
+type countingTransactionSourceReader struct{ reads *atomic.Int32 }
+
+func (reader countingTransactionSourceReader) Read(context.Context, string) (sourcing.PersistedPublication, error) {
+	reader.reads.Add(1)
+	return sourcing.PersistedPublication{}, nil
+}
+
 func postgresReviewRepositoryFixture(t *testing.T) (*Repository, *gorm.DB) {
 	t.Helper()
 	dsn := os.Getenv("ISSUE382_TEST_DSN")
@@ -79,6 +86,10 @@ func TestPostgresRunUsesReadCommitted(t *testing.T) {
 
 func TestPostgresOperationWaiterReplaysCommittedReceipt(t *testing.T) {
 	repository, db := postgresReviewRepositoryFixture(t)
+	var sourceReads atomic.Int32
+	repository.sourceReaderFactory = func(*gorm.DB) (review.SourcePublicationReader, error) {
+		return countingTransactionSourceReader{reads: &sourceReads}, nil
+	}
 	var lockAttempts atomic.Int32
 	secondAtLock := make(chan struct{})
 	repository.beforeOperationLock = func() {
@@ -88,6 +99,11 @@ func TestPostgresOperationWaiterReplaysCommittedReceipt(t *testing.T) {
 	}
 
 	op := review.Operation{Scope: review.Scope{Org: "org", Actor: "actor"}, Key: "same-key", Fingerprint: "same-payload"}
+	for range 2 {
+		_, found, err := repository.Preflight(context.Background(), op)
+		require.NoError(t, err)
+		require.False(t, found, "both requests may miss preflight before the mutation race")
+	}
 	want := review.View{ID: "00000000-0000-0000-0000-000000000001", Owner: "actor", State: "pending", Revision: 1}
 	firstInside := make(chan struct{})
 	releaseFirst := make(chan struct{})
@@ -100,6 +116,7 @@ func TestPostgresOperationWaiterReplaysCommittedReceipt(t *testing.T) {
 			if replayed, found, replayErr := tx.Replay(); replayErr != nil || found {
 				return replayed, replayErr
 			}
+			_, _ = tx.SourceReader().Read(context.Background(), "proof-consumption")
 			mutations.Add(1)
 			if block {
 				close(firstInside)
@@ -128,9 +145,46 @@ func TestPostgresOperationWaiterReplaysCommittedReceipt(t *testing.T) {
 	require.Equal(t, want, first.view)
 	require.Equal(t, want, second.view)
 	require.Equal(t, int32(1), mutations.Load())
+	require.Equal(t, int32(1), sourceReads.Load(), "the race replay must return before consuming source proof")
 	var operations int64
 	require.NoError(t, db.Table("product_title_operations").Count(&operations).Error)
 	require.Equal(t, int64(1), operations)
+}
+
+func TestPostgresPreflightReturnsReplayOrConflictWithoutBusinessWrites(t *testing.T) {
+	repository, db := postgresReviewRepositoryFixture(t)
+	op := review.Operation{Scope: review.Scope{Org: "org", Actor: "actor"}, Key: "preflight", Fingerprint: "payload-a"}
+	want := review.View{ID: "00000000-0000-0000-0000-000000000004", Owner: "actor", State: "pending", Revision: 1}
+	_, err := repository.Run(context.Background(), op, func(tx review.Tx) (review.View, error) {
+		return want, tx.Complete(want)
+	})
+	require.NoError(t, err)
+
+	sourceFactories := atomic.Int32{}
+	repository.sourceReaderFactory = func(*gorm.DB) (review.SourcePublicationReader, error) {
+		sourceFactories.Add(1)
+		return transactionSourceReaderStub{}, nil
+	}
+	replayed, found, err := repository.Preflight(context.Background(), op)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, want, replayed)
+	_, found, err = repository.Preflight(context.Background(), review.Operation{Scope: op.Scope, Key: op.Key, Fingerprint: "payload-b"})
+	require.ErrorIs(t, err, review.ErrConflict)
+	require.False(t, found)
+	require.Zero(t, sourceFactories.Load(), "preflight must not construct the transaction source reader")
+
+	var proposals, operations int64
+	require.NoError(t, db.Table("product_title_proposals").Count(&proposals).Error)
+	require.NoError(t, db.Table("product_title_operations").Count(&operations).Error)
+	require.Zero(t, proposals)
+	require.Equal(t, int64(1), operations)
+	raw, err := db.DB()
+	require.NoError(t, err)
+	require.Zero(t, raw.Stats().InUse)
+	var advisoryLocks int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())").Scan(&advisoryLocks).Error)
+	require.Zero(t, advisoryLocks)
 }
 
 func TestPostgresOperationWaiterConflictsOnDifferentPayload(t *testing.T) {

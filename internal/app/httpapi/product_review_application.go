@@ -67,7 +67,7 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: resolver, now: time.Now}
 	store, err := reviewstore.NewRepository(db, func(tx *gorm.DB) (review.SourcePublicationReader, error) {
-		return productsourcing.NewTransactionReader(tx, live, auth)
+		return productsourcing.NewTransactionReader(tx)
 	})
 	if err != nil {
 		return nil, err

@@ -152,20 +152,39 @@ func replay(db *gorm.DB, op review.Operation) (review.View, bool, error) {
 	}
 	return v, true, nil
 }
-func (r *Repository) FindOperation(ctx context.Context, op review.Operation) (review.View, bool, error) {
-	return replay(r.db.WithContext(ctx), op)
+func operationLockKey(op review.Operation) int64 {
+	raw, _ := json.Marshal([]string{op.Scope.Org, op.Scope.Actor, op.Key})
+	sum := sha256.Sum256(raw)
+	return int64(binary.BigEndian.Uint64(sum[:8]))
+}
+
+func lockOperation(db *gorm.DB, op review.Operation) error {
+	return db.Exec("SELECT pg_advisory_xact_lock(?)", operationLockKey(op)).Error
+}
+
+// Preflight serializes only on the operation identity. It performs no business
+// write and releases both its transaction connection and advisory lock before
+// the caller invokes an external authorization provider.
+func (r *Repository) Preflight(ctx context.Context, op review.Operation) (review.View, bool, error) {
+	var result review.View
+	var found bool
+	err := r.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		if err := lockOperation(db, op); err != nil {
+			return err
+		}
+		var err error
+		result, found, err = replay(db, op)
+		return err
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	return result, found, err
 }
 func (r *Repository) Run(ctx context.Context, op review.Operation, fn func(review.Tx) (review.View, error)) (review.View, error) {
 	var result review.View
 	err := r.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
-		// Canonical length framing avoids concatenation collisions. Hash collisions
-		// merely serialize unrelated operations; SQL primary keys remain authoritative.
-		raw, _ := json.Marshal([]string{op.Scope.Org, op.Scope.Actor, op.Key})
-		sum := sha256.Sum256(raw)
 		if r.beforeOperationLock != nil {
 			r.beforeOperationLock()
 		}
-		if e := db.Exec("SELECT pg_advisory_xact_lock(?)", int64(binary.BigEndian.Uint64(sum[:8]))).Error; e != nil {
+		if e := lockOperation(db, op); e != nil {
 			return e
 		}
 		writer, e := catalogstore.NewTransactionWriter(db)

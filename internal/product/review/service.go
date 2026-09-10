@@ -17,13 +17,13 @@ import (
 
 type Service struct {
 	reader       catalog.VersionedSnapshotReader
-	sourceReader SourcePublicationReader
+	sourceReader SourcePublicationGateway
 	store        Store
 	proposer     enrichment.Proposer
 	auth         Authorizer
 }
 
-func NewService(reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationReader, store Store, proposer enrichment.Proposer, auth Authorizer) (*Service, error) {
+func NewService(reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationGateway, store Store, proposer enrichment.Proposer, auth Authorizer) (*Service, error) {
 	if reader == nil || sourceReader == nil || store == nil || proposer == nil || auth == nil {
 		return nil, ErrUnavailable
 	}
@@ -70,7 +70,7 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	if err != nil {
 		return View{}, err
 	}
-	if v, found, e := s.store.FindOperation(ctx, op); e != nil || found {
+	if v, found, e := s.store.Preflight(ctx, op); e != nil || found {
 		return v, e
 	}
 	base, source, err := s.source(ctx, s.reader, s.sourceReader, a.Org, in)
@@ -87,6 +87,10 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	}
 	if err = ValidateTitle(proposal.Changes[0].Value); err != nil {
 		return View{}, err
+	}
+	ctx, err = s.sourceReader.AuthorizeRead(ctx)
+	if err != nil {
+		return View{}, mapSourceReadError(err)
 	}
 	r := Record{ID: uuid.NewString(), Org: a.Org, Owner: a.Actor, Input: in, BasePublicationID: base.PublicationID, Policy: policy.Version, Before: base.Snapshot.Title, Title: proposal.Changes[0].Value, State: "pending", Revision: 1, Original: proposal}
 	return s.store.Run(ctx, op, func(tx Tx) (View, error) {
@@ -129,7 +133,7 @@ func (s *Service) Get(ctx context.Context, id string) (View, error) {
 	return r.View(), nil
 }
 func (s *Service) Decide(ctx context.Context, key, id string, in DecisionInput) (View, error) {
-	return s.change(ctx, key, id, "decision", in, in.Action != "edit", func(ctx context.Context, tx Tx, r *Record, a Scope) error {
+	return s.change(ctx, key, id, "decision", in, in.Action != "edit", in.Action != "reject", func(ctx context.Context, tx Tx, r *Record, a Scope) error {
 		if err := r.Decide(a.Actor, in); err != nil {
 			return err
 		}
@@ -158,7 +162,7 @@ func (s *Service) validatePatch(ctx context.Context, tx Tx, r *Record, a Scope) 
 	return base, nil
 }
 func (s *Service) Apply(ctx context.Context, key, id string, in ApplyInput) (View, error) {
-	return s.change(ctx, key, id, "apply", in, true, func(ctx context.Context, tx Tx, r *Record, a Scope) error {
+	return s.change(ctx, key, id, "apply", in, true, true, func(ctx context.Context, tx Tx, r *Record, a Scope) error {
 		if r.State != "accepted" || in.ExpectedRevision != r.Revision || in.ExpectedRevision == 0 {
 			return ErrConflict
 		}
@@ -182,7 +186,7 @@ func (s *Service) Apply(ctx context.Context, key, id string, in ApplyInput) (Vie
 		return nil
 	})
 }
-func (s *Service) change(ctx context.Context, key, id, kind string, input any, admin bool, mutate func(context.Context, Tx, *Record, Scope) error) (View, error) {
+func (s *Service) change(ctx context.Context, key, id, kind string, input any, admin, sourceRead bool, mutate func(context.Context, Tx, *Record, Scope) error) (View, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	a, err := s.authorize(ctx, true, admin)
@@ -196,13 +200,25 @@ func (s *Service) change(ctx context.Context, key, id, kind string, input any, a
 	if err != nil {
 		return View{}, err
 	}
+	if v, found, e := s.store.Preflight(ctx, op); e != nil || found {
+		return v, e
+	}
+	if sourceRead {
+		if s.sourceReader == nil {
+			return View{}, ErrUnavailable
+		}
+		ctx, err = s.sourceReader.AuthorizeRead(ctx)
+		if err != nil {
+			return View{}, mapSourceReadError(err)
+		}
+	}
 	return s.store.Run(ctx, op, func(tx Tx) (View, error) {
+		if v, found, e := tx.Replay(); e != nil || found {
+			return v, e
+		}
 		r, e := tx.Load(id)
 		if e != nil {
 			return View{}, e
-		}
-		if v, found, e := tx.Replay(); e != nil || found {
-			return v, e
 		}
 		if e = mutate(ctx, tx, &r, a); e != nil {
 			return View{}, e

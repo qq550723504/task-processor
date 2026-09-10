@@ -117,6 +117,7 @@ type InternalProducer struct {
 	authorizer PublicationAuthorizer
 	store      PublicationStore
 	admitted   map[ProducerDescriptor]struct{}
+	now        func() time.Time
 }
 
 // InternalReader is the admitted read-only entry for exact persisted source
@@ -147,7 +148,7 @@ func NewInternalProducer(authorizer PublicationAuthorizer, store PublicationStor
 		}
 		allow[producer] = struct{}{}
 	}
-	return &InternalProducer{authorizer: authorizer, store: store, admitted: allow}, nil
+	return &InternalProducer{authorizer: authorizer, store: store, admitted: allow, now: time.Now}, nil
 }
 
 func (p *InternalProducer) Publish(ctx context.Context, command PublicationCommand) (PublicationReceipt, error) {
@@ -192,6 +193,30 @@ func (p *InternalProducer) Read(ctx context.Context, publicationID string) (Pers
 		return PersistedPublication{}, ErrSourcePublicationUnavailable
 	}
 	return readPersistedPublication(ctx, p.authorizer, p.store, publicationID)
+}
+
+// AuthorizeRead performs the second fresh source authorization for a confirmed
+// new Review mutation and returns a context carrying a private, short-lived
+// proof. The proof contains no bearer, roles or grants.
+func (p *InternalProducer) AuthorizeRead(ctx context.Context) (context.Context, error) {
+	if ctx == nil {
+		return nil, ErrPublicationForbidden
+	}
+	if err := ctx.Err(); err != nil {
+		return ctx, err
+	}
+	if p == nil || p.authorizer == nil {
+		return ctx, ErrSourcePublicationUnavailable
+	}
+	scope, err := p.authorizer.Authorize(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	now := p.now
+	if now == nil {
+		now = time.Now
+	}
+	return withPublicationReadProof(ctx, scope, now())
 }
 
 func (r *InternalReader) Read(ctx context.Context, publicationID string) (PersistedPublication, error) {

@@ -31,6 +31,10 @@ func (stub *sourcePublicationReaderStub) Read(_ context.Context, publicationID s
 	return stub.value, stub.err
 }
 
+func (stub *sourcePublicationReaderStub) AuthorizeRead(ctx context.Context) (context.Context, error) {
+	return ctx, stub.err
+}
+
 func TestSourceDerivesPublicationFromExactCatalogVersion(t *testing.T) {
 	snapshot := catalog.ProductSnapshot{Title: "source title", Brand: "brand"}
 	published := catalog.PublishedSnapshot{
