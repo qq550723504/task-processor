@@ -13,7 +13,7 @@ func TestDefinitionMetadata(t *testing.T) {
 	if err := definition.Validate(); err != nil {
 		t.Fatalf("Definition().Validate() error = %v", err)
 	}
-	if definition.Ref != (commercetool.ToolRef{ID: "product.canonical.inspect", Version: "v1.0.0"}) ||
+	if definition.Ref != (commercetool.ToolRef{ID: "product.canonical.inspect", Version: "v2.0.0"}) ||
 		definition.Capability != "product.canonical" || definition.Owner != "product.catalog" ||
 		definition.Risk != commercetool.RiskRead || definition.SideEffects.Mode != commercetool.SideEffectNone ||
 		definition.Idempotency.Mode != commercetool.IdempotencyDeterministic ||
