@@ -11,6 +11,7 @@ import {provider,createSubjects,grantSubjects,authorizationControl} from './issu
 import {discoverRunProcesses} from './issue357/processes.mjs';
 import {restartRuntime} from './issue357/restart.mjs';
 import {waitForProvider} from './issue357/readiness.mjs';
+import {startCurrentApplications as runCurrentApplicationStart} from './issue357/current_application_lifecycle.mjs';
 
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const argv=process.argv.slice(2),action=argv[0];
@@ -62,7 +63,7 @@ async function startApplications(m) {
  const apps=await readJSON(join(m.directory,'applications.json'));
  await json(join(m.directory,'runtime.json'),{...baseConfig(m),apiClientId:apps.APIClientID,apiClientSecret:apps.APIClientSecret});
  const ui=join(m.directory,'ui');
- const nextEnvironment={NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_SECRET:m.secrets.auth,AUTH_URL:m.origins.web,LISTINGKIT_PUBLIC_BASE_URL:m.origins.web,
+ const nextEnvironment={NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_SECRET:m.secrets.auth,AUTH_URL:m.origins.web,LISTINGKIT_PUBLIC_BASE_URL:m.origins.web,LISTINGKIT_ACCEPTANCE_TOKEN_FILE:join(ui,'.local','image-agent-acceptance','user-token.txt'),
   ZITADEL_ISSUER_URL:m.origins.issuer,ZITADEL_CLIENT_ID:apps.OIDCClientID,ZITADEL_CLIENT_SECRET:apps.OIDCClientSecret,ZITADEL_REDIRECT_URI:`${m.origins.web}/api/auth/callback/zitadel`,ZITADEL_POST_LOGOUT_REDIRECT_URI:m.origins.web,ZITADEL_SCOPES:[...apps.RecommendedScopes,'offline_access'].join(' '),
   LISTINGKIT_SERVICE_API_BASE:`${m.origins.go}/api/v1`,COMMERCIAL_API_ORIGIN:m.origins.go};
  let goService={binary:binary(m),goArgs:['-test.run=^TestIssue357Serve$','-test.timeout=24h'],goEnvironment:{ISSUE357_INPUT_FILE:join(m.directory,'runtime.json')}};
@@ -156,7 +157,7 @@ async function sourceAccountSnapshot(m) {
  return readJSON(join(m.directory,'source-account-snapshot.json'));
 }
 async function sourceAccountPermission(m,permissionAction) {
- assert.ok(['revoke','restore'].includes(permissionAction),'INVALID_PERMISSION_ACTION');
+ assert.ok(['revoke','restore','source-cross-grant','source-cross-restore','commercial-cross-grant','commercial-cross-restore'].includes(permissionAction),'INVALID_PERMISSION_ACTION');
  await json(join(m.directory,'source-permission-input.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase,permissionAction});
  await go(m,'SourceAccountPermission','source-permission-input.json');await unlink(join(m.directory,'source-permission-input.json'));
 }
@@ -169,9 +170,7 @@ async function stopCurrentApplications(m) {
  } catch(error) {m.status='stop-failed';m.stopFailure={code:String(error.message).split(':',1)[0],at:new Date().toISOString()};await save(m);throw error}
 }
 async function startCurrentApplications(m) {
- assert.ok(['stopped','start-failed'].includes(m.status),'RUN_NOT_STOPPED');await assertFingerprint(m);m.status='starting-applications';delete m.startFailure;await save(m);
- try {await startApplications(m);await health(m);m.status='ready';await save(m)}
- catch(error){m.status='start-failed';m.startFailure={code:String(error.message).split(':',1)[0],at:new Date().toISOString()};await save(m);try{await stopApplications(m)}catch{}throw error}
+ return runCurrentApplicationStart(m,{assertFingerprint,save,startApplications,health,stopApplications});
 }
 async function fresh() {
  assert.equal(process.platform,'win32','NOT_SUPPORTED: Windows first');
@@ -219,7 +218,7 @@ try {
     console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return;
    }
    if(action==='destroy'){const evidence=await cleanup(m);console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return}
-   if(currentMode(m)&&(action==='source-permission-revoke'||action==='source-permission-restore')){assert.ok(['stopped','start-failed'].includes(m.status),'APPLICATIONS_MUST_BE_STOPPED');await sourceAccountPermission(m,action.endsWith('revoke')?'revoke':'restore');console.log('CONTROL_OK source-permission');return}
+   if(currentMode(m)&&['source-permission-revoke','source-permission-restore','source-cross-grant','source-cross-restore','commercial-cross-grant','commercial-cross-restore'].includes(action)){assert.ok(['stopped','start-failed'].includes(m.status),'APPLICATIONS_MUST_BE_STOPPED');const permissionAction=action==='source-permission-revoke'?'revoke':action==='source-permission-restore'?'restore':action;await sourceAccountPermission(m,permissionAction);console.log(`CONTROL_OK ${action}`);return}
    if(currentMode(m)&&(action==='provider-stop'||action==='provider-start')){assert.ok(['ready','stopped','start-failed'].includes(m.status),'RUN_NOT_CONTROLLABLE');await inventory(m,true);await run('docker',['container',action==='provider-stop'?'stop':'start',m.resources[`${m.project}-zitadel-api`].id]);console.log(`CONTROL_OK ${action}`);return}
    if(action==='start'&&currentMode(m)&&['stopped','start-failed'].includes(m.status)){await startCurrentApplications(m);console.log(`READY ${m.origins.web}`);return}
    assert.equal(m.status,'ready','RUN_NOT_READY');

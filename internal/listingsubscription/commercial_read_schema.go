@@ -48,7 +48,15 @@ const commercialReadPermissionQuery = `SELECT current_user,
     OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'UPDATE')
     OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'DELETE')
     OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'TRIGGER') AS forbidden_privileges`
+    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'TRIGGER')
+    OR has_table_privilege(current_user, 'public.source_account_resources', 'SELECT')
+    OR has_table_privilege(current_user, 'public.source_account_resources', 'INSERT')
+    OR has_table_privilege(current_user, 'public.source_account_resources', 'UPDATE')
+    OR has_table_privilege(current_user, 'public.source_account_resources', 'DELETE')
+    OR has_table_privilege(current_user, 'public.source_account_operations', 'SELECT')
+    OR has_table_privilege(current_user, 'public.source_account_operations', 'INSERT')
+    OR has_table_privilege(current_user, 'public.source_account_operations', 'UPDATE')
+    OR has_table_privilege(current_user, 'public.source_account_operations', 'DELETE') AS forbidden_privileges`
 
 // VerifyCommercialReadSchema fails closed before the application listens when
 // the read-only commercial role cannot access the exact current fact boundary.

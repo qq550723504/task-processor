@@ -26,8 +26,9 @@ const manifest = JSON.parse(await readFile(path, "utf8")) as Manifest;
 const nativeFetch = globalThis.fetch;
 let actor: "admin" | "viewer" = "admin";
 let organization = manifest.organizations.B;
+let loseResponseForKey: string | null = null;
 
-vi.stubGlobal("fetch", (input: RequestInfo | URL, init: RequestInit = {}) => {
+vi.stubGlobal("fetch", async (input: RequestInfo | URL, init: RequestInit = {}) => {
   if (typeof input !== "string" || !input.startsWith("/")) return nativeFetch(input, init);
   const headers = new Headers(init.headers);
   headers.set("Cookie", `${manifest.sessions[actor].cookie}; shuomi_effective_organization=${organization}`);
@@ -35,7 +36,13 @@ vi.stubGlobal("fetch", (input: RequestInfo | URL, init: RequestInit = {}) => {
   headers.set("Sec-Fetch-Site", "same-origin");
   headers.set("Authorization", "Bearer browser-forged-and-ignored");
   headers.set("X-Requested-Organization-ID", "browser-forged-and-ignored");
-  return nativeFetch(new URL(input, manifest.origin), { ...init, headers });
+  const response = await nativeFetch(new URL(input, manifest.origin), { ...init, headers });
+  if (loseResponseForKey && headers.get("Idempotency-Key") === loseResponseForKey) {
+    loseResponseForKey = null;
+    await response.arrayBuffer();
+    throw new TypeError("simulated response loss after the actual BFF response completed");
+  }
+  return response;
 });
 
 const createKey = "01991e24-1001-7001-8001-000000000001";
@@ -94,7 +101,10 @@ it("uses the actual SA2 client and BFF against the normal current application", 
     const final = await disableSourceAccount({ sourceAccountId: created.account.id, ifMatch: enabled.etag, idempotencyKey: finalDisableKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B });
     expect(await create()).toMatchObject({ replayed: true, account: { id: created.account.id, managementStatus: "disabled", version: "4" } });
     expect(await enableSourceAccount({ sourceAccountId: created.account.id, ifMatch: disabled.etag, idempotencyKey: enableKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B })).toMatchObject({ replayed: true, account: { managementStatus: "disabled", version: "4" } });
-    await createSourceAccount({ displayName: "RUN-1 page 2", platform: "1688", idempotencyKey: secondCreateKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B });
+    loseResponseForKey = secondCreateKey;
+    await expect(createSourceAccount({ displayName: "RUN-1 page 2", platform: "1688", idempotencyKey: secondCreateKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B })).rejects.toMatchObject({ status: 0, code: "OUTCOME_UNKNOWN", outcome: "unknown" });
+    expect(await createSourceAccount({ displayName: "RUN-1 page 2", platform: "1688", idempotencyKey: secondCreateKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B })).toMatchObject({ replayed: true, account: { managementStatus: "enabled", version: "1" } });
+    await expect(createSourceAccount({ displayName: "Changed after response loss", platform: "1688", idempotencyKey: secondCreateKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B })).rejects.toMatchObject({ status: 409, code: "IDEMPOTENCY_CONFLICT", outcome: "rejected" });
     await createSourceAccount({ displayName: "RUN-1 page 3", platform: "1688", idempotencyKey: thirdCreateKey, expectedActorSubject: manifest.sessions.admin.subject, expectedOrganizationId: manifest.organizations.B });
     const firstPage = await listSourceAccounts({ expectedOrganizationId: manifest.organizations.B, limit: 1 });
     expect(firstPage.items).toHaveLength(1);

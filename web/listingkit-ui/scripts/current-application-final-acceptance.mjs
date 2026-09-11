@@ -57,10 +57,36 @@ async function login(manifest, user) {
   const sessionResponse = await context.request.get(`${manifest.origins.web}/api/auth/session`);
   const session = await sessionResponse.json();
   assert.equal(session.identity?.userId, manifest.users[user].id);
+  assert.equal(typeof session.expiresAt, "number");
+  const accessToken = (await readFile(path.join(runDirectory, "ui", ".local", "image-agent-acceptance", "user-token.txt"), "utf8")).trim();
+  assert.ok(accessToken);
   const cookies = (await context.cookies(manifest.origins.web)).filter(cookie => /(?:authjs|next-auth)\.session-token/.test(cookie.name));
   assert.ok(cookies.length >= 1);
   await context.close();
-  return { subject: manifest.users[user].id, cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; ") };
+  return { subject: manifest.users[user].id, cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; "), accessToken, expiresAt: session.expiresAt };
+}
+
+async function assertExpiredOfficialToken(manifest, loginResult) {
+  const wait = loginResult.expiresAt * 1000 + 1500 - Date.now();
+  if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  const response = await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`, { headers: { Authorization: `Bearer ${loginResult.accessToken}`, "X-Requested-Organization-ID": manifest.organizations.B.id } });
+  assert.equal(response.status, 401, "official access token remained accepted after its issued expiry");
+}
+
+async function refreshedAdminToken(manifest, session) {
+  const response = await fetch(`${manifest.origins.web}/api/auth/session`, { headers: { Cookie: session.cookie } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.identity?.userId, manifest.users.admin.id);
+  const token = (await readFile(path.join(runDirectory, "ui", ".local", "image-agent-acceptance", "user-token.txt"), "utf8")).trim();
+  assert.ok(token);
+  return token;
+}
+
+async function assertSourceAuthorizationDependencyUnavailable(manifest, accessToken) {
+  const response = await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "X-Requested-Organization-ID": manifest.organizations.B.id, "Content-Type": "application/json", "Idempotency-Key": "01991e24-1009-7009-8009-000000000009" }, body: JSON.stringify({ displayName: "must not commit", platform: "1688" }) });
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /DEPENDENCY_UNAVAILABLE/);
 }
 
 async function runClient(manifest, sessions, phase) {
@@ -88,7 +114,9 @@ try {
   assert.deepEqual(services.goArgs.slice(0, 1), ["-config"]);
   const { chromium } = await import("@playwright/test");
   browser = await chromium.launch({ headless: true });
-  const sessions = { admin: await login(manifest, "admin"), viewer: await login(manifest, "viewer") };
+  const adminLogin = await login(manifest, "admin");
+  const viewerLogin = await login(manifest, "viewer");
+  const sessions = { admin: { subject: adminLogin.subject, cookie: adminLogin.cookie }, viewer: { subject: viewerLogin.subject, cookie: viewerLogin.cookie } };
   const adminHeaders = { Cookie: `${sessions.admin.cookie}; shuomi_effective_organization=${manifest.organizations.B.id}`, Origin: manifest.origins.web, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": manifest.users.admin.id, "X-Expected-Organization-ID": manifest.organizations.B.id };
   assert.equal((await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders })).status, 200);
   assert.equal((await fetch(`${manifest.origins.web}/api/workbench/commercial/overview`, { headers: adminHeaders })).status, 200);
@@ -115,6 +143,19 @@ try {
   await control("start");
   await runClient(manifest, sessions, "verify");
   await control("stop");
+  await control("source-cross-grant");
+  await assert.rejects(control("start"));
+  await control("source-cross-restore");
+  await control("start");
+  await control("stop");
+  await control("commercial-cross-grant");
+  await assert.rejects(control("start"));
+  await control("commercial-cross-restore");
+  await control("start");
+  await runClient(manifest, sessions, "verify");
+  await assertExpiredOfficialToken(manifest, adminLogin);
+  const activeAdminToken = await refreshedAdminToken(manifest, sessions.admin);
+  await control("stop");
   await control("provider-stop");
   await assert.rejects(control("start"));
   assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
@@ -123,6 +164,7 @@ try {
   await runClient(manifest, sessions, "verify");
   await control("provider-stop");
   try {
+    await assertSourceAuthorizationDependencyUnavailable(manifest, activeAdminToken);
     const unavailable = await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders });
     assert.ok([401, 502, 503, 504].includes(unavailable.status));
   } finally {
@@ -139,6 +181,7 @@ try {
       const destroyed = JSON.parse(await control("destroy"));
       assert.equal(destroyed.resourcesReleased, true);
       await assert.rejects(readFile(path.join(runDirectory, "issue390-chain.json")), error => error.code === "ENOENT");
+      await assert.rejects(readFile(path.join(runDirectory, "ui", ".local", "image-agent-acceptance", "user-token.txt")), error => error.code === "ENOENT");
       console.log(`DESTROYED owned run ${runId}; evidence retained at ${runDirectory}`);
     } catch {
       console.error(`DESTROY_INCOMPLETE run=${runId}`);

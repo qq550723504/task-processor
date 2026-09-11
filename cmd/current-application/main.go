@@ -49,11 +49,11 @@ func execute() error {
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
 		IdentityPreflight: currentapplication.VerifyIdentityProvider,
-		OpenSourceAccount: func(cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
-			return platformdatabase.OpenExistingWritable(databaseConfig(cfg))
+		OpenSourceAccount: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
-		OpenCommercial: func(cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
-			return platformdatabase.OpenExistingReadOnly(databaseConfig(cfg))
+		OpenCommercial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
 		NewApplication: httpapi.NewCurrentApplication,
 		CloseDatabase:  platformdatabase.Close,

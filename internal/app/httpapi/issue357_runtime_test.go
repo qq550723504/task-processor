@@ -240,13 +240,21 @@ func TestIssue357SourceAccountPermission(t *testing.T) {
 	c, _ := issue357ReadConfig(t)
 	require.Equal(t, "current-application", c.RuntimeMode)
 	require.Equal(t, "issue357", c.DatabaseUser)
-	require.Contains(t, []string{"revoke", "restore"}, c.PermissionAction)
+	require.Contains(t, []string{
+		"revoke", "restore",
+		"source-cross-grant", "source-cross-restore",
+		"commercial-cross-grant", "commercial-cross-restore",
+	}, c.PermissionAction)
 	db := issue357Database(t, c)
-	statement := "REVOKE INSERT ON TABLE public.source_account_resources FROM source_account_runtime"
-	if c.PermissionAction == "restore" {
-		statement = "GRANT INSERT ON TABLE public.source_account_resources TO source_account_runtime"
+	statements := map[string]string{
+		"revoke":                   "REVOKE INSERT ON TABLE public.source_account_resources FROM source_account_runtime",
+		"restore":                  "GRANT INSERT ON TABLE public.source_account_resources TO source_account_runtime",
+		"source-cross-grant":       "GRANT SELECT ON TABLE public.saas_plans TO source_account_runtime",
+		"source-cross-restore":     "REVOKE SELECT ON TABLE public.saas_plans FROM source_account_runtime",
+		"commercial-cross-grant":   "GRANT SELECT ON TABLE public.source_account_resources TO commercial_reader",
+		"commercial-cross-restore": "REVOKE SELECT ON TABLE public.source_account_resources FROM commercial_reader",
 	}
-	require.NoError(t, db.Exec(statement).Error)
+	require.NoError(t, db.Exec(statements[c.PermissionAction]).Error)
 }
 func issue357Snapshot(t *testing.T, db *gorm.DB) string {
 	t.Helper()

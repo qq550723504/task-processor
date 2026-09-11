@@ -25,7 +25,23 @@ const runtimePermissionQuery = `SELECT current_user,
     OR has_table_privilege(current_user, 'public.source_account_operations', 'DELETE')
     OR has_table_privilege(current_user, 'public.source_account_operations', 'TRUNCATE')
     OR has_table_privilege(current_user, 'public.source_account_operations', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.goose_source_account_registry_version', 'SELECT') AS forbidden_privileges`
+    OR has_table_privilege(current_user, 'public.goose_source_account_registry_version', 'SELECT')
+    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'SELECT')
+    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'INSERT')
+    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'UPDATE')
+    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'DELETE')
+    OR has_table_privilege(current_user, 'public.saas_plans', 'SELECT')
+    OR has_table_privilege(current_user, 'public.saas_plans', 'INSERT')
+    OR has_table_privilege(current_user, 'public.saas_plans', 'UPDATE')
+    OR has_table_privilege(current_user, 'public.saas_plans', 'DELETE')
+    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'SELECT')
+    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'INSERT')
+    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'UPDATE')
+    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'DELETE')
+    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'SELECT')
+    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'INSERT')
+    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'UPDATE')
+    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'DELETE') AS forbidden_privileges`
 
 // VerifyRuntimePermissions rejects owner/admin and incomplete roles before the
 // current application starts listening. It performs no business mutation.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -20,8 +21,8 @@ func TestRunClosesSourcePoolWhenCommercialOpenFails(t *testing.T) {
 	closed := []*gorm.DB{}
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { return nil, want },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return nil, want },
 		CloseDatabase: func(db *gorm.DB) error {
 			closed = append(closed, db)
 			return nil
@@ -42,8 +43,8 @@ func TestRunRejectsUnavailableIdentityBeforeOpeningDatabase(t *testing.T) {
 	opened := false
 	err := run(context.Background(), runtimeTestConfig(), logrus.New(), runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return want },
-		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
-		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
+		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
 		CloseDatabase:     func(*gorm.DB) error { return nil },
 	})
 	if !errors.Is(err, want) || opened {
@@ -57,8 +58,8 @@ func TestRunClosesBothPoolsInReverseOrderWhenListenFails(t *testing.T) {
 	closed := []*gorm.DB{}
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
 		NewApplication: func(_ context.Context, gotSource, gotCommercial *gorm.DB, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			if gotSource != source || gotCommercial != commercial {
 				t.Fatal("application received wrong database pools")
@@ -94,8 +95,8 @@ func TestRunShutsDownApplicationAndPreservesPoolsUntilServeStops(t *testing.T) {
 	listening := make(chan struct{})
 	dependencies := runtimeDependencies{
 		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
-		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { return source, nil },
-		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
 		NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
 			return &http.Server{Handler: http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusNoContent) })}, nil
 		},
@@ -125,6 +126,73 @@ func TestRunShutsDownApplicationAndPreservesPoolsUntilServeStops(t *testing.T) {
 	defer mu.Unlock()
 	if len(closed) != 2 || closed[0] != commercial || closed[1] != source {
 		t.Fatalf("close order = %#v", closed)
+	}
+}
+
+func TestRunForcesCloseAfterBoundedShutdownExpires(t *testing.T) {
+	source, commercial := &gorm.DB{}, &gorm.DB{}
+	ctx, cancel := context.WithCancel(context.Background())
+	listening := make(chan string, 1)
+	requestStarted := make(chan struct{})
+	closed := 0
+	dependencies := runtimeDependencies{
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+			return &http.Server{Handler: http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+				close(requestStarted)
+				<-request.Context().Done()
+			})}, nil
+		},
+		Listen: func(string, string) (net.Listener, error) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err == nil {
+				listening <- listener.Addr().String()
+			}
+			return listener, err
+		},
+		CloseDatabase:   func(*gorm.DB) error { closed++; return nil },
+		ShutdownTimeout: 20 * time.Millisecond,
+	}
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, runtimeTestConfig(), logrus.New(), dependencies) }()
+	go func() { _, _ = http.Get("http://" + <-listening) }()
+	<-requestStarted
+	cancel()
+	err := <-done
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("run() error = %v, want shutdown deadline exceeded", err)
+	}
+	if closed != 2 {
+		t.Fatalf("closed databases = %d, want 2", closed)
+	}
+}
+
+func TestRunPassesOneBoundedStartupContextToBothOpeners(t *testing.T) {
+	want := errors.New("context-aware source opener")
+	err := run(context.Background(), runtimeTestConfig(), logrus.New(), runtimeDependencies{
+		IdentityPreflight: func(ctx context.Context, _ IdentityConfig) error {
+			if _, ok := ctx.Deadline(); !ok {
+				t.Fatal("identity preflight did not receive a deadline")
+			}
+			return nil
+		},
+		OpenSourceAccount: func(ctx context.Context, _ DatabaseConfig) (*gorm.DB, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok || time.Until(deadline) > 15*time.Second {
+				t.Fatalf("source opener context deadline = %v, ok=%t", deadline, ok)
+			}
+			return nil, want
+		},
+		OpenCommercial: func(context.Context, DatabaseConfig) (*gorm.DB, error) {
+			t.Fatal("commercial opener ran after source failure")
+			return nil, nil
+		},
+		CloseDatabase: func(*gorm.DB) error { return nil },
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("run() error = %v, want wrapped %v", err, want)
 	}
 }
 

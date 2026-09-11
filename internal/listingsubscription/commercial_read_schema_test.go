@@ -4,12 +4,24 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+func TestCommercialPermissionQueryRejectsSourceAccountPrivileges(t *testing.T) {
+	for _, table := range []string{
+		"public.source_account_resources",
+		"public.source_account_operations",
+	} {
+		if !strings.Contains(commercialReadPermissionQuery, table) {
+			t.Fatalf("commercialReadPermissionQuery does not inspect cross-owner table %s", table)
+		}
+	}
+}
 
 func TestVerifyCommercialReadSchemaUsesOnlyBoundedReadProbes(t *testing.T) {
 	db, mock, cleanup := commercialSchemaMock(t)

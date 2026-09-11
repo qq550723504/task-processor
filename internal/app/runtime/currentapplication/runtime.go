@@ -16,11 +16,12 @@ import (
 
 type Dependencies struct {
 	IdentityPreflight func(context.Context, IdentityConfig) error
-	OpenSourceAccount func(DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial    func(DatabaseConfig) (*gorm.DB, error)
+	OpenSourceAccount func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial    func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewApplication    func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
 	Listen            func(string, string) (net.Listener, error)
 	CloseDatabase     func(*gorm.DB) error
+	ShutdownTimeout   time.Duration
 }
 
 type runtimeDependencies = Dependencies
@@ -42,6 +43,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	if dependencies.ShutdownTimeout <= 0 {
+		dependencies.ShutdownTimeout = 10 * time.Second
+	}
 	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
 	}
@@ -54,7 +58,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
-	sourceAccountDB, err := dependencies.OpenSourceAccount(cfg.SourceAccountDatabase)
+	sourceAccountDB, err := dependencies.OpenSourceAccount(startupContext, cfg.SourceAccountDatabase)
 	if err != nil {
 		return fmt.Errorf("open existing source account database: %w", err)
 	}
@@ -63,7 +67,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
-	commercialDB, err := dependencies.OpenCommercial(cfg.CommercialDatabase)
+	commercialDB, err := dependencies.OpenCommercial(startupContext, cfg.CommercialDatabase)
 	if err != nil {
 		return fmt.Errorf("open existing commercial database: %w", err)
 	}
@@ -78,6 +82,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	server, err := dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)
+	}
+	if err := startupContext.Err(); err != nil {
+		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 	listener, err := dependencies.Listen("tcp", cfg.ListenAddress())
 	if err != nil {
@@ -94,9 +101,12 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 		return nil
 	case <-ctx.Done():
-		shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownContext, cancel := context.WithTimeout(context.Background(), dependencies.ShutdownTimeout)
 		shutdownErr := server.Shutdown(shutdownContext)
 		cancel()
+		if shutdownErr != nil {
+			shutdownErr = errors.Join(shutdownErr, server.Close())
+		}
 		serveErr := <-serveResult
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			shutdownErr = errors.Join(shutdownErr, fmt.Errorf("serve current application: %w", serveErr))
