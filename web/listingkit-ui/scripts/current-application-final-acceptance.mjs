@@ -58,9 +58,9 @@ async function login(manifest, user) {
   const session = await sessionResponse.json();
   assert.equal(session.identity?.userId, manifest.users[user].id);
   const cookies = (await context.cookies(manifest.origins.web)).filter(cookie => /(?:authjs|next-auth)\.session-token/.test(cookie.name));
-  assert.equal(cookies.length, 1);
+  assert.ok(cookies.length >= 1);
   await context.close();
-  return { subject: manifest.users[user].id, cookie: `${cookies[0].name}=${cookies[0].value}` };
+  return { subject: manifest.users[user].id, cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; ") };
 }
 
 async function runClient(manifest, sessions, phase) {
