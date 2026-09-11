@@ -16,76 +16,94 @@ $env:CHAIN1_ACCEPTANCE_DSN = "host=127.0.0.1 port=17443 user=chain1 password=$pa
 $env:CHAIN1_TEMPORAL_ADDRESS = "127.0.0.1:17333"
 $env:CHAIN1_COMPOSE_FILE = $composeFile
 $env:CHAIN1_COMPOSE_PROJECT = $project
-$cleanupRequired = $false
+$resourcesTouched = $false
 $passed = $false
 $failure = $null
 $activeStage = $null
-$acceptanceFailed = $false
+$stageStatuses = [ordered]@{}
 
-function Write-Chain1Stage {
+function Set-Chain1Stage {
     param([string]$Name, [string]$Status)
+    $stageStatuses[$Name] = $Status
     Write-Host "CHAIN1_STAGE $Name $Status"
+}
+
+foreach ($stageName in @("resources", "business-chain", "contract", "cleanup", "acceptance")) {
+    Set-Chain1Stage $stageName "NOT_RUN"
 }
 
 Push-Location $repoRoot
 try {
-    Write-Chain1Stage "resources" "NOT_RUN"
+    $gitRootOutput = @(git rev-parse --show-toplevel 2>&1)
+    $gitRootExitCode = $LASTEXITCODE
+    if ($gitRootExitCode -ne 0) { throw "CHAIN-1 git root lookup failed with exit code $gitRootExitCode" }
+    $gitRoot = ($gitRootOutput -join "`n").Trim()
+    if ([string]::IsNullOrWhiteSpace($gitRoot)) { throw "CHAIN-1 git root lookup returned no repository" }
+    $resolvedRepoRoot = [System.IO.Path]::GetFullPath($repoRoot).TrimEnd('\', '/')
+    $resolvedGitRoot = [System.IO.Path]::GetFullPath($gitRoot).TrimEnd('\', '/')
+    if (-not [string]::Equals($resolvedRepoRoot, $resolvedGitRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "CHAIN-1 script root does not match git repository root"
+    }
+
+    $headOutput = @(git rev-parse --verify HEAD 2>&1)
+    $headExitCode = $LASTEXITCODE
+    if ($headExitCode -ne 0) { throw "CHAIN-1 git HEAD lookup failed with exit code $headExitCode" }
+    $head = ($headOutput -join "`n").Trim()
+    if ([string]::IsNullOrWhiteSpace($head)) { throw "CHAIN-1 git HEAD lookup returned no commit" }
+
+    $statusOutput = @(git status --porcelain=v1 --untracked-files=all 2>&1)
+    $statusExitCode = $LASTEXITCODE
+    if ($statusExitCode -ne 0) { throw "CHAIN-1 git status lookup failed with exit code $statusExitCode" }
+    if (-not [string]::IsNullOrWhiteSpace($statusOutput -join "`n")) {
+        throw "CHAIN-1 requires a clean git index and worktree before attributing acceptance to HEAD"
+    }
+    Write-Host "CHAIN1_HEAD $head"
+
     $activeStage = "resources"
-    $cleanupRequired = $true
+    $resourcesTouched = $true
     docker compose -p $project -f $composeFile down --volumes --remove-orphans 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "CHAIN-1 initial Compose cleanup failed with exit code $LASTEXITCODE" }
     docker compose -p $project -f $composeFile up -d --wait
     if ($LASTEXITCODE -ne 0) { throw "CHAIN-1 Compose startup failed with exit code $LASTEXITCODE" }
-    Write-Chain1Stage "resources" "PASS"
+    Set-Chain1Stage "resources" "PASS"
     $activeStage = $null
 
-    $head = (git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "CHAIN-1 git HEAD lookup failed with exit code $LASTEXITCODE" }
-    Write-Host "CHAIN1_HEAD $head"
-    Write-Chain1Stage "business-chain" "NOT_RUN"
     $activeStage = "business-chain"
     go test -race ./internal/app/httpapi -run '^TestChain1LocalProductAcceptance$' -count=1 -v
     if ($LASTEXITCODE -ne 0) { throw "CHAIN-1 Go acceptance failed" }
-    Write-Chain1Stage "business-chain" "PASS"
+    Set-Chain1Stage "business-chain" "PASS"
     $activeStage = $null
 
-    Write-Chain1Stage "contract" "NOT_RUN"
     $activeStage = "contract"
     go test ./tests -run '^TestIssue388Chain1AcceptanceAssemblyContract$' -count=1
     if ($LASTEXITCODE -ne 0) { throw "CHAIN-1 assembly contract failed" }
-    Write-Chain1Stage "contract" "PASS"
+    Set-Chain1Stage "contract" "PASS"
     $activeStage = $null
     $passed = $true
 }
 catch {
     if ($null -ne $activeStage) {
-        Write-Chain1Stage $activeStage "FAIL"
+        Set-Chain1Stage $activeStage "FAIL"
         $activeStage = $null
     }
-    Write-Chain1Stage "acceptance" "FAIL"
-    $acceptanceFailed = $true
+    Set-Chain1Stage "acceptance" "FAIL"
     $failure = $_
 }
 finally {
     Pop-Location
-    if ($cleanupRequired -and -not $KeepResources) {
+    if ($resourcesTouched -and -not $KeepResources) {
         docker compose -p $project -f $composeFile down --volumes --remove-orphans | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            Write-Chain1Stage "cleanup" "PASS"
+            Set-Chain1Stage "cleanup" "PASS"
         } else {
-            Write-Chain1Stage "cleanup" "FAIL"
+            Set-Chain1Stage "cleanup" "FAIL"
             if ($null -eq $failure) {
                 $failure = [System.InvalidOperationException]::new("CHAIN-1 Compose cleanup failed with exit code $LASTEXITCODE")
             }
-            if (-not $acceptanceFailed) {
-                Write-Chain1Stage "acceptance" "FAIL"
-                $acceptanceFailed = $true
-            }
+            Set-Chain1Stage "acceptance" "FAIL"
         }
-    } elseif ($cleanupRequired) {
-        Write-Chain1Stage "cleanup" "SKIP"
-    } else {
-        Write-Chain1Stage "cleanup" "NOT_RUN"
+    } elseif ($resourcesTouched) {
+        Set-Chain1Stage "cleanup" "SKIP"
     }
     Remove-Item Env:\CHAIN1_DB_PASSWORD,Env:\CHAIN1_DB_PORT,Env:\CHAIN1_TEMPORAL_PORT,Env:\CHAIN1_TEMPORAL_UI_PORT,Env:\CHAIN1_ACCEPTANCE_DSN,Env:\CHAIN1_TEMPORAL_ADDRESS,Env:\CHAIN1_COMPOSE_FILE,Env:\CHAIN1_COMPOSE_PROJECT -ErrorAction SilentlyContinue
 }
@@ -96,4 +114,4 @@ if ($null -ne $failure) {
 }
 
 if (-not $passed) { exit 1 }
-Write-Chain1Stage "acceptance" "PASS"
+Set-Chain1Stage "acceptance" "PASS"
