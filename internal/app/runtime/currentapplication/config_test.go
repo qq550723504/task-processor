@@ -1,11 +1,74 @@
 package currentapplication
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
+
+func TestDatabasePasswordSeparatorsRejectedBeforeRuntimeDependencies(t *testing.T) {
+	for _, role := range []string{"sourceAccountDatabase", "commercialDatabase"} {
+		for _, tc := range []struct{ name, password string }{
+			{"vertical_tab", "synthetic\vY"},
+			{"form_feed", "synthetic\fY"},
+			{"space", "synthetic Y"},
+			{"tab", "synthetic\tY"},
+			{"cr", "synthetic\rY"},
+			{"lf", "synthetic\nY"},
+			{"nul", "synthetic\x00Y"},
+			{"quote", "synthetic'Y"},
+			{"backslash", "synthetic\\Y"},
+			{"host_override_vt", "synthetic\vhost=198.51.100.7"},
+			{"host_override_ff", "synthetic\fhost=198.51.100.7"},
+		} {
+			t.Run(role+"/"+tc.name, func(t *testing.T) {
+				cfg := runtimeTestConfig()
+				if role == "sourceAccountDatabase" {
+					cfg.SourceAccountDatabase.Password = tc.password
+				} else {
+					cfg.CommercialDatabase.Password = tc.password
+				}
+				manifest, err := json.Marshal(cfg)
+				if err != nil {
+					t.Fatal("could not marshal synthetic manifest")
+				}
+				_, loadErr := LoadConfig(writeManifest(t, string(manifest)))
+				wantError := role + " credentials and database name are required and must be bounded"
+				if loadErr == nil || loadErr.Error() != wantError {
+					t.Error("LoadConfig must reject the password with a credential-free validation error")
+				}
+
+				var logs bytes.Buffer
+				logger := logrus.New()
+				logger.SetOutput(&logs)
+				preflights, opens := 0, 0
+				open := func(context.Context, DatabaseConfig) (*gorm.DB, error) {
+					opens++
+					return &gorm.DB{}, nil
+				}
+				runErr := Run(context.Background(), cfg, logger, Dependencies{
+					IdentityPreflight: func(context.Context, IdentityConfig) error { preflights++; return nil },
+					OpenSourceAccount: open,
+					OpenCommercial:    open,
+					CloseDatabase:     func(*gorm.DB) error { return nil },
+				})
+				if runErr == nil || runErr.Error() != wantError {
+					t.Error("Run must independently reject the password with a credential-free validation error")
+				}
+				if preflights != 0 || opens != 0 || logs.Len() != 0 {
+					t.Errorf("rejected config performed side effects: preflights=%d opens=%d logBytes=%d", preflights, opens, logs.Len())
+				}
+			})
+		}
+	}
+}
 
 func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	path := writeManifest(t, validManifest())

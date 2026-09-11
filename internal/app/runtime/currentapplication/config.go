@@ -241,7 +241,8 @@ func (cfg DatabaseConfig) validate(name string) error {
 }
 
 func boundedDatabasePassword(value string) bool {
-	return boundedValue(value, 1024) && !strings.ContainsAny(value, " ='\\\t")
+	// pgx keyword/value DSNs treat VT and FF as separators too.
+	return boundedValue(value, 1024) && !strings.ContainsAny(value, " ='\\\t\v\f")
 }
 
 func boundedValue(value string, maximum int) bool {
