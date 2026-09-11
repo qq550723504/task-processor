@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -36,6 +38,21 @@ func buildCommercialReadModule(cfg *config.Config, _ *logrus.Logger) (commercial
 	}
 	// Repository construction is side-effect-free. No AutoMigrate, NewService,
 	// default plans, grants, counter repairs or resource commands are called.
+	module, err := buildCommercialReadModuleFromDatabase(context.Background(), db, authorizer)
+	if err != nil {
+		_ = platformdatabase.CloseShared(configadapter.Database(cfg.Database), db)
+		return commercialReadBuildResult{}, errors.New("commercial read database unavailable")
+	}
+	return commercialReadBuildResult{module: module, closer: func() error { return platformdatabase.CloseShared(configadapter.Database(cfg.Database), db) }}, nil
+}
+
+func buildCommercialReadModuleFromDatabase(ctx context.Context, db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+	if db == nil || authorizer == nil {
+		return nil, errors.New("commercial read dependencies unavailable")
+	}
+	if err := listingsubscription.VerifyCommercialReadSchema(ctx, db); err != nil {
+		return nil, err
+	}
 	reader := listingsubscription.NewCommercialReadService(listingsubscription.NewGormRepository(db), authorizer)
-	return commercialReadBuildResult{module: commercialhttpapi.NewModule(commercialhttpapi.NewHandler(reader)), closer: func() error { return platformdatabase.CloseShared(configadapter.Database(cfg.Database), db) }}, nil
+	return commercialhttpapi.NewModule(commercialhttpapi.NewHandler(reader)), nil
 }

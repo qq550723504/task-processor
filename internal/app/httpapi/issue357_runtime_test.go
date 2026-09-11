@@ -35,24 +35,26 @@ import (
 )
 
 type issue357Config struct {
-	RunID            string `json:"runId"`
-	Issuer           string `json:"issuer"`
-	IssuerPort       int    `json:"issuerPort"`
-	WebOrigin        string `json:"webOrigin"`
-	GoPort           int    `json:"goPort"`
-	DatabasePort     int    `json:"databasePort"`
-	DatabaseHost     string `json:"databaseHost"`
-	DatabaseName     string `json:"databaseName"`
-	DatabaseUser     string `json:"databaseUser"`
-	DatabasePassword string `json:"databasePassword"`
-	ReaderPassword   string `json:"readerPassword,omitempty"`
-	ProjectID        string `json:"projectId"`
-	APIClientID      string `json:"apiClientId"`
-	APIClientSecret  string `json:"apiClientSecret"`
-	OrganizationA    string `json:"organizationA"`
-	OrganizationB    string `json:"organizationB"`
-	OrganizationC    string `json:"organizationC"`
-	ManagementToken  string `json:"managementToken,omitempty"`
+	RunID                 string `json:"runId"`
+	Issuer                string `json:"issuer"`
+	IssuerPort            int    `json:"issuerPort"`
+	WebOrigin             string `json:"webOrigin"`
+	GoPort                int    `json:"goPort"`
+	DatabasePort          int    `json:"databasePort"`
+	DatabaseHost          string `json:"databaseHost"`
+	DatabaseName          string `json:"databaseName"`
+	DatabaseUser          string `json:"databaseUser"`
+	DatabasePassword      string `json:"databasePassword"`
+	ReaderPassword        string `json:"readerPassword,omitempty"`
+	SourceRuntimePassword string `json:"sourceRuntimePassword,omitempty"`
+	RuntimeMode           string `json:"runtimeMode,omitempty"`
+	ProjectID             string `json:"projectId"`
+	APIClientID           string `json:"apiClientId"`
+	APIClientSecret       string `json:"apiClientSecret"`
+	OrganizationA         string `json:"organizationA"`
+	OrganizationB         string `json:"organizationB"`
+	OrganizationC         string `json:"organizationC"`
+	ManagementToken       string `json:"managementToken,omitempty"`
 }
 
 type issue357Allocation struct {
@@ -81,7 +83,7 @@ func (c issue357Config) validate() error {
 	if err != nil || id.String() != c.RunID || id.Version() != 4 {
 		return errors.New("INVALID_RUN")
 	}
-	if c.Issuer != fmt.Sprintf("http://localhost:%d", c.IssuerPort) || c.DatabaseHost != "127.0.0.1" || c.DatabaseName != "issue357" || (c.DatabaseUser != "issue357" && c.DatabaseUser != "commercial_reader") {
+	if c.Issuer != fmt.Sprintf("http://localhost:%d", c.IssuerPort) || c.DatabaseHost != "127.0.0.1" || c.DatabaseName != "issue357" || (c.DatabaseUser != "issue357" && c.DatabaseUser != "commercial_reader" && c.DatabaseUser != "source_account_runtime") || (c.RuntimeMode != "" && c.RuntimeMode != "current-application") {
 		return errors.New("INVALID_RUN")
 	}
 	seen := map[int]bool{}
@@ -185,12 +187,52 @@ func TestIssue357Seed(t *testing.T) {
 	require.NotContains(t, c.ReaderPassword, "'")
 	require.NoError(t, db.Exec("CREATE ROLE commercial_reader LOGIN PASSWORD '"+c.ReaderPassword+"'").Error)
 	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO commercial_reader").Error)
-	require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_reader").Error)
+	if c.RuntimeMode == "current-application" {
+		require.NoError(t, db.Exec("GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets TO commercial_reader").Error)
+	} else {
+		require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_reader").Error)
+	}
 	require.NoError(t, db.Exec("ALTER ROLE commercial_reader SET default_transaction_read_only=on").Error)
 	require.NoError(t, db.Exec("ALTER ROLE commercial_reader SET statement_timeout='10s'").Error)
 	snapshot := issue357Snapshot(t, db)
 	issue357Write(t, filepath.Join(dir, "baseline.json"), map[string]any{"digest": snapshot, "setupWrites": true})
 	t.Log("synthetic setup complete; baseline captured")
+}
+
+func TestIssue357GrantSourceAccountRuntime(t *testing.T) {
+	c, _ := issue357ReadConfig(t)
+	require.Equal(t, "current-application", c.RuntimeMode)
+	require.Equal(t, "issue357", c.DatabaseUser)
+	require.NotEmpty(t, c.SourceRuntimePassword)
+	require.NotContains(t, c.SourceRuntimePassword, "'")
+	db := issue357Database(t, c)
+	require.NoError(t, db.Exec("REVOKE CREATE ON SCHEMA public FROM PUBLIC").Error)
+	require.NoError(t, db.Exec("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC").Error)
+	require.NoError(t, db.Exec("CREATE ROLE source_account_runtime LOGIN PASSWORD '"+c.SourceRuntimePassword+"'").Error)
+	require.NoError(t, db.Exec("GRANT CONNECT ON DATABASE issue357 TO source_account_runtime").Error)
+	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO source_account_runtime").Error)
+	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime").Error)
+	require.NoError(t, db.Exec("GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime").Error)
+	require.NoError(t, db.Exec("ALTER ROLE source_account_runtime SET statement_timeout='10s'").Error)
+	var resourceCount, operationCount int64
+	require.NoError(t, db.Table("source_account_resources").Count(&resourceCount).Error)
+	require.NoError(t, db.Table("source_account_operations").Count(&operationCount).Error)
+	require.Zero(t, resourceCount)
+	require.Zero(t, operationCount)
+	t.Log("source account runtime role granted only current SA1 DML permissions")
+}
+
+func TestIssue357SourceAccountSnapshot(t *testing.T) {
+	c, dir := issue357ReadConfig(t)
+	require.Equal(t, "current-application", c.RuntimeMode)
+	require.Equal(t, "issue357", c.DatabaseUser)
+	db := issue357Database(t, c)
+	var resources, operations int64
+	require.NoError(t, db.Table("source_account_resources").Count(&resources).Error)
+	require.NoError(t, db.Table("source_account_operations").Count(&operations).Error)
+	issue357Write(t, filepath.Join(dir, "source-account-snapshot.json"), map[string]any{
+		"resources": resources, "operations": operations, "observedAt": time.Now().UTC(),
+	})
 }
 func issue357Snapshot(t *testing.T, db *gorm.DB) string {
 	t.Helper()
@@ -209,7 +251,11 @@ func issue357Snapshot(t *testing.T, db *gorm.DB) string {
 }
 func TestIssue357Snapshot(t *testing.T) {
 	c, dir := issue357ReadConfig(t)
-	require.Equal(t, "commercial_reader", c.DatabaseUser)
+	if c.RuntimeMode == "current-application" {
+		require.Equal(t, "issue357", c.DatabaseUser)
+	} else {
+		require.Equal(t, "commercial_reader", c.DatabaseUser)
+	}
 	db := issue357Database(t, c)
 	snapshot := issue357Snapshot(t, db)
 	var baseline struct {

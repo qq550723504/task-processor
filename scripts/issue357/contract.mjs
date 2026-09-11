@@ -16,7 +16,7 @@ export function makeManifest(runId,ports,sourceSha,webSha) {
   return {schemaVersion:'issue357-v1',runId,directory,project:`issue357-${runId}`,status:'creating',sourceSha,webSha,ports,
     origins:{issuer:`http://localhost:${ports.issuer}`,web:`http://localhost:${ports.web}`,go:`http://127.0.0.1:${ports.go}`},
     resources:{},organizations:{},users:{},authorizations:{},
-    secrets:{identityDatabase:secret(),commercialDatabase:secret(),reader:secret(),masterkey:randomBytes(16).toString('hex'),auth:secret(),bootstrapPassword:secret()},
+    secrets:{identityDatabase:secret(),commercialDatabase:secret(),reader:secret(),sourceRuntime:secret(),masterkey:randomBytes(16).toString('hex'),auth:secret(),bootstrapPassword:secret()},
     createdAt:new Date().toISOString()};
 }
 export function validateManifest(m) {
@@ -28,6 +28,7 @@ export function validateManifest(m) {
   assert.equal(m.origins.issuer,`http://localhost:${m.ports.issuer}`,'INVALID_RUN');
   assert.equal(m.origins.web,`http://localhost:${m.ports.web}`,'INVALID_RUN');
   assert.equal(m.origins.go,`http://127.0.0.1:${m.ports.go}`,'INVALID_RUN');
+  assert.ok(m.runtimeMode===undefined||m.runtimeMode==='current-application','INVALID_RUN');
   return m;
 }
 export function ownedResource(m,r,name,id) {

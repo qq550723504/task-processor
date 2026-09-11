@@ -23,6 +23,23 @@ func NewSourceAccountApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	if db == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, sourceaccountregistry.ErrUnavailable
 	}
+	module, err := buildSourceAccountModule(db, authorizer)
+	if err != nil {
+		return nil, err
+	}
+	registry := kernelmodule.NewRegistry()
+	if err := module.Register(registry); err != nil {
+		return nil, err
+	}
+	return buildIsolatedApplicationHTTPServer(registry.Routes(), routeAuthDependencies{
+		workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer,
+	}, sourceaccountregistry.Timeout), nil
+}
+
+func buildSourceAccountModule(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+	if db == nil || authorizer == nil {
+		return nil, sourceaccountregistry.ErrUnavailable
+	}
 	repository, err := sourceaccountstore.NewRepository(db)
 	if err != nil {
 		return nil, err
@@ -35,11 +52,5 @@ func NewSourceAccountApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 	if err != nil {
 		return nil, err
 	}
-	registry := kernelmodule.NewRegistry()
-	if err := sourceaccounthttpapi.NewModule(handler).Register(registry); err != nil {
-		return nil, err
-	}
-	return buildIsolatedApplicationHTTPServer(registry.Routes(), routeAuthDependencies{
-		workbenchVerifier: verifier, organizationResolver: resolver, authorizer: authorizer,
-	}, sourceaccountregistry.Timeout), nil
+	return sourceaccounthttpapi.NewModule(handler), nil
 }
