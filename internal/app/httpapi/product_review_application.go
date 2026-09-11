@@ -85,18 +85,9 @@ func NewProductReviewApplication(db *gorm.DB, verifier zitadelruntime.Verifier, 
 		return nil, err
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, productReviewRoutes(service, binder.Bind), routeAuthDependencies{workbenchVerifier: verifier, organizationResolver: resolver, authorizer: auth})
-	server.ReadTimeout = review.Timeout
-	server.WriteTimeout = review.Timeout + 2*time.Second
-	handler := server.Handler
-	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		ctx, cancel := context.WithTimeout(r.Context(), review.Timeout)
-		defer cancel()
-		handler.ServeHTTP(w, r.WithContext(ctx))
-	})
-	return server, nil
+	return buildIsolatedApplicationHTTPServer(productReviewRoutes(service, binder.Bind), routeAuthDependencies{
+		workbenchVerifier: verifier, organizationResolver: resolver, authorizer: auth,
+	}, review.Timeout), nil
 }
 
 type productReviewCapabilityContextKey struct{}
