@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { runDirectory as ownedRunDirectory, validateManifest } from "../../../scripts/issue357/contract.mjs";
 
 const execFile = promisify(execFileCallback);
 const ui = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,24 +14,50 @@ const runtime = path.join(repo, "scripts/issue357-runtime.mjs");
 let runId;
 let runDirectory;
 let browser;
+let accepted = false;
 
-function parseRunIdFromText(output) {
-  return output?.match?.(/runId=([0-9a-f-]{36})/)?.[1];
+async function confirmStartedRun(output, startedAt) {
+  // Only the fresh-start command can publish an identity. Never adopt IDs from
+  // git, browser/test errors, subsequent controls, or ambiguous/truncated lines.
+  const records = output.split(/\r?\n/).filter(line => line.startsWith("runId="));
+  assert.equal(records.length, 1);
+  const match = /^runId=([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}) manifest=(.+)$/.exec(records[0]);
+  assert.ok(match);
+  const directory = ownedRunDirectory(match[1]);
+  assert.equal(match[2], path.join(directory, "manifest.json"));
+  const manifest = validateManifest(await json(match[2]));
+  assert.equal(manifest.runId, match[1]);
+  assert.equal(manifest.runtimeMode, "current-application");
+  assert.equal(path.resolve(manifest.sourceDirectory), repo);
+  assert.equal(path.resolve(manifest.webDirectory), ui);
+  assert.equal(manifest.sourceSha, expectedSha);
+  assert.equal(manifest.webSha, expectedSha);
+  const createdAt = Date.parse(manifest.createdAt);
+  assert.ok(createdAt >= startedAt && createdAt <= Date.now());
+  // Commit both fields only after all checks. Runtime destroy retains its own
+  // manifest/real-path and resource ID/name/label checks before any mutation.
+  runId = manifest.runId;
+  runDirectory = directory;
+}
+
+async function startOwnedRun() {
+  const startedAt = Date.now();
+  let result;
+  try {
+    result = await execFile(process.execPath, [runtime, "start", "--current-application"], { cwd: repo, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+  } catch (error) {
+    await confirmStartedRun(`${error.stdout ?? ""}\n${error.stderr ?? ""}`, startedAt);
+    throw new Error("START_FAILED");
+  }
+  await confirmStartedRun(`${result.stdout}\n${result.stderr ?? ""}`, startedAt);
 }
 
 async function command(executable, args, options = {}) {
   try {
     const result = await execFile(executable, args, { cwd: repo, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...options });
     return result.stdout.trim();
-  } catch (error) {
-    const output = `${error.stdout ?? ""}${error.stderr ?? ""}`.trim();
-    if (!runId) {
-      runId = parseRunIdFromText(output);
-    }
-    if (error.stdout) {
-      error.stdout = output;
-    }
-    throw error;
+  } catch {
+    throw new Error("COMMAND_FAILED");
   }
 }
 
@@ -108,10 +134,7 @@ try {
   assert.match(expectedSha ?? "", /^[a-f0-9]{40}$/);
   assert.equal(await command("git", ["rev-parse", "HEAD"]), expectedSha);
   assert.equal(await command("git", ["status", "--porcelain"]), "");
-  const started = await command(process.execPath, [runtime, "start", "--current-application"]);
-  runId = started.match(/runId=([0-9a-f-]{36})/)?.[1];
-  assert.ok(runId, "owned run identifier missing");
-  runDirectory = path.join(tmpdir(), "task-processor-issue357", runId);
+  await startOwnedRun();
   const manifest = await json(path.join(runDirectory, "manifest.json"));
   assert.equal(manifest.runtimeMode, "current-application");
   const services = await json(path.join(runDirectory, "services.json"));
@@ -183,7 +206,12 @@ try {
   }
   const evidence = await json(paths.evidencePath);
   assert.equal(evidence.passed, true);
-  console.log(`PASS RUN-1 normal binary + official Login V2/Auth.js + SA2 client/BFF + SA1 + retained restart facts; run=${runId}`);
+  accepted = true;
+} catch {
+  // Do not print child stdout/stderr, assertion values, browser errors or causes:
+  // they may contain credentials, tokens, cookies, or private response payloads.
+  console.error(`ACCEPTANCE_FAILED run=${runId ?? "unconfirmed"}`);
+  process.exitCode = 1;
 } finally {
   if (browser) await browser.close().catch(() => {});
   if (runId) {
@@ -198,4 +226,7 @@ try {
       process.exitCode = 1;
     }
   }
+}
+if (accepted && !process.exitCode) {
+  console.log(`PASS RUN-1 normal binary + official Login V2/Auth.js + SA2 client/BFF + SA1 + retained restart facts; run=${runId}`);
 }
