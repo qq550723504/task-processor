@@ -3,6 +3,7 @@ package commercetoolauth
 import (
 	"context"
 	"errors"
+	"reflect"
 	"time"
 
 	"task-processor/internal/authidentity"
@@ -49,13 +50,26 @@ type WorkbenchPrincipalResolver struct {
 }
 
 func NewWorkbenchPrincipalResolver(resolver CachedReadOrganizationResolver, now func() time.Time) (*WorkbenchPrincipalResolver, error) {
-	if resolver == nil {
+	if nilCachedReadOrganizationResolver(resolver) {
 		return nil, errors.New("workbench organization resolver is nil")
 	}
 	if now == nil {
 		now = time.Now
 	}
 	return &WorkbenchPrincipalResolver{resolver: resolver, now: now}, nil
+}
+
+func nilCachedReadOrganizationResolver(resolver CachedReadOrganizationResolver) bool {
+	if resolver == nil {
+		return true
+	}
+	value := reflect.ValueOf(resolver)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (r *WorkbenchPrincipalResolver) ResolvePrincipal(ctx context.Context) (commercetool.Principal, error) {

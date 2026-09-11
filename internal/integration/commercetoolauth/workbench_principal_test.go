@@ -69,6 +69,17 @@ func TestWorkbenchPrincipalResolverRejectsMissingRequestAndExpiredResolvedIdenti
 	}
 }
 
+func TestNewWorkbenchPrincipalResolverRejectsTypedNilDependencies(t *testing.T) {
+	var nilFunction CachedReadOrganizationResolverFunc
+	if _, err := NewWorkbenchPrincipalResolver(nilFunction, time.Now); err == nil {
+		t.Fatal("typed nil function error = nil")
+	}
+	var nilPointer *cachedReadOrganizationResolverStub
+	if _, err := NewWorkbenchPrincipalResolver(nilPointer, time.Now); err == nil {
+		t.Fatal("typed nil pointer error = nil")
+	}
+}
+
 type cachedReadOrganizationResolverStub struct {
 	identity authidentity.AuthenticatedIdentity
 	err      error
