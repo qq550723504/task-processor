@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
@@ -40,13 +41,16 @@ type currentApplicationFactories struct {
 	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 }
 
-func defaultCurrentApplicationFactories() currentApplicationFactories {
+func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationFactories {
 	return currentApplicationFactories{
-		buildWorkbench:     buildDefaultWorkbenchContextModule,
-		buildSourceAccount: buildSourceAccountModule,
+		buildWorkbench: buildDefaultWorkbenchContextModule,
+		buildSourceAccount: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			if err := sourceaccountstore.VerifyRuntimePermissions(ctx, db); err != nil {
+				return nil, err
+			}
+			return buildSourceAccountModule(db, authorizer)
+		},
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
 	}
@@ -56,16 +60,22 @@ func defaultCurrentApplicationFactories() currentApplicationFactories {
 // caller owns both existing database pools, the listener and server lifecycle.
 // Construction does not migrate, seed, repair or invoke default legacy feature
 // composition.
-func NewCurrentApplication(sourceAccountDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
-	return buildCurrentApplication(sourceAccountDB, commercialDB, cfg, logger, defaultCurrentApplicationFactories())
+func NewCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+	if ctx == nil {
+		return nil, errors.New("current application startup context unavailable")
+	}
+	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, defaultCurrentApplicationFactories(ctx))
 }
 
-func buildCurrentApplication(sourceAccountDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger, factories currentApplicationFactories) (*http.Server, error) {
+func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger, factories currentApplicationFactories) (*http.Server, error) {
 	if sourceAccountDB == nil || commercialDB == nil || cfg == nil || logger == nil || !cfg.Workbench.Enabled {
 		return nil, errors.New("current application dependencies unavailable")
 	}
 	if factories.buildWorkbench == nil || factories.buildSourceAccount == nil || factories.buildCommercial == nil {
 		return nil, errors.New("current application factories unavailable")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("current application startup canceled: %w", err)
 	}
 	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
 	if err != nil {

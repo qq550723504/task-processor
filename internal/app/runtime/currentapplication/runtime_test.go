@@ -19,6 +19,7 @@ func TestRunClosesSourcePoolWhenCommercialOpenFails(t *testing.T) {
 	want := errors.New("commercial unavailable")
 	closed := []*gorm.DB{}
 	dependencies := runtimeDependencies{
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { return source, nil },
 		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { return nil, want },
 		CloseDatabase: func(db *gorm.DB) error {
@@ -36,14 +37,29 @@ func TestRunClosesSourcePoolWhenCommercialOpenFails(t *testing.T) {
 	}
 }
 
+func TestRunRejectsUnavailableIdentityBeforeOpeningDatabase(t *testing.T) {
+	want := errors.New("provider unavailable")
+	opened := false
+	err := run(context.Background(), runtimeTestConfig(), logrus.New(), runtimeDependencies{
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return want },
+		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
+		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { opened = true; return &gorm.DB{}, nil },
+		CloseDatabase:     func(*gorm.DB) error { return nil },
+	})
+	if !errors.Is(err, want) || opened {
+		t.Fatalf("run() = %v, database opened=%t", err, opened)
+	}
+}
+
 func TestRunClosesBothPoolsInReverseOrderWhenListenFails(t *testing.T) {
 	source, commercial := &gorm.DB{}, &gorm.DB{}
 	want := errors.New("address already in use")
 	closed := []*gorm.DB{}
 	dependencies := runtimeDependencies{
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { return source, nil },
 		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
-		NewApplication: func(gotSource, gotCommercial *gorm.DB, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+		NewApplication: func(_ context.Context, gotSource, gotCommercial *gorm.DB, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			if gotSource != source || gotCommercial != commercial {
 				t.Fatal("application received wrong database pools")
 			}
@@ -77,9 +93,10 @@ func TestRunShutsDownApplicationAndPreservesPoolsUntilServeStops(t *testing.T) {
 	closed := []*gorm.DB{}
 	listening := make(chan struct{})
 	dependencies := runtimeDependencies{
+		IdentityPreflight: func(context.Context, IdentityConfig) error { return nil },
 		OpenSourceAccount: func(DatabaseConfig) (*gorm.DB, error) { return source, nil },
 		OpenCommercial:    func(DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
-		NewApplication: func(*gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
+		NewApplication: func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error) {
 			return &http.Server{Handler: http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusNoContent) })}, nil
 		},
 		Listen: func(string, string) (net.Listener, error) {
@@ -119,7 +136,7 @@ func runtimeTestConfig() *Config {
 			IssuerURL: "http://localhost:18080", AuthorizationAPIURL: "http://localhost:18080",
 			ClientID: "client", ClientSecret: "secret", ProjectID: "project",
 		},
-		SourceAccountDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "source", Password: "secret", Database: "task_processor", MaxConnections: 2},
-		CommercialDatabase:    DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "commercial", Password: "secret", Database: "task_processor", MaxConnections: 2},
+		SourceAccountDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "source_account_runtime", Password: "secret", Database: "task_processor", MaxConnections: 2},
+		CommercialDatabase:    DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "commercial_reader", Password: "secret", Database: "task_processor", MaxConnections: 2},
 	}
 }

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -46,7 +47,7 @@ func TestBuildCurrentApplicationAssemblesOnlyTenAdmittedRoutes(t *testing.T) {
 		},
 	}
 
-	server, err := buildCurrentApplication(sourceDB, commercialDB, cfg, logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), sourceDB, commercialDB, cfg, logrus.New(), factories)
 	if err != nil {
 		t.Fatalf("buildCurrentApplication() error = %v", err)
 	}
@@ -92,7 +93,7 @@ func TestBuildCurrentApplicationRejectsRouteDrift(t *testing.T) {
 		buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 	}
 
-	server, err := buildCurrentApplication(&gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	if err == nil || server != nil {
 		t.Fatalf("route drift build = %#v, %v", server, err)
 	}

@@ -48,6 +48,7 @@ type issue357Config struct {
 	ReaderPassword        string `json:"readerPassword,omitempty"`
 	SourceRuntimePassword string `json:"sourceRuntimePassword,omitempty"`
 	RuntimeMode           string `json:"runtimeMode,omitempty"`
+	PermissionAction      string `json:"permissionAction,omitempty"`
 	ProjectID             string `json:"projectId"`
 	APIClientID           string `json:"apiClientId"`
 	APIClientSecret       string `json:"apiClientSecret"`
@@ -233,6 +234,19 @@ func TestIssue357SourceAccountSnapshot(t *testing.T) {
 	issue357Write(t, filepath.Join(dir, "source-account-snapshot.json"), map[string]any{
 		"resources": resources, "operations": operations, "observedAt": time.Now().UTC(),
 	})
+}
+
+func TestIssue357SourceAccountPermission(t *testing.T) {
+	c, _ := issue357ReadConfig(t)
+	require.Equal(t, "current-application", c.RuntimeMode)
+	require.Equal(t, "issue357", c.DatabaseUser)
+	require.Contains(t, []string{"revoke", "restore"}, c.PermissionAction)
+	db := issue357Database(t, c)
+	statement := "REVOKE INSERT ON TABLE public.source_account_resources FROM source_account_runtime"
+	if c.PermissionAction == "restore" {
+		statement = "GRANT INSERT ON TABLE public.source_account_resources TO source_account_runtime"
+	}
+	require.NoError(t, db.Exec(statement).Error)
 }
 func issue357Snapshot(t *testing.T, db *gorm.DB) string {
 	t.Helper()

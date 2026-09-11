@@ -40,7 +40,9 @@ four current identity/effective-organization/account routes, the commercial
 overview read, and the five admitted SA1 routes. It does not call the legacy
 default HTTP composition.
 
-Schema installation runs separately before the first start. Serving opens only
+Schema installation runs separately before the first start from a run-private
+working directory with an allowlisted environment; the launcher rejects every
+`.env` location the existing schema tool could inspect. Serving opens only
 the existing database through two roles:
 
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
@@ -50,6 +52,11 @@ the existing database through two roles:
 
 The bootstrap token, database owner credentials and Login V2 service credentials
 stay in run-private control files and are not present in the serving manifest.
+The manifest rejects DSN-delimiter characters and any role name other than the
+two admitted roles. Startup verifies official same-origin OIDC discovery, exact
+required/forbidden database privileges and current schemas before binding the
+listener. A provider outage or an under/over-privileged role therefore fails
+startup and leaves the facts untouched.
 
 ## End-to-end acceptance
 
@@ -63,5 +70,5 @@ This exercises official ZITADEL Login V2 and Auth.js authorization-code/PKCE
 sessions, account and commercial reads, the actual SA2 TypeScript client and
 Workbench BFF, SA1 writes/reads/isolation/role denial/idempotency, application
 stop with retained resources, and two fact-preserving starts. The runner always
-attempts the separate owned-resource destroy step and never logs credentials or
-tokens.
+attempts the separate owned-resource destroy step, deletes the temporary Auth.js
+cookie handoff, and never logs credentials or tokens.

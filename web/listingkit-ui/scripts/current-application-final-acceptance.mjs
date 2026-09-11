@@ -94,16 +94,41 @@ try {
   assert.equal((await fetch(`${manifest.origins.web}/api/workbench/commercial/overview`, { headers: adminHeaders })).status, 200);
   assert.equal((await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`)).status, 401);
   const paths = await runClient(manifest, sessions, "create");
+  await control("revoke", "--user", "admin", "--org", "B");
+  try { await runClient(manifest, sessions, "revoked"); }
+  finally { await control("restore", "--user", "admin", "--org", "B"); }
 
   const stopped = JSON.parse(await control("stop"));
   assert.equal(stopped.passed, true);
   assert.equal(stopped.resourcesRetained, true);
-  assert.deepEqual({ resources: stopped.factsRetained.resources, operations: stopped.factsRetained.operations }, { resources: 1, operations: 3 });
+  assert.deepEqual({ resources: stopped.factsRetained.resources, operations: stopped.factsRetained.operations }, { resources: 3, operations: 6 });
 
   await control("start");
   await runClient(manifest, sessions, "verify");
   await control("restart");
   await runClient(manifest, sessions, "verify");
+  await control("stop");
+  await control("source-permission-revoke");
+  await assert.rejects(control("start"));
+  assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
+  await control("source-permission-restore");
+  await control("start");
+  await runClient(manifest, sessions, "verify");
+  await control("stop");
+  await control("provider-stop");
+  await assert.rejects(control("start"));
+  assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
+  await control("provider-start");
+  await control("start");
+  await runClient(manifest, sessions, "verify");
+  await control("provider-stop");
+  try {
+    const unavailable = await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders });
+    assert.ok([401, 502, 503, 504].includes(unavailable.status));
+  } finally {
+    await control("provider-start");
+    await control("check");
+  }
   const evidence = await json(paths.evidencePath);
   assert.equal(evidence.passed, true);
   console.log(`PASS RUN-1 normal binary + official Login V2/Auth.js + SA2 client/BFF + SA1 + retained restart facts; run=${runId}`);
@@ -113,6 +138,7 @@ try {
     try {
       const destroyed = JSON.parse(await control("destroy"));
       assert.equal(destroyed.resourcesReleased, true);
+      await assert.rejects(readFile(path.join(runDirectory, "issue390-chain.json")), error => error.code === "ENOENT");
       console.log(`DESTROYED owned run ${runId}; evidence retained at ${runDirectory}`);
     } catch {
       console.error(`DESTROY_INCOMPLETE run=${runId}`);

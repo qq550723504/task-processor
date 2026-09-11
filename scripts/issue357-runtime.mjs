@@ -20,7 +20,7 @@ const services=['proxy','zitadel-api','zitadel-login','identity-db','commercial-
 const volumes=['identity','commercial','login','setup'];
 function binary(m){return join(m.directory,'runtime.test.exe')}
 function applicationBinary(m){return join(m.directory,'current-application.exe')}
-function schemaBinary(m){return join(m.directory,'source-account-registry-schema-init.exe')}
+function schemaBinary(m){return join(m.directory,'bin','source-account-registry-schema-init.exe')}
 function baseConfig(m){return {runId:m.runId,runtimeMode:m.runtimeMode,issuer:m.origins.issuer,issuerPort:m.ports.issuer,webOrigin:m.origins.web,goPort:m.ports.go,databasePort:m.ports.database,databaseHost:'127.0.0.1',databaseName:'issue357',databaseUser:'commercial_reader',databasePassword:m.secrets.reader,projectId:m.projectId,organizationA:m.organizations.A?.id,organizationB:m.organizations.B?.id,organizationC:m.organizations.C?.id}}
 async function go(m,mode,input='runtime.json') {
  return run(binary(m),[`-test.run=^TestIssue357${mode}$`,'-test.v','-test.timeout=120s'],{cwd:m.directory,env:{...childEnvironment(),ISSUE357_INPUT_FILE:join(m.directory,input)}});
@@ -79,7 +79,8 @@ async function startApplications(m) {
  const p=spawn(process.execPath,[join(repo,'scripts/issue357/serve.mjs'),m.directory],{env:childEnvironment(),cwd:m.directory,detached:true,windowsHide:true,stdio:'ignore'});
  await new Promise((r,reject)=>{p.once('spawn',r);p.once('error',()=>reject(new Error('SUPERVISOR_START_FAILED')))});p.unref();
  m.supervisor=await processIdentity(p.pid);await save(m);
- await until(async()=>{await readJSON(join(m.directory,'go-ready.json'));await readJSON(join(m.directory,'next-ready.json'));return true},'APPLICATION_START');
+ const started=await until(async()=>{const stopped=await readJSON(join(m.directory,'services-stopped.json')).catch(e=>{if(e.code!=='ENOENT')throw e});if(stopped)return {failed:true};try{await readJSON(join(m.directory,'go-ready.json'));await readJSON(join(m.directory,'next-ready.json'));return {ready:true}}catch(e){if(e.code!=='ENOENT')throw e;return false}},'APPLICATION_START');
+ if(started.failed)throw new Error('APPLICATION_START_FAILED');
 }
 async function health(m) {
  await inventory(m,true);
@@ -135,14 +136,16 @@ async function cleanup(m) {
  const ui=join(m.directory,'ui');await unlink(join(ui,'node_modules')).catch(e=>{if(e.code!=='ENOENT')throw e});
  assert.equal(resolve(ui),resolve(runDirectory(m.runId),'ui'));
  await rm(ui,{recursive:true,force:true});
- const privateFiles=['bootstrap.pat','applications.json','provision.json','seed.json','runtime.json','snapshot.json','services.json','compose.json','admin.credentials.json','viewer.credentials.json','no-org.credentials.json','owner-secrets.json','current-application.json','source-account-schema.yaml','grant-source.json','source-snapshot-input.json'];
+ await unlink(join(m.directory,'schema-init','source-account-schema.yaml')).catch(e=>{if(e.code!=='ENOENT')throw e});
+ const privateFiles=['bootstrap.pat','applications.json','provision.json','seed.json','runtime.json','snapshot.json','services.json','compose.json','admin.credentials.json','viewer.credentials.json','no-org.credentials.json','owner-secrets.json','current-application.json','source-account-schema.yaml','grant-source.json','source-snapshot-input.json','source-permission-input.json','issue390-chain.json'];
  for(const name of privateFiles.flatMap(name=>[name,`${name}.tmp`]))await unlink(join(m.directory,name)).catch(e=>{if(e.code!=='ENOENT')throw e});
  delete m.secrets;await json(join(m.directory,'cleanup.json'),evidence);m.status=currentMode(m)?'destroyed':'stopped';await save(m);return evidence;
 }
 async function initializeCurrentApplication(m) {
- const schemaConfig=join(m.directory,'source-account-schema.yaml');
+ const schemaWork=join(m.directory,'schema-init'),schemaConfig=join(schemaWork,'source-account-schema.yaml');await mkdir(schemaWork,{recursive:true});
+ for(const candidate of [join(schemaWork,'.env'),join(schemaWork,'.env.source-account-schema'),join(schemaWork,'source-account-schema.env'),join(m.directory,'bin','.env'),join(m.directory,'.env')])try{await lstat(candidate);throw new Error('SCHEMA_ENV_FILE_PRESENT')}catch(error){if(error.code!=='ENOENT')throw error}
  await writeFile(schemaConfig,["database:","  host: 127.0.0.1",`  port: ${m.ports.database}`,"  user: issue357",`  password: \"${m.secrets.commercialDatabase}\"`,"  database: issue357","  max_connections: 2","  max_idle_connections: 1","  connection_max_lifetime: 1h",""].join('\n'),{mode:0o600});
- await run(schemaBinary(m),['-config',schemaConfig],{cwd:m.directory,env:childEnvironment()});
+ await run(schemaBinary(m),['-config',schemaConfig],{cwd:schemaWork,env:childEnvironment()});await unlink(schemaConfig);
  await json(join(m.directory,'grant-source.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase,sourceRuntimePassword:m.secrets.sourceRuntime});
  await go(m,'GrantSourceAccountRuntime','grant-source.json');await unlink(join(m.directory,'grant-source.json'));
  m.sourceAccountInitialized=true;await save(m);
@@ -151,6 +154,24 @@ async function sourceAccountSnapshot(m) {
  await json(join(m.directory,'source-snapshot-input.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase});
  await go(m,'SourceAccountSnapshot','source-snapshot-input.json');await unlink(join(m.directory,'source-snapshot-input.json'));
  return readJSON(join(m.directory,'source-account-snapshot.json'));
+}
+async function sourceAccountPermission(m,permissionAction) {
+ assert.ok(['revoke','restore'].includes(permissionAction),'INVALID_PERMISSION_ACTION');
+ await json(join(m.directory,'source-permission-input.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase,permissionAction});
+ await go(m,'SourceAccountPermission','source-permission-input.json');await unlink(join(m.directory,'source-permission-input.json'));
+}
+async function stopCurrentApplications(m) {
+ assert.ok(['ready','stop-failed'].includes(m.status),'RUN_NOT_READY');m.status='stopping-applications';await save(m);
+ try {
+  const applications=await stopApplications(m);await inventory(m,true);const factsRetained=await sourceAccountSnapshot(m);
+  const evidence={schemaVersion:'issue390-stop-v1',runId:m.runId,passed:applications.passed,resourcesRetained:true,factsRetained,applications,at:new Date().toISOString()};
+  await json(join(m.directory,'stop.json'),evidence);m.status=applications.passed?'stopped':'stop-failed';await save(m);if(!applications.passed)throw new Error('APPLICATION_STOP_FAILED');return evidence;
+ } catch(error) {m.status='stop-failed';m.stopFailure={code:String(error.message).split(':',1)[0],at:new Date().toISOString()};await save(m);throw error}
+}
+async function startCurrentApplications(m) {
+ assert.ok(['stopped','start-failed'].includes(m.status),'RUN_NOT_STOPPED');await assertFingerprint(m);m.status='starting-applications';delete m.startFailure;await save(m);
+ try {await startApplications(m);await health(m);m.status='ready';await save(m)}
+ catch(error){m.status='start-failed';m.startFailure={code:String(error.message).split(':',1)[0],at:new Date().toISOString()};await save(m);try{await stopApplications(m)}catch{}throw error}
 }
 async function fresh() {
  assert.equal(process.platform,'win32','NOT_SUPPORTED: Windows first');
@@ -166,7 +187,7 @@ async function fresh() {
    for(const [kind,names]of [['container',services],['volume',volumes],['network',['network']]])for(const suffix of names)assert.equal(await inspect(kind,`${m.project}-${suffix}`),null,'RESOURCE_CONFLICT');
    await copyUI(m,web);
    await run('go',['test','-tags','issue357','-c','-o',binary(m),'./internal/app/httpapi'],{cwd:repo});
-   if(currentMode(m)){await run('go',['build','-o',applicationBinary(m),'./cmd/current-application'],{cwd:repo});await run('go',['build','-o',schemaBinary(m),'./cmd/source-account-registry-schema-init'],{cwd:repo})}
+   if(currentMode(m)){await mkdir(dirname(schemaBinary(m)),{recursive:true});await run('go',['build','-o',applicationBinary(m),'./cmd/current-application'],{cwd:repo});await run('go',['build','-o',schemaBinary(m),'./cmd/source-account-registry-schema-init'],{cwd:repo})}
    await json(join(m.directory,'compose.json'),composeConfiguration(m));await json(join(m.directory,'proxy.json'),proxyConfiguration());await writeFile(join(m.directory,'empty.env'),'');
    await run('docker',['compose','--env-file',join(m.directory,'empty.env'),'-f',join(m.directory,'compose.json'),'-p',m.project,'up','-d','--wait','--wait-timeout','300'],{cwd:m.directory});
    await inventory(m,true);m.status='provider-ready';await save(m);
@@ -180,7 +201,7 @@ async function fresh() {
    await startApplications(m);await health(m);m.status='ready';await save(m);console.log(`READY ${m.origins.web} manifest=${join(m.directory,'manifest.json')}`);return m;
   } catch(e) {
    m.status='failed';m.failure=e.message;await save(m);console.error(`FAILED ${e.message}; run=${m.runId}`);
-   try{await cleanup(m)}catch{console.error(`CLEANUP_INCOMPLETE: retry stop --run ${m.runId}`)}throw e;
+   try{await cleanup(m)}catch{console.error(`CLEANUP_INCOMPLETE: retry ${currentMode(m)?'destroy':'stop'} --run ${m.runId}`)}throw e;
   }
  });
 }
@@ -192,13 +213,15 @@ try {
   await lock(m,async()=>{
    if(action==='stop'){
     if(currentMode(m)){
-     assert.equal(m.status,'ready','RUN_NOT_READY');const applications=await stopApplications(m);await inventory(m,true);const factsRetained=await sourceAccountSnapshot(m);const evidence={schemaVersion:'issue390-stop-v1',runId:m.runId,passed:applications.passed,resourcesRetained:true,factsRetained,applications,at:new Date().toISOString()};await json(join(m.directory,'stop.json'),evidence);m.status='stopped';await save(m);console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return;
+     const evidence=await stopCurrentApplications(m);console.log(JSON.stringify(evidence));return;
     }
     const evidence=m.status==='stopped'&&!m.secrets?await readJSON(join(m.directory,'cleanup.json')):await cleanup(m);
     console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return;
    }
    if(action==='destroy'){const evidence=await cleanup(m);console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return}
-   if(action==='start'&&currentMode(m)&&m.status==='stopped'){await assertFingerprint(m);await startApplications(m);await health(m);m.status='ready';await save(m);console.log(`READY ${m.origins.web}`);return}
+   if(currentMode(m)&&(action==='source-permission-revoke'||action==='source-permission-restore')){assert.ok(['stopped','start-failed'].includes(m.status),'APPLICATIONS_MUST_BE_STOPPED');await sourceAccountPermission(m,action.endsWith('revoke')?'revoke':'restore');console.log('CONTROL_OK source-permission');return}
+   if(currentMode(m)&&(action==='provider-stop'||action==='provider-start')){assert.ok(['ready','stopped','start-failed'].includes(m.status),'RUN_NOT_CONTROLLABLE');await inventory(m,true);await run('docker',['container',action==='provider-stop'?'stop':'start',m.resources[`${m.project}-zitadel-api`].id]);console.log(`CONTROL_OK ${action}`);return}
+   if(action==='start'&&currentMode(m)&&['stopped','start-failed'].includes(m.status)){await startCurrentApplications(m);console.log(`READY ${m.origins.web}`);return}
    assert.equal(m.status,'ready','RUN_NOT_READY');
    if(action==='check'){console.log(JSON.stringify(await health(m)));return}
    if(action==='start'){await assertFingerprint(m);await health(m);console.log(`READY ${m.origins.web}`);return}

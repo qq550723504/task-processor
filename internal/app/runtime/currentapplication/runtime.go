@@ -15,9 +15,10 @@ import (
 )
 
 type Dependencies struct {
+	IdentityPreflight func(context.Context, IdentityConfig) error
 	OpenSourceAccount func(DatabaseConfig) (*gorm.DB, error)
 	OpenCommercial    func(DatabaseConfig) (*gorm.DB, error)
-	NewApplication    func(*gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplication    func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
 	Listen            func(string, string) (net.Listener, error)
 	CloseDatabase     func(*gorm.DB) error
 }
@@ -41,8 +42,16 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if err := cfg.validate(); err != nil {
 		return err
 	}
-	if dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
+	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
+	}
+	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelStartup()
+	if err := dependencies.IdentityPreflight(startupContext, cfg.Identity); err != nil {
+		return fmt.Errorf("verify identity provider readiness: %w", err)
+	}
+	if err := startupContext.Err(); err != nil {
+		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
 	sourceAccountDB, err := dependencies.OpenSourceAccount(cfg.SourceAccountDatabase)
@@ -50,17 +59,23 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("open existing source account database: %w", err)
 	}
 	defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(sourceAccountDB)) }()
+	if err := startupContext.Err(); err != nil {
+		return fmt.Errorf("current application startup canceled: %w", err)
+	}
 
 	commercialDB, err := dependencies.OpenCommercial(cfg.CommercialDatabase)
 	if err != nil {
 		return fmt.Errorf("open existing commercial database: %w", err)
 	}
 	defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(commercialDB)) }()
+	if err := startupContext.Err(); err != nil {
+		return fmt.Errorf("current application startup canceled: %w", err)
+	}
 
 	if dependencies.NewApplication == nil || dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
-	server, err := dependencies.NewApplication(sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+	server, err := dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)
 	}

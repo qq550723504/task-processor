@@ -48,6 +48,7 @@ func execute() error {
 		defer cancel()
 	}
 	return currentapplication.Run(ctx, cfg, logger, currentapplication.Dependencies{
+		IdentityPreflight: currentapplication.VerifyIdentityProvider,
 		OpenSourceAccount: func(cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritable(databaseConfig(cfg))
 		},

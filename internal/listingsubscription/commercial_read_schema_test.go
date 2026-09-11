@@ -19,10 +19,28 @@ func TestVerifyCommercialReadSchemaUsesOnlyBoundedReadProbes(t *testing.T) {
 	for _, query := range commercialReadSchemaQueries {
 		mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"ready"}))
 	}
+	mock.ExpectQuery(regexp.QuoteMeta(commercialReadPermissionQuery)).WillReturnRows(sqlmock.NewRows([]string{"current_user", "required_privileges", "forbidden_privileges"}).AddRow("commercial_reader", true, false))
 	mock.ExpectRollback()
 
 	if err := VerifyCommercialReadSchema(context.Background(), db); err != nil {
 		t.Fatalf("VerifyCommercialReadSchema() error = %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyCommercialReadSchemaRejectsOverprivilegedRole(t *testing.T) {
+	db, mock, cleanup := commercialSchemaMock(t)
+	defer cleanup()
+	mock.ExpectBegin()
+	for _, query := range commercialReadSchemaQueries {
+		mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"ready"}))
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(commercialReadPermissionQuery)).WillReturnRows(sqlmock.NewRows([]string{"current_user", "required_privileges", "forbidden_privileges"}).AddRow("commercial_reader", true, true))
+	mock.ExpectRollback()
+	if err := VerifyCommercialReadSchema(context.Background(), db); err == nil {
+		t.Fatal("overprivileged commercial role was accepted")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -20,6 +21,8 @@ const (
 	manifestSchemaVersion = 1
 	maximumManifestBytes  = 64 * 1024
 )
+
+var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
 	SchemaVersion         int            `json:"schemaVersion"`
@@ -200,8 +203,8 @@ func (cfg *Config) validate() error {
 	if err := cfg.CommercialDatabase.validate("commercialDatabase"); err != nil {
 		return err
 	}
-	if cfg.SourceAccountDatabase.User == cfg.CommercialDatabase.User {
-		return errors.New("source account and commercial database roles must be distinct")
+	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
+		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
 	}
 	return nil
 }
@@ -228,13 +231,17 @@ func (cfg DatabaseConfig) validate(name string) error {
 	if cfg.Host != "127.0.0.1" || cfg.Port < 1 || cfg.Port > 65535 {
 		return fmt.Errorf("%s must use an explicit IPv4 loopback endpoint", name)
 	}
-	if !boundedValue(cfg.User, 128) || !boundedValue(cfg.Password, 1024) || !boundedValue(cfg.Database, 128) {
+	if !boundedValue(cfg.User, 128) || !boundedDatabasePassword(cfg.Password) || !databaseNamePattern.MatchString(cfg.Database) {
 		return fmt.Errorf("%s credentials and database name are required and must be bounded", name)
 	}
 	if cfg.MaxConnections < 1 || cfg.MaxConnections > 20 {
 		return fmt.Errorf("%s.maxConnections must be between 1 and 20", name)
 	}
 	return nil
+}
+
+func boundedDatabasePassword(value string) bool {
+	return boundedValue(value, 1024) && !strings.ContainsAny(value, " ='\\\t")
 }
 
 func boundedValue(value string, maximum int) bool {

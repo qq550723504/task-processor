@@ -65,6 +65,10 @@ func TestLoadConfigRejectsNonLoopbackOrSharedDatabaseRole(t *testing.T) {
 		"authorization": strings.Replace(validManifest(), `"authorizationAPIURL": "http://localhost:18080"`, `"authorizationAPIURL": "http://127.0.0.1:18081"`, 1),
 		"database_host": strings.Replace(validManifest(), `"host": "127.0.0.1", "port": 15432, "user": "source_account_runtime"`, `"host": "postgres", "port": 15432, "user": "source_account_runtime"`, 1),
 		"shared_role":   strings.Replace(validManifest(), `"user": "commercial_reader"`, `"user": "source_account_runtime"`, 1),
+		"source_admin":  strings.Replace(validManifest(), `"user": "source_account_runtime"`, `"user": "postgres"`, 1),
+		"reader_admin":  strings.Replace(validManifest(), `"user": "commercial_reader"`, `"user": "postgres"`, 1),
+		"dsn_password":  strings.Replace(validManifest(), `"password": "source-secret"`, `"password": "x host=198.51.100.1"`, 1),
+		"dsn_database":  strings.Replace(validManifest(), `"database": "task_processor"`, `"database": "task_processor sslmode=require"`, 1),
 	}
 	for name, manifest := range tests {
 		t.Run(name, func(t *testing.T) {
