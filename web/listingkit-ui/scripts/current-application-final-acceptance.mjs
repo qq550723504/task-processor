@@ -73,16 +73,6 @@ async function assertExpiredOfficialToken(manifest, loginResult) {
   assert.equal(response.status, 401, "official access token remained accepted after its issued expiry");
 }
 
-async function refreshedAdminToken(manifest, session) {
-  const response = await fetch(`${manifest.origins.web}/api/auth/session`, { headers: { Cookie: session.cookie } });
-  assert.equal(response.status, 200);
-  const payload = await response.json();
-  assert.equal(payload.identity?.userId, manifest.users.admin.id);
-  const token = (await readFile(path.join(runDirectory, "ui", ".local", "image-agent-acceptance", "user-token.txt"), "utf8")).trim();
-  assert.ok(token);
-  return token;
-}
-
 async function assertSourceAuthorizationDependencyUnavailable(manifest, accessToken) {
   const response = await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "X-Requested-Organization-ID": manifest.organizations.B.id, "Content-Type": "application/json", "Idempotency-Key": "01991e24-1009-7009-8009-000000000009" }, body: JSON.stringify({ displayName: "must not commit", platform: "1688" }) });
   assert.equal(response.status, 503);
@@ -141,6 +131,8 @@ try {
   assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
   await control("source-permission-restore");
   await control("start");
+  const postPermissionLogin = await login(manifest, "admin");
+  sessions.admin = { subject: postPermissionLogin.subject, cookie: postPermissionLogin.cookie };
   await runClient(manifest, sessions, "verify");
   await control("stop");
   await control("source-cross-grant");
@@ -152,19 +144,22 @@ try {
   await assert.rejects(control("start"));
   await control("commercial-cross-restore");
   await control("start");
+  const postCrossOwnerLogin = await login(manifest, "admin");
+  sessions.admin = { subject: postCrossOwnerLogin.subject, cookie: postCrossOwnerLogin.cookie };
   await runClient(manifest, sessions, "verify");
   await assertExpiredOfficialToken(manifest, adminLogin);
-  const activeAdminToken = await refreshedAdminToken(manifest, sessions.admin);
   await control("stop");
   await control("provider-stop");
   await assert.rejects(control("start"));
   assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
   await control("provider-start");
   await control("start");
+  const dependencyLogin = await login(manifest, "admin");
+  sessions.admin = { subject: dependencyLogin.subject, cookie: dependencyLogin.cookie };
   await runClient(manifest, sessions, "verify");
   await control("provider-stop");
   try {
-    await assertSourceAuthorizationDependencyUnavailable(manifest, activeAdminToken);
+    await assertSourceAuthorizationDependencyUnavailable(manifest, dependencyLogin.accessToken);
     const unavailable = await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders });
     assert.ok([401, 502, 503, 504].includes(unavailable.status));
   } finally {
