@@ -11,7 +11,7 @@ import {provider,createSubjects,grantSubjects,authorizationControl} from './issu
 import {discoverRunProcesses} from './issue357/processes.mjs';
 import {restartRuntime} from './issue357/restart.mjs';
 import {waitForProvider} from './issue357/readiness.mjs';
-import {startCurrentApplications as runCurrentApplicationStart} from './issue357/current_application_lifecycle.mjs';
+import {startCurrentApplications as runCurrentApplicationStart,requireSuccessfulApplicationStop} from './issue357/current_application_lifecycle.mjs';
 
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const argv=process.argv.slice(2),action=argv[0];
@@ -235,6 +235,10 @@ try {
       restartContainers:currentMode(m)?async()=>{}:async()=>run('docker',['container','restart',...['identity-db','commercial-db','zitadel-api','zitadel-login','proxy'].map(s=>m.resources[`${m.project}-${s}`].id)]),
       waitProvider:async()=>waitForProvider(m.origins.issuer),
       startApplications,health};
+    }
+    if(currentMode(m)){
+     const stop=operations.stopApplications;
+     operations.stopApplications=state=>requireSuccessfulApplicationStop(state,stop);
     }
     await restartRuntime(m,operations);console.log(`READY ${m.origins.web}`);return;
    }

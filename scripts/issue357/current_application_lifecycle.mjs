@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
 
+export async function requireSuccessfulApplicationStop(m,stopApplications) {
+  const report=await stopApplications(m);
+  if(report?.passed!==true)throw new Error('APPLICATION_STOP_FAILED');
+  return report;
+}
+
 export async function startCurrentApplications(m,operations) {
   assert.ok(['stopped','start-failed'].includes(m.status),'RUN_NOT_STOPPED');
   await operations.assertFingerprint(m);
@@ -15,7 +21,7 @@ export async function startCurrentApplications(m,operations) {
   } catch(error) {
     const failure={code:String(error.message).split(':',1)[0],at:new Date().toISOString()};
     let stopError;
-    try { await operations.stopApplications(m); }
+    try { await requireSuccessfulApplicationStop(m,operations.stopApplications); }
     catch(cause) { stopError=cause; }
     m.status=stopError?'stop-failed':'start-failed';
     m.startFailure=failure;

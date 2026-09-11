@@ -32,6 +32,13 @@ is the separate destructive boundary: it verifies recorded ownership, stops
 applications if needed, removes only resources carrying the run's exact ID and
 label, deletes private credentials, and retains bounded evidence files.
 
+Current-application restart requires an explicit successful stop report before
+starting anything again. Failed or unconfirmed shutdown records `restart-failed`
+at `stopping-applications`, exits nonzero and never prints `READY`. If cleanup
+after a failed start cannot confirm successful shutdown, the retained state is
+`stop-failed`, with both start and stop failures recorded; another start is denied.
+These failures do not automatically destroy retained resources or facts.
+
 ## Runtime boundary
 
 The serving process is built by `go build ./cmd/current-application`. It accepts
