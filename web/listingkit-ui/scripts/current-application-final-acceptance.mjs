@@ -15,9 +15,24 @@ let runId;
 let runDirectory;
 let browser;
 
+function parseRunIdFromText(output) {
+  return output?.match?.(/runId=([0-9a-f-]{36})/)?.[1];
+}
+
 async function command(executable, args, options = {}) {
-  const result = await execFile(executable, args, { cwd: repo, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...options });
-  return result.stdout.trim();
+  try {
+    const result = await execFile(executable, args, { cwd: repo, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...options });
+    return result.stdout.trim();
+  } catch (error) {
+    const output = `${error.stdout ?? ""}${error.stderr ?? ""}`.trim();
+    if (!runId) {
+      runId = parseRunIdFromText(output);
+    }
+    if (error.stdout) {
+      error.stdout = output;
+    }
+    throw error;
+  }
 }
 
 async function control(action, ...args) {
