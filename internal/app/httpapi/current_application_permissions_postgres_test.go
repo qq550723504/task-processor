@@ -169,13 +169,16 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		start(t, true)
 		require.ErrorContains(t, listingsubscription.VerifyCommercialReadSchema(ctx, commercial), "permissions do not match")
 	})
+	t.Run("column_acl", func(t *testing.T) {
+		run1ColumnPermissionMatrix(t, owner, source, commercial, tables, start)
+	})
 	var readOnly string
 	require.NoError(t, commercial.Raw(`SHOW transaction_read_only`).Scan(&readOnly).Error)
 	require.Equal(t, "on", readOnly)
 	require.Equal(t, before, run1PermissionFacts(t, owner, tables), "preflight/GRANT/REVOKE changed business or migration facts")
 	t.Run("normal_binary", func(t *testing.T) { run1PermissionBinary(t, owner, cfg) })
 	require.Equal(t, before, run1PermissionFacts(t, owner, tables))
-	t.Log("PASS complete effective-privilege matrix; all revoked injections restored startup; facts unchanged; TRUNCATE was granted/revoked only")
+	t.Log("permission checks finished; fact snapshot unchanged; TRUNCATE was granted/revoked only")
 }
 
 func run1PermissionFacts(t *testing.T, db *gorm.DB, tables []string) string {

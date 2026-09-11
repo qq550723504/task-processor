@@ -60,9 +60,12 @@ startup and leaves the facts untouched.
 
 The permission preflight inventories every user table in the admitted `public`
 schema, including migration tables and additional tables. It compares PostgreSQL
-effective table privileges (including inherited and PUBLIC grants) with the exact
+effective table and column privileges (including inherited and PUBLIC grants) with the exact
 table/privilege grants above. Other tables may exist, but neither role may have
-unadmitted table privileges on them. The server's privilege vocabulary is used,
+unadmitted table or column privileges on them. For SELECT/INSERT/UPDATE/REFERENCES,
+PostgreSQL's effective any-column check includes whole-table and column-only grants;
+the required whole-table grants remain mandatory and cannot be replaced by column grants.
+The server's privilege vocabulary is used,
 including MAINTAIN on PostgreSQL 17; ordinary system catalog access is excluded
 from this business-table inventory. Preflight only reads catalogs and schema: it
 does not grant, revoke, alter or repair permissions.

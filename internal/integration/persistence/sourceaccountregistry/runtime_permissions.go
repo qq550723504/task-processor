@@ -25,7 +25,10 @@ const runtimePermissionQuery = `SELECT current_user,
       CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.acldefault('r', relation.relowner)) AS privilege
       WHERE namespace.nspname = 'public'
         AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
-        AND pg_catalog.has_table_privilege(current_user, relation.oid, privilege.privilege_type)
+        AND CASE WHEN privilege.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+          THEN pg_catalog.has_any_column_privilege(current_user, relation.oid, privilege.privilege_type)
+          ELSE pg_catalog.has_table_privilege(current_user, relation.oid, privilege.privilege_type)
+        END
         AND (relation.relname, privilege.privilege_type) NOT IN (
           ('source_account_resources', 'SELECT'),
           ('source_account_resources', 'INSERT'),
