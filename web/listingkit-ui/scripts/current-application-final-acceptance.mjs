@@ -89,7 +89,7 @@ try {
   const { chromium } = await import("@playwright/test");
   browser = await chromium.launch({ headless: true });
   const sessions = { admin: await login(manifest, "admin"), viewer: await login(manifest, "viewer") };
-  const adminHeaders = { Cookie: `${sessions.admin.cookie}; shuomi_effective_organization=${manifest.organizations.B.id}`, Origin: manifest.origins.web, "Sec-Fetch-Site": "same-origin" };
+  const adminHeaders = { Cookie: `${sessions.admin.cookie}; shuomi_effective_organization=${manifest.organizations.B.id}`, Origin: manifest.origins.web, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": manifest.users.admin.id, "X-Expected-Organization-ID": manifest.organizations.B.id };
   assert.equal((await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders })).status, 200);
   assert.equal((await fetch(`${manifest.origins.web}/api/workbench/commercial/overview`, { headers: adminHeaders })).status, 200);
   assert.equal((await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`)).status, 401);
