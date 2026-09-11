@@ -249,7 +249,10 @@ func newPostgresCanonicalInvoker(t *testing.T, db *gorm.DB) (*canonicalinspect.I
 	}
 	audits := &postgresAuditRecorder{}
 	definition := canonicalinspect.Definition()
-	invoker, err := canonicalinspect.NewInvoker(reader, commercetool.AgentDefinition{ID: "postgres.product-agent", Version: "v1.0.0", AllowedTools: []commercetool.ToolRef{definition.Ref}}, commercetool.InvocationDependencies{
+	invoker, err := canonicalinspect.NewInvoker(reader, commercetool.AgentDefinition{ID: "postgres.product-agent", Version: "v1.0.0", AllowedTools: []commercetool.ToolRef{
+		definition.Ref,
+		{ID: "product.other.read", Version: "v1.0.0"},
+	}}, commercetool.InvocationDependencies{
 		PrincipalResolver: principalResolver, Authorizer: authorizer, Recorder: audits,
 		Tracer: otel.Tracer("canonicalinspect-postgres"), Now: func() time.Time { return now }, AuditTimeout: time.Second,
 	})

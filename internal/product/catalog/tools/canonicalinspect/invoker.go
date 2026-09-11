@@ -27,11 +27,22 @@ func NewInvoker(reader catalog.VersionedSnapshotReader, agent commercetool.Agent
 		return nil, err
 	}
 	definition := Definition()
+	allowedCount := 0
+	for _, ref := range agent.AllowedTools {
+		if ref == definition.Ref {
+			allowedCount++
+		}
+	}
+	if allowedCount != 1 {
+		return nil, commercetool.NewError(commercetool.ErrorToolNotAllowed, "canonical inspection tool is not allowed exactly once", nil)
+	}
 	registry, err := commercetool.NewRegistry(commercetool.Tool{Definition: definition, Executor: executor})
 	if err != nil {
 		return nil, fmt.Errorf("register canonical inspection tool: %w", err)
 	}
-	bound, err := registry.Bind(agent, dependencies)
+	toolAgent := agent
+	toolAgent.AllowedTools = []commercetool.ToolRef{definition.Ref}
+	bound, err := registry.Bind(toolAgent, dependencies)
 	if err != nil {
 		return nil, fmt.Errorf("bind canonical inspection tool: %w", err)
 	}
