@@ -2,7 +2,9 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -30,6 +32,7 @@ func TestIssue388Chain1AcceptanceAssemblyContract(t *testing.T) {
 		"WorkerWireModeOrganization",
 		"imageagentworker.OrganizationExecutionAuthorizer",
 		"imageagenttools.NewProductImageSlotExecutor",
+		"imageagentpolicy.LoadEmbeddedResolver",
 		"NewSheinRecordApplication",
 	} {
 		require.Contains(t, assembly, required, "#388 must compose the current owner %s", required)
@@ -40,6 +43,7 @@ func TestIssue388Chain1AcceptanceAssemblyContract(t *testing.T) {
 		"INSERT INTO listing_shein_records",
 		"INSERT INTO store_center_stores",
 		"tenantbridge",
+		"ProfileResolver: imagePorts",
 	} {
 		require.NotContains(t, harness, forbidden, "#388 must not seed or reintroduce %s", forbidden)
 	}
@@ -68,4 +72,27 @@ func TestIssue388Chain1AcceptanceAssemblyContract(t *testing.T) {
 	for _, required := range []string{"PASS", "FAIL", "SKIP", "NOT_RUN", "controlled external", "real PostgreSQL", "real Temporal"} {
 		require.Contains(t, documentation, required)
 	}
+}
+
+func TestIssue388Chain1ScriptFailsWhenComposeFails(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("PowerShell command-shim execution contract is Windows-specific")
+	}
+
+	shimDirectory := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(shimDirectory, "docker.cmd"), []byte("@echo off\r\nexit /b 23\r\n"), 0o600))
+	script, err := filepath.Abs(filepath.Join("..", "scripts", "chain1-local-product-acceptance.ps1"))
+	require.NoError(t, err)
+	command := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script)
+	command.Env = append(os.Environ(), "PATH="+shimDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	require.Error(t, err, "a native Compose failure must fail the acceptance process")
+
+	text := string(output)
+	require.Contains(t, text, "CHAIN1_STAGE resources FAIL")
+	require.Contains(t, text, "CHAIN1_STAGE acceptance FAIL")
+	require.Contains(t, text, "CHAIN1_STAGE cleanup FAIL")
+	require.NotContains(t, text, "CHAIN1_STAGE resources PASS")
+	require.NotContains(t, text, "CHAIN1_STAGE acceptance PASS")
+	require.NotContains(t, text, "CHAIN1_STAGE cleanup PASS")
 }

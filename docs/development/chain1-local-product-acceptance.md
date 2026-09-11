@@ -19,12 +19,19 @@ without that switch still starts from empty resources.
 
 Internal behavior is real: SRC-1 publication, REV-1 HTTP review/apply, the
 Organization ImageAgent PostgreSQL repository, Temporal workflow/activities,
-current worker authorization, durable staging/publication, Product Asset,
+current embedded ImagePolicy resolver, worker authorization, durable
+staging/publication, Product Asset,
 Store Center subscription/quota/audit/create, and DRAFT-S1 HTTP persistence.
 The controlled external fixtures are limited to token verification, the
 loopback ZITADEL Authorization API, image capabilities, and immutable object
 storage. Material outputs plus authorization and image-capability invocation
 counts are asserted; no external network or provider call is made.
+
+The recovery cases lose committed Review Apply, ImageAgent approval, and DRAFT
+responses. ImageAgent HTTP/worker and DRAFT are rebuilt after their respective
+response losses before durable projection/receipt verification. Compose native
+command failures produce a non-zero process result and cannot emit final PASS;
+a Windows command-shim test covers the failure and cleanup reporting path.
 
 Output uses `CHAIN1_STAGE <name> PASS|FAIL|SKIP|NOT_RUN`. A PASS is emitted only
 after the named assertion has run. A skipped environment-gated Go test is SKIP,

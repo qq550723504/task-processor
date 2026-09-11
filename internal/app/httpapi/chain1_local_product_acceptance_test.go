@@ -27,6 +27,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"task-processor/internal/app/imageagentpolicy"
 	"task-processor/internal/app/productsourcing"
 	imageagentworker "task-processor/internal/app/worker/imageagent"
 	"task-processor/internal/authidentity"
@@ -66,18 +67,19 @@ const (
 
 func TestChain1ControlledImagePortsExerciseCurrentProductSlotExecutor(t *testing.T) {
 	imagePorts := &chain1ImagePorts{}
+	policyResolver := chain1EmbeddedImagePolicy(t)
 	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor: imagePorts, WhiteBackgroundRenderer: imagePorts, SceneRenderer: imagePorts,
-		Reviewer: imagePorts, UsageQuoter: imagePorts, ProfileResolver: imagePorts,
+		Reviewer: imagePorts, UsageQuoter: imagePorts, ProfileResolver: policyResolver,
 	})
 	catalogInput, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{
 		Assets:         []imageagent.AuthorizedAsset{{ID: "catalog-image-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example.test/chain1.png", SourceURL: "https://source.example.test/chain1.png", DisplayURL: "https://source.example.test/chain1.png", Width: 1, Height: 1}},
-		ProductContext: imageagent.ProductContextRef{ProductID: chain1ProductKey, Title: "Reviewed chain product", ProductType: "Home / Drinkware", SourceSnapshotVersion: 2},
+		ProductContext: imageagent.ProductContextRef{ProductID: chain1ProductKey, Title: "Reviewed chain product", ProductType: "Fashion / Shoes", SourceSnapshotVersion: 2},
 	})
 	require.NoError(t, err)
 	result, err := executor.GenerateSlot(context.Background(), imageagent.SlotExecutionInput{
 		RunID: "chain1-run-388", TenantID: chain1Organization, UserID: chain1Actor, TargetPlatform: "shein",
-		ImagePolicyContext: &imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "studio"},
+		ImagePolicyContext: &imageagent.ImagePolicyContext{Country: "us", Family: "default", SceneCategory: "shoes"},
 		PlanRevision:       1, Slot: imageagent.Slot{ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"catalog-image-1"}, IdempotencyKey: "chain1-main-key-388", Status: imageagent.SlotStatusPending},
 		Attempt: 1, IdempotencyKey: "chain1-main-key-388:plan:1:attempt:1", AssetCatalog: catalogInput, ProductContext: catalogInput.ProductContext,
 	})
@@ -235,9 +237,10 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 	durableArtifacts, err := objectstore.NewDurableArtifactStore(objects, objectstore.DurableArtifactStoreConfig{MaxArtifactBytes: 1 << 20, OperationTimeout: 5 * time.Second})
 	require.NoError(t, err)
 	imagePorts := &chain1ImagePorts{}
+	policyResolver := chain1EmbeddedImagePolicy(t)
 	executor := imageagenttools.NewProductImageSlotExecutor(imageagenttools.Dependencies{
 		SubjectExtractor: imagePorts, WhiteBackgroundRenderer: imagePorts, SceneRenderer: imagePorts,
-		Reviewer: imagePorts, UsageQuoter: imagePorts, ProfileResolver: imagePorts,
+		Reviewer: imagePorts, UsageQuoter: imagePorts, ProfileResolver: policyResolver,
 	})
 	publisherV2, err := assetpublication.NewV2Publisher(imageRepository, assetRepository)
 	require.NoError(t, err)
@@ -258,7 +261,7 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 	imageApp := chain1ImageApplication(t, db, verifier, resolver, authorizer, workflowClient, exactProduct)
 	imageServer := chain1HTTPServer(t, imageApp)
 	runID, actionID := "chain1-run-388", "chain1-approve-388"
-	createRun := fmt.Sprintf(`{"run_id":%q,"business_task_id":"chain1-context-388","target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"studio"},"mode":"manual","idempotency_key":"chain1-run-key-388","plan":{"revision":1,"idempotency_key":"chain1-plan-key-388","source_asset_ids":["catalog-image-1"],"slots":[{"id":"main","role":"main","source_asset_ids":["catalog-image-1"],"idempotency_key":"chain1-main-key-388","status":"pending"}]},"budget":{},"max_concurrent_slots":1}`, runID)
+	createRun := fmt.Sprintf(`{"run_id":%q,"business_task_id":"chain1-context-388","target_platform":"shein","image_policy_context":{"country":"us","family":"default","scene_category":"shoes"},"mode":"manual","idempotency_key":"chain1-run-key-388","plan":{"revision":1,"idempotency_key":"chain1-plan-key-388","source_asset_ids":["catalog-image-1"],"slots":[{"id":"main","role":"main","source_asset_ids":["catalog-image-1"],"idempotency_key":"chain1-main-key-388","status":"pending"}]},"budget":{},"max_concurrent_slots":1}`, runID)
 	status, raw, err := chain1RawRequest(imageServer.Client(), http.MethodPost, imageServer.URL+"/api/organization/image-agent/runs", "", createRun, chain1Organization)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, status, string(raw))
@@ -294,13 +297,20 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 	grants.userAllowed.Store(true)
 
 	// The HTTP update is accepted under current user auth, but its publication
-	// activity cannot cross the separately revoked worker grant. Lose that HTTP
-	// response, restore the grant, then reconstruct from durable owners.
+	// activity cannot cross the separately revoked worker grant. Race two copies
+	// of the same action while losing both HTTP responses, restore the grant,
+	// then rebuild the application and worker from durable owners.
 	grants.workerAllowed.Store(false)
-	workerCallsBeforeRevoke := grants.workerCalls.Load()
+	workerDeniedBeforeRevoke := grants.workerDenied.Load()
+	approvalRowsBeforeRevoke := chain1RowCount(t, db, "product_approval_receipts")
+	assetRowsBeforeRevoke := chain1RowCount(t, db, "product_approved_assets")
+	publicObjectsBeforeRevoke := objects.countPrefix("image-agent/public/")
+	imageCallsAfterGeneration := imagePorts.calls.Load()
+	lostApprovalStatuses := make(chan int, 2)
 	lostApproval := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorder := httptest.NewRecorder()
 		imageApp.Handler.ServeHTTP(recorder, r)
+		lostApprovalStatuses <- recorder.Code
 		if connection, _, hijackErr := w.(http.Hijacker).Hijack(); hijackErr == nil {
 			_ = connection.Close()
 			return
@@ -308,22 +318,55 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 		w.WriteHeader(recorder.Code)
 		_, _ = w.Write(recorder.Body.Bytes())
 	}))
-	lostDone := make(chan error, 1)
-	go func() {
-		_, _, requestErr := chain1RawRequest(lostApproval.Client(), http.MethodPost, lostApproval.URL+"/api/organization/image-agent/runs/"+runID+"/results/approve", "", approvalBody, chain1Organization)
-		lostDone <- requestErr
-	}()
-	chain1WaitCounter(t, &grants.workerCalls, workerCallsBeforeRevoke+1, 10*time.Second)
+	lostDone := make(chan error, 2)
+	startCompetingApprovals := make(chan struct{})
+	for range 2 {
+		go func() {
+			<-startCompetingApprovals
+			_, _, requestErr := chain1RawRequest(lostApproval.Client(), http.MethodPost, lostApproval.URL+"/api/organization/image-agent/runs/"+runID+"/results/approve", "", approvalBody, chain1Organization)
+			lostDone <- requestErr
+		}()
+	}
+	close(startCompetingApprovals)
+	chain1WaitCounter(t, &grants.workerDenied, workerDeniedBeforeRevoke+1, 10*time.Second)
+	require.Equal(t, approvalRowsBeforeRevoke, chain1RowCount(t, db, "product_approval_receipts"))
+	require.Equal(t, assetRowsBeforeRevoke, chain1RowCount(t, db, "product_approved_assets"))
+	require.Equal(t, publicObjectsBeforeRevoke, objects.countPrefix("image-agent/public/"))
+	require.Equal(t, imageCallsAfterGeneration, imagePorts.calls.Load(), "denied approval must not dispatch image capabilities")
 	_, err = assetRepository.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: chain1Organization, ProductKey: chain1ProductKey, TargetPlatform: "shein", SourceSnapshotVersion: appliedVersion})
 	require.ErrorIs(t, err, productasset.ErrApprovedAssetsNotReady)
+	conflictingApproval := fmt.Sprintf(`{"plan_revision":1,"result_digest":"sha256:%s","action_id":%q}`, strings.Repeat("f", 64), actionID)
+	status, _, err = chain1RawRequest(imageServer.Client(), http.MethodPost, imageServer.URL+"/api/organization/image-agent/runs/"+runID+"/results/approve", "", conflictingApproval, chain1Organization)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusConflict, status, "same pending action with a different payload must conflict")
 	grants.workerAllowed.Store(true)
-	select {
-	case lostErr := <-lostDone:
-		require.Error(t, lostErr, "approval response must be lost after the durable command completes")
-	case <-time.After(45 * time.Second):
-		t.Fatal("approval command did not complete after worker authorization was restored")
+	for range 2 {
+		select {
+		case lostErr := <-lostDone:
+			require.Error(t, lostErr, "competing approval response must be lost after the durable command completes")
+		case <-time.After(45 * time.Second):
+			t.Fatal("approval command did not complete after worker authorization was restored")
+		}
+		select {
+		case acceptedStatus := <-lostApprovalStatuses:
+			require.Equal(t, http.StatusAccepted, acceptedStatus, "same-action competitors must attach to one accepted command")
+		case <-time.After(time.Second):
+			t.Fatal("lost approval proxy did not record the committed response status")
+		}
 	}
 	lostApproval.Close()
+
+	imageServer.Close()
+	temporalDriver.StopWorker()
+	_ = temporalDriver.Close()
+	temporalDriver = chain1TemporalDriver(t, temporalAddress)
+	activities, err = imageagenttemporal.NewActivities(activityDependencies)
+	require.NoError(t, err)
+	chain1StartWorker(t, temporalDriver, activities)
+	workflowClient = temporalDriver.OrganizationClient()
+	imageApp = chain1ImageApplication(t, db, verifier, resolver, authorizer, workflowClient, exactProduct)
+	imageServer = chain1HTTPServer(t, imageApp)
+
 	inventory := chain1WaitInventory(t, assetRepository, appliedVersion, 45*time.Second)
 	require.Len(t, inventory.Assets, 1)
 	require.Equal(t, runID, inventory.Assets[0].RunID)
@@ -335,9 +378,29 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 	require.NoError(t, db.Raw("SELECT action_id FROM product_approval_receipts WHERE tenant_id = ?", chain1Organization).Row().Scan(&approvalAction))
 	require.Equal(t, chain1ApprovalPublicationKey(actionID, runID, 1), approvalAction)
 	require.Equal(t, 1, objects.countPrefix("image-agent/public/"))
+	require.Equal(t, imageCallsAfterGeneration, imagePorts.calls.Load(), "approval replay must not redispatch providers")
 
-	// Rebuild DRAFT-S1, persist exact-version output, replay it, and prove a
-	// newer Catalog version does not inherit the old approval.
+	// Commit DRAFT-S1 while losing the response, rebuild it, then replay the
+	// original key and prove a newer Catalog version does not inherit approval.
+	draftServer.Close()
+	draftApp, _, err = NewSheinRecordApplication(db, verifier, resolver, authorizer)
+	require.NoError(t, err)
+	draftServer = chain1HTTPServer(t, draftApp)
+	lostDraft := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder := httptest.NewRecorder()
+		draftApp.Handler.ServeHTTP(recorder, r)
+		if recorder.Code == http.StatusCreated {
+			if connection, _, hijackErr := w.(http.Hijacker).Hijack(); hijackErr == nil {
+				_ = connection.Close()
+				return
+			}
+		}
+		w.WriteHeader(recorder.Code)
+		_, _ = w.Write(recorder.Body.Bytes())
+	}))
+	_, _, err = chain1RawRequest(lostDraft.Client(), http.MethodPost, lostDraft.URL+"/api/listing/shein-records", "chain1-draft-save", draftBody, chain1Organization)
+	require.Error(t, err, "the committed DRAFT response must be lost")
+	lostDraft.Close()
 	draftServer.Close()
 	draftApp, reader, err := NewSheinRecordApplication(db, verifier, resolver, authorizer)
 	require.NoError(t, err)
@@ -400,9 +463,10 @@ func TestChain1LocalProductAcceptance(t *testing.T) {
 		require.Equal(t, want, count, table)
 	}
 	require.Equal(t, tableCount, chain1TableCount(t, db), "requests must not perform DDL")
-	require.Positive(t, reviewGenerator.calls.Load())
+	require.EqualValues(t, 1, reviewGenerator.calls.Load(), "review replay must not redispatch the title generator")
 	require.Positive(t, grants.userCalls.Load())
 	require.Positive(t, grants.workerCalls.Load())
+	require.Positive(t, grants.workerDenied.Load())
 	require.Positive(t, imagePorts.calls.Load())
 	fmt.Printf("CHAIN1_RECEIPT org=%s actor=%s product=%s version=%d publication=%s run=%s plan=1 digest=%s action=%s asset=%s store=%s record=%s diagnostic=%s\n",
 		chain1Organization, chain1Actor, chain1ProductKey, appliedVersion, exactProduct.PublicationID, runID, awaiting.ResultDigest, actionID, inventory.Assets[0].ID, storeID, draftReceipt.RecordID, draftReceipt.DiagnosticStatus)
@@ -451,6 +515,13 @@ func chain1TableCount(t *testing.T, db *gorm.DB) int64 {
 	return count
 }
 
+func chain1RowCount(t *testing.T, db *gorm.DB, table string) int64 {
+	t.Helper()
+	var count int64
+	require.NoError(t, db.Table(table).Count(&count).Error)
+	return count
+}
+
 func chain1LiveWriteContext(t *testing.T, resolver *workbenchcontext.Resolver, verifier chain1TokenVerifier) context.Context {
 	t.Helper()
 	identity, err := verifier.Verify(context.Background(), chain1UserToken)
@@ -464,7 +535,7 @@ func chain1SourceEnvelope(version, title string) sourcing.SourceEnvelope {
 	return sourcing.SourceEnvelope{
 		Identity:         sourcing.SourceIdentity{SourceType: sourcing.SourceTypeManualImport, SourcePlatform: "controlled-chain1", SourceID: "chain1-source", SourceVersion: version},
 		RawReference:     sourcing.RawSourceReference{ReferenceType: "captured", ReferenceID: "chain1-evidence-" + version, SnapshotID: "chain1-snapshot-" + version, Checksum: sourcing.RawSnapshotChecksum(title), CapturedAt: time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)},
-		ProductCandidate: sourcing.ProductCandidate{Title: title, Description: "Controlled CHAIN-1 product", Brand: "Chain", CategoryPath: []string{"Home", "Drinkware"}, Variants: []sourcing.ProductVariantCandidate{{SourceID: "variant-1", SKU: "CHAIN-1", Price: 12, Currency: "USD", Stock: 3}}},
+		ProductCandidate: sourcing.ProductCandidate{Title: title, Description: "Controlled CHAIN-1 product", Brand: "Chain", CategoryPath: []string{"Fashion", "Shoes"}, Variants: []sourcing.ProductVariantCandidate{{SourceID: "variant-1", SKU: "CHAIN-1", Price: 12, Currency: "USD", Stock: 3}}},
 		AssetCandidates:  []sourcing.AssetCandidate{{SourceID: "source-image-1", URL: "https://source.example.test/chain1.png", MediaType: "image", Role: "main", Width: 1, Height: 1}},
 		Trace:            sourcing.SourceTrace{SourceRunID: "chain1-" + version, RequestID: "chain1-request-" + version, Notes: []string{"controlled external source fixture"}},
 	}
@@ -482,6 +553,7 @@ func (chain1TokenVerifier) Verify(_ context.Context, token string) (authidentity
 type chain1GrantFixture struct {
 	userAllowed, workerAllowed atomic.Bool
 	userCalls, workerCalls     atomic.Int32
+	workerDenied               atomic.Int32
 }
 
 func (fixture *chain1GrantFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -491,17 +563,22 @@ func (fixture *chain1GrantFixture) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	}
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	allowed := false
+	workerRequest := false
 	switch token {
 	case chain1UserToken:
 		fixture.userCalls.Add(1)
 		allowed = fixture.userAllowed.Load()
 	case chain1ServiceToken:
+		workerRequest = true
 		fixture.workerCalls.Add(1)
 		allowed = fixture.workerAllowed.Load()
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if !allowed {
 		_, _ = io.WriteString(w, `{"pagination":{},"authorizations":[]}`)
+		if workerRequest {
+			fixture.workerDenied.Add(1)
+		}
 		return
 	}
 	_, _ = fmt.Fprintf(w, `{"pagination":{"totalResult":"1"},"authorizations":[{"id":"chain1-authorization","project":{"id":%q},"organization":{"id":%q,"name":"CHAIN-1"},"user":{"id":%q},"state":"STATE_ACTIVE","roles":[{"key":"listingkit_admin"}]}]}`, chain1Project, chain1Organization, chain1Actor)
@@ -609,6 +686,20 @@ func chain1ImageApplication(t *testing.T, db *gorm.DB, verifier chain1TokenVerif
 	return application
 }
 
+func chain1EmbeddedImagePolicy(t *testing.T) *imagepolicy.Resolver {
+	t.Helper()
+	resolver, err := imageagentpolicy.LoadEmbeddedResolver()
+	require.NoError(t, err)
+	profile, err := resolver.Resolve(imagepolicy.ProfileInput{Marketplace: "shein", Country: "us", Family: "default", SceneCategory: "shoes"})
+	require.NoError(t, err)
+	require.Equal(t, "product-image-policy/v1", profile.PolicyVersion)
+	require.Equal(t, 0.65, profile.Thresholds.MainReview)
+	require.Equal(t, 0.70, profile.Thresholds.WhiteBackgroundReview)
+	require.Equal(t, 0.10, profile.Thresholds.WhiteCanvasPenalty)
+	require.Equal(t, "lifestyle", profile.SceneDefaults.SceneStyle)
+	return resolver
+}
+
 var chain1PNG, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 
 type chain1ImagePorts struct{ calls atomic.Int32 }
@@ -639,11 +730,6 @@ func (ports *chain1ImagePorts) Review(context.Context, productimage.ReviewReques
 func (ports *chain1ImagePorts) QuoteUsage(_ context.Context, request productimage.UsageQuoteRequest) (productimage.UsageQuote, error) {
 	ports.calls.Add(1)
 	return productimage.UsageQuote{Operation: request.Operation, Provider: "controlled", RouteReference: "chain1-route", Model: "chain1-model", CredentialReference: "chain1-credential", ConfigurationVersion: "v1", PricingVersion: "chain1-pricing-v1", Fingerprint: request.Operation + "-chain1", MaximumOutputs: request.MaximumOutputs, MaximumModelCalls: 1, CostUpperBoundKnown: true}, nil
-}
-
-func (ports *chain1ImagePorts) Resolve(input imagepolicy.ProfileInput) (imagepolicy.ProductImageProfile, error) {
-	ports.calls.Add(1)
-	return imagepolicy.ProductImageProfile{Key: imagepolicy.PolicyKey(input), PolicyVersion: "chain1-policy-v1", SceneDefaults: productimage.SceneOptions{SceneCategory: input.SceneCategory, SceneStyle: "studio"}}, nil
 }
 
 type chain1StoredObject struct {
