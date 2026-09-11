@@ -1,0 +1,31 @@
+name: task-processor-chain1-acceptance-388
+
+services:
+  chain1-postgres:
+    image: postgres:17.2-alpine
+    environment:
+      POSTGRES_DB: chain1_acceptance
+      POSTGRES_USER: chain1
+      POSTGRES_PASSWORD: ${CHAIN1_DB_PASSWORD:?CHAIN1_DB_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${CHAIN1_DB_PORT:-17443}:5432"
+    volumes:
+      - chain1-postgres-data:/var/lib/postgresql/data:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chain1 -d chain1_acceptance"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  chain1-temporal:
+    image: temporalio/temporal@sha256:cf86707827fac99e4d1c4a47dc11b105382d796199c7bd41fb3213fb0471628e
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/home/temporal/chain1.db"]
+    ports:
+      - "127.0.0.1:${CHAIN1_TEMPORAL_PORT:-17333}:7233"
+      - "127.0.0.1:${CHAIN1_TEMPORAL_UI_PORT:-18333}:8233"
+    volumes:
+      - chain1-temporal-data:/home/temporal:rw
+
+volumes:
+  chain1-postgres-data:
+  chain1-temporal-data:
