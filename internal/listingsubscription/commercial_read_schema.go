@@ -29,44 +29,21 @@ const commercialReadPermissionQuery = `SELECT current_user,
     AND has_table_privilege(current_user, 'public.saas_usage_buckets', 'SELECT') AS required_privileges,
   has_database_privilege(current_user, current_database(), 'CREATE')
     OR has_schema_privilege(current_user, 'public', 'CREATE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'INSERT')
-    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'UPDATE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'DELETE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.saas_tenant_subscriptions', 'REFERENCES')
-    OR has_table_privilege(current_user, 'public.saas_plans', 'INSERT')
-    OR has_table_privilege(current_user, 'public.saas_plans', 'UPDATE')
-    OR has_table_privilege(current_user, 'public.saas_plans', 'DELETE')
-    OR has_table_privilege(current_user, 'public.saas_plans', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.saas_plans', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.saas_plans', 'REFERENCES')
-    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'INSERT')
-    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'UPDATE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'DELETE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'REFERENCES')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'INSERT')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'UPDATE')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'DELETE')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.saas_usage_buckets', 'REFERENCES')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'SELECT')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'INSERT')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'UPDATE')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'DELETE')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.source_account_resources', 'REFERENCES')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'SELECT')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'INSERT')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'UPDATE')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'DELETE')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'TRUNCATE')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'TRIGGER')
-    OR has_table_privilege(current_user, 'public.source_account_operations', 'REFERENCES') AS forbidden_privileges`
+    OR EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.acldefault('r', relation.relowner)) AS privilege
+      WHERE namespace.nspname = 'public'
+        AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND pg_catalog.has_table_privilege(current_user, relation.oid, privilege.privilege_type)
+        AND (relation.relname, privilege.privilege_type) NOT IN (
+          ('saas_tenant_subscriptions', 'SELECT'),
+          ('saas_plans', 'SELECT'),
+          ('saas_tenant_entitlements', 'SELECT'),
+          ('saas_usage_buckets', 'SELECT')
+        )
+    ) AS forbidden_privileges`
 
 // VerifyCommercialReadSchema fails closed before the application listens when
 // the read-only commercial role cannot access the exact current fact boundary.

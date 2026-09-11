@@ -2,31 +2,13 @@ package sourceaccountregistry
 
 import (
 	"context"
-	"fmt"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
-
-func TestRuntimePermissionQueryRejectsCrossOwnerPrivileges(t *testing.T) {
-	for _, table := range []string{
-		"public.saas_tenant_subscriptions",
-		"public.saas_plans",
-		"public.saas_tenant_entitlements",
-		"public.saas_usage_buckets",
-	} {
-		for _, privilege := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES"} {
-			fragment := fmt.Sprintf("has_table_privilege(current_user, '%s', '%s')", table, privilege)
-			if !strings.Contains(runtimePermissionQuery, fragment) {
-				t.Fatalf("runtimePermissionQuery does not reject cross-owner %s on %s", privilege, table)
-			}
-		}
-	}
-}
 
 func TestVerifyRuntimePermissionsRequiresExactLeastPrivilegeRole(t *testing.T) {
 	for _, test := range []struct {

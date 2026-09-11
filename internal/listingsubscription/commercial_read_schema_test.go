@@ -3,29 +3,13 @@ package listingsubscription
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
-
-func TestCommercialPermissionQueryRejectsSourceAccountPrivileges(t *testing.T) {
-	for _, table := range []string{
-		"public.source_account_resources",
-		"public.source_account_operations",
-	} {
-		for _, privilege := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES"} {
-			fragment := fmt.Sprintf("has_table_privilege(current_user, '%s', '%s')", table, privilege)
-			if !strings.Contains(commercialReadPermissionQuery, fragment) {
-				t.Fatalf("commercialReadPermissionQuery does not reject cross-owner %s on %s", privilege, table)
-			}
-		}
-	}
-}
 
 func TestVerifyCommercialReadSchemaUsesOnlyBoundedReadProbes(t *testing.T) {
 	db, mock, cleanup := commercialSchemaMock(t)

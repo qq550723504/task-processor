@@ -58,6 +58,15 @@ required/forbidden database privileges and current schemas before binding the
 listener. A provider outage or an under/over-privileged role therefore fails
 startup and leaves the facts untouched.
 
+The permission preflight inventories every user table in the admitted `public`
+schema, including migration tables and additional tables. It compares PostgreSQL
+effective table privileges (including inherited and PUBLIC grants) with the exact
+table/privilege grants above. Other tables may exist, but neither role may have
+unadmitted table privileges on them. The server's privilege vocabulary is used,
+including MAINTAIN on PostgreSQL 17; ordinary system catalog access is excluded
+from this business-table inventory. Preflight only reads catalogs and schema: it
+does not grant, revoke, alter or repair permissions.
+
 ## End-to-end acceptance
 
 After committing the candidate so source fingerprints are stable, run:
