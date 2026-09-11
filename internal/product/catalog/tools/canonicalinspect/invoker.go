@@ -17,6 +17,10 @@ type Invoker struct {
 	ref   commercetool.ToolRef
 }
 
+// NewInvoker is the stable consumer assembly point. Runtime consumers supply a
+// Catalog bounded reader, their approved Agent allowlist, and the existing
+// Workbench-principal/Casbin/audit/trace dependencies; this function does not
+// mount a default route or create an Agent runtime.
 func NewInvoker(reader catalog.VersionedSnapshotReader, agent commercetool.AgentDefinition, dependencies commercetool.InvocationDependencies) (*Invoker, error) {
 	executor, err := NewExecutor(reader)
 	if err != nil {
@@ -34,6 +38,9 @@ func NewInvoker(reader catalog.VersionedSnapshotReader, agent commercetool.Agent
 	return &Invoker{tools: bound, ref: definition.Ref}, nil
 }
 
+// Invoke always traverses BoundToolSet.Invoke. Metadata is correlation and
+// audit context only; product identity comes exclusively from input plus the
+// request-scoped principal resolved by the supplied dependencies.
 func (i *Invoker) Invoke(ctx context.Context, metadata commercetool.CallMetadata, input Input) (commercetool.Result, error) {
 	if i == nil || i.tools == nil {
 		return commercetool.Result{}, commercetool.NewError(commercetool.ErrorInternal, "canonical inspection is unavailable", nil)
