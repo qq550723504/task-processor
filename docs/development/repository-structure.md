@@ -25,7 +25,8 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
 
 - `cmd/`
   - 只放受维护的产品运行入口或有明确所有者的运维入口。
-  - 当前五个产品运行入口为：
+  - 当前六个产品运行入口为：
+    - `current-application`
     - `image-agent-temporal-worker`
     - `listing-control-plane`
     - `product-listing-api`

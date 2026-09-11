@@ -18,7 +18,7 @@ export async function restartTestOperations(m,planPath) {
  return {
   assertFingerprint:async()=>record('assert-fingerprint'),
   save:async(state,checkpoint)=>{await record(`save:${checkpoint}`);if(plan.failSave===checkpoint)throw new Error('INJECTED_SAVE_FAILURE');await save(state)},
-  stopApplications:async()=>operation('stopping-applications'),
+  stopApplications:async()=>{await operation('stopping-applications');return Object.hasOwn(plan,'stopResult')?plan.stopResult:{passed:true}},
   restartContainers:async()=>operation('restarting-containers'),
   waitProvider:async()=>operation('provider-readiness'),
   startApplications:async()=>operation('starting-applications'),

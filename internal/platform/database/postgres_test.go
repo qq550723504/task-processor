@@ -1,14 +1,38 @@
 package database
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+func TestOpenExistingReadOnlyContextBoundsConnectivityCheck(t *testing.T) {
+	sqlDB, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectPing().WillDelayFor(200 * time.Millisecond)
+	mock.ExpectClose()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	_, err = openDatabaseContext(ctx, &Config{Database: "existing"}, databaseOpenOptions{readOnly: true}, func(string) (*gorm.DB, error) { return db, nil }, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("openDatabaseContext() error = %v, want deadline exceeded", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestOpenExistingReadOnlyDoesNotCreateOrRetryMissingDatabase(t *testing.T) {
 	t.Parallel()

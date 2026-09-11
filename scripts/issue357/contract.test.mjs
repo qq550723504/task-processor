@@ -19,7 +19,8 @@ function manifest() { return makeManifest(randomUUID(), { issuer: 42101, web: 42
 test('runtime configuration is bound to manifest-assigned loopback ports and project', () => {
   const m = manifest();
   assert.equal(validateManifest(m).runId, m.runId);
-  for (const patch of [ {runId:'local-zitadel'}, {project:'local-zitadel'}, {origins:{...m.origins,issuer:'https://real.example'}}, {origins:{...m.origins,web:'http://localhost:3000'}}, {ports:{...m.ports,database:m.ports.go}}, {directory:tmpdir()}, {schemaVersion:'fixture-v0'} ]) assert.throws(() => validateManifest({...m,...patch}));
+  assert.equal(validateManifest({...m,runtimeMode:'current-application'}).runtimeMode,'current-application');
+  for (const patch of [ {runId:'local-zitadel'}, {project:'local-zitadel'}, {runtimeMode:'legacy-compatibility'}, {origins:{...m.origins,issuer:'https://real.example'}}, {origins:{...m.origins,web:'http://localhost:3000'}}, {ports:{...m.ports,database:m.ports.go}}, {directory:tmpdir()}, {schemaVersion:'fixture-v0'} ]) assert.throws(() => validateManifest({...m,...patch}));
 });
 test('resource deletion needs run label, exact expected name and recorded ID', () => {
   const m = manifest(); const name = `${m.project}-identity-db`;

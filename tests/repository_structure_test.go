@@ -33,6 +33,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 
 func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 	productRuntimeCommands := map[string]struct{}{
+		"current-application":         {},
 		"image-agent-temporal-worker": {},
 		"listing-control-plane":       {},
 		"product-listing-api":         {},

@@ -11,14 +11,18 @@ import {provider,createSubjects,grantSubjects,authorizationControl} from './issu
 import {discoverRunProcesses} from './issue357/processes.mjs';
 import {restartRuntime} from './issue357/restart.mjs';
 import {waitForProvider} from './issue357/readiness.mjs';
+import {startCurrentApplications as runCurrentApplicationStart,requireSuccessfulApplicationStop} from './issue357/current_application_lifecycle.mjs';
 
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const argv=process.argv.slice(2),action=argv[0];
 function arg(name){const i=argv.indexOf(name);return i<0?undefined:argv[i+1]}
+function currentMode(m){return m.runtimeMode==='current-application'}
 const services=['proxy','zitadel-api','zitadel-login','identity-db','commercial-db'];
 const volumes=['identity','commercial','login','setup'];
 function binary(m){return join(m.directory,'runtime.test.exe')}
-function baseConfig(m){return {runId:m.runId,issuer:m.origins.issuer,issuerPort:m.ports.issuer,webOrigin:m.origins.web,goPort:m.ports.go,databasePort:m.ports.database,databaseHost:'127.0.0.1',databaseName:'issue357',databaseUser:'commercial_reader',databasePassword:m.secrets.reader,projectId:m.projectId,organizationA:m.organizations.A?.id,organizationB:m.organizations.B?.id,organizationC:m.organizations.C?.id}}
+function applicationBinary(m){return join(m.directory,'current-application.exe')}
+function schemaBinary(m){return join(m.directory,'bin','source-account-registry-schema-init.exe')}
+function baseConfig(m){return {runId:m.runId,runtimeMode:m.runtimeMode,issuer:m.origins.issuer,issuerPort:m.ports.issuer,webOrigin:m.origins.web,goPort:m.ports.go,databasePort:m.ports.database,databaseHost:'127.0.0.1',databaseName:'issue357',databaseUser:'commercial_reader',databasePassword:m.secrets.reader,projectId:m.projectId,organizationA:m.organizations.A?.id,organizationB:m.organizations.B?.id,organizationC:m.organizations.C?.id}}
 async function go(m,mode,input='runtime.json') {
  return run(binary(m),[`-test.run=^TestIssue357${mode}$`,'-test.v','-test.timeout=120s'],{cwd:m.directory,env:{...childEnvironment(),ISSUE357_INPUT_FILE:join(m.directory,input)}});
 }
@@ -59,18 +63,25 @@ async function startApplications(m) {
  const apps=await readJSON(join(m.directory,'applications.json'));
  await json(join(m.directory,'runtime.json'),{...baseConfig(m),apiClientId:apps.APIClientID,apiClientSecret:apps.APIClientSecret});
  const ui=join(m.directory,'ui');
- const nextEnvironment={NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_SECRET:m.secrets.auth,AUTH_URL:m.origins.web,LISTINGKIT_PUBLIC_BASE_URL:m.origins.web,
+ const nextEnvironment={NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_SECRET:m.secrets.auth,AUTH_URL:m.origins.web,LISTINGKIT_PUBLIC_BASE_URL:m.origins.web,LISTINGKIT_ACCEPTANCE_TOKEN_FILE:join(ui,'.local','image-agent-acceptance','user-token.txt'),
   ZITADEL_ISSUER_URL:m.origins.issuer,ZITADEL_CLIENT_ID:apps.OIDCClientID,ZITADEL_CLIENT_SECRET:apps.OIDCClientSecret,ZITADEL_REDIRECT_URI:`${m.origins.web}/api/auth/callback/zitadel`,ZITADEL_POST_LOGOUT_REDIRECT_URI:m.origins.web,ZITADEL_SCOPES:[...apps.RecommendedScopes,'offline_access'].join(' '),
   LISTINGKIT_SERVICE_API_BASE:`${m.origins.go}/api/v1`,COMMERCIAL_API_ORIGIN:m.origins.go};
- await json(join(m.directory,'services.json'),{binary:binary(m),uiDirectory:ui,webPort:m.ports.web,nextEnvironment});
+ let goService={binary:binary(m),goArgs:['-test.run=^TestIssue357Serve$','-test.timeout=24h'],goEnvironment:{ISSUE357_INPUT_FILE:join(m.directory,'runtime.json')}};
+ if(currentMode(m)) {
+  const currentConfig=join(m.directory,'current-application.json');
+  await json(currentConfig,{schemaVersion:1,listen:{host:'127.0.0.1',port:m.ports.go},identity:{issuerURL:m.origins.issuer,authorizationAPIURL:m.origins.issuer,clientID:apps.APIClientID,clientSecret:apps.APIClientSecret,projectID:m.projectId},sourceAccountDatabase:{host:'127.0.0.1',port:m.ports.database,user:'source_account_runtime',password:m.secrets.sourceRuntime,database:'issue357',maxConnections:4},commercialDatabase:{host:'127.0.0.1',port:m.ports.database,user:'commercial_reader',password:m.secrets.reader,database:'issue357',maxConnections:4}});
+  goService={binary:applicationBinary(m),goArgs:['-config',currentConfig,'-shutdown-file',join(m.directory,'stop-go')],goEnvironment:{},goReadyFromPort:true,goPort:m.ports.go};
+ }
+ await json(join(m.directory,'services.json'),{...goService,uiDirectory:ui,webPort:m.ports.web,nextEnvironment});
  m.processSpec=join(m.directory,'process-spec.json');
- await json(m.processSpec,{binary:binary(m),node:process.execPath,directory:m.directory,supervisorScript:join(repo,'scripts/issue357/serve.mjs'),nextScript:join(repo,'scripts/issue357/next.mjs'),createdAt:m.createdAt});
+ await json(m.processSpec,{binary:goService.binary,node:process.execPath,directory:m.directory,supervisorScript:join(repo,'scripts/issue357/serve.mjs'),nextScript:join(repo,'scripts/issue357/next.mjs'),createdAt:m.createdAt});
  await save(m);
  for(const file of ['stop-go','stop-next','stop-services','go-ready.json','next-ready.json','services-stopped.json'])await unlink(join(m.directory,file)).catch(e=>{if(e.code!=='ENOENT')throw e});
  const p=spawn(process.execPath,[join(repo,'scripts/issue357/serve.mjs'),m.directory],{env:childEnvironment(),cwd:m.directory,detached:true,windowsHide:true,stdio:'ignore'});
  await new Promise((r,reject)=>{p.once('spawn',r);p.once('error',()=>reject(new Error('SUPERVISOR_START_FAILED')))});p.unref();
  m.supervisor=await processIdentity(p.pid);await save(m);
- await until(async()=>{await readJSON(join(m.directory,'go-ready.json'));await readJSON(join(m.directory,'next-ready.json'));return true},'APPLICATION_START');
+ const started=await until(async()=>{const stopped=await readJSON(join(m.directory,'services-stopped.json')).catch(e=>{if(e.code!=='ENOENT')throw e});if(stopped)return {failed:true};try{await readJSON(join(m.directory,'go-ready.json'));await readJSON(join(m.directory,'next-ready.json'));return {ready:true}}catch(e){if(e.code!=='ENOENT')throw e;return false}},'APPLICATION_START');
+ if(started.failed)throw new Error('APPLICATION_START_FAILED');
 }
 async function health(m) {
  await inventory(m,true);
@@ -79,9 +90,10 @@ async function health(m) {
  for(const key of ['authorization_endpoint','token_endpoint','userinfo_endpoint','introspection_endpoint','end_session_endpoint'])assert.equal(new URL(discovery[key]).origin,m.origins.issuer,'ENDPOINT_MISMATCH');
  const ready=await fetch(`${m.origins.issuer}/debug/ready`,{signal:AbortSignal.timeout(10000)});assert.equal(ready.status,200,'PROVIDER_NOT_READY');
  const login=await fetch(`${m.origins.issuer}/ui/v2/login/healthy`,{signal:AbortSignal.timeout(10000)});assert.equal(login.status,200,'LOGIN_NOT_READY');
- for(const path of ['/api/v1/account/profile','/api/v1/workbench/commercial/overview']){const r=await fetch(m.origins.go+path,{signal:AbortSignal.timeout(10000)});assert.equal(r.status,401,'UNAUTHENTICATED_NOT_DENIED')}
+ for(const path of ['/api/v1/account/profile','/api/v1/workbench/commercial/overview',...(currentMode(m)?['/api/v1/workbench/source-accounts']:[])]){const r=await fetch(m.origins.go+path,{signal:AbortSignal.timeout(10000)});assert.equal(r.status,401,'UNAUTHENTICATED_NOT_DENIED')}
  const providers=await (await fetch(`${m.origins.web}/api/auth/providers`,{signal:AbortSignal.timeout(90000)})).json();assert.ok(providers.zitadel,'NEXT_PROVIDER_MISSING');
- await go(m,'Snapshot');
+ if(currentMode(m))await json(join(m.directory,'snapshot.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase});
+ await go(m,'Snapshot',currentMode(m)?'snapshot.json':'runtime.json');
  const report={schemaVersion:'issue357-check-v1',runId:m.runId,sourceSha:m.sourceSha,webSha:m.webSha,healthPassed:true,zeroWrite:await readJSON(join(m.directory,'zero-write.json')),realBrowser:'NOT_RUN_BY_CHECK',at:new Date().toISOString()};await json(join(m.directory,'check.json'),report);return report;
 }
 async function stopApplications(m) {
@@ -105,7 +117,7 @@ async function cleanup(m) {
  if(m.supervisor||m.processSpec)applications=await stopApplications(m);
  if(!audit) {
   let zeroWrite={passed:false,reason:'setup_incomplete'};
-  if(m.seeded)try{await go(m,'Snapshot');zeroWrite=await readJSON(join(m.directory,'zero-write.json'))}catch{zeroWrite={passed:false,reason:'snapshot_failed'}}
+  if(m.seeded)try{if(currentMode(m))await json(join(m.directory,'snapshot.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase});await go(m,'Snapshot',currentMode(m)?'snapshot.json':'runtime.json');zeroWrite=await readJSON(join(m.directory,'zero-write.json'))}catch{zeroWrite={passed:false,reason:'snapshot_failed'}}
   audit={applications,zeroWrite};await json(join(m.directory,'cleanup-audit.json'),audit);
  }
  const {zeroWrite}=audit;
@@ -125,16 +137,47 @@ async function cleanup(m) {
  const ui=join(m.directory,'ui');await unlink(join(ui,'node_modules')).catch(e=>{if(e.code!=='ENOENT')throw e});
  assert.equal(resolve(ui),resolve(runDirectory(m.runId),'ui'));
  await rm(ui,{recursive:true,force:true});
- const privateFiles=['bootstrap.pat','applications.json','provision.json','seed.json','runtime.json','services.json','compose.json','admin.credentials.json','viewer.credentials.json','no-org.credentials.json','owner-secrets.json'];
+ await unlink(join(m.directory,'schema-init','source-account-schema.yaml')).catch(e=>{if(e.code!=='ENOENT')throw e});
+ const privateFiles=['bootstrap.pat','applications.json','provision.json','seed.json','runtime.json','snapshot.json','services.json','compose.json','admin.credentials.json','viewer.credentials.json','no-org.credentials.json','owner-secrets.json','current-application.json','source-account-schema.yaml','grant-source.json','source-snapshot-input.json','source-permission-input.json','issue390-chain.json'];
  for(const name of privateFiles.flatMap(name=>[name,`${name}.tmp`]))await unlink(join(m.directory,name)).catch(e=>{if(e.code!=='ENOENT')throw e});
- delete m.secrets;await json(join(m.directory,'cleanup.json'),evidence);m.status='stopped';await save(m);return evidence;
+ delete m.secrets;await json(join(m.directory,'cleanup.json'),evidence);m.status=currentMode(m)?'destroyed':'stopped';await save(m);return evidence;
+}
+async function initializeCurrentApplication(m) {
+ const schemaWork=join(m.directory,'schema-init'),schemaConfig=join(schemaWork,'source-account-schema.yaml');await mkdir(schemaWork,{recursive:true});
+ for(const candidate of [join(schemaWork,'.env'),join(schemaWork,'.env.source-account-schema'),join(schemaWork,'source-account-schema.env'),join(m.directory,'bin','.env'),join(m.directory,'.env')])try{await lstat(candidate);throw new Error('SCHEMA_ENV_FILE_PRESENT')}catch(error){if(error.code!=='ENOENT')throw error}
+ await writeFile(schemaConfig,["database:","  host: 127.0.0.1",`  port: ${m.ports.database}`,"  user: issue357",`  password: \"${m.secrets.commercialDatabase}\"`,"  database: issue357","  max_connections: 2","  max_idle_connections: 1","  connection_max_lifetime: 1h",""].join('\n'),{mode:0o600});
+ await run(schemaBinary(m),['-config',schemaConfig],{cwd:schemaWork,env:childEnvironment()});await unlink(schemaConfig);
+ await json(join(m.directory,'grant-source.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase,sourceRuntimePassword:m.secrets.sourceRuntime});
+ await go(m,'GrantSourceAccountRuntime','grant-source.json');await unlink(join(m.directory,'grant-source.json'));
+ m.sourceAccountInitialized=true;await save(m);
+}
+async function sourceAccountSnapshot(m) {
+ await json(join(m.directory,'source-snapshot-input.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase});
+ await go(m,'SourceAccountSnapshot','source-snapshot-input.json');await unlink(join(m.directory,'source-snapshot-input.json'));
+ return readJSON(join(m.directory,'source-account-snapshot.json'));
+}
+async function sourceAccountPermission(m,permissionAction) {
+ assert.ok(['revoke','restore','source-cross-grant','source-cross-restore','commercial-cross-grant','commercial-cross-restore'].includes(permissionAction),'INVALID_PERMISSION_ACTION');
+ await json(join(m.directory,'source-permission-input.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase,permissionAction});
+ await go(m,'SourceAccountPermission','source-permission-input.json');await unlink(join(m.directory,'source-permission-input.json'));
+}
+async function stopCurrentApplications(m) {
+ assert.ok(['ready','stop-failed'].includes(m.status),'RUN_NOT_READY');m.status='stopping-applications';await save(m);
+ try {
+  const applications=await stopApplications(m);await inventory(m,true);const factsRetained=await sourceAccountSnapshot(m);
+  const evidence={schemaVersion:'issue390-stop-v1',runId:m.runId,passed:applications.passed,resourcesRetained:true,factsRetained,applications,at:new Date().toISOString()};
+  await json(join(m.directory,'stop.json'),evidence);m.status=applications.passed?'stopped':'stop-failed';await save(m);if(!applications.passed)throw new Error('APPLICATION_STOP_FAILED');return evidence;
+ } catch(error) {m.status='stop-failed';m.stopFailure={code:String(error.message).split(':',1)[0],at:new Date().toISOString()};await save(m);throw error}
+}
+async function startCurrentApplications(m) {
+ return runCurrentApplicationStart(m,{assertFingerprint,save,startApplications,health,stopApplications});
 }
 async function fresh() {
  assert.equal(process.platform,'win32','NOT_SUPPORTED: Windows first');
  await run('docker',['version','--format','{{.Server.Version}}']);await run('docker',['compose','version']);
  const web=resolve(arg('--web-dir')??join(repo,'web/listingkit-ui'));await lstat(join(web,'node_modules/next/package.json'));
  const ports={};for(const key of ['issuer','web','go','database']){let p;do{p=await port()}while(Object.values(ports).includes(p));ports[key]=p}
- const m=makeManifest(randomUUID(),ports,await run('git',['rev-parse','HEAD'],{cwd:repo}),await run('git',['rev-parse','HEAD'],{cwd:web}));m.webDirectory=web;m.sourceDirectory=repo;m.dockerEndpoint=dockerEndpoint;
+ const m=makeManifest(randomUUID(),ports,await run('git',['rev-parse','HEAD'],{cwd:repo}),await run('git',['rev-parse','HEAD'],{cwd:web}));m.webDirectory=web;m.sourceDirectory=repo;m.dockerEndpoint=dockerEndpoint;if(argv.includes('--current-application'))m.runtimeMode='current-application';
  m.sourceDirty=Boolean(await run('git',['status','--porcelain'],{cwd:repo}));m.webDirty=Boolean(await run('git',['status','--porcelain','--','.'],{cwd:web}));
  await privateDirectory(m.directory);await save(m);console.log(`runId=${m.runId} manifest=${join(m.directory,'manifest.json')}`);
  return lock(m,async()=>{
@@ -143,6 +186,7 @@ async function fresh() {
    for(const [kind,names]of [['container',services],['volume',volumes],['network',['network']]])for(const suffix of names)assert.equal(await inspect(kind,`${m.project}-${suffix}`),null,'RESOURCE_CONFLICT');
    await copyUI(m,web);
    await run('go',['test','-tags','issue357','-c','-o',binary(m),'./internal/app/httpapi'],{cwd:repo});
+   if(currentMode(m)){await mkdir(dirname(schemaBinary(m)),{recursive:true});await run('go',['build','-o',applicationBinary(m),'./cmd/current-application'],{cwd:repo});await run('go',['build','-o',schemaBinary(m),'./cmd/source-account-registry-schema-init'],{cwd:repo})}
    await json(join(m.directory,'compose.json'),composeConfiguration(m));await json(join(m.directory,'proxy.json'),proxyConfiguration());await writeFile(join(m.directory,'empty.env'),'');
    await run('docker',['compose','--env-file',join(m.directory,'empty.env'),'-f',join(m.directory,'compose.json'),'-p',m.project,'up','-d','--wait','--wait-timeout','300'],{cwd:m.directory});
    await inventory(m,true);m.status='provider-ready';await save(m);
@@ -152,10 +196,11 @@ async function fresh() {
    await json(join(m.directory,'provision.json'),{...baseConfig(m),managementToken:(await readFile(join(m.directory,'bootstrap.pat'),'utf8')).trim()});await go(m,'Provision','provision.json');await unlink(join(m.directory,'provision.json'));
    const apps=await readJSON(join(m.directory,'applications.json'));m.projectId=apps.ProjectID;m.apiClientId=apps.APIClientID;m.oidcClientId=apps.OIDCClientID;await save(m);await grantSubjects(m);
    await json(join(m.directory,'seed.json'),{...baseConfig(m),databaseUser:'issue357',databasePassword:m.secrets.commercialDatabase,readerPassword:m.secrets.reader});await go(m,'Seed','seed.json');await unlink(join(m.directory,'seed.json'));m.seeded=true;m.status='seeded';await save(m);
+   if(currentMode(m))await initializeCurrentApplication(m);
    await startApplications(m);await health(m);m.status='ready';await save(m);console.log(`READY ${m.origins.web} manifest=${join(m.directory,'manifest.json')}`);return m;
   } catch(e) {
    m.status='failed';m.failure=e.message;await save(m);console.error(`FAILED ${e.message}; run=${m.runId}`);
-   try{await cleanup(m)}catch{console.error(`CLEANUP_INCOMPLETE: retry stop --run ${m.runId}`)}throw e;
+   try{await cleanup(m)}catch{console.error(`CLEANUP_INCOMPLETE: retry ${currentMode(m)?'destroy':'stop'} --run ${m.runId}`)}throw e;
   }
  });
 }
@@ -166,9 +211,16 @@ try {
   const m=await load(arg('--run'));
   await lock(m,async()=>{
    if(action==='stop'){
+    if(currentMode(m)){
+     const evidence=await stopCurrentApplications(m);console.log(JSON.stringify(evidence));return;
+    }
     const evidence=m.status==='stopped'&&!m.secrets?await readJSON(join(m.directory,'cleanup.json')):await cleanup(m);
     console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return;
    }
+   if(action==='destroy'){const evidence=await cleanup(m);console.log(JSON.stringify(evidence));if(!evidence.passed)process.exitCode=1;return}
+   if(currentMode(m)&&['source-permission-revoke','source-permission-restore','source-cross-grant','source-cross-restore','commercial-cross-grant','commercial-cross-restore'].includes(action)){assert.ok(['stopped','start-failed'].includes(m.status),'APPLICATIONS_MUST_BE_STOPPED');const permissionAction=action==='source-permission-revoke'?'revoke':action==='source-permission-restore'?'restore':action;await sourceAccountPermission(m,permissionAction);console.log(`CONTROL_OK ${action}`);return}
+   if(currentMode(m)&&(action==='provider-stop'||action==='provider-start')){assert.ok(['ready','stopped','start-failed'].includes(m.status),'RUN_NOT_CONTROLLABLE');await inventory(m,true);await run('docker',['container',action==='provider-stop'?'stop':'start',m.resources[`${m.project}-zitadel-api`].id]);console.log(`CONTROL_OK ${action}`);return}
+   if(action==='start'&&currentMode(m)&&['stopped','start-failed'].includes(m.status)){await startCurrentApplications(m);console.log(`READY ${m.origins.web}`);return}
    assert.equal(m.status,'ready','RUN_NOT_READY');
    if(action==='check'){console.log(JSON.stringify(await health(m)));return}
    if(action==='start'){await assertFingerprint(m);await health(m);console.log(`READY ${m.origins.web}`);return}
@@ -180,9 +232,13 @@ try {
     else {
      await inventory(m,true);
      operations={assertFingerprint,save,stopApplications,
-      restartContainers:async()=>run('docker',['container','restart',...['identity-db','commercial-db','zitadel-api','zitadel-login','proxy'].map(s=>m.resources[`${m.project}-${s}`].id)]),
+      restartContainers:currentMode(m)?async()=>{}:async()=>run('docker',['container','restart',...['identity-db','commercial-db','zitadel-api','zitadel-login','proxy'].map(s=>m.resources[`${m.project}-${s}`].id)]),
       waitProvider:async()=>waitForProvider(m.origins.issuer),
       startApplications,health};
+    }
+    if(currentMode(m)){
+     const stop=operations.stopApplications;
+     operations.stopApplications=state=>requireSuccessfulApplicationStop(state,stop);
     }
     await restartRuntime(m,operations);console.log(`READY ${m.origins.web}`);return;
    }

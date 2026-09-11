@@ -1,0 +1,232 @@
+import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
+import { readFile, realpath, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { runDirectory as ownedRunDirectory, validateManifest } from "../../../scripts/issue357/contract.mjs";
+
+const execFile = promisify(execFileCallback);
+const ui = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repo = path.resolve(ui, "../..");
+const [expectedSha] = process.argv.slice(2);
+const runtime = path.join(repo, "scripts/issue357-runtime.mjs");
+let runId;
+let runDirectory;
+let browser;
+let accepted = false;
+
+async function confirmStartedRun(output, startedAt) {
+  // Only the fresh-start command can publish an identity. Never adopt IDs from
+  // git, browser/test errors, subsequent controls, or ambiguous/truncated lines.
+  const records = output.split(/\r?\n/).filter(line => line.startsWith("runId="));
+  assert.equal(records.length, 1);
+  const match = /^runId=([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}) manifest=(.+)$/.exec(records[0]);
+  assert.ok(match);
+  const directory = ownedRunDirectory(match[1]);
+  assert.equal(match[2], path.join(directory, "manifest.json"));
+  const manifest = validateManifest(await json(match[2]));
+  assert.equal(manifest.runId, match[1]);
+  assert.equal(manifest.runtimeMode, "current-application");
+  assert.equal(path.resolve(manifest.sourceDirectory), repo);
+  assert.equal(path.resolve(manifest.webDirectory), ui);
+  assert.equal(manifest.sourceSha, expectedSha);
+  assert.equal(manifest.webSha, expectedSha);
+  const createdAt = Date.parse(manifest.createdAt);
+  assert.ok(createdAt >= startedAt && createdAt <= Date.now());
+  // Commit both fields only after all checks. Runtime destroy retains its own
+  // manifest/real-path and resource ID/name/label checks before any mutation.
+  runId = manifest.runId;
+  runDirectory = directory;
+}
+
+async function startOwnedRun() {
+  const startedAt = Date.now();
+  let result;
+  try {
+    result = await execFile(process.execPath, [runtime, "start", "--current-application"], { cwd: repo, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+  } catch (error) {
+    await confirmStartedRun(`${error.stdout ?? ""}\n${error.stderr ?? ""}`, startedAt);
+    throw new Error("START_FAILED");
+  }
+  await confirmStartedRun(`${result.stdout}\n${result.stderr ?? ""}`, startedAt);
+}
+
+async function command(executable, args, options = {}) {
+  try {
+    const result = await execFile(executable, args, { cwd: repo, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...options });
+    return result.stdout.trim();
+  } catch {
+    throw new Error("COMMAND_FAILED");
+  }
+}
+
+async function control(action, ...args) {
+  return command(process.execPath, [runtime, action, "--run", runId, ...args]);
+}
+
+async function json(file) {
+  const raw = await readFile(file);
+  assert.ok(raw.length < 262144);
+  return JSON.parse(raw.toString("utf8"));
+}
+
+async function login(manifest, user) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const credentialsPath = await realpath(manifest.users[user].credentialFile);
+  assert.equal(path.dirname(credentialsPath), await realpath(runDirectory));
+  const credentials = await json(credentialsPath);
+  let officialLogin = false;
+  let codeFlow = false;
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.origin === manifest.origins.issuer && url.pathname.startsWith("/ui/v2/login")) officialLogin = true;
+    if (url.origin === manifest.origins.issuer && url.pathname === "/oauth/v2/authorize") codeFlow = url.searchParams.get("response_type") === "code" && url.searchParams.get("code_challenge_method") === "S256";
+  });
+  await page.goto(`${manifest.origins.web}/workbench/account/profile`, { waitUntil: "load" });
+  const username = page.getByTestId("username-text-input");
+  await username.waitFor({ state: "visible", timeout: 45000 });
+  await username.fill(credentials.username);
+  await page.getByTestId("submit-button").click();
+  const password = page.getByTestId("password-text-input");
+  await password.waitFor({ state: "visible", timeout: 30000 });
+  await password.fill(credentials.password);
+  await page.getByTestId("submit-button").click();
+  await page.waitForURL(url => url.origin === manifest.origins.web && url.pathname === "/workbench/account/profile", { timeout: 45000 });
+  assert.ok(officialLogin && codeFlow, "official Login V2 authorization-code PKCE flow was not observed");
+  const sessionResponse = await context.request.get(`${manifest.origins.web}/api/auth/session`);
+  const session = await sessionResponse.json();
+  assert.equal(session.identity?.userId, manifest.users[user].id);
+  assert.equal(typeof session.expiresAt, "number");
+  const accessToken = (await readFile(path.join(runDirectory, "ui", ".local", "image-agent-acceptance", "user-token.txt"), "utf8")).trim();
+  assert.ok(accessToken);
+  const cookies = (await context.cookies(manifest.origins.web)).filter(cookie => /(?:authjs|next-auth)\.session-token/.test(cookie.name));
+  assert.ok(cookies.length >= 1);
+  await context.close();
+  return { subject: manifest.users[user].id, cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; "), accessToken, expiresAt: session.expiresAt };
+}
+
+async function assertExpiredOfficialToken(manifest, loginResult) {
+  const wait = loginResult.expiresAt * 1000 + 1500 - Date.now();
+  if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  const response = await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`, { headers: { Authorization: `Bearer ${loginResult.accessToken}`, "X-Requested-Organization-ID": manifest.organizations.B.id } });
+  assert.equal(response.status, 401, "official access token remained accepted after its issued expiry");
+}
+
+async function assertSourceAuthorizationDependencyUnavailable(manifest, accessToken) {
+  const response = await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "X-Requested-Organization-ID": manifest.organizations.B.id, "Content-Type": "application/json", "Idempotency-Key": "01991e24-1009-7009-8009-000000000009" }, body: JSON.stringify({ displayName: "must not commit", platform: "1688" }) });
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /DEPENDENCY_UNAVAILABLE/);
+}
+
+async function runClient(manifest, sessions, phase) {
+  const chainManifest = path.join(runDirectory, "issue390-chain.json");
+  const statePath = path.join(runDirectory, "issue390-state.json");
+  const evidencePath = path.join(runDirectory, "issue390-evidence.json");
+  await writeFile(chainManifest, JSON.stringify({ origin: manifest.origins.web, goOrigin: manifest.origins.go, phase, statePath, evidencePath, organizations: { B: manifest.organizations.B.id, C: manifest.organizations.C.id }, sessions }), { mode: 0o600 });
+  const pnpm = process.platform === "win32" ? ["cmd.exe", ["/c", "pnpm.cmd", "exec", "vitest", "run", "--config", "e2e/issue390-current-application.config.ts"]] : ["pnpm", ["exec", "vitest", "run", "--config", "e2e/issue390-current-application.config.ts"]];
+  await command(pnpm[0], pnpm[1], { cwd: ui, env: { ...process.env, CURRENT_APPLICATION_CHAIN_MANIFEST: chainManifest } });
+  return { statePath, evidencePath };
+}
+
+try {
+  assert.match(expectedSha ?? "", /^[a-f0-9]{40}$/);
+  assert.equal(await command("git", ["rev-parse", "HEAD"]), expectedSha);
+  assert.equal(await command("git", ["status", "--porcelain"]), "");
+  await startOwnedRun();
+  const manifest = await json(path.join(runDirectory, "manifest.json"));
+  assert.equal(manifest.runtimeMode, "current-application");
+  const services = await json(path.join(runDirectory, "services.json"));
+  assert.equal(path.basename(services.binary), "current-application.exe");
+  assert.deepEqual(services.goArgs.slice(0, 1), ["-config"]);
+  const { chromium } = await import("@playwright/test");
+  browser = await chromium.launch({ headless: true });
+  const adminLogin = await login(manifest, "admin");
+  const viewerLogin = await login(manifest, "viewer");
+  const sessions = { admin: { subject: adminLogin.subject, cookie: adminLogin.cookie }, viewer: { subject: viewerLogin.subject, cookie: viewerLogin.cookie } };
+  const adminHeaders = { Cookie: `${sessions.admin.cookie}; shuomi_effective_organization=${manifest.organizations.B.id}`, Origin: manifest.origins.web, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": manifest.users.admin.id, "X-Expected-Organization-ID": manifest.organizations.B.id };
+  assert.equal((await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders })).status, 200);
+  assert.equal((await fetch(`${manifest.origins.web}/api/workbench/commercial/overview`, { headers: adminHeaders })).status, 200);
+  assert.equal((await fetch(`${manifest.origins.go}/api/v1/workbench/source-accounts`)).status, 401);
+  const paths = await runClient(manifest, sessions, "create");
+  await control("revoke", "--user", "admin", "--org", "B");
+  try { await runClient(manifest, sessions, "revoked"); }
+  finally { await control("restore", "--user", "admin", "--org", "B"); }
+
+  const stopped = JSON.parse(await control("stop"));
+  assert.equal(stopped.passed, true);
+  assert.equal(stopped.resourcesRetained, true);
+  assert.deepEqual({ resources: stopped.factsRetained.resources, operations: stopped.factsRetained.operations }, { resources: 3, operations: 6 });
+
+  await control("start");
+  await runClient(manifest, sessions, "verify");
+  await control("restart");
+  await runClient(manifest, sessions, "verify");
+  await control("stop");
+  await control("source-permission-revoke");
+  await assert.rejects(control("start"));
+  assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
+  await control("source-permission-restore");
+  await control("start");
+  const postPermissionLogin = await login(manifest, "admin");
+  sessions.admin = { subject: postPermissionLogin.subject, cookie: postPermissionLogin.cookie };
+  await runClient(manifest, sessions, "verify");
+  await control("stop");
+  await control("source-cross-grant");
+  await assert.rejects(control("start"));
+  await control("source-cross-restore");
+  await control("start");
+  await control("stop");
+  await control("commercial-cross-grant");
+  await assert.rejects(control("start"));
+  await control("commercial-cross-restore");
+  await control("start");
+  const postCrossOwnerLogin = await login(manifest, "admin");
+  sessions.admin = { subject: postCrossOwnerLogin.subject, cookie: postCrossOwnerLogin.cookie };
+  await runClient(manifest, sessions, "verify");
+  await assertExpiredOfficialToken(manifest, adminLogin);
+  await control("stop");
+  await control("provider-stop");
+  await assert.rejects(control("start"));
+  assert.equal((await json(path.join(runDirectory, "manifest.json"))).status, "start-failed");
+  await control("provider-start");
+  await control("start");
+  const dependencyLogin = await login(manifest, "admin");
+  sessions.admin = { subject: dependencyLogin.subject, cookie: dependencyLogin.cookie };
+  await runClient(manifest, sessions, "verify");
+  await control("provider-stop");
+  try {
+    await assertSourceAuthorizationDependencyUnavailable(manifest, dependencyLogin.accessToken);
+    const unavailable = await fetch(`${manifest.origins.web}/api/account/profile`, { headers: adminHeaders });
+    assert.ok([401, 502, 503, 504].includes(unavailable.status));
+  } finally {
+    await control("provider-start");
+    await control("check");
+  }
+  const evidence = await json(paths.evidencePath);
+  assert.equal(evidence.passed, true);
+  accepted = true;
+} catch {
+  // Do not print child stdout/stderr, assertion values, browser errors or causes:
+  // they may contain credentials, tokens, cookies, or private response payloads.
+  console.error(`ACCEPTANCE_FAILED run=${runId ?? "unconfirmed"}`);
+  process.exitCode = 1;
+} finally {
+  if (browser) await browser.close().catch(() => {});
+  if (runId) {
+    try {
+      const destroyed = JSON.parse(await control("destroy"));
+      assert.equal(destroyed.resourcesReleased, true);
+      await assert.rejects(readFile(path.join(runDirectory, "issue390-chain.json")), error => error.code === "ENOENT");
+      await assert.rejects(readFile(path.join(runDirectory, "ui", ".local", "image-agent-acceptance", "user-token.txt")), error => error.code === "ENOENT");
+      console.log(`DESTROYED owned run ${runId}; evidence retained at ${runDirectory}`);
+    } catch {
+      console.error(`DESTROY_INCOMPLETE run=${runId}`);
+      process.exitCode = 1;
+    }
+  }
+}
+if (accepted && !process.exitCode) {
+  console.log(`PASS RUN-1 normal binary + official Login V2/Auth.js + SA2 client/BFF + SA1 + retained restart facts; run=${runId}`);
+}

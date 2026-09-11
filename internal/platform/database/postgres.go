@@ -2,6 +2,8 @@
 package database
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -99,7 +101,25 @@ func openPostgresDatabase(dsn string) (*gorm.DB, error) {
 	})
 }
 
+func openPostgresDatabaseWithoutPing(dsn string) (*gorm.DB, error) {
+	return gorm.Open(postgres.Open(dsn), &gorm.Config{
+		DisableAutomaticPing: true,
+		Logger:               logger.Default.LogMode(logger.Silent),
+		NowFunc:              func() time.Time { return time.Now().UTC() },
+	})
+}
+
 func openDatabase(
+	cfg *Config,
+	options databaseOpenOptions,
+	open databaseOpener,
+	create databaseCreator,
+) (*gorm.DB, error) {
+	return openDatabaseContext(context.Background(), cfg, options, open, create)
+}
+
+func openDatabaseContext(
+	ctx context.Context,
 	cfg *Config,
 	options databaseOpenOptions,
 	open databaseOpener,
@@ -107,6 +127,9 @@ func openDatabase(
 ) (*gorm.DB, error) {
 	if cfg == nil {
 		return nil, nil
+	}
+	if ctx == nil {
+		return nil, errors.New("database open context is nil")
 	}
 
 	dsn := databaseDSN(cfg, options.readOnly)
@@ -165,7 +188,11 @@ func openDatabase(
 	sqlDB.SetMaxIdleConns(maxIdle)
 	sqlDB.SetConnMaxLifetime(lifetime)
 
-	if err := sqlDB.Ping(); err != nil {
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
+		if contextErr := ctx.Err(); contextErr != nil {
+			return nil, fmt.Errorf("数据库连通性检查失败: %w", contextErr)
+		}
 		return nil, fmt.Errorf("数据库连通性检查失败: %w", err)
 	}
 
@@ -198,6 +225,13 @@ func OpenExistingReadOnly(cfg *Config) (*gorm.DB, error) {
 	return openExistingReadOnly(cfg, openPostgresDatabase)
 }
 
+// OpenExistingReadOnlyContext is the bounded-startup form of
+// OpenExistingReadOnly. It disables GORM's implicit background ping and makes
+// the one connectivity check honor the caller's deadline.
+func OpenExistingReadOnlyContext(ctx context.Context, cfg *Config) (*gorm.DB, error) {
+	return openDatabaseContext(ctx, cfg, databaseOpenOptions{readOnly: true}, openPostgresDatabaseWithoutPing, nil)
+}
+
 // OpenExistingWritable opens an existing target database
 // without creating it and without forcing the session read-only. It is reserved
 // for explicitly confirmed maintenance operations; normal readers must use
@@ -209,6 +243,12 @@ func OpenExistingWritable(cfg *Config) (*gorm.DB, error) {
 		openPostgresDatabase,
 		nil,
 	)
+}
+
+// OpenExistingWritableContext is the bounded-startup form of
+// OpenExistingWritable and never creates a missing database.
+func OpenExistingWritableContext(ctx context.Context, cfg *Config) (*gorm.DB, error) {
+	return openDatabaseContext(ctx, cfg, databaseOpenOptions{createIfMissing: false}, openPostgresDatabaseWithoutPing, nil)
 }
 
 // OpenShared returns a process-local shared *gorm.DB for the
