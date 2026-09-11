@@ -7,7 +7,7 @@ import {mkdir,rm,writeFile} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {childEnvironment,makeManifest} from './contract.mjs';
-import {json,readJSON,port,until,sameProcess,run} from './io.mjs';
+import {json,readJSON,port,pause,sameProcess,run} from './io.mjs';
 import {startCurrentApplications} from './current_application_lifecycle.mjs';
 
 const execute=promisify(execFile);
@@ -56,11 +56,24 @@ async function ownedSupervisorStop(m,exitCode) {
  const child=join(m.directory,'fixture-go.cjs');
  await writeFile(child,`const {existsSync}=require('node:fs');const {join}=require('node:path');const server=require('node:http').createServer((_req,res)=>{res.statusCode=401;res.end()});server.listen(Number(process.argv[3]),'127.0.0.1');const timer=setInterval(()=>{if(existsSync(join(process.argv[2],'stop-go'))){clearInterval(timer);server.close(()=>process.exit(Number(process.argv[4]))) }},25);`);
  await json(join(m.directory,'services.json'),{binary:process.execPath,goArgs:[child,m.directory,String(m.ports.go),String(exitCode)],goEnvironment:{},uiDirectory:ui,webPort:m.ports.web,nextEnvironment:{}});
- const supervisor=spawn(process.execPath,[join(repo,'scripts','issue357','serve.mjs'),m.directory],{cwd:m.directory,env:childEnvironment(),windowsHide:true,stdio:'ignore'});
+ const supervisor=spawn(process.execPath,[join(repo,'scripts','issue357','serve.mjs'),m.directory],{cwd:m.directory,env:childEnvironment(),windowsHide:true,stdio:['ignore','ignore','pipe']});
+ let stderr='';supervisor.stderr.on('data',chunk=>{stderr=(stderr+String(chunk)).slice(-4096)});
  const finished=new Promise((resolve,reject)=>{supervisor.once('error',reject);supervisor.once('close',(code,signal)=>resolve({code,signal}))});
  const timeout=setTimeout(()=>supervisor.kill(),45000);
  try {
-  await until(async()=>{await readJSON(join(m.directory,'next-ready.json'));const records=await readJSON(join(m.directory,'processes.json'));return records.go&&records.next},'OWNED_CHILDREN_READY',20000);
+  const deadline=Date.now()+20000;
+  for(;;){
+   const records=await readJSON(join(m.directory,'processes.json')).catch(error=>{if(error.code==='ENOENT')return {};throw error});
+   const ready=await readJSON(join(m.directory,'next-ready.json')).catch(error=>{if(error.code==='ENOENT')return null;throw error});
+   const stopped=await readJSON(join(m.directory,'services-stopped.json')).catch(error=>{if(error.code==='ENOENT')return null;throw error});
+   const stage=!records.supervisor?'supervisor-register':!records.go?'go-register':!records.next?'next-register':'next-ready';
+   if(supervisor.exitCode!==null||supervisor.signalCode!==null||stopped||Date.now()>=deadline){
+    const safeStderr=stderr.replaceAll(m.directory,'<fixture>').replaceAll(repo,'<repo>');
+    throw new Error(`OWNED_CHILDREN_NOT_READY stage=${stage} exit=${supervisor.exitCode} signal=${supervisor.signalCode} stopped=${Boolean(stopped)} stderr=${safeStderr}`);
+   }
+   if(ready&&records.go&&records.next)break;
+   await pause(100);
+  }
   await writeFile(join(m.directory,'stop-services'),'stop');
   const ended=await finished;
   assert.equal(ended.signal,null);assert.equal(ended.code,exitCode===0?0:1);
