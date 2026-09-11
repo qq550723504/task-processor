@@ -154,6 +154,9 @@ jobs:
       - name: Verify RUN-1 effective PostgreSQL permission matrix
         run: go test -tags integration ./internal/app/httpapi -run '^TestCurrentApplicationPermissionInventoryPostgres$' -count=1 -v
 
+      - name: Verify commercial reads stay bound to public PostgreSQL facts
+        run: go test -race -tags integration ./internal/app/httpapi -run '^TestCommercialReadVerifiedPublicSchemaPostgres$' -count=1 -v
+
       - name: Run listing concurrency race tests
         run: |
           go test -race ./internal/app/runtime/listingcontrol -run TestControlPlaneService -count=1

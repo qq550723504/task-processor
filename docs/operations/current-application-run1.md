@@ -67,6 +67,10 @@ including MAINTAIN on PostgreSQL 17; ordinary system catalog access is excluded
 from this business-table inventory. Preflight only reads catalogs and schema: it
 does not grant, revoke, alter or repair permissions.
 
+Commercial overview queries explicitly address these same four `public` tables,
+regardless of a connection's `search_path` or same-named tables in another schema.
+Missing public tables or SELECT privileges fail closed; shadow facts are never a fallback.
+
 ## End-to-end acceptance
 
 After committing the candidate so source fingerprints are stable, run:

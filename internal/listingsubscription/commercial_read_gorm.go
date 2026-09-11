@@ -17,6 +17,16 @@ import (
 var commercialModules = []string{ModuleStoreManagement, ModuleTaskImport, ModuleRules, ModuleOperationStrategy, ModuleListingKit, ModuleOSSStorage}
 var commercialMetrics = []string{usageMetricListingKitGenerationsSucceeded, usageMetricProductImageJobsSucceeded, usageMetricSheinDraftsSucceeded, usageMetricSheinPublishesSucceeded, usageMetricStorageBytesCurrent}
 
+// Commercial PostgreSQL reads must address exactly the public facts admitted by
+// VerifyCommercialReadSchema, independent of each connection's search_path.
+// SQLite has no public schema. This is dialect naming, never error fallback.
+func commercialReadTable(tx *gorm.DB, table string) *gorm.DB {
+	if tx.Dialector.Name() == "postgres" {
+		table = "public." + table
+	}
+	return tx.Table(table)
+}
+
 func (r *GormRepository) ReadCommercialOverview(ctx context.Context, organizationID string, at time.Time) (*CommercialOverview, error) {
 	if r == nil || r.db == nil || !commercialID.MatchString(organizationID) || at.IsZero() {
 		return nil, ErrCommercialUnavailable
@@ -35,7 +45,7 @@ func (r *GormRepository) ReadCommercialOverview(ctx context.Context, organizatio
 		}
 		var grants []tenantEntitlementRow
 		// Bound both rows and stored JSON before transferring untrusted text.
-		if err := tx.Select("module_code, status, starts_at, expires_at, updated_at, substr(limits, 1, 4097) AS limits").Where("tenant_id = ? AND module_code IN ?", organizationID, commercialModules).Order("module_code").Limit(7).Find(&grants).Error; err != nil {
+		if err := commercialReadTable(tx, tenantEntitlementRow{}.TableName()).Select("module_code, status, starts_at, expires_at, updated_at, substr(limits, 1, 4097) AS limits").Where("tenant_id = ? AND module_code IN ?", organizationID, commercialModules).Order("module_code").Limit(7).Find(&grants).Error; err != nil {
 			return err
 		}
 		if len(grants) > 6 {
@@ -62,7 +72,7 @@ func (r *GormRepository) ReadCommercialOverview(ctx context.Context, organizatio
 
 func readCommercialSubscription(tx *gorm.DB, result *CommercialOverview, at time.Time) error {
 	var row tenantSubscriptionRow
-	err := tx.Select("substr(plan_code, 1, 129) AS plan_code, status, starts_at, expires_at, updated_at").Where("tenant_id = ?", result.OrganizationID).Take(&row).Error
+	err := commercialReadTable(tx, row.TableName()).Select("substr(plan_code, 1, 129) AS plan_code, status, starts_at, expires_at, updated_at").Where("tenant_id = ?", result.OrganizationID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
@@ -78,7 +88,7 @@ func readCommercialSubscription(tx *gorm.DB, result *CommercialOverview, at time
 	}
 	value := &CommercialSubscription{PlanCode: row.PlanCode, Status: row.Status, EffectiveStatus: effective, StartsAt: commercialUTC(row.StartsAt), ExpiresAt: commercialUTC(row.ExpiresAt), UpdatedAt: row.UpdatedAt.UTC()}
 	var plan subscriptionPlanRow
-	err = tx.Select("substr(name, 1, 257) AS name").Where("code = ?", row.PlanCode).Take(&plan).Error
+	err = commercialReadTable(tx, plan.TableName()).Select("substr(name, 1, 257) AS name").Where("code = ?", row.PlanCode).Take(&plan).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
@@ -177,7 +187,7 @@ func readCommercialUsage(tx *gorm.DB, result *CommercialOverview, at time.Time) 
 			usage.ModuleCode, usage.Unit, usage.PeriodKey, usage.WindowStart, usage.WindowEnd = ModuleOSSStorage, "byte", usageStorageBucketPeriodKey, nil, nil
 		}
 		var bucket usageBucketRow
-		err := tx.Where("tenant_id = ? AND module_code = ? AND metric = ? AND period_key = ?", result.OrganizationID, usage.ModuleCode, metric, usage.PeriodKey).Take(&bucket).Error
+		err := commercialReadTable(tx, bucket.TableName()).Where("tenant_id = ? AND module_code = ? AND metric = ? AND period_key = ?", result.OrganizationID, usage.ModuleCode, metric, usage.PeriodKey).Take(&bucket).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
