@@ -38,11 +38,7 @@ func buildCommercialReadModule(cfg *config.Config, _ *logrus.Logger) (commercial
 	}
 	// Repository construction is side-effect-free. No AutoMigrate, NewService,
 	// default plans, grants, counter repairs or resource commands are called.
-	module, err := buildCommercialReadModuleFromDatabase(context.Background(), db, authorizer)
-	if err != nil {
-		_ = platformdatabase.CloseShared(configadapter.Database(cfg.Database), db)
-		return commercialReadBuildResult{}, errors.New("commercial read database unavailable")
-	}
+	module := newCommercialReadModule(db, authorizer)
 	return commercialReadBuildResult{module: module, closer: func() error { return platformdatabase.CloseShared(configadapter.Database(cfg.Database), db) }}, nil
 }
 
@@ -53,6 +49,10 @@ func buildCommercialReadModuleFromDatabase(ctx context.Context, db *gorm.DB, aut
 	if err := listingsubscription.VerifyCommercialReadSchema(ctx, db); err != nil {
 		return nil, err
 	}
+	return newCommercialReadModule(db, authorizer), nil
+}
+
+func newCommercialReadModule(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) kernelmodule.Module {
 	reader := listingsubscription.NewCommercialReadService(listingsubscription.NewGormRepository(db), authorizer)
-	return commercialhttpapi.NewModule(commercialhttpapi.NewHandler(reader)), nil
+	return commercialhttpapi.NewModule(commercialhttpapi.NewHandler(reader))
 }
