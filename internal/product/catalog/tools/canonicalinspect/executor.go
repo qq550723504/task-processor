@@ -5,39 +5,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"task-processor/internal/commercetool"
-	listingtask "task-processor/internal/listing/task"
 	"task-processor/internal/product/catalog"
 )
 
-type snapshotReader interface {
-	catalog.SnapshotReader
-	catalog.VersionedSnapshotReader
-}
-
-// MaxCatalogSnapshotBytes is the B0 consumer-side materialization bound. It is
-// deliberately not a global Catalog publication or repository invariant.
+// MaxCatalogSnapshotBytes is the consumer-side bound applied by the injected
+// persistence adapter before a snapshot is materialized.
 const MaxCatalogSnapshotBytes = 8 << 20
 
 type Executor struct {
-	subjects     listingtask.CanonicalSubjectReader
-	snapshots    snapshotReader
-	tenantAdmins listingtask.TenantAdminChecker
+	snapshots catalog.VersionedSnapshotReader
 }
 
-func NewExecutor(subjects listingtask.CanonicalSubjectReader, snapshots snapshotReader, tenantAdmins listingtask.TenantAdminChecker) (*Executor, error) {
-	if nilInterface(subjects) {
-		return nil, fmt.Errorf("canonical subject reader is nil")
-	}
+func NewExecutor(snapshots catalog.VersionedSnapshotReader) (*Executor, error) {
 	if nilInterface(snapshots) {
-		return nil, fmt.Errorf("catalog snapshot reader is nil")
+		return nil, fmt.Errorf("catalog versioned snapshot reader is nil")
 	}
-	if nilInterface(tenantAdmins) {
-		return nil, fmt.Errorf("tenant admin checker is nil")
-	}
-	return &Executor{subjects: subjects, snapshots: snapshots, tenantAdmins: tenantAdmins}, nil
+	return &Executor{snapshots: snapshots}, nil
 }
 
 func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionEnvelope, raw json.RawMessage) (commercetool.ExecutionResult, error) {
@@ -45,51 +35,29 @@ func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionE
 		return commercetool.ExecutionResult{}, deadlineError(err)
 	}
 	var input Input
-	if err := json.Unmarshal(raw, &input); err != nil || listingtask.ValidateTaskID(input.TaskID) != nil {
-		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorInvalidInput, "canonical inspection input is invalid", err)
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return commercetool.ExecutionResult{}, invalidInput(err)
 	}
-	if input.TaskID != envelope.Metadata().BusinessTaskID {
-		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorInvalidInput, "business task binding does not match input", nil)
-	}
-
-	principal := envelope.Principal()
-	actor := listingtask.Actor{TenantID: principal.TenantID, UserID: principal.UserID, Roles: append([]string(nil), principal.Roles...)}
-	if err := listingtask.ValidateActor(actor); err != nil {
-		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorIdentityIntegrity, "verified principal is invalid", err)
-	}
-	subject, err := e.subjects.ReadCanonicalSubject(ctx, actor, input.TaskID)
-	if err != nil {
-		return commercetool.ExecutionResult{}, mapSubjectError(err)
-	}
-	if err := ctx.Err(); err != nil {
-		return commercetool.ExecutionResult{}, deadlineError(err)
-	}
-	if subject.TaskID != input.TaskID || !listingtask.CanReadCanonicalSubject(actor, subject, e.tenantAdmins) {
-		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorNotFound, "canonical product is not available", nil)
-	}
-	if subject.ProductKey == "" {
-		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorFailedPrecondition, "canonical product is not ready", nil)
+	productKey := strings.TrimSpace(input.ProductKey)
+	version, err := parseCatalogVersion(input.CatalogVersion)
+	if err != nil || productKey == "" || productKey != input.ProductKey || utf8.RuneCountInString(productKey) > 128 {
+		return commercetool.ExecutionResult{}, invalidInput(err)
 	}
 
-	identity := catalog.SnapshotIdentity{TenantID: subject.TenantID, ProductKey: subject.ProductKey}
-	var published catalog.PublishedSnapshot
-	if subject.SnapshotVersion > 0 {
-		published, err = e.snapshots.GetSnapshot(ctx, identity, subject.SnapshotVersion)
-	} else {
-		published, err = e.snapshots.GetCurrentSnapshot(ctx, identity)
-	}
+	identity := catalog.SnapshotIdentity{TenantID: envelope.Principal().TenantID, ProductKey: productKey}
+	published, err := e.snapshots.GetSnapshot(ctx, identity, version)
 	if err != nil {
 		return commercetool.ExecutionResult{}, mapCatalogError(err)
 	}
 	if err := ctx.Err(); err != nil {
 		return commercetool.ExecutionResult{}, deadlineError(err)
 	}
-	if published.Identity != identity || published.Version == 0 ||
-		(subject.SnapshotVersion > 0 && published.Version != subject.SnapshotVersion) {
+	if published.Identity != identity || published.Version != version ||
+		published.PublicationID == "" || published.PublicationID != strings.TrimSpace(published.PublicationID) {
 		return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorInternal, "canonical snapshot state is invalid", nil)
 	}
 
-	output, err := Project(subject, published)
+	output, err := Project(published)
 	if err != nil {
 		if errors.Is(err, ErrProjectionTooLarge) {
 			return commercetool.ExecutionResult{}, commercetool.NewError(commercetool.ErrorFailedPrecondition, "canonical product projection exceeds size limit", err)
@@ -102,23 +70,19 @@ func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionE
 	return commercetool.ExecutionResult{Output: output}, nil
 }
 
-func mapSubjectError(err error) error {
-	switch {
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return deadlineError(err)
-	case errors.Is(err, listingtask.ErrInvalidTaskID):
-		return commercetool.NewError(commercetool.ErrorInvalidInput, "canonical inspection input is invalid", err)
-	case errors.Is(err, listingtask.ErrInvalidActor):
-		return commercetool.NewError(commercetool.ErrorIdentityIntegrity, "verified principal is invalid", err)
-	case errors.Is(err, listingtask.ErrCanonicalSubjectNotFound):
-		return commercetool.NewError(commercetool.ErrorNotFound, "canonical product is not available", err)
-	case errors.Is(err, listingtask.ErrCanonicalSubjectNotReady):
-		return commercetool.NewError(commercetool.ErrorFailedPrecondition, "canonical product is not ready", err)
-	case errors.Is(err, listingtask.ErrCanonicalSubjectUnavailable):
-		return commercetool.NewError(commercetool.ErrorDependencyUnavailable, "canonical task repository is unavailable", err)
-	default:
-		return commercetool.NewError(commercetool.ErrorInternal, "canonical task lookup failed", err)
+func parseCatalogVersion(value string) (uint64, error) {
+	if value == "" || value != strings.TrimSpace(value) {
+		return 0, fmt.Errorf("catalog version is empty or padded")
 	}
+	version, err := strconv.ParseUint(value, 10, 64)
+	if err != nil || version == 0 || version > math.MaxInt64 || strconv.FormatUint(version, 10) != value {
+		return 0, fmt.Errorf("catalog version is outside the persistent domain")
+	}
+	return version, nil
+}
+
+func invalidInput(cause error) error {
+	return commercetool.NewError(commercetool.ErrorInvalidInput, "canonical inspection input is invalid", cause)
 }
 
 func mapCatalogError(err error) error {
@@ -126,7 +90,9 @@ func mapCatalogError(err error) error {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return deadlineError(err)
 	case errors.Is(err, catalog.ErrSnapshotNotReady):
-		return commercetool.NewError(commercetool.ErrorFailedPrecondition, "canonical product is not ready", err)
+		return commercetool.NewError(commercetool.ErrorNotFound, "canonical product version is not available", err)
+	case errors.Is(err, catalog.ErrSnapshotTooLarge):
+		return commercetool.NewError(commercetool.ErrorFailedPrecondition, "canonical product snapshot exceeds size limit", err)
 	case errors.Is(err, catalog.ErrRepositoryUnavailable):
 		return commercetool.NewError(commercetool.ErrorDependencyUnavailable, "canonical product repository is unavailable", err)
 	default:

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
-	listingtask "task-processor/internal/listing/task"
 	"task-processor/internal/product/catalog"
 )
 
@@ -14,7 +14,8 @@ const MaxOutputBytes = 1 << 20
 var ErrProjectionTooLarge = errors.New("canonical inspection projection exceeds size limit")
 
 type Input struct {
-	TaskID string `json:"task_id"`
+	ProductKey     string `json:"product_key"`
+	CatalogVersion string `json:"catalog_version"`
 }
 
 type Diagnostics struct {
@@ -24,15 +25,14 @@ type Diagnostics struct {
 }
 
 type Output struct {
-	TaskID          string                     `json:"task_id"`
-	ProductKey      string                     `json:"product_key"`
-	SnapshotVersion uint64                     `json:"snapshot_version"`
-	Snapshot        catalog.ProductSnapshot    `json:"snapshot"`
-	SourceLineage   *listingtask.SourceLineage `json:"source_lineage"`
-	Diagnostics     Diagnostics                `json:"diagnostics"`
+	ProductKey           string                  `json:"product_key"`
+	CatalogVersion       string                  `json:"catalog_version"`
+	CatalogPublicationID string                  `json:"catalog_publication_id"`
+	Snapshot             catalog.ProductSnapshot `json:"snapshot"`
+	Diagnostics          Diagnostics             `json:"diagnostics"`
 }
 
-func Project(subject listingtask.CanonicalSubject, published catalog.PublishedSnapshot) (json.RawMessage, error) {
+func Project(published catalog.PublishedSnapshot) (json.RawMessage, error) {
 	cloned, err := catalog.CloneProductSnapshot(published.Snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("clone canonical snapshot: %w", err)
@@ -52,15 +52,10 @@ func Project(subject listingtask.CanonicalSubject, published catalog.PublishedSn
 		diagnostics.Warnings = []catalog.Warning{}
 	}
 
-	output := Output{
-		TaskID: subject.TaskID, ProductKey: subject.ProductKey, SnapshotVersion: published.Version,
-		Snapshot: cloned, Diagnostics: diagnostics,
-	}
-	if subject.Source != nil {
-		source := *subject.Source
-		output.SourceLineage = &source
-	}
-	encoded, err := json.Marshal(output)
+	encoded, err := json.Marshal(Output{
+		ProductKey: published.Identity.ProductKey, CatalogVersion: strconv.FormatUint(published.Version, 10),
+		CatalogPublicationID: published.PublicationID, Snapshot: cloned, Diagnostics: diagnostics,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode canonical inspection projection: %w", err)
 	}

@@ -24,18 +24,26 @@ func TestSchemasCompileInCommerceToolRegistry(t *testing.T) {
 	}
 }
 
-func TestInputSchemaIsStrictAndTaskOnly(t *testing.T) {
+func TestInputSchemaIsStrictAndExactProductVersionOnly(t *testing.T) {
 	schema := decodeSchema(t, InputSchema())
 	if schema["additionalProperties"] != false {
 		t.Fatalf("input additionalProperties = %#v", schema["additionalProperties"])
 	}
 	required := stringSet(schema["required"])
-	if len(required) != 1 || !required["task_id"] {
+	if len(required) != 2 || !required["product_key"] || !required["catalog_version"] {
 		t.Fatalf("input required = %#v", schema["required"])
 	}
 	properties := object(schema["properties"])
-	if len(properties) != 1 || properties["task_id"] == nil {
+	if len(properties) != 2 || properties["product_key"] == nil || properties["catalog_version"] == nil {
 		t.Fatalf("input properties = %#v", properties)
+	}
+	productKey := object(properties["product_key"])
+	if productKey["type"] != "string" || productKey["maxLength"] != float64(128) {
+		t.Fatalf("product_key schema = %#v", productKey)
+	}
+	version := object(properties["catalog_version"])
+	if version["type"] != "string" || version["pattern"] != "^[1-9][0-9]{0,18}$" {
+		t.Fatalf("catalog_version schema = %#v", version)
 	}
 }
 
@@ -50,10 +58,17 @@ func TestOutputSchemaTracksAllCatalogSnapshotFields(t *testing.T) {
 	if object(defs["product_snapshot"])["additionalProperties"] != false {
 		t.Fatal("product snapshot schema is not strict")
 	}
-	for _, field := range []string{"task_id", "product_key", "snapshot_version", "snapshot", "source_lineage", "diagnostics"} {
+	for _, field := range []string{"product_key", "catalog_version", "catalog_publication_id", "snapshot", "diagnostics"} {
 		if !stringSet(schema["required"])[field] {
 			t.Fatalf("output field %q is not required", field)
 		}
+	}
+	properties := object(schema["properties"])
+	if len(properties) != 5 || properties["task_id"] != nil || properties["source_lineage"] != nil || properties["snapshot_version"] != nil {
+		t.Fatalf("output authority/legacy fields = %#v", properties)
+	}
+	if object(properties["catalog_version"])["type"] != "string" {
+		t.Fatalf("catalog_version output schema = %#v", properties["catalog_version"])
 	}
 }
 
@@ -128,7 +143,7 @@ func validateOutputAgainstRegistry(t *testing.T, output json.RawMessage) {
 	_, err = bound.Invoke(context.Background(), commercetool.Call{
 		Tool:      definition.Ref,
 		Metadata:  commercetool.CallMetadata{CallID: "call-1", AgentID: "test.agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: "task-1"},
-		Arguments: json.RawMessage(`{"task_id":"task-1"}`),
+		Arguments: json.RawMessage(`{"product_key":"product-1","catalog_version":"1"}`),
 	})
 	if err != nil {
 		t.Fatalf("Invoke() output schema error = %v", err)

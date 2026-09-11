@@ -6,9 +6,10 @@ var inputSchema = json.RawMessage(`{
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "type":"object",
   "additionalProperties":false,
-  "required":["task_id"],
+  "required":["product_key","catalog_version"],
   "properties":{
-    "task_id":{"type":"string","minLength":1,"maxLength":128,"pattern":"^(?:\\S|\\S(?:.*\\S))$"}
+    "product_key":{"type":"string","minLength":1,"maxLength":128,"pattern":"^(?:\\S|\\S(?:.*\\S))$"},
+    "catalog_version":{"type":"string","pattern":"^[1-9][0-9]{0,18}$"}
   }
 }`)
 
@@ -16,23 +17,15 @@ var outputSchema = json.RawMessage(`{
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "type":"object",
   "additionalProperties":false,
-  "required":["task_id","product_key","snapshot_version","snapshot","source_lineage","diagnostics"],
+  "required":["product_key","catalog_version","catalog_publication_id","snapshot","diagnostics"],
   "properties":{
-    "task_id":{"type":"string","minLength":1,"maxLength":128},
-    "product_key":{"type":"string","minLength":1},
-    "snapshot_version":{"type":"integer","minimum":1},
+    "product_key":{"type":"string","minLength":1,"maxLength":128},
+    "catalog_version":{"type":"string","pattern":"^[1-9][0-9]{0,18}$"},
+    "catalog_publication_id":{"type":"string","minLength":1,"maxLength":128},
     "snapshot":{"$ref":"#/$defs/product_snapshot"},
-    "source_lineage":{"anyOf":[{"$ref":"#/$defs/source_lineage"},{"type":"null"}]},
     "diagnostics":{"$ref":"#/$defs/diagnostics"}
   },
   "$defs":{
-    "source_lineage":{
-      "type":"object","additionalProperties":false,
-      "properties":{
-        "key":{"type":"string"},"type":{"type":"string"},"platform":{"type":"string"},
-        "id":{"type":"string"},"url":{"type":"string"}
-      }
-    },
     "diagnostics":{
       "type":"object","additionalProperties":false,
       "required":["needs_review","review_reasons","warnings"],

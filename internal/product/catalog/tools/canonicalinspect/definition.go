@@ -9,10 +9,10 @@ import (
 
 func Definition() commercetool.Definition {
 	return commercetool.Definition{
-		Ref:          commercetool.ToolRef{ID: "product.canonical.inspect", Version: "v1.0.0"},
+		Ref:          commercetool.ToolRef{ID: "product.canonical.inspect", Version: "v2.0.0"},
 		Capability:   "product.canonical",
 		Owner:        "product.catalog",
-		Description:  "Inspect the authorized immutable canonical product snapshot and source lineage.",
+		Description:  "Inspect one authorized immutable canonical product snapshot by exact catalog identity.",
 		InputSchema:  InputSchema(),
 		OutputSchema: OutputSchema(),
 		Risk:         commercetool.RiskRead,

@@ -4,133 +4,100 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"task-processor/internal/commercetool"
-	listingtask "task-processor/internal/listing/task"
 	"task-processor/internal/product/catalog"
 )
 
 func TestExecutorRejectsInvalidConstruction(t *testing.T) {
-	reader := &catalogReaderStub{}
-	checker := tenantAdminCheckerStub{}
-	if _, err := NewExecutor(nil, reader, checker); err == nil {
-		t.Fatal("NewExecutor(nil, reader) error = nil")
-	}
-	if _, err := NewExecutor(&subjectReaderStub{}, nil, checker); err == nil {
-		t.Fatal("NewExecutor(subject, nil) error = nil")
-	}
-	if _, err := NewExecutor(&subjectReaderStub{}, reader, nil); err == nil {
-		t.Fatal("NewExecutor(subject, reader, nil) error = nil")
+	if _, err := NewExecutor(nil); err == nil {
+		t.Fatal("NewExecutor(nil) error = nil")
 	}
 }
 
-func TestExecutorPinnedAndLegacyReadSelection(t *testing.T) {
-	for _, version := range []uint64{0, 7} {
-		t.Run(map[bool]string{true: "legacy current", false: "pinned version"}[version == 0], func(t *testing.T) {
-			subjects := &subjectReaderStub{subject: validSubject(version)}
-			catalogs := &catalogReaderStub{published: catalog.PublishedSnapshot{
-				Identity: catalog.SnapshotIdentity{TenantID: "tenant-1", ProductKey: "product-1"},
-				Version:  7, PublicationID: "publication-1", Snapshot: catalog.ProductSnapshot{Title: "Bottle"},
-			}}
-			executor, err := newTestExecutor(subjects, catalogs)
-			if err != nil {
-				t.Fatalf("NewExecutor(): %v", err)
-			}
+func TestExecutorReadsOnlyExactTenantQualifiedVersion(t *testing.T) {
+	const version = uint64(9007199254740993)
+	reader := &catalogReaderStub{published: catalog.PublishedSnapshot{
+		Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: "product-1"},
+		Version:  version, PublicationID: "publication-1", Snapshot: catalog.ProductSnapshot{Title: "Bottle"},
+	}}
+	executor, _ := NewExecutor(reader)
 
-			result, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
-			if err != nil {
-				t.Fatalf("Invoke(): %v", err)
-			}
-			if subjects.calls != 1 || subjects.actor.TenantID != "tenant-1" || subjects.actor.UserID != "user-1" {
-				t.Fatalf("subject calls/actor = %d %#v", subjects.calls, subjects.actor)
-			}
-			if version == 0 && (catalogs.currentCalls != 1 || catalogs.versionedCalls != 0) {
-				t.Fatalf("legacy calls current=%d versioned=%d", catalogs.currentCalls, catalogs.versionedCalls)
-			}
-			if version > 0 && (catalogs.currentCalls != 0 || catalogs.versionedCalls != 1 || catalogs.requestedVersion != version) {
-				t.Fatalf("pinned calls current=%d versioned=%d requested=%d", catalogs.currentCalls, catalogs.versionedCalls, catalogs.requestedVersion)
-			}
-			var output Output
-			if err := json.Unmarshal(result.Output, &output); err != nil {
-				t.Fatalf("unmarshal output: %v", err)
-			}
-			if output.SnapshotVersion != 7 || output.Snapshot.Title != "Bottle" || result.AIInvocationID != "" {
-				t.Fatalf("result = %#v output = %#v", result, output)
-			}
-		})
+	result, err := invokeExecutor(t, executor, Input{ProductKey: "product-1", CatalogVersion: strconv.FormatUint(version, 10)}, schemaPrincipal())
+	if err != nil {
+		t.Fatalf("Invoke(): %v", err)
+	}
+	if reader.calls != 1 || reader.identity != (catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: "product-1"}) || reader.version != version {
+		t.Fatalf("reader calls=%d identity=%#v version=%d", reader.calls, reader.identity, reader.version)
+	}
+	var output Output
+	if err := json.Unmarshal(result.Output, &output); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if output.CatalogVersion != "9007199254740993" || output.ProductKey != "product-1" || output.CatalogPublicationID != "publication-1" || output.Snapshot.Title != "Bottle" {
+		t.Fatalf("output = %#v", output)
 	}
 }
 
-func TestExecutorRejectsBusinessTaskMismatchBeforeReaders(t *testing.T) {
-	subjects := &subjectReaderStub{subject: validSubject(1)}
-	catalogs := &catalogReaderStub{}
-	executor, _ := newTestExecutor(subjects, catalogs)
-
-	_, err := invokeExecutor(t, executor, "task-input", "task-metadata", schemaPrincipal())
-
-	if commercetool.CodeOf(err) != commercetool.ErrorInvalidInput || subjects.calls != 0 || catalogs.currentCalls != 0 || catalogs.versionedCalls != 0 {
-		t.Fatalf("error=%v subjectCalls=%d current=%d versioned=%d", err, subjects.calls, catalogs.currentCalls, catalogs.versionedCalls)
+func TestParseCatalogVersionUsesPersistentInt64Domain(t *testing.T) {
+	valid := strconv.FormatUint(math.MaxInt64, 10)
+	if got, err := parseCatalogVersion(valid); err != nil || got != math.MaxInt64 {
+		t.Fatalf("parse max = %d, %v", got, err)
 	}
-}
-
-func TestExecutorRechecksSubjectScope(t *testing.T) {
-	tests := []listingtask.CanonicalSubject{
-		{TaskID: "other", TenantID: "tenant-1", OwnerUserID: "user-1", ProductKey: "product-1", SnapshotVersion: 1},
-		{TaskID: "task-1", TenantID: "tenant-2", OwnerUserID: "user-1", ProductKey: "product-1", SnapshotVersion: 1},
-		{TaskID: "task-1", TenantID: "tenant-1", OwnerUserID: "other", ProductKey: "product-1", SnapshotVersion: 1},
-	}
-	for _, subject := range tests {
-		subjects := &subjectReaderStub{subject: subject}
-		catalogs := &catalogReaderStub{}
-		executor, _ := newTestExecutor(subjects, catalogs)
-		_, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
-		if commercetool.CodeOf(err) != commercetool.ErrorNotFound || catalogs.currentCalls+catalogs.versionedCalls != 0 {
-			t.Fatalf("subject=%#v error=%v catalog calls=%d", subject, err, catalogs.currentCalls+catalogs.versionedCalls)
+	for _, value := range []string{"", "0", "01", "+1", " 1", "9223372036854775808", "18446744073709551615"} {
+		if _, err := parseCatalogVersion(value); err == nil {
+			t.Fatalf("parseCatalogVersion(%q) error = nil", value)
 		}
 	}
 }
 
-func TestExecutorRechecksSubjectScopeWithInjectedAdminSemantics(t *testing.T) {
-	subjects := &subjectReaderStub{subject: canonicalSubjectForConfiguredAdmin()}
-	catalogs := &catalogReaderStub{published: catalog.PublishedSnapshot{
-		Identity: catalog.SnapshotIdentity{TenantID: "tenant-1", ProductKey: "product-1"}, Version: 1,
-		Snapshot: catalog.ProductSnapshot{Title: "Bottle"},
+func TestExecutorUsesUnicodeCodePointProductKeyLimit(t *testing.T) {
+	key128 := strings.Repeat("商", 128)
+	reader := &catalogReaderStub{published: catalog.PublishedSnapshot{
+		Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: key128}, Version: 1,
+		PublicationID: "publication-unicode", Snapshot: catalog.ProductSnapshot{Title: "中文商品"},
 	}}
-	executor, err := NewExecutor(subjects, catalogs, tenantAdminCheckerStub{allow: true})
-	if err != nil {
-		t.Fatalf("NewExecutor(): %v", err)
+	executor, _ := NewExecutor(reader)
+	if _, err := invokeExecutor(t, executor, Input{ProductKey: key128, CatalogVersion: "1"}, schemaPrincipal()); err != nil {
+		t.Fatalf("128-code-point ProductKey: %v", err)
 	}
-	if _, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal()); err != nil {
-		t.Fatalf("Invoke(): %v", err)
+	if reader.identity.ProductKey != key128 {
+		t.Fatalf("reader ProductKey length = %d", len([]rune(reader.identity.ProductKey)))
+	}
+
+	_, err := invokeExecutor(t, executor, Input{ProductKey: strings.Repeat("商", 129), CatalogVersion: "1"}, schemaPrincipal())
+	if commercetool.CodeOf(err) != commercetool.ErrorInvalidInput {
+		t.Fatalf("129-code-point ProductKey code=%s error=%v", commercetool.CodeOf(err), err)
+	}
+	if reader.calls != 1 {
+		t.Fatalf("reader calls = %d, want only the valid request", reader.calls)
 	}
 }
 
-func TestExecutorMapsStableDependencyErrors(t *testing.T) {
+func TestExecutorMapsStableCatalogErrorsWithoutDetails(t *testing.T) {
 	tests := []struct {
-		name       string
-		subjectErr error
-		catalogErr error
-		want       commercetool.ErrorCode
+		name string
+		err  error
+		want commercetool.ErrorCode
 	}{
-		{name: "subject not found", subjectErr: listingtask.ErrCanonicalSubjectNotFound, want: commercetool.ErrorNotFound},
-		{name: "subject not ready", subjectErr: listingtask.ErrCanonicalSubjectNotReady, want: commercetool.ErrorFailedPrecondition},
-		{name: "invalid actor", subjectErr: listingtask.ErrInvalidActor, want: commercetool.ErrorIdentityIntegrity},
-		{name: "subject repository unavailable", subjectErr: listingtask.ErrCanonicalSubjectUnavailable, want: commercetool.ErrorDependencyUnavailable},
-		{name: "snapshot not ready", catalogErr: catalog.ErrSnapshotNotReady, want: commercetool.ErrorFailedPrecondition},
-		{name: "repository unavailable", catalogErr: catalog.ErrRepositoryUnavailable, want: commercetool.ErrorDependencyUnavailable},
-		{name: "repository state invalid", catalogErr: catalog.ErrRepositoryStateInvalid, want: commercetool.ErrorInternal},
-		{name: "unknown", catalogErr: errors.New("database secret"), want: commercetool.ErrorInternal},
+		{name: "exact miss", err: catalog.ErrSnapshotNotReady, want: commercetool.ErrorNotFound},
+		{name: "snapshot too large", err: catalog.ErrSnapshotTooLarge, want: commercetool.ErrorFailedPrecondition},
+		{name: "repository unavailable", err: catalog.ErrRepositoryUnavailable, want: commercetool.ErrorDependencyUnavailable},
+		{name: "repository state invalid", err: catalog.ErrRepositoryStateInvalid, want: commercetool.ErrorInternal},
+		{name: "unknown", err: errors.New("database secret"), want: commercetool.ErrorInternal},
+		{name: "canceled", err: context.Canceled, want: commercetool.ErrorDeadlineExceeded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			subjects := &subjectReaderStub{subject: validSubject(1), err: tt.subjectErr}
-			catalogs := &catalogReaderStub{err: tt.catalogErr}
-			executor, _ := newTestExecutor(subjects, catalogs)
-			_, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
+			reader := &catalogReaderStub{err: tt.err}
+			executor, _ := NewExecutor(reader)
+			_, err := invokeExecutor(t, executor, Input{ProductKey: "product-1", CatalogVersion: "1"}, schemaPrincipal())
 			if commercetool.CodeOf(err) != tt.want {
 				t.Fatalf("CodeOf(error) = %s, want %s; error=%v", commercetool.CodeOf(err), tt.want, err)
 			}
@@ -141,72 +108,92 @@ func TestExecutorMapsStableDependencyErrors(t *testing.T) {
 	}
 }
 
+func TestExecutorRejectsMismatchedRepositoryState(t *testing.T) {
+	for _, published := range []catalog.PublishedSnapshot{
+		{Identity: catalog.SnapshotIdentity{TenantID: "other", ProductKey: "product-1"}, Version: 1, PublicationID: "publication-1"},
+		{Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: "other"}, Version: 1, PublicationID: "publication-1"},
+		{Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: "product-1"}, Version: 2, PublicationID: "publication-1"},
+		{Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: "product-1"}, Version: 1},
+	} {
+		reader := &catalogReaderStub{published: published}
+		executor, _ := NewExecutor(reader)
+		_, err := invokeExecutor(t, executor, Input{ProductKey: "product-1", CatalogVersion: "1"}, schemaPrincipal())
+		if commercetool.CodeOf(err) != commercetool.ErrorInternal {
+			t.Fatalf("published=%#v error=%v", published, err)
+		}
+	}
+}
+
 func TestExecutorMapsOversizedProjectionToFailedPrecondition(t *testing.T) {
-	subjects := &subjectReaderStub{subject: validSubject(1)}
-	catalogs := &catalogReaderStub{published: catalog.PublishedSnapshot{
-		Identity: catalog.SnapshotIdentity{TenantID: "tenant-1", ProductKey: "product-1"}, Version: 1,
-		Snapshot: catalog.ProductSnapshot{Description: strings.Repeat("x", MaxOutputBytes)},
-	}}
-	executor, _ := newTestExecutor(subjects, catalogs)
-	_, err := invokeExecutor(t, executor, "task-1", "task-1", schemaPrincipal())
+	reader := &catalogReaderStub{published: validPublished(1)}
+	reader.published.Snapshot.Description = strings.Repeat("x", MaxOutputBytes)
+	executor, _ := NewExecutor(reader)
+	_, err := invokeExecutor(t, executor, Input{ProductKey: "product-1", CatalogVersion: "1"}, schemaPrincipal())
 	if commercetool.CodeOf(err) != commercetool.ErrorFailedPrecondition {
 		t.Fatalf("CodeOf(error) = %s, error=%v", commercetool.CodeOf(err), err)
 	}
 }
 
-type subjectReaderStub struct {
-	subject listingtask.CanonicalSubject
-	err     error
-	calls   int
-	actor   listingtask.Actor
-}
-
-func (s *subjectReaderStub) ReadCanonicalSubject(_ context.Context, actor listingtask.Actor, _ string) (listingtask.CanonicalSubject, error) {
-	s.calls++
-	s.actor = actor
-	return s.subject.Clone(), s.err
+func TestCanonicalInspectRejectsOversizeLegacyAndAuthorityArgumentsBeforeCatalog(t *testing.T) {
+	reader := &catalogReaderStub{published: validPublished(1)}
+	executor, _ := NewExecutor(reader)
+	definition := Definition()
+	registry, err := commercetool.NewRegistry(commercetool.Tool{Definition: definition, Executor: executor})
+	if err != nil {
+		t.Fatalf("NewRegistry(): %v", err)
+	}
+	bound, err := registry.Bind(commercetool.AgentDefinition{ID: "test.agent", Version: "v1.0.0", AllowedTools: []commercetool.ToolRef{definition.Ref}}, commercetool.InvocationDependencies{
+		PrincipalResolver: fixedPrincipalResolver{principal: schemaPrincipal()}, Authorizer: schemaAuthorizer{}, Recorder: schemaAuditRecorder{},
+		Tracer: otel.Tracer("canonicalinspect-rejection-test"), Now: time.Now, AuditTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Bind(): %v", err)
+	}
+	for _, arguments := range []json.RawMessage{
+		json.RawMessage(`{"task_id":"old-task"}`),
+		json.RawMessage(`{"product_key":"product-1","catalog_version":1}`),
+		json.RawMessage(`{"product_key":"product-1","catalog_version":"1","tenant_id":"org-1"}`),
+		json.RawMessage(`{"product_key":"product-1","catalog_version":"1","roles":["admin"]}`),
+		json.RawMessage(`{"product_key":"` + strings.Repeat("x", commercetool.MaxInvocationArgumentsBytes) + `","catalog_version":"1"}`),
+	} {
+		_, err := bound.Invoke(context.Background(), commercetool.Call{
+			Tool:      definition.Ref,
+			Metadata:  commercetool.CallMetadata{CallID: "rejected", AgentID: "test.agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: "correlation-only"},
+			Arguments: arguments,
+		})
+		if commercetool.CodeOf(err) != commercetool.ErrorInvalidInput {
+			t.Fatalf("arguments=%s code=%s error=%v", arguments[:min(len(arguments), 200)], commercetool.CodeOf(err), err)
+		}
+	}
+	if reader.calls != 0 {
+		t.Fatalf("catalog reader calls = %d, want 0", reader.calls)
+	}
 }
 
 type catalogReaderStub struct {
-	published        catalog.PublishedSnapshot
-	err              error
-	currentCalls     int
-	versionedCalls   int
-	requestedVersion uint64
+	published catalog.PublishedSnapshot
+	err       error
+	calls     int
+	identity  catalog.SnapshotIdentity
+	version   uint64
 }
 
-func (s *catalogReaderStub) GetCurrentSnapshot(context.Context, catalog.SnapshotIdentity) (catalog.PublishedSnapshot, error) {
-	s.currentCalls++
+func (s *catalogReaderStub) GetSnapshot(_ context.Context, identity catalog.SnapshotIdentity, version uint64) (catalog.PublishedSnapshot, error) {
+	s.calls++
+	s.identity = identity
+	s.version = version
 	return s.published, s.err
 }
 
-func (s *catalogReaderStub) GetSnapshot(_ context.Context, _ catalog.SnapshotIdentity, version uint64) (catalog.PublishedSnapshot, error) {
-	s.versionedCalls++
-	s.requestedVersion = version
-	return s.published, s.err
-}
-
-func validSubject(version uint64) listingtask.CanonicalSubject {
-	return listingtask.CanonicalSubject{TaskID: "task-1", TenantID: "tenant-1", OwnerUserID: "user-1", ProductKey: "product-1", SnapshotVersion: version, Source: &listingtask.SourceLineage{Key: "source-1"}}
-}
-
-func canonicalSubjectForConfiguredAdmin() listingtask.CanonicalSubject {
-	return listingtask.CanonicalSubject{TaskID: "task-1", TenantID: "tenant-1", OwnerUserID: "other-user", ProductKey: "product-1", SnapshotVersion: 1}
-}
-
-type tenantAdminCheckerStub struct{ allow bool }
-
-func (s tenantAdminCheckerStub) IsTenantAdmin(string, []string) bool { return s.allow }
-
-func newTestExecutor(subjects listingtask.CanonicalSubjectReader, catalogs snapshotReader) (*Executor, error) {
-	return NewExecutor(subjects, catalogs, tenantAdminCheckerStub{})
+func validPublished(version uint64) catalog.PublishedSnapshot {
+	return catalog.PublishedSnapshot{Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: "product-1"}, Version: version, PublicationID: "publication-1", Snapshot: catalog.ProductSnapshot{Title: "Bottle"}}
 }
 
 func schemaPrincipal() commercetool.Principal {
-	return commercetool.Principal{TenantID: "tenant-1", UserID: "user-1", Roles: []string{"listingkit_operator"}}
+	return commercetool.Principal{TenantID: "org-1", UserID: "user-1", Roles: []string{"listingkit_operator"}}
 }
 
-func invokeExecutor(t *testing.T, executor commercetool.Executor, inputTaskID, businessTaskID string, principal commercetool.Principal) (commercetool.Result, error) {
+func invokeExecutor(t *testing.T, executor commercetool.Executor, input Input, principal commercetool.Principal) (commercetool.Result, error) {
 	t.Helper()
 	definition := Definition()
 	registry, err := commercetool.NewRegistry(commercetool.Tool{Definition: definition, Executor: executor})
@@ -220,10 +207,10 @@ func invokeExecutor(t *testing.T, executor commercetool.Executor, inputTaskID, b
 	if err != nil {
 		t.Fatalf("Bind(): %v", err)
 	}
-	arguments, _ := json.Marshal(Input{TaskID: inputTaskID})
+	arguments, _ := json.Marshal(input)
 	return bound.Invoke(context.Background(), commercetool.Call{
 		Tool:      definition.Ref,
-		Metadata:  commercetool.CallMetadata{CallID: "call-1", AgentID: "test.agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: businessTaskID},
+		Metadata:  commercetool.CallMetadata{CallID: "call-1", AgentID: "test.agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: "correlation-only"},
 		Arguments: arguments,
 	})
 }
