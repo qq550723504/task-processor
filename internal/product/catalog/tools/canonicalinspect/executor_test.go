@@ -57,6 +57,29 @@ func TestParseCatalogVersionUsesPersistentInt64Domain(t *testing.T) {
 	}
 }
 
+func TestExecutorUsesUnicodeCodePointProductKeyLimit(t *testing.T) {
+	key128 := strings.Repeat("商", 128)
+	reader := &catalogReaderStub{published: catalog.PublishedSnapshot{
+		Identity: catalog.SnapshotIdentity{TenantID: "org-1", ProductKey: key128}, Version: 1,
+		PublicationID: "publication-unicode", Snapshot: catalog.ProductSnapshot{Title: "中文商品"},
+	}}
+	executor, _ := NewExecutor(reader)
+	if _, err := invokeExecutor(t, executor, Input{ProductKey: key128, CatalogVersion: "1"}, schemaPrincipal()); err != nil {
+		t.Fatalf("128-code-point ProductKey: %v", err)
+	}
+	if reader.identity.ProductKey != key128 {
+		t.Fatalf("reader ProductKey length = %d", len([]rune(reader.identity.ProductKey)))
+	}
+
+	_, err := invokeExecutor(t, executor, Input{ProductKey: strings.Repeat("商", 129), CatalogVersion: "1"}, schemaPrincipal())
+	if commercetool.CodeOf(err) != commercetool.ErrorInvalidInput {
+		t.Fatalf("129-code-point ProductKey code=%s error=%v", commercetool.CodeOf(err), err)
+	}
+	if reader.calls != 1 {
+		t.Fatalf("reader calls = %d, want only the valid request", reader.calls)
+	}
+}
+
 func TestExecutorMapsStableCatalogErrorsWithoutDetails(t *testing.T) {
 	tests := []struct {
 		name string

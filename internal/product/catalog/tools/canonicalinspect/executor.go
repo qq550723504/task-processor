@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"task-processor/internal/commercetool"
 	"task-processor/internal/product/catalog"
@@ -39,7 +40,7 @@ func (e *Executor) Execute(ctx context.Context, envelope commercetool.ExecutionE
 	}
 	productKey := strings.TrimSpace(input.ProductKey)
 	version, err := parseCatalogVersion(input.CatalogVersion)
-	if err != nil || productKey == "" || productKey != input.ProductKey || len(productKey) > 128 {
+	if err != nil || productKey == "" || productKey != input.ProductKey || utf8.RuneCountInString(productKey) > 128 {
 		return commercetool.ExecutionResult{}, invalidInput(err)
 	}
 

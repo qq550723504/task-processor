@@ -49,6 +49,7 @@ func TestCanonicalInspectPostgresExactBoundedReaderChain(t *testing.T) {
 	first := publishPostgresSnapshot(t, publisher, identity, "publication-v1", catalog.ProductSnapshot{Title: "Bottle v1"})
 	second := publishPostgresSnapshot(t, publisher, identity, "publication-v2", catalog.ProductSnapshot{Title: "Bottle v2"})
 	foreign := publishPostgresSnapshot(t, publisher, catalog.SnapshotIdentity{TenantID: "org-b", ProductKey: "product-1"}, "publication-org-b", catalog.ProductSnapshot{Title: "Organization B bottle"})
+	unicodeProduct := publishPostgresSnapshot(t, publisher, catalog.SnapshotIdentity{TenantID: "org-a", ProductKey: "商品-中文-001"}, "publication-unicode", catalog.ProductSnapshot{Title: "中文商品"})
 
 	// Arrange a sparse head, then let the Catalog Publisher own creation of the
 	// final >2^53 immutable version. This exercises PostgreSQL BIGINT and JSON
@@ -77,6 +78,7 @@ func TestCanonicalInspectPostgresExactBoundedReaderChain(t *testing.T) {
 	assertPostgresTitle(t, invokePostgresCanonical(t, invoker, request, first.Version, "exact-v1"), "Bottle v1", "1")
 	assertPostgresTitle(t, invokePostgresCanonical(t, invoker, request, second.Version, "exact-v2"), "Bottle v2", "2")
 	assertPostgresTitle(t, invokePostgresCanonical(t, invoker, request, high.Version, "exact-high"), "Bottle high", "9007199254740993")
+	assertPostgresTitle(t, invokePostgresCanonicalProduct(t, invoker, request, "商品-中文-001", unicodeProduct.Version, "unicode-product-key"), "中文商品", "1")
 	assertPostgresCode(t, invoker, request, 3, "gap-no-latest-fallback", commercetool.ErrorNotFound)
 
 	assertPostgresCode(t, invoker, request, outputOversize.Version, "output-oversize", commercetool.ErrorFailedPrecondition)
@@ -126,7 +128,7 @@ func TestCanonicalInspectPostgresExactBoundedReaderChain(t *testing.T) {
 	if stateAfterRead := postgresCatalogState(t, db); stateAfterRead != stateBeforeRead {
 		t.Fatalf("read invocation changed durable Catalog state\nbefore=%s\nafter=%s", stateBeforeRead, stateAfterRead)
 	}
-	assertPostgresAudits(t, audits.records, []commercetool.ErrorCode{"", "", "", commercetool.ErrorNotFound, commercetool.ErrorFailedPrecondition, commercetool.ErrorFailedPrecondition, commercetool.ErrorInternal, commercetool.ErrorIdentityIntegrity, "", commercetool.ErrorPermissionDenied, commercetool.ErrorIdentityIntegrity, "", "", commercetool.ErrorIdentityIntegrity, commercetool.ErrorIdentityIntegrity})
+	assertPostgresAudits(t, audits.records, []commercetool.ErrorCode{"", "", "", "", commercetool.ErrorNotFound, commercetool.ErrorFailedPrecondition, commercetool.ErrorFailedPrecondition, commercetool.ErrorInternal, commercetool.ErrorIdentityIntegrity, "", commercetool.ErrorPermissionDenied, commercetool.ErrorIdentityIntegrity, "", "", commercetool.ErrorIdentityIntegrity, commercetool.ErrorIdentityIntegrity})
 	assertPostgresAudits(t, restartedAudits.records, []commercetool.ErrorCode{""})
 }
 
@@ -260,8 +262,13 @@ func newPostgresCanonicalInvoker(t *testing.T, db *gorm.DB) (*canonicalinspect.I
 
 func invokePostgresCanonical(t *testing.T, invoker *canonicalinspect.Invoker, request commercetoolauth.OrganizationRequest, version uint64, callID string) commercetool.Result {
 	t.Helper()
+	return invokePostgresCanonicalProduct(t, invoker, request, "product-1", version, callID)
+}
+
+func invokePostgresCanonicalProduct(t *testing.T, invoker *canonicalinspect.Invoker, request commercetoolauth.OrganizationRequest, productKey string, version uint64, callID string) commercetool.Result {
+	t.Helper()
 	ctx := commercetoolauth.WithOrganizationRequest(context.Background(), request)
-	result, err := invoker.Invoke(ctx, commercetool.CallMetadata{CallID: callID, AgentID: "postgres.product-agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: "correlation-only"}, canonicalinspect.Input{ProductKey: "product-1", CatalogVersion: strconv.FormatUint(version, 10)})
+	result, err := invoker.Invoke(ctx, commercetool.CallMetadata{CallID: callID, AgentID: "postgres.product-agent", AgentVersion: "v1.0.0", AgentRunID: "run-1", BusinessTaskID: "correlation-only"}, canonicalinspect.Input{ProductKey: productKey, CatalogVersion: strconv.FormatUint(version, 10)})
 	if err != nil {
 		t.Fatalf("Invoke(%s): %v", callID, err)
 	}
