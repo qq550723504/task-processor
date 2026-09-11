@@ -48,7 +48,7 @@ func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationF
 			if err := sourceaccountstore.VerifyRuntimePermissions(ctx, db); err != nil {
 				return nil, err
 			}
-			return buildSourceAccountModule(db, authorizer)
+			return buildSourceAccountModule(ctx, db, authorizer)
 		},
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)

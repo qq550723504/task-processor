@@ -20,15 +20,17 @@ var fingerprintPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type Repository struct{ db *gorm.DB }
 
-func NewRepository(db *gorm.DB) (*Repository, error) {
-	if db == nil {
+func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
+	if ctx == nil || db == nil {
 		return nil, sourceaccountregistry.ErrUnavailable
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sourceaccountregistry.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, sourceaccountregistry.Timeout)
 	defer cancel()
 	if err := VerifySchema(ctx, db); err != nil {
-		return nil, fmt.Errorf("%w: %v", sourceaccountregistry.ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", sourceaccountregistry.ErrUnavailable, err)
 	}
+	// The constructor context limits schema admission only. Requests supply
+	// their own contexts; do not retain a canceled startup context on the pool.
 	return &Repository{db: db}, nil
 }
 

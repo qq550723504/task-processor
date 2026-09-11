@@ -46,7 +46,7 @@ func TestSourceAccountRegistryPostgresBusinessChain(t *testing.T) {
 
 	now := time.Date(2026, 9, 9, 1, 2, 3, 123456789, time.UTC)
 	wantTimestamp := now.Truncate(time.Microsecond)
-	repository, err := registrystore.NewRepository(db)
+	repository, err := registrystore.NewRepository(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestSourceAccountRegistrySchemaDriftFailsReadOnlyConstruction(t *testing.T)
 	if err := db.Exec(`ALTER TABLE public.source_account_resources ADD CONSTRAINT source_account_resources_unexpected_check CHECK (display_name <> 'blocked') NOT VALID`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registrystore.NewRepository(db); !errors.Is(err, registry.ErrUnavailable) {
+	if _, err := registrystore.NewRepository(ctx, db); !errors.Is(err, registry.ErrUnavailable) {
 		t.Fatalf("NewRepository() NOT VALID drift error = %v", err)
 	}
 	if err := db.Exec(`ALTER TABLE public.source_account_resources DROP CONSTRAINT source_account_resources_unexpected_check`).Error; err != nil {
@@ -340,13 +340,13 @@ func TestSourceAccountRegistrySchemaDriftFailsReadOnlyConstruction(t *testing.T)
 	if err := db.Exec(`ALTER TABLE public.source_account_resources DROP CONSTRAINT source_account_resources_platform_check`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registrystore.NewRepository(db); !errors.Is(err, registry.ErrUnavailable) {
+	if _, err := registrystore.NewRepository(ctx, db); !errors.Is(err, registry.ErrUnavailable) {
 		t.Fatalf("NewRepository() drift error = %v", err)
 	}
 	if err := db.Exec(`ALTER TABLE public.source_account_resources ADD CONSTRAINT source_account_resources_platform_check CHECK (platform <> '')`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registrystore.NewRepository(db); !errors.Is(err, registry.ErrUnavailable) {
+	if _, err := registrystore.NewRepository(ctx, db); !errors.Is(err, registry.ErrUnavailable) {
 		t.Fatalf("NewRepository() same-name constraint drift error = %v", err)
 	}
 	if err := sourceaccountregistry.Migrate(ctx, db); err == nil {
@@ -488,7 +488,7 @@ func registryDSNWithDefaultIsolation(t *testing.T, dsn, isolation string) string
 
 func newRegistryService(t *testing.T, db *gorm.DB, now time.Time) *registry.Service {
 	t.Helper()
-	repository, err := registrystore.NewRepository(db)
+	repository, err := registrystore.NewRepository(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
