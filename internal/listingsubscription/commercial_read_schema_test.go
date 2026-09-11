@@ -3,6 +3,7 @@ package listingsubscription
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -17,8 +18,11 @@ func TestCommercialPermissionQueryRejectsSourceAccountPrivileges(t *testing.T) {
 		"public.source_account_resources",
 		"public.source_account_operations",
 	} {
-		if !strings.Contains(commercialReadPermissionQuery, table) {
-			t.Fatalf("commercialReadPermissionQuery does not inspect cross-owner table %s", table)
+		for _, privilege := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES"} {
+			fragment := fmt.Sprintf("has_table_privilege(current_user, '%s', '%s')", table, privilege)
+			if !strings.Contains(commercialReadPermissionQuery, fragment) {
+				t.Fatalf("commercialReadPermissionQuery does not reject cross-owner %s on %s", privilege, table)
+			}
 		}
 	}
 }

@@ -249,10 +249,10 @@ func TestIssue357SourceAccountPermission(t *testing.T) {
 	statements := map[string]string{
 		"revoke":                   "REVOKE INSERT ON TABLE public.source_account_resources FROM source_account_runtime",
 		"restore":                  "GRANT INSERT ON TABLE public.source_account_resources TO source_account_runtime",
-		"source-cross-grant":       "GRANT SELECT ON TABLE public.saas_plans TO source_account_runtime",
-		"source-cross-restore":     "REVOKE SELECT ON TABLE public.saas_plans FROM source_account_runtime",
-		"commercial-cross-grant":   "GRANT SELECT ON TABLE public.source_account_resources TO commercial_reader",
-		"commercial-cross-restore": "REVOKE SELECT ON TABLE public.source_account_resources FROM commercial_reader",
+		"source-cross-grant":       "GRANT TRUNCATE ON TABLE public.saas_plans TO source_account_runtime",
+		"source-cross-restore":     "REVOKE TRUNCATE ON TABLE public.saas_plans FROM source_account_runtime",
+		"commercial-cross-grant":   "GRANT TRUNCATE ON TABLE public.source_account_resources TO commercial_reader",
+		"commercial-cross-restore": "REVOKE TRUNCATE ON TABLE public.source_account_resources FROM commercial_reader",
 	}
 	require.NoError(t, db.Exec(statements[c.PermissionAction]).Error)
 }

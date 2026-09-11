@@ -2,6 +2,7 @@ package sourceaccountregistry
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,8 +19,11 @@ func TestRuntimePermissionQueryRejectsCrossOwnerPrivileges(t *testing.T) {
 		"public.saas_tenant_entitlements",
 		"public.saas_usage_buckets",
 	} {
-		if !strings.Contains(runtimePermissionQuery, table) {
-			t.Fatalf("runtimePermissionQuery does not inspect cross-owner table %s", table)
+		for _, privilege := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES"} {
+			fragment := fmt.Sprintf("has_table_privilege(current_user, '%s', '%s')", table, privilege)
+			if !strings.Contains(runtimePermissionQuery, fragment) {
+				t.Fatalf("runtimePermissionQuery does not reject cross-owner %s on %s", privilege, table)
+			}
 		}
 	}
 }
