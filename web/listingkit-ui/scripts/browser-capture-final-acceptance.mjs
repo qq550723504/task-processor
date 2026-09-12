@@ -96,7 +96,7 @@ try {
   container = await run("docker", ["run", "-d", "--name", containerName, "--label", `com.shuomi.task=${task}`, "--label", `com.shuomi.issue399.run=${runId}`, "-e", `POSTGRES_PASSWORD=${password}`, "-e", "POSTGRES_USER=issue398_owner", "-e", "POSTGRES_DB=postgres", "-p", "127.0.0.1::5432", "postgres:16-alpine"]);
   await ownedPG();
   const mapping = await run("docker", ["port", container, "5432/tcp"]); assert.match(mapping, /^127\.0\.0\.1:\d+$/); pgPort = Number(mapping.split(":")[1]);
-  await until(async () => { await run("docker", ["exec", container, "pg_isready", "-U", "issue398_owner", "-d", "postgres"]); return true; }, "OWNED_PG", 30_000);
+  await until(async () => { await run("docker", ["exec", container, "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "issue398_owner", "-d", "postgres"]); return true; }, "OWNED_PG", 30_000);
   stage = "go-fixture";
   const go = await start(binary, ["-test.run=^TestBrowserCaptureWebFixture$", "-test.timeout=13m"], { ISSUE399_FIXTURE_DIR: dir, ISSUE398_TEST_DSN: `host=127.0.0.1 port=${pgPort} user=issue398_owner password=${password} dbname=postgres sslmode=disable` }, join(repo, "internal/app/httpapi"));
   const goInfo = await until(() => privateJSON("go.json"), "GO_BROWSER", 45_000);
