@@ -69,6 +69,12 @@ func TestBrowserCaptureWebFixture(t *testing.T) {
 				handler = f.browserServer(t).Config.Handler
 				mu.Unlock()
 				w.WriteHeader(204)
+			case "/__issue399/read-write":
+				pool, err := f.db.DB()
+				require.NoError(t, err)
+				pool.SetMaxOpenConns(1)
+				require.NoError(t, f.db.Exec("SET default_transaction_read_only = off").Error)
+				w.WriteHeader(http.StatusNoContent)
 			case "/__issue399/read-only":
 				pool, err := f.db.DB()
 				if err != nil {

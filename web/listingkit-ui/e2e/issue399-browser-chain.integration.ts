@@ -87,3 +87,6 @@ async function browserRecovery(key:string) {
     const after=await control("observe");expect(after.capturePosts).toBe(before.capturePosts);expect(after.counts).toEqual(before.counts);expect(after.stagingDigest).toBe(before.stagingDigest);
   } finally {await context.close();await browser.close();}
 }
+import { registerFrozenExtensionCombination } from "./issue399-browser-extension.integration";
+
+registerFrozenExtensionCombination();
