@@ -42,8 +42,12 @@ in breadcrumbs without adding a sidebar level.
 #410/#411/#412 retain their leaf ownership. Pending nodes remain unavailable
 until an actual leaf candidate is coordinated; a link is not an assertion that
 a provider or business capability is enabled. Global application-frame,
-workspace-app-shell, BFF catch-all, authentication and runtime composition are
-outside this change's write scope.
+BFF catch-all, authentication and runtime composition are outside this change's
+write scope. After the Browser writer released the shared file, PM separately
+authorized the exact `/workbench/account` alias in `workspace-app-shell` so its
+enterprise redirect cannot race the root's fixed personal-profile redirect.
+Only root and exact profile use that exception; authentication failures still
+deny access, and enterprise descendants/unknown paths retain their gates.
 
 ## Verification
 
@@ -52,6 +56,11 @@ empty state, absent expired-session login recovery, and collapsed selected
 navigation after route change. The shared source-account breadcrumb adds a
 separate failing assertion. Existing cancellation, late success/failure,
 identity changes, enterprise isolation and manual retry tests are retained.
+The real browser first reproduced the no-grants root redirect failure; five
+Shell tests reproduced its loading/selection/grant-error siblings before the
+one-line predicate fix. Permanent browser checks cover root and breadcrumb
+returns for identities with and without enterprise grants. Returning to an
+earlier collapsed route also has a regression test.
 
 Use the existing task-owned `scripts/account-fixture.mjs` and
 `scripts/account-browser-verification.mjs` described in `issue348-account-ui.md`.
