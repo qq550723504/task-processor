@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,11 +22,21 @@ import (
 // Reuse the acquisition fixture's new isolated database, runtime role and
 // external identity/grant doubles. All mounted route middleware, live access,
 // Browser service, staging, SRC-1 and Catalog persistence remain production code.
+type browserFixtureGrants struct{ *titleGrants }
+
+func (g browserFixtureGrants) Load(ctx context.Context, source workbenchcontext.GrantSource, request workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
+	result, err := g.titleGrants.Load(ctx, source, request)
+	for i := range result.Grants {
+		result.Grants[i].OrganizationName = "Fixture " + result.Grants[i].OrganizationID
+	}
+	return result, err
+}
+
 func (f *acquisitionHTTPFixture) browserServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	deps := newRouteAuthDependencies()
 	deps.workbenchVerifier = titleVerifier{}
-	deps.organizationResolver = workbenchcontext.NewResolver(f.grants, "project", "v1", nil)
+	deps.organizationResolver = workbenchcontext.NewResolver(browserFixtureGrants{f.grants}, "project", "v1", nil)
 	factories := currentApplicationFactories{
 		buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
 			return workbenchContextBuildResult{module: workbenchcontexthttpapi.NewModule(workbenchcontexthttpapi.NewHandler()), authDependencies: &deps}, nil
@@ -55,6 +66,20 @@ func TestBrowserCaptureMountedFullChainExactReceiptAndLiveAuthorization(t *testi
 	server := f.browserServer(t)
 	body := string(browserHTTPFixture(t))
 	key := uuid.NewString()
+	status, rawContext, err := acquisitionHTTPRequest(server, "GET", "/api/v1/workbench/context", "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, status)
+	var projection struct {
+		Organizations []struct {
+			Name string `json:"name"`
+		} `json:"organizations"`
+	}
+	require.NoError(t, json.Unmarshal(rawContext, &projection))
+	require.Len(t, projection.Organizations, 2)
+	for _, organization := range projection.Organizations {
+		require.NotEmpty(t, organization.Name, "the real Web context contract requires a provider display name")
+	}
+	contextReads := f.grants.cached.Load()
 	for _, actor := range []string{"", "bad", "viewer"} {
 		status := http.StatusUnauthorized
 		if actor == "viewer" {
@@ -88,7 +113,7 @@ func TestBrowserCaptureMountedFullChainExactReceiptAndLiveAuthorization(t *testi
 	acquisitionHTTPCall(t, server, "GET", browserCaptureBase+"/by-key/"+key, "operator", "B", "", "", 403)
 	acquisitionHTTPCall(t, server, "POST", browserCaptureBase+"/verify", "operator", "B", key, body, 403)
 	acquisitionHTTPCall(t, server, "POST", browserCaptureBase, "operator", "B", uuid.NewString(), body, 403)
-	require.Zero(t, f.grants.cached.Load())
+	require.Equal(t, contextReads, f.grants.cached.Load(), "Browser routes must not use the context-read cache")
 	require.EqualValues(t, 1, f.fetches.Load())
 	for _, table := range []string{"product_acquisition_operations", "product_snapshot_versions", "product_source_publications", "product_source_publication_receipts"} {
 		var count int64
