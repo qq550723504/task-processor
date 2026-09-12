@@ -30,6 +30,9 @@ type Invoker struct {
 
 // NewInvoker binds only this Tool. It deliberately replaces any caller-supplied
 // cached PrincipalResolver with the explicit fresh principal contract.
+// Both exact readers must enforce MaxSnapshotBytes in the persistence owner
+// before materializing payloads: use Catalog's NewBoundedSnapshotReader and
+// Asset's NewBoundedApprovedInventoryReader in the integration composition.
 func NewInvoker(products catalog.VersionedSnapshotReader, assets asset.ApprovedInventoryReader, fresh FreshPrincipalResolver,
 	agent commercetool.AgentDefinition, deps commercetool.InvocationDependencies) (*Invoker, error) {
 	if nilInterface(fresh) {

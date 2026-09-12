@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -86,8 +87,24 @@ func TestToolInvokeFreshAuthorizationExactPostgresInputDiagnostics(t *testing.T)
 	p3 := publish(catalog.ProductSnapshot{Title: "Corrupted later"})
 	p4 := publish(catalog.ProductSnapshot{Title: "Oversize", Description: strings.Repeat("x", tool.MaxSnapshotBytes)})
 	p5 := publish(catalog.ProductSnapshot{Title: "Corrupt inventory"})
+	p6 := publish(catalog.ProductSnapshot{Title: "Oversize single asset"})
+	p7 := publish(catalog.ProductSnapshot{Title: "Oversize asset set"})
 	assets, err := assetstore.NewRepository(db)
 	require.NoError(t, err)
+	for _, c := range []struct {
+		version     uint64
+		count, size int
+	}{{p6.Version, 1, tool.MaxSnapshotBytes + 1}, {p7.Version, 3, tool.MaxSnapshotBytes / 2}} {
+		items := make([]asset.ApprovedAsset, c.count)
+		for index := range items {
+			items[index] = asset.ApprovedAsset{ID: fmt.Sprintf("large-%d-%d", c.version, index), RunID: "run", PlanRevision: 1, SlotID: fmt.Sprintf("slot-%d", index), Attempt: 1, Role: asset.RoleMain, URL: "https://controlled.invalid/" + strings.Repeat("x", c.size)}
+		}
+		_, err = assets.CommitApproval(ctx, asset.ApprovalCommit{TenantID: id.TenantID, ProductKey: id.ProductKey, TargetPlatform: "shein", SourceSnapshotVersion: c.version, ActionID: fmt.Sprintf("large-%d", c.version), Assets: items})
+		require.NoError(t, err)
+		// Retain the size while making decoding invalid. The size precheck must
+		// win before the malformed row is decoded (which would return internal).
+		require.NoError(t, db.Exec("UPDATE product_approved_assets SET payload_json = ? WHERE asset_id = ?", []byte(`{"id":"`+strings.Repeat("x", c.size)+`"}`), items[0].ID).Error)
+	}
 	for _, version := range []uint64{p1.Version, p5.Version} {
 		_, err = assets.CommitApproval(ctx, asset.ApprovalCommit{TenantID: id.TenantID, ProductKey: id.ProductKey, TargetPlatform: "shein", SourceSnapshotVersion: version,
 			ActionID: "approval-" + strconv.FormatUint(version, 10), Assets: []asset.ApprovedAsset{{ID: "asset-" + strconv.FormatUint(version, 10), RunID: "run", PlanRevision: 1, SlotID: "main", Attempt: 1, Role: asset.RoleMain, URL: "https://controlled.invalid/main.jpg"}}})
@@ -104,7 +121,7 @@ func TestToolInvokeFreshAuthorizationExactPostgresInputDiagnostics(t *testing.T)
 		require.NoError(t, tx.Exec("SET TRANSACTION READ ONLY").Error)
 		products, readErr := catalogstore.NewBoundedSnapshotReader(tx, tool.MaxSnapshotBytes)
 		require.NoError(t, readErr)
-		assetReader, readErr := assetstore.NewRepository(tx)
+		assetReader, readErr := assetstore.NewBoundedApprovedInventoryReader(tx, tool.MaxSnapshotBytes)
 		require.NoError(t, readErr)
 		now := time.Now()
 		provider := &liveProvider{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-a", ProjectID: "project", Roles: []string{"listingkit_operator"}}, {OrganizationID: "org-b", ProjectID: "project", Roles: []string{"listingkit_operator"}}}}
@@ -149,7 +166,7 @@ func TestToolInvokeFreshAuthorizationExactPostgresInputDiagnostics(t *testing.T)
 		for _, c := range []struct {
 			version uint64
 			code    commercetool.ErrorCode
-		}{{99, commercetool.ErrorNotFound}, {p3.Version, commercetool.ErrorInternal}, {p4.Version, commercetool.ErrorFailedPrecondition}, {p5.Version, commercetool.ErrorInternal}} {
+		}{{99, commercetool.ErrorNotFound}, {p3.Version, commercetool.ErrorInternal}, {p4.Version, commercetool.ErrorFailedPrecondition}, {p5.Version, commercetool.ErrorInternal}, {p6.Version, commercetool.ErrorFailedPrecondition}, {p7.Version, commercetool.ErrorFailedPrecondition}} {
 			failed, invokeErr := invoke(c.version)
 			require.Equal(t, c.code, commercetool.CodeOf(invokeErr))
 			require.Empty(t, failed.Output)
@@ -222,7 +239,7 @@ func TestReadinessAdmissionGapExactProductAssetsRemainMarketplaceBlocked(t *test
 		exact, readErr := reader.GetSnapshot(ctx, identity, published.Version)
 		require.NoError(t, readErr)
 		require.Equal(t, published, exact)
-		assetReader, readErr := assetstore.NewRepository(tx)
+		assetReader, readErr := assetstore.NewBoundedApprovedInventoryReader(tx, tool.MaxSnapshotBytes)
 		require.NoError(t, readErr)
 		scope := asset.InventoryScope{TenantID: identity.TenantID, ProductKey: identity.ProductKey,
 			TargetPlatform: "shein", SourceSnapshotVersion: published.Version}
