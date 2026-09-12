@@ -12,6 +12,7 @@ describe("Figma Console navigation contract", () => {
     expect(findConsoleRoute("/workbench/shein-records/123/diagnostic")?.trail.map((item) => item.label)).toEqual(["SHEIN 资料诊断"]);
   });
   it("distinguishes unimplemented functions from a live page whose BFF still authorizes", () => {
+    expect(findConsoleRoute("/workbench/account")?.node.availability).toBe("connected");
     expect(findConsoleRoute("/workbench/ai/chat")?.node.availability).toBe("unavailable");
     expect(findConsoleRoute("/workbench/stores")?.node.availability).toBe("connected");
     expect(findConsoleRoute("/workbench/store-products")?.node.availability).toBe("unavailable");

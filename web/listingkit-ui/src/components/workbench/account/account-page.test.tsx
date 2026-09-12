@@ -17,6 +17,28 @@ function mount(page: "profile" | "organization" = "profile", expectedUserId = "u
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"] }, roles: ["viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("AccountPage read-only projection", () => {
+  it("offers an account return link in the breadcrumb", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(profile))); mount();
+    expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "我的账户" })).toHaveAttribute("href", "/workbench/account");
+  });
+  it("distinguishes undisclosed optional claims from a failed read", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...profile, displayName: null, phoneNumber: null, phoneNumberVerified: null }))); mount();
+    expect(await screen.findByRole("heading", { name: "暂未提供个人资料" })).toBeVisible();
+    expect(screen.getByText("账户 ID：u1")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("offers login recovery for an expired profile session", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 }))); mount();
+    expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/login?returnTo=%2Fworkbench%2Faccount%2Fprofile");
+  });
+  it("retries a dependency failure only after user action and rereads facts", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));
+    vi.stubGlobal("fetch", fetcher); mount();
+    expect(await screen.findByRole("alert")).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "刷新资料" }));
+    expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it.each(["no-org", "selection", "grant-error", "loading"])("reads the actual profile client independent of %s", async mode => {
     state.context.effectiveOrganization = null; state.context.user = null;
     state.context.selectionRequired = mode === "selection"; state.context.isLoading = mode === "loading";

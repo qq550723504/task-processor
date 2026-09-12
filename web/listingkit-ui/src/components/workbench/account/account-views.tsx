@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import type { AccountOrganization, AccountProfile } from "@/lib/api/account";
 import styles from "./account.module.css";
+import { ConsoleState } from "../console/console-page";
 
 const provided = (value: string | null) => value?.trim() || "未提供";
 const verification = (value: boolean | null) => value === true ? "已验证" : value === false ? "未验证" : "未提供";
@@ -16,7 +17,8 @@ function Provenance({ data }: { data: AccountProfile | AccountOrganization }) {
   return <details className={styles.provenance}><summary>资料来源与读取时间</summary><p>来源：{data.source === "zitadel_userinfo" ? "ZITADEL 账户资料" : "ZITADEL 项目授权"}</p><p>读取时间：<time dateTime={data.readAt}>{data.readAt}</time></p>{"authorizationMaxAgeSeconds" in data ? <p>授权缓存最长 60 秒；读取时间不代表授权刷新时间。</p> : null}</details>;
 }
 export function ProfileView({ data }: { data: AccountProfile }) {
-  return <><Card className={styles.identity}><div><h2>{provided(data.displayName)}</h2><p>账户 ID：{data.userId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div><span className={styles.badge}>账户资料 · 只读</span></Card>
+  return <><Card className={styles.identity}><div><h2>{data.displayName?.trim() || "当前账户"}</h2><p>账户 ID：{data.userId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div><span className={styles.badge}>账户资料 · 只读</span></Card>
+    {![data.displayName, data.email, data.phoneNumber].some(value => value?.trim()) ? <ConsoleState kind="empty" title="暂未提供个人资料">登录服务本次未提供显示名称、手机号码或电子邮箱。你仍可查看账户标识并刷新资料。</ConsoleState> : null}
     <div className={styles.profileGrid}><div className={styles.profileMain}>
       <Panel title="账户设置" description="个人身份资料由登录服务提供"><Fields items={[["显示名称", provided(data.displayName)], ["手机号码", provided(data.phoneNumber)], ["电子邮箱", provided(data.email)], ["所在地区", "未提供"], ["注册时间", "未提供"]]} /></Panel>
       <Panel title="账号状态" className={styles.status}><Fields items={[["手机验证", verification(data.phoneNumberVerified)], ["邮箱验证", verification(data.emailVerified)], ["登录密码", "未提供"]]} /></Panel>

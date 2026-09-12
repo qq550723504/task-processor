@@ -11,14 +11,16 @@ export function ConsoleNavigation({ pathname, ariaLabel, onNavigate }: { pathnam
 
 function NavBranch({ node, pathname, trail, depth, onNavigate }: { node: ConsoleNavNode; pathname: string; trail: readonly string[]; depth: number; onNavigate?: () => void }) {
   const active = trail.includes(node.href);
-  const [expanded, setExpanded] = useState(active);
+  const [disclosure, setDisclosure] = useState({ pathname, expanded: active });
+  // A route transition reveals its selected branch; manual collapse lasts for that route.
+  const expanded = disclosure.pathname === pathname ? disclosure.expanded : active;
   const id = useId();
   return <li className={`console-nav-level-${depth}`}>
     <div className="console-nav-row" data-active={active || undefined}>
       <Link href={node.href} prefetch={false} aria-current={pathname === node.href || (!node.children && active) ? "page" : undefined} onClick={onNavigate} title={node.availability === "unavailable" ? `${node.label}：业务暂未启用` : node.label}>
         <span className="console-nav-dot" aria-hidden="true" /><span>{node.label}</span>
       </Link>
-      {node.children ? <button type="button" aria-label={`${expanded ? "收起" : "展开"}${node.label}`} aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded((value) => !value)}>{expanded ? "⌃" : "⌄"}</button> : null}
+      {node.children ? <button type="button" aria-label={`${expanded ? "收起" : "展开"}${node.label}`} aria-expanded={expanded} aria-controls={id} onClick={() => setDisclosure({ pathname, expanded: !expanded })}>{expanded ? "⌃" : "⌄"}</button> : null}
     </div>
     {node.children && expanded ? <ul id={id}>{node.children.map((child) => <NavBranch key={child.href} node={child} pathname={pathname} trail={trail} depth={depth + 1} onNavigate={onNavigate} />)}</ul> : null}
   </li>;
