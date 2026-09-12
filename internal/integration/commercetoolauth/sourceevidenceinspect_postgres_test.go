@@ -1,6 +1,6 @@
 //go:build integration
 
-package sourceevidenceinspect_test
+package commercetoolauth_test
 
 import (
 	"context"

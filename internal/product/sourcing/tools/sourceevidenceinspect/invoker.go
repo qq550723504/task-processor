@@ -48,6 +48,10 @@ func (i *Invoker) Invoke(ctx context.Context, metadata commercetool.CallMetadata
 	if i == nil || i.tools == nil {
 		return commercetool.Result{}, commercetool.NewError(commercetool.ErrorInternal, "source evidence tool is unavailable", nil)
 	}
+	// Registry starts its execution timeout after preflight. The tool boundary
+	// must also bound current identity/permission resolution before that point.
+	ctx, cancel := context.WithTimeout(ctx, Definition().Timeout.Duration)
+	defer cancel()
 	raw, err := json.Marshal(input)
 	if err != nil {
 		return commercetool.Result{}, commercetool.NewError(commercetool.ErrorInvalidInput, "source evidence input is invalid", err)
