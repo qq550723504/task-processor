@@ -53,6 +53,7 @@ func TestAcquisitionSchemaDriftFailsClosed(t *testing.T) {
 		"ALTER TABLE product_acquisition_operations DROP CONSTRAINT product_acquisition_operations_pkey",
 		"ALTER TABLE product_acquisition_operations DROP CONSTRAINT acq_command_bound; ALTER TABLE product_acquisition_operations ADD CONSTRAINT acq_command_bound CHECK(true)",
 		"ALTER TABLE product_acquisition_operations ALTER COLUMN fingerprint TYPE text",
+		"ALTER TABLE product_acquisition_operations DROP CONSTRAINT acq_state_command; ALTER TABLE product_acquisition_operations ADD CONSTRAINT acq_state_command CHECK(true)",
 	} {
 		t.Run(change, func(t *testing.T) {
 			db := isolatedDatabase(t)

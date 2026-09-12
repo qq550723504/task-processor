@@ -62,6 +62,7 @@ func TestPublicAcquisitionHTTPFixtureProducesExactEvidence(t *testing.T) {
 	require.Equal(t, "Stainless steel bottle fixture", *evidence.Description)
 	require.Equal(t, "steel", evidence.Attributes[0].Value)
 	require.Equal(t, "12345678901234567890", *evidence.Variants[0].SourceID)
+	require.Nil(t, evidence.Variants[0].SKU, "source variant identity is not evidence of a seller SKU")
 	require.Equal(t, "12.50", evidence.Variants[0].Price.Amount)
 	require.Nil(t, evidence.Variants[0].Price.Currency, "never infer CNY")
 	require.Equal(t, "2", *evidence.PriceFacts[0].MinQuantity)
@@ -69,6 +70,8 @@ func TestPublicAcquisitionHTTPFixtureProducesExactEvidence(t *testing.T) {
 	envelope, err := sourcing.MapAcquisitionEvidence(source, evidence, "public_http", "fixture-operation")
 	require.NoError(t, err)
 	require.Len(t, envelope.AssetCandidates, 1)
+	require.Empty(t, envelope.ProductCandidate.Variants[0].SKU)
+	require.Contains(t, envelope.MissingFacts, sourcing.MissingFact{Field: "variants.0.sku", Reason: "source SKU absent"})
 }
 
 func TestPublicAcquisitionRejectsUntrustedHTTPAndPageShapes(t *testing.T) {

@@ -46,6 +46,9 @@ func TestAcquisitionRuntimePermissionsRejectEscalationAndMissingPrivileges(t *te
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	require.NoError(t, acquisitionpersistence.VerifyRuntimePermissions(ctx, runtimeDB))
 	require.Error(t, acquisitionpersistence.VerifyRuntimePermissions(ctx, db), "owner role is not a runtime")
+	var checks []struct{ Table, Name, Definition string }
+	require.NoError(t, db.Raw("SELECT conrelid::regclass::text AS table,conname AS name,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace='public'::regnamespace AND contype='c' ORDER BY conname").Scan(&checks).Error)
+	t.Logf("initializer schema check contract: %+v", checks)
 	tests := []struct{ name, grant, revoke string }{
 		{"delete", "GRANT DELETE ON product_acquisition_operations TO source_acquisition_runtime", "REVOKE DELETE ON product_acquisition_operations FROM source_acquisition_runtime"},
 		{"column_update_on_evidence", "GRANT UPDATE(envelope_hash) ON product_source_publications TO source_acquisition_runtime", "REVOKE UPDATE(envelope_hash) ON product_source_publications FROM source_acquisition_runtime"},
@@ -53,13 +56,21 @@ func TestAcquisitionRuntimePermissionsRejectEscalationAndMissingPrivileges(t *te
 		{"schema_create", "GRANT CREATE ON SCHEMA public TO source_acquisition_runtime", "REVOKE CREATE ON SCHEMA public FROM source_acquisition_runtime"},
 		{"database_temp", "GRANT TEMPORARY ON DATABASE " + name + " TO source_acquisition_runtime", "REVOKE TEMPORARY ON DATABASE " + name + " FROM source_acquisition_runtime"},
 		{"missing_insert", "REVOKE INSERT ON product_source_publication_receipts FROM source_acquisition_runtime", "GRANT INSERT ON product_source_publication_receipts TO source_acquisition_runtime"},
+		{"heads_column_drift", "ALTER TABLE product_snapshot_heads RENAME COLUMN current_version TO wrong_version", "ALTER TABLE product_snapshot_heads RENAME COLUMN wrong_version TO current_version"},
+		{"receipt_column_drift", "ALTER TABLE product_source_publication_receipts RENAME COLUMN input_hash TO wrong_hash", "ALTER TABLE product_source_publication_receipts RENAME COLUMN wrong_hash TO input_hash"},
+		{"version_type_drift", "ALTER TABLE product_snapshot_versions ALTER COLUMN payload_hash TYPE text", "ALTER TABLE product_snapshot_versions ALTER COLUMN payload_hash TYPE varchar(64)"},
+		{"version_primary_key_drift", "ALTER TABLE product_snapshot_versions DROP CONSTRAINT product_snapshot_versions_pkey", "ALTER TABLE product_snapshot_versions ADD PRIMARY KEY(tenant_id,product_key,version)"},
+		{"publication_unique_drift", "DROP INDEX ux_product_snapshot_publication", "CREATE UNIQUE INDEX ux_product_snapshot_publication ON product_snapshot_versions(tenant_id,product_key,publication_id)"},
+		{"source_size_constraint_drift", "ALTER TABLE product_source_publications DROP CONSTRAINT ck_source_publication_envelope_size; ALTER TABLE product_source_publications ADD CONSTRAINT ck_source_publication_envelope_size CHECK(true)", "ALTER TABLE product_source_publications DROP CONSTRAINT ck_source_publication_envelope_size; ALTER TABLE product_source_publications ADD CONSTRAINT ck_source_publication_envelope_size CHECK(octet_length(envelope_json) BETWEEN 1 AND 2097152)"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, db.Exec(tc.grant).Error)
+			defer func() {
+				require.NoError(t, db.Exec(tc.revoke).Error)
+				require.NoError(t, acquisitionpersistence.VerifyRuntimePermissions(ctx, runtimeDB))
+			}()
 			require.Error(t, acquisitionpersistence.VerifyRuntimePermissions(ctx, runtimeDB))
-			require.NoError(t, db.Exec(tc.revoke).Error)
-			require.NoError(t, acquisitionpersistence.VerifyRuntimePermissions(ctx, runtimeDB))
 		})
 	}
 	require.NoError(t, db.Exec("CREATE TABLE public.unrelated_secret(value text)").Error)

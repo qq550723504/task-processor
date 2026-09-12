@@ -86,12 +86,13 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	var definitions []struct{ Name, Definition string }
-	if err := db.WithContext(ctx).Raw("SELECT conname AS name,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND conname IN ('acq_fence_positive','acq_command_bound')").Scan(&definitions).Error; err != nil {
+	if err := db.WithContext(ctx).Raw("SELECT conname AS name,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND conname IN ('acq_fence_positive','acq_command_bound','acq_state_command')").Scan(&definitions).Error; err != nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	expectedDefinitions := map[string]string{
 		"acq_fence_positive": "CHECK ((fence > 0))",
 		"acq_command_bound":  "CHECK (((command IS NULL) OR ((octet_length(command) >= 1) AND (octet_length(command) <= 2097152))))",
+		"acq_state_command":  `CHECK (((((state)::text = 'acquiring'::text) AND (command IS NULL) AND ((command_hash)::text = ''::text)) OR (((state)::text = ANY ((ARRAY['prepared'::character varying, 'publishing'::character varying, 'published'::character varying])::text[])) AND (command IS NOT NULL) AND (length((command_hash)::text) = 64)) OR (((state)::text = 'failed'::text) AND (((command IS NULL) AND ((command_hash)::text = ''::text)) OR ((command IS NOT NULL) AND (length((command_hash)::text) = 64))))))`,
 	}
 	for _, definition := range definitions {
 		if expectedDefinitions[definition.Name] != definition.Definition {

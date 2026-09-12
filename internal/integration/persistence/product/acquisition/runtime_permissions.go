@@ -10,6 +10,52 @@ import (
 
 const RuntimeRole = "source_acquisition_runtime"
 
+// Read-only readiness for the existing SRC-1/Catalog schema consumed by this
+// module. This is not a schema installer or another owner of publication facts.
+// Required columns, publication identities and bounds must exist before ingress.
+const publicationSchemaQuery = `WITH shared(name,kind,required) AS (VALUES
+ ('organization_id','character varying(128)',true),('publication_id','character varying(128)',true),
+ ('input_hash','character varying(64)',true),('producer_kind','character varying(128)',true),
+ ('producer_version','character varying(128)',true),('product_key','character varying(128)',true),
+ ('expected_base_version','bigint',false),('catalog_version','bigint',true),
+ ('catalog_publication_id','character varying(128)',true),('envelope_hash','character varying(64)',true),
+ ('snapshot_hash','character varying(64)',true),('actor_id','character varying(128)',true),
+ ('published_at','timestamp with time zone',true)),
+ expected(table_name,name,kind,required) AS (
+ SELECT t.table_name,s.* FROM (VALUES('product_source_publications'),('product_source_publication_receipts')) t(table_name) CROSS JOIN shared s
+ UNION ALL VALUES
+ ('product_source_publications','envelope_json','bytea',true),('product_source_publications','snapshot_json','bytea',true),
+ ('product_snapshot_versions','tenant_id','character varying(128)',true),('product_snapshot_versions','product_key','character varying(128)',true),
+ ('product_snapshot_versions','version','bigint',true),('product_snapshot_versions','publication_id','character varying(128)',true),
+ ('product_snapshot_versions','payload_hash','character varying(64)',true),('product_snapshot_versions','snapshot_json','json',true),
+ ('product_snapshot_heads','tenant_id','character varying(128)',true),('product_snapshot_heads','product_key','character varying(128)',true),
+ ('product_snapshot_heads','current_version','bigint',true),('product_snapshot_heads','publication_id','character varying(128)',true)),
+ actual AS (SELECT c.relname::text AS table_name,a.attname::text AS name,format_type(a.atttypid,a.atttypmod) AS kind,a.attnotnull AS required
+ FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='public' AND c.relname IN (SELECT table_name FROM expected) AND a.attnum>0 AND NOT a.attisdropped),
+ primary_keys(table_name,keys) AS (VALUES
+ ('product_source_publications',ARRAY['organization_id','publication_id']),
+ ('product_source_publication_receipts',ARRAY['organization_id','publication_id']),
+ ('product_snapshot_versions',ARRAY['tenant_id','product_key','version']),
+ ('product_snapshot_heads',ARRAY['tenant_id','product_key'])),
+ checks(table_name,name,definition) AS (VALUES
+ ('product_source_publications','ck_source_publication_envelope_size','CHECK (((octet_length(envelope_json) >= 1) AND (octet_length(envelope_json) <= 2097152)))'),
+ ('product_source_publications','ck_source_publication_snapshot_size','CHECK (((octet_length(snapshot_json) >= 1) AND (octet_length(snapshot_json) <= 2097152)))'),
+ ('product_source_publications','ck_source_publication_catalog_version','CHECK ((catalog_version > 0))'),
+ ('product_source_publication_receipts','ck_source_receipt_catalog_version','CHECK ((catalog_version > 0))'))
+ SELECT NOT EXISTS(SELECT 1 FROM expected e FULL JOIN actual a USING(table_name,name)
+ WHERE e.kind IS DISTINCT FROM a.kind OR e.required IS DISTINCT FROM a.required)
+ AND (SELECT count(*)=4 FROM primary_keys e JOIN pg_constraint c ON c.conrelid=to_regclass('public.'||e.table_name)
+ WHERE c.contype='p' AND c.convalidated AND NOT c.condeferrable
+ AND ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(number,position)
+ JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.number ORDER BY k.position)=e.keys)
+ AND EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid='public.product_snapshot_versions'::regclass
+ AND i.indisunique AND i.indisvalid AND i.indisready AND i.indimmediate AND i.indpred IS NULL AND i.indexprs IS NULL
+ AND ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY k(number,position)
+ JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.number ORDER BY k.position)=ARRAY['tenant_id','product_key','publication_id'])
+ AND (SELECT count(*)=4 FROM checks e JOIN pg_constraint c ON c.conrelid=to_regclass('public.'||e.table_name) AND c.conname=e.name
+ WHERE c.contype='c' AND c.convalidated AND pg_get_constraintdef(c.oid)=e.definition)`
+
 // These are table-level grants: column-only grants cannot satisfy a required
 // operation, but forbidden column grants must still cause startup to fail.
 const admittedPrivileges = `(VALUES
@@ -108,6 +154,10 @@ func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {
 		return sourcing.ErrAcquisitionUnavailable
 	}
 	if user != RuntimeRole || !required || forbidden {
+		return sourcing.ErrAcquisitionUnavailable
+	}
+	var schemaReady bool
+	if err := pool.QueryRowContext(ctx, publicationSchemaQuery).Scan(&schemaReady); err != nil || !schemaReady {
 		return sourcing.ErrAcquisitionUnavailable
 	}
 	_, err = NewRepository(ctx, db)

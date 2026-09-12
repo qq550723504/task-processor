@@ -220,7 +220,7 @@ func parsePublic(source sourcing.AcquisitionSource, raw []byte, media string, ca
 	sort.Strings(keys)
 	for _, key := range keys {
 		sku := root.SKUModel.Info[key]
-		variant := sourcing.AcquisitionVariant{SourceID: textPointer(sku.ID), SKU: textPointer(sku.ID)}
+		variant := sourcing.AcquisitionVariant{SourceID: textPointer(sku.ID)}
 		if sku.Price != nil {
 			variant.Price = &sourcing.AcquisitionPrice{Amount: string(*sku.Price), Currency: sku.Currency}
 		}
