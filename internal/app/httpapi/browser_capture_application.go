@@ -7,17 +7,14 @@ import (
 	"mime"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	a1688 "task-processor/internal/integration/acquisition/a1688"
-	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/sourcing"
 )
@@ -161,20 +158,4 @@ func (browserCaptureModule) Enabled(cfg *config.Config) bool {
 func (m browserCaptureModule) Register(reg *kernelmodule.Registry) error {
 	reg.AddRoutes(m.routes...)
 	return nil
-}
-
-func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-	if dependencies.organizationResolver == nil || authorizer == nil {
-		return nil, sourcing.ErrAcquisitionUnavailable
-	}
-	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db); err != nil {
-		return nil, err
-	}
-	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer)
-	if err != nil {
-		return nil, err
-	}
-	binder := productReviewCapabilityBinder{now: time.Now}
-	return browserCaptureModule{routes: browserCaptureRoutes(service, binder.Bind)}, nil
 }
