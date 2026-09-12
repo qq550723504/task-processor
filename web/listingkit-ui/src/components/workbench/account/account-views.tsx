@@ -1,4 +1,6 @@
 import Image from "next/image";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import type { AccountOrganization, AccountProfile } from "@/lib/api/account";
@@ -27,7 +29,7 @@ export function ProfileView({ data }: { data: AccountProfile }) {
 export function OrganizationView({ data }: { data: AccountOrganization }) {
   return <><Card className={styles.identity}><div className={styles.organizationIdentity}><Image src="/console/account/organization-avatar.svg" width={64} height={64} alt="" unoptimized /><div><h2>{provided(data.name)}</h2><p>当前有效企业：{data.effectiveOrganizationId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div></div><span className={styles.badge}>企业信息 · 只读</span></Card>
     <div className={styles.enterpriseSummary}><p>当前账号的项目权限：{data.roles.length ? data.roles.map(role => <span key={role} className={styles.role}>{role}</span>) : "未提供"}</p><p>企业认证：未提供 · 管理员：未提供</p></div>
-    <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "成员管理与权限配置"], ["资源与额度", "企业资源与额度信息"], ["操作记录", "企业操作与审计记录"]].map(([title, description]) => <Panel key={title} title={title} description={description}><p className={styles.note}>暂未接入</p></Panel>)}</div>
+    <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "查看企业成员；获准管理员可邀请成员、调整角色和移除成员"], ["资源与额度", "企业资源与额度信息"], ["操作记录", "企业操作与审计记录"]].map(([title, description]) => <Panel key={title} title={title} description={description}>{title === "成员与权限" ? <><Button asChild variant="outline"><Link href="/workbench/account/organization/members" prefetch={false}>查看成员与权限</Link></Button><p className={styles.note}>可用操作以当前企业权限为准。</p></> : <p className={styles.note}>暂未接入</p>}</Panel>)}</div>
     <Panel title="企业资源" className={styles.resources}><p className={styles.note}>资源服务暂未接入，余额与用量未提供。</p></Panel>
     <Panel title="成员资源分配" description="分配数据暂未接入"><div className={styles.unavailable}>成员、资源配额与使用情况未提供</div></Panel><Provenance data={data} /></>;
 }

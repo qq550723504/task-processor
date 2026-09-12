@@ -17,6 +17,15 @@ function mount(page: "profile" | "organization" = "profile", expectedUserId = "u
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"] }, roles: ["viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("AccountPage read-only projection", () => {
+  it("links members with permission-qualified wording and leaves sibling cards pending", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
+    expect(await screen.findByRole("link", { name: "查看成员与权限" })).toHaveAttribute("href", "/workbench/account/organization/members");
+    expect(screen.getByText("查看企业成员；获准管理员可邀请成员、调整角色和移除成员")).toBeVisible();
+    expect(screen.getByText("可用操作以当前企业权限为准。")).toBeVisible();
+    expect(screen.getAllByText("暂未接入")).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: /查看资源与额度|查看操作记录/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /邀请|移除/ })).not.toBeInTheDocument();
+  });
   it("offers an account return link in the breadcrumb", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(profile))); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
