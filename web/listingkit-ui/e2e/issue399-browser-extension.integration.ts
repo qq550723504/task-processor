@@ -115,6 +115,10 @@ export function registerFrozenExtensionCombination() {
       const browser = context.browser();
       assert(browser);
       context.on("page", page => {
+        page.on("websocket", socket => {
+          const target = new URL(socket.url());
+          diagnostic({ event: "websocket", target: target.protocol === "ws:" && target.hostname === allowed.hostname && target.port === allowed.port && target.pathname === "/_next/webpack-hmr" ? "OWNED_NEXT_HMR" : "OTHER" });
+        });
         page.on("pageerror", error => diagnostic({ event: "pageerror", category: category(error.message), kind: ["Error", "TypeError", "ReferenceError", "SyntaxError", "ChunkLoadError"].includes(error.name) ? error.name : "OTHER" }));
         page.on("console", message => {
           if (message.type() === "error" && ++consoleErrorCount <= 10) diagnostic({ event: "consoleerror", category: category(message.text()), code: message.text().match(/net::ERR_[A-Z_]+/)?.[0] ?? "NONE" });
