@@ -77,7 +77,7 @@ export function registerFrozenExtensionCombination() {
       network.deniedHTTP++;
       if (request.url === missedLoopbackProbe) network.deniedLoopbackProbe++;
       request.resume();
-      response.writeHead(403, { Connection: "close" }).end();
+      response.writeHead(403, { Connection: "close", "Content-Type": "text/plain" }).end("Task proxy denied");
     });
     proxy.on("connect", (request, socket) => {
       socket.on("error", () => { network.proxyConnectionErrors++; socket.destroy(); });

@@ -68,6 +68,11 @@ try {
   for (const parent of [repo, web]) for (const name of [".env", ".env.local", ".env.development", ".env.development.local"]) {
     await assert.rejects(lstat(join(parent, name)), error => error.code === "ENOENT");
   }
+  stage = "native-network-probe";
+  await run(process.execPath, [join(web, "scripts/browser-capture-network-probe.mjs"), dir, expectedSha], { cwd: web, env: childEnvironment() });
+  const networkProof = await privateJSON("network-probe.json");
+  assert.equal(networkProof.passed, true); assert.equal(networkProof.sourceHead, expectedSha);
+  assert.equal(networkProof.cleanup.failureCount, 0);
   webPort = await port(); const origin = `http://127.0.0.1:${webPort}`;
   stage = "frozen-extension";
   const extracted = join(dir, "plugin-source");
@@ -137,9 +142,11 @@ try {
   let released = false;
   try {
     await stopChildren();
-    const browserRecord = await privateJSON("extension-process.json").catch(() => null);
-    if (browserRecord && await sameProcess(browserRecord)) await run("taskkill.exe", ["/PID", String(browserRecord.pid), "/T", "/F"]);
-    if (browserRecord) assert.equal(await sameProcess(browserRecord), false, "OWNED_EXTENSION_BROWSER_NOT_RELEASED");
+    for (const recordFile of ["network-probe-process.json", "extension-process.json"]) {
+      const browserRecord = await privateJSON(recordFile).catch(() => null);
+      if (browserRecord && await sameProcess(browserRecord)) await run("taskkill.exe", ["/PID", String(browserRecord.pid), "/T", "/F"]);
+      if (browserRecord) assert.equal(await sameProcess(browserRecord), false, "OWNED_BROWSER_NOT_RELEASED");
+    }
     const profile = resolve(dir, "extension-profile");
     assert.equal(dirname(profile), resolve(dir));
     assert.equal(profile, join(resolve(dir), "extension-profile"));
