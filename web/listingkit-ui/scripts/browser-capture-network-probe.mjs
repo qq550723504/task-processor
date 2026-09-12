@@ -3,17 +3,22 @@ import { createServer } from "node:http";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { chromium } from "@playwright/test";
 import { privateDirectory, processIdentity, sameProcess } from "../../../scripts/issue357/io.mjs";
 import { finishOwnedBrowserAndProxy } from "./browser-capture-cleanup.mjs";
 
 // Native policy gate, before Auth.js/Go/PG. All accepting targets are newly
 // owned loopback sentinels; the proxy never resolves or forwards externally.
-const dir = process.argv[2] ?? await mkdtemp(join(tmpdir(), "issue399-native-network-"));
+const allowOwnedHMR = process.argv.includes("--allow-owned-hmr");
+const args = process.argv.slice(2).filter(value => value !== "--allow-owned-hmr");
+const dir = args[0] ?? await mkdtemp(join(tmpdir(), "issue399-native-network-"));
 await privateDirectory(dir);
-const sourceHead = process.argv[3] ?? null;
+const sourceHead = args[1] ?? null;
 if (sourceHead) assert.match(sourceHead, /^[a-f0-9]{40}$/);
 const servers = [], counts = { allowed: 0, other: 0, ipv6: 0 }, proxyHits = new Map(), cases = [];
+const { WebSocketServer } = createRequire(import.meta.url)("next/dist/compiled/ws");
+const websocketServers = [], websocketCounts = { allowed: 0, other: 0, ipv6: 0 };
 let browser, browserRecord, failure, receipt, currentCase = "setup", currentObservation;
 console.log("Owned network evidence=" + join(dir, "network-probe.json"));
 
@@ -24,6 +29,15 @@ async function listener(name, host) {
     response.writeHead(200, { "Content-Type": "text/html" }).end('<!doctype html><link rel="icon" href="data:,"><h1>owned fixture</h1>');
   });
   server.on("connection", socket => socket.on("error", () => socket.destroy()));
+  const websocketServer = new WebSocketServer({ noServer: true });
+  websocketServers.push(websocketServer);
+  server.on("upgrade", (request, socket, head) => {
+    websocketCounts[name]++;
+    websocketServer.handleUpgrade(request, socket, head, client => {
+      client.send("owned websocket fixture");
+      client.close();
+    });
+  });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, host, resolve); });
   servers.push(server);
   return server.address().port;
@@ -33,6 +47,7 @@ try {
   const otherPort = await listener("other", "127.0.0.1");
   const ipv6Port = await listener("ipv6", "::1");
   const origin = "http://127.0.0.1:" + allowedPort;
+  const websocketOrigin = "ws://127.0.0.1:" + allowedPort;
   const proxy = createServer((request, response) => {
     proxyHits.set(request.url, (proxyHits.get(request.url) ?? 0) + 1);
     request.resume();
@@ -44,11 +59,19 @@ try {
     proxyHits.set(key, (proxyHits.get(key) ?? 0) + 1);
     socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
   });
+  proxy.on("upgrade", (request, socket) => {
+    socket.on("error", () => socket.destroy());
+    const target = new URL(request.url, "ws://" + request.headers.host);
+    target.protocol = "ws:";
+    const key = "WS " + target.href;
+    proxyHits.set(key, (proxyHits.get(key) ?? 0) + 1);
+    socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+  });
   await new Promise((resolve, reject) => { proxy.once("error", reject); proxy.listen(0, "127.0.0.1", resolve); });
   servers.push(proxy);
   browser = await chromium.launch({
     executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true,
-    proxy: { server: "http://127.0.0.1:" + proxy.address().port, bypass: "<-loopback>," + origin },
+    proxy: { server: "http://127.0.0.1:" + proxy.address().port, bypass: "<-loopback>," + origin + (allowOwnedHMR ? "," + websocketOrigin : "") },
     args: ["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost"],
   });
   const cdp = await browser.newBrowserCDPSession();
@@ -63,7 +86,6 @@ try {
   const good = await allowed.goto(origin + "/allowed", { timeout: 10_000 });
   assert.equal(good.status(), 200);
   assert.equal(await allowed.locator("h1").innerText(), "owned fixture");
-  await allowed.close();
   assert.equal(counts.allowed, 1);
   assert.equal(proxyHits.get(origin + "/allowed") ?? 0, 0);
   const negatives = [
@@ -99,11 +121,51 @@ try {
       targetEvidence: name.startsWith("external-") ? "proxy rejected; no external forwarding capability; remote logs not accessed" : "owned sentinel counters unchanged",
     });
   }
-  receipt = { passed: true, sourceHead, browserVersion: browser.version(), exactAllowedOrigin: origin,
-    allowedTargetRequests: counts.allowed, otherTargetRequests: counts.other, ipv6TargetRequests: counts.ipv6, cases };
+  const connectWebSocket = url => allowed.evaluate(target => new Promise(resolve => {
+    const socket = new WebSocket(target);
+    const timeout = setTimeout(() => { socket.close(); resolve(false); }, 3000);
+    socket.onmessage = event => { clearTimeout(timeout); socket.close(); resolve(event.data === "owned websocket fixture"); };
+    socket.onerror = () => { clearTimeout(timeout); resolve(false); };
+    socket.onclose = () => { clearTimeout(timeout); resolve(false); };
+  }), url);
+  const wsDenials = url => {
+    const target = new URL(url);
+    const authority = target.hostname + ":" + (target.port || (target.protocol === "wss:" ? "443" : "80"));
+    return (proxyHits.get("WS " + url) ?? 0) + (proxyHits.get("CONNECT " + authority) ?? 0);
+  };
+  currentCase = "owned-ws-origin";
+  const ownWS = websocketOrigin + "/owned-hmr-sentinel";
+  const ownBefore = wsDenials(ownWS);
+  assert.equal(await connectWebSocket(ownWS), allowOwnedHMR);
+  assert.equal(websocketCounts.allowed, allowOwnedHMR ? 1 : 0);
+  assert(allowOwnedHMR ? wsDenials(ownWS) === ownBefore : wsDenials(ownWS) > ownBefore);
+  const websocketCases = [{ name: "owned-ws-origin", allowed: allowOwnedHMR, receivedRequests: websocketCounts.allowed }];
+  for (const [name, url] of [
+    ["ws-other-127-port", "ws://127.0.0.1:" + otherPort + "/denied"],
+    ["ws-localhost-other-port", "ws://localhost:" + otherPort + "/denied"],
+    ["ws-localhost-allowed-port", "ws://localhost:" + allowedPort + "/denied"],
+    ["ws-ipv6-loopback", "ws://[::1]:" + ipv6Port + "/denied"],
+    ["wss-same-allowed-port", "wss://127.0.0.1:" + allowedPort + "/denied"],
+    ["ws-external", "ws://detail.1688.com/denied"],
+    ["wss-external", "wss://detail.1688.com/denied"],
+  ]) {
+    currentCase = name;
+    const before = wsDenials(url);
+    assert.equal(await connectWebSocket(url), false);
+    assert(wsDenials(url) > before, "BROWSER_BYPASSED_DENY_PROXY");
+    assert.equal(websocketCounts.other, 0);
+    assert.equal(websocketCounts.ipv6, 0);
+    assert.equal(websocketCounts.allowed, allowOwnedHMR ? 1 : 0);
+    websocketCases.push({ name, allowed: false, proxyDenials: wsDenials(url) - before,
+      receivedRequests: name.endsWith("external") ? null : 0 });
+  }
+  await allowed.close();
+  receipt = { passed: true, sourceHead, allowOwnedHMR, browserVersion: browser.version(), exactAllowedOrigin: origin,
+    exactAllowedWSOrigin: allowOwnedHMR ? websocketOrigin : null, wsPathFilterEnforced: false,
+    allowedTargetRequests: counts.allowed, otherTargetRequests: counts.other, ipv6TargetRequests: counts.ipv6, cases, websocketCounts, websocketCases };
 } catch (error) {
   failure = { error };
-  receipt = { passed: false, sourceHead, currentCase, kind: error.name, signature: ["UNEXPECTED_DENIAL_CLASS", "MISSING_DENIAL", "BROWSER_BYPASSED_DENY_PROXY"].find(value => error.message.includes(value)) ?? "ASSERTION_OR_RUNTIME", currentObservation, completedCases: cases };
+  receipt = { passed: false, sourceHead, allowOwnedHMR, currentCase, kind: error.name, signature: ["UNEXPECTED_DENIAL_CLASS", "MISSING_DENIAL", "BROWSER_BYPASSED_DENY_PROXY"].find(value => error.message.includes(value)) ?? "ASSERTION_OR_RUNTIME", currentObservation, websocketCounts, completedCases: cases };
 } finally {
   await finishOwnedBrowserAndProxy({
     failure,
@@ -111,6 +173,10 @@ try {
     verifyBrowser: async () => { if (browserRecord) assert.equal(await sameProcess(browserRecord), false); },
     closeProxy: async () => {
       const errors = [];
+      for (const server of websocketServers) {
+        try { for (const client of server.clients) client.terminate(); await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+        catch (error) { errors.push(error); }
+      }
       for (const server of servers.reverse()) {
         try { server.closeAllConnections(); await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
         catch (error) { errors.push(error); }
@@ -120,4 +186,4 @@ try {
     record: async cleanup => { await writeFile(join(dir, "network-probe.json"), JSON.stringify({ ...receipt, cleanup }, null, 2)); },
   });
 }
-console.log("PASS native exact-origin network policy; seven negative targets denied; owned resources closed");
+console.log("PASS native exact-origin HTTP/WS policy; other HTTP/HTTPS/WS/WSS targets denied; owned resources closed");

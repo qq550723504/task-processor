@@ -18,6 +18,7 @@ type Manifest = {
   origin: string; goOrigin: string; controlKey: string; sourceHead: string; evidencePath: string;
   pluginRoot: string; pluginHead: string; pluginBuild: Record<string, string>; profilePath: string;
   sessions: Record<string, { cookie: string; subject: string }>;
+  allowOwnedHMR: boolean;
 };
 type Observation = { capturePosts: number; stagingDigest: string };
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -98,6 +99,7 @@ export function registerFrozenExtensionCombination() {
     let context: BrowserContext | undefined;
     let released = false;
     let verified = false;
+    let finalCounts: Record<string, number> = {};
     let browserRecord: { pid: number } | undefined;
     let failure: { error: unknown } | undefined;
     try {
@@ -107,7 +109,7 @@ export function registerFrozenExtensionCombination() {
         headless: true,
         ignoreDefaultArgs: ["--disable-extensions"],
         viewport: { width: 1280, height: 900 },
-        proxy: { server: "http://127.0.0.1:" + proxyPort, bypass: "<-loopback>," + allowed.origin },
+        proxy: { server: "http://127.0.0.1:" + proxyPort, bypass: "<-loopback>," + allowed.origin + (m.allowOwnedHMR ? ",ws://" + allowed.host : "") },
         args: ["--no-first-run", "--no-default-browser-check", "--disable-background-networking",
           "--enable-unsafe-extension-debugging", "--remote-debugging-port=0",
           "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost"],
@@ -288,6 +290,7 @@ export function registerFrozenExtensionCombination() {
       await receiver.getByRole("status").filter({ hasText: "Published version 4" }).waitFor();
       assert.equal(receiverPosts, 1, "RELOAD_REPOSTED_CAPTURE");
       const final = await observe();
+      finalCounts = Object.fromEntries(Object.entries(final).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
       assert.equal(final.capturePosts, committed.capturePosts);
       assert.equal(final.stagingDigest, committed.stagingDigest, "READ_ONLY_RECOVERY_MUTATED_OPERATION");
       assert(network.allowedLoopbackRequests > 0);
@@ -346,14 +349,15 @@ export function registerFrozenExtensionCombination() {
       released = true;
     }
     assert(verified && released);
-    await writeFile(m.evidencePath, JSON.stringify({ ...previous, passed: true, extensionCombination: {
+    const { snapshotCount: baseChainSnapshotCount, ...baseEvidence } = previous;
+    await writeFile(m.evidencePath, JSON.stringify({ ...baseEvidence, baseChainSnapshotCount, passed: true, extensionCombination: {
       passed: true, pluginHead, sourceHead: m.sourceHead, pluginBuild: m.pluginBuild,
       actual: ["frozen extension action/DOM extraction", "bound external handoff", "receiver explicit confirmation POST",
         "actual Next/Auth.js/BFF/Go/task-PG publication", "committed response loss", "same-key/by-ID/verify read-only recovery after restart",
         "reload without capture POST", "safe decimal/id lexemes", "sensitive DOM canaries excluded"],
       controlled: ["local intercepted product HTML, not real 1688", "new owned Chrome profile", "isolated Auth.js issuance",
         "deny-all proxy, exact Next-origin native bypass and external DNS backstop", "other loopback port negative proof"],
-      network, browserAndProxyReleased: released,
+      network, observedCounts: finalCounts, browserAndProxyReleased: released, ownedHMRWSOriginAllowed: m.allowOwnedHMR, wsPathFilterEnforced: false,
       notRun: ["real 1688", "real OIDC authentication", "production deployment", "shared data", "merged #412 audit composition"],
     } }, null, 2));
   });

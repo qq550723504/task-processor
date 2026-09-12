@@ -18,6 +18,7 @@ const runId = randomUUID();
 const dir = await mkdtemp(join(tmpdir(), "issue399-browser-"));
 await privateDirectory(dir);
 const expectedSha = process.argv[2];
+const allowOwnedHMR = process.argv.includes("--allow-owned-hmr");
 const pluginHead = "7d689dc19461b2b6b60ffc972020e6c06283fca0";
 const children = [];
 let container, containerName, pgPort, webPort, stage = "source", passed = false;
@@ -69,10 +70,11 @@ try {
     await assert.rejects(lstat(join(parent, name)), error => error.code === "ENOENT");
   }
   stage = "native-network-probe";
-  await run(process.execPath, [join(web, "scripts/browser-capture-network-probe.mjs"), dir, expectedSha], { cwd: web, env: childEnvironment() });
+  await run(process.execPath, [join(web, "scripts/browser-capture-network-probe.mjs"), dir, expectedSha, ...(allowOwnedHMR ? ["--allow-owned-hmr"] : [])], { cwd: web, env: childEnvironment() });
   const networkProof = await privateJSON("network-probe.json");
   assert.equal(networkProof.passed, true); assert.equal(networkProof.sourceHead, expectedSha);
   assert.equal(networkProof.cleanup.failureCount, 0);
+  assert.equal(networkProof.allowOwnedHMR, allowOwnedHMR);
   webPort = await port(); const origin = `http://127.0.0.1:${webPort}`;
   stage = "frozen-extension";
   const extracted = join(dir, "plugin-source");
@@ -117,7 +119,7 @@ try {
     sessions[actor] = { subject: actor, cookie: `authjs.session-token=${value}` };
   }
   const manifest = join(dir, "fixture.json");
-  await json(manifest, { origin, ...goInfo, sourceHead: expectedSha, evidencePath: join(dir, "evidence.json"), sessions, pluginRoot, pluginHead, pluginBuild, profilePath: join(dir, "extension-profile") });
+  await json(manifest, { origin, ...goInfo, sourceHead: expectedSha, evidencePath: join(dir, "evidence.json"), sessions, pluginRoot, pluginHead, pluginBuild, profilePath: join(dir, "extension-profile"), allowOwnedHMR });
   stage = "actual-chain";
   const command = process.platform === "win32" ? ["cmd.exe", ["/c", "pnpm.cmd", "exec", "vitest", "run", "--config", "e2e/issue399-browser.config.ts"]] : ["pnpm", ["exec", "vitest", "run", "--config", "e2e/issue399-browser.config.ts"]];
   await run(command[0], command[1], { cwd: web, env: { ...childEnvironment(), BROWSER_CAPTURE_FIXTURE_MANIFEST: manifest } });
