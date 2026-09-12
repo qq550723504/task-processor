@@ -28,6 +28,20 @@ does not create access to organizations without a verified grant. Configured
 platform-admin roles and users use this same authority; React never copies their
 configuration or infers permissions from role names.
 
+On 2026-09-12 the user selected product decision B for Gate A: existing authz
+SourceAccount read/manage permissions are the single authority, including
+configured platform-admin users after normal Organization admission. This
+explicitly replaces SA1's former additional role-only service check; it was not
+previously equivalent to configured-user authorization. Service reads, writes
+and replay now pass the verified subject and resolved roles to the same existing
+authorizer. Removing a configured subject requires rebuilding that authorizer
+from the new configuration; merely reducing roles does not revoke a remaining
+configured-user grant. The existing identity/expiry/Organization checks,
+LiveWrite, idempotency, ETags, state and unknown-result contracts remain intact.
+The #417 operation-history reader reuses this read authorization and requires
+separate exact-candidate combination verification. Membership permissions are
+outside this decision.
+
 The capability object may be absent, which does not grant management. If present,
 it must contain the one named boolean and no extra keys. Missing/failed context,
 nil authorizer and unsuccessful authorization fail closed. Context GET retains
