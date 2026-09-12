@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createServer, request as forwardRequest } from "node:http";
+import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -64,35 +64,25 @@ export function registerFrozenExtensionCombination() {
     }
     await mkdir(m.profilePath);
     const allowed = new URL(m.origin);
+    const missedLoopbackProbe = m.goOrigin + "/__issue399/observe";
+    assert.notEqual(new URL(missedLoopbackProbe).origin, allowed.origin);
     const ownedRuntimeURL = new URL("../../../scripts/issue357/io.mjs", import.meta.url).href;
     const ownedRuntime = await import(/* @vite-ignore */ ownedRuntimeURL);
     const cleanupURL = new URL("../scripts/browser-capture-cleanup.mjs", import.meta.url).href;
     const { finishOwnedBrowserAndProxy } = await import(/* @vite-ignore */ cleanupURL);
-    const network = { forwardedLoopback: 0, deniedHTTP: 0, deniedCONNECT: 0, interceptedFixture: 0, abortedOther: 0, proxyConnectionErrors: 0 };
+    const network = { allowedLoopbackRequests: 0, deniedHTTP: 0, deniedCONNECT: 0, deniedLoopbackProbe: 0, deniedSourceConnect: 0, interceptedFixture: 0, abortedOther: 0, proxyConnectionErrors: 0 };
     // This proxy never resolves or connects to an external host, even if page
     // interception is missed or a worker bypasses Playwright's route handler.
     const proxy = createServer((request, response) => {
-      let target: URL;
-      try { target = new URL(request.url ?? ""); } catch { response.writeHead(403).end(); network.deniedHTTP++; return; }
-      if (target.origin !== allowed.origin || target.protocol !== "http:" || target.username || target.password) {
-        network.deniedHTTP++; response.writeHead(403).end(); return;
-      }
-      network.forwardedLoopback++;
-      const headers: Record<string, string | string[] | undefined> = { ...request.headers, host: allowed.host };
-      delete headers["proxy-authorization"];
-      delete headers["proxy-connection"];
-      const upstream = forwardRequest({ hostname: "127.0.0.1", port: Number(allowed.port), path: target.pathname + target.search, method: request.method, headers, agent: false }, result => {
-        response.writeHead(result.statusCode ?? 502, result.headers);
-        result.pipe(response);
-      });
-      upstream.setTimeout(10_000, () => upstream.destroy());
-      upstream.on("error", () => { if (!response.headersSent) response.writeHead(502); response.end(); });
-      request.on("aborted", () => upstream.destroy());
-      request.pipe(upstream);
+      network.deniedHTTP++;
+      if (request.url === missedLoopbackProbe) network.deniedLoopbackProbe++;
+      request.resume();
+      response.writeHead(403, { Connection: "close" }).end();
     });
-    proxy.on("connect", (_request, socket) => {
+    proxy.on("connect", (request, socket) => {
       socket.on("error", () => { network.proxyConnectionErrors++; socket.destroy(); });
       network.deniedCONNECT++;
+      if (request.url === "detail.1688.com:443") network.deniedSourceConnect++;
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
     });
     proxy.on("upgrade", (_request, socket) => socket.destroy());
@@ -110,7 +100,7 @@ export function registerFrozenExtensionCombination() {
         headless: true,
         ignoreDefaultArgs: ["--disable-extensions"],
         viewport: { width: 1280, height: 900 },
-        proxy: { server: "http://127.0.0.1:" + proxyPort, bypass: "<-loopback>" },
+        proxy: { server: "http://127.0.0.1:" + proxyPort, bypass: "<-loopback>," + allowed.origin },
         args: ["--no-first-run", "--no-default-browser-check", "--disable-background-networking",
           "--enable-unsafe-extension-debugging", "--remote-debugging-port=0",
           "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost"],
@@ -126,8 +116,8 @@ export function registerFrozenExtensionCombination() {
       await context.route("**/*", async route => {
         const url = route.request().url();
         if (url === sourceURL) { network.interceptedFixture++; await route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }); return; }
-        if (url === missedInterceptionProbe) { await route.continue(); return; }
-        if (new URL(url).origin === allowed.origin) { await route.continue(); return; }
+        if (url === missedInterceptionProbe || url === missedLoopbackProbe) { await route.continue(); return; }
+        if (new URL(url).origin === allowed.origin) { network.allowedLoopbackRequests++; await route.continue(); return; }
         network.abortedOther++;
         await route.abort("blockedbyclient");
       });
@@ -136,9 +126,17 @@ export function registerFrozenExtensionCombination() {
       // Chrome's asynchronous error-page commit can interrupt a subsequent
       // navigation on the same tab. Keep the denied probe off the capture tab.
       const probe = await context.newPage();
-      try { await assert.rejects(probe.goto(missedInterceptionProbe, { timeout: 10_000 })); }
+      try {
+        await assert.rejects(probe.goto(missedInterceptionProbe, { timeout: 10_000 }));
+        assert(network.deniedSourceConnect > 0, "EXTERNAL_SOURCE_NOT_DENIED_BY_PROXY");
+      }
       finally { await probe.close(); }
-      assert(network.deniedCONNECT > 0, "PROXY_DID_NOT_DENY_UNINTERCEPTED_EXTERNAL_REQUEST");
+      const loopbackProbe = await context.newPage();
+      try {
+        const response = await loopbackProbe.goto(missedLoopbackProbe, { timeout: 10_000 });
+        assert.equal(response?.status(), 403);
+        assert.equal(network.deniedLoopbackProbe, 1, "UNALLOWED_LOOPBACK_PORT_BYPASSED_PROXY");
+      } finally { await loopbackProbe.close(); }
       await source.goto(sourceURL);
       assert.equal(network.interceptedFixture, 1);
       const title = await source.locator("h2").innerText();
@@ -254,7 +252,7 @@ export function registerFrozenExtensionCombination() {
       const final = await observe();
       assert.equal(final.capturePosts, committed.capturePosts);
       assert.equal(final.stagingDigest, committed.stagingDigest, "READ_ONLY_RECOVERY_MUTATED_OPERATION");
-      assert(network.forwardedLoopback > 0);
+      assert(network.allowedLoopbackRequests > 0);
       await receiver.screenshot({ path: join(dir, "extension-receiver.png"), fullPage: true });
       verified = true;
       await stage("verified");
@@ -315,7 +313,7 @@ export function registerFrozenExtensionCombination() {
         "actual Next/Auth.js/BFF/Go/task-PG publication", "committed response loss", "same-key/by-ID/verify read-only recovery after restart",
         "reload without capture POST", "safe decimal/id lexemes", "sensitive DOM canaries excluded"],
       controlled: ["local intercepted product HTML, not real 1688", "new owned Chrome profile", "isolated Auth.js issuance",
-        "deny-by-default proxy and external DNS backstop", "task-owned loopback services only"],
+        "deny-all proxy, exact Next-origin native bypass and external DNS backstop", "other loopback port negative proof"],
       network, browserAndProxyReleased: released,
       notRun: ["real 1688", "real OIDC authentication", "production deployment", "shared data", "merged #412 audit composition"],
     } }, null, 2));
