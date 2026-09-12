@@ -121,7 +121,7 @@ export function registerFrozenExtensionCombination() {
             scheme: target.protocol === "ws:" ? "WS" : target.protocol === "wss:" ? "WSS" : "OTHER",
             host: target.hostname === allowed.hostname ? "OWNED_127" : target.hostname === "localhost" ? "LOCALHOST" : "OTHER",
             port: target.port === allowed.port ? "OWNED_NEXT" : "OTHER",
-            path: target.pathname === "/_next/webpack-hmr" ? "NEXT_HMR" : "OTHER",
+            path: target.pathname === "/_next/hmr" ? "CURRENT_NEXT_HMR" : target.pathname === "/_next/webpack-hmr" ? "LEGACY_NEXT_HMR" : "OTHER",
           });
         });
         page.on("pageerror", error => diagnostic({ event: "pageerror", category: category(error.message), kind: ["Error", "TypeError", "ReferenceError", "SyntaxError", "ChunkLoadError"].includes(error.name) ? error.name : "OTHER" }));
