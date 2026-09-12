@@ -59,7 +59,8 @@ func (r *FreshWorkbenchPrincipalResolver) ResolveFreshPrincipal(ctx context.Cont
 		return commercetool.Principal{}, err
 	}
 	request, ok := ctx.Value(organizationRequestKey{}).(OrganizationRequest)
-	if !ok || strings.TrimSpace(request.Identity.UserID) == "" || request.Identity.UserID != strings.TrimSpace(request.Identity.UserID) || strings.TrimSpace(request.BearerToken) == "" || !request.Identity.TokenExpiresAt.After(r.now()) {
+	selected := request.RequestedOrganizationID
+	if !ok || selected == "" || selected != strings.TrimSpace(selected) || strings.TrimSpace(request.Identity.UserID) == "" || request.Identity.UserID != strings.TrimSpace(request.Identity.UserID) || strings.TrimSpace(request.BearerToken) == "" || !request.Identity.TokenExpiresAt.After(r.now()) {
 		return commercetool.Principal{}, errTrustedIdentityUnavailable
 	}
 	resolved, err := r.resolver.ResolveFreshOrganization(ctx, request)
@@ -69,9 +70,8 @@ func (r *FreshWorkbenchPrincipalResolver) ResolveFreshPrincipal(ctx context.Cont
 	if err := ctx.Err(); err != nil {
 		return commercetool.Principal{}, err
 	}
-	selected := strings.TrimSpace(request.RequestedOrganizationID)
 	if resolved.UserID != request.Identity.UserID || !resolved.TokenExpiresAt.Equal(request.Identity.TokenExpiresAt) ||
-		(selected != "" && (resolved.TenantID != selected || resolved.EffectiveOrganizationID != selected)) {
+		resolved.TenantID != selected || resolved.EffectiveOrganizationID != selected {
 		return commercetool.Principal{}, errTrustedIdentityUnavailable
 	}
 	return (ContextPrincipalResolver{Now: r.now}).ResolvePrincipal(authidentity.WithAuthenticatedIdentity(ctx, resolved))
