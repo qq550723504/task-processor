@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/authz"
+	acquisitionpersistence "task-processor/internal/integration/persistence/product/acquisition"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	sourcingpersistence "task-processor/internal/integration/persistence/product/sourcing"
 	"task-processor/internal/product/catalog"
@@ -28,6 +29,47 @@ func NewInternalProducer(db *gorm.DB, live sourcing.LiveOrganizationAccess, perm
 		return nil, err
 	}
 	return sourcing.NewInternalProducer(authorizer, store, sourcing.ProducerDescriptor{Kind: sourcing.ControlledSnapshotProducerKind, Version: sourcing.ControlledSnapshotProducerVersion})
+}
+
+// NewPublicAcquisition admits external public evidence as its own producer.
+func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer) (*AcquisitionService, error) {
+	if ctx == nil || provider == nil {
+		return nil, sourcing.ErrAcquisitionUnavailable
+	}
+	operations, err := acquisitionpersistence.NewRepository(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	if err != nil {
+		return nil, err
+	}
+	authorizer, err := sourcing.NewContextAuthorizer(live, permissions)
+	if err != nil {
+		return nil, err
+	}
+	producer, err := sourcing.NewInternalProducer(authorizer, store, sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"})
+	if err != nil {
+		return nil, err
+	}
+	reader, err := catalogpersistence.NewBoundedSnapshotReader(db, sourcing.MaxEncodedSnapshotBytes)
+	if err != nil {
+		return nil, err
+	}
+	return NewAcquisitionService(operations, provider, producer, reader, authorizer)
+}
+
+// InstallAcquisitionSchema explicitly initializes recovery and current fact owners.
+func InstallAcquisitionSchema(db *gorm.DB) error {
+	if db == nil || db.Dialector.Name() != "postgres" {
+		return sourcing.ErrAcquisitionUnavailable
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := InstallSchema(tx); err != nil {
+			return err
+		}
+		return acquisitionpersistence.InstallSchema(tx)
+	})
 }
 
 // NewTransactionReader composes the admitted read-only source capability on a

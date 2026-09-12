@@ -27,6 +27,7 @@ import {
 } from "@/lib/contracts/source-account";
 import { newRequestLogId } from "@/lib/server/request-log";
 import { hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
+import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
@@ -41,6 +42,7 @@ const STORE_QUERY_MAX_BYTES = 2 * 1024;
 const REQUEST_ID_MAX_BYTES = 128;
 
 export type WorkbenchResponseContract =
+  | "product-acquisition"
   | "context"
   | "context-switch"
   | "store-list"
@@ -54,6 +56,9 @@ export type WorkbenchResponseContract =
   | "source-account-mutation";
 
 type WorkbenchRequestContract =
+  | "product-acquisition-create"
+  | "product-acquisition-verify"
+  | "product-acquisition-read"
   | "context-get"
   | "context-switch"
   | "store-list"
@@ -293,6 +298,12 @@ const sourceAccountErrorStatuses: Readonly<Record<string, number>> = {
 };
 
 const workbenchRouteAllowlist = [
+  routeDefinition("POST", "product-acquisition-create", "product-acquisition", (path) =>
+    exactPath(path, "sourcing", "1688", "acquisitions") ? "sourcing/1688/acquisitions" : null),
+  routeDefinition("POST", "product-acquisition-verify", "product-acquisition", (path) =>
+    exactPath(path, "sourcing", "1688", "acquisitions", "verify") ? "sourcing/1688/acquisitions/verify" : null),
+  routeDefinition("GET", "product-acquisition-read", "product-acquisition", (path) =>
+    path.length === 4 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) ? `sourcing/1688/acquisitions/${path[3]}` : null),
   routeDefinition("GET", "context-get", "context", (path) =>
     exactPath(path, "context") ? "context" : null,
   ),
@@ -379,7 +390,8 @@ export async function buildWorkbenchUpstreamRequest(
   }
   if (
     (route.requestContract.startsWith("store-") ||
-      route.requestContract.startsWith("source-account-")) &&
+      route.requestContract.startsWith("source-account-") ||
+      route.requestContract.startsWith("product-acquisition-")) &&
     new URL(request.url).pathname !==
       `/api/workbench/${route.upstreamPath}`
   ) {
@@ -410,13 +422,13 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = route.requestContract.startsWith("source-account-")
+    const selectedOrganization = (route.requestContract.startsWith("source-account-") || route.requestContract.startsWith("product-acquisition-"))
       ? readSourceSelectedOrganization(request)
       : readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
     if (
       route.requestContract.startsWith("store-") ||
-      route.requestContract.startsWith("source-account-")
+      route.requestContract.startsWith("source-account-") || route.requestContract.startsWith("product-acquisition-")
     ) {
       const expectedOrganization = readExpectedOrganizationAssertion(
         request.headers,
@@ -438,6 +450,34 @@ export async function buildWorkbenchUpstreamRequest(
     }
 
     switch (route.requestContract) {
+      case "product-acquisition-create":
+      case "product-acquisition-verify":
+      case "product-acquisition-read": {
+        if (!hasExactNoQuery(request)) return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
+        const assertedActor = request.headers.get(EXPECTED_USER_ID_HEADER);
+        if (!assertedActor || !isSafeOrganizationId(assertedActor) || assertedActor !== authenticatedActorSubject) {
+          return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
+        }
+        if (route.requestContract === "product-acquisition-read") {
+          if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+          break;
+        }
+        const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject);
+        if (assertion) return assertion;
+        if (request.headers.get("content-type") !== "application/json" || request.headers.has("content-encoding")) {
+          return protocolError(400, "INVALID_REQUEST", "Content-Type or encoding is invalid");
+        }
+        const key = request.headers.get("Idempotency-Key") ?? "";
+        if (!isAcquisitionUUID(key)) return protocolError(400, "INVALID_REQUEST", "Idempotency-Key is invalid");
+        const raw = await readRequestBody(request, ACQUISITION_BODY_MAX_BYTES, "SOURCE_TOO_LARGE");
+        if (raw instanceof Response) return raw;
+        const parsed = parseJSONBody(raw);
+        const validated = acquisitionRequestSchema.safeParse(parsed?.payload);
+        if (!parsed || !validated.success) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+        body = JSON.stringify(validated.data);
+        headers.set("Content-Type", "application/json"); headers.set("Idempotency-Key", key);
+        break;
+      }
       case "context-get":
         break;
       case "store-list": {
@@ -638,6 +678,7 @@ export async function buildWorkbenchUpstreamRequest(
     },
     responseContract: route.responseContract,
     expectedStoreId:
+      route.requestContract === "product-acquisition-read" ? path[3] :
       route.responseContract === "store-item" ||
       route.responseContract === "store-delete" ||
       route.responseContract === "store-service-lifecycle" ||
@@ -647,6 +688,8 @@ export async function buildWorkbenchUpstreamRequest(
         : undefined,
     requestId,
     sourceMutation:
+      route.requestContract === "product-acquisition-create" ||
+      route.requestContract === "product-acquisition-verify" ||
       route.requestContract === "source-account-create" ||
       route.requestContract === "source-account-enable" ||
       route.requestContract === "source-account-disable",
@@ -663,9 +706,12 @@ export async function buildWorkbenchBrowserResponse(
     signal?: AbortSignal;
   } = {},
 ) {
-  const sourceContract = contract.startsWith("source-account-");
+  const acquisitionContract = contract === "product-acquisition";
+  const sourceContract = contract.startsWith("source-account-") || acquisitionContract;
   const invalidSource = () =>
-    sourceProtocolFailure(Boolean(options.sourceMutation), options.requestId ?? "");
+    acquisitionContract
+      ? protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "INVALID_UPSTREAM_RESPONSE", "Product acquisition response is unavailable", options.requestId ?? "")
+      : sourceProtocolFailure(Boolean(options.sourceMutation), options.requestId ?? "");
   let body: Uint8Array;
   try {
     if (
@@ -677,7 +723,7 @@ export async function buildWorkbenchBrowserResponse(
       void upstream.body?.cancel().catch(() => undefined);
       throw new InvalidUpstreamBodyError();
     }
-    const responseLimit = sourceContract
+    const responseLimit = acquisitionContract ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
       ? SOURCE_ACCOUNT_RESPONSE_MAX_BYTES
       : UPSTREAM_RESPONSE_MAX_BYTES;
     const contentLength = readContentLength(upstream.headers);
@@ -702,6 +748,21 @@ export async function buildWorkbenchBrowserResponse(
 
   const parsedBody = parseJSONBody(body);
   const payload = parsedBody?.payload ?? null;
+  if (acquisitionContract) {
+    if (!parsedBody || !payload) return invalidSource();
+    if (upstream.ok) {
+      const checked = acquisitionResultSchema.safeParse(payload);
+      if (upstream.status !== 200 || !checked.success || (expectedStoreId !== undefined && checked.data.operationId !== expectedStoreId)) return invalidSource();
+      return new NextResponse(JSON.stringify(checked.data), {status: 200, headers: safeJSONHeaders()});
+    }
+    const nested = z.object({schemaVersion: z.literal(1), error: z.object({code: z.string()}).strict()}).strict().safeParse(payload);
+    const standard = parseWorkbenchErrorEnvelopePayload(payload);
+    const code = nested.success ? nested.data.error.code : standard.success ? standard.data.code : "";
+    if (!code || acquisitionErrorStatuses[code] !== upstream.status) return invalidSource();
+    const response = protocolError(upstream.status, code, "Product acquisition request could not be completed", options.requestId ?? "");
+    if (code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED") clearSelectionCookie(response);
+    return response;
+  }
   const parsedError =
     upstream.status >= 400 && upstream.status <= 599
       ? parseWorkbenchErrorEnvelopePayload(payload)

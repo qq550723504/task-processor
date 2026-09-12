@@ -19,6 +19,7 @@ type WorkbenchDispatchState = {
   requestId: string;
   sourceRequest: boolean;
   sourceMutation: boolean;
+  acquisitionRequest: boolean;
 };
 type WorkbenchRouteContext = {
   params: Promise<{ path: string[] }>;
@@ -57,9 +58,8 @@ async function proxyWorkbenchRequest(
       : upstreamRequest;
   }
   dispatchState.requestId = upstreamRequest.requestId;
-  dispatchState.sourceRequest = upstreamRequest.responseContract.startsWith(
-    "source-account-",
-  );
+  dispatchState.acquisitionRequest = upstreamRequest.responseContract === "product-acquisition";
+  dispatchState.sourceRequest = dispatchState.acquisitionRequest || upstreamRequest.responseContract.startsWith("source-account-");
   dispatchState.sourceMutation = upstreamRequest.sourceMutation;
   if (request.signal.aborted) return deadlineFailure(dispatchState);
   try {
@@ -83,7 +83,7 @@ async function proxyWorkbenchRequest(
   } catch {
     if (request.signal.aborted) return deadlineFailure(dispatchState);
     if (dispatchState.sourceMutation && dispatchState.dispatched) {
-      return unknownMutationFailure(dispatchState.requestId);
+      return unknownMutationFailure(dispatchState.requestId, dispatchState.acquisitionRequest);
     }
     return workbenchProtocolError(
       502,
@@ -113,6 +113,7 @@ async function handleWorkbenchRequest(
     requestId: "",
     sourceRequest: isSourceRequestURL(request.url),
     sourceMutation: isSourceMutationURL(request.method, request.url),
+    acquisitionRequest: new URL(request.url).pathname.startsWith("/api/workbench/sourcing/1688/acquisitions"),
   };
   const controller = new AbortController();
   let resolveAbort = () => {};
@@ -163,9 +164,11 @@ export const DELETE = handleWorkbenchRequest;
 function isSourceMutation(method: string, path: string[]) {
   return (
     method.toUpperCase() === "POST" &&
-    path[0] === "source-accounts" &&
+    ((path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" &&
+      (path.length === 3 || (path.length === 4 && path[3] === "verify"))) ||
+    (path[0] === "source-accounts" &&
     (path.length === 1 ||
-      (path.length === 3 && ["enable", "disable"].includes(path[2] ?? "")))
+      (path.length === 3 && ["enable", "disable"].includes(path[2] ?? "")))))
   );
 }
 
@@ -174,7 +177,7 @@ function isSourceRequestURL(rawURL: string) {
   return (
     path[0] === "api" &&
     path[1] === "workbench" &&
-    path[2] === "source-accounts"
+    (path[2] === "source-accounts" || (path[2] === "sourcing" && path[3] === "1688" && path[4] === "acquisitions"))
   );
 }
 
@@ -186,7 +189,7 @@ function isSourceMutationURL(method: string, rawURL: string) {
 
 function deadlineFailure(state: WorkbenchDispatchState) {
   if (state.sourceMutation && state.dispatched) {
-    return unknownMutationFailure(state.requestId);
+    return unknownMutationFailure(state.requestId, state.acquisitionRequest);
   }
   if (state.sourceRequest) {
     return workbenchProtocolError(
@@ -204,11 +207,11 @@ function deadlineFailure(state: WorkbenchDispatchState) {
   );
 }
 
-function unknownMutationFailure(requestId: string) {
+function unknownMutationFailure(requestId: string, acquisition = false) {
   return workbenchProtocolError(
     503,
     "OUTCOME_UNKNOWN",
-    "Source Account mutation outcome is unknown",
+    acquisition ? "Product acquisition outcome is unknown" : "Source Account mutation outcome is unknown",
     requestId,
   );
 }

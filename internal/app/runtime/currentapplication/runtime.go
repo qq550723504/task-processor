@@ -15,13 +15,15 @@ import (
 )
 
 type Dependencies struct {
-	IdentityPreflight func(context.Context, IdentityConfig) error
-	OpenSourceAccount func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial    func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplication    func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	Listen            func(string, string) (net.Listener, error)
-	CloseDatabase     func(*gorm.DB) error
-	ShutdownTimeout   time.Duration
+	IdentityPreflight             func(context.Context, IdentityConfig) error
+	OpenSourceAccount             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial                func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenProductAcquisition        func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewApplicationWithAcquisition func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplication                func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	Listen                        func(string, string) (net.Listener, error)
+	CloseDatabase                 func(*gorm.DB) error
+	ShutdownTimeout               time.Duration
 }
 
 type runtimeDependencies = Dependencies
@@ -48,6 +50,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
+	}
+	if cfg.ProductAcquisitionDatabase != nil && (dependencies.OpenProductAcquisition == nil || dependencies.NewApplicationWithAcquisition == nil) {
+		return errors.New("current product acquisition lifecycle unavailable")
 	}
 	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelStartup()
@@ -76,10 +81,29 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
-	if dependencies.NewApplication == nil || dependencies.Listen == nil {
+	var productDB *gorm.DB
+	if cfg.ProductAcquisitionDatabase != nil {
+		productDB, err = dependencies.OpenProductAcquisition(startupContext, *cfg.ProductAcquisitionDatabase)
+		if err != nil {
+			return fmt.Errorf("open existing product acquisition database: %w", err)
+		}
+		if productDB == nil {
+			return errors.New("current product acquisition database unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(productDB)) }()
+		if err := startupContext.Err(); err != nil {
+			return fmt.Errorf("current application startup canceled: %w", err)
+		}
+	}
+	if (productDB == nil && dependencies.NewApplication == nil) || dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
-	server, err := dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+	var server *http.Server
+	if productDB != nil {
+		server, err = dependencies.NewApplicationWithAcquisition(startupContext, sourceAccountDB, commercialDB, productDB, cfg.CoreConfig(), logger)
+	} else {
+		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+	}
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)
 	}

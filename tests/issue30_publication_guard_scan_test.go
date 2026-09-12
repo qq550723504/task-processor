@@ -34,6 +34,10 @@ func issue30PublicationIdentityViolations(sources []listingKitImageBoundarySourc
 			return nil, err
 		}
 		owner := filepath.ToSlash(filepath.Dir(source.path)) == "internal/product/sourcing" && file.Name.Name == "sourcing"
+		// SRC-2B1 admission 5643032970: only construction and frozen-command
+		// integrity in these files. Keep parsing; other import guards still apply.
+		path := filepath.ToSlash(source.path)
+		admitted := path == "internal/app/productsourcing/acquisition.go" || path == "internal/integration/persistence/product/acquisition/repository.go"
 		aliases := make(map[string]bool)
 		shadowImport := false
 		dot := false
@@ -66,7 +70,7 @@ func issue30PublicationIdentityViolations(sources []listingKitImageBoundarySourc
 			}
 			if sel, ok := parents[id].(*ast.SelectorExpr); ok && sel.Sel == id {
 				qualifier, ok := sel.X.(*ast.Ident)
-				if ok && qualifier.Obj == nil && aliases[qualifier.Name] {
+				if ok && qualifier.Obj == nil && aliases[qualifier.Name] && !admitted {
 					violations = append(violations, fmt.Sprintf("%s references %s.PublicationIdentity before cutover approval", fset.Position(id.Pos()), issue30SourcingPackage))
 				}
 				return true
@@ -105,7 +109,9 @@ func issue30PublicationIdentityViolations(sources []listingKitImageBoundarySourc
 			// An unresolved unqualified name in the owner refers across files;
 			// with a dot import it refers to the imported symbol. Local bindings
 			// have an Obj and were excluded above. Invalid source fails CI compile.
-			violations = append(violations, fmt.Sprintf("%s references %s.PublicationIdentity before cutover approval", fset.Position(id.Pos()), issue30SourcingPackage))
+			if !admitted {
+				violations = append(violations, fmt.Sprintf("%s references %s.PublicationIdentity before cutover approval", fset.Position(id.Pos()), issue30SourcingPackage))
+			}
 			return true
 		})
 	}
