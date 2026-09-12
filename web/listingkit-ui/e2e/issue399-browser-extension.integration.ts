@@ -71,6 +71,11 @@ export function registerFrozenExtensionCombination() {
     const cleanupURL = new URL("../scripts/browser-capture-cleanup.mjs", import.meta.url).href;
     const { finishOwnedBrowserAndProxy } = await import(/* @vite-ignore */ cleanupURL);
     const network = { allowedLoopbackRequests: 0, deniedHTTP: 0, deniedCONNECT: 0, deniedLoopbackProbe: 0, deniedSourceConnect: 0, interceptedFixture: 0, abortedOther: 0, proxyConnectionErrors: 0 };
+    const browserDiagnostics: Record<string, string | number>[] = [];
+    const diagnostic = (value: Record<string, string | number>) => { if (browserDiagnostics.length < 100) browserDiagnostics.push(value); };
+    const category = (message: string) => message.includes("Content Security Policy") ? "CSP"
+      : message.includes("Cross-Origin") ? "CORS" : /local network/i.test(message) ? "LOCAL_NETWORK"
+        : message.includes("Loading chunk") ? "CHUNK_LOAD" : "OTHER";
     // This proxy never resolves or connects to an external host, even if page
     // interception is missed or a worker bypasses Playwright's route handler.
     const proxy = createServer((request, response) => {
@@ -107,6 +112,22 @@ export function registerFrozenExtensionCombination() {
       });
       const browser = context.browser();
       assert(browser);
+      context.on("page", page => {
+        page.on("pageerror", error => diagnostic({ event: "pageerror", category: category(error.message), kind: ["Error", "TypeError", "ReferenceError", "SyntaxError", "ChunkLoadError"].includes(error.name) ? error.name : "OTHER" }));
+        page.on("console", message => { if (message.type() === "error") diagnostic({ event: "consoleerror", category: category(message.text()), code: message.text().match(/net::ERR_[A-Z_]+/)?.[0] ?? "NONE" }); });
+      });
+      const requestLabel = (url: string) => {
+        const parsed = new URL(url);
+        if (parsed.origin !== allowed.origin) return "not-app";
+        if (parsed.pathname.startsWith("/_next/static/")) return parsed.pathname.split("/").at(-1) ?? "static";
+        if (parsed.pathname === "/capture/1688") return "receiver-document";
+        if (parsed.pathname === "/api/auth/session") return "auth-session";
+        if (parsed.pathname === "/api/workbench/context") return "workbench-context";
+        return "other-app";
+      };
+      context.on("request", request => diagnostic({ event: "request", asset: requestLabel(request.url()), type: request.resourceType() }));
+      context.on("response", response => diagnostic({ event: "response", asset: requestLabel(response.url()), status: response.status() }));
+      context.on("requestfailed", request => diagnostic({ event: "requestfailed", asset: requestLabel(request.url()), code: request.failure()?.errorText.match(/net::ERR_[A-Z_]+/)?.[0] ?? "OTHER" }));
       const browserCDP = await browser.newBrowserCDPSession();
       const processes = await browserCDP.send("SystemInfo.getProcessInfo");
       const ownProcess = processes.processInfo.find(process => process.type === "browser");
@@ -267,7 +288,7 @@ export function registerFrozenExtensionCombination() {
             const runtime = (globalThis as unknown as { chrome?: { runtime?: { lastError?: unknown; sendMessage(id: string, value: unknown, callback: (response: unknown) => void): void } } }).chrome?.runtime;
             const body = document.body.innerText;
             const state = {
-              runtimeAvailable: Boolean(runtime), receiverMounted: body.includes("Confirm a browser capture"),
+              runtimeAvailable: Boolean(runtime), receiverMounted: body.includes("Confirm a browser capture"), readyState: document.readyState, scriptCount: document.scripts.length,
               handoffExpired: body.includes("Browser handoff expired"), handoffInvalid: body.includes("This handoff is invalid"),
               reading: body.includes("Reading the browser handoff"), contextUnavailable: body.includes("Context changed or access is unavailable"),
               confirmation: body.includes("Confirm and submit"),
@@ -285,7 +306,7 @@ export function registerFrozenExtensionCombination() {
           const envelope = diagnostic.response && typeof diagnostic.response === "object" ? diagnostic.response as Record<string, unknown> : undefined;
           const parsed = browserCaptureSchema.safeParse(envelope?.payload);
           await writeFile(join(dir, "extension-failure-state.json"), JSON.stringify({
-            ...diagnostic.state, network, envelopeKeys: envelope ? Object.keys(envelope).sort() : [],
+            ...diagnostic.state, network, browserDiagnostics, envelopeKeys: envelope ? Object.keys(envelope).sort() : [],
             wirePayloadValid: parsed.success,
             issues: parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path.join("."), code: issue.code })),
           }));
