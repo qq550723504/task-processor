@@ -266,5 +266,37 @@ human reads with an explicit target-org header. The fixed provider source at
 bare `user.grant.read`/`user.read` satisfies the org-wide read prerequisite.
 This bounded observation is not an atomic snapshot and does not prove the
 credential lacks broader authority. Required permissions are not an actual PAT
-scope or native role bundle. Native ZITADEL service-identity/bundle verification
-remains NOT_RUN at this checkpoint and must be reported separately from fixtures.
+scope or native role bundle.
+
+### Native provider verification
+
+Clean source/web `97a16661b84c6473a79402f50fc66181fc08c94e` used fresh run
+`835c9cb7-ae4e-4986-99d5-7f85d41e526e` from the unchanged
+`scripts/issue357-runtime.mjs start --current-application`. Official API/Login
+v4.17.1 ran with API digest
+`sha256:3ac6910685d48f32481f01f45e3e6215efe5a9df2c069591b481e9a101712db5`.
+After READY, the existing stop command stopped only Go/Next; native validation
+used the dedicated adapters against the retained task-owned provider.
+
+`ISSUE410_NATIVE_RUN=835c9cb7-ae4e-4986-99d5-7f85d41e526e go test -tags=integration -race ./internal/integration/zitadel/membership -run '^TestNativeMembershipProvider$' -count=1 -v`
+passed. This is actual native list/create-human/read-human/create-grant/update/
+delete-grant/retained-human evidence, not a fixture. Bootstrap was used only for
+isolated setup, never as the tested adapter credential.
+
+Native role assignments were reread: dedicated read identity has
+`ORG_OWNER_VIEWER`, write identity has `ORG_USER_MANAGER`, and the denied identity
+has no native role. The write role also contains `user.delete`, user feature and
+session permissions; this is an actual native bundle, not least-privilege PAT
+scope. No user/org delete endpoint was called. Explicit target-org read succeeds;
+another org has no bare `user.grant.read`. The unprivileged native authorization
+list returns 200/zero rows, while the adapter fails closed on missing coverage.
+Revoking the read PAT makes native permission observation return 401.
+
+The run's private #410 credentials file was deleted by exact path before the
+existing destroy command. Cleanup reports passed, resourcesReleased and
+portsReleased, with both applications exited 0. Its zeroWrite refers only to the
+original commercial fixture. Sanitized role/scope/negative/cleanup evidence is
+stored in `issue410-membership-native-evidence.json`; no PATs or human login
+credentials are included. Native adapter evidence and the earlier production
+BFF/Go/PG browser fixture remain separate verification layers. Final-HEAD CI,
+automated accessibility and independent full-slice review are still pending.

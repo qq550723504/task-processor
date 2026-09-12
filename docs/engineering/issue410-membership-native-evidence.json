@@ -1,0 +1,110 @@
+{
+  "permissions": {
+    "runId": "835c9cb7-ae4e-4986-99d5-7f85d41e526e",
+    "sourceSha": "97a16661b84c6473a79402f50fc66181fc08c94e",
+    "organizationId": "390432037934202884",
+    "projectId": "390432042464051204",
+    "accounts": {
+      "read": {
+        "id": "50f6118e-fe53-45f8-b4fd-a9e4943c0ac9",
+        "nativeRole": "ORG_OWNER_VIEWER",
+        "permissions": [
+          "org.read",
+          "org.member.read",
+          "org.idp.read",
+          "org.action.read",
+          "org.flow.read",
+          "org.feature.read",
+          "user.read",
+          "user.global.read",
+          "user.grant.read",
+          "user.membership.read",
+          "user.feature.read",
+          "policy.read",
+          "project.read",
+          "project.member.read",
+          "project.role.read",
+          "project.app.read",
+          "project.grant.read",
+          "project.grant.member.read",
+          "project.grant.user.grant.read"
+        ],
+        "otherOrgPermissions": []
+      },
+      "write": {
+        "id": "271cb29a-27c6-46ca-a521-7059c2b09f77",
+        "nativeRole": "ORG_USER_MANAGER",
+        "permissions": [
+          "org.read",
+          "user.read",
+          "user.global.read",
+          "user.write",
+          "user.delete",
+          "user.grant.read",
+          "user.grant.write",
+          "user.grant.delete",
+          "user.membership.read",
+          "user.feature.read",
+          "user.feature.write",
+          "user.feature.delete",
+          "policy.read",
+          "project.read",
+          "project.role.read",
+          "session.read",
+          "session.delete"
+        ],
+        "otherOrgPermissions": []
+      },
+      "denied": {
+        "id": "266c9b54-6878-4fe2-abd1-9e2ada919be8",
+        "nativeRole": null,
+        "permissions": [],
+        "otherOrgPermissions": []
+      }
+    },
+    "at": "2026-09-12T11:15:45.402Z"
+  },
+  "negative": {
+    "runId": "835c9cb7-ae4e-4986-99d5-7f85d41e526e",
+    "sourceSha": "97a16661b84c6473a79402f50fc66181fc08c94e",
+    "actualNativeRoleAssignments": {
+      "read": [
+        "ORG_OWNER_VIEWER"
+      ],
+      "write": [
+        "ORG_USER_MANAGER"
+      ]
+    },
+    "missingPermissionNativeList": {
+      "status": 200,
+      "count": 0
+    },
+    "revokedPATStatus": 401,
+    "noRolePermissions": [],
+    "userOrOrgDeleteCalls": 0,
+    "at": "2026-09-12T11:17:03.193Z"
+  },
+  "cleanup": {
+    "schemaVersion": "issue357-cleanup-v1",
+    "runId": "835c9cb7-ae4e-4986-99d5-7f85d41e526e",
+    "sourceSha": "97a16661b84c6473a79402f50fc66181fc08c94e",
+    "webSha": "97a16661b84c6473a79402f50fc66181fc08c94e",
+    "passed": true,
+    "resourcesReleased": true,
+    "portsReleased": true,
+    "applications": {
+      "passed": true,
+      "goExit": 0,
+      "nextExit": 0
+    },
+    "zeroWrite": {
+      "after": "9182a64075ce68b7ca94e9259170b355f6902781f6d8db68cbd60be726b73cf2",
+      "before": "9182a64075ce68b7ca94e9259170b355f6902781f6d8db68cbd60be726b73cf2",
+      "checkedAt": "2026-09-12T11:17:16.4438205Z",
+      "passed": true
+    },
+    "at": "2026-09-12T11:17:22.584Z"
+  },
+  "extraCredentialFileRemoved": true,
+  "adapterTestStdout": "Captured tool stdout, exec chunk af0c43 (2026-09-12), source 97a16661b84c6473a79402f50fc66181fc08c94e.\nCommand: ISSUE410_NATIVE_RUN=835c9cb7-ae4e-4986-99d5-7f85d41e526e go test -tags=integration -race ./internal/integration/zitadel/membership -run '^TestNativeMembershipProvider$' -count=1 -v\n=== RUN   TestNativeMembershipProvider\n--- PASS: TestNativeMembershipProvider (0.17s)\nPASS\nok  task-processor/internal/integration/zitadel/membership 1.213s\n"
+}
