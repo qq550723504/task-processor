@@ -29,6 +29,45 @@ it("starts a role edit with the member's current role", async () => {
   await userEvent.setup().click(await screen.findByRole("button",{name:"查看详情"}));
   expect(await screen.findByRole("combobox",{name:"新的成员角色"})).toHaveValue("listingkit_operator");
 });
+it.each([
+  ["mutation",401,"AUTHENTICATION_REQUIRED"], ["mutation",403,"PERMISSION_DENIED"], ["mutation",409,"ORGANIZATION_CONTEXT_CHANGED"],
+  ["receipt",401,"AUTHENTICATION_REQUIRED"], ["receipt",403,"PERMISSION_DENIED"], ["receipt",409,"ORGANIZATION_CONTEXT_CHANGED"],
+  ["verify",401,"AUTHENTICATION_REQUIRED"], ["verify",403,"PERMISSION_DENIED"], ["verify",409,"ORGANIZATION_CONTEXT_CHANGED"],
+])("quarantines stale directory after %s authority failure %s", async (route,status,code) => {
+  const key="ea0390e6-6fd0-4834-8e9c-277caf59c122";
+  let deny=false;
+  const calls=vi.fn().mockImplementation((url,init)=> {
+    const failure=()=>Response.json({code,message:"",requestId:"",fieldErrors:[]},{status:Number(status)});
+    if(String(url).includes("member-operations")) {
+      if(deny && (route==="receipt" || init.method==="POST")) return Promise.resolve(failure());
+      return Promise.resolve(Response.json({code:"MEMBER_NOT_FOUND",message:"",requestId:"",fieldErrors:[]},{status:404}));
+    }
+    if(init.method==="POST") return Promise.resolve(failure());
+    return Promise.resolve(Response.json({...result,canManage:true,assignableRoles:["listingkit_viewer","listingkit_operator"],items:[{...result.items[0],canChangeRole:true}]}));
+  });
+  vi.stubGlobal("fetch",calls);render(page());const user=userEvent.setup();
+  expect(await screen.findByText("成员甲")).toBeVisible();
+  if(route==="mutation") {
+    await user.click(screen.getByRole("button",{name:"查看详情"}));
+    await user.click(await screen.findByRole("button",{name:"保存角色"}));
+  } else {
+    await act(async()=>{
+      deny=route==="receipt";
+      sessionStorage.setItem('membership.pending:["actor","org"]',JSON.stringify({key,kind:"role",target:"grant",input:{role:"listingkit_operator",expectedVersion:"a".repeat(64)}}));
+      window.dispatchEvent(new Event("membership-pending"));
+    });
+    if(route==="verify") {deny=true;await user.click(await screen.findByRole("button",{name:"核实原操作"}));}
+  }
+  await waitFor(()=>expect(screen.queryByText("成员甲")).not.toBeInTheDocument());
+  expect(screen.queryByRole("button",{name:"邀请成员"})).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"继续原操作"})).toBeDisabled();
+  const retained=sessionStorage.getItem('membership.pending:["actor","org"]');expect(retained).not.toBeNull();
+  const sends=calls.mock.calls.filter(([,init])=>init.method==="POST").length;
+  deny=false;await user.click(screen.getByRole("button",{name:"刷新成员"}));
+  expect(await screen.findByText("成员甲")).toBeVisible();
+  expect(sessionStorage.getItem('membership.pending:["actor","org"]')).toBe(retained);
+  expect(calls.mock.calls.filter(([,init])=>init.method==="POST")).toHaveLength(sends);
+});
 it("keeps a missing receipt pending until the original key yields a durable rejection", async () => {
   const key = "ea0390e6-6fd0-4834-8e9c-277caf59c122";
   sessionStorage.setItem('membership.pending:["actor","org"]',JSON.stringify({key,kind:"role",target:"grant",input:{role:"listingkit_operator",expectedVersion:"a".repeat(64)}}));
@@ -44,6 +83,36 @@ it("keeps a missing receipt pending until the original key yields a durable reje
   await userEvent.setup().click(await screen.findByRole("button",{name:"关闭回执"}));
   await waitFor(()=>expect(screen.getByRole("button",{name:"邀请成员"})).toBeEnabled());
   expect(calls.mock.calls.filter(([,init])=>init.method==="POST").map(([url])=>String(url))).toEqual([`/api/account/member-operations/${key}/verify`]);
+});
+it.each([[401,"AUTHENTICATION_REQUIRED"],[403,"PERMISSION_DENIED"],[409,"ORGANIZATION_CONTEXT_CHANGED"]])("hides cached directory when detail authority fails %s", async(status,code)=> {
+  vi.stubGlobal("fetch",vi.fn().mockImplementation(url=>Promise.resolve(String(url).endsWith("/grant") ? Response.json({code,message:"",requestId:"",fieldErrors:[]},{status:Number(status)}) : Response.json({...result,canManage:true,assignableRoles:["listingkit_viewer"]}))));
+  render(page());const user=userEvent.setup();
+  await user.click(await screen.findByRole("button",{name:"查看详情"}));
+  await waitFor(()=>expect(screen.queryByText("成员甲")).not.toBeInTheDocument());
+  expect(screen.queryByRole("button",{name:"邀请成员"})).not.toBeInTheDocument();
+});
+it("does not let a directory refresh started before authority failure restore stale capabilities", async()=> {
+  const key="ea0390e6-6fd0-4834-8e9c-277caf59c122";
+  let finishReceipt!:(response:Response)=>void;
+  let finishDirectory!:(response:Response)=>void;
+  let reads=0;
+  const directory={...result,canManage:true,assignableRoles:["listingkit_viewer"]};
+  vi.stubGlobal("fetch",vi.fn().mockImplementation(url=> {
+    if(String(url).includes("member-operations")) return new Promise<Response>(resolve=>{finishReceipt=resolve;});
+    if(++reads===2) return new Promise<Response>(resolve=>{finishDirectory=resolve;});
+    return Promise.resolve(Response.json(directory));
+  }));
+  render(page());const user=userEvent.setup();expect(await screen.findByText("成员甲")).toBeVisible();
+  await act(async()=>{sessionStorage.setItem('membership.pending:["actor","org"]',JSON.stringify({key,kind:"role",target:"grant",input:{role:"listingkit_viewer",expectedVersion:"a".repeat(64)}}));window.dispatchEvent(new Event("membership-pending"));});
+  await waitFor(()=>expect(finishReceipt).toBeDefined());
+  await user.click(screen.getByRole("button",{name:"刷新成员"}));
+  await waitFor(()=>expect(finishDirectory).toBeDefined());
+  await act(async()=>finishReceipt(Response.json({code:"PERMISSION_DENIED",message:"",requestId:"",fieldErrors:[]},{status:403})));
+  await act(async()=>finishDirectory(Response.json(directory)));
+  expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"继续原操作"})).toBeDisabled();
+  await user.click(screen.getByRole("button",{name:"刷新成员"}));
+  expect(await screen.findByText("成员甲")).toBeVisible();
 });
 it("clears the member directory immediately during an org switch", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(result))));

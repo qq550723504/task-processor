@@ -20,6 +20,7 @@ type Pending = z.infer<typeof pendingSchema>;
 const roleNames: Record<MemberRole, string> = { listingkit_viewer: "只读成员", listingkit_operator: "操作成员", listingkit_admin: "企业管理员" };
 const subscribe = (notify: () => void) => { window.addEventListener("membership-pending", notify); window.addEventListener("storage", notify); return () => { window.removeEventListener("membership-pending", notify); window.removeEventListener("storage", notify); }; };
 const noPending = () => null;
+const isAuthorityFailure = (failure: unknown): failure is MemberError => failure instanceof MemberError && (failure.status === 401 || failure.status === 403 || ["IDENTITY_CONTEXT_CHANGED", "ORGANIZATION_CONTEXT_CHANGED", "ORGANIZATION_SELECTION_REQUIRED"].includes(failure.code));
 
 export function MembersPage({ expectedUserId }: { expectedUserId: string }) {
   const context = useWorkbenchContext(); const [leaving, setLeaving] = useState(false);
@@ -37,16 +38,29 @@ export function MembersPage({ expectedUserId }: { expectedUserId: string }) {
 function ScopedMembers({ scope }: { scope: MemberScope }) {
   const [offset, setOffset] = useState(0); const [selected, setSelected] = useState<string | null>(null); const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [receipt, setReceipt] = useState<MemberOperation | null>(null);
+  const [authorityError, setAuthorityError] = useState<MemberError | null>(null);
+  const authorityRevision = useRef(0);
+  const quarantine = (failure: unknown) => {
+    if (!isAuthorityFailure(failure)) return;
+    authorityRevision.current++; setAuthorityError(failure); setSelected(null); setInviting(false);
+  };
   const controllerRef = useRef<AbortController | null>(null);
   useEffect(() => { const current = new AbortController(); controllerRef.current = current; return () => current.abort(); }, []);
   const storageKey = `membership.pending:${JSON.stringify([scope.expectedUserId, scope.expectedOrganizationId])}`;
   const raw = useSyncExternalStore(subscribe, () => { try { return sessionStorage.getItem(storageKey); } catch { return null; } }, noPending);
   const pending = useMemo(() => { try { if (!raw || raw.length > 4096) return null; const parsed = pendingSchema.safeParse(JSON.parse(raw)); return parsed.success ? parsed.data : null; } catch { return null; } }, [raw]);
   const query = useQuery({ queryKey: ["members", scope.expectedUserId, scope.expectedOrganizationId, offset], queryFn: ({ signal }) => getMembers({ ...scope, signal }, offset), gcTime: 0, staleTime: 0, retry: false });
-  const operation = useQuery({ queryKey: ["member-operation", scope.expectedUserId, scope.expectedOrganizationId, pending?.key], queryFn: ({ signal }) => getMemberOperation({ ...scope, signal }, pending!.key), enabled: !!pending, gcTime: 0, staleTime: 0, retry: false });
+  const operation = useQuery({ queryKey: ["member-operation", scope.expectedUserId, scope.expectedOrganizationId, pending?.key], queryFn: async ({ signal }) => { try { return await getMemberOperation({ ...scope, signal }, pending!.key); } catch (failure) { if (!signal.aborted) quarantine(failure); throw failure; } }, enabled: !!pending, gcTime: 0, staleTime: 0, retry: false });
   const currentReceipt = receipt?.id === pending?.key ? receipt : operation.data;
-  const ready = query.isSuccess && !query.isFetching;
+  const ready = query.isSuccess && !query.isFetching && !authorityError;
   const canManage = ready && query.data.canManage;
+  const refreshMembers = async () => {
+    const revision = authorityRevision.current;
+    setSelected(null); setInviting(false);
+    const refreshed = await query.refetch();
+    // An older refresh must not undo an authority failure observed in flight.
+    if (refreshed.isSuccess && revision === authorityRevision.current) { setAuthorityError(null); setError(""); }
+  };
   const persist = (value: Pending | null) => { if (value) sessionStorage.setItem(storageKey, JSON.stringify(value)); else sessionStorage.removeItem(storageKey); window.dispatchEvent(new Event("membership-pending")); };
   const run = async (command: Pending, verify = false) => {
     const controller = controllerRef.current;
@@ -56,7 +70,7 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
       const requestScope = { ...scope, signal: controller.signal };
       const result = verify ? await verifyMemberOperation(requestScope, command.key) : command.kind === "invite" ? await inviteMember(requestScope, command.key, command.input) : command.kind === "role" ? await changeMemberRole(requestScope, command.key, command.target, command.input) : await removeMember(requestScope, command.key, command.target, command.input);
       if (!controller.signal.aborted) { setReceipt(result); void query.refetch(); }
-    } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof MemberError ? failure.code : "DEPENDENCY_UNAVAILABLE"); }
+    } catch (failure) { if (!controller.signal.aborted) { quarantine(failure); setError(failure instanceof MemberError ? failure.code : "DEPENDENCY_UNAVAILABLE"); } }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
   const submit = (command: Pending) => {
@@ -65,12 +79,12 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
     catch { setError("OPERATION_STORAGE_UNAVAILABLE"); }
   };
   return <div className={styles.page}>
-    <div className={styles.toolbar}><p>{ready ? `当前企业 · ${query.data.total} 位成员` : "当前企业成员"}</p><div><Button variant="outline" onClick={() => { setSelected(null); setInviting(false); void query.refetch(); }} disabled={busy}>刷新成员</Button>{canManage && <Button disabled={!!pending || busy || !query.data.assignableRoles.length} onClick={() => { setSelected(null); setInviting(true); }}>邀请成员</Button>}</div></div>
-    {error && <MemberFailure code={error} />}
+    <div className={styles.toolbar}><p>{ready ? `当前企业 · ${query.data.total} 位成员` : "当前企业成员"}</p><div><Button variant="outline" onClick={() => void refreshMembers()} disabled={busy}>刷新成员</Button>{canManage && <Button disabled={!!pending || busy || !query.data.assignableRoles.length} onClick={() => { setSelected(null); setInviting(true); }}>邀请成员</Button>}</div></div>
+    {error && !authorityError && <MemberFailure code={error} />}
     {pending && <section className={styles.panel} aria-labelledby="pending-title"><h2 id="pending-title">{currentReceipt?.status === "acknowledged" ? "操作已获服务确认" : currentReceipt?.status === "rejected" ? "操作未执行" : "结果待核实"}</h2><p>{currentReceipt?.status === "acknowledged" ? "操作回执与当前成员状态分别显示，请以最新读取的成员资料为准。" : "请保留本次操作标识。核实可继续尚未发送的步骤；已发送的步骤不会再次发送。"}</p><code>{pending.key}</code>{currentReceipt?.userEvidence === "identity_verified" && <p>已核实新用户身份；这不代表验证邮件已送达。</p>}{currentReceipt?.observation === "not_visible" && <p>当前读取未看到该成员；这不能单独证明本次移除成功。</p>}<div className={styles.actions}>{currentReceipt && ["acknowledged", "rejected"].includes(currentReceipt.status) ? <Button variant="outline" onClick={() => { persist(null); setReceipt(null); setError(""); }}>关闭回执</Button> : <><Button variant="outline" disabled={busy || !canManage} onClick={() => void run(pending, true)}>核实原操作</Button><Button variant="outline" disabled={busy || !canManage} onClick={() => void run(pending)}>继续原操作</Button></>}</div></section>}
-    {!ready ? query.isError ? <MemberFailure code={query.error instanceof MemberError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} /> : <ConsoleState kind="loading" title="正在读取成员">正在确认成员目录与当前权限。</ConsoleState> : <>
+    {!ready ? authorityError ? <MemberFailure code={authorityError.code} /> : query.isError ? <MemberFailure code={query.error instanceof MemberError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} /> : <ConsoleState kind="loading" title="正在读取成员">正在确认成员目录与当前权限。</ConsoleState> : <>
       {inviting && canManage && !pending && <InvitationForm roles={query.data.assignableRoles} onCancel={() => setInviting(false)} onSubmit={input => submit({ key: crypto.randomUUID(), kind: "invite", input })} />}
-      {selected && <MemberDetail key={selected} id={selected} scope={scope} roles={query.data.assignableRoles} disabled={busy || !!pending} onClose={() => setSelected(null)} onSubmit={submit} />}
+      {selected && <MemberDetail key={selected} id={selected} scope={scope} roles={query.data.assignableRoles} disabled={busy || !!pending} onClose={() => setSelected(null)} onSubmit={submit} onAuthorityFailure={quarantine} />}
       {query.data.items.length === 0 ? <ConsoleState kind="empty" title="当前没有可显示的成员">当前企业的成员目录读取成功。</ConsoleState> : <div className={styles.tableWrap} role="region" aria-label="成员表格，可横向滚动" tabIndex={0}><table className={styles.table}><caption className={styles.caption}>当前企业成员</caption><thead><tr><th>成员</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody>{query.data.items.map(member => <tr key={member.id}><td><strong>{member.displayName || member.loginName || member.userId}</strong><span>{member.loginName}</span></td><td>{member.roles.map(value => roleNames[value as MemberRole] ?? value).join("、") || "未授予角色"}</td><td>{member.state === "active" ? "有效" : "已停用"}</td><td><Button variant="ghost" onClick={() => { setInviting(false); setSelected(member.id); }}>查看详情</Button></td></tr>)}</tbody></table></div>}
       <div className={styles.pagination}><Button variant="outline" disabled={offset === 0 || busy} onClick={() => { setSelected(null); setOffset(value => Math.max(0, value - 20)); }}>上一页</Button><span>第 {Math.floor(offset / 20) + 1} 页</span><Button variant="outline" disabled={offset + 20 >= query.data.total || busy} onClick={() => { setSelected(null); setOffset(value => value + 20); }}>下一页</Button></div>
     </>}
@@ -82,8 +96,8 @@ function InvitationForm({ roles, onCancel, onSubmit }: { roles: MemberRole[]; on
   return <section className={styles.panel}><h2>邀请新成员</h2><p>创建新的企业成员身份。验证邮件由身份服务发送，已有身份不会被自动关联。</p><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); const parsed = invitationInput.safeParse(Object.fromEntries(form)); setInvalid(!parsed.success); if (parsed.success) onSubmit(parsed.data); }}>{invalid && <p role="alert">请填写有效邮箱和非空姓名，姓名不能包含控制字符。</p>}<div className={styles.formGrid}><label>邮箱<Input name="email" type="email" maxLength={200} required /></label><label>名字<Input name="firstName" maxLength={200} required /></label><label>姓氏<Input name="lastName" maxLength={200} required /></label><label>角色<RoleSelect name="role" roles={roles} /></label></div><div className={styles.actions}><Button type="submit">确认邀请</Button><Button type="button" variant="outline" onClick={onCancel}>取消</Button></div></form></section>;
 }
 
-function MemberDetail({ id, scope, roles, disabled, onClose, onSubmit }: { id: string; scope: MemberScope; roles: MemberRole[]; disabled: boolean; onClose: () => void; onSubmit: (pending: Pending) => void }) {
-  const detail = useQuery({ queryKey: ["member-detail", scope.expectedUserId, scope.expectedOrganizationId, id], queryFn: ({ signal }) => getMember({ ...scope, signal }, id), gcTime: 0, staleTime: 0, retry: false });
+function MemberDetail({ id, scope, roles, disabled, onClose, onSubmit, onAuthorityFailure }: { id: string; scope: MemberScope; roles: MemberRole[]; disabled: boolean; onClose: () => void; onSubmit: (pending: Pending) => void; onAuthorityFailure: (failure: unknown) => void }) {
+  const detail = useQuery({ queryKey: ["member-detail", scope.expectedUserId, scope.expectedOrganizationId, id], queryFn: async ({ signal }) => { try { return await getMember({ ...scope, signal }, id); } catch (failure) { if (!signal.aborted) onAuthorityFailure(failure); throw failure; } }, gcTime: 0, staleTime: 0, retry: false });
   const [confirmed, setConfirmed] = useState(false);
   if (detail.isFetching || detail.isPending) return <ConsoleState kind="loading" title="正在读取成员详情" />;
   if (detail.isError || detail.data.items.length !== 1) return <MemberFailure code={detail.error instanceof MemberError ? detail.error.code : "MEMBER_NOT_FOUND"} />;

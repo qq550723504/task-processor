@@ -355,3 +355,13 @@ first name with Tab. Axe checks reuse the existing dependency and verify DOM
 semantics in jsdom with contrast disabled; they do not certify rendered contrast
 or full WCAG conformance. The task fixture cleanup reports `goExit: 0` and
 `nextStopped: true`.
+
+The final full-slice review also identified cached directory/capabilities after
+mutation, verification or receipt authority failures (`IMPLEMENTATION_TEST`).
+Nine cases covering 401, 403 and explicit org-context changes first failed
+against 3ab2293d6 (`e76f82`). The UI now hides old directory/details/capabilities,
+retains the original operation key and requires a subsequent successful matched
+directory refresh before restoring capabilities. Detail-read authority failures
+share the same behavior. A directory refresh started before the authority
+failure cannot restore capability afterward. No automatic POST or new operation
+key is introduced. All 34 member frontend tests pass after this correction.
