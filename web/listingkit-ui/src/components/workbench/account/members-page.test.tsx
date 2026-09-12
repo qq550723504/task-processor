@@ -1,16 +1,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
+import { createRequire } from "node:module";
 import { afterEach, expect, it, vi } from "vitest";
 import { MembersPage } from "./members-page";
 
-const state = vi.hoisted(() => ({ switching: false }));
-vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "actor" }, effectiveOrganization: { id: "org", name: "当前企业" }, roles: ["listingkit_admin"], isSwitching: state.switching, isLoading: false, selectionRequired: false, error: null, blockingError: null }) }));
+// Reuse the axe engine already installed by the repository's browser test dependency.
+const load = createRequire(import.meta.url);
+const axe = load(load.resolve("axe-core", {paths:[load.resolve("@axe-core/playwright")]})) as {run:(node:HTMLElement,options:unknown)=>Promise<{violations:unknown[]}>};
+
+const state = vi.hoisted(() => ({ switching: false, org: "org" }));
+vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "actor" }, effectiveOrganization: { id: state.org, name: "当前企业" }, roles: ["listingkit_admin"], isSwitching: state.switching, isLoading: false, selectionRequired: false, error: null, blockingError: null }) }));
 const result = { schemaVersion: "membership-v1", userId: "actor", organizationId: "org", canManage: false, assignableRoles: [], total: 1, items: [{ id: "grant", userId: "member", projectId: "project", organizationId: "org", displayName: "成员甲", loginName: "a@example.com", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false }] };
 const clients: QueryClient[] = [];
-afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.switching = false; sessionStorage.clear(); });
-function page() { const client = new QueryClient(); clients.push(client); return <QueryClientProvider client={client}><MembersPage expectedUserId="actor" /></QueryClientProvider>; }
+afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.switching = false; state.org = "org"; sessionStorage.clear(); });
+function page(client = new QueryClient()) { clients.push(client); return <QueryClientProvider client={client}><MembersPage expectedUserId="actor" /></QueryClientProvider>; }
 it("uses backend capability instead of context role names", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(result))));
   render(page()); expect(await screen.findByText("成员甲")).toBeVisible();
@@ -35,4 +40,26 @@ it("sends an invitation after StrictMode effect replay and keeps original-key re
   await user.click(screen.getByRole("button",{name:"确认邀请"}));
   await waitFor(() => expect(calls.mock.calls.some(([,init]) => init.method === "POST")).toBe(true));
   expect(await screen.findByRole("button",{name:"继续原操作"})).toBeEnabled();
+});
+it("cancels and isolates an old response on the same query client across organizations", async () => {
+  let finish!: (value: Response) => void;
+  let oldSignal: AbortSignal | undefined;
+  vi.stubGlobal("fetch",vi.fn().mockImplementation((_url,init) => {
+    if(init.headers.get("X-Expected-Organization-ID") === "org") { oldSignal=init.signal; return new Promise<Response>(resolve => { finish=resolve; }); }
+    return Promise.resolve(Response.json({...result,organizationId:"new-org",items:[{...result.items[0],organizationId:"new-org",displayName:"新企业成员"}]}));
+  }));
+  const client=new QueryClient(); const view=render(page(client));
+  await waitFor(()=>expect(oldSignal).toBeDefined());
+  state.org="new-org"; view.rerender(page(client));
+  expect(await screen.findByText("新企业成员")).toBeVisible(); expect(oldSignal?.aborted).toBe(true);
+  await act(async()=>finish(Response.json(result)));
+  expect(screen.queryByText("成员甲")).not.toBeInTheDocument(); expect(screen.getByText("新企业成员")).toBeVisible();
+});
+it("has named, valid accessible controls in the member table and invitation form", async () => {
+  vi.stubGlobal("fetch",vi.fn().mockImplementation(()=>Promise.resolve(Response.json({...result,canManage:true,assignableRoles:["listingkit_viewer"]}))));
+  render(<main>{page()}</main>);
+  await userEvent.setup().click(await screen.findByRole("button",{name:"邀请成员"}));
+  // jsdom has no rendered contrast/layout; those remain browser visual checks.
+  const report=await axe.run(document.body,{rules:{"color-contrast":{enabled:false}}});
+  expect(report.violations).toEqual([]);
 });

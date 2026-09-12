@@ -54,7 +54,7 @@ try {
   await new Promise(resolve => outer.listen(outerPort, "127.0.0.1", resolve));
   next = start(process.execPath, [join(web, "node_modules/next/dist/bin/next"), "dev", "--hostname", "127.0.0.1", "--port", String(innerPort)], "next.log", { cwd: web, env: { ...process.env, NODE_ENV: "development", AUTH_SECRET: secret, AUTH_URL: origin, LISTINGKIT_PUBLIC_BASE_URL: origin, ZITADEL_ISSUER_URL: seed.issuerURL, ZITADEL_CLIENT_ID: "membership-fixture", ZITADEL_CLIENT_SECRET: "", LISTINGKIT_SERVICE_API_BASE: `${seed.goOrigin}/api/v1` } });
   await until(async () => (await fetch(`${origin}/api/auth/session`)).ok, "Next/Auth.js");
-  await writeFile(join(directory, "fixture.json"), JSON.stringify({ origin, ...seed, sourceHead: await run("git", ["rev-parse", "HEAD"]), dirtyWorktree: true, boundary: "synthetic external ZITADEL and session issuance; production Auth.js/BFF/current Go/PG" }), { mode: 0o600 });
+  await writeFile(join(directory, "fixture.json"), JSON.stringify({ origin, ...seed, sourceHead: await run("git", ["rev-parse", "HEAD"]), dirtyWorktree: (await run("git", ["status", "--porcelain"])).length > 0, boundary: "synthetic external ZITADEL and session issuance; production Auth.js/BFF/current Go/PG" }), { mode: 0o600 });
   console.log(JSON.stringify({ origin, manifest: join(directory, "fixture.json"), loginAdmin: `${origin}/__fixture/login/admin`, loginViewer: `${origin}/__fixture/login/viewer` }));
   const end = Date.now() + 22 * 60000; while (Date.now() < end) { try { await access(join(directory, "stop-fixture")); break; } catch {} await pause(500); }
 } finally { await cleanup(); }

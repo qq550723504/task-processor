@@ -15,6 +15,7 @@ type memoryReceipts struct {
 	mu           sync.Mutex
 	op           *Operation
 	loseDispatch bool
+	ackMode      string
 }
 
 func (m *memoryReceipts) Begin(_ context.Context, op Operation) (Operation, error) {
@@ -43,11 +44,17 @@ func (m *memoryReceipts) Apply(_ context.Context, scope OperationScope, key stri
 	if m.op == nil || m.op.Key != key || m.op.Scope != scope || m.op.Revision != revision {
 		return Operation{}, ErrConflict
 	}
+	if change.Event == EventAcknowledge && m.ackMode == "before" {
+		return Operation{}, ErrUnavailable
+	}
 	next, err := Transition(*m.op, change)
 	if err != nil {
 		return Operation{}, err
 	}
 	m.op = &next
+	if change.Event == EventAcknowledge && m.ackMode == "after" {
+		return Operation{}, ErrUnavailable
+	}
 	if m.loseDispatch && change.Event == EventDispatch {
 		return Operation{}, ErrUnavailable
 	}
@@ -115,5 +122,64 @@ func TestRevokeBeforeDispatchPreventsProviderWrite(t *testing.T) {
 	_, err := commands.Execute(scopedContext("listingkit_admin"), uuid.NewString(), CommandInput{Kind: CommandRemove, AuthorizationID: "grant", ExpectedVersion: observedVersion(member)})
 	if err != ErrPermission || provider.calls != 0 {
 		t.Fatalf("err=%v sends=%d", err, provider.calls)
+	}
+}
+
+func TestAcknowledgmentPersistenceFailureUsesOnlyDurableEvidenceAfterRebuild(t *testing.T) {
+	for _, mode := range []string{"before", "after"} {
+		t.Run(mode, func(t *testing.T) {
+			a, _ := authz.NewListingKitAuthorizer(nil, nil)
+			member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}
+			s := NewService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
+			store := &memoryReceipts{ackMode: mode}
+			provider := &writerStub{}
+			refresh := func(ctx context.Context) (context.Context, error) { return ctx, nil }
+			key := uuid.NewString()
+			input := CommandInput{Kind: CommandRemove, AuthorizationID: "grant", ExpectedVersion: observedVersion(member)}
+			op, err := NewCommands(s, store, provider, refresh).Execute(scopedContext("listingkit_admin"), key, input)
+			if err != nil || op.Phase != PhaseDispatched {
+				t.Fatalf("lost completion response=%+v %v", op, err)
+			}
+			op, err = NewCommands(s, store, provider, refresh).Execute(scopedContext("listingkit_admin"), key, input)
+			want := PhaseDispatched
+			if mode == "after" {
+				want = PhaseCompleted
+			}
+			if err != nil || op.Phase != want || provider.calls != 1 {
+				t.Fatalf("rebuild=%+v %v sends=%d", op, err, provider.calls)
+			}
+		})
+	}
+}
+
+type delayedWriter struct {
+	started, release chan struct{}
+	calls            int
+}
+
+func (w *delayedWriter) Write(_ context.Context, op Operation) (Acknowledgment, error) {
+	w.calls++
+	close(w.started)
+	<-w.release
+	return Acknowledgment{ID: op.AuthorizationID, At: time.Now().UTC().Format(time.RFC3339Nano)}, nil
+}
+func TestOutstandingHTTPHoldsTargetWhileVerifyAndNewKeyRace(t *testing.T) {
+	a, _ := authz.NewListingKitAuthorizer(nil, nil)
+	member := Member{ID: "grant", UserID: "member", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_viewer"}, State: "active"}
+	s := NewService(&directoryStub{page: Page{Items: []Member{member}, Total: 1}}, a, "project")
+	store := &memoryReceipts{}
+	writer := &delayedWriter{started: make(chan struct{}), release: make(chan struct{})}
+	c := NewCommands(s, store, writer, func(ctx context.Context) (context.Context, error) { return ctx, nil })
+	key := uuid.NewString()
+	input := CommandInput{Kind: CommandRemove, AuthorizationID: "grant", ExpectedVersion: observedVersion(member)}
+	done := make(chan error, 1)
+	go func() { _, err := c.Execute(scopedContext("listingkit_admin"), key, input); done <- err }()
+	<-writer.started
+	op, verifyErr := c.Verify(scopedContext("listingkit_admin"), key)
+	_, conflictErr := c.Execute(scopedContext("listingkit_admin"), uuid.NewString(), input)
+	close(writer.release)
+	err := <-done
+	if verifyErr != nil || op.Phase != PhaseDispatched || conflictErr != ErrConflict || err != nil || writer.calls != 1 {
+		t.Fatalf("verify=%+v %v new=%v final=%v sends=%d", op, verifyErr, conflictErr, err, writer.calls)
 	}
 }
