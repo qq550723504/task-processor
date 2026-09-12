@@ -25,11 +25,12 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion         int            `json:"schemaVersion"`
-	Listen                ListenConfig   `json:"listen"`
-	Identity              IdentityConfig `json:"identity"`
-	SourceAccountDatabase DatabaseConfig `json:"sourceAccountDatabase"`
-	CommercialDatabase    DatabaseConfig `json:"commercialDatabase"`
+	SchemaVersion              int             `json:"schemaVersion"`
+	Listen                     ListenConfig    `json:"listen"`
+	Identity                   IdentityConfig  `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig  `json:"sourceAccountDatabase"`
+	CommercialDatabase         DatabaseConfig  `json:"commercialDatabase"`
+	ProductAcquisitionDatabase *DatabaseConfig `json:"productAcquisitionDatabase,omitempty"`
 }
 
 type ListenConfig struct {
@@ -205,6 +206,19 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
 		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
+	}
+	if product := cfg.ProductAcquisitionDatabase; product != nil {
+		if err := product.validate("productAcquisitionDatabase"); err != nil {
+			return err
+		}
+		if product.User != "source_acquisition_runtime" || product.MaxConnections > 8 {
+			return errors.New("product acquisition requires source_acquisition_runtime and at most 8 connections")
+		}
+		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+			if product.Host == other.Host && product.Port == other.Port && product.Database == other.Database {
+				return errors.New("product acquisition requires a dedicated Product database")
+			}
+		}
 	}
 	return nil
 }

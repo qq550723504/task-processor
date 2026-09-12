@@ -80,6 +80,28 @@ Current target ownership domains include:
 | `internal/zitadelprovision` | ZITADEL management/provisioning | integration identity provisioning + app operational entrypoint | External client stays in integration; app owns lifecycle. |
 | `web/listingkit-ui` | current web app with legacy ListingKit/Task-first responsibilities and valid current surfaces | final Figma Product Projection, especially #298 and Store Center surfaces | Retire only the specific Task-first/legacy dependencies. Keep current Console, account, plans and review surfaces as current product work; do not rebuild them merely because of this path name. |
 
+### SRC-2B1 current candidate seam (#398)
+
+Frozen `src2b-acquisition-v1` and bounded guard admission
+[5643032970](https://github.com/qq550723504/task-processor/issues/398#issuecomment-5643032970)
+admit the current sourcing validator, anonymous `integration/acquisition/a1688`
+adapter, `integration/persistence/product/acquisition` staging, and
+`app/productsourcing` coordinator into the optional current application module.
+SRC-1 and Catalog retain evidence/publication and ProductSnapshot authority.
+There is no SourceAccount/Connection/login prerequisite or legacy fallback.
+
+The explicit initializer reuses `platform/database.OpenExistingWritableContext`
+and `Close`; the public adapter reuses `httpimage.NewPublicImageHTTPClient`.
+These are qualified CURRENT leaf capabilities, not RETIRE owners. Precise
+file/API guards do not admit siblings or subpackages. The thin maintained
+`scripts/product-acquisition-init.ps1` owner only invokes the explicitly
+confirmed empty-database initializer; ordinary runtime performs no DDL.
+
+Status: candidate implementation, not a main/deployment receipt. Task-owned
+HTTP/PostgreSQL and mounted authorization/ambiguity tests have local evidence;
+final HEAD, CI and independent complete-call-chain review belong in the PR.
+Real 1688 acceptance remains NOT_RUN; Browser backend/UI is a later slice.
+
 ### 2.1 Bounded current-delivery calibration (#386)
 
 This is a **bounded symbol/caller calibration**, not a replacement full-repository scan. The historical scan baseline above remains `6e3b87208e2c4e51039b95145a2377edfbb9b1cb`; the rows below were checked against `main @ 08a6195c7aa8528acdec0bf0f4e742a8c4998e6d`. `CURRENT` identifies the allowed owner, not deployment or default runtime presence. `MERGED`, isolated acceptance, default mounting, deployment health, and business acceptance are deliberately separate states.

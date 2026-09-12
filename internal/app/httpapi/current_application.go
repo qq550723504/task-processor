@@ -39,6 +39,7 @@ type currentApplicationFactories struct {
 	buildWorkbench     workbenchContextModuleBuilder
 	buildSourceAccount func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAcquisition   func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 }
 
 func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationFactories {
@@ -97,19 +98,42 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
-	bundle, err := buildRuntimeBundleFromModules(cfg, []kernelmodule.Module{workbench.module, commercial, sourceAccount})
+	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	if factories.buildAcquisition != nil {
+		acquisition, err := factories.buildAcquisition(authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build current product acquisition module: %w", err)
+		}
+		if acquisition == nil {
+			return nil, errors.New("current product acquisition module unavailable")
+		}
+		modules = append(modules, acquisition)
+	}
+	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutes(bundle.routes); err != nil {
+	if err := validateCurrentApplicationRoutesForAcquisition(bundle.routes, factories.buildAcquisition != nil); err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
 }
 
 func validateCurrentApplicationRoutes(routes []httproute.Descriptor) error {
-	expected := make(map[currentApplicationRoute]struct{}, len(currentWorkbenchApplicationRoutes))
-	for _, route := range currentWorkbenchApplicationRoutes {
+	return validateCurrentApplicationRoutesForAcquisition(routes, false)
+}
+
+func validateCurrentApplicationRoutesForAcquisition(routes []httproute.Descriptor, acquisition bool) error {
+	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if acquisition {
+		admitted = append(admitted,
+			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase},
+			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase + "/verify"},
+			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id"},
+		)
+	}
+	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
+	for _, route := range admitted {
 		expected[route] = struct{}{}
 	}
 	if len(routes) != len(expected) {

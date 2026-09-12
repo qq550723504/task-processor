@@ -184,6 +184,23 @@ Phase 2 centralizes database lifecycle. Each listed domain package must first
 define a focused repository port; only its GORM implementation then moves to an
 owning `integration/<domain>` adapter.
 
+## Current admitted edges: SRC-2B1 candidate
+
+The historical closure ceilings remain database **21** and httpimage **8**.
+#398 admission [5643032970](https://github.com/qq550723504/task-processor/issues/398#issuecomment-5643032970)
+separately accepts two CURRENT leaf-capability consumers in this candidate,
+not additional legacy migration debt or evidence of a merge/deployment:
+
+| Target | Exact new importer / production file | Allowed API | Current total |
+| --- | --- | --- | --- |
+| `internal/platform/database` | `internal/app/productsourcing` / `acquisition_initialization.go` | `OpenExistingWritableContext`, `Close`, `Config`; explicit initializer, pool 2 | 22 = 21 historical + 1 current |
+| `internal/integration/httpimage` | `internal/integration/acquisition/a1688` / `public.go` | `NewPublicImageHTTPClient`; bounded anonymous public transport | 9 = 8 historical + 1 current |
+
+Only an actually present exact target/importer edge is excluded from the
+historical counter. Tracked-text AST guards constrain file and API use across
+OS/build tags; sibling files, nested targets and unapproved APIs remain rejected.
+This register does not authorize Browser capture, legacy wrappers or runtime DDL.
+
 ## Legacy consumer register
 
 The initial counts below preserve the migration baseline. The named package

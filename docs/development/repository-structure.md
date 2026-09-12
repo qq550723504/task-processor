@@ -19,7 +19,8 @@
 
 ## 顶层目录约定
 
-CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`，
+CURRENT STATE：原 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`；
+#398 候选变更新增已准入的 `product-acquisition-init` 运维入口，尚不表示已合并或部署。
 与 `TestCmdContainsOnlyOfficialEntrypoints` 及实际受维护路径一致。README 和 Code Guide
 只引用这里；受维护不等于已部署或通过生产验收。
 
@@ -32,7 +33,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前十四个运维入口为：
+  - 当前候选清单十五个运维入口为：
     - `1688-local-agent`
     - `fingerprint-browser-installer`
     - `listing-scheduler`
@@ -42,6 +43,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
     - `listingkit-schema-migrate`
     - `playwright-installer`
     - `product-listing-api-schema-migrate`
+    - `product-acquisition-init`
     - `shein-import-platform-recovery`
     - `shein-login-worker`
     - `store-service-history-migrate`
@@ -55,6 +57,7 @@ CURRENT STATE：以下完整 command 清单核对于 `main @ cae67730c5c0e645d70
   - 不再新增临时调试可执行程序。
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，属于 #301 Source Account 迁移的只读运维预检；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。
   - `source-account-registry-schema-init` 由 `scripts/source-account-registry-local-acceptance.ps1` 维护，只初始化 #368 当前 Source Account registry 的空库 schema；不读取、迁移或兼容旧 Source Account 数据。
+  - `product-acquisition-init` 由 `scripts/product-acquisition-init.ps1` 显式委托，要求私有配置路径和精确空库名称确认；只初始化 #398 当前 Product 采集的五张表及 runtime grants，不创建数据库或角色，不自动执行，不迁移旧数据。准入见 #398 评论 5643032970。
   - 历史爬虫、订阅、兼容 API、地址复制、一次性迁移或调试入口不得回流到 `cmd/`；确需保留时放到 `hack/`、`tools/` 或业务模块内。
   - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。
 - `hack/`
