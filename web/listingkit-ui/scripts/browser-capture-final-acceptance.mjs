@@ -58,6 +58,24 @@ try {
   for (const parent of [repo, web]) for (const name of [".env", ".env.local", ".env.development", ".env.development.local"]) {
     await assert.rejects(lstat(join(parent, name)), error => error.code === "ENOENT");
   }
+  webPort = await port(); const origin = `http://127.0.0.1:${webPort}`;
+  stage = "frozen-extension";
+  const extracted = join(dir, "plugin-source");
+  await mkdir(extracted);
+  const archive = join(dir, "plugin.tar");
+  await run("git", ["archive", "--format=tar", `--output=${archive}`, pluginHead, "extensions/1688-capture"], { cwd: repo });
+  await run("tar", ["-xf", archive, "-C", extracted]);
+  const pluginRoot = join(extracted, "extensions", "1688-capture");
+  const install = process.platform === "win32" ? ["cmd.exe", ["/c", "npm.cmd", "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"]] : ["npm", ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"]];
+  await run(install[0], install[1], { cwd: pluginRoot, env: childEnvironment() });
+  await run(process.execPath, ["scripts/build.mjs", "--fixture"], { cwd: pluginRoot, env: { ...childEnvironment(), CAPTURE_APP_URL: `${origin}/capture/1688` } });
+  const pluginBuild = {};
+  for (const file of ["manifest.json", "background.js", "popup.js", "extractor.js", "popup.html", "popup.css"]) {
+    pluginBuild[file] = createHash("sha256").update(await readFile(join(pluginRoot, "dist-fixture", file))).digest("hex");
+  }
+  const extensionManifest = JSON.parse(await readFile(join(pluginRoot, "dist-fixture", "manifest.json"), "utf8"));
+  assert.deepEqual(extensionManifest.permissions.slice().sort(), ["activeTab", "scripting"]);
+  assert.equal(extensionManifest.host_permissions, undefined);
   stage = "compile";
   const binary = join(dir, "browser-capture.test.exe");
   await run("go", ["test", "-c", "-o", binary, "./internal/app/httpapi"], { cwd: repo });
@@ -74,7 +92,6 @@ try {
   const goInfo = await until(() => privateJSON("go.json"), "GO_BROWSER", 45_000);
   assert.equal(new URL(goInfo.goOrigin).hostname, "127.0.0.1");
   stage = "next-auth";
-  webPort = await port(); const origin = `http://127.0.0.1:${webPort}`;
   const secret = randomBytes(48).toString("base64url");
   await json(join(dir, "services.json"), { uiDirectory: web, webPort });
   const next = await start(process.execPath, [join(repo, "scripts/issue357/next.mjs"), dir], { NODE_ENV: "development", NEXT_TELEMETRY_DISABLED: "1", AUTH_SECRET: secret, AUTH_URL: origin, AUTH_TRUST_HOST: "true", LISTINGKIT_PUBLIC_BASE_URL: origin, ZITADEL_ISSUER_URL: "http://127.0.0.1:1/fixture-external-identity", ZITADEL_CLIENT_ID: "fixture-client", LISTINGKIT_SERVICE_API_BASE: `${goInfo.goOrigin}/api/v1` }, web);
@@ -84,23 +101,6 @@ try {
     const value = await encode({ secret, salt: "authjs.session-token", maxAge: 1800, token: { sub: actor, name: `Fixture ${actor}`, accessToken: actor, expiresAt: Math.floor(Date.now()/1000)+1800, identityVersion: 3, identity: { tenantId: "A", userId: actor, roles: [actor === "viewer" ? "listingkit_viewer" : "listingkit_operator"], userType: "zitadel" } } });
     sessions[actor] = { subject: actor, cookie: `authjs.session-token=${value}` };
   }
-  stage = "frozen-extension";
-  const extracted = join(dir, "plugin-source");
-  await mkdir(extracted);
-  const archive = join(dir, "plugin.tar");
-  await run("git", ["archive", "--format=tar", `--output=${archive}`, pluginHead, "extensions/1688-capture"], { cwd: repo });
-  await run("tar", ["-xf", archive, "-C", extracted]);
-  const pluginRoot = join(extracted, "extensions", "1688-capture");
-  const install = process.platform === "win32" ? ["cmd.exe", ["/c", "pnpm.cmd", "install", "--offline", "--frozen-lockfile", "--ignore-scripts"]] : ["pnpm", ["install", "--offline", "--frozen-lockfile", "--ignore-scripts"]];
-  await run(install[0], install[1], { cwd: pluginRoot, env: childEnvironment() });
-  await run(process.execPath, ["scripts/build.mjs", "--fixture"], { cwd: pluginRoot, env: { ...childEnvironment(), CAPTURE_APP_URL: `${origin}/capture/1688` } });
-  const pluginBuild = {};
-  for (const file of ["manifest.json", "background.js", "popup.js", "extractor.js", "popup.html", "popup.css"]) {
-    pluginBuild[file] = createHash("sha256").update(await readFile(join(pluginRoot, "dist-fixture", file))).digest("hex");
-  }
-  const extensionManifest = JSON.parse(await readFile(join(pluginRoot, "dist-fixture", "manifest.json"), "utf8"));
-  assert.deepEqual(extensionManifest.permissions.slice().sort(), ["activeTab", "scripting"]);
-  assert.equal(extensionManifest.host_permissions, undefined);
   const manifest = join(dir, "fixture.json");
   await json(manifest, { origin, ...goInfo, sourceHead: expectedSha, evidencePath: join(dir, "evidence.json"), sessions, pluginRoot, pluginHead, pluginBuild, profilePath: join(dir, "extension-profile") });
   stage = "actual-chain";
