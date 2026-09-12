@@ -33,6 +33,18 @@ async function snapshot(page, name) {
 }
 async function check(name, operation) { await operation(); results.push(name); console.log(`PASS ${name}`); }
 try {
+  for (const user of ["u1", "no-org"]) await check(`account root and breadcrumb return preserve personal access: ${user}`, async () => {
+    const { page, context } = await open(user, "profile");
+    try {
+      await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible();
+      await page.goto(`${fixture.origin}/workbench/account`);
+      await expect(page).toHaveURL(`${fixture.origin}/workbench/account/profile`);
+      await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible();
+      await page.getByRole("navigation", { name: "面包屑" }).getByRole("link", { name: "我的账户", exact: true }).click();
+      await expect(page).toHaveURL(`${fixture.origin}/workbench/account/profile`);
+      await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible();
+    } finally { await context.close(); }
+  });
   for (const pageKind of ["profile", "organization"]) for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
     await check(`${pageKind} ${theme} ${width}: actual client/BFF/Go, no overflow, axe, keyboard`, async () => {
       const { page, context } = await open("u1", pageKind, width, theme);
