@@ -50,7 +50,7 @@ await new Promise((done, reject) => { server.once('error',reject); server.listen
 let context;
 try {
   context = await chromium.launchPersistentContext(resolve(artifacts, 'profile'), {
-    executablePath, headless:false, ignoreDefaultArgs:['--disable-extensions'], viewport:null,
+    executablePath, headless:automated, ignoreDefaultArgs:['--disable-extensions'], viewport:null,
     args:['--no-first-run','--no-default-browser-check','--disable-background-networking', ...(automated ? ['--enable-unsafe-extension-debugging','--remote-debugging-port=4398'] : [])],
   });
   await context.route('**/*', async route => {
@@ -91,6 +91,11 @@ try {
       const result=await popup.Runtime.evaluate({expression,returnByValue:true,awaitPromise:true,userGesture:true});
       if(result.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));return result.result.value;
     };
+    for(let attempt=0;attempt<50;attempt++){
+      if(await evaluate("document.readyState==='complete' && document.querySelector('#status')?.textContent?.includes('打开 1688')"))break;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    if(!await evaluate("document.querySelector('#capture') && document.readyState==='complete'"))throw Error('Popup did not finish loading');
     console.log(JSON.stringify({stage:'POPUP_OPEN',text:await evaluate('document.body.innerText')}));
     await evaluate("document.querySelector('#capture').click()");
     for(let attempt=0;attempt<50;attempt++){

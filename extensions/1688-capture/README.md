@@ -39,7 +39,9 @@ node scripts/browser-smoke.mjs --cdp --edge
 The Windows harness starts an installed Chrome/Edge in its own new profile
 under `artifacts`. It uses the official CDP `Extensions.loadUnpacked` and
 `Extensions.triggerAction` testing methods, with the test-only extension
-debugging flag. It opens the actual action popup, clicks capture and handoff,
+debugging flag. Automated CDP runs use headless mode to prevent unrelated
+desktop focus changes from closing the popup; omit `--cdp` for the manual
+headed loader. It opens the actual action popup, clicks capture and handoff,
 checks the other-tab rejection, interrupts the task's workers, and reloads the
 receiver with the same recovery key. The flag is never part of the extension
 or a user's regular browser configuration. Ports 4398 and 4399 must be free;
