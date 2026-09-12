@@ -21,7 +21,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const context = useWorkbenchContext();
   // Personal identity is bootstrapped by the server page, independently of enterprise grants.
-  const isPersonalProfile = pathname === "/workbench/account/profile";
+  const isPersonalProfile = pathname === "/workbench/account" || pathname === "/workbench/account/profile";
   const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
   const shouldRedirectToNoOrganization =
