@@ -31,7 +31,6 @@ const operationSchema = z.object({
   (value.observation === "observed" ? value.observed !== null : value.observed === null) &&
   (value.observed === null || (value.observed.organizationId === value.organizationId && value.observed.userId === value.targetUserId)));
 
-export type Member = z.infer<typeof memberSchema>;
 export type Members = z.infer<typeof listSchema>;
 export type MemberOperation = z.infer<typeof operationSchema>;
 export type MemberRole = z.infer<typeof role>;

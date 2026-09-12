@@ -111,9 +111,8 @@ func (c *Commands) Execute(ctx context.Context, key string, input CommandInput) 
 	if err != nil {
 		return Operation{}, err
 	}
-	if observedVersion(member) != input.ExpectedVersion || !c.service.editable(member) {
-		return Operation{}, ErrConflict
-	}
+	// Reserve the verified target before evaluating mutable preconditions. A
+	// conflict then has a durable terminal receipt, serialized with same-key work.
 	step := StepRole
 	if input.Kind == CommandRemove {
 		step = StepRemove
@@ -153,10 +152,10 @@ func (c *Commands) resume(ctx context.Context, op Operation) (Operation, error) 
 		return Operation{}, ErrPermission
 	}
 	member, err := c.readTarget(ctx, op.AuthorizationID)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return op, err
 	}
-	if member.UserID != op.TargetUserID || observedVersion(member) != op.ExpectedVersion || !c.service.editable(member) || (op.Kind == CommandRole && !c.service.assignable(op.Role)) {
+	if errors.Is(err, ErrNotFound) || member.UserID != op.TargetUserID || observedVersion(member) != op.ExpectedVersion || !c.service.editable(member) || (op.Kind == CommandRole && !c.service.assignable(op.Role)) {
 		rejected, saveErr := c.store.Apply(ctx, op.Scope, op.Key, op.Revision, OperationChange{Event: EventReject})
 		if saveErr != nil {
 			return op, saveErr
@@ -174,6 +173,14 @@ func (c *Commands) resume(ctx context.Context, op Operation) (Operation, error) 
 	dispatched, err := c.store.Apply(ctx, op.Scope, op.Key, op.Revision, OperationChange{Event: EventDispatch, DispatchID: dispatchID})
 	if err != nil {
 		return op, err
+	}
+	// The receipt transaction may have waited past caller expiry or cancellation.
+	// A committed dispatch stays reserved even when sending is no longer allowed.
+	if ctx.Err() != nil {
+		return dispatched, ErrUnavailable
+	}
+	if _, err := c.service.authorize(ctx, authz.PermissionWorkbenchOrganizationMemberManage); err != nil {
+		return dispatched, err
 	}
 	ack, err := c.writer.Write(ctx, dispatched)
 	if err != nil {

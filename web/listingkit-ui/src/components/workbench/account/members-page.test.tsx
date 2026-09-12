@@ -22,6 +22,29 @@ it("uses backend capability instead of context role names", async () => {
   expect(screen.queryByRole("button", { name: "邀请成员" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "移除成员" })).not.toBeInTheDocument();
 });
+it("starts a role edit with the member's current role", async () => {
+  const data = {...result,canManage:true,assignableRoles:["listingkit_viewer","listingkit_operator"],items:[{...result.items[0],roles:["listingkit_operator"],canChangeRole:true}]};
+  vi.stubGlobal("fetch",vi.fn().mockImplementation(()=>Promise.resolve(Response.json(data))));
+  render(page());
+  await userEvent.setup().click(await screen.findByRole("button",{name:"查看详情"}));
+  expect(await screen.findByRole("combobox",{name:"新的成员角色"})).toHaveValue("listingkit_operator");
+});
+it("keeps a missing receipt pending until the original key yields a durable rejection", async () => {
+  const key = "ea0390e6-6fd0-4834-8e9c-277caf59c122";
+  sessionStorage.setItem('membership.pending:["actor","org"]',JSON.stringify({key,kind:"role",target:"grant",input:{role:"listingkit_operator",expectedVersion:"a".repeat(64)}}));
+  const calls = vi.fn().mockImplementation((url) => Promise.resolve(
+    String(url).endsWith("/verify") ? Response.json({schemaVersion:"membership-operation-v1",userId:"actor",organizationId:"org",id:key,kind:"role",step:"update_authorization",status:"rejected",targetUserId:"member",authorizationId:"grant",userEvidence:"",userAcknowledgment:null,acknowledgment:null,observation:"unavailable",observed:null}) :
+    String(url).includes("member-operations") ? Response.json({code:"MEMBER_NOT_FOUND",message:"",requestId:"",fieldErrors:[]},{status:404}) : Response.json({...result,canManage:true,assignableRoles:["listingkit_viewer","listingkit_operator"]})
+  ));
+  vi.stubGlobal("fetch",calls); render(page());
+  await waitFor(()=>expect(screen.getByRole("button",{name:"核实原操作"})).toBeEnabled());
+  expect(screen.queryByRole("button",{name:"关闭回执"})).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"邀请成员"})).toBeDisabled();
+  await userEvent.setup().click(screen.getByRole("button",{name:"核实原操作"}));
+  await userEvent.setup().click(await screen.findByRole("button",{name:"关闭回执"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"邀请成员"})).toBeEnabled());
+  expect(calls.mock.calls.filter(([,init])=>init.method==="POST").map(([url])=>String(url))).toEqual([`/api/account/member-operations/${key}/verify`]);
+});
 it("clears the member directory immediately during an org switch", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(result))));
   const tree = page(); const view = render(tree); expect(await screen.findByText("成员甲")).toBeVisible();

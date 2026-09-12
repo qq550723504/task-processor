@@ -298,5 +298,60 @@ portsReleased, with both applications exited 0. Its zeroWrite refers only to the
 original commercial fixture. Sanitized role/scope/negative/cleanup evidence is
 stored in `issue410-membership-native-evidence.json`; no PATs or human login
 credentials are included. Native adapter evidence and the earlier production
-BFF/Go/PG browser fixture remain separate verification layers. Final-HEAD CI,
-automated accessibility and independent full-slice review are still pending.
+BFF/Go/PG browser fixture remain separate verification layers. Final-HEAD CI
+and independent full-slice review are still pending.
+
+### Implementation review corrections and browser evidence (2026-09-12)
+
+Finding classification: `IMPLEMENTATION_TEST`. A receipt transaction can wait
+past caller expiry/cancellation/deadline. Every provider step now rechecks
+context and current identity expiry after successful dispatch CAS and immediately
+before sending. A blocked send retains dispatched/unknown and its reservation;
+it never returns to ready or retries. The first eight expiry/cancellation cases
+failed against the preceding implementation (tool output `7c060f`); all twelve
+cases including deadline now pass with race detection in
+`dispatch_expiry_test.go`. Provider adapters and native role configuration are
+unchanged by this correction.
+
+Finding classification: `IMPLEMENTATION_TEST`. Once a target identity has been
+verified, original intent is reserved before mutable version/eligibility checks.
+Existing revision CAS `ready -> rejected` records conflicts or a target that
+disappears before dispatch. A concurrent dispatch cannot be released by rejection.
+Role/remove stale-version tests first failed (`76374e`), as did the disappearing
+target test (`f6ee7c`); `precondition_test.go` now passes. Receipt GET and same-key
+replay expose the terminal rejection. The UI test proves a receipt 404 alone
+does not enable closing pending work, while a durable rejection does.
+
+`BACKLOG`: safe user recovery when the initial target read returns 404 before
+target identity can be verified. Retain the original key. A missing receipt or
+target does not prove another same-key call has not admitted work. No automatic
+pending clear, replacement key, resend authorization, or reservation release is
+derived from that absence. This exception does not cover verified-target
+conflicts or same-key concurrency correctness.
+
+Role editing now initially selects the member's existing single role. Multiple
+roles require explicit selection. The operator-default test first failed
+(`558b61`) because the form selected viewer. The unused frontend `Member` type
+export was removed; pinned Knip 6.32.2 now reports `issues: []` without changing
+its rules, baselines or consumers.
+
+Browser fixture `issue410-browser-WXaKmd` started at clean source
+`34da2e21521bf9f442c456a81fa08adc059969ed`. It exercised real Next/Auth.js/BFF/
+current Go/three PostgreSQL pools with synthetic session issuance and external
+provider HTTP. Successful operation keys were invitation
+`2094261d-3a2b-4e3d-b071-07fe18891e6e`, role update
+`a06034c4-c1be-4527-9b4e-eba7e08af08c`, and removal
+`62e70936-fcaf-41ae-b134-144be0685675`. Unknown update
+`cc1d80dc-67df-47a7-9213-d89779e7ef92` retained the same key and unknown state
+after page reload and explicit verification despite the directory showing the
+requested role. Viewer had no invitation or mutation controls.
+
+The role-selection UI correction was hot-reloaded during that run; therefore
+this is not a clean final-HEAD replay of the subsequent corrections. The Go
+process remained at its startup version. At 390px viewport, page scroll width
+was 390px and the named table region was 356px wide with 580px scroll content.
+The region accepts keyboard focus, and the invitation email field advances to
+first name with Tab. Axe checks reuse the existing dependency and verify DOM
+semantics in jsdom with contrast disabled; they do not certify rendered contrast
+or full WCAG conformance. The task fixture cleanup reports `goExit: 0` and
+`nextStopped: true`.

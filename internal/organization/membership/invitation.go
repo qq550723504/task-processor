@@ -139,6 +139,12 @@ func (c *Commands) resumeInvite(ctx context.Context, op Operation) (Operation, e
 		if err != nil {
 			return op, err
 		}
+		if ctx.Err() != nil {
+			return dispatched, ErrUnavailable
+		}
+		if _, err := c.service.authorize(ctx, authz.PermissionWorkbenchOrganizationMemberManage); err != nil {
+			return dispatched, err
+		}
 		ack, err := c.writer.Write(ctx, dispatched)
 		if err != nil || !authidentity.IsBoundedIdentifier(ack.ID) || (op.Step == StepUser && ack.ID != op.TargetUserID) {
 			return dispatched, nil
