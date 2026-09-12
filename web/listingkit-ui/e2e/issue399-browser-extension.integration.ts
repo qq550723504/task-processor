@@ -68,7 +68,7 @@ export function registerFrozenExtensionCombination() {
     const ownedRuntime = await import(/* @vite-ignore */ ownedRuntimeURL);
     const cleanupURL = new URL("../scripts/browser-capture-cleanup.mjs", import.meta.url).href;
     const { finishOwnedBrowserAndProxy } = await import(/* @vite-ignore */ cleanupURL);
-    const network = { forwardedLoopback: 0, deniedHTTP: 0, deniedCONNECT: 0, interceptedFixture: 0, abortedOther: 0 };
+    const network = { forwardedLoopback: 0, deniedHTTP: 0, deniedCONNECT: 0, interceptedFixture: 0, abortedOther: 0, proxyConnectionErrors: 0 };
     // This proxy never resolves or connects to an external host, even if page
     // interception is missed or a worker bypasses Playwright's route handler.
     const proxy = createServer((request, response) => {
@@ -91,6 +91,7 @@ export function registerFrozenExtensionCombination() {
       request.pipe(upstream);
     });
     proxy.on("connect", (_request, socket) => {
+      socket.on("error", () => { network.proxyConnectionErrors++; socket.destroy(); });
       network.deniedCONNECT++;
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
     });
@@ -132,7 +133,11 @@ export function registerFrozenExtensionCombination() {
       });
       const source = context.pages()[0] ?? await context.newPage();
       await stage("fail-closed-probe");
-      await assert.rejects(source.goto(missedInterceptionProbe, { timeout: 10_000 }));
+      // Chrome's asynchronous error-page commit can interrupt a subsequent
+      // navigation on the same tab. Keep the denied probe off the capture tab.
+      const probe = await context.newPage();
+      try { await assert.rejects(probe.goto(missedInterceptionProbe, { timeout: 10_000 })); }
+      finally { await probe.close(); }
       assert(network.deniedCONNECT > 0, "PROXY_DID_NOT_DENY_UNINTERCEPTED_EXTERNAL_REQUEST");
       await source.goto(sourceURL);
       assert.equal(network.interceptedFixture, 1);
