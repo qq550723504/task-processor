@@ -46,6 +46,34 @@ func TestHistoryUsesExistingReadAuthorizationAndExactOrganization(t *testing.T) 
 		t.Fatal("queried before authorization")
 	}
 }
+func TestHistoryConfiguredSubjectAuthority(t *testing.T) {
+	now := time.Now().UTC()
+	reader := &historyReaderStub{}
+	for _, configured := range []bool{true, false} {
+		var users []string
+		if configured {
+			users = []string{"configured-user"}
+		}
+		authorizer, err := authz.NewListingKitAuthorizer(users, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		history, err := NewHistoryService(newTestService(t, &fakeStore{}, authorizer, now), reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := reader.calls
+		_, err = history.List(identityContext(now, "B", "configured-user", "custom_member"), HistoryRequest{Limit: 20})
+		if configured {
+			if err != nil || reader.org != "B" || reader.calls != before+1 {
+				t.Fatalf("configured subject history: org=%s calls=%d err=%v", reader.org, reader.calls, err)
+			}
+		} else if !errors.Is(err, ErrForbidden) || reader.calls != before {
+			t.Fatalf("removed configuration reached reader: %v", err)
+		}
+	}
+}
+
 func TestHistoryRejectsBoundsForeignAndUnorderedSourceFacts(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	account := validAccount(t, now)
