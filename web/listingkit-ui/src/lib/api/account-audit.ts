@@ -20,7 +20,6 @@ const page = z.object({
   source: z.literal("source_account_committed_operations"), items: z.array(event).max(100), nextCursor: cursor.nullable(),
 }).strict().refine(value => value.items.length > 0 || value.nextCursor === null);
 export type AccountAuditPage = z.infer<typeof page>;
-export type AccountAuditEvent = z.infer<typeof event>;
 export const AUDIT_RESPONSE_MAX_BYTES = 128 * 1024;
 
 export function parseAccountAudit(value: unknown): AccountAuditPage {
