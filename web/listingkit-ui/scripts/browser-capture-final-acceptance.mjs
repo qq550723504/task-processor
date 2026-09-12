@@ -90,8 +90,13 @@ try {
   await run(command[0], command[1], { cwd: web, env: { ...childEnvironment(), BROWSER_CAPTURE_FIXTURE_MANIFEST: manifest } });
   const evidence = await privateJSON("evidence.json"); assert.equal(evidence.passed, true); assert.equal(evidence.sourceHead, expectedSha);
   passed = true;
-} catch {
+} catch (error) {
   // Never expose child diagnostics, cookies, keys or captured payloads.
+  const output = typeof error.privateOutput === "string" ? error.privateOutput : "";
+  const locations = [...output.matchAll(/e2e\/issue399-browser-chain\.integration\.ts:\d+:\d+/g)].map(match => match[0]);
+  const codes = [...output.matchAll(/(?:code|status): ['"]?([A-Z_]{3,64}|[1-5][0-9]{2})['"]?/g)].map(match => match[1]);
+  await json(join(dir, "failure.json"), { stage, locations: [...new Set(locations)], codes: [...new Set(codes)] });
+  console.error(`BROWSER_FAILURE_LOCATION ${JSON.stringify({ locations: [...new Set(locations)], codes: [...new Set(codes)] })}`);
   console.error(`BROWSER_ACCEPTANCE_FAILED stage=${stage} run=${runId}`);
   process.exitCode = 1;
 } finally {
