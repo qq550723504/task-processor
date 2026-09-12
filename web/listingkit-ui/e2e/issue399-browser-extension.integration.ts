@@ -260,6 +260,39 @@ export function registerFrozenExtensionCombination() {
       await stage("verified");
     } catch (error) {
       failure = { error };
+      const receiver = context?.pages().find(page => { try { return new URL(page.url()).pathname === "/capture/1688"; } catch { return false; } });
+      if (receiver) {
+        try { await receiver.screenshot({ path: join(dir, "extension-failure.png"), fullPage: true, timeout: 5000 }); }
+        catch { /* The primary failure remains authoritative if diagnostic rendering fails. */ }
+        try {
+          const diagnostic = await receiver.evaluate(async () => {
+            const runtime = (globalThis as unknown as { chrome?: { runtime?: { lastError?: unknown; sendMessage(id: string, value: unknown, callback: (response: unknown) => void): void } } }).chrome?.runtime;
+            const body = document.body.innerText;
+            const state = {
+              runtimeAvailable: Boolean(runtime), receiverMounted: body.includes("Confirm a browser capture"),
+              handoffExpired: body.includes("Browser handoff expired"), handoffInvalid: body.includes("This handoff is invalid"),
+              reading: body.includes("Reading the browser handoff"), contextUnavailable: body.includes("Context changed or access is unavailable"),
+              confirmation: body.includes("Confirm and submit"),
+            };
+            if (!runtime) return { state, response: undefined };
+            const params = new URLSearchParams(location.hash.slice(1));
+            const response = await new Promise<unknown>(resolve => {
+              const timeout = setTimeout(() => resolve(undefined), 1000);
+              runtime.sendMessage(params.get("extensionId") ?? "", { version: 1, type: "capture.read", handoffId: params.get("handoffId"), idempotencyKey: params.get("idempotencyKey") }, response => {
+                clearTimeout(timeout); resolve(runtime.lastError ? undefined : response);
+              });
+            });
+            return { state, response };
+          });
+          const envelope = diagnostic.response && typeof diagnostic.response === "object" ? diagnostic.response as Record<string, unknown> : undefined;
+          const parsed = browserCaptureSchema.safeParse(envelope?.payload);
+          await writeFile(join(dir, "extension-failure-state.json"), JSON.stringify({
+            ...diagnostic.state, network, envelopeKeys: envelope ? Object.keys(envelope).sort() : [],
+            wirePayloadValid: parsed.success,
+            issues: parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path.join("."), code: issue.code })),
+          }));
+        } catch { /* Optional diagnostics never replace the actual test failure. */ }
+      }
     } finally {
       await finishOwnedBrowserAndProxy({
         failure,
