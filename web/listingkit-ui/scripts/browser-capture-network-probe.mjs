@@ -14,7 +14,7 @@ await privateDirectory(dir);
 const sourceHead = process.argv[3] ?? null;
 if (sourceHead) assert.match(sourceHead, /^[a-f0-9]{40}$/);
 const servers = [], counts = { allowed: 0, other: 0, ipv6: 0 }, proxyHits = new Map(), cases = [];
-let browser, browserRecord, failure, receipt, currentCase = "setup";
+let browser, browserRecord, failure, receipt, currentCase = "setup", currentObservation;
 console.log("Owned network evidence=" + join(dir, "network-probe.json"));
 
 async function listener(name, host) {
@@ -85,6 +85,7 @@ try {
     try { status = (await page.goto(url, { timeout: 10_000 }))?.status(); }
     catch (error) {
       code = error.message.match(/net::ERR_[A-Z_]+/)?.[0];
+      currentObservation = { code: code ?? "OTHER", proxyDenials: (proxyHits.get(label) ?? 0) - before, targetCounts: { ...counts } };
       assert(["net::ERR_TUNNEL_CONNECTION_FAILED", "net::ERR_HTTP_RESPONSE_CODE_FAILURE"].includes(code), "UNEXPECTED_DENIAL_CLASS");
     } finally { await page.close(); }
     assert(status === 403 || code, "MISSING_DENIAL");
@@ -102,7 +103,7 @@ try {
     allowedTargetRequests: counts.allowed, otherTargetRequests: counts.other, ipv6TargetRequests: counts.ipv6, cases };
 } catch (error) {
   failure = { error };
-  receipt = { passed: false, sourceHead, currentCase, kind: error.name, completedCases: cases };
+  receipt = { passed: false, sourceHead, currentCase, kind: error.name, signature: ["UNEXPECTED_DENIAL_CLASS", "MISSING_DENIAL", "BROWSER_BYPASSED_DENY_PROXY"].find(value => error.message.includes(value)) ?? "ASSERTION_OR_RUNTIME", currentObservation, completedCases: cases };
 } finally {
   await finishOwnedBrowserAndProxy({
     failure,
