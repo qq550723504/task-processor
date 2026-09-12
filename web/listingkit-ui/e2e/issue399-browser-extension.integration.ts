@@ -117,7 +117,12 @@ export function registerFrozenExtensionCombination() {
       context.on("page", page => {
         page.on("websocket", socket => {
           const target = new URL(socket.url());
-          diagnostic({ event: "websocket", target: target.protocol === "ws:" && target.hostname === allowed.hostname && target.port === allowed.port && target.pathname === "/_next/webpack-hmr" ? "OWNED_NEXT_HMR" : "OTHER" });
+          diagnostic({ event: "websocket",
+            scheme: target.protocol === "ws:" ? "WS" : target.protocol === "wss:" ? "WSS" : "OTHER",
+            host: target.hostname === allowed.hostname ? "OWNED_127" : target.hostname === "localhost" ? "LOCALHOST" : "OTHER",
+            port: target.port === allowed.port ? "OWNED_NEXT" : "OTHER",
+            path: target.pathname === "/_next/webpack-hmr" ? "NEXT_HMR" : "OTHER",
+          });
         });
         page.on("pageerror", error => diagnostic({ event: "pageerror", category: category(error.message), kind: ["Error", "TypeError", "ReferenceError", "SyntaxError", "ChunkLoadError"].includes(error.name) ? error.name : "OTHER" }));
         page.on("console", message => {
