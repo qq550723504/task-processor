@@ -24,7 +24,7 @@ export function SourceAccountsPage() {
   const [submittedIntent, setSubmittedIntent] = useState<Intent | null>(null);
   const org = context.effectiveOrganization;
   const canManage = org?.capabilities?.["workbench.source_account.manage"] === true;
-  const scope = JSON.stringify([context.user?.id, org?.id, canManage]);
+  const scope = JSON.stringify([context.user?.id, org?.id, context.roles, canManage]);
   const sameIntentScope = submittedIntent?.request.expectedOrganizationId === org?.id && submittedIntent?.request.expectedActorSubject === context.user?.id;
   return <AccountShell pathname="/workbench/account/organization/resources/source-accounts" title="源账号" description="可选企业资源：登记和启停仅管理本系统资源，匿名公开商品采集无需先登记或连接源账号。">
     <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>返回资源与额度</Link></Button>
