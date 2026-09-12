@@ -9,7 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createSourceAccount, disableSourceAccount, enableSourceAccount, getSourceAccount, listSourceAccounts, SourceAccountAPIError, type CreateSourceAccountRequest, type ChangeSourceAccountStatusRequest } from "@/lib/api/source-accounts";
 import { sourceAccountCreateRequestSchema } from "@/lib/contracts/source-account";
-import { ConsolePage, ConsoleState } from "../console/console-page";
+import { ConsoleState } from "../console/console-page";
+import { AccountShell } from "../account/account-shell";
 import styles from "./source-accounts.module.css";
 
 type Intent = { action: "register"; request: CreateSourceAccountRequest } | { action: "enable" | "disable"; request: ChangeSourceAccountStatusRequest };
@@ -25,12 +26,12 @@ export function SourceAccountsPage() {
   const org = context.effectiveOrganization;
   const scope = JSON.stringify([context.user?.id, org?.id, context.roles]);
   const sameIntentScope = submittedIntent?.request.expectedOrganizationId === org?.id && submittedIntent?.request.expectedActorSubject === context.user?.id;
-  return <ConsolePage title="源账号" className={styles.page} description="可选企业资源：登记和启停仅管理本系统资源，匿名公开商品采集无需先登记或连接源账号。">
+  return <AccountShell pathname="/workbench/account/organization/resources/source-accounts" title="源账号" description="可选企业资源：登记和启停仅管理本系统资源，匿名公开商品采集无需先登记或连接源账号。">
     <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>返回资源与额度</Link></Button>
     {context.isLoading || context.isSwitching ? <ConsoleState kind="loading" title="正在确认当前企业">旧账号和待操作已清除。</ConsoleState>
       : context.error || context.blockingError || !context.user || !org || context.selectionRequired ? <ConsoleState kind="error" title="企业或登录上下文不可用">请确认当前企业与登录状态。<Button variant="outline" onClick={() => void context.retry()}>重新确认上下文</Button></ConsoleState>
       : <ScopedAccounts key={scope} scope={scope} organizationId={org.id} organizationName={org.name} actor={context.user.id} canManage={context.roles.some(role => manageRoles.has(role))} initialIntent={sameIntentScope ? submittedIntent : null} foreignIntent={!!submittedIntent && !sameIntentScope} onIntentChange={setSubmittedIntent} />}
-  </ConsolePage>;
+  </AccountShell>;
 }
 
 function ScopedAccounts({ scope, organizationId, organizationName, actor, canManage, initialIntent, foreignIntent, onIntentChange }: { scope: string; organizationId: string; organizationName: string; actor: string; canManage: boolean; initialIntent: Intent | null; foreignIntent: boolean; onIntentChange: (intent: Intent | null) => void }) {

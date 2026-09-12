@@ -7,8 +7,9 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getCommercialOverview } from "@/lib/api/commercial";
-import { ConsolePage, ConsoleState } from "../console/console-page";
+import { ConsoleState } from "../console/console-page";
 import { EntitlementsOverview } from "../commercial/commercial-views";
+import { AccountShell } from "../account/account-shell";
 import styles from "./resources.module.css";
 
 export function ResourcesPage() {
@@ -16,11 +17,11 @@ export function ResourcesPage() {
   const org = context.effectiveOrganization;
   const scope = JSON.stringify([context.user?.id, org?.id, context.roles]);
   const valid = context.user && org && !context.selectionRequired && !context.error && !context.blockingError;
-  return <ConsolePage title="资源与额度" className={styles.page} description="查看当前企业资源、已授予权益与可选资源管理。">
+  return <AccountShell pathname="/workbench/account/organization/resources" title="资源与额度" description="查看当前企业资源、已授予权益与可选资源管理。">
     {context.isLoading || context.isSwitching ? <ConsoleState kind="loading" title="正在确认当前企业">旧资源信息已清除。</ConsoleState>
       : !valid ? <ConsoleState kind="error" title="企业或登录上下文不可用">请确认登录状态并重新选择企业。<Button variant="outline" onClick={() => void context.retry()}>重新确认上下文</Button></ConsoleState>
       : <ScopedResources key={scope} scope={scope} organizationId={org.id} organizationName={org.name} />}
-  </ConsolePage>;
+  </AccountShell>;
 }
 
 function ScopedResources({ scope, organizationId, organizationName }: { scope: string; organizationId: string; organizationName: string }) {
