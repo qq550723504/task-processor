@@ -62,9 +62,17 @@ func (i *Invoker) Invoke(ctx context.Context, metadata commercetool.CallMetadata
 	if i == nil || i.tools == nil {
 		return commercetool.Result{}, commercetool.NewError(commercetool.ErrorInternal, "asset inspection is unavailable", nil)
 	}
+	// Registry starts its executor timeout after principal preflight. Bound
+	// the entire call here so fresh authorization shares the same budget.
+	ctx, cancel := context.WithTimeout(ctx, Definition().Timeout.Duration)
+	defer cancel()
 	raw, err := json.Marshal(input)
 	if err != nil {
 		return commercetool.Result{}, commercetool.NewError(commercetool.ErrorInvalidInput, "asset inspection input is invalid", err)
 	}
-	return i.tools.Invoke(ctx, commercetool.Call{Tool: Definition().Ref, Metadata: metadata, Arguments: raw})
+	result, err := i.tools.Invoke(ctx, commercetool.Call{Tool: Definition().Ref, Metadata: metadata, Arguments: raw})
+	if ctx.Err() != nil {
+		return commercetool.Result{}, mapReadError(ctx.Err())
+	}
+	return result, err
 }
