@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
-import { capture1688, readBrowserCaptureByKey } from "@/lib/api/browser-capture";
+import { capture1688, readBrowserCapture, readBrowserCaptureByKey } from "@/lib/api/browser-capture";
 import type { AcquisitionContext } from "@/lib/api/product-acquisition";
 import { WorkbenchContextError } from "@/lib/api/workbench-context";
 import type { BrowserCapturePayload } from "@/lib/contracts/browser-capture";
@@ -54,6 +54,7 @@ export function CaptureReceiver() {
     const entry = view.entry;
     if (!entry || !scoped || busy.current || (submit && (reserved.current || !view.payload))) return;
     const consent = Object.freeze({ ...scope });
+    const operationId = view.result?.operationId;
     const body = view.payload ? JSON.stringify(view.payload) : undefined;
     const controller = new AbortController(); active.current = controller; busy.current = true;
     if (submit) {
@@ -77,7 +78,9 @@ export function CaptureReceiver() {
       setView((v) => ({ ...v, message: submit ? "Submitting the frozen capture..." : "Checking the original operation..." }));
       const result = submit && body
         ? await capture1688(Object.freeze({ ...consent, key: entry.key, body }), controller.signal)
-        : await readBrowserCaptureByKey(consent, entry.key, controller.signal);
+        : operationId
+          ? await readBrowserCapture(consent, operationId, controller.signal)
+          : await readBrowserCaptureByKey(consent, entry.key, controller.signal);
       if (!mounted.current || !stillCurrent()) return;
       setView((v) => ({ ...v, result, message: result.outcome === "published" ? `Published version ${result.catalogVersion}` : result.outcome === "failed" ? "The backend recorded this operation as failed." : unknownMessage }));
       if (entry.kind === "handoff") void notifyCaptureStatus(entry, result.outcome === "published" ? "published" : result.outcome === "failed" ? "failed" : "outcome_unknown", result.operationId);
