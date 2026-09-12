@@ -3,7 +3,7 @@
 import { chromium } from '@playwright/test';
 import CDP from 'chrome-remote-interface';
 import { createServer } from 'node:http';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -14,8 +14,9 @@ const head = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'})
 const browserName = process.argv.includes('--edge') ? 'edge' : 'chrome';
 const automated = process.argv.includes('--cdp');
 const executablePath = browserName === 'edge' ? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' : 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const artifacts = resolve(root, 'artifacts', `${browserName}-${Date.now()}`);
-await mkdir(artifacts, { recursive: true });
+await mkdir(resolve(root, 'artifacts'), { recursive: true });
+const artifacts = await mkdtemp(resolve(root, 'artifacts', `${browserName}-`));
+const profile = resolve(artifacts, 'profile');
 const receiver = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="referrer" content="no-referrer"><title>Issue399 Fixture Receiver</title></head><body>
 <h1>Transport Fixture — 不是真实后端</h1><p id="status">等待受限capture消息</p><button id="unknown" disabled>模拟响应丢失</button><pre id="summary"></pre>
 <script>
@@ -49,9 +50,9 @@ const server = createServer((req, res) => {
 await new Promise((done, reject) => { server.once('error',reject); server.listen(4399,'127.0.0.1',done); });
 let context;
 try {
-  context = await chromium.launchPersistentContext(resolve(artifacts, 'profile'), {
+  context = await chromium.launchPersistentContext(profile, {
     executablePath, headless:automated, ignoreDefaultArgs:['--disable-extensions'], viewport:null,
-    args:['--no-first-run','--no-default-browser-check','--disable-background-networking', ...(automated ? ['--enable-unsafe-extension-debugging','--remote-debugging-port=4398'] : [])],
+    args:['--no-first-run','--no-default-browser-check','--disable-background-networking', ...(automated ? ['--enable-unsafe-extension-debugging','--remote-debugging-port=0'] : [])],
   });
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -64,9 +65,16 @@ try {
   if (!automated) await page.goto(browserName === 'edge' ? 'edge://extensions' : 'chrome://extensions');
   console.log(JSON.stringify({ stage:'LOAD_UNPACKED_IN_TASK_PROFILE', browserName, extensionPath:resolve(root,'dist-fixture'), artifacts }));
   let browserCDP;
+  let debugPort;
   let appPromise;
   if (automated) {
     browserCDP = await context.browser().newBrowserCDPSession();
+    // Chrome writes this file inside the atomically allocated task profile.
+    // Never discover targets on a conventional/shared debugging port.
+    const [port, browserPath] = (await readFile(resolve(profile, 'DevToolsActivePort'), 'utf8')).trim().split(/\r?\n/);
+    if (!/^[0-9]+$/.test(port) || Number(port) < 1 || Number(port) > 65535
+      || !/^\/devtools\/browser\/[a-f0-9-]+$/i.test(browserPath)) throw Error('Invalid task debugger endpoint');
+    debugPort = Number(port);
     console.log(await browserCDP.send('Extensions.loadUnpacked',{path:resolve(root,'dist-fixture')}));
   }
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker',{timeout:600000});
@@ -81,12 +89,14 @@ try {
     await browserCDP.send('Extensions.triggerAction',{id,targetId:tabs[0].targetId});
     let target;
     for(let attempt=0;attempt<30;attempt++){
-      target=(await CDP.List({port:4398})).find(t=>t.url===`chrome-extension://${id}/popup.html`);
+      target=(await browserCDP.send('Target.getTargets')).targetInfos.find(t=>t.url===`chrome-extension://${id}/popup.html`);
       if(target)break;
       await new Promise(resolve=>setTimeout(resolve,100));
     }
     if(!target)throw Error('Extension action popup did not open');
-    const popup=await CDP({port:4398,target:target.id});
+    // The target ID comes from this launch's Playwright pipe, not TCP discovery.
+    // local:true prevents the client from fetching metadata from another target.
+    const popup=await CDP({target:`ws://127.0.0.1:${debugPort}/devtools/page/${target.targetId}`,local:true});
     const evaluate=async expression=>{
       const result=await popup.Runtime.evaluate({expression,returnByValue:true,awaitPromise:true,userGesture:true});
       if(result.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));return result.result.value;
@@ -118,6 +128,7 @@ try {
   const capture = await app.evaluate(()=>window.fixtureReceived);
   if (!capture || /PASSWORD_CANARY|AUTH_CANARY|TOKEN_CANARY|SESSION_CANARY/.test(JSON.stringify(capture))) throw Error('Missing or sensitive capture');
   if (capture.payload.evidence.variants[0].sourceID !== '99999999999999999999') throw Error('SKU precision lost');
+  if (capture.payload.evidence.variants[0].sku !== null) throw Error('Provider variant ID was fabricated into a SKU');
   const wrong = await context.newPage(); await wrong.goto(app.url());
   const rejection = await wrong.evaluate(async ({id,capture})=>chrome.runtime.sendMessage(id,{version:1,type:'capture.read',handoffId:capture.handoffId,idempotencyKey:capture.idempotencyKey}),{id,capture});
   if(rejection.code!=='CAPTURE_UNAVAILABLE')throw Error('Other application tab read accepted');
@@ -128,12 +139,21 @@ try {
   const recoveryURL=app.url();
   if(!recoveryURL.endsWith(`#operationKey=${capture.idempotencyKey}`))throw Error('Original recovery key was lost');
   let workerRestartRejected=false;
+  let workerStopOutcome=null;
   if(automated){
     const control=await context.newCDPSession(page);
     await control.send('ServiceWorker.enable');
     await control.send('ServiceWorker.stopAllWorkers');
-    const afterStop=await app.evaluate(async ({id,capture})=>chrome.runtime.sendMessage(id,{version:1,type:'capture.read',handoffId:capture.handoffId,idempotencyKey:capture.idempotencyKey}),{id,capture});
-    if(afterStop.code!=='CAPTURE_UNAVAILABLE')throw Error('Worker restart retained stale handoff');
+    const afterStop=await app.evaluate(async ({id,capture})=>{
+      try {
+        return await chrome.runtime.sendMessage(id,{version:1,type:'capture.read',handoffId:capture.handoffId,idempotencyKey:capture.idempotencyKey});
+      } catch(error) {
+        if(error.message==='Could not establish connection. Receiving end does not exist.')return {code:'LISTENER_UNAVAILABLE'};
+        throw error;
+      }
+    },{id,capture});
+    if(!['CAPTURE_UNAVAILABLE','LISTENER_UNAVAILABLE'].includes(afterStop?.code))throw Error('Worker restart retained stale handoff');
+    workerStopOutcome=afterStop.code;
     workerRestartRejected=true;
   }
   await app.reload();
@@ -143,7 +163,7 @@ try {
   const buildHashes={};
   for(const name of ['manifest.json','background.js','extractor.js','popup.js','popup.html','popup.css']) buildHashes[name]=createHash('sha256').update(await readFile(resolve(root,'dist-fixture',name))).digest('hex');
   await writeFile(resolve(artifacts,'receipt.json'),JSON.stringify({head,buildHashes,browserName,browserVersion:context.browser()?.version(),id,manifest,
-    result:'PASS_TRANSPORT_FIXTURE_ONLY',ownTabCapture:true,wrongAppTabRejected:true,unknownStatusSent:true,workerRestartRejected,reloadPreservedKey:true,
+    result:'PASS_TRANSPORT_FIXTURE_ONLY',ownProfileDynamicEndpoint:automated,pipeBoundPopupTarget:automated,ownTabCapture:true,wrongAppTabRejected:true,unknownStatusSent:true,workerRestartRejected,workerStopOutcome,reloadPreservedKey:true,
     backendIntegration:'NOT_RUN',real1688:'NOT_RUN'},null,2));
   console.log(JSON.stringify({stage:'TRANSPORT_FIXTURE_PASS',artifacts}));
 } finally {

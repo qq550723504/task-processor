@@ -15,7 +15,7 @@
     "variants": [
       {
         "sourceID": "99999999999999999999",
-        "sku": "99999999999999999999",
+        "sku": null,
         "title": null,
         "attributes": [
           {
@@ -43,12 +43,16 @@
       }
     ],
     "capturedAt": "2026-09-12T00:00:00.000Z",
-    "contentSHA256": "422ac39f55085e824419070ed9763a2c1fc2e31e4c3168ac7946d3829d427d9e",
+    "contentSHA256": "69ea755f45b92880d8041c706dbd3fa77cff5b8143e021987faf0f1bdacdb6db",
     "parserVersion": "1688-browser-dom/v1",
     "warnings": [
       {
         "code": "MISSING_FACT",
         "field": "priceFacts[0].currency"
+      },
+      {
+        "code": "MISSING_FACT",
+        "field": "variants[0].sku"
       },
       {
         "code": "MISSING_FACT",
@@ -58,6 +62,10 @@
     "missingFacts": [
       {
         "field": "priceFacts[0].currency",
+        "reason": "not_observed"
+      },
+      {
+        "field": "variants[0].sku",
         "reason": "not_observed"
       },
       {

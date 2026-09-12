@@ -40,6 +40,13 @@ describe('explicit current-page capture', () => {
     expect(payload.evidence.missingFacts.some(f => f.field.includes('currency'))).toBe(true);
   });
 
+  it('keeps skuId as source identity without inventing a separately observed SKU', async () => {
+    const payload=await captureDocument(fixture().window.document,source,new Date());
+    expect(payload.evidence.variants[0].sourceID).toBe('99999999999999999999');
+    expect(payload.evidence.variants[0].sku).toBeNull();
+    expect(payload.evidence.missingFacts).toContainEqual({field:'variants[0].sku',reason:'not_observed'});
+  });
+
   it('never touches sensitive getters, global objects or unrelated input/script data', async () => {
     const dom = fixture('<input type="password" value="PASSWORD_CANARY"><script>window.secret="AUTH_CANARY"</script>');
     for (const name of ['cookie']) Object.defineProperty(dom.window.document, name, { get() { throw Error('sensitive access'); } });

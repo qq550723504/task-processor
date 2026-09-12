@@ -34,6 +34,7 @@ jobs:
       frontend: ${{ steps.classify.outputs.frontend }}
       code_health: ${{ steps.classify.outputs.code_health }}
       release_authority: ${{ steps.classify.outputs.release_authority }}
+      capture_extension: ${{ steps.classify.outputs.capture_extension }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -216,6 +217,45 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
+  capture-extension:
+    name: 1688 Capture Extension Checks
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.capture_extension == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extensions/1688-capture
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up extension Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: extensions/1688-capture/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci
+
+      - name: Test extension contracts and privacy boundaries
+        run: npm test
+
+      - name: Typecheck extension
+        run: npm run typecheck
+
+      - name: Lint extension
+        run: npm run lint
+
+      - name: Build isolated fixture extension
+        env:
+          CAPTURE_APP_URL: http://127.0.0.1:4399/capture/1688
+        run: npm run build -- --fixture
+
   code-health:
     name: Code Health Ratchet
     needs: changes
@@ -270,6 +310,7 @@ jobs:
       - release-authority
       - backend
       - frontend
+      - capture-extension
       - code-health
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -284,6 +325,9 @@ jobs:
           RELEASE_RESULT: ${{ needs.release-authority.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          CAPTURE_EXTENSION_RESULT: ${{ needs.capture-extension.result }}
+          CAPTURE_EXTENSION_SELECTED: ${{ needs.changes.outputs.capture_extension }}
+          CI_EVENT: ${{ github.event_name }}
           CODE_HEALTH_RESULT: ${{ needs.code-health.result }}
         run: |
           set -euo pipefail
@@ -309,6 +353,18 @@ jobs:
           require_success "release authority" "$RELEASE_RESULT"
           require_success "backend" "$BACKEND_RESULT"
           require_success "frontend" "$FRONTEND_RESULT"
+          if [[ "$CI_EVENT" == "push" || "$CAPTURE_EXTENSION_SELECTED" == "true" ]]; then
+            if [[ "$CAPTURE_EXTENSION_RESULT" != "success" ]]; then
+              printf 'required capture extension result: %s\n' "$CAPTURE_EXTENSION_RESULT" >&2
+              exit 1
+            fi
+            printf 'capture extension        success\n'
+          elif [[ "$CI_EVENT" == "pull_request" && "$CAPTURE_EXTENSION_SELECTED" == "false" ]]; then
+            require_success "capture extension" "$CAPTURE_EXTENSION_RESULT"
+          else
+            echo "capture extension applicability is unknown" >&2
+            exit 1
+          fi
           require_success "code health" "$CODE_HEALTH_RESULT"
 
   notify:
@@ -320,6 +376,7 @@ jobs:
       - release-authority
       - backend
       - frontend
+      - capture-extension
       - code-health
       - required-gate
     if: ${{ always() }}
@@ -333,6 +390,7 @@ jobs:
       RELEASE_AUTHORITY_RESULT: ${{ needs.release-authority.result }}
       BACKEND_RESULT: ${{ needs.backend.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
+      CAPTURE_EXTENSION_RESULT: ${{ needs.capture-extension.result }}
       CODE_HEALTH_RESULT: ${{ needs.code-health.result }}
       REQUIRED_GATE_RESULT: ${{ needs.required-gate.result }}
       CI_BRANCH: ${{ github.head_ref || github.ref_name }}
@@ -384,6 +442,7 @@ jobs:
               f"> Release Authority：`{os.environ.get('RELEASE_AUTHORITY_RESULT', 'unknown')}`",
               f"> Backend：`{backend}`",
               f"> Frontend：`{frontend}`",
+              f"> 1688 Capture Extension：`{os.environ.get('CAPTURE_EXTENSION_RESULT', 'unknown')}`",
               f"> Code Health：`{code_health}`",
               f"> Required CI Gate：`{required_gate}`",
               f"> 提交：`{sha[:7] if sha else '-'}`",

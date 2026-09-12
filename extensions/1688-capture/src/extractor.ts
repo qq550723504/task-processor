@@ -94,9 +94,11 @@ export async function captureDocument(doc: Document, source: string, now: Date):
   for (const pair of info?.children ?? []) {
     const key = pair.children![0].value as string; const item = pair.children![1];
     const id = string(path(item, 'skuId'), true);
+    // skuId identifies the provider variant; it does not establish a seller SKU.
+    missing(`variants[${e.variants.length}].sku`);
     const values = key.split('&gt;');
     if (values.length !== props.length) fail('UNSUPPORTED_PAGE');
-    e.variants.push({ sourceID: id, sku: id, title: null,
+    e.variants.push({ sourceID: id, sku: null, title: null,
       attributes: props.map((name, i) => ({ name, value: values[i] })), price: price(item, `variants[${e.variants.length}].price`) });
   }
   // Only explicitly identified, already rendered description text. Never frames

@@ -32,8 +32,8 @@ Task fixtures use a separate, visibly labelled artifact:
 ```powershell
 $env:CAPTURE_APP_URL = 'http://127.0.0.1:4399/capture/1688'
 npm run build -- --fixture
-node scripts/browser-smoke.mjs --cdp
-node scripts/browser-smoke.mjs --cdp --edge
+node scripts/port-isolation-check.mjs
+node scripts/port-isolation-check.mjs --edge
 ```
 
 The Windows harness starts an installed Chrome/Edge in its own new profile
@@ -44,8 +44,13 @@ desktop focus changes from closing the popup; omit `--cdp` for the manual
 headed loader. It opens the actual action popup, clicks capture and handoff,
 checks the other-tab rejection, interrupts the task's workers, and reloads the
 receiver with the same recovery key. The flag is never part of the extension
-or a user's regular browser configuration. Ports 4398 and 4399 must be free;
-the harness fails instead of taking over another process.
+or a user's regular browser configuration. The debugger uses an OS-assigned
+dynamic port recorded in this launch's atomically allocated profile; popup
+targets come only from the same launch's Playwright pipe. No fixed-port
+target discovery is used. The regression wrapper occupies the old port 4398
+with a task-owned decoy and verifies zero queries reach it while capture still
+works. Receiver port 4399 must be free; an occupied receiver fails startup
+without connecting to or stopping its owner.
 
 The canonical 1688 document response is substituted with `tests/fixtures/product.html`;
 other page network requests are blocked except the task's loopback receiver.
