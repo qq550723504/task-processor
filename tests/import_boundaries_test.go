@@ -3939,8 +3939,7 @@ func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 	}
 }
 
-func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
-	root := filepath.Join("..", "internal")
+func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "authruntime", "zitadel")) + string(os.PathSeparator):           {},
 		filepath.Clean(filepath.Join(root, "app", "httpapi")) + string(os.PathSeparator):                   {},
@@ -3983,6 +3982,38 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "workbenchcontext", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "localagent", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "organization", "membership", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	return allowedHTTPPackages
+}
+
+func TestMembershipHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"organization/membership/httpapi/handler.go", true},
+		{"organization/membership/httpapi/nested/handler.go", true},
+		{"organization/membership/service.go", false},
+		{"organization/membership/worker/worker.go", false},
+		{"organization/membership/api/handler.go", false},
+		{"organization/other/httpapi/handler.go", false},
+		{"organization/membership/httpapi_extra/handler.go", false},
+		{"organization/membership/httpapi2/handler.go", false},
+		{"organization/membership-extra/httpapi/handler.go", false},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			if got := pathAllowed(filepath.Join(root, filepath.FromSlash(tc.path)), allowed); got != tc.want {
+				t.Errorf("actual HTTP boundary allows %s = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowedHTTPPackages := businessHTTPPackages(root)
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {

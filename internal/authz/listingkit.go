@@ -9,21 +9,23 @@ import (
 )
 
 const (
-	PermissionListingKitAdminRead          = "listingkit.admin.read"
-	PermissionListingKitAdminWrite         = "listingkit.admin.write"
-	PermissionListingKitPromptWrite        = "listingkit.prompt.write"
-	PermissionListingKitPlatformAdm        = "listingkit.platform_admin"
-	PermissionProductSourcingWrite         = "product_sourcing.write"
-	PermissionLocalAgentWrite              = "local_agent.write"
-	PermissionImageAgentRead               = "listingkit.image_agent.read"
-	PermissionImageAgentWrite              = "listingkit.image_agent.write"
-	PermissionWorkbenchStoreRead           = "workbench.store.read"
-	PermissionWorkbenchStoreCreate         = "workbench.store.create"
-	PermissionWorkbenchStoreUpdate         = "workbench.store.update"
-	PermissionWorkbenchStoreLifecycle      = "workbench.store.lifecycle"
-	PermissionWorkbenchStoreDelete         = "workbench.store.delete"
-	PermissionWorkbenchSourceAccountRead   = "workbench.source_account.read"
-	PermissionWorkbenchSourceAccountManage = "workbench.source_account.manage"
+	PermissionListingKitAdminRead               = "listingkit.admin.read"
+	PermissionListingKitAdminWrite              = "listingkit.admin.write"
+	PermissionListingKitPromptWrite             = "listingkit.prompt.write"
+	PermissionListingKitPlatformAdm             = "listingkit.platform_admin"
+	PermissionProductSourcingWrite              = "product_sourcing.write"
+	PermissionLocalAgentWrite                   = "local_agent.write"
+	PermissionImageAgentRead                    = "listingkit.image_agent.read"
+	PermissionImageAgentWrite                   = "listingkit.image_agent.write"
+	PermissionWorkbenchStoreRead                = "workbench.store.read"
+	PermissionWorkbenchStoreCreate              = "workbench.store.create"
+	PermissionWorkbenchStoreUpdate              = "workbench.store.update"
+	PermissionWorkbenchStoreLifecycle           = "workbench.store.lifecycle"
+	PermissionWorkbenchStoreDelete              = "workbench.store.delete"
+	PermissionWorkbenchSourceAccountRead        = "workbench.source_account.read"
+	PermissionWorkbenchSourceAccountManage      = "workbench.source_account.manage"
+	PermissionWorkbenchOrganizationMemberRead   = "workbench.organization_member.read"
+	PermissionWorkbenchOrganizationMemberManage = "workbench.organization_member.manage"
 )
 
 var workbenchStorePermissions = []string{
@@ -37,6 +39,11 @@ var workbenchStorePermissions = []string{
 var workbenchSourceAccountPermissions = []string{
 	PermissionWorkbenchSourceAccountRead,
 	PermissionWorkbenchSourceAccountManage,
+}
+
+var workbenchOrganizationMemberPermissions = []string{
+	PermissionWorkbenchOrganizationMemberRead,
+	PermissionWorkbenchOrganizationMemberManage,
 }
 
 const listingKitModel = `
@@ -76,6 +83,12 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 
 	for _, policy := range [][]string{
+		{"listingkit_viewer", PermissionWorkbenchOrganizationMemberRead},
+		{"listingkit_operator", PermissionWorkbenchOrganizationMemberRead},
+		{"listingkit_admin", PermissionWorkbenchOrganizationMemberRead},
+		{"listingkit_admin", PermissionWorkbenchOrganizationMemberManage},
+		{"platform_admin", PermissionWorkbenchOrganizationMemberRead},
+		{"platform_admin", PermissionWorkbenchOrganizationMemberManage},
 		{"listingkit_viewer", PermissionWorkbenchStoreRead},
 		{"listingkit_viewer", PermissionWorkbenchSourceAccountRead},
 		{"listingkit_operator", PermissionListingKitAdminRead},
@@ -132,6 +145,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 
 	for _, role := range normalizeUnique(platformAdminRoles) {
+		for _, permission := range workbenchOrganizationMemberPermissions {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPlatformAdm); err != nil {
 			return nil, err
 		}
@@ -166,6 +184,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
+		for _, permission := range workbenchOrganizationMemberPermissions {
+			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
+				return nil, err
+			}
+		}
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPlatformAdm); err != nil {
 			return nil, err
 		}
