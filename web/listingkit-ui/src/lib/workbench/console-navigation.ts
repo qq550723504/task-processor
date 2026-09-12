@@ -32,7 +32,7 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   if (exact) return exact;
   if (pathname === "/workbench/account/organization/resources/source-accounts") {
     const parent = findConsoleRoute("/workbench/account/organization/resources")!;
-    const node: ConsoleNavNode = { label: "来源账号", href: pathname, availability: parent.node.availability };
+    const node: ConsoleNavNode = { label: "源账号", href: pathname, availability: parent.node.availability };
     return { node, trail: [...parent.trail, node] };
   }
   if (/^\/workbench\/stores\/[^/]+$/.test(pathname)) {

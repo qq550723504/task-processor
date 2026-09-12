@@ -7,7 +7,7 @@ it.each([
   ["/workbench/account/organization/members", "成员与权限"],
   ["/workbench/account/organization/resources", "资源与额度"],
   ["/workbench/account/organization/audit", "操作记录"],
-  ["/workbench/account/organization/resources/source-accounts", "来源账号"],
+  ["/workbench/account/organization/resources/source-accounts", "源账号"],
 ])("provides the canonical account breadcrumb for %s", (pathname, title) => {
   render(<AccountShell pathname={pathname} title={title}><p>真实内容</p></AccountShell>);
   const breadcrumb = within(screen.getByRole("navigation", { name: "面包屑" }));

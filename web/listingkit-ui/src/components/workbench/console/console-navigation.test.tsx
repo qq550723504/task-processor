@@ -13,4 +13,6 @@ it("reveals the selected account page after navigation from another module", asy
   expect(screen.queryByRole("link", { name: "成员与权限" })).not.toBeInTheDocument();
   view.rerender(<ConsoleNavigation pathname="/workbench/account/organization/audit" ariaLabel="主导航" />);
   expect(screen.getByRole("link", { name: "操作记录" })).toHaveAttribute("aria-current", "page");
+  view.rerender(<ConsoleNavigation pathname="/workbench/account/organization/members" ariaLabel="主导航" />);
+  expect(screen.getByRole("link", { name: "成员与权限" })).toHaveAttribute("aria-current", "page");
 });
