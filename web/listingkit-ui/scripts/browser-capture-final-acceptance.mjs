@@ -92,11 +92,15 @@ try {
   passed = true;
 } catch (error) {
   // Never expose child diagnostics, cookies, keys or captured payloads.
-  const output = typeof error.privateOutput === "string" ? error.privateOutput : "";
-  const locations = [...output.matchAll(/e2e\/issue399-browser-chain\.integration\.ts:\d+:\d+/g)].map(match => match[0]);
+  const output = (typeof error.privateOutput === "string" ? error.privateOutput : "").replace(/\u001b\[[0-9;]*m/g, "");
+  const locations = [...output.matchAll(/e2e[\\/]issue399-browser-chain\.integration\.ts:\d+:\d+/g)].map(match => match[0]);
   const codes = [...output.matchAll(/(?:code|status): ['"]?([A-Z_]{3,64}|[1-5][0-9]{2})['"]?/g)].map(match => match[1]);
-  await json(join(dir, "failure.json"), { stage, locations: [...new Set(locations)], codes: [...new Set(codes)] });
-  console.error(`BROWSER_FAILURE_LOCATION ${JSON.stringify({ locations: [...new Set(locations)], codes: [...new Set(codes)] })}`);
+  const keywords = ["Executable doesn't exist", "Test timed out", "No test files found", "Cannot find module", "Cannot find package", "ERR_MODULE_NOT_FOUND", "ERR_PNPM", "ECONNREFUSED", "ENOSPC"].filter(value => output.includes(value));
+  const progress = await privateJSON("progress.json").catch(() => ({ stage: "test-not-entered" }));
+  const kind = /^[A-Z_]+$/.test(error.code ?? "") ? error.code : /^PROCESS_FAILED:[a-z.]+:[0-9]+$/i.test(error.message ?? "") ? error.message : error.name;
+  const failure = { stage, progress, kind, outputLength: output.length, locations: [...new Set(locations)], codes: [...new Set(codes)], keywords };
+  await json(join(dir, "failure.json"), failure);
+  console.error(`BROWSER_FAILURE_LOCATION ${JSON.stringify(failure)}`);
   console.error(`BROWSER_ACCEPTANCE_FAILED stage=${stage} run=${runId}`);
   process.exitCode = 1;
 } finally {
