@@ -8,6 +8,19 @@
 
 ## 1. Purpose
 
+### ACC-1 bounded current-owner calibration (#409)
+
+On main `aff6b8def46cf7c2d989408d115fa3c9628e585e`, personal account reads use
+CurrentIdentity -> `workbenchcontext/httpapi.GetAccountProfile` ->
+`authidentity.SelfProfileReader` -> `authruntime/zitadel.UserInfoClient.ReadSelf`,
+through the dedicated Next account BFF and `src/lib/api/account.ts`. This is a
+current, read-only identity projection independent of Effective Organization;
+there is no admitted profile write owner. The current Console Account surface
+is reused under #409, not replaced because its web directory has a legacy name.
+See `docs/engineering/issue409-account-profile.md` for its presentation boundary.
+This row does not claim #410/#411/#412 implementation, final browser acceptance,
+deployment or real IAM verification.
+
 This document maps current package areas to current target owners. It is an ownership/retirement aid, not a requirement to rename everything at once or migrate old business data, IDs, profiles or runtime state.
 
 Current target ownership domains include:

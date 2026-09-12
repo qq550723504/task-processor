@@ -23,6 +23,18 @@ An external compatibility obligation is never inferred from a row, historical Is
 
 ## 1. Repository scan summary
 
+### Account surface clarification (#409)
+
+The current Account profile chain on main `aff6b8def46cf7c2d989408d115fa3c9628e585e`
+is CurrentIdentity -> `workbenchcontext/httpapi` -> `authidentity.SelfProfileReader`
+-> `authruntime/zitadel.UserInfoClient`, consumed by the dedicated account BFF
+and current Console. It is not the old profile/migration owner and must not be
+retired solely because it resides in `web/listingkit-ui`. All disclosed profile
+fields are read-only; absent claims or write ownership cannot be supplied by a
+legacy fallback, old-ID mapping or simulated save. Existing Task-first entries
+below remain RETIRE; this clarification adds no compatibility category and
+does not claim other Account slices or real-environment acceptance.
+
 ### Physically retired — keep absent
 
 The following old production package roots were not present on the scan baseline and must remain absent:
