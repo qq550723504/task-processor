@@ -115,6 +115,52 @@ describe("/api/workbench BFF", () => {
     vi.useRealTimers();
   });
 
+  it.each([
+    { name: "allows an 18s backend success", duration: 18_000, cancelEarly: false, status: 200 },
+    { name: "bounds a stalled acquisition at 22s", duration: 23_000, cancelEarly: false, status: 503 },
+    { name: "preserves earlier caller cancellation", duration: 18_000, cancelEarly: true, status: 503 },
+  ])("acquisition deadline $name", async ({ duration, cancelEarly, status }) => {
+    vi.useFakeTimers();
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    authState.identity = { userId: "user-a" };
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost");
+    const controller = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>((_input, init) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(Response.json({
+        schemaVersion: 1, operationId: operationKey, outcome: "published", replayed: false,
+        productKey: "crawler:1688:981645030344", publicationId: `source-run:acquisition:${operationKey}`,
+        catalogVersion: "1", warnings: [], missingFacts: [],
+      })), duration);
+      init?.signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new DOMException("aborted", "AbortError"));
+      }, { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    let settled = false;
+    const pending = call(POST, new NextRequest("http://localhost/api/workbench/sourcing/1688/acquisitions", {
+      method: "POST", signal: controller.signal,
+      headers: {
+        cookie: "shuomi_effective_organization=org-b", Origin: "http://localhost",
+        "Content-Type": "application/json", "Idempotency-Key": operationKey,
+        "X-Expected-Organization-ID": "org-b", "X-Expected-User-ID": "user-a",
+      },
+      body: JSON.stringify({ source: "981645030344" }),
+    }), ["sourcing", "1688", "acquisitions"]).then((response) => { settled = true; return response; });
+    await vi.advanceTimersByTimeAsync(cancelEarly ? 5_000 : 15_000);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+    if (cancelEarly) controller.abort();
+    else await vi.advanceTimersByTimeAsync(7_000);
+    const response = await pending;
+    expect(response.status).toBe(status);
+    if (status === 200) await expect(response.json()).resolves.toMatchObject({ outcome: "published", catalogVersion: "1" });
+    else await expect(response.json()).resolves.toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(status !== 200);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("uses the merged serverAuth wrapper and reads the token from request.auth", async () => {
     authMocks.wrapper.mockClear();
     vi.resetModules();
