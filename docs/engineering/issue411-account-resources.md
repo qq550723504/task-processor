@@ -20,8 +20,21 @@ balances, store counts and member allocations are not backend facts.
 Commercial reads use the existing `listingkit.admin.read` permission. SourceAccount
 uses `workbench.source_account.read/manage`. The current viewer may read source
 accounts but not commercial facts or perform management actions; operator/admin
-affordances follow the existing role matrix. The backend remains authorization
-authority. Expected actor and Organization headers are drift checks, never trusted
+affordances consume only the server-derived
+`organizations[].capabilities["workbench.source_account.manage"] === true`.
+The context handler asks the existing authorizer using the verified subject and
+each original grant's roles, before any separate display-role projection. It
+does not create access to organizations without a verified grant. Configured
+platform-admin roles and users use this same authority; React never copies their
+configuration or infers permissions from role names.
+
+The capability object may be absent, which does not grant management. If present,
+it must contain the one named boolean and no extra keys. Missing/failed context,
+nil authorizer and unsuccessful authorization fail closed. Context GET retains
+the existing grant-cache bound of 60 seconds; switching uses LiveSwitch, and
+every management request still requires LiveWrite. A false capability clears
+the old scoped controls while preserving the parent unresolved original intent.
+The backend remains authorization authority. Expected actor and Organization headers are drift checks, never trusted
 identity or grants.
 
 `enabled` means internal resource management only. `pending_connection` is shown

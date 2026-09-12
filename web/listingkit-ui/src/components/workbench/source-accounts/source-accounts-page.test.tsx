@@ -14,7 +14,7 @@ const failure = (code: string, outcome: "rejected" | "unknown" = "rejected") => 
 let client: QueryClient;
 const tree = () => <QueryClientProvider client={client}><SourceAccountsPage /></QueryClientProvider>;
 beforeEach(() => {
-  state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙" }, roles: ["listingkit_operator"], retry: vi.fn() };
+  state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } }, roles: ["listingkit_operator"], retry: vi.fn() };
   state.list.mockReset().mockResolvedValue({ schemaVersion: 1, items: [account], nextCursor: null });
   state.detail.mockReset().mockResolvedValue(detail());
   state.create.mockReset().mockResolvedValue({ ...detail(), replayed: false });
@@ -25,6 +25,71 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); });
 async function openDetail() { await userEvent.click(await screen.findByRole("button", { name: "查看 企业乙源账号" })); await screen.findByRole("heading", { name: "源账号详情" }); }
 async function register() { await userEvent.type(screen.getByLabelText("显示名称"), "新源账号"); await userEvent.click(screen.getByRole("button", { name: "登记源账号" })); }
+
+it.each([
+  { identity: "viewer", roles: ["listingkit_viewer"], allowed: false },
+  { identity: "operator denied by authority", roles: ["listingkit_operator"], allowed: false },
+  { identity: "admin denied by authority", roles: ["listingkit_admin"], allowed: false },
+  { identity: "operator granted", roles: ["listingkit_operator"], allowed: true },
+  { identity: "configured platform role", roles: ["company-support-admin"], allowed: true },
+  { identity: "configured platform user", roles: [], allowed: true },
+])("uses backend capability for $identity management affordances", async ({ roles, allowed }) => {
+  state.context.roles = roles;
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": allowed } };
+  render(tree()); await openDetail();
+  expect(screen.queryByRole("button", { name: "登记源账号" }) !== null).toBe(allowed);
+  expect(screen.queryByRole("button", { name: "禁用源账号" }) !== null).toBe(allowed);
+});
+
+it("fails closed when no capability is supplied even with an administrator role", async () => {
+  state.context.roles = ["listingkit_admin"];
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙" };
+  render(tree()); await openDetail();
+  expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "禁用源账号" })).not.toBeInTheDocument();
+});
+
+it("removes management when the same identity and organization capability is revoked", async () => {
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } };
+  const view = render(tree()); await openDetail();
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } };
+  view.rerender(tree());
+  expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "禁用源账号" })).not.toBeInTheDocument();
+});
+
+it("does not carry the old organization capability into a new read-only organization", async () => {
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } };
+  const view = render(tree()); await openDetail();
+  state.context.effectiveOrganization = { id: "org-C", name: "企业丙", capabilities: { "workbench.source_account.manage": false } };
+  state.list.mockResolvedValue({ schemaVersion: 1, items: [], nextCursor: null });
+  view.rerender(tree()); await screen.findByText("尚未登记源账号");
+  expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
+  expect(screen.queryByText("企业乙源账号")).not.toBeInTheDocument();
+});
+
+it("fails closed on permission provider failure despite a previously granted capability", async () => {
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } };
+  const view = render(tree()); await openDetail();
+  state.context.error = { code: "DEPENDENCY_UNAVAILABLE" }; view.rerender(tree());
+  expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "禁用源账号" })).not.toBeInTheDocument();
+  expect(state.create).not.toHaveBeenCalled();
+});
+
+it("retains the original unknown request across capability revocation and restoration", async () => {
+  const organization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } };
+  state.context.effectiveOrganization = organization;
+  state.create.mockRejectedValueOnce(failure("OUTCOME_UNKNOWN", "unknown")).mockResolvedValue({ ...detail(), replayed: true });
+  const view = render(tree()); await screen.findByText("企业乙源账号"); await register(); await screen.findByText("结果待核实");
+  const first = state.create.mock.calls[0][0];
+  state.context.effectiveOrganization = { ...organization, capabilities: { "workbench.source_account.manage": false } }; view.rerender(tree());
+  expect(screen.queryByRole("button", { name: "使用原请求重试" })).not.toBeInTheDocument();
+  state.context.effectiveOrganization = organization; view.rerender(tree());
+  await userEvent.click(await screen.findByRole("button", { name: "使用原请求重试" }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
+  expect(state.create.mock.calls[1][0]).toMatchObject({ idempotencyKey: first.idempotencyKey, displayName: first.displayName, expectedActorSubject: "actor", expectedOrganizationId: "org-B" });
+});
 
 it("lists current optional resources with separate management and connection facts", async () => {
   render(tree()); await screen.findByText("企业乙源账号");
@@ -97,7 +162,7 @@ it.each(["enable", "disable"] as const)("retains exact %s request after response
 });
 
 it("allows viewer reads but hides manage controls", async () => {
-  state.context.roles = ["listingkit_viewer"]; render(tree()); await openDetail();
+  state.context.roles = ["listingkit_viewer"]; state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } }; render(tree()); await openDetail();
   expect(screen.queryByRole("button", { name: "登记源账号" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "禁用源账号" })).not.toBeInTheDocument();
 });
@@ -126,13 +191,13 @@ it("separates unavailable from a successful empty list and retries reads", async
   await userEvent.click(screen.getByRole("button", { name: "刷新列表" })); await screen.findByText("尚未登记源账号");
 });
 
-it.each(["organization", "actor", "roles", "switching", "logout", "revoke"])("clears details and pending intent on %s", async kind => {
+it.each(["organization", "actor", "capability", "switching", "logout", "revoke"])("clears details and pending intent on %s", async kind => {
   state.create.mockRejectedValue(failure("OUTCOME_UNKNOWN", "unknown"));
   const view = render(tree()); await openDetail(); await register(); await screen.findByText("结果待核实");
   state.list.mockReturnValue(new Promise(() => {}));
   if (kind === "organization") state.context.effectiveOrganization = { id: "org-C", name: "企业丙" };
   if (kind === "actor") state.context.user = { id: "other" };
-  if (kind === "roles") state.context.roles = ["listingkit_viewer"];
+  if (kind === "capability") state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": false } };
   if (kind === "switching") state.context.isSwitching = true;
   if (kind === "logout") state.context.user = null;
   if (kind === "revoke") state.context.blockingError = { code: "ORGANIZATION_ACCESS_REVOKED" };
@@ -160,7 +225,7 @@ it("hides original intent in another organization and permits exact retry only a
   const first = state.create.mock.calls[0][0];
   state.context.effectiveOrganization = { id: "org-C", name: "企业丙" }; view.rerender(tree());
   expect(screen.queryByRole("button", { name: "使用原请求重试" })).not.toBeInTheDocument();
-  state.context.effectiveOrganization = { id: "org-B", name: "企业乙" }; view.rerender(tree());
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙", capabilities: { "workbench.source_account.manage": true } }; view.rerender(tree());
   await userEvent.click(await screen.findByRole("button", { name: "使用原请求重试" }));
   await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
   expect(state.create.mock.calls[1][0]).toMatchObject({ idempotencyKey: first.idempotencyKey, displayName: first.displayName, expectedActorSubject: "actor", expectedOrganizationId: "org-B" });

@@ -14,7 +14,6 @@ import { AccountShell } from "../account/account-shell";
 import styles from "./source-accounts.module.css";
 
 type Intent = { action: "register"; request: CreateSourceAccountRequest } | { action: "enable" | "disable"; request: ChangeSourceAccountStatusRequest };
-const manageRoles = new Set(["listingkit_operator", "listingkit_admin", "platform_admin"]);
 const queryOptions = { gcTime: 0, staleTime: 0, retry: false, refetchOnWindowFocus: true, refetchOnReconnect: true } as const;
 const accessFailures = new Set(["AUTHENTICATION_REQUIRED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED", "ORGANIZATION_SUSPENDED", "ORGANIZATION_CONTEXT_CHANGED", "IDENTITY_CONTEXT_CHANGED"]);
 
@@ -24,13 +23,14 @@ export function SourceAccountsPage() {
   // rendered or replayed in another actor/organization and is not a ledger.
   const [submittedIntent, setSubmittedIntent] = useState<Intent | null>(null);
   const org = context.effectiveOrganization;
-  const scope = JSON.stringify([context.user?.id, org?.id, context.roles]);
+  const canManage = org?.capabilities?.["workbench.source_account.manage"] === true;
+  const scope = JSON.stringify([context.user?.id, org?.id, canManage]);
   const sameIntentScope = submittedIntent?.request.expectedOrganizationId === org?.id && submittedIntent?.request.expectedActorSubject === context.user?.id;
   return <AccountShell pathname="/workbench/account/organization/resources/source-accounts" title="源账号" description="可选企业资源：登记和启停仅管理本系统资源，匿名公开商品采集无需先登记或连接源账号。">
     <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>返回资源与额度</Link></Button>
     {context.isLoading || context.isSwitching ? <ConsoleState kind="loading" title="正在确认当前企业">旧账号和待操作已清除。</ConsoleState>
       : context.error || context.blockingError || !context.user || !org || context.selectionRequired ? <ConsoleState kind="error" title="企业或登录上下文不可用">请确认当前企业与登录状态。<Button variant="outline" onClick={() => void context.retry()}>重新确认上下文</Button></ConsoleState>
-      : <ScopedAccounts key={scope} scope={scope} organizationId={org.id} organizationName={org.name} actor={context.user.id} canManage={context.roles.some(role => manageRoles.has(role))} initialIntent={sameIntentScope ? submittedIntent : null} foreignIntent={!!submittedIntent && !sameIntentScope} onIntentChange={setSubmittedIntent} />}
+      : <ScopedAccounts key={scope} scope={scope} organizationId={org.id} organizationName={org.name} actor={context.user.id} canManage={canManage} initialIntent={sameIntentScope ? submittedIntent : null} foreignIntent={!!submittedIntent && !sameIntentScope} onIntentChange={setSubmittedIntent} />}
   </AccountShell>;
 }
 
