@@ -164,7 +164,7 @@ export function registerFrozenExtensionCombination() {
       });
       assert.deepEqual(permissions.permissions.slice().sort(), ["activeTab", "scripting"]);
       assert.equal(permissions.host_permissions, undefined);
-      const targets = await browserCDP.send("Target.getTargets");
+      const targets = await browserCDP.send("Target.getTargets", { filter: [{ type: "tab", exclude: false }] });
       const tabs = targets.targetInfos.filter(target => target.type === "tab");
       assert.equal(tabs.length, 1, "OWNED_SOURCE_TAB_NOT_UNIQUE");
       await browserCDP.send("Extensions.triggerAction" as never, { id: extensionId, targetId: tabs[0].targetId } as never);
