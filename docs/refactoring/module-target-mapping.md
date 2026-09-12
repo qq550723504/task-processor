@@ -21,6 +21,27 @@ See `docs/engineering/issue409-account-profile.md` for its presentation boundary
 This row does not claim #410/#411/#412 implementation, final browser acceptance,
 deployment or real IAM verification.
 
+### ACC-4 bounded current-owner calibration (#412)
+
+The Account audit slice exposes `/workbench/account/organization/audit` through
+the dedicated `/api/account/audit` BFF and `GET /api/v1/account/audit`.
+`internal/app/accountaudit` is a read-only allowlist projection, not an audit
+fact owner: it calls `sourceaccountregistry.HistoryService`, which reuses the
+current Service authorization, then the existing persistence repository's
+`ListCommittedOperations` over `source_account_operations`.
+The permission remains `workbench.source_account.read`; `LiveWrite` selects
+fresh grant resolution and does not grant write permission. The default current
+application has this GET in its exact 11-route code contract. This is code
+mounting, not deployment or production acceptance.
+
+Only committed successful source-account `register / enable / disable`
+receipts are projected. Failed or unknown outcomes, members, renewals, Store
+and general security audit are outside this slice. An empty page describes only
+this source and cannot establish that the enterprise has no other activity.
+The cursor is scoped to the enterprise and ordered by owner operation time,
+account ID and version; it is not global commit order. No new table or second
+fact source is introduced. See `docs/engineering/account-audit-v1.md`.
+
 This document maps current package areas to current target owners. It is an ownership/retirement aid, not a requirement to rename everything at once or migrate old business data, IDs, profiles or runtime state.
 
 Current target ownership domains include:

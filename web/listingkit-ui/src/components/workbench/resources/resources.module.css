@@ -1,0 +1,8 @@
+.page { min-width: 0; }
+.stack { display: grid; gap: 24px; }
+.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; overflow-wrap: anywhere; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.panel { padding: 24px; display: grid; gap: 16px; align-content: start; }
+.panel h2 { font-size: 19px; font-weight: 600; }
+.panel p { color: var(--muted-foreground); line-height: 1.7; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .panel { padding: 18px; } }

@@ -123,9 +123,21 @@ Authentication is `verified_identity`. Middleware order is the repository's
 existing order: reject prohibited body where descriptor-owned, authenticate,
 resolve Effective Organization, then authorize the route permission, then call
 the handler. The service independently requires a non-expired authenticated
-identity where `TenantID == EffectiveOrganizationID`, and authorizes only the
-resolved Organization roles by passing no global user subject to the existing
-authorizer.
+identity where `TenantID == EffectiveOrganizationID`, and asks the existing
+authorizer for the explicit SourceAccount read/manage permission using the
+verified `UserID` and resolved Effective Organization roles.
+
+**Current product decision B (2026-09-12, #411 Gate A):** the user explicitly
+selected the existing `authz` SourceAccount permissions as the sole capability
+authority. This replaces this contract's former service-level role-only rule
+that passed an empty global subject. Configured platform-admin users and roles
+may therefore receive SourceAccount read/manage after normal Organization
+admission. The former rule was intentional; this is a new product decision,
+not a correction of the historical contract. No UI/service fixed-role check
+may further restrict a grant from that authority. Verified identity, live grant
+resolution on every write/replay, suspension checks and exact Organization
+scope remain mandatory. This decision does not change membership permissions,
+mutation APIs, idempotency, versions, management state or unknown outcomes.
 
 Role mapping extends the existing authorizer, not a new RBAC system:
 

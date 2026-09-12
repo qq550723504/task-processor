@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -40,6 +41,7 @@ type currentApplicationFactories struct {
 	buildSourceAccount func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildMembership    func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAudit  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 }
 
 func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationFactories {
@@ -53,6 +55,9 @@ func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationF
 		},
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
+		},
+		buildAccountAudit: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, db, authorizer)
 		},
 	}
 }
@@ -99,6 +104,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	if factories.buildAccountAudit != nil {
+		audit, auditErr := factories.buildAccountAudit(sourceAccountDB, authorizer)
+		if auditErr != nil {
+			return nil, fmt.Errorf("build current account audit module: %w", auditErr)
+		}
+		if audit == nil || reflect.ValueOf(audit).Kind() == reflect.Ptr && reflect.ValueOf(audit).IsNil() {
+			return nil, errors.New("current account audit module unavailable")
+		}
+		modules = append(modules, audit)
+	}
 	if factories.buildMembership != nil {
 		membership, err := factories.buildMembership(ctx, authorizer, *workbench.authDependencies)
 		if err != nil {
@@ -113,18 +128,21 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutes(bundle.routes, factories.buildMembership != nil); err != nil {
+	if err := validateCurrentApplicationRoutes(bundle.routes, factories.buildAccountAudit != nil, factories.buildMembership != nil); err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
 }
 
-func validateCurrentApplicationRoutes(routes []httproute.Descriptor, membershipEnabled ...bool) error {
+func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudit, includeMembership bool) error {
 	expected := make(map[currentApplicationRoute]struct{}, len(currentWorkbenchApplicationRoutes))
 	for _, route := range currentWorkbenchApplicationRoutes {
 		expected[route] = struct{}{}
 	}
-	if len(membershipEnabled) > 0 && membershipEnabled[0] {
+	if includeAudit {
+		expected[currentApplicationRoute{Method: http.MethodGet, Path: accountAuditPath}] = struct{}{}
+	}
+	if includeMembership {
 		for _, route := range currentMembershipRoutes {
 			expected[route] = struct{}{}
 		}
@@ -137,6 +155,9 @@ func validateCurrentApplicationRoutes(routes []httproute.Descriptor, membershipE
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if descriptor.Path == accountAuditPath && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
+			return errors.New("current account audit descriptor does not preserve fresh read authorization")
+		}
 		route := currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path}
 		if _, ok := expected[route]; !ok {
 			return fmt.Errorf("current application route contract contains unadmitted route %s %s", descriptor.Method, descriptor.Path)

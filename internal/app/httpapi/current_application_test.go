@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -11,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"task-processor/internal/app/accountaudit"
 
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -18,6 +21,70 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	memberhttp "task-processor/internal/organization/membership/httpapi"
 )
+
+func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
+	defaults := defaultCurrentApplicationFactories(context.Background())
+	if defaults.buildAccountAudit == nil || defaults.buildMembership != nil {
+		t.Fatal("default application must include audit without implicitly enabling membership")
+	}
+	query, _ := accountaudit.New(&auditHTTPHistory{})
+	audit := kernelmodule.NewRegistry()
+	if err := (accountAuditModule{query: query}).Register(audit); err != nil {
+		t.Fatal(err)
+	}
+	members := kernelmodule.NewRegistry()
+	if err := memberhttp.NewModule(memberhttp.NewCommandHandler(nil, func(*http.Request) (memberhttp.CommandService, error) { return nil, nil })).Register(members); err != nil {
+		t.Fatal(err)
+	}
+	for _, includeAudit := range []bool{false, true} {
+		for _, includeMembership := range []bool{false, true} {
+			t.Run(fmt.Sprintf("audit=%t/membership=%t", includeAudit, includeMembership), func(t *testing.T) {
+				routes := make([]httproute.Descriptor, 0, 18)
+				for _, route := range currentWorkbenchApplicationRoutes {
+					routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
+				}
+				want := 10
+				if includeAudit {
+					routes = append(routes, audit.Routes()...)
+					want++
+				}
+				if includeMembership {
+					routes = append(routes, members.Routes()...)
+					want += 7
+				}
+				if len(routes) != want {
+					t.Fatalf("route count got %d want %d", len(routes), want)
+				}
+				if err := validateCurrentApplicationRoutes(routes, includeAudit, includeMembership); err != nil {
+					t.Fatal(err)
+				}
+				for _, flags := range [][2]bool{{!includeAudit, includeMembership}, {includeAudit, !includeMembership}} {
+					if err := validateCurrentApplicationRoutes(routes, flags[0], flags[1]); err == nil {
+						t.Fatal("missing or unrequested module admitted")
+					}
+				}
+				for i := 10; i < len(routes); i++ {
+					for _, mutate := range []func(*httproute.Descriptor){
+						func(r *httproute.Descriptor) { r.AuthPolicy = httproute.AuthPolicyPublic },
+						func(r *httproute.Descriptor) { r.Permission = authz.PermissionWorkbenchSourceAccountManage },
+						func(r *httproute.Descriptor) {
+							r.OrganizationAccessPolicy = httproute.OrganizationAccessPolicyCachedRead
+						},
+						func(r *httproute.Descriptor) { r.OrganizationTargetResolver = nil },
+						func(r *httproute.Descriptor) { r.RequestTimeout = 0 },
+						func(r *httproute.Descriptor) { r.RejectUnreadRequestBody = false },
+					} {
+						changed := append([]httproute.Descriptor(nil), routes...)
+						mutate(&changed[i])
+						if err := validateCurrentApplicationRoutes(changed, includeAudit, includeMembership); err == nil {
+							t.Fatalf("descriptor %d security drift admitted", i)
+						}
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestMembershipFactoryReceivesSharedAuthorityAndAddsOnlySevenRoutes(t *testing.T) {
 	deps := newRouteAuthDependencies()
@@ -41,6 +108,105 @@ func TestMembershipFactoryReceivesSharedAuthorityAndAddsOnlySevenRoutes(t *testi
 	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
 	if err != nil || server == nil {
 		t.Fatalf("membership assembly: %v", err)
+	}
+}
+
+func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
+	if defaultCurrentApplicationFactories(context.Background()).buildAccountAudit == nil {
+		t.Fatal("default application omitted audit factory")
+	}
+	for _, mode := range []string{"enabled", "error", "nil", "missing-route", "wrong-permission"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := currentApplicationTestConfig()
+			sourceDB, commercialDB := &gorm.DB{}, &gorm.DB{}
+			factories := currentApplicationFactories{
+				buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
+					dependencies := newRouteAuthDependencies()
+					return workbenchContextBuildResult{module: currentApplicationTestModule{name: "workbench", routes: currentWorkbenchApplicationRoutes[:4]}, authDependencies: &dependencies}, nil
+				},
+				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+					return currentApplicationTestModule{name: "source", routes: currentWorkbenchApplicationRoutes[5:]}, nil
+				},
+				buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+					return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
+				},
+				buildAccountAudit: func(got *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+					if got != sourceDB || authorizer == nil {
+						t.Fatal("audit did not reuse source pool/authorizer")
+					}
+					if mode == "error" {
+						return nil, errors.New("audit construction failed")
+					}
+					if mode == "nil" {
+						return nil, nil
+					}
+					query, _ := accountaudit.New(&auditHTTPHistory{})
+					return currentAuditTestModule{inner: accountAuditModule{query: query}, mode: mode}, nil
+				},
+			}
+			server, err := buildCurrentApplication(context.Background(), sourceDB, commercialDB, cfg, logrus.New(), factories)
+			if mode == "enabled" {
+				if err != nil || server == nil {
+					t.Fatalf("audit assembly: %v", err)
+				}
+			} else if err == nil || server != nil {
+				t.Fatalf("%s did not fail closed: %v", mode, err)
+			}
+		})
+	}
+}
+
+type currentAuditTestModule struct {
+	inner accountAuditModule
+	mode  string
+}
+
+func (m currentAuditTestModule) Name() string                { return "account-audit" }
+func (m currentAuditTestModule) Enabled(*config.Config) bool { return true }
+func (m currentAuditTestModule) Register(registry *kernelmodule.Registry) error {
+	if m.mode == "missing-route" {
+		return nil
+	}
+	other := kernelmodule.NewRegistry()
+	if err := m.inner.Register(other); err != nil {
+		return err
+	}
+	routes := other.Routes()
+	if m.mode == "wrong-permission" {
+		routes[0].Permission = authz.PermissionWorkbenchSourceAccountManage
+	}
+	registry.AddRoutes(routes...)
+	return nil
+}
+
+func TestCurrentApplicationAuditRequiresExactDescriptor(t *testing.T) {
+	query, _ := accountaudit.New(&auditHTTPHistory{})
+	audit := kernelmodule.NewRegistry()
+	_ = (accountAuditModule{query: query}).Register(audit)
+	base := make([]httproute.Descriptor, 0, 11)
+	for _, route := range currentWorkbenchApplicationRoutes {
+		base = append(base, httproute.Descriptor{Method: route.Method, Path: route.Path})
+	}
+	valid := append(append([]httproute.Descriptor{}, base...), audit.Routes()[0])
+	if err := validateCurrentApplicationRoutes(valid, true, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*httproute.Descriptor){func(r *httproute.Descriptor) { r.Method = "POST" }, func(r *httproute.Descriptor) { r.Path += "/extra" }, func(r *httproute.Descriptor) {
+		r.OrganizationAccessPolicy = httproute.OrganizationAccessPolicyCachedRead
+	}, func(r *httproute.Descriptor) { r.Permission = "" }, func(r *httproute.Descriptor) { r.AuthPolicy = httproute.AuthPolicyPublic }, func(r *httproute.Descriptor) { r.RequestTimeout = 0 }, func(r *httproute.Descriptor) { r.OrganizationTargetResolver = nil }, func(r *httproute.Descriptor) { r.RejectUnreadRequestBody = false }} {
+		routes := append([]httproute.Descriptor{}, valid...)
+		mutate(&routes[len(routes)-1])
+		if err := validateCurrentApplicationRoutes(routes, true, false); err == nil {
+			t.Fatal("invalid audit descriptor allowed")
+		}
+	}
+	for _, routes := range [][]httproute.Descriptor{base, append(valid, valid[len(valid)-1]), append(append([]httproute.Descriptor{}, valid[:10]...), valid[0])} {
+		if err := validateCurrentApplicationRoutes(routes, true, false); err == nil {
+			t.Fatal("invalid route set allowed")
+		}
+	}
+	if err := validateCurrentApplicationRoutes(valid, false, false); err == nil {
+		t.Fatal("unrequested audit allowed")
 	}
 }
 
