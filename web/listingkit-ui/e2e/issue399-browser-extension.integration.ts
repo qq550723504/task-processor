@@ -72,10 +72,12 @@ export function registerFrozenExtensionCombination() {
     const { finishOwnedBrowserAndProxy } = await import(/* @vite-ignore */ cleanupURL);
     const network = { allowedLoopbackRequests: 0, deniedHTTP: 0, deniedCONNECT: 0, deniedLoopbackProbe: 0, deniedSourceConnect: 0, interceptedFixture: 0, abortedOther: 0, proxyConnectionErrors: 0 };
     const browserDiagnostics: Record<string, string | number>[] = [];
+    let consoleErrorCount = 0;
     const diagnostic = (value: Record<string, string | number>) => { if (browserDiagnostics.length < 100) browserDiagnostics.push(value); };
     const category = (message: string) => message.includes("Content Security Policy") ? "CSP"
-      : message.includes("Cross-Origin") ? "CORS" : /local network/i.test(message) ? "LOCAL_NETWORK"
-        : message.includes("Loading chunk") ? "CHUNK_LOAD" : "OTHER";
+      : /Cross-Origin|CORS/.test(message) ? "CORS" : /local network|private network/i.test(message) ? "LOCAL_NETWORK"
+        : message.includes("Loading chunk") ? "CHUNK_LOAD" : /WebSocket/i.test(message) ? "WEBSOCKET"
+          : message.includes("HMR") ? "HMR" : /hydrat/i.test(message) ? "HYDRATION" : /React/.test(message) ? "REACT_INIT" : "OTHER";
     // This proxy never resolves or connects to an external host, even if page
     // interception is missed or a worker bypasses Playwright's route handler.
     const proxy = createServer((request, response) => {
@@ -114,7 +116,9 @@ export function registerFrozenExtensionCombination() {
       assert(browser);
       context.on("page", page => {
         page.on("pageerror", error => diagnostic({ event: "pageerror", category: category(error.message), kind: ["Error", "TypeError", "ReferenceError", "SyntaxError", "ChunkLoadError"].includes(error.name) ? error.name : "OTHER" }));
-        page.on("console", message => { if (message.type() === "error") diagnostic({ event: "consoleerror", category: category(message.text()), code: message.text().match(/net::ERR_[A-Z_]+/)?.[0] ?? "NONE" }); });
+        page.on("console", message => {
+          if (message.type() === "error" && ++consoleErrorCount <= 10) diagnostic({ event: "consoleerror", category: category(message.text()), code: message.text().match(/net::ERR_[A-Z_]+/)?.[0] ?? "NONE" });
+        });
       });
       const requestLabel = (url: string) => {
         const parsed = new URL(url);
@@ -213,6 +217,10 @@ export function registerFrozenExtensionCombination() {
       } finally { await popup.close().catch(() => undefined); }
       await stage("receiver-before-consent");
       await receiver.waitForURL(url => url.pathname === "/capture/1688");
+      const beforeFocus = await receiver.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus(), online: navigator.onLine }));
+      await receiver.bringToFront();
+      const afterFocus = await receiver.evaluate(() => ({ visibility: document.visibilityState, focused: document.hasFocus(), online: navigator.onLine }));
+      await writeFile(join(dir, "receiver-focus.json"), JSON.stringify({ beforeFocus, afterFocus }));
       const initialURL = new URL(receiver.url());
       assert.equal(initialURL.origin, m.origin);
       const fragment = new URLSearchParams(initialURL.hash.slice(1));
@@ -289,6 +297,7 @@ export function registerFrozenExtensionCombination() {
             const body = document.body.innerText;
             const state = {
               runtimeAvailable: Boolean(runtime), receiverMounted: body.includes("Confirm a browser capture"), readyState: document.readyState, scriptCount: document.scripts.length,
+              visibility: document.visibilityState, focused: document.hasFocus(), online: navigator.onLine,
               handoffExpired: body.includes("Browser handoff expired"), handoffInvalid: body.includes("This handoff is invalid"),
               reading: body.includes("Reading the browser handoff"), contextUnavailable: body.includes("Context changed or access is unavailable"),
               confirmation: body.includes("Confirm and submit"),
@@ -306,7 +315,7 @@ export function registerFrozenExtensionCombination() {
           const envelope = diagnostic.response && typeof diagnostic.response === "object" ? diagnostic.response as Record<string, unknown> : undefined;
           const parsed = browserCaptureSchema.safeParse(envelope?.payload);
           await writeFile(join(dir, "extension-failure-state.json"), JSON.stringify({
-            ...diagnostic.state, network, browserDiagnostics, envelopeKeys: envelope ? Object.keys(envelope).sort() : [],
+            ...diagnostic.state, network, browserDiagnostics, consoleErrorCount, envelopeKeys: envelope ? Object.keys(envelope).sort() : [],
             wirePayloadValid: parsed.success,
             issues: parsed.success ? [] : parsed.error.issues.map(issue => ({ path: issue.path.join("."), code: issue.code })),
           }));
