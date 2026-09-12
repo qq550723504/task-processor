@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strconv"
 	"time"
 	"unicode/utf8"
 )
@@ -24,6 +25,26 @@ const (
 // ErrInvalidBrowserCapture deliberately contains no untrusted input.
 var ErrInvalidBrowserCapture = errors.New("invalid browser capture")
 
+// BrowserAcquisitionProducerKind was admitted for the Browser implementation
+// slice; it does not change the Public descriptor or SRC-1 fact rules.
+const BrowserAcquisitionProducerKind = "browser_acquisition"
+
+// BrowserAcquisitionFingerprint binds the action, canonical source and server
+// payload digest. The original org/actor/key operation namespace is unchanged.
+func BrowserAcquisitionFingerprint(source AcquisitionSource, captureSHA256 string) (string, error) {
+	canonical, err := Canonical1688Source(source.URL)
+	if err != nil || canonical != source {
+		return "", ErrInvalidBrowserCapture
+	}
+	raw, err := hex.DecodeString(captureSHA256)
+	if err != nil || len(raw) != sha256.Size || hex.EncodeToString(raw) != captureSHA256 {
+		return "", ErrInvalidBrowserCapture
+	}
+	input, _ := json.Marshal([]string{AcquisitionContractVersion, "browser_capture", source.URL, captureSHA256})
+	digest := sha256.Sum256(input)
+	return hex.EncodeToString(digest[:]), nil
+}
+
 // BrowserCapture carries a transport receipt and the existing domain evidence.
 // PayloadSHA256 is server-computed; the client's contentSHA256 is only a claim.
 type BrowserCapture struct {
@@ -35,7 +56,7 @@ type BrowserCapture struct {
 
 // ParseBrowserCapture validates and canonicalizes the frozen Browser wire.
 func ParseBrowserCapture(body []byte) (BrowserCapture, error) {
-	if len(body) == 0 || len(body) > BrowserCaptureMaxBytes || !utf8.Valid(body) {
+	if len(body) == 0 || len(body) > BrowserCaptureMaxBytes || !utf8.Valid(body) || !browserUnicodeEscapesValid(body) {
 		return BrowserCapture{}, ErrInvalidBrowserCapture
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
@@ -80,6 +101,52 @@ func ParseBrowserCapture(body []byte) (BrowserCapture, error) {
 		CanonicalPayload: canonical,
 		PayloadSHA256:    hex.EncodeToString(digest[:]),
 	}, nil
+}
+
+// Go's decoder replaces unpaired UTF-16 escapes with U+FFFD. Reject only those
+// malformed pairs before decoding so distinct input facts never collapse.
+// Ordinary escaped backslashes and actual U+FFFD remain valid.
+func browserUnicodeEscapesValid(body []byte) bool {
+	inString := false
+	for i := 0; i < len(body); i++ {
+		if body[i] == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString || body[i] != '\\' {
+			continue
+		}
+		i++
+		if i >= len(body) {
+			return false
+		}
+		if body[i] != 'u' {
+			continue
+		}
+		if i+4 >= len(body) {
+			return false
+		}
+		unit, err := strconv.ParseUint(string(body[i+1:i+5]), 16, 16)
+		if err != nil {
+			return false
+		}
+		if unit >= 0xd800 && unit <= 0xdbff {
+			if i+10 >= len(body) || body[i+5] != '\\' || body[i+6] != 'u' {
+				return false
+			}
+			low, err := strconv.ParseUint(string(body[i+7:i+11]), 16, 16)
+			if err != nil || low < 0xdc00 || low > 0xdfff {
+				return false
+			}
+			i += 10
+		} else {
+			if unit >= 0xdc00 && unit <= 0xdfff {
+				return false
+			}
+			i += 4
+		}
+	}
+	return true
 }
 
 // These private structs are the frozen transport shape, not a second domain

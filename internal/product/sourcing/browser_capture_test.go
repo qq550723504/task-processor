@@ -213,3 +213,49 @@ func TestBrowserCaptureOrderAndLexemesChangeDigest(t *testing.T) {
 		t.Fatal("decimal lexical precision lost from intent")
 	}
 }
+
+func TestBrowserCaptureRejectsUnpairedSurrogates(t *testing.T) {
+	var payload map[string]any
+	_ = json.Unmarshal(browserFixture(t), &payload)
+	payload["evidence"].(map[string]any)["title"] = "UNICODE_SENTINEL"
+	body, _ := json.Marshal(payload)
+	for _, escaped := range []string{`"\ud800"`, `"\udbff"`, `"\udc00"`, `"\udfff"`, `"\ud800\u0061"`, `"\ud800\ud800"`, `"\ud800x"`} {
+		t.Run(escaped, func(t *testing.T) {
+			input := bytes.Replace(body, []byte(`"UNICODE_SENTINEL"`), []byte(escaped), 1)
+			if _, err := ParseBrowserCapture(input); err == nil {
+				t.Fatal("unpaired surrogate was silently replaced and admitted")
+			}
+		})
+	}
+}
+
+func TestBrowserCapturePreservesValidUnicode(t *testing.T) {
+	var payload map[string]any
+	_ = json.Unmarshal(browserFixture(t), &payload)
+	payload["evidence"].(map[string]any)["title"] = "UNICODE_SENTINEL"
+	body, _ := json.Marshal(payload)
+	var pair BrowserCapture
+	for _, tc := range []struct{ wire, want string }{
+		{`"\ud83d\ude00"`, "\U0001f600"},
+		{"\"\U0001f600\"", "\U0001f600"},
+		{`"\ufffd"`, "\ufffd"},
+		{`"\\ud800"`, `\ud800`},
+	} {
+		t.Run(tc.wire, func(t *testing.T) {
+			input := bytes.Replace(body, []byte(`"UNICODE_SENTINEL"`), []byte(tc.wire), 1)
+			capture, err := ParseBrowserCapture(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if capture.Evidence.Title == nil || *capture.Evidence.Title != tc.want {
+				t.Fatal("valid Unicode fact changed")
+			}
+			if tc.want == "\U0001f600" {
+				if pair.PayloadSHA256 != "" && pair.PayloadSHA256 != capture.PayloadSHA256 {
+					t.Fatal("raw/paired-escape Unicode intents diverged")
+				}
+				pair = capture
+			}
+		})
+	}
+}
