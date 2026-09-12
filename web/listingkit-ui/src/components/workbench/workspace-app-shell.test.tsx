@@ -61,6 +61,16 @@ function renderShell(child = <p>organization child</p>) {
 }
 
 describe("WorkspaceAppShell", () => {
+  it("does not apply Browser recovery presentation to the personal profile", () => {
+    navigation.pathname = "/workbench/account/profile";
+    injectProfileContext({ error: { code: "AUTHENTICATION_REQUIRED" } });
+    window.history.replaceState(null, "", "/workbench/account/profile#operationKey=22222222-2222-4222-8222-22222222222b");
+    render(<WorkspaceAppShell><p>hidden profile</p></WorkspaceAppShell>);
+    expect(screen.queryByText("hidden profile")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "在新标签页重新登录" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新加载" })).toBeVisible();
+    window.history.replaceState(null, "", "/");
+  });
   function injectProfileContext(overrides: Record<string, unknown> = {}) {
     injectedWorkbenchContext.value = { user: { id: "stale-user" }, homeOrganizationId: "org-a", organizations: [], effectiveOrganization: null, roles: [], selectionRequired: false, isLoading: false, isSwitching: false, error: null, blockingError: null, retry: vi.fn(), switchOrganization: vi.fn(), ...overrides };
   }
@@ -69,13 +79,23 @@ describe("WorkspaceAppShell", () => {
     render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>);
     expect(screen.getByText("personal profile")).toBeVisible(); expect(navigation.replace).not.toHaveBeenCalled();
   });
-  it.each(["/workbench/account", "/workbench/account/organization", "/workbench/account/profile/extra", "/workbench/plans/options", "/workbench/ai/tasks", "/workbench/stores"])("preserves enterprise gate for %s", path => {
+  it.each([{}, { isLoading: true }, { selectionRequired: true }, { error: { code: "DEPENDENCY_UNAVAILABLE" } }, { blockingError: { code: "ORGANIZATION_ACCESS_REVOKED" } }])("allows exact account root to finish its personal redirect: %j", overrides => {
+    navigation.pathname = "/workbench/account"; injectProfileContext(overrides);
+    render(<WorkspaceAppShell><p>personal redirect</p></WorkspaceAppShell>);
+    expect(screen.getByText("personal redirect")).toBeVisible(); expect(navigation.replace).not.toHaveBeenCalled();
+  });
+  it.each(["/workbench/account/organization", "/workbench/account/organization/members", "/workbench/account/organization/resources", "/workbench/account/organization/audit", "/workbench/account/unknown", "/workbench/account-evil", "/workbench/account/profile/extra", "/workbench/plans/options", "/workbench/ai/tasks", "/workbench/stores"])("preserves enterprise gate for %s", path => {
     navigation.pathname = path; injectProfileContext(); render(<WorkspaceAppShell><p>protected child</p></WorkspaceAppShell>);
     expect(screen.queryByText("protected child")).not.toBeInTheDocument(); expect(navigation.replace).toHaveBeenCalledWith("/workbench/no-organization");
   });
   it.each(["error", "blockingError"])("keeps %s authentication denial above the profile exemption", field => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
     render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>); expect(screen.queryByText("personal profile")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
+  });
+  it.each(["error", "blockingError"])("keeps %s authentication denial above the account-root exemption", field => {
+    navigation.pathname = "/workbench/account"; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
+    render(<WorkspaceAppShell><p>personal redirect</p></WorkspaceAppShell>);
+    expect(screen.queryByText("personal redirect")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
   });
   it("hides stale identity, enterprise switcher and delegation metadata on grant failure", () => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext({ error: { code: "DEPENDENCY_UNAVAILABLE" }, effectiveOrganization: { id: "org-b", name: "旧企业", roles: [] } });

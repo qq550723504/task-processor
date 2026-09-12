@@ -22,7 +22,7 @@ func buildHTTPServerFromRoutesAt(bindAddress string, port int, routes []httprout
 
 func buildHTTPServerFromRoutesAtWithAuthDependencies(bindAddress string, port int, routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(browserCaptureRecovery())
 	mountRoutesWithAuthDependencies(router, routes, dependencies)
 	return &http.Server{
 		Addr:              serverAddress(bindAddress, port),

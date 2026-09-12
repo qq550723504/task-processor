@@ -36,8 +36,11 @@ func issue30PublicationIdentityViolations(sources []listingKitImageBoundarySourc
 		owner := filepath.ToSlash(filepath.Dir(source.path)) == "internal/product/sourcing" && file.Name.Name == "sourcing"
 		// SRC-2B1 admission 5643032970: only construction and frozen-command
 		// integrity in these files. Keep parsing; other import guards still apply.
+		// #399 Browser file admission: reviewed at 8f03df23f860573ef8f866b679d73ae8e37266a6,
+		// then approved by PM. This is file-level admission; new references still
+		// require review. It is not a method/count restriction or a production cutover.
 		path := filepath.ToSlash(source.path)
-		admitted := path == "internal/app/productsourcing/acquisition.go" || path == "internal/integration/persistence/product/acquisition/repository.go"
+		admitted := path == "internal/app/productsourcing/acquisition.go" || path == "internal/integration/persistence/product/acquisition/repository.go" || path == "internal/app/productsourcing/browser_capture.go"
 		aliases := make(map[string]bool)
 		shadowImport := false
 		dot := false
