@@ -16,7 +16,33 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	memberhttp "task-processor/internal/organization/membership/httpapi"
 )
+
+func TestMembershipFactoryReceivesSharedAuthorityAndAddsOnlySevenRoutes(t *testing.T) {
+	deps := newRouteAuthDependencies()
+	var shared *authz.ListingKitAuthorizer
+	factories := currentApplicationFactories{
+		buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
+			return workbenchContextBuildResult{module: currentApplicationTestModule{name: "base", routes: currentWorkbenchApplicationRoutes}, authDependencies: &deps}, nil
+		},
+		buildSourceAccount: func(_ *gorm.DB, a *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			shared = a
+			return nil, nil
+		},
+		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
+		buildMembership: func(_ context.Context, a *authz.ListingKitAuthorizer, auth routeAuthDependencies) (kernelmodule.Module, error) {
+			if a != shared || auth.authorizer != shared {
+				t.Fatal("membership received another authority")
+			}
+			return memberhttp.NewModule(memberhttp.NewCommandHandler(nil, func(*http.Request) (memberhttp.CommandService, error) { return nil, nil })), nil
+		},
+	}
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)
+	if err != nil || server == nil {
+		t.Fatalf("membership assembly: %v", err)
+	}
+}
 
 func TestBuildCurrentApplicationAssemblesOnlyTenAdmittedRoutes(t *testing.T) {
 	sourceDB, commercialDB := &gorm.DB{}, &gorm.DB{}

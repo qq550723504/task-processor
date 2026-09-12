@@ -25,11 +25,12 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion         int            `json:"schemaVersion"`
-	Listen                ListenConfig   `json:"listen"`
-	Identity              IdentityConfig `json:"identity"`
-	SourceAccountDatabase DatabaseConfig `json:"sourceAccountDatabase"`
-	CommercialDatabase    DatabaseConfig `json:"commercialDatabase"`
+	SchemaVersion         int               `json:"schemaVersion"`
+	Listen                ListenConfig      `json:"listen"`
+	Identity              IdentityConfig    `json:"identity"`
+	SourceAccountDatabase DatabaseConfig    `json:"sourceAccountDatabase"`
+	CommercialDatabase    DatabaseConfig    `json:"commercialDatabase"`
+	Membership            *MembershipConfig `json:"membership,omitempty"`
 }
 
 type ListenConfig struct {
@@ -205,6 +206,11 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
 		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
+	}
+	if cfg.Membership != nil {
+		if err := cfg.Membership.validate(cfg.Identity); err != nil {
+			return err
+		}
 	}
 	return nil
 }
