@@ -204,3 +204,69 @@ func TestFreshWorkbenchConcurrentRequestIdentityIsolation(t *testing.T) {
 	}
 	group.Wait()
 }
+
+func TestFreshWorkbenchRequiresExplicitSelectedOrganizationBeforeProvider(t *testing.T) {
+	now := time.Now()
+	client := &freshAuthorizationFixture{grants: []authidentity.OrganizationGrant{{OrganizationID: "org-home", ProjectID: "project", Roles: []string{"listingkit_operator"}}}}
+	owner := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(client, nil), "project", "v1", nil)
+	resolver, _ := NewFreshWorkbenchPrincipalResolver(FreshOrganizationResolverFunc(func(ctx context.Context, request OrganizationRequest) (authidentity.AuthenticatedIdentity, error) {
+		return owner.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: request.Identity, BearerToken: request.BearerToken, RequestedOrganizationID: request.RequestedOrganizationID})
+	}), func() time.Time { return now })
+	for _, selected := range []string{"", " ", " org-home", "org-home "} {
+		ctx := WithOrganizationRequest(context.Background(), OrganizationRequest{Identity: authidentity.AuthenticatedIdentity{UserID: "actor", HomeOrganizationID: "org-home", TokenExpiresAt: now.Add(time.Minute)}, BearerToken: "secret", RequestedOrganizationID: selected})
+		if principal, err := resolver.ResolveFreshPrincipal(ctx); err == nil || principal.UserID != "" || client.calls != 0 {
+			t.Fatalf("missing/noncanonical selected org reached provider: %q %v calls=%d", selected, err, client.calls)
+		}
+	}
+}
+
+type blockingFreshAuthorizationFixture struct{ entered chan struct{} }
+
+func (f *blockingFreshAuthorizationFixture) ListOwnProjectAuthorizations(ctx context.Context, _, _, _ string) ([]authidentity.OrganizationGrant, error) {
+	close(f.entered)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestFreshWorkbenchPropagatesCancellationDuringProviderLookup(t *testing.T) {
+	for _, deadline := range []bool{false, true} {
+		client := &blockingFreshAuthorizationFixture{entered: make(chan struct{})}
+		owner := workbenchcontext.NewResolver(workbenchcontext.NewGrantResolver(client, nil), "project", "v1", nil)
+		resolver, _ := NewFreshWorkbenchPrincipalResolver(FreshOrganizationResolverFunc(func(ctx context.Context, request OrganizationRequest) (authidentity.AuthenticatedIdentity, error) {
+			return owner.Resolve(ctx, httproute.OrganizationAccessPolicyLiveWrite, workbenchcontext.ResolveInput{Identity: request.Identity, BearerToken: request.BearerToken, RequestedOrganizationID: request.RequestedOrganizationID})
+		}), nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		if deadline {
+			cancel()
+			ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+		}
+		ctx = WithOrganizationRequest(ctx, OrganizationRequest{Identity: authidentity.AuthenticatedIdentity{UserID: "actor", TokenExpiresAt: time.Now().Add(time.Minute)}, BearerToken: "secret", RequestedOrganizationID: "org-a"})
+		done := make(chan error, 1)
+		go func() {
+			principal, err := resolver.ResolveFreshPrincipal(ctx)
+			if principal.UserID != "" {
+				done <- errors.New("principal returned during cancellation")
+				return
+			}
+			done <- err
+		}()
+		select {
+		case <-client.entered:
+		case <-time.After(time.Second):
+			cancel()
+			t.Fatal("provider not entered")
+		}
+		if !deadline {
+			cancel()
+		}
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Error("canceled provider succeeded")
+			}
+		case <-time.After(time.Second):
+			t.Error("provider context was not canceled")
+		}
+		cancel()
+	}
+}
