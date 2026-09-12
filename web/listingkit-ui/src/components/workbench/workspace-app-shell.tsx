@@ -10,6 +10,7 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { OrganizationSwitcher, workbenchErrorMessage } from "@/components/workbench/organization-switcher";
 import { Button } from "@/components/ui/button";
 import { ConsoleNavigation } from "@/components/workbench/console/console-navigation";
+import { isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
 const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
@@ -51,7 +52,12 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     }
   }, [router, shouldLeaveNoOrganization, shouldRedirectToNoOrganization]);
 
-  if (authenticationError) return <AccessState action={redirectToLogin} code={authenticationError.code} />;
+  if (authenticationError) {
+    const match = pathname === "/capture/1688" && typeof window !== "undefined" && !window.location.search
+      ? /^#operationKey=([0-9a-f-]{36})$/.exec(window.location.hash) : null;
+    const browserRecovery = !!match && isAcquisitionUUID(match[1]!);
+    return <AccessState action={browserRecovery ? () => window.location.reload() : redirectToLogin} code={authenticationError.code} browserRecovery={browserRecovery} />;
+  }
 
   if (context.isLoading && !isPersonalProfile) {
     return (
@@ -194,7 +200,7 @@ function DelegatedOperationIndicator({
   );
 }
 
-function AccessState({ action, code }: { action: () => void; code: string }) {
+function AccessState({ action, code, browserRecovery = false }: { action: () => void; code: string; browserRecovery?: boolean }) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-6">
       <section className="max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm">
@@ -202,10 +208,11 @@ function AccessState({ action, code }: { action: () => void; code: string }) {
           {workbenchErrorMessage(code)}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          为保护企业数据，工作台内容已停止加载。
+          {browserRecovery ? "请保留此恢复页面。在新标签页登录后，返回此页刷新并核实原操作；不会重新提交。" : "为保护企业数据，工作台内容已停止加载。"}
         </p>
+        {browserRecovery ? <a className="mt-4 block text-sm underline" href="/login?returnTo=%2Fworkbench" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">在新标签页重新登录</a> : null}
         <Button className="mt-5" onClick={action} variant="outline">
-          重新加载
+          {browserRecovery ? "登录完成后刷新此页核实" : "重新加载"}
         </Button>
       </section>
     </main>
