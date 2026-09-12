@@ -17,6 +17,13 @@ function mount(page: "profile" | "organization" = "profile", expectedUserId = "u
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, homeOrganizationId: "A", effectiveOrganization: { id: "B", name: "企业乙", roles: ["viewer"] }, roles: ["viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("AccountPage read-only projection", () => {
+  it("links the available resource page without claiming balances or activating other management cards", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
+    expect(await screen.findByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
+    expect(screen.getByText("资源余额读取暂未接入；已授予权益、已记录用量与源账号管理请进入资源与额度。")).toBeVisible();
+    expect(screen.getAllByText("暂未接入")).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: /成员与权限|操作记录/ })).not.toBeInTheDocument();
+  });
   it("offers an account return link in the breadcrumb", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(profile))); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
