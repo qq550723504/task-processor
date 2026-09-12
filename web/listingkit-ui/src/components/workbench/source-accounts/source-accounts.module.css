@@ -1,0 +1,13 @@
+.page { min-width: 0; }
+.stack { display: grid; gap: 20px; margin-top: 24px; overflow-wrap: anywhere; }
+.panel { padding: 24px; display: grid; gap: 16px; }
+.panel h2 { font-size: 19px; font-weight: 600; }
+.panel h3 { font-weight: 600; }
+.note, .form p, .facts dt { color: var(--muted-foreground); line-height: 1.7; }
+.form { display: grid; gap: 12px; max-width: 480px; }
+.actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.list { display: grid; gap: 16px; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+.list p { margin-top: 6px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .facts { grid-template-columns: 1fr; } .list li { align-items: stretch; flex-direction: column; } .panel { padding: 18px; } }

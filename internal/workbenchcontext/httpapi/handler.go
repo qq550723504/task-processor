@@ -109,6 +109,7 @@ func (h *Handler) writeContext(c *gin.Context) {
 
 	organizations := make([]organizationResponse, 0, len(identity.OrganizationGrants))
 	for _, grant := range identity.OrganizationGrants {
+		canManageSourceAccount := h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionWorkbenchSourceAccountManage)
 		roles := append([]string(nil), grant.Roles...)
 		if h.workbenchAuthorizer != nil && h.workbenchAuthorizer.Authorize(identity.UserID, roles, authz.PermissionWorkbenchStoreDelete) && !containsRole(roles, "platform_admin") {
 			roles = append(roles, "platform_admin")
@@ -117,9 +118,10 @@ func (h *Handler) writeContext(c *gin.Context) {
 			roles = []string{}
 		}
 		organizations = append(organizations, organizationResponse{
-			ID:    grant.OrganizationID,
-			Name:  grant.OrganizationName,
-			Roles: roles,
+			ID:           grant.OrganizationID,
+			Name:         grant.OrganizationName,
+			Roles:        roles,
+			Capabilities: organizationCapabilitiesResponse{SourceAccountManage: canManageSourceAccount},
 		})
 	}
 
@@ -158,9 +160,14 @@ type userResponse struct {
 }
 
 type organizationResponse struct {
-	ID    string   `json:"id"`
-	Name  string   `json:"name"`
-	Roles []string `json:"roles"`
+	ID           string                           `json:"id"`
+	Name         string                           `json:"name"`
+	Roles        []string                         `json:"roles"`
+	Capabilities organizationCapabilitiesResponse `json:"capabilities"`
+}
+
+type organizationCapabilitiesResponse struct {
+	SourceAccountManage bool `json:"workbench.source_account.manage"`
 }
 
 func writeProtocolError(c *gin.Context, status int, code string, message string) {
