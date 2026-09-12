@@ -58,7 +58,7 @@ it("preserves an unknown operation and verifies only by an explicit same-identit
   const intent = state.create.mock.calls[0][0];
   view.rerender(tree()); expect(state.create).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("button", { name: "登记源账号" })).toBeDisabled();
-  await userEvent.click(screen.getByRole("button", { name: "核实原操作" }));
+  await userEvent.click(screen.getByRole("button", { name: "使用原请求重试" }));
   await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
   expect(state.create.mock.calls[1][0]).toMatchObject({ idempotencyKey: intent.idempotencyKey, displayName: intent.displayName, expectedActorSubject: "actor", expectedOrganizationId: "org-B" });
 });
@@ -73,10 +73,27 @@ it.each(["VERSION_CONFLICT", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED",
 it("keeps the original uncertainty when a verification request is rejected before obtaining its receipt", async () => {
   state.create.mockRejectedValueOnce(failure("OUTCOME_UNKNOWN", "unknown")).mockRejectedValue(failure("DEPENDENCY_UNAVAILABLE"));
   render(tree()); await screen.findByText("企业乙源账号"); await register(); await screen.findByText("结果待核实");
-  await userEvent.click(screen.getByRole("button", { name: "核实原操作" }));
+  await userEvent.click(screen.getByRole("button", { name: "使用原请求重试" }));
   await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
   expect(screen.getByRole("button", { name: "登记源账号" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "核实原操作" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "使用原请求重试" })).toBeVisible();
+});
+
+it.each(["enable", "disable"] as const)("retains exact %s request after response loss and a not-sent retry, then accepts replay", async action => {
+  const fn = state[action];
+  state.detail.mockResolvedValue(detail({ ...account, managementStatus: action === "enable" ? "disabled" : "enabled" }));
+  fn.mockRejectedValueOnce(failure("OUTCOME_UNKNOWN", "unknown"))
+    .mockRejectedValueOnce(new SourceAccountAPIError(0, "INVALID_REQUEST", "pre-cancel", "", null, "not_sent"))
+    .mockResolvedValue({ ...detail(), replayed: true });
+  render(tree()); await openDetail();
+  await userEvent.click(screen.getByRole("button", { name: action === "enable" ? "启用源账号" : "禁用源账号" }));
+  await screen.findByText("结果待核实"); const first = fn.mock.calls[0][0];
+  await userEvent.click(screen.getByRole("button", { name: "使用原请求重试" }));
+  await waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole("button", { name: "登记源账号" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "使用原请求重试" }));
+  await waitFor(() => expect(fn).toHaveBeenCalledTimes(3));
+  for (const call of fn.mock.calls) expect(call[0]).toMatchObject({ idempotencyKey: first.idempotencyKey, ifMatch: '"1"', sourceAccountId: account.id, expectedActorSubject: "actor", expectedOrganizationId: "org-B" });
 });
 
 it("allows viewer reads but hides manage controls", async () => {
@@ -121,7 +138,7 @@ it.each(["organization", "actor", "roles", "switching", "logout", "revoke"])("cl
   if (kind === "revoke") state.context.blockingError = { code: "ORGANIZATION_ACCESS_REVOKED" };
   view.rerender(tree());
   expect(screen.queryByText("企业乙源账号")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "核实原操作" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "使用原请求重试" })).not.toBeInTheDocument();
   expect(state.create).toHaveBeenCalledTimes(1);
 });
 
@@ -135,4 +152,16 @@ it("ignores a late mutation from another organization", async () => {
   await act(async () => finish({ ...detail(), replayed: false }));
   expect(state.detail).not.toHaveBeenCalled();
   expect(screen.queryByRole("heading", { name: "源账号详情" })).not.toBeInTheDocument();
+});
+
+it("hides original intent in another organization and permits exact retry only after restoring its scope", async () => {
+  state.create.mockRejectedValueOnce(failure("OUTCOME_UNKNOWN", "unknown")).mockResolvedValue({ ...detail(), replayed: true });
+  const view = render(tree()); await screen.findByText("企业乙源账号"); await register(); await screen.findByText("结果待核实");
+  const first = state.create.mock.calls[0][0];
+  state.context.effectiveOrganization = { id: "org-C", name: "企业丙" }; view.rerender(tree());
+  expect(screen.queryByRole("button", { name: "使用原请求重试" })).not.toBeInTheDocument();
+  state.context.effectiveOrganization = { id: "org-B", name: "企业乙" }; view.rerender(tree());
+  await userEvent.click(await screen.findByRole("button", { name: "使用原请求重试" }));
+  await waitFor(() => expect(state.create).toHaveBeenCalledTimes(2));
+  expect(state.create.mock.calls[1][0]).toMatchObject({ idempotencyKey: first.idempotencyKey, displayName: first.displayName, expectedActorSubject: "actor", expectedOrganizationId: "org-B" });
 });
