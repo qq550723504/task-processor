@@ -16,6 +16,6 @@
 .table td:nth-child(2) { max-width: 160px; overflow-wrap: anywhere; }
 .table small { display: block; margin-top: 6px; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
 .module, .success { display: inline-block; border: 1px solid var(--border); padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
-.success { border-radius: 999px; color: var(--primary); background: var(--accent); }
+.success { border-radius: 999px; color: var(--success-foreground); background: var(--success); }
 .pagination { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 16px; font-size: 13px; }
 @media (max-width: 640px) { .panel { padding: 8px; } .coverage { padding: 16px; } .pagination { justify-content: flex-start; } .pagination span { width: 100%; } }

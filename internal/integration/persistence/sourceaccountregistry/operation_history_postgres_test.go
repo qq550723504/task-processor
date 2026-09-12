@@ -147,6 +147,45 @@ func TestAccountAuditCommittedHistoryPostgres(t *testing.T) {
 	if _, err = readRepo.ListCommittedOperations(ctx, "B", registry.HistoryRequest{Limit: 101}); !errors.Is(err, registry.ErrInvalid) {
 		t.Fatal(err)
 	}
+	// Exercise a larger immutable owner chain, without inserting fabricated rows.
+	scale := registryIdentity(now, "scale", "actor-scale", "listingkit_operator")
+	created, err := service.Register(scale, uuid.NewString(), registry.RegisterInput{DisplayName: "scale", Platform: "1688"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for version := int64(1); version < 1000; version++ {
+		if version%2 == 1 {
+			_, err = service.Disable(scale, uuid.NewString(), created.Account.ID, version)
+		} else {
+			_, err = service.Enable(scale, uuid.NewString(), created.Account.ID, version)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	started = time.Now()
+	var position *registry.HistoryPosition
+	seen := 0
+	for {
+		page, e := readRepo.ListCommittedOperations(ctx, "scale", registry.HistoryRequest{Limit: 100, After: position})
+		if e != nil || len(page.Items) != 100 {
+			t.Fatalf("scale page: %d %v", len(page.Items), e)
+		}
+		for _, item := range page.Items {
+			if item.Version != int64(1000-seen) {
+				t.Fatalf("scale lost/reordered version %d at %d", item.Version, seen)
+			}
+			seen++
+		}
+		if page.Next == nil {
+			break
+		}
+		position = page.Next
+	}
+	if seen != 1000 {
+		t.Fatalf("scale count %d", seen)
+	}
+	t.Logf("1000 owner-created receipts traversed in %s; this sample is not a production scan bound", time.Since(started))
 	// Query failure is unavailable, never an empty success.
 	sqlDB, _ := readonly.DB()
 	if err = sqlDB.Close(); err != nil {
