@@ -25,10 +25,20 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const privateJSON = async file => JSON.parse(await readFile(join(dir, file), "utf8"));
 
 async function start(binary, args, env, cwd) {
-  const child = spawn(binary, args, { cwd, env: { ...childEnvironment(), ...env }, windowsHide: true, stdio: "ignore" });
+  const child = spawn(binary, args, { cwd, env: { ...childEnvironment(), ...env }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  let diagnosticBytes = 0, diagnosticText = "";
+  const capture = chunk => {
+    const remaining = 512 * 1024 - diagnosticBytes;
+    if (remaining > 0) { const bounded = chunk.subarray(0, remaining); diagnosticBytes += bounded.length; diagnosticText += bounded.toString("utf8"); }
+  };
+  child.stdout.on("data", capture); child.stderr.on("data", capture);
   await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
   const record = await processIdentity(child.pid);
-  children.push({ child, record });
+  children.push({ child, record, diagnostics: () => ({ exitCode: child.exitCode, signal: child.signalCode,
+    locations: [...new Set(diagnosticText.match(/[a-z_]+_test\.go:\d+/g) ?? [])],
+    sqlStates: [...new Set(diagnosticText.match(/SQLSTATE [A-Z0-9]{5}/g) ?? [])],
+    markers: ["FAIL", "panic:", "permission denied", "connection refused", "address already in use", "timeout", "no space left"].filter(marker => diagnosticText.includes(marker)),
+  }) });
   await json(join(dir, "processes.json"), children.map(({ record }) => record));
   return child;
 }
@@ -114,10 +124,11 @@ try {
   const output = (typeof error.privateOutput === "string" ? error.privateOutput : "").replace(/\u001b\[[0-9;]*m/g, "");
   const locations = [...output.matchAll(/e2e[\\/]issue399-browser-(?:chain|extension)\.integration\.ts:\d+:\d+/g)].map(match => match[0]);
   const codes = [...output.matchAll(/(?:code|status): ['"]?([A-Z_]{3,64}|[1-5][0-9]{2})['"]?/g)].map(match => match[1]);
+  codes.push(...(output.match(/net::ERR_[A-Z_]+/g) ?? []));
   const keywords = ["Executable doesn't exist", "Test timed out", "No test files found", "Cannot find module", "Cannot find package", "ERR_MODULE_NOT_FOUND", "ERR_PNPM", "ECONNREFUSED", "ENOSPC"].filter(value => output.includes(value));
   const progress = await privateJSON("progress.json").catch(() => ({ stage: "test-not-entered" }));
   const kind = /^[A-Z_]+$/.test(error.code ?? "") ? error.code : /^PROCESS_FAILED:[a-z.]+:[0-9]+$/i.test(error.message ?? "") ? error.message : error.name;
-  const failure = { stage, progress, kind, outputLength: output.length, locations: [...new Set(locations)], codes: [...new Set(codes)], keywords };
+  const failure = { stage, progress, kind, outputLength: output.length, locations: [...new Set(locations)], codes: [...new Set(codes)], keywords, children: children.map(({ diagnostics }) => diagnostics()) };
   await json(join(dir, "failure.json"), failure);
   console.error(`BROWSER_FAILURE_LOCATION ${JSON.stringify(failure)}`);
   console.error(`BROWSER_ACCEPTANCE_FAILED stage=${stage} run=${runId}`);
