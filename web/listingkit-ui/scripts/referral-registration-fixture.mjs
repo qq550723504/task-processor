@@ -204,7 +204,7 @@ https://localhost:443 {
   }
   reverse_proxy http://proxy:80 {
     header_up Host localhost:${manifest.ports.issuer}
-    header_up X-Forwarded-Host {http.request.host}
+    header_up X-Forwarded-Host localhost:${ports.provider}
     header_up X-Forwarded-Proto https
   }
 }
