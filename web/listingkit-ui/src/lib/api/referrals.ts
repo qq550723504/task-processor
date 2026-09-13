@@ -40,7 +40,6 @@ const receiptSchema = z.object({
 const errorSchema = z.object({ code: z.string().min(1).max(80) }).passthrough();
 
 export type ReferralAdmission = z.infer<typeof admissionSchema>;
-export type ReferralProjection = z.infer<typeof projectionSchema>;
 export type ReferralReceipt = z.infer<typeof receiptSchema>;
 export type ReferralRegistrationInput = {
   code: string;
