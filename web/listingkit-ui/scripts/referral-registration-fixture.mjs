@@ -759,8 +759,19 @@ async function browserChain(origins, ports, machine) {
       const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
       throw new Error(`COMPLETION_HTTP_${response.status()}_${responseCode}`);
     }
-    const receipt = await response.json().catch(() => ({}));
-    ensure(receipt.status === "complete" && typeof receipt.intentID === "string" && typeof receipt.boundAt === "string", "COMPLETION_RECEIPT_INVALID");
+    const responseText = await response.text().catch(() => "");
+    let receipt = {};
+    try { receipt = JSON.parse(responseText); } catch {}
+    if (!(receipt && !Array.isArray(receipt) && receipt.status === "complete" && typeof receipt.intentID === "string" && typeof receipt.boundAt === "string")) {
+      await writeJSON(path.join(outputDirectory, "completion-response-diagnostic.json"), {
+        contentType: response.headers()["content-type"] ?? "",
+        byteLength: Buffer.byteLength(responseText, "utf8"),
+        topLevel: Array.isArray(receipt) ? "array" : receipt && typeof receipt === "object" ? "object" : typeof receipt,
+        keys: receipt && typeof receipt === "object" && !Array.isArray(receipt) ? Object.keys(receipt).sort() : [],
+        valueTypes: receipt && typeof receipt === "object" && !Array.isArray(receipt) ? Object.fromEntries(Object.entries(receipt).map(([key, value]) => [key, value === null ? "null" : Array.isArray(value) ? "array" : typeof value])) : {},
+      });
+      throw new Error("COMPLETION_RECEIPT_INVALID");
+    }
     const refreshResponse = await refreshed;
     ensure(refreshResponse, "COMPLETION_REFRESH_RESPONSE_MISSING");
     ensure(refreshResponse.status() === 200, `COMPLETION_REFRESH_HTTP_${refreshResponse.status()}`);
