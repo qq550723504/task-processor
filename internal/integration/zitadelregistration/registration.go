@@ -1,0 +1,107 @@
+// Package zitadelregistration implements the pinned v4.17.1 create-only user API.
+package zitadelregistration
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	app "task-processor/internal/app/referralregistration"
+	"task-processor/internal/referral"
+	"time"
+)
+
+type Config struct {
+	Origin, Organization string
+	Token                func(context.Context) (string, error)
+	HTTPClient           *http.Client
+}
+type Client struct {
+	config Config
+	http   *http.Client
+}
+
+const proofKey = "referral-registration-proof"
+
+func New(config Config) (*Client, error) {
+	u, err := url.Parse(config.Origin)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || config.Organization == "" || config.Token == nil {
+		return nil, referral.ErrInvalid
+	}
+	config.Origin = strings.TrimSuffix(config.Origin, "/")
+	client := http.Client{}
+	if config.HTTPClient != nil {
+		client = *config.HTTPClient
+	}
+	client.Timeout = 5 * time.Second
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Client{config: config, http: &client}, nil
+}
+
+func (c *Client) request(ctx context.Context, method, path string, body any, out any) error {
+	if ctx == nil {
+		return referral.ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	token, err := c.config.Token(ctx)
+	if err != nil || strings.TrimSpace(token) == "" || strings.ContainsAny(token, "\r\n") {
+		return referral.ErrUnavailable
+	}
+	data, err := json.Marshal(body)
+	if err != nil || len(data) > 4096 {
+		return referral.ErrInvalid
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.config.Origin+path, bytes.NewReader(data))
+	if err != nil {
+		return referral.ErrInvalid
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	response, err := c.http.Do(req)
+	if err != nil {
+		return referral.ErrUnknown
+	}
+	defer response.Body.Close()
+	data, err = io.ReadAll(io.LimitReader(response.Body, 65537))
+	if err != nil || len(data) > 65536 {
+		return referral.ErrUnknown
+	}
+	if response.StatusCode == http.StatusNotFound && method == http.MethodGet {
+		return referral.ErrMissing
+	}
+	if response.StatusCode == http.StatusConflict {
+		return referral.ErrConflict
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 || json.Unmarshal(data, out) != nil {
+		return referral.ErrUnknown
+	}
+	return nil
+}
+
+func (c *Client) Create(ctx context.Context, in app.Creation) error {
+	if in.Organization != c.config.Organization || in.Subject == "" || len(in.Subject) > 200 || in.Email == "" || len(in.Email) > 200 || in.GivenName == "" || in.FamilyName == "" || len(in.GivenName) > 120 || len(in.FamilyName) > 120 || in.Proof == "" {
+		return referral.ErrInvalid
+	}
+	body := map[string]any{
+		"userId":       in.Subject,
+		"organization": map[string]string{"orgId": in.Organization},
+		"profile":      map[string]string{"givenName": in.GivenName, "familyName": in.FamilyName},
+		"email":        map[string]any{"email": in.Email, "sendCode": struct{}{}},
+		"metadata":     []map[string]string{{"key": proofKey, "value": base64.StdEncoding.EncodeToString([]byte(in.Proof))}},
+	}
+	var response struct {
+		UserID string `json:"userId"`
+	}
+	if err := c.request(ctx, http.MethodPost, "/v2/users/human", body, &response); err != nil {
+		return err
+	}
+	if response.UserID != in.Subject {
+		return referral.ErrUnknown
+	}
+	return nil
+}
