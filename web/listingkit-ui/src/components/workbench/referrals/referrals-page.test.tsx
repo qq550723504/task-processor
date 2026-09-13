@@ -11,12 +11,12 @@ const state = vi.hoisted(() => ({
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 
 const clients: QueryClient[] = [];
-function mount(mode: "overview" | "complete" = "overview", expectedUserId = "subject-1") {
+function mount(mode: "overview" | "complete" = "overview", expectedUserId = "subject-1", registrationAvailable = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   clients.push(client);
-  const child = () => <QueryClientProvider client={client}><ReferralsPage mode={mode} expectedUserId={expectedUserId} /></QueryClientProvider>;
+  const child = (subject = expectedUserId) => <QueryClientProvider client={client}><ReferralsPage mode={mode} expectedUserId={subject} registrationAvailable={registrationAvailable} /></QueryClientProvider>;
   const view = render(child());
-  return { ...view, update: () => view.rerender(child()) };
+  return { ...view, update: (subject = expectedUserId) => view.rerender(child(subject)) };
 }
 
 afterEach(() => {
@@ -60,15 +60,35 @@ describe("ReferralsPage", () => {
     expect(screen.queryByText(/企业.*不可用|请选择当前企业/)).not.toBeInTheDocument();
   });
 
+  it("reads personal facts when enterprise context is unavailable", async () => {
+    state.context.user = null;
+    state.context.blockingError = { code: "DEPENDENCY_UNAVAILABLE" };
+    const fetch = vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
+    vi.stubGlobal("fetch", fetch);
+    mount();
+    expect(await screen.findByText("CODE1234")).toBeVisible();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps personal count readable but disables an unconfigured invitation entry", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
+    mount("overview", "subject-1", false);
+    expect(await screen.findByText("2")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "打开邀请链接" })).not.toBeInTheDocument();
+    expect(screen.getByText("注册入口暂不可用")).toBeVisible();
+  });
+
   it("clears an old subject result and prevents a late response from returning", async () => {
-    let resolve!: (value: Response) => void;
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((done) => { resolve = done; })));
+    const resolves: Array<(value: Response) => void> = [];
+    const fetch = vi.fn(() => new Promise<Response>((done) => { resolves.push(done); }));
+    vi.stubGlobal("fetch", fetch);
     const view = mount();
-    state.context.user = { id: "subject-2" };
-    view.update();
-    expect(screen.getByText("登录身份已变化")).toBeVisible();
-    resolve(Response.json({ code: "OLD-CODE", codeAvailability: "available", count: 99, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
+    view.update("subject-2");
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    resolves[0](Response.json({ code: "OLD-CODE", codeAvailability: "available", count: 99, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
     await waitFor(() => expect(screen.queryByText("OLD-CODE")).not.toBeInTheDocument());
+    resolves[1](Response.json({ code: "NEW-CODE", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:01:00Z", earnings: { availability: "unavailable", amount: null } }));
+    expect(await screen.findByText("NEW-CODE")).toBeVisible();
   });
 
   it("completes only after an explicit click and then re-reads the durable projection", async () => {
@@ -82,5 +102,16 @@ describe("ReferralsPage", () => {
     await user.click(screen.getByRole("button", { name: "完成推广关系" }));
     expect(await screen.findByText("推广关系已确认")).toBeVisible();
     expect(fetch.mock.calls[1][0]).toBe("/api/account/referrals/complete");
+  });
+
+  it("keeps a successful receipt when the projection refresh is unavailable", async () => {
+    const projection = { code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json(projection)).mockResolvedValueOnce(Response.json({ status: "complete", intentID: "intent-1", boundAt: "2026-09-13T10:02:00Z" })).mockResolvedValueOnce(Response.json({ error: "referral_unavailable" }, { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    mount("complete");
+    await user.click(await screen.findByRole("button", { name: "完成推广关系" }));
+    expect(await screen.findByText("推广关系已确认")).toBeVisible();
+    expect(screen.getByText("推广汇总暂不可用")).toBeVisible();
   });
 });

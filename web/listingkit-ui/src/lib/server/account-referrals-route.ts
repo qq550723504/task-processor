@@ -19,7 +19,9 @@ const safeErrors = new Set(["referral_invalid", "referral_authentication_require
 
 type Operation = "read" | "create" | "complete";
 const authenticated = serverAuth(async (request: NextRequest & { auth?: unknown }) => {
+  if (request.signal.aborted) return referralFailure(504, "DEADLINE_EXCEEDED");
   const operation = await operationFor(request);
+  if (request.signal.aborted) return referralFailure(504, "DEADLINE_EXCEEDED");
   if (!operation) return referralFailure(400, "INVALID_REQUEST");
   const identity = readZitadelIdentityFromSession(request.auth as never);
   const token = readZitadelServerAccessToken(request.auth as never);
@@ -69,19 +71,25 @@ async function operationFor(request: Request): Promise<Operation | null> {
 async function hasEmptyBody(request: Request) {
   if (!request.body) return true;
   const reader = request.body.getReader();
+  const cancel = () => void reader.cancel().catch(() => undefined);
+  request.signal.addEventListener("abort", cancel, { once: true });
   try {
+    if (request.signal.aborted) return false;
     const { done, value } = await reader.read();
+    if (request.signal.aborted) return false;
     if (!done || (value?.byteLength ?? 0) !== 0) {
       void reader.cancel().catch(() => undefined);
       return false;
     }
     return true;
   } finally {
+    request.signal.removeEventListener("abort", cancel);
     reader.releaseLock();
   }
 }
 
 async function proxy(request: Request, token: string, operation: Operation) {
+  if (request.signal.aborted) return referralFailure(504, "DEADLINE_EXCEEDED");
   const origin = serviceOrigin();
   if (!origin) return referralFailure(503, "REFERRALS_NOT_CONFIGURED");
   const controller = new AbortController();

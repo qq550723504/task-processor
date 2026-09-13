@@ -53,15 +53,29 @@ describe("RegistrationPage", () => {
     await user.type(screen.getByRole("textbox", { name: "姓氏" }), "用户");
     await user.click(screen.getByRole("button", { name: "开始注册" }));
     expect(await screen.findByText("暂时无法确认注册结果")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "邮箱" })).toHaveAttribute("readonly");
     await user.click(screen.getByRole("button", { name: "重试原请求" }));
     expect(await screen.findByText("请查看官方验证邮件")).toBeVisible();
     const keys = fetch.mock.calls.map(([, init]) => init.headers["Idempotency-Key"]);
     expect(keys[0]).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     expect(keys[1]).toBe(keys[0]);
+    expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body);
     expect(window.location.hash).toContain("intentID=intent-1");
     expect(window.location.hash).toContain(`resumeSecret=${"a".repeat(64)}`);
     expect(screen.getByRole("link", { name: "已完成验证，继续登录" })).toHaveAttribute("href", "/login?returnTo=%2Fworkbench%2Faccount%2Freferrals%2Fcomplete");
     expect(document.body.textContent).not.toContain("a".repeat(64));
+  });
+
+  it("distinguishes an expired operation from an unknown outcome", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "referral_expired" }, { status: 409 })));
+    const user = userEvent.setup();
+    render(<RegistrationPage code="CODE1234" />);
+    await user.type(screen.getByRole("textbox", { name: "邮箱" }), "new@example.test");
+    await user.type(screen.getByRole("textbox", { name: "名字" }), "新");
+    await user.type(screen.getByRole("textbox", { name: "姓氏" }), "用户");
+    await user.click(screen.getByRole("button", { name: "开始注册" }));
+    expect(await screen.findByText("注册确认期限已结束")).toBeVisible();
+    expect(screen.queryByText("暂时无法确认注册结果")).not.toBeInTheDocument();
   });
 
   it("resumes only from an opaque fragment through an explicit action", async () => {

@@ -187,6 +187,10 @@ async function readServiceCredential() {
   } catch { return null; }
 }
 
+export async function isReferralRegistrationAvailable() {
+  return Boolean(serviceOrigin() && await readServiceCredential());
+}
+
 async function hasPrivateWindowsACL(file: string) {
   const environment: NodeJS.ProcessEnv = { ...process.env, LISTINGKIT_REFERRAL_CREDENTIAL_PATH: file };
   for (const key of Object.keys(environment)) if (key.toLowerCase() === "psmodulepath") delete environment[key];

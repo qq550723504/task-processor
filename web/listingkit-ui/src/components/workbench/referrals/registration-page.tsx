@@ -27,7 +27,7 @@ export function RegistrationPage({ code }: { code: string }) {
     : recovery;
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  const attempt = useRef<{ input: ReferralRegistrationInput; key: string } | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,14 +39,11 @@ export function RegistrationPage({ code }: { code: string }) {
       givenName: String(data.get("givenName") ?? "").trim(),
       familyName: String(data.get("familyName") ?? "").trim(),
     };
-    const fingerprint = JSON.stringify(input);
-    if (!attempt.current || attempt.current.fingerprint !== fingerprint) {
-      attempt.current = { fingerprint, key: randomKey() };
-    }
+    if (!attempt.current) attempt.current = { input, key: randomKey() };
     setPending(true);
     setError("");
     try {
-      const result = await startReferralRegistration(input, attempt.current.key);
+      const result = await startReferralRegistration(attempt.current.input, attempt.current.key);
       setAdmission(result);
       const fragment = new URLSearchParams({ intentID: result.intentID, resumeSecret: result.resumeSecret });
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${fragment.toString()}`);
@@ -97,12 +94,12 @@ export function RegistrationPage({ code }: { code: string }) {
   return <RegistrationFrame>
     <form className={styles.form} onSubmit={submit}>
       <label>邀请码<input name="code" value={code} readOnly /></label>
-      <label>邮箱<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
+      <label>邮箱<input name="email" type="email" autoComplete="email" required maxLength={254} readOnly={Boolean(attempt.current)} /></label>
       <div className={styles.nameGrid}>
-        <label>名字<input name="givenName" autoComplete="given-name" required maxLength={120} /></label>
-        <label>姓氏<input name="familyName" autoComplete="family-name" required maxLength={120} /></label>
+        <label>名字<input name="givenName" autoComplete="given-name" required maxLength={120} readOnly={Boolean(attempt.current)} /></label>
+        <label>姓氏<input name="familyName" autoComplete="family-name" required maxLength={120} readOnly={Boolean(attempt.current)} /></label>
       </div>
-      {error ? <div className={styles.error} role="alert"><strong>{error === "referral_outcome_unknown" || error === "DEPENDENCY_UNAVAILABLE" ? "暂时无法确认注册结果" : "注册请求未完成"}</strong><p>{error === "referral_conflict" ? "该邮箱或请求与现有流程冲突，不能改绑到其他身份。" : "请重试原请求；系统会沿用同一请求标识核对结果。"}</p></div> : null}
+      {error ? <div className={styles.error} role="alert"><strong>{error === "referral_outcome_unknown" || error === "DEPENDENCY_UNAVAILABLE" ? "暂时无法确认注册结果" : error === "referral_expired" ? "注册确认期限已结束" : error === "referral_conflict" ? "注册请求存在冲突" : "注册请求未完成"}</strong><p>{error === "referral_conflict" ? "该邮箱或请求与现有流程冲突，不能改绑到其他身份。" : error === "referral_expired" ? "原注册流程已过期，不能继续提交或改换身份。" : "请重试原请求；系统会沿用同一请求标识核对结果。"}</p></div> : null}
       <Button type="submit" disabled={pending}>{pending ? "正在提交…" : error ? "重试原请求" : "开始注册"}</Button>
     </form>
   </RegistrationFrame>;

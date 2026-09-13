@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const state = vi.hoisted(() => ({ user: "subject-1", token: "user-access-token", blocked: false }));
+const state = vi.hoisted(() => ({ user: "subject-1", token: "user-access-token", blocked: false, authGate: null as Promise<void> | null }));
 vi.mock("@/auth", () => ({
   serverAuth: (handler: (request: NextRequest & { auth?: unknown }) => Promise<Response>) =>
-    async (request: NextRequest) =>
-      state.blocked
-        ? new Promise<Response>(() => {})
-        : handler(Object.assign(request, { auth: { accessToken: state.token, identityVersion: 3, identity: { userId: state.user, tenantId: "org-1" } } })),
+    async (request: NextRequest) => {
+      if (state.blocked) return new Promise<Response>(() => {});
+      if (state.authGate) await state.authGate;
+      return handler(Object.assign(request, { auth: { accessToken: state.token, identityVersion: 3, identity: { userId: state.user, tenantId: "org-1" } } }));
+    },
 }));
 
 import {
@@ -33,6 +34,7 @@ beforeEach(() => {
   state.user = "subject-1";
   state.token = "user-access-token";
   state.blocked = false;
+  state.authGate = null;
   vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "https://app.test");
   vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:8085/api/v1");
 });
@@ -96,6 +98,40 @@ describe("authenticated account referrals BFF", () => {
     const pending = read(request());
     await vi.advanceTimersByTimeAsync(15001);
     expect((await pending).status).toBe(504);
+  });
+
+  it("never dispatches after authentication resolves beyond the total deadline", async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    state.authGate = new Promise<void>((resolve) => { release = resolve; });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const pending = createCode(request("referrals", "POST"));
+    await vi.advanceTimersByTimeAsync(15001);
+    expect((await pending).status).toBe(504);
+    release();
+    await vi.runAllTimersAsync();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("cancels a hanging empty-body read when the request is aborted", async () => {
+    const abort = new AbortController();
+    let cancelled = false;
+    let reading!: () => void;
+    const started = new Promise<void>((resolve) => { reading = resolve; });
+    const body = new ReadableStream({ pull() { reading(); }, cancel() { cancelled = true; } });
+    const actual = new NextRequest("https://app.test/api/account/referrals", {
+      method: "POST",
+      headers: { Origin: "https://app.test", "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": "subject-1", "Content-Length": "0" },
+      body,
+      duplex: "half",
+      signal: abort.signal,
+    });
+    const pending = createCode(actual);
+    await started;
+    abort.abort();
+    expect((await pending).status).toBe(504);
+    expect(cancelled).toBe(true);
   });
 
   it("does not accept query, body, or actor selection", async () => {

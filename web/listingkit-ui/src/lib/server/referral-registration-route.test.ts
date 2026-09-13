@@ -10,6 +10,7 @@ import {
   GET as rejectedGET,
 } from "@/app/api/referral-registration/route";
 import { POST as resume } from "@/app/api/referral-registration/resume/route";
+import { isReferralRegistrationAvailable } from "./referral-registration-route";
 
 const roots: string[] = [];
 const credential = "a".repeat(64);
@@ -59,6 +60,11 @@ afterEach(async () => {
 });
 
 describe("public referral registration BFF", () => {
+  it("reports invitation availability from the same private configuration", async () => {
+    expect(await isReferralRegistrationAvailable()).toBe(true);
+    vi.stubEnv("LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE", "");
+    expect(await isReferralRegistrationAvailable()).toBe(false);
+  });
   it("forwards only canonical input plus the server credential and trusted proxy IP", async () => {
     const fetch = vi.fn().mockResolvedValue(
       Response.json({
