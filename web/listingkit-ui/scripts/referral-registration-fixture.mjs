@@ -648,8 +648,19 @@ async function browserChain(origins, ports, machine) {
   report.createdSubject = subject;
   await check("official_email_verification", async () => {
     await page.goto(message.link, { waitUntil: "load" });
+    const code = verification.searchParams.get("code");
+    ensure(code, "VERIFICATION_CODE_MISSING");
+    const codeInput = page.getByTestId("code-text-input");
+    await codeInput.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_VERIFICATION_INPUT_MISSING"); });
+    ensure(await codeInput.inputValue() === code, "OFFICIAL_VERIFICATION_CODE_MISMATCH");
+    await codeInput.fill(code);
     const submit = page.getByTestId("submit-button");
-    if (await submit.isVisible().catch(() => false)) await submit.click();
+    await submit.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_VERIFICATION_ACTION_MISSING"); });
+    const submitElement = await submit.elementHandle();
+    ensure(submitElement, "OFFICIAL_VERIFICATION_ACTION_MISSING");
+    await page.waitForFunction(button => !button.disabled, submitElement, { timeout: 30_000 })
+      .catch(() => { throw new Error("OFFICIAL_VERIFICATION_ACTION_DISABLED"); });
+    await submit.click();
     await until(async () => {
       const user = await provider(`/v2/users/${encodeURIComponent(subject)}`, undefined, machine.token, "GET");
       return user.user?.human?.email?.isVerified === true;
