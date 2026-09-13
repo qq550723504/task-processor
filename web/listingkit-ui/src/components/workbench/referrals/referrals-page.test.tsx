@@ -120,10 +120,19 @@ describe("ReferralsPage", () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json(projection)).mockResolvedValueOnce(Response.json({ status: "complete", intentID: "intent-1", boundAt: "2026-09-13T10:02:00Z" })).mockResolvedValueOnce(Response.json({ error: "referral_unavailable" }, { status: 503 }));
     vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
-    mount("complete");
+    const view = mount("complete");
     await user.click(await screen.findByRole("button", { name: "完成推广关系" }));
     expect(await screen.findByText("推广关系已确认")).toBeVisible();
     expect(screen.getByText("推广汇总暂不可用")).toBeVisible();
+    state.context.user = null;
+    state.context.blockingError = { code: "DEPENDENCY_UNAVAILABLE" };
+    view.update();
+    expect(screen.getByText("推广关系已确认")).toBeVisible();
+    state.context.user = { id: "subject-1" };
+    state.context.blockingError = null;
+    view.update();
+    expect(screen.getByText("推广关系已确认")).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it.each([[401, "AUTHENTICATION_REQUIRED"], [409, "IDENTITY_CONTEXT_CHANGED"]])("clears a receipt when refreshed identity fails with %s", async (status, code) => {
@@ -140,6 +149,27 @@ describe("ReferralsPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "referral_outcome_unknown" }, { status: 503 })));
     mount();
     expect(await screen.findByText("暂时无法确认操作结果")).toBeVisible();
+    expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
+  });
+
+  it("treats a disconnected create response as an unknown write outcome", async () => {
+    const projection = { code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json(projection)).mockRejectedValueOnce(new TypeError("connection lost")));
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole("button", { name: "创建推广码" }));
+    expect(await screen.findByText("推广服务暂不可用")).toBeVisible();
+    expect(screen.getByText("操作结果尚未确认。请使用原操作恢复或稍后重新核对。")).toBeVisible();
+    expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
+  });
+
+  it("treats an invalid complete response as an unknown write outcome", async () => {
+    const projection = { code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json(projection)).mockResolvedValueOnce(Response.json({ unexpected: true })));
+    const user = userEvent.setup();
+    mount("complete");
+    await user.click(await screen.findByRole("button", { name: "完成推广关系" }));
+    expect(await screen.findByText("操作结果尚未确认。请使用原操作恢复或稍后重新核对。")).toBeVisible();
     expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
   });
 });

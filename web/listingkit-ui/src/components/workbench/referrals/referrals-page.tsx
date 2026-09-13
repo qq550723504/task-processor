@@ -35,7 +35,7 @@ export function ReferralsPage({ mode, expectedUserId, registrationAvailable = tr
   const identityChanged = Boolean(context.user && context.user.id !== expectedUserId);
   let content: React.ReactNode;
   if (leaving || authError || identityChanged) content = <IdentityError />;
-  else content = <ScopedReferrals key={`${mode}:${expectedUserId}:${context.user?.id ?? "unresolved"}`} mode={mode} expectedUserId={expectedUserId} registrationAvailable={registrationAvailable} />;
+  else content = <ScopedReferrals key={`${mode}:${expectedUserId}`} mode={mode} expectedUserId={expectedUserId} registrationAvailable={registrationAvailable} />;
   return <AccountShell pathname={pathname} title={title} description={description}>{content}</AccountShell>;
 }
 
@@ -106,7 +106,8 @@ function ReferralError({ error, compact = false }: { error: unknown; compact?: b
     referral_outcome_unknown: "暂时无法确认操作结果", REFERRALS_NOT_CONFIGURED: "推广服务尚未配置",
     DEPENDENCY_UNAVAILABLE: "推广服务暂不可用", DEADLINE_EXCEEDED: "推广请求超时",
   };
-  const message = ["referral_outcome_unknown", "DEADLINE_EXCEEDED"].includes(code)
+  const message = ["referral_outcome_unknown", "DEADLINE_EXCEEDED"].includes(code) ||
+    compact && ["DEPENDENCY_UNAVAILABLE", "INVALID_UPSTREAM_RESPONSE"].includes(code)
     ? "操作结果尚未确认。请使用原操作恢复或稍后重新核对。"
     : "没有生成或推测推广事实。请稍后重试原操作。";
   const content = <><strong>{title[code] ?? "推广请求未完成"}</strong><p>{message}</p></>;
