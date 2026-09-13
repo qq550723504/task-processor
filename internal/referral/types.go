@@ -44,7 +44,12 @@ type Store interface {
 	AllowIP(context.Context, string, time.Time) error
 	Admit(context.Context, Intent, string) (Intent, error)
 	Find(context.Context, string, string, string) (Intent, error)
-	Claim(context.Context, string, time.Time) (bool, error)
+	// Claim returns a database-clock lease identity; zero means another caller owns it.
+	Claim(context.Context, string) (time.Time, error)
+	// PermitCreate rechecks this lease and the fixed creation deadline after readback.
+	// The duration is database time remaining, bounded by the lease; the caller
+	// must subtract elapsed round-trip time and use a monotonic dispatch deadline.
+	PermitCreate(context.Context, string, time.Time) (time.Duration, error)
 	Created(context.Context, string) error
 	Receipt(context.Context, string, string) (Receipt, error)
 	Consume(context.Context, Intent, time.Time) (Receipt, error)

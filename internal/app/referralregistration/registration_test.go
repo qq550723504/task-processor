@@ -39,8 +39,8 @@ func (s *firstStore) Find(context.Context, string, string, string) (referral.Int
 	}
 	return s.intent, nil
 }
-func (s *firstStore) Claim(context.Context, string, time.Time) (bool, error) { return false, nil }
-func (s *firstStore) Cleanup(context.Context, time.Time) error               { return nil }
+func (s *firstStore) Claim(context.Context, string) (time.Time, error) { return time.Time{}, nil }
+func (s *firstStore) Cleanup(context.Context, time.Time) error         { return nil }
 
 type firstProvider struct{ creates int }
 

@@ -85,11 +85,50 @@ func (r *Repository) Admit(ctx context.Context, i d.Intent, code string) (out d.
 	})
 	return
 }
-func (r *Repository) Claim(ctx context.Context, id string, now time.Time) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	res := r.db.WithContext(ctx).Table("public.registration_intents").Where("id=? AND state<>'CONSUMED' AND lease_until<=?", id, now).Update("lease_until", now.Add(15*time.Second))
-	return res.RowsAffected == 1, databaseError(res.Error)
+func (r *Repository) Claim(ctx context.Context, id string) (lease time.Time, err error) {
+	err = r.transaction(ctx, func(tx *gorm.DB) error {
+		i, now, e := lockedIntentClock(tx, id)
+		if e != nil {
+			return e
+		}
+		if i.State == "CONSUMED" || !now.Before(i.CompletionExpiresAt) {
+			return d.ErrExpired
+		}
+		if now.Before(i.LeaseUntil) {
+			return nil
+		}
+		lease = now.Add(15 * time.Second)
+		return databaseError(tx.Table("public.registration_intents").Where("id=?", id).Update("lease_until", lease).Error)
+	})
+	return
+}
+
+// Both decisions read clock_timestamp AFTER acquiring the row lock. A statement
+// timestamp captured before lock contention could authorize expired work.
+func lockedIntentClock(tx *gorm.DB, id string) (i d.Intent, now time.Time, err error) {
+	if e := tx.Table("public.registration_intents").Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", id).Take(&i).Error; e != nil {
+		return i, now, databaseError(e)
+	}
+	err = databaseError(tx.Raw("SELECT clock_timestamp()").Scan(&now).Error)
+	return
+}
+
+func (r *Repository) PermitCreate(ctx context.Context, id string, lease time.Time) (remaining time.Duration, err error) {
+	err = r.transaction(ctx, func(tx *gorm.DB) error {
+		i, now, e := lockedIntentClock(tx, id)
+		if e != nil {
+			return e
+		}
+		if i.State == "CONSUMED" || !now.Before(i.CreateExpiresAt) || !now.Before(i.CompletionExpiresAt) {
+			return d.ErrExpired
+		}
+		if lease.IsZero() || !i.LeaseUntil.Equal(lease) || !now.Before(lease) {
+			return d.ErrPending
+		}
+		remaining = min(i.CreateExpiresAt.Sub(now), lease.Sub(now))
+		return nil
+	})
+	return
 }
 func (r *Repository) Created(ctx context.Context, id string) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)

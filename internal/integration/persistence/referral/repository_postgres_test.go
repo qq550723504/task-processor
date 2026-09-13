@@ -8,13 +8,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
-	pg "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"io"
 	"net"
 	"sync"
@@ -22,7 +15,54 @@ import (
 	d "task-processor/internal/referral"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+	pg "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+func TestDatabaseLeaseAndCreatePermission(t *testing.T) {
+	owner, runtime := ownedDatabase(t)
+	r, err := New(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	i := admitted(t, r, "db-lease", time.Now().UTC())
+	lease, err := r.Claim(ctx, i.ID)
+	if err != nil || lease.IsZero() {
+		t.Fatalf("claim=%s %v", lease, err)
+	}
+	other, err := r.Claim(ctx, i.ID)
+	if err != nil || !other.IsZero() {
+		t.Fatalf("concurrent claim=%s %v", other, err)
+	}
+	remaining, err := r.PermitCreate(ctx, i.ID, lease)
+	if err != nil || remaining <= 0 || remaining > 15*time.Second {
+		t.Fatalf("permit=%s %v", remaining, err)
+	}
+	if _, err = r.PermitCreate(ctx, i.ID, lease.Add(-time.Microsecond)); !errors.Is(err, d.ErrPending) {
+		t.Fatalf("foreign lease=%v", err)
+	}
+	// A consumed/changed lease never grants a new provider mutation.
+	if err = owner.Exec("UPDATE public.registration_intents SET lease_until=clock_timestamp()-interval '1 second' WHERE id=?", i.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.PermitCreate(ctx, i.ID, lease); !errors.Is(err, d.ErrPending) {
+		t.Fatalf("stale lease=%v", err)
+	}
+	newLease, err := r.Claim(ctx, i.ID)
+	if err != nil || newLease.Equal(lease) || newLease.IsZero() {
+		t.Fatalf("reclaim=%s %v", newLease, err)
+	}
+	if _, err = r.PermitCreate(ctx, i.ID, lease); !errors.Is(err, d.ErrPending) {
+		t.Fatalf("old owner=%v", err)
+	}
+}
 
 func ownedDatabase(t *testing.T) (*gorm.DB, *gorm.DB) {
 	t.Helper()

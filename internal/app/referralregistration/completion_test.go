@@ -19,6 +19,36 @@ type continuationStore struct {
 	selfSubject string
 }
 
+type delayedCreatePermission struct {
+	*continuationStore
+	err error
+}
+
+func (s *delayedCreatePermission) PermitCreate(context.Context, string, time.Time) (time.Duration, error) {
+	// The server's positive remainder has already elapsed during its response.
+	if s.err != nil {
+		return 0, s.err
+	}
+	time.Sleep(time.Millisecond)
+	return time.Nanosecond, nil
+}
+func TestResumeRejectsExpiredOrUnconfirmedPermission(t *testing.T) {
+	for _, fault := range []error{nil, referral.ErrUnknown, referral.ErrUnavailable, referral.ErrExpired} {
+		s, st, _, a := continuation(t)
+		provider := &createOutcomeProvider{}
+		s.Provider = provider
+		s.Store = &delayedCreatePermission{continuationStore: st, err: fault}
+		err := s.Resume(context.Background(), a.IntentID, a.ResumeSecret)
+		want := fault
+		if want == nil {
+			want = referral.ErrExpired
+		}
+		if !errors.Is(err, want) || provider.creates != 0 {
+			t.Fatalf("permission=%v create=%d want=%v", err, provider.creates, want)
+		}
+	}
+}
+
 func (st *continuationStore) Read(_ context.Context, _ string, subject string) (referral.Projection, error) {
 	st.selfSubject = subject
 	return referral.Projection{}, nil
@@ -28,8 +58,11 @@ func (st *continuationStore) CreateCode(_ context.Context, _ string, subject, co
 	return code, nil
 }
 
-func (st *continuationStore) Claim(context.Context, string, time.Time) (bool, error) {
-	return true, nil
+func (st *continuationStore) Claim(context.Context, string) (time.Time, error) {
+	return time.Now().Add(15 * time.Second), nil
+}
+func (st *continuationStore) PermitCreate(context.Context, string, time.Time) (time.Duration, error) {
+	return 15 * time.Second, nil
 }
 func (st *continuationStore) Created(context.Context, string) error {
 	st.intent.State = "CREATED"

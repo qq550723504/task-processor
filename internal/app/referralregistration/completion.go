@@ -44,11 +44,11 @@ func (s *Service) Resume(ctx context.Context, id, secret string) error {
 	if err != nil {
 		return err
 	}
-	claimed, err := s.Store.Claim(ctx, i.ID, now)
+	lease, err := s.Store.Claim(ctx, i.ID)
 	if err != nil {
 		return err
 	}
-	if !claimed {
+	if lease.IsZero() {
 		return referral.ErrPending
 	}
 	user, err := s.Provider.Read(ctx, i.Subject)
@@ -60,9 +60,24 @@ func (s *Service) Resume(ctx context.Context, id, secret string) error {
 		if ctx.Err() != nil {
 			return referral.ErrUnknown
 		}
+		// Recheck authoritative database time after potentially slow readback.
+		// Subtract the full round trip conservatively; no DB lock spans HTTP.
+		permitStarted := time.Now()
+		remaining, permitErr := s.Store.PermitCreate(ctx, i.ID, lease)
+		if permitErr != nil {
+			return permitErr
+		}
+		dispatchDeadline := permitStarted.Add(remaining)
+		if !time.Now().Before(dispatchDeadline) {
+			return referral.ErrExpired
+		}
 		// A dispatched mutation may have succeeded even when its response is lost.
 		// Read only this immutable subject before deciding the outcome.
-		createContext, cancel := context.WithTimeout(ctx, i.CreateExpiresAt.Sub(s.Now()))
+		createContext, cancel := context.WithDeadline(ctx, dispatchDeadline)
+		if createContext.Err() != nil {
+			cancel()
+			return referral.ErrExpired
+		}
 		createErr = s.Provider.Create(createContext, Creation{Subject: i.Subject, Organization: i.Organization, Email: payload.Request.Email, GivenName: payload.Request.GivenName, FamilyName: payload.Request.FamilyName, Proof: proof})
 		cancel()
 		user, err = s.Provider.Read(ctx, i.Subject)
