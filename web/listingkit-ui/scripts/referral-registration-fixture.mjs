@@ -202,10 +202,18 @@ https://localhost:443 {
     output stdout
     format json
   }
-  reverse_proxy http://proxy:80 {
-    header_up Host localhost:${manifest.ports.issuer}
-    header_up X-Forwarded-Host localhost:${ports.provider}
-    header_up X-Forwarded-Proto https
+  handle /ui/v2/login* {
+    reverse_proxy http://zitadel-login:3000 {
+      header_up Host localhost:${ports.provider}
+      header_up X-Forwarded-Host localhost:${ports.provider}
+      header_up X-Forwarded-Proto https
+    }
+  }
+  handle {
+    reverse_proxy http://proxy:80 {
+      header_up Host localhost:${manifest.ports.issuer}
+      header_up X-Forwarded-Proto http
+    }
   }
 }
 https://localhost:444 {
