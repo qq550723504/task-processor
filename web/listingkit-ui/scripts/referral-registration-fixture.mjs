@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile, mkdir, unlink, rm } from "node:fs/promises";
+import { request as httpsRequest } from "node:https";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -358,6 +359,37 @@ async function startConfiguredApplications(ports) {
   return { ready: true };
 }
 
+async function probeProviderProxy(providerOrigin, caFile, machineToken) {
+  const ca = await readFile(caFile);
+  const subject = manifest.users.viewer.id;
+  const target = new URL(`/v2/users/${encodeURIComponent(subject)}`, providerOrigin);
+  const result = await new Promise((resolve, reject) => {
+    const request = httpsRequest(target, {
+      method: "GET",
+      ca,
+      rejectUnauthorized: true,
+      headers: { Authorization: `Bearer ${machineToken}`, "Content-Type": "application/json" },
+      timeout: 10_000,
+    }, response => {
+      const chunks = [];
+      let size = 0;
+      response.on("data", chunk => {
+        size += chunk.length;
+        if (size > 1024 * 1024) request.destroy(new Error("PROVIDER_PROXY_RESPONSE_TOO_LARGE"));
+        else chunks.push(chunk);
+      });
+      response.on("end", () => resolve({ status: response.statusCode, body: Buffer.concat(chunks) }));
+    });
+    request.once("timeout", () => request.destroy(new Error("PROVIDER_PROXY_TIMEOUT")));
+    request.once("error", reject);
+    request.end();
+  });
+  ensure(result.status === 200, `PROVIDER_PROXY_HTTP_${result.status ?? "UNKNOWN"}`);
+  const payload = JSON.parse(result.body.toString("utf8"));
+  ensure(payload.user?.userId === subject, "PROVIDER_PROXY_SUBJECT_MISMATCH");
+  return { tlsVerified: true, providerReadStatus: result.status };
+}
+
 async function login(page, origin, credential, target) {
   await page.goto(`${origin}${target}`, { waitUntil: "load" }).catch(() => { throw new Error("PUBLIC_PROXY_PAGE_LOAD_FAILED"); });
   const username = page.getByTestId("username-text-input");
@@ -431,9 +463,9 @@ async function waitForReactHydration(page, locator) {
 
 async function readCreationState(intentID, email, mailPort, machineToken) {
   ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(intentID ?? ""), "REGISTRATION_INTENT_MISSING");
-  const row = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT state || '|' || subject FROM public.registration_intents WHERE id='${intentID}'`]);
-  const [intentState, subject, extra] = row.split("|");
-  ensure(!extra && ["PREPARED", "CREATED", "CONSUMED"].includes(intentState) && /^[A-Za-z0-9._:-]{1,200}$/.test(subject ?? ""), "REGISTRATION_INTENT_STATE_INVALID");
+  const row = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT state || '|' || subject || '|' || (lease_until > clock_timestamp())::text FROM public.registration_intents WHERE id='${intentID}'`]);
+  const [intentState, subject, leaseActiveText, extra] = row.split("|");
+  ensure(!extra && ["PREPARED", "CREATED", "CONSUMED"].includes(intentState) && /^[A-Za-z0-9._:-]{1,200}$/.test(subject ?? "") && ["t", "f"].includes(leaseActiveText), "REGISTRATION_INTENT_STATE_INVALID");
   let subjectExists = false;
   let proofMetadataPresent = false;
   let metadataCount = 0;
@@ -449,7 +481,7 @@ async function readCreationState(intentID, email, mailPort, machineToken) {
   } catch {}
   const mailbox = await (await fetch(`http://127.0.0.1:${mailPort}/api/v1/messages`, { signal: AbortSignal.timeout(2_000) })).json();
   const matchingMessageCount = mailbox.messages?.filter(message => message.To?.some(recipient => recipient.Address === email)).length ?? 0;
-  return { intentState, subjectExists, proofMetadataPresent, metadataCount, matchingMessageCount };
+  return { intentState, leaseActive: leaseActiveText === "t", subjectExists, proofMetadataPresent, metadataCount, matchingMessageCount };
 }
 
 async function browserChain(origins, ports, machine) {
@@ -702,6 +734,7 @@ async function main() {
     const caFile = await check("owned_mail_and_tls_proxy_start", () => startOwnedContainers(ports), false);
     machine = await check("org_scoped_provider_credential_and_smtp", () => configureProvider(bootstrap), false);
     const origins = await check("referral_runtime_configuration", () => configureApplications(ports, caFile, machine.token));
+    await check("provider_tls_proxy_preflight", () => probeProviderProxy(origins.providerOrigin, caFile, machine.token));
     await check("configured_application_start", () => startConfiguredApplications(ports));
     await browserChain(origins, ports, machine);
     report.status = "PASS";
