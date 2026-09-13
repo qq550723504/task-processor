@@ -60,6 +60,25 @@ deadline, recovery may read back but cannot create. An expired unconsumed Intent
 cannot bind. A successful receipt remains replayable after expiry or later provider,
 email or proof changes, provided current authentication remains valid.
 
+The repository acquires the existing Intent row lock before reading
+`clock_timestamp()` for the 15-second lease. The returned lease timestamp identifies
+that claim; application clock changes cannot steal or extend it. After a missing
+fixed-subject readback, `PermitCreate` locks the same row briefly, reads database time
+again, and validates the original lease and fixed creation/completion deadlines.
+It returns the smaller remaining creation/lease duration only after transaction
+completion. No database transaction or lock spans the provider call. The application
+subtracts the entire permission round trip conservatively by anchoring that duration
+to a monotonic timestamp taken before the query, and checks the resulting context
+immediately before dispatch. Slow permission replies cannot revive expired permission.
+An uncertain permission transaction does not dispatch; the original Intent is retained.
+
+The explicit greenfield installer includes a partial expiry index for Intent rows
+whose `ciphertext` is not null, and a `window_start` index for admission buckets.
+These match the two existing ordered cleanup predicates. Runtime cleanup remains
+at most 20 rows with its 100ms context; it does not delete permanent identity keys,
+relations or receipts. No serving migration or repair is introduced. Without an
+invoking command there is still no promise of physical erasure exactly at expiry.
+
 ## Secrets and resource bounds
 
 Application configuration supplies separate 32-byte encryption, proof and lookup
@@ -178,6 +197,18 @@ rollback, lock-delayed expiry, bounded cleanup, and loss of the actual server CO
 acknowledgement after durable admission/consumption. The combined owned-PG/controlled-
 HTTPS fixture separately exercises lost application receipts, provider create-response
 loss, delayed metadata, restart and successful replay during provider outage.
+
+`TestDatabaseClockPreventsExpiredProviderDispatch` records provider create counts
+for a slow application clock, competing instances with different clocks, a real
+PostgreSQL row-lock wait across expiry, delayed HTTPS readback across expiry, and a
+valid creation control. `TestCleanupPlansBoundRetainedHistory` emits raw JSON
+`EXPLAIN (ANALYZE, BUFFERS)` using the runtime role and rolls the explained mutations
+back before running the actual cleanup. Its fixture has 100,000 erased historical
+Intents, 41 due payloads (including the seed), 2,000 future payloads, 100,040 expired
+buckets and 2,000 current buckets. Tests verify the index access paths, 20 affected
+rows, permissions and observed elapsed time. This is representative-volume evidence,
+not a claim of constant performance at arbitrary scale or a production measurement.
+Preserve the raw before/after plans and FAIL/PASS evidence in the PR.
 
 Record final SHA, CI and independent review in the PR. Real official verification →
 authenticator setup → generic OIDC/Auth.js → same-subject completion remains NOT_RUN

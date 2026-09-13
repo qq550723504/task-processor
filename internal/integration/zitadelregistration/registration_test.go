@@ -34,8 +34,11 @@ func (s *adapterIntentStore) Admit(_ context.Context, i referral.Intent, _ strin
 func (s *adapterIntentStore) Find(context.Context, string, string, string) (referral.Intent, error) {
 	return s.intent, nil
 }
-func (s *adapterIntentStore) Claim(context.Context, string, time.Time) (bool, error) {
-	return true, nil
+func (s *adapterIntentStore) Claim(context.Context, string) (time.Time, error) {
+	return time.Now().Add(15 * time.Second), nil
+}
+func (s *adapterIntentStore) PermitCreate(context.Context, string, time.Time) (time.Duration, error) {
+	return 15 * time.Second, nil
 }
 
 func TestPinnedFixedIDConflictReachesApplicationAfterFixedReadback(t *testing.T) {

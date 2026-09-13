@@ -27,6 +27,8 @@ var schema = []string{
  UNIQUE(issuer,subject), FOREIGN KEY(issuer,subject) REFERENCES public.referral_relations(issuer,subject))`,
 	`CREATE TABLE public.registration_admission_buckets (kind text NOT NULL, key text NOT NULL,
  window_start timestamptz NOT NULL, hits integer NOT NULL CHECK(hits>0), PRIMARY KEY(kind,key,window_start))`,
+	`CREATE INDEX registration_intents_payload_expiry_idx ON public.registration_intents(completion_expires_at) WHERE ciphertext IS NOT NULL`,
+	`CREATE INDEX registration_admission_buckets_expiry_idx ON public.registration_admission_buckets(window_start)`,
 }
 
 // Install is an explicit, atomic greenfield operation, never called by serving.
