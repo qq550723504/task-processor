@@ -196,7 +196,7 @@ async function startOwnedContainers(ports) {
     header_up X-ListingKit-Client-IP {remote_host}
   }
 }
-https://127.0.0.1:443 {
+https://localhost:443 {
   tls internal
   log {
     output stdout
@@ -221,14 +221,11 @@ https://localhost:444 {
     "--mount", `type=bind,source=${config},target=/etc/caddy/Caddyfile,readonly`, "--mount", `type=bind,source=${caddyData},target=/data`,
     caddyImage, "caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]);
   const caFile = path.join(caddyData, "caddy", "pki", "authorities", "local", "root.crt");
-  const leafFiles = [
-    path.join(caddyData, "caddy", "certificates", "local", "127.0.0.1", "127.0.0.1.crt"),
-    path.join(caddyData, "caddy", "certificates", "local", "localhost", "localhost.crt"),
-  ];
+  const leafFile = path.join(caddyData, "caddy", "certificates", "local", "localhost", "localhost.crt");
   await until(async () => {
     const pem = await readFile(caFile, "utf8");
-    const leaves = await Promise.all(leafFiles.map(file => readFile(file, "utf8")));
-    return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024 && leaves.every(leaf => leaf.includes("BEGIN CERTIFICATE") && leaf.length < 64 * 1024);
+    const leaf = await readFile(leafFile, "utf8");
+    return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024 && leaf.includes("BEGIN CERTIFICATE") && leaf.length < 64 * 1024;
   }, "CADDY_CERTIFICATES", 60_000);
   await until(async () => (await fetch(`http://127.0.0.1:${ports.mail}/api/v1/info`, { signal: AbortSignal.timeout(2_000) })).ok, "MAILPIT", 60_000);
   return caFile;
@@ -288,7 +285,7 @@ async function configureApplications(ports, caFile, providerCredential) {
   ensure(typeof applications.ProjectID === "string" && applications.ProjectID.length > 0, "PROJECT_ID_MISSING");
   ensure(typeof applications.OIDCAppID === "string" && applications.OIDCAppID.length > 0, "OIDC_APP_ID_MISSING");
   const publicOrigin = `https://localhost:${ports.public}`;
-  const providerOrigin = `https://127.0.0.1:${ports.provider}`;
+  const providerOrigin = `https://localhost:${ports.provider}`;
   await provider("/zitadel.application.v2.ApplicationService/UpdateApplication", {
     applicationId: applications.OIDCAppID,
     projectId: applications.ProjectID,
