@@ -475,7 +475,7 @@ async function readCreationState(intentID, email, mailPort, machineToken) {
   ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(intentID ?? ""), "REGISTRATION_INTENT_MISSING");
   const row = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT state || '|' || subject || '|' || (lease_until > clock_timestamp())::text FROM public.registration_intents WHERE id='${intentID}'`]);
   const [intentState, subject, leaseActiveText, extra] = row.split("|");
-  ensure(!extra && ["PREPARED", "CREATED", "CONSUMED"].includes(intentState) && /^[A-Za-z0-9._:-]{1,200}$/.test(subject ?? "") && ["t", "f"].includes(leaseActiveText), "REGISTRATION_INTENT_STATE_INVALID");
+  ensure(!extra && ["PREPARED", "CREATED", "CONSUMED"].includes(intentState) && /^[A-Za-z0-9._:-]{1,200}$/.test(subject ?? "") && ["true", "false"].includes(leaseActiveText), "REGISTRATION_INTENT_STATE_INVALID");
   let subjectExists = false;
   let proofMetadataPresent = false;
   let metadataCount = 0;
@@ -491,7 +491,7 @@ async function readCreationState(intentID, email, mailPort, machineToken) {
   } catch {}
   const mailbox = await (await fetch(`http://127.0.0.1:${mailPort}/api/v1/messages`, { signal: AbortSignal.timeout(2_000) })).json();
   const matchingMessageCount = mailbox.messages?.filter(message => message.To?.some(recipient => recipient.Address === email)).length ?? 0;
-  return { intentState, leaseActive: leaseActiveText === "t", subjectExists, proofMetadataPresent, metadataCount, matchingMessageCount };
+  return { intentState, leaseActive: leaseActiveText === "true", subjectExists, proofMetadataPresent, metadataCount, matchingMessageCount };
 }
 
 async function browserChain(origins, ports, machine) {
