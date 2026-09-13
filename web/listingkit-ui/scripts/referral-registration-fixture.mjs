@@ -697,18 +697,43 @@ async function browserChain(origins, ports, machine) {
     return { sameSubject: true, officialProvider: true };
   });
 
-  await check("official_authenticator_and_generic_oidc", async () => {
+  let registeredPassword;
+  await check("official_authenticator_setup", async () => {
+    await page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/authenticator/set", { timeout: 45_000 })
+      .catch(() => { throw new Error("BLOCKER_NO_OFFICIAL_AUTHENTICATOR_SETUP"); });
+    const passwordChoice = page.getByRole("link", { name: "Password" });
+    await passwordChoice.waitFor({ state: "visible", timeout: 20_000 }).catch(() => { throw new Error("BLOCKER_NO_OFFICIAL_PASSWORD_CHOICE"); });
+    await passwordChoice.click();
+    await page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/password/set", { timeout: 30_000 })
+      .catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_SETUP_MISSING"); });
+    const password = page.getByTestId("password-set-text-input");
+    const confirmation = page.getByTestId("password-set-confirm-text-input");
+    await password.waitFor({ state: "visible", timeout: 20_000 }).catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_SETUP_MISSING"); });
+    registeredPassword = `A9!${randomBytes(18).toString("hex")}`;
+    await password.fill(registeredPassword);
+    await confirmation.fill(registeredPassword);
+    const submit = page.getByTestId("submit-button");
+    const submitElement = await submit.elementHandle();
+    ensure(submitElement, "BLOCKER_OFFICIAL_PASSWORD_ACTION_MISSING");
+    await page.waitForFunction(button => !button.disabled, submitElement, { timeout: 30_000 })
+      .catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_ACTION_DISABLED"); });
+    await submit.click();
+    await page.waitForURL(url => url.pathname !== "/ui/v2/login/password/set", { timeout: 45_000 })
+      .catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_NOT_SET"); });
+    return { subject, method: "password" };
+  });
+
+  await check("generic_oidc_authjs_login", async () => {
+    ensure(typeof registeredPassword === "string" && registeredPassword.length >= 20, "OFFICIAL_PASSWORD_NOT_RETAINED");
+    await context.clearCookies();
     await page.goto(`${origins.publicOrigin}/login?returnTo=${encodeURIComponent("/workbench/account/referrals/complete")}`, { waitUntil: "load" });
     const username = page.getByTestId("username-text-input");
-    await username.waitFor({ state: "visible", timeout: 45_000 });
+    await username.waitFor({ state: "visible", timeout: 45_000 }).catch(() => { throw new Error("OFFICIAL_NEW_USERNAME_PAGE_MISSING"); });
     await username.fill(email);
     await page.getByTestId("submit-button").click();
-    const passwordFields = page.locator('input[type="password"]');
-    await passwordFields.first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
-    const count = await passwordFields.count();
-    ensure(count > 0, "BLOCKER_NO_OFFICIAL_AUTHENTICATOR_SETUP");
-    const password = `A9!${randomBytes(18).toString("hex")}`;
-    for (let index = 0; index < count; index++) await passwordFields.nth(index).fill(password);
+    const password = page.getByTestId("password-text-input");
+    await password.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_NEW_PASSWORD_PAGE_MISSING"); });
+    await password.fill(registeredPassword);
     await page.getByTestId("submit-button").click();
     await page.waitForURL(url => url.origin === origins.publicOrigin && url.pathname === "/workbench/account/referrals/complete", { timeout: 45_000 })
       .catch(() => { throw new Error("BLOCKER_GENERIC_OIDC_NOT_AUTHORIZED"); });
