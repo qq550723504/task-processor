@@ -87,11 +87,12 @@ export function RegistrationPage({ code }: { code: string }) {
   }
 
   if (activeRecovery) {
+    const terminalError = ["referral_expired", "referral_conflict"].includes(error);
     return <RegistrationFrame><section className={styles.recovery} aria-labelledby="recovery-title">
       <h2 id="recovery-title">继续原注册</h2>
       <p>此浏览器保留了原流程的恢复片段。恢复只核对原 Intent，不会创建新的身份。</p>
-      {error ? <div className={styles.error} role="alert"><strong>暂时无法确认注册结果</strong><p>请重试原请求；系统会沿用同一请求标识核对结果。</p></div> : null}
-      <Button type="button" variant="outline" onClick={resume} disabled={pending}>{pending ? "正在恢复…" : "恢复原注册"}</Button>
+      {error ? <RegistrationError code={error} /> : null}
+      {!terminalError ? <Button type="button" variant="outline" onClick={resume} disabled={pending}>{pending ? "正在恢复…" : "恢复原注册"}</Button> : null}
     </section></RegistrationFrame>;
   }
 
@@ -103,10 +104,26 @@ export function RegistrationPage({ code }: { code: string }) {
         <label>名字<input name="givenName" autoComplete="given-name" required maxLength={120} readOnly={attemptLocked} /></label>
         <label>姓氏<input name="familyName" autoComplete="family-name" required maxLength={120} readOnly={attemptLocked} /></label>
       </div>
-      {error ? <div className={styles.error} role="alert"><strong>{error === "referral_outcome_unknown" || error === "DEPENDENCY_UNAVAILABLE" ? "暂时无法确认注册结果" : error === "referral_expired" ? "注册确认期限已结束" : error === "referral_conflict" ? "注册请求存在冲突" : "注册请求未完成"}</strong><p>{error === "referral_conflict" ? "该邮箱或请求与现有流程冲突，不能改绑到其他身份。" : error === "referral_expired" ? "原注册流程已过期，不能继续提交或改换身份。" : "请重试原请求；系统会沿用同一请求标识核对结果。"}</p></div> : null}
+      {error ? <RegistrationError code={error} /> : null}
       <Button type="submit" disabled={pending}>{pending ? "正在提交…" : error ? "重试原请求" : "开始注册"}</Button>
     </form>
   </RegistrationFrame>;
+}
+
+function RegistrationError({ code }: { code: string }) {
+  const title = code === "referral_outcome_unknown" || code === "DEPENDENCY_UNAVAILABLE"
+    ? "暂时无法确认注册结果"
+    : code === "referral_expired"
+      ? "注册确认期限已结束"
+      : code === "referral_conflict"
+        ? "注册请求存在冲突"
+        : "注册请求未完成";
+  const message = code === "referral_conflict"
+    ? "该邮箱或请求与现有流程冲突，不能改绑到其他身份。"
+    : code === "referral_expired"
+      ? "原注册流程已过期，不能继续提交或改换身份。"
+      : "请重试原请求；系统会沿用同一请求标识核对结果。";
+  return <div className={styles.error} role="alert"><strong>{title}</strong><p>{message}</p></div>;
 }
 
 function RegistrationFrame({ children }: { children: React.ReactNode }) {

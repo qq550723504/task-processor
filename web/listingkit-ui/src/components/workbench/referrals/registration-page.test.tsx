@@ -91,6 +91,29 @@ describe("RegistrationPage", () => {
     expect(screen.getByText("请查看官方验证邮件")).toBeVisible();
   });
 
+  it.each([["referral_expired", "注册确认期限已结束"], ["referral_conflict", "注册请求存在冲突"]])("stops fragment recovery for %s", async (code, message) => {
+    window.history.replaceState(null, "", `/#intentID=intent-1&resumeSecret=${"c".repeat(64)}`);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code }, { status: 409 })));
+    const user = userEvent.setup();
+    render(<RegistrationPage code="CODE1234" />);
+    await user.click(screen.getByRole("button", { name: "恢复原注册" }));
+    expect(await screen.findByText(message)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "恢复原注册" })).not.toBeInTheDocument();
+  });
+
+  it("stops automatic resume on a conflict without relabeling it unknown", async () => {
+    const admission = { intentID: "intent-1", resumeSecret: "a".repeat(64), createExpiresAt: "2026-09-13T10:15:00Z", completionExpiresAt: "2026-09-14T10:00:00Z" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json(admission)).mockResolvedValueOnce(Response.json({ code: "referral_conflict" }, { status: 409 })));
+    const user = userEvent.setup();
+    render(<RegistrationPage code="CODE1234" />);
+    await user.type(screen.getByRole("textbox", { name: "邮箱" }), "new@example.test");
+    await user.type(screen.getByRole("textbox", { name: "名字" }), "新");
+    await user.type(screen.getByRole("textbox", { name: "姓氏" }), "用户");
+    await user.click(screen.getByRole("button", { name: "开始注册" }));
+    expect(await screen.findByText("注册请求存在冲突")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "恢复原注册" })).not.toBeInTheDocument();
+  });
+
   it("keeps an unknown resume on the original intent and never restarts registration", async () => {
     const admission = { intentID: "intent-1", resumeSecret: "d".repeat(64), createExpiresAt: "2026-09-13T10:15:00Z", completionExpiresAt: "2026-09-14T10:00:00Z" };
     const fetch = vi.fn()

@@ -79,16 +79,27 @@ describe("ReferralsPage", () => {
   });
 
   it("clears an old subject result and prevents a late response from returning", async () => {
-    const resolves: Array<(value: Response) => void> = [];
-    const fetch = vi.fn(() => new Promise<Response>((done) => { resolves.push(done); }));
+    let resolve!: (value: Response) => void;
+    const fetch = vi.fn(() => new Promise<Response>((done) => { resolve = done; }));
     vi.stubGlobal("fetch", fetch);
     const view = mount();
-    view.update("subject-2");
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    resolves[0](Response.json({ code: "OLD-CODE", codeAvailability: "available", count: 99, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
+    state.context.user = { id: "subject-2" };
+    view.update();
+    expect(screen.getByText("登录身份已变化")).toBeVisible();
+    resolve(Response.json({ code: "OLD-CODE", codeAvailability: "available", count: 99, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
     await waitFor(() => expect(screen.queryByText("OLD-CODE")).not.toBeInTheDocument());
-    resolves[1](Response.json({ code: "NEW-CODE", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:01:00Z", earnings: { availability: "unavailable", amount: null } }));
-    expect(await screen.findByText("NEW-CODE")).toBeVisible();
+  });
+
+  it("clears an in-flight result when shared context reports authentication loss", async () => {
+    let resolve!: (value: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((done) => { resolve = done; })));
+    const view = mount();
+    state.context.user = null;
+    state.context.error = { code: "AUTHENTICATION_REQUIRED" };
+    view.update();
+    expect(screen.getByText("登录身份已变化")).toBeVisible();
+    resolve(Response.json({ code: "OLD-CODE", codeAvailability: "available", count: 99, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
+    await waitFor(() => expect(screen.queryByText("OLD-CODE")).not.toBeInTheDocument());
   });
 
   it("completes only after an explicit click and then re-reads the durable projection", async () => {
@@ -113,5 +124,22 @@ describe("ReferralsPage", () => {
     await user.click(await screen.findByRole("button", { name: "完成推广关系" }));
     expect(await screen.findByText("推广关系已确认")).toBeVisible();
     expect(screen.getByText("推广汇总暂不可用")).toBeVisible();
+  });
+
+  it.each([[401, "AUTHENTICATION_REQUIRED"], [409, "IDENTITY_CONTEXT_CHANGED"]])("clears a receipt when refreshed identity fails with %s", async (status, code) => {
+    const projection = { code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json(projection)).mockResolvedValueOnce(Response.json({ status: "complete", intentID: "intent-1", boundAt: "2026-09-13T10:02:00Z" })).mockResolvedValueOnce(Response.json({ code }, { status })));
+    const user = userEvent.setup();
+    mount("complete");
+    await user.click(await screen.findByRole("button", { name: "完成推广关系" }));
+    expect(await screen.findByText("登录身份已变化")).toBeVisible();
+    expect(screen.queryByText("推广关系已确认")).not.toBeInTheDocument();
+  });
+
+  it("does not claim an unknown write produced no fact", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "referral_outcome_unknown" }, { status: 503 })));
+    mount();
+    expect(await screen.findByText("暂时无法确认操作结果")).toBeVisible();
+    expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
   });
 });

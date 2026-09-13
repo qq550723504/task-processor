@@ -62,6 +62,11 @@ afterEach(async () => {
 describe("public referral registration BFF", () => {
   it("reports invitation availability from the same private configuration", async () => {
     expect(await isReferralRegistrationAvailable()).toBe(true);
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "");
+    expect(await isReferralRegistrationAvailable()).toBe(false);
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "not-an-origin");
+    expect(await isReferralRegistrationAvailable()).toBe(false);
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "https://app.test");
     vi.stubEnv("LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE", "");
     expect(await isReferralRegistrationAvailable()).toBe(false);
   });

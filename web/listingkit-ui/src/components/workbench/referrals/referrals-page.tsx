@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
 import {
   completeReferralRegistration,
@@ -17,6 +18,7 @@ import { ConsoleState } from "../console/console-page";
 import styles from "./referrals.module.css";
 
 export function ReferralsPage({ mode, expectedUserId, registrationAvailable = true }: { mode: "overview" | "complete"; expectedUserId: string; registrationAvailable?: boolean }) {
+  const context = useWorkbenchContext();
   const [leaving, setLeaving] = useState(false);
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -29,9 +31,11 @@ export function ReferralsPage({ mode, expectedUserId, registrationAvailable = tr
   const pathname = mode === "complete" ? "/workbench/account/referrals/complete" : "/workbench/account/referrals";
   const title = mode === "complete" ? "完成注册" : "推广与收益";
   const description = mode === "complete" ? "用当前登录身份确认这次新注册，并完成不可变推广关系。" : "查看你的推广码、真实关系数量与当前可用汇总。";
+  const authError = [context.error, context.blockingError].some((error) => error?.code === "AUTHENTICATION_REQUIRED");
+  const identityChanged = Boolean(context.user && context.user.id !== expectedUserId);
   let content: React.ReactNode;
-  if (leaving) content = <IdentityError />;
-  else content = <ScopedReferrals key={`${mode}:${expectedUserId}`} mode={mode} expectedUserId={expectedUserId} registrationAvailable={registrationAvailable} />;
+  if (leaving || authError || identityChanged) content = <IdentityError />;
+  else content = <ScopedReferrals key={`${mode}:${expectedUserId}:${context.user?.id ?? "unresolved"}`} mode={mode} expectedUserId={expectedUserId} registrationAvailable={registrationAvailable} />;
   return <AccountShell pathname={pathname} title={title} description={description}>{content}</AccountShell>;
 }
 
@@ -68,6 +72,7 @@ function ScopedReferrals({ mode, expectedUserId, registrationAvailable }: { mode
   });
 
   if (projection.isPending || projection.isFetching) return <ConsoleState kind="loading" title="正在读取推广事实">正在核对当前身份与持久化关系。</ConsoleState>;
+  if (projection.isError && isIdentityError(projection.error)) return <IdentityError />;
   if (projection.isError && !receipt) return <ReferralError error={projection.error} />;
   if (projection.isError) return <div className={styles.pageBody}><section className={styles.notice} role="status"><strong>推广关系已确认</strong><p>确认时间：{formatTime(receipt!.boundAt)}</p></section><ConsoleState kind="error" title="推广汇总暂不可用"><p>关系回执已保留，请稍后重试汇总读取。</p></ConsoleState></div>;
   const data = projection.data;
@@ -101,8 +106,15 @@ function ReferralError({ error, compact = false }: { error: unknown; compact?: b
     referral_outcome_unknown: "暂时无法确认操作结果", REFERRALS_NOT_CONFIGURED: "推广服务尚未配置",
     DEPENDENCY_UNAVAILABLE: "推广服务暂不可用", DEADLINE_EXCEEDED: "推广请求超时",
   };
-  const content = <><strong>{title[code] ?? "推广请求未完成"}</strong><p>没有生成或推测推广事实。请稍后重试原操作。</p></>;
-  return compact ? <div className={styles.error} role="alert">{content}</div> : <ConsoleState kind="error" title={title[code] ?? "推广请求未完成"}><p>没有生成或推测推广事实。请稍后重试原操作。</p></ConsoleState>;
+  const message = ["referral_outcome_unknown", "DEADLINE_EXCEEDED"].includes(code)
+    ? "操作结果尚未确认。请使用原操作恢复或稍后重新核对。"
+    : "没有生成或推测推广事实。请稍后重试原操作。";
+  const content = <><strong>{title[code] ?? "推广请求未完成"}</strong><p>{message}</p></>;
+  return compact ? <div className={styles.error} role="alert">{content}</div> : <ConsoleState kind="error" title={title[code] ?? "推广请求未完成"}><p>{message}</p></ConsoleState>;
+}
+
+function isIdentityError(error: unknown) {
+  return error instanceof ReferralRequestError && ["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "referral_authentication_required"].includes(error.code);
 }
 
 function formatTime(value: string) {

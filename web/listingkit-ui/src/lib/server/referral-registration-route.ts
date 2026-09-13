@@ -188,7 +188,25 @@ async function readServiceCredential() {
 }
 
 export async function isReferralRegistrationAvailable() {
-  return Boolean(serviceOrigin() && await readServiceCredential());
+  return Boolean(hasConfiguredPublicOrigin() && serviceOrigin() && await readServiceCredential());
+}
+
+function hasConfiguredPublicOrigin() {
+  const configured =
+    process.env.LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
+    process.env.TASK_PROCESSOR_LISTINGKIT_PUBLIC_BASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.APP_URL?.trim();
+  if (!configured) return false;
+  try {
+    const origin = new URL(configured).origin;
+    return hasTrustedSameOriginWrite(new Request(`${origin}/`, {
+      method: "POST",
+      headers: { Origin: origin, "Sec-Fetch-Site": "same-origin" },
+    }));
+  } catch {
+    return false;
+  }
 }
 
 async function hasPrivateWindowsACL(file: string) {
