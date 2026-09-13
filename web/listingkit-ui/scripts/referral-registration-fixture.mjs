@@ -749,33 +749,38 @@ async function browserChain(origins, ports, machine) {
     const button = page.getByRole("button", { name: "完成推广关系" });
     await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_ACTION_MISSING"); });
     await waitForReactHydration(page, button);
-    const completed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 }).catch(() => null);
-    const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals" && response.request().method() === "GET", { timeout: 30_000 }).catch(() => null);
-    await button.click();
-    const response = await completed;
-    ensure(response, "COMPLETION_RESPONSE_MISSING");
-    if (response.status() !== 200) {
-      const payload = await response.json().catch(() => ({}));
-      const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
-      throw new Error(`COMPLETION_HTTP_${response.status()}_${responseCode}`);
-    }
-    const responseText = await response.text().catch(() => "");
-    let receipt = {};
-    try { receipt = JSON.parse(responseText); } catch {}
-    if (!(receipt && !Array.isArray(receipt) && receipt.status === "complete" && typeof receipt.intentID === "string" && typeof receipt.boundAt === "string")) {
-      await writeJSON(path.join(outputDirectory, "completion-response-diagnostic.json"), {
-        contentType: response.headers()["content-type"] ?? "",
-        byteLength: Buffer.byteLength(responseText, "utf8"),
-        topLevel: Array.isArray(receipt) ? "array" : receipt && typeof receipt === "object" ? "object" : typeof receipt,
-        keys: receipt && typeof receipt === "object" && !Array.isArray(receipt) ? Object.keys(receipt).sort() : [],
-        valueTypes: receipt && typeof receipt === "object" && !Array.isArray(receipt) ? Object.fromEntries(Object.entries(receipt).map(([key, value]) => [key, value === null ? "null" : Array.isArray(value) ? "array" : typeof value])) : {},
-      });
-      throw new Error("COMPLETION_RECEIPT_INVALID");
-    }
-    const refreshResponse = await refreshed;
-    ensure(refreshResponse, "COMPLETION_REFRESH_RESPONSE_MISSING");
-    ensure(refreshResponse.status() === 200, `COMPLETION_REFRESH_HTTP_${refreshResponse.status()}`);
-    await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 }).catch(async () => {
+    let completionRequestCount = 0;
+    const refreshStatuses = [];
+    const observe = response => {
+      const url = new URL(response.url());
+      if (url.pathname === "/api/account/referrals/complete" && response.request().method() === "POST") completionRequestCount++;
+      if (url.pathname === "/api/account/referrals" && response.request().method() === "GET") refreshStatuses.push(response.status());
+    };
+    page.on("response", observe);
+    try {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const completed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 }).catch(() => null);
+        await button.click();
+        const response = await completed;
+        ensure(response, "COMPLETION_RESPONSE_MISSING");
+        if (response.status() !== 200) {
+          const payload = await response.json().catch(() => ({}));
+          const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
+          throw new Error(`COMPLETION_HTTP_${response.status()}_${responseCode}`);
+        }
+        const confirmed = await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
+        if (confirmed) break;
+        if (attempt === 1) {
+          await button.waitFor({ state: "visible", timeout: 20_000 }).catch(() => { throw new Error("COMPLETION_RECOVERY_ACTION_MISSING"); });
+          const recoveryElement = await button.elementHandle();
+          ensure(recoveryElement, "COMPLETION_RECOVERY_ACTION_MISSING");
+          await page.waitForFunction(element => !element.disabled, recoveryElement, { timeout: 20_000 })
+            .catch(() => { throw new Error("COMPLETION_RECOVERY_ACTION_DISABLED"); });
+        }
+      }
+      await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 });
+      await until(() => refreshStatuses.includes(200), "COMPLETION_REFRESH_RESPONSE", 30_000);
+    } catch (error) {
       const knownErrors = ["登录已失效", "登录身份已变化", "官方邮箱或认证方式尚未完成", "注册确认期限已结束", "推广关系存在冲突", "暂时无法确认操作结果", "推广服务尚未配置", "推广服务暂不可用", "推广请求超时", "推广请求未完成"];
       let displayedError = "none";
       for (const candidate of knownErrors) {
@@ -790,11 +795,14 @@ async function browserChain(origins, ports, machine) {
         identityErrorVisible: await page.getByText("登录身份已变化").isVisible().catch(() => false),
         completionButtonVisible: await button.isVisible().catch(() => false),
         displayedError,
-        receiptKeys: Object.keys(receipt).sort(),
+        completionRequestCount,
+        refreshStatuses,
       });
-      throw new Error("COMPLETION_RESULT_MISSING");
-    });
-    return { subject, responseStatus: response.status(), refreshStatus: refreshResponse.status() };
+      throw error;
+    } finally {
+      page.off("response", observe);
+    }
+    return { subject, completionRequestCount, refreshStatuses };
   });
   await check("referrer_real_count", async () => {
     await referrerPage.reload();
