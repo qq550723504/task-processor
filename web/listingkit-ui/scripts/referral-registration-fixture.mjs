@@ -741,9 +741,19 @@ async function browserChain(origins, ports, machine) {
   });
 
   await check("same_subject_completion", async () => {
-    await page.getByRole("button", { name: "完成推广关系" }).click();
-    await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 });
-    return { subject };
+    const button = page.getByRole("button", { name: "完成推广关系" });
+    await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_ACTION_MISSING"); });
+    await waitForReactHydration(page, button);
+    const completed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 });
+    await button.click();
+    const response = await completed.catch(() => { throw new Error("COMPLETION_RESPONSE_MISSING"); });
+    if (response.status() !== 200) {
+      const payload = await response.json().catch(() => ({}));
+      const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
+      throw new Error(`COMPLETION_HTTP_${response.status()}_${responseCode}`);
+    }
+    await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_RESULT_MISSING"); });
+    return { subject, responseStatus: response.status() };
   });
   await check("referrer_real_count", async () => {
     await referrerPage.reload();
