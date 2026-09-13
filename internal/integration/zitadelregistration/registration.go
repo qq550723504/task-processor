@@ -88,10 +88,31 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 	if response.StatusCode == http.StatusConflict {
 		return referral.ErrConflict
 	}
+	if method == http.MethodPost && path == "/v2/users/human" && response.StatusCode == http.StatusBadRequest && fixedIDAlreadyExists(data) {
+		return referral.ErrConflict
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || json.Unmarshal(data, out) != nil {
 		return referral.ErrUnknown
 	}
 	return nil
+}
+
+// The pinned AddUserHuman returns FailedPrecondition for an existing fixed ID.
+// Match its typed ErrorDetail identity, never translated text or code 9 alone.
+// https://github.com/zitadel/zitadel/blob/a9311b8c702531832575351a663e98a2242778e5/internal/command/user_v2_human.go
+func fixedIDAlreadyExists(data []byte) bool {
+	var status struct {
+		Code    int
+		Details []struct {
+			Type string `json:"@type"`
+			ID   string `json:"id"`
+		}
+	}
+	if json.Unmarshal(data, &status) != nil || status.Code != 9 || len(status.Details) != 1 {
+		return false
+	}
+	detail := status.Details[0]
+	return detail.Type == "type.googleapis.com/zitadel.v1.ErrorDetail" && detail.ID == "COMMAND-7yiox1isql"
 }
 
 func (c *Client) Create(ctx context.Context, in app.Creation) error {
