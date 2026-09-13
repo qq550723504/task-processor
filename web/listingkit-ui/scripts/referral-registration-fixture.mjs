@@ -652,8 +652,8 @@ async function browserChain(origins, ports, machine) {
     ensure(code, "VERIFICATION_CODE_MISSING");
     const codeInput = page.getByTestId("code-text-input");
     await codeInput.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_VERIFICATION_INPUT_MISSING"); });
-    ensure(await codeInput.inputValue() === code, "OFFICIAL_VERIFICATION_CODE_MISMATCH");
     await codeInput.fill(code);
+    ensure(await codeInput.inputValue() === code, "OFFICIAL_VERIFICATION_CODE_MISMATCH");
     const submit = page.getByTestId("submit-button");
     await submit.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_VERIFICATION_ACTION_MISSING"); });
     const submitElement = await submit.elementHandle();
