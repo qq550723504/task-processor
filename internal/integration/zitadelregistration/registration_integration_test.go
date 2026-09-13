@@ -140,7 +140,7 @@ func TestOwnedPostgresAndControlledHTTPRecoverLostReceipts(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	provider, err := adapter.New(adapter.Config{Origin: server.URL, Organization: "signup", HTTPClient: server.Client(), Token: func(context.Context) (string, error) { return "controlled-service-token", nil }})
+	provider, err := adapter.New(adapter.Config{LoginOrigin: "https://login.example.test", Origin: server.URL, Organization: "signup", HTTPClient: server.Client(), Token: func(context.Context) (string, error) { return "controlled-service-token", nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,30 +16,41 @@ import (
 )
 
 type Config struct {
-	Origin, Organization string
-	Token                func(context.Context) (string, error)
-	HTTPClient           *http.Client
+	Origin, LoginOrigin, Organization string
+	Token                             func(context.Context) (string, error)
+	HTTPClient                        *http.Client
 }
 type Client struct {
-	config Config
-	http   *http.Client
+	config          Config
+	http            *http.Client
+	verificationURL string
 }
 
 const proofKey = "referral-registration-proof"
+const verificationPath = "/ui/v2/login/verify?code={{.Code}}&userId={{.UserID}}&organization={{.OrgID}}"
+
+func httpsOrigin(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || strings.ContainsAny(raw, "?#") || u.RawPath != "" || (u.Path != "" && u.Path != "/") {
+		return "", false
+	}
+	return u.Scheme + "://" + u.Host, true
+}
 
 func New(config Config) (*Client, error) {
-	u, err := url.Parse(config.Origin)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || config.Organization == "" || config.Token == nil {
+	origin, validAPI := httpsOrigin(config.Origin)
+	login, validLogin := httpsOrigin(config.LoginOrigin)
+	if !validAPI || !validLogin || len(login+verificationPath) > 200 || config.Organization == "" || config.Token == nil {
 		return nil, referral.ErrInvalid
 	}
-	config.Origin = strings.TrimSuffix(config.Origin, "/")
+	config.Origin, config.LoginOrigin = origin, login
 	client := http.Client{}
 	if config.HTTPClient != nil {
 		client = *config.HTTPClient
 	}
 	client.Timeout = 5 * time.Second
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Client{config: config, http: &client}, nil
+	return &Client{config: config, http: &client, verificationURL: login + verificationPath}, nil
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any, out any) error {
@@ -91,7 +102,7 @@ func (c *Client) Create(ctx context.Context, in app.Creation) error {
 		"userId":       in.Subject,
 		"organization": map[string]string{"orgId": in.Organization},
 		"profile":      map[string]string{"givenName": in.GivenName, "familyName": in.FamilyName},
-		"email":        map[string]any{"email": in.Email, "sendCode": struct{}{}},
+		"email":        map[string]any{"email": in.Email, "sendCode": map[string]string{"urlTemplate": c.verificationURL}},
 		"metadata":     []map[string]string{{"key": proofKey, "value": base64.StdEncoding.EncodeToString([]byte(in.Proof))}},
 	}
 	var response struct {

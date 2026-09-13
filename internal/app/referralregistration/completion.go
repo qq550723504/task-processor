@@ -52,6 +52,7 @@ func (s *Service) Resume(ctx context.Context, id, secret string) error {
 		return referral.ErrPending
 	}
 	user, err := s.Provider.Read(ctx, i.Subject)
+	var createErr error
 	if errors.Is(err, referral.ErrMissing) {
 		if !s.Now().Before(i.CreateExpiresAt) {
 			return referral.ErrExpired
@@ -62,9 +63,12 @@ func (s *Service) Resume(ctx context.Context, id, secret string) error {
 		// A dispatched mutation may have succeeded even when its response is lost.
 		// Read only this immutable subject before deciding the outcome.
 		createContext, cancel := context.WithTimeout(ctx, i.CreateExpiresAt.Sub(s.Now()))
-		_ = s.Provider.Create(createContext, Creation{Subject: i.Subject, Organization: i.Organization, Email: payload.Request.Email, GivenName: payload.Request.GivenName, FamilyName: payload.Request.FamilyName, Proof: proof})
+		createErr = s.Provider.Create(createContext, Creation{Subject: i.Subject, Organization: i.Organization, Email: payload.Request.Email, GivenName: payload.Request.GivenName, FamilyName: payload.Request.FamilyName, Proof: proof})
 		cancel()
 		user, err = s.Provider.Read(ctx, i.Subject)
+	}
+	if ctx.Err() == nil && errors.Is(createErr, referral.ErrConflict) && (errors.Is(err, referral.ErrMissing) || (err == nil && !matches(i, payload, user, proof))) {
+		return referral.ErrConflict
 	}
 	if err != nil || ctx.Err() != nil {
 		return referral.ErrUnknown
@@ -75,7 +79,7 @@ func (s *Service) Resume(ctx context.Context, id, secret string) error {
 	return s.Store.Created(ctx, i.ID)
 }
 
-func (s *Service) Complete(ctx context.Context) (referral.Receipt, error) {
+func (s *Service) Complete(ctx context.Context) (out referral.Receipt, resultErr error) {
 	if !s.valid() {
 		return referral.Receipt{}, referral.ErrUnavailable
 	}
@@ -99,6 +103,21 @@ func (s *Service) Complete(ctx context.Context) (referral.Receipt, error) {
 	if !errors.Is(err, referral.ErrMissing) {
 		return referral.Receipt{}, err
 	}
+	// Another Complete can commit after our initial receipt/Intent reads. On a
+	// pre-consumption failure, one bounded receipt read may resolve that success.
+	expected := referral.Intent{Issuer: s.Issuer, Subject: identity.UserID}
+	resolveConcurrent := true
+	defer func() {
+		if resultErr == nil || !resolveConcurrent || ctx.Err() != nil {
+			return
+		}
+		replayed, replayErr := s.receiptForIntent(ctx, expected)
+		if replayErr == nil {
+			out, resultErr = replayed, nil
+		} else if errors.Is(replayErr, referral.ErrConflict) || errors.Is(replayErr, referral.ErrUnauthenticated) {
+			out, resultErr = referral.Receipt{}, replayErr
+		}
+	}()
 	if err = s.Store.Cleanup(ctx, s.Now()); err != nil {
 		return referral.Receipt{}, err
 	}
@@ -108,6 +127,11 @@ func (s *Service) Complete(ctx context.Context) (referral.Receipt, error) {
 	}
 	if !s.owns(i) || i.Subject != identity.UserID {
 		return referral.Receipt{}, referral.ErrConflict
+	}
+	expected = i
+	if i.State == "CONSUMED" {
+		resolveConcurrent = false
+		return s.receiptForIntent(ctx, i)
 	}
 	if !s.Now().Before(i.CompletionExpiresAt) {
 		return referral.Receipt{}, referral.ErrExpired
@@ -139,7 +163,23 @@ func (s *Service) Complete(ctx context.Context) (referral.Receipt, error) {
 	if err = s.Store.Created(ctx, i.ID); err != nil {
 		return referral.Receipt{}, err
 	}
+	resolveConcurrent = false // Preserve an unknown consumption COMMIT for the next request.
 	return s.Store.Consume(ctx, i, s.Now())
+}
+
+func (s *Service) receiptForIntent(ctx context.Context, i referral.Intent) (referral.Receipt, error) {
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || identity.UserID != i.Subject || !s.Now().Before(identity.TokenExpiresAt) {
+		return referral.Receipt{}, referral.ErrUnauthenticated
+	}
+	receipt, err := s.Store.Receipt(ctx, i.Issuer, i.Subject)
+	if err != nil {
+		return referral.Receipt{}, err
+	}
+	if receipt.Issuer != i.Issuer || receipt.Subject != i.Subject || (i.ID != "" && (receipt.IntentID != i.ID || receipt.Referrer != i.Referrer || receipt.Fingerprint != i.Fingerprint)) {
+		return referral.Receipt{}, referral.ErrConflict
+	}
+	return receipt, nil
 }
 
 func (s *Service) owns(i referral.Intent) bool {

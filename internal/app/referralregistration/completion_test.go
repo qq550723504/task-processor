@@ -3,6 +3,8 @@ package referralregistration
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,8 +43,203 @@ func (st *continuationStore) Receipt(context.Context, string, string) (referral.
 }
 func (st *continuationStore) Consume(_ context.Context, i referral.Intent, now time.Time) (referral.Receipt, error) {
 	st.consumed++
+	st.intent.State = "CONSUMED"
+	st.intent.Ciphertext = nil
 	st.receipt = referral.Receipt{IntentID: i.ID, Issuer: i.Issuer, Subject: i.Subject, Referrer: i.Referrer, Fingerprint: i.Fingerprint, BoundAt: now}
 	return st.receipt, nil
+}
+
+type createOutcomeProvider struct {
+	creation               Creation
+	reads, creates         int
+	createError, readError error
+	mismatch               bool
+}
+
+func (p *createOutcomeProvider) Create(_ context.Context, c Creation) error {
+	p.creates++
+	p.creation = c
+	return p.createError
+}
+func (p *createOutcomeProvider) Read(context.Context, string) (User, error) {
+	p.reads++
+	if p.reads == 1 {
+		return User{}, referral.ErrMissing
+	}
+	if p.readError != nil {
+		return User{}, p.readError
+	}
+	u := User{Subject: p.creation.Subject, Organization: p.creation.Organization, Email: p.creation.Email, Proof: p.creation.Proof}
+	if p.mismatch {
+		u.Proof = "unrelated-proof"
+	}
+	return u, nil
+}
+func TestCreateOutcomeUsesFixedReadbackBeforeClassifying(t *testing.T) {
+	for _, tc := range []struct {
+		name                         string
+		createError, readError, want error
+		mismatch                     bool
+	}{
+		{"conflict absent", referral.ErrConflict, referral.ErrMissing, referral.ErrConflict, false},
+		{"conflict mismatch", referral.ErrConflict, nil, referral.ErrConflict, true},
+		{"conflict matches original", referral.ErrConflict, nil, nil, false},
+		{"unknown matches original", referral.ErrUnknown, nil, nil, false},
+		{"conflict read uncertain", referral.ErrConflict, referral.ErrUnavailable, referral.ErrUnknown, false},
+		{"unknown absent", referral.ErrUnknown, referral.ErrMissing, referral.ErrUnknown, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _, _, a := continuation(t)
+			p := &createOutcomeProvider{createError: tc.createError, readError: tc.readError, mismatch: tc.mismatch}
+			s.Provider = p
+			err := s.Resume(context.Background(), a.IntentID, a.ResumeSecret)
+			if !errors.Is(err, tc.want) || p.creates != 1 || p.reads != 2 || p.creation.Subject != a.Subject {
+				t.Fatalf("outcome=%v want=%v creates=%d reads=%d", err, tc.want, p.creates, p.reads)
+			}
+		})
+	}
+}
+
+type receiptBarrierStore struct {
+	*continuationStore
+	first            atomic.Bool
+	entered, release chan struct{}
+}
+
+func (st *receiptBarrierStore) Receipt(ctx context.Context, issuer, subject string) (referral.Receipt, error) {
+	if st.first.CompareAndSwap(true, false) {
+		close(st.entered)
+		<-st.release
+		return referral.Receipt{}, referral.ErrMissing
+	}
+	return st.continuationStore.Receipt(ctx, issuer, subject)
+}
+
+type readBarrierProvider struct {
+	*continuationProvider
+	first            atomic.Bool
+	entered, release chan struct{}
+}
+
+type cleanupBarrierStore struct {
+	*continuationStore
+	first            atomic.Bool
+	entered, release chan struct{}
+}
+
+func (st *cleanupBarrierStore) Cleanup(context.Context, time.Time) error {
+	if st.first.CompareAndSwap(true, false) {
+		close(st.entered)
+		<-st.release
+		return referral.ErrUnavailable
+	}
+	return nil
+}
+
+func (p *readBarrierProvider) Read(ctx context.Context, subject string) (User, error) {
+	if p.first.CompareAndSwap(true, false) {
+		close(p.entered)
+		<-p.release
+		return User{}, referral.ErrUnavailable
+	}
+	return p.continuationProvider.Read(ctx, subject)
+}
+func TestConcurrentCompleteReplaysSuccessAcrossApplicationBarriers(t *testing.T) {
+	for _, phase := range []string{"before Find", "after Find", "cleanup"} {
+		for _, expired := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/expired=%t", phase, expired), func(t *testing.T) {
+				s, st, p, a := continuation(t)
+				if err := s.Resume(context.Background(), a.IntentID, a.ResumeSecret); err != nil {
+					t.Fatal(err)
+				}
+				p.user.Verified = true
+				entered, release := make(chan struct{}), make(chan struct{})
+				if phase == "before Find" {
+					barrier := &receiptBarrierStore{continuationStore: st, entered: entered, release: release}
+					barrier.first.Store(true)
+					s.Store = barrier
+				} else if phase == "cleanup" {
+					barrier := &cleanupBarrierStore{continuationStore: st, entered: entered, release: release}
+					barrier.first.Store(true)
+					s.Store = barrier
+				} else {
+					barrier := &readBarrierProvider{continuationProvider: p, entered: entered, release: release}
+					barrier.first.Store(true)
+					s.Provider = barrier
+				}
+				ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: a.Subject, TokenExpiresAt: s.Now().Add(72 * time.Hour)})
+				type outcome struct {
+					receipt referral.Receipt
+					err     error
+				}
+				result := make(chan outcome, 1)
+				go func() { receipt, err := s.Complete(ctx); result <- outcome{receipt, err} }()
+				select {
+				case <-entered:
+				case <-time.After(time.Second):
+					close(release)
+					t.Fatal("barrier not reached")
+				}
+				want, err := s.Complete(ctx)
+				if err != nil {
+					close(release)
+					t.Fatal(err)
+				}
+				reads := p.reads
+				if expired {
+					s.Now = func() time.Time { return a.CompletionExpiresAt.Add(time.Hour) }
+				}
+				close(release)
+				got := <-result
+				if got.err != nil || got.receipt != want || st.consumed != 1 || p.reads != reads {
+					t.Fatalf("concurrent replay=%+v err=%v consumed=%d providerReads=%d want=%d", got.receipt, got.err, st.consumed, p.reads, reads)
+				}
+			})
+		}
+	}
+}
+
+func TestConcurrentReceiptRetainsIdentityAndFingerprintChecks(t *testing.T) {
+	for _, mode := range []string{"wrong subject", "wrong fingerprint", "expired authentication"} {
+		t.Run(mode, func(t *testing.T) {
+			s, st, p, a := continuation(t)
+			if err := s.Resume(context.Background(), a.IntentID, a.ResumeSecret); err != nil {
+				t.Fatal(err)
+			}
+			p.user.Verified = true
+			barrier := &receiptBarrierStore{continuationStore: st, entered: make(chan struct{}), release: make(chan struct{})}
+			barrier.first.Store(true)
+			s.Store = barrier
+			ctx := authenticated(s, a.Subject)
+			result := make(chan error, 1)
+			go func() { _, err := s.Complete(ctx); result <- err }()
+			select {
+			case <-barrier.entered:
+			case <-time.After(time.Second):
+				close(barrier.release)
+				t.Fatal("barrier not reached")
+			}
+			if _, err := s.Complete(ctx); err != nil {
+				close(barrier.release)
+				t.Fatal(err)
+			}
+			want := referral.ErrConflict
+			switch mode {
+			case "wrong subject":
+				st.receipt.Subject = "other"
+			case "wrong fingerprint":
+				st.receipt.Fingerprint = "other"
+			default:
+				later := s.Now().Add(2 * time.Hour)
+				s.Now = func() time.Time { return later }
+				want = referral.ErrUnauthenticated
+			}
+			close(barrier.release)
+			if err := <-result; !errors.Is(err, want) {
+				t.Fatalf("invalid replay=%v want=%v", err, want)
+			}
+		})
+	}
 }
 
 type continuationProvider struct {

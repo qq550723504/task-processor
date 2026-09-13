@@ -35,12 +35,18 @@ Earnings remain `unavailable`, with no amount field.
 - `Resume` requires the original Intent ID and recovery secret. It reads only the
   fixed subject. A confirmed 404 within the original create window permits one
   create-only attempt using the same subject and proof. Every dispatched attempt is
-  followed by fixed-ID readback. Missing/changed proof, failed reads and ambiguous
+  followed by fixed-ID readback. An explicit create conflict plus a confirmed absent
+  or nonmatching fixed subject returns CONFLICT; a matching original subject recovers
+  success even after that conflict. Uncertain reads remain UNKNOWN. Missing/changed
+  proof outside a confirmed create conflict, failed reads and ambiguous
   mutation responses remain UNKNOWN; they never release identity or adopt an account.
 - `Complete` derives the subject from the verified current identity and checks its
   token expiry. It first returns an existing successful receipt. For an unconsumed
   Intent it checks the original subject, signup organization, original email, live
   verification and HMAC proof. It never creates a provider user.
+  Observing CONSUMED re-reads the subject-bound successful receipt before expiry or
+  decryption. If another completion commits after the Intent read, a pre-consumption
+  failure can resolve through one bounded receipt read; it does not retry provider calls.
 - Relation insertion, successful receipt, CONSUMED state and encrypted payload erasure
   share one PostgreSQL transaction. Same attribution replays; different attribution
   conflicts. After locking, the database clock participates in the expiry decision.
@@ -81,7 +87,8 @@ Code is at most 200 bytes. Profile names are required valid UTF-8, at most 120 b
 each. Email is further limited to the pinned provider's 200-byte ceiling, validated
 before admission, and lowercased without provider-specific alias rewriting. Provider
 requests are bounded to 4 KiB and responses to 64 KiB. The adapter requires an explicit
-HTTPS origin, a server-side credential callback and no redirects; it does not forward
+HTTPS API origin, a server-configured official Login HTTPS origin, a server-side
+credential callback and no redirects; it does not forward
 a current user's token. It never includes raw provider responses or credentials in errors.
 
 Start, authenticated recovery and unconsumed completion invoke bounded expiry cleanup:
@@ -144,8 +151,12 @@ Wire behavior is pinned to ZITADEL v4.17.1 commit
 - [User/profile and metadata schema](https://github.com/zitadel/zitadel/blob/a9311b8c702531832575351a663e98a2242778e5/proto/zitadel/user/v2/user.proto):
   required given/family names, fixed user ID and base64 metadata values.
 - [Email schema](https://github.com/zitadel/zitadel/blob/a9311b8c702531832575351a663e98a2242778e5/proto/zitadel/user/v2/email.proto):
-  a maximum of 200 characters and `sendCode` using the configured official default
-  verification URL. The application does not request verification codes or set verified.
+  a maximum of 200 characters. `sendCode.urlTemplate` is explicitly the configured
+  official Login origin followed by
+  `/ui/v2/login/verify?code={{.Code}}&userId={{.UserID}}&organization={{.OrgID}}`.
+  Origins with paths, userinfo, query or fragments and templates exceeding the pinned
+  200-byte limit are rejected. The template never includes a browser return URL,
+  referral code or proof. The application does not request codes or set verified.
 
 There is no password, OTP, session or authenticator implementation here. Slice B/C
 must verify the actual official verification URL, sender/template, service-account

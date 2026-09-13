@@ -32,7 +32,7 @@ func TestReadCombinesOnlyMatchingFixedUserAndProof(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			c, _ := New(Config{Origin: server.URL, Organization: "signup", HTTPClient: server.Client(), Token: func(context.Context) (string, error) { return "controlled-token", nil }})
+			c, _ := New(Config{LoginOrigin: "https://login.example.test", Origin: server.URL, Organization: "signup", HTTPClient: server.Client(), Token: func(context.Context) (string, error) { return "controlled-token", nil }})
 			u, err := c.Read(context.Background(), "fixed-subject")
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("got %v want %v", err, tc.want)
@@ -55,7 +55,7 @@ func TestResponseBoundAndRedirectFailClosed(t *testing.T) {
 				_, _ = w.Write([]byte(strings.Repeat("x", 65537)))
 			}))
 			defer server.Close()
-			c, _ := New(Config{Origin: server.URL, Organization: "signup", HTTPClient: server.Client(), Token: func(context.Context) (string, error) { return "token", nil }})
+			c, _ := New(Config{LoginOrigin: "https://login.example.test", Origin: server.URL, Organization: "signup", HTTPClient: server.Client(), Token: func(context.Context) (string, error) { return "token", nil }})
 			if _, err := c.Read(context.Background(), "fixed-subject"); !errors.Is(err, referral.ErrUnknown) || requests != 1 {
 				t.Fatalf("bound=%v requests=%d", err, requests)
 			}
