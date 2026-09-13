@@ -745,6 +745,7 @@ async function browserChain(origins, ports, machine) {
     await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_ACTION_MISSING"); });
     await waitForReactHydration(page, button);
     const completed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 });
+    const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals" && response.request().method() === "GET", { timeout: 30_000 });
     await button.click();
     const response = await completed.catch(() => { throw new Error("COMPLETION_RESPONSE_MISSING"); });
     if (response.status() !== 200) {
@@ -752,8 +753,20 @@ async function browserChain(origins, ports, machine) {
       const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
       throw new Error(`COMPLETION_HTTP_${response.status()}_${responseCode}`);
     }
-    await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_RESULT_MISSING"); });
-    return { subject, responseStatus: response.status() };
+    const receipt = await response.json().catch(() => ({}));
+    ensure(receipt.status === "complete" && typeof receipt.intentID === "string" && typeof receipt.boundAt === "string", "COMPLETION_RECEIPT_INVALID");
+    const refreshResponse = await refreshed.catch(() => { throw new Error("COMPLETION_REFRESH_RESPONSE_MISSING"); });
+    ensure(refreshResponse.status() === 200, `COMPLETION_REFRESH_HTTP_${refreshResponse.status()}`);
+    await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 }).catch(async () => {
+      await writeJSON(path.join(outputDirectory, "completion-page-diagnostic.json"), {
+        pathname: new URL(page.url()).pathname,
+        loadingVisible: await page.getByText("正在读取推广事实").isVisible().catch(() => false),
+        identityErrorVisible: await page.getByText("登录身份已变化").isVisible().catch(() => false),
+        completionButtonVisible: await button.isVisible().catch(() => false),
+      });
+      throw new Error("COMPLETION_RESULT_MISSING");
+    });
+    return { subject, responseStatus: response.status(), refreshStatus: refreshResponse.status() };
   });
   await check("referrer_real_count", async () => {
     await referrerPage.reload();
