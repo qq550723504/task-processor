@@ -15,13 +15,15 @@ import (
 )
 
 type Dependencies struct {
-	IdentityPreflight func(context.Context, IdentityConfig) error
-	OpenSourceAccount func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial    func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplication    func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	Listen            func(string, string) (net.Listener, error)
-	CloseDatabase     func(*gorm.DB) error
-	ShutdownTimeout   time.Duration
+	IdentityPreflight            func(context.Context, IdentityConfig) error
+	OpenSourceAccount            func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewApplication               func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	OpenMembership               func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewApplicationWithMembership func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *MembershipConfig, *logrus.Logger) (*http.Server, error)
+	Listen                       func(string, string) (net.Listener, error)
+	CloseDatabase                func(*gorm.DB) error
+	ShutdownTimeout              time.Duration
 }
 
 type runtimeDependencies = Dependencies
@@ -76,12 +78,37 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
-	if dependencies.NewApplication == nil || dependencies.Listen == nil {
+	var membershipDB *gorm.DB
+	if cfg.Membership != nil {
+		if dependencies.OpenMembership == nil || dependencies.NewApplicationWithMembership == nil {
+			return errors.New("membership runtime dependencies unavailable")
+		}
+		membershipDB, err = dependencies.OpenMembership(startupContext, cfg.Membership.Database)
+		if err != nil {
+			return fmt.Errorf("open existing membership database: %w", err)
+		}
+		if membershipDB == nil || membershipDB == sourceAccountDB || membershipDB == commercialDB {
+			return errors.New("membership requires an independent database pool")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(membershipDB)) }()
+		if err := startupContext.Err(); err != nil {
+			return fmt.Errorf("membership startup canceled: %w", err)
+		}
+	}
+	if (cfg.Membership == nil && dependencies.NewApplication == nil) || dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
-	server, err := dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+	var server *http.Server
+	if cfg.Membership != nil {
+		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, cfg.CoreConfig(), cfg.Membership, logger)
+	} else {
+		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+	}
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)
+	}
+	if server == nil {
+		return errors.New("current application server unavailable")
 	}
 	if err := startupContext.Err(); err != nil {
 		return fmt.Errorf("current application startup canceled: %w", err)

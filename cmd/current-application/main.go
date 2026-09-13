@@ -12,8 +12,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	"net/http"
 	"task-processor/internal/app/httpapi"
 	"task-processor/internal/app/runtime/currentapplication"
+	coreconfig "task-processor/internal/core/config"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -56,7 +58,13 @@ func execute() error {
 			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
 		NewApplication: httpapi.NewCurrentApplication,
-		CloseDatabase:  platformdatabase.Close,
+		OpenMembership: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		NewApplicationWithMembership: func(ctx context.Context, source, commercial, membershipDB *gorm.DB, cfg *coreconfig.Config, membership *currentapplication.MembershipConfig, logger *logrus.Logger) (*http.Server, error) {
+			return httpapi.NewCurrentApplicationWithMembership(ctx, source, commercial, cfg, logger, httpapi.MembershipDependencies{ReceiptDB: membershipDB, ProviderOrigin: membership.ProviderOrigin, ReadToken: membership.ReadToken, WriteToken: membership.WriteToken})
+		},
+		CloseDatabase: platformdatabase.Close,
 	})
 }
 

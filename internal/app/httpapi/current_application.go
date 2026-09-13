@@ -40,6 +40,7 @@ type currentApplicationFactories struct {
 	buildWorkbench     workbenchContextModuleBuilder
 	buildSourceAccount func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildMembership    func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAudit  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 }
 
@@ -113,23 +114,41 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, audit)
 	}
+	if factories.buildMembership != nil {
+		membership, err := factories.buildMembership(ctx, authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build current membership module: %w", err)
+		}
+		if membership == nil {
+			return nil, errors.New("current membership module unavailable")
+		}
+		modules = append(modules, membership)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutes(bundle.routes, factories.buildAccountAudit != nil); err != nil {
+	if err := validateCurrentApplicationRoutes(bundle.routes, factories.buildAccountAudit != nil, factories.buildMembership != nil); err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
 }
 
-func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudit bool) error {
+func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudit, includeMembership bool) error {
 	expected := make(map[currentApplicationRoute]struct{}, len(currentWorkbenchApplicationRoutes))
 	for _, route := range currentWorkbenchApplicationRoutes {
 		expected[route] = struct{}{}
 	}
 	if includeAudit {
 		expected[currentApplicationRoute{Method: http.MethodGet, Path: accountAuditPath}] = struct{}{}
+	}
+	if includeMembership {
+		for _, route := range currentMembershipRoutes {
+			expected[route] = struct{}{}
+		}
+		if err := validateMembershipDescriptors(routes); err != nil {
+			return err
+		}
 	}
 	if len(routes) != len(expected) {
 		return fmt.Errorf("current application route contract mismatch: got %d routes, want %d", len(routes), len(expected))
