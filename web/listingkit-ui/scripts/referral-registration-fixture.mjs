@@ -661,10 +661,29 @@ async function browserChain(origins, ports, machine) {
     await page.waitForFunction(button => !button.disabled, submitElement, { timeout: 30_000 })
       .catch(() => { throw new Error("OFFICIAL_VERIFICATION_ACTION_DISABLED"); });
     await submit.click();
-    await until(async () => {
-      const user = await provider(`/v2/users/${encodeURIComponent(subject)}`, undefined, machine.token, "GET");
-      return user.user?.human?.email?.isVerified === true;
-    }, "EMAIL_VERIFIED", 45_000);
+    try {
+      await until(async () => {
+        const user = await provider(`/v2/users/${encodeURIComponent(subject)}`, undefined, machine.token, "GET");
+        return user.user?.human?.email?.isVerified === true;
+      }, "EMAIL_VERIFIED", 45_000);
+    } catch (error) {
+      await writeJSON(path.join(outputDirectory, "verification-page-diagnostic.json"), {
+        pathname: new URL(page.url()).pathname,
+        errorVisible: await page.getByTestId("error").isVisible().catch(() => false),
+        submitDisabled: await submit.isDisabled().catch(() => true),
+        codeLength: code.length,
+        codeShapeValid: /^[A-Za-z0-9_-]{1,64}$/.test(code),
+        subjectMatchesIntent: subject === verification.searchParams.get("userId"),
+        organizationMatchesSignup: verification.searchParams.get("organization") === manifest.organizations.A.id,
+      });
+      for (const [container, file] of [[`${manifest.project}-zitadel-login`, "verification-login-diagnostic.log"], [`${manifest.project}-zitadel-api`, "verification-provider-diagnostic.log"]]) {
+        try {
+          const output = await execFile("docker", ["--host", dockerHost, "logs", "--tail", "300", container], { windowsHide: true, timeout: 5_000, maxBuffer: 1024 * 1024 });
+          await writePrivate(path.join(outputDirectory, file), `${output.stdout}\n${output.stderr}`.slice(-256 * 1024));
+        } catch {}
+      }
+      throw error;
+    }
     await page.screenshot({ path: path.join(outputDirectory, "official-email-verified.png"), fullPage: true });
     return { sameSubject: true, officialProvider: true };
   });
