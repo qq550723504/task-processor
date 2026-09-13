@@ -2,6 +2,7 @@ package currentapplication
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,11 +26,17 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion         int            `json:"schemaVersion"`
-	Listen                ListenConfig   `json:"listen"`
-	Identity              IdentityConfig `json:"identity"`
-	SourceAccountDatabase DatabaseConfig `json:"sourceAccountDatabase"`
-	CommercialDatabase    DatabaseConfig `json:"commercialDatabase"`
+	SchemaVersion         int             `json:"schemaVersion"`
+	Listen                ListenConfig    `json:"listen"`
+	Identity              IdentityConfig  `json:"identity"`
+	SourceAccountDatabase DatabaseConfig  `json:"sourceAccountDatabase"`
+	CommercialDatabase    DatabaseConfig  `json:"commercialDatabase"`
+	Referrals             ReferralsConfig `json:"referrals"`
+}
+
+type ReferralsConfig struct {
+	coreconfig.ReferralsConfig
+	Database DatabaseConfig `json:"referralDatabase"`
 }
 
 type ListenConfig struct {
@@ -67,6 +74,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("current application manifest must not be accessible by group or others")
+	}
+	if runtime.GOOS == "windows" && coreconfig.VerifyPrivateFiles(context.Background(), []string{path}) != nil {
+		return nil, errors.New("current application manifest must be private")
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -206,6 +216,14 @@ func (cfg *Config) validate() error {
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
 		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
 	}
+	if cfg.Referrals.Enabled {
+		if err := cfg.Referrals.Database.validate("referrals.referralDatabase"); err != nil {
+			return err
+		}
+		if cfg.Referrals.Database.User != "referral_runtime" || cfg.Referrals.Issuer != cfg.Identity.IssuerURL {
+			return errors.New("referrals requires its runtime role and the current identity issuer")
+		}
+	}
 	return nil
 }
 
@@ -261,6 +279,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		return nil
 	}
 	return &coreconfig.Config{
+		Referrals: cfg.Referrals.ReferralsConfig,
 		Workbench: coreconfig.WorkbenchConfig{Enabled: true},
 		ListingKit: coreconfig.ListingKitConfig{Zitadel: coreconfig.ListingKitZitadelConfig{
 			IssuerURL: cfg.Identity.IssuerURL, AuthorizationAPIURL: cfg.Identity.AuthorizationAPIURL,

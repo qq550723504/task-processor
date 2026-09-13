@@ -20,6 +20,30 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
+func TestCurrentApplicationReferralRouteAdmission(t *testing.T) {
+	routes := make([]httproute.Descriptor, 0)
+	for _, r := range currentWorkbenchApplicationRoutes {
+		routes = append(routes, httproute.Descriptor{Method: r.Method, Path: r.Path})
+	}
+	if err := validateCurrentApplicationRoutes(routes, false, false); err != nil {
+		t.Fatal(err)
+	}
+	referrals := (referralHTTPModule{}).routes()
+	if err := validateCurrentApplicationRoutes(append(routes, referrals...), false, false); err == nil {
+		t.Fatal("disabled referrals admitted routes")
+	}
+	if err := validateCurrentApplicationRoutes(append(routes, referrals...), false, true); err != nil {
+		t.Fatal(err)
+	}
+	for i := range referrals {
+		changed := append([]httproute.Descriptor(nil), referrals...)
+		changed[i].AuthPolicy = httproute.AuthPolicyVerifiedIdentity
+		if err := validateCurrentApplicationRoutes(append(routes, changed...), false, true); err == nil {
+			t.Fatal("changed referral authority admitted")
+		}
+	}
+}
+
 func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 	if defaultCurrentApplicationFactories(context.Background()).buildAccountAudit == nil {
 		t.Fatal("default application omitted audit factory")
