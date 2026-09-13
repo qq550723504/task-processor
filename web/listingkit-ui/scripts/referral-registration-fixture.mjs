@@ -383,6 +383,9 @@ async function probeProviderProxy(providerOrigin, caFile, machineToken) {
     request.once("timeout", () => request.destroy(new Error("PROVIDER_PROXY_TIMEOUT")));
     request.once("error", reject);
     request.end();
+  }).catch(error => {
+    const code = typeof error?.code === "string" ? error.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 100) : "REQUEST_FAILED";
+    throw new Error(`PROVIDER_PROXY_${code}`);
   });
   ensure(result.status === 200, `PROVIDER_PROXY_HTTP_${result.status ?? "UNKNOWN"}`);
   const payload = JSON.parse(result.body.toString("utf8"));
