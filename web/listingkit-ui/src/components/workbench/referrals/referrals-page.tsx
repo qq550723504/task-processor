@@ -71,8 +71,8 @@ function ScopedReferrals({ mode, expectedUserId }: { mode: "overview" | "complet
       return completeReferralRegistration(expectedUserId, mutationController.current.signal);
     },
     onSuccess: async (result) => {
-      setReceipt(result);
       await queryClient.invalidateQueries({ queryKey });
+      setReceipt(result);
     },
   });
 
