@@ -567,7 +567,7 @@ async function browserChain(origins, ports, machine) {
       const submitButton = page.getByRole("button", { name: "开始注册" });
       await waitForReactHydration(page, submitButton);
       const submitted = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration" && response.request().method() === "POST", { timeout: 30_000 });
-      const resumed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration/resume" && response.request().method() === "POST", { timeout: 30_000 });
+      const resumed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration/resume" && response.request().method() === "POST", { timeout: 45_000 });
       await submitButton.click();
       const response = await submitted.catch(() => { throw new Error("REGISTRATION_RESPONSE_MISSING"); });
       if (response.status() !== 200) {
@@ -601,12 +601,17 @@ async function browserChain(origins, ports, machine) {
             const recoveryCode = typeof recoveryPayload.code === "string" ? recoveryPayload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
             throw new Error(`REGISTRATION_RECOVERY_HTTP_${recoveryResponseStatus}_${recoveryCode}`);
           }
+          const recoveryResult = await recoveryResponse.json().catch(() => ({}));
+          ensure(recoveryResult.status === "created" && Object.keys(recoveryResult).length === 1, "REGISTRATION_RECOVERY_RESPONSE_INVALID");
         } else {
           const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
           throw new Error(`REGISTRATION_RESUME_HTTP_${resumeResponse.status()}_${responseCode}`);
         }
+      } else {
+        const resumeResult = await resumeResponse.json().catch(() => ({}));
+        ensure(resumeResult.status === "created" && Object.keys(resumeResult).length === 1, "REGISTRATION_RESUME_RESPONSE_INVALID");
       }
-      await page.getByRole("heading", { name: "请查看官方验证邮件" }).waitFor({ state: "visible", timeout: 15_000 })
+      await page.getByRole("heading", { name: "请查看官方验证邮件" }).waitFor({ state: "visible", timeout: 30_000 })
         .catch(() => { throw new Error("REGISTRATION_MAIL_PENDING_MISSING"); });
       await page.screenshot({ path: path.join(outputDirectory, "registration-mail-pending-desktop.png"), fullPage: true });
       ensure(admissionRequest?.body && /^[A-Za-z0-9_-]{43,128}$/.test(admissionRequest.key), "ADMISSION_REQUEST_NOT_OBSERVED");
