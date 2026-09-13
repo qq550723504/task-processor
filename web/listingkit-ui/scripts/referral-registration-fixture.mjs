@@ -383,7 +383,12 @@ async function probeProviderProxy(providerOrigin, caFile, machineToken) {
     request.once("timeout", () => request.destroy(new Error("PROVIDER_PROXY_TIMEOUT")));
     request.once("error", reject);
     request.end();
-  }).catch(error => {
+  }).catch(async error => {
+    await writePrivate(path.join(outputDirectory, "provider-proxy-error.log"), `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    try {
+      const output = await execFile("docker", ["--host", dockerHost, "logs", "--tail", "200", caddyName], { windowsHide: true, timeout: 5_000, maxBuffer: 512 * 1024 });
+      await writePrivate(path.join(outputDirectory, "provider-proxy-caddy.log"), `${output.stdout}\n${output.stderr}`.slice(-128 * 1024));
+    } catch {}
     const code = typeof error?.code === "string" ? error.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 100) : "REQUEST_FAILED";
     throw new Error(`PROVIDER_PROXY_${code}`);
   });
