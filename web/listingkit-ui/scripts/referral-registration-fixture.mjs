@@ -414,7 +414,7 @@ async function login(page, origin, credential, target) {
     .catch(() => { throw new Error("OIDC_CALLBACK_DID_NOT_RETURN"); });
 }
 
-async function waitForMessage(mailPort, email) {
+async function waitForMessage(mailPort, email, providerOrigin) {
   let latest = { messages: [] };
   let matching;
   let detail;
@@ -425,7 +425,10 @@ async function waitForMessage(mailPort, email) {
       if (!matching?.ID) return null;
       detail = await (await fetch(`http://127.0.0.1:${mailPort}/api/v1/message/${encodeURIComponent(matching.ID)}`, { signal: AbortSignal.timeout(2_000) })).json();
       const content = `${detail.Text ?? ""}\n${detail.HTML ?? ""}`.replaceAll("&amp;", "&");
-      const link = /https:\/\/127\.0\.0\.1:\d+\/ui\/v2\/login\/verify\?[^\s<"']+/i.exec(content)?.[0];
+      const link = (/https:\/\/localhost:\d+\/ui\/v2\/login\/verify\?[^\s<"']+/gi.exec(content) ?? []).find(candidate => {
+        const verification = new URL(candidate);
+        return verification.origin === providerOrigin && verification.pathname === "/ui/v2/login/verify" && verification.searchParams.has("code") && verification.searchParams.has("userId") && verification.searchParams.has("organization");
+      });
       return link ? { link, id: matching.ID } : null;
     }, "OFFICIAL_VERIFICATION_MAIL", 60_000);
   } catch {
@@ -637,7 +640,7 @@ async function browserChain(origins, ports, machine) {
     return { viewport: "390x844", automated: "PASS" };
   });
 
-  const message = await check("official_mail_delivery", () => waitForMessage(ports.mail, email), false);
+  const message = await check("official_mail_delivery", () => waitForMessage(ports.mail, email, origins.providerOrigin), false);
   const verification = new URL(message.link);
   ensure(verification.origin === origins.providerOrigin, "VERIFICATION_ORIGIN_MISMATCH");
   const subject = verification.searchParams.get("userId");
