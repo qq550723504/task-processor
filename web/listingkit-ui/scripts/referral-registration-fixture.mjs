@@ -758,11 +758,21 @@ async function browserChain(origins, ports, machine) {
     const refreshResponse = await refreshed.catch(() => { throw new Error("COMPLETION_REFRESH_RESPONSE_MISSING"); });
     ensure(refreshResponse.status() === 200, `COMPLETION_REFRESH_HTTP_${refreshResponse.status()}`);
     await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 }).catch(async () => {
+      const knownErrors = ["登录已失效", "登录身份已变化", "官方邮箱或认证方式尚未完成", "注册确认期限已结束", "推广关系存在冲突", "暂时无法确认操作结果", "推广服务尚未配置", "推广服务暂不可用", "推广请求超时", "推广请求未完成"];
+      let displayedError = "none";
+      for (const candidate of knownErrors) {
+        if (await page.getByText(candidate, { exact: true }).isVisible().catch(() => false)) {
+          displayedError = candidate;
+          break;
+        }
+      }
       await writeJSON(path.join(outputDirectory, "completion-page-diagnostic.json"), {
         pathname: new URL(page.url()).pathname,
         loadingVisible: await page.getByText("正在读取推广事实").isVisible().catch(() => false),
         identityErrorVisible: await page.getByText("登录身份已变化").isVisible().catch(() => false),
         completionButtonVisible: await button.isVisible().catch(() => false),
+        displayedError,
+        receiptKeys: Object.keys(receipt).sort(),
       });
       throw new Error("COMPLETION_RESULT_MISSING");
     });
