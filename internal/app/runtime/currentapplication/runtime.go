@@ -15,13 +15,15 @@ import (
 )
 
 type Dependencies struct {
-	IdentityPreflight func(context.Context, IdentityConfig) error
-	OpenSourceAccount func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial    func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplication    func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	Listen            func(string, string) (net.Listener, error)
-	CloseDatabase     func(*gorm.DB) error
-	ShutdownTimeout   time.Duration
+	IdentityPreflight       func(context.Context, IdentityConfig) error
+	OpenSourceAccount       func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial          func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenReferrals           func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewReferralsApplication func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplication          func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	Listen                  func(string, string) (net.Listener, error)
+	CloseDatabase           func(*gorm.DB) error
+	ShutdownTimeout         time.Duration
 }
 
 type runtimeDependencies = Dependencies
@@ -43,14 +45,26 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	core := cfg.CoreConfig()
+	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelStartup()
+	if cfg.Referrals.Enabled {
+		if dependencies.OpenReferrals == nil || dependencies.NewReferralsApplication == nil {
+			return errors.New("current application referrals lifecycle unavailable")
+		}
+		secrets, err := cfg.Referrals.Prepare(startupContext)
+		if err != nil {
+			return err
+		}
+		core.Referrals.Prepared = secrets
+		defer secrets.HTTPClient.CloseIdleConnections()
+	}
 	if dependencies.ShutdownTimeout <= 0 {
 		dependencies.ShutdownTimeout = 10 * time.Second
 	}
 	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
 	}
-	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
-	defer cancelStartup()
 	if err := dependencies.IdentityPreflight(startupContext, cfg.Identity); err != nil {
 		return fmt.Errorf("verify identity provider readiness: %w", err)
 	}
@@ -76,10 +90,23 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
-	if dependencies.NewApplication == nil || dependencies.Listen == nil {
+	if (!cfg.Referrals.Enabled && dependencies.NewApplication == nil) || dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
-	server, err := dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+	var server *http.Server
+	if cfg.Referrals.Enabled {
+		referralDB, openErr := dependencies.OpenReferrals(startupContext, cfg.Referrals.Database)
+		if openErr != nil {
+			return fmt.Errorf("open existing referral database: %w", openErr)
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(referralDB)) }()
+		if err := startupContext.Err(); err != nil {
+			return err
+		}
+		server, err = dependencies.NewReferralsApplication(startupContext, sourceAccountDB, commercialDB, referralDB, core, logger)
+	} else {
+		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, core, logger)
+	}
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)
 	}
