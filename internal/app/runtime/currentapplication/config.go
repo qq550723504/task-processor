@@ -2,6 +2,7 @@ package currentapplication
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,6 +74,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("current application manifest must not be accessible by group or others")
+	}
+	if runtime.GOOS == "windows" && coreconfig.VerifyPrivateFiles(context.Background(), []string{path}) != nil {
+		return nil, errors.New("current application manifest must be private")
 	}
 	file, err := os.Open(path)
 	if err != nil {

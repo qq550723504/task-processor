@@ -65,12 +65,19 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		routes[i].OrganizationAccessPolicy = httproute.OrganizationAccessPolicyNone
 		routes[i].RequestTimeout = 15 * time.Second
 		if i < 2 {
-			routes[i].Handler = httproute.WithRequestBodyReadTimeout(15*time.Second, routes[i].Handler)
+			routes[i].Handler = withReferralBodyDeadline(routes[i].Handler)
 		} else {
 			routes[i].RejectUnreadRequestBody = true
 		}
 		handler := routes[i].Handler
 		routes[i].Handler = func(c *gin.Context) {
+			defer func() {
+				if recover() != nil {
+					// A mutation may already have committed. Preserve UNKNOWN and
+					// never let generic recovery dump credentials or panic values.
+					writeReferralError(c, referral.ErrUnknown)
+				}
+			}()
 			select {
 			case slots <- struct{}{}:
 				defer func() { <-slots }()
@@ -83,12 +90,33 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 	return routes
 }
 
+func withReferralBodyDeadline(handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		deadline, ok := c.Request.Context().Deadline()
+		if !ok {
+			deadline = time.Now().Add(15 * time.Second)
+		}
+		// Closing Body can block behind net/http's active Read mutex. A socket
+		// deadline interrupts that Read and releases the shared handler slot.
+		err := http.NewResponseController(c.Writer).SetReadDeadline(deadline)
+		if err != nil && c.Request.Context().Value(http.ServerContextKey) != nil {
+			writeReferralError(c, referral.ErrUnavailable)
+			return
+		}
+		// In-process requests have no socket. Real servers must support the
+		// controller; net/http resets its read deadline for the next request.
+		handler(c)
+	}
+}
+
 func (m referralHTTPModule) trustedCommand(c *gin.Context) (string, bool) {
 	provided := c.GetHeader("X-Referral-Service-Credential")
+	credentialCount := len(c.Request.Header.Values("X-Referral-Service-Credential"))
+	c.Request.Header.Del("X-Referral-Service-Credential")
 	want, got := sha256.Sum256([]byte(m.serviceCredential)), sha256.Sum256([]byte(provided))
 	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
 	peer, parseErr := netip.ParseAddr(host)
-	if len(m.serviceCredential) < 64 || len(c.Request.Header.Values("X-Referral-Service-Credential")) != 1 || subtle.ConstantTimeCompare(want[:], got[:]) != 1 || c.GetHeader("Authorization") != "" || err != nil || parseErr != nil || !peer.IsLoopback() {
+	if len(m.serviceCredential) < 64 || credentialCount != 1 || subtle.ConstantTimeCompare(want[:], got[:]) != 1 || c.GetHeader("Authorization") != "" || err != nil || parseErr != nil || !peer.IsLoopback() {
 		writeReferralError(c, referral.ErrUnauthenticated)
 		return "", false
 	}

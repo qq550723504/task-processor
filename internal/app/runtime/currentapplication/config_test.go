@@ -185,6 +185,25 @@ func referralRuntimeConfig(t *testing.T) *Config {
 	return cfg
 }
 
+func TestReferralManifestRejectsPublicRead(t *testing.T) {
+	cfg := referralRuntimeConfig(t)
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeManifest(t, string(data))
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("icacls", path, "/grant", "*S-1-1-0:(R)").CombinedOutput(); err != nil {
+			t.Fatalf("synthetic manifest ACL: %v %s", err, out)
+		}
+	} else if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("public-readable referral manifest accepted")
+	}
+}
+
 func TestReferralPrivateFilesRejectPublicRead(t *testing.T) {
 	cfg := referralRuntimeConfig(t)
 	if runtime.GOOS == "windows" {

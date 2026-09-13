@@ -48,6 +48,37 @@ type ReferralSecrets struct {
 	HTTPClient                       *http.Client
 }
 
+// VerifyPrivateFiles enforces the same private-file boundary for the manifest
+// and referenced secrets. It never changes file permissions or logs paths.
+func VerifyPrivateFiles(ctx context.Context, paths []string) error {
+	invalid := errors.New("private file permissions invalid")
+	if ctx == nil || ctx.Err() != nil {
+		return invalid
+	}
+	for _, path := range paths {
+		if !filepath.IsAbs(path) {
+			return invalid
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0) {
+			return invalid
+		}
+	}
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	data, _ := json.Marshal(paths)
+	check, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	// Fixed native ACL script; untrusted paths are JSON stdin, never code.
+	command := exec.CommandContext(check, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference='Stop'; $paths=([Console]::In.ReadToEnd() | ConvertFrom-Json); $allowed=@([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544'); foreach($p in $paths) { $acl=[System.IO.File]::GetAccessControl($p); foreach($ace in $acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])) { if($ace.AccessControlType -eq 'Allow' -and $allowed -notcontains $ace.IdentityReference.Value) { exit 1 } } }; exit 0`)
+	command.Stdin = bytes.NewReader(data)
+	if command.Run() != nil {
+		return invalid
+	}
+	return nil
+}
+
 func (cfg ReferralsConfig) Prepare(ctx context.Context) (*ReferralSecrets, error) {
 	invalid := errors.New("referrals configuration or private credentials invalid")
 	if !cfg.Enabled {
@@ -67,32 +98,17 @@ func (cfg ReferralsConfig) Prepare(ctx context.Context) (*ReferralSecrets, error
 			return nil, invalid
 		}
 	}
-	if runtime.GOOS == "windows" {
-		paths := []string{cfg.CredentialFile, cfg.ServiceCredentialFile, cfg.LookupKeyFile}
-		for _, m := range []map[string]string{cfg.ProofKeyFiles, cfg.EncryptionKeyFiles} {
-			for _, p := range m {
-				paths = append(paths, p)
-			}
+	paths := []string{cfg.CredentialFile, cfg.ServiceCredentialFile, cfg.LookupKeyFile}
+	for _, m := range []map[string]string{cfg.ProofKeyFiles, cfg.EncryptionKeyFiles} {
+		for _, p := range m {
+			paths = append(paths, p)
 		}
-		if cfg.ProviderCAFile != "" {
-			paths = append(paths, cfg.ProviderCAFile)
-		}
-		for _, p := range paths {
-			if !filepath.IsAbs(p) {
-				return nil, invalid
-			}
-		}
-		data, _ := json.Marshal(paths)
-		check, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		// Use the native ACL API through a fixed script. Paths are JSON stdin,
-		// never shell code. Only this account, SYSTEM and Administrators may
-		// have allow ACEs; inherited public/group access also fails closed.
-		command := exec.CommandContext(check, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference='Stop'; $paths=([Console]::In.ReadToEnd() | ConvertFrom-Json); $allowed=@([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544'); foreach($p in $paths) { $acl=[System.IO.File]::GetAccessControl($p); foreach($ace in $acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])) { if($ace.AccessControlType -eq 'Allow' -and $allowed -notcontains $ace.IdentityReference.Value) { exit 1 } } }; exit 0`)
-		command.Stdin = bytes.NewReader(data)
-		if command.Run() != nil {
-			return nil, invalid
-		}
+	}
+	if cfg.ProviderCAFile != "" {
+		paths = append(paths, cfg.ProviderCAFile)
+	}
+	if VerifyPrivateFiles(ctx, paths) != nil {
+		return nil, invalid
 	}
 	read := func(path string) ([]byte, error) {
 		if ctx.Err() != nil {

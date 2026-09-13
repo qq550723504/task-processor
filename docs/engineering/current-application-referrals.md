@@ -79,8 +79,9 @@ independent from source/commercial; no owner/superuser serving connection is
 allowed. Configuration and secrets have no environment overrides. Never log or
 publish the manifest, prepared configuration or private files.
 
-Private files must be regular absolute paths. Unix group/other permission bits
-are rejected. Windows uses the native .NET ACL API through a fixed, noninteractive
+The manifest and referenced private files must be regular absolute paths. Unix group/other permission bits
+are rejected. LoadConfig also checks Windows manifest ACL before reading its
+database passwords. Windows uses the native .NET ACL API through a fixed, noninteractive
 Windows PowerShell command with JSON stdin paths; allow ACEs may name only the
 current account, SYSTEM or Administrators. Inherited public/group access fails
 closed. The ACL check has a three-second budget inside the startup deadline;
@@ -104,7 +105,13 @@ lookup material must differ. At most eight retained keys per map are admitted.
 
 Requests have a 15-second deadline, 4 KiB JSON bound and 16 KiB response bound.
 Eight concurrent admitted handlers share one bounded gate; excess work receives
-429 without a queue. Body reads are interrupted at the request budget. The
+429 without a queue. A ResponseController socket read deadline interrupts
+incomplete HTTP/1.1 bodies at the request budget; Body.Close alone can block
+behind an active Read. Both pre-auth paths have real TCP coverage with eight
+stalled bodies and a ninth capacity probe. B-local recovery contains command
+panics (including broken-pipe errors), returns only a safe UNKNOWN result, and
+does not log panic values or request dumps. The service header is consumed and
+removed after reading it. The
 existing application additionally bounds its own mutation execution, provider
 calls to five seconds/64 KiB and DB operations to three seconds. Its shared PG
 admission imposes five admissions per IP/minute and durable email deduplication.
