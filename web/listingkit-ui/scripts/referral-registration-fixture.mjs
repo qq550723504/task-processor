@@ -221,10 +221,15 @@ https://localhost:444 {
     "--mount", `type=bind,source=${config},target=/etc/caddy/Caddyfile,readonly`, "--mount", `type=bind,source=${caddyData},target=/data`,
     caddyImage, "caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]);
   const caFile = path.join(caddyData, "caddy", "pki", "authorities", "local", "root.crt");
+  const leafFiles = [
+    path.join(caddyData, "caddy", "certificates", "local", "127.0.0.1", "127.0.0.1.crt"),
+    path.join(caddyData, "caddy", "certificates", "local", "localhost", "localhost.crt"),
+  ];
   await until(async () => {
     const pem = await readFile(caFile, "utf8");
-    return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024;
-  }, "CADDY_CA", 60_000);
+    const leaves = await Promise.all(leafFiles.map(file => readFile(file, "utf8")));
+    return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024 && leaves.every(leaf => leaf.includes("BEGIN CERTIFICATE") && leaf.length < 64 * 1024);
+  }, "CADDY_CERTIFICATES", 60_000);
   await until(async () => (await fetch(`http://127.0.0.1:${ports.mail}/api/v1/info`, { signal: AbortSignal.timeout(2_000) })).ok, "MAILPIT", 60_000);
   return caFile;
 }
