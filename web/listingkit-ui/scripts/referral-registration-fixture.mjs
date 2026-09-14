@@ -741,6 +741,7 @@ async function startOwnedContainers(ports) {
   const caddyData = path.join(caddyRoot, "data");
   await mkdir(caddyData, { recursive: true });
   const config = path.join(caddyRoot, "Caddyfile");
+  const providerFailureResponse = JSON.stringify({ code: 13, message: "run-owned selective business read failure" });
   await writePrivate(config, `{
   admin off
   local_certs
@@ -790,10 +791,10 @@ https://localhost:445 {
     path_regexp metadata_read ^/v2/users/[^/]+/metadata/search$
   }
   handle @user_business_read {
-    respond "{\"code\":13,\"message\":\"run-owned selective business read failure\"}" 503
+    respond \`${providerFailureResponse}\` 503
   }
   handle @metadata_business_read {
-    respond "{\"code\":13,\"message\":\"run-owned selective business read failure\"}" 503
+    respond \`${providerFailureResponse}\` 503
   }
   handle {
     reverse_proxy http://proxy:80 {
