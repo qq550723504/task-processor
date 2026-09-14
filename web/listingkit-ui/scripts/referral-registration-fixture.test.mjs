@@ -199,7 +199,7 @@ test("CLI makes report write and half-write failures observable and nonzero", ()
 test("CLI observes a real child-process exit through the production process wrapper", () => {
   const result = runCLI("real-child-failure");
   assert.equal(result.process.status, 1);
-  assert.equal(result.output.report.business.code, "PROCESS_FAILED:NODE_EXE");
+  assert.equal(result.output.report.business.code, `PROCESS_FAILED:${path.basename(process.execPath).replace(/[^A-Za-z0-9_-]/g, "_").toUpperCase()}`);
 });
 
 test("atomic report persistence removes a real half-write when rename fails", () => {
