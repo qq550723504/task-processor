@@ -183,6 +183,7 @@ test("manual partial evidence rejects mixed identity and preserves a known failu
   const failed = screenReaderObservation("registration-pending", 2, { result: "FAIL" });
   const partial = screenReaderPartialEvidence([first, failed], screenReaderAuthority());
   assert.equal(partial.status, "FAIL");
+  assert.equal(partial.evidenceStage, "CHECKPOINT_SNAPSHOT");
   assert.equal(partial.operator, first.operator);
   assert.equal(partial.observations[0].nonce, undefined);
   assert.equal(screenReaderPartialEvidence([first], screenReaderAuthority()).status, "NOT_RUN");
@@ -193,33 +194,56 @@ test("manual partial evidence is terminal in the persisted lifecycle report", as
   const { orchestrateFixtureLifecycle } = await runner();
   const cleanup = phase => ({ phase, status: "PASS", actions: [], residuals: { status: "PASS", containers: 0, volumes: 0, networks: 0, listeners: 0 } });
   for (const code of ["SCREEN_READER_SESSION_ABORTED", "SCREEN_READER_CHECKPOINT_TIMEOUT", "SCREEN_READER_BROWSER_CLOSED", "SCREEN_READER_BUSINESS_FAILED"]) {
-    const report = { manualAccessibility: { status: code.includes("ABORTED") ? "FAIL" : "NOT_RUN", sessionStatus: "IN_PROGRESS" } };
+    const observations = code.includes("TIMEOUT") ? [{ checkpointId: "registration-initial", result: "PASS" }] : [];
+    const report = { manualAccessibility: { status: code.includes("ABORTED") ? "FAIL" : "NOT_RUN", sessionStatus: "IN_PROGRESS", observations } };
     let persisted;
+    let persistedManual;
     await orchestrateFixtureLifecycle({
       report,
       runBusiness: async () => { throw new Error(code); },
       runCleanup: async phase => cleanup(phase),
+      persistManualEvidence: async value => { persistedManual = structuredClone(value); },
       persistReport: async value => { persisted = structuredClone(value); },
       emitFailure: () => {},
       now: () => "2026-09-14T12:00:00.000Z",
     });
+    assert.deepEqual(persistedManual, persisted.manualAccessibility);
     assert.equal(persisted.manualAccessibility.status, code.includes("ABORTED") ? "FAIL" : "NOT_RUN");
+    assert.equal(persisted.manualAccessibility.evidenceStage, "FINAL_SESSION_EVIDENCE");
     assert.equal(persisted.manualAccessibility.sessionStatus, "TERMINATED");
     assert.equal(persisted.manualAccessibility.terminationReason, code);
     assert.equal(persisted.manualAccessibility.finishedAt, "2026-09-14T12:00:00.000Z");
+    assert.deepEqual(persisted.manualAccessibility.observations, observations);
   }
+  const completed = { manualAccessibility: { status: "PASS", evidenceStage: "FINAL_SESSION_EVIDENCE", sessionStatus: "COMPLETED", observations: [{ checkpointId: "overview-entry-unavailable", result: "PASS" }] } };
+  let completedManual;
+  await orchestrateFixtureLifecycle({
+    report: completed,
+    runBusiness: async () => {},
+    runCleanup: async phase => cleanup(phase),
+    persistManualEvidence: async value => { completedManual = structuredClone(value); },
+    persistReport: async () => {},
+    emitFailure: () => {},
+  });
+  assert.equal(completedManual.sessionStatus, "COMPLETED");
+  assert.equal(completedManual.terminationReason, undefined);
+
   const report = { manualAccessibility: { status: "FAIL", sessionStatus: "IN_PROGRESS" } };
+  let reportPersisted = false;
   const outcome = await orchestrateFixtureLifecycle({
     report,
     runBusiness: async () => { throw new Error("SCREEN_READER_SESSION_ABORTED"); },
     runCleanup: async phase => cleanup(phase),
-    persistReport: async () => { throw new Error("REPORT_WRITE_FAILED"); },
+    persistManualEvidence: async () => { throw new Error("OBSERVATIONS_WRITE_FAILED"); },
+    persistReport: async () => { reportPersisted = true; },
     emitFailure: () => {},
   });
   assert.equal(outcome.report.manualAccessibility.status, "FAIL");
   assert.equal(outcome.report.manualAccessibility.sessionStatus, "TERMINATED");
   assert.equal(outcome.report.manualAccessibility.terminationReason, "SCREEN_READER_SESSION_ABORTED");
   assert.equal(outcome.report.evidence.status, "FAIL");
+  assert.equal(outcome.report.evidence.code, "OBSERVATIONS_WRITE_FAILED");
+  assert.equal(reportPersisted, false);
 });
 
 test("manual acknowledgement binds to the observed phase and exact state attempt", async () => {

@@ -159,6 +159,8 @@ export function evaluateScreenReaderEvidence(observations, authority = {}) {
   });
   return {
     status: failed ? "FAIL" : "PASS",
+    evidenceStage: "FINAL_SESSION_EVIDENCE",
+    sessionStatus: "COMPLETED",
     runId: authority.runId,
     sourceSha: authority.sourceSha,
     webSha: authority.webSha,
@@ -213,6 +215,7 @@ export function screenReaderPartialEvidence(observations, authority = {}) {
   const identity = observations[0];
   return {
     status: observations.some(item => item.result === "FAIL") ? "FAIL" : "NOT_RUN",
+    evidenceStage: "CHECKPOINT_SNAPSHOT",
     sessionStatus: "IN_PROGRESS",
     ...authority,
     operator: identity.operator,
@@ -735,12 +738,13 @@ export async function runCleanupPass({ phase, actions, inspectResiduals, now = (
 export function finalizeScreenReaderSessionEvidence(report, finishedAt) {
   const manual = report.manualAccessibility;
   if (!manual || typeof manual !== "object" || manual.sessionStatus !== "IN_PROGRESS") return;
+  manual.evidenceStage = "FINAL_SESSION_EVIDENCE";
   manual.sessionStatus = "TERMINATED";
   manual.terminationReason = report.business?.code ?? (report.business?.status === "PASS" ? "BUSINESS_COMPLETED" : "BUSINESS_FAILED");
   manual.finishedAt = finishedAt;
 }
 
-export async function orchestrateFixtureLifecycle({ report, runBusiness, runCleanup, persistReport, emitFailure, now = () => new Date().toISOString() }) {
+export async function orchestrateFixtureLifecycle({ report, runBusiness, runCleanup, persistManualEvidence = async () => {}, persistReport, emitFailure, now = () => new Date().toISOString() }) {
   report.startedAt ??= now();
   report.business = { status: "NOT_RUN", startedAt: now() };
   try {
@@ -778,6 +782,7 @@ export async function orchestrateFixtureLifecycle({ report, runBusiness, runClea
   report.evidence = { status: "PASS" };
 
   try {
+    if (report.manualAccessibility && typeof report.manualAccessibility === "object") await persistManualEvidence(report.manualAccessibility);
     await persistReport(report);
   } catch (error) {
     report.evidence = { status: "FAIL", code: safeCode(error) };
@@ -3567,6 +3572,10 @@ async function main() {
       await browserChain(origins, ports, machine);
     },
     runCleanup: phase => cleanup(machine, bootstrap, phase),
+    persistManualEvidence: async value => {
+      ensure(outputDirectory, "REPORT_DIRECTORY_UNAVAILABLE");
+      await writeJSONAtomic(path.join(outputDirectory, "screen-reader-observations.json"), value);
+    },
     persistReport: async value => {
       ensure(outputDirectory, "REPORT_DIRECTORY_UNAVAILABLE");
       await writeJSONAtomic(path.join(outputDirectory, "report.json"), value);
