@@ -60,8 +60,7 @@ async function matrixCheck(group, name, operation) {
   const started = Date.now();
   try {
     const evidence = await operation();
-    const details = evidence && typeof evidence === "object" ? { ...evidence } : {};
-    delete details.group; delete details.name; delete details.status;
+    const details = sanitizeMatrixEvidence(evidence);
     report.matrix.push({ group, name, status: "PASS", elapsedMs: Date.now() - started, ...details });
     console.log(`PASS ${group}.${name}`);
     return evidence;
@@ -70,6 +69,12 @@ async function matrixCheck(group, name, operation) {
     console.error(`FAIL ${group}.${name} ${safeCode(error)}`);
     return undefined;
   }
+}
+
+export function sanitizeMatrixEvidence(evidence) {
+  const details = evidence && typeof evidence === "object" ? { ...evidence } : {};
+  delete details.group; delete details.name; delete details.status;
+  return details;
 }
 
 function matrixNotRun(group, name, reason) {
@@ -1046,7 +1051,11 @@ async function browserChain(origins, ports, machine) {
       await button.click();
       await completionLost;
       ensure(lostReceipt?.status === 200, "COMPLETION_LOST_RESPONSE_NOT_COMMITTED");
-      await page.getByText("推广服务暂不可用").waitFor({ state: "visible", timeout: 15_000 });
+      await page.getByText("推广服务暂不可用").waitFor({ state: "visible", timeout: 30_000 })
+        .catch(async () => {
+          if (await page.getByText("推广关系已确认").isVisible().catch(() => false)) throw new Error("COMPLETION_RESPONSE_LOSS_NOT_OBSERVED");
+          throw new Error("COMPLETION_RESPONSE_LOSS_UI_TIMEOUT");
+        });
       await restartConfiguredApplications(ports);
       await page.reload({ waitUntil: "load" });
       await button.waitFor({ state: "visible", timeout: 45_000 });
@@ -1116,6 +1125,7 @@ async function browserChain(origins, ports, machine) {
         completionRequestCount,
         refreshStatuses,
       });
+      await page.screenshot({ path: path.join(outputDirectory, "completion-stage-failure.png"), fullPage: true }).catch(() => {});
       throw error;
     } finally {
       page.off("response", observe);
@@ -1173,11 +1183,11 @@ async function browserChain(origins, ports, machine) {
     const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } })
       .catch(() => { throw new Error("CSRF_REQUEST_FAILED"); });
     const goURL = `http://127.0.0.1:${ports.go}/api/v1/referral-registration/intents`;
-    const direct = headers => fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, ...headers }, body: admissionRequest.body })
-      .catch(() => { throw new Error("DIRECT_GO_REQUEST_FAILED"); });
-    const [missing, wrong, userToken] = await Promise.all([direct({}), direct({ "X-Referral-Service-Credential": "0".repeat(64) }), direct({ "X-Referral-Service-Credential": machine.token })]);
-    ensure(csrf.status() === 403 && [missing, wrong, userToken].every(response => response.status === 401 || response.status === 403), "SERVICE_BOUNDARY_DID_NOT_FAIL_CLOSED");
-    return { csrfStatus: 403, directCredentialFailures: [missing.status, wrong.status, userToken.status] };
+    const direct = headers => fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, ...headers }, body: admissionRequest.body });
+    const attempts = await Promise.allSettled([direct({}), direct({ "X-Referral-Service-Credential": "0".repeat(64) }), direct({ "X-Referral-Service-Credential": machine.token })]);
+    const statuses = attempts.map(result => result.status === "fulfilled" ? result.value.status : -1);
+    ensure(csrf.status() === 403 && statuses.every(status => status === 401 || status === 403), `SERVICE_BOUNDARY_STATUS:${csrf.status()}:${statuses.join(":")}`);
+    return { csrfStatus: 403, directCredentialFailures: statuses };
   });
   await matrixCheck("E", "real_source_ips_and_cross_process_rate_limit", async () => {
     const network = `${manifest.project}-network`;

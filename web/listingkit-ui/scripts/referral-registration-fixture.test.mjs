@@ -94,6 +94,11 @@ test("one persistent base-resource failure does not skip later owned resources",
   assert.equal(result.status, "FAIL");
 });
 
+test("matrix evidence cannot overwrite its group name or PASS classification", async () => {
+  const { sanitizeMatrixEvidence } = await runner();
+  assert.deepEqual(sanitizeMatrixEvidence({ group: "wrong", name: "wrong", status: 200, httpStatus: 200 }), { httpStatus: 200 });
+});
+
 test("a cleanup-state query failure is UNKNOWN and cannot exit successfully", async () => {
   const { orchestrateFixtureLifecycle, runCleanupPass } = await runner();
   const cleanup = cleanupActions({ inspectionFailure: "QUERY_FAILED:DOCKER" });
