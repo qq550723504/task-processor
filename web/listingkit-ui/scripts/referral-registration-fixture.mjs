@@ -1059,8 +1059,13 @@ export async function waitForScreenReaderDecisionOrPageClose(waitForDecision, pa
   }
 }
 
+export function screenReaderPageError(page, error) {
+  return page.isClosed() ? new Error("SCREEN_READER_BROWSER_CLOSED") : error;
+}
+
 async function collectScreenReaderObservation(checkpointId, page, options = {}) {
   if (!screenReaderSession) return undefined;
+  if (page.isClosed()) throw new Error("SCREEN_READER_BROWSER_CLOSED");
   const sequence = screenReaderSession.observations.length + 1;
   ensure(screenReaderCheckpointPlan[sequence - 1]?.id === checkpointId, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
   const url = new URL(page.url());
@@ -1097,7 +1102,8 @@ async function collectScreenReaderObservation(checkpointId, page, options = {}) 
   console.log(`SCREEN_READER_CHECKPOINT ${checkpointId} ${manifest.runId}`);
   const decision = await waitForScreenReaderDecisionOrPageClose(signal => waitForScreenReaderDecision(status, timeoutMs, signal), page);
   if (decision.kind === "abort") throw new Error("SCREEN_READER_SESSION_ABORTED");
-  ensure(!page.isClosed() && new URL(page.url()).pathname === status.page && JSON.stringify(page.viewportSize()) === JSON.stringify(status.viewport), "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
+  if (page.isClosed()) throw new Error("SCREEN_READER_BROWSER_CLOSED");
+  ensure(new URL(page.url()).pathname === status.page && JSON.stringify(page.viewportSize()) === JSON.stringify(status.viewport), "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
   const observation = decision.observation;
   ensure(observation.checkpointId === checkpointId && observation.sequence === sequence && observation.nonce === status.nonce && observation.checkpointAttemptId === status.checkpointAttemptId, "SCREEN_READER_OBSERVATION_STALE");
   validateScreenReaderObservationFields(observation);
@@ -1120,6 +1126,7 @@ async function prepareScreenReaderAction(checkpointId, page, button, requestPred
     await button.click();
     return undefined;
   }
+  if (page.isClosed()) throw new Error("SCREEN_READER_BROWSER_CLOSED");
   const sequence = screenReaderSession.observations.length + 1;
   ensure(screenReaderCheckpointPlan[sequence - 1]?.id === checkpointId, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
   const now = Date.now();
@@ -1134,7 +1141,7 @@ async function prepareScreenReaderAction(checkpointId, page, button, requestPred
     const observer = new MutationObserver(record);
     observer.observe(element, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "aria-disabled"] });
     window.__issue413ScreenReaderTransitions[attemptId] = { transitions, disconnect: () => observer.disconnect() };
-  }, checkpointAttemptId);
+  }, checkpointAttemptId).catch(error => { throw screenReaderPageError(page, error); });
   const status = {
     schemaVersion: "issue413-screen-reader-checkpoint-v1",
     runId: manifest.runId,
@@ -1166,7 +1173,7 @@ async function prepareScreenReaderAction(checkpointId, page, button, requestPred
   const decision = waitForScreenReaderDecision(status, timeoutMs, waitController.signal).then(value => ({ kind: "decision", value }), error => ({ kind: "error", error }));
   const outcome = await Promise.race([request, decision]);
   waitController.abort();
-  if (outcome.kind === "error") throw outcome.error;
+  if (outcome.kind === "error") throw screenReaderPageError(page, outcome.error);
   if (outcome.kind === "decision") {
     ensure(outcome.value.kind === "abort", "SCREEN_READER_OBSERVATION_BEFORE_ACTION");
     throw new Error("SCREEN_READER_SESSION_ABORTED");
@@ -1176,12 +1183,13 @@ async function prepareScreenReaderAction(checkpointId, page, button, requestPred
 
 async function finishScreenReaderAction(page, action) {
   if (!screenReaderSession || !action) return undefined;
+  if (page.isClosed()) throw new Error("SCREEN_READER_BROWSER_CLOSED");
   return page.evaluate(attemptId => {
     const state = window.__issue413ScreenReaderTransitions?.[attemptId];
     state?.disconnect?.();
     if (window.__issue413ScreenReaderTransitions) delete window.__issue413ScreenReaderTransitions[attemptId];
     return state?.transitions ?? [];
-  }, action.checkpointAttemptId);
+  }, action.checkpointAttemptId).catch(error => { throw screenReaderPageError(page, error); });
 }
 
 async function initializeScreenReaderSession() {

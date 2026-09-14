@@ -283,7 +283,7 @@ test("manual terminal evidence fails closed on actual observation and report fil
 });
 
 test("manual checkpoint wait reports an actual Playwright page close", async () => {
-  const { orchestrateFixtureLifecycle, waitForScreenReaderDecisionOrPageClose, writeJSONAtomic } = await runner();
+  const { orchestrateFixtureLifecycle, screenReaderPageError, waitForScreenReaderDecisionOrPageClose, writeJSONAtomic } = await runner();
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch({ headless: true });
   try {
@@ -311,6 +311,10 @@ test("manual checkpoint wait reports an actual Playwright page close", async () 
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+    const actionPage = await browser.newPage();
+    const requestFailure = actionPage.waitForRequest(() => true, { timeout: 10_000 }).catch(error => error);
+    await actionPage.close();
+    assert.equal(screenReaderPageError(actionPage, await requestFailure).message, "SCREEN_READER_BROWSER_CLOSED");
   } finally {
     await browser.close();
   }
