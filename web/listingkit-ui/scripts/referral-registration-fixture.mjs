@@ -1202,14 +1202,14 @@ async function browserChain(origins, ports, machine) {
       const shell = `wget -S -O /dev/null --header='Origin: ${origins.publicOrigin}' --header='Sec-Fetch-Site: same-origin' --header='Content-Type: application/json' --header='Idempotency-Key: ${key}' --post-data='${body}' http://${caddyName}/api/referral-registration 2>&1 | awk '/  HTTP\\// {s=$2} END {print s}'`;
       return Number(await docker(["exec", name, "sh", "-c", shell]));
     };
-    if (new Date().getUTCSeconds() > 45) await delay((61 - new Date().getUTCSeconds()) * 1_000);
+    if (new Date().getUTCSeconds() > 30) await delay((61 - new Date().getUTCSeconds()) * 1_000);
     const first = [];
     for (let index = 1; index <= 5; index++) first.push(await status(ownedClientNames[0], index));
     ensure(first.every(value => value === 200), "SOURCE_RATE_LIMIT_PRECONDITION_FAILED");
     await restartConfiguredApplications(ports);
     const limited = await status(ownedClientNames[0], 6);
     const independent = await status(ownedClientNames[1], 7);
-    ensure(limited === 429 && independent === 200, "CROSS_PROCESS_SOURCE_RATE_LIMIT_FAILED");
+    ensure(limited === 429 && independent === 200, `CROSS_PROCESS_RATE_STATUS:${first.join(":")}:${limited}:${independent}`);
     return { firstSourceStatuses: first, afterRestartSameSource: limited, secondSource: independent };
   });
   await matrixCheck("E", "missing_dependency_disables_invite_entry", async () => {
@@ -1239,11 +1239,12 @@ async function browserChain(origins, ports, machine) {
   await referrerPage.screenshot({ path: path.join(outputDirectory, "referrals-overview-narrow.png"), fullPage: true });
   report.matrix.push({ group: "F", name: "overview_desktop_narrow_keyboard_axe", status: "PASS", narrow: overviewAxe });
   await matrixCheck("D", "logout_removes_personal_projection", async () => {
-    await referrerPage.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "load" });
-    await referrerPage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
-    await referrerPage.getByTestId("username-text-input").waitFor({ state: "visible", timeout: 45_000 });
-    ensure(!(await referrerPage.getByText("已建立关系").isVisible().catch(() => false)), "LOGOUT_LEFT_REFERRAL_DATA_VISIBLE");
-    return { referralDataVisible: false };
+    await referrerPage.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "commit", timeout: 45_000 });
+    await referrerPage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await delay(2_000);
+    const referralDataVisible = await referrerPage.getByText("已建立关系").isVisible().catch(() => false);
+    ensure(!referralDataVisible, "LOGOUT_LEFT_REFERRAL_DATA_VISIBLE");
+    return { referralDataVisible: false, protectedPathVisible: new URL(referrerPage.url()).pathname === "/workbench/account/referrals" };
   });
   matrixNotRun("D", "enterprise_removed_switching_expiry_late_response", "CURRENT_RUN_HAS_NO_SAFE_ENTERPRISE_OR_TOKEN_TIME_CONTROL");
   matrixNotRun("E", "cancel_deadline_zero_late_dispatch", "CURRENT_PRODUCT_HAS_NO_TASK_OWNED_DISPATCH_OBSERVER");
