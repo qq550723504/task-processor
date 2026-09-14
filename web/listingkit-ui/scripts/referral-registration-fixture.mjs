@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir, unlink, rm, rename, cp, symlink } from "node:fs/promises";
-import { createServer as createHTTPServer } from "node:http";
+import { createServer as createHTTPServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -49,6 +49,7 @@ let machineDeleted = false;
 let runtimeOwnershipUnknown = false;
 let secondaryApplication;
 let dispatchObserver;
+let bffIngressObserver;
 let secondaryGeneration = 0;
 
 function ensure(value, code = "ASSERTION_FAILED") {
@@ -277,6 +278,7 @@ export async function runParallelInstanceRateLimitControl(operations) {
 export function evaluateCancelDeadlineControl(observation) {
   ensure(observation.healthy?.status === 200 && observation.healthy?.bffDispatches === 1 && observation.healthy?.goDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
   ensure(observation.healthy?.released === true && observation.healthy?.responsesCompleted === 1, "HEALTHY_HELD_PATH_NOT_RELEASED");
+  ensure(observation.healthy?.ingress?.received === 1 && observation.healthy?.ingress?.bodyChunksForwarded > 0 && observation.healthy?.ingress?.requestBodiesCompleted === 1 && observation.healthy?.ingress?.responsesCompleted === 1, "HEALTHY_INGRESS_PATH_NOT_OBSERVED");
   ensure(observation.cancelled?.outcome === "client_cancelled", "CLIENT_CANCELLATION_NOT_OBSERVED");
   ensure(observation.deadline?.status === 504, "DEADLINE_RESPONSE_NOT_OBSERVED");
   ensure(observation.cancelledSettled?.bffDispatches === 1 && observation.deadlineSettled?.bffDispatches === 1, "BFF_DISPATCH_NOT_OBSERVED");
@@ -284,7 +286,11 @@ export function evaluateCancelDeadlineControl(observation) {
   ensure(observation.cancelledSettled?.clientConnectionsClosed === 1 && observation.deadlineSettled?.clientConnectionsClosed === 1, "OBSERVER_CLIENT_CLOSE_NOT_OBSERVED");
   ensure(observation.cancelledSettled?.released === true && observation.deadlineSettled?.released === true, "OBSERVER_DELAY_NOT_RELEASED");
   ensure(observation.cancelledSettled?.openHandlers === 0 && observation.deadlineSettled?.openHandlers === 0, "OBSERVER_REQUEST_NOT_RELEASED");
+  ensure(observation.bodyReady?.localBodyChunksProduced > 0, "BODY_STREAM_NOT_PRODUCED");
+  ensure(observation.bodyReady?.ingressRequests === 1 && observation.bodyReady?.ingressBodyChunksReceived > 0 && observation.bodyReady?.bodyChunksForwardedToBFF > 0 && observation.bodyReady?.bffConnections > 0 && observation.bodyReady?.ingressRequestBodiesCompleted === 0, "BODY_READ_INGRESS_NOT_OBSERVED");
   ensure(observation.bodyCancelled?.outcome === "client_cancelled" && observation.bodyCancelled?.bodyChunksProduced > 0, "BODY_READ_CANCELLATION_NOT_OBSERVED");
+  ensure((observation.bodyCancelledSettled?.ingressAborted > 0 || observation.bodyCancelledSettled?.ingressClientConnectionsClosed > 0) && observation.bodyCancelledSettled?.bffConnectionsClosed > 0, "BODY_READ_CONNECTION_CLOSE_NOT_OBSERVED");
+  ensure(observation.bodyCancelledSettled?.ingressOpenHandlers === 0, "BODY_READ_INGRESS_HANDLER_NOT_RELEASED");
   ensure(observation.bodyCancelledSettled?.bffDispatches === 0 && observation.bodyCancelledSettled?.goDispatches === 0, "BODY_READ_LATE_DISPATCH_OBSERVED");
   ensure(observation.bodyCancelledSettled?.openHandlers === 0, "BODY_READ_OBSERVER_REQUEST_NOT_RELEASED");
   return { healthyDispatchObserved: true, clientCancellationObserved: true, deadlineResponseObserved: true, bodyReadCancellationObserved: true, zeroLateDispatch: true, resourcesReleased: true };
@@ -303,11 +309,11 @@ export async function runCancelDeadlineControl(operations) {
   const deadline = await timingOut.result;
   const deadlineSettled = await operations.settle("deadline");
   const bodyCancelling = operations.beginBodyCancelledRequest();
-  await bodyCancelling.ready;
+  const bodyReady = await bodyCancelling.ready;
   await bodyCancelling.cancel();
   const bodyCancelled = await bodyCancelling.result;
   const bodyCancelledSettled = await operations.settleBodyCancellation();
-  const observation = { healthy, cancelled, cancelledSettled, deadline, deadlineSettled, bodyCancelled, bodyCancelledSettled };
+  const observation = { healthy, cancelled, cancelledSettled, deadline, deadlineSettled, bodyReady, bodyCancelled, bodyCancelledSettled };
   evaluateCancelDeadlineControl(observation);
   return observation;
 }
@@ -670,7 +676,7 @@ async function freePort(preferred = 0) {
 async function fixturePorts() {
   const reserved = new Set(Object.values(manifest.ports));
   const allocated = {};
-  for (const name of ["next", "provider", "providerFault", "public", "publicSecondary", "mail", "goSecondary", "nextSecondary", "observer"]) {
+  for (const name of ["next", "provider", "providerFault", "public", "publicSecondary", "mail", "goSecondary", "nextSecondary", "observer", "bffIngress"]) {
     let candidate;
     do {
       const preferred = 20_000 + randomBytes(2).readUInt16BE() % 40_000;
@@ -797,7 +803,7 @@ async function startOwnedContainers(ports) {
   }
 }
 :81 {
-  reverse_proxy host.docker.internal:${ports.nextSecondary} {
+  reverse_proxy host.docker.internal:${ports.bffIngress} {
     header_up -X-Referral-Service-Credential
     header_up -X-Referral-Client-IP
     header_up X-ListingKit-Client-IP {remote_host}
@@ -856,7 +862,7 @@ https://localhost:444 {
 }
 https://localhost:446 {
   tls internal
-  reverse_proxy host.docker.internal:${ports.nextSecondary} {
+  reverse_proxy host.docker.internal:${ports.bffIngress} {
     header_up -X-Referral-Service-Credential
     header_up -X-Referral-Client-IP
     header_up X-ListingKit-Client-IP {remote_host}
@@ -1141,6 +1147,122 @@ export async function stopDispatchObserver() {
   current.server.closeAllConnections?.();
   await new Promise((resolve, reject) => current.server.close(error => error ? reject(error) : resolve()));
   ensure(await freePort(current.port) === current.port, "OBSERVER_PORT_NOT_RELEASED");
+}
+
+export async function startBFFIngressObserver(port, upstreamPort) {
+  if (bffIngressObserver) return bffIngressObserver;
+  const observations = new Map();
+  let mode = "pass";
+  const state = name => {
+    if (!observations.has(name)) observations.set(name, {
+      received: 0,
+      bodyChunksReceived: 0,
+      bodyChunksForwarded: 0,
+      requestBodiesCompleted: 0,
+      upstreamConnections: 0,
+      upstreamConnectionsClosed: 0,
+      upstreamResponses: 0,
+      responsesCompleted: 0,
+      inboundAborted: 0,
+      clientConnectionsClosed: 0,
+      openHandlers: 0,
+      completedHandlers: 0,
+    });
+    return observations.get(name);
+  };
+  const server = createHTTPServer((request, response) => {
+    const selected = mode;
+    const record = state(selected);
+    record.received++;
+    record.openHandlers++;
+    let handlerCompleted = false;
+    let upstreamResponseCompleted = false;
+    const finishHandler = () => {
+      if (handlerCompleted) return;
+      handlerCompleted = true;
+      record.openHandlers--;
+      record.completedHandlers++;
+    };
+    response.once("finish", finishHandler);
+    response.once("close", () => {
+      if (!response.writableEnded) record.clientConnectionsClosed++;
+      finishHandler();
+    });
+    const upstream = httpRequest({
+      hostname: "127.0.0.1",
+      port: upstreamPort,
+      method: request.method,
+      path: request.url,
+      headers: request.headers,
+    }, upstreamResponse => {
+      record.upstreamResponses++;
+      response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
+      upstreamResponse.on("end", () => {
+        upstreamResponseCompleted = true;
+        record.responsesCompleted++;
+      });
+      upstreamResponse.pipe(response);
+    });
+    upstream.once("socket", socket => {
+      const connected = () => { record.upstreamConnections++; };
+      if (socket.connecting) socket.once("connect", connected);
+      else connected();
+    });
+    upstream.once("close", () => {
+      if (!upstreamResponseCompleted) record.upstreamConnectionsClosed++;
+    });
+    upstream.once("error", () => {
+      if (!response.headersSent && !response.destroyed) response.writeHead(502, { "content-type": "application/json" });
+      if (!response.destroyed) response.end(JSON.stringify({ error: "bff_unavailable" }));
+    });
+    request.on("data", chunk => {
+      record.bodyChunksReceived++;
+      if (!upstream.destroyed) upstream.write(chunk, () => { record.bodyChunksForwarded++; });
+    });
+    request.once("end", () => {
+      record.requestBodiesCompleted++;
+      if (!upstream.destroyed) upstream.end();
+    });
+    request.once("aborted", () => {
+      record.inboundAborted++;
+      upstream.destroy();
+    });
+    request.once("error", () => upstream.destroy());
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+  const address = server.address();
+  ensure(address && typeof address === "object", "BFF_INGRESS_ADDRESS_MISSING");
+  bffIngressObserver = {
+    port: address.port,
+    server,
+    arm(name) { mode = name; observations.delete(name); state(name); },
+    async waitBodyForwarded(name) {
+      return until(() => {
+        const record = state(name);
+        return record.received > 0 && record.bodyChunksReceived > 0 && record.bodyChunksForwarded > 0 && record.upstreamConnections > 0;
+      }, `BFF_INGRESS_${name.toUpperCase()}_BODY_FORWARDED`, 30_000);
+    },
+    async waitClosed(name) {
+      return until(() => {
+        const record = state(name);
+        return (record.inboundAborted > 0 || record.clientConnectionsClosed > 0) && record.upstreamConnectionsClosed > 0 && record.openHandlers === 0;
+      }, `BFF_INGRESS_${name.toUpperCase()}_CLOSED`, 30_000);
+    },
+    async waitCompleted(name) {
+      return until(() => state(name).received > 0 && state(name).openHandlers === 0, `BFF_INGRESS_${name.toUpperCase()}_COMPLETED`, 30_000);
+    },
+    snapshot(name) { return { ...state(name) }; },
+  };
+  return bffIngressObserver;
+}
+
+export async function stopBFFIngressObserver() {
+  if (!bffIngressObserver) return;
+  const current = bffIngressObserver;
+  bffIngressObserver = undefined;
+  current.server.closeAllConnections?.();
+  await new Promise((resolve, reject) => current.server.close(error => error ? reject(error) : resolve()));
+  ensure(await freePort(current.port) === current.port, "BFF_INGRESS_PORT_NOT_RELEASED");
 }
 
 async function startSecondaryApplication(origins, ports) {
@@ -2407,6 +2529,7 @@ async function browserChain(origins, ports, machine) {
     await writeJSON(path.join(outputDirectory, "m1-user-token-observation.json"), { ...observation, tokenSubject: "redacted-human-subject" });
     return { ...evaluateUserTokenBoundary(observation), precondition: "human_oidc_userinfo_200_and_service_credential_200", injection: "oidc_user_token_in_service_credential_header_while_storage_stopped", positiveControl: "independent_service_credential_admission", observation: observation.zeroDispatchEvidence, invariants: ["user_token_not_service_credential", "referral_digest_unchanged"], directBusinessDispatchObserver: observation.directBusinessDispatchObserver };
   });
+  await startBFFIngressObserver(ports.bffIngress, ports.nextSecondary);
   await startDispatchObserver(ports.observer, `http://127.0.0.1:${ports.goSecondary}`);
   await matrixCheck("C", "provider_business_read_failure_preserves_receipt", async () => {
     const providerContext = await browser.newContext({ viewport: { width: 900, height: 700 }, locale: "zh-CN", ignoreHTTPSErrors: true });
@@ -2454,6 +2577,7 @@ async function browserChain(origins, ports, machine) {
       await controlPage.goto(`${origins.secondaryPublicOrigin}/referrals/register?code=${encodeURIComponent(code)}`, { waitUntil: "load", timeout: 90_000 });
       const bodyFor = suffix => ({ code, email: `m2.${suffix}.${manifest.runId.slice(0, 8)}@example.test`, givenName: "Deadline", familyName: "Control" });
       const begin = (mode, suffix) => {
+        bffIngressObserver.arm(mode);
         dispatchObserver.arm(mode);
         const result = controlPage.evaluate(async ({ body, key, mode }) => {
           const controller = new AbortController();
@@ -2479,6 +2603,7 @@ async function browserChain(origins, ports, machine) {
       };
       const beginBodyCancellation = () => {
         const mode = "body-cancel";
+        bffIngressObserver.arm(mode);
         dispatchObserver.arm(mode);
         const result = controlPage.evaluate(async ({ body, key }) => {
           const controller = new AbortController();
@@ -2507,7 +2632,20 @@ async function browserChain(origins, ports, machine) {
           }
         }, { body: bodyFor("body-cancel"), key: createHash("sha256").update(`${manifest.runId}:body-cancel`).digest("hex") });
         return {
-          ready: until(() => controlPage.evaluate(() => window.__issue413M2BodyState?.chunksProduced > 0), "BODY_STREAM_STARTED", 10_000),
+          ready: (async () => {
+            const localBodyChunksProduced = await until(() => controlPage.evaluate(() => window.__issue413M2BodyState?.chunksProduced), "BODY_STREAM_STARTED", 10_000);
+            await bffIngressObserver.waitBodyForwarded(mode);
+            const ingress = bffIngressObserver.snapshot(mode);
+            ensure(ingress.requestBodiesCompleted === 0, "BODY_STREAM_COMPLETED_BEFORE_CANCELLATION");
+            return {
+              localBodyChunksProduced,
+              ingressRequests: ingress.received,
+              ingressBodyChunksReceived: ingress.bodyChunksReceived,
+              bodyChunksForwardedToBFF: ingress.bodyChunksForwarded,
+              bffConnections: ingress.upstreamConnections,
+              ingressRequestBodiesCompleted: ingress.requestBodiesCompleted,
+            };
+          })(),
           cancel: () => controlPage.evaluate(() => window.__issue413M2BodyAbortController?.abort()),
           result,
         };
@@ -2519,8 +2657,9 @@ async function browserChain(origins, ports, machine) {
           dispatchObserver.release("healthy");
           const result = await request.result;
           await dispatchObserver.waitReleased("healthy");
+          await bffIngressObserver.waitCompleted("healthy");
           const snapshot = dispatchObserver.snapshot("healthy");
-          return { status: result.status, ...snapshot };
+          return { status: result.status, ...snapshot, ingress: bffIngressObserver.snapshot("healthy") };
         },
         beginCancelledRequest: () => begin("cancel", "cancel"),
         beginDeadlineRequest: () => begin("deadline", "deadline"),
@@ -2528,13 +2667,23 @@ async function browserChain(origins, ports, machine) {
           await dispatchObserver.waitClientClosed(mode);
           dispatchObserver.release(mode);
           await dispatchObserver.waitReleased(mode);
+          await bffIngressObserver.waitCompleted(mode);
           await delay(1_000);
-          return dispatchObserver.snapshot(mode);
+          return { ...dispatchObserver.snapshot(mode), ingress: bffIngressObserver.snapshot(mode) };
         },
         beginBodyCancelledRequest: beginBodyCancellation,
         settleBodyCancellation: async () => {
+          await bffIngressObserver.waitClosed("body-cancel");
           await delay(16_000);
-          return dispatchObserver.snapshot("body-cancel");
+          const ingress = bffIngressObserver.snapshot("body-cancel");
+          return {
+            ...dispatchObserver.snapshot("body-cancel"),
+            ingressAborted: ingress.inboundAborted,
+            ingressClientConnectionsClosed: ingress.clientConnectionsClosed,
+            bffConnectionsClosed: ingress.upstreamConnectionsClosed,
+            ingressOpenHandlers: ingress.openHandlers,
+            ingressCompletedHandlers: ingress.completedHandlers,
+          };
         },
       });
       await writeJSON(path.join(outputDirectory, "m2-cancel-deadline-observation.json"), observation);
@@ -2689,6 +2838,7 @@ async function cleanup(machine, bootstrap, phase) {
     { name: "browser", run: async () => { if (browser) { await browser.close(); browser = null; } } },
     { name: "secondary-application", run: async () => stopSecondaryApplication() },
     { name: "dispatch-observer", run: async () => stopDispatchObserver() },
+    { name: "bff-ingress-observer", run: async () => stopBFFIngressObserver() },
     { name: "created-subject", run: async () => {
       if (manifest && bootstrap && report.createdSubject && !createdSubjectDeleted) {
         await provider(`/v2/users/${encodeURIComponent(report.createdSubject)}`, undefined, bootstrap, "DELETE");
@@ -2825,10 +2975,17 @@ async function main() {
       await check("configured_application_start", () => startConfiguredApplications(ports));
       if (process.env.ISSUE413_CONFIGURATION_SMOKE === "1") throw new Error("CONFIGURATION_SMOKE_COMPLETE");
       if (process.env.ISSUE413_M2_CONFIGURATION_SMOKE === "1") {
+        await check("m2_bff_ingress_observer_start", () => startBFFIngressObserver(ports.bffIngress, ports.nextSecondary));
         await check("m2_dispatch_observer_start", () => startDispatchObserver(ports.observer, `http://127.0.0.1:${ports.goSecondary}`));
         await check("m2_secondary_application_start", () => startSecondaryApplication(origins, ports));
+        await check("m2_bff_ingress_proxy_health", async () => {
+          const health = await providerTLSRead(origins.secondaryPublicOrigin, "/api/auth/providers", origins.caFile, "");
+          ensure(health.status === 200 && health.payload?.zitadel, "BFF_INGRESS_PROXY_HEALTH_FAILED");
+          return { status: health.status };
+        });
         await check("m2_secondary_application_stop", () => stopSecondaryApplication());
         await check("m2_dispatch_observer_stop", () => stopDispatchObserver());
+        await check("m2_bff_ingress_observer_stop", () => stopBFFIngressObserver());
         throw new Error("M2_CONFIGURATION_SMOKE_COMPLETE");
       }
       await browserChain(origins, ports, machine);

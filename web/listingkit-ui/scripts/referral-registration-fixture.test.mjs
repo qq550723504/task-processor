@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { createServer as createHTTPServer } from "node:http";
+import { createServer as createHTTPServer, request as httpRequest } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -622,12 +622,12 @@ test("M2 cancellation and deadline controls observe zero late business dispatch"
     result: Promise.resolve(requestKind === "deadline" ? { status: 504 } : { outcome: "client_cancelled" }),
   });
   const observation = await runCancelDeadlineControl({
-    healthyRequest: async () => { calls.push("healthy"); return { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1 }; },
+    healthyRequest: async () => { calls.push("healthy"); return { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1, ingress: { received: 1, bodyChunksForwarded: 1, requestBodiesCompleted: 1, responsesCompleted: 1 } }; },
     beginCancelledRequest: () => { calls.push("cancel:begin"); return result("cancel"); },
     beginDeadlineRequest: () => { calls.push("deadline:begin"); return result("deadline"); },
     settle: async kind => { calls.push(`${kind}:settle`); return { bffDispatches: 1, goDispatches: 0, openHandlers: 0, clientConnectionsClosed: 1, released: true }; },
-    beginBodyCancelledRequest: () => { calls.push("body:begin"); return { ...result("cancel"), result: Promise.resolve({ outcome: "client_cancelled", bodyChunksProduced: 1 }) }; },
-    settleBodyCancellation: async () => { calls.push("body:settle"); return { bffDispatches: 0, goDispatches: 0, openHandlers: 0 }; },
+    beginBodyCancelledRequest: () => { calls.push("body:begin"); return { ...result("cancel"), ready: Promise.resolve({ localBodyChunksProduced: 1, ingressRequests: 1, ingressBodyChunksReceived: 1, bodyChunksForwardedToBFF: 1, bffConnections: 1, ingressRequestBodiesCompleted: 0 }), result: Promise.resolve({ outcome: "client_cancelled", bodyChunksProduced: 1 }) }; },
+    settleBodyCancellation: async () => { calls.push("body:settle"); return { bffDispatches: 0, goDispatches: 0, openHandlers: 0, ingressAborted: 1, ingressClientConnectionsClosed: 0, bffConnectionsClosed: 1, ingressOpenHandlers: 0 }; },
   });
   assert.deepEqual(evaluateCancelDeadlineControl(observation), {
     healthyDispatchObserved: true,
@@ -643,32 +643,35 @@ test("M2 cancellation and deadline controls observe zero late business dispatch"
 test("M2 late dispatch and leaked observer requests fail closed", async () => {
   const { evaluateCancelDeadlineControl } = await runner();
   assert.throws(() => evaluateCancelDeadlineControl({
-    healthy: { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1 },
+    healthy: { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1, ingress: { received: 1, bodyChunksForwarded: 1, requestBodiesCompleted: 1, responsesCompleted: 1 } },
     cancelled: { outcome: "client_cancelled" },
     cancelledSettled: { bffDispatches: 1, goDispatches: 1, openHandlers: 0, clientConnectionsClosed: 1, released: true },
     deadline: { status: 504 },
     deadlineSettled: { bffDispatches: 1, goDispatches: 0, openHandlers: 1, clientConnectionsClosed: 1, released: true },
+    bodyReady: { localBodyChunksProduced: 1, ingressRequests: 1, ingressBodyChunksReceived: 1, bodyChunksForwardedToBFF: 1, bffConnections: 1, ingressRequestBodiesCompleted: 0 },
     bodyCancelled: { outcome: "client_cancelled", bodyChunksProduced: 1 },
-    bodyCancelledSettled: { bffDispatches: 0, goDispatches: 0, openHandlers: 0 },
+    bodyCancelledSettled: { bffDispatches: 0, goDispatches: 0, openHandlers: 0, ingressAborted: 1, ingressClientConnectionsClosed: 0, bffConnectionsClosed: 1, ingressOpenHandlers: 0 },
   }), /LATE_BUSINESS_DISPATCH_OBSERVED/);
 });
 
 test("M2 cancellation evidence requires observer receipt, real connection close, explicit release, and handler cleanup", async () => {
   const { evaluateCancelDeadlineControl } = await runner();
   const valid = {
-    healthy: { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1 },
+    healthy: { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1, ingress: { received: 1, bodyChunksForwarded: 1, requestBodiesCompleted: 1, responsesCompleted: 1 } },
     cancelled: { outcome: "client_cancelled" },
     cancelledSettled: { bffDispatches: 1, goDispatches: 0, openHandlers: 0, clientConnectionsClosed: 1, released: true },
     deadline: { status: 504 },
     deadlineSettled: { bffDispatches: 1, goDispatches: 0, openHandlers: 0, clientConnectionsClosed: 1, released: true },
+    bodyReady: { localBodyChunksProduced: 1, ingressRequests: 1, ingressBodyChunksReceived: 1, bodyChunksForwardedToBFF: 1, bffConnections: 1, ingressRequestBodiesCompleted: 0 },
     bodyCancelled: { outcome: "client_cancelled", bodyChunksProduced: 1 },
-    bodyCancelledSettled: { bffDispatches: 0, goDispatches: 0, openHandlers: 0 },
+    bodyCancelledSettled: { bffDispatches: 0, goDispatches: 0, openHandlers: 0, ingressAborted: 1, ingressClientConnectionsClosed: 0, bffConnectionsClosed: 1, ingressOpenHandlers: 0 },
   };
   assert.doesNotThrow(() => evaluateCancelDeadlineControl(valid));
   assert.throws(() => evaluateCancelDeadlineControl({ ...valid, cancelledSettled: { ...valid.cancelledSettled, bffDispatches: 0 } }), /BFF_DISPATCH_NOT_OBSERVED/);
   assert.throws(() => evaluateCancelDeadlineControl({ ...valid, deadlineSettled: { ...valid.deadlineSettled, clientConnectionsClosed: 0 } }), /OBSERVER_CLIENT_CLOSE_NOT_OBSERVED/);
   assert.throws(() => evaluateCancelDeadlineControl({ ...valid, cancelledSettled: { ...valid.cancelledSettled, released: false } }), /OBSERVER_DELAY_NOT_RELEASED/);
   assert.throws(() => evaluateCancelDeadlineControl({ ...valid, deadlineSettled: { ...valid.deadlineSettled, openHandlers: 1 } }), /OBSERVER_REQUEST_NOT_RELEASED/);
+  assert.throws(() => evaluateCancelDeadlineControl({ ...valid, bodyReady: { ...valid.bodyReady, ingressRequests: 0 } }), /BODY_READ_INGRESS_NOT_OBSERVED/);
   assert.throws(() => evaluateCancelDeadlineControl({ ...valid, bodyCancelledSettled: { ...valid.bodyCancelledSettled, bffDispatches: 1 } }), /BODY_READ_LATE_DISPATCH_OBSERVED/);
 });
 
@@ -726,6 +729,50 @@ test("M2 delayed observer forwards a still-live request through the same held pa
   } finally {
     observer.release("cancel");
     await stopDispatchObserver();
+    upstream.closeAllConnections?.();
+    await new Promise((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+test("M2 BFF ingress observer proves a partial body reached the upstream connection before cancellation", async () => {
+  const upstreamObservation = { chunks: 0, bytes: 0, aborted: 0 };
+  const upstream = createHTTPServer(request => {
+    request.on("data", chunk => {
+      upstreamObservation.chunks++;
+      upstreamObservation.bytes += chunk.length;
+    });
+    request.once("aborted", () => { upstreamObservation.aborted++; });
+  });
+  await new Promise((resolve, reject) => { upstream.once("error", reject); upstream.listen(0, "127.0.0.1", resolve); });
+  const upstreamAddress = upstream.address();
+  assert.ok(upstreamAddress && typeof upstreamAddress === "object");
+  const { startBFFIngressObserver, stopBFFIngressObserver } = await runner();
+  const ingress = await startBFFIngressObserver(0, upstreamAddress.port);
+  let client;
+  try {
+    ingress.arm("body-cancel");
+    client = httpRequest({ hostname: "127.0.0.1", port: ingress.port, method: "POST", path: "/api/referral-registration", headers: { "content-type": "application/json" } });
+    client.on("error", () => {});
+    client.write(Buffer.from('{"partial":', "utf8"));
+    await ingress.waitBodyForwarded("body-cancel");
+    const ready = ingress.snapshot("body-cancel");
+    assert.equal(ready.received, 1);
+    assert.ok(ready.bodyChunksReceived > 0);
+    assert.ok(ready.bodyChunksForwarded > 0);
+    assert.equal(ready.requestBodiesCompleted, 0);
+    assert.equal(ready.upstreamConnections, 1);
+    assert.ok(upstreamObservation.chunks > 0);
+    assert.ok(upstreamObservation.bytes > 0);
+
+    client.destroy();
+    await ingress.waitClosed("body-cancel");
+    const settled = ingress.snapshot("body-cancel");
+    assert.ok(settled.inboundAborted > 0 || settled.clientConnectionsClosed > 0);
+    assert.ok(settled.upstreamConnectionsClosed > 0);
+    assert.equal(settled.openHandlers, 0);
+  } finally {
+    client?.destroy();
+    await stopBFFIngressObserver();
     upstream.closeAllConnections?.();
     await new Promise((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
   }
