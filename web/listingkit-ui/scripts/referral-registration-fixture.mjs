@@ -60,7 +60,9 @@ async function matrixCheck(group, name, operation) {
   const started = Date.now();
   try {
     const evidence = await operation();
-    report.matrix.push({ group, name, status: "PASS", elapsedMs: Date.now() - started, ...(evidence && typeof evidence === "object" ? evidence : {}) });
+    const details = evidence && typeof evidence === "object" ? { ...evidence } : {};
+    delete details.group; delete details.name; delete details.status;
+    report.matrix.push({ group, name, status: "PASS", elapsedMs: Date.now() - started, ...details });
     console.log(`PASS ${group}.${name}`);
     return evidence;
   } catch (error) {
@@ -1145,7 +1147,7 @@ async function browserChain(origins, ports, machine) {
     });
     ensure(response.status() === 200, "SELF_READ_FAILED");
     ensure(await referralTablesDigest() === before, "SELF_READ_MUTATED_REFERRAL_TABLES");
-    return { status: 200, referralTablesChanged: false };
+    return { httpStatus: 200, referralTablesChanged: false };
   });
   await matrixCheck("D", "admin_reads_only_own_personal_projection", async () => {
     const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
@@ -1168,9 +1170,11 @@ async function browserChain(origins, ports, machine) {
     return { ownCount: 0 };
   });
   await matrixCheck("E", "bff_and_go_reject_untrusted_credentials_and_csrf", async () => {
-    const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } });
+    const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } })
+      .catch(() => { throw new Error("CSRF_REQUEST_FAILED"); });
     const goURL = `http://127.0.0.1:${ports.go}/api/v1/referral-registration/intents`;
-    const direct = headers => fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, ...headers }, body: admissionRequest.body });
+    const direct = headers => fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, ...headers }, body: admissionRequest.body })
+      .catch(() => { throw new Error("DIRECT_GO_REQUEST_FAILED"); });
     const [missing, wrong, userToken] = await Promise.all([direct({}), direct({ "X-Referral-Service-Credential": "0".repeat(64) }), direct({ "X-Referral-Service-Credential": machine.token })]);
     ensure(csrf.status() === 403 && [missing, wrong, userToken].every(response => response.status === 401 || response.status === 403), "SERVICE_BOUNDARY_DID_NOT_FAIL_CLOSED");
     return { csrfStatus: 403, directCredentialFailures: [missing.status, wrong.status, userToken.status] };
@@ -1203,13 +1207,12 @@ async function browserChain(origins, ports, machine) {
     const disabled = `${secret}.disabled`;
     await rename(secret, disabled);
     try {
-      await restartConfiguredApplications(ports);
       await referrerPage.reload({ waitUntil: "load" });
       await referrerPage.getByText("注册入口暂不可用").waitFor({ state: "visible", timeout: 30_000 });
       ensure(!(await referrerPage.getByRole("link", { name: "打开邀请链接" }).isVisible().catch(() => false)), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
     } finally {
       await rename(disabled, secret).catch(() => {});
-      await restartConfiguredApplications(ports);
+      await referrerPage.reload({ waitUntil: "load" }).catch(() => {});
     }
     return { inviteEnabled: false };
   });
