@@ -19,11 +19,19 @@ const ownerLabel = "com.shuomi.issue413.run";
 const runtimeOwnerLabel = "com.shuomi.issue357.run";
 const caddyImage = "caddy:2.11.4-alpine";
 const mailImage = "axllent/mailpit:v1.30.4";
+const matrixPlan = {
+  A: ["admission_response_loss_same_request_and_receipt", "same_key_original_receipt_and_different_payload_conflict", "multiple_referral_code_conflict", "reload_with_recovery_fragment_resumes_original", "fresh_browser_empty_form_no_auto_submit", "lost_credentials_safe_rejection"],
+  B: ["existing_account_cannot_be_bound_to_new_intent", "new_browser_invalid_verification_does_not_verify", "verified_without_authenticator_cannot_complete", "official_verification_interruption_new_browser_reverify", "another_subject_cannot_claim_intent"],
+  C: ["completion_response_loss_restart_receipt_replay", "concurrent_first_completion_one_relationship", "concurrent_completion_replays_one_durable_receipt", "provider_business_read_failure_preserves_receipt", "projection_failure_preserves_completion_receipt"],
+  D: ["authenticated_get_is_pure_on_referral_tables", "admin_reads_only_own_personal_projection", "no_enterprise_user_can_read_own_empty_projection", "enterprise_removed_switching", "logout_removes_personal_projection", "expired_session_and_late_response"],
+  E: ["trusted_proxy_overwrites_forged_forwarding", "bff_and_go_reject_untrusted_credentials_and_csrf", "real_source_ips_and_cross_process_rate_limit", "parallel_application_instances_share_rate_limit", "real_user_token_rejected_as_service_credential", "missing_dependency_disables_invite_entry", "cancel_deadline_zero_late_dispatch"],
+  F: ["registration_desktop_axe", "registration_narrow_keyboard_axe", "completion_desktop_narrow_keyboard_axe", "overview_desktop_narrow_keyboard_axe", "screen_reader"],
+};
 const report = {
   schemaVersion: "issue413-referral-registration-fixture-v2",
   status: "NOT_RUN",
   checks: [],
-  matrix: [],
+  matrix: Object.entries(matrixPlan).flatMap(([group, names]) => names.map(name => ({ group, name, status: "NOT_RUN" }))),
   manualAccessibility: "NOT_RUN",
   invocationId: randomUUID(),
   injectionPoint: "none",
@@ -61,14 +69,20 @@ async function matrixCheck(group, name, operation) {
   try {
     const evidence = await operation();
     const details = sanitizeMatrixEvidence(evidence);
-    report.matrix.push({ group, name, status: "PASS", elapsedMs: Date.now() - started, ...details });
+    matrixRecord(group, name, "PASS", { elapsedMs: Date.now() - started, ...details });
     console.log(`PASS ${group}.${name}`);
     return evidence;
   } catch (error) {
-    report.matrix.push({ group, name, status: "FAIL", elapsedMs: Date.now() - started, code: safeCode(error) });
+    matrixRecord(group, name, "FAIL", { elapsedMs: Date.now() - started, code: safeCode(error) });
     console.error(`FAIL ${group}.${name} ${safeCode(error)}`);
     return undefined;
   }
+}
+
+function matrixRecord(group, name, status, evidence = {}) {
+  const item = report.matrix.find(entry => entry.group === group && entry.name === name);
+  ensure(item, "UNKNOWN_MATRIX_ITEM");
+  Object.assign(item, { status, ...sanitizeMatrixEvidence(evidence) });
 }
 
 export function sanitizeMatrixEvidence(evidence) {
@@ -78,7 +92,7 @@ export function sanitizeMatrixEvidence(evidence) {
 }
 
 function matrixNotRun(group, name, reason) {
-  report.matrix.push({ group, name, status: "NOT_RUN", reason });
+  matrixRecord(group, name, "NOT_RUN", { reason });
 }
 
 function safeCode(error) {
@@ -535,14 +549,20 @@ async function startConfiguredApplications(ports) {
 }
 
 async function restartConfiguredApplications(ports) {
+  const before = await readJSON(path.join(manifest.directory, "processes.json"));
+  const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
   await writePrivate(path.join(manifest.directory, "stop-services"), "stop\n");
-  await until(async () => {
-    await readJSON(path.join(manifest.directory, "services-stopped.json"));
-    return true;
-  }, "CONFIGURED_APPLICATION_STOP", 90_000);
+  const stopped = await until(() => readJSON(path.join(manifest.directory, "services-stopped.json")), "CONFIGURED_APPLICATION_STOP", 90_000);
+  ensure(stopped.passed === true, "CONFIGURED_APPLICATION_STOP_FAILED");
+  ensure(!processAlive(before.go?.pid) && !processAlive(before.next?.pid), "OLD_APPLICATION_PROCESS_ALIVE");
   await startConfiguredApplications(ports);
-  return { processMemoryLost: true, persistentDatabaseRetained: true };
+  const after = await readJSON(path.join(manifest.directory, "processes.json"));
+  ensure(["go", "next"].every(name => before[name]?.pid !== after[name]?.pid && before[name]?.started !== after[name]?.started), "APPLICATION_PROCESS_IDENTITY_REUSED");
+  ensure(manifest.resources?.[`${manifest.project}-commercial-db`]?.id === databaseID, "DATABASE_IDENTITY_CHANGED");
+  return { processMemoryLost: true, oldProcessesExited: true, processIdentitiesChanged: true, persistentDatabaseRetained: true };
 }
+
+function processAlive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 
 async function probeProviderProxy(providerOrigin, caFile, machineToken) {
   const ca = await readFile(caFile);
@@ -778,6 +798,9 @@ async function browserChain(origins, ports, machine) {
       await submitButton.click();
       await responseLost;
       ensure(lostAdmission?.status === 200, "ADMISSION_LOST_RESPONSE_NOT_COMMITTED");
+      ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(lostAdmission.payload?.intentID ?? ""), "ADMISSION_LOST_INTENT_INVALID");
+      const fixedSubject = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT subject FROM public.registration_intents WHERE id='${lostAdmission.payload.intentID}'`]);
+      ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(fixedSubject), "ADMISSION_FIXED_SUBJECT_INVALID");
       await page.getByText("暂时无法确认注册结果").waitFor({ state: "visible", timeout: 15_000 });
       ensure(await page.getByLabel("邮箱").isDisabled() || await page.getByLabel("邮箱").getAttribute("readonly") !== null, "ADMISSION_INPUT_NOT_LOCKED");
       const submitted = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration" && response.request().method() === "POST", { timeout: 30_000 });
@@ -810,8 +833,10 @@ async function browserChain(origins, ports, machine) {
       ensure(resumeStatuses.includes(200), "REGISTRATION_RESUME_SUCCESS_NOT_OBSERVED");
       await page.screenshot({ path: path.join(outputDirectory, "registration-mail-pending-desktop.png"), fullPage: true });
       ensure(admissionRequest?.body && /^[A-Za-z0-9_-]{43,128}$/.test(admissionRequest.key), "ADMISSION_REQUEST_NOT_OBSERVED");
-      report.matrix.push({ group: "A", name: "admission_response_loss_same_request_and_receipt", status: "PASS", originalIntentPreserved: true, originalSubjectPreserved: true, originalSecretPreserved: true });
-      report.matrix.push({ group: "F", name: "registration_desktop_axe", status: "PASS", axe: desktopAxe });
+      const replayedSubject = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT subject FROM public.registration_intents WHERE id='${admittedIntentID}'`]);
+      ensure(replayedSubject === fixedSubject, "ADMISSION_REPLAY_CHANGED_SUBJECT");
+      matrixRecord("A", "admission_response_loss_same_request_and_receipt", "PASS", { originalIntentPreserved: true, originalSubjectPreserved: true, originalSecretPreserved: true });
+      matrixRecord("F", "registration_desktop_axe", "PASS", { axe: desktopAxe });
       return { viewport: "1440x1000", automated: "PASS", ...desktopAxe, lostResponseStatus: lostAdmission.status, responseStatus: response.status(), resumeStatuses, ...(recoveryResponseStatus ? { recoveryResponseStatus } : {}) };
     } catch (error) {
       await page.screenshot({ path: path.join(outputDirectory, "registration-stage-failure.png"), fullPage: true }).catch(() => {});
@@ -842,12 +867,14 @@ async function browserChain(origins, ports, machine) {
     const replayPayload = await replay.json();
     ensure(JSON.stringify(replayPayload) === JSON.stringify(admissionPayload), "IDEMPOTENT_REPLAY_CHANGED_RECEIPT");
     const changed = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, {
-      data: { ...JSON.parse(admissionRequest.body), givenName: "Changed" },
+      data: { ...JSON.parse(admissionRequest.body), code: `${code}x` },
       headers: { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin", "Idempotency-Key": admissionRequest.key },
       maxRedirects: 0,
     });
     ensure(changed.status() === 409, "IDEMPOTENCY_PAYLOAD_CONFLICT_NOT_REJECTED");
-    report.matrix.push({ group: "A", name: "same_key_original_receipt_and_different_payload_conflict", status: "PASS", replayStatus: 200, conflictStatus: 409 });
+    matrixRecord("A", "same_key_original_receipt_and_different_payload_conflict", "PASS", { replayStatus: 200, conflictStatus: 409 });
+    matrixRecord("A", "multiple_referral_code_conflict", "PASS", { conflictStatus: 409 });
+    matrixRecord("E", "trusted_proxy_overwrites_forged_forwarding", "PASS", { untrustedDirectStatus: 403 });
     return { untrustedDirectStatus: 403, spoofedLoopbackIgnored: true, upstreamSource: "non-loopback Docker gateway" };
   });
   await check("registration_ui_narrow_and_keyboard", async () => {
@@ -862,11 +889,11 @@ async function browserChain(origins, ports, machine) {
     ensure(await page.evaluate(() => document.activeElement !== document.body), "KEYBOARD_FOCUS_MISSING");
     const axe = await assertNoSeriousA11y(page);
     await page.screenshot({ path: path.join(outputDirectory, "registration-mail-pending-narrow.png"), fullPage: true });
-    report.matrix.push({ group: "A", name: "reload_with_recovery_fragment_resumes_original", status: "PASS" });
-    report.matrix.push({ group: "F", name: "registration_narrow_keyboard_axe", status: "PASS", axe });
+    matrixRecord("A", "reload_with_recovery_fragment_resumes_original", "PASS");
+    matrixRecord("F", "registration_narrow_keyboard_axe", "PASS", { axe });
     return { viewport: "390x844", automated: "PASS", ...axe };
   });
-  await matrixCheck("A", "fresh_browser_without_recovery_cannot_switch_identity", async () => {
+  await matrixCheck("A", "fresh_browser_empty_form_no_auto_submit", async () => {
     const fresh = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
     const freshPage = await fresh.newPage();
     let writes = 0;
@@ -876,6 +903,10 @@ async function browserChain(origins, ports, machine) {
     await freshPage.reload();
     await freshPage.getByRole("button", { name: "开始注册" }).waitFor({ state: "visible" });
     ensure(writes === 0, "FRESH_BROWSER_SILENTLY_RECOVERED");
+    await freshPage.goto(`${origins.publicOrigin}/referrals/register?code=${encodeURIComponent(code)}#intentID=${encodeURIComponent(admittedIntentID)}`);
+    await freshPage.getByRole("button", { name: "开始注册" }).waitFor({ state: "visible" });
+    ensure(writes === 0, "INCOMPLETE_RECOVERY_CAPABILITY_DISPATCHED");
+    matrixRecord("A", "lost_credentials_safe_rejection", "PASS", { recoveryDispatched: false, identitySwitched: false });
     await fresh.close();
     return { writes: 0, newIdentityCreated: false };
   });
@@ -1024,6 +1055,7 @@ async function browserChain(origins, ports, machine) {
   });
 
   let completionReceipt;
+  let firstCompletionReceiptsMatched = false;
   await check("same_subject_completion", async () => {
     const button = page.getByRole("button", { name: "完成推广关系" });
     await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_ACTION_MISSING"); });
@@ -1041,8 +1073,13 @@ async function browserChain(origins, ports, machine) {
       const completionLost = new Promise((resolve, reject) => {
         page.route("**/api/account/referrals/complete", async route => {
           try {
-            const upstream = await route.fetch();
-            lostReceipt = { status: upstream.status(), payload: await upstream.json() };
+            const headers = { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": subject };
+            const responses = await Promise.all([route.fetch(), ...Array.from({ length: 3 }, () => context.request.post(`${origins.publicOrigin}/api/account/referrals/complete`, { headers }))]);
+            const payloads = await Promise.all(responses.map(response => response.json()));
+            ensure(responses.every(response => response.status() === 200), "CONCURRENT_FIRST_COMPLETION_FAILED");
+            firstCompletionReceiptsMatched = payloads.every(payload => JSON.stringify(payload) === JSON.stringify(payloads[0]));
+            ensure(firstCompletionReceiptsMatched, "CONCURRENT_FIRST_COMPLETION_CHANGED_RECEIPT");
+            lostReceipt = { status: responses[0].status(), payload: payloads[0] };
             await route.abort("connectionreset");
             resolve();
           } catch { reject(new Error("COMPLETION_RESPONSE_LOSS_INJECTION_FAILED")); }
@@ -1056,7 +1093,7 @@ async function browserChain(origins, ports, machine) {
           if (await page.getByText("推广关系已确认").isVisible().catch(() => false)) throw new Error("COMPLETION_RESPONSE_LOSS_NOT_OBSERVED");
           throw new Error("COMPLETION_RESPONSE_LOSS_UI_TIMEOUT");
         });
-      await restartConfiguredApplications(ports);
+      const restartEvidence = await restartConfiguredApplications(ports);
       await page.reload({ waitUntil: "load" });
       await button.waitFor({ state: "visible", timeout: 45_000 });
       await waitForReactHydration(page, button);
@@ -1091,8 +1128,8 @@ async function browserChain(origins, ports, machine) {
       await page.getByText("推广汇总暂不可用").waitFor({ state: "visible", timeout: 15_000 });
       ensure(refreshStatuses.includes(503), "COMPLETION_PROJECTION_FAILURE_NOT_OBSERVED");
       await page.screenshot({ path: path.join(outputDirectory, "completion-receipt-with-projection-failure.png"), fullPage: true });
-      report.matrix.push({ group: "C", name: "completion_response_loss_restart_receipt_replay", status: "PASS", realApplicationRestart: true, originalReceiptPreserved: true });
-      report.matrix.push({ group: "C", name: "projection_failure_preserves_completion_receipt", status: "PASS", projectionStatus: 503 });
+      matrixRecord("C", "completion_response_loss_restart_receipt_replay", "PASS", { ...restartEvidence, originalReceiptPreserved: true });
+      matrixRecord("C", "projection_failure_preserves_completion_receipt", "PASS", { injectionBoundary: "browser projection response", projectionStatus: 503 });
       await page.reload({ waitUntil: "load" });
       await button.waitFor({ state: "visible", timeout: 30_000 });
       const durableReplay = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 });
@@ -1106,7 +1143,7 @@ async function browserChain(origins, ports, machine) {
       ensure(await page.evaluate(() => document.activeElement !== document.body), "COMPLETION_KEYBOARD_FOCUS_MISSING");
       const narrowAxe = await assertNoSeriousA11y(page);
       await page.screenshot({ path: path.join(outputDirectory, "referrals-complete-narrow.png"), fullPage: true });
-      report.matrix.push({ group: "F", name: "completion_desktop_narrow_keyboard_axe", status: "PASS", desktop: desktopAxe, narrow: narrowAxe });
+      matrixRecord("F", "completion_desktop_narrow_keyboard_axe", "PASS", { desktop: desktopAxe, narrow: narrowAxe });
     } catch (error) {
       const knownErrors = ["登录已失效", "登录身份已变化", "官方邮箱或认证方式尚未完成", "注册确认期限已结束", "推广关系存在冲突", "暂时无法确认操作结果", "推广服务尚未配置", "推广服务暂不可用", "推广请求超时", "推广请求未完成"];
       let displayedError = "none";
@@ -1142,6 +1179,7 @@ async function browserChain(origins, ports, machine) {
     ensure(receipts.every(receipt => JSON.stringify(receipt) === JSON.stringify(completionReceipt)), "CONCURRENT_COMPLETION_CHANGED_RECEIPT");
     const facts = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", "SELECT (SELECT count(*) FROM public.referral_relations) || '|' || (SELECT count(*) FROM public.referral_receipts) || '|' || (SELECT count(*) FROM public.registration_intents WHERE state='CONSUMED' AND ciphertext IS NULL)"]);
     ensure(facts === "1|1|1", "CONCURRENT_COMPLETION_FACT_COUNT_INVALID");
+    matrixRecord("C", "concurrent_first_completion_one_relationship", "PASS", { requests: 4, receiptMatched: firstCompletionReceiptsMatched, relations: 1 });
     return { requests: 4, relations: 1, receipts: 1, consumedIntents: 1 };
   });
   await check("referrer_real_count", async () => {
@@ -1237,7 +1275,7 @@ async function browserChain(origins, ports, machine) {
   ensure(await referrerPage.evaluate(() => document.activeElement !== document.body), "OVERVIEW_KEYBOARD_FOCUS_MISSING");
   const overviewAxe = await assertNoSeriousA11y(referrerPage);
   await referrerPage.screenshot({ path: path.join(outputDirectory, "referrals-overview-narrow.png"), fullPage: true });
-  report.matrix.push({ group: "F", name: "overview_desktop_narrow_keyboard_axe", status: "PASS", narrow: overviewAxe });
+  matrixRecord("F", "overview_desktop_narrow_keyboard_axe", "PASS", { narrow: overviewAxe });
   await matrixCheck("D", "logout_removes_personal_projection", async () => {
     await referrerPage.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "commit", timeout: 45_000 });
     await referrerPage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -1246,7 +1284,13 @@ async function browserChain(origins, ports, machine) {
     ensure(!referralDataVisible, "LOGOUT_LEFT_REFERRAL_DATA_VISIBLE");
     return { referralDataVisible: false, protectedPathVisible: new URL(referrerPage.url()).pathname === "/workbench/account/referrals" };
   });
-  matrixNotRun("D", "enterprise_removed_switching_expiry_late_response", "CURRENT_RUN_HAS_NO_SAFE_ENTERPRISE_OR_TOKEN_TIME_CONTROL");
+  matrixNotRun("D", "enterprise_removed_switching", "CURRENT_RUN_HAS_NO_SAFE_ENTERPRISE_SWITCH_CONTROL");
+  matrixNotRun("D", "expired_session_and_late_response", "CURRENT_RUN_HAS_NO_SAFE_TOKEN_TIME_CONTROL");
+  matrixNotRun("B", "official_verification_interruption_new_browser_reverify", "OFFICIAL_REVERIFY_CONTINUATION_NOT_EXECUTED");
+  matrixNotRun("C", "concurrent_first_completion_one_relationship", "ONLY_CONCURRENT_DURABLE_RECEIPT_REPLAY_EXECUTED");
+  matrixNotRun("C", "provider_business_read_failure_preserves_receipt", "ONLY_BROWSER_PROJECTION_FAILURE_EXECUTED");
+  matrixNotRun("E", "parallel_application_instances_share_rate_limit", "ONLY_SEQUENTIAL_PROCESS_RESTART_EXECUTED");
+  matrixNotRun("E", "real_user_token_rejected_as_service_credential", "ONLY_PROVIDER_MACHINE_TOKEN_REJECTED");
   matrixNotRun("E", "cancel_deadline_zero_late_dispatch", "CURRENT_PRODUCT_HAS_NO_TASK_OWNED_DISPATCH_OBSERVER");
   matrixNotRun("F", "screen_reader", "REAL_SCREEN_READER_NOT_EXECUTED");
   report.manualAccessibility = "NOT_RUN";
@@ -1341,7 +1385,7 @@ async function inspectResiduals() {
   let containers = 0;
   let volumes = 0;
   let networks = 0;
-  for (const name of [caddyName, mailName].filter(Boolean)) {
+  for (const name of [caddyName, mailName, ...ownedClientNames].filter(Boolean)) {
     const resource = await inspectDockerResource("container", name);
     if (!resource) continue;
     ensure(resource.Config?.Labels?.[ownerLabel] === manifest.runId, "CLEANUP_OWNERSHIP_MISMATCH");
