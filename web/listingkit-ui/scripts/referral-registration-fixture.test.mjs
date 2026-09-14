@@ -327,6 +327,27 @@ test("M1 enterprise authorization restoration fails closed after bounded retries
   }, { attempts: 2, pause: async () => {} }), /ENTERPRISE_AUTHORIZATION_RESTORE_FAILED/);
 });
 
+test("M1 enterprise personal projection uses and closes a fresh official session", async () => {
+  const { readFreshPersonalProjection } = await runner();
+  const calls = [];
+  const result = await readFreshPersonalProjection({
+    expectedSubject: "viewer",
+    openSession: async () => { calls.push("open"); return { id: "fresh" }; },
+    loginAndRead: async session => { calls.push(`read:${session.id}`); return { subject: "viewer", count: 1 }; },
+    closeSession: async session => { calls.push(`close:${session.id}`); },
+  });
+  assert.deepEqual(result, { subject: "viewer", count: 1 });
+  assert.deepEqual(calls, ["open", "read:fresh", "close:fresh"]);
+
+  await assert.rejects(readFreshPersonalProjection({
+    expectedSubject: "viewer",
+    openSession: async () => ({ id: "mismatch" }),
+    loginAndRead: async () => ({ subject: "admin", count: 0 }),
+    closeSession: async () => { calls.push("close:mismatch"); },
+  }), /PERSONAL_PROJECTION_SUBJECT_CHANGED/);
+  assert.equal(calls.at(-1), "close:mismatch");
+});
+
 test("M1 enterprise switch waits for committed React effects before dispatch", async () => {
   const { submitOrganizationSelection } = await runner();
   const response = { status: () => 200 };

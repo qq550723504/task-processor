@@ -239,6 +239,18 @@ export async function restoreAuthorizationEventually(operation, options = {}) {
   }
 }
 
+export async function readFreshPersonalProjection(operations) {
+  const session = await operations.openSession();
+  try {
+    const projection = await operations.loginAndRead(session);
+    ensure(projection?.subject === operations.expectedSubject, "PERSONAL_PROJECTION_SUBJECT_CHANGED");
+    ensure(Number.isInteger(projection.count) && projection.count >= 0, "PERSONAL_PROJECTION_COUNT_INVALID");
+    return projection;
+  } finally {
+    await operations.closeSession(session);
+  }
+}
+
 export async function submitOrganizationSelection({ switcher, organizationId, responsePromise }) {
   const readiness = await switcher.evaluate(async element => {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1645,9 +1657,22 @@ async function browserChain(origins, ports, machine) {
       },
       readPersonalProjection: async () => {
         enterpriseStage = "personal_projection";
-        await enterprisePage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
-        await enterprisePage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
-        return { subject: manifest.users.viewer.id, count: Number(await enterprisePage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
+        return readFreshPersonalProjection({
+          expectedSubject: manifest.users.viewer.id,
+          openSession: async () => {
+            const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+            return { context, page: await context.newPage() };
+          },
+          loginAndRead: async session => {
+            await login(session.page, origins.publicOrigin, viewerCredential, "/workbench/account/referrals");
+            const profile = await session.context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": manifest.users.viewer.id } });
+            ensure(profile.status() === 200, "PERSONAL_PROJECTION_IDENTITY_READ_FAILED");
+            const identity = await profile.json();
+            await session.page.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+            return { subject: identity.userId, count: Number(await session.page.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
+          },
+          closeSession: session => session.context.close(),
+        });
       },
       readAdminProjection: async () => {
         enterpriseStage = "admin_projection";
