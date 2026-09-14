@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer as createHTTPServer, request as httpRequest } from "node:http";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,6 +28,190 @@ function runCLI(name) {
   const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
   return { process: result, output: lines.length ? JSON.parse(lines.at(-1)) : null };
 }
+
+function screenReaderObservation(checkpointId, sequence, overrides = {}) {
+  const page = checkpointId.startsWith("registration-") ? "/referrals/register"
+    : checkpointId.startsWith("completion-") ? "/workbench/account/referrals/complete"
+      : "/workbench/account/referrals";
+  return {
+    checkpointId,
+    sequence,
+    page,
+    runId: "11111111-1111-4111-8111-111111111111",
+    nonce: `nonce-value-${sequence}`,
+    checkpointAttemptId: `checkpoint-attempt-${sequence}`,
+    stateObservedAt: "2026-09-14T09:59:59.000Z",
+    sourceSha: "a".repeat(40),
+    webSha: "a".repeat(40),
+    runnerNormalizedLFSha256: "b".repeat(64),
+    operator: "user-designated-operator",
+    designationReference: "https://github.com/qq550723504/task-processor/issues/413#issuecomment-1",
+    screenReader: { name: "NVDA", version: "2026.1" },
+    browser: { name: "Chromium", version: "140.0.0" },
+    operatingSystem: { name: "Windows", version: "Windows 11 Pro 10.0.26100" },
+    observationSource: "live operator dictation recorded by the writer",
+    runnerActions: ["prepared the task-owned state"],
+    stateAttempt: "stable",
+    viewport: { width: 1440, height: 1000 },
+    readingSequence: ["heading", "labels", "status"],
+    controlSequence: ["tab", "activate"],
+    announcedText: ["expected state announced"],
+    visibleErrors: [],
+    announcedErrors: [],
+    result: "PASS",
+    observedAt: "2026-09-14T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function screenReaderAuthority(runId = "11111111-1111-4111-8111-111111111111") {
+  return { runId, sourceSha: "a".repeat(40), webSha: "a".repeat(40), runnerNormalizedLFSha256: "b".repeat(64) };
+}
+
+test("manual screen-reader evidence requires all eight real operator checkpoints", async () => {
+  const { screenReaderCheckpointPlan, evaluateScreenReaderEvidence } = await runner();
+  assert.deepEqual(screenReaderCheckpointPlan.map(item => item.id), [
+    "registration-initial",
+    "registration-pending",
+    "registration-unknown",
+    "registration-mail-pending",
+    "completion-initial-pending",
+    "completion-receipt-projection-unavailable",
+    "overview-entry-available",
+    "overview-entry-unavailable",
+  ]);
+  const observations = screenReaderCheckpointPlan.map((item, index) => screenReaderObservation(item.id, index + 1));
+  const authority = screenReaderAuthority();
+  const passed = evaluateScreenReaderEvidence(observations, authority);
+  assert.equal(passed.status, "PASS");
+  assert.equal(passed.sourceSha, authority.sourceSha);
+  assert.equal(passed.checkpoints[0].page, "/referrals/register");
+  assert.equal(passed.checkpoints[0].checkpointAttemptId, observations[0].checkpointAttemptId);
+  assert.equal(passed.checkpoints[0].nonce, undefined);
+  assert.equal(evaluateScreenReaderEvidence(observations.map((item, index) => index === 5 ? { ...item, result: "FAIL" } : item), authority).status, "FAIL");
+  assert.equal(evaluateScreenReaderEvidence([], authority).status, "NOT_RUN");
+});
+
+test("manual evidence cannot pass from readiness, test controls, or a direct status field", async () => {
+  const { screenReaderCheckpointPlan, evaluateScreenReaderEvidence } = await runner();
+  const observations = screenReaderCheckpointPlan.map((item, index) => screenReaderObservation(item.id, index + 1));
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map(item => ({ ...item, controlReady: true, status: "PASS" })), screenReaderAuthority()), /SCREEN_READER_DIRECT_STATUS_FORBIDDEN/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map(item => ({ ...item, controlTest: true })), screenReaderAuthority()), /SCREEN_READER_TEST_EVIDENCE_FORBIDDEN/);
+  const missingAnnouncements = observations.map(item => ({ ...item, announcedText: undefined }));
+  assert.throws(() => evaluateScreenReaderEvidence(missingAnnouncements, screenReaderAuthority()), /SCREEN_READER_OBSERVATION_INCOMPLETE/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, page: "/wrong" } : item), screenReaderAuthority()), /SCREEN_READER_OBSERVATION_STATE_MISMATCH/);
+});
+
+test("manual evidence rejects missing duplicate out-of-order and inconsistent operator records", async () => {
+  const { screenReaderCheckpointPlan, evaluateScreenReaderEvidence } = await runner();
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const observations = screenReaderCheckpointPlan.map((item, index) => screenReaderObservation(item.id, index + 1));
+  assert.throws(() => evaluateScreenReaderEvidence(observations.slice(0, -1), screenReaderAuthority(runId)), /SCREEN_READER_CHECKPOINT_SET_INCOMPLETE/);
+  assert.throws(() => evaluateScreenReaderEvidence([...observations.slice(0, -1), observations[0]], screenReaderAuthority(runId)), /SCREEN_READER_CHECKPOINT_DUPLICATE/);
+  assert.throws(() => evaluateScreenReaderEvidence([observations[1], observations[0], ...observations.slice(2)], screenReaderAuthority(runId)), /SCREEN_READER_CHECKPOINT_OUT_OF_ORDER/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 4 ? { ...item, operator: "different-operator" } : item), screenReaderAuthority(runId)), /SCREEN_READER_OPERATOR_MISMATCH/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 4 ? { ...item, screenReader: { name: "Narrator", version: "1" } } : item), screenReaderAuthority(runId)), /SCREEN_READER_SOFTWARE_MISMATCH/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 4 ? { ...item, operatingSystem: { name: "Windows", version: "different" } } : item), screenReaderAuthority(runId)), /SCREEN_READER_OPERATING_SYSTEM_MISMATCH/);
+});
+
+test("manual evidence is bound to the owned run and rejects secrets or reusable links", async () => {
+  const { screenReaderCheckpointPlan, evaluateScreenReaderEvidence } = await runner();
+  const observations = screenReaderCheckpointPlan.map((item, index) => screenReaderObservation(item.id, index + 1));
+  assert.throws(() => evaluateScreenReaderEvidence(observations, screenReaderAuthority("22222222-2222-4222-8222-222222222222")), /SCREEN_READER_RUN_MISMATCH/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations, { ...screenReaderAuthority(), sourceSha: "c".repeat(40) }), /SCREEN_READER_SOURCE_MISMATCH/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, announcedText: ["resumeSecret=private-value"] } : item), screenReaderAuthority()), /SCREEN_READER_EVIDENCE_SECRET/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, announcedText: ["https:\/\/example.test\/verify?code=reusable"] } : item), screenReaderAuthority()), /SCREEN_READER_EVIDENCE_SECRET/);
+  assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, announcedText: ["https:\/\/example.test\/verify\/reusable"] } : item), screenReaderAuthority()), /SCREEN_READER_EVIDENCE_SECRET/);
+});
+
+test("manual decision is atomic idempotent and ack cannot overwrite abort", async () => {
+  const { writeScreenReaderDecision } = await runner();
+  const directory = await mkdtemp(path.join(tmpdir(), "issue413-screen-reader-decision-"));
+  const decisionFile = path.join(directory, "decision.json");
+  try {
+    const abortDecision = { kind: "abort", runId: "run", sequence: 1 };
+    assert.deepEqual(await writeScreenReaderDecision({ decisionFile, decision: abortDecision }), { recorded: true, replay: false, decision: abortDecision });
+    assert.deepEqual(await writeScreenReaderDecision({ decisionFile, decision: abortDecision }), { recorded: true, replay: true, decision: abortDecision });
+    await assert.rejects(writeScreenReaderDecision({ decisionFile, decision: { kind: "observation", runId: "run", sequence: 1 } }), /SCREEN_READER_DECISION_CONFLICT/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("manual acknowledgement binds to the observed phase and exact state attempt", async () => {
+  const { screenReaderObservationFromInput } = await runner();
+  const base = screenReaderObservation("registration-pending", 2);
+  const status = {
+    schemaVersion: "issue413-screen-reader-checkpoint-v1",
+    ...screenReaderAuthority(),
+    checkpointId: base.checkpointId,
+    sequence: base.sequence,
+    phase: "observation",
+    nonce: base.nonce,
+    checkpointAttemptId: base.checkpointAttemptId,
+    page: base.page,
+    stateObservedAt: base.stateObservedAt,
+    stateAttempt: { triggeredBy: "operator", transitions: [{ text: "正在提交…", disabled: true, at: base.stateObservedAt }] },
+    designationReference: base.designationReference,
+    browser: base.browser,
+    operatingSystem: base.operatingSystem,
+    viewport: base.viewport,
+    runnerActions: base.runnerActions,
+    expiresAt: "2099-09-14T10:10:00.000Z",
+  };
+  const input = {
+    checkpointId: base.checkpointId,
+    sequence: base.sequence,
+    nonce: base.nonce,
+    checkpointAttemptId: base.checkpointAttemptId,
+    operator: base.operator,
+    designationReference: base.designationReference,
+    screenReader: base.screenReader,
+    browser: base.browser,
+    observationSource: base.observationSource,
+    viewport: base.viewport,
+    readingSequence: base.readingSequence,
+    controlSequence: base.controlSequence,
+    announcedText: base.announcedText,
+    visibleErrors: base.visibleErrors,
+    announcedErrors: base.announcedErrors,
+    result: base.result,
+    observedAt: base.observedAt,
+  };
+  assert.equal(screenReaderObservationFromInput(input, status).stateAttempt.triggeredBy, "operator");
+  assert.throws(() => screenReaderObservationFromInput(input, { ...status, phase: "action-ready" }), /SCREEN_READER_ACTION_NOT_OBSERVED/);
+  assert.throws(() => screenReaderObservationFromInput({ ...input, checkpointAttemptId: "another-attempt" }, status), /SCREEN_READER_OBSERVATION_STALE/);
+});
+
+test("manual session wires every required state without a passed environment switch", async () => {
+  const source = await readFile(runnerPath, "utf8");
+  const calls = [...source.matchAll(/collectScreenReaderObservation\("([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(calls, [
+    "registration-initial",
+    "registration-pending",
+    "registration-unknown",
+    "registration-mail-pending",
+    "completion-initial-pending",
+    "completion-receipt-projection-unavailable",
+    "overview-entry-available",
+    "overview-entry-unavailable",
+  ]);
+  assert.match(source, /headless: process\.env\.ISSUE413_SCREEN_READER_SESSION !== "1"/);
+  assert.match(source, /matrixRecord\("F", "screen_reader", manual\.status/);
+  assert.doesNotMatch(source, /SCREEN_READER_(?:PASS|PASSED)/);
+  assert.match(source, /PERSONAL_COUNT_UNREADABLE_WITHOUT_REGISTRATION_DEPENDENCY/);
+});
+
+test("manual abort remains a business failure and still runs both cleanup passes", async () => {
+  const { orchestrateFixtureLifecycle } = await runner();
+  const scenario = lifecycleScenario({ businessFailure: "SCREEN_READER_SESSION_ABORTED" });
+  const outcome = await orchestrateFixtureLifecycle(scenario.options);
+  assert.equal(outcome.exitCode, 1);
+  assert.equal(outcome.report.business.code, "SCREEN_READER_SESSION_ABORTED");
+  assert.equal(outcome.report.cleanup.initial.status, "PASS");
+  assert.equal(outcome.report.cleanup.final.status, "PASS");
+  assert.deepEqual(scenario.calls, ["business", "cleanup:initial", "cleanup:final", "persist"]);
+});
 
 test("business success plus an initial destroy failure stays failed after final cleanup succeeds", async () => {
   const { orchestrateFixtureLifecycle } = await runner();

@@ -172,4 +172,79 @@ This command validates the UUID, fixed temporary root, and manifest ownership be
 
 ## Final manual activity
 
-M1 and M2 keep their exact stacked Draft boundaries and independent fixed-HEAD reviews. The only acceptance activity after an approved M2 is real screen-reader operation on the final three-page product version. Record the actual screen reader, browser, page/viewport, reading and control sequence, visible or announced errors, operator, date, exact product HEAD, and result. Axe, screenshots, DOM inspection, and keyboard-only evidence cannot change `F.screen_reader` from `NOT_RUN`.
+M1 and M2 keep their exact stacked Draft boundaries and independent fixed-HEAD reviews. The only acceptance activity after an approved automated M2 is real screen-reader operation on the final three-page product version. Axe, screenshots, DOM inspection, keyboard-only evidence, the manual-session environment flag, and a syntactically valid record cannot change `F.screen_reader` from `NOT_RUN`.
+
+The user designates the actual operator and a durable Issue comment records that designation. Do not start a headed runtime while waiting for an operator. At the agreed time, the same fixture owner uses a clean exact candidate and a first terminal in `web/listingkit-ui`:
+
+```powershell
+$env:ISSUE413_SCREEN_READER_SESSION = '1'
+$env:ISSUE413_SCREEN_READER_DESIGNATION = 'https://github.com/qq550723504/task-processor/issues/413#issuecomment-<designation-comment-id>'
+node scripts/referral-registration-fixture.mjs
+Remove-Item Env:ISSUE413_SCREEN_READER_SESSION
+Remove-Item Env:ISSUE413_SCREEN_READER_DESIGNATION
+```
+
+This mode launches the same Playwright Chromium visibly and otherwise runs the same isolated official chain. It does not change the browser or BFF 15-second deadlines, the database-clock 15-second create lease, the fixed 15-minute creation deadline, or the fixed 24-hour completion deadline. No human wait occurs inside a provider call, database transaction, lease, BFF dispatch, or in-flight request. For the two transient pending states the operator is ready before activating the control; the request then runs naturally with its original client and server budgets. A late record cannot revive an expired state or create a new identity.
+
+The runner writes a private checkpoint status and prints only the checkpoint ID and run ID. In a second terminal, read the current safe state without extending it:
+
+```powershell
+node scripts/referral-registration-fixture.mjs screen-reader-status <run-id>
+```
+
+`phase=action-ready` means the operator must use the visible browser to activate the named control. Do not acknowledge that phase. After the real request reaches its stable result, `phase=observation` exposes a new nonce while retaining the same checkpoint attempt ID and actual transition timestamps. The writer faithfully transcribes the operator's observation into the exact private `inputFile` printed by `screen-reader-status`, then records it:
+
+```json
+{
+  "checkpointId": "copy from status",
+  "sequence": 1,
+  "nonce": "copy from status",
+  "checkpointAttemptId": "copy from status",
+  "operator": "user-designated operator name",
+  "designationReference": "copy from status",
+  "screenReader": { "name": "actual product", "version": "actual version" },
+  "browser": { "name": "copy from status", "version": "copy from status" },
+  "observationSource": "where the live operator supplied this record",
+  "viewport": { "width": 1440, "height": 1000 },
+  "readingSequence": ["actual ordered reading steps"],
+  "controlSequence": ["actual operator controls; distinguish runner actions"],
+  "announcedText": ["actual bounded non-secret announcements"],
+  "visibleErrors": [],
+  "announcedErrors": [],
+  "result": "PASS",
+  "observedAt": "actual ISO-8601 timestamp"
+}
+```
+
+Write that file atomically, then run:
+
+```powershell
+node scripts/referral-registration-fixture.mjs screen-reader-ack <run-id>
+```
+
+The acknowledgement is bound to the exact run, source and web SHAs, normalized runner SHA-256, checkpoint order, state attempt, nonce, real viewport, browser and Windows versions, designation, and observation time. Wrong-run, wrong-source, stale, duplicate-conflicting, out-of-order, inconsistent-operator/software, direct-status, test-control, oversized, secret-bearing, email-bearing, or reusable-link records are rejected. Replaying the exact same decision is idempotent. A test-only fake record tests the control only and can never enter formal `F.screen_reader` evidence.
+
+All eight states are required once, at their actual viewport:
+
+| ID | Real state and required operator evidence | Runner boundary |
+| --- | --- | --- |
+| `registration-initial` | `/referrals/register`: main heading, read-only invitation code, email/given/family labels, focus order, and empty/invalid-email validation feedback | No Intent or POST exists; runner later fills the valid task-owned data |
+| `registration-pending` | Operator activates Start; the focused button's real submitting/disabled transition is heard | Existing response-loss attempt runs on the original client/BFF budgets; runner records the actual transition and attempt |
+| `registration-unknown` | Alert for unknown registration outcome, locked original fields, and the original-request retry control | Upstream admission is already committed and the browser response was lost; runner, not the operator, performs the recorded original-key retry after observation |
+| `registration-mail-pending` | Official-mail status, official verification explanation, and continue-to-login control | Original Intent has resumed; there is no pause inside create permission, lease, or Provider work |
+| `completion-initial-pending` | Completion heading/content, real personal projection, unavailable revenue, and the pending transition after the operator activates Complete | Existing completion response-loss attempt runs without a manual network hold or deadline reset |
+| `completion-receipt-projection-unavailable` | Committed receipt/status/time and projection-unavailable state are both announced without rewriting success | Real completion is committed/replayed and the existing projection 503 has completed |
+| `overview-entry-available` | Viewer overview, real relationship count 1, unavailable revenue, code, focus, and safe invitation-link navigation to the registration heading and back | Runner reads the current viewer's task-owned facts and does not activate the link |
+| `overview-entry-unavailable` | The same viewer's real count remains readable while registration entry is unavailable and no active invitation link exists | Existing run-owned service-secret fault is restored in `finally` |
+
+Stable checkpoints have a maximum 15-minute observation wait and the whole manual session has a 90-minute hard limit. The post-admission UNKNOWN checkpoint is limited to 120 seconds and must retain safe remaining time in the original 15-minute creation window; the official-mail checkpoint is limited to five minutes. A real expiry, timeout, browser close, operator abort, acknowledgement race, or write failure remains its actual failure or `NOT_RUN` result and enters cleanup. It is never replaced with a new key, Intent, identity, or synthetic state.
+
+Abort from the second terminal without killing the fixture process:
+
+```powershell
+node scripts/referral-registration-fixture.mjs screen-reader-abort <run-id>
+```
+
+Acknowledgement and abort compete for one atomic decision file, so only one can win. Every exit uses the existing lifecycle: browser and pending waits end, task-owned faults restore in `finally`, then initial and final cleanup run independently. The owner must freshly query containers including stopped containers, volumes, networks, processes, and every manifest port. Query failure is `UNKNOWN`, never zero. Run-private nonce, input, decision, credentials, and browser state are removed; the private report retains the complete bounded human-source records, including actual reading/control sequences and errors, rather than only checkpoint PASS labels.
+
+Only eight valid observations from the same user-designated operator, screen reader, browser, exact source and run can make `F.screen_reader=PASS`. Any actual operator failure makes it `FAIL`; missing or unfinished evidence stays `NOT_RUN`. Record the actual screen reader and version, Chromium version, Windows build, page path and viewport, state attempt, reading and control sequence, visible or announced errors, operator, source reference, date, exact product and runner provenance, result, and final zero-resource evidence. Keep secrets, full email addresses, codes, query strings, fragments, credentials, recovery capabilities and verification links out of the input, report, Issue and PR.

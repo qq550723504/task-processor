@@ -5,7 +5,7 @@ import { readFile, writeFile, mkdir, unlink, rm, rename, cp, symlink } from "nod
 import { createServer as createHTTPServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createServer as createNetServer } from "node:net";
-import { tmpdir } from "node:os";
+import { release, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -20,6 +20,9 @@ const ownerLabel = "com.shuomi.issue413.run";
 const runtimeOwnerLabel = "com.shuomi.issue357.run";
 const caddyImage = "caddy:2.11.4-alpine";
 const mailImage = "axllent/mailpit:v1.30.4";
+const screenReaderSessionLimitMs = 90 * 60_000;
+const screenReaderStableCheckpointLimitMs = 15 * 60_000;
+const screenReaderCreateRecoveryLimitMs = 120_000;
 const matrixPlan = {
   A: ["admission_response_loss_same_request_and_receipt", "same_key_original_receipt_and_different_payload_conflict", "multiple_referral_code_conflict", "reload_with_recovery_fragment_resumes_original", "fresh_browser_empty_form_no_auto_submit", "lost_credentials_safe_rejection"],
   B: ["existing_account_cannot_be_bound_to_new_intent", "new_browser_invalid_verification_does_not_verify", "verified_without_authenticator_cannot_complete", "official_verification_interruption_new_browser_reverify", "another_subject_cannot_claim_intent"],
@@ -28,6 +31,16 @@ const matrixPlan = {
   E: ["trusted_proxy_overwrites_forged_forwarding", "bff_and_go_reject_untrusted_credentials_and_csrf", "real_source_ips_and_cross_process_rate_limit", "parallel_application_instances_share_rate_limit", "real_user_token_rejected_as_service_credential", "missing_dependency_disables_invite_entry", "cancel_deadline_zero_late_dispatch"],
   F: ["registration_desktop_axe", "registration_narrow_keyboard_axe", "completion_desktop_narrow_keyboard_axe", "overview_desktop_narrow_keyboard_axe", "screen_reader"],
 };
+export const screenReaderCheckpointPlan = Object.freeze([
+  { id: "registration-initial", page: "/referrals/register", state: "labels_focus_validation" },
+  { id: "registration-pending", page: "/referrals/register", state: "actual_start_pending" },
+  { id: "registration-unknown", page: "/referrals/register", state: "original_request_unknown" },
+  { id: "registration-mail-pending", page: "/referrals/register", state: "official_mail_pending" },
+  { id: "completion-initial-pending", page: "/workbench/account/referrals/complete", state: "actual_completion_pending" },
+  { id: "completion-receipt-projection-unavailable", page: "/workbench/account/referrals/complete", state: "receipt_and_projection_unavailable" },
+  { id: "overview-entry-available", page: "/workbench/account/referrals", state: "real_count_and_entry_available" },
+  { id: "overview-entry-unavailable", page: "/workbench/account/referrals", state: "real_count_and_entry_unavailable" },
+]);
 export const report = {
   schemaVersion: "issue413-referral-registration-fixture-v2",
   status: "NOT_RUN",
@@ -51,6 +64,7 @@ let secondaryApplication;
 let dispatchObserver;
 let bffIngressObserver;
 let secondaryGeneration = 0;
+let screenReaderSession;
 
 function ensure(value, code = "ASSERTION_FAILED") {
   assert.ok(value, code);
@@ -121,6 +135,130 @@ export function assertMatrixMustComplete(matrix) {
     ensure(matches?.length === 1 && matches[0].status === "PASS", "MATRIX_MUST_INCOMPLETE");
   }
   return true;
+}
+
+export function evaluateScreenReaderEvidence(observations, authority = {}) {
+  ensure(Array.isArray(observations), "SCREEN_READER_OBSERVATIONS_INVALID");
+  if (observations.length === 0) return { status: "NOT_RUN", checkpoints: [] };
+  ensure(observations.length === screenReaderCheckpointPlan.length, "SCREEN_READER_CHECKPOINT_SET_INCOMPLETE");
+  const seen = new Set();
+  const identity = {};
+  let failed = false;
+  const checkpoints = observations.map((observation, index) => {
+    validateScreenReaderObservationFields(observation);
+    const expected = screenReaderCheckpointPlan[index];
+    ensure(!seen.has(observation.checkpointId), "SCREEN_READER_CHECKPOINT_DUPLICATE");
+    seen.add(observation.checkpointId);
+    ensure(observation.checkpointId === expected.id && observation.sequence === index + 1, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
+    ensure(observation.runId === authority.runId, "SCREEN_READER_RUN_MISMATCH");
+    ensure(observation.sourceSha === authority.sourceSha && observation.webSha === authority.webSha && observation.runnerNormalizedLFSha256 === authority.runnerNormalizedLFSha256, "SCREEN_READER_SOURCE_MISMATCH");
+    for (const [name, value, code] of [
+      ["operator", observation.operator, "SCREEN_READER_OPERATOR_MISMATCH"],
+      ["designationReference", observation.designationReference, "SCREEN_READER_DESIGNATION_MISMATCH"],
+      ["screenReader", JSON.stringify(observation.screenReader), "SCREEN_READER_SOFTWARE_MISMATCH"],
+      ["browser", JSON.stringify(observation.browser), "SCREEN_READER_BROWSER_MISMATCH"],
+      ["operatingSystem", JSON.stringify(observation.operatingSystem), "SCREEN_READER_OPERATING_SYSTEM_MISMATCH"],
+    ]) {
+      if (identity[name] === undefined) identity[name] = value;
+      else ensure(identity[name] === value, code);
+    }
+    if (observation.result === "FAIL") failed = true;
+    return screenReaderCheckpointEvidence(observation, expected);
+  });
+  return {
+    status: failed ? "FAIL" : "PASS",
+    runId: authority.runId,
+    sourceSha: authority.sourceSha,
+    webSha: authority.webSha,
+    runnerNormalizedLFSha256: authority.runnerNormalizedLFSha256,
+    operator: identity.operator,
+    designationReference: identity.designationReference,
+    screenReader: JSON.parse(identity.screenReader),
+    browser: JSON.parse(identity.browser),
+    operatingSystem: JSON.parse(identity.operatingSystem),
+    checkpoints,
+  };
+}
+
+function screenReaderCheckpointEvidence(observation, expected) {
+  return {
+    checkpointId: expected.id,
+    sequence: observation.sequence,
+    page: observation.page,
+    checkpointAttemptId: observation.checkpointAttemptId,
+    stateObservedAt: observation.stateObservedAt,
+    result: observation.result,
+    viewport: observation.viewport,
+    observedAt: observation.observedAt,
+    readingSequence: observation.readingSequence,
+    controlSequence: observation.controlSequence,
+    announcedText: observation.announcedText,
+    visibleErrors: observation.visibleErrors,
+    announcedErrors: observation.announcedErrors,
+    observationSource: observation.observationSource,
+    runnerActions: observation.runnerActions,
+    stateAttempt: observation.stateAttempt,
+  };
+}
+
+function validateScreenReaderObservationFields(observation) {
+  ensure(observation && typeof observation === "object" && !Array.isArray(observation), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(!Object.hasOwn(observation, "status"), "SCREEN_READER_DIRECT_STATUS_FORBIDDEN");
+  ensure(observation.controlTest !== true, "SCREEN_READER_TEST_EVIDENCE_FORBIDDEN");
+  ensure(boundedText(observation.nonce, 8, 128) && boundedText(observation.checkpointAttemptId, 8, 128) && boundedText(observation.operator, 1, 120), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(Number.isInteger(observation.sequence) && screenReaderCheckpointPlan[observation.sequence - 1]?.page === observation.page, "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
+  ensure(Number.isFinite(Date.parse(observation.stateObservedAt)), "SCREEN_READER_STATE_TIME_INVALID");
+  ensure(/^https:\/\/github\.com\/qq550723504\/task-processor\/issues\/413#issuecomment-\d+$/.test(observation.designationReference ?? ""), "SCREEN_READER_DESIGNATION_INVALID");
+  ensure(boundedText(observation.screenReader?.name, 1, 80) && boundedText(observation.screenReader?.version, 1, 80), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(boundedText(observation.browser?.name, 1, 80) && boundedText(observation.browser?.version, 1, 120), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(boundedText(observation.operatingSystem?.name, 1, 80) && boundedText(observation.operatingSystem?.version, 1, 120), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(boundedText(observation.observationSource, 1, 240), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(boundedTextArray(observation.runnerActions, 1), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  const stateAttempt = JSON.stringify(observation.stateAttempt);
+  ensure(stateAttempt && stateAttempt.length <= 8_000 && !screenReaderSensitiveText(stateAttempt), "SCREEN_READER_EVIDENCE_SECRET");
+  ensure(Number.isInteger(observation.viewport?.width) && observation.viewport.width >= 320 && observation.viewport.width <= 7680 && Number.isInteger(observation.viewport?.height) && observation.viewport.height >= 320 && observation.viewport.height <= 4320, "SCREEN_READER_VIEWPORT_INVALID");
+  for (const name of ["readingSequence", "controlSequence", "announcedText", "visibleErrors", "announcedErrors"]) ensure(boundedTextArray(observation[name], name === "visibleErrors" || name === "announcedErrors" ? 0 : 1), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(["PASS", "FAIL"].includes(observation.result), "SCREEN_READER_RESULT_INVALID");
+  ensure(Number.isFinite(Date.parse(observation.observedAt)), "SCREEN_READER_OBSERVED_AT_INVALID");
+  ensure(Date.parse(observation.observedAt) >= Date.parse(observation.stateObservedAt) - 5_000, "SCREEN_READER_OBSERVATION_STALE");
+  ensure(!screenReaderEvidenceContainsSecret(observation), "SCREEN_READER_EVIDENCE_SECRET");
+  return observation;
+}
+
+function boundedText(value, min, max) {
+  return typeof value === "string" && value === value.trim() && value.length >= min && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function boundedTextArray(value, min) {
+  return Array.isArray(value) && value.length >= min && value.length <= 40 && value.every(item => boundedText(item, 1, 500));
+}
+
+function screenReaderEvidenceContainsSecret(observation) {
+  const values = [
+    observation.operator,
+    observation.screenReader?.name,
+    observation.screenReader?.version,
+    observation.browser?.name,
+    observation.browser?.version,
+    observation.operatingSystem?.name,
+    observation.operatingSystem?.version,
+    observation.observationSource,
+    ...observation.readingSequence,
+    ...observation.controlSequence,
+    ...observation.announcedText,
+    ...observation.visibleErrors,
+    ...observation.announcedErrors,
+    ...observation.runnerActions,
+  ];
+  return values.some(screenReaderSensitiveText);
+}
+
+function screenReaderSensitiveText(value) {
+  return (
+    /(?:password|resume.?secret|cookie|bearer|access.?token|id.?token|otp|proof)\s*[:=]/i.test(value) ||
+    /https?:\/\/\S+/i.test(value) ||
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(value) ||
+    /\b(?:[a-f0-9]{32,}|[A-Za-z0-9]{43,})\b/i.test(value));
 }
 
 function safeCode(error) {
@@ -717,6 +855,291 @@ export async function writeJSONAtomic(file, value) {
   }
 }
 
+function screenReaderSessionPaths(runId) {
+  ensure(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(runId ?? ""), "INVALID_RUN_ID");
+  const runDirectory = path.resolve(tmpdir(), "task-processor-issue357", runId);
+  const directory = path.resolve(runDirectory, "screen-reader-session");
+  ensure(path.dirname(directory) === runDirectory, "SCREEN_READER_PATH_INVALID");
+  return {
+    runDirectory,
+    directory,
+    status: path.join(directory, "status.json"),
+    input: path.join(directory, "operator-observation.json"),
+    decision: sequence => path.join(directory, `decision-${String(sequence).padStart(2, "0")}.json`),
+  };
+}
+
+async function readBoundedJSON(file, maxBytes = 64 * 1024) {
+  const bytes = await readFile(file);
+  ensure(bytes.byteLength > 0 && bytes.byteLength <= maxBytes, "SCREEN_READER_INPUT_SIZE_INVALID");
+  return JSON.parse(bytes.toString("utf8"));
+}
+
+function validateScreenReaderStatus(status, owner) {
+  ensure(status?.schemaVersion === "issue413-screen-reader-checkpoint-v1", "SCREEN_READER_STATUS_INVALID");
+  ensure(status.runId === owner.runId && status.sourceSha === owner.sourceSha && status.webSha === owner.webSha, "SCREEN_READER_STATUS_OWNER_MISMATCH");
+  ensure(/^[0-9a-f]{64}$/.test(status.runnerNormalizedLFSha256 ?? ""), "SCREEN_READER_STATUS_SOURCE_INVALID");
+  ensure(status.sequence >= 1 && status.sequence <= screenReaderCheckpointPlan.length && screenReaderCheckpointPlan[status.sequence - 1]?.id === status.checkpointId, "SCREEN_READER_STATUS_SEQUENCE_INVALID");
+  ensure(["action-ready", "observation"].includes(status.phase), "SCREEN_READER_STATUS_INVALID");
+  ensure(Date.now() < Date.parse(status.expiresAt), "SCREEN_READER_STATUS_EXPIRED");
+  return status;
+}
+
+
+async function ensureScreenReaderCommandSource(status) {
+  const current = describeRunnerBytes(await readFile(fileURLToPath(import.meta.url)));
+  ensure(current.runnerNormalizedLFSha256 === status.runnerNormalizedLFSha256, "SCREEN_READER_STATUS_SOURCE_INVALID");
+}
+
+export function screenReaderObservationFromInput(input, status) {
+  ensure(status.phase === "observation", "SCREEN_READER_ACTION_NOT_OBSERVED");
+  ensure(input && typeof input === "object" && !Array.isArray(input), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(!Object.hasOwn(input, "status") && input.controlTest !== true, Object.hasOwn(input, "status") ? "SCREEN_READER_DIRECT_STATUS_FORBIDDEN" : "SCREEN_READER_TEST_EVIDENCE_FORBIDDEN");
+  ensure(input.checkpointId === status.checkpointId && input.sequence === status.sequence && input.nonce === status.nonce && input.checkpointAttemptId === status.checkpointAttemptId, "SCREEN_READER_OBSERVATION_STALE");
+  ensure(input.designationReference === status.designationReference, "SCREEN_READER_DESIGNATION_MISMATCH");
+  ensure(JSON.stringify(input.browser) === JSON.stringify(status.browser) && JSON.stringify(input.viewport) === JSON.stringify(status.viewport), "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
+  ensure(Date.parse(input.observedAt) <= Date.parse(status.expiresAt) && Date.parse(input.observedAt) <= Date.now() + 60_000, "SCREEN_READER_OBSERVATION_STALE");
+  const observation = {
+    checkpointId: status.checkpointId,
+    sequence: status.sequence,
+    runId: status.runId,
+    nonce: status.nonce,
+    checkpointAttemptId: status.checkpointAttemptId,
+    page: status.page,
+    stateObservedAt: status.stateObservedAt,
+    sourceSha: status.sourceSha,
+    webSha: status.webSha,
+    runnerNormalizedLFSha256: status.runnerNormalizedLFSha256,
+    operator: input.operator,
+    designationReference: input.designationReference,
+    screenReader: input.screenReader,
+    browser: input.browser,
+    operatingSystem: status.operatingSystem,
+    observationSource: input.observationSource,
+    viewport: input.viewport,
+    readingSequence: input.readingSequence,
+    controlSequence: input.controlSequence,
+    announcedText: input.announcedText,
+    visibleErrors: input.visibleErrors,
+    announcedErrors: input.announcedErrors,
+    result: input.result,
+    observedAt: input.observedAt,
+    runnerActions: status.runnerActions,
+    stateAttempt: status.stateAttempt,
+  };
+  return validateScreenReaderObservationFields(observation);
+}
+
+export async function writeScreenReaderDecision({ decisionFile, decision }) {
+  const encoded = `${JSON.stringify(decision, null, 2)}\n`;
+  try {
+    await writeFile(decisionFile, encoded, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return { recorded: true, replay: false, decision };
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    const existing = await readBoundedJSON(decisionFile);
+    ensure(JSON.stringify(existing) === JSON.stringify(decision), "SCREEN_READER_DECISION_CONFLICT");
+    return { recorded: true, replay: true, decision: existing };
+  }
+}
+
+async function screenReaderStatusCommand(runId) {
+  const paths = screenReaderSessionPaths(runId);
+  const owner = await readBoundedJSON(path.join(paths.runDirectory, "manifest.json"));
+  const status = validateScreenReaderStatus(await readBoundedJSON(paths.status), owner);
+  await ensureScreenReaderCommandSource(status);
+  console.log(JSON.stringify({ ...status, inputFile: paths.input }));
+}
+
+async function screenReaderAckCommand(runId) {
+  const paths = screenReaderSessionPaths(runId);
+  const owner = await readBoundedJSON(path.join(paths.runDirectory, "manifest.json"));
+  const status = validateScreenReaderStatus(await readBoundedJSON(paths.status), owner);
+  await ensureScreenReaderCommandSource(status);
+  const input = await readBoundedJSON(paths.input);
+  const observation = screenReaderObservationFromInput(input, status);
+  const result = await writeScreenReaderDecision({ decisionFile: paths.decision(status.sequence), decision: { kind: "observation", observation } });
+  await unlink(paths.input).catch(error => { if (error.code !== "ENOENT") throw error; });
+  console.log(result.replay ? "SCREEN_READER_OBSERVATION_ALREADY_RECORDED" : "SCREEN_READER_OBSERVATION_RECORDED");
+}
+
+async function screenReaderAbortCommand(runId) {
+  const paths = screenReaderSessionPaths(runId);
+  const owner = await readBoundedJSON(path.join(paths.runDirectory, "manifest.json"));
+  const status = validateScreenReaderStatus(await readBoundedJSON(paths.status), owner);
+  await ensureScreenReaderCommandSource(status);
+  const result = await writeScreenReaderDecision({ decisionFile: paths.decision(status.sequence), decision: { kind: "abort", runId, checkpointId: status.checkpointId, sequence: status.sequence, nonce: status.nonce } });
+  console.log(result.replay ? "SCREEN_READER_ABORT_ALREADY_RECORDED" : "SCREEN_READER_ABORT_RECORDED");
+}
+
+async function waitForScreenReaderDecision(status, timeoutMs, signal) {
+  const decisionFile = screenReaderSession.paths.decision(status.sequence);
+  const end = Math.min(Date.now() + timeoutMs, screenReaderSession.deadlineAt, Date.parse(status.expiresAt));
+  while (Date.now() < end) {
+    if (signal?.aborted) throw new Error("SCREEN_READER_WAIT_CANCELLED");
+    try {
+      const decision = await readBoundedJSON(decisionFile);
+      ensure(decision.kind === "abort" || decision.kind === "observation", "SCREEN_READER_DECISION_INVALID");
+      ensure(decision.runId === undefined || decision.runId === status.runId, "SCREEN_READER_RUN_MISMATCH");
+      return decision;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    await delay(250);
+  }
+  throw new Error("SCREEN_READER_CHECKPOINT_TIMEOUT");
+}
+
+async function collectScreenReaderObservation(checkpointId, page, options = {}) {
+  if (!screenReaderSession) return undefined;
+  const sequence = screenReaderSession.observations.length + 1;
+  ensure(screenReaderCheckpointPlan[sequence - 1]?.id === checkpointId, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
+  const url = new URL(page.url());
+  const viewport = page.viewportSize();
+  ensure(url.pathname === screenReaderCheckpointPlan[sequence - 1].page && viewport, "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
+  const now = Date.now();
+  const timeoutMs = Math.min(options.timeoutMs ?? screenReaderStableCheckpointLimitMs, screenReaderSession.deadlineAt - now);
+  ensure(timeoutMs > 0, "SCREEN_READER_SESSION_TIMEOUT");
+  const status = {
+    schemaVersion: "issue413-screen-reader-checkpoint-v1",
+    runId: manifest.runId,
+    sourceSha: report.sourceSha,
+    webSha: report.webSha,
+    runnerNormalizedLFSha256: report.runnerNormalizedLFSha256,
+    checkpointId,
+    sequence,
+    phase: "observation",
+    nonce: randomBytes(24).toString("base64url"),
+    checkpointAttemptId: options.checkpointAttemptId ?? randomUUID(),
+    stateAttempt: options.stateAttempt ?? "stable",
+    stateObservedAt: options.stateObservedAt ?? new Date(now).toISOString(),
+    openedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + timeoutMs).toISOString(),
+    designationReference: screenReaderSession.designationReference,
+    browser: screenReaderSession.browser,
+    operatingSystem: screenReaderSession.operatingSystem,
+    viewport,
+    page: url.pathname,
+    expected: options.expected ?? [],
+    runnerActions: options.runnerActions ?? [],
+  };
+  await unlink(screenReaderSession.paths.input).catch(error => { if (error.code !== "ENOENT") throw error; });
+  await writeJSONAtomic(screenReaderSession.paths.status, status);
+  console.log(`SCREEN_READER_CHECKPOINT ${checkpointId} ${manifest.runId}`);
+  const decision = await waitForScreenReaderDecision(status, timeoutMs);
+  if (decision.kind === "abort") throw new Error("SCREEN_READER_SESSION_ABORTED");
+  ensure(!page.isClosed() && new URL(page.url()).pathname === status.page && JSON.stringify(page.viewportSize()) === JSON.stringify(status.viewport), "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
+  const observation = decision.observation;
+  ensure(observation.checkpointId === checkpointId && observation.sequence === sequence && observation.nonce === status.nonce && observation.checkpointAttemptId === status.checkpointAttemptId, "SCREEN_READER_OBSERVATION_STALE");
+  validateScreenReaderObservationFields(observation);
+  screenReaderSession.observations.push(observation);
+  const persistedObservations = screenReaderSession.observations.map((item, index) => screenReaderCheckpointEvidence(item, screenReaderCheckpointPlan[index]));
+  const partialEvidence = {
+    status: "NOT_RUN",
+    sessionStatus: "IN_PROGRESS",
+    runId: manifest.runId,
+    sourceSha: report.sourceSha,
+    webSha: report.webSha,
+    runnerNormalizedLFSha256: report.runnerNormalizedLFSha256,
+    operator: screenReaderSession.observations[0].operator,
+    designationReference: screenReaderSession.designationReference,
+    screenReader: screenReaderSession.observations[0].screenReader,
+    browser: screenReaderSession.browser,
+    operatingSystem: screenReaderSession.operatingSystem,
+    observations: persistedObservations,
+  };
+  report.manualAccessibility = partialEvidence;
+  await writeJSONAtomic(path.join(outputDirectory, "screen-reader-observations.json"), partialEvidence);
+  return observation;
+}
+
+async function prepareScreenReaderAction(checkpointId, page, button, requestPredicate, options = {}) {
+  if (!screenReaderSession) {
+    await button.click();
+    return undefined;
+  }
+  const sequence = screenReaderSession.observations.length + 1;
+  ensure(screenReaderCheckpointPlan[sequence - 1]?.id === checkpointId, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
+  const now = Date.now();
+  const timeoutMs = Math.min(options.timeoutMs ?? screenReaderStableCheckpointLimitMs, screenReaderSession.deadlineAt - now);
+  ensure(timeoutMs > 0, "SCREEN_READER_SESSION_TIMEOUT");
+  const checkpointAttemptId = randomUUID();
+  await button.evaluate((element, attemptId) => {
+    window.__issue413ScreenReaderTransitions ??= {};
+    const transitions = [];
+    const record = () => transitions.push({ text: element.textContent?.trim() ?? "", disabled: "disabled" in element && Boolean(element.disabled), at: new Date().toISOString() });
+    record();
+    const observer = new MutationObserver(record);
+    observer.observe(element, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "aria-disabled"] });
+    window.__issue413ScreenReaderTransitions[attemptId] = { transitions, disconnect: () => observer.disconnect() };
+  }, checkpointAttemptId);
+  const status = {
+    schemaVersion: "issue413-screen-reader-checkpoint-v1",
+    runId: manifest.runId,
+    sourceSha: report.sourceSha,
+    webSha: report.webSha,
+    runnerNormalizedLFSha256: report.runnerNormalizedLFSha256,
+    checkpointId,
+    sequence,
+    phase: "action-ready",
+    nonce: randomBytes(24).toString("base64url"),
+    checkpointAttemptId,
+    stateAttempt: "operator_action_ready",
+    stateObservedAt: new Date(now).toISOString(),
+    openedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + timeoutMs).toISOString(),
+    designationReference: screenReaderSession.designationReference,
+    browser: screenReaderSession.browser,
+    operatingSystem: screenReaderSession.operatingSystem,
+    viewport: page.viewportSize(),
+    page: new URL(page.url()).pathname,
+    expected: options.expected ?? [],
+    runnerActions: ["waited_for_operator_action", "did_not_dispatch_or_extend_product_budget"],
+  };
+  await unlink(screenReaderSession.paths.input).catch(error => { if (error.code !== "ENOENT") throw error; });
+  await writeJSONAtomic(screenReaderSession.paths.status, status);
+  console.log(`SCREEN_READER_ACTION_READY ${checkpointId} ${manifest.runId}`);
+  const request = page.waitForRequest(requestPredicate, { timeout: timeoutMs }).then(value => ({ kind: "request", value }), error => ({ kind: "error", error }));
+  const waitController = new AbortController();
+  const decision = waitForScreenReaderDecision(status, timeoutMs, waitController.signal).then(value => ({ kind: "decision", value }), error => ({ kind: "error", error }));
+  const outcome = await Promise.race([request, decision]);
+  waitController.abort();
+  if (outcome.kind === "error") throw outcome.error;
+  if (outcome.kind === "decision") {
+    ensure(outcome.value.kind === "abort", "SCREEN_READER_OBSERVATION_BEFORE_ACTION");
+    throw new Error("SCREEN_READER_SESSION_ABORTED");
+  }
+  return { checkpointAttemptId, requestObservedAt: new Date().toISOString() };
+}
+
+async function finishScreenReaderAction(page, action) {
+  if (!screenReaderSession || !action) return undefined;
+  return page.evaluate(attemptId => {
+    const state = window.__issue413ScreenReaderTransitions?.[attemptId];
+    state?.disconnect?.();
+    if (window.__issue413ScreenReaderTransitions) delete window.__issue413ScreenReaderTransitions[attemptId];
+    return state?.transitions ?? [];
+  }, action.checkpointAttemptId);
+}
+
+async function initializeScreenReaderSession() {
+  if (process.env.ISSUE413_SCREEN_READER_SESSION !== "1") return;
+  const designationReference = process.env.ISSUE413_SCREEN_READER_DESIGNATION ?? "";
+  ensure(/^https:\/\/github\.com\/qq550723504\/task-processor\/issues\/413#issuecomment-\d+$/.test(designationReference), "SCREEN_READER_DESIGNATION_INVALID");
+  const paths = screenReaderSessionPaths(manifest.runId);
+  await mkdir(paths.directory, { recursive: true, mode: 0o700 });
+  screenReaderSession = {
+    paths,
+    designationReference,
+    browser: { name: "Chromium", version: browser.version() },
+    operatingSystem: { name: "Windows", version: release() },
+    startedAt: Date.now(),
+    deadlineAt: Date.now() + screenReaderSessionLimitMs,
+    observations: [],
+  };
+  report.manualAccessibility = { status: "NOT_RUN", sessionStatus: "IN_PROGRESS", designationReference, browser: screenReaderSession.browser, operatingSystem: screenReaderSession.operatingSystem };
+}
+
 async function until(operation, code, timeout = 60_000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -809,6 +1232,7 @@ async function startOwnedContainers(ports) {
     header_up X-ListingKit-Client-IP {remote_host}
   }
 }
+
 :81 {
   reverse_proxy host.docker.internal:${ports.bffIngress} {
     header_up -X-Referral-Service-Credential
@@ -1663,7 +2087,8 @@ async function referralTablesDigest() {
 
 async function browserChain(origins, ports, machine) {
   const { chromium } = await import("@playwright/test");
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: process.env.ISSUE413_SCREEN_READER_SESSION !== "1" });
+  await initializeScreenReaderSession();
   const referrer = await readJSON(path.join(manifest.directory, "viewer.credentials.json"));
   let referrerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
   let referrerPage = await referrerContext.newPage();
@@ -1734,6 +2159,13 @@ async function browserChain(origins, ports, machine) {
     try {
       await page.goto(`${origins.publicOrigin}/referrals/register?code=${encodeURIComponent(code)}`);
       await page.getByRole("heading", { name: "接受好友邀请" }).waitFor({ state: "visible", timeout: 30_000 });
+      if (screenReaderSession) {
+        await collectScreenReaderObservation("registration-initial", page, {
+          expected: ["main_and_accept_invitation_heading", "readonly_invitation_code", "email_given_name_family_name_labels", "keyboard_focus", "native_validation_without_post"],
+          runnerActions: ["opened_empty_registration_page", "did_not_submit_registration"],
+        });
+        ensure(registrationRequests.start === 0 && await page.locator("input:invalid").count() >= 3, "SCREEN_READER_REGISTRATION_VALIDATION_STATE_INVALID");
+      }
       await page.screenshot({ path: path.join(outputDirectory, "registration-empty-desktop.png"), fullPage: true });
       const desktopAxe = await assertNoSeriousA11y(page);
       await page.getByLabel("邮箱").fill(email);
@@ -1752,14 +2184,37 @@ async function browserChain(origins, ports, machine) {
           } catch { reject(new Error("ADMISSION_RESPONSE_LOSS_INJECTION_FAILED")); }
         }, { times: 1 }).catch(reject);
       });
-      await submitButton.click();
+      const registrationAction = await prepareScreenReaderAction(
+        "registration-pending",
+        page,
+        submitButton,
+        request => request.method() === "POST" && new URL(request.url()).pathname === "/api/referral-registration",
+        { expected: ["operator_activates_start_registration", "focused_button_changes_to_submitting_and_disabled", "original_client_and_bff_deadlines_unchanged"] },
+      );
       await responseLost;
+      const registrationTransitions = await finishScreenReaderAction(page, registrationAction);
+      if (screenReaderSession) ensure(registrationTransitions.some(item => item.text === "正在提交…" && item.disabled === true), "SCREEN_READER_REGISTRATION_PENDING_NOT_OBSERVED");
       ensure(lostAdmission?.status === 200, "ADMISSION_LOST_RESPONSE_NOT_COMMITTED");
       ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(lostAdmission.payload?.intentID ?? ""), "ADMISSION_LOST_INTENT_INVALID");
       const fixedSubject = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT subject FROM public.registration_intents WHERE id='${lostAdmission.payload.intentID}'`]);
       ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(fixedSubject), "ADMISSION_FIXED_SUBJECT_INVALID");
       await page.getByText("暂时无法确认注册结果").waitFor({ state: "visible", timeout: 15_000 });
       ensure(await page.getByLabel("邮箱").isDisabled() || await page.getByLabel("邮箱").getAttribute("readonly") !== null, "ADMISSION_INPUT_NOT_LOCKED");
+      if (screenReaderSession) {
+        await collectScreenReaderObservation("registration-pending", page, {
+          checkpointAttemptId: registrationAction.checkpointAttemptId,
+          timeoutMs: 60_000,
+          stateObservedAt: registrationTransitions.find(item => item.text === "正在提交…")?.at,
+          expected: ["actual_operator_action", "actual_pending_transition", "request_completed_without_manual_deadline_extension"],
+          stateAttempt: { triggeredBy: "operator", requestObservedAt: registrationAction.requestObservedAt, transitions: registrationTransitions },
+          runnerActions: ["filled_valid_registration_fields", "armed_existing_response_loss_injection", "did_not_extend_product_deadlines"],
+        });
+        await collectScreenReaderObservation("registration-unknown", page, {
+          timeoutMs: screenReaderCreateRecoveryLimitMs,
+          expected: ["alert_unknown_outcome", "locked_original_fields", "original_request_retry_control"],
+          runnerActions: ["committed_upstream_then_lost_browser_response", "will_activate_original_retry_after_operator_observation"],
+        });
+      }
       const submitted = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration" && response.request().method() === "POST", { timeout: 30_000 });
       await page.getByRole("button", { name: "重试原请求" }).click();
       const response = await submitted.catch(() => { throw new Error("REGISTRATION_RESPONSE_MISSING"); });
@@ -1788,6 +2243,11 @@ async function browserChain(origins, ports, machine) {
       await page.getByRole("heading", { name: "请查看官方验证邮件" }).waitFor({ state: "visible", timeout: 30_000 })
         .catch(() => { throw new Error("REGISTRATION_MAIL_PENDING_MISSING"); });
       ensure(resumeStatuses.includes(200), "REGISTRATION_RESUME_SUCCESS_NOT_OBSERVED");
+      if (screenReaderSession) await collectScreenReaderObservation("registration-mail-pending", page, {
+        timeoutMs: 5 * 60_000,
+        expected: ["official_mail_pending_status", "official_verification_explanation", "continue_to_official_login_control"],
+        runnerActions: ["replayed_original_key_and_payload", "resumed_original_intent", "did_not_pause_during_create_lease_or_provider_call"],
+      });
       await page.screenshot({ path: path.join(outputDirectory, "registration-mail-pending-desktop.png"), fullPage: true });
       ensure(admissionRequest?.body && /^[A-Za-z0-9_-]{43,128}$/.test(admissionRequest.key), "ADMISSION_REQUEST_NOT_OBSERVED");
       const replayedSubject = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT subject FROM public.registration_intents WHERE id='${admittedIntentID}'`]);
@@ -2081,14 +2541,29 @@ async function browserChain(origins, ports, machine) {
           } catch { reject(new Error("COMPLETION_RESPONSE_LOSS_INJECTION_FAILED")); }
         }, { times: 1 }).catch(reject);
       });
-      await button.click();
+      const completionAction = await prepareScreenReaderAction(
+        "completion-initial-pending",
+        page,
+        button,
+        request => request.method() === "POST" && new URL(request.url()).pathname === "/api/account/referrals/complete",
+        { expected: ["completion_heading_and_explanation", "real_projection_and_unavailable_revenue", "operator_activates_complete", "focused_button_changes_to_confirming_and_disabled"] },
+      );
       await completionLost;
+      const completionTransitions = await finishScreenReaderAction(page, completionAction);
+      if (screenReaderSession) ensure(completionTransitions.some(item => item.text === "正在确认…" && item.disabled === true), "SCREEN_READER_COMPLETION_PENDING_NOT_OBSERVED");
       ensure(lostReceipt?.status === 200, "COMPLETION_LOST_RESPONSE_NOT_COMMITTED");
       await page.getByText("推广服务暂不可用").waitFor({ state: "visible", timeout: 30_000 })
         .catch(async () => {
           if (await page.getByText("推广关系已确认").isVisible().catch(() => false)) throw new Error("COMPLETION_RESPONSE_LOSS_NOT_OBSERVED");
           throw new Error("COMPLETION_RESPONSE_LOSS_UI_TIMEOUT");
         });
+      if (screenReaderSession) await collectScreenReaderObservation("completion-initial-pending", page, {
+        checkpointAttemptId: completionAction.checkpointAttemptId,
+        stateObservedAt: completionTransitions.find(item => item.text === "正在确认…")?.at,
+        expected: ["initial_completion_content", "actual_operator_action", "actual_pending_transition", "request_completed_without_manual_deadline_extension"],
+        stateAttempt: { triggeredBy: "operator", requestObservedAt: completionAction.requestObservedAt, transitions: completionTransitions },
+        runnerActions: ["armed_existing_completion_response_loss_injection", "did_not_extend_client_or_bff_deadlines"],
+      });
       const restartEvidence = await restartContextsAndApplications(observe);
       button = page.getByRole("button", { name: "完成推广关系" });
       await button.waitFor({ state: "visible", timeout: 45_000 });
@@ -2123,6 +2598,10 @@ async function browserChain(origins, ports, machine) {
       await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 });
       await page.getByText("推广汇总暂不可用").waitFor({ state: "visible", timeout: 15_000 });
       ensure(refreshStatuses.includes(503), "COMPLETION_PROJECTION_FAILURE_NOT_OBSERVED");
+      if (screenReaderSession) await collectScreenReaderObservation("completion-receipt-projection-unavailable", page, {
+        expected: ["committed_receipt_status_and_time", "projection_unavailable_without_rewriting_receipt", "real_relationship_count_context"],
+        runnerActions: ["replayed_durable_completion_receipt", "injected_existing_projection_503", "did_not_create_another_relationship"],
+      });
       await page.screenshot({ path: path.join(outputDirectory, "completion-receipt-with-projection-failure.png"), fullPage: true });
       matrixRecord("C", "completion_response_loss_restart_receipt_replay", "PASS", { ...restartEvidence, originalReceiptPreserved: true });
       matrixRecord("C", "projection_failure_preserves_completion_receipt", "PASS", { injectionBoundary: "browser projection response", projectionStatus: 503 });
@@ -2182,6 +2661,10 @@ async function browserChain(origins, ports, machine) {
     await referrerPage.reload();
     await referrerPage.getByText("已建立关系").waitFor({ state: "visible" });
     ensure((await referrerPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "1", "REFERRER_COUNT_NOT_ONE");
+    if (screenReaderSession) await collectScreenReaderObservation("overview-entry-available", referrerPage, {
+      expected: ["overview_heading", "real_relationship_count_one", "revenue_unavailable", "referral_code", "open_invitation_link_and_return"],
+      runnerActions: ["loaded_viewer_personal_projection", "did_not_activate_invitation_link"],
+    });
     return { count: 1 };
   });
   await matrixCheck("D", "authenticated_get_is_pure_on_referral_tables", async () => {
@@ -2787,14 +3270,21 @@ async function browserChain(origins, ports, machine) {
   await matrixCheck("E", "missing_dependency_disables_invite_entry", async () => {
     const secret = path.join(manifest.directory, "referral-service.secret");
     const disabled = `${secret}.disabled`;
+    let probe;
     await rename(secret, disabled);
     try {
-      const probe = await referrerContext.newPage();
+      probe = await referrerContext.newPage();
       await probe.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
       await probe.getByText("注册入口暂不可用").waitFor({ state: "visible", timeout: 30_000 });
       ensure(!(await probe.getByRole("link", { name: "打开邀请链接" }).isVisible().catch(() => false)), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
-      await probe.close();
+      const unavailableCount = await probe.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent();
+      ensure(unavailableCount === "1", "PERSONAL_COUNT_UNREADABLE_WITHOUT_REGISTRATION_DEPENDENCY");
+      if (screenReaderSession) await collectScreenReaderObservation("overview-entry-unavailable", probe, {
+        expected: ["same_viewer_personal_count_one", "registration_entry_unavailable", "no_active_invitation_link"],
+        runnerActions: ["temporarily_disabled_run_owned_registration_dependency", "kept_personal_projection_readable", "will_restore_dependency_in_finally"],
+      });
     } finally {
+      await probe?.close().catch(() => {});
       await rename(disabled, secret).catch(() => {});
     }
     return { inviteEnabled: false };
@@ -2825,8 +3315,27 @@ async function browserChain(origins, ports, machine) {
   matrixNotRun("E", "parallel_application_instances_share_rate_limit", "ONLY_SEQUENTIAL_PROCESS_RESTART_EXECUTED");
   matrixNotRun("E", "real_user_token_rejected_as_service_credential", "ONLY_PROVIDER_MACHINE_TOKEN_REJECTED");
   matrixNotRun("E", "cancel_deadline_zero_late_dispatch", "CURRENT_PRODUCT_HAS_NO_TASK_OWNED_DISPATCH_OBSERVER");
-  matrixNotRun("F", "screen_reader", "REAL_SCREEN_READER_NOT_EXECUTED");
-  report.manualAccessibility = "NOT_RUN";
+  if (screenReaderSession) {
+    const manual = evaluateScreenReaderEvidence(screenReaderSession.observations, {
+      runId: manifest.runId,
+      sourceSha: report.sourceSha,
+      webSha: report.webSha,
+      runnerNormalizedLFSha256: report.runnerNormalizedLFSha256,
+    });
+    report.manualAccessibility = manual;
+    matrixRecord("F", "screen_reader", manual.status, {
+      operator: manual.operator,
+      designationReference: manual.designationReference,
+      screenReader: manual.screenReader,
+      browser: manual.browser,
+      operatingSystem: manual.operatingSystem,
+      checkpoints: manual.checkpoints.map(item => ({ checkpointId: item.checkpointId, result: item.result, page: item.page, viewport: item.viewport, observedAt: item.observedAt })),
+    });
+    await writeJSONAtomic(path.join(outputDirectory, "screen-reader-observations.json"), manual);
+  } else {
+    matrixNotRun("F", "screen_reader", "REAL_SCREEN_READER_NOT_EXECUTED");
+    report.manualAccessibility = "NOT_RUN";
+  }
   assertMatrixMustComplete(report.matrix);
   await context.close();
   await referrerContext.close();
@@ -2970,6 +3479,9 @@ async function cleanupPrivateArtifacts(owner) {
   ensure(path.dirname(secondaryRoot) === expected, "CLEANUP_PATH_INVALID");
   await unlink(path.join(secondaryRoot, "ui", "node_modules")).catch(error => { if (error.code !== "ENOENT") throw error; });
   await rm(secondaryRoot, { recursive: true, force: true });
+  const screenReaderRoot = path.resolve(expected, "screen-reader-session");
+  ensure(path.dirname(screenReaderRoot) === expected, "CLEANUP_PATH_INVALID");
+  await rm(screenReaderRoot, { recursive: true, force: true });
 }
 
 async function cleanupCommand(runId) {
@@ -3040,5 +3552,8 @@ const invokedAsScript = process.argv[1] && path.resolve(process.argv[1]) === fil
 if (invokedAsScript) {
   if (process.argv[2] === "lifecycle-test") await lifecycleTestCommand(process.argv[3]);
   else if (process.argv[2] === "cleanup-artifacts") await cleanupCommand(process.argv[3]);
+  else if (process.argv[2] === "screen-reader-status") await screenReaderStatusCommand(process.argv[3]);
+  else if (process.argv[2] === "screen-reader-ack") await screenReaderAckCommand(process.argv[3]);
+  else if (process.argv[2] === "screen-reader-abort") await screenReaderAbortCommand(process.argv[3]);
   else await main();
 }
