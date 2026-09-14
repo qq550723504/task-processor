@@ -1520,8 +1520,10 @@ async function browserChain(origins, ports, machine) {
         } finally { await adminContext.close(); }
       },
       restoreAuthorization: () => {
-        enterpriseStage = "restore";
-        return restoreAuthorizationEventually(() => runBaseRuntimeControl("restore", "viewer", "B"));
+        const primaryStage = enterpriseStage;
+        return restoreAuthorizationEventually(() => runBaseRuntimeControl("restore", "viewer", "B"))
+          .then(() => { enterpriseStage = primaryStage; })
+          .catch(() => { enterpriseStage = "restore"; throw new Error("ENTERPRISE_AUTHORIZATION_RESTORE_FAILED"); });
       },
     }); } catch (error) {
       await writeJSON(path.join(outputDirectory, "m1-enterprise-diagnostic.json"), { stage: enterpriseStage, code: safeCode(error) });
@@ -1553,14 +1555,17 @@ async function browserChain(origins, ports, machine) {
     } finally { await isolated.close(); }
   });
   await matrixCheck("D", "expired_session_and_late_response", async () => {
+    let expiredStage = "positive_read";
     const bootstrap = (await readFile(path.join(manifest.directory, "bootstrap.pat"), "utf8")).trim();
     let lateRelease;
     let lateReadyResolve;
     let lateResultResolve;
     const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
     const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
-    const observation = await runExpiredSessionControl({
+    let observation;
+    try { observation = await runExpiredSessionControl({
       positiveRead: async () => {
+        expiredStage = "positive_read";
         const response = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
         ensure(response.status() === 200, "SESSION_POSITIVE_CONTROL_FAILED");
         const sessions = await provider("/v2/sessions/search", { query: { offset: 0, limit: 100, asc: true }, queries: [{ userIdQuery: { id: subject } }] }, bootstrap);
@@ -1569,6 +1574,7 @@ async function browserChain(origins, ports, machine) {
         return { status: response.status(), subject, sessionId: sessionIds };
       },
       beginLateRead: () => {
+        expiredStage = "late_read";
         const gate = new Promise(resolve => { lateRelease = resolve; });
         void (async () => {
           try {
@@ -1594,34 +1600,51 @@ async function browserChain(origins, ports, machine) {
         return { ready: Promise.race([lateReady, delay(30_000).then(() => { throw new Error("LATE_PROFILE_READ_NOT_CAPTURED"); })]), result: lateResult };
       },
       deleteProviderSession: async sessionIds => {
+        expiredStage = "delete_provider_session";
         for (const sessionId of sessionIds) await provider(`/v2/sessions/${encodeURIComponent(sessionId)}`, {}, bootstrap, "DELETE");
       },
       readWithRevokedSession: async () => {
+        expiredStage = "revoked_session_read";
         const sessions = await provider("/v2/sessions/search", { query: { offset: 0, limit: 100, asc: true }, queries: [{ userIdQuery: { id: subject } }] }, bootstrap);
         const remaining = (sessions.sessions ?? []).filter(session => session.factors?.user?.id === subject);
         ensure(remaining.length === 0, "PROVIDER_SESSION_STILL_LISTED");
         return { status: 404 };
       },
       loginReplacementIdentity: async () => {
+        expiredStage = "replacement_login";
         const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
         await page.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "commit", timeout: 45_000 });
         await login(page, origins.publicOrigin, admin, "/workbench/account/profile");
         return { subject: manifest.users.admin.id };
       },
       confirmReplacementIdentity: async expectedSubject => {
+        expiredStage = "replacement_confirmation";
         const response = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": expectedSubject } });
         ensure(response.status() === 200, "REPLACEMENT_PROFILE_READ_FAILED");
         const payload = await response.json();
         ensure(payload.userId === expectedSubject, "REPLACEMENT_PROFILE_SUBJECT_MISMATCH");
         await page.getByText(`账户 ID：${expectedSubject}`).waitFor({ state: "visible", timeout: 30_000 });
       },
-      releaseLateRead: async () => lateRelease(),
+      releaseLateRead: async () => { expiredStage = "late_release"; lateRelease(); },
       inspectVisibleIdentity: async () => {
+        expiredStage = "visible_identity";
         await page.getByText(`账户 ID：${manifest.users.admin.id}`).waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
         const body = await page.locator("body").innerText();
         return { subject: body.includes(`账户 ID：${manifest.users.admin.id}`) ? manifest.users.admin.id : "unknown", oldProjectionVisible: body.includes(`账户 ID：${subject}`) };
       },
-    });
+    }); } catch (error) {
+      const body = await page.locator("body").innerText().catch(() => "");
+      await writeJSON(path.join(outputDirectory, "m1-expired-session-diagnostic.json"), {
+        stage: expiredStage,
+        code: safeCode(error),
+        pathname: new URL(page.url()).pathname,
+        replacementVisible: body.includes(`账户 ID：${manifest.users.admin.id}`),
+        oldProjectionVisible: body.includes(`账户 ID：${subject}`),
+        identityChangedStateVisible: body.includes("登录身份已变化"),
+        authenticationRequiredStateVisible: body.includes("登录已失效"),
+      });
+      throw error;
+    }
     await writeJSON(path.join(outputDirectory, "m1-expired-session-observation.json"), observation);
     return { ...evaluateExpiredSessionControl(observation), precondition: "authenticated_profile_read_200", injection: "official_session_delete_and_old_profile_response_hold", positiveControl: "admin_login_after_logout", observation: "old_response_not_visible_after_identity_change", invariants: ["provider_session_deleted", "identity_keyed_projection"] };
   });
