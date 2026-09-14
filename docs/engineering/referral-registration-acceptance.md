@@ -106,7 +106,7 @@ The report's `matrix` array records each item independently so an early product 
 - Refuse to bind an existing account to a newly admitted fixed subject.
 - Submit an invalid official verification check in a separate browser and prove it does not verify the user.
 - Complete an initial valid official email verification, interrupt before authenticator enrollment, and prove the continuation is rejected in a fresh browser.
-- Put the same task-owned subject back through official email verification, consume a new Mailpit-delivered Login V2 link, then complete the first authenticator and OIDC/Auth.js flow with the same subject.
+- Use ZITADEL's official replacement invite-code flow for the same verified task-owned subject, consume a new Mailpit-delivered Login V2 verification link, then complete the first authenticator and OIDC/Auth.js flow with the same subject. Repeating `SetEmail` with an unchanged address is not this control and is rejected by ZITADEL.
 - Prove another authenticated subject cannot claim the Intent.
 
 ### C. Completion and durable receipt

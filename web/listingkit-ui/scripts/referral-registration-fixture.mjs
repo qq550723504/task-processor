@@ -1192,7 +1192,7 @@ async function browserChain(origins, ports, machine) {
   });
 
   let registeredPassword;
-  await matrixCheck("B", "official_verification_interruption_new_browser_reverify", async () => {
+  const reverified = await matrixCheck("B", "official_verification_interruption_new_browser_reverify", async () => {
     const observation = await runReverificationControl({
       verifyInitial: async () => {
         await context.close();
@@ -1208,14 +1208,9 @@ async function browserChain(origins, ports, machine) {
         return !(await fresh.page.getByRole("link", { name: "Password" }).isVisible().catch(() => false));
       },
       requestOfficialReverification: async expectedSubject => {
-        await provider(`/v2/users/${encodeURIComponent(expectedSubject)}/email`, {
-          email,
-          sendCode: { urlTemplate: `${origins.providerOrigin}/ui/v2/login/verify?code={{.Code}}&userId={{.UserID}}&organization={{.OrgID}}` },
+        await provider(`/v2/users/${encodeURIComponent(expectedSubject)}/invite_code`, {
+          sendCode: { urlTemplate: `${origins.providerOrigin}/ui/v2/login/verify?code={{.Code}}&userId={{.UserID}}&organization={{.OrgID}}&invite=true` },
         }, machine.token);
-        await until(async () => {
-          const user = await provider(`/v2/users/${encodeURIComponent(expectedSubject)}`, undefined, machine.token, "GET");
-          return user.user?.human?.email?.isVerified === false;
-        }, "EMAIL_REVERIFICATION_PENDING", 30_000);
         const replacement = await waitForMessage(ports.mail, email, origins.providerOrigin, message.id);
         return { subject: expectedSubject, messageId: replacement.id, link: replacement.link };
       },
@@ -1269,6 +1264,7 @@ async function browserChain(origins, ports, machine) {
     });
     return { ...evaluateReverificationControl(observation), precondition: "verified_without_authenticator", injection: "fresh_browser_without_verification_check", positiveControl: "replacement_official_verification", observation: "same_subject_authenticator_and_oidc_completed", invariants: ["fixed_subject", "official_login_only"] };
   });
+  ensure(reverified, "M1_REVERIFICATION_REQUIRED");
 
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true,
     extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
