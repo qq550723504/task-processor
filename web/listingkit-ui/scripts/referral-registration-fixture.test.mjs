@@ -239,7 +239,7 @@ test("M1 enterprise removal control holds a real late read across revoke and res
   let release;
   const late = new Promise(resolve => { release = resolve; });
   const result = await runEnterpriseRemovalControl({
-    readContext: async phase => { calls.push(`context:${phase}`); return phase === "before" ? { subject: "viewer", organizationIds: ["org-a", "org-b"] } : { subject: "viewer", organizationIds: ["org-a"] }; },
+    readContext: async phase => { calls.push(`context:${phase}`); return phase === "before" ? { subject: "viewer", organizationIds: ["org-a", "org-b", "org-c"] } : { subject: "viewer", organizationIds: ["org-c"] }; },
     switchOrganization: async id => { calls.push(`switch:${id}`); },
     beginLateOrganizationRead: () => { calls.push("late:begin"); return { ready: Promise.resolve(), result: late }; },
     revokeAuthorization: async () => { calls.push("revoke"); },
@@ -250,10 +250,9 @@ test("M1 enterprise removal control holds a real late read across revoke and res
     readAdminProjection: async () => { calls.push("admin"); return { subject: "admin", count: 0 }; },
     restoreAuthorization: async () => { calls.push("restore"); },
     removedOrganizationId: "org-b",
-    fallbackOrganizationId: "org-a",
   });
   assert.equal(result.lateRemovedOrganizationVisible, false);
-  assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "context:after", "context:refresh", "switch:org-a", "late:release", "visible", "personal", "admin", "restore"]);
+  assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "context:after", "context:refresh", "switch:org-c", "late:release", "visible", "personal", "admin", "restore"]);
 });
 
 test("M1 enterprise authorization restoration retries a transient provider failure", async () => {

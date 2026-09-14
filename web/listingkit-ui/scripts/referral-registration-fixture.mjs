@@ -168,8 +168,10 @@ export async function runEnterpriseRemovalControl(operations) {
     revoked = true;
     await operations.revokeAuthorization();
     const after = await operations.readContext("after");
+    const fallbackOrganizationId = after?.organizationIds?.find(id => id !== operations.removedOrganizationId);
+    ensure(fallbackOrganizationId, "ENTERPRISE_FALLBACK_AUTHORIZATION_MISSING");
     await operations.refreshAuthorizationContext();
-    await operations.switchOrganization(operations.fallbackOrganizationId);
+    await operations.switchOrganization(fallbackOrganizationId);
     await operations.releaseLateOrganizationRead();
     lateReleased = true;
     const lateResult = await late.result;
@@ -182,6 +184,7 @@ export async function runEnterpriseRemovalControl(operations) {
       removedOrganizationId: operations.removedOrganizationId,
       organizationsBefore: before.organizationIds,
       organizationsAfter: after.organizationIds,
+      fallbackOrganizationId,
       personalProjectionCount: personal.count,
       adminObservedCount: admin.count,
       lateRemovedOrganizationVisible: visibleOrganization === operations.removedOrganizationId || lateResult?.applied === true,
@@ -1485,7 +1488,6 @@ async function browserChain(origins, ports, machine) {
       await login(enterprisePage, origins.publicOrigin, viewerCredential, "/workbench/account/organization");
       observation = await runEnterpriseRemovalControl({
       removedOrganizationId: manifest.organizations.B.id,
-      fallbackOrganizationId: manifest.organizations.A.id,
       readContext: async phase => {
         enterpriseStage = `context_${phase}`;
         return until(async () => {
@@ -1595,7 +1597,7 @@ async function browserChain(origins, ports, machine) {
       await enterpriseContext.close();
     }
     await writeJSON(path.join(outputDirectory, "m1-enterprise-observation.json"), observation);
-    return { ...evaluateEnterpriseRemovalControl(observation), precondition: "viewer_selected_enterprise_B", injection: "official_authorization_deactivation", positiveControl: "live_switch_to_home_A", observation: "late_enterprise_read_not_applied", invariants: ["same_subject", "personal_projection", "admin_isolation"] };
+    return { ...evaluateEnterpriseRemovalControl(observation), precondition: "viewer_selected_enterprise_B", injection: "official_authorization_deactivation", positiveControl: "live_switch_to_surviving_authorized_enterprise", observation: "late_enterprise_read_not_applied", invariants: ["same_subject", "personal_projection", "admin_isolation"] };
   });
   await matrixCheck("D", "admin_reads_only_own_personal_projection", async () => {
     const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
