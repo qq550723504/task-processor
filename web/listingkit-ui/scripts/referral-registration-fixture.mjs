@@ -732,6 +732,14 @@ export async function runCleanupPass({ phase, actions, inspectResiduals, now = (
   };
 }
 
+export function finalizeScreenReaderSessionEvidence(report, finishedAt) {
+  const manual = report.manualAccessibility;
+  if (!manual || typeof manual !== "object" || manual.sessionStatus !== "IN_PROGRESS") return;
+  manual.sessionStatus = "TERMINATED";
+  manual.terminationReason = report.business?.code ?? (report.business?.status === "PASS" ? "BUSINESS_COMPLETED" : "BUSINESS_FAILED");
+  manual.finishedAt = finishedAt;
+}
+
 export async function orchestrateFixtureLifecycle({ report, runBusiness, runCleanup, persistReport, emitFailure, now = () => new Date().toISOString() }) {
   report.startedAt ??= now();
   report.business = { status: "NOT_RUN", startedAt: now() };
@@ -761,6 +769,7 @@ export async function orchestrateFixtureLifecycle({ report, runBusiness, runClea
     }
   }
   report.cleanup = cleanup;
+  finalizeScreenReaderSessionEvidence(report, now());
   const lifecyclePassed = report.business.status === "PASS" && cleanup.initial.status === "PASS" && cleanup.final.status === "PASS";
   report.conclusion = lifecyclePassed ? "PASS" : "FAIL";
   report.status = report.conclusion;

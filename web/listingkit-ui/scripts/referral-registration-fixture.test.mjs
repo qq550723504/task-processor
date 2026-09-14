@@ -189,6 +189,39 @@ test("manual partial evidence rejects mixed identity and preserves a known failu
   assert.throws(() => screenReaderPartialEvidence([first, { ...failed, operator: "different-operator" }], screenReaderAuthority()), /SCREEN_READER_OPERATOR_MISMATCH/);
 });
 
+test("manual partial evidence is terminal in the persisted lifecycle report", async () => {
+  const { orchestrateFixtureLifecycle } = await runner();
+  const cleanup = phase => ({ phase, status: "PASS", actions: [], residuals: { status: "PASS", containers: 0, volumes: 0, networks: 0, listeners: 0 } });
+  for (const code of ["SCREEN_READER_SESSION_ABORTED", "SCREEN_READER_CHECKPOINT_TIMEOUT", "SCREEN_READER_BROWSER_CLOSED", "SCREEN_READER_BUSINESS_FAILED"]) {
+    const report = { manualAccessibility: { status: code.includes("ABORTED") ? "FAIL" : "NOT_RUN", sessionStatus: "IN_PROGRESS" } };
+    let persisted;
+    await orchestrateFixtureLifecycle({
+      report,
+      runBusiness: async () => { throw new Error(code); },
+      runCleanup: async phase => cleanup(phase),
+      persistReport: async value => { persisted = structuredClone(value); },
+      emitFailure: () => {},
+      now: () => "2026-09-14T12:00:00.000Z",
+    });
+    assert.equal(persisted.manualAccessibility.status, code.includes("ABORTED") ? "FAIL" : "NOT_RUN");
+    assert.equal(persisted.manualAccessibility.sessionStatus, "TERMINATED");
+    assert.equal(persisted.manualAccessibility.terminationReason, code);
+    assert.equal(persisted.manualAccessibility.finishedAt, "2026-09-14T12:00:00.000Z");
+  }
+  const report = { manualAccessibility: { status: "FAIL", sessionStatus: "IN_PROGRESS" } };
+  const outcome = await orchestrateFixtureLifecycle({
+    report,
+    runBusiness: async () => { throw new Error("SCREEN_READER_SESSION_ABORTED"); },
+    runCleanup: async phase => cleanup(phase),
+    persistReport: async () => { throw new Error("REPORT_WRITE_FAILED"); },
+    emitFailure: () => {},
+  });
+  assert.equal(outcome.report.manualAccessibility.status, "FAIL");
+  assert.equal(outcome.report.manualAccessibility.sessionStatus, "TERMINATED");
+  assert.equal(outcome.report.manualAccessibility.terminationReason, "SCREEN_READER_SESSION_ABORTED");
+  assert.equal(outcome.report.evidence.status, "FAIL");
+});
+
 test("manual acknowledgement binds to the observed phase and exact state attempt", async () => {
   const { screenReaderObservationFromInput } = await runner();
   const base = screenReaderObservation("registration-pending", 2);
