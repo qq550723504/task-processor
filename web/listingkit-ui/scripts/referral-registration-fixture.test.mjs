@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer as createHTTPServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
@@ -282,9 +283,10 @@ test("manual terminal evidence fails closed on actual observation and report fil
   }
 });
 
-test("manual checkpoint wait reports an actual Playwright page close", async () => {
+test("manual checkpoint wait reports an actual Playwright page close", async context => {
   const { orchestrateFixtureLifecycle, screenReaderPageError, waitForScreenReaderDecisionOrPageClose, writeJSONAtomic } = await runner();
   const { chromium } = await import("@playwright/test");
+  if (!existsSync(chromium.executablePath())) return context.skip("Playwright Chromium is not installed in this test step");
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
