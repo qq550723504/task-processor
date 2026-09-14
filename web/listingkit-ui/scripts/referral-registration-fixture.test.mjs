@@ -108,6 +108,40 @@ test("matrix evidence and NOT_RUN fallback cannot overwrite a PASS classificatio
   assert.deepEqual(item, { group: "C", name: item.name, status: "PASS", requests: 4 });
 });
 
+test("screen-reader NOT_RUN keeps the whole fixture incomplete and nonzero", async () => {
+  const { assertMatrixMustComplete, orchestrateFixtureLifecycle, report } = await runner();
+  const matrix = report.matrix.map(item => ({
+    ...item,
+    status: item.group === "F" && item.name === "screen_reader" ? "NOT_RUN" : "PASS",
+  }));
+  const scenario = lifecycleScenario();
+  scenario.options.runBusiness = async () => {
+    scenario.calls.push("business");
+    assertMatrixMustComplete(matrix);
+  };
+
+  const outcome = await orchestrateFixtureLifecycle(scenario.options);
+
+  assert.equal(outcome.exitCode, 1);
+  assert.equal(outcome.report.business.status, "FAIL");
+  assert.equal(outcome.report.business.code, "MATRIX_MUST_INCOMPLETE");
+  assert.equal(outcome.report.conclusion, "FAIL");
+  assert.deepEqual(scenario.calls, ["business", "cleanup:initial", "cleanup:final", "persist"]);
+});
+
+test("every planned Must must be present exactly once and PASS", async () => {
+  const { assertMatrixMustComplete, report } = await runner();
+  const complete = report.matrix.map(item => ({ ...item, status: "PASS" }));
+
+  assert.doesNotThrow(() => assertMatrixMustComplete(complete));
+  assert.throws(
+    () => assertMatrixMustComplete(complete.map(item => item.group === "F" && item.name === "overview_desktop_narrow_keyboard_axe" ? { ...item, status: "NOT_RUN" } : item)),
+    /MATRIX_MUST_INCOMPLETE/,
+  );
+  assert.throws(() => assertMatrixMustComplete(complete.slice(1)), /MATRIX_MUST_INCOMPLETE/);
+  assert.throws(() => assertMatrixMustComplete([...complete, { ...complete[0] }]), /MATRIX_MUST_INCOMPLETE/);
+});
+
 test("M1 evidence requires a fresh official verification before authenticator enrollment", async () => {
   const { evaluateReverificationControl } = await runner();
   assert.deepEqual(evaluateReverificationControl({

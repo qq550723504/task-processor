@@ -40,7 +40,7 @@ The second command must print nothing. Record the full 40-character output of th
 
 ## Fast lifecycle and failure tests
 
-These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, sanitized fallback output, and the order/failure/finally contracts for M1 and M2 controls. M2 regressions reject unhealthy identity prerequisites, changed receipts/counts, false parallel-process claims, secondary-process cleanup gaps, late dispatch, and leaked observer requests. They do not start the official business runtime and are not business acceptance.
+These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, sanitized fallback output, and the order/failure/finally contracts for M1 and M2 controls. M2 regressions reject unhealthy identity prerequisites, changed receipts/counts, false parallel-process claims, secondary-process cleanup gaps, late dispatch, leaked observer requests, and any missing, duplicated, failed, or `NOT_RUN` Must item. They do not start the official business runtime and are not business acceptance.
 
 ```powershell
 node --test scripts/referral-registration-fixture.test.mjs
@@ -76,7 +76,7 @@ Run the complete task-owned chain from `web/listingkit-ui`:
 node scripts/referral-registration-fixture.mjs
 ```
 
-The final sanitized JSON line contains the run ID, invocation ID, business status, both cleanup passes, report evidence status, and named check outcomes. The command may exit 1 when a required matrix item fails or remains `NOT_RUN`; this is a valid finding, not permission to weaken the assertion.
+The final sanitized JSON line contains the run ID, invocation ID, business status, both cleanup passes, report evidence status, and named check outcomes. Every planned matrix item is a Must. If any item is missing, duplicated, `FAIL`, or `NOT_RUN`, including `F.screen_reader`, the whole command must report `MATRIX_MUST_INCOMPLETE` and exit nonzero. A successful automated M2 slice therefore remains distinct from full C2 acceptance until a real screen-reader result exists.
 
 Private evidence is written under:
 

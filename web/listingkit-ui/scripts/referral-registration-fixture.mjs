@@ -99,6 +99,22 @@ export function matrixNotRun(group, name, reason) {
   if (report.matrix.find(entry => entry.group === group && entry.name === name)?.status === "NOT_RUN") matrixRecord(group, name, "NOT_RUN", { reason });
 }
 
+export function assertMatrixMustComplete(matrix) {
+  ensure(Array.isArray(matrix), "MATRIX_MUST_INCOMPLETE");
+  const expected = Object.entries(matrixPlan).flatMap(([group, names]) => names.map(name => `${group}.${name}`));
+  const observed = new Map();
+  for (const item of matrix) {
+    const key = `${item?.group}.${item?.name}`;
+    observed.set(key, [...(observed.get(key) ?? []), item]);
+  }
+  ensure(matrix.length === expected.length, "MATRIX_MUST_INCOMPLETE");
+  for (const key of expected) {
+    const matches = observed.get(key);
+    ensure(matches?.length === 1 && matches[0].status === "PASS", "MATRIX_MUST_INCOMPLETE");
+  }
+  return true;
+}
+
 function safeCode(error) {
   const raw = error instanceof Error ? error.message : String(error);
   return /^[A-Z0-9_:-]{1,160}$/.test(raw) ? raw : "FIXTURE_STEP_FAILED";
@@ -2520,7 +2536,7 @@ async function browserChain(origins, ports, machine) {
   matrixNotRun("E", "cancel_deadline_zero_late_dispatch", "CURRENT_PRODUCT_HAS_NO_TASK_OWNED_DISPATCH_OBSERVER");
   matrixNotRun("F", "screen_reader", "REAL_SCREEN_READER_NOT_EXECUTED");
   report.manualAccessibility = "NOT_RUN";
-  if (report.matrix.some(item => item.status === "FAIL" || (item.status === "NOT_RUN" && item.group !== "F"))) throw new Error("MATRIX_MUST_INCOMPLETE");
+  assertMatrixMustComplete(report.matrix);
   await context.close();
   await referrerContext.close();
 }
