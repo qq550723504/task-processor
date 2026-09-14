@@ -115,13 +115,20 @@ test("manual evidence rejects missing duplicate out-of-order and inconsistent op
 });
 
 test("manual evidence is bound to the owned run and rejects secrets or reusable links", async () => {
-  const { screenReaderCheckpointPlan, evaluateScreenReaderEvidence } = await runner();
+  const { screenReaderCheckpointPlan, evaluateScreenReaderEvidence, screenReaderObservationFromInput } = await runner();
   const observations = screenReaderCheckpointPlan.map((item, index) => screenReaderObservation(item.id, index + 1));
   assert.throws(() => evaluateScreenReaderEvidence(observations, screenReaderAuthority("22222222-2222-4222-8222-222222222222")), /SCREEN_READER_RUN_MISMATCH/);
   assert.throws(() => evaluateScreenReaderEvidence(observations, { ...screenReaderAuthority(), sourceSha: "c".repeat(40) }), /SCREEN_READER_SOURCE_MISMATCH/);
   assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, announcedText: ["resumeSecret=private-value"] } : item), screenReaderAuthority()), /SCREEN_READER_EVIDENCE_SECRET/);
   assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, announcedText: ["https:\/\/example.test\/verify?code=reusable"] } : item), screenReaderAuthority()), /SCREEN_READER_EVIDENCE_SECRET/);
   assert.throws(() => evaluateScreenReaderEvidence(observations.map((item, index) => index === 2 ? { ...item, announcedText: ["https:\/\/example.test\/verify\/reusable"] } : item), screenReaderAuthority()), /SCREEN_READER_EVIDENCE_SECRET/);
+  const input = screenReaderObservation("registration-initial", 1);
+  assert.throws(() => screenReaderObservationFromInput({ ...input, screenReader: { ...input.screenReader, privateLink: "synthetic-private-link" } }, {
+    ...input,
+    phase: "observation",
+    expiresAt: "2099-09-14T10:10:00.000Z",
+    runnerActions: ["prepared state"],
+  }), /SCREEN_READER_OBSERVATION_SCHEMA_INVALID/);
 });
 
 test("manual decision is atomic idempotent and ack cannot overwrite abort", async () => {
@@ -136,6 +143,50 @@ test("manual decision is atomic idempotent and ack cannot overwrite abort", asyn
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("manual decision is invisible until the complete exclusive record is publishable", async () => {
+  const { writeScreenReaderDecision } = await runner();
+  const directory = await mkdtemp(path.join(tmpdir(), "issue413-screen-reader-publish-"));
+  const decisionFile = path.join(directory, "decision.json");
+  let publishReady;
+  let releasePublish;
+  const ready = new Promise(resolve => { publishReady = resolve; });
+  const release = new Promise(resolve => { releasePublish = resolve; });
+  try {
+    const pending = writeScreenReaderDecision({
+      decisionFile,
+      decision: { kind: "abort", runId: "run", sequence: 1 },
+      beforePublish: async () => { publishReady(); await release; },
+    });
+    const pausedBeforePublish = await Promise.race([ready.then(() => true), pending.then(() => false)]);
+    assert.equal(pausedBeforePublish, true);
+    await assert.rejects(readFile(decisionFile), error => error?.code === "ENOENT");
+    releasePublish();
+    await pending;
+    assert.equal(JSON.parse(await readFile(decisionFile, "utf8")).kind, "abort");
+  } finally {
+    releasePublish?.();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("manual checkpoint inputs are sequence-owned", async () => {
+  const { screenReaderSessionPaths } = await runner();
+  const paths = screenReaderSessionPaths("11111111-1111-4111-8111-111111111111");
+  assert.notEqual(paths.input(1), paths.input(2));
+});
+
+test("manual partial evidence rejects mixed identity and preserves a known failure", async () => {
+  const { screenReaderPartialEvidence } = await runner();
+  const first = screenReaderObservation("registration-initial", 1);
+  const failed = screenReaderObservation("registration-pending", 2, { result: "FAIL" });
+  const partial = screenReaderPartialEvidence([first, failed], screenReaderAuthority());
+  assert.equal(partial.status, "FAIL");
+  assert.equal(partial.operator, first.operator);
+  assert.equal(partial.observations[0].nonce, undefined);
+  assert.equal(screenReaderPartialEvidence([first], screenReaderAuthority()).status, "NOT_RUN");
+  assert.throws(() => screenReaderPartialEvidence([first, { ...failed, operator: "different-operator" }], screenReaderAuthority()), /SCREEN_READER_OPERATOR_MISMATCH/);
 });
 
 test("manual acknowledgement binds to the observed phase and exact state attempt", async () => {

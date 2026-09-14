@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFile, writeFile, mkdir, unlink, rm, rename, cp, symlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir, unlink, rm, rename, cp, symlink, link } from "node:fs/promises";
 import { createServer as createHTTPServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createServer as createNetServer } from "node:net";
@@ -142,7 +142,7 @@ export function evaluateScreenReaderEvidence(observations, authority = {}) {
   if (observations.length === 0) return { status: "NOT_RUN", checkpoints: [] };
   ensure(observations.length === screenReaderCheckpointPlan.length, "SCREEN_READER_CHECKPOINT_SET_INCOMPLETE");
   const seen = new Set();
-  const identity = {};
+  let identity;
   let failed = false;
   const checkpoints = observations.map((observation, index) => {
     validateScreenReaderObservationFields(observation);
@@ -152,16 +152,8 @@ export function evaluateScreenReaderEvidence(observations, authority = {}) {
     ensure(observation.checkpointId === expected.id && observation.sequence === index + 1, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
     ensure(observation.runId === authority.runId, "SCREEN_READER_RUN_MISMATCH");
     ensure(observation.sourceSha === authority.sourceSha && observation.webSha === authority.webSha && observation.runnerNormalizedLFSha256 === authority.runnerNormalizedLFSha256, "SCREEN_READER_SOURCE_MISMATCH");
-    for (const [name, value, code] of [
-      ["operator", observation.operator, "SCREEN_READER_OPERATOR_MISMATCH"],
-      ["designationReference", observation.designationReference, "SCREEN_READER_DESIGNATION_MISMATCH"],
-      ["screenReader", JSON.stringify(observation.screenReader), "SCREEN_READER_SOFTWARE_MISMATCH"],
-      ["browser", JSON.stringify(observation.browser), "SCREEN_READER_BROWSER_MISMATCH"],
-      ["operatingSystem", JSON.stringify(observation.operatingSystem), "SCREEN_READER_OPERATING_SYSTEM_MISMATCH"],
-    ]) {
-      if (identity[name] === undefined) identity[name] = value;
-      else ensure(identity[name] === value, code);
-    }
+    if (identity) assertScreenReaderIdentity(observation, identity);
+    else identity = observation;
     if (observation.result === "FAIL") failed = true;
     return screenReaderCheckpointEvidence(observation, expected);
   });
@@ -173,9 +165,9 @@ export function evaluateScreenReaderEvidence(observations, authority = {}) {
     runnerNormalizedLFSha256: authority.runnerNormalizedLFSha256,
     operator: identity.operator,
     designationReference: identity.designationReference,
-    screenReader: JSON.parse(identity.screenReader),
-    browser: JSON.parse(identity.browser),
-    operatingSystem: JSON.parse(identity.operatingSystem),
+    screenReader: identity.screenReader,
+    browser: identity.browser,
+    operatingSystem: identity.operatingSystem,
     checkpoints,
   };
 }
@@ -201,6 +193,37 @@ function screenReaderCheckpointEvidence(observation, expected) {
   };
 }
 
+function assertScreenReaderIdentity(observation, reference) {
+  ensure(observation.operator === reference.operator, "SCREEN_READER_OPERATOR_MISMATCH");
+  ensure(observation.designationReference === reference.designationReference, "SCREEN_READER_DESIGNATION_MISMATCH");
+  ensure(JSON.stringify(observation.screenReader) === JSON.stringify(reference.screenReader), "SCREEN_READER_SOFTWARE_MISMATCH");
+  ensure(JSON.stringify(observation.browser) === JSON.stringify(reference.browser), "SCREEN_READER_BROWSER_MISMATCH");
+  ensure(JSON.stringify(observation.operatingSystem) === JSON.stringify(reference.operatingSystem), "SCREEN_READER_OPERATING_SYSTEM_MISMATCH");
+}
+
+export function screenReaderPartialEvidence(observations, authority = {}) {
+  ensure(Array.isArray(observations) && observations.length > 0 && observations.length <= screenReaderCheckpointPlan.length, "SCREEN_READER_OBSERVATIONS_INVALID");
+  observations.forEach((observation, index) => {
+    validateScreenReaderObservationFields(observation);
+    ensure(observation.checkpointId === screenReaderCheckpointPlan[index].id && observation.sequence === index + 1, "SCREEN_READER_CHECKPOINT_OUT_OF_ORDER");
+    ensure(observation.runId === authority.runId, "SCREEN_READER_RUN_MISMATCH");
+    ensure(observation.sourceSha === authority.sourceSha && observation.webSha === authority.webSha && observation.runnerNormalizedLFSha256 === authority.runnerNormalizedLFSha256, "SCREEN_READER_SOURCE_MISMATCH");
+    if (index > 0) assertScreenReaderIdentity(observation, observations[0]);
+  });
+  const identity = observations[0];
+  return {
+    status: observations.some(item => item.result === "FAIL") ? "FAIL" : "NOT_RUN",
+    sessionStatus: "IN_PROGRESS",
+    ...authority,
+    operator: identity.operator,
+    designationReference: identity.designationReference,
+    screenReader: identity.screenReader,
+    browser: identity.browser,
+    operatingSystem: identity.operatingSystem,
+    observations: observations.map((item, index) => screenReaderCheckpointEvidence(item, screenReaderCheckpointPlan[index])),
+  };
+}
+
 function validateScreenReaderObservationFields(observation) {
   ensure(observation && typeof observation === "object" && !Array.isArray(observation), "SCREEN_READER_OBSERVATION_INCOMPLETE");
   ensure(!Object.hasOwn(observation, "status"), "SCREEN_READER_DIRECT_STATUS_FORBIDDEN");
@@ -209,20 +232,24 @@ function validateScreenReaderObservationFields(observation) {
   ensure(Number.isInteger(observation.sequence) && screenReaderCheckpointPlan[observation.sequence - 1]?.page === observation.page, "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
   ensure(Number.isFinite(Date.parse(observation.stateObservedAt)), "SCREEN_READER_STATE_TIME_INVALID");
   ensure(/^https:\/\/github\.com\/qq550723504\/task-processor\/issues\/413#issuecomment-\d+$/.test(observation.designationReference ?? ""), "SCREEN_READER_DESIGNATION_INVALID");
-  ensure(boundedText(observation.screenReader?.name, 1, 80) && boundedText(observation.screenReader?.version, 1, 80), "SCREEN_READER_OBSERVATION_INCOMPLETE");
-  ensure(boundedText(observation.browser?.name, 1, 80) && boundedText(observation.browser?.version, 1, 120), "SCREEN_READER_OBSERVATION_INCOMPLETE");
-  ensure(boundedText(observation.operatingSystem?.name, 1, 80) && boundedText(observation.operatingSystem?.version, 1, 120), "SCREEN_READER_OBSERVATION_INCOMPLETE");
+  ensure(exactObjectKeys(observation.screenReader, ["name", "version"]) && boundedText(observation.screenReader.name, 1, 80) && boundedText(observation.screenReader.version, 1, 80), "SCREEN_READER_OBSERVATION_SCHEMA_INVALID");
+  ensure(exactObjectKeys(observation.browser, ["name", "version"]) && boundedText(observation.browser.name, 1, 80) && boundedText(observation.browser.version, 1, 120), "SCREEN_READER_OBSERVATION_SCHEMA_INVALID");
+  ensure(exactObjectKeys(observation.operatingSystem, ["name", "version"]) && boundedText(observation.operatingSystem.name, 1, 80) && boundedText(observation.operatingSystem.version, 1, 120), "SCREEN_READER_OBSERVATION_SCHEMA_INVALID");
   ensure(boundedText(observation.observationSource, 1, 240), "SCREEN_READER_OBSERVATION_INCOMPLETE");
   ensure(boundedTextArray(observation.runnerActions, 1), "SCREEN_READER_OBSERVATION_INCOMPLETE");
   const stateAttempt = JSON.stringify(observation.stateAttempt);
   ensure(stateAttempt && stateAttempt.length <= 8_000 && !screenReaderSensitiveText(stateAttempt), "SCREEN_READER_EVIDENCE_SECRET");
-  ensure(Number.isInteger(observation.viewport?.width) && observation.viewport.width >= 320 && observation.viewport.width <= 7680 && Number.isInteger(observation.viewport?.height) && observation.viewport.height >= 320 && observation.viewport.height <= 4320, "SCREEN_READER_VIEWPORT_INVALID");
+  ensure(exactObjectKeys(observation.viewport, ["width", "height"]) && Number.isInteger(observation.viewport.width) && observation.viewport.width >= 320 && observation.viewport.width <= 7680 && Number.isInteger(observation.viewport.height) && observation.viewport.height >= 320 && observation.viewport.height <= 4320, "SCREEN_READER_VIEWPORT_INVALID");
   for (const name of ["readingSequence", "controlSequence", "announcedText", "visibleErrors", "announcedErrors"]) ensure(boundedTextArray(observation[name], name === "visibleErrors" || name === "announcedErrors" ? 0 : 1), "SCREEN_READER_OBSERVATION_INCOMPLETE");
   ensure(["PASS", "FAIL"].includes(observation.result), "SCREEN_READER_RESULT_INVALID");
   ensure(Number.isFinite(Date.parse(observation.observedAt)), "SCREEN_READER_OBSERVED_AT_INVALID");
   ensure(Date.parse(observation.observedAt) >= Date.parse(observation.stateObservedAt) - 5_000, "SCREEN_READER_OBSERVATION_STALE");
   ensure(!screenReaderEvidenceContainsSecret(observation), "SCREEN_READER_EVIDENCE_SECRET");
   return observation;
+}
+
+function exactObjectKeys(value, keys) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 }
 
 function boundedText(value, min, max) {
@@ -855,7 +882,7 @@ export async function writeJSONAtomic(file, value) {
   }
 }
 
-function screenReaderSessionPaths(runId) {
+export function screenReaderSessionPaths(runId) {
   ensure(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(runId ?? ""), "INVALID_RUN_ID");
   const runDirectory = path.resolve(tmpdir(), "task-processor-issue357", runId);
   const directory = path.resolve(runDirectory, "screen-reader-session");
@@ -864,7 +891,7 @@ function screenReaderSessionPaths(runId) {
     runDirectory,
     directory,
     status: path.join(directory, "status.json"),
-    input: path.join(directory, "operator-observation.json"),
+    input: sequence => path.join(directory, `operator-observation-${String(sequence).padStart(2, "0")}.json`),
     decision: sequence => path.join(directory, `decision-${String(sequence).padStart(2, "0")}.json`),
   };
 }
@@ -930,16 +957,23 @@ export function screenReaderObservationFromInput(input, status) {
   return validateScreenReaderObservationFields(observation);
 }
 
-export async function writeScreenReaderDecision({ decisionFile, decision }) {
+export async function writeScreenReaderDecision({ decisionFile, decision, beforePublish }) {
   const encoded = `${JSON.stringify(decision, null, 2)}\n`;
+  const temporary = `${decisionFile}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
   try {
-    await writeFile(decisionFile, encoded, { encoding: "utf8", flag: "wx", mode: 0o600 });
-    return { recorded: true, replay: false, decision };
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    const existing = await readBoundedJSON(decisionFile);
-    ensure(JSON.stringify(existing) === JSON.stringify(decision), "SCREEN_READER_DECISION_CONFLICT");
-    return { recorded: true, replay: true, decision: existing };
+    await writeFile(temporary, encoded, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    await beforePublish?.();
+    try {
+      await link(temporary, decisionFile);
+      return { recorded: true, replay: false, decision };
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      const existing = await readBoundedJSON(decisionFile);
+      ensure(JSON.stringify(existing) === JSON.stringify(decision), "SCREEN_READER_DECISION_CONFLICT");
+      return { recorded: true, replay: true, decision: existing };
+    }
+  } finally {
+    await unlink(temporary).catch(error => { if (error.code !== "ENOENT") throw error; });
   }
 }
 
@@ -948,7 +982,7 @@ async function screenReaderStatusCommand(runId) {
   const owner = await readBoundedJSON(path.join(paths.runDirectory, "manifest.json"));
   const status = validateScreenReaderStatus(await readBoundedJSON(paths.status), owner);
   await ensureScreenReaderCommandSource(status);
-  console.log(JSON.stringify({ ...status, inputFile: paths.input }));
+  console.log(JSON.stringify({ ...status, inputFile: paths.input(status.sequence) }));
 }
 
 async function screenReaderAckCommand(runId) {
@@ -956,10 +990,11 @@ async function screenReaderAckCommand(runId) {
   const owner = await readBoundedJSON(path.join(paths.runDirectory, "manifest.json"));
   const status = validateScreenReaderStatus(await readBoundedJSON(paths.status), owner);
   await ensureScreenReaderCommandSource(status);
-  const input = await readBoundedJSON(paths.input);
+  const inputFile = paths.input(status.sequence);
+  const input = await readBoundedJSON(inputFile);
   const observation = screenReaderObservationFromInput(input, status);
   const result = await writeScreenReaderDecision({ decisionFile: paths.decision(status.sequence), decision: { kind: "observation", observation } });
-  await unlink(paths.input).catch(error => { if (error.code !== "ENOENT") throw error; });
+  await unlink(inputFile).catch(error => { if (error.code !== "ENOENT") throw error; });
   console.log(result.replay ? "SCREEN_READER_OBSERVATION_ALREADY_RECORDED" : "SCREEN_READER_OBSERVATION_RECORDED");
 }
 
@@ -1023,7 +1058,7 @@ async function collectScreenReaderObservation(checkpointId, page, options = {}) 
     expected: options.expected ?? [],
     runnerActions: options.runnerActions ?? [],
   };
-  await unlink(screenReaderSession.paths.input).catch(error => { if (error.code !== "ENOENT") throw error; });
+  await unlink(screenReaderSession.paths.input(sequence)).catch(error => { if (error.code !== "ENOENT") throw error; });
   await writeJSONAtomic(screenReaderSession.paths.status, status);
   console.log(`SCREEN_READER_CHECKPOINT ${checkpointId} ${manifest.runId}`);
   const decision = await waitForScreenReaderDecision(status, timeoutMs);
@@ -1032,23 +1067,16 @@ async function collectScreenReaderObservation(checkpointId, page, options = {}) 
   const observation = decision.observation;
   ensure(observation.checkpointId === checkpointId && observation.sequence === sequence && observation.nonce === status.nonce && observation.checkpointAttemptId === status.checkpointAttemptId, "SCREEN_READER_OBSERVATION_STALE");
   validateScreenReaderObservationFields(observation);
-  screenReaderSession.observations.push(observation);
-  const persistedObservations = screenReaderSession.observations.map((item, index) => screenReaderCheckpointEvidence(item, screenReaderCheckpointPlan[index]));
-  const partialEvidence = {
-    status: "NOT_RUN",
-    sessionStatus: "IN_PROGRESS",
+  const observations = [...screenReaderSession.observations, observation];
+  const partialEvidence = screenReaderPartialEvidence(observations, {
     runId: manifest.runId,
     sourceSha: report.sourceSha,
     webSha: report.webSha,
     runnerNormalizedLFSha256: report.runnerNormalizedLFSha256,
-    operator: screenReaderSession.observations[0].operator,
-    designationReference: screenReaderSession.designationReference,
-    screenReader: screenReaderSession.observations[0].screenReader,
-    browser: screenReaderSession.browser,
-    operatingSystem: screenReaderSession.operatingSystem,
-    observations: persistedObservations,
-  };
+  });
+  screenReaderSession.observations.push(observation);
   report.manualAccessibility = partialEvidence;
+  if (partialEvidence.status === "FAIL") matrixRecord("F", "screen_reader", "FAIL", { checkpoints: partialEvidence.observations.map(item => ({ checkpointId: item.checkpointId, result: item.result })) });
   await writeJSONAtomic(path.join(outputDirectory, "screen-reader-observations.json"), partialEvidence);
   return observation;
 }
@@ -1096,7 +1124,7 @@ async function prepareScreenReaderAction(checkpointId, page, button, requestPred
     expected: options.expected ?? [],
     runnerActions: ["waited_for_operator_action", "did_not_dispatch_or_extend_product_budget"],
   };
-  await unlink(screenReaderSession.paths.input).catch(error => { if (error.code !== "ENOENT") throw error; });
+  await unlink(screenReaderSession.paths.input(sequence)).catch(error => { if (error.code !== "ENOENT") throw error; });
   await writeJSONAtomic(screenReaderSession.paths.status, status);
   console.log(`SCREEN_READER_ACTION_READY ${checkpointId} ${manifest.runId}`);
   const request = page.waitForRequest(requestPredicate, { timeout: timeoutMs }).then(value => ({ kind: "request", value }), error => ({ kind: "error", error }));
