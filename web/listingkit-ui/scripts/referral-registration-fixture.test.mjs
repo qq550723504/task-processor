@@ -95,14 +95,18 @@ test("one persistent base-resource failure does not skip later owned resources",
   assert.equal(result.status, "FAIL");
 });
 
-test("matrix evidence cannot overwrite its group name or PASS classification", async () => {
-  const { sanitizeMatrixEvidence } = await runner();
+test("matrix evidence and NOT_RUN fallback cannot overwrite a PASS classification", async () => {
+  const { matrixNotRun, matrixRecord, report, sanitizeMatrixEvidence } = await runner();
   assert.deepEqual(sanitizeMatrixEvidence({ group: "wrong", name: "wrong", status: 200, httpStatus: 200 }), { httpStatus: 200 });
+  const item = report.matrix.find(entry => entry.group === "C" && entry.name === "concurrent_first_completion_one_relationship");
+  matrixRecord(item.group, item.name, "PASS", { requests: 4 });
+  matrixNotRun(item.group, item.name, "STALE_FALLBACK");
+  assert.deepEqual(item, { group: "C", name: item.name, status: "PASS", requests: 4 });
 });
 
-test("configured restart allows real Next shutdown and keeps executed completion evidence", async () => {
+test("configured restart closes browser connections and keeps executed completion evidence", async () => {
   const source = await readFile(fileURLToPath(new URL("./referral-registration-fixture.mjs", import.meta.url)), "utf8");
-  assert.match(source, /CONFIGURED_NEXT_STOP", 90_000/);
+  assert.ok(source.indexOf("await Promise.all([context.close(), referrerContext.close()])") < source.indexOf("const restartEvidence = await restartConfiguredApplications(ports)"));
   assert.doesNotMatch(source, /matrixNotRun\("C", "concurrent_first_completion_one_relationship"/);
 });
 

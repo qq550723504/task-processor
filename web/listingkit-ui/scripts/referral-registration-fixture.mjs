@@ -27,7 +27,7 @@ const matrixPlan = {
   E: ["trusted_proxy_overwrites_forged_forwarding", "bff_and_go_reject_untrusted_credentials_and_csrf", "real_source_ips_and_cross_process_rate_limit", "parallel_application_instances_share_rate_limit", "real_user_token_rejected_as_service_credential", "missing_dependency_disables_invite_entry", "cancel_deadline_zero_late_dispatch"],
   F: ["registration_desktop_axe", "registration_narrow_keyboard_axe", "completion_desktop_narrow_keyboard_axe", "overview_desktop_narrow_keyboard_axe", "screen_reader"],
 };
-const report = {
+export const report = {
   schemaVersion: "issue413-referral-registration-fixture-v2",
   status: "NOT_RUN",
   checks: [],
@@ -79,7 +79,7 @@ async function matrixCheck(group, name, operation) {
   }
 }
 
-function matrixRecord(group, name, status, evidence = {}) {
+export function matrixRecord(group, name, status, evidence = {}) {
   const item = report.matrix.find(entry => entry.group === group && entry.name === name);
   ensure(item, "UNKNOWN_MATRIX_ITEM");
   Object.assign(item, { status, ...sanitizeMatrixEvidence(evidence) });
@@ -91,8 +91,8 @@ export function sanitizeMatrixEvidence(evidence) {
   return details;
 }
 
-function matrixNotRun(group, name, reason) {
-  matrixRecord(group, name, "NOT_RUN", { reason });
+export function matrixNotRun(group, name, reason) {
+  if (report.matrix.find(entry => entry.group === group && entry.name === name)?.status === "NOT_RUN") matrixRecord(group, name, "NOT_RUN", { reason });
 }
 
 function safeCode(error) {
@@ -550,7 +550,7 @@ async function restartConfiguredApplications(ports) {
   const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
   ensure(databaseID, "DATABASE_IDENTITY_MISSING");
   await writePrivate(path.join(manifest.directory, "stop-next"), "stop\n");
-  await until(() => !processAlive(before.next?.pid), "CONFIGURED_NEXT_STOP", 90_000);
+  await until(() => !processAlive(before.next?.pid), "CONFIGURED_NEXT_STOP", 35_000);
   await writePrivate(path.join(manifest.directory, "stop-services"), "stop\n");
   await until(() => !processAlive(before.go?.pid) && !processAlive(before.supervisor?.pid), "CONFIGURED_APPLICATION_STOP", 35_000);
   const stopped = await readJSON(path.join(manifest.directory, "services-stopped.json"));
@@ -723,8 +723,8 @@ async function browserChain(origins, ports, machine) {
   const { chromium } = await import("@playwright/test");
   browser = await chromium.launch({ headless: true });
   const referrer = await readJSON(path.join(manifest.directory, "viewer.credentials.json"));
-  const referrerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
-  const referrerPage = await referrerContext.newPage();
+  let referrerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+  let referrerPage = await referrerContext.newPage();
   await check("referrer_generic_oidc_and_code", async () => {
     try {
       await login(referrerPage, origins.publicOrigin, referrer, "/workbench/account/referrals");
@@ -753,9 +753,9 @@ async function browserChain(origins, ports, machine) {
   });
   const code = (await referrerPage.locator("code").textContent()).trim();
 
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true,
+  let context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true,
     extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
-  const page = await context.newPage();
+  let page = await context.newPage();
   const email = `referral.${manifest.runId.slice(0, 8)}@example.test`;
   let admissionRequest;
   let admissionPayload;
@@ -1061,7 +1061,7 @@ async function browserChain(origins, ports, machine) {
   let completionReceipt;
   let firstCompletionReceiptsMatched = false;
   await check("same_subject_completion", async () => {
-    const button = page.getByRole("button", { name: "完成推广关系" });
+    let button = page.getByRole("button", { name: "完成推广关系" });
     await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_ACTION_MISSING"); });
     await waitForReactHydration(page, button);
     let completionRequestCount = 0;
@@ -1097,8 +1097,15 @@ async function browserChain(origins, ports, machine) {
           if (await page.getByText("推广关系已确认").isVisible().catch(() => false)) throw new Error("COMPLETION_RESPONSE_LOSS_NOT_OBSERVED");
           throw new Error("COMPLETION_RESPONSE_LOSS_UI_TIMEOUT");
         });
+      const [subjectState, referrerState] = await Promise.all([context.storageState(), referrerContext.storageState()]);
+      await Promise.all([context.close(), referrerContext.close()]);
       const restartEvidence = await restartConfiguredApplications(ports);
-      await page.reload({ waitUntil: "load" });
+      context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true, storageState: subjectState,
+        extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
+      referrerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true, storageState: referrerState });
+      page = await context.newPage(); referrerPage = await referrerContext.newPage(); page.on("response", observe);
+      button = page.getByRole("button", { name: "完成推广关系" });
+      await page.goto(`${origins.publicOrigin}/workbench/account/referrals/complete`, { waitUntil: "load" });
       await button.waitFor({ state: "visible", timeout: 45_000 });
       await waitForReactHydration(page, button);
       await page.route("**/api/account/referrals", route => route.fulfill({
