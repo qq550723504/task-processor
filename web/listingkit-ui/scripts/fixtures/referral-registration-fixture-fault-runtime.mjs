@@ -68,7 +68,7 @@ export function cleanupActions({ failedAction, inspectionFailure } = {}) {
   };
 }
 
-export async function runCLIFaultScenario(name, { orchestrate, cleanupPass }) {
+export async function runCLIFaultScenario(name, { orchestrate, cleanupPass, runProcess, persistAtomic, recordRuntime, runCleanup }) {
   let scenario;
   if (name === "initial-cleanup-failure") {
     scenario = lifecycleScenario({ initialCleanup: cleanupResult("initial", "FAIL", "DESTROY_FAILED") });
@@ -87,16 +87,42 @@ export async function runCLIFaultScenario(name, { orchestrate, cleanupPass }) {
     scenario.cleanupCalls = { initial: initial.calls, final: final.calls };
   } else if (name === "report-write-failure" || name === "report-half-write") {
     scenario = lifecycleScenario({ persistFailure: name === "report-write-failure" ? "REPORT_WRITE_FAILED" : "secret=resumeSecret-value" });
+  } else if (name === "real-child-failure") {
+    scenario = lifecycleScenario();
+    scenario.options.runBusiness = async () => { scenario.calls.push("business"); await runProcess(process.execPath, ["-e", "process.exit(9)"]); };
+  } else if (name === "real-report-rename-failure") {
+    const root = await mkdtemp(path.join(tmpdir(), "issue413-report-fault-"));
+    const destination = path.join(root, "report.json");
+    await mkdir(destination);
+    scenario = lifecycleScenario();
+    scenario.options.persistReport = value => persistAtomic(destination, value);
+    scenario.after = async () => {
+      const files = await readdir(root);
+      const result = { temporaryFiles: files.filter(file => file.includes(".tmp")).length, destinationRemainedDirectory: files.includes("report.json") };
+      await rm(root, { recursive: true, force: true });
+      return result;
+    };
+  } else if (name === "unreadable-dispatched-manifest") {
+    const runId = randomUUID();
+    const root = path.join(tmpdir(), "task-processor-issue357", runId);
+    await mkdir(root, { recursive: true });
+    await writeFile(path.join(root, "manifest.json"), "{broken", { mode: 0o600 });
+    scenario = lifecycleScenario();
+    scenario.options.runBusiness = async () => { scenario.calls.push("business"); await recordRuntime(`runId=${runId}`); };
+    scenario.options.runCleanup = runCleanup;
+    scenario.after = async () => { await rm(root, { recursive: true, force: true }); return { runIdObserved: true }; };
   } else {
     throw new Error("UNKNOWN_TEST_SCENARIO");
   }
   const outcome = await orchestrate(scenario.options);
+  const after = scenario.after ? await scenario.after() : undefined;
   return {
     exitCode: outcome.exitCode,
     report: outcome.report,
     calls: scenario.calls,
     emitted: scenario.emitted,
     ...(scenario.cleanupCalls ? { cleanupCalls: scenario.cleanupCalls } : {}),
+    ...(after ? { after } : {}),
   };
 }
 
@@ -116,3 +142,7 @@ function monotonicClock() {
   let tick = 0;
   return () => `2026-09-14T00:00:0${tick++}.000Z`;
 }
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";

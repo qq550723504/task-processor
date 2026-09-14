@@ -23,6 +23,7 @@ const report = {
   schemaVersion: "issue413-referral-registration-fixture-v2",
   status: "NOT_RUN",
   checks: [],
+  matrix: [],
   manualAccessibility: "NOT_RUN",
   invocationId: randomUUID(),
   injectionPoint: "none",
@@ -35,6 +36,7 @@ let mailName;
 let fixtureAllocatedPorts = {};
 let createdSubjectDeleted = false;
 let machineDeleted = false;
+let runtimeOwnershipUnknown = false;
 
 function ensure(value, code = "ASSERTION_FAILED") {
   assert.ok(value, code);
@@ -51,6 +53,24 @@ async function check(name, operation, recordEvidence = true) {
     report.checks.push({ name, status: "FAIL", elapsedMs: Date.now() - started, code: safeCode(error) });
     throw error;
   }
+}
+
+async function matrixCheck(group, name, operation) {
+  const started = Date.now();
+  try {
+    const evidence = await operation();
+    report.matrix.push({ group, name, status: "PASS", elapsedMs: Date.now() - started, ...(evidence && typeof evidence === "object" ? evidence : {}) });
+    console.log(`PASS ${group}.${name}`);
+    return evidence;
+  } catch (error) {
+    report.matrix.push({ group, name, status: "FAIL", elapsedMs: Date.now() - started, code: safeCode(error) });
+    console.error(`FAIL ${group}.${name} ${safeCode(error)}`);
+    return undefined;
+  }
+}
+
+function matrixNotRun(group, name, reason) {
+  report.matrix.push({ group, name, status: "NOT_RUN", reason });
 }
 
 function safeCode(error) {
@@ -151,6 +171,10 @@ async function lifecycleTestCommand(name) {
   const outcome = await fixture.runCLIFaultScenario(name, {
     orchestrate: orchestrateFixtureLifecycle,
     cleanupPass: runCleanupPass,
+    runProcess: run,
+    persistAtomic: writeJSONAtomic,
+    recordRuntime: recordBaseRuntime,
+    runCleanup: phase => cleanup(undefined, undefined, phase),
   });
   process.exitCode = outcome.exitCode;
   console.log(JSON.stringify(outcome));
@@ -227,7 +251,7 @@ async function writeJSON(file, value) {
   await writePrivate(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function writeJSONAtomic(file, value) {
+export async function writeJSONAtomic(file, value) {
   const temporary = `${file}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
   try {
     await writePrivate(temporary, `${JSON.stringify(value, null, 2)}\n`);
@@ -271,6 +295,7 @@ async function provider(pathname, body, token, method = "POST") {
 }
 
 async function startBaseRuntime() {
+  report.runtimeDispatched = true;
   let stdout;
   try {
     stdout = await run(process.execPath, [runtimeScript, "start", "--current-application", "--web-dir", uiRoot]);
@@ -286,16 +311,20 @@ async function startBaseRuntime() {
   }
 }
 
-async function recordBaseRuntime(stdout) {
+export async function recordBaseRuntime(stdout) {
   const runId = /runId=([0-9a-f-]{36})/.exec(stdout)?.[1];
   ensure(runId, "RUNTIME_ID_MISSING");
   const root = path.join(tmpdir(), "task-processor-issue357", runId);
-  manifest = await readJSON(path.join(root, "manifest.json"));
-  ensure(manifest.runId === runId, "RUNTIME_ID_MISMATCH");
-  manifest.directory = root;
+  report.runId = runId;
   outputDirectory = path.join(root, "referral-registration-evidence");
   await mkdir(outputDirectory, { recursive: true });
-  report.runId = runId;
+  let current;
+  try { current = await readJSON(path.join(root, "manifest.json")); }
+  catch { runtimeOwnershipUnknown = true; throw new Error("RUNTIME_MANIFEST_UNKNOWN"); }
+  if (current.runId !== runId) { runtimeOwnershipUnknown = true; throw new Error("RUNTIME_ID_MISMATCH"); }
+  manifest = current;
+  manifest.directory = root;
+  runtimeOwnershipUnknown = false;
   report.sourceSha = manifest.sourceSha;
   report.webSha = manifest.webSha;
 }
@@ -497,6 +526,16 @@ async function startConfiguredApplications(ports) {
   return { ready: true };
 }
 
+async function restartConfiguredApplications(ports) {
+  await writePrivate(path.join(manifest.directory, "stop-services"), "stop\n");
+  await until(async () => {
+    await readJSON(path.join(manifest.directory, "services-stopped.json"));
+    return true;
+  }, "CONFIGURED_APPLICATION_STOP", 90_000);
+  await startConfiguredApplications(ports);
+  return { processMemoryLost: true, persistentDatabaseRetained: true };
+}
+
 async function probeProviderProxy(providerOrigin, caFile, machineToken) {
   const ca = await readFile(caFile);
   const subject = manifest.users.viewer.id;
@@ -595,12 +634,16 @@ async function assertNoSeriousA11y(page) {
   const { default: AxeBuilder } = await import("@axe-core/playwright");
   const results = await new AxeBuilder({ page }).analyze();
   const serious = results.violations.filter(item => ["serious", "critical"].includes(item.impact));
+  const safeResults = {
+    violations: results.violations.map(item => ({ id: item.id, impact: item.impact, nodeCount: item.nodes.length })),
+    incomplete: results.incomplete.map(item => ({ id: item.id, impact: item.impact, nodeCount: item.nodes.length })),
+  };
+  await writeJSON(path.join(outputDirectory, `axe-${report.axeRuns = (report.axeRuns ?? 0) + 1}.json`), safeResults);
   if (serious.length) {
-    await writeJSON(path.join(outputDirectory, "a11y.json"), serious.map(item => ({ id: item.id, impact: item.impact, targets: item.nodes.map(node => node.target) })));
     const rules = serious.map(item => item.id.toUpperCase().replace(/[^A-Z0-9_]/g, "_")).sort().join("_").slice(0, 120);
     throw new Error(`ACCESSIBILITY_${rules}`);
   }
-  return { violations: 0 };
+  return { violations: results.violations.length, incomplete: results.incomplete.length };
 }
 
 async function waitForReactHydration(page, locator) {
@@ -633,6 +676,17 @@ async function readCreationState(intentID, email, mailPort, machineToken) {
   return { intentState, leaseActive: leaseActiveText === "true", subjectExists, proofMetadataPresent, metadataCount, matchingMessageCount };
 }
 
+async function referralTablesDigest() {
+  const sql = `SELECT md5(concat_ws('|',
+    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM public.referral_codes t),
+    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM public.registration_intents t),
+    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM public.referral_relations t),
+    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM public.referral_receipts t)))`;
+  const digest = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", sql]);
+  ensure(/^[a-f0-9]{32}$/.test(digest), "REFERRAL_TABLE_DIGEST_INVALID");
+  return digest;
+}
+
 async function browserChain(origins, ports, machine) {
   const { chromium } = await import("@playwright/test");
   browser = await chromium.launch({ headless: true });
@@ -656,8 +710,10 @@ async function browserChain(origins, ports, machine) {
       await codeElement.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("REFERRAL_CODE_RESULT_MISSING"); });
       const value = await codeElement.textContent();
       ensure(value && value.length <= 200, "REFERRAL_CODE_MISSING");
+      const axe = await assertNoSeriousA11y(referrerPage);
+      await referrerPage.screenshot({ path: path.join(outputDirectory, "referrals-overview-desktop.png"), fullPage: true });
       report.referrerSubject = manifest.users.viewer.id;
-      return { codeCreated: true };
+      return { codeCreated: true, viewport: "1440x1000", ...axe };
     } catch (error) {
       await referrerPage.screenshot({ path: path.join(outputDirectory, "referrer-stage-failure.png"), fullPage: true }).catch(() => {});
       throw error;
@@ -670,7 +726,9 @@ async function browserChain(origins, ports, machine) {
   const page = await context.newPage();
   const email = `referral.${manifest.runId.slice(0, 8)}@example.test`;
   let admissionRequest;
+  let admissionPayload;
   let admittedIntentID;
+  const admissionAttempts = [];
   const registrationRequests = { start: 0, resume: 0 };
   page.on("request", request => {
     const requestPath = new URL(request.url()).pathname;
@@ -678,6 +736,7 @@ async function browserChain(origins, ports, machine) {
     if (requestPath === "/api/referral-registration") {
       registrationRequests.start++;
       admissionRequest = { body: request.postData(), key: request.headers()["idempotency-key"] };
+      admissionAttempts.push(admissionRequest);
     } else if (requestPath === "/api/referral-registration/resume") {
       registrationRequests.resume++;
     }
@@ -687,23 +746,41 @@ async function browserChain(origins, ports, machine) {
       await page.goto(`${origins.publicOrigin}/referrals/register?code=${encodeURIComponent(code)}`);
       await page.getByRole("heading", { name: "接受好友邀请" }).waitFor({ state: "visible", timeout: 30_000 });
       await page.screenshot({ path: path.join(outputDirectory, "registration-empty-desktop.png"), fullPage: true });
-      await assertNoSeriousA11y(page);
+      const desktopAxe = await assertNoSeriousA11y(page);
       await page.getByLabel("邮箱").fill(email);
       await page.getByLabel("名字").fill("Referral");
       await page.getByLabel("姓氏").fill("Acceptance");
       const submitButton = page.getByRole("button", { name: "开始注册" });
       await waitForReactHydration(page, submitButton);
-      const submitted = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration" && response.request().method() === "POST", { timeout: 30_000 });
+      let lostAdmission;
+      const responseLost = new Promise((resolve, reject) => {
+        page.route("**/api/referral-registration", async route => {
+          try {
+            const upstream = await route.fetch();
+            lostAdmission = { status: upstream.status(), payload: await upstream.json() };
+            await route.abort("connectionreset");
+            resolve();
+          } catch { reject(new Error("ADMISSION_RESPONSE_LOSS_INJECTION_FAILED")); }
+        }, { times: 1 }).catch(reject);
+      });
       const resumed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration/resume" && response.request().method() === "POST", { timeout: 45_000 });
       await submitButton.click();
+      await responseLost;
+      ensure(lostAdmission?.status === 200, "ADMISSION_LOST_RESPONSE_NOT_COMMITTED");
+      await page.getByText("暂时无法确认注册结果").waitFor({ state: "visible", timeout: 15_000 });
+      ensure(await page.getByLabel("邮箱").isDisabled() || await page.getByLabel("邮箱").getAttribute("readonly") !== null, "ADMISSION_INPUT_NOT_LOCKED");
+      const submitted = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration" && response.request().method() === "POST", { timeout: 30_000 });
+      await page.getByRole("button", { name: "重试原请求" }).click();
       const response = await submitted.catch(() => { throw new Error("REGISTRATION_RESPONSE_MISSING"); });
       if (response.status() !== 200) {
         const payload = await response.json().catch(() => ({}));
         const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
         throw new Error(`REGISTRATION_HTTP_${response.status()}_${responseCode}`);
       }
-      const admissionPayload = await response.json().catch(() => ({}));
+      admissionPayload = await response.json().catch(() => ({}));
       ensure(typeof admissionPayload.intentID === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(admissionPayload.intentID), "REGISTRATION_INTENT_MISSING");
+      ensure(JSON.stringify(admissionPayload) === JSON.stringify(lostAdmission.payload), "ADMISSION_REPLAY_CHANGED_RECEIPT");
+      ensure(admissionAttempts.length === 2 && admissionAttempts[0].key === admissionAttempts[1].key && admissionAttempts[0].body === admissionAttempts[1].body, "ADMISSION_RETRY_CHANGED_REQUEST");
       admittedIntentID = admissionPayload.intentID;
       const resumeResponse = await resumed.catch(() => { throw new Error("REGISTRATION_RESUME_RESPONSE_MISSING"); });
       let recoveryResponseStatus;
@@ -742,14 +819,16 @@ async function browserChain(origins, ports, machine) {
         .catch(() => { throw new Error("REGISTRATION_MAIL_PENDING_MISSING"); });
       await page.screenshot({ path: path.join(outputDirectory, "registration-mail-pending-desktop.png"), fullPage: true });
       ensure(admissionRequest?.body && /^[A-Za-z0-9_-]{43,128}$/.test(admissionRequest.key), "ADMISSION_REQUEST_NOT_OBSERVED");
-      return { viewport: "1440x1000", automated: "PASS", responseStatus: response.status(), resumeResponseStatus: resumeResponse.status(), ...(recoveryResponseStatus ? { recoveryResponseStatus } : {}) };
+      report.matrix.push({ group: "A", name: "admission_response_loss_same_request_and_receipt", status: "PASS", originalIntentPreserved: true, originalSubjectPreserved: true, originalSecretPreserved: true });
+      report.matrix.push({ group: "F", name: "registration_desktop_axe", status: "PASS", axe: desktopAxe });
+      return { viewport: "1440x1000", automated: "PASS", ...desktopAxe, lostResponseStatus: lostAdmission.status, responseStatus: response.status(), resumeResponseStatus: resumeResponse.status(), ...(recoveryResponseStatus ? { recoveryResponseStatus } : {}) };
     } catch (error) {
       await page.screenshot({ path: path.join(outputDirectory, "registration-stage-failure.png"), fullPage: true }).catch(() => {});
       throw error;
     }
   });
   await check("registration_creation_state", async () => {
-    ensure(registrationRequests.start === 1 && registrationRequests.resume >= 1 && registrationRequests.resume <= 2, "REGISTRATION_REQUEST_COUNT_INVALID");
+    ensure(registrationRequests.start === 2 && registrationRequests.resume >= 1 && registrationRequests.resume <= 3, "REGISTRATION_REQUEST_COUNT_INVALID");
     const state = await readCreationState(admittedIntentID, email, ports.mail, machine.token);
     ensure(state.intentState === "CREATED" && state.subjectExists && state.proofMetadataPresent, "REGISTRATION_INTENT_NOT_CREATED");
     return { startRequestCount: registrationRequests.start, resumeRequestCount: registrationRequests.resume, ...state };
@@ -769,16 +848,63 @@ async function browserChain(origins, ports, machine) {
       const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
       throw new Error(`IDEMPOTENT_REPLAY_HTTP_${replay.status()}_${responseCode}`);
     }
+    const replayPayload = await replay.json();
+    ensure(JSON.stringify(replayPayload) === JSON.stringify(admissionPayload), "IDEMPOTENT_REPLAY_CHANGED_RECEIPT");
+    const changed = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, {
+      data: { ...JSON.parse(admissionRequest.body), givenName: "Changed" },
+      headers: { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin", "Idempotency-Key": admissionRequest.key },
+      maxRedirects: 0,
+    });
+    ensure(changed.status() === 409, "IDEMPOTENCY_PAYLOAD_CONFLICT_NOT_REJECTED");
+    report.matrix.push({ group: "A", name: "same_key_original_receipt_and_different_payload_conflict", status: "PASS", replayStatus: 200, conflictStatus: 409 });
     return { untrustedDirectStatus: 403, spoofedLoopbackIgnored: true, upstreamSource: "non-loopback Docker gateway" };
   });
   await check("registration_ui_narrow_and_keyboard", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
+    await page.getByRole("heading", { name: "继续原注册" }).waitFor({ state: "visible", timeout: 20_000 });
+    const recovered = page.waitForResponse(response => new URL(response.url()).pathname === "/api/referral-registration/resume" && response.request().method() === "POST", { timeout: 30_000 });
+    await page.getByRole("button", { name: "恢复原注册" }).click();
+    ensure((await recovered).status() === 200, "RELOAD_RECOVERY_FAILED");
+    await page.getByRole("heading", { name: "请查看官方验证邮件" }).waitFor({ state: "visible", timeout: 20_000 });
     await page.keyboard.press("Tab");
     ensure(await page.evaluate(() => document.activeElement !== document.body), "KEYBOARD_FOCUS_MISSING");
-    await assertNoSeriousA11y(page);
+    const axe = await assertNoSeriousA11y(page);
     await page.screenshot({ path: path.join(outputDirectory, "registration-mail-pending-narrow.png"), fullPage: true });
-    return { viewport: "390x844", automated: "PASS" };
+    report.matrix.push({ group: "A", name: "reload_with_recovery_fragment_resumes_original", status: "PASS" });
+    report.matrix.push({ group: "F", name: "registration_narrow_keyboard_axe", status: "PASS", axe });
+    return { viewport: "390x844", automated: "PASS", ...axe };
+  });
+  await matrixCheck("A", "fresh_browser_without_recovery_cannot_switch_identity", async () => {
+    const fresh = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+    const freshPage = await fresh.newPage();
+    let writes = 0;
+    freshPage.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname.startsWith("/api/referral-registration")) writes++; });
+    await freshPage.goto(`${origins.publicOrigin}/referrals/register?code=${encodeURIComponent(code)}`);
+    await freshPage.getByRole("button", { name: "开始注册" }).waitFor({ state: "visible" });
+    await freshPage.reload();
+    await freshPage.getByRole("button", { name: "开始注册" }).waitFor({ state: "visible" });
+    ensure(writes === 0, "FRESH_BROWSER_SILENTLY_RECOVERED");
+    await fresh.close();
+    return { writes: 0, newIdentityCreated: false };
+  });
+  await matrixCheck("B", "existing_account_cannot_be_bound_to_new_intent", async () => {
+    const key = randomBytes(32).toString("hex");
+    const start = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, {
+      data: { code, email: referrer.username, givenName: "Existing", familyName: "Account" },
+      headers: { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin", "Idempotency-Key": key },
+    });
+    ensure(start.status() === 200, "EXISTING_ACCOUNT_ADMISSION_FAILED");
+    const admission = await start.json();
+    ensure(admission.intentID && admission.resumeSecret, "EXISTING_ACCOUNT_ADMISSION_INVALID");
+    const resume = await context.request.post(`${origins.publicOrigin}/api/referral-registration/resume`, {
+      data: { intentID: admission.intentID, resumeSecret: admission.resumeSecret },
+      headers: { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin" },
+    });
+    ensure(resume.status() !== 200, "EXISTING_ACCOUNT_WAS_BOUND");
+    const state = await readCreationState(admission.intentID, referrer.username, ports.mail, machine.token);
+    ensure(!state.subjectExists && state.intentState !== "CONSUMED", "EXISTING_ACCOUNT_CHANGED_SUBJECT");
+    return { rejectedStatus: resume.status(), fixedSubjectNotCreated: true, existingSubjectUnchanged: true };
   });
 
   const message = await check("official_mail_delivery", () => waitForMessage(ports.mail, email, origins.providerOrigin), false);
@@ -787,6 +913,22 @@ async function browserChain(origins, ports, machine) {
   const subject = verification.searchParams.get("userId");
   ensure(subject, "VERIFICATION_SUBJECT_MISSING");
   report.createdSubject = subject;
+  await matrixCheck("B", "new_browser_invalid_verification_does_not_verify", async () => {
+    const invalidContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+    const invalidPage = await invalidContext.newPage();
+    const invalid = new URL(message.link);
+    invalid.searchParams.set("code", "invalid-verification-check");
+    await invalidPage.goto(invalid.href, { waitUntil: "load" });
+    const input = invalidPage.getByTestId("code-text-input");
+    await input.waitFor({ state: "visible", timeout: 30_000 });
+    await input.fill("invalid-verification-check");
+    await invalidPage.getByTestId("submit-button").click();
+    await delay(1_000);
+    const current = await provider(`/v2/users/${encodeURIComponent(subject)}`, undefined, machine.token, "GET");
+    ensure(current.user?.human?.email?.isVerified !== true, "INVALID_CHECK_VERIFIED_EMAIL");
+    await invalidContext.close();
+    return { separateBrowser: true, verified: false };
+  });
   await check("official_email_verification", async () => {
     await page.goto(message.link, { waitUntil: "load" });
     const code = verification.searchParams.get("code");
@@ -872,6 +1014,15 @@ async function browserChain(origins, ports, machine) {
     return { subject };
   });
 
+  await matrixCheck("B", "another_subject_cannot_claim_intent", async () => {
+    const response = await referrerContext.request.post(`${origins.publicOrigin}/api/account/referrals/complete`, {
+      headers: { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": manifest.users.viewer.id },
+    });
+    ensure(response.status() === 404, "OTHER_SUBJECT_CLAIM_NOT_REJECTED");
+    return { rejectedStatus: 404 };
+  });
+
+  let completionReceipt;
   await check("same_subject_completion", async () => {
     const button = page.getByRole("button", { name: "完成推广关系" });
     await button.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("COMPLETION_ACTION_MISSING"); });
@@ -885,6 +1036,30 @@ async function browserChain(origins, ports, machine) {
     };
     page.on("response", observe);
     try {
+      let lostReceipt;
+      const completionLost = new Promise((resolve, reject) => {
+        page.route("**/api/account/referrals/complete", async route => {
+          try {
+            const upstream = await route.fetch();
+            lostReceipt = { status: upstream.status(), payload: await upstream.json() };
+            await route.abort("connectionreset");
+            resolve();
+          } catch { reject(new Error("COMPLETION_RESPONSE_LOSS_INJECTION_FAILED")); }
+        }, { times: 1 }).catch(reject);
+      });
+      await button.click();
+      await completionLost;
+      ensure(lostReceipt?.status === 200, "COMPLETION_LOST_RESPONSE_NOT_COMMITTED");
+      await page.getByText("推广服务暂不可用").waitFor({ state: "visible", timeout: 15_000 });
+      await restartConfiguredApplications(ports);
+      await page.reload({ waitUntil: "load" });
+      await button.waitFor({ state: "visible", timeout: 45_000 });
+      await waitForReactHydration(page, button);
+      await page.route("**/api/account/referrals", route => route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "DEPENDENCY_UNAVAILABLE", message: "Referral request could not be completed", requestId: "", fieldErrors: [] }),
+      }), { times: 1 });
       for (let attempt = 1; attempt <= 2; attempt++) {
         const completed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 }).catch(() => null);
         await button.click();
@@ -895,6 +1070,8 @@ async function browserChain(origins, ports, machine) {
           const responseCode = typeof payload.code === "string" ? payload.code.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 80) : "UNKNOWN";
           throw new Error(`COMPLETION_HTTP_${response.status()}_${responseCode}`);
         }
+        completionReceipt = await response.json();
+        ensure(JSON.stringify(completionReceipt) === JSON.stringify(lostReceipt.payload), "COMPLETION_REPLAY_CHANGED_RECEIPT");
         const confirmed = await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
         if (confirmed) break;
         if (attempt === 1) {
@@ -906,7 +1083,25 @@ async function browserChain(origins, ports, machine) {
         }
       }
       await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 });
-      await until(() => refreshStatuses.includes(200), "COMPLETION_REFRESH_RESPONSE", 30_000);
+      await page.getByText("推广汇总暂不可用").waitFor({ state: "visible", timeout: 15_000 });
+      ensure(refreshStatuses.includes(503), "COMPLETION_PROJECTION_FAILURE_NOT_OBSERVED");
+      await page.screenshot({ path: path.join(outputDirectory, "completion-receipt-with-projection-failure.png"), fullPage: true });
+      report.matrix.push({ group: "C", name: "completion_response_loss_restart_receipt_replay", status: "PASS", realApplicationRestart: true, originalReceiptPreserved: true });
+      report.matrix.push({ group: "C", name: "projection_failure_preserves_completion_receipt", status: "PASS", projectionStatus: 503 });
+      await page.reload({ waitUntil: "load" });
+      await button.waitFor({ state: "visible", timeout: 30_000 });
+      const durableReplay = page.waitForResponse(response => new URL(response.url()).pathname === "/api/account/referrals/complete" && response.request().method() === "POST", { timeout: 30_000 });
+      await button.click();
+      ensure((await durableReplay).status() === 200, "DURABLE_RECEIPT_REPLAY_FAILED");
+      await page.getByText("推广关系已确认").waitFor({ state: "visible", timeout: 30_000 });
+      const desktopAxe = await assertNoSeriousA11y(page);
+      await page.screenshot({ path: path.join(outputDirectory, "referrals-complete-desktop.png"), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.keyboard.press("Tab");
+      ensure(await page.evaluate(() => document.activeElement !== document.body), "COMPLETION_KEYBOARD_FOCUS_MISSING");
+      const narrowAxe = await assertNoSeriousA11y(page);
+      await page.screenshot({ path: path.join(outputDirectory, "referrals-complete-narrow.png"), fullPage: true });
+      report.matrix.push({ group: "F", name: "completion_desktop_narrow_keyboard_axe", status: "PASS", desktop: desktopAxe, narrow: narrowAxe });
     } catch (error) {
       const knownErrors = ["登录已失效", "登录身份已变化", "官方邮箱或认证方式尚未完成", "注册确认期限已结束", "推广关系存在冲突", "暂时无法确认操作结果", "推广服务尚未配置", "推广服务暂不可用", "推广请求超时", "推广请求未完成"];
       let displayedError = "none";
@@ -929,7 +1124,19 @@ async function browserChain(origins, ports, machine) {
     } finally {
       page.off("response", observe);
     }
-    return { subject, completionRequestCount, refreshStatuses };
+    return { subject, completionRequestCount, refreshStatuses, realApplicationRestart: true };
+  });
+  await matrixCheck("C", "concurrent_completion_replays_one_durable_receipt", async () => {
+    const request = () => context.request.post(`${origins.publicOrigin}/api/account/referrals/complete`, {
+      headers: { Origin: origins.publicOrigin, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": subject },
+    });
+    const responses = await Promise.all([request(), request(), request(), request()]);
+    ensure(responses.every(response => response.status() === 200), "CONCURRENT_COMPLETION_FAILED");
+    const receipts = await Promise.all(responses.map(response => response.json()));
+    ensure(receipts.every(receipt => JSON.stringify(receipt) === JSON.stringify(completionReceipt)), "CONCURRENT_COMPLETION_CHANGED_RECEIPT");
+    const facts = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", "SELECT (SELECT count(*) FROM public.referral_relations) || '|' || (SELECT count(*) FROM public.referral_receipts) || '|' || (SELECT count(*) FROM public.registration_intents WHERE state='CONSUMED' AND ciphertext IS NULL)"]);
+    ensure(facts === "1|1|1", "CONCURRENT_COMPLETION_FACT_COUNT_INVALID");
+    return { requests: 4, relations: 1, receipts: 1, consumedIntents: 1 };
   });
   await check("referrer_real_count", async () => {
     await referrerPage.reload();
@@ -937,6 +1144,71 @@ async function browserChain(origins, ports, machine) {
     ensure((await referrerPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "1", "REFERRER_COUNT_NOT_ONE");
     return { count: 1 };
   });
+  await matrixCheck("D", "authenticated_get_is_pure_on_referral_tables", async () => {
+    const before = await referralTablesDigest();
+    const response = await referrerContext.request.get(`${origins.publicOrigin}/api/account/referrals`, {
+      headers: { "X-Expected-User-ID": manifest.users.viewer.id },
+    });
+    ensure(response.status() === 200, "SELF_READ_FAILED");
+    ensure(await referralTablesDigest() === before, "SELF_READ_MUTATED_REFERRAL_TABLES");
+    return { status: 200, referralTablesChanged: false };
+  });
+  await matrixCheck("D", "admin_reads_only_own_personal_projection", async () => {
+    const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
+    const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+    const adminPage = await adminContext.newPage();
+    await login(adminPage, origins.publicOrigin, admin, "/workbench/account/referrals");
+    await adminPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+    ensure((await adminPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "0", "ADMIN_READ_OTHER_RELATION");
+    await adminContext.close();
+    return { targetRelationVisible: false, ownCount: 0 };
+  });
+  await matrixCheck("D", "no_enterprise_user_can_read_own_empty_projection", async () => {
+    const credential = await readJSON(path.join(manifest.directory, "no-org.credentials.json"));
+    const isolated = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+    const isolatedPage = await isolated.newPage();
+    await login(isolatedPage, origins.publicOrigin, credential, "/workbench/account/referrals");
+    await isolatedPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+    ensure((await isolatedPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "0", "NO_ENTERPRISE_SELF_READ_INVALID");
+    await isolated.close();
+    return { ownCount: 0 };
+  });
+  await matrixCheck("E", "bff_and_go_reject_untrusted_credentials_and_csrf", async () => {
+    const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } });
+    const goURL = `http://127.0.0.1:${ports.go}/api/v1/referral-registration/intents`;
+    const direct = headers => fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, ...headers }, body: admissionRequest.body });
+    const [missing, wrong, userToken] = await Promise.all([direct({}), direct({ "X-Referral-Service-Credential": "0".repeat(64) }), direct({ "X-Referral-Service-Credential": machine.token })]);
+    ensure(csrf.status() === 403 && [missing, wrong, userToken].every(response => response.status === 401 || response.status === 403), "SERVICE_BOUNDARY_DID_NOT_FAIL_CLOSED");
+    return { csrfStatus: 403, directCredentialFailures: [missing.status, wrong.status, userToken.status] };
+  });
+  await matrixCheck("E", "missing_dependency_disables_invite_entry", async () => {
+    const secret = path.join(manifest.directory, "referral-service.secret");
+    const disabled = `${secret}.disabled`;
+    await rename(secret, disabled);
+    try {
+      await restartConfiguredApplications(ports);
+      await referrerPage.reload({ waitUntil: "load" });
+      await referrerPage.getByText("注册入口暂不可用").waitFor({ state: "visible", timeout: 30_000 });
+      ensure(!(await referrerPage.getByRole("link", { name: "打开邀请链接" }).isVisible().catch(() => false)), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
+    } finally {
+      await rename(disabled, secret).catch(() => {});
+      await restartConfiguredApplications(ports);
+    }
+    return { inviteEnabled: false };
+  });
+  await referrerPage.setViewportSize({ width: 390, height: 844 });
+  await referrerPage.keyboard.press("Tab");
+  ensure(await referrerPage.evaluate(() => document.activeElement !== document.body), "OVERVIEW_KEYBOARD_FOCUS_MISSING");
+  const overviewAxe = await assertNoSeriousA11y(referrerPage);
+  await referrerPage.screenshot({ path: path.join(outputDirectory, "referrals-overview-narrow.png"), fullPage: true });
+  report.matrix.push({ group: "F", name: "overview_desktop_narrow_keyboard_axe", status: "PASS", narrow: overviewAxe });
+  matrixNotRun("B", "verified_without_authenticator_interruption", "NO_OFFICIAL_SESSION_FOR_VERIFIED_UNAUTHENTICATED_SUBJECT");
+  matrixNotRun("D", "enterprise_removed_switching_logout_expiry_late_response", "CURRENT_RUN_HAS_NO_SAFE_AUTH_SESSION_CONTROL");
+  matrixNotRun("E", "multiple_source_ips_cross_instance_rate_limit", "TASK_LOCAL_PROXY_EXPOSES_ONE_DOCKER_GATEWAY_SOURCE");
+  matrixNotRun("E", "cancel_deadline_zero_late_dispatch", "CURRENT_PRODUCT_HAS_NO_TASK_OWNED_DISPATCH_OBSERVER");
+  matrixNotRun("F", "screen_reader", "REAL_SCREEN_READER_NOT_EXECUTED");
+  report.manualAccessibility = "NOT_RUN";
+  if (report.matrix.some(item => item.status === "FAIL" || (item.status === "NOT_RUN" && item.group !== "F"))) throw new Error("MATRIX_MUST_INCOMPLETE");
   await context.close();
   await referrerContext.close();
 }
@@ -949,7 +1221,27 @@ async function cleanupOwnedContainer(name) {
   await docker(["container", "rm", "-f", inspected.Id]);
 }
 
+async function cleanupBaseResource(record, owner) {
+  const resource = await inspectDockerResource(record.kind, record.name);
+  if (!resource) return;
+  const labels = record.kind === "container" ? resource.Config?.Labels : resource.Labels;
+  const id = resource.Id ?? resource.ID ?? resource.Name;
+  ensure(labels?.[runtimeOwnerLabel] === owner.runId && id === record.id, "CLEANUP_OWNERSHIP_MISMATCH");
+  await docker([record.kind, "rm", ...(record.kind === "container" ? ["-f"] : []), record.id]);
+}
+
+export function ownedResourceCleanupActions(records, cleanupResource) {
+  return Object.values(records ?? {}).map(record => ({ name: `base-${record.kind}-${record.name}`, run: () => cleanupResource(record) }));
+}
+
 async function cleanup(machine, bootstrap, phase) {
+  if (manifest) {
+    try {
+      const current = await readJSON(path.join(manifest.directory, "manifest.json"));
+      ensure(current.runId === manifest.runId, "RUNTIME_ID_MISMATCH");
+      manifest = { ...current, directory: manifest.directory };
+    } catch { runtimeOwnershipUnknown = true; }
+  }
   const actions = [
     { name: "browser", run: async () => { if (browser) { await browser.close(); browser = null; } } },
     { name: "created-subject", run: async () => {
@@ -967,10 +1259,20 @@ async function cleanup(machine, bootstrap, phase) {
     { name: "caddy", run: async () => cleanupOwnedContainer(caddyName) },
     { name: "mailpit", run: async () => cleanupOwnedContainer(mailName) },
     { name: "base-runtime", run: async () => {
+      if (runtimeOwnershipUnknown || report.runtimeDispatched && !manifest) throw new Error("RUNTIME_OWNERSHIP_UNKNOWN");
       if (!manifest) return;
       const current = await readJSON(path.join(manifest.directory, "manifest.json"));
       ensure(current.runId === manifest.runId, "RUNTIME_ID_MISMATCH");
       if (current.status !== "destroyed") await run(process.execPath, [runtimeScript, "destroy", "--run", manifest.runId]);
+    } },
+    { name: "refresh-base-inventory", run: async () => {
+      if (runtimeOwnershipUnknown || report.runtimeDispatched && !manifest) throw new Error("RUNTIME_OWNERSHIP_UNKNOWN");
+      if (!manifest) return;
+      const latest = await readJSON(path.join(manifest.directory, "manifest.json"));
+      ensure(latest.runId === manifest.runId, "RUNTIME_ID_MISMATCH");
+      manifest = { ...latest, directory: manifest.directory };
+      const insertion = actions.findIndex(action => action.name === "private-artifacts");
+      actions.splice(insertion, 0, ...ownedResourceCleanupActions(manifest.resources, record => cleanupBaseResource(record, manifest)));
     } },
     { name: "private-artifacts", run: async () => { if (manifest) await cleanupPrivateArtifacts(manifest); } },
   ];
@@ -988,7 +1290,11 @@ async function inspectDockerResource(kind, name) {
 }
 
 async function inspectResiduals() {
+  if (runtimeOwnershipUnknown || report.runtimeDispatched && !manifest) throw new Error("RUNTIME_OWNERSHIP_UNKNOWN");
   if (!manifest) return { containers: 0, volumes: 0, networks: 0, listeners: 0 };
+  const latest = await readJSON(path.join(manifest.directory, "manifest.json"));
+  ensure(latest.runId === manifest.runId, "RUNTIME_ID_MISMATCH");
+  manifest = { ...latest, directory: manifest.directory };
   let containers = 0;
   let volumes = 0;
   let networks = 0;

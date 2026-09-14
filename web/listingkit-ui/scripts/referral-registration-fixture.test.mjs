@@ -81,6 +81,19 @@ test("one cleanup action failure does not skip the remaining owned cleanup actio
   assert.equal(result.residuals.status, "PASS");
 });
 
+test("one persistent base-resource failure does not skip later owned resources", async () => {
+  const { ownedResourceCleanupActions, runCleanupPass } = await runner();
+  const calls = [];
+  const records = Object.fromEntries(["first", "second", "third"].map((name) => [name, { kind: "container", name, id: name }]));
+  const actions = ownedResourceCleanupActions(records, async record => {
+    calls.push(record.name);
+    if (record.name === "first") throw new Error("PERSISTENT_DELETE_FAILURE");
+  });
+  const result = await runCleanupPass({ phase: "initial", actions, inspectResiduals: async () => ({ containers: 1, volumes: 0, networks: 0, listeners: 0 }) });
+  assert.deepEqual(calls, ["first", "second", "third"]);
+  assert.equal(result.status, "FAIL");
+});
+
 test("a cleanup-state query failure is UNKNOWN and cannot exit successfully", async () => {
   const { orchestrateFixtureLifecycle, runCleanupPass } = await runner();
   const cleanup = cleanupActions({ inspectionFailure: "QUERY_FAILED:DOCKER" });
@@ -160,4 +173,26 @@ test("CLI makes report write and half-write failures observable and nonzero", ()
     assert.equal(result.output.report.evidence.status, "FAIL");
     assert.doesNotMatch(`${result.process.stdout}${result.process.stderr}`, /resumeSecret-value/);
   }
+});
+
+test("CLI observes a real child-process exit through the production process wrapper", () => {
+  const result = runCLI("real-child-failure");
+  assert.equal(result.process.status, 1);
+  assert.equal(result.output.report.business.code, "PROCESS_FAILED:NODE_EXE");
+});
+
+test("atomic report persistence removes a real half-write when rename fails", () => {
+  const result = runCLI("real-report-rename-failure");
+  assert.equal(result.process.status, 1);
+  assert.equal(result.output.report.evidence.status, "FAIL");
+  assert.deepEqual(result.output.after, { temporaryFiles: 0, destinationRemainedDirectory: true });
+});
+
+test("a dispatched runtime with an unreadable manifest makes both cleanup passes UNKNOWN", () => {
+  const result = runCLI("unreadable-dispatched-manifest");
+  assert.equal(result.process.status, 1);
+  assert.equal(result.output.report.business.code, "RUNTIME_MANIFEST_UNKNOWN");
+  assert.equal(result.output.report.cleanup.initial.status, "UNKNOWN");
+  assert.equal(result.output.report.cleanup.final.status, "UNKNOWN");
+  assert.equal(result.output.after.runIdObserved, true);
 });

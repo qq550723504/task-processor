@@ -1,0 +1,137 @@
+# Referral registration acceptance runner
+
+This document describes the task-owned acceptance runner for Issue #413 C2. It validates the frozen referral registration contract against official ZITADEL Login V2, the real Next.js BFF, the current Go application, PostgreSQL, Caddy, and Mailpit. The runner does not repair product code and does not access shared or production resources.
+
+## Scope and authority
+
+- Run only from a clean checkout whose HEAD is the C2 candidate.
+- The C2 branch is stacked on the exact C1 dependency recorded in the PR.
+- The runner creates a random Issue 357 runtime and adds only resources labeled with its exact run ID.
+- It may delete only resources whose manifest ID and owner label both match that run ID.
+- It must not print or save passwords, OTPs, cookies, access tokens, referral service credentials, proof values, resume secrets, or reusable verification links.
+- A failed or unknown business, cleanup, residual inspection, or report write result exits nonzero.
+- A later successful cleanup pass does not replace an earlier failure or unknown result.
+
+## Prerequisites
+
+Use Windows with Docker Desktop's Linux engine running. The repository commands used by the runtime must be available: Git, Node.js, pnpm, Go, and Docker Compose. The runner uses the repository-pinned official images and the current application's configuration; it does not accept shared service endpoints or pre-existing credentials.
+
+Install the locked web dependencies from the repository:
+
+```powershell
+Set-Location web/listingkit-ui
+pnpm install --frozen-lockfile
+```
+
+Confirm the candidate and clean state before every official run:
+
+```powershell
+git rev-parse HEAD
+git status --porcelain
+git merge-base --is-ancestor 8281f775fcc60dfeb3f1074f321963de9ce95b16 HEAD
+```
+
+The second command must print nothing. Record the full 40-character output of the first command; do not reconstruct a SHA from an abbreviated value.
+
+## Fast lifecycle and failure tests
+
+These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, and sanitized fallback output. They do not start the official business runtime and are not business acceptance.
+
+```powershell
+node --test scripts/referral-registration-fixture.test.mjs
+```
+
+The test process must exit 0 with no skipped tests. Individual test-only CLI scenarios require `ISSUE413_FIXTURE_TEST_ONLY=1`; they are internal to the test file and are not substitutes for the official command.
+
+## Official command
+
+Run the complete task-owned chain from `web/listingkit-ui`:
+
+```powershell
+node scripts/referral-registration-fixture.mjs
+```
+
+The final sanitized JSON line contains the run ID, invocation ID, business status, both cleanup passes, report evidence status, and named check outcomes. The command may exit 1 when a required matrix item fails or remains `NOT_RUN`; this is a valid finding, not permission to weaken the assertion.
+
+Private evidence is written under:
+
+```text
+%TEMP%\task-processor-issue357\<run-id>\referral-registration-evidence\
+```
+
+`report.json` is the authority for the run. Screenshots and sanitized axe files support the report. Diagnostic logs are private local artifacts and must not be pasted into an Issue or PR without a fresh secret review.
+
+## Report semantics
+
+The report separates four conclusions:
+
+- `business`: official runtime and A-F behavior.
+- `cleanup.initial`: the first cleanup attempt, including each action and exact residual counts.
+- `cleanup.final`: an independent second attempt; it cannot erase the first result.
+- `evidence`: atomic report persistence.
+
+Residual inspection reports exact counts for containers, volumes, networks, and listeners. A query failure is `UNKNOWN`, never zero. A dispatched runtime with an unreadable or mismatched manifest is ownership-unknown; the runner records it and refuses to claim or delete unproved resources.
+
+The top-level conclusion is `PASS` only when business, initial cleanup, final cleanup, and evidence all pass. A report persistence failure emits only a bounded sanitized fallback object and exits 1. Atomic persistence writes a private temporary file, renames it into place, and removes the temporary file on failure.
+
+## A-F matrix
+
+The report's `matrix` array records each item independently so an early product failure does not hide unaffected checks.
+
+### A. Admission and browser recovery
+
+- Commit the real admission upstream, drop its browser response, and retry the exact body and idempotency key.
+- Compare the replayed Intent, fixed subject, and original receipt capability in memory without writing the capability.
+- Reject the same key with changed payload.
+- Reload with the recovery fragment and resume only the original Intent.
+- Open a fresh browser without the recovery fragment and prove it does not recover or create an identity silently.
+
+### B. Official identity lifecycle
+
+- Refuse to bind an existing account to a newly admitted fixed subject.
+- Submit an invalid official verification check in a separate browser and prove it does not verify the user.
+- Complete the valid official email and first authenticator flow through Login V2.
+- Prove another authenticated subject cannot claim the Intent.
+- If the verified-but-no-authenticator interruption cannot be driven with a task-owned official session, record `NOT_RUN`; do not replace it with a mock.
+
+### C. Completion and durable receipt
+
+- Commit completion upstream, drop the real browser response, restart the actual Go and Next.js processes, and replay the durable receipt.
+- Execute concurrent completion requests and prove all responses match one receipt.
+- Query PostgreSQL for exactly one relationship, one receipt, and one consumed wiped Intent.
+- Fail the post-completion projection read and prove the visible receipt remains while the summary is unavailable.
+
+### D. Personal authorization and GET purity
+
+- Read the current subject's personal projection.
+- Prove an admin sees only the admin's own empty projection, not another user's relationship.
+- Prove the task-owned no-enterprise user can read its own empty personal projection.
+- Hash all four referral fact tables before and after an authenticated GET and require equality.
+- Record removed-enterprise, switching, logout, expiry, and late-response cases separately if the task-owned runtime lacks safe session controls.
+
+### E. Boundary and dependency behavior
+
+- Traverse Caddy to the Next.js BFF and Go with the trusted source mapping; forged client headers must be overwritten.
+- Reject direct Next.js access, missing or wrong Go service credentials, a user token used as a service credential, and missing same-origin write headers.
+- Remove the task-owned service credential, restart the actual applications, and prove the invite entry is disabled; restore it in `finally` and restart again.
+- Keep multiple-source-IP cross-instance admission and cancel/deadline dispatch evidence separate. If the task-owned topology has only one Docker gateway source or no safe dispatch observer, record `NOT_RUN` rather than simulating a pass.
+
+### F. User interface and accessibility
+
+- Save desktop and 390x844 narrow screenshots for registration, completion, and overview pages.
+- Exercise keyboard focus on each narrow page.
+- Run axe on each page and save both violations and incomplete results as rule IDs, impacts, and node counts.
+- Serious or critical axe violations fail the check.
+- Real screen-reader execution is separate and remains `NOT_RUN` unless a screen reader was actually operated.
+
+## Failure handling and handoff
+
+Keep every real Must failure as `FAIL` and every unexecuted case as `NOT_RUN`. Continue independent matrix items where the runtime remains safe. Send product failures to the existing C1 owner through PM; C2 must not edit C1 product, schema, adapter, authentication, or application files.
+
+For a rerun after interruption, first use the report's exact run ID and inspect the existing report. The normal command always performs both cleanup passes. If only private C2 artifacts remain after all runtime resources are independently confirmed absent, remove them with:
+
+```powershell
+node scripts/referral-registration-fixture.mjs cleanup-artifacts <run-id>
+```
+
+This command validates the UUID, fixed temporary root, and manifest ownership before removing only C2 private files. It does not discover, adopt, or delete an unknown runtime.
