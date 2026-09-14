@@ -523,22 +523,10 @@ async function configureApplications(ports, caFile, providerCredential) {
 }
 
 async function startConfiguredApplications(ports) {
-  for (const name of ["stop-go", "stop-next", "stop-services", "go-ready.json", "next-ready.json", "services-stopped.json"]) {
-    await unlink(path.join(manifest.directory, name)).catch(error => { if (error.code !== "ENOENT") throw error; });
-  }
-  const child = spawn(process.execPath, [path.join(repo, "scripts", "issue357", "serve.mjs"), manifest.directory], {
-    cwd: manifest.directory,
-    detached: true,
-    windowsHide: true,
-    stdio: "ignore",
-  });
-  await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", () => reject(new Error("SUPERVISOR_START_FAILED"))); });
-  child.unref();
-  await until(async () => {
-    await readJSON(path.join(manifest.directory, "go-ready.json"));
-    await readJSON(path.join(manifest.directory, "next-ready.json"));
-    return true;
-  }, "CONFIGURED_APPLICATION_START", 300_000);
+  await run(process.execPath, [runtimeScript, "start", "--run", manifest.runId]);
+  const current = await readJSON(path.join(manifest.directory, "manifest.json"));
+  ensure(current.runId === manifest.runId && current.status === "ready", "CONFIGURED_APPLICATION_START_FAILED");
+  manifest = { ...current, directory: manifest.directory };
   const go = await fetch(`${manifest.origins.go}/api/v1/account/profile`, { signal: AbortSignal.timeout(10_000) });
   ensure(go.status === 401, "GO_HEALTH_FAILED");
   const providersResponse = await fetch(`http://127.0.0.1:${ports.next}/api/auth/providers`, { signal: AbortSignal.timeout(90_000) });
@@ -551,13 +539,17 @@ async function startConfiguredApplications(ports) {
 async function restartConfiguredApplications(ports) {
   const before = await readJSON(path.join(manifest.directory, "processes.json"));
   const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
+  ensure(databaseID, "DATABASE_IDENTITY_MISSING");
   await run(process.execPath, [runtimeScript, "restart", "--run", manifest.runId]);
   const stopped = await readJSON(path.join(manifest.directory, "services-stopped.json"));
   ensure(stopped.passed === true, "CONFIGURED_APPLICATION_STOP_FAILED");
   ensure(!processAlive(before.go?.pid) && !processAlive(before.next?.pid), "OLD_APPLICATION_PROCESS_ALIVE");
   const after = await readJSON(path.join(manifest.directory, "processes.json"));
   ensure(["go", "next"].every(name => before[name]?.pid !== after[name]?.pid && before[name]?.started !== after[name]?.started), "APPLICATION_PROCESS_IDENTITY_REUSED");
-  ensure(manifest.resources?.[`${manifest.project}-commercial-db`]?.id === databaseID, "DATABASE_IDENTITY_CHANGED");
+  const current = await readJSON(path.join(manifest.directory, "manifest.json"));
+  const database = await inspectDockerResource("container", `${manifest.project}-commercial-db`);
+  ensure(current.runId === manifest.runId && current.resources?.[`${manifest.project}-commercial-db`]?.id === databaseID && database?.Id === databaseID, "DATABASE_IDENTITY_CHANGED");
+  manifest = { ...current, directory: manifest.directory };
   return { processMemoryLost: true, oldProcessesExited: true, processIdentitiesChanged: true, persistentDatabaseRetained: true };
 }
 
