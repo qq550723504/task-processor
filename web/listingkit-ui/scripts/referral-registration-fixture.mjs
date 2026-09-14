@@ -826,11 +826,19 @@ https://localhost:446 {
     caddyImage, "caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]);
   const caFile = path.join(caddyData, "caddy", "pki", "authorities", "local", "root.crt");
   const leafFile = path.join(caddyData, "caddy", "certificates", "local", "localhost", "localhost.crt");
-  await until(async () => {
-    const pem = await readFile(caFile, "utf8");
-    const leaf = await readFile(leafFile, "utf8");
-    return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024 && leaf.includes("BEGIN CERTIFICATE") && leaf.length < 64 * 1024;
-  }, "CADDY_CERTIFICATES", 60_000);
+  try {
+    await until(async () => {
+      const pem = await readFile(caFile, "utf8");
+      const leaf = await readFile(leafFile, "utf8");
+      return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024 && leaf.includes("BEGIN CERTIFICATE") && leaf.length < 64 * 1024;
+    }, "CADDY_CERTIFICATES", 60_000);
+  } catch (error) {
+    const inspected = await inspectDockerResource("container", caddyName).catch(() => null);
+    const logs = await execFile("docker", ["--host", dockerHost, "logs", "--tail", "200", caddyName], { windowsHide: true, timeout: 5_000, maxBuffer: 512 * 1024 }).catch(() => ({ stdout: "", stderr: "" }));
+    await writePrivate(path.join(outputDirectory, "m2-caddy-start-diagnostic.log"), `${logs.stdout}\n${logs.stderr}`.slice(-128 * 1024));
+    await writeJSON(path.join(outputDirectory, "m2-caddy-start-diagnostic.json"), { running: inspected?.State?.Running === true, exitCode: inspected?.State?.ExitCode ?? null, code: safeCode(error) });
+    throw error;
+  }
   await until(async () => (await fetch(`http://127.0.0.1:${ports.mail}/api/v1/info`, { signal: AbortSignal.timeout(2_000) })).ok, "MAILPIT", 60_000);
   report.imageDigests = { ...manifest.imageDigests };
   for (const [name, image] of Object.entries({ caddy: caddyImage, mailpit: mailImage })) { const inspected = JSON.parse(await docker(["image", "inspect", image]))[0]; report.imageDigests[name] = { image, id: inspected.Id, digests: inspected.RepoDigests }; }
