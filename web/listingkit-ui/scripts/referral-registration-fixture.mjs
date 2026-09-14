@@ -209,7 +209,12 @@ export async function restoreAuthorizationEventually(operation, options = {}) {
 
 export async function submitOrganizationSelection({ switcher, organizationId, responsePromise }) {
   const [, responseResult] = await Promise.allSettled([
-    switcher.selectOption(organizationId),
+    switcher.evaluate((element, id) => {
+      const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
+      if (valueSetter) valueSetter.call(element, id);
+      else element.value = id;
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    }, organizationId),
     responsePromise,
   ]);
   const response = responseResult.status === "fulfilled" ? responseResult.value : null;
