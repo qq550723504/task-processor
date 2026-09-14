@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFile, writeFile, mkdir, unlink, rm, rename } from "node:fs/promises";
+import { readFile, writeFile, mkdir, unlink, rm, rename, cp, symlink } from "node:fs/promises";
 import { createServer as createHTTPServer } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createServer as createNetServer } from "node:net";
@@ -1061,6 +1061,7 @@ async function startSecondaryApplication(origins, ports) {
   }
   const directory = path.resolve(manifest.directory, "m2-secondary");
   ensure(path.dirname(directory) === path.resolve(manifest.directory), "SECONDARY_DIRECTORY_INVALID");
+  await unlink(path.join(directory, "ui", "node_modules")).catch(error => { if (error.code !== "ENOENT") throw error; });
   await rm(directory, { recursive: true, force: true });
   await mkdir(directory, { recursive: true });
   const current = structuredClone(await readJSON(path.join(manifest.directory, "current-application.json")));
@@ -1069,6 +1070,19 @@ async function startSecondaryApplication(origins, ports) {
   const currentConfig = path.join(directory, "current-application.json");
   await writeJSON(currentConfig, current);
   const services = structuredClone(await readJSON(path.join(manifest.directory, "services.json")));
+  const sourceUI = path.resolve(services.uiDirectory);
+  ensure(path.dirname(sourceUI) === path.resolve(manifest.directory), "SECONDARY_UI_SOURCE_INVALID");
+  const secondaryUI = path.join(directory, "ui");
+  await cp(sourceUI, secondaryUI, {
+    recursive: true,
+    filter: source => {
+      const relative = path.relative(sourceUI, source);
+      const first = relative.split(path.sep)[0];
+      return !["node_modules", ".next"].includes(first);
+    },
+  });
+  await symlink(path.join(sourceUI, "node_modules"), path.join(secondaryUI, "node_modules"), "junction");
+  services.uiDirectory = secondaryUI;
   services.goArgs = ["-config", currentConfig, "-shutdown-file", path.join(directory, "stop-go")];
   services.goEnvironment = {};
   services.goPort = ports.goSecondary;
@@ -1097,13 +1111,19 @@ async function startSecondaryApplication(origins, ports) {
     databaseId: manifest.resources?.[`${manifest.project}-commercial-db`]?.id,
     ready: false,
   };
-  await until(async () => {
+  const started = await until(async () => {
     const stopped = await readJSON(path.join(directory, "services-stopped.json")).catch(error => error.code === "ENOENT" ? null : Promise.reject(error));
-    ensure(!stopped, "SECONDARY_APPLICATION_STOPPED_DURING_START");
-    await readJSON(path.join(directory, "go-ready.json"));
-    await readJSON(path.join(directory, "next-ready.json"));
-    return true;
+    if (stopped) return { failed: true };
+    try {
+      await readJSON(path.join(directory, "go-ready.json"));
+      await readJSON(path.join(directory, "next-ready.json"));
+      return { ready: true };
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      return false;
+    }
   }, "SECONDARY_APPLICATION_START", 300_000);
+  ensure(started.ready === true && !started.failed, "SECONDARY_APPLICATION_START_FAILED");
   const processes = await readJSON(path.join(directory, "processes.json"));
   ensure([processes.supervisor?.pid, processes.go?.pid, processes.next?.pid].every(processAlive), "SECONDARY_APPLICATION_PROCESS_MISSING");
   const provider = await fetch(`http://127.0.0.1:${ports.nextSecondary}/api/auth/providers`, { signal: AbortSignal.timeout(90_000) });
@@ -2300,18 +2320,25 @@ async function browserChain(origins, ports, machine) {
   });
   await startDispatchObserver(ports.observer, `http://127.0.0.1:${ports.goSecondary}`);
   await matrixCheck("C", "provider_business_read_failure_preserves_receipt", async () => {
-    const observation = await runProviderBusinessReadFailureControl({
+    const providerContext = await browser.newContext({ viewport: { width: 900, height: 700 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+    const providerPage = await providerContext.newPage();
+    try {
+      await login(providerPage, origins.publicOrigin, { username: email, password: registeredPassword }, "/workbench/account/referrals/complete");
+      const observation = await runProviderBusinessReadFailureControl({
       verifyIdentityHealth: async () => {
         const discoveryResponse = await fetch(`${manifest.origins.issuer}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10_000) });
         const discovery = await discoveryResponse.json();
         const jwksResponse = await fetch(discovery.jwks_uri, { signal: AbortSignal.timeout(10_000) });
         const authProviders = await fetch(`http://127.0.0.1:${ports.next}/api/auth/providers`, { signal: AbortSignal.timeout(90_000) });
-        const identity = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
+        const identity = await providerContext.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
         const identityPayload = await identity.json().catch(() => ({}));
-        ensure(identityPayload.userId === subject, "CURRENT_IDENTITY_SUBJECT_MISMATCH");
+        if (identityPayload.userId !== subject) {
+          await writeJSON(path.join(outputDirectory, "m2-provider-identity-diagnostic.json"), { status: identity.status(), expectedSubject: subject, observedSubject: typeof identityPayload.userId === "string" ? identityPayload.userId : "missing", code: typeof identityPayload.code === "string" ? identityPayload.code : "none" });
+          throw new Error("CURRENT_IDENTITY_SUBJECT_MISMATCH");
+        }
         return { discoveryStatus: discoveryResponse.status, jwksStatus: jwksResponse.status, authProvidersStatus: authProviders.status, currentIdentityStatus: identity.status(), currentSubject: identityPayload.userId };
       },
-      replayReceipt: phase => postCompletion(context.request, phase === "before" ? origins.publicOrigin : origins.secondaryPublicOrigin, subject),
+      replayReceipt: phase => postCompletion(providerContext.request, phase === "before" ? origins.publicOrigin : origins.secondaryPublicOrigin, subject),
       relationshipCount: () => relationshipCountForSubject(subject),
       enableSelectiveBusinessReadFailure: () => startSecondaryApplication(origins, ports),
       observeBusinessReadFailure: async () => {
@@ -2323,9 +2350,12 @@ async function browserChain(origins, ports, machine) {
         const result = await providerTLSRead(origins.providerOrigin, `/v2/users/${encodeURIComponent(subject)}`, origins.caFile, machine.token);
         return { status: result.status, subject: result.payload?.user?.userId };
       },
-    });
-    await writeJSON(path.join(outputDirectory, "m2-provider-business-read-observation.json"), observation);
-    return { ...evaluateProviderBusinessReadFailure(observation), precondition: "current_identity_discovery_jwks_authjs_and_committed_receipt_healthy", injection: "secondary_go_uses_run_owned_provider_business_read_only_503_origin", positiveControl: "healthy_provider_user_read_after_secondary_stop", observation: "same_durable_receipt_and_relationship_count_during_selective_provider_read_failure", invariants: ["receipt_first_replay", "one_relationship", "identity_stack_healthy"] };
+      });
+      await writeJSON(path.join(outputDirectory, "m2-provider-business-read-observation.json"), observation);
+      return { ...evaluateProviderBusinessReadFailure(observation), precondition: "fresh_official_current_identity_discovery_jwks_authjs_and_committed_receipt_healthy", injection: "secondary_go_uses_run_owned_provider_business_read_only_503_origin", positiveControl: "healthy_provider_user_read_after_secondary_stop", observation: "same_durable_receipt_and_relationship_count_during_selective_provider_read_failure", invariants: ["receipt_first_replay", "one_relationship", "identity_stack_healthy"] };
+    } finally {
+      await providerContext.close();
+    }
   });
   await matrixCheck("E", "cancel_deadline_zero_late_dispatch", async () => {
     await startSecondaryApplication(origins, ports);
@@ -2622,6 +2652,7 @@ async function cleanupPrivateArtifacts(owner) {
   await rm(caddyRoot, { recursive: true, force: true });
   const secondaryRoot = path.resolve(expected, "m2-secondary");
   ensure(path.dirname(secondaryRoot) === expected, "CLEANUP_PATH_INVALID");
+  await unlink(path.join(secondaryRoot, "ui", "node_modules")).catch(error => { if (error.code !== "ENOENT") throw error; });
   await rm(secondaryRoot, { recursive: true, force: true });
 }
 
