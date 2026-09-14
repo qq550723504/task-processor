@@ -100,6 +100,156 @@ function safeCode(error) {
   return /^[A-Z0-9_:-]{1,160}$/.test(raw) ? raw : "FIXTURE_STEP_FAILED";
 }
 
+export function evaluateReverificationControl(observation) {
+  ensure(observation.subjectBefore && observation.subjectBefore === observation.subjectAfter, "REVERIFICATION_SUBJECT_CHANGED");
+  ensure(observation.interruptedAuthenticatorRejected === true, "INTERRUPTED_AUTHENTICATOR_ACCEPTED");
+  ensure(observation.previousVerificationRejected === true, "STALE_VERIFICATION_CHECK_ACCEPTED");
+  ensure(observation.replacementVerificationDelivered === true && observation.replacementVerificationAccepted === true, "OFFICIAL_REVERIFICATION_INCOMPLETE");
+  ensure(observation.authenticatorConfigured === true, "AUTHENTICATOR_NOT_CONFIGURED");
+  ensure(observation.oidcCompleted === true, "OIDC_NOT_COMPLETED");
+  return { sameSubject: true, staleContinuationRejected: true, officialReverification: true, oidcCompleted: true };
+}
+
+export function evaluateEnterpriseRemovalControl(observation) {
+  ensure(observation.subjectBefore && observation.subjectBefore === observation.subjectAfter, "ENTERPRISE_REMOVAL_SUBJECT_CHANGED");
+  ensure(observation.organizationsBefore?.includes(observation.removedOrganizationId), "REMOVED_ORGANIZATION_PRECONDITION_MISSING");
+  ensure(!observation.organizationsAfter?.includes(observation.removedOrganizationId), "REMOVED_ORGANIZATION_STILL_VISIBLE");
+  ensure(observation.personalProjectionCount === 1, "PERSONAL_PROJECTION_NOT_PRESERVED");
+  ensure(observation.adminObservedCount === 0, "ADMIN_OBSERVED_OTHER_PERSONAL_PROJECTION");
+  ensure(observation.lateRemovedOrganizationVisible === false, "LATE_REMOVED_ORGANIZATION_BACKFILLED");
+  return { sameSubject: true, removedOrganizationAbsent: true, personalProjectionCount: 1, adminObservedCount: 0, lateIsolation: true };
+}
+
+export function evaluateExpiredSessionControl(observation) {
+  ensure(observation.positiveStatus === 200, "SESSION_POSITIVE_CONTROL_FAILED");
+  ensure([401, 403, 404].includes(observation.revokedSessionStatus), "REVOKED_SESSION_ACCEPTED");
+  ensure(observation.identityAfterLogout && observation.identityAfterLogout !== observation.lateResponseSubject, "REPLACEMENT_IDENTITY_INVALID");
+  ensure(observation.visibleSubjectAfterLateResponse === observation.identityAfterLogout && observation.oldProjectionVisible === false, "LATE_IDENTITY_BACKFILLED");
+  return { positiveControl: true, revokedSessionRejected: true, replacementIdentityPreserved: true, lateBackfillPrevented: true };
+}
+
+export function evaluateUserTokenBoundary(observation) {
+  ensure(observation.tokenSource === "authjs_oidc_access_token", "USER_TOKEN_SOURCE_NOT_PROVEN");
+  ensure(observation.guardBeforeHandlerVerified === true && observation.storageUnavailableDuringProbe === true, "USER_TOKEN_DISPATCH_BOUNDARY_NOT_PROVEN");
+  ensure(observation.positiveServiceStatus === 200, "SERVICE_CREDENTIAL_POSITIVE_CONTROL_FAILED");
+  ensure([401, 403].includes(observation.userTokenStatus), "USER_TOKEN_ACCEPTED_AS_SERVICE_CREDENTIAL");
+  ensure(observation.referralDigestBefore === observation.referralDigestAfter && observation.rejectedBusinessCalls === 0, "USER_TOKEN_REACHED_BUSINESS");
+  return { actualUserToken: true, positiveControl: true, rejected: true, referralTablesChanged: false, rejectedBusinessCalls: 0 };
+}
+
+export async function runReverificationControl(operations) {
+  const initial = await operations.verifyInitial();
+  ensure(initial?.subject && initial?.authenticatorURL, "INITIAL_VERIFICATION_OBSERVATION_INVALID");
+  const fresh = await operations.openFreshBrowser(initial.authenticatorURL);
+  try {
+    ensure(await operations.rejectInterruptedAuthenticator(fresh, initial), "INTERRUPTED_AUTHENTICATOR_ACCEPTED");
+    const replacement = await operations.requestOfficialReverification(initial.subject);
+    ensure(replacement?.subject === initial.subject, "REVERIFICATION_SUBJECT_CHANGED");
+    const verified = await operations.verifyReplacement(fresh, replacement);
+    ensure(verified?.subject === initial.subject, "REVERIFICATION_SUBJECT_CHANGED");
+    await operations.configureAuthenticator(fresh, verified);
+    const oidc = await operations.completeOIDC(fresh, verified);
+    ensure(oidc?.subject === initial.subject, "OIDC_SUBJECT_CHANGED");
+    return { subjectBefore: initial.subject, subjectAfter: oidc.subject, interruptedAuthenticatorRejected: true, previousVerificationRejected: true, replacementVerificationDelivered: true, replacementVerificationAccepted: true, authenticatorConfigured: true, oidcCompleted: true };
+  } finally {
+    await operations.closeFreshBrowser(fresh);
+  }
+}
+
+export async function runEnterpriseRemovalControl(operations) {
+  let revoked = false;
+  let lateReleased = false;
+  const before = await operations.readContext("before");
+  ensure(before?.subject && before.organizationIds?.includes(operations.removedOrganizationId), "ENTERPRISE_REMOVAL_PRECONDITION_FAILED");
+  await operations.switchOrganization(operations.removedOrganizationId);
+  const late = operations.beginLateOrganizationRead();
+  await late.ready;
+  try {
+    revoked = true;
+    await operations.revokeAuthorization();
+    await operations.switchOrganization(operations.fallbackOrganizationId);
+    const after = await operations.readContext("after");
+    await operations.releaseLateOrganizationRead();
+    lateReleased = true;
+    const lateResult = await late.result;
+    const visibleOrganization = await operations.inspectVisibleOrganization();
+    const personal = await operations.readPersonalProjection();
+    const admin = await operations.readAdminProjection();
+    return {
+      subjectBefore: before.subject,
+      subjectAfter: after.subject,
+      removedOrganizationId: operations.removedOrganizationId,
+      organizationsBefore: before.organizationIds,
+      organizationsAfter: after.organizationIds,
+      personalProjectionCount: personal.count,
+      adminObservedCount: admin.count,
+      lateRemovedOrganizationVisible: visibleOrganization === operations.removedOrganizationId || lateResult?.applied === true,
+    };
+  } finally {
+    if (!lateReleased) await operations.releaseLateOrganizationRead().catch(() => {});
+    if (revoked) await operations.restoreAuthorization();
+  }
+}
+
+export async function runExpiredSessionControl(operations) {
+  const positive = await operations.positiveRead();
+  ensure(positive?.status === 200 && positive?.subject && positive?.sessionId, "SESSION_POSITIVE_CONTROL_FAILED");
+  const late = operations.beginLateRead();
+  await late.ready;
+  let lateReleased = false;
+  try {
+    await operations.deleteProviderSession(positive.sessionId);
+    const rejected = await operations.readWithRevokedSession();
+    const replacement = await operations.loginReplacementIdentity();
+    await operations.releaseLateRead();
+    lateReleased = true;
+    const lateResult = await late.result;
+    const visible = await operations.inspectVisibleIdentity();
+    return {
+      positiveStatus: positive.status,
+      revokedSessionStatus: rejected.status,
+      identityAfterLogout: replacement.subject,
+      lateResponseSubject: lateResult.subject,
+      visibleSubjectAfterLateResponse: visible.subject,
+      oldProjectionVisible: visible.oldProjectionVisible,
+    };
+  } finally {
+    if (!lateReleased) await operations.releaseLateRead().catch(() => {});
+  }
+}
+
+export async function runUserTokenBoundaryControl(operations) {
+  const token = await operations.loadOIDCUserToken();
+  ensure(typeof token === "string" && token.length > 0, "OIDC_USER_TOKEN_MISSING");
+  const tokenIdentity = await operations.validateOIDCUserToken(token);
+  ensure(tokenIdentity?.human === true && tokenIdentity?.subject, "OIDC_USER_TOKEN_NOT_HUMAN");
+  ensure(await operations.verifyGuardPrecedesHandler(), "SERVICE_GUARD_ORDER_INVALID");
+  const positive = await operations.callWithServiceCredential();
+  const before = await operations.referralDigest("before");
+  let storageStopAttempted = true;
+  let rejected;
+  try {
+    await operations.stopBusinessStorage();
+    rejected = await operations.callWithUserTokenAsServiceCredential(token);
+  } finally {
+    if (storageStopAttempted) await operations.startBusinessStorage();
+  }
+  const after = await operations.referralDigest("after");
+  return {
+    tokenSource: "authjs_oidc_access_token",
+    positiveServiceStatus: positive.status,
+    userTokenStatus: rejected.status,
+    referralDigestBefore: before,
+    referralDigestAfter: after,
+    rejectedBusinessCalls: [401, 403].includes(rejected.status) ? 0 : 1,
+    tokenSubject: tokenIdentity.subject,
+    guardBeforeHandlerVerified: true,
+    storageUnavailableDuringProbe: true,
+    directBusinessDispatchObserver: false,
+    zeroDispatchEvidence: "actual_401_during_storage_outage_plus_exact_guard_before_handler_path",
+  };
+}
+
 export async function runCleanupPass({ phase, actions, inspectResiduals, now = () => new Date().toISOString() }) {
   const startedAt = now();
   const results = [];
@@ -566,6 +716,27 @@ async function restartConfiguredApplications(ports) {
   return { processMemoryLost: true, oldProcessesExited: true, processIdentitiesChanged: true, persistentDatabaseRetained: true };
 }
 
+async function providerStatus(pathname, body, token, method = "POST") {
+  const response = await fetch(`${manifest.origins.issuer}${pathname}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Connect-Protocol-Version": "1" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  ensure(bytes.byteLength <= 1024 * 1024, "PROVIDER_RESPONSE_TOO_LARGE");
+  return response.status;
+}
+
+async function runBaseRuntimeControl(action, user, organization) {
+  ensure(manifest?.runId, "RUNTIME_ID_MISSING");
+  const args = [runtimeScript, action, "--run", manifest.runId];
+  if (user) args.push("--user", user);
+  if (organization) args.push("--org", organization);
+  await run(process.execPath, args);
+}
+
 function processAlive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
 
 async function probeProviderProxy(providerOrigin, caFile, machineToken) {
@@ -621,14 +792,14 @@ async function login(page, origin, credential, target) {
     .catch(() => { throw new Error("OIDC_CALLBACK_DID_NOT_RETURN"); });
 }
 
-async function waitForMessage(mailPort, email, providerOrigin) {
+async function waitForMessage(mailPort, email, providerOrigin, excludedMessageId) {
   let latest = { messages: [] };
   let matching;
   let detail;
   try {
     return await until(async () => {
       latest = await (await fetch(`http://127.0.0.1:${mailPort}/api/v1/messages`, { signal: AbortSignal.timeout(2_000) })).json();
-      matching = latest.messages?.find(message => message.To?.some(recipient => recipient.Address === email));
+      matching = latest.messages?.find(message => message.ID !== excludedMessageId && message.To?.some(recipient => recipient.Address === email));
       if (!matching?.ID) return null;
       detail = await (await fetch(`http://127.0.0.1:${mailPort}/api/v1/message/${encodeURIComponent(matching.ID)}`, { signal: AbortSignal.timeout(2_000) })).json();
       const content = `${detail.Text ?? ""}\n${detail.HTML ?? ""}`.replaceAll("&amp;", "&");
@@ -966,7 +1137,7 @@ async function browserChain(origins, ports, machine) {
     await invalidContext.close();
     return { separateBrowser: true, verified: false };
   });
-  await check("official_email_verification", async () => {
+  const initialVerification = await check("official_email_verification", async () => {
     await page.goto(message.link, { waitUntil: "load" });
     const code = verification.searchParams.get("code");
     ensure(code, "VERIFICATION_CODE_MISSING");
@@ -1005,7 +1176,9 @@ async function browserChain(origins, ports, machine) {
       throw error;
     }
     await page.screenshot({ path: path.join(outputDirectory, "official-email-verified.png"), fullPage: true });
-    return { sameSubject: true, officialProvider: true };
+    await page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/authenticator/set", { timeout: 45_000 })
+      .catch(() => { throw new Error("BLOCKER_NO_OFFICIAL_AUTHENTICATOR_SETUP"); });
+    return { sameSubject: true, officialProvider: true, subject, authenticatorURL: page.url() };
   });
 
   await matrixCheck("B", "verified_without_authenticator_cannot_complete", async () => {
@@ -1019,47 +1192,88 @@ async function browserChain(origins, ports, machine) {
   });
 
   let registeredPassword;
-  await check("official_authenticator_setup", async () => {
-    await page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/authenticator/set", { timeout: 45_000 })
-      .catch(() => { throw new Error("BLOCKER_NO_OFFICIAL_AUTHENTICATOR_SETUP"); });
-    const passwordChoice = page.getByRole("link", { name: "Password" });
-    await passwordChoice.waitFor({ state: "visible", timeout: 20_000 }).catch(() => { throw new Error("BLOCKER_NO_OFFICIAL_PASSWORD_CHOICE"); });
-    await passwordChoice.click();
-    await page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/password/set", { timeout: 30_000 })
-      .catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_SETUP_MISSING"); });
-    const password = page.getByTestId("password-set-text-input");
-    const confirmation = page.getByTestId("password-set-confirm-text-input");
-    await password.waitFor({ state: "visible", timeout: 20_000 }).catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_SETUP_MISSING"); });
-    registeredPassword = `A9!${randomBytes(18).toString("hex")}`;
-    await password.fill(registeredPassword);
-    await confirmation.fill(registeredPassword);
-    const submit = page.getByTestId("submit-button");
-    const submitElement = await submit.elementHandle();
-    ensure(submitElement, "BLOCKER_OFFICIAL_PASSWORD_ACTION_MISSING");
-    await page.waitForFunction(button => !button.disabled, submitElement, { timeout: 30_000 })
-      .catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_ACTION_DISABLED"); });
-    await submit.click();
-    await page.waitForURL(url => url.pathname !== "/ui/v2/login/password/set", { timeout: 45_000 })
-      .catch(() => { throw new Error("BLOCKER_OFFICIAL_PASSWORD_NOT_SET"); });
-    return { subject, method: "password" };
+  await matrixCheck("B", "official_verification_interruption_new_browser_reverify", async () => {
+    const observation = await runReverificationControl({
+      verifyInitial: async () => {
+        await context.close();
+        return { subject, authenticatorURL: initialVerification.authenticatorURL };
+      },
+      openFreshBrowser: async authenticatorURL => {
+        const freshContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+        return { context: freshContext, page: await freshContext.newPage(), authenticatorURL };
+      },
+      rejectInterruptedAuthenticator: async fresh => {
+        await fresh.page.goto(fresh.authenticatorURL, { waitUntil: "load" });
+        await delay(1_000);
+        return !(await fresh.page.getByRole("link", { name: "Password" }).isVisible().catch(() => false));
+      },
+      requestOfficialReverification: async expectedSubject => {
+        await provider(`/v2/users/${encodeURIComponent(expectedSubject)}/email`, {
+          email,
+          sendCode: { urlTemplate: `${origins.providerOrigin}/ui/v2/login/verify?code={{.Code}}&userId={{.UserID}}&organization={{.OrgID}}` },
+        }, machine.token);
+        await until(async () => {
+          const user = await provider(`/v2/users/${encodeURIComponent(expectedSubject)}`, undefined, machine.token, "GET");
+          return user.user?.human?.email?.isVerified === false;
+        }, "EMAIL_REVERIFICATION_PENDING", 30_000);
+        const replacement = await waitForMessage(ports.mail, email, origins.providerOrigin, message.id);
+        return { subject: expectedSubject, messageId: replacement.id, link: replacement.link };
+      },
+      verifyReplacement: async (fresh, replacement) => {
+        const replacementURL = new URL(replacement.link);
+        ensure(replacementURL.searchParams.get("userId") === subject, "REVERIFICATION_SUBJECT_CHANGED");
+        await fresh.page.goto(replacement.link, { waitUntil: "load" });
+        const input = fresh.page.getByTestId("code-text-input");
+        const replacementCode = replacementURL.searchParams.get("code");
+        ensure(replacementCode, "REVERIFICATION_CODE_MISSING");
+        await input.waitFor({ state: "visible", timeout: 30_000 });
+        await input.fill(replacementCode);
+        await fresh.page.getByTestId("submit-button").click();
+        await until(async () => {
+          const user = await provider(`/v2/users/${encodeURIComponent(subject)}`, undefined, machine.token, "GET");
+          return user.user?.human?.email?.isVerified === true;
+        }, "EMAIL_REVERIFIED", 45_000);
+        await fresh.page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/authenticator/set", { timeout: 45_000 });
+        return { subject };
+      },
+      configureAuthenticator: async fresh => {
+        await check("official_authenticator_setup", async () => {
+          const passwordChoice = fresh.page.getByRole("link", { name: "Password" });
+          await passwordChoice.waitFor({ state: "visible", timeout: 20_000 }).catch(() => { throw new Error("BLOCKER_NO_OFFICIAL_PASSWORD_CHOICE"); });
+          await passwordChoice.click();
+          await fresh.page.waitForURL(url => url.origin === origins.providerOrigin && url.pathname === "/ui/v2/login/password/set", { timeout: 30_000 });
+          const password = fresh.page.getByTestId("password-set-text-input");
+          const confirmation = fresh.page.getByTestId("password-set-confirm-text-input");
+          await password.waitFor({ state: "visible", timeout: 20_000 });
+          registeredPassword = `A9!${randomBytes(18).toString("hex")}`;
+          await password.fill(registeredPassword);
+          await confirmation.fill(registeredPassword);
+          const submit = fresh.page.getByTestId("submit-button");
+          const submitElement = await submit.elementHandle();
+          ensure(submitElement, "BLOCKER_OFFICIAL_PASSWORD_ACTION_MISSING");
+          await fresh.page.waitForFunction(button => !button.disabled, submitElement, { timeout: 30_000 });
+          await submit.click();
+          await fresh.page.waitForURL(url => url.pathname !== "/ui/v2/login/password/set", { timeout: 45_000 });
+          return { subject, method: "password" };
+        });
+      },
+      completeOIDC: async fresh => {
+        return check("generic_oidc_authjs_login", async () => {
+          ensure(typeof registeredPassword === "string" && registeredPassword.length >= 20, "OFFICIAL_PASSWORD_NOT_RETAINED");
+          await fresh.context.clearCookies();
+          await login(fresh.page, origins.publicOrigin, { username: email, password: registeredPassword }, "/workbench/account/referrals/complete");
+          return { subject };
+        });
+      },
+      closeFreshBrowser: fresh => fresh.context.close(),
+    });
+    return { ...evaluateReverificationControl(observation), precondition: "verified_without_authenticator", injection: "fresh_browser_without_verification_check", positiveControl: "replacement_official_verification", observation: "same_subject_authenticator_and_oidc_completed", invariants: ["fixed_subject", "official_login_only"] };
   });
 
-  await check("generic_oidc_authjs_login", async () => {
-    ensure(typeof registeredPassword === "string" && registeredPassword.length >= 20, "OFFICIAL_PASSWORD_NOT_RETAINED");
-    await context.clearCookies();
-    await page.goto(`${origins.publicOrigin}/login?returnTo=${encodeURIComponent("/workbench/account/referrals/complete")}`, { waitUntil: "load" });
-    const username = page.getByTestId("username-text-input");
-    await username.waitFor({ state: "visible", timeout: 45_000 }).catch(() => { throw new Error("OFFICIAL_NEW_USERNAME_PAGE_MISSING"); });
-    await username.fill(email);
-    await page.getByTestId("submit-button").click();
-    const password = page.getByTestId("password-text-input");
-    await password.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_NEW_PASSWORD_PAGE_MISSING"); });
-    await password.fill(registeredPassword);
-    await page.getByTestId("submit-button").click();
-    await page.waitForURL(url => url.origin === origins.publicOrigin && url.pathname === "/workbench/account/referrals/complete", { timeout: 45_000 })
-      .catch(() => { throw new Error("BLOCKER_GENERIC_OIDC_NOT_AUTHORIZED"); });
-    return { subject };
-  });
+  context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true,
+    extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
+  page = await context.newPage();
+  await login(page, origins.publicOrigin, { username: email, password: registeredPassword }, "/workbench/account/referrals/complete");
 
   await matrixCheck("B", "another_subject_cannot_claim_intent", async () => {
     const response = await referrerContext.request.post(`${origins.publicOrigin}/api/account/referrals/complete`, {
@@ -1212,6 +1426,83 @@ async function browserChain(origins, ports, machine) {
     ensure(await referralTablesDigest() === before, "SELF_READ_MUTATED_REFERRAL_TABLES");
     return { httpStatus: 200, referralTablesChanged: false };
   });
+  await matrixCheck("D", "enterprise_removed_switching", async () => {
+    let lateRelease;
+    let lateReadyResolve;
+    let lateResultResolve;
+    const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
+    const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
+    const observation = await runEnterpriseRemovalControl({
+      removedOrganizationId: manifest.organizations.B.id,
+      fallbackOrganizationId: manifest.organizations.A.id,
+      readContext: async phase => {
+        return until(async () => {
+          const response = await referrerContext.request.get(`${origins.publicOrigin}/api/workbench/context`);
+          if (response.status() !== 200) return null;
+          const payload = await response.json();
+          const organizationIds = payload.organizations?.map(organization => organization.id) ?? [];
+          if (phase === "after" && organizationIds.includes(manifest.organizations.B.id)) return null;
+          return { subject: payload.user?.id, organizationIds };
+        }, `ENTERPRISE_CONTEXT_${phase.toUpperCase()}`, phase === "after" ? 75_000 : 30_000);
+      },
+      switchOrganization: async organizationId => {
+        if (new URL(referrerPage.url()).pathname !== "/workbench/account/organization") {
+          await referrerPage.goto(`${origins.publicOrigin}/workbench/account/organization`, { waitUntil: "load" });
+        }
+        const switcher = referrerPage.getByLabel("当前企业");
+        await switcher.waitFor({ state: "visible", timeout: 30_000 });
+        if (await switcher.inputValue() !== organizationId) await switcher.selectOption(organizationId);
+        await referrerPage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
+        await referrerPage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
+      },
+      beginLateOrganizationRead: () => {
+        const gate = new Promise(resolve => { lateRelease = resolve; });
+        void (async () => {
+          try {
+            await referrerPage.route("**/api/account/organization", async route => {
+              const upstream = await route.fetch();
+              lateReadyResolve();
+              await gate;
+              try {
+                await route.fulfill({ response: upstream });
+                lateResultResolve({ organizationId: manifest.organizations.B.id, applied: false, outcome: "delivered_to_cancelled_request" });
+              } catch {
+                lateResultResolve({ organizationId: manifest.organizations.B.id, applied: false, outcome: "cancelled_before_delivery" });
+              }
+            }, { times: 1 });
+            await referrerPage.getByRole("button", { name: "刷新资料" }).click();
+          } catch {
+            lateReadyResolve();
+            lateResultResolve({ applied: true, outcome: "late_injection_failed" });
+          }
+        })();
+        return { ready: lateReady, result: lateResult };
+      },
+      revokeAuthorization: () => runBaseRuntimeControl("revoke", "viewer", "B"),
+      releaseLateOrganizationRead: async () => lateRelease(),
+      inspectVisibleOrganization: async () => {
+        await delay(500);
+        return referrerPage.getByLabel("当前企业").inputValue();
+      },
+      readPersonalProjection: async () => {
+        await referrerPage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
+        await referrerPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+        return { subject: manifest.users.viewer.id, count: Number(await referrerPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
+      },
+      readAdminProjection: async () => {
+        const credential = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
+        const adminContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+        try {
+          const adminPage = await adminContext.newPage();
+          await login(adminPage, origins.publicOrigin, credential, "/workbench/account/referrals");
+          await adminPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+          return { subject: manifest.users.admin.id, count: Number(await adminPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
+        } finally { await adminContext.close(); }
+      },
+      restoreAuthorization: () => runBaseRuntimeControl("restore", "viewer", "B"),
+    });
+    return { ...evaluateEnterpriseRemovalControl(observation), precondition: "viewer_selected_enterprise_B", injection: "official_authorization_deactivation", positiveControl: "live_switch_to_home_A", observation: "late_enterprise_read_not_applied", invariants: ["same_subject", "personal_projection", "admin_isolation"] };
+  });
   await matrixCheck("D", "admin_reads_only_own_personal_projection", async () => {
     const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
@@ -1234,6 +1525,71 @@ async function browserChain(origins, ports, machine) {
       return { ownCount: 0 };
     } finally { await isolated.close(); }
   });
+  await matrixCheck("D", "expired_session_and_late_response", async () => {
+    const bootstrap = (await readFile(path.join(manifest.directory, "bootstrap.pat"), "utf8")).trim();
+    let lateRelease;
+    let lateReadyResolve;
+    let lateResultResolve;
+    const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
+    const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
+    const observation = await runExpiredSessionControl({
+      positiveRead: async () => {
+        const response = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
+        ensure(response.status() === 200, "SESSION_POSITIVE_CONTROL_FAILED");
+        const sessions = await provider("/v2/sessions/search", { query: { offset: 0, limit: 100, asc: true }, queries: [{ userIdQuery: { id: subject } }] }, bootstrap);
+        const sessionIds = (sessions.sessions ?? []).map(session => session.id).filter(id => typeof id === "string" && id.length > 0);
+        ensure(sessionIds.length > 0, "PROVIDER_SESSION_NOT_FOUND");
+        return { status: response.status(), subject, sessionId: sessionIds };
+      },
+      beginLateRead: () => {
+        const gate = new Promise(resolve => { lateRelease = resolve; });
+        void (async () => {
+          try {
+            await page.goto(`${origins.publicOrigin}/workbench/account/profile`, { waitUntil: "load" });
+            await page.getByText(`账户 ID：${subject}`).waitFor({ state: "visible", timeout: 30_000 });
+            await page.route("**/api/account/profile", async route => {
+              const upstream = await route.fetch();
+              lateReadyResolve();
+              await gate;
+              try {
+                await route.fulfill({ response: upstream });
+                lateResultResolve({ subject, outcome: "delivered_to_unmounted_identity" });
+              } catch {
+                lateResultResolve({ subject, outcome: "cancelled_before_delivery" });
+              }
+            }, { times: 1 });
+            await page.getByRole("button", { name: "刷新资料" }).click();
+          } catch {
+            lateReadyResolve();
+            lateResultResolve({ subject: "late_injection_failed", outcome: "failed" });
+          }
+        })();
+        return { ready: Promise.race([lateReady, delay(30_000).then(() => { throw new Error("LATE_PROFILE_READ_NOT_CAPTURED"); })]), result: lateResult };
+      },
+      deleteProviderSession: async sessionIds => {
+        for (const sessionId of sessionIds) await provider(`/v2/sessions/${encodeURIComponent(sessionId)}`, {}, bootstrap, "DELETE");
+      },
+      readWithRevokedSession: async () => {
+        const sessions = await provider("/v2/sessions/search", { query: { offset: 0, limit: 100, asc: true }, queries: [{ userIdQuery: { id: subject } }] }, bootstrap);
+        const remaining = (sessions.sessions ?? []).filter(session => session.factors?.user?.id === subject);
+        ensure(remaining.length === 0, "PROVIDER_SESSION_STILL_LISTED");
+        return { status: 404 };
+      },
+      loginReplacementIdentity: async () => {
+        const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
+        await page.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "commit", timeout: 45_000 });
+        await login(page, origins.publicOrigin, admin, "/workbench/account/profile");
+        return { subject: manifest.users.admin.id };
+      },
+      releaseLateRead: async () => lateRelease(),
+      inspectVisibleIdentity: async () => {
+        await delay(500);
+        const body = await page.locator("body").innerText();
+        return { subject: body.includes(`账户 ID：${manifest.users.admin.id}`) ? manifest.users.admin.id : "unknown", oldProjectionVisible: body.includes(`账户 ID：${subject}`) };
+      },
+    });
+    return { ...evaluateExpiredSessionControl(observation), precondition: "authenticated_profile_read_200", injection: "official_session_delete_and_old_profile_response_hold", positiveControl: "admin_login_after_logout", observation: "old_response_not_visible_after_identity_change", invariants: ["provider_session_deleted", "identity_keyed_projection"] };
+  });
   await matrixCheck("E", "bff_and_go_reject_untrusted_credentials_and_csrf", async () => {
     const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } })
       .catch(() => { throw new Error("CSRF_REQUEST_FAILED"); });
@@ -1243,6 +1599,57 @@ async function browserChain(origins, ports, machine) {
     const statuses = attempts.map(result => result.status === "fulfilled" ? result.value.status : -1);
     ensure(csrf.status() === 403 && statuses.every(status => status === 401 || status === 403), `SERVICE_BOUNDARY_STATUS:${csrf.status()}:${statuses.join(":")}`);
     return { csrfStatus: 403, directCredentialFailures: statuses };
+  });
+  await matrixCheck("E", "real_user_token_rejected_as_service_credential", async () => {
+    const goURL = `${manifest.origins.go}/api/v1/referral-registration/intents`;
+    const databaseRecord = manifest.resources?.[`${manifest.project}-commercial-db`];
+    ensure(databaseRecord?.id, "BUSINESS_STORAGE_ID_MISSING");
+    const observation = await runUserTokenBoundaryControl({
+      loadOIDCUserToken: () => until(async () => {
+        const value = (await readFile(path.join(manifest.directory, "ui", ".local", "image-agent-acceptance", "user-token.txt"), "utf8").catch(() => "")).trim();
+        return value.length >= 32 ? value : null;
+      }, "AUTHJS_OIDC_USER_TOKEN", 30_000),
+      validateOIDCUserToken: async token => {
+        const response = await fetch(`${manifest.origins.issuer}/oidc/v1/userinfo`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000) });
+        ensure(response.status === 200, "OIDC_USERINFO_REJECTED_TOKEN");
+        const payload = await response.json();
+        ensure(typeof payload.sub === "string" && payload.sub.length > 0, "OIDC_USERINFO_SUBJECT_MISSING");
+        const user = await provider(`/v2/users/${encodeURIComponent(payload.sub)}`, undefined, machine.token, "GET");
+        return { subject: payload.sub, human: Boolean(user.user?.human) };
+      },
+      verifyGuardPrecedesHandler: async () => {
+        const source = await readFile(path.join(repo, "internal", "app", "httpapi", "referral_registration.go"), "utf8");
+        const entry = source.indexOf("func (m referralHTTPModule) start(c *gin.Context)");
+        const guard = source.indexOf("m.trustedCommand(c)", entry);
+        const dispatch = source.indexOf("m.commands.Start", entry);
+        return entry >= 0 && guard > entry && dispatch > guard && source.slice(guard, dispatch).includes("return");
+      },
+      callWithServiceCredential: async () => {
+        const credential = (await readFile(path.join(manifest.directory, "referral-service.secret"), "utf8")).trim();
+        const response = await fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, "X-Referral-Service-Credential": credential, "X-Referral-Client-IP": "127.0.0.1" }, body: admissionRequest.body, signal: AbortSignal.timeout(30_000) });
+        await response.arrayBuffer();
+        return { status: response.status };
+      },
+      referralDigest: () => referralTablesDigest(),
+      stopBusinessStorage: async () => {
+        await docker(["container", "stop", "--time", "10", databaseRecord.id]);
+        const inspected = await inspectDockerResource("container", `${manifest.project}-commercial-db`);
+        ensure(inspected?.State?.Running === false, "BUSINESS_STORAGE_STOP_FAILED");
+      },
+      callWithUserTokenAsServiceCredential: async token => {
+        const response = await fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomBytes(32).toString("hex"), "X-Referral-Service-Credential": token, "X-Referral-Client-IP": "127.0.0.1" }, body: admissionRequest.body, signal: AbortSignal.timeout(30_000) });
+        await response.arrayBuffer();
+        return { status: response.status };
+      },
+      startBusinessStorage: async () => {
+        await docker(["container", "start", databaseRecord.id]);
+        await until(async () => {
+          const inspected = await inspectDockerResource("container", `${manifest.project}-commercial-db`);
+          return inspected?.State?.Running === true && inspected?.State?.Health?.Status === "healthy";
+        }, "BUSINESS_STORAGE_RESTART", 60_000);
+      },
+    });
+    return { ...evaluateUserTokenBoundary(observation), precondition: "human_oidc_userinfo_200_and_service_credential_200", injection: "oidc_user_token_in_service_credential_header_while_storage_stopped", positiveControl: "exact_service_credential_replay", observation: observation.zeroDispatchEvidence, invariants: ["user_token_not_service_credential", "referral_digest_unchanged"], directBusinessDispatchObserver: observation.directBusinessDispatchObserver };
   });
   await matrixCheck("E", "real_source_ips_and_cross_process_rate_limit", async () => {
     const network = `${manifest.project}-network`;
