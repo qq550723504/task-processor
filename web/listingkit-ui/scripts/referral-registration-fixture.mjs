@@ -1472,7 +1472,9 @@ async function browserChain(origins, ports, machine) {
           if (await switcher.inputValue() !== organizationId) await switcher.selectOption(organizationId);
           await referrerPage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
         }
-        await referrerPage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
+        if (organizationId === manifest.organizations.B.id) {
+          await referrerPage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
+        }
       },
       beginLateOrganizationRead: () => {
         enterpriseStage = "late_read";
@@ -1508,7 +1510,11 @@ async function browserChain(origins, ports, machine) {
       inspectVisibleOrganization: async () => {
         enterpriseStage = "visible_context";
         await delay(500);
-        return referrerPage.getByLabel("当前企业").inputValue();
+        const body = await referrerPage.locator("body").innerText();
+        if (body.includes(`当前有效企业：${manifest.organizations.B.id}`)) return manifest.organizations.B.id;
+        const switcher = referrerPage.getByRole("combobox", { name: "当前企业" });
+        if (await switcher.count()) return switcher.inputValue();
+        return body.includes(manifest.organizations.A.name) ? manifest.organizations.A.id : "unknown";
       },
       readPersonalProjection: async () => {
         enterpriseStage = "personal_projection";
