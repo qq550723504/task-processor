@@ -847,18 +847,43 @@ async function probeProviderProxy(providerOrigin, caFile, machineToken) {
   return { tlsVerified: true, providerReadStatus: result.status };
 }
 
+export async function submitOfficialLoginStep(page, input, submit, value) {
+  await waitForReactHydration(page, input);
+  await waitForReactHydration(page, submit);
+  await input.fill(value);
+  await submit.click();
+}
+
 async function login(page, origin, credential, target) {
-  await page.goto(`${origin}${target}`, { waitUntil: "load" }).catch(() => { throw new Error("PUBLIC_PROXY_PAGE_LOAD_FAILED"); });
-  const username = page.getByTestId("username-text-input");
-  await username.waitFor({ state: "visible", timeout: 45_000 }).catch(() => { throw new Error("OFFICIAL_USERNAME_PAGE_MISSING"); });
-  await username.fill(credential.username);
-  await page.getByTestId("submit-button").click();
-  const password = page.getByTestId("password-text-input");
-  await password.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_PASSWORD_PAGE_MISSING"); });
-  await password.fill(credential.password);
-  await page.getByTestId("submit-button").click();
-  await page.waitForURL(url => url.origin === origin && url.pathname === target, { timeout: 45_000 })
-    .catch(() => { throw new Error("OIDC_CALLBACK_DID_NOT_RETURN"); });
+  let stage = "entry";
+  try {
+    await page.goto(`${origin}${target}`, { waitUntil: "load" }).catch(() => { throw new Error("PUBLIC_PROXY_PAGE_LOAD_FAILED"); });
+    stage = "username";
+    const username = page.getByTestId("username-text-input");
+    await username.waitFor({ state: "visible", timeout: 45_000 }).catch(() => { throw new Error("OFFICIAL_USERNAME_PAGE_MISSING"); });
+    await submitOfficialLoginStep(page, username, page.getByTestId("submit-button"), credential.username);
+    stage = "password";
+    const password = page.getByTestId("password-text-input");
+    await password.waitFor({ state: "visible", timeout: 30_000 }).catch(() => { throw new Error("OFFICIAL_PASSWORD_PAGE_MISSING"); });
+    await submitOfficialLoginStep(page, password, page.getByTestId("submit-button"), credential.password);
+    stage = "callback";
+    await page.waitForURL(url => url.origin === origin && url.pathname === target, { timeout: 45_000 })
+      .catch(() => { throw new Error("OIDC_CALLBACK_DID_NOT_RETURN"); });
+  } catch (error) {
+    if (outputDirectory) {
+      const diagnosticIndex = report.loginDiagnostics = (report.loginDiagnostics ?? 0) + 1;
+      const diagnosticPath = path.join(outputDirectory, `official-login-diagnostic-${diagnosticIndex}.json`);
+      await writeJSON(diagnosticPath, {
+        stage,
+        code: safeCode(error),
+        pathname: (() => { try { return new URL(page.url()).pathname; } catch { return "unknown"; } })(),
+        usernameVisible: await page.getByTestId("username-text-input").isVisible().catch(() => false),
+        passwordVisible: await page.getByTestId("password-text-input").isVisible().catch(() => false),
+        errorVisible: await page.getByTestId("error").isVisible().catch(() => false),
+      }).catch(() => {});
+    }
+    throw error;
+  }
 }
 
 async function waitForMessage(mailPort, email, providerOrigin, excludedMessageId) {

@@ -345,6 +345,27 @@ test("M1 enterprise switch fails explicitly when no request is observed", async 
   }), /ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED/);
 });
 
+test("official login waits for hydrated input and submit controls before acting", async () => {
+  const { submitOfficialLoginStep } = await runner();
+  const calls = [];
+  const inputHandle = { id: "input" };
+  const submitHandle = { id: "submit" };
+  const page = {
+    waitForFunction: async (_predicate, handle) => { calls.push(`hydrate:${handle.id}`); },
+  };
+  const input = {
+    elementHandle: async () => { calls.push("handle:input"); return inputHandle; },
+    fill: async value => { calls.push(`fill:${value}`); },
+  };
+  const submit = {
+    elementHandle: async () => { calls.push("handle:submit"); return submitHandle; },
+    click: async () => { calls.push("click"); },
+  };
+
+  await submitOfficialLoginStep(page, input, submit, "credential-value");
+  assert.deepEqual(calls, ["handle:input", "hydrate:input", "handle:submit", "hydrate:submit", "fill:credential-value", "click"]);
+});
+
 test("M1 expired-session control deletes the provider session before replacement identity and late release", async () => {
   const { runExpiredSessionControl } = await runner();
   const calls = [];
