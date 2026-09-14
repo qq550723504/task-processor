@@ -21,7 +21,12 @@ Install the locked web dependencies from the repository:
 ```powershell
 Set-Location web/listingkit-ui
 pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
 ```
+
+The authoritative base image declarations are `scripts/issue357/compose.mjs`: ZITADEL API and official Login V2 `v4.17.1`, Traefik `v3.6.8`, and PostgreSQL `17.2-alpine`. The C2 runner declares Caddy `2.11.4-alpine` and Mailpit `v1.30.4`. Every run records the locally resolved image IDs and repository digests in its private manifest/report; the tag alone is not digest evidence.
+
+The runtime creates bootstrap, machine PAT, database, Auth.js, referral service, lookup, proof, and encryption credentials inside the random run directory. Files are mode `0600` where the platform supports POSIX modes and are never command inputs from a shared environment. Official verification mail stays in the task-owned Mailpit container. The report saves only booleans, counts, statuses, hashes, image identities, and bounded error codes; credential values, verification codes/links, cookies, tokens, proofs, and resume capabilities remain private.
 
 Confirm the candidate and clean state before every official run:
 
@@ -42,6 +47,16 @@ node --test scripts/referral-registration-fixture.test.mjs
 ```
 
 The test process must exit 0 with no skipped tests. Individual test-only CLI scenarios require `ISSUE413_FIXTURE_TEST_ONLY=1`; they are internal to the test file and are not substitutes for the official command.
+
+After changing configured application lifecycle wiring, run the bounded configuration smoke before another full chain:
+
+```powershell
+$env:ISSUE413_CONFIGURATION_SMOKE = '1'
+node scripts/referral-registration-fixture.mjs
+Remove-Item Env:ISSUE413_CONFIGURATION_SMOKE
+```
+
+The smoke intentionally exits 1 with business code `CONFIGURATION_SMOKE_COMPLETE` after the configured Go and Next.js applications pass health checks. Both cleanup passes and evidence persistence must still pass with all residual counts at zero. This only proves configuration/start/cleanup wiring.
 
 ## Official command
 
@@ -84,7 +99,7 @@ The report's `matrix` array records each item independently so an early product 
 - Compare the replayed Intent, fixed subject, and original receipt capability in memory without writing the capability.
 - Reject the same key with changed payload.
 - Reload with the recovery fragment and resume only the original Intent.
-- Open a fresh browser without the recovery fragment and prove it does not recover or create an identity silently.
+- Open a fresh browser and prove an empty form does not auto-submit; separately pass an Intent without its capability and prove no recovery request or identity switch is dispatched.
 
 ### B. Official identity lifecycle
 
@@ -97,9 +112,9 @@ The report's `matrix` array records each item independently so an early product 
 ### C. Completion and durable receipt
 
 - Commit completion upstream, drop the real browser response, restart the actual Go and Next.js processes, and replay the durable receipt.
-- Execute concurrent completion requests and prove all responses match one receipt.
+- Execute concurrent first completion and later concurrent receipt replay, and prove all responses match one receipt.
 - Query PostgreSQL for exactly one relationship, one receipt, and one consumed wiped Intent.
-- Fail the post-completion projection read and prove the visible receipt remains while the summary is unavailable.
+- Inject a browser-visible 503 for the post-completion projection and prove the visible receipt remains while the summary is unavailable. This does not count as a real Provider business-read failure.
 
 ### D. Personal authorization and GET purity
 
@@ -112,9 +127,10 @@ The report's `matrix` array records each item independently so an early product 
 ### E. Boundary and dependency behavior
 
 - Traverse Caddy to the Next.js BFF and Go with the trusted source mapping; forged client headers must be overwritten.
-- Reject direct Next.js access, missing or wrong Go service credentials, a user token used as a service credential, and missing same-origin write headers.
-- Remove the task-owned service credential, restart the actual applications, and prove the invite entry is disabled; restore it in `finally` and restart again.
-- Keep multiple-source-IP cross-instance admission and cancel/deadline dispatch evidence separate. If the task-owned topology has only one Docker gateway source or no safe dispatch observer, record `NOT_RUN` rather than simulating a pass.
+- Reject direct Next.js access, missing or wrong Go service credentials, a Provider machine token used as a service credential, and missing same-origin write headers. A real signed user access token remains a separate matrix item.
+- Remove the task-owned service credential while the application is running, render a fresh authenticated page, and prove the invite entry is disabled; restore the credential in `finally`.
+- Use two real Docker peers and a real Go/Next process restart for source-IP and persisted rate-window evidence. This is not evidence for two simultaneously active application instances.
+- Keep parallel-instance admission and cancel/deadline dispatch evidence separate; record `NOT_RUN` when the current slice has no safe observer instead of simulating a pass.
 
 ### F. User interface and accessibility
 
@@ -135,3 +151,12 @@ node scripts/referral-registration-fixture.mjs cleanup-artifacts <run-id>
 ```
 
 This command validates the UUID, fixed temporary root, and manifest ownership before removing only C2 private files. It does not discover, adopt, or delete an unknown runtime.
+
+## Required follow-up slices
+
+The runner is capped by the repository's architecture-sensitive threshold. The current production runner is below 1,500 added lines; the remaining Must cases cannot be added safely inside that limit. Keep them as required `NOT_RUN` items and split them before implementation:
+
+- Official verification interruption, new-browser re-verification, enterprise removed/switching, and token expiry/late response: runner work about 100–160 lines and task-owned official session controls. Any shared runtime control needs a new exact-path PM window.
+- Selective Provider business-read failure with healthy issuer/Auth.js and personal authorization controls: about 90–130 runner lines for a task-owned path-selective proxy fault and positive controls.
+- A second concurrently active application instance, a real signed user access token used in the service-credential position, and a cancel/deadline dispatch observer: about 180–300 lines plus an independently reviewed runtime-control slice; do not add a product backdoor or general fault framework.
+- Real screen-reader evidence is a manual acceptance activity and remains separate from axe, screenshots, and keyboard checks.

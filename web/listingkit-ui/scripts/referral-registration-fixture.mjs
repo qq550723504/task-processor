@@ -415,6 +415,8 @@ https://localhost:444 {
     return pem.includes("BEGIN CERTIFICATE") && pem.length < 64 * 1024 && leaf.includes("BEGIN CERTIFICATE") && leaf.length < 64 * 1024;
   }, "CADDY_CERTIFICATES", 60_000);
   await until(async () => (await fetch(`http://127.0.0.1:${ports.mail}/api/v1/info`, { signal: AbortSignal.timeout(2_000) })).ok, "MAILPIT", 60_000);
+  report.imageDigests = { ...manifest.imageDigests };
+  for (const [name, image] of Object.entries({ caddy: caddyImage, mailpit: mailImage })) { const inspected = JSON.parse(await docker(["image", "inspect", image]))[0]; report.imageDigests[name] = { image, id: inspected.Id, digests: inspected.RepoDigests }; }
   return caFile;
 }
 
@@ -523,9 +525,16 @@ async function configureApplications(ports, caFile, providerCredential) {
 }
 
 async function startConfiguredApplications(ports) {
-  await run(process.execPath, [runtimeScript, "start", "--run", manifest.runId]);
+  for (const name of ["stop-go", "stop-next", "stop-services", "go-ready.json", "next-ready.json", "services-stopped.json"]) await unlink(path.join(manifest.directory, name)).catch(error => { if (error.code !== "ENOENT") throw error; });
+  const child = spawn(process.execPath, [path.join(repo, "scripts", "issue357", "serve.mjs"), manifest.directory], { cwd: manifest.directory, detached: true, windowsHide: true, stdio: "ignore" });
+  await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", () => reject(new Error("SUPERVISOR_START_FAILED"))); });
+  child.unref();
+  await until(async () => { await readJSON(path.join(manifest.directory, "go-ready.json")); await readJSON(path.join(manifest.directory, "next-ready.json")); return true; }, "CONFIGURED_APPLICATION_START", 300_000);
   const current = await readJSON(path.join(manifest.directory, "manifest.json"));
-  ensure(current.runId === manifest.runId && current.status === "ready", "CONFIGURED_APPLICATION_START_FAILED");
+  const processes = await readJSON(path.join(manifest.directory, "processes.json"));
+  ensure(current.runId === manifest.runId && processes.supervisor, "CONFIGURED_APPLICATION_START_FAILED");
+  current.status = "ready"; current.supervisor = processes.supervisor;
+  await writeJSON(path.join(manifest.directory, "manifest.json"), current);
   manifest = { ...current, directory: manifest.directory };
   const go = await fetch(`${manifest.origins.go}/api/v1/account/profile`, { signal: AbortSignal.timeout(10_000) });
   ensure(go.status === 401, "GO_HEALTH_FAILED");
@@ -540,10 +549,14 @@ async function restartConfiguredApplications(ports) {
   const before = await readJSON(path.join(manifest.directory, "processes.json"));
   const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
   ensure(databaseID, "DATABASE_IDENTITY_MISSING");
-  await run(process.execPath, [runtimeScript, "restart", "--run", manifest.runId]);
+  await writePrivate(path.join(manifest.directory, "stop-next"), "stop\n");
+  await until(() => !processAlive(before.next?.pid), "CONFIGURED_NEXT_STOP", 35_000);
+  await writePrivate(path.join(manifest.directory, "stop-services"), "stop\n");
+  await until(() => !processAlive(before.go?.pid) && !processAlive(before.supervisor?.pid), "CONFIGURED_APPLICATION_STOP", 35_000);
   const stopped = await readJSON(path.join(manifest.directory, "services-stopped.json"));
   ensure(stopped.passed === true, "CONFIGURED_APPLICATION_STOP_FAILED");
   ensure(!processAlive(before.go?.pid) && !processAlive(before.next?.pid), "OLD_APPLICATION_PROCESS_ALIVE");
+  await startConfiguredApplications(ports);
   const after = await readJSON(path.join(manifest.directory, "processes.json"));
   ensure(["go", "next"].every(name => before[name]?.pid !== after[name]?.pid && before[name]?.started !== after[name]?.started), "APPLICATION_PROCESS_IDENTITY_REUSED");
   const current = await readJSON(path.join(manifest.directory, "manifest.json"));
@@ -1443,6 +1456,7 @@ async function main() {
       const origins = await check("referral_runtime_configuration", () => configureApplications(ports, caFile, machine.token));
       await check("provider_tls_proxy_preflight", () => probeProviderProxy(origins.providerOrigin, caFile, machine.token));
       await check("configured_application_start", () => startConfiguredApplications(ports));
+      if (process.env.ISSUE413_CONFIGURATION_SMOKE === "1") throw new Error("CONFIGURATION_SMOKE_COMPLETE");
       await browserChain(origins, ports, machine);
     },
     runCleanup: phase => cleanup(machine, bootstrap, phase),
