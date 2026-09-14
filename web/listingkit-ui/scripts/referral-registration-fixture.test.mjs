@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import test from "node:test";
+
+const nodeTestSpecifier = "node:test";
+const test = process.env.VITEST ? globalThis.test : (await import(/* @vite-ignore */ nodeTestSpecifier)).default;
+const runnerPath = process.env.VITEST ? path.resolve(process.cwd(), "scripts/referral-registration-fixture.mjs") : fileURLToPath(new URL("./referral-registration-fixture.mjs", import.meta.url));
 
 import {
   cleanupActions,
@@ -15,7 +19,7 @@ async function runner() {
 }
 
 function runCLI(name) {
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL("./referral-registration-fixture.mjs", import.meta.url)), "lifecycle-test", name], {
+  const result = spawnSync(process.execPath, [runnerPath, "lifecycle-test", name], {
     encoding: "utf8",
     env: { ...process.env, ISSUE413_FIXTURE_TEST_ONLY: "1" },
   });
@@ -105,7 +109,7 @@ test("matrix evidence and NOT_RUN fallback cannot overwrite a PASS classificatio
 });
 
 test("configured restart closes browser connections and keeps executed completion evidence", async () => {
-  const source = await readFile(fileURLToPath(new URL("./referral-registration-fixture.mjs", import.meta.url)), "utf8");
+  const source = await readFile(runnerPath, "utf8");
   assert.match(source, /await Promise\.all\(\[context\.close\(\), referrerContext\.close\(\)\]\);\s+const evidence = await restartConfiguredApplications\(ports\)/);
   assert.equal(source.match(/restartContextsAndApplications\(/g)?.length, 2);
   assert.doesNotMatch(source, /matrixNotRun\("C", "concurrent_first_completion_one_relationship"/);
