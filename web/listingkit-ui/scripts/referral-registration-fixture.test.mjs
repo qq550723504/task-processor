@@ -253,7 +253,7 @@ test("M1 enterprise removal control holds a real late read across revoke and res
     fallbackOrganizationId: "org-a",
   });
   assert.equal(result.lateRemovedOrganizationVisible, false);
-  assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "context:refresh", "switch:org-a", "context:after", "late:release", "visible", "personal", "admin", "restore"]);
+  assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "context:after", "context:refresh", "switch:org-a", "late:release", "visible", "personal", "admin", "restore"]);
 });
 
 test("M1 enterprise authorization restoration retries a transient provider failure", async () => {

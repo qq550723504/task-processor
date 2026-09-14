@@ -167,9 +167,9 @@ export async function runEnterpriseRemovalControl(operations) {
   try {
     revoked = true;
     await operations.revokeAuthorization();
+    const after = await operations.readContext("after");
     await operations.refreshAuthorizationContext();
     await operations.switchOrganization(operations.fallbackOrganizationId);
-    const after = await operations.readContext("after");
     await operations.releaseLateOrganizationRead();
     lateReleased = true;
     const lateResult = await late.result;
