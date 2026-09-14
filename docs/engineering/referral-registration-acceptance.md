@@ -58,6 +58,16 @@ Remove-Item Env:ISSUE413_CONFIGURATION_SMOKE
 
 The smoke intentionally exits 1 with business code `CONFIGURATION_SMOKE_COMPLETE` after the configured Go and Next.js applications pass health checks. Both cleanup passes and evidence persistence must still pass with all residual counts at zero. This only proves configuration/start/cleanup wiring.
 
+After changing M2 process isolation or the dispatch observer, run its bounded smoke as well:
+
+```powershell
+$env:ISSUE413_M2_CONFIGURATION_SMOKE = '1'
+node scripts/referral-registration-fixture.mjs
+Remove-Item Env:ISSUE413_M2_CONFIGURATION_SMOKE
+```
+
+It starts and stops the copied run-private UI, second real Go/Next pair, and observer, then intentionally exits 1 with `M2_CONFIGURATION_SMOKE_COMPLETE`. Both cleanup passes and all residual counts must pass.
+
 ## Official command
 
 Run the complete task-owned chain from `web/listingkit-ui`:

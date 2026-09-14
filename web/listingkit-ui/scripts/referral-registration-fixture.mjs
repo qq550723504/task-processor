@@ -2685,6 +2685,13 @@ async function main() {
       await check("provider_tls_proxy_preflight", () => probeProviderProxy(origins.providerOrigin, caFile, machine.token));
       await check("configured_application_start", () => startConfiguredApplications(ports));
       if (process.env.ISSUE413_CONFIGURATION_SMOKE === "1") throw new Error("CONFIGURATION_SMOKE_COMPLETE");
+      if (process.env.ISSUE413_M2_CONFIGURATION_SMOKE === "1") {
+        await check("m2_dispatch_observer_start", () => startDispatchObserver(ports.observer, `http://127.0.0.1:${ports.goSecondary}`));
+        await check("m2_secondary_application_start", () => startSecondaryApplication(origins, ports));
+        await check("m2_secondary_application_stop", () => stopSecondaryApplication());
+        await check("m2_dispatch_observer_stop", () => stopDispatchObserver());
+        throw new Error("M2_CONFIGURATION_SMOKE_COMPLETE");
+      }
       await browserChain(origins, ports, machine);
     },
     runCleanup: phase => cleanup(machine, bootstrap, phase),
