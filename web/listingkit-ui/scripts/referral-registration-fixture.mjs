@@ -551,11 +551,10 @@ async function startConfiguredApplications(ports) {
 async function restartConfiguredApplications(ports) {
   const before = await readJSON(path.join(manifest.directory, "processes.json"));
   const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
-  await run(process.execPath, [runtimeScript, "stop", "--run", manifest.runId]);
-  const stopped = await readJSON(path.join(manifest.directory, "stop.json"));
+  await run(process.execPath, [runtimeScript, "restart", "--run", manifest.runId]);
+  const stopped = await readJSON(path.join(manifest.directory, "services-stopped.json"));
   ensure(stopped.passed === true, "CONFIGURED_APPLICATION_STOP_FAILED");
   ensure(!processAlive(before.go?.pid) && !processAlive(before.next?.pid), "OLD_APPLICATION_PROCESS_ALIVE");
-  await startConfiguredApplications(ports);
   const after = await readJSON(path.join(manifest.directory, "processes.json"));
   ensure(["go", "next"].every(name => before[name]?.pid !== after[name]?.pid && before[name]?.started !== after[name]?.started), "APPLICATION_PROCESS_IDENTITY_REUSED");
   ensure(manifest.resources?.[`${manifest.project}-commercial-db`]?.id === databaseID, "DATABASE_IDENTITY_CHANGED");
