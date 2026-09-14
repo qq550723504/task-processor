@@ -255,6 +255,23 @@ test("M1 enterprise removal control holds a real late read across revoke and res
   assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "switch:org-a", "context:after", "late:release", "visible", "personal", "admin", "restore"]);
 });
 
+test("M1 enterprise authorization restoration retries a transient provider failure", async () => {
+  const { restoreAuthorizationEventually } = await runner();
+  let attempts = 0;
+  await restoreAuthorizationEventually(async () => {
+    attempts++;
+    if (attempts < 3) throw new Error("PROVIDER_NOT_CONSISTENT_YET");
+  }, { attempts: 3, pause: async () => {} });
+  assert.equal(attempts, 3);
+});
+
+test("M1 enterprise authorization restoration fails closed after bounded retries", async () => {
+  const { restoreAuthorizationEventually } = await runner();
+  await assert.rejects(restoreAuthorizationEventually(async () => {
+    throw new Error("PROVIDER_UNAVAILABLE");
+  }, { attempts: 2, pause: async () => {} }), /ENTERPRISE_AUTHORIZATION_RESTORE_FAILED/);
+});
+
 test("M1 expired-session control deletes the provider session before replacement identity and late release", async () => {
   const { runExpiredSessionControl } = await runner();
   const calls = [];
@@ -266,11 +283,12 @@ test("M1 expired-session control deletes the provider session before replacement
     deleteProviderSession: async id => { calls.push(`delete:${id}`); },
     readWithRevokedSession: async () => { calls.push("revoked-read"); return { status: 401 }; },
     loginReplacementIdentity: async () => { calls.push("replacement-login"); return { subject: "subject-2" }; },
+    confirmReplacementIdentity: async subject => { calls.push(`replacement-visible:${subject}`); },
     releaseLateRead: async () => { calls.push("late:release"); release({ subject: "subject-1" }); },
     inspectVisibleIdentity: async () => { calls.push("visible"); return { subject: "subject-2", oldProjectionVisible: false }; },
   });
   assert.equal(result.visibleSubjectAfterLateResponse, "subject-2");
-  assert.deepEqual(calls, ["positive", "late:begin", "delete:session-1", "revoked-read", "replacement-login", "late:release", "visible"]);
+  assert.deepEqual(calls, ["positive", "late:begin", "delete:session-1", "revoked-read", "replacement-login", "replacement-visible:subject-2", "late:release", "visible"]);
 });
 
 test("M1 user-token boundary validates the human OIDC token, injects storage outage, and restores storage", async () => {

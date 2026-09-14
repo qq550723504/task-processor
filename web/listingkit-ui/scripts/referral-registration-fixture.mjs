@@ -191,6 +191,21 @@ export async function runEnterpriseRemovalControl(operations) {
   }
 }
 
+export async function restoreAuthorizationEventually(operation, options = {}) {
+  const attempts = options.attempts ?? 4;
+  const pause = options.pause ?? (() => delay(1_000));
+  ensure(Number.isInteger(attempts) && attempts > 0, "ENTERPRISE_AUTHORIZATION_RESTORE_ATTEMPTS_INVALID");
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await operation();
+      return;
+    } catch {
+      if (attempt === attempts) throw new Error("ENTERPRISE_AUTHORIZATION_RESTORE_FAILED");
+      await pause();
+    }
+  }
+}
+
 export async function runExpiredSessionControl(operations) {
   const positive = await operations.positiveRead();
   ensure(positive?.status === 200 && positive?.subject && positive?.sessionId, "SESSION_POSITIVE_CONTROL_FAILED");
@@ -201,6 +216,7 @@ export async function runExpiredSessionControl(operations) {
     await operations.deleteProviderSession(positive.sessionId);
     const rejected = await operations.readWithRevokedSession();
     const replacement = await operations.loginReplacementIdentity();
+    await operations.confirmReplacementIdentity(replacement.subject);
     await operations.releaseLateRead();
     lateReleased = true;
     const lateResult = await late.result;
@@ -1503,7 +1519,10 @@ async function browserChain(origins, ports, machine) {
           return { subject: manifest.users.admin.id, count: Number(await adminPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
         } finally { await adminContext.close(); }
       },
-      restoreAuthorization: () => { enterpriseStage = "restore"; return runBaseRuntimeControl("restore", "viewer", "B"); },
+      restoreAuthorization: () => {
+        enterpriseStage = "restore";
+        return restoreAuthorizationEventually(() => runBaseRuntimeControl("restore", "viewer", "B"));
+      },
     }); } catch (error) {
       await writeJSON(path.join(outputDirectory, "m1-enterprise-diagnostic.json"), { stage: enterpriseStage, code: safeCode(error) });
       throw error;
@@ -1589,9 +1608,16 @@ async function browserChain(origins, ports, machine) {
         await login(page, origins.publicOrigin, admin, "/workbench/account/profile");
         return { subject: manifest.users.admin.id };
       },
+      confirmReplacementIdentity: async expectedSubject => {
+        const response = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": expectedSubject } });
+        ensure(response.status() === 200, "REPLACEMENT_PROFILE_READ_FAILED");
+        const payload = await response.json();
+        ensure(payload.userId === expectedSubject, "REPLACEMENT_PROFILE_SUBJECT_MISMATCH");
+        await page.getByText(`账户 ID：${expectedSubject}`).waitFor({ state: "visible", timeout: 30_000 });
+      },
       releaseLateRead: async () => lateRelease(),
       inspectVisibleIdentity: async () => {
-        await delay(500);
+        await page.getByText(`账户 ID：${manifest.users.admin.id}`).waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
         const body = await page.locator("body").innerText();
         return { subject: body.includes(`账户 ID：${manifest.users.admin.id}`) ? manifest.users.admin.id : "unknown", oldProjectionVisible: body.includes(`账户 ID：${subject}`) };
       },
