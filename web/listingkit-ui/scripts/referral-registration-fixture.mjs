@@ -1441,19 +1441,26 @@ async function browserChain(origins, ports, machine) {
   });
   await matrixCheck("D", "enterprise_removed_switching", async () => {
     let enterpriseStage = "precondition";
+    const enterpriseContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true,
+      extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
+    const enterprisePage = await enterpriseContext.newPage();
     let lateRelease;
     let lateReadyResolve;
     let lateResultResolve;
     const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
     const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
     let observation;
-    try { observation = await runEnterpriseRemovalControl({
+    try {
+      enterpriseStage = "dedicated_viewer_login";
+      const viewerCredential = await readJSON(path.join(manifest.directory, "viewer.credentials.json"));
+      await login(enterprisePage, origins.publicOrigin, viewerCredential, "/workbench/account/organization");
+      observation = await runEnterpriseRemovalControl({
       removedOrganizationId: manifest.organizations.B.id,
       fallbackOrganizationId: manifest.organizations.A.id,
       readContext: async phase => {
         enterpriseStage = `context_${phase}`;
         return until(async () => {
-          const response = await referrerContext.request.get(`${origins.publicOrigin}/api/workbench/context`);
+          const response = await enterpriseContext.request.get(`${origins.publicOrigin}/api/workbench/context`);
           if (response.status() !== 200) return null;
           const payload = await response.json();
           const organizationIds = payload.organizations?.map(organization => organization.id) ?? [];
@@ -1463,17 +1470,17 @@ async function browserChain(origins, ports, machine) {
       },
       switchOrganization: async organizationId => {
         enterpriseStage = organizationId === manifest.organizations.B.id ? "switch_removed" : "switch_fallback";
-        if (new URL(referrerPage.url()).pathname !== "/workbench/account/organization") {
-          await referrerPage.goto(`${origins.publicOrigin}/workbench/account/organization`, { waitUntil: "load" });
+        if (new URL(enterprisePage.url()).pathname !== "/workbench/account/organization") {
+          await enterprisePage.goto(`${origins.publicOrigin}/workbench/account/organization`, { waitUntil: "load" });
         }
-        await referrerPage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
-        const switcher = referrerPage.getByRole("combobox", { name: "当前企业" });
+        await enterprisePage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
+        const switcher = enterprisePage.getByRole("combobox", { name: "当前企业" });
         if (await switcher.count()) {
           if (await switcher.inputValue() !== organizationId) await switcher.selectOption(organizationId);
-          await referrerPage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
+          await enterprisePage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
         }
         if (organizationId === manifest.organizations.B.id) {
-          await referrerPage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
+          await enterprisePage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
         }
       },
       beginLateOrganizationRead: () => {
@@ -1481,7 +1488,7 @@ async function browserChain(origins, ports, machine) {
         const gate = new Promise(resolve => { lateRelease = resolve; });
         void (async () => {
           try {
-            await referrerPage.route("**/api/account/organization", async route => {
+            await enterprisePage.route("**/api/account/organization", async route => {
               const upstream = await route.fetch();
               lateReadyResolve();
               await gate;
@@ -1492,7 +1499,10 @@ async function browserChain(origins, ports, machine) {
                 lateResultResolve({ organizationId: manifest.organizations.B.id, applied: false, outcome: "cancelled_before_delivery" });
               }
             }, { times: 1 });
-            await referrerPage.getByRole("button", { name: "刷新资料" }).click();
+            const refresh = enterprisePage.getByRole("button", { name: "刷新资料" });
+            await refresh.waitFor({ state: "visible", timeout: 30_000 });
+            await waitForReactHydration(enterprisePage, refresh);
+            await refresh.click();
           } catch {
             lateReadyResolve();
             lateResultResolve({ applied: true, outcome: "late_injection_failed" });
@@ -1503,24 +1513,24 @@ async function browserChain(origins, ports, machine) {
       revokeAuthorization: () => { enterpriseStage = "revoke"; return runBaseRuntimeControl("revoke", "viewer", "B"); },
       refreshAuthorizationContext: async () => {
         enterpriseStage = "refresh_after_revoke";
-        await referrerPage.reload({ waitUntil: "load" });
-        await referrerPage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
+        await enterprisePage.reload({ waitUntil: "load" });
+        await enterprisePage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
       },
       releaseLateOrganizationRead: async () => lateRelease(),
       inspectVisibleOrganization: async () => {
         enterpriseStage = "visible_context";
         await delay(500);
-        const body = await referrerPage.locator("body").innerText();
+        const body = await enterprisePage.locator("body").innerText();
         if (body.includes(`当前有效企业：${manifest.organizations.B.id}`)) return manifest.organizations.B.id;
-        const switcher = referrerPage.getByRole("combobox", { name: "当前企业" });
+        const switcher = enterprisePage.getByRole("combobox", { name: "当前企业" });
         if (await switcher.count()) return switcher.inputValue();
         return body.includes(manifest.organizations.A.name) ? manifest.organizations.A.id : "unknown";
       },
       readPersonalProjection: async () => {
         enterpriseStage = "personal_projection";
-        await referrerPage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
-        await referrerPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
-        return { subject: manifest.users.viewer.id, count: Number(await referrerPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
+        await enterprisePage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
+        await enterprisePage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+        return { subject: manifest.users.viewer.id, count: Number(await enterprisePage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
       },
       readAdminProjection: async () => {
         enterpriseStage = "admin_projection";
@@ -1539,9 +1549,12 @@ async function browserChain(origins, ports, machine) {
           .then(() => { enterpriseStage = primaryStage; })
           .catch(() => { enterpriseStage = "restore"; throw new Error("ENTERPRISE_AUTHORIZATION_RESTORE_FAILED"); });
       },
-    }); } catch (error) {
+      });
+    } catch (error) {
       await writeJSON(path.join(outputDirectory, "m1-enterprise-diagnostic.json"), { stage: enterpriseStage, code: safeCode(error) });
       throw error;
+    } finally {
+      await enterpriseContext.close();
     }
     await writeJSON(path.join(outputDirectory, "m1-enterprise-observation.json"), observation);
     return { ...evaluateEnterpriseRemovalControl(observation), precondition: "viewer_selected_enterprise_B", injection: "official_authorization_deactivation", positiveControl: "live_switch_to_home_A", observation: "late_enterprise_read_not_applied", invariants: ["same_subject", "personal_projection", "admin_isolation"] };
@@ -1612,7 +1625,10 @@ async function browserChain(origins, ports, machine) {
                 lateResultResolve({ subject, outcome: "cancelled_before_delivery" });
               }
             }, { times: 1 });
-            await expiredPage.getByRole("button", { name: "刷新资料" }).click();
+            const refresh = expiredPage.getByRole("button", { name: "刷新资料" });
+            await refresh.waitFor({ state: "visible", timeout: 30_000 });
+            await waitForReactHydration(expiredPage, refresh);
+            await refresh.click();
           } catch {
             lateReadyResolve();
             lateResultResolve({ subject: "late_injection_failed", outcome: "failed" });
