@@ -550,7 +550,7 @@ async function restartConfiguredApplications(ports) {
   const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
   ensure(databaseID, "DATABASE_IDENTITY_MISSING");
   await writePrivate(path.join(manifest.directory, "stop-next"), "stop\n");
-  await until(() => !processAlive(before.next?.pid), "CONFIGURED_NEXT_STOP", 35_000);
+  await until(() => !processAlive(before.next?.pid), "CONFIGURED_NEXT_STOP", 90_000);
   await writePrivate(path.join(manifest.directory, "stop-services"), "stop\n");
   await until(() => !processAlive(before.go?.pid) && !processAlive(before.supervisor?.pid), "CONFIGURED_APPLICATION_STOP", 35_000);
   const stopped = await readJSON(path.join(manifest.directory, "services-stopped.json"));
@@ -1291,7 +1291,6 @@ async function browserChain(origins, ports, machine) {
   matrixNotRun("D", "enterprise_removed_switching", "CURRENT_RUN_HAS_NO_SAFE_ENTERPRISE_SWITCH_CONTROL");
   matrixNotRun("D", "expired_session_and_late_response", "CURRENT_RUN_HAS_NO_SAFE_TOKEN_TIME_CONTROL");
   matrixNotRun("B", "official_verification_interruption_new_browser_reverify", "OFFICIAL_REVERIFY_CONTINUATION_NOT_EXECUTED");
-  matrixNotRun("C", "concurrent_first_completion_one_relationship", "ONLY_CONCURRENT_DURABLE_RECEIPT_REPLAY_EXECUTED");
   matrixNotRun("C", "provider_business_read_failure_preserves_receipt", "ONLY_BROWSER_PROJECTION_FAILURE_EXECUTED");
   matrixNotRun("E", "parallel_application_instances_share_rate_limit", "ONLY_SEQUENTIAL_PROCESS_RESTART_EXECUTED");
   matrixNotRun("E", "real_user_token_rejected_as_service_credential", "ONLY_PROVIDER_MACHINE_TOKEN_REJECTED");

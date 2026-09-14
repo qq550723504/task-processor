@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -97,6 +98,12 @@ test("one persistent base-resource failure does not skip later owned resources",
 test("matrix evidence cannot overwrite its group name or PASS classification", async () => {
   const { sanitizeMatrixEvidence } = await runner();
   assert.deepEqual(sanitizeMatrixEvidence({ group: "wrong", name: "wrong", status: 200, httpStatus: 200 }), { httpStatus: 200 });
+});
+
+test("configured restart allows real Next shutdown and keeps executed completion evidence", async () => {
+  const source = await readFile(fileURLToPath(new URL("./referral-registration-fixture.mjs", import.meta.url)), "utf8");
+  assert.match(source, /CONFIGURED_NEXT_STOP", 90_000/);
+  assert.doesNotMatch(source, /matrixNotRun\("C", "concurrent_first_completion_one_relationship"/);
 });
 
 test("a cleanup-state query failure is UNKNOWN and cannot exit successfully", async () => {
