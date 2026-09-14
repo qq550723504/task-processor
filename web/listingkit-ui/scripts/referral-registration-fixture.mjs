@@ -1476,7 +1476,19 @@ async function browserChain(origins, ports, machine) {
         await enterprisePage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
         const switcher = enterprisePage.getByRole("combobox", { name: "当前企业" });
         if (await switcher.count()) {
-          if (await switcher.inputValue() !== organizationId) await switcher.selectOption(organizationId);
+          if (await switcher.inputValue() !== organizationId) {
+            enterpriseStage = organizationId === manifest.organizations.B.id ? "switch_removed_submit" : "switch_fallback_submit";
+            await waitForReactHydration(enterprisePage, switcher);
+            const responsePromise = enterprisePage.waitForResponse(response => {
+              const url = new URL(response.url());
+              return response.request().method() === "PUT" && url.pathname === "/api/workbench/context/effective-organization";
+            }, { timeout: 30_000 }).catch(() => null);
+            await switcher.selectOption(organizationId);
+            const response = await responsePromise;
+            ensure(response, "ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED");
+            ensure(response.status() === 200, `ENTERPRISE_SWITCH_HTTP_${response.status()}`);
+          }
+          enterpriseStage = organizationId === manifest.organizations.B.id ? "switch_removed_visible" : "switch_fallback_visible";
           await enterprisePage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
         }
         if (organizationId === manifest.organizations.B.id) {
