@@ -2709,7 +2709,15 @@ async function cleanup(machine, bootstrap, phase) {
       if (!manifest) return;
       const current = await readJSON(path.join(manifest.directory, "manifest.json"));
       ensure(current.runId === manifest.runId, "RUNTIME_ID_MISMATCH");
-      if (current.status !== "destroyed") await run(process.execPath, [runtimeScript, "destroy", "--run", manifest.runId]);
+      if (current.status !== "destroyed") {
+        try {
+          await run(process.execPath, [runtimeScript, "destroy", "--run", manifest.runId]);
+        } catch (error) {
+          const diagnostic = typeof error?.privateOutput === "string" && error.privateOutput.trim() ? error.privateOutput : String(error?.message ?? error);
+          if (outputDirectory) await writePrivate(path.join(outputDirectory, `base-runtime-cleanup-${phase}.log`), diagnostic);
+          throw error;
+        }
+      }
     } },
     { name: "refresh-base-inventory", run: async () => {
       if (runtimeOwnershipUnknown || report.runtimeDispatched && !manifest) throw new Error("RUNTIME_OWNERSHIP_UNKNOWN");
