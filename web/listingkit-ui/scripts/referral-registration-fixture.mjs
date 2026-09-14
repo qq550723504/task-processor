@@ -208,6 +208,16 @@ export async function restoreAuthorizationEventually(operation, options = {}) {
 }
 
 export async function submitOrganizationSelection({ switcher, organizationId, responsePromise }) {
+  const readiness = await switcher.evaluate(async element => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      disabled: element.disabled,
+      value: element.value,
+      optionValues: Array.from(element.options, option => option.value),
+    };
+  });
+  ensure(!readiness.disabled, "ENTERPRISE_SWITCHER_DISABLED");
+  ensure(readiness.optionValues.includes(organizationId), "ENTERPRISE_SWITCH_TARGET_MISSING");
   const [, responseResult] = await Promise.allSettled([
     switcher.evaluate((element, id) => {
       const valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
@@ -218,7 +228,11 @@ export async function submitOrganizationSelection({ switcher, organizationId, re
     responsePromise,
   ]);
   const response = responseResult.status === "fulfilled" ? responseResult.value : null;
-  ensure(response, "ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED");
+  if (!response) {
+    const error = new Error("ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED");
+    error.fixtureDiagnostic = readiness;
+    throw error;
+  }
   ensure(response.status() === 200, `ENTERPRISE_SWITCH_HTTP_${response.status()}`);
 }
 
@@ -1575,7 +1589,7 @@ async function browserChain(origins, ports, machine) {
       },
       });
     } catch (error) {
-      await writeJSON(path.join(outputDirectory, "m1-enterprise-diagnostic.json"), { stage: enterpriseStage, code: safeCode(error) });
+      await writeJSON(path.join(outputDirectory, "m1-enterprise-diagnostic.json"), { stage: enterpriseStage, code: safeCode(error), switcher: error?.fixtureDiagnostic });
       throw error;
     } finally {
       await enterpriseContext.close();

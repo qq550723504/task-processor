@@ -273,22 +273,25 @@ test("M1 enterprise authorization restoration fails closed after bounded retries
   }, { attempts: 2, pause: async () => {} }), /ENTERPRISE_AUTHORIZATION_RESTORE_FAILED/);
 });
 
-test("M1 enterprise switch trusts the observed successful request when React removes the select", async () => {
+test("M1 enterprise switch waits for committed React effects before dispatch", async () => {
   const { submitOrganizationSelection } = await runner();
   const response = { status: () => 200 };
+  let evaluations = 0;
 
   await submitOrganizationSelection({
-    switcher: { evaluate: async () => {} },
+    switcher: { evaluate: async () => ++evaluations === 1 ? { disabled: false, value: "", optionValues: ["org-a"] } : undefined },
     organizationId: "org-a",
     responsePromise: Promise.resolve(response),
   });
+  assert.equal(evaluations, 2);
 });
 
 test("M1 enterprise switch fails explicitly when no request is observed", async () => {
   const { submitOrganizationSelection } = await runner();
+  let evaluations = 0;
 
   await assert.rejects(submitOrganizationSelection({
-    switcher: { evaluate: async () => {} },
+    switcher: { evaluate: async () => ++evaluations === 1 ? { disabled: false, value: "", optionValues: ["org-a"] } : undefined },
     organizationId: "org-a",
     responsePromise: Promise.resolve(null),
   }), /ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED/);
