@@ -116,6 +116,7 @@ export function evaluateEnterpriseRemovalControl(observation) {
   ensure(!observation.organizationsAfter?.includes(observation.removedOrganizationId), "REMOVED_ORGANIZATION_STILL_VISIBLE");
   ensure(observation.organizationsAfter?.includes(observation.fallbackOrganizationId), "ENTERPRISE_FALLBACK_AUTHORIZATION_MISSING");
   ensure(observation.visibleOrganizationId === observation.fallbackOrganizationId, "ENTERPRISE_FALLBACK_NOT_VISIBLE");
+  ensure(observation.lateUpstreamValidated === true, "LATE_ENTERPRISE_READ_UPSTREAM_INVALID");
   ensure(["delivered_to_cancelled_request", "cancelled_before_delivery"].includes(observation.lateReadOutcome), "LATE_ENTERPRISE_READ_OBSERVATION_INVALID");
   ensure(observation.personalProjectionCount === 1, "PERSONAL_PROJECTION_NOT_PRESERVED");
   ensure(observation.adminObservedCount === 0, "ADMIN_OBSERVED_OTHER_PERSONAL_PROJECTION");
@@ -127,6 +128,7 @@ export function evaluateExpiredSessionControl(observation) {
   ensure(observation.positiveStatus === 200, "SESSION_POSITIVE_CONTROL_FAILED");
   ensure(observation.revokedSessionRequestObserved === true && Number.isInteger(observation.revokedSessionCheckedCount) && observation.revokedSessionCheckedCount > 0, "REVOKED_SESSION_REQUEST_NOT_OBSERVED");
   ensure([401, 403, 404].includes(observation.revokedSessionStatus), "REVOKED_SESSION_ACCEPTED");
+  ensure(observation.lateUpstreamValidated === true, "LATE_PROFILE_READ_UPSTREAM_INVALID");
   ensure(["delivered_to_unmounted_identity", "cancelled_before_delivery"].includes(observation.lateReadOutcome), "LATE_SESSION_READ_OBSERVATION_INVALID");
   ensure(observation.originalSubject && observation.lateResponseSubject === observation.originalSubject, "LATE_SESSION_READ_SUBJECT_INVALID");
   ensure(observation.identityAfterLogout && observation.identityAfterLogout !== observation.lateResponseSubject, "REPLACEMENT_IDENTITY_INVALID");
@@ -162,6 +164,23 @@ export async function runReverificationControl(operations) {
   }
 }
 
+export async function observeEnterpriseLateResponse(response, expectedSubject, expectedOrganizationId) {
+  const status = response.status();
+  ensure(status === 200, `LATE_ENTERPRISE_READ_HTTP_${status}`);
+  const payload = await response.json().catch(() => { throw new Error("LATE_ENTERPRISE_READ_BODY_INVALID"); });
+  ensure(payload?.userId === expectedSubject, "LATE_ENTERPRISE_READ_SUBJECT_MISMATCH");
+  ensure(payload?.effectiveOrganizationId === expectedOrganizationId, "LATE_ENTERPRISE_READ_ORGANIZATION_MISMATCH");
+  return { subject: payload.userId, organizationId: payload.effectiveOrganizationId, upstreamStatus: status, upstreamValidated: true };
+}
+
+export async function observeProfileLateResponse(response, expectedSubject) {
+  const status = response.status();
+  ensure(status === 200, `LATE_PROFILE_READ_HTTP_${status}`);
+  const payload = await response.json().catch(() => { throw new Error("LATE_PROFILE_READ_BODY_INVALID"); });
+  ensure(payload?.userId === expectedSubject, "LATE_PROFILE_READ_SUBJECT_MISMATCH");
+  return { subject: payload.userId, upstreamStatus: status, upstreamValidated: true };
+}
+
 export async function runEnterpriseRemovalControl(operations) {
   let revoked = false;
   let lateReleased = false;
@@ -192,6 +211,8 @@ export async function runEnterpriseRemovalControl(operations) {
       organizationsAfter: after.organizationIds,
       fallbackOrganizationId,
       visibleOrganizationId: visibleOrganization,
+      lateUpstreamValidated: lateResult?.upstreamValidated,
+      lateUpstreamStatus: lateResult?.upstreamStatus,
       lateReadOutcome: lateResult?.outcome,
       personalProjectionCount: personal.count,
       adminObservedCount: admin.count,
@@ -270,6 +291,8 @@ export async function runExpiredSessionControl(operations) {
       originalSubject: positive.subject,
       identityAfterLogout: replacement.subject,
       lateResponseSubject: lateResult.subject,
+      lateUpstreamValidated: lateResult.upstreamValidated,
+      lateUpstreamStatus: lateResult.upstreamStatus,
       lateReadOutcome: lateResult.outcome,
       visibleSubjectAfterLateResponse: visible.subject,
       oldProjectionVisible: visible.oldProjectionVisible,
@@ -1574,14 +1597,23 @@ async function browserChain(origins, ports, machine) {
         void (async () => {
           try {
             await enterprisePage.route("**/api/account/organization", async route => {
-              const upstream = await route.fetch();
-              lateReadyResolve();
-              await gate;
+              let upstream;
               try {
-                await route.fulfill({ response: upstream });
-                lateResultResolve({ organizationId: manifest.organizations.B.id, applied: false, outcome: "delivered_to_cancelled_request" });
+                upstream = await route.fetch();
+                const observed = await observeEnterpriseLateResponse(upstream, manifest.users.viewer.id, manifest.organizations.B.id);
+                lateReadyResolve();
+                await gate;
+                try {
+                  await route.fulfill({ response: upstream });
+                  lateResultResolve({ ...observed, applied: false, outcome: "delivered_to_cancelled_request" });
+                } catch {
+                  lateResultResolve({ ...observed, applied: false, outcome: "cancelled_before_delivery" });
+                }
               } catch {
-                lateResultResolve({ organizationId: manifest.organizations.B.id, applied: false, outcome: "cancelled_before_delivery" });
+                lateReadyResolve();
+                lateResultResolve({ organizationId: "unknown", upstreamValidated: false, applied: true, outcome: "late_response_invalid" });
+                if (upstream) await route.fulfill({ response: upstream }).catch(() => {});
+                else await route.abort().catch(() => {});
               }
             }, { times: 1 });
             const refresh = enterprisePage.getByRole("button", { name: "刷新资料" });
@@ -1701,14 +1733,23 @@ async function browserChain(origins, ports, machine) {
             await expiredPage.goto(`${origins.publicOrigin}/workbench/account/profile`, { waitUntil: "load" });
             await expiredPage.getByText(`账户 ID：${subject}`).waitFor({ state: "visible", timeout: 30_000 });
             await expiredPage.route("**/api/account/profile", async route => {
-              const upstream = await route.fetch();
-              lateReadyResolve();
-              await gate;
+              let upstream;
               try {
-                await route.fulfill({ response: upstream });
-                lateResultResolve({ subject, outcome: "delivered_to_unmounted_identity" });
+                upstream = await route.fetch();
+                const observed = await observeProfileLateResponse(upstream, subject);
+                lateReadyResolve();
+                await gate;
+                try {
+                  await route.fulfill({ response: upstream });
+                  lateResultResolve({ ...observed, outcome: "delivered_to_unmounted_identity" });
+                } catch {
+                  lateResultResolve({ ...observed, outcome: "cancelled_before_delivery" });
+                }
               } catch {
-                lateResultResolve({ subject, outcome: "cancelled_before_delivery" });
+                lateReadyResolve();
+                lateResultResolve({ subject: "unknown", upstreamValidated: false, outcome: "late_response_invalid" });
+                if (upstream) await route.fulfill({ response: upstream }).catch(() => {});
+                else await route.abort().catch(() => {});
               }
             }, { times: 1 });
             const refresh = expiredPage.getByRole("button", { name: "刷新资料" });

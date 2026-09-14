@@ -142,6 +142,7 @@ test("M1 evidence requires live enterprise revocation, personal continuity, and 
     organizationsAfter: ["org-a"],
     fallbackOrganizationId: "org-a",
     visibleOrganizationId: "org-a",
+    lateUpstreamValidated: true,
     lateReadOutcome: "cancelled_before_delivery",
     personalProjectionCount: 1,
     adminObservedCount: 0,
@@ -165,6 +166,7 @@ test("M1 evidence requires live enterprise revocation, personal continuity, and 
     organizationsAfter: ["org-a"],
     fallbackOrganizationId: "org-a",
     visibleOrganizationId: "unknown",
+    lateUpstreamValidated: true,
     lateReadOutcome: "cancelled_before_delivery",
     personalProjectionCount: 1,
     adminObservedCount: 0,
@@ -182,6 +184,7 @@ test("M1 evidence requires revoked sessions and prevents late identity backfill"
     originalSubject: "subject-1",
     identityAfterLogout: "subject-2",
     lateResponseSubject: "subject-1",
+    lateUpstreamValidated: true,
     lateReadOutcome: "cancelled_before_delivery",
     visibleSubjectAfterLateResponse: "subject-2",
     oldProjectionVisible: false,
@@ -194,6 +197,7 @@ test("M1 evidence requires revoked sessions and prevents late identity backfill"
     originalSubject: "subject-1",
     identityAfterLogout: "subject-2",
     lateResponseSubject: "subject-1",
+    lateUpstreamValidated: true,
     lateReadOutcome: "delivered_to_unmounted_identity",
     visibleSubjectAfterLateResponse: "subject-1",
     oldProjectionVisible: true,
@@ -206,10 +210,11 @@ test("M1 evidence requires revoked sessions and prevents late identity backfill"
     originalSubject: "subject-1",
     identityAfterLogout: "subject-2",
     lateResponseSubject: "late_injection_failed",
+    lateUpstreamValidated: false,
     lateReadOutcome: "failed",
     visibleSubjectAfterLateResponse: "subject-2",
     oldProjectionVisible: false,
-  }), /LATE_SESSION_READ_OBSERVATION_INVALID/);
+  }), /LATE_PROFILE_READ_UPSTREAM_INVALID/);
   assert.throws(() => evaluateExpiredSessionControl({
     positiveStatus: 200,
     revokedSessionStatus: 404,
@@ -218,6 +223,7 @@ test("M1 evidence requires revoked sessions and prevents late identity backfill"
     originalSubject: "subject-1",
     identityAfterLogout: "subject-2",
     lateResponseSubject: "subject-1",
+    lateUpstreamValidated: true,
     lateReadOutcome: "cancelled_before_delivery",
     visibleSubjectAfterLateResponse: "subject-2",
     oldProjectionVisible: false,
@@ -292,7 +298,7 @@ test("M1 enterprise removal control holds a real late read across revoke and res
     beginLateOrganizationRead: () => { calls.push("late:begin"); return { ready: Promise.resolve(), result: late }; },
     revokeAuthorization: async () => { calls.push("revoke"); },
     refreshAuthorizationContext: async () => { calls.push("context:refresh"); },
-    releaseLateOrganizationRead: async () => { calls.push("late:release"); release({ organizationId: "org-b", applied: false, outcome: "cancelled_before_delivery" }); },
+    releaseLateOrganizationRead: async () => { calls.push("late:release"); release({ organizationId: "org-b", upstreamValidated: true, applied: false, outcome: "cancelled_before_delivery" }); },
     inspectVisibleOrganization: async () => { calls.push("visible"); return "org-c"; },
     readPersonalProjection: async () => { calls.push("personal"); return { subject: "viewer", count: 1 }; },
     readAdminProjection: async () => { calls.push("admin"); return { subject: "admin", count: 0 }; },
@@ -378,7 +384,7 @@ test("M1 expired-session control deletes the provider session before replacement
     readWithRevokedSession: async () => { calls.push("revoked-read"); return { status: 401, requestObserved: true, checkedCount: 1 }; },
     loginReplacementIdentity: async () => { calls.push("replacement-login"); return { subject: "subject-2" }; },
     confirmReplacementIdentity: async subject => { calls.push(`replacement-visible:${subject}`); },
-    releaseLateRead: async () => { calls.push("late:release"); release({ subject: "subject-1", outcome: "cancelled_before_delivery" }); },
+    releaseLateRead: async () => { calls.push("late:release"); release({ subject: "subject-1", upstreamValidated: true, outcome: "cancelled_before_delivery" }); },
     inspectVisibleIdentity: async () => { calls.push("visible"); return { subject: "subject-2", oldProjectionVisible: false }; },
   });
   assert.equal(result.visibleSubjectAfterLateResponse, "subject-2");
@@ -398,6 +404,27 @@ test("M1 revoked-session evidence reads every deleted provider session", async (
     verifyDeletedProviderSessions(["session-1"], async () => 200),
     /PROVIDER_SESSION_READ_ACCEPTED/,
   );
+});
+
+test("M1 late-read observers reject non-200 and wrong upstream identities", async () => {
+  const { observeEnterpriseLateResponse, observeProfileLateResponse } = await runner();
+  const response = (status, payload) => ({ status: () => status, json: async () => payload });
+
+  assert.deepEqual(
+    await observeEnterpriseLateResponse(response(200, { userId: "subject-1", effectiveOrganizationId: "org-b" }), "subject-1", "org-b"),
+    { subject: "subject-1", organizationId: "org-b", upstreamStatus: 200, upstreamValidated: true },
+  );
+  await assert.rejects(observeEnterpriseLateResponse(response(500, {}), "subject-1", "org-b"), /LATE_ENTERPRISE_READ_HTTP_500/);
+  await assert.rejects(observeEnterpriseLateResponse(response(200, { userId: "subject-1", effectiveOrganizationId: "org-c" }), "subject-1", "org-b"), /LATE_ENTERPRISE_READ_ORGANIZATION_MISMATCH/);
+  await assert.rejects(observeEnterpriseLateResponse({ status: () => 200, json: async () => { throw new Error("invalid json"); } }, "subject-1", "org-b"), /LATE_ENTERPRISE_READ_BODY_INVALID/);
+
+  assert.deepEqual(
+    await observeProfileLateResponse(response(200, { userId: "subject-1" }), "subject-1"),
+    { subject: "subject-1", upstreamStatus: 200, upstreamValidated: true },
+  );
+  await assert.rejects(observeProfileLateResponse(response(500, {}), "subject-1"), /LATE_PROFILE_READ_HTTP_500/);
+  await assert.rejects(observeProfileLateResponse(response(200, { userId: "subject-2" }), "subject-1"), /LATE_PROFILE_READ_SUBJECT_MISMATCH/);
+  await assert.rejects(observeProfileLateResponse({ status: () => 200, json: async () => { throw new Error("invalid json"); } }, "subject-1"), /LATE_PROFILE_READ_BODY_INVALID/);
 });
 
 test("M1 user-token boundary validates the human OIDC token, injects storage outage, and restores storage", async () => {
