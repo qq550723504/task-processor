@@ -1423,15 +1423,18 @@ async function browserChain(origins, ports, machine) {
     return { httpStatus: 200, referralTablesChanged: false };
   });
   await matrixCheck("D", "enterprise_removed_switching", async () => {
+    let enterpriseStage = "precondition";
     let lateRelease;
     let lateReadyResolve;
     let lateResultResolve;
     const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
     const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
-    const observation = await runEnterpriseRemovalControl({
+    let observation;
+    try { observation = await runEnterpriseRemovalControl({
       removedOrganizationId: manifest.organizations.B.id,
       fallbackOrganizationId: manifest.organizations.A.id,
       readContext: async phase => {
+        enterpriseStage = `context_${phase}`;
         return until(async () => {
           const response = await referrerContext.request.get(`${origins.publicOrigin}/api/workbench/context`);
           if (response.status() !== 200) return null;
@@ -1442,6 +1445,7 @@ async function browserChain(origins, ports, machine) {
         }, `ENTERPRISE_CONTEXT_${phase.toUpperCase()}`, phase === "after" ? 75_000 : 30_000);
       },
       switchOrganization: async organizationId => {
+        enterpriseStage = organizationId === manifest.organizations.B.id ? "switch_removed" : "switch_fallback";
         if (new URL(referrerPage.url()).pathname !== "/workbench/account/organization") {
           await referrerPage.goto(`${origins.publicOrigin}/workbench/account/organization`, { waitUntil: "load" });
         }
@@ -1452,6 +1456,7 @@ async function browserChain(origins, ports, machine) {
         await referrerPage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
       },
       beginLateOrganizationRead: () => {
+        enterpriseStage = "late_read";
         const gate = new Promise(resolve => { lateRelease = resolve; });
         void (async () => {
           try {
@@ -1472,20 +1477,23 @@ async function browserChain(origins, ports, machine) {
             lateResultResolve({ applied: true, outcome: "late_injection_failed" });
           }
         })();
-        return { ready: lateReady, result: lateResult };
+        return { ready: Promise.race([lateReady, delay(30_000).then(() => { throw new Error("LATE_ENTERPRISE_READ_NOT_CAPTURED"); })]), result: lateResult };
       },
-      revokeAuthorization: () => runBaseRuntimeControl("revoke", "viewer", "B"),
-      releaseLateOrganizationRead: async () => lateRelease(),
+      revokeAuthorization: () => { enterpriseStage = "revoke"; return runBaseRuntimeControl("revoke", "viewer", "B"); },
+      releaseLateOrganizationRead: async () => { enterpriseStage = "late_release"; lateRelease(); },
       inspectVisibleOrganization: async () => {
+        enterpriseStage = "visible_context";
         await delay(500);
         return referrerPage.getByLabel("当前企业").inputValue();
       },
       readPersonalProjection: async () => {
+        enterpriseStage = "personal_projection";
         await referrerPage.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
         await referrerPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
         return { subject: manifest.users.viewer.id, count: Number(await referrerPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
       },
       readAdminProjection: async () => {
+        enterpriseStage = "admin_projection";
         const credential = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
         const adminContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
         try {
@@ -1495,8 +1503,12 @@ async function browserChain(origins, ports, machine) {
           return { subject: manifest.users.admin.id, count: Number(await adminPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) };
         } finally { await adminContext.close(); }
       },
-      restoreAuthorization: () => runBaseRuntimeControl("restore", "viewer", "B"),
-    });
+      restoreAuthorization: () => { enterpriseStage = "restore"; return runBaseRuntimeControl("restore", "viewer", "B"); },
+    }); } catch (error) {
+      await writeJSON(path.join(outputDirectory, "m1-enterprise-diagnostic.json"), { stage: enterpriseStage, code: safeCode(error) });
+      throw error;
+    }
+    await writeJSON(path.join(outputDirectory, "m1-enterprise-observation.json"), observation);
     return { ...evaluateEnterpriseRemovalControl(observation), precondition: "viewer_selected_enterprise_B", injection: "official_authorization_deactivation", positiveControl: "live_switch_to_home_A", observation: "late_enterprise_read_not_applied", invariants: ["same_subject", "personal_projection", "admin_isolation"] };
   });
   await matrixCheck("D", "admin_reads_only_own_personal_projection", async () => {
@@ -1584,6 +1596,7 @@ async function browserChain(origins, ports, machine) {
         return { subject: body.includes(`账户 ID：${manifest.users.admin.id}`) ? manifest.users.admin.id : "unknown", oldProjectionVisible: body.includes(`账户 ID：${subject}`) };
       },
     });
+    await writeJSON(path.join(outputDirectory, "m1-expired-session-observation.json"), observation);
     return { ...evaluateExpiredSessionControl(observation), precondition: "authenticated_profile_read_200", injection: "official_session_delete_and_old_profile_response_hold", positiveControl: "admin_login_after_logout", observation: "old_response_not_visible_after_identity_change", invariants: ["provider_session_deleted", "identity_keyed_projection"] };
   });
   await matrixCheck("E", "bff_and_go_reject_untrusted_credentials_and_csrf", async () => {
@@ -1622,7 +1635,8 @@ async function browserChain(origins, ports, machine) {
       },
       callWithServiceCredential: async () => {
         const credential = (await readFile(path.join(manifest.directory, "referral-service.secret"), "utf8")).trim();
-        const response = await fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, "X-Referral-Service-Credential": credential, "X-Referral-Client-IP": "127.0.0.1" }, body: admissionRequest.body, signal: AbortSignal.timeout(30_000) });
+        const positiveBody = JSON.stringify({ code, email: `service-positive.${manifest.runId.slice(0, 8)}@example.test`, givenName: "Service", familyName: "Positive" });
+        const response = await fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomBytes(32).toString("hex"), "X-Referral-Service-Credential": credential, "X-Referral-Client-IP": "127.0.0.1" }, body: positiveBody, signal: AbortSignal.timeout(30_000) });
         await response.arrayBuffer();
         return { status: response.status };
       },
@@ -1645,7 +1659,8 @@ async function browserChain(origins, ports, machine) {
         }, "BUSINESS_STORAGE_RESTART", 60_000);
       },
     });
-    return { ...evaluateUserTokenBoundary(observation), precondition: "human_oidc_userinfo_200_and_service_credential_200", injection: "oidc_user_token_in_service_credential_header_while_storage_stopped", positiveControl: "exact_service_credential_replay", observation: observation.zeroDispatchEvidence, invariants: ["user_token_not_service_credential", "referral_digest_unchanged"], directBusinessDispatchObserver: observation.directBusinessDispatchObserver };
+    await writeJSON(path.join(outputDirectory, "m1-user-token-observation.json"), { ...observation, tokenSubject: "redacted-human-subject" });
+    return { ...evaluateUserTokenBoundary(observation), precondition: "human_oidc_userinfo_200_and_service_credential_200", injection: "oidc_user_token_in_service_credential_header_while_storage_stopped", positiveControl: "independent_service_credential_admission", observation: observation.zeroDispatchEvidence, invariants: ["user_token_not_service_credential", "referral_digest_unchanged"], directBusinessDispatchObserver: observation.directBusinessDispatchObserver };
   });
   await matrixCheck("E", "real_source_ips_and_cross_process_rate_limit", async () => {
     const network = `${manifest.project}-network`;
