@@ -273,6 +273,27 @@ test("M1 enterprise authorization restoration fails closed after bounded retries
   }, { attempts: 2, pause: async () => {} }), /ENTERPRISE_AUTHORIZATION_RESTORE_FAILED/);
 });
 
+test("M1 enterprise switch trusts the observed successful request when React removes the select", async () => {
+  const { submitOrganizationSelection } = await runner();
+  const response = { status: () => 200 };
+
+  await submitOrganizationSelection({
+    switcher: { selectOption: async () => { throw new Error("element was detached"); } },
+    organizationId: "org-a",
+    responsePromise: Promise.resolve(response),
+  });
+});
+
+test("M1 enterprise switch fails explicitly when no request is observed", async () => {
+  const { submitOrganizationSelection } = await runner();
+
+  await assert.rejects(submitOrganizationSelection({
+    switcher: { selectOption: async () => { throw new Error("element was detached"); } },
+    organizationId: "org-a",
+    responsePromise: Promise.resolve(null),
+  }), /ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED/);
+});
+
 test("M1 expired-session control deletes the provider session before replacement identity and late release", async () => {
   const { runExpiredSessionControl } = await runner();
   const calls = [];

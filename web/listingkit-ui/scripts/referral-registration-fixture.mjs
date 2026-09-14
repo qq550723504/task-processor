@@ -207,6 +207,16 @@ export async function restoreAuthorizationEventually(operation, options = {}) {
   }
 }
 
+export async function submitOrganizationSelection({ switcher, organizationId, responsePromise }) {
+  const [, responseResult] = await Promise.allSettled([
+    switcher.selectOption(organizationId),
+    responsePromise,
+  ]);
+  const response = responseResult.status === "fulfilled" ? responseResult.value : null;
+  ensure(response, "ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED");
+  ensure(response.status() === 200, `ENTERPRISE_SWITCH_HTTP_${response.status()}`);
+}
+
 export async function runExpiredSessionControl(operations) {
   const positive = await operations.positiveRead();
   ensure(positive?.status === 200 && positive?.subject && positive?.sessionId, "SESSION_POSITIVE_CONTROL_FAILED");
@@ -1483,10 +1493,7 @@ async function browserChain(origins, ports, machine) {
               const url = new URL(response.url());
               return response.request().method() === "PUT" && url.pathname === "/api/workbench/context/effective-organization";
             }, { timeout: 30_000 }).catch(() => null);
-            await switcher.selectOption(organizationId);
-            const response = await responsePromise;
-            ensure(response, "ENTERPRISE_SWITCH_REQUEST_NOT_OBSERVED");
-            ensure(response.status() === 200, `ENTERPRISE_SWITCH_HTTP_${response.status()}`);
+            await submitOrganizationSelection({ switcher, organizationId, responsePromise });
           }
           enterpriseStage = organizationId === manifest.organizations.B.id ? "switch_removed_visible" : "switch_fallback_visible";
           await enterprisePage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
