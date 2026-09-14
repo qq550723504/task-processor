@@ -101,7 +101,8 @@ test("one persistent base-resource failure does not skip later owned resources",
 });
 
 test("matrix evidence and NOT_RUN fallback cannot overwrite a PASS classification", async () => {
-  const { matrixNotRun, matrixRecord, report, sanitizeMatrixEvidence } = await runner();
+  const { matrixNotRun, matrixRecord, report, sanitizeCheckEvidence, sanitizeMatrixEvidence } = await runner();
+  assert.deepEqual(sanitizeCheckEvidence({ name: "wrong", status: 200, httpStatus: 200 }), { httpStatus: 200 });
   assert.deepEqual(sanitizeMatrixEvidence({ group: "wrong", name: "wrong", status: 200, httpStatus: 200 }), { httpStatus: 200 });
   const item = report.matrix.find(entry => entry.group === "C" && entry.name === "concurrent_first_completion_one_relationship");
   matrixRecord(item.group, item.name, "PASS", { requests: 4 });

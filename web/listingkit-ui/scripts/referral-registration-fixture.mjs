@@ -60,13 +60,20 @@ async function check(name, operation, recordEvidence = true) {
   const started = Date.now();
   try {
     const evidence = await operation();
-    report.checks.push({ name, status: "PASS", elapsedMs: Date.now() - started, ...(recordEvidence && evidence && typeof evidence === "object" ? evidence : {}) });
+    report.checks.push({ name, status: "PASS", elapsedMs: Date.now() - started, ...(recordEvidence ? sanitizeCheckEvidence(evidence) : {}) });
     console.log(`PASS ${name}`);
     return evidence;
   } catch (error) {
     report.checks.push({ name, status: "FAIL", elapsedMs: Date.now() - started, code: safeCode(error) });
     throw error;
   }
+}
+
+export function sanitizeCheckEvidence(evidence) {
+  const details = evidence && typeof evidence === "object" ? { ...evidence } : {};
+  delete details.name;
+  delete details.status;
+  return details;
 }
 
 async function matrixCheck(group, name, operation) {
@@ -2981,7 +2988,7 @@ async function main() {
         await check("m2_bff_ingress_proxy_health", async () => {
           const health = await providerTLSRead(origins.secondaryPublicOrigin, "/api/auth/providers", origins.caFile, "");
           ensure(health.status === 200 && health.payload?.zitadel, "BFF_INGRESS_PROXY_HEALTH_FAILED");
-          return { status: health.status };
+          return { httpStatus: health.status };
         });
         await check("m2_secondary_application_stop", () => stopSecondaryApplication());
         await check("m2_dispatch_observer_stop", () => stopDispatchObserver());
