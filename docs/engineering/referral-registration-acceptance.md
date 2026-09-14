@@ -1,11 +1,11 @@
 # Referral registration acceptance runner
 
-This document describes the task-owned acceptance runner for Issue #413 C2. It validates the frozen referral registration contract against official ZITADEL Login V2, the real Next.js BFF, the current Go application, PostgreSQL, Caddy, and Mailpit. The runner does not repair product code and does not access shared or production resources.
+This document describes the task-owned acceptance runner for Issue #413 C2 and its M1 identity-matrix extension. It validates the frozen referral registration contract against official ZITADEL Login V2, the real Next.js BFF, the current Go application, PostgreSQL, Caddy, and Mailpit. The runner does not repair product code and does not access shared or production resources.
 
 ## Scope and authority
 
 - Run only from a clean checkout whose HEAD is the C2 candidate.
-- The C2 branch is stacked on the exact C1 dependency recorded in the PR.
+- The C2 branch is stacked on the exact C1 dependency recorded in the PR; M1 is stacked on the fixed C2 candidate.
 - The runner creates a random Issue 357 runtime and adds only resources labeled with its exact run ID.
 - It may delete only resources whose manifest ID and owner label both match that run ID.
 - It must not print or save passwords, OTPs, cookies, access tokens, referral service credentials, proof values, resume secrets, or reusable verification links.
@@ -40,7 +40,7 @@ The second command must print nothing. Record the full 40-character output of th
 
 ## Fast lifecycle and failure tests
 
-These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, and sanitized fallback output. They do not start the official business runtime and are not business acceptance.
+These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, sanitized fallback output, and the order/failure/finally contracts for the four M1 controls. They do not start the official business runtime and are not business acceptance.
 
 ```powershell
 node --test scripts/referral-registration-fixture.test.mjs
@@ -105,9 +105,9 @@ The report's `matrix` array records each item independently so an early product 
 
 - Refuse to bind an existing account to a newly admitted fixed subject.
 - Submit an invalid official verification check in a separate browser and prove it does not verify the user.
-- Complete the valid official email and first authenticator flow through Login V2.
+- Complete an initial valid official email verification, interrupt before authenticator enrollment, and prove the continuation is rejected in a fresh browser.
+- Use ZITADEL's official replacement invite-code flow for the same verified task-owned subject, consume a new Mailpit-delivered Login V2 verification link, then complete the first authenticator and OIDC/Auth.js flow with the same subject. Repeating `SetEmail` with an unchanged address is not this control and is rejected by ZITADEL.
 - Prove another authenticated subject cannot claim the Intent.
-- If the verified-but-no-authenticator interruption cannot be driven with a task-owned official session, record `NOT_RUN`; do not replace it with a mock.
 
 ### C. Completion and durable receipt
 
@@ -122,12 +122,15 @@ The report's `matrix` array records each item independently so an early product 
 - Prove an admin sees only the admin's own empty projection, not another user's relationship.
 - Prove the task-owned no-enterprise user can read its own empty personal projection.
 - Hash all four referral fact tables before and after an authenticated GET and require equality.
-- Record removed-enterprise, switching, logout, expiry, and late-response cases separately if the task-owned runtime lacks safe session controls.
+- Establish a dedicated official viewer login, select enterprise B, hold its real organization read, and require the captured upstream response to be HTTP 200 for that viewer and effective enterprise B. Deactivate the task-owned ZITADEL project authorization, wait for the authoritative context to clear B within the documented cache bound, refresh the UI, switch to an enterprise that remains in that authoritative authorization result, release the late read, and require that surviving enterprise to be the visible final state. The held read must be observed as delivered to the cancelled request or cancelled before delivery; an invalid upstream response, injection failure, or unknown visible state fails the control. Home organization is an identity fact and is not treated as project authorization.
+- Preserve the same subject's personal referral count through a fresh official login after the potentially cache-bound enterprise control, so short-lived session age cannot masquerade as personal authorization failure. Prove the admin still reads only its own empty personal projection; restore the task-owned authorization in `finally`.
+- Establish a dedicated official login for this control, start with a successful profile read, and require the held upstream profile response to be HTTP 200 for that original subject. Delete that subject's official ZITADEL sessions, prove they are absent through both search and actual GET requests for every deleted session, log out, change to the task-owned admin identity, and prove the captured old profile response cannot backfill the new identity view. An invalid upstream response or failed late-read injection is a control failure.
 
 ### E. Boundary and dependency behavior
 
 - Traverse Caddy to the Next.js BFF and Go with the trusted source mapping; forged client headers must be overwritten.
-- Reject direct Next.js access, missing or wrong Go service credentials, a Provider machine token used as a service credential, and missing same-origin write headers. A real signed user access token remains a separate matrix item.
+- Reject direct Next.js access, missing or wrong Go service credentials, a Provider machine token used as a service credential, and missing same-origin write headers.
+- Read the server-only Auth.js acceptance token, validate it as a real human OIDC token through `userinfo` plus the Provider user record, and place that token in the service-credential header. The probe runs while the task-owned business database is stopped and must still return 401/403; the exact checked source must also place `trustedCommand` and its return before `commands.Start`. This evidence excludes business-storage dispatch through a dynamic outage plus the checked guard path; it is not a direct in-process handler-call counter, and the report says so.
 - Remove the task-owned service credential while the application is running, render a fresh authenticated page, and prove the invite entry is disabled; restore the credential in `finally`.
 - Use two real Docker peers and a real Go/Next process restart for source-IP and persisted rate-window evidence. This is not evidence for two simultaneously active application instances.
 - Keep parallel-instance admission and cancel/deadline dispatch evidence separate; record `NOT_RUN` when the current slice has no safe observer instead of simulating a pass.
@@ -154,9 +157,8 @@ This command validates the UUID, fixed temporary root, and manifest ownership be
 
 ## Required follow-up slices
 
-The runner is capped by the repository's architecture-sensitive threshold. The current production runner is below 1,500 added lines; the remaining Must cases cannot be added safely inside that limit. Keep them as required `NOT_RUN` items and split them before implementation:
+The runner is capped by the repository's architecture-sensitive threshold. M1 closes the four identity/session controls above without changing shared runtime or product paths. Keep the remaining Must cases as required `NOT_RUN` items and deliver them in the separately reviewed M2 slice:
 
-- Official verification interruption, new-browser re-verification, enterprise removed/switching, and token expiry/late response: runner work about 100–160 lines and task-owned official session controls. Any shared runtime control needs a new exact-path PM window.
 - Selective Provider business-read failure with healthy issuer/Auth.js and personal authorization controls: about 90–130 runner lines for a task-owned path-selective proxy fault and positive controls.
-- A second concurrently active application instance, a real signed user access token used in the service-credential position, and a cancel/deadline dispatch observer: about 180–300 lines plus an independently reviewed runtime-control slice; do not add a product backdoor or general fault framework.
+- A second concurrently active application instance and a cancel/deadline dispatch observer: about 180–300 lines plus an independently reviewed runtime-control slice; do not add a product backdoor or general fault framework.
 - Real screen-reader evidence is a manual acceptance activity and remains separate from axe, screenshots, and keyboard checks.
