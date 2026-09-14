@@ -1466,13 +1466,11 @@ async function browserChain(origins, ports, machine) {
         if (new URL(referrerPage.url()).pathname !== "/workbench/account/organization") {
           await referrerPage.goto(`${origins.publicOrigin}/workbench/account/organization`, { waitUntil: "load" });
         }
+        await referrerPage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
         const switcher = referrerPage.getByRole("combobox", { name: "当前企业" });
         if (await switcher.count()) {
-          await switcher.waitFor({ state: "visible", timeout: 30_000 });
           if (await switcher.inputValue() !== organizationId) await switcher.selectOption(organizationId);
           await referrerPage.waitForFunction(({ id }) => document.querySelector("select")?.value === id, { id: organizationId }, { timeout: 45_000 });
-        } else {
-          await referrerPage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
         }
         await referrerPage.getByText(`当前有效企业：${organizationId}`).waitFor({ state: "visible", timeout: 45_000 });
       },
