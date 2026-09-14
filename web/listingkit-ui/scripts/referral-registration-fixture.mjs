@@ -114,6 +114,9 @@ export function evaluateEnterpriseRemovalControl(observation) {
   ensure(observation.subjectBefore && observation.subjectBefore === observation.subjectAfter, "ENTERPRISE_REMOVAL_SUBJECT_CHANGED");
   ensure(observation.organizationsBefore?.includes(observation.removedOrganizationId), "REMOVED_ORGANIZATION_PRECONDITION_MISSING");
   ensure(!observation.organizationsAfter?.includes(observation.removedOrganizationId), "REMOVED_ORGANIZATION_STILL_VISIBLE");
+  ensure(observation.organizationsAfter?.includes(observation.fallbackOrganizationId), "ENTERPRISE_FALLBACK_AUTHORIZATION_MISSING");
+  ensure(observation.visibleOrganizationId === observation.fallbackOrganizationId, "ENTERPRISE_FALLBACK_NOT_VISIBLE");
+  ensure(["delivered_to_cancelled_request", "cancelled_before_delivery"].includes(observation.lateReadOutcome), "LATE_ENTERPRISE_READ_OBSERVATION_INVALID");
   ensure(observation.personalProjectionCount === 1, "PERSONAL_PROJECTION_NOT_PRESERVED");
   ensure(observation.adminObservedCount === 0, "ADMIN_OBSERVED_OTHER_PERSONAL_PROJECTION");
   ensure(observation.lateRemovedOrganizationVisible === false, "LATE_REMOVED_ORGANIZATION_BACKFILLED");
@@ -122,7 +125,10 @@ export function evaluateEnterpriseRemovalControl(observation) {
 
 export function evaluateExpiredSessionControl(observation) {
   ensure(observation.positiveStatus === 200, "SESSION_POSITIVE_CONTROL_FAILED");
+  ensure(observation.revokedSessionRequestObserved === true && Number.isInteger(observation.revokedSessionCheckedCount) && observation.revokedSessionCheckedCount > 0, "REVOKED_SESSION_REQUEST_NOT_OBSERVED");
   ensure([401, 403, 404].includes(observation.revokedSessionStatus), "REVOKED_SESSION_ACCEPTED");
+  ensure(["delivered_to_unmounted_identity", "cancelled_before_delivery"].includes(observation.lateReadOutcome), "LATE_SESSION_READ_OBSERVATION_INVALID");
+  ensure(observation.originalSubject && observation.lateResponseSubject === observation.originalSubject, "LATE_SESSION_READ_SUBJECT_INVALID");
   ensure(observation.identityAfterLogout && observation.identityAfterLogout !== observation.lateResponseSubject, "REPLACEMENT_IDENTITY_INVALID");
   ensure(observation.visibleSubjectAfterLateResponse === observation.identityAfterLogout && observation.oldProjectionVisible === false, "LATE_IDENTITY_BACKFILLED");
   return { positiveControl: true, revokedSessionRejected: true, replacementIdentityPreserved: true, lateBackfillPrevented: true };
@@ -185,6 +191,8 @@ export async function runEnterpriseRemovalControl(operations) {
       organizationsBefore: before.organizationIds,
       organizationsAfter: after.organizationIds,
       fallbackOrganizationId,
+      visibleOrganizationId: visibleOrganization,
+      lateReadOutcome: lateResult?.outcome,
       personalProjectionCount: personal.count,
       adminObservedCount: admin.count,
       lateRemovedOrganizationVisible: visibleOrganization === operations.removedOrganizationId || lateResult?.applied === true,
@@ -257,14 +265,26 @@ export async function runExpiredSessionControl(operations) {
     return {
       positiveStatus: positive.status,
       revokedSessionStatus: rejected.status,
+      revokedSessionRequestObserved: rejected.requestObserved,
+      revokedSessionCheckedCount: rejected.checkedCount,
+      originalSubject: positive.subject,
       identityAfterLogout: replacement.subject,
       lateResponseSubject: lateResult.subject,
+      lateReadOutcome: lateResult.outcome,
       visibleSubjectAfterLateResponse: visible.subject,
       oldProjectionVisible: visible.oldProjectionVisible,
     };
   } finally {
     if (!lateReleased) await operations.releaseLateRead().catch(() => {});
   }
+}
+
+export async function verifyDeletedProviderSessions(sessionIds, readStatus) {
+  ensure(Array.isArray(sessionIds) && sessionIds.length > 0, "PROVIDER_SESSION_NOT_FOUND");
+  const statuses = [];
+  for (const sessionId of sessionIds) statuses.push(await readStatus(sessionId));
+  ensure(statuses.every(status => [401, 403, 404].includes(status)), "PROVIDER_SESSION_READ_ACCEPTED");
+  return { status: statuses[0], requestObserved: true, checkedCount: statuses.length };
 }
 
 export async function runUserTokenBoundaryControl(operations) {
@@ -1630,6 +1650,7 @@ async function browserChain(origins, ports, machine) {
     let lateRelease;
     let lateReadyResolve;
     let lateResultResolve;
+    let deletedSessionIds = [];
     const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
     const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
     let observation;
@@ -1678,6 +1699,7 @@ async function browserChain(origins, ports, machine) {
       },
       deleteProviderSession: async sessionIds => {
         expiredStage = "delete_provider_session";
+        deletedSessionIds = [...sessionIds];
         for (const sessionId of sessionIds) await provider(`/v2/sessions/${encodeURIComponent(sessionId)}`, {}, bootstrap, "DELETE");
       },
       readWithRevokedSession: async () => {
@@ -1685,7 +1707,7 @@ async function browserChain(origins, ports, machine) {
         const sessions = await provider("/v2/sessions/search", { query: { offset: 0, limit: 100, asc: true }, queries: [{ userIdQuery: { id: subject } }] }, bootstrap);
         const remaining = (sessions.sessions ?? []).filter(session => session.factors?.user?.id === subject);
         ensure(remaining.length === 0, "PROVIDER_SESSION_STILL_LISTED");
-        return { status: 404 };
+        return verifyDeletedProviderSessions(deletedSessionIds, sessionId => providerStatus(`/v2/sessions/${encodeURIComponent(sessionId)}`, undefined, bootstrap, "GET"));
       },
       loginReplacementIdentity: async () => {
         expiredStage = "replacement_login";
