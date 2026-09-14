@@ -1032,6 +1032,7 @@ async function startConfiguredApplications(ports) {
 export async function startDispatchObserver(port, upstreamOrigin, options = {}) {
   if (dispatchObserver) return dispatchObserver;
   const observations = new Map();
+  const selectors = new Map();
   let mode = "idle";
   const createObservation = () => {
     let release;
@@ -1053,7 +1054,7 @@ export async function startDispatchObserver(port, upstreamOrigin, options = {}) 
     return observations.get(name);
   };
   const server = createHTTPServer(async (request, response) => {
-    const selected = mode;
+    const selected = selectors.get(String(request.headers["idempotency-key"] ?? "")) ?? mode;
     const record = state(selected);
     record.received++;
     record.openRequests++;
@@ -1122,7 +1123,11 @@ export async function startDispatchObserver(port, upstreamOrigin, options = {}) 
   dispatchObserver = {
     port: address.port,
     server,
-    arm(name) { mode = name; observations.set(name, createObservation()); },
+    arm(name, key) {
+      if (key) selectors.set(key, name);
+      else mode = name;
+      observations.set(name, createObservation());
+    },
     release(name) {
       const record = state(name);
       record.released = true;
@@ -1159,6 +1164,7 @@ export async function stopDispatchObserver() {
 export async function startBFFIngressObserver(port, upstreamPort) {
   if (bffIngressObserver) return bffIngressObserver;
   const observations = new Map();
+  const selectors = new Map();
   let mode = "pass";
   const state = name => {
     if (!observations.has(name)) observations.set(name, {
@@ -1178,7 +1184,7 @@ export async function startBFFIngressObserver(port, upstreamPort) {
     return observations.get(name);
   };
   const server = createHTTPServer((request, response) => {
-    const selected = mode;
+    const selected = selectors.get(String(request.headers["idempotency-key"] ?? "")) ?? mode;
     const record = state(selected);
     record.received++;
     record.openHandlers++;
@@ -1242,7 +1248,12 @@ export async function startBFFIngressObserver(port, upstreamPort) {
   bffIngressObserver = {
     port: address.port,
     server,
-    arm(name) { mode = name; observations.delete(name); state(name); },
+    arm(name, key) {
+      if (key) selectors.set(key, name);
+      else mode = name;
+      observations.delete(name);
+      state(name);
+    },
     async waitBodyForwarded(name) {
       return until(() => {
         const record = state(name);
@@ -2584,8 +2595,9 @@ async function browserChain(origins, ports, machine) {
       await controlPage.goto(`${origins.secondaryPublicOrigin}/referrals/register?code=${encodeURIComponent(code)}`, { waitUntil: "load", timeout: 90_000 });
       const bodyFor = suffix => ({ code, email: `m2.${suffix}.${manifest.runId.slice(0, 8)}@example.test`, givenName: "Deadline", familyName: "Control" });
       const begin = (mode, suffix) => {
-        bffIngressObserver.arm(mode);
-        dispatchObserver.arm(mode);
+        const key = createHash("sha256").update(`${manifest.runId}:${mode}`).digest("hex");
+        bffIngressObserver.arm(mode, key);
+        dispatchObserver.arm(mode, key);
         const result = controlPage.evaluate(async ({ body, key, mode }) => {
           const controller = new AbortController();
           window.__issue413M2AbortController = controller;
@@ -2601,7 +2613,7 @@ async function browserChain(origins, ports, machine) {
           } catch {
             return { outcome: controller.signal.aborted ? "client_cancelled" : `${mode}_request_failed` };
           }
-        }, { body: bodyFor(suffix), key: createHash("sha256").update(`${manifest.runId}:${mode}`).digest("hex"), mode });
+        }, { body: bodyFor(suffix), key, mode });
         return {
           ready: dispatchObserver.waitReceived(mode),
           cancel: () => controlPage.evaluate(() => window.__issue413M2AbortController?.abort()),
@@ -2610,8 +2622,9 @@ async function browserChain(origins, ports, machine) {
       };
       const beginBodyCancellation = () => {
         const mode = "body-cancel";
-        bffIngressObserver.arm(mode);
-        dispatchObserver.arm(mode);
+        const key = createHash("sha256").update(`${manifest.runId}:body-cancel`).digest("hex");
+        bffIngressObserver.arm(mode, key);
+        dispatchObserver.arm(mode, key);
         const result = controlPage.evaluate(async ({ body, key }) => {
           const controller = new AbortController();
           const encoded = new TextEncoder().encode(JSON.stringify(body));
@@ -2637,7 +2650,7 @@ async function browserChain(origins, ports, machine) {
           } catch {
             return { outcome: controller.signal.aborted ? "client_cancelled" : "body_request_failed", bodyChunksProduced: state.chunksProduced };
           }
-        }, { body: bodyFor("body-cancel"), key: createHash("sha256").update(`${manifest.runId}:body-cancel`).digest("hex") });
+        }, { body: bodyFor("body-cancel"), key });
         return {
           ready: (async () => {
             const localBodyChunksProduced = await until(() => controlPage.evaluate(() => window.__issue413M2BodyState?.chunksProduced), "BODY_STREAM_STARTED", 10_000);
@@ -2694,7 +2707,14 @@ async function browserChain(origins, ports, machine) {
         },
       });
       await writeJSON(path.join(outputDirectory, "m2-cancel-deadline-observation.json"), observation);
-      return { ...evaluateCancelDeadlineControl(observation), precondition: "same_held_observer_path_releases_to_real_go_once_and_browser_streaming_body_starts", injection: "browser_cancel_during_body_read_plus_browser_cancel_and_bff_15_second_deadline_after_bff_dispatch_to_held_observer", positiveControl: "same_observer_delay_path_explicitly_releases_while_connection_live_and_dispatches_once_to_go", observation: "body_cancel_never_reaches_observer; post_body_cancel_and_deadline_each_close_real_bff_observer_connection_before_release and remain_zero_go_dispatch", invariants: ["pre_dispatch_body_cancel_zero_late_dispatch_past_total_deadline", "post_bff_dispatch_connection_close_zero_go_dispatch_after_release", "observer_handlers_and_connections_released"] };
+      return { ...evaluateCancelDeadlineControl(observation), precondition: "same_held_observer_path_releases_to_real_go_once_and_partial_body_is_flushed_through_ingress_to_real_bff", injection: "browser_cancel_after_incomplete_body_reaches_bff_plus_browser_cancel_and_bff_15_second_deadline_after_bff_dispatch_to_held_observer", positiveControl: "same_ingress_and_observer_path_completes_body_then_explicitly_releases_live_connection_and_dispatches_once_to_go", observation: "incomplete_body_ingress_and_bff_connections_close_before_any_business_dispatch; post_body_cancel_and_deadline_each_close_real_bff_observer_connection_before_release and remain_zero_go_dispatch", invariants: ["pre_dispatch_incomplete_body_cancel_zero_late_dispatch_past_total_deadline", "post_bff_dispatch_connection_close_zero_go_dispatch_after_release", "ingress_and_observer_handlers_and_connections_released"] };
+    } catch (error) {
+      await writeJSON(path.join(outputDirectory, "m2-cancel-deadline-diagnostic.json"), {
+        code: safeCode(error),
+        dispatch: Object.fromEntries(["healthy", "cancel", "deadline", "body-cancel"].map(name => [name, dispatchObserver?.snapshot(name)])),
+        ingress: Object.fromEntries(["healthy", "cancel", "deadline", "body-cancel"].map(name => [name, bffIngressObserver?.snapshot(name)])),
+      }).catch(() => {});
+      throw error;
     } finally {
       await cancelContext.close();
     }

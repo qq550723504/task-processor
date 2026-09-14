@@ -779,6 +779,42 @@ test("M2 BFF ingress observer proves a partial body reached the upstream connect
   }
 });
 
+test("M2 ingress completion tracks only the armed idempotency key", async () => {
+  const upstream = createHTTPServer(async (request, response) => {
+    for await (const _chunk of request) { /* consume the actual request body */ }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise((resolve, reject) => { upstream.once("error", reject); upstream.listen(0, "127.0.0.1", resolve); });
+  const upstreamAddress = upstream.address();
+  assert.ok(upstreamAddress && typeof upstreamAddress === "object");
+  const { startBFFIngressObserver, stopBFFIngressObserver } = await runner();
+  const ingress = await startBFFIngressObserver(0, upstreamAddress.port);
+  try {
+    ingress.arm("healthy", "target-key");
+    for (const key of ["background-key", "target-key"]) {
+      const response = await fetch(`http://127.0.0.1:${ingress.port}/api/referral-registration`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": key },
+        body: JSON.stringify({ key }),
+      });
+      assert.equal(response.status, 200);
+      await response.arrayBuffer();
+    }
+    await ingress.waitCompleted("healthy");
+    const target = ingress.snapshot("healthy");
+    assert.equal(target.received, 1);
+    assert.equal(target.requestBodiesCompleted, 1);
+    assert.equal(target.responsesCompleted, 1);
+    assert.equal(target.openHandlers, 0);
+    assert.equal(ingress.snapshot("pass").received, 1);
+  } finally {
+    await stopBFFIngressObserver();
+    upstream.closeAllConnections?.();
+    await new Promise((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+  }
+});
+
 test("configured restart closes browser connections and keeps executed completion evidence", async () => {
   const source = await readFile(runnerPath, "utf8");
   assert.match(source, /await Promise\.all\(\[context\.close\(\), referrerContext\.close\(\)\]\);\s+const evidence = await restartConfiguredApplications\(ports\)/);
