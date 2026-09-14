@@ -1496,7 +1496,7 @@ async function browserChain(origins, ports, machine) {
         return { ready: Promise.race([lateReady, delay(30_000).then(() => { throw new Error("LATE_ENTERPRISE_READ_NOT_CAPTURED"); })]), result: lateResult };
       },
       revokeAuthorization: () => { enterpriseStage = "revoke"; return runBaseRuntimeControl("revoke", "viewer", "B"); },
-      releaseLateOrganizationRead: async () => { enterpriseStage = "late_release"; lateRelease(); },
+      releaseLateOrganizationRead: async () => lateRelease(),
       inspectVisibleOrganization: async () => {
         enterpriseStage = "visible_context";
         await delay(500);
@@ -1625,7 +1625,7 @@ async function browserChain(origins, ports, machine) {
         ensure(payload.userId === expectedSubject, "REPLACEMENT_PROFILE_SUBJECT_MISMATCH");
         await page.getByText(`账户 ID：${expectedSubject}`).waitFor({ state: "visible", timeout: 30_000 });
       },
-      releaseLateRead: async () => { expiredStage = "late_release"; lateRelease(); },
+      releaseLateRead: async () => lateRelease(),
       inspectVisibleIdentity: async () => {
         expiredStage = "visible_identity";
         await page.getByText(`账户 ID：${manifest.users.admin.id}`).waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
