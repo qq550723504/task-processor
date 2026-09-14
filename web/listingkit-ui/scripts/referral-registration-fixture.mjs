@@ -120,6 +120,21 @@ function safeCode(error) {
   return /^[A-Z0-9_:-]{1,160}$/.test(raw) ? raw : "FIXTURE_STEP_FAILED";
 }
 
+export function describeRunnerBytes(input) {
+  const bytes = Buffer.from(input);
+  const hasUTF8BOM = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  const text = bytes.toString("utf8");
+  const crlfCount = text.match(/\r\n/g)?.length ?? 0;
+  const lfCount = text.match(/(?<!\r)\n/g)?.length ?? 0;
+  const crCount = text.match(/\r(?!\n)/g)?.length ?? 0;
+  const normalized = Buffer.from(text.replaceAll("\r\n", "\n").replaceAll("\r", "\n"), "utf8");
+  return {
+    runnerSha256: createHash("sha256").update(bytes).digest("hex"),
+    runnerNormalizedLFSha256: createHash("sha256").update(normalized).digest("hex"),
+    runnerByteFormat: { bytes: bytes.length, hasUTF8BOM, crlfCount, lfCount, crCount },
+  };
+}
+
 export function evaluateReverificationControl(observation) {
   ensure(observation.subjectBefore && observation.subjectBefore === observation.subjectAfter, "REVERIFICATION_SUBJECT_CHANGED");
   ensure(observation.interruptedAuthenticatorRejected === true, "INTERRUPTED_AUTHENTICATOR_ACCEPTED");
@@ -260,17 +275,24 @@ export async function runParallelInstanceRateLimitControl(operations) {
 }
 
 export function evaluateCancelDeadlineControl(observation) {
-  ensure(observation.healthy?.status === 200 && observation.healthy?.businessDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
+  ensure(observation.healthy?.status === 200 && observation.healthy?.bffDispatches === 1 && observation.healthy?.goDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
+  ensure(observation.healthy?.released === true && observation.healthy?.responsesCompleted === 1, "HEALTHY_HELD_PATH_NOT_RELEASED");
   ensure(observation.cancelled?.outcome === "client_cancelled", "CLIENT_CANCELLATION_NOT_OBSERVED");
   ensure(observation.deadline?.status === 504, "DEADLINE_RESPONSE_NOT_OBSERVED");
-  ensure(observation.cancelledSettled?.businessDispatches === 0 && observation.deadlineSettled?.businessDispatches === 0, "LATE_BUSINESS_DISPATCH_OBSERVED");
-  ensure(observation.cancelledSettled?.openRequests === 0 && observation.deadlineSettled?.openRequests === 0, "OBSERVER_REQUEST_NOT_RELEASED");
-  return { healthyDispatchObserved: true, clientCancellationObserved: true, deadlineResponseObserved: true, zeroLateDispatch: true, resourcesReleased: true };
+  ensure(observation.cancelledSettled?.bffDispatches === 1 && observation.deadlineSettled?.bffDispatches === 1, "BFF_DISPATCH_NOT_OBSERVED");
+  ensure(observation.cancelledSettled?.goDispatches === 0 && observation.deadlineSettled?.goDispatches === 0, "LATE_BUSINESS_DISPATCH_OBSERVED");
+  ensure(observation.cancelledSettled?.clientConnectionsClosed === 1 && observation.deadlineSettled?.clientConnectionsClosed === 1, "OBSERVER_CLIENT_CLOSE_NOT_OBSERVED");
+  ensure(observation.cancelledSettled?.released === true && observation.deadlineSettled?.released === true, "OBSERVER_DELAY_NOT_RELEASED");
+  ensure(observation.cancelledSettled?.openHandlers === 0 && observation.deadlineSettled?.openHandlers === 0, "OBSERVER_REQUEST_NOT_RELEASED");
+  ensure(observation.bodyCancelled?.outcome === "client_cancelled" && observation.bodyCancelled?.bodyChunksProduced > 0, "BODY_READ_CANCELLATION_NOT_OBSERVED");
+  ensure(observation.bodyCancelledSettled?.bffDispatches === 0 && observation.bodyCancelledSettled?.goDispatches === 0, "BODY_READ_LATE_DISPATCH_OBSERVED");
+  ensure(observation.bodyCancelledSettled?.openHandlers === 0, "BODY_READ_OBSERVER_REQUEST_NOT_RELEASED");
+  return { healthyDispatchObserved: true, clientCancellationObserved: true, deadlineResponseObserved: true, bodyReadCancellationObserved: true, zeroLateDispatch: true, resourcesReleased: true };
 }
 
 export async function runCancelDeadlineControl(operations) {
   const healthy = await operations.healthyRequest();
-  ensure(healthy?.status === 200 && healthy?.businessDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
+  ensure(healthy?.status === 200 && healthy?.goDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
   const cancelling = operations.beginCancelledRequest();
   await cancelling.ready;
   await cancelling.cancel();
@@ -280,7 +302,12 @@ export async function runCancelDeadlineControl(operations) {
   await timingOut.ready;
   const deadline = await timingOut.result;
   const deadlineSettled = await operations.settle("deadline");
-  const observation = { healthy, cancelled, cancelledSettled, deadline, deadlineSettled };
+  const bodyCancelling = operations.beginBodyCancelledRequest();
+  await bodyCancelling.ready;
+  await bodyCancelling.cancel();
+  const bodyCancelled = await bodyCancelling.result;
+  const bodyCancelledSettled = await operations.settleBodyCancellation();
+  const observation = { healthy, cancelled, cancelledSettled, deadline, deadlineSettled, bodyCancelled, bodyCancelledSettled };
   evaluateCancelDeadlineControl(observation);
   return observation;
 }
@@ -989,12 +1016,27 @@ async function startConfiguredApplications(ports) {
   return { ready: true };
 }
 
-async function startDispatchObserver(port, upstreamOrigin) {
+export async function startDispatchObserver(port, upstreamOrigin, options = {}) {
   if (dispatchObserver) return dispatchObserver;
   const observations = new Map();
   let mode = "idle";
+  const createObservation = () => {
+    let release;
+    const releasePromise = new Promise(resolve => { release = resolve; });
+    return {
+      received: 0,
+      businessDispatches: 0,
+      openRequests: 0,
+      closedRequests: 0,
+      clientConnectionsClosed: 0,
+      responsesCompleted: 0,
+      released: false,
+      release,
+      releasePromise,
+    };
+  };
   const state = name => {
-    if (!observations.has(name)) observations.set(name, { received: 0, businessDispatches: 0, openRequests: 0, closedRequests: 0 });
+    if (!observations.has(name)) observations.set(name, createObservation());
     return observations.get(name);
   };
   const server = createHTTPServer(async (request, response) => {
@@ -1002,6 +1044,14 @@ async function startDispatchObserver(port, upstreamOrigin) {
     const record = state(selected);
     record.received++;
     record.openRequests++;
+    let clientConnectionClosed = response.destroyed;
+    const observeClientClose = () => {
+      if (!response.writableEnded && !clientConnectionClosed) {
+        clientConnectionClosed = true;
+        record.clientConnectionsClosed++;
+      }
+    };
+    response.once("close", observeClientClose);
     try {
       const chunks = [];
       let bytes = 0;
@@ -1010,15 +1060,17 @@ async function startDispatchObserver(port, upstreamOrigin) {
         ensure(bytes <= 16 * 1024, "OBSERVER_REQUEST_TOO_LARGE");
         chunks.push(chunk);
       }
-      if (["cancel", "deadline"].includes(selected)) {
-        await new Promise(resolve => {
-          let finished = false;
-          const done = () => { if (!finished) { finished = true; clearTimeout(timer); resolve(); } };
-          const timer = setTimeout(done, 25_000);
-          request.once("aborted", done);
-          response.once("close", done);
-        });
-        return;
+      if (["healthy", "cancel", "deadline"].includes(selected)) {
+        let releaseTimer;
+        try {
+          await Promise.race([
+            record.releasePromise,
+            new Promise((_, reject) => { releaseTimer = setTimeout(() => reject(new Error("OBSERVER_RELEASE_TIMEOUT")), options.releaseTimeoutMs ?? 35_000); }),
+          ]);
+        } finally {
+          clearTimeout(releaseTimer);
+        }
+        if (clientConnectionClosed || response.destroyed) return;
       }
       record.businessDispatches++;
       const headers = new Headers();
@@ -1038,6 +1090,7 @@ async function startDispatchObserver(port, upstreamOrigin) {
       response.setHeader("content-type", upstream.headers.get("content-type") ?? "application/json");
       response.setHeader("cache-control", "private, no-store");
       response.end(body);
+      record.responsesCompleted++;
     } catch {
       if (!response.headersSent) {
         response.statusCode = 503;
@@ -1045,23 +1098,43 @@ async function startDispatchObserver(port, upstreamOrigin) {
       }
       if (!response.destroyed) response.end(JSON.stringify({ error: "referral_unavailable" }));
     } finally {
+      response.removeListener("close", observeClientClose);
       record.openRequests--;
       record.closedRequests++;
     }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+  const address = server.address();
+  ensure(address && typeof address === "object", "OBSERVER_ADDRESS_MISSING");
   dispatchObserver = {
-    port,
+    port: address.port,
     server,
-    arm(name) { mode = name; observations.set(name, { received: 0, businessDispatches: 0, openRequests: 0, closedRequests: 0 }); },
+    arm(name) { mode = name; observations.set(name, createObservation()); },
+    release(name) {
+      const record = state(name);
+      record.released = true;
+      record.release();
+    },
     async waitReceived(name) { return until(() => state(name).received > 0, `OBSERVER_${name.toUpperCase()}_RECEIVED`, 30_000); },
+    async waitClientClosed(name) { return until(() => state(name).clientConnectionsClosed > 0, `OBSERVER_${name.toUpperCase()}_CLIENT_CLOSED`, 30_000); },
     async waitReleased(name) { return until(() => state(name).received > 0 && state(name).openRequests === 0, `OBSERVER_${name.toUpperCase()}_RELEASED`, 35_000); },
-    snapshot(name) { return { ...state(name) }; },
+    snapshot(name) {
+      const record = state(name);
+      return {
+        bffDispatches: record.received,
+        goDispatches: record.businessDispatches,
+        openHandlers: record.openRequests,
+        completedHandlers: record.closedRequests,
+        clientConnectionsClosed: record.clientConnectionsClosed,
+        responsesCompleted: record.responsesCompleted,
+        released: record.released,
+      };
+    },
   };
   return dispatchObserver;
 }
 
-async function stopDispatchObserver() {
+export async function stopDispatchObserver() {
   if (!dispatchObserver) return;
   const current = dispatchObserver;
   dispatchObserver = undefined;
@@ -2404,26 +2477,68 @@ async function browserChain(origins, ports, machine) {
           result,
         };
       };
+      const beginBodyCancellation = () => {
+        const mode = "body-cancel";
+        dispatchObserver.arm(mode);
+        const result = controlPage.evaluate(async ({ body, key }) => {
+          const controller = new AbortController();
+          const encoded = new TextEncoder().encode(JSON.stringify(body));
+          const state = { chunksProduced: 0 };
+          window.__issue413M2BodyAbortController = controller;
+          window.__issue413M2BodyState = state;
+          const stream = new ReadableStream({
+            start(streamController) {
+              streamController.enqueue(encoded.slice(0, Math.min(16, encoded.byteLength)));
+              state.chunksProduced++;
+            },
+          });
+          try {
+            const response = await fetch("/api/referral-registration", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+              body: stream,
+              duplex: "half",
+              signal: controller.signal,
+            });
+            await response.arrayBuffer();
+            return { status: response.status, outcome: "response", bodyChunksProduced: state.chunksProduced };
+          } catch {
+            return { outcome: controller.signal.aborted ? "client_cancelled" : "body_request_failed", bodyChunksProduced: state.chunksProduced };
+          }
+        }, { body: bodyFor("body-cancel"), key: createHash("sha256").update(`${manifest.runId}:body-cancel`).digest("hex") });
+        return {
+          ready: until(() => controlPage.evaluate(() => window.__issue413M2BodyState?.chunksProduced > 0), "BODY_STREAM_STARTED", 10_000),
+          cancel: () => controlPage.evaluate(() => window.__issue413M2BodyAbortController?.abort()),
+          result,
+        };
+      };
       const observation = await runCancelDeadlineControl({
         healthyRequest: async () => {
           const request = begin("healthy", "healthy");
           await request.ready;
+          dispatchObserver.release("healthy");
           const result = await request.result;
           await dispatchObserver.waitReleased("healthy");
           const snapshot = dispatchObserver.snapshot("healthy");
-          return { status: result.status, businessDispatches: snapshot.businessDispatches };
+          return { status: result.status, ...snapshot };
         },
         beginCancelledRequest: () => begin("cancel", "cancel"),
         beginDeadlineRequest: () => begin("deadline", "deadline"),
         settle: async mode => {
+          await dispatchObserver.waitClientClosed(mode);
+          dispatchObserver.release(mode);
           await dispatchObserver.waitReleased(mode);
           await delay(1_000);
-          const snapshot = dispatchObserver.snapshot(mode);
-          return { businessDispatches: snapshot.businessDispatches, openRequests: snapshot.openRequests, receivedRequests: snapshot.received, closedRequests: snapshot.closedRequests };
+          return dispatchObserver.snapshot(mode);
+        },
+        beginBodyCancelledRequest: beginBodyCancellation,
+        settleBodyCancellation: async () => {
+          await delay(16_000);
+          return dispatchObserver.snapshot("body-cancel");
         },
       });
       await writeJSON(path.join(outputDirectory, "m2-cancel-deadline-observation.json"), observation);
-      return { ...evaluateCancelDeadlineControl(observation), precondition: "healthy_browser_bff_observer_go_dispatch_200", injection: "browser_cancel_and_bff_15_second_deadline_after_body_read_before_go_dispatch", positiveControl: "same_chain_dispatches_once_in_healthy_mode", observation: "observer_received_and_released_both_requests_with_zero_go_dispatch", invariants: ["not_yet_dispatched_zero_late_dispatch", "observer_requests_released"] };
+      return { ...evaluateCancelDeadlineControl(observation), precondition: "same_held_observer_path_releases_to_real_go_once_and_browser_streaming_body_starts", injection: "browser_cancel_during_body_read_plus_browser_cancel_and_bff_15_second_deadline_after_bff_dispatch_to_held_observer", positiveControl: "same_observer_delay_path_explicitly_releases_while_connection_live_and_dispatches_once_to_go", observation: "body_cancel_never_reaches_observer; post_body_cancel_and_deadline_each_close_real_bff_observer_connection_before_release and remain_zero_go_dispatch", invariants: ["pre_dispatch_body_cancel_zero_late_dispatch_past_total_deadline", "post_bff_dispatch_connection_close_zero_go_dispatch_after_release", "observer_handlers_and_connections_released"] };
     } finally {
       await cancelContext.close();
     }
@@ -2488,10 +2603,10 @@ async function browserChain(origins, ports, machine) {
       inspectSecondaryReleased,
     });
     const observer = dispatchObserver.snapshot("parallel");
-    ensure(observer.businessDispatches >= 3 && observer.openRequests === 0, "SECONDARY_BACKEND_TRAFFIC_NOT_OBSERVED");
+    ensure(observer.goDispatches >= 3 && observer.openHandlers === 0, "SECONDARY_BACKEND_TRAFFIC_NOT_OBSERVED");
     const evidence = { ...observation, secondaryBackendObserver: observer };
     await writeJSON(path.join(outputDirectory, "m2-parallel-rate-limit-observation.json"), evidence);
-    return { ...evaluateParallelInstanceRateLimit(observation), precondition: "two_live_go_next_process_pairs_and_one_owned_postgresql", injection: "one_source_alternates_primary_secondary_in_same_database_window", positiveControl: "second_source_allowed", observation: "five_total_200_then_cross_instance_429_with_secondary_backend_dispatches", invariants: ["shared_database_rate_bucket", "both_instances_receive_traffic", "secondary_processes_and_ports_released"], secondaryBackendDispatches: observer.businessDispatches };
+    return { ...evaluateParallelInstanceRateLimit(observation), precondition: "two_live_go_next_process_pairs_and_one_owned_postgresql", injection: "one_source_alternates_primary_secondary_in_same_database_window", positiveControl: "second_source_allowed", observation: "five_total_200_then_cross_instance_429_with_secondary_backend_dispatches", invariants: ["shared_database_rate_bucket", "both_instances_receive_traffic", "secondary_processes_and_ports_released"], secondaryBackendDispatches: observer.goDispatches };
   });
   await matrixCheck("E", "missing_dependency_disables_invite_entry", async () => {
     const secret = path.join(manifest.directory, "referral-service.secret");
@@ -2685,7 +2800,7 @@ async function cleanupCommand(runId) {
 async function main() {
   let machine;
   let bootstrap;
-  report.runnerSha256 = createHash("sha256").update(await readFile(fileURLToPath(import.meta.url))).digest("hex");
+  Object.assign(report, describeRunnerBytes(await readFile(fileURLToPath(import.meta.url))));
   const outcome = await orchestrateFixtureLifecycle({
     report,
     runBusiness: async () => {

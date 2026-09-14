@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createServer as createHTTPServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -106,6 +107,16 @@ test("matrix evidence and NOT_RUN fallback cannot overwrite a PASS classificatio
   matrixRecord(item.group, item.name, "PASS", { requests: 4 });
   matrixNotRun(item.group, item.name, "STALE_FALLBACK");
   assert.deepEqual(item, { group: "C", name: item.name, status: "PASS", requests: 4 });
+});
+
+test("runner provenance distinguishes executed bytes from normalized Git content", async () => {
+  const { describeRunnerBytes } = await runner();
+  const lf = describeRunnerBytes(Buffer.from("first\nsecond\n", "utf8"));
+  const mixed = describeRunnerBytes(Buffer.from("first\r\nsecond\n", "utf8"));
+
+  assert.notEqual(mixed.runnerSha256, lf.runnerSha256);
+  assert.equal(mixed.runnerNormalizedLFSha256, lf.runnerNormalizedLFSha256);
+  assert.deepEqual(mixed.runnerByteFormat, { bytes: 14, hasUTF8BOM: false, crlfCount: 1, lfCount: 1, crCount: 0 });
 });
 
 test("screen-reader NOT_RUN keeps the whole fixture incomplete and nonzero", async () => {
@@ -611,30 +622,113 @@ test("M2 cancellation and deadline controls observe zero late business dispatch"
     result: Promise.resolve(requestKind === "deadline" ? { status: 504 } : { outcome: "client_cancelled" }),
   });
   const observation = await runCancelDeadlineControl({
-    healthyRequest: async () => { calls.push("healthy"); return { status: 200, businessDispatches: 1 }; },
+    healthyRequest: async () => { calls.push("healthy"); return { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1 }; },
     beginCancelledRequest: () => { calls.push("cancel:begin"); return result("cancel"); },
     beginDeadlineRequest: () => { calls.push("deadline:begin"); return result("deadline"); },
-    settle: async kind => { calls.push(`${kind}:settle`); return { businessDispatches: 0, openRequests: 0 }; },
+    settle: async kind => { calls.push(`${kind}:settle`); return { bffDispatches: 1, goDispatches: 0, openHandlers: 0, clientConnectionsClosed: 1, released: true }; },
+    beginBodyCancelledRequest: () => { calls.push("body:begin"); return { ...result("cancel"), result: Promise.resolve({ outcome: "client_cancelled", bodyChunksProduced: 1 }) }; },
+    settleBodyCancellation: async () => { calls.push("body:settle"); return { bffDispatches: 0, goDispatches: 0, openHandlers: 0 }; },
   });
   assert.deepEqual(evaluateCancelDeadlineControl(observation), {
     healthyDispatchObserved: true,
     clientCancellationObserved: true,
     deadlineResponseObserved: true,
+    bodyReadCancellationObserved: true,
     zeroLateDispatch: true,
     resourcesReleased: true,
   });
-  assert.deepEqual(calls, ["healthy", "cancel:begin", "cancel:cancel", "cancel:settle", "deadline:begin", "deadline:settle"]);
+  assert.deepEqual(calls, ["healthy", "cancel:begin", "cancel:cancel", "cancel:settle", "deadline:begin", "deadline:settle", "body:begin", "cancel:cancel", "body:settle"]);
 });
 
 test("M2 late dispatch and leaked observer requests fail closed", async () => {
   const { evaluateCancelDeadlineControl } = await runner();
   assert.throws(() => evaluateCancelDeadlineControl({
-    healthy: { status: 200, businessDispatches: 1 },
+    healthy: { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1 },
     cancelled: { outcome: "client_cancelled" },
-    cancelledSettled: { businessDispatches: 1, openRequests: 0 },
+    cancelledSettled: { bffDispatches: 1, goDispatches: 1, openHandlers: 0, clientConnectionsClosed: 1, released: true },
     deadline: { status: 504 },
-    deadlineSettled: { businessDispatches: 0, openRequests: 1 },
+    deadlineSettled: { bffDispatches: 1, goDispatches: 0, openHandlers: 1, clientConnectionsClosed: 1, released: true },
+    bodyCancelled: { outcome: "client_cancelled", bodyChunksProduced: 1 },
+    bodyCancelledSettled: { bffDispatches: 0, goDispatches: 0, openHandlers: 0 },
   }), /LATE_BUSINESS_DISPATCH_OBSERVED/);
+});
+
+test("M2 cancellation evidence requires observer receipt, real connection close, explicit release, and handler cleanup", async () => {
+  const { evaluateCancelDeadlineControl } = await runner();
+  const valid = {
+    healthy: { status: 200, bffDispatches: 1, goDispatches: 1, released: true, responsesCompleted: 1 },
+    cancelled: { outcome: "client_cancelled" },
+    cancelledSettled: { bffDispatches: 1, goDispatches: 0, openHandlers: 0, clientConnectionsClosed: 1, released: true },
+    deadline: { status: 504 },
+    deadlineSettled: { bffDispatches: 1, goDispatches: 0, openHandlers: 0, clientConnectionsClosed: 1, released: true },
+    bodyCancelled: { outcome: "client_cancelled", bodyChunksProduced: 1 },
+    bodyCancelledSettled: { bffDispatches: 0, goDispatches: 0, openHandlers: 0 },
+  };
+  assert.doesNotThrow(() => evaluateCancelDeadlineControl(valid));
+  assert.throws(() => evaluateCancelDeadlineControl({ ...valid, cancelledSettled: { ...valid.cancelledSettled, bffDispatches: 0 } }), /BFF_DISPATCH_NOT_OBSERVED/);
+  assert.throws(() => evaluateCancelDeadlineControl({ ...valid, deadlineSettled: { ...valid.deadlineSettled, clientConnectionsClosed: 0 } }), /OBSERVER_CLIENT_CLOSE_NOT_OBSERVED/);
+  assert.throws(() => evaluateCancelDeadlineControl({ ...valid, cancelledSettled: { ...valid.cancelledSettled, released: false } }), /OBSERVER_DELAY_NOT_RELEASED/);
+  assert.throws(() => evaluateCancelDeadlineControl({ ...valid, deadlineSettled: { ...valid.deadlineSettled, openHandlers: 1 } }), /OBSERVER_REQUEST_NOT_RELEASED/);
+  assert.throws(() => evaluateCancelDeadlineControl({ ...valid, bodyCancelledSettled: { ...valid.bodyCancelledSettled, bffDispatches: 1 } }), /BODY_READ_LATE_DISPATCH_OBSERVED/);
+});
+
+test("M2 delayed observer forwards a still-live request through the same held path", async () => {
+  const upstreamRequests = [];
+  const upstream = createHTTPServer(async (request, response) => {
+    upstreamRequests.push(request.url);
+    for await (const _chunk of request) { /* consume the actual request body */ }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise((resolve, reject) => { upstream.once("error", reject); upstream.listen(0, "127.0.0.1", resolve); });
+  const upstreamAddress = upstream.address();
+  assert.ok(upstreamAddress && typeof upstreamAddress === "object");
+  const { startDispatchObserver, stopDispatchObserver } = await runner();
+  const observer = await startDispatchObserver(0, `http://127.0.0.1:${upstreamAddress.port}`, { releaseTimeoutMs: 500 });
+  try {
+    observer.arm("cancel");
+    const pending = fetch(`http://127.0.0.1:${observer.port}/api/v1/referral-registration/intents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request: "held-positive-control" }),
+      signal: AbortSignal.timeout(500),
+    }).catch(error => error);
+    await observer.waitReceived("cancel");
+    observer.release?.("cancel");
+    const response = await pending;
+
+    assert.ok(response instanceof Response);
+    assert.equal(response.status, 200);
+    assert.deepEqual(upstreamRequests, ["/api/v1/referral-registration/intents"]);
+    assert.equal(observer.snapshot("cancel").goDispatches, 1);
+
+    observer.arm("cancel");
+    const controller = new AbortController();
+    const cancelled = fetch(`http://127.0.0.1:${observer.port}/api/v1/referral-registration/intents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request: "held-cancel-control" }),
+      signal: controller.signal,
+    }).catch(error => error);
+    await observer.waitReceived("cancel");
+    controller.abort();
+    assert.ok((await cancelled) instanceof Error);
+    await observer.waitClientClosed("cancel");
+    observer.release("cancel");
+    await observer.waitReleased("cancel");
+    const snapshot = observer.snapshot("cancel");
+    assert.equal(snapshot.bffDispatches, 1);
+    assert.equal(snapshot.goDispatches, 0);
+    assert.equal(snapshot.clientConnectionsClosed, 1);
+    assert.equal(snapshot.openHandlers, 0);
+    assert.equal(snapshot.released, true);
+    assert.deepEqual(upstreamRequests, ["/api/v1/referral-registration/intents"]);
+  } finally {
+    observer.release("cancel");
+    await stopDispatchObserver();
+    upstream.closeAllConnections?.();
+    await new Promise((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+  }
 });
 
 test("configured restart closes browser connections and keeps executed completion evidence", async () => {
