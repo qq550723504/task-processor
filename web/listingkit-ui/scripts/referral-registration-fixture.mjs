@@ -789,12 +789,18 @@ export async function orchestrateFixtureLifecycle({ report, runBusiness, runClea
     report.conclusion = "FAIL";
     report.status = "FAIL";
     report.exitCode = 1;
+    const manual = report.manualAccessibility;
     emitFailure({
       schemaVersion: report.schemaVersion,
       runId: report.runId,
       status: "FAIL",
       stage: "report-write",
       code: report.evidence.code,
+      ...(manual && typeof manual === "object" ? { manualSession: {
+        status: manual.status,
+        sessionStatus: manual.sessionStatus,
+        ...(manual.terminationReason ? { terminationReason: safeCode(manual.terminationReason) } : {}),
+      } } : {}),
     });
   }
   return { report, exitCode: report.exitCode };

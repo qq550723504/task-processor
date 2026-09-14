@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer as createHTTPServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -230,13 +230,14 @@ test("manual partial evidence is terminal in the persisted lifecycle report", as
 
   const report = { manualAccessibility: { status: "FAIL", sessionStatus: "IN_PROGRESS" } };
   let reportPersisted = false;
+  let emitted;
   const outcome = await orchestrateFixtureLifecycle({
     report,
     runBusiness: async () => { throw new Error("SCREEN_READER_SESSION_ABORTED"); },
     runCleanup: async phase => cleanup(phase),
     persistManualEvidence: async () => { throw new Error("OBSERVATIONS_WRITE_FAILED"); },
     persistReport: async () => { reportPersisted = true; },
-    emitFailure: () => {},
+    emitFailure: value => { emitted = value; },
   });
   assert.equal(outcome.report.manualAccessibility.status, "FAIL");
   assert.equal(outcome.report.manualAccessibility.sessionStatus, "TERMINATED");
@@ -244,6 +245,41 @@ test("manual partial evidence is terminal in the persisted lifecycle report", as
   assert.equal(outcome.report.evidence.status, "FAIL");
   assert.equal(outcome.report.evidence.code, "OBSERVATIONS_WRITE_FAILED");
   assert.equal(reportPersisted, false);
+  assert.deepEqual(emitted.manualSession, {
+    status: "FAIL",
+    sessionStatus: "TERMINATED",
+    terminationReason: "SCREEN_READER_SESSION_ABORTED",
+  });
+});
+
+test("manual terminal evidence fails closed on actual observation and report file obstructions", async () => {
+  const { orchestrateFixtureLifecycle, writeJSONAtomic } = await runner();
+  const cleanup = phase => ({ phase, status: "PASS", actions: [], residuals: { status: "PASS", containers: 0, volumes: 0, networks: 0, listeners: 0 } });
+  for (const blocked of ["observations", "report"]) {
+    const directory = await mkdtemp(path.join(tmpdir(), `issue413-manual-${blocked}-`));
+    const observationsFile = path.join(directory, "screen-reader-observations.json");
+    const reportFile = path.join(directory, "report.json");
+    await mkdir(blocked === "observations" ? observationsFile : reportFile);
+    let emitted;
+    try {
+      const outcome = await orchestrateFixtureLifecycle({
+        report: { schemaVersion: "test", runId: "11111111-1111-4111-8111-111111111111", manualAccessibility: { status: "FAIL", sessionStatus: "IN_PROGRESS", observations: [] } },
+        runBusiness: async () => { throw new Error("SCREEN_READER_SESSION_ABORTED"); },
+        runCleanup: async phase => cleanup(phase),
+        persistManualEvidence: value => writeJSONAtomic(observationsFile, value),
+        persistReport: value => writeJSONAtomic(reportFile, value),
+        emitFailure: value => { emitted = value; },
+      });
+      assert.equal(outcome.exitCode, 1);
+      assert.equal(outcome.report.evidence.status, "FAIL");
+      assert.equal(emitted.manualSession.sessionStatus, "TERMINATED");
+      assert.equal(emitted.manualSession.terminationReason, "SCREEN_READER_SESSION_ABORTED");
+      if (blocked === "observations") await assert.rejects(readFile(reportFile), error => error?.code === "ENOENT");
+      else assert.equal(JSON.parse(await readFile(observationsFile, "utf8")).sessionStatus, "TERMINATED");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
 });
 
 test("manual acknowledgement binds to the observed phase and exact state attempt", async () => {
