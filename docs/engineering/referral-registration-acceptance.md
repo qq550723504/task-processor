@@ -122,9 +122,9 @@ The report's `matrix` array records each item independently so an early product 
 - Prove an admin sees only the admin's own empty projection, not another user's relationship.
 - Prove the task-owned no-enterprise user can read its own empty personal projection.
 - Hash all four referral fact tables before and after an authenticated GET and require equality.
-- Select enterprise B, hold its real organization read, deactivate the task-owned ZITADEL project authorization, switch to home A, release the late read, and prove B does not return to the visible state.
+- Select enterprise B, hold its real organization read, deactivate the task-owned ZITADEL project authorization, refresh the authoritative context so the UI clears B, switch to home A, release the late read, and prove B does not return to the visible state.
 - Preserve the same subject's personal referral count and prove the admin still reads only its own empty personal projection; restore the task-owned authorization in `finally`.
-- Start with a successful profile read, delete the subject's official ZITADEL sessions, prove they are absent, log out, change to the task-owned admin identity, and prove the held old profile response cannot backfill the new identity view.
+- Establish a dedicated official login for this control, start with a successful profile read, delete that subject's official ZITADEL sessions, prove they are absent, log out, change to the task-owned admin identity, and prove the held old profile response cannot backfill the new identity view.
 
 ### E. Boundary and dependency behavior
 

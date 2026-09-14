@@ -243,6 +243,7 @@ test("M1 enterprise removal control holds a real late read across revoke and res
     switchOrganization: async id => { calls.push(`switch:${id}`); },
     beginLateOrganizationRead: () => { calls.push("late:begin"); return { ready: Promise.resolve(), result: late }; },
     revokeAuthorization: async () => { calls.push("revoke"); },
+    refreshAuthorizationContext: async () => { calls.push("context:refresh"); },
     releaseLateOrganizationRead: async () => { calls.push("late:release"); release({ organizationId: "org-b" }); },
     inspectVisibleOrganization: async () => { calls.push("visible"); return "org-a"; },
     readPersonalProjection: async () => { calls.push("personal"); return { subject: "viewer", count: 1 }; },
@@ -252,7 +253,7 @@ test("M1 enterprise removal control holds a real late read across revoke and res
     fallbackOrganizationId: "org-a",
   });
   assert.equal(result.lateRemovedOrganizationVisible, false);
-  assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "switch:org-a", "context:after", "late:release", "visible", "personal", "admin", "restore"]);
+  assert.deepEqual(calls, ["context:before", "switch:org-b", "late:begin", "revoke", "context:refresh", "switch:org-a", "context:after", "late:release", "visible", "personal", "admin", "restore"]);
 });
 
 test("M1 enterprise authorization restoration retries a transient provider failure", async () => {

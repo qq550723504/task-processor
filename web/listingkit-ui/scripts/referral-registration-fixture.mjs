@@ -167,6 +167,7 @@ export async function runEnterpriseRemovalControl(operations) {
   try {
     revoked = true;
     await operations.revokeAuthorization();
+    await operations.refreshAuthorizationContext();
     await operations.switchOrganization(operations.fallbackOrganizationId);
     const after = await operations.readContext("after");
     await operations.releaseLateOrganizationRead();
@@ -1496,6 +1497,11 @@ async function browserChain(origins, ports, machine) {
         return { ready: Promise.race([lateReady, delay(30_000).then(() => { throw new Error("LATE_ENTERPRISE_READ_NOT_CAPTURED"); })]), result: lateResult };
       },
       revokeAuthorization: () => { enterpriseStage = "revoke"; return runBaseRuntimeControl("revoke", "viewer", "B"); },
+      refreshAuthorizationContext: async () => {
+        enterpriseStage = "refresh_after_revoke";
+        await referrerPage.reload({ waitUntil: "load" });
+        await referrerPage.getByLabel("当前企业").waitFor({ state: "visible", timeout: 30_000 });
+      },
       releaseLateOrganizationRead: async () => lateRelease(),
       inspectVisibleOrganization: async () => {
         enterpriseStage = "visible_context";
@@ -1556,6 +1562,9 @@ async function browserChain(origins, ports, machine) {
   });
   await matrixCheck("D", "expired_session_and_late_response", async () => {
     let expiredStage = "positive_read";
+    const expiredContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true,
+      extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
+    const expiredPage = await expiredContext.newPage();
     const bootstrap = (await readFile(path.join(manifest.directory, "bootstrap.pat"), "utf8")).trim();
     let lateRelease;
     let lateReadyResolve;
@@ -1563,10 +1572,14 @@ async function browserChain(origins, ports, machine) {
     const lateReady = new Promise(resolve => { lateReadyResolve = resolve; });
     const lateResult = new Promise(resolve => { lateResultResolve = resolve; });
     let observation;
-    try { observation = await runExpiredSessionControl({
+    try {
+      expiredStage = "dedicated_session_login";
+      await login(expiredPage, origins.publicOrigin, { username: email, password: registeredPassword }, "/workbench/account/profile");
+      await expiredPage.getByText(`账户 ID：${subject}`).waitFor({ state: "visible", timeout: 30_000 });
+      observation = await runExpiredSessionControl({
       positiveRead: async () => {
         expiredStage = "positive_read";
-        const response = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
+        const response = await expiredContext.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
         ensure(response.status() === 200, "SESSION_POSITIVE_CONTROL_FAILED");
         const sessions = await provider("/v2/sessions/search", { query: { offset: 0, limit: 100, asc: true }, queries: [{ userIdQuery: { id: subject } }] }, bootstrap);
         const sessionIds = (sessions.sessions ?? []).map(session => session.id).filter(id => typeof id === "string" && id.length > 0);
@@ -1578,9 +1591,9 @@ async function browserChain(origins, ports, machine) {
         const gate = new Promise(resolve => { lateRelease = resolve; });
         void (async () => {
           try {
-            await page.goto(`${origins.publicOrigin}/workbench/account/profile`, { waitUntil: "load" });
-            await page.getByText(`账户 ID：${subject}`).waitFor({ state: "visible", timeout: 30_000 });
-            await page.route("**/api/account/profile", async route => {
+            await expiredPage.goto(`${origins.publicOrigin}/workbench/account/profile`, { waitUntil: "load" });
+            await expiredPage.getByText(`账户 ID：${subject}`).waitFor({ state: "visible", timeout: 30_000 });
+            await expiredPage.route("**/api/account/profile", async route => {
               const upstream = await route.fetch();
               lateReadyResolve();
               await gate;
@@ -1591,7 +1604,7 @@ async function browserChain(origins, ports, machine) {
                 lateResultResolve({ subject, outcome: "cancelled_before_delivery" });
               }
             }, { times: 1 });
-            await page.getByRole("button", { name: "刷新资料" }).click();
+            await expiredPage.getByRole("button", { name: "刷新资料" }).click();
           } catch {
             lateReadyResolve();
             lateResultResolve({ subject: "late_injection_failed", outcome: "failed" });
@@ -1613,37 +1626,40 @@ async function browserChain(origins, ports, machine) {
       loginReplacementIdentity: async () => {
         expiredStage = "replacement_login";
         const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
-        await page.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "commit", timeout: 45_000 });
-        await login(page, origins.publicOrigin, admin, "/workbench/account/profile");
+        await expiredPage.goto(`${origins.publicOrigin}/api/zitadel-auth/logout`, { waitUntil: "commit", timeout: 45_000 });
+        await login(expiredPage, origins.publicOrigin, admin, "/workbench/account/profile");
         return { subject: manifest.users.admin.id };
       },
       confirmReplacementIdentity: async expectedSubject => {
         expiredStage = "replacement_confirmation";
-        const response = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": expectedSubject } });
+        const response = await expiredContext.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": expectedSubject } });
         ensure(response.status() === 200, "REPLACEMENT_PROFILE_READ_FAILED");
         const payload = await response.json();
         ensure(payload.userId === expectedSubject, "REPLACEMENT_PROFILE_SUBJECT_MISMATCH");
-        await page.getByText(`账户 ID：${expectedSubject}`).waitFor({ state: "visible", timeout: 30_000 });
+        await expiredPage.getByText(`账户 ID：${expectedSubject}`).waitFor({ state: "visible", timeout: 30_000 });
       },
       releaseLateRead: async () => lateRelease(),
       inspectVisibleIdentity: async () => {
         expiredStage = "visible_identity";
-        await page.getByText(`账户 ID：${manifest.users.admin.id}`).waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-        const body = await page.locator("body").innerText();
+        await expiredPage.getByText(`账户 ID：${manifest.users.admin.id}`).waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+        const body = await expiredPage.locator("body").innerText();
         return { subject: body.includes(`账户 ID：${manifest.users.admin.id}`) ? manifest.users.admin.id : "unknown", oldProjectionVisible: body.includes(`账户 ID：${subject}`) };
       },
-    }); } catch (error) {
-      const body = await page.locator("body").innerText().catch(() => "");
+      });
+    } catch (error) {
+      const body = await expiredPage.locator("body").innerText().catch(() => "");
       await writeJSON(path.join(outputDirectory, "m1-expired-session-diagnostic.json"), {
         stage: expiredStage,
         code: safeCode(error),
-        pathname: new URL(page.url()).pathname,
+        pathname: new URL(expiredPage.url()).pathname,
         replacementVisible: body.includes(`账户 ID：${manifest.users.admin.id}`),
         oldProjectionVisible: body.includes(`账户 ID：${subject}`),
         identityChangedStateVisible: body.includes("登录身份已变化"),
         authenticationRequiredStateVisible: body.includes("登录已失效"),
       });
       throw error;
+    } finally {
+      await expiredContext.close();
     }
     await writeJSON(path.join(outputDirectory, "m1-expired-session-observation.json"), observation);
     return { ...evaluateExpiredSessionControl(observation), precondition: "authenticated_profile_read_200", injection: "official_session_delete_and_old_profile_response_hold", positiveControl: "admin_login_after_logout", observation: "old_response_not_visible_after_identity_change", invariants: ["provider_session_deleted", "identity_keyed_projection"] };
