@@ -481,6 +481,128 @@ test("M1 user-token boundary restores storage when the rejection probe fails", a
   assert.deepEqual(calls, ["storage:stop", "storage:start"]);
 });
 
+test("M2 provider business-read failure replays the committed receipt and restores the selective fault", async () => {
+  const { runProviderBusinessReadFailureControl, evaluateProviderBusinessReadFailure } = await runner();
+  const calls = [];
+  const receipt = { status: "complete", intentID: "intent-1", boundAt: "2026-09-14T00:00:00Z" };
+  const observation = await runProviderBusinessReadFailureControl({
+    verifyIdentityHealth: async () => { calls.push("identity:healthy"); return { discoveryStatus: 200, jwksStatus: 200, authProvidersStatus: 200, currentIdentityStatus: 200, currentSubject: "subject-1" }; },
+    replayReceipt: async phase => { calls.push(`receipt:${phase}`); return { status: 200, receipt }; },
+    relationshipCount: async phase => { calls.push(`count:${phase}`); return 1; },
+    enableSelectiveBusinessReadFailure: async () => { calls.push("fault:on"); },
+    observeBusinessReadFailure: async () => { calls.push("provider:failed-read"); return { status: 503, path: "/v2/users/subject-1" }; },
+    disableSelectiveBusinessReadFailure: async () => { calls.push("fault:off"); },
+    observeBusinessReadRecovery: async () => { calls.push("provider:recovered"); return { status: 200, subject: "subject-1" }; },
+  });
+  assert.deepEqual(evaluateProviderBusinessReadFailure(observation), {
+    identityHealthy: true,
+    selectiveProviderReadFailed: true,
+    receiptPreserved: true,
+    relationshipCountPreserved: true,
+    providerRecovered: true,
+  });
+  assert.deepEqual(calls, ["identity:healthy", "receipt:before", "count:before", "fault:on", "provider:failed-read", "receipt:during", "count:during", "fault:off", "provider:recovered"]);
+});
+
+test("M2 provider fault is always disabled and invalid observations cannot pass", async () => {
+  const { runProviderBusinessReadFailureControl, evaluateProviderBusinessReadFailure } = await runner();
+  const calls = [];
+  await assert.rejects(runProviderBusinessReadFailureControl({
+    verifyIdentityHealth: async () => ({ discoveryStatus: 200, jwksStatus: 200, authProvidersStatus: 200, currentIdentityStatus: 200, currentSubject: "subject-1" }),
+    replayReceipt: async phase => phase === "before" ? { status: 200, receipt: { intentID: "intent-1" } } : { status: 500, receipt: {} },
+    relationshipCount: async () => 1,
+    enableSelectiveBusinessReadFailure: async () => { calls.push("fault:on"); },
+    observeBusinessReadFailure: async () => ({ status: 503, path: "/v2/users/subject-1" }),
+    disableSelectiveBusinessReadFailure: async () => { calls.push("fault:off"); },
+    observeBusinessReadRecovery: async () => ({ status: 200, subject: "subject-1" }),
+  }), /PROVIDER_FAILURE_RECEIPT_REPLAY_FAILED/);
+  assert.deepEqual(calls, ["fault:on", "fault:off"]);
+  assert.throws(() => evaluateProviderBusinessReadFailure({
+    identityHealth: { discoveryStatus: 200, jwksStatus: 500, authProvidersStatus: 200, currentIdentityStatus: 200, currentSubject: "subject-1" },
+    receiptBefore: { status: 200, receipt: { intentID: "intent-1" } },
+    receiptDuring: { status: 200, receipt: { intentID: "intent-1" } },
+    countBefore: 1,
+    countDuring: 1,
+    providerFailure: { status: 503, path: "/v2/users/subject-1" },
+    providerRecovery: { status: 200, subject: "subject-1" },
+  }), /IDENTITY_HEALTH_FAILED/);
+});
+
+test("M2 parallel-instance control proves both live processes share one rate-limit bucket", async () => {
+  const { runParallelInstanceRateLimitControl, evaluateParallelInstanceRateLimit } = await runner();
+  const calls = [];
+  const observation = await runParallelInstanceRateLimitControl({
+    startSecondary: async () => { calls.push("secondary:start"); return { instanceId: "secondary", goPid: 22, nextPid: 23, goPort: 41002, nextPort: 41003, databaseId: "db-1" }; },
+    inspectPrimary: async () => ({ instanceId: "primary", goPid: 12, nextPid: 13, goPort: 41000, nextPort: 41001, databaseId: "db-1" }),
+    bothAlive: async () => { calls.push("both:alive"); return true; },
+    waitForFreshWindow: async () => { calls.push("window:fresh"); },
+    request: async (instance, source, sequence) => { calls.push(`${instance}:${source}:${sequence}`); return source === "source-a" && sequence === 6 ? 429 : 200; },
+    stopSecondary: async () => { calls.push("secondary:stop"); },
+    inspectSecondaryReleased: async () => { calls.push("secondary:released"); return { processes: 0, listeners: 0 }; },
+  });
+  assert.deepEqual(evaluateParallelInstanceRateLimit(observation), {
+    simultaneousInstances: true,
+    sharedDatabase: true,
+    bothInstancesObservedTraffic: true,
+    sharedLimitEnforced: true,
+    independentSourceAllowed: true,
+    secondaryReleased: true,
+  });
+  assert.deepEqual(observation.firstSourceStatuses, [200, 200, 200, 200, 200, 429]);
+  assert.equal(calls.at(-2), "secondary:stop");
+  assert.equal(calls.at(-1), "secondary:released");
+});
+
+test("M2 secondary process is stopped after a rate-control failure", async () => {
+  const { runParallelInstanceRateLimitControl } = await runner();
+  const calls = [];
+  await assert.rejects(runParallelInstanceRateLimitControl({
+    startSecondary: async () => ({ instanceId: "secondary", goPid: 22, nextPid: 23, goPort: 41002, nextPort: 41003, databaseId: "db-1" }),
+    inspectPrimary: async () => ({ instanceId: "primary", goPid: 12, nextPid: 13, goPort: 41000, nextPort: 41001, databaseId: "db-1" }),
+    bothAlive: async () => true,
+    waitForFreshWindow: async () => {},
+    request: async () => 500,
+    stopSecondary: async () => { calls.push("secondary:stop"); },
+    inspectSecondaryReleased: async () => { calls.push("secondary:released"); return { processes: 0, listeners: 0 }; },
+  }), /PARALLEL_RATE_LIMIT_PRECONDITION_FAILED/);
+  assert.deepEqual(calls, ["secondary:stop", "secondary:released"]);
+});
+
+test("M2 cancellation and deadline controls observe zero late business dispatch", async () => {
+  const { runCancelDeadlineControl, evaluateCancelDeadlineControl } = await runner();
+  const calls = [];
+  const result = requestKind => ({
+    ready: Promise.resolve(),
+    cancel: async () => { calls.push(`${requestKind}:cancel`); },
+    result: Promise.resolve(requestKind === "deadline" ? { status: 504 } : { outcome: "client_cancelled" }),
+  });
+  const observation = await runCancelDeadlineControl({
+    healthyRequest: async () => { calls.push("healthy"); return { status: 200, businessDispatches: 1 }; },
+    beginCancelledRequest: () => { calls.push("cancel:begin"); return result("cancel"); },
+    beginDeadlineRequest: () => { calls.push("deadline:begin"); return result("deadline"); },
+    settle: async kind => { calls.push(`${kind}:settle`); return { businessDispatches: 0, openRequests: 0 }; },
+  });
+  assert.deepEqual(evaluateCancelDeadlineControl(observation), {
+    healthyDispatchObserved: true,
+    clientCancellationObserved: true,
+    deadlineResponseObserved: true,
+    zeroLateDispatch: true,
+    resourcesReleased: true,
+  });
+  assert.deepEqual(calls, ["healthy", "cancel:begin", "cancel:cancel", "cancel:settle", "deadline:begin", "deadline:settle"]);
+});
+
+test("M2 late dispatch and leaked observer requests fail closed", async () => {
+  const { evaluateCancelDeadlineControl } = await runner();
+  assert.throws(() => evaluateCancelDeadlineControl({
+    healthy: { status: 200, businessDispatches: 1 },
+    cancelled: { outcome: "client_cancelled" },
+    cancelledSettled: { businessDispatches: 1, openRequests: 0 },
+    deadline: { status: 504 },
+    deadlineSettled: { businessDispatches: 0, openRequests: 1 },
+  }), /LATE_BUSINESS_DISPATCH_OBSERVED/);
+});
+
 test("configured restart closes browser connections and keeps executed completion evidence", async () => {
   const source = await readFile(runnerPath, "utf8");
   assert.match(source, /await Promise\.all\(\[context\.close\(\), referrerContext\.close\(\)\]\);\s+const evidence = await restartConfiguredApplications\(ports\)/);

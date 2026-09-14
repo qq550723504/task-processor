@@ -1,6 +1,6 @@
 # Referral registration acceptance runner
 
-This document describes the task-owned acceptance runner for Issue #413 C2 and its M1 identity-matrix extension. It validates the frozen referral registration contract against official ZITADEL Login V2, the real Next.js BFF, the current Go application, PostgreSQL, Caddy, and Mailpit. The runner does not repair product code and does not access shared or production resources.
+This document describes the task-owned acceptance runner for Issue #413 C2, its M1 identity matrix, and its M2 runtime matrix. It validates the frozen referral registration contract against official ZITADEL Login V2, real Next.js BFF and Go processes, PostgreSQL, Caddy, and Mailpit. The runner does not repair product code and does not access shared or production resources.
 
 ## Scope and authority
 
@@ -40,7 +40,7 @@ The second command must print nothing. Record the full 40-character output of th
 
 ## Fast lifecycle and failure tests
 
-These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, sanitized fallback output, and the order/failure/finally contracts for the four M1 controls. They do not start the official business runtime and are not business acceptance.
+These tests validate fail-visible orchestration, actual child-process failure handling, atomic report rename failure, dispatched-runtime manifest failure, continued cleanup actions, sanitized fallback output, and the order/failure/finally contracts for M1 and M2 controls. M2 regressions reject unhealthy identity prerequisites, changed receipts/counts, false parallel-process claims, secondary-process cleanup gaps, late dispatch, and leaked observer requests. They do not start the official business runtime and are not business acceptance.
 
 ```powershell
 node --test scripts/referral-registration-fixture.test.mjs
@@ -115,6 +115,7 @@ The report's `matrix` array records each item independently so an early product 
 - Execute concurrent first completion and later concurrent receipt replay, and prove all responses match one receipt.
 - Query PostgreSQL for exactly one relationship, one receipt, and one consumed wiped Intent.
 - Inject a browser-visible 503 for the post-completion projection and prove the visible receipt remains while the summary is unavailable. This does not count as a real Provider business-read failure.
+- Keep the current identity, OIDC discovery, JWKS, and Auth.js provider health checks green. Start a run-owned secondary Go/Next pair whose Go Provider origin rejects only `GET /v2/users/{subject}` and metadata reads while all other Provider paths remain proxied. Replay the already committed completion receipt through that secondary BFF, require byte-equivalent receipt JSON and an unchanged relationship count, then stop the secondary pair and prove a healthy Provider user read succeeds. Whole-Provider shutdown and a browser-only projection failure do not satisfy this case.
 
 ### D. Personal authorization and GET purity
 
@@ -133,7 +134,9 @@ The report's `matrix` array records each item independently so an early product 
 - Read the server-only Auth.js acceptance token, validate it as a real human OIDC token through `userinfo` plus the Provider user record, and place that token in the service-credential header. The probe runs while the task-owned business database is stopped and must still return 401/403; the exact checked source must also place `trustedCommand` and its return before `commands.Start`. This evidence excludes business-storage dispatch through a dynamic outage plus the checked guard path; it is not a direct in-process handler-call counter, and the report says so.
 - Remove the task-owned service credential while the application is running, render a fresh authenticated page, and prove the invite entry is disabled; restore the credential in `finally`.
 - Use two real Docker peers and a real Go/Next process restart for source-IP and persisted rate-window evidence. This is not evidence for two simultaneously active application instances.
-- Keep parallel-instance admission and cancel/deadline dispatch evidence separate; record `NOT_RUN` when the current slice has no safe observer instead of simulating a pass.
+- Start a second real Go/Next pair on independent dynamic ports with its own process, ready, stop, and shutdown files. Both pairs share the exact run-owned PostgreSQL database and use separate connection pools. Alternate one Docker source across both live BFFs in one fresh window: the first five admissions must return 200 and the sixth, sent through the other live instance, must return 429; a second Docker source must still return 200. Record both process identities, both route counts, the shared database container identity, and the secondary backend proxy dispatches.
+- Route only the secondary BFF's business calls through a run-owned loopback observer. A healthy registration must reach Go exactly once. In separate controls, hold after the BFF has authenticated and read the complete request body but before Go dispatch, then cancel the browser request or allow the BFF's 15-second deadline to expire. Both held requests must close, dispatch zero late Go calls after a settling interval, and leave no open observer request. Already dispatched operations retain their original idempotency/receipt/unknown-outcome rules; this zero-dispatch control does not claim rollback.
+- The secondary supervisor, Go, Next.js, observer, configuration directory, and every dynamic listener belong to the random run. Both cleanup passes stop processes by their recorded identities, verify released ports, and remove the run-private configuration. A cleanup or observation failure remains nonzero/unknown.
 
 ### F. User interface and accessibility
 
@@ -155,10 +158,6 @@ node scripts/referral-registration-fixture.mjs cleanup-artifacts <run-id>
 
 This command validates the UUID, fixed temporary root, and manifest ownership before removing only C2 private files. It does not discover, adopt, or delete an unknown runtime.
 
-## Required follow-up slices
+## Final manual activity
 
-The runner is capped by the repository's architecture-sensitive threshold. M1 closes the four identity/session controls above without changing shared runtime or product paths. Keep the remaining Must cases as required `NOT_RUN` items and deliver them in the separately reviewed M2 slice:
-
-- Selective Provider business-read failure with healthy issuer/Auth.js and personal authorization controls: about 90–130 runner lines for a task-owned path-selective proxy fault and positive controls.
-- A second concurrently active application instance and a cancel/deadline dispatch observer: about 180–300 lines plus an independently reviewed runtime-control slice; do not add a product backdoor or general fault framework.
-- Real screen-reader evidence is a manual acceptance activity and remains separate from axe, screenshots, and keyboard checks.
+M1 and M2 keep their exact stacked Draft boundaries and independent fixed-HEAD reviews. The only acceptance activity after an approved M2 is real screen-reader operation on the final three-page product version. Record the actual screen reader, browser, page/viewport, reading and control sequence, visible or announced errors, operator, date, exact product HEAD, and result. Axe, screenshots, DOM inspection, and keyboard-only evidence cannot change `F.screen_reader` from `NOT_RUN`.

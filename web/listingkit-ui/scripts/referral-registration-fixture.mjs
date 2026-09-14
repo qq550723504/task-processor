@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir, unlink, rm, rename } from "node:fs/promises";
+import { createServer as createHTTPServer } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { createServer } from "node:net";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +47,9 @@ const ownedClientNames = [];
 let createdSubjectDeleted = false;
 let machineDeleted = false;
 let runtimeOwnershipUnknown = false;
+let secondaryApplication;
+let dispatchObserver;
+let secondaryGeneration = 0;
 
 function ensure(value, code = "ASSERTION_FAILED") {
   assert.ok(value, code);
@@ -143,6 +147,126 @@ export function evaluateUserTokenBoundary(observation) {
   ensure([401, 403].includes(observation.userTokenStatus), "USER_TOKEN_ACCEPTED_AS_SERVICE_CREDENTIAL");
   ensure(observation.referralDigestBefore === observation.referralDigestAfter && observation.rejectedBusinessCalls === 0, "USER_TOKEN_REACHED_BUSINESS");
   return { actualUserToken: true, positiveControl: true, rejected: true, referralTablesChanged: false, rejectedBusinessCalls: 0 };
+}
+
+export function evaluateProviderBusinessReadFailure(observation) {
+  ensure(observation.identityHealth?.discoveryStatus === 200 && observation.identityHealth?.jwksStatus === 200 && observation.identityHealth?.authProvidersStatus === 200 && observation.identityHealth?.currentIdentityStatus === 200 && Boolean(observation.identityHealth?.currentSubject), "IDENTITY_HEALTH_FAILED");
+  ensure(observation.receiptBefore?.status === 200 && observation.receiptDuring?.status === 200, "PROVIDER_FAILURE_RECEIPT_REPLAY_FAILED");
+  ensure(JSON.stringify(observation.receiptBefore.receipt) === JSON.stringify(observation.receiptDuring.receipt), "PROVIDER_FAILURE_RECEIPT_CHANGED");
+  ensure(Number.isInteger(observation.countBefore) && observation.countBefore === observation.countDuring, "PROVIDER_FAILURE_RELATIONSHIP_COUNT_CHANGED");
+  ensure(observation.providerFailure?.status === 503 && /^\/v2\/users\//.test(observation.providerFailure?.path ?? ""), "SELECTIVE_PROVIDER_READ_FAILURE_NOT_OBSERVED");
+  ensure(observation.providerRecovery?.status === 200 && Boolean(observation.providerRecovery?.subject), "PROVIDER_BUSINESS_READ_NOT_RECOVERED");
+  return { identityHealthy: true, selectiveProviderReadFailed: true, receiptPreserved: true, relationshipCountPreserved: true, providerRecovered: true };
+}
+
+export async function runProviderBusinessReadFailureControl(operations) {
+  const identityHealth = await operations.verifyIdentityHealth();
+  ensure(identityHealth?.discoveryStatus === 200 && identityHealth?.jwksStatus === 200 && identityHealth?.authProvidersStatus === 200 && identityHealth?.currentIdentityStatus === 200 && Boolean(identityHealth?.currentSubject), "IDENTITY_HEALTH_FAILED");
+  const receiptBefore = await operations.replayReceipt("before");
+  ensure(receiptBefore?.status === 200, "PROVIDER_BASELINE_RECEIPT_REPLAY_FAILED");
+  const countBefore = await operations.relationshipCount("before");
+  let enabled = false;
+  let providerFailure;
+  let receiptDuring;
+  let countDuring;
+  try {
+    await operations.enableSelectiveBusinessReadFailure();
+    enabled = true;
+    providerFailure = await operations.observeBusinessReadFailure();
+    ensure(providerFailure?.status === 503, "SELECTIVE_PROVIDER_READ_FAILURE_NOT_OBSERVED");
+    receiptDuring = await operations.replayReceipt("during");
+    ensure(receiptDuring?.status === 200, "PROVIDER_FAILURE_RECEIPT_REPLAY_FAILED");
+    countDuring = await operations.relationshipCount("during");
+  } finally {
+    if (enabled) await operations.disableSelectiveBusinessReadFailure();
+  }
+  const providerRecovery = await operations.observeBusinessReadRecovery();
+  const observation = { identityHealth, receiptBefore, receiptDuring, countBefore, countDuring, providerFailure, providerRecovery };
+  evaluateProviderBusinessReadFailure(observation);
+  return observation;
+}
+
+export function evaluateParallelInstanceRateLimit(observation) {
+  const { primary, secondary } = observation;
+  ensure(primary?.instanceId && secondary?.instanceId && primary.instanceId !== secondary.instanceId, "PARALLEL_INSTANCE_IDENTITY_REUSED");
+  ensure(primary.goPid !== secondary.goPid && primary.nextPid !== secondary.nextPid && primary.goPort !== secondary.goPort && primary.nextPort !== secondary.nextPort, "PARALLEL_PROCESS_OR_PORT_REUSED");
+  ensure(observation.simultaneouslyAlive === true, "PARALLEL_INSTANCES_NOT_SIMULTANEOUS");
+  ensure(primary.databaseId && primary.databaseId === secondary.databaseId, "PARALLEL_DATABASE_NOT_SHARED");
+  ensure(observation.instanceRequests?.primary > 0 && observation.instanceRequests?.secondary > 0, "PARALLEL_INSTANCE_TRAFFIC_MISSING");
+  ensure(observation.firstSourceStatuses?.slice(0, 5).every(status => status === 200), "PARALLEL_RATE_LIMIT_PRECONDITION_FAILED");
+  ensure(observation.firstSourceStatuses?.[5] === 429, "PARALLEL_SHARED_RATE_LIMIT_NOT_ENFORCED");
+  ensure(observation.secondSourceStatus === 200, "PARALLEL_CONTROL_SOURCE_REJECTED");
+  ensure(observation.secondaryReleased?.processes === 0 && observation.secondaryReleased?.listeners === 0, "SECONDARY_INSTANCE_NOT_RELEASED");
+  return { simultaneousInstances: true, sharedDatabase: true, bothInstancesObservedTraffic: true, sharedLimitEnforced: true, independentSourceAllowed: true, secondaryReleased: true };
+}
+
+export async function runParallelInstanceRateLimitControl(operations) {
+  const secondary = await operations.startSecondary();
+  let observation;
+  let primary;
+  let firstSourceStatuses = [];
+  let secondSourceStatus;
+  let simultaneouslyAlive = false;
+  const instanceRequests = { primary: 0, secondary: 0 };
+  let failure;
+  let secondaryReleased;
+  try {
+    primary = await operations.inspectPrimary();
+    simultaneouslyAlive = await operations.bothAlive(primary, secondary);
+    ensure(simultaneouslyAlive, "PARALLEL_INSTANCES_NOT_SIMULTANEOUS");
+    ensure(primary?.databaseId && primary.databaseId === secondary?.databaseId, "PARALLEL_DATABASE_NOT_SHARED");
+    await operations.waitForFreshWindow();
+    for (let sequence = 1; sequence <= 5; sequence++) {
+      const instance = sequence % 2 === 0 ? "secondary" : "primary";
+      instanceRequests[instance]++;
+      firstSourceStatuses.push(await operations.request(instance, "source-a", sequence));
+    }
+    ensure(firstSourceStatuses.every(status => status === 200), "PARALLEL_RATE_LIMIT_PRECONDITION_FAILED");
+    instanceRequests.secondary++;
+    firstSourceStatuses.push(await operations.request("secondary", "source-a", 6));
+    instanceRequests.primary++;
+    secondSourceStatus = await operations.request("primary", "source-b", 7);
+  } catch (error) {
+    failure = error;
+  } finally {
+    try {
+      await operations.stopSecondary(secondary);
+      secondaryReleased = await operations.inspectSecondaryReleased(secondary);
+      ensure(secondaryReleased?.processes === 0 && secondaryReleased?.listeners === 0, "SECONDARY_INSTANCE_NOT_RELEASED");
+    } catch (cleanupError) {
+      failure = failure ? new AggregateError([failure, cleanupError], "PARALLEL_INSTANCE_CONTROL_FAILED") : cleanupError;
+    }
+  }
+  if (failure) throw failure;
+  observation = { primary, secondary, simultaneouslyAlive, firstSourceStatuses, secondSourceStatus, instanceRequests, secondaryReleased };
+  evaluateParallelInstanceRateLimit(observation);
+  return observation;
+}
+
+export function evaluateCancelDeadlineControl(observation) {
+  ensure(observation.healthy?.status === 200 && observation.healthy?.businessDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
+  ensure(observation.cancelled?.outcome === "client_cancelled", "CLIENT_CANCELLATION_NOT_OBSERVED");
+  ensure(observation.deadline?.status === 504, "DEADLINE_RESPONSE_NOT_OBSERVED");
+  ensure(observation.cancelledSettled?.businessDispatches === 0 && observation.deadlineSettled?.businessDispatches === 0, "LATE_BUSINESS_DISPATCH_OBSERVED");
+  ensure(observation.cancelledSettled?.openRequests === 0 && observation.deadlineSettled?.openRequests === 0, "OBSERVER_REQUEST_NOT_RELEASED");
+  return { healthyDispatchObserved: true, clientCancellationObserved: true, deadlineResponseObserved: true, zeroLateDispatch: true, resourcesReleased: true };
+}
+
+export async function runCancelDeadlineControl(operations) {
+  const healthy = await operations.healthyRequest();
+  ensure(healthy?.status === 200 && healthy?.businessDispatches === 1, "HEALTHY_BUSINESS_DISPATCH_NOT_OBSERVED");
+  const cancelling = operations.beginCancelledRequest();
+  await cancelling.ready;
+  await cancelling.cancel();
+  const cancelled = await cancelling.result;
+  const cancelledSettled = await operations.settle("cancel");
+  const timingOut = operations.beginDeadlineRequest();
+  await timingOut.ready;
+  const deadline = await timingOut.result;
+  const deadlineSettled = await operations.settle("deadline");
+  const observation = { healthy, cancelled, cancelledSettled, deadline, deadlineSettled };
+  evaluateCancelDeadlineControl(observation);
+  return observation;
 }
 
 export async function runReverificationControl(operations) {
@@ -492,7 +616,7 @@ async function runWithInput(command, args, input) {
 }
 
 async function freePort(preferred = 0) {
-  const server = createServer();
+  const server = createNetServer();
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(preferred, "127.0.0.1", resolve); });
   const address = server.address();
   ensure(address && typeof address === "object", "PORT_ALLOCATION_FAILED");
@@ -503,7 +627,7 @@ async function freePort(preferred = 0) {
 async function fixturePorts() {
   const reserved = new Set(Object.values(manifest.ports));
   const allocated = {};
-  for (const name of ["next", "provider", "public", "mail"]) {
+  for (const name of ["next", "provider", "providerFault", "public", "publicSecondary", "mail", "goSecondary", "nextSecondary", "observer"]) {
     let candidate;
     do {
       const preferred = 20_000 + randomBytes(2).readUInt16BE() % 40_000;
@@ -628,6 +752,13 @@ async function startOwnedContainers(ports) {
     header_up X-ListingKit-Client-IP {remote_host}
   }
 }
+:81 {
+  reverse_proxy host.docker.internal:${ports.nextSecondary} {
+    header_up -X-Referral-Service-Credential
+    header_up -X-Referral-Client-IP
+    header_up X-ListingKit-Client-IP {remote_host}
+  }
+}
 https://localhost:443 {
   tls internal
   log {
@@ -648,6 +779,29 @@ https://localhost:443 {
     }
   }
 }
+https://localhost:445 {
+  tls internal
+  @user_business_read {
+    method GET
+    path /v2/users/*
+  }
+  @metadata_business_read {
+    method POST
+    path_regexp metadata_read ^/v2/users/[^/]+/metadata/search$
+  }
+  handle @user_business_read {
+    respond "{\"code\":13,\"message\":\"run-owned selective business read failure\"}" 503
+  }
+  handle @metadata_business_read {
+    respond "{\"code\":13,\"message\":\"run-owned selective business read failure\"}" 503
+  }
+  handle {
+    reverse_proxy http://proxy:80 {
+      header_up Host localhost:${manifest.ports.issuer}
+      header_up X-Forwarded-Proto http
+    }
+  }
+}
 https://localhost:444 {
   tls internal
   reverse_proxy host.docker.internal:${ports.next} {
@@ -656,9 +810,18 @@ https://localhost:444 {
     header_up X-ListingKit-Client-IP {remote_host}
   }
 }
+https://localhost:446 {
+  tls internal
+  reverse_proxy host.docker.internal:${ports.nextSecondary} {
+    header_up -X-Referral-Service-Credential
+    header_up -X-Referral-Client-IP
+    header_up X-ListingKit-Client-IP {remote_host}
+  }
+}
 `);
   await docker(["run", "-d", "--name", caddyName, "--label", `${ownerLabel}=${manifest.runId}`, "--network", network,
-    "-p", `127.0.0.1:${manifest.ports.web}:80`, "-p", `127.0.0.1:${ports.provider}:443`, "-p", `127.0.0.1:${ports.public}:444`,
+    "-p", `127.0.0.1:${manifest.ports.web}:80`, "-p", `127.0.0.1:${ports.provider}:443`, "-p", `127.0.0.1:${ports.providerFault}:445`,
+    "-p", `127.0.0.1:${ports.public}:444`, "-p", `127.0.0.1:${ports.publicSecondary}:446`,
     "--mount", `type=bind,source=${config},target=/etc/caddy/Caddyfile,readonly`, "--mount", `type=bind,source=${caddyData},target=/data`,
     caddyImage, "caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]);
   const caFile = path.join(caddyData, "caddy", "pki", "authorities", "local", "root.crt");
@@ -728,7 +891,9 @@ async function configureApplications(ports, caFile, providerCredential) {
   ensure(typeof applications.ProjectID === "string" && applications.ProjectID.length > 0, "PROJECT_ID_MISSING");
   ensure(typeof applications.OIDCAppID === "string" && applications.OIDCAppID.length > 0, "OIDC_APP_ID_MISSING");
   const publicOrigin = `https://localhost:${ports.public}`;
+  const secondaryPublicOrigin = `https://localhost:${ports.publicSecondary}`;
   const providerOrigin = `https://localhost:${ports.provider}`;
+  const providerFaultOrigin = `https://localhost:${ports.providerFault}`;
   await provider("/zitadel.application.v2.ApplicationService/UpdateApplication", {
     applicationId: applications.OIDCAppID,
     projectId: applications.ProjectID,
@@ -775,7 +940,7 @@ async function configureApplications(ports, caFile, providerCredential) {
     NODE_EXTRA_CA_CERTS: caFile,
   });
   await writeJSON(path.join(manifest.directory, "services.json"), services);
-  return { publicOrigin, providerOrigin };
+  return { publicOrigin, secondaryPublicOrigin, providerOrigin, providerFaultOrigin, caFile };
 }
 
 async function startConfiguredApplications(ports) {
@@ -797,6 +962,180 @@ async function startConfiguredApplications(ports) {
   const providers = await providersResponse.json();
   ensure(providers.zitadel, "NEXT_PROVIDER_MISSING");
   return { ready: true };
+}
+
+async function startDispatchObserver(port, upstreamOrigin) {
+  if (dispatchObserver) return dispatchObserver;
+  const observations = new Map();
+  let mode = "idle";
+  const state = name => {
+    if (!observations.has(name)) observations.set(name, { received: 0, businessDispatches: 0, openRequests: 0, closedRequests: 0 });
+    return observations.get(name);
+  };
+  const server = createHTTPServer(async (request, response) => {
+    const selected = mode;
+    const record = state(selected);
+    record.received++;
+    record.openRequests++;
+    try {
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of request) {
+        bytes += chunk.length;
+        ensure(bytes <= 16 * 1024, "OBSERVER_REQUEST_TOO_LARGE");
+        chunks.push(chunk);
+      }
+      if (["cancel", "deadline"].includes(selected)) {
+        await new Promise(resolve => {
+          let finished = false;
+          const done = () => { if (!finished) { finished = true; clearTimeout(timer); resolve(); } };
+          const timer = setTimeout(done, 25_000);
+          request.once("aborted", done);
+          response.once("close", done);
+        });
+        return;
+      }
+      record.businessDispatches++;
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(request.headers)) {
+        if (["host", "connection", "transfer-encoding", "content-length"].includes(name) || value === undefined) continue;
+        headers.set(name, Array.isArray(value) ? value.join(",") : value);
+      }
+      const upstream = await fetch(`${upstreamOrigin}${request.url}`, {
+        method: request.method,
+        headers,
+        body: chunks.length ? Buffer.concat(chunks) : undefined,
+        redirect: "manual",
+        signal: AbortSignal.timeout(30_000),
+      });
+      const body = Buffer.from(await upstream.arrayBuffer());
+      response.statusCode = upstream.status;
+      response.setHeader("content-type", upstream.headers.get("content-type") ?? "application/json");
+      response.setHeader("cache-control", "private, no-store");
+      response.end(body);
+    } catch {
+      if (!response.headersSent) {
+        response.statusCode = 503;
+        response.setHeader("content-type", "application/json");
+      }
+      if (!response.destroyed) response.end(JSON.stringify({ error: "referral_unavailable" }));
+    } finally {
+      record.openRequests--;
+      record.closedRequests++;
+    }
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+  dispatchObserver = {
+    port,
+    server,
+    arm(name) { mode = name; observations.set(name, { received: 0, businessDispatches: 0, openRequests: 0, closedRequests: 0 }); },
+    async waitReceived(name) { return until(() => state(name).received > 0, `OBSERVER_${name.toUpperCase()}_RECEIVED`, 30_000); },
+    async waitReleased(name) { return until(() => state(name).received > 0 && state(name).openRequests === 0, `OBSERVER_${name.toUpperCase()}_RELEASED`, 35_000); },
+    snapshot(name) { return { ...state(name) }; },
+  };
+  return dispatchObserver;
+}
+
+async function stopDispatchObserver() {
+  if (!dispatchObserver) return;
+  const current = dispatchObserver;
+  dispatchObserver = undefined;
+  current.server.closeAllConnections?.();
+  await new Promise((resolve, reject) => current.server.close(error => error ? reject(error) : resolve()));
+  ensure(await freePort(current.port) === current.port, "OBSERVER_PORT_NOT_RELEASED");
+}
+
+async function startSecondaryApplication(origins, ports) {
+  if (secondaryApplication) {
+    ensure([secondaryApplication.supervisorPid, secondaryApplication.goPid, secondaryApplication.nextPid].every(processAlive), "SECONDARY_APPLICATION_STALE");
+    return secondaryApplication;
+  }
+  const directory = path.resolve(manifest.directory, "m2-secondary");
+  ensure(path.dirname(directory) === path.resolve(manifest.directory), "SECONDARY_DIRECTORY_INVALID");
+  await rm(directory, { recursive: true, force: true });
+  await mkdir(directory, { recursive: true });
+  const current = structuredClone(await readJSON(path.join(manifest.directory, "current-application.json")));
+  current.listen.port = ports.goSecondary;
+  current.referrals.providerOrigin = origins.providerFaultOrigin;
+  const currentConfig = path.join(directory, "current-application.json");
+  await writeJSON(currentConfig, current);
+  const services = structuredClone(await readJSON(path.join(manifest.directory, "services.json")));
+  services.goArgs = ["-config", currentConfig, "-shutdown-file", path.join(directory, "stop-go")];
+  services.goEnvironment = {};
+  services.goPort = ports.goSecondary;
+  services.webPort = ports.nextSecondary;
+  Object.assign(services.nextEnvironment, {
+    AUTH_URL: origins.secondaryPublicOrigin,
+    LISTINGKIT_PUBLIC_BASE_URL: origins.secondaryPublicOrigin,
+    ZITADEL_REDIRECT_URI: `${origins.secondaryPublicOrigin}/api/auth/callback/zitadel`,
+    ZITADEL_POST_LOGOUT_REDIRECT_URI: origins.secondaryPublicOrigin,
+    LISTINGKIT_SERVICE_API_BASE: `http://127.0.0.1:${ports.observer}/api/v1`,
+    COMMERCIAL_API_ORIGIN: `http://127.0.0.1:${ports.goSecondary}`,
+  });
+  await writeJSON(path.join(directory, "services.json"), services);
+  for (const name of ["stop-go", "stop-next", "stop-services", "go-ready.json", "next-ready.json", "services-stopped.json", "processes.json"]) await unlink(path.join(directory, name)).catch(error => { if (error.code !== "ENOENT") throw error; });
+  const child = spawn(process.execPath, [path.join(repo, "scripts", "issue357", "serve.mjs"), directory], { cwd: directory, detached: true, windowsHide: true, stdio: "ignore" });
+  await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", () => reject(new Error("SECONDARY_SUPERVISOR_START_FAILED"))); });
+  child.unref();
+  secondaryApplication = {
+    instanceId: `${manifest.runId}:secondary:${++secondaryGeneration}`,
+    directory,
+    supervisorPid: child.pid,
+    goPid: undefined,
+    nextPid: undefined,
+    goPort: ports.goSecondary,
+    nextPort: ports.nextSecondary,
+    databaseId: manifest.resources?.[`${manifest.project}-commercial-db`]?.id,
+    ready: false,
+  };
+  await until(async () => {
+    const stopped = await readJSON(path.join(directory, "services-stopped.json")).catch(error => error.code === "ENOENT" ? null : Promise.reject(error));
+    ensure(!stopped, "SECONDARY_APPLICATION_STOPPED_DURING_START");
+    await readJSON(path.join(directory, "go-ready.json"));
+    await readJSON(path.join(directory, "next-ready.json"));
+    return true;
+  }, "SECONDARY_APPLICATION_START", 300_000);
+  const processes = await readJSON(path.join(directory, "processes.json"));
+  ensure([processes.supervisor?.pid, processes.go?.pid, processes.next?.pid].every(processAlive), "SECONDARY_APPLICATION_PROCESS_MISSING");
+  const provider = await fetch(`http://127.0.0.1:${ports.nextSecondary}/api/auth/providers`, { signal: AbortSignal.timeout(90_000) });
+  ensure(provider.status === 200 && (await provider.json()).zitadel, "SECONDARY_AUTH_PROVIDER_MISSING");
+  const unauthenticated = await fetch(`http://127.0.0.1:${ports.goSecondary}/api/v1/account/profile`, { signal: AbortSignal.timeout(10_000) });
+  ensure(unauthenticated.status === 401, "SECONDARY_GO_HEALTH_FAILED");
+  const databaseId = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
+  ensure(databaseId, "SECONDARY_DATABASE_IDENTITY_MISSING");
+  secondaryApplication = {
+    ...secondaryApplication,
+    supervisorPid: processes.supervisor.pid,
+    goPid: processes.go.pid,
+    nextPid: processes.next.pid,
+    databaseId,
+    ready: true,
+  };
+  report.secondaryApplicationStarts = secondaryGeneration;
+  return secondaryApplication;
+}
+
+async function stopSecondaryApplication(application = secondaryApplication) {
+  if (!application) return;
+  await writePrivate(path.join(application.directory, "stop-services"), "stop\n");
+  const latest = await readJSON(path.join(application.directory, "processes.json")).catch(error => error.code === "ENOENT" ? {} : Promise.reject(error));
+  application.supervisorPid = latest.supervisor?.pid ?? application.supervisorPid;
+  application.goPid = latest.go?.pid ?? application.goPid;
+  application.nextPid = latest.next?.pid ?? application.nextPid;
+  await until(() => !processAlive(application.supervisorPid) && !processAlive(application.goPid) && !processAlive(application.nextPid), "SECONDARY_APPLICATION_STOP", 40_000);
+  const stopped = await readJSON(path.join(application.directory, "services-stopped.json")).catch(error => error.code === "ENOENT" ? null : Promise.reject(error));
+  if (application.ready) ensure(stopped?.passed === true, "SECONDARY_APPLICATION_STOP_FAILED");
+  for (const port of [application.goPort, application.nextPort]) ensure(await freePort(port) === port, "SECONDARY_APPLICATION_PORT_NOT_RELEASED");
+  if (secondaryApplication?.instanceId === application.instanceId) secondaryApplication = undefined;
+}
+
+async function inspectSecondaryReleased(application) {
+  return {
+    processes: [application.supervisorPid, application.goPid, application.nextPid].filter(processAlive).length,
+    listeners: (await Promise.all([application.goPort, application.nextPort].map(async port => {
+      try { return await freePort(port) === port ? 0 : 1; } catch { return 1; }
+    }))).reduce((sum, value) => sum + value, 0),
+  };
 }
 
 async function restartConfiguredApplications(ports) {
@@ -880,6 +1219,51 @@ async function probeProviderProxy(providerOrigin, caFile, machineToken) {
   const payload = JSON.parse(result.body.toString("utf8"));
   ensure(payload.user?.userId === subject, "PROVIDER_PROXY_SUBJECT_MISMATCH");
   return { tlsVerified: true, providerReadStatus: result.status };
+}
+
+async function providerTLSRead(origin, pathname, caFile, token) {
+  const ca = await readFile(caFile);
+  const target = new URL(pathname, origin);
+  return new Promise((resolve, reject) => {
+    const request = httpsRequest(target, {
+      method: "GET",
+      ca,
+      rejectUnauthorized: true,
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      timeout: 10_000,
+    }, response => {
+      const chunks = [];
+      let size = 0;
+      response.on("data", chunk => {
+        size += chunk.length;
+        if (size > 1024 * 1024) request.destroy(new Error("PROVIDER_TLS_RESPONSE_TOO_LARGE"));
+        else chunks.push(chunk);
+      });
+      response.on("end", () => {
+        let payload = {};
+        try { payload = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {}; } catch {}
+        resolve({ status: response.statusCode, payload });
+      });
+    });
+    request.once("timeout", () => request.destroy(new Error("PROVIDER_TLS_TIMEOUT")));
+    request.once("error", reject);
+    request.end();
+  });
+}
+
+async function relationshipCountForSubject(subject) {
+  ensure(/^[A-Za-z0-9._:-]{1,200}$/.test(subject ?? ""), "RELATIONSHIP_SUBJECT_INVALID");
+  const value = await run("docker", ["--host", dockerHost, "exec", `${manifest.project}-commercial-db`, "psql", "-At", "-U", "issue357", "-d", "issue357", "-c", `SELECT COUNT(*) FROM public.referral_relations WHERE subject='${subject}'`]);
+  ensure(/^\d+$/.test(value), "RELATIONSHIP_COUNT_INVALID");
+  return Number(value);
+}
+
+async function postCompletion(api, origin, expectedSubject) {
+  const response = await api.post(`${origin}/api/account/referrals/complete`, {
+    headers: { Origin: origin, "Sec-Fetch-Site": "same-origin", "X-Expected-User-ID": expectedSubject },
+  });
+  const receipt = await response.json().catch(() => ({}));
+  return { status: response.status(), receipt };
 }
 
 export async function submitOfficialLoginStep(page, input, submit, value) {
@@ -1905,6 +2289,90 @@ async function browserChain(origins, ports, machine) {
     await writeJSON(path.join(outputDirectory, "m1-user-token-observation.json"), { ...observation, tokenSubject: "redacted-human-subject" });
     return { ...evaluateUserTokenBoundary(observation), precondition: "human_oidc_userinfo_200_and_service_credential_200", injection: "oidc_user_token_in_service_credential_header_while_storage_stopped", positiveControl: "independent_service_credential_admission", observation: observation.zeroDispatchEvidence, invariants: ["user_token_not_service_credential", "referral_digest_unchanged"], directBusinessDispatchObserver: observation.directBusinessDispatchObserver };
   });
+  await startDispatchObserver(ports.observer, `http://127.0.0.1:${ports.goSecondary}`);
+  await matrixCheck("C", "provider_business_read_failure_preserves_receipt", async () => {
+    const observation = await runProviderBusinessReadFailureControl({
+      verifyIdentityHealth: async () => {
+        const discoveryResponse = await fetch(`${manifest.origins.issuer}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(10_000) });
+        const discovery = await discoveryResponse.json();
+        const jwksResponse = await fetch(discovery.jwks_uri, { signal: AbortSignal.timeout(10_000) });
+        const authProviders = await fetch(`http://127.0.0.1:${ports.next}/api/auth/providers`, { signal: AbortSignal.timeout(90_000) });
+        const identity = await context.request.get(`${origins.publicOrigin}/api/account/profile`, { headers: { "X-Expected-User-ID": subject } });
+        const identityPayload = await identity.json().catch(() => ({}));
+        ensure(identityPayload.userId === subject, "CURRENT_IDENTITY_SUBJECT_MISMATCH");
+        return { discoveryStatus: discoveryResponse.status, jwksStatus: jwksResponse.status, authProvidersStatus: authProviders.status, currentIdentityStatus: identity.status(), currentSubject: identityPayload.userId };
+      },
+      replayReceipt: phase => postCompletion(context.request, phase === "before" ? origins.publicOrigin : origins.secondaryPublicOrigin, subject),
+      relationshipCount: () => relationshipCountForSubject(subject),
+      enableSelectiveBusinessReadFailure: () => startSecondaryApplication(origins, ports),
+      observeBusinessReadFailure: async () => {
+        const result = await providerTLSRead(origins.providerFaultOrigin, `/v2/users/${encodeURIComponent(subject)}`, origins.caFile, machine.token);
+        return { status: result.status, path: `/v2/users/${subject}` };
+      },
+      disableSelectiveBusinessReadFailure: () => stopSecondaryApplication(),
+      observeBusinessReadRecovery: async () => {
+        const result = await providerTLSRead(origins.providerOrigin, `/v2/users/${encodeURIComponent(subject)}`, origins.caFile, machine.token);
+        return { status: result.status, subject: result.payload?.user?.userId };
+      },
+    });
+    await writeJSON(path.join(outputDirectory, "m2-provider-business-read-observation.json"), observation);
+    return { ...evaluateProviderBusinessReadFailure(observation), precondition: "current_identity_discovery_jwks_authjs_and_committed_receipt_healthy", injection: "secondary_go_uses_run_owned_provider_business_read_only_503_origin", positiveControl: "healthy_provider_user_read_after_secondary_stop", observation: "same_durable_receipt_and_relationship_count_during_selective_provider_read_failure", invariants: ["receipt_first_replay", "one_relationship", "identity_stack_healthy"] };
+  });
+  await matrixCheck("E", "cancel_deadline_zero_late_dispatch", async () => {
+    await startSecondaryApplication(origins, ports);
+    const cancelContext = await browser.newContext({ viewport: { width: 900, height: 700 }, locale: "zh-CN", ignoreHTTPSErrors: true });
+    const controlPage = await cancelContext.newPage();
+    try {
+      await controlPage.goto(`${origins.secondaryPublicOrigin}/referrals/register?code=${encodeURIComponent(code)}`, { waitUntil: "load", timeout: 90_000 });
+      const bodyFor = suffix => ({ code, email: `m2.${suffix}.${manifest.runId.slice(0, 8)}@example.test`, givenName: "Deadline", familyName: "Control" });
+      const begin = (mode, suffix) => {
+        dispatchObserver.arm(mode);
+        const result = controlPage.evaluate(async ({ body, key, mode }) => {
+          const controller = new AbortController();
+          window.__issue413M2AbortController = controller;
+          try {
+            const response = await fetch("/api/referral-registration", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+              body: JSON.stringify(body),
+              signal: controller.signal,
+            });
+            await response.arrayBuffer();
+            return { status: response.status, outcome: "response" };
+          } catch {
+            return { outcome: controller.signal.aborted ? "client_cancelled" : `${mode}_request_failed` };
+          }
+        }, { body: bodyFor(suffix), key: createHash("sha256").update(`${manifest.runId}:${mode}`).digest("hex"), mode });
+        return {
+          ready: dispatchObserver.waitReceived(mode),
+          cancel: () => controlPage.evaluate(() => window.__issue413M2AbortController?.abort()),
+          result,
+        };
+      };
+      const observation = await runCancelDeadlineControl({
+        healthyRequest: async () => {
+          const request = begin("healthy", "healthy");
+          await request.ready;
+          const result = await request.result;
+          await dispatchObserver.waitReleased("healthy");
+          const snapshot = dispatchObserver.snapshot("healthy");
+          return { status: result.status, businessDispatches: snapshot.businessDispatches };
+        },
+        beginCancelledRequest: () => begin("cancel", "cancel"),
+        beginDeadlineRequest: () => begin("deadline", "deadline"),
+        settle: async mode => {
+          await dispatchObserver.waitReleased(mode);
+          await delay(1_000);
+          const snapshot = dispatchObserver.snapshot(mode);
+          return { businessDispatches: snapshot.businessDispatches, openRequests: snapshot.openRequests, receivedRequests: snapshot.received, closedRequests: snapshot.closedRequests };
+        },
+      });
+      await writeJSON(path.join(outputDirectory, "m2-cancel-deadline-observation.json"), observation);
+      return { ...evaluateCancelDeadlineControl(observation), precondition: "healthy_browser_bff_observer_go_dispatch_200", injection: "browser_cancel_and_bff_15_second_deadline_after_body_read_before_go_dispatch", positiveControl: "same_chain_dispatches_once_in_healthy_mode", observation: "observer_received_and_released_both_requests_with_zero_go_dispatch", invariants: ["not_yet_dispatched_zero_late_dispatch", "observer_requests_released"] };
+    } finally {
+      await cancelContext.close();
+    }
+  });
   await matrixCheck("E", "real_source_ips_and_cross_process_rate_limit", async () => {
     const network = `${manifest.project}-network`;
     for (const suffix of ["a", "b"]) {
@@ -1927,6 +2395,48 @@ async function browserChain(origins, ports, machine) {
     const independent = await status(ownedClientNames[1], 7);
     ensure(limited === 429 && independent === 200, `CROSS_PROCESS_RATE_STATUS:${first.join(":")}:${limited}:${independent}`);
     return { firstSourceStatuses: first, afterRestartSameSource: limited, secondSource: independent };
+  });
+  await matrixCheck("E", "parallel_application_instances_share_rate_limit", async () => {
+    const network = `${manifest.project}-network`;
+    const status = async (instance, source, sequence) => {
+      const name = source === "source-a" ? ownedClientNames[0] : ownedClientNames[1];
+      const origin = instance === "primary" ? origins.publicOrigin : origins.secondaryPublicOrigin;
+      const portSuffix = instance === "primary" ? "" : ":81";
+      const body = JSON.stringify({ code, email: `parallel.${sequence}.${manifest.runId.slice(0, 8)}@example.test`, givenName: "Parallel", familyName: "Limit" });
+      const key = createHash("sha256").update(`${manifest.runId}:parallel:${sequence}`).digest("hex");
+      const shell = `wget -S -O /dev/null --header='Origin: ${origin}' --header='Sec-Fetch-Site: same-origin' --header='Content-Type: application/json' --header='Idempotency-Key: ${key}' --post-data='${body}' http://${caddyName}${portSuffix}/api/referral-registration 2>&1 | awk '/  HTTP\\// {s=$2} END {print s}'`;
+      return Number(await docker(["exec", name, "sh", "-c", shell]));
+    };
+    const observation = await runParallelInstanceRateLimitControl({
+      startSecondary: () => startSecondaryApplication(origins, ports),
+      inspectPrimary: async () => {
+        const processes = await readJSON(path.join(manifest.directory, "processes.json"));
+        return { instanceId: `${manifest.runId}:primary`, goPid: processes.go.pid, nextPid: processes.next.pid, goPort: manifest.ports.go, nextPort: ports.next, databaseId: manifest.resources?.[`${manifest.project}-commercial-db`]?.id };
+      },
+      bothAlive: async (primary, secondary) => {
+        const alive = [primary.goPid, primary.nextPid, secondary.supervisorPid, secondary.goPid, secondary.nextPid].every(processAlive);
+        const health = await Promise.all([
+          fetch(`http://127.0.0.1:${primary.goPort}/api/v1/account/profile`, { signal: AbortSignal.timeout(5_000) }),
+          fetch(`http://127.0.0.1:${secondary.goPort}/api/v1/account/profile`, { signal: AbortSignal.timeout(5_000) }),
+          fetch(`http://127.0.0.1:${primary.nextPort}/api/auth/providers`, { signal: AbortSignal.timeout(30_000) }),
+          fetch(`http://127.0.0.1:${secondary.nextPort}/api/auth/providers`, { signal: AbortSignal.timeout(30_000) }),
+        ]);
+        return alive && health[0].status === 401 && health[1].status === 401 && health[2].status === 200 && health[3].status === 200;
+      },
+      waitForFreshWindow: async () => {
+        const seconds = new Date().getUTCSeconds();
+        await delay((61 - seconds) * 1_000);
+        dispatchObserver.arm("parallel");
+      },
+      request: status,
+      stopSecondary: application => stopSecondaryApplication(application),
+      inspectSecondaryReleased,
+    });
+    const observer = dispatchObserver.snapshot("parallel");
+    ensure(observer.businessDispatches >= 3 && observer.openRequests === 0, "SECONDARY_BACKEND_TRAFFIC_NOT_OBSERVED");
+    const evidence = { ...observation, secondaryBackendObserver: observer };
+    await writeJSON(path.join(outputDirectory, "m2-parallel-rate-limit-observation.json"), evidence);
+    return { ...evaluateParallelInstanceRateLimit(observation), precondition: "two_live_go_next_process_pairs_and_one_owned_postgresql", injection: "one_source_alternates_primary_secondary_in_same_database_window", positiveControl: "second_source_allowed", observation: "five_total_200_then_cross_instance_429_with_secondary_backend_dispatches", invariants: ["shared_database_rate_bucket", "both_instances_receive_traffic", "secondary_processes_and_ports_released"], secondaryBackendDispatches: observer.businessDispatches };
   });
   await matrixCheck("E", "missing_dependency_disables_invite_entry", async () => {
     const secret = path.join(manifest.directory, "referral-service.secret");
@@ -2007,6 +2517,8 @@ async function cleanup(machine, bootstrap, phase) {
   }
   const actions = [
     { name: "browser", run: async () => { if (browser) { await browser.close(); browser = null; } } },
+    { name: "secondary-application", run: async () => stopSecondaryApplication() },
+    { name: "dispatch-observer", run: async () => stopDispatchObserver() },
     { name: "created-subject", run: async () => {
       if (manifest && bootstrap && report.createdSubject && !createdSubjectDeleted) {
         await provider(`/v2/users/${encodeURIComponent(report.createdSubject)}`, undefined, bootstrap, "DELETE");
@@ -2099,6 +2611,9 @@ async function cleanupPrivateArtifacts(owner) {
   const caddyRoot = path.resolve(expected, "referral-caddy");
   ensure(path.dirname(caddyRoot) === expected, "CLEANUP_PATH_INVALID");
   await rm(caddyRoot, { recursive: true, force: true });
+  const secondaryRoot = path.resolve(expected, "m2-secondary");
+  ensure(path.dirname(secondaryRoot) === expected, "CLEANUP_PATH_INVALID");
+  await rm(secondaryRoot, { recursive: true, force: true });
 }
 
 async function cleanupCommand(runId) {
