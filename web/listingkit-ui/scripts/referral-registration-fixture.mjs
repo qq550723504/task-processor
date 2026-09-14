@@ -1217,16 +1217,22 @@ async function browserChain(origins, ports, machine) {
     const disabled = `${secret}.disabled`;
     await rename(secret, disabled);
     try {
-      const response = await referrerContext.request.get(`${origins.publicOrigin}/workbench/account/referrals`);
-      ensure(response.status() === 200, `MISSING_DEPENDENCY_PAGE_HTTP_${response.status()}`);
-      const html = await response.text();
-      ensure(html.includes("注册入口暂不可用") && !html.includes("打开邀请链接"), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
+      const probe = await referrerContext.newPage();
+      await probe.goto(`${origins.publicOrigin}/workbench/account/referrals`, { waitUntil: "load" });
+      await probe.getByText("注册入口暂不可用").waitFor({ state: "visible", timeout: 30_000 });
+      ensure(!(await probe.getByRole("link", { name: "打开邀请链接" }).isVisible().catch(() => false)), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
+      await probe.close();
     } finally {
       await rename(disabled, secret).catch(() => {});
     }
     return { inviteEnabled: false };
   });
+  await referrerPage.reload({ waitUntil: "load" });
+  await referrerPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
   await referrerPage.setViewportSize({ width: 390, height: 844 });
+  const firstControl = referrerPage.locator("a[href],button:not([disabled])").first();
+  await firstControl.focus();
+  ensure(await firstControl.evaluate(element => element === document.activeElement), "OVERVIEW_INITIAL_FOCUS_MISSING");
   await referrerPage.keyboard.press("Tab");
   ensure(await referrerPage.evaluate(() => document.activeElement !== document.body), "OVERVIEW_KEYBOARD_FOCUS_MISSING");
   const overviewAxe = await assertNoSeriousA11y(referrerPage);
