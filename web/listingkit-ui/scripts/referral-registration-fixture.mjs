@@ -551,8 +551,8 @@ async function startConfiguredApplications(ports) {
 async function restartConfiguredApplications(ports) {
   const before = await readJSON(path.join(manifest.directory, "processes.json"));
   const databaseID = manifest.resources?.[`${manifest.project}-commercial-db`]?.id;
-  await writePrivate(path.join(manifest.directory, "stop-services"), "stop\n");
-  const stopped = await until(() => readJSON(path.join(manifest.directory, "services-stopped.json")), "CONFIGURED_APPLICATION_STOP", 90_000);
+  await run(process.execPath, [runtimeScript, "stop", "--run", manifest.runId]);
+  const stopped = await readJSON(path.join(manifest.directory, "stop.json"));
   ensure(stopped.passed === true, "CONFIGURED_APPLICATION_STOP_FAILED");
   ensure(!processAlive(before.go?.pid) && !processAlive(before.next?.pid), "OLD_APPLICATION_PROCESS_ALIVE");
   await startConfiguredApplications(ports);
