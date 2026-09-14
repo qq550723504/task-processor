@@ -1182,7 +1182,7 @@ async function browserChain(origins, ports, machine) {
   await matrixCheck("E", "bff_and_go_reject_untrusted_credentials_and_csrf", async () => {
     const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } })
       .catch(() => { throw new Error("CSRF_REQUEST_FAILED"); });
-    const goURL = `http://127.0.0.1:${ports.go}/api/v1/referral-registration/intents`;
+    const goURL = `${manifest.origins.go}/api/v1/referral-registration/intents`;
     const direct = headers => fetch(goURL, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": admissionRequest.key, ...headers }, body: admissionRequest.body });
     const attempts = await Promise.allSettled([direct({}), direct({ "X-Referral-Service-Credential": "0".repeat(64) }), direct({ "X-Referral-Service-Credential": machine.token })]);
     const statuses = attempts.map(result => result.status === "fulfilled" ? result.value.status : -1);
@@ -1217,12 +1217,12 @@ async function browserChain(origins, ports, machine) {
     const disabled = `${secret}.disabled`;
     await rename(secret, disabled);
     try {
-      await referrerPage.reload({ waitUntil: "load" });
-      await referrerPage.getByText("注册入口暂不可用").waitFor({ state: "visible", timeout: 30_000 });
-      ensure(!(await referrerPage.getByRole("link", { name: "打开邀请链接" }).isVisible().catch(() => false)), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
+      const response = await referrerContext.request.get(`${origins.publicOrigin}/workbench/account/referrals`);
+      ensure(response.status() === 200, `MISSING_DEPENDENCY_PAGE_HTTP_${response.status()}`);
+      const html = await response.text();
+      ensure(html.includes("注册入口暂不可用") && !html.includes("打开邀请链接"), "INVITE_LINK_ENABLED_WITHOUT_DEPENDENCY");
     } finally {
       await rename(disabled, secret).catch(() => {});
-      await referrerPage.reload({ waitUntil: "load" }).catch(() => {});
     }
     return { inviteEnabled: false };
   });
