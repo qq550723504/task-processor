@@ -106,7 +106,8 @@ test("matrix evidence and NOT_RUN fallback cannot overwrite a PASS classificatio
 
 test("configured restart closes browser connections and keeps executed completion evidence", async () => {
   const source = await readFile(fileURLToPath(new URL("./referral-registration-fixture.mjs", import.meta.url)), "utf8");
-  assert.ok(source.indexOf("await Promise.all([context.close(), referrerContext.close()])") < source.indexOf("const restartEvidence = await restartConfiguredApplications(ports)"));
+  assert.match(source, /await Promise\.all\(\[context\.close\(\), referrerContext\.close\(\)\]\);\s+const evidence = await restartConfiguredApplications\(ports\)/);
+  assert.equal(source.match(/restartContextsAndApplications\(/g)?.length, 2);
   assert.doesNotMatch(source, /matrixNotRun\("C", "concurrent_first_completion_one_relationship"/);
 });
 

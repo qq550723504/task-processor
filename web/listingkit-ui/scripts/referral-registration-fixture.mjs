@@ -777,6 +777,17 @@ async function browserChain(origins, ports, machine) {
   page.on("response", response => {
     if (response.request().method() === "POST" && new URL(response.url()).pathname === "/api/referral-registration/resume") resumeStatuses.push(response.status());
   });
+  const restartContextsAndApplications = async onResponse => {
+    const urls = [page.url(), referrerPage.url()];
+    const states = await Promise.all([context.storageState(), referrerContext.storageState()]);
+    await Promise.all([context.close(), referrerContext.close()]);
+    const evidence = await restartConfiguredApplications(ports);
+    context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true, storageState: states[0], extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
+    referrerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true, storageState: states[1] });
+    page = await context.newPage(); referrerPage = await referrerContext.newPage(); if (onResponse) page.on("response", onResponse);
+    await Promise.all([page.goto(urls[0], { waitUntil: "load" }), referrerPage.goto(urls[1], { waitUntil: "load" })]);
+    return evidence;
+  };
   await check("registration_ui_desktop_and_automated_accessibility", async () => {
     try {
       await page.goto(`${origins.publicOrigin}/referrals/register?code=${encodeURIComponent(code)}`);
@@ -1097,15 +1108,8 @@ async function browserChain(origins, ports, machine) {
           if (await page.getByText("推广关系已确认").isVisible().catch(() => false)) throw new Error("COMPLETION_RESPONSE_LOSS_NOT_OBSERVED");
           throw new Error("COMPLETION_RESPONSE_LOSS_UI_TIMEOUT");
         });
-      const [subjectState, referrerState] = await Promise.all([context.storageState(), referrerContext.storageState()]);
-      await Promise.all([context.close(), referrerContext.close()]);
-      const restartEvidence = await restartConfiguredApplications(ports);
-      context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true, storageState: subjectState,
-        extraHTTPHeaders: { "X-Forwarded-For": "127.0.0.1", "X-ListingKit-Client-IP": "127.0.0.1" } });
-      referrerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true, storageState: referrerState });
-      page = await context.newPage(); referrerPage = await referrerContext.newPage(); page.on("response", observe);
+      const restartEvidence = await restartContextsAndApplications(observe);
       button = page.getByRole("button", { name: "完成推广关系" });
-      await page.goto(`${origins.publicOrigin}/workbench/account/referrals/complete`, { waitUntil: "load" });
       await button.waitFor({ state: "visible", timeout: 45_000 });
       await waitForReactHydration(page, button);
       await page.route("**/api/account/referrals", route => route.fulfill({
@@ -1211,22 +1215,24 @@ async function browserChain(origins, ports, machine) {
   await matrixCheck("D", "admin_reads_only_own_personal_projection", async () => {
     const admin = await readJSON(path.join(manifest.directory, "admin.credentials.json"));
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "zh-CN", ignoreHTTPSErrors: true });
-    const adminPage = await adminContext.newPage();
-    await login(adminPage, origins.publicOrigin, admin, "/workbench/account/referrals");
-    await adminPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
-    ensure((await adminPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "0", "ADMIN_READ_OTHER_RELATION");
-    await adminContext.close();
-    return { targetRelationVisible: false, ownCount: 0 };
+    try {
+      const adminPage = await adminContext.newPage();
+      await login(adminPage, origins.publicOrigin, admin, "/workbench/account/referrals");
+      await adminPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+      ensure((await adminPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "0", "ADMIN_READ_OTHER_RELATION");
+      return { targetRelationVisible: false, ownCount: 0 };
+    } finally { await adminContext.close(); }
   });
   await matrixCheck("D", "no_enterprise_user_can_read_own_empty_projection", async () => {
     const credential = await readJSON(path.join(manifest.directory, "no-org.credentials.json"));
     const isolated = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "zh-CN", ignoreHTTPSErrors: true });
-    const isolatedPage = await isolated.newPage();
-    await login(isolatedPage, origins.publicOrigin, credential, "/workbench/account/referrals");
-    await isolatedPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
-    ensure((await isolatedPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "0", "NO_ENTERPRISE_SELF_READ_INVALID");
-    await isolated.close();
-    return { ownCount: 0 };
+    try {
+      const isolatedPage = await isolated.newPage();
+      await login(isolatedPage, origins.publicOrigin, credential, "/workbench/account/referrals");
+      await isolatedPage.getByText("已建立关系").waitFor({ state: "visible", timeout: 30_000 });
+      ensure((await isolatedPage.locator("article").filter({ hasText: "已建立关系" }).locator("strong").textContent()) === "0", "NO_ENTERPRISE_SELF_READ_INVALID");
+      return { ownCount: 0 };
+    } finally { await isolated.close(); }
   });
   await matrixCheck("E", "bff_and_go_reject_untrusted_credentials_and_csrf", async () => {
     const csrf = await context.request.post(`${origins.publicOrigin}/api/referral-registration`, { data: JSON.parse(admissionRequest.body), headers: { "Idempotency-Key": admissionRequest.key } })
@@ -1255,7 +1261,7 @@ async function browserChain(origins, ports, machine) {
     const first = [];
     for (let index = 1; index <= 5; index++) first.push(await status(ownedClientNames[0], index));
     ensure(first.every(value => value === 200), "SOURCE_RATE_LIMIT_PRECONDITION_FAILED");
-    await restartConfiguredApplications(ports);
+    await restartContextsAndApplications();
     const limited = await status(ownedClientNames[0], 6);
     const independent = await status(ownedClientNames[1], 7);
     ensure(limited === 429 && independent === 200, `CROSS_PROCESS_RATE_STATUS:${first.join(":")}:${limited}:${independent}`);
