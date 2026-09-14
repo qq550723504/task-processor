@@ -1045,6 +1045,20 @@ async function waitForScreenReaderDecision(status, timeoutMs, signal) {
   throw new Error("SCREEN_READER_CHECKPOINT_TIMEOUT");
 }
 
+export async function waitForScreenReaderDecisionOrPageClose(waitForDecision, page) {
+  const controller = new AbortController();
+  const onClose = () => controller.abort();
+  page.once("close", onClose);
+  try {
+    return await waitForDecision(controller.signal);
+  } catch (error) {
+    if (page.isClosed()) throw new Error("SCREEN_READER_BROWSER_CLOSED");
+    throw error;
+  } finally {
+    page.off("close", onClose);
+  }
+}
+
 async function collectScreenReaderObservation(checkpointId, page, options = {}) {
   if (!screenReaderSession) return undefined;
   const sequence = screenReaderSession.observations.length + 1;
@@ -1081,7 +1095,7 @@ async function collectScreenReaderObservation(checkpointId, page, options = {}) 
   await unlink(screenReaderSession.paths.input(sequence)).catch(error => { if (error.code !== "ENOENT") throw error; });
   await writeJSONAtomic(screenReaderSession.paths.status, status);
   console.log(`SCREEN_READER_CHECKPOINT ${checkpointId} ${manifest.runId}`);
-  const decision = await waitForScreenReaderDecision(status, timeoutMs);
+  const decision = await waitForScreenReaderDecisionOrPageClose(signal => waitForScreenReaderDecision(status, timeoutMs, signal), page);
   if (decision.kind === "abort") throw new Error("SCREEN_READER_SESSION_ABORTED");
   ensure(!page.isClosed() && new URL(page.url()).pathname === status.page && JSON.stringify(page.viewportSize()) === JSON.stringify(status.viewport), "SCREEN_READER_OBSERVATION_STATE_MISMATCH");
   const observation = decision.observation;

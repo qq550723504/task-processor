@@ -282,6 +282,40 @@ test("manual terminal evidence fails closed on actual observation and report fil
   }
 });
 
+test("manual checkpoint wait reports an actual Playwright page close", async () => {
+  const { orchestrateFixtureLifecycle, waitForScreenReaderDecisionOrPageClose, writeJSONAtomic } = await runner();
+  const { chromium } = await import("@playwright/test");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent("<main>screen reader checkpoint control</main>");
+    const waiting = waitForScreenReaderDecisionOrPageClose(signal => new Promise((resolve, reject) => signal.addEventListener("abort", () => reject(new Error("WAIT_CANCELLED")), { once: true })), page);
+    const observed = waiting.catch(error => error);
+    await page.close();
+    const closeError = await observed;
+    assert.match(closeError.message, /SCREEN_READER_BROWSER_CLOSED/);
+    const directory = await mkdtemp(path.join(tmpdir(), "issue413-manual-browser-close-"));
+    try {
+      const cleanup = phase => ({ phase, status: "PASS", actions: [], residuals: { status: "PASS", containers: 0, volumes: 0, networks: 0, listeners: 0 } });
+      const outcome = await orchestrateFixtureLifecycle({
+        report: { manualAccessibility: { status: "NOT_RUN", sessionStatus: "IN_PROGRESS", observations: [] } },
+        runBusiness: async () => { throw closeError; },
+        runCleanup: async phase => cleanup(phase),
+        persistManualEvidence: value => writeJSONAtomic(path.join(directory, "screen-reader-observations.json"), value),
+        persistReport: value => writeJSONAtomic(path.join(directory, "report.json"), value),
+        emitFailure: () => {},
+      });
+      assert.equal(outcome.exitCode, 1);
+      assert.equal(JSON.parse(await readFile(path.join(directory, "screen-reader-observations.json"), "utf8")).terminationReason, "SCREEN_READER_BROWSER_CLOSED");
+      assert.equal(JSON.parse(await readFile(path.join(directory, "report.json"), "utf8")).manualAccessibility.terminationReason, "SCREEN_READER_BROWSER_CLOSED");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
 test("manual acknowledgement binds to the observed phase and exact state attempt", async () => {
   const { screenReaderObservationFromInput } = await runner();
   const base = screenReaderObservation("registration-pending", 2);
