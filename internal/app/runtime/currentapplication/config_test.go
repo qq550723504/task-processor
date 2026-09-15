@@ -3,14 +3,19 @@ package currentapplication
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	coreconfig "task-processor/internal/core/config"
 )
 
 func TestDatabasePasswordSeparatorsRejectedBeforeRuntimeDependencies(t *testing.T) {
@@ -92,6 +97,13 @@ func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAcceptsExplicitlyDisabledReferrals(t *testing.T) {
+	manifest := strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "referrals": {"enabled": false},`, 1)
+	if _, err := LoadConfig(writeManifest(t, manifest)); err != nil {
+		t.Fatalf("explicitly disabled referrals must require no credentials or database: %v", err)
+	}
+}
+
 func TestLoadConfigRejectsRelativePathAndNonJSONInput(t *testing.T) {
 	if _, err := LoadConfig("manifest.json"); err == nil || !strings.Contains(err.Error(), "absolute") {
 		t.Fatalf("relative LoadConfig() error = %v", err)
@@ -152,6 +164,96 @@ func TestLoadConfigDoesNotReadEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.Identity.ClientSecret != "runtime-secret" {
 		t.Fatalf("environment changed manifest: %#v", cfg)
+	}
+}
+
+func referralRuntimeConfig(t *testing.T) *Config {
+	t.Helper()
+	cfg := runtimeTestConfig()
+	secret := func(name string) string {
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(path, []byte(hex.EncodeToString(b)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	cfg.Referrals = ReferralsConfig{ReferralsConfig: coreconfig.ReferralsConfig{Enabled: true, Issuer: cfg.Identity.IssuerURL, InstanceID: "fixture", SignupOrganizationID: "signup", ProviderOrigin: "https://provider.example", OfficialLoginOrigin: "https://login.example", PublicAppOrigin: "https://app.example", CredentialFile: secret("provider"), ServiceCredentialFile: secret("service"), LookupKeyFile: secret("lookup"), KeyID: "k1", ProofKeyFiles: map[string]string{"k1": secret("proof")}, EncryptionKeyFiles: map[string]string{"k1": secret("encryption")}}, Database: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "referral_runtime", Password: "fixture-referral", Database: "referrals", MaxConnections: 2}}
+	return cfg
+}
+
+func TestReferralManifestRejectsPublicRead(t *testing.T) {
+	cfg := referralRuntimeConfig(t)
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeManifest(t, string(data))
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("icacls", path, "/grant", "*S-1-1-0:(R)").CombinedOutput(); err != nil {
+			t.Fatalf("synthetic manifest ACL: %v %s", err, out)
+		}
+	} else if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("public-readable referral manifest accepted")
+	}
+}
+
+func TestReferralPrivateFilesRejectPublicRead(t *testing.T) {
+	cfg := referralRuntimeConfig(t)
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("icacls", cfg.Referrals.CredentialFile, "/grant", "*S-1-1-0:(R)").CombinedOutput(); err != nil {
+			t.Fatalf("synthetic fixture ACL: %v %s", err, out)
+		}
+	} else if err := os.Chmod(cfg.Referrals.CredentialFile, 0644); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := cfg.Referrals.Prepare(context.Background())
+	if prepared != nil {
+		prepared.HTTPClient.CloseIdleConnections()
+	}
+	if err == nil {
+		t.Fatal("public-readable provider credential accepted")
+	}
+}
+
+func TestReferralPrivateConfigurationRejectsIncompleteAndReusedSecrets(t *testing.T) {
+	for _, mutate := range []func(*Config){
+		func(c *Config) { c.Referrals.CredentialFile = "" },
+		func(c *Config) { c.Referrals.ProofKeyFiles["k1"] = c.Referrals.EncryptionKeyFiles["k1"] },
+		func(c *Config) { c.Referrals.LookupKeyFile = c.Referrals.ServiceCredentialFile },
+		func(c *Config) { c.Referrals.ProviderOrigin = "http://provider.example" },
+		func(c *Config) { c.Referrals.ProviderOrigin = "https://provider.example/path" },
+		func(c *Config) { c.Referrals.KeyID = "missing" },
+	} {
+		cfg := referralRuntimeConfig(t)
+		mutate(cfg)
+		if _, err := cfg.Referrals.Prepare(context.Background()); err == nil {
+			t.Fatal("invalid referral configuration accepted")
+		}
+	}
+	cfg := referralRuntimeConfig(t)
+	prepared, err := cfg.Referrals.Prepare(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.HTTPClient.CloseIdleConnections()
+	if len(prepared.Lookup) != 32 || len(prepared.Proof["k1"]) != 32 {
+		t.Fatal("private keys not loaded")
+	}
+	core := cfg.CoreConfig()
+	core.Referrals.Prepared = prepared
+	data, err := json.Marshal(core.Referrals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), prepared.ServiceCredential) || strings.Contains(string(data), prepared.ProviderToken) {
+		t.Fatal("manifest serializes secrets")
 	}
 }
 

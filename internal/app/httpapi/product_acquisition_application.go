@@ -60,6 +60,19 @@ func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies ro
 	return browserCaptureModule{routes: browserCaptureRoutes(service, binder.Bind)}, nil
 }
 
+// NewCurrentApplicationWithAcquisitionAndReferrals composes the two explicitly
+// enabled current modules while keeping all caller-owned pools independent.
+func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, commercialDB, productDB, referralDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+	if ctx == nil || productDB == nil || referralDB == nil {
+		return nil, sourcing.ErrAcquisitionUnavailable
+	}
+	factories := defaultCurrentApplicationFactories(ctx)
+	factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
+	}
+	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, factories, WithReferrals(referralDB))
+}
+
 type productAcquisitionService interface {
 	Acquire(context.Context, string, string) (sourcing.AcquisitionResult, error)
 	Verify(context.Context, string, string) (sourcing.AcquisitionResult, error)
@@ -74,7 +87,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 	}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
-		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-acquisition", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: true, Handler: func(c *gin.Context) {
+		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-acquisition", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: false, Handler: httproute.WithRequestBodyReadTimeout(sourcing.AcquisitionTimeout, func(c *gin.Context) {
 			if service == nil || bind == nil {
 				writeAcquisitionError(c, sourcing.ErrAcquisitionUnavailable)
 				return
@@ -120,7 +133,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 				return
 			}
 			writeAcquisitionResult(c, result)
-		}})
+		})})
 	}
 	return routes
 }

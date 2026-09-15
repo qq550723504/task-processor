@@ -15,15 +15,18 @@ import (
 )
 
 type Dependencies struct {
-	IdentityPreflight             func(context.Context, IdentityConfig) error
-	OpenSourceAccount             func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenCommercial                func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	OpenProductAcquisition        func(context.Context, DatabaseConfig) (*gorm.DB, error)
-	NewApplicationWithAcquisition func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	NewApplication                func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
-	Listen                        func(string, string) (net.Listener, error)
-	CloseDatabase                 func(*gorm.DB) error
-	ShutdownTimeout               time.Duration
+	IdentityPreflight                         func(context.Context, IdentityConfig) error
+	OpenSourceAccount                         func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenProductAcquisition                    func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewApplicationWithAcquisition             func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	OpenReferrals                             func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	NewReferralsApplication                   func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplicationWithAcquisitionAndReferrals func(context.Context, *gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	NewApplication                            func(context.Context, *gorm.DB, *gorm.DB, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
+	Listen                                    func(string, string) (net.Listener, error)
+	CloseDatabase                             func(*gorm.DB) error
+	ShutdownTimeout                           time.Duration
 }
 
 type runtimeDependencies = Dependencies
@@ -45,17 +48,43 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	core := cfg.CoreConfig()
+	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelStartup()
+	if cfg.Referrals.Enabled {
+		if dependencies.OpenReferrals == nil || dependencies.NewReferralsApplication == nil {
+			return errors.New("current application referrals lifecycle unavailable")
+		}
+		secrets, err := cfg.Referrals.Prepare(startupContext)
+		if err != nil {
+			return err
+		}
+		core.Referrals.Prepared = secrets
+		defer secrets.HTTPClient.CloseIdleConnections()
+	}
 	if dependencies.ShutdownTimeout <= 0 {
 		dependencies.ShutdownTimeout = 10 * time.Second
 	}
 	if dependencies.IdentityPreflight == nil || dependencies.OpenSourceAccount == nil || dependencies.OpenCommercial == nil || dependencies.CloseDatabase == nil {
 		return errors.New("current application database lifecycle unavailable")
 	}
-	if cfg.ProductAcquisitionDatabase != nil && (dependencies.OpenProductAcquisition == nil || dependencies.NewApplicationWithAcquisition == nil) {
-		return errors.New("current product acquisition lifecycle unavailable")
+	if cfg.ProductAcquisitionDatabase != nil {
+		if dependencies.OpenProductAcquisition == nil {
+			return errors.New("current product acquisition lifecycle unavailable")
+		}
+		if cfg.Referrals.Enabled && dependencies.NewApplicationWithAcquisitionAndReferrals == nil {
+			return errors.New("current application combined lifecycle unavailable")
+		}
+		if !cfg.Referrals.Enabled && dependencies.NewApplicationWithAcquisition == nil {
+			return errors.New("current product acquisition lifecycle unavailable")
+		}
 	}
-	startupContext, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
-	defer cancelStartup()
+	if cfg.Referrals.Enabled && dependencies.OpenReferrals == nil {
+		return errors.New("current application referrals lifecycle unavailable")
+	}
+	if cfg.Referrals.Enabled && cfg.ProductAcquisitionDatabase == nil && dependencies.NewReferralsApplication == nil {
+		return errors.New("current application referrals lifecycle unavailable")
+	}
 	if err := dependencies.IdentityPreflight(startupContext, cfg.Identity); err != nil {
 		return fmt.Errorf("verify identity provider readiness: %w", err)
 	}
@@ -95,14 +124,37 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return fmt.Errorf("current application startup canceled: %w", err)
 		}
 	}
-	if (productDB == nil && dependencies.NewApplication == nil) || dependencies.Listen == nil {
+	var referralDB *gorm.DB
+	if cfg.Referrals.Enabled {
+		referralDB, err = dependencies.OpenReferrals(startupContext, cfg.Referrals.Database)
+		if err != nil {
+			return fmt.Errorf("open existing referral database: %w", err)
+		}
+		if referralDB == nil {
+			return errors.New("current application referral database unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(referralDB)) }()
+		if err := startupContext.Err(); err != nil {
+			return fmt.Errorf("current application startup canceled: %w", err)
+		}
+	}
+	if dependencies.Listen == nil {
+		return errors.New("current application serving lifecycle unavailable")
+	}
+	if productDB == nil && referralDB == nil && dependencies.NewApplication == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
 	var server *http.Server
 	if productDB != nil {
-		server, err = dependencies.NewApplicationWithAcquisition(startupContext, sourceAccountDB, commercialDB, productDB, cfg.CoreConfig(), logger)
+		if referralDB != nil {
+			server, err = dependencies.NewApplicationWithAcquisitionAndReferrals(startupContext, sourceAccountDB, commercialDB, productDB, referralDB, core, logger)
+		} else {
+			server, err = dependencies.NewApplicationWithAcquisition(startupContext, sourceAccountDB, commercialDB, productDB, core, logger)
+		}
+	} else if referralDB != nil {
+		server, err = dependencies.NewReferralsApplication(startupContext, sourceAccountDB, commercialDB, referralDB, core, logger)
 	} else {
-		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, cfg.CoreConfig(), logger)
+		server, err = dependencies.NewApplication(startupContext, sourceAccountDB, commercialDB, core, logger)
 	}
 	if err != nil {
 		return fmt.Errorf("construct current application: %w", err)

@@ -1010,10 +1010,13 @@ async function readRequestBody(
     );
   } catch (error) {
     if (error instanceof BodyReadTimeoutError) {
+      const acquisitionBody = tooLargeCode === "SOURCE_TOO_LARGE";
       return protocolError(
-        408,
-        "INVALID_REQUEST",
-        "Request body read timed out",
+        acquisitionBody ? 504 : 408,
+        acquisitionBody ? "DEADLINE_EXCEEDED" : "INVALID_REQUEST",
+        acquisitionBody
+          ? "Request body read deadline exceeded"
+          : "Request body read timed out",
       );
     }
     if (error instanceof BodyTooLargeError) {

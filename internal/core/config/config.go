@@ -24,6 +24,7 @@ var (
 )
 
 type Config struct {
+	Referrals           ReferralsConfig           `yaml:"-"`
 	FeatureFlags        FeatureFlagsConfig        `yaml:"featureFlags"`
 	Observability       ObservabilityConfig       `yaml:"observability"`
 	Logging             LoggingConfig             `yaml:"logging"`

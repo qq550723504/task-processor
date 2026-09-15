@@ -1,8 +1,11 @@
 import Image from "next/image";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import type { AccountOrganization, AccountProfile } from "@/lib/api/account";
 import styles from "./account.module.css";
+import { ConsoleState } from "../console/console-page";
 
 const provided = (value: string | null) => value?.trim() || "未提供";
 const verification = (value: boolean | null) => value === true ? "已验证" : value === false ? "未验证" : "未提供";
@@ -16,7 +19,8 @@ function Provenance({ data }: { data: AccountProfile | AccountOrganization }) {
   return <details className={styles.provenance}><summary>资料来源与读取时间</summary><p>来源：{data.source === "zitadel_userinfo" ? "ZITADEL 账户资料" : "ZITADEL 项目授权"}</p><p>读取时间：<time dateTime={data.readAt}>{data.readAt}</time></p>{"authorizationMaxAgeSeconds" in data ? <p>授权缓存最长 60 秒；读取时间不代表授权刷新时间。</p> : null}</details>;
 }
 export function ProfileView({ data }: { data: AccountProfile }) {
-  return <><Card className={styles.identity}><div><h2>{provided(data.displayName)}</h2><p>账户 ID：{data.userId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div><span className={styles.badge}>账户资料 · 只读</span></Card>
+  return <><Card className={styles.identity}><div><h2>{data.displayName?.trim() || "当前账户"}</h2><p>账户 ID：{data.userId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div><span className={styles.badge}>账户资料 · 只读</span></Card>
+    {![data.displayName, data.email, data.phoneNumber].some(value => value?.trim()) ? <ConsoleState kind="empty" title="暂未提供个人资料">登录服务本次未提供显示名称、手机号码或电子邮箱。你仍可查看账户标识并刷新资料。</ConsoleState> : null}
     <div className={styles.profileGrid}><div className={styles.profileMain}>
       <Panel title="账户设置" description="个人身份资料由登录服务提供"><Fields items={[["显示名称", provided(data.displayName)], ["手机号码", provided(data.phoneNumber)], ["电子邮箱", provided(data.email)], ["所在地区", "未提供"], ["注册时间", "未提供"]]} /></Panel>
       <Panel title="账号状态" className={styles.status}><Fields items={[["手机验证", verification(data.phoneNumberVerified)], ["邮箱验证", verification(data.emailVerified)], ["登录密码", "未提供"]]} /></Panel>
@@ -25,7 +29,7 @@ export function ProfileView({ data }: { data: AccountProfile }) {
 export function OrganizationView({ data }: { data: AccountOrganization }) {
   return <><Card className={styles.identity}><div className={styles.organizationIdentity}><Image src="/console/account/organization-avatar.svg" width={64} height={64} alt="" unoptimized /><div><h2>{provided(data.name)}</h2><p>当前有效企业：{data.effectiveOrganizationId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div></div><span className={styles.badge}>企业信息 · 只读</span></Card>
     <div className={styles.enterpriseSummary}><p>当前账号的项目权限：{data.roles.length ? data.roles.map(role => <span key={role} className={styles.role}>{role}</span>) : "未提供"}</p><p>企业认证：未提供 · 管理员：未提供</p></div>
-    <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "成员管理与权限配置"], ["资源与额度", "企业资源与额度信息"], ["操作记录", "企业操作与审计记录"]].map(([title, description]) => <Panel key={title} title={title} description={description}><p className={styles.note}>暂未接入</p></Panel>)}</div>
-    <Panel title="企业资源" className={styles.resources}><p className={styles.note}>资源服务暂未接入，余额与用量未提供。</p></Panel>
+    <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "成员管理与权限配置"], ["资源与额度", "企业资源与额度信息"], ["操作记录", "源账号登记、启用和停用的已提交成功记录"]].map(([title, description]) => <Panel key={title} title={title} description={description}>{title === "资源与额度" ? <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>查看资源与额度</Link></Button> : title === "操作记录" ? <><Button asChild variant="outline"><Link href="/workbench/account/organization/audit" prefetch={false}>查看操作记录</Link></Button><p className={styles.note}>当前仅覆盖源账号；成员、权限、续费及失败尝试尚未纳入。</p></> : <p className={styles.note}>暂未接入</p>}</Panel>)}</div>
+    <Panel title="企业资源" className={styles.resources}><p className={styles.note}>资源余额读取暂未接入；已授予权益、已记录用量与源账号管理请进入资源与额度。</p></Panel>
     <Panel title="成员资源分配" description="分配数据暂未接入"><div className={styles.unavailable}>成员、资源配额与使用情况未提供</div></Panel><Provenance data={data} /></>;
 }
