@@ -5,8 +5,16 @@ describe("Figma Console navigation contract", () => {
   it("keeps profile, resources and audit connected together while undelivered leaves remain pending", () => {
     for (const path of ["/workbench/account/profile", "/workbench/account/organization/resources", "/workbench/account/organization/audit"])
       expect(findConsoleRoute(path)?.node.availability).toBe("connected");
-    for (const path of ["/workbench/account/organization/members", "/workbench/account/referrals"])
+    for (const path of ["/workbench/account/organization/members"])
       expect(findConsoleRoute(path)?.node.availability).toBe("unavailable");
+  });
+  it("connects the delivered personal referral page and derives only its completion breadcrumb", () => {
+    const route = findConsoleRoute("/workbench/account/referrals");
+    expect(route?.node.availability).toBe("connected");
+    expect(route?.trail.map(node => node.label)).toEqual(["我的账户", "推广与收益"]);
+    expect(findConsoleRoute("/workbench/account/referrals/complete")?.trail.map(node => node.label)).toEqual(["我的账户", "推广与收益", "完成注册"]);
+    expect(findConsoleRoute("/workbench/account/referrals/complete")?.node.availability).toBe("connected");
+    expect(findConsoleRoute("/workbench/account/referrals/other")).toBeUndefined();
   });
   it("exposes the bounded audit page without activating other pending account leaves", () => {
     const route = findConsoleRoute("/workbench/account/organization/audit");
