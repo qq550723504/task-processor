@@ -50,6 +50,7 @@ func acquisitionHandler(t *testing.T, spy *acquisitionHTTPSpy, bind func(context
 		require.Equal(t, httproute.OrganizationAccessPolicyLiveWrite, route.OrganizationAccessPolicy)
 		require.Equal(t, "product_sourcing.write", route.Permission)
 		require.Equal(t, sourcing.AcquisitionTimeout, route.RequestTimeout)
+		require.False(t, route.RejectUnreadRequestBody)
 		router.Handle(route.Method, route.Path, route.Handler)
 	}
 	return router

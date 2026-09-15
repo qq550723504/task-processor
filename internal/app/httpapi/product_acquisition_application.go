@@ -69,7 +69,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 	}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
-		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-acquisition", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: true, Handler: func(c *gin.Context) {
+		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-acquisition", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: false, Handler: httproute.WithRequestBodyReadTimeout(sourcing.AcquisitionTimeout, func(c *gin.Context) {
 			if service == nil || bind == nil {
 				writeAcquisitionError(c, sourcing.ErrAcquisitionUnavailable)
 				return
@@ -115,7 +115,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 				return
 			}
 			writeAcquisitionResult(c, result)
-		}})
+		})})
 	}
 	return routes
 }
