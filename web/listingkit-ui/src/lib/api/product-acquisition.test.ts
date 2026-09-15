@@ -18,6 +18,10 @@ describe("acquisition client",()=>{
     const fetcher=vi.fn().mockRejectedValue(new TypeError("network lost"));vi.stubGlobal("fetch",fetcher);
     await expect(acquire1688(operation)).rejects.toMatchObject({code:"OUTCOME_UNKNOWN"});expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it("preserves a deterministic deadline from the acquisition BFF",async()=>{
+    const fetcher=vi.fn().mockResolvedValue(Response.json({code:"DEADLINE_EXCEEDED",message:"Request body read deadline exceeded",requestId:"req-1",fieldErrors:[]},{status:504}));vi.stubGlobal("fetch",fetcher);
+    await expect(acquire1688(operation)).rejects.toMatchObject({code:"DEADLINE_EXCEEDED",status:504});
+  });
   it("rejects unsafe result binding and invalid context before dispatch",async()=>{
     const fetcher=vi.fn().mockResolvedValue(Response.json({...result,publicationId:"other"}));vi.stubGlobal("fetch",fetcher);
     await expect(acquire1688({...operation,organizationId:""})).rejects.toMatchObject({code:"INVALID_REQUEST"});expect(fetcher).not.toHaveBeenCalled();

@@ -38,6 +38,37 @@ describe("Public acquisition BFF", () => {
       expect(built).toBeInstanceOf(Response);expect((built as Response).status).toBeGreaterThanOrEqual(400);
     }
   });
+  it("maps an acquisition body-read timeout to a deterministic deadline error", async () => {
+    vi.useFakeTimers();
+    try {
+      const body = new ReadableStream<Uint8Array>({ start() {} });
+      const pending = buildWorkbenchUpstreamRequest(
+        new Request(`http://localhost:3000${ACQUISITION_BASE}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json", origin: "http://localhost:3000", "sec-fetch-site": "same-origin",
+            cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", "X-Expected-User-ID": "actor",
+            "Idempotency-Key": key,
+          },
+          body,
+          duplex: "half",
+        }),
+        path,
+        "server-token",
+        "actor",
+      );
+      let result: Awaited<typeof pending> | undefined;
+      void pending.then((value) => { result = value; });
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(result).toBeInstanceOf(Response);
+      if (!(result instanceof Response)) return;
+      expect(result.status).toBe(504);
+      await expect(result.json()).resolves.toMatchObject({ code: "DEADLINE_EXCEEDED" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("projects exact safe result and keeps invalid dispatched outcomes unknown", async () => {
     const built = await buildWorkbenchUpstreamRequest(request(),path,"server-token","actor");
     expect(built).not.toBeInstanceOf(Response);if (built instanceof Response) return;
