@@ -42,6 +42,19 @@ func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, 
 	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, factories)
 }
 
+// NewCurrentApplicationWithAcquisitionAndReferrals composes the two explicitly
+// enabled current modules while keeping all caller-owned pools independent.
+func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, commercialDB, productDB, referralDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+	if ctx == nil || productDB == nil || referralDB == nil {
+		return nil, sourcing.ErrAcquisitionUnavailable
+	}
+	factories := defaultCurrentApplicationFactories(ctx)
+	factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
+	}
+	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, factories, WithReferrals(referralDB))
+}
+
 type productAcquisitionService interface {
 	Acquire(context.Context, string, string) (sourcing.AcquisitionResult, error)
 	Verify(context.Context, string, string) (sourcing.AcquisitionResult, error)

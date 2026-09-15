@@ -23,6 +23,32 @@ An external compatibility obligation is never inferred from a row, historical Is
 
 ## 1. Repository scan summary
 
+### Account surface clarification (#409)
+
+The current Account profile chain on main `aff6b8def46cf7c2d989408d115fa3c9628e585e`
+is CurrentIdentity -> `workbenchcontext/httpapi` -> `authidentity.SelfProfileReader`
+-> `authruntime/zitadel.UserInfoClient`, consumed by the dedicated account BFF
+and current Console. It is not the old profile/migration owner and must not be
+retired solely because it resides in `web/listingkit-ui`. All disclosed profile
+fields are read-only; absent claims or write ownership cannot be supplied by a
+legacy fallback, old-ID mapping or simulated save. Existing Task-first entries
+below remain RETIRE; this clarification adds no compatibility category and
+does not claim other Account slices or real-environment acceptance.
+
+### Current committed-operation projection (#412)
+
+The bounded Account audit projection reuses current immutable
+`source_account_operations` receipts through `sourceaccountregistry.HistoryService`
+and its existing persistence owner. `internal/app/accountaudit` only projects
+allowlisted fields for successful `register / enable / disable` operations.
+It does not consume old `internal/sourceaccount`, `tenantbridge`, or Task-first
+abstractions. Reusing these current receipts is not legacy compatibility and
+adds no migration, fallback, duplicate facts or compatibility exception.
+This is not a complete enterprise/security audit platform; empty results do
+not prove absence of all enterprise activity. Existing historical calibration
+and RETIRE decisions below remain unchanged. Code mounting does not establish
+deployment or real-environment acceptance.
+
 ### Physically retired — keep absent
 
 The following old production package roots were not present on the scan baseline and must remain absent:

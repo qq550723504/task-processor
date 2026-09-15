@@ -2,6 +2,7 @@ package currentapplication
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +32,12 @@ type Config struct {
 	SourceAccountDatabase      DatabaseConfig  `json:"sourceAccountDatabase"`
 	CommercialDatabase         DatabaseConfig  `json:"commercialDatabase"`
 	ProductAcquisitionDatabase *DatabaseConfig `json:"productAcquisitionDatabase,omitempty"`
+	Referrals                  ReferralsConfig `json:"referrals"`
+}
+
+type ReferralsConfig struct {
+	coreconfig.ReferralsConfig
+	Database DatabaseConfig `json:"referralDatabase"`
 }
 
 type ListenConfig struct {
@@ -68,6 +75,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("current application manifest must not be accessible by group or others")
+	}
+	if runtime.GOOS == "windows" && coreconfig.VerifyPrivateFiles(context.Background(), []string{path}) != nil {
+		return nil, errors.New("current application manifest must be private")
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -220,6 +230,14 @@ func (cfg *Config) validate() error {
 			}
 		}
 	}
+	if cfg.Referrals.Enabled {
+		if err := cfg.Referrals.Database.validate("referrals.referralDatabase"); err != nil {
+			return err
+		}
+		if cfg.Referrals.Database.User != "referral_runtime" || cfg.Referrals.Issuer != cfg.Identity.IssuerURL {
+			return errors.New("referrals requires its runtime role and the current identity issuer")
+		}
+	}
 	return nil
 }
 
@@ -275,6 +293,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		return nil
 	}
 	return &coreconfig.Config{
+		Referrals: cfg.Referrals.ReferralsConfig,
 		Workbench: coreconfig.WorkbenchConfig{Enabled: true},
 		ListingKit: coreconfig.ListingKitConfig{Zitadel: coreconfig.ListingKitZitadelConfig{
 			IssuerURL: cfg.Identity.IssuerURL, AuthorizationAPIURL: cfg.Identity.AuthorizationAPIURL,

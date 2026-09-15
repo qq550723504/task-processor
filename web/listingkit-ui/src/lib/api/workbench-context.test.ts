@@ -19,6 +19,24 @@ const VALID_CONTEXT = {
 };
 
 describe("workbench context API", () => {
+  it.each([true, false])("preserves the server-derived source-account capability %s on GET and switch", async allowed => {
+    const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities: { "workbench.source_account.manage": allowed } })) };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => Response.json(context)));
+    await expect(fetchWorkbenchContext()).resolves.toEqual(context);
+    await expect(switchEffectiveOrganization("org-b")).resolves.toEqual(context);
+  });
+
+  it.each([{}, null, true, "true", { "workbench.source_account.manage": "true" }, { "workbench.source_account.manage": 1 }, { "workbench.source_account.manage": true, "unknown.permission": true }])("rejects malformed or expanded capabilities %j", capabilities => {
+    const context = { ...VALID_CONTEXT, organizations: VALID_CONTEXT.organizations.map(org => ({ ...org, capabilities })) };
+    expect(parseWorkbenchContextPayload(context).success).toBe(false);
+  });
+
+  it("does not invent management capability when the projection is absent", () => {
+    const result = parseWorkbenchContextPayload(VALID_CONTEXT);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.organizations[1]).not.toHaveProperty("capabilities");
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
