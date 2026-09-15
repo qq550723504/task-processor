@@ -33,7 +33,9 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		{"internal/app/productsourcing", "internal/app/productsourcing/acquisition_initialization.go", issue398Database, []string{"OpenExistingWritableContext", "Close", "Config"}},
 		{"internal/integration/acquisition/a1688", "internal/integration/acquisition/a1688/public.go", issue398HTTP, []string{"NewPublicImageHTTPClient"}},
 		{"cmd/product-acquisition-init", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", []string{"InitializeAcquisitionDatabase"}},
-		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition"}},
+		// Narrow #399 constructor admission; no new root, target or directory exemption.
+		// https://github.com/qq550723504/task-processor/issues/399#issuecomment-5643701012
+		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition"}},
 	}
 	var violations []string
 	for _, source := range sources {
@@ -103,9 +105,10 @@ func TestIssue398ProducerImportAdmissionRejectsOtherFiles(t *testing.T) {
 	for _, name := range []string{"other_http.go", "other_command.go", "main.go.fake.go"} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(`package fixture; import alias "task-processor/internal/app/productsourcing"; var use = alias.NewPublicAcquisition`), 0600))
 	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "browser_capture_application.go"), []byte(`package fixture; import alias "task-processor/internal/app/productsourcing"; var use = alias.NewBrowserAcquisition`), 0600))
 	violations, err := findBannedImportViolations(root, []string{`"task-processor/internal/app/productsourcing"`}, allowed, true)
 	require.NoError(t, err)
-	require.Len(t, violations, 3)
+	require.Len(t, violations, 4)
 }
 
 func TestIssue398CurrentLeafEdgesAreExact(t *testing.T) {
@@ -151,6 +154,10 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"initializer sibling", "cmd/product-acquisition-init/other.go", "task-processor/internal/app/productsourcing", "InitializeAcquisitionDatabase", false},
 		{"initializer target subpackage", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing/httpapi", "InitializeAcquisitionDatabase", false},
 		{"module build", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewPublicAcquisition", true},
+		{"Browser module build", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewBrowserAcquisition", true},
+		{"module cannot publish", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "Publish", false},
+		{"Browser module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewBrowserAcquisition", false},
+		{"initializer cannot build Browser", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", "NewBrowserAcquisition", false},
 		{"module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewPublicAcquisition", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -166,6 +173,10 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		violations, err := issue398AcquisitionAPIViolations([]listingKitImageBoundarySource{{path: "internal/app/productsourcing/acquisition_initialization.go", text: body}})
 		require.NoError(t, err)
 		require.NotEmpty(t, violations, "dot/blank imports cannot bypass symbol admission")
+		body = fmt.Sprintf("package fixture; import %s %q; var use = NewBrowserAcquisition", alias, "task-processor/internal/app/productsourcing")
+		violations, err = issue398AcquisitionAPIViolations([]listingKitImageBoundarySource{{path: "internal/app/httpapi/product_acquisition_application.go", text: body}})
+		require.NoError(t, err)
+		require.NotEmpty(t, violations, "dot/blank imports cannot obscure the Browser constructor")
 	}
 }
 

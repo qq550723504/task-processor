@@ -22,22 +22,27 @@ type Repository struct{ db *gorm.DB }
 const table = "public.product_acquisition_operations"
 const columns = `organization_id,actor_id,idempotency_key,operation_id,offer_id,source_url,fingerprint,state,fence,lease_until,
  CASE WHEN octet_length(command)<=2097152 THEN command END AS command,
- COALESCE(octet_length(command),0) AS command_bytes,command_hash,failure_code`
+ COALESCE(octet_length(command),0) AS command_bytes,command_hash,failure_code,capture_sha256`
 
 const acquisitionSchemaShape = `WITH expected(position,name,kind,required) AS (VALUES
  (1,'organization_id','character varying(128)',true),(2,'actor_id','character varying(128)',true),
  (3,'idempotency_key','uuid',true),(4,'operation_id','uuid',true),(5,'offer_id','character varying(20)',true),
  (6,'source_url','character varying(128)',true),(7,'fingerprint','character varying(64)',true),(8,'state','character varying(16)',true),
  (9,'fence','bigint',true),(10,'lease_until','timestamp with time zone',true),(11,'command','bytea',false),
- (12,'command_hash','character varying(64)',true),(13,'failure_code','character varying(32)',true)),
+ (12,'command_hash','character varying(64)',true),(13,'failure_code','character varying(32)',true),
+ (14,'capture_sha256','character varying(64)',true)),
  actual AS (SELECT attnum AS position,attname::text AS name,format_type(atttypid,atttypmod) AS kind,attnotnull AS required
  FROM pg_attribute WHERE attrelid='public.product_acquisition_operations'::regclass AND attnum>0 AND NOT attisdropped)
  SELECT NOT EXISTS(SELECT 1 FROM expected e FULL JOIN actual a USING(position) WHERE e.name IS DISTINCT FROM a.name OR e.kind IS DISTINCT FROM a.kind OR e.required IS DISTINCT FROM a.required)
  AND EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND contype='p' AND conkey=ARRAY[1,2,3]::smallint[] AND convalidated AND NOT condeferrable)
  AND EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND contype='u' AND conkey=ARRAY[1,2,4]::smallint[] AND convalidated AND NOT condeferrable)
- AND EXISTS(SELECT 1 FROM pg_class WHERE oid='public.product_acquisition_operations'::regclass AND relkind='r' AND NOT relrowsecurity AND NOT relforcerowsecurity)`
+ AND EXISTS(SELECT 1 FROM pg_class WHERE oid='public.product_acquisition_operations'::regclass AND relkind='r' AND NOT relrowsecurity AND NOT relforcerowsecurity)
+ AND EXISTS(SELECT 1 FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+ WHERE d.adrelid='public.product_acquisition_operations'::regclass AND a.attname='capture_sha256'
+ AND pg_get_expr(d.adbin,d.adrelid)=$default$''::character varying$default$)`
 
 type record struct {
+	CaptureSHA256                                                                                string
 	OrganizationID, ActorID, IdempotencyKey, OperationID, OfferID, SourceURL, Fingerprint, State string
 	Fence                                                                                        int64
 	LeaseUntil                                                                                   time.Time
@@ -59,10 +64,12 @@ func InstallSchema(db *gorm.DB) error {
  fingerprint varchar(64) NOT NULL,state varchar(16) NOT NULL,
  fence bigint NOT NULL,lease_until timestamptz NOT NULL,
  command bytea,command_hash varchar(64) NOT NULL DEFAULT '',failure_code varchar(32) NOT NULL DEFAULT '',
+ capture_sha256 varchar(64) NOT NULL DEFAULT '',
  PRIMARY KEY(organization_id,actor_id,idempotency_key),
  UNIQUE(organization_id,actor_id,operation_id),
  CONSTRAINT acq_fence_positive CHECK(fence>0),
  CONSTRAINT acq_command_bound CHECK(command IS NULL OR octet_length(command) BETWEEN 1 AND 2097152),
+ CONSTRAINT acq_capture_digest CHECK(capture_sha256 = '' OR capture_sha256 ~ '^[0-9a-f]{64}$'),
  CONSTRAINT acq_state_command CHECK(
  (state='acquiring' AND command IS NULL AND command_hash='') OR
  (state IN ('prepared','publishing','published') AND command IS NOT NULL AND length(command_hash)=64) OR
@@ -78,7 +85,7 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	var checks int64
-	if err := db.WithContext(ctx).Raw(`SELECT count(*) FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND convalidated AND conname IN ('acq_fence_positive','acq_command_bound','acq_state_command')`).Scan(&checks).Error; err != nil || checks != 3 {
+	if err := db.WithContext(ctx).Raw(`SELECT count(*) FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND convalidated AND conname IN ('acq_fence_positive','acq_command_bound','acq_state_command','acq_capture_digest')`).Scan(&checks).Error; err != nil || checks != 4 {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	var shape bool
@@ -86,10 +93,11 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	var definitions []struct{ Name, Definition string }
-	if err := db.WithContext(ctx).Raw("SELECT conname AS name,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND conname IN ('acq_fence_positive','acq_command_bound','acq_state_command')").Scan(&definitions).Error; err != nil {
+	if err := db.WithContext(ctx).Raw("SELECT conname AS name,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='public.product_acquisition_operations'::regclass AND conname IN ('acq_fence_positive','acq_command_bound','acq_state_command','acq_capture_digest')").Scan(&definitions).Error; err != nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	expectedDefinitions := map[string]string{
+		"acq_capture_digest": `CHECK ((((capture_sha256)::text = ''::text) OR ((capture_sha256)::text ~ '^[0-9a-f]{64}$'::text)))`,
 		"acq_fence_positive": "CHECK ((fence > 0))",
 		"acq_command_bound":  "CHECK (((command IS NULL) OR ((octet_length(command) >= 1) AND (octet_length(command) <= 2097152))))",
 		"acq_state_command":  `CHECK (((((state)::text = 'acquiring'::text) AND (command IS NULL) AND ((command_hash)::text = ''::text)) OR (((state)::text = ANY ((ARRAY['prepared'::character varying, 'publishing'::character varying, 'published'::character varying])::text[])) AND (command IS NOT NULL) AND (length((command_hash)::text) = 64)) OR (((state)::text = 'failed'::text) AND (((command IS NULL) AND ((command_hash)::text = ''::text)) OR ((command IS NOT NULL) AND (length((command_hash)::text) = 64))))))`,
@@ -131,7 +139,7 @@ func (r *Repository) Start(ctx context.Context, requested sourcing.AcquisitionOp
 		var e error
 		op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, true)
 		if e == nil {
-			if op.Source != requested.Source || op.Fingerprint != requested.Fingerprint {
+			if op.Source != requested.Source || op.Fingerprint != requested.Fingerprint || op.CaptureSHA256 != requested.CaptureSHA256 {
 				return sourcing.ErrAcquisitionConflict
 			}
 			if op.State != sourcing.AcquisitionAcquiring {
@@ -157,7 +165,7 @@ func (r *Repository) Start(ctx context.Context, requested sourcing.AcquisitionOp
 		if count.Total >= sourcing.MaxAcquisitionOperations || count.Active >= sourcing.MaxActiveAcquisitionOperations {
 			return sourcing.ErrAcquisitionCapacity
 		}
-		if e := tx.Exec("INSERT INTO "+table+" (organization_id,actor_id,idempotency_key,operation_id,offer_id,source_url,fingerprint,state,fence,lease_until) VALUES (?,?,?,?,?,?,?,'acquiring',1,clock_timestamp()+interval '30 seconds')", requested.Scope.OrganizationID, requested.Scope.ActorID, requested.Key, requested.ID, requested.Source.OfferID, requested.Source.URL, requested.Fingerprint).Error; e != nil {
+		if e := tx.Exec("INSERT INTO "+table+" (organization_id,actor_id,idempotency_key,operation_id,offer_id,source_url,fingerprint,capture_sha256,state,fence,lease_until) VALUES (?,?,?,?,?,?,?,?,'acquiring',1,clock_timestamp()+interval '30 seconds')", requested.Scope.OrganizationID, requested.Scope.ActorID, requested.Key, requested.ID, requested.Source.OfferID, requested.Source.URL, requested.Fingerprint, requested.CaptureSHA256).Error; e != nil {
 			return sourcing.ErrAcquisitionUnavailable
 		}
 		op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
@@ -192,6 +200,9 @@ func (r *Repository) Prepare(ctx context.Context, requested sourcing.Acquisition
 		}
 		if current.Fence != requested.Fence || current.State != sourcing.AcquisitionAcquiring || current.ID != requested.ID {
 			return sourcing.ErrAcquisitionFence
+		}
+		if current.Source != requested.Source || current.Fingerprint != requested.Fingerprint || current.CaptureSHA256 != requested.CaptureSHA256 || !validCommand(current, cmd) {
+			return sourcing.ErrAcquisitionConflict
 		}
 		result := tx.Exec("UPDATE "+table+" SET command=?,command_hash=?,state='prepared' WHERE organization_id=? AND actor_id=? AND idempotency_key=? AND state='acquiring' AND command IS NULL AND fence=? AND lease_until>clock_timestamp()", raw, digest(raw), current.Scope.OrganizationID, current.Scope.ActorID, current.Key, current.Fence)
 		if result.Error != nil {
@@ -280,7 +291,7 @@ func read(db *gorm.DB, scope sourcing.PublicationScope, field, key string, lock 
 	if result.RowsAffected != 1 {
 		return empty, sourcing.ErrAcquisitionNotFound
 	}
-	op := sourcing.AcquisitionOperation{Scope: sourcing.PublicationScope{OrganizationID: row.OrganizationID, ActorID: row.ActorID}, Key: row.IdempotencyKey, ID: row.OperationID, Source: sourcing.AcquisitionSource{OfferID: row.OfferID, URL: row.SourceURL}, Fingerprint: row.Fingerprint, State: row.State, Fence: row.Fence, LeaseUntil: row.LeaseUntil, CommandHash: row.CommandHash, FailureCode: row.FailureCode}
+	op := sourcing.AcquisitionOperation{Scope: sourcing.PublicationScope{OrganizationID: row.OrganizationID, ActorID: row.ActorID}, Key: row.IdempotencyKey, ID: row.OperationID, Source: sourcing.AcquisitionSource{OfferID: row.OfferID, URL: row.SourceURL}, Fingerprint: row.Fingerprint, CaptureSHA256: row.CaptureSHA256, State: row.State, Fence: row.Fence, LeaseUntil: row.LeaseUntil, CommandHash: row.CommandHash, FailureCode: row.FailureCode}
 	if !validIdentity(op) || op.Fence < 1 || row.CommandBytes > sourcing.MaxAcquisitionCommandBytes {
 		return empty, sourcing.ErrAcquisitionUnavailable
 	}
@@ -327,12 +338,26 @@ func validIdentity(op sourcing.AcquisitionOperation) bool {
 		return false
 	}
 	id, _ := json.Marshal([]string{op.Scope.OrganizationID, op.Scope.ActorID, op.Key})
+	if op.CaptureSHA256 != "" {
+		fingerprint, err := sourcing.BrowserAcquisitionFingerprint(source, op.CaptureSHA256)
+		return err == nil && op.ID == uuid.NewSHA1(uuid.NameSpaceURL, id).String() && op.Fingerprint == fingerprint
+	}
 	input, _ := json.Marshal([]string{sourcing.AcquisitionContractVersion, "acquire", source.URL})
 	return op.ID == uuid.NewSHA1(uuid.NameSpaceURL, id).String() && op.Fingerprint == digest(input)
 }
 
 func validCommand(op sourcing.AcquisitionOperation, cmd sourcing.PublicationCommand) bool {
-	if !validIdentity(op) || cmd.ExpectedBaseVersion == nil || *cmd.ExpectedBaseVersion > math.MaxInt64 || cmd.Producer != (sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"}) {
+	producer := sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"}
+	metadata := cmd.Envelope.RawReference.Metadata
+	if op.CaptureSHA256 != "" {
+		producer.Kind = sourcing.BrowserAcquisitionProducerKind
+		if metadata["capture_sha256"] != op.CaptureSHA256 || metadata["channel"] != "browser_capture" || metadata["parser_version"] != sourcing.BrowserCaptureParserVersion || metadata["contract_version"] != sourcing.AcquisitionContractVersion {
+			return false
+		}
+	} else if metadata["channel"] != "public_http" || metadata["capture_sha256"] != "" {
+		return false
+	}
+	if !validIdentity(op) || cmd.ExpectedBaseVersion == nil || *cmd.ExpectedBaseVersion > math.MaxInt64 || cmd.Producer != producer {
 		return false
 	}
 	id := cmd.Envelope.Identity

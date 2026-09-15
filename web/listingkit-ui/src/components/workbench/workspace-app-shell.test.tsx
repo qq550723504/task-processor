@@ -61,6 +61,16 @@ function renderShell(child = <p>organization child</p>) {
 }
 
 describe("WorkspaceAppShell", () => {
+  it("does not apply Browser recovery presentation to the personal profile", () => {
+    navigation.pathname = "/workbench/account/profile";
+    injectProfileContext({ error: { code: "AUTHENTICATION_REQUIRED" } });
+    window.history.replaceState(null, "", "/workbench/account/profile#operationKey=22222222-2222-4222-8222-22222222222b");
+    render(<WorkspaceAppShell><p>hidden profile</p></WorkspaceAppShell>);
+    expect(screen.queryByText("hidden profile")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "在新标签页重新登录" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新加载" })).toBeVisible();
+    window.history.replaceState(null, "", "/");
+  });
   function injectProfileContext(overrides: Record<string, unknown> = {}) {
     injectedWorkbenchContext.value = { user: { id: "stale-user" }, homeOrganizationId: "org-a", organizations: [], effectiveOrganization: null, roles: [], selectionRequired: false, isLoading: false, isSwitching: false, error: null, blockingError: null, retry: vi.fn(), switchOrganization: vi.fn(), ...overrides };
   }

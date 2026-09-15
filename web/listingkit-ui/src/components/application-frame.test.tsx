@@ -57,6 +57,11 @@ describe("isPublicRoute", () => {
 });
 
 describe("isWorkbenchRoute", () => {
+  it("admits only the frozen Browser capture page, never as public", () => {
+    expect(isWorkbenchRoute("/capture/1688")).toBe(true);
+    expect(isPublicRoute("/capture/1688")).toBe(false);
+    for (const path of ["/capture/1688/", "/capture/1688/child", "/capture/16880", "/capture/other", null]) expect(isWorkbenchRoute(path)).toBe(false);
+  });
   it("matches the Workbench root and descendants without matching lookalikes", () => {
     expect(isWorkbenchRoute("/workbench")).toBe(true);
     expect(isWorkbenchRoute("/workbench/no-organization")).toBe(true);
@@ -66,6 +71,17 @@ describe("isWorkbenchRoute", () => {
 });
 
 describe("ApplicationFrame", () => {
+  it("mounts the current provider/shell chain for the exact Browser receiver", () => {
+    vi.mocked(usePathname).mockReturnValue("/capture/1688");
+    render(<ApplicationFrame><p>capture child</p></ApplicationFrame>);
+    expect(screen.getByTestId("theme-provider")).toContainElement(screen.getByTestId("query-provider"));
+    expect(screen.getByTestId("query-provider")).toContainElement(screen.getByTestId("toast-provider"));
+    expect(screen.getByTestId("toast-provider")).toContainElement(screen.getByTestId("workbench-context-provider"));
+    expect(screen.getByTestId("workbench-context-provider")).toContainElement(screen.getByTestId("workspace-app-shell"));
+    expect(screen.getByTestId("workspace-app-shell")).toContainElement(screen.getByText("capture child"));
+    expect(screen.queryByTestId("legacy-auth-gate")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-listingkit-shell")).not.toBeInTheDocument();
+  });
   it("routes Workbench pages through the isolated provider and shell chain", () => {
     vi.mocked(usePathname).mockReturnValue("/workbench/no-organization");
 

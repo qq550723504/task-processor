@@ -42,6 +42,24 @@ func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, 
 	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, factories)
 }
 
+// Browser construction stays in the existing admitted Product composition owner.
+// Its routes and transport DTO validation live in the Browser-specific file.
+func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+	if dependencies.organizationResolver == nil || authorizer == nil {
+		return nil, sourcing.ErrAcquisitionUnavailable
+	}
+	if err := acquisitionstore.VerifyRuntimePermissions(ctx, db); err != nil {
+		return nil, err
+	}
+	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
+	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer)
+	if err != nil {
+		return nil, err
+	}
+	binder := productReviewCapabilityBinder{now: time.Now}
+	return browserCaptureModule{routes: browserCaptureRoutes(service, binder.Bind)}, nil
+}
+
 // NewCurrentApplicationWithAcquisitionAndReferrals composes the two explicitly
 // enabled current modules while keeping all caller-owned pools independent.
 func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, commercialDB, productDB, referralDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {

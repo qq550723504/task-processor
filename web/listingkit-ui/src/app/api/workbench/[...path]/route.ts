@@ -1,3 +1,4 @@
+import { isBrowserCapturePath, isBrowserCaptureRequestURL } from "@/lib/contracts/browser-capture";
 import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
@@ -163,6 +164,8 @@ export const POST = handleWorkbenchRequest;
 export const DELETE = handleWorkbenchRequest;
 
 function isSourceMutation(method: string, path: string[]) {
+  if (method === "POST" && isBrowserCapturePath(method, path)) return true;
+
   return (
     method.toUpperCase() === "POST" &&
     ((path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" &&
@@ -174,6 +177,8 @@ function isSourceMutation(method: string, path: string[]) {
 }
 
 function isAcquisitionRequestURL(method: string, rawURL: string) {
+  if (isBrowserCaptureRequestURL(method, rawURL)) return true;
+
   const path = new URL(rawURL).pathname;
   const base = "/api/workbench/sourcing/1688/acquisitions";
   if (method === "POST") return path === base || path === `${base}/verify`;
@@ -182,6 +187,8 @@ function isAcquisitionRequestURL(method: string, rawURL: string) {
 }
 
 function isSourceRequestURL(rawURL: string) {
+  if (isBrowserCaptureRequestURL("POST", rawURL) || isBrowserCaptureRequestURL("GET", rawURL)) return true;
+
   const path = new URL(rawURL).pathname.split("/").filter(Boolean);
   return (
     path[0] === "api" &&

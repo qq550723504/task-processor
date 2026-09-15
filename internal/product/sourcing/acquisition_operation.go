@@ -31,17 +31,18 @@ var (
 )
 
 type AcquisitionOperation struct {
-	Scope       PublicationScope
-	Key         string
-	ID          string
-	Source      AcquisitionSource
-	Fingerprint string
-	State       string
-	Fence       int64
-	LeaseUntil  time.Time
-	Command     *PublicationCommand
-	CommandHash string
-	FailureCode string
+	Scope         PublicationScope
+	Key           string
+	ID            string
+	Source        AcquisitionSource
+	Fingerprint   string
+	CaptureSHA256 string
+	State         string
+	Fence         int64
+	LeaseUntil    time.Time
+	Command       *PublicationCommand
+	CommandHash   string
+	FailureCode   string
 }
 
 // AcquisitionOperationStore retains original commands, not Product facts.
