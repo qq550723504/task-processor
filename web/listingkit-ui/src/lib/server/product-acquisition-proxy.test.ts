@@ -42,17 +42,18 @@ describe("Public acquisition BFF", () => {
     vi.useFakeTimers();
     try {
       const body = new ReadableStream<Uint8Array>({ start() {} });
+      const requestInit = {
+        method: "POST",
+        headers: {
+          "content-type": "application/json", origin: "http://localhost:3000", "sec-fetch-site": "same-origin",
+          cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", "X-Expected-User-ID": "actor",
+          "Idempotency-Key": key,
+        },
+        body,
+        duplex: "half" as const,
+      } as RequestInit & { duplex: "half" };
       const pending = buildWorkbenchUpstreamRequest(
-        new Request(`http://localhost:3000${ACQUISITION_BASE}`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json", origin: "http://localhost:3000", "sec-fetch-site": "same-origin",
-            cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", "X-Expected-User-ID": "actor",
-            "Idempotency-Key": key,
-          },
-          body,
-          duplex: "half",
-        }),
+        new Request(`http://localhost:3000${ACQUISITION_BASE}`, requestInit),
         path,
         "server-token",
         "actor",
