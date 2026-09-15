@@ -57,9 +57,14 @@ func execute() error {
 		OpenCommercial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
+		OpenProductAcquisition: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenReferrals: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		NewApplicationWithAcquisition:             httpapi.NewCurrentApplicationWithAcquisition,
+		NewApplicationWithAcquisitionAndReferrals: httpapi.NewCurrentApplicationWithAcquisitionAndReferrals,
 		NewApplication: func(ctx context.Context, source, commercial *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			return httpapi.NewCurrentApplication(ctx, source, commercial, cfg, logger)
 		},
