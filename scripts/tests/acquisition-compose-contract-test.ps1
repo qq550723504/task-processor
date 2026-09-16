@@ -47,6 +47,15 @@ foreach ($expected in @('source_acquisition_runtime', 'productAcquisitionDatabas
 $env:COMPOSE_PROJECT_NAME = $project
 $model = (& docker compose --project-name $project --env-file $envFile -f $compose config --format json | ConvertFrom-Json)
 Remove-Item Env:COMPOSE_PROJECT_NAME
+$uiAcquisitionEnabled = $model.services.'listingkit-ui'.environment.LISTINGKIT_PRODUCT_ACQUISITION_ENABLED
+if ($uiAcquisitionEnabled -cne 'true') {
+    throw 'listingkit-ui must explicitly enable the server-derived acquisition workbench'
+}
+foreach ($service in $model.services.psobject.Properties) {
+    if ($service.Name -ne 'listingkit-ui' -and $service.Value.environment.LISTINGKIT_PRODUCT_ACQUISITION_ENABLED) {
+        throw "$($service.Name) must not receive the UI acquisition availability setting"
+    }
+}
 $forbiddenServingVolumes = @('identity-db-secret', 'source-db-owner-secret', 'commercial-db-owner-secret', 'product-db-owner-secret', 'zitadel-api-secrets', 'zitadel-iac-pat', 'tofu-state', 'tofu-inputs')
 foreach ($service in @('listingkit-ui', 'current-application')) {
     $sources = @($model.services.$service.volumes | ForEach-Object source)

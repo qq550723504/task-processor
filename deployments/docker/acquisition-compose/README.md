@@ -14,6 +14,10 @@ The Go application is reachable only at `127.0.0.1:8085` inside the shared
 network namespace. `LISTINGKIT_SERVICE_API_BASE` therefore remains the same
 Go instance's `/api/v1` root.
 
+The UI alone sets `LISTINGKIT_PRODUCT_ACQUISITION_ENABLED=true`; the default
+web build remains unavailable unless its serving environment opts in, while the
+current application independently verifies its product-acquisition database.
+
 ## Create a new owned instance
 
 Copy the blank environment file, generate a unique project name, and prove it
