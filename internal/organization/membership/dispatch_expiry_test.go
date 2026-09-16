@@ -16,6 +16,18 @@ type dispatchGateReceipts struct {
 	afterCommit func()
 }
 
+// postCommitDeadlineContext models the short interval after a context deadline
+// has passed but before its cancellation signal has been observed. The parent
+// deadline is shorter than Execute's timeout, so Execute preserves it.
+type postCommitDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c *postCommitDeadlineContext) Deadline() (time.Time, bool) {
+	return c.deadline, true
+}
+
 func (s *dispatchGateReceipts) Apply(ctx context.Context, scope OperationScope, key string, revision int64, change OperationChange) (Operation, error) {
 	op, err := s.memoryReceipts.Apply(ctx, scope, key, revision, change)
 	if err == nil && change.Event == EventDispatch && op.Step == s.step {
@@ -38,16 +50,20 @@ func TestDispatchCommitRechecksExpiryAndCancellationBeforeEveryProviderStep(t *t
 				}
 				base := authidentity.WithAuthenticatedIdentity(context.Background(), identity)
 				ctx, cancel := context.WithCancel(base)
+				var postCommitDeadline *postCommitDeadlineContext
 				if mode == "deadline" {
-					cancel()
-					ctx, cancel = context.WithDeadline(base, deadline)
+					postCommitDeadline = &postCommitDeadlineContext{Context: ctx, deadline: time.Now().Add(time.Second)}
+					ctx = postCommitDeadline
 				}
 				defer cancel()
 				store := &dispatchGateReceipts{step: step, afterCommit: func() {
-					if mode != "cancel" {
+					switch mode {
+					case "expiry":
 						time.Sleep(time.Until(deadline) + time.Millisecond)
-					} else {
+					case "cancel":
 						cancel()
+					case "deadline":
+						postCommitDeadline.deadline = time.Now().Add(-time.Millisecond)
 					}
 				}}
 				writer := &inviteProvider{}
