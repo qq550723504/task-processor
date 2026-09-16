@@ -20,6 +20,14 @@ type AcquisitionService struct {
 	authorizer sourcing.PublicationAuthorizer
 }
 
+// PublishedAcquisition is a Catalog-owned immutable snapshot selected only by
+// the durable receipt of one actor-scoped acquisition operation. It is not a
+// general product lookup contract.
+type PublishedAcquisition struct {
+	Result   sourcing.AcquisitionResult
+	Snapshot catalog.PublishedSnapshot
+}
+
 func NewAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer) (*AcquisitionService, error) {
 	if store == nil || publisher == nil || authorizer == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
@@ -139,6 +147,30 @@ func (s *AcquisitionService) Read(ctx context.Context, operationID string) (sour
 		result.Publication = &persisted
 	}
 	return result, nil
+}
+
+// ReadPublished returns the exact Catalog version recorded by a published
+// operation after Read has bound the current actor and organization to it.
+func (s *AcquisitionService) ReadPublished(ctx context.Context, operationID string) (PublishedAcquisition, error) {
+	result, err := s.Read(ctx, operationID)
+	if err != nil {
+		return PublishedAcquisition{}, err
+	}
+	if result.Operation.State != sourcing.AcquisitionPublished || result.Publication == nil || s.reader == nil {
+		return PublishedAcquisition{}, sourcing.ErrAcquisitionUnknown
+	}
+	receipt := result.Publication.Receipt
+	published, err := s.reader.GetSnapshot(ctx, catalog.SnapshotIdentity{TenantID: receipt.OrganizationID, ProductKey: receipt.ProductKey}, receipt.CatalogVersion)
+	if errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return PublishedAcquisition{}, sourcing.ErrAcquisitionUnknown
+	}
+	if err != nil {
+		return PublishedAcquisition{}, err
+	}
+	if published.Identity.TenantID != receipt.OrganizationID || published.Identity.ProductKey != receipt.ProductKey || published.Version != receipt.CatalogVersion || published.PublicationID != receipt.CatalogPublicationID {
+		return PublishedAcquisition{}, sourcing.ErrAcquisitionUnavailable
+	}
+	return PublishedAcquisition{Result: result, Snapshot: published}, nil
 }
 
 func acquisitionOperation(scope sourcing.PublicationScope, key string, source sourcing.AcquisitionSource) sourcing.AcquisitionOperation {

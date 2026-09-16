@@ -246,6 +246,7 @@ func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor,
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase},
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase + "/verify"},
 			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id"},
+			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id/product"},
 		)
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))

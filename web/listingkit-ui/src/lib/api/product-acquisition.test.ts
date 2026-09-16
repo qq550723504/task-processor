@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acquire1688, verify1688, readAcquisition } from "./product-acquisition";
+import { acquire1688, verify1688, readAcquisition, readAcquisitionProduct } from "./product-acquisition";
 
 const key="01991e24-61ab-4f5f-85d1-3157bb8b75c1";
 const operation=Object.freeze({key,source:"981645030344",userId:"actor",organizationId:"B"});
 const result={schemaVersion:1,operationId:key,outcome:"published",replayed:false,productKey:"crawler:1688:981645030344",publicationId:`source-run:acquisition:${key}`,catalogVersion:"1",warnings:[],missingFacts:[]};
+const product={schemaVersion:1,operationId:key,productKey:"crawler:1688:981645030344",publicationId:`source-run:acquisition:${key}`,catalogVersion:"1",title:"Captured bottle",sources:[{platform:"1688",url:"https://detail.1688.com/offer/981645030344.html"}],images:[{url:"https://img.test/1.jpg",role:"candidate"}],specifications:[{name:"material",value:"glass"}],warnings:[],missingFacts:[{field:"sku",reason:"not captured"}]};
 afterEach(()=>vi.unstubAllGlobals());
 describe("acquisition client",()=>{
   it("uses explicit original intent, safe same-origin transport and verify only",async()=>{
@@ -26,5 +27,11 @@ describe("acquisition client",()=>{
     const fetcher=vi.fn().mockResolvedValue(Response.json({...result,publicationId:"other"}));vi.stubGlobal("fetch",fetcher);
     await expect(acquire1688({...operation,organizationId:""})).rejects.toMatchObject({code:"INVALID_REQUEST"});expect(fetcher).not.toHaveBeenCalled();
     await expect(acquire1688(operation)).rejects.toMatchObject({code:"OUTCOME_UNKNOWN"});
+  });
+  it("reads only the operation-bound Catalog projection",async()=>{
+    const fetcher=vi.fn().mockResolvedValue(Response.json(product));vi.stubGlobal("fetch",fetcher);
+    await expect(readAcquisitionProduct(key,operation)).resolves.toEqual(product);
+    expect(fetcher).toHaveBeenCalledWith(`/api/workbench/sourcing/1688/acquisitions/${key}/product`,expect.objectContaining({method:"GET",credentials:"same-origin"}));
+    await expect(readAcquisitionProduct("not-an-id",operation)).rejects.toMatchObject({code:"INVALID_REQUEST"});
   });
 });

@@ -1660,4 +1660,21 @@ describe("strict Store Center response boundary", () => {
     expect(response.headers.get("Set-Cookie")).toBeNull();
     expect(response.headers.get("ETag")).toBeNull();
   });
+
+  it("allows only an operation-bound acquisition Catalog read", async () => {
+    const headers = { cookie: `${WORKBENCH_COOKIE_NAME}=org-cookie`, "X-Expected-Organization-ID": "org-cookie", "X-Expected-User-ID": "actor" };
+    const path = ["sourcing", "1688", "acquisitions", operationKey, "product"];
+    const upstream = await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/${path.join("/")}`, { headers }), path, "server-token", "actor");
+    expect(upstream).not.toBeInstanceOf(Response);
+    if (upstream instanceof Response) return;
+    expect(upstream.url).toBe(`http://localhost:8085/api/v1/workbench/sourcing/1688/acquisitions/${operationKey}/product`);
+    expect(upstream.responseContract).toBe("product-acquisition-product");
+    const product = { schemaVersion: 1, operationId: operationKey, productKey: "crawler:1688:981645030344", publicationId: `source-run:acquisition:${operationKey}`, catalogVersion: "1", title: "Catalog fact", sources: [], images: [], specifications: [], warnings: [], missingFacts: [] };
+    const browser = await buildWorkbenchBrowserResponse(Response.json(product), upstream.responseContract, operationKey);
+    expect(browser.status).toBe(200);
+    await expect(browser.json()).resolves.toEqual(product);
+    const rejected = await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/sourcing/1688/acquisitions/${operationKey}/product/other`, { headers }), [...path, "other"], "server-token", "actor");
+    expect(rejected).toBeInstanceOf(Response);
+    expect((rejected as Response).status).toBe(404);
+  });
 });

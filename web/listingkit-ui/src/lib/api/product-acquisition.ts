@@ -1,8 +1,8 @@
-import { ACQUISITION_BASE, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionResultSchema, acquisitionErrorStatuses, canonical1688Source, isAcquisitionUUID, type AcquisitionResult } from "../contracts/product-acquisition";
+import { ACQUISITION_BASE, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionResultSchema, acquisitionProductSchema, acquisitionErrorStatuses, canonical1688Source, isAcquisitionUUID, type AcquisitionProduct, type AcquisitionResult } from "../contracts/product-acquisition";
 
 export type AcquisitionContext = Readonly<{ userId: string; organizationId: string }>;
 export type AcquisitionOperation = Readonly<AcquisitionContext & { key: string; source: string }>;
-class AcquisitionAPIError extends Error {
+export class AcquisitionAPIError extends Error {
   constructor(public readonly code: string, public readonly status: number) { super(code); }
 }
 export async function acquire1688(operation: AcquisitionOperation, signal?: AbortSignal): Promise<AcquisitionResult> {
@@ -14,6 +14,10 @@ export async function verify1688(operation: AcquisitionOperation, signal?: Abort
 export async function readAcquisition(operationId: string, context: AcquisitionContext, signal?: AbortSignal): Promise<AcquisitionResult> {
   if (!isAcquisitionUUID(operationId)) throw new AcquisitionAPIError("INVALID_REQUEST",400);
   return send(`${ACQUISITION_BASE}/${operationId}`,context,{signal,operationId});
+}
+export async function readAcquisitionProduct(operationId: string, context: AcquisitionContext, signal?: AbortSignal): Promise<AcquisitionProduct> {
+  if (!isAcquisitionUUID(operationId)) throw new AcquisitionAPIError("INVALID_REQUEST",400);
+  return readProduct(`${ACQUISITION_BASE}/${operationId}/product`,context,operationId,signal);
 }
 
 function submit(operation: AcquisitionOperation, verify: boolean, signal?: AbortSignal) {
@@ -60,4 +64,20 @@ async function boundedJSON(response:Response,signal:AbortSignal):Promise<unknown
   finally{signal.removeEventListener("abort",cancel);reader.releaseLock();}
   const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
   return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
+}
+
+async function readProduct(path:string,context:AcquisitionContext,operationId:string,signal?:AbortSignal):Promise<AcquisitionProduct>{
+  const safe=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+  if (!safe.test(context.userId) || !safe.test(context.organizationId)) throw new AcquisitionAPIError("INVALID_REQUEST",400);
+  if (signal?.aborted) throw new AcquisitionAPIError("DEADLINE_EXCEEDED",504);
+  const controller=new AbortController();const abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});const timeout=setTimeout(abort,25000);
+  try{
+    const response=await fetch(path,{method:"GET",headers:{Accept:"application/json","X-Expected-Organization-ID":context.organizationId,"X-Expected-User-ID":context.userId},credentials:"same-origin",cache:"no-store",redirect:"error",signal:controller.signal});
+    if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type")??"")) throw new AcquisitionAPIError("ACQUISITION_UNAVAILABLE",503);
+    const payload=await boundedJSON(response,controller.signal);
+    if(!response.ok){const code=payload&&typeof payload==="object"&&"code" in payload&&typeof payload.code==="string"?payload.code:"";if(acquisitionErrorStatuses[code]===response.status)throw new AcquisitionAPIError(code,response.status);throw new AcquisitionAPIError("ACQUISITION_UNAVAILABLE",503);}
+    const parsed=acquisitionProductSchema.safeParse(payload);if(response.status!==200||!parsed.success||parsed.data.operationId!==operationId)throw new AcquisitionAPIError("ACQUISITION_UNAVAILABLE",503);
+    return parsed.data;
+  }catch(error){if(error instanceof AcquisitionAPIError)throw error;throw new AcquisitionAPIError("ACQUISITION_UNAVAILABLE",503);}
+  finally{clearTimeout(timeout);signal?.removeEventListener("abort",abort);}
 }

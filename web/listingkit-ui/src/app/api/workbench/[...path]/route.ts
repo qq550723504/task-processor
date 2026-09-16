@@ -177,8 +177,9 @@ function isAcquisitionRequestURL(method: string, rawURL: string) {
   const path = new URL(rawURL).pathname;
   const base = "/api/workbench/sourcing/1688/acquisitions";
   if (method === "POST") return path === base || path === `${base}/verify`;
-  return method === "GET" && path.startsWith(`${base}/`) &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(path.slice(base.length + 1));
+  if (method !== "GET" || !path.startsWith(`${base}/`)) return false;
+  const suffix = path.slice(base.length + 1);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/product)?$/.test(suffix);
 }
 
 function isSourceRequestURL(rawURL: string) {
