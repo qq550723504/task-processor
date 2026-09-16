@@ -243,15 +243,15 @@ func (cfg *Config) validate() error {
 
 func validateLoopbackURL(name, raw string) (*url.URL, error) {
 	if raw == "" || strings.TrimSpace(raw) != raw || strings.HasSuffix(raw, "?") || strings.HasSuffix(raw, "#") {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	host := strings.ToLower(parsed.Hostname())
 	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	if parsed.Port() == "" || len(raw) > 2048 {
 		return nil, fmt.Errorf("identity.%s must include an explicit loopback port", name)
