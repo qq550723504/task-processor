@@ -40,11 +40,12 @@ var currentWorkbenchApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildWorkbench     workbenchContextModuleBuilder
-	buildSourceAccount func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAcquisition   func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAudit  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildWorkbench      workbenchContextModuleBuilder
+	buildSourceAccount  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildCommercial     func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAcquisition    func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildBrowserCapture func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAudit   func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
@@ -129,6 +130,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, acquisition)
 	}
+	if factories.buildBrowserCapture != nil {
+		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build current Browser capture module: %w", err)
+		}
+		if browser == nil {
+			return nil, errors.New("current Browser capture module unavailable")
+		}
+		modules = append(modules, browser)
+	}
 	if cfg.Referrals.Enabled {
 		var supplied currentApplicationOptions
 		if len(options) != 1 || options[0] == nil {
@@ -160,7 +171,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled); err != nil {
+	if err := validateCurrentApplicationRoutesWithBrowser(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildBrowserCapture != nil); err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
@@ -172,16 +183,32 @@ func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudi
 }
 
 func validateCurrentApplicationRoutesForAcquisition(routes []httproute.Descriptor, acquisition bool) error {
-	return validateCurrentApplicationRoutesWithFeatures(routes, false, acquisition, false)
+	return validateCurrentApplicationRoutesForSourcing(routes, acquisition, false)
+}
+
+func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, acquisition, browser bool) error {
+	return validateCurrentApplicationRoutesWithBrowser(routes, false, acquisition, false, browser)
 }
 
 func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals bool) error {
+	return validateCurrentApplicationRoutesWithBrowser(routes, includeAudit, includeAcquisition, includeReferrals, false)
+}
+
+func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeBrowser bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAcquisition {
 		admitted = append(admitted,
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase},
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase + "/verify"},
 			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id"},
+		)
+	}
+	if includeBrowser {
+		admitted = append(admitted,
+			currentApplicationRoute{Method: http.MethodPost, Path: browserCaptureBase},
+			currentApplicationRoute{Method: http.MethodPost, Path: browserCaptureBase + "/verify"},
+			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/by-key/:key"},
+			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/:operation_id"},
 		)
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))

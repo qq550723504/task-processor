@@ -27,7 +27,7 @@ export function isPublicRoute(pathname: string | null): boolean {
 export function isWorkbenchRoute(pathname: string | null): boolean {
   return (
     pathname !== null &&
-    (pathname === "/workbench" || pathname.startsWith("/workbench/"))
+    (pathname === "/capture/1688" || pathname === "/workbench" || pathname.startsWith("/workbench/"))
   );
 }
 
