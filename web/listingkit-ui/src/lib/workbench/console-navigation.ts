@@ -15,7 +15,7 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   pending("数据服务", "data", [pending("数据市场", "data/market"), pending("API管理", "data/api"), pending("我的数据", "data/mine")]),
   pending("店铺中心", "store-center", [{ label: "我的店铺", href: "/workbench/stores", availability: "connected" }, pending("店铺商品", "store-products"), pending("订单履约", "store-orders")]),
   pending("套餐与权益", "plans", [{ label: "套餐方案", href: "/workbench/plans/options", availability: "connected" }, { label: "我的权益", href: "/workbench/plans/entitlements", availability: "connected" }, pending("用量明细", "plans/usage"), pending("充值中心", "plans/top-up"), pending("账单与订单", "plans/orders")]),
-  { label: "我的账户", href: "/workbench/account", availability: "connected", children: [{ label: "账户资料", href: "/workbench/account/profile", availability: "connected" }, { label: "企业空间", href: "/workbench/account/organization", availability: "connected", children: [{ label: "成员与权限", href: "/workbench/account/organization/members", availability: "connected" }, { label: "资源与额度", href: "/workbench/account/organization/resources", availability: "connected" }, { label: "操作记录", href: "/workbench/account/organization/audit", availability: "connected" }] }, pending("推广与收益", "account/referrals")] },
+  { label: "我的账户", href: "/workbench/account", availability: "connected", children: [{ label: "账户资料", href: "/workbench/account/profile", availability: "connected" }, { label: "企业空间", href: "/workbench/account/organization", availability: "connected", children: [{ label: "成员与权限", href: "/workbench/account/organization/members", availability: "connected" }, { label: "资源与额度", href: "/workbench/account/organization/resources", availability: "connected" }, { label: "操作记录", href: "/workbench/account/organization/audit", availability: "connected" }] }, { label: "推广与收益", href: "/workbench/account/referrals", availability: "connected" }] },
 ];
 
 export type ConsoleRoute = { node: ConsoleNavNode; trail: readonly ConsoleNavNode[] };
@@ -33,6 +33,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   if (pathname === "/workbench/account/organization/resources/source-accounts") {
     const parent = findConsoleRoute("/workbench/account/organization/resources")!;
     const node: ConsoleNavNode = { label: "源账号", href: pathname, availability: parent.node.availability };
+    return { node, trail: [...parent.trail, node] };
+  }
+  if (pathname === "/workbench/account/referrals/complete") {
+    const parent = findConsoleRoute("/workbench/account/referrals")!;
+    const node: ConsoleNavNode = { label: "完成注册", href: pathname, availability: parent.node.availability };
     return { node, trail: [...parent.trail, node] };
   }
   if (/^\/workbench\/stores\/[^/]+$/.test(pathname)) {

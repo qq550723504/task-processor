@@ -23,11 +23,13 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"listingkit-schema-migrate":           {},
 		"playwright-installer":                {},
 		"product-listing-api-schema-migrate":  {},
+		"product-acquisition-init":            {},
 		"shein-import-platform-recovery":      {},
 		"shein-login-worker":                  {},
 		"store-service-history-migrate":       {},
 		"source-account-ownership-preflight":  {},
 		"source-account-registry-schema-init": {},
+		"referral-schema-init":                {},
 	}
 }
 

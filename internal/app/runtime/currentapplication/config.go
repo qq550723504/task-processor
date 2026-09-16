@@ -2,6 +2,7 @@ package currentapplication
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,12 +26,19 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion         int               `json:"schemaVersion"`
-	Listen                ListenConfig      `json:"listen"`
-	Identity              IdentityConfig    `json:"identity"`
-	SourceAccountDatabase DatabaseConfig    `json:"sourceAccountDatabase"`
-	CommercialDatabase    DatabaseConfig    `json:"commercialDatabase"`
-	Membership            *MembershipConfig `json:"membership,omitempty"`
+	SchemaVersion              int               `json:"schemaVersion"`
+	Listen                     ListenConfig      `json:"listen"`
+	Identity                   IdentityConfig    `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig    `json:"sourceAccountDatabase"`
+	CommercialDatabase         DatabaseConfig    `json:"commercialDatabase"`
+	ProductAcquisitionDatabase *DatabaseConfig   `json:"productAcquisitionDatabase,omitempty"`
+	Membership                 *MembershipConfig `json:"membership,omitempty"`
+	Referrals                  ReferralsConfig   `json:"referrals"`
+}
+
+type ReferralsConfig struct {
+	coreconfig.ReferralsConfig
+	Database DatabaseConfig `json:"referralDatabase"`
 }
 
 type ListenConfig struct {
@@ -68,6 +76,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("current application manifest must not be accessible by group or others")
+	}
+	if runtime.GOOS == "windows" && coreconfig.VerifyPrivateFiles(context.Background(), []string{path}) != nil {
+		return nil, errors.New("current application manifest must be private")
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -211,21 +222,57 @@ func (cfg *Config) validate() error {
 		if err := cfg.Membership.validate(cfg.Identity); err != nil {
 			return err
 		}
+		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+			if cfg.Membership.Database.Host == other.Host && cfg.Membership.Database.Port == other.Port && cfg.Membership.Database.Database == other.Database {
+				return errors.New("membership requires a dedicated database")
+			}
+		}
+	}
+	if product := cfg.ProductAcquisitionDatabase; product != nil {
+		if err := product.validate("productAcquisitionDatabase"); err != nil {
+			return err
+		}
+		if product.User != "source_acquisition_runtime" || product.MaxConnections > 8 {
+			return errors.New("product acquisition requires source_acquisition_runtime and at most 8 connections")
+		}
+		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+			if product.Host == other.Host && product.Port == other.Port && product.Database == other.Database {
+				return errors.New("product acquisition requires a dedicated Product database")
+			}
+		}
+	}
+	if cfg.Referrals.Enabled {
+		if err := cfg.Referrals.Database.validate("referrals.referralDatabase"); err != nil {
+			return err
+		}
+		if cfg.Referrals.Database.User != "referral_runtime" || cfg.Referrals.Issuer != cfg.Identity.IssuerURL {
+			return errors.New("referrals requires its runtime role and the current identity issuer")
+		}
+	}
+	if cfg.Membership != nil {
+		for _, other := range []*DatabaseConfig{cfg.ProductAcquisitionDatabase} {
+			if other != nil && cfg.Membership.Database.Host == other.Host && cfg.Membership.Database.Port == other.Port && cfg.Membership.Database.Database == other.Database {
+				return errors.New("membership requires a dedicated database")
+			}
+		}
+		if cfg.Referrals.Enabled && cfg.Membership.Database.Host == cfg.Referrals.Database.Host && cfg.Membership.Database.Port == cfg.Referrals.Database.Port && cfg.Membership.Database.Database == cfg.Referrals.Database.Database {
+			return errors.New("membership requires a dedicated database")
+		}
 	}
 	return nil
 }
 
 func validateLoopbackURL(name, raw string) (*url.URL, error) {
 	if raw == "" || strings.TrimSpace(raw) != raw || strings.HasSuffix(raw, "?") || strings.HasSuffix(raw, "#") {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	host := strings.ToLower(parsed.Hostname())
 	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	if parsed.Port() == "" || len(raw) > 2048 {
 		return nil, fmt.Errorf("identity.%s must include an explicit loopback port", name)
@@ -267,6 +314,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		return nil
 	}
 	return &coreconfig.Config{
+		Referrals: cfg.Referrals.ReferralsConfig,
 		Workbench: coreconfig.WorkbenchConfig{Enabled: true},
 		ListingKit: coreconfig.ListingKitConfig{Zitadel: coreconfig.ListingKitZitadelConfig{
 			IssuerURL: cfg.Identity.IssuerURL, AuthorizationAPIURL: cfg.Identity.AuthorizationAPIURL,

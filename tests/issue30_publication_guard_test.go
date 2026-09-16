@@ -40,6 +40,11 @@ func TestIssue30PublicationGuardReferenceForms(t *testing.T) {
 		want             int
 	}{
 		{"direct", "cmd/service/main.go", `package main; import "task-processor/internal/product/sourcing"; func run() { sourcing.PublicationIdentity() }`, 1},
+		{"admitted acquisition construction", "internal/app/productsourcing/acquisition.go", `package productsourcing; import s "task-processor/internal/product/sourcing"; func run() { s.PublicationIdentity() }`, 0},
+		{"admitted acquisition integrity", "internal/integration/persistence/product/acquisition/repository.go", `package acquisition; import s "task-processor/internal/product/sourcing"; func run() { s.PublicationIdentity() }`, 0},
+		{"acquisition sibling", "internal/app/productsourcing/other.go", `package productsourcing; import s "task-processor/internal/product/sourcing"; var use = s.PublicationIdentity`, 1},
+		{"acquisition fake prefix", "internal/app/productsourcing/acquisition.go.fake.go", `package productsourcing; import s "task-processor/internal/product/sourcing"; var use = s.PublicationIdentity`, 1},
+		{"acquisition nested", "internal/integration/persistence/product/acquisition/child/repository.go", `package acquisition; import s "task-processor/internal/product/sourcing"; var use = s.PublicationIdentity`, 1},
 		{"alias", "internal/worker/use.go", `package worker; import src "task-processor/internal/product/sourcing"; func run() { src.PublicationIdentity() }`, 1},
 		{"function value", "main.go", `package main; import s "task-processor/internal/product/sourcing"; var use = s.PublicationIdentity`, 1},
 		{"assignment", "scripts/import/main.go", `package main; import s "task-processor/internal/product/sourcing"; func run() { f := (s.PublicationIdentity); _ = f }`, 1},

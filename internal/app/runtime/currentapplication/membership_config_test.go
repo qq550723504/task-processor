@@ -10,6 +10,15 @@ func TestMembershipConfigurationRequiresSeparatePoolAndExactIdentityOrigin(t *te
 	if err := valid.validate(identity); err != nil {
 		t.Fatal(err)
 	}
+	identity.IssuerURL = "https://localhost:18443"
+	identity.AuthorizationAPIURL = "https://localhost:18443"
+	valid.ProviderOrigin = "https://localhost:18443"
+	if err := valid.validate(identity); err != nil {
+		t.Fatal(err)
+	}
+	identity.IssuerURL = "http://127.0.0.1:8800"
+	identity.AuthorizationAPIURL = "http://127.0.0.1:8800"
+	valid.ProviderOrigin = "http://127.0.0.1:8800"
 	for _, mutate := range []func(*MembershipConfig){
 		func(c *MembershipConfig) { c.ProviderOrigin = "http://127.0.0.1:8801" },
 		func(c *MembershipConfig) { c.ProviderOrigin = "http://example.com:8800" },

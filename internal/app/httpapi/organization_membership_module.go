@@ -35,11 +35,7 @@ func NewCurrentApplicationWithMembership(ctx context.Context, sourceDB, commerci
 	if membershipDeps.ReceiptDB == nil || membershipDeps.ReceiptDB == sourceDB || membershipDeps.ReceiptDB == commercialDB || cfg == nil {
 		return nil, errors.New("membership requires an independent receipt pool")
 	}
-	factories := defaultCurrentApplicationFactories(ctx)
-	factories.buildMembership = func(startup context.Context, authorizer *authz.ListingKitAuthorizer, auth routeAuthDependencies) (kernelmodule.Module, error) {
-		return buildMembershipModule(startup, cfg, membershipDeps, authorizer, auth)
-	}
-	return buildCurrentApplication(ctx, sourceDB, commercialDB, cfg, logger, factories)
+	return NewCurrentApplicationWithOptions(ctx, sourceDB, commercialDB, cfg, logger, WithMembership(membershipDeps))
 }
 
 func buildMembershipModule(ctx context.Context, cfg *config.Config, deps MembershipDependencies, authorizer *authz.ListingKitAuthorizer, auth routeAuthDependencies) (kernelmodule.Module, error) {
@@ -51,7 +47,7 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 		return nil, membership.ErrUnavailable
 	}
 	issuer, err := url.Parse(cfg.ListingKit.Zitadel.IssuerURL)
-	if err != nil || origin.Scheme != "http" || origin.Scheme != issuer.Scheme || origin.Host != issuer.Host || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") || (origin.Hostname() != "127.0.0.1" && origin.Hostname() != "localhost" && origin.Hostname() != "::1") || origin.Port() == "" {
+	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Scheme != issuer.Scheme || origin.Host != issuer.Host || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") || (origin.Hostname() != "127.0.0.1" && origin.Hostname() != "localhost" && origin.Hostname() != "::1") || origin.Port() == "" {
 		return nil, membership.ErrUnavailable
 	}
 	if deps.ReadToken == deps.WriteToken || len(deps.ReadToken) > 4096 || len(deps.WriteToken) > 4096 {
