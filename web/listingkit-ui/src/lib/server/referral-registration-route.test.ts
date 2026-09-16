@@ -35,7 +35,9 @@ function request(
       Origin: "https://app.test",
       "Sec-Fetch-Site": "same-origin",
       "Content-Type": "application/json",
-      "X-ListingKit-Client-IP": "203.0.113.9",
+      // Traefik replaces this value at the public ingress.  The browser
+      // never supplies a ListingKit-specific client-IP assertion.
+      "X-Real-IP": "203.0.113.9",
       ...(route === "start" ? { "Idempotency-Key": "b".repeat(64) } : {}),
       ...headers,
     },
@@ -70,7 +72,7 @@ describe("public referral registration BFF", () => {
     vi.stubEnv("LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE", "");
     expect(await isReferralRegistrationAvailable()).toBe(false);
   });
-  it("forwards only canonical input plus the server credential and trusted proxy IP", async () => {
+  it("forwards only canonical input plus the server credential and Traefik-normalized client IP", async () => {
     const fetch = vi.fn().mockResolvedValue(
       Response.json({
         intentID: "intent-1",
@@ -104,11 +106,12 @@ describe("public referral registration BFF", () => {
   });
 
   it.each([
-    ["missing trusted proxy assertion", { "X-ListingKit-Client-IP": "" }, 403],
-    ["IPv4 loopback proxy assertion", { "X-ListingKit-Client-IP": "127.14.0.1" }, 403],
-    ["IPv6 loopback proxy assertion", { "X-ListingKit-Client-IP": "::1" }, 403],
-    ["expanded IPv6 loopback proxy assertion", { "X-ListingKit-Client-IP": "0:0:0:0:0:0:0:1" }, 403],
-    ["mapped loopback proxy assertion", { "X-ListingKit-Client-IP": "::ffff:127.0.0.1" }, 403],
+    ["missing Traefik-normalized client IP", { "X-Real-IP": "" }, 403],
+    ["IPv4 loopback normalized client IP", { "X-Real-IP": "127.14.0.1" }, 403],
+    ["IPv6 loopback normalized client IP", { "X-Real-IP": "::1" }, 403],
+    ["expanded IPv6 loopback normalized client IP", { "X-Real-IP": "0:0:0:0:0:0:0:1" }, 403],
+    ["mapped loopback normalized client IP", { "X-Real-IP": "::ffff:127.0.0.1" }, 403],
+    ["browser-forged ListingKit client IP", { "X-ListingKit-Client-IP": "198.51.100.8" }, 400],
     ["cross-site request", { Origin: "https://evil.test", "Sec-Fetch-Site": "cross-site" }, 403],
     ["browser service credential", { "X-Referral-Service-Credential": credential }, 400],
     ["browser Go client IP", { "X-Referral-Client-IP": "198.51.100.8" }, 400],

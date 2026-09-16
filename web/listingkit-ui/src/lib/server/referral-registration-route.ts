@@ -48,11 +48,15 @@ export async function handleReferralRegistrationPOST(request: NextRequest, kind:
   const url = new URL(request.url);
   const expectedPath = kind === "start" ? "/api/referral-registration" : "/api/referral-registration/resume";
   if (url.pathname !== expectedPath || url.search || request.url.endsWith("?")) return failure(400, "INVALID_REQUEST");
-  if (["authorization", "x-referral-service-credential", "x-referral-client-ip", "x-requested-organization-id", "x-expected-user-id"].some((name) => request.headers.has(name))) {
+  if (["authorization", "x-listingkit-client-ip", "x-referral-service-credential", "x-referral-client-ip", "x-requested-organization-id", "x-expected-user-id"].some((name) => request.headers.has(name))) {
     void request.body?.cancel().catch(() => undefined);
     return failure(400, "INVALID_REQUEST");
   }
-  const clientIP = singleHeader(request.headers, "x-listingkit-client-ip");
+  // The UI Service accepts ingress only from Traefik (see the paired
+  // NetworkPolicy). Traefik removes client-supplied forwarding headers and
+  // writes X-Real-IP from its peer connection; browser-specific headers are
+  // never an authority for the Go command's rate-limit identity.
+  const clientIP = singleHeader(request.headers, "x-real-ip");
   if (!clientIP || isIP(clientIP) === 0 || clientIP.includes("%") || isLoopback(clientIP)) return failure(403, "TRUSTED_PROXY_REQUIRED");
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? "")) return failure(400, "INVALID_REQUEST");
   const key = kind === "start" ? singleHeader(request.headers, "idempotency-key") : null;
