@@ -21,7 +21,12 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const context = useWorkbenchContext();
   // Personal identity is bootstrapped by the server page, independently of enterprise grants.
-  const isPersonalProfile = pathname === "/workbench/account" || pathname === "/workbench/account/profile";
+  const isPersonalAccountRoute = [
+    "/workbench/account",
+    "/workbench/account/profile",
+    "/workbench/account/referrals",
+    "/workbench/account/referrals/complete",
+  ].includes(pathname);
   const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
   const shouldRedirectToNoOrganization =
@@ -29,7 +34,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     !context.error &&
     !context.blockingError &&
     context.organizations.length === 0 &&
-    !isPersonalProfile &&
+    !isPersonalAccountRoute &&
     pathname !== NO_ORGANIZATION_ROUTE;
   const shouldLeaveNoOrganization =
     !context.isLoading &&
@@ -53,7 +58,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
 
   if (authenticationError) return <AccessState action={redirectToLogin} code={authenticationError.code} />;
 
-  if (context.isLoading && !isPersonalProfile) {
+  if (context.isLoading && !isPersonalAccountRoute) {
     return (
       <main className="flex min-h-svh items-center justify-center bg-background px-6">
         <p className="text-sm text-muted-foreground" role="status">
@@ -63,7 +68,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (context.blockingError && !isPersonalProfile) {
+  if (context.blockingError && !isPersonalAccountRoute) {
     return (
       <AccessState
         action={
@@ -76,7 +81,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (context.error && !isPersonalProfile) {
+  if (context.error && !isPersonalAccountRoute) {
     return (
       <AccessState
         action={
@@ -101,7 +106,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
 
   return (
     <WorkbenchFrame key={pathname} pathname={pathname}>
-      {context.selectionRequired && !isPersonalProfile ? (
+      {context.selectionRequired && !isPersonalAccountRoute ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
           role="status"

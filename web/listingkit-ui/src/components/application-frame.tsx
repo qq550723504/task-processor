@@ -18,6 +18,7 @@ const publicRoutes = new Set([
   "/user-agreement",
   "/ai-compute-billing",
   "/service-agreement",
+  "/referrals/register",
 ]);
 
 export function isPublicRoute(pathname: string | null): boolean {
