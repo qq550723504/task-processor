@@ -26,13 +26,14 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion              int             `json:"schemaVersion"`
-	Listen                     ListenConfig    `json:"listen"`
-	Identity                   IdentityConfig  `json:"identity"`
-	SourceAccountDatabase      DatabaseConfig  `json:"sourceAccountDatabase"`
-	CommercialDatabase         DatabaseConfig  `json:"commercialDatabase"`
-	ProductAcquisitionDatabase *DatabaseConfig `json:"productAcquisitionDatabase,omitempty"`
-	Referrals                  ReferralsConfig `json:"referrals"`
+	SchemaVersion              int               `json:"schemaVersion"`
+	Listen                     ListenConfig      `json:"listen"`
+	Identity                   IdentityConfig    `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig    `json:"sourceAccountDatabase"`
+	CommercialDatabase         DatabaseConfig    `json:"commercialDatabase"`
+	ProductAcquisitionDatabase *DatabaseConfig   `json:"productAcquisitionDatabase,omitempty"`
+	Membership                 *MembershipConfig `json:"membership,omitempty"`
+	Referrals                  ReferralsConfig   `json:"referrals"`
 }
 
 type ReferralsConfig struct {
@@ -217,6 +218,16 @@ func (cfg *Config) validate() error {
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
 		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
 	}
+	if cfg.Membership != nil {
+		if err := cfg.Membership.validate(cfg.Identity); err != nil {
+			return err
+		}
+		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+			if cfg.Membership.Database.Host == other.Host && cfg.Membership.Database.Port == other.Port && cfg.Membership.Database.Database == other.Database {
+				return errors.New("membership requires a dedicated database")
+			}
+		}
+	}
 	if product := cfg.ProductAcquisitionDatabase; product != nil {
 		if err := product.validate("productAcquisitionDatabase"); err != nil {
 			return err
@@ -236,6 +247,16 @@ func (cfg *Config) validate() error {
 		}
 		if cfg.Referrals.Database.User != "referral_runtime" || cfg.Referrals.Issuer != cfg.Identity.IssuerURL {
 			return errors.New("referrals requires its runtime role and the current identity issuer")
+		}
+	}
+	if cfg.Membership != nil {
+		for _, other := range []*DatabaseConfig{cfg.ProductAcquisitionDatabase} {
+			if other != nil && cfg.Membership.Database.Host == other.Host && cfg.Membership.Database.Port == other.Port && cfg.Membership.Database.Database == other.Database {
+				return errors.New("membership requires a dedicated database")
+			}
+		}
+		if cfg.Referrals.Enabled && cfg.Membership.Database.Host == cfg.Referrals.Database.Host && cfg.Membership.Database.Port == cfg.Referrals.Database.Port && cfg.Membership.Database.Database == cfg.Referrals.Database.Database {
+			return errors.New("membership requires a dedicated database")
 		}
 	}
 	return nil

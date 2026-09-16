@@ -21,7 +21,6 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	a1688 "task-processor/internal/integration/acquisition/a1688"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/sourcing"
@@ -35,11 +34,7 @@ func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, 
 	if ctx == nil || productDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	factories := defaultCurrentApplicationFactories(ctx)
-	factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
-	}
-	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, factories)
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB))
 }
 
 // NewCurrentApplicationWithAcquisitionAndReferrals composes the two explicitly
@@ -48,11 +43,7 @@ func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourc
 	if ctx == nil || productDB == nil || referralDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	factories := defaultCurrentApplicationFactories(ctx)
-	factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
-	}
-	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, factories, WithReferrals(referralDB))
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithReferrals(referralDB))
 }
 
 type productAcquisitionService interface {

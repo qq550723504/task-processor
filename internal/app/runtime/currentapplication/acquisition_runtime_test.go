@@ -72,3 +72,30 @@ func TestAcquisitionRuntimeOwnsThirdPoolWithoutLegacyFallback(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, oldCalled, "configured acquisition must fail closed, not drop its module")
 }
+
+func TestRuntimeComposesMembershipAndAcquisitionThroughOneFeatureBoundary(t *testing.T) {
+	cfg := acquisitionRuntimeConfig()
+	cfg.Membership = &MembershipConfig{ProviderOrigin: cfg.Identity.IssuerURL, ReadToken: "directory-read", WriteToken: "membership-write", Database: DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "organization_membership_runtime", Password: "fixture-password", Database: "membership", MaxConnections: 2}}
+	require.NoError(t, cfg.validate())
+	source, commercial, product, member := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
+	var closed []*gorm.DB
+	stop := errors.New("stop after feature composition")
+	err := Run(context.Background(), cfg, logrus.New(), Dependencies{
+		IdentityPreflight:      func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercial:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		OpenProductAcquisition: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return product, nil },
+		OpenMembership:         func(context.Context, DatabaseConfig) (*gorm.DB, error) { return member, nil },
+		CloseDatabase:          func(db *gorm.DB) error { closed = append(closed, db); return nil },
+		NewApplicationWithFeatures: func(_ context.Context, gotSource, gotCommercial *gorm.DB, features ApplicationFeatures, _ *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+			require.Same(t, source, gotSource)
+			require.Same(t, commercial, gotCommercial)
+			require.Same(t, product, features.ProductAcquisitionDB)
+			require.Same(t, member, features.MembershipDB)
+			require.Same(t, cfg.Membership, features.Membership)
+			return nil, stop
+		},
+	})
+	require.ErrorIs(t, err, stop)
+	require.Equal(t, []*gorm.DB{member, product, commercial, source}, closed)
+}
