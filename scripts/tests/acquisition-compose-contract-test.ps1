@@ -2,6 +2,14 @@ $ErrorActionPreference = 'Stop'
 
 $compose = Join-Path $PSScriptRoot '../../deployments/docker/acquisition-compose/docker-compose.yml'
 $envFile = Join-Path $PSScriptRoot '../../deployments/docker/acquisition-compose/.env.example'
+$repo = Resolve-Path (Join-Path $PSScriptRoot '../..')
+
+foreach ($shell in @('bootstrap.sh', 'init.sh', 'tofu-init.sh')) {
+    $attributes = (& git -C $repo check-attr text eol -- "deployments/docker/acquisition-compose/$shell" | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $attributes -notmatch 'text: set' -or $attributes -notmatch 'eol: lf') {
+        throw "acquisition compose shell must be checked out as LF: $shell"
+    }
+}
 
 # A copied configuration must fail closed without an explicit fresh project id.
 $negativeFailed = $false
