@@ -2,11 +2,13 @@ package productsourcing
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -66,6 +68,68 @@ type browserTestPublisher struct {
 	publishes, verifies, reads int
 	verifyErr                  error
 	afterVerify                func()
+}
+
+type browserCaptureAdmissionStore struct {
+	op           sourcing.AcquisitionOperation
+	finishCalls  int
+	finishState  string
+	finishReason string
+	finishCtxErr error
+	prepareErr   error
+}
+
+func (s *browserCaptureAdmissionStore) Start(_ context.Context, requested sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
+	s.op = requested
+	s.op.State = sourcing.AcquisitionAcquiring
+	s.op.Fence = 1
+	return s.op, true, nil
+}
+func (s *browserCaptureAdmissionStore) ByKey(context.Context, sourcing.PublicationScope, string) (sourcing.AcquisitionOperation, error) {
+	return s.op, nil
+}
+func (s *browserCaptureAdmissionStore) ByID(context.Context, sourcing.PublicationScope, string) (sourcing.AcquisitionOperation, error) {
+	return s.op, nil
+}
+func (s *browserCaptureAdmissionStore) Prepare(context.Context, sourcing.AcquisitionOperation, sourcing.PublicationCommand) (sourcing.AcquisitionOperation, error) {
+	if s.prepareErr != nil {
+		return sourcing.AcquisitionOperation{}, s.prepareErr
+	}
+	return s.op, nil
+}
+func (s *browserCaptureAdmissionStore) Claim(context.Context, sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
+	return s.op, false, nil
+}
+func (s *browserCaptureAdmissionStore) Finish(ctx context.Context, _ sourcing.AcquisitionOperation, state, reason string) error {
+	s.finishCalls++
+	s.finishState, s.finishReason = state, reason
+	s.finishCtxErr = ctx.Err()
+	s.op.State, s.op.FailureCode = state, reason
+	return nil
+}
+
+type browserCaptureAdmissionReader struct{ err error }
+
+func (r browserCaptureAdmissionReader) GetCurrentSnapshot(context.Context, catalog.SnapshotIdentity) (catalog.PublishedSnapshot, error) {
+	if r.err != nil {
+		return catalog.PublishedSnapshot{}, r.err
+	}
+	return catalog.PublishedSnapshot{}, catalog.ErrSnapshotNotReady
+}
+func (browserCaptureAdmissionReader) GetSnapshot(context.Context, catalog.SnapshotIdentity, uint64) (catalog.PublishedSnapshot, error) {
+	return catalog.PublishedSnapshot{}, catalog.ErrSnapshotNotReady
+}
+
+type browserCaptureCancelReader struct{ started chan struct{} }
+
+func (r browserCaptureCancelReader) GetCurrentSnapshot(ctx context.Context, _ catalog.SnapshotIdentity) (catalog.PublishedSnapshot, error) {
+	close(r.started)
+	<-ctx.Done()
+	return catalog.PublishedSnapshot{}, ctx.Err()
+}
+
+func (browserCaptureCancelReader) GetSnapshot(context.Context, catalog.SnapshotIdentity, uint64) (catalog.PublishedSnapshot, error) {
+	return catalog.PublishedSnapshot{}, catalog.ErrSnapshotNotReady
 }
 
 func (p *browserTestPublisher) Publish(context.Context, sourcing.PublicationCommand) (sourcing.PublicationReceipt, error) {
@@ -161,6 +225,83 @@ func TestBrowserCaptureVerifyAndReadNeverWrite(t *testing.T) {
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionConflict)
 	require.Equal(t, 2, publisher.verifies)
 	require.Zero(t, store.writes)
+}
+
+func TestBrowserCaptureAdmissionFailureClosesClaimedOperation(t *testing.T) {
+	body, _, persisted := browserApplicationFixture(t)
+	for _, tc := range []struct {
+		name       string
+		readerErr  error
+		prepareErr error
+	}{
+		{name: "snapshot read", readerErr: errors.New("snapshot unavailable")},
+		{name: "prepare", prepareErr: errors.New("prepare unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &browserCaptureAdmissionStore{prepareErr: tc.prepareErr}
+			publisher := &browserTestPublisher{persisted: persisted}
+			auth := &browserTestAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
+			service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{err: tc.readerErr}, auth)
+			require.NoError(t, err)
+			_, err = service.Capture(context.Background(), "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
+			require.Error(t, err)
+			require.Equal(t, 1, store.finishCalls)
+			require.Equal(t, sourcing.AcquisitionFailed, store.finishState)
+			require.NotEmpty(t, store.finishReason)
+		})
+	}
+}
+
+type browserCaptureFlippingAuthorizer struct {
+	scope sourcing.PublicationScope
+	calls int
+}
+
+func (a *browserCaptureFlippingAuthorizer) Authorize(ctx context.Context) (sourcing.PublicationScope, error) {
+	if err := ctx.Err(); err != nil {
+		return sourcing.PublicationScope{}, err
+	}
+	a.calls++
+	if a.calls > 1 {
+		return sourcing.PublicationScope{}, sourcing.ErrPublicationForbidden
+	}
+	return a.scope, nil
+}
+
+func TestBrowserCaptureSecondAuthorizationFailureClosesClaimedOperation(t *testing.T) {
+	body, _, persisted := browserApplicationFixture(t)
+	store := &browserCaptureAdmissionStore{}
+	authorizer := &browserCaptureFlippingAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
+	service, err := NewBrowserCaptureService(store, &browserTestPublisher{persisted: persisted}, browserCaptureAdmissionReader{}, authorizer)
+	require.NoError(t, err)
+
+	_, err = service.Capture(context.Background(), "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
+	require.ErrorIs(t, err, sourcing.ErrPublicationForbidden)
+	require.Equal(t, 1, store.finishCalls)
+	require.Equal(t, sourcing.AcquisitionFailed, store.finishState)
+}
+
+func TestBrowserCaptureAdmissionCancellationClosesClaimedOperation(t *testing.T) {
+	body, _, persisted := browserApplicationFixture(t)
+	store := &browserCaptureAdmissionStore{}
+	reader := browserCaptureCancelReader{started: make(chan struct{})}
+	authorizer := &browserTestAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
+	service, err := NewBrowserCaptureService(store, &browserTestPublisher{persisted: persisted}, reader, authorizer)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, captureErr := service.Capture(ctx, "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
+		done <- captureErr
+	}()
+	<-reader.started
+	cancel()
+
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.Equal(t, 1, store.finishCalls)
+	require.Equal(t, sourcing.AcquisitionFailed, store.finishState)
+	require.NoError(t, store.finishCtxErr)
 }
 
 func TestBrowserCaptureRecoveryAuthUnknownAndWrongAction(t *testing.T) {

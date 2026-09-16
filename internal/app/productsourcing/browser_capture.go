@@ -3,6 +3,7 @@ package productsourcing
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 	"task-processor/internal/authz"
@@ -104,26 +105,26 @@ func (s *BrowserCaptureService) Capture(ctx context.Context, key string, body []
 			return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 		}
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
-			return sourcing.AcquisitionResult{}, err
+			return sourcing.AcquisitionResult{}, s.finishAdmissionFailure(ctx, op, err)
 		}
 		productKey, publicationID, err := sourcing.PublicationIdentity(envelope)
 		if err != nil {
-			return sourcing.AcquisitionResult{}, err
+			return sourcing.AcquisitionResult{}, s.finishAdmissionFailure(ctx, op, err)
 		}
 		base := uint64(0)
 		current, err := s.core.reader.GetCurrentSnapshot(ctx, catalog.SnapshotIdentity{TenantID: op.Scope.OrganizationID, ProductKey: productKey})
 		if err == nil {
 			base = current.Version
 		} else if !errors.Is(err, catalog.ErrSnapshotNotReady) {
-			return sourcing.AcquisitionResult{}, err
+			return sourcing.AcquisitionResult{}, s.finishAdmissionFailure(ctx, op, err)
 		}
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
-			return sourcing.AcquisitionResult{}, err
+			return sourcing.AcquisitionResult{}, s.finishAdmissionFailure(ctx, op, err)
 		}
 		command := sourcing.PublicationCommand{PublicationID: publicationID, ProductKey: productKey, Producer: sourcing.ProducerDescriptor{Kind: sourcing.BrowserAcquisitionProducerKind, Version: "v1"}, ExpectedBaseVersion: &base, Envelope: envelope}
 		op, err = s.core.operations.Prepare(ctx, op, command)
 		if err != nil {
-			return sourcing.AcquisitionResult{}, err
+			return sourcing.AcquisitionResult{}, s.finishAdmissionFailure(ctx, op, err)
 		}
 	}
 	if op.State == sourcing.AcquisitionFailed {
@@ -141,6 +142,29 @@ func (s *BrowserCaptureService) Capture(ctx context.Context, key string, body []
 	}
 	// POST alone may use the existing confirmed-claim/Finish orchestration.
 	return s.core.resolve(ctx, op, publishClaim, replayed)
+}
+
+// A claimed Browser operation has no recoverable payload until Prepare stores
+// its command. Any admission failure before then must durably close the claim;
+// otherwise a payload-free acquiring row can remain permanently ambiguous.
+func (s *BrowserCaptureService) finishAdmissionFailure(ctx context.Context, op sourcing.AcquisitionOperation, cause error) error {
+	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	if err := s.core.operations.Finish(finishCtx, op, sourcing.AcquisitionFailed, browserAdmissionFailureCode(cause)); err != nil && !errors.Is(err, sourcing.ErrAcquisitionFence) {
+		return err
+	}
+	return cause
+}
+
+func browserAdmissionFailureCode(err error) string {
+	switch {
+	case errors.Is(err, sourcing.ErrSourcePublicationTooLarge):
+		return "SOURCE_TOO_LARGE"
+	case errors.Is(err, catalog.ErrStaleSnapshot), errors.Is(err, sourcing.ErrSourcePublicationConflict), errors.Is(err, sourcing.ErrInvalidSourcePublication):
+		return "PUBLICATION_CONFLICT"
+	default:
+		return "SOURCE_UNAVAILABLE"
+	}
 }
 
 // Verify checks the original payload intent but never prepares, claims or writes.

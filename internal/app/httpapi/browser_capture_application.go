@@ -54,7 +54,7 @@ func browserCaptureRoutes(service browserCaptureService, bind func(context.Conte
 	}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
-		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "browser-capture", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: true, Handler: func(c *gin.Context) {
+		handler := func(c *gin.Context) {
 			if service == nil || bind == nil {
 				writeBrowserCaptureError(c, sourcing.ErrAcquisitionUnavailable)
 				return
@@ -109,7 +109,8 @@ func browserCaptureRoutes(service browserCaptureService, bind func(context.Conte
 				return
 			}
 			writeAcquisitionResult(c, result)
-		}})
+		}
+		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "browser-capture", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: false, Handler: httproute.WithRequestBodyReadTimeout(sourcing.AcquisitionTimeout, handler)})
 	}
 	return routes
 }

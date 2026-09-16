@@ -71,7 +71,10 @@ export function CaptureReceiver() {
     try {
       const refreshed = await context.retry();
       if (!refreshed || refreshed.selectionRequired || refreshed.user.id !== consent.userId || refreshed.effectiveOrganizationId !== consent.organizationId || !stillCurrent()) {
-        if (mounted.current) setView((v) => ({ ...v, message: "Context changed or access is unavailable. No new request was dispatched; return to the original account and enterprise to check its operation." }));
+        // No capture request was dispatched. Keep the in-memory payload
+        // submittable after the user restores the original context.
+        reserved.current = false;
+        if (mounted.current) setView((v) => ({ ...v, started: false, bound: undefined, result: undefined, message: "Context changed or access is unavailable. No new request was dispatched; return to the original account and enterprise to try again." }));
         return;
       }
       if (entry.kind === "handoff" && submit) void notifyCaptureStatus(entry, "processing");

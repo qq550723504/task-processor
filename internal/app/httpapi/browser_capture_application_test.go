@@ -67,7 +67,7 @@ func TestBrowserCaptureHTTPFrozenRouteContract(t *testing.T) {
 		require.Equal(t, httproute.OrganizationAccessPolicyLiveWrite, route.OrganizationAccessPolicy)
 		require.Equal(t, "product_sourcing.write", route.Permission)
 		require.Equal(t, sourcing.AcquisitionTimeout, route.RequestTimeout)
-		require.True(t, route.RejectUnreadRequestBody)
+		require.False(t, route.RejectUnreadRequestBody)
 	}
 }
 

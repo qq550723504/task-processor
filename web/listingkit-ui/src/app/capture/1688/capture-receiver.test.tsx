@@ -42,6 +42,8 @@ describe("Browser receiver lifecycle", () => {
     mocks.retry.mockResolvedValue(mode === "revoked" ? null : fresh(mode === "actor" ? "other" : "actor", mode === "org" ? "org-C" : "org-B"));
     render(<CaptureReceiver />); await screen.findByText("Browser fixture"); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
     await screen.findByText(/Context changed/); expect(mocks.capture).not.toHaveBeenCalled(); expect(window.location.hash).toBe(`#operationKey=${key}`);
+    mocks.retry.mockResolvedValue(fresh()); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await screen.findByText("Published version 1"); expect(mocks.capture).toHaveBeenCalledTimes(1);
   });
   it("lost POST response is unknown and manual recovery never POSTs again", async () => {
     mocks.capture.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", [])); render(<CaptureReceiver />); await screen.findByText("Browser fixture"); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
