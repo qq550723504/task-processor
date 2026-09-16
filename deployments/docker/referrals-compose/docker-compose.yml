@@ -15,7 +15,19 @@ services:
       dockerfile: deployments/docker/Dockerfile.referrals-compose
       target: bootstrap
     volumes:
-      - private:/private
+      - bootstrap-state:/state
+      - trusted-ca:/trusted-ca
+      - traefik-tls:/traefik-tls
+      - identity-db-secret:/identity-db-secret
+      - source-db-owner-secret:/source-db-owner-secret
+      - source-runtime-secret:/source-runtime-secret
+      - commercial-db-owner-secret:/commercial-db-owner-secret
+      - commercial-runtime-secret:/commercial-runtime-secret
+      - referral-db-owner-secret:/referral-db-owner-secret
+      - referral-runtime-secret:/referral-runtime-secret
+      - zitadel-api-secrets:/zitadel-api-secrets
+      - tofu-inputs:/tofu-inputs
+      - frontend-secrets:/frontend-secrets
 
   identity-db:
     image: postgres:17.2-alpine
@@ -24,9 +36,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: zitadel
-      POSTGRES_PASSWORD_FILE: /private/secrets/identity-db-password
+      POSTGRES_PASSWORD_FILE: /private/identity-db-password
     volumes:
-      - private:/private:ro
+      - identity-db-secret:/private:ro
       - identity-db:/var/lib/postgresql/data
     depends_on:
       bootstrap:
@@ -44,9 +56,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: source_accounts
-      POSTGRES_PASSWORD_FILE: /private/secrets/source-db-password
+      POSTGRES_PASSWORD_FILE: /private/source-db-password
     volumes:
-      - private:/private:ro
+      - source-db-owner-secret:/private:ro
       - source-db:/var/lib/postgresql/data
     depends_on:
       bootstrap:
@@ -64,9 +76,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: commercial
-      POSTGRES_PASSWORD_FILE: /private/secrets/commercial-db-password
+      POSTGRES_PASSWORD_FILE: /private/commercial-db-password
     volumes:
-      - private:/private:ro
+      - commercial-db-owner-secret:/private:ro
       - commercial-db:/var/lib/postgresql/data
     depends_on:
       bootstrap:
@@ -84,9 +96,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: referrals
-      POSTGRES_PASSWORD_FILE: /private/secrets/referral-db-password
+      POSTGRES_PASSWORD_FILE: /private/referral-db-password
     volumes:
-      - private:/private:ro
+      - referral-db-owner-secret:/private:ro
       - referral-db:/var/lib/postgresql/data
     depends_on:
       bootstrap:
@@ -120,9 +132,9 @@ services:
     command:
       - start-from-init
       - --config
-      - /private/zitadel/runtime-config.yaml
+      - /zitadel-secrets/runtime-config.yaml
       - --masterkeyFile
-      - /private/secrets/zitadel-masterkey
+      - /zitadel-secrets/zitadel-masterkey
     environment:
       ZITADEL_PORT: 8080
       ZITADEL_EXTERNALDOMAIN: localhost
@@ -131,11 +143,11 @@ services:
       ZITADEL_TLS_ENABLED: "false"
       ZITADEL_FIRSTINSTANCE_INSTANCENAME: local-referrals-compose
       ZITADEL_FIRSTINSTANCE_ORG_NAME: Local Referrals Bootstrap
-      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel/bootstrap/iam-owner.pat
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel/iac/iam-owner.pat
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: local-referrals-iac
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Local referrals IaC only
       ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
-      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/login/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: local-referrals-login
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Local Login V2 client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
@@ -152,8 +164,9 @@ services:
       ZITADEL_TELEMETRY_ENABLED: "false"
       ZITADEL_INSTRUMENTATION_TRACE_EXPORTER_TYPE: none
     volumes:
-      - private:/private:ro
-      - zitadel-bootstrap:/zitadel/bootstrap
+      - zitadel-api-secrets:/zitadel-secrets:ro
+      - zitadel-iac-pat:/zitadel/iac
+      - zitadel-login-pat:/zitadel/login
     depends_on:
       identity-db:
         condition: service_healthy
@@ -172,11 +185,11 @@ services:
     environment:
       ZITADEL_API_URL: http://127.0.0.1:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
-      ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
+      ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/login/login-client.pat
       CUSTOM_REQUEST_HEADERS: Host:localhost:18443,X-Forwarded-Proto:https
       OTEL_SDK_DISABLED: "true"
     volumes:
-      - zitadel-bootstrap:/zitadel/bootstrap:ro
+      - zitadel-login-pat:/zitadel/login:ro
     depends_on:
       zitadel-api:
         condition: service_healthy
@@ -199,7 +212,7 @@ services:
       - --log.level=WARN
     volumes:
       - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
-      - private:/private:ro
+      - traefik-tls:/private/tls:ro
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -213,11 +226,14 @@ services:
     entrypoint: ["/bin/sh", "/usr/local/bin/referrals-tofu-init"]
     network_mode: service:runtime-network
     environment:
-      BOOTSTRAP_PAT_FILE: /zitadel/bootstrap/iam-owner.pat
+      BOOTSTRAP_PAT_FILE: /zitadel/iac/iam-owner.pat
     volumes:
-      - private:/private
-      - init-state:/state
-      - zitadel-bootstrap:/zitadel/bootstrap:ro
+      - tofu-state:/state
+      - trusted-ca:/private/ca:ro
+      - tofu-inputs:/tofu-inputs:ro
+      - zitadel-iac-pat:/zitadel/iac:ro
+      - runtime-secrets:/runtime
+      - frontend-secrets:/frontend
       - ./terraform:/terraform-source:ro
       - ./tofu-init.sh:/usr/local/bin/referrals-tofu-init:ro
     depends_on:
@@ -231,7 +247,15 @@ services:
       target: schema-init
     network_mode: service:runtime-network
     volumes:
-      - private:/private
+      - schema-state:/schema-state
+      - source-db-owner-secret:/secrets/source-owner:ro
+      - source-runtime-secret:/secrets/source-runtime:ro
+      - commercial-db-owner-secret:/secrets/commercial-owner:ro
+      - commercial-runtime-secret:/secrets/commercial-runtime:ro
+      - referral-db-owner-secret:/secrets/referral-owner:ro
+      - referral-runtime-secret:/secrets/referral-runtime:ro
+      - runtime-secrets:/runtime
+      - frontend-secrets:/frontend
       - ./terraform:/terraform-source:ro
     depends_on:
       tofu-init:
@@ -253,7 +277,8 @@ services:
     environment:
       SSL_CERT_FILE: /private/ca/root-ca.pem
     volumes:
-      - private:/private:ro
+      - runtime-secrets:/private/runtime:ro
+      - trusted-ca:/private/ca:ro
     depends_on:
       schema-init:
         condition: service_completed_successfully
@@ -267,10 +292,10 @@ services:
       - /bin/sh
       - -ec
       - |
-        export AUTH_SECRET="$(cat /private/secrets/auth-secret)"
-        export ZITADEL_CLIENT_ID="$(cat /private/runtime/oidc-client-id)"
-        export ZITADEL_CLIENT_SECRET="$(cat /private/runtime/oidc-client-secret)"
-        export ZITADEL_SCOPES="openid profile email offline_access urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud urn:zitadel:iam:org:project:id:$(cat /private/runtime/project-id):aud urn:zitadel:iam:org:project:$(cat /private/runtime/project-id):roles"
+        export AUTH_SECRET="$(cat /private/frontend/auth-secret)"
+        export ZITADEL_CLIENT_ID="$(cat /private/frontend/oidc-client-id)"
+        export ZITADEL_CLIENT_SECRET="$(cat /private/frontend/oidc-client-secret)"
+        export ZITADEL_SCOPES="openid profile email offline_access urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud urn:zitadel:iam:org:project:id:$(cat /private/frontend/project-id):aud urn:zitadel:iam:org:project:$(cat /private/frontend/project-id):roles"
         exec node server.js
     environment:
       NODE_ENV: production
@@ -282,22 +307,53 @@ services:
       ZITADEL_REDIRECT_URI: https://localhost:18444/api/auth/callback/zitadel
       ZITADEL_POST_LOGOUT_REDIRECT_URI: https://localhost:18444
       LISTINGKIT_SERVICE_API_BASE: http://127.0.0.1:8085/api/v1
-      LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE: /private/runtime/service-credential
+      LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE: /private/frontend/service-credential
       NODE_EXTRA_CA_CERTS: /private/ca/root-ca.pem
       PORT: "3001"
     volumes:
-      - private:/private:ro
+      - frontend-secrets:/private/frontend:ro
+      - trusted-ca:/private/ca:ro
     depends_on:
       current-application:
         condition: service_started
 
 volumes:
-  private:
-    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-private
-  init-state:
-    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-init-state
-  zitadel-bootstrap:
-    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-zitadel-bootstrap
+  bootstrap-state:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-bootstrap-state
+  trusted-ca:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-trusted-ca
+  traefik-tls:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-traefik-tls
+  identity-db-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-identity-db-secret
+  source-db-owner-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-source-db-owner-secret
+  source-runtime-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-source-runtime-secret
+  commercial-db-owner-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-commercial-db-owner-secret
+  commercial-runtime-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-commercial-runtime-secret
+  referral-db-owner-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-referral-db-owner-secret
+  referral-runtime-secret:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-referral-runtime-secret
+  zitadel-api-secrets:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-zitadel-api-secrets
+  tofu-inputs:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-tofu-inputs
+  zitadel-iac-pat:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-zitadel-iac-pat
+  zitadel-login-pat:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-zitadel-login-pat
+  tofu-state:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-tofu-state
+  schema-state:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-schema-state
+  runtime-secrets:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-runtime-secrets
+  frontend-secrets:
+    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-frontend-secrets
   identity-db:
     name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local referrals project}-identity-db
   source-db:

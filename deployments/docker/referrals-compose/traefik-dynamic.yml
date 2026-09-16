@@ -32,5 +32,5 @@ http:
           - url: http://127.0.0.1:3001
 tls:
   certificates:
-    - certFile: /private/ca/localhost.crt
-      keyFile: /private/ca/localhost.key
+    - certFile: /private/tls/localhost.crt
+      keyFile: /private/tls/localhost.key

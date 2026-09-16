@@ -36,25 +36,35 @@ that Compose resolves the same name before any state-changing command.
 
 The bootstrap container creates a local CA, TLS leaf certificate, database
 passwords, an Auth.js secret, and a random password for the explicitly named
-`local-bootstrap-operator@localhost` account. All of those values are kept in
-the Compose project's private named volume. The account exists only to make an
-empty local instance operable; it is not a business user or referral result.
+`local-bootstrap-operator@localhost` account. The root signing key is discarded
+after the leaf certificate is issued. The account exists only to make an empty
+local instance operable; it is not a business user or referral result.
+
+The Compose file declares 23 project-prefixed named volumes. They are split by
+consumer rather than exposed as a shared private directory: Login sees only its
+login-client PAT; Traefik sees only the TLS leaf; the UI sees only its Auth.js,
+OIDC, service-credential, and public-CA inputs; and the current application
+sees only its manifest, provider/runtime keys, service credential, and public
+CA. Database owner credentials, ZITADEL's master key, the IAM-owner PAT, the
+operator password, OpenTofu state, and any private key are not mounted into
+either serving frontend.
 
 The local CA is intentionally not installed into Windows or any browser trust
 store. Trust its public root through your normal browser/operator procedure
 before using either HTTPS endpoint. Do not bypass certificate validation.
 
-Read the local operator credential only from the project-owned private volume;
-do not paste it into terminal history, Issues, PR comments, screenshots, or
-logs. The first referral registration sends its real ZITADEL verification mail
+Read the local operator credential only from the project-owned `tofu-inputs`
+volume; do not paste it into terminal history, Issues, PR comments, screenshots,
+or logs. The first referral registration sends its real ZITADEL verification mail
 to Mailpit. Open the Mailpit loopback inbox, use that verification link, then
 return through the normal ZITADEL/Auth.js flow to complete the referral path.
 
 Initialization uses OpenTofu 1.12.6 with the official
-`zitadel/zitadel` 3.4.0 provider. The bootstrap IAM-owner PAT is mounted only
-into that one-shot initializer. Serving receives only the generated provider
-machine PAT, which has `ORG_USER_MANAGER`, and private files are mounted
-read-only. The initializer's provider probe creates, reads, and deletes a
+`zitadel/zitadel` 3.4.0 provider. The bootstrap IAM-owner PAT has its own
+volume and is mounted read-only only into that one-shot initializer; Login has
+a separate login-client-PAT volume. Serving receives only the generated provider
+machine PAT, which has `ORG_USER_MANAGER`, and its own required files are
+mounted read-only. The initializer's provider probe creates, reads, and deletes a
 temporary human user through the v2 user API under that limited PAT; it stops
 instead of escalating to an owner role if any of those operations is denied.
 
@@ -89,4 +99,5 @@ docker compose --project-name $resolved --env-file .env down -v
 
 `down -v` is required after an incomplete one-shot initialization. It is
 destructive for this local project's identity, Mailpit, application databases,
-and private credentials; it does not operate on any other Compose project.
+and its project-owned credentials; it does not operate on any other Compose
+project.
