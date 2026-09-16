@@ -56,6 +56,15 @@ describe("Browser receiver lifecycle", () => {
     expect(mocks.capture).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Confirm and submit" })).toBeInTheDocument();
   });
+  it("shows definitive pre-admission rejection instead of unknown recovery", async () => {
+    mocks.capture.mockRejectedValue(new WorkbenchContextError(400, "INVALID_ACQUISITION", "", []));
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await screen.findByText(/rejected before admission/);
+    expect(screen.queryByRole("button", { name: "Check original operation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm and submit" })).not.toBeInTheDocument();
+    expect(mocks.status).toHaveBeenCalledWith(expect.anything(), "failed");
+  });
   it("lost POST response is unknown and manual recovery never POSTs again", async () => {
     mocks.capture.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", [])); render(<CaptureReceiver />); await screen.findByText("Browser fixture"); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
     await screen.findByText(/Outcome is unknown/); fireEvent.click(screen.getByRole("button", { name: "Check original operation" })); await screen.findByText("Published version 1"); expect(mocks.capture).toHaveBeenCalledTimes(1); expect(mocks.read).toHaveBeenCalledTimes(1);

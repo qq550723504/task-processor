@@ -93,13 +93,19 @@ export function CaptureReceiver() {
       setView((v) => ({ ...v, result, message: result.outcome === "published" ? `Published version ${result.catalogVersion}` : result.outcome === "failed" ? "The backend recorded this operation as failed." : unknownMessage }));
       if (entry.kind === "handoff") void notifyCaptureStatus(entry, result.outcome === "published" ? "published" : result.outcome === "failed" ? "failed" : "outcome_unknown", result.operationId);
     } catch (failure) {
+      const code = failure instanceof WorkbenchContextError ? failure.code : "OUTCOME_UNKNOWN";
+      if (submit && ["INVALID_ACQUISITION", "SOURCE_TOO_LARGE"].includes(code)) {
+        reserved.current = false;
+        if (mounted.current) setView((v) => ({ ...v, payload: undefined, started: false, bound: undefined, result: undefined, message: "Capture was rejected before admission. No operation was created; start a new handoff from the extension." }));
+        if (entry.kind === "handoff") void notifyCaptureStatus(entry, "failed");
+        return;
+      }
       if (!dispatched && submit) {
         reserved.current = false;
         if (mounted.current) setView((v) => ({ ...v, started: false, bound: undefined, result: undefined, message: "Capture was not submitted. Restore the original account and enterprise, then try again." }));
         return;
       }
       if (!mounted.current || !stillCurrent()) return;
-      const code = failure instanceof WorkbenchContextError ? failure.code : "OUTCOME_UNKNOWN";
       const message = code === "ACQUISITION_NOT_FOUND" ? "No operation is visible for this key in the current account and enterprise. This does not prove a prior request failed. No new submission will be made."
         : ["AUTHENTICATION_REQUIRED", "FORBIDDEN", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED", "ORGANIZATION_CONTEXT_CHANGED", "IDENTITY_CONTEXT_CHANGED"].includes(code) ? "Access is unavailable or context changed. Keep this recovery page and return with the original account and enterprise."
         : code === "IDEMPOTENCY_CONFLICT" ? "This key belongs to a different intent. Do not replace it or retry with a new key." : unknownMessage;
