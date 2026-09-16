@@ -203,6 +203,22 @@ func (s *BrowserCaptureService) ByKey(ctx context.Context, key string) (sourcing
 	if op.Key != key {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
 	}
+	if op.State == sourcing.AcquisitionPrepared {
+		if err := s.core.authorizeScope(ctx, scope); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
+		claimed, claim, err := s.core.operations.Claim(ctx, op)
+		if err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
+		if claim {
+			return s.core.resolve(ctx, claimed, true, true)
+		}
+		op = claimed
+	}
+	if op.State == sourcing.AcquisitionPublishing {
+		return s.core.resolve(ctx, op, true, true)
+	}
 	return s.resolveReadOnly(ctx, scope, op)
 }
 
@@ -235,7 +251,7 @@ func (s *BrowserCaptureService) resolveReadOnly(ctx context.Context, scope sourc
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionConflict
 	}
 	if op.State == sourcing.AcquisitionFailed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionFailed
+		return sourcing.AcquisitionResult{Operation: op, Replayed: true}, nil
 	}
 	if op.Command == nil || op.State == sourcing.AcquisitionAcquiring {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown

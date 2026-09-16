@@ -45,6 +45,17 @@ describe("Browser receiver lifecycle", () => {
     mocks.retry.mockResolvedValue(fresh()); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
     await screen.findByText("Published version 1"); expect(mocks.capture).toHaveBeenCalledTimes(1);
   });
+  it("restores submission when canceled before capture dispatch", async () => {
+    let fail!: (reason?: unknown) => void;
+    mocks.retry.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await waitFor(() => expect(mocks.retry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Stop waiting" }));
+    await act(async () => fail(new DOMException("Aborted", "AbortError")));
+    expect(mocks.capture).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Confirm and submit" })).toBeInTheDocument();
+  });
   it("lost POST response is unknown and manual recovery never POSTs again", async () => {
     mocks.capture.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", [])); render(<CaptureReceiver />); await screen.findByText("Browser fixture"); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
     await screen.findByText(/Outcome is unknown/); fireEvent.click(screen.getByRole("button", { name: "Check original operation" })); await screen.findByText("Published version 1"); expect(mocks.capture).toHaveBeenCalledTimes(1); expect(mocks.read).toHaveBeenCalledTimes(1);

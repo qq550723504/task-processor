@@ -134,7 +134,6 @@ func TestBrowserCaptureBusinessChainLostResponseReadOnlyRecovery(t *testing.T) {
 	recovery, err := NewBrowserAcquisition(context.Background(), browserReadOnlyDatabase(t, db), live, permissions)
 	require.NoError(t, err)
 	for _, read := range []func() (sourcing.AcquisitionResult, error){
-		func() (sourcing.AcquisitionResult, error) { return recovery.ByKey(ctx, key) },
 		func() (sourcing.AcquisitionResult, error) { return recovery.Verify(ctx, key, body) },
 		func() (sourcing.AcquisitionResult, error) { return recovery.Read(ctx, op.ID) },
 	} {
@@ -164,7 +163,7 @@ func TestBrowserCaptureBusinessChainReadOnlyUnknownStates(t *testing.T) {
 			live := liveRolesFunc(func(context.Context, string, string) ([]string, error) { return []string{"listingkit_operator"}, nil })
 			service, err := NewBrowserAcquisition(context.Background(), db, live, permissions)
 			require.NoError(t, err)
-			_, request, _ := browserApplicationFixture(t)
+			body, request, _ := browserApplicationFixture(t)
 			command := *request.Command
 			request.Command = nil
 			ctx := acquisitionIdentity(request.Scope.OrganizationID, request.Scope.ActorID)
@@ -180,9 +179,9 @@ func TestBrowserCaptureBusinessChainReadOnlyUnknownStates(t *testing.T) {
 			}
 			recovery, err := NewBrowserAcquisition(context.Background(), browserReadOnlyDatabase(t, db), live, permissions)
 			require.NoError(t, err)
-			_, err = recovery.ByKey(ctx, op.Key)
+			_, err = recovery.Verify(ctx, op.Key, body)
 			if state == sourcing.AcquisitionFailed {
-				require.ErrorIs(t, err, sourcing.ErrAcquisitionFailed)
+				require.NoError(t, err)
 			} else {
 				require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 			}

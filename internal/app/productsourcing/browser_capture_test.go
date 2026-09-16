@@ -66,6 +66,8 @@ func (s *browserReadOnlyStore) ByID(_ context.Context, scope sourcing.Publicatio
 type browserTestPublisher struct {
 	persisted                  sourcing.PersistedPublication
 	publishes, verifies, reads int
+	publishReceipt             sourcing.PublicationReceipt
+	publishErr                 error
 	verifyErr                  error
 	afterVerify                func()
 }
@@ -77,6 +79,8 @@ type browserCaptureAdmissionStore struct {
 	finishReason string
 	finishCtxErr error
 	prepareErr   error
+	claim        bool
+	claimCalls   int
 }
 
 func (s *browserCaptureAdmissionStore) Start(_ context.Context, requested sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
@@ -98,7 +102,11 @@ func (s *browserCaptureAdmissionStore) Prepare(context.Context, sourcing.Acquisi
 	return s.op, nil
 }
 func (s *browserCaptureAdmissionStore) Claim(context.Context, sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
-	return s.op, false, nil
+	s.claimCalls++
+	if s.claim {
+		s.op.State = sourcing.AcquisitionPublishing
+	}
+	return s.op, s.claim, nil
 }
 func (s *browserCaptureAdmissionStore) Finish(ctx context.Context, _ sourcing.AcquisitionOperation, state, reason string) error {
 	s.finishCalls++
@@ -134,6 +142,12 @@ func (browserCaptureCancelReader) GetSnapshot(context.Context, catalog.SnapshotI
 
 func (p *browserTestPublisher) Publish(context.Context, sourcing.PublicationCommand) (sourcing.PublicationReceipt, error) {
 	p.publishes++
+	if p.publishErr != nil {
+		return sourcing.PublicationReceipt{}, p.publishErr
+	}
+	if p.publishReceipt.PublicationID != "" {
+		return p.publishReceipt, nil
+	}
 	return sourcing.PublicationReceipt{}, sourcing.ErrAcquisitionUnavailable
 }
 func (p *browserTestPublisher) Verify(context.Context, sourcing.PublicationCommand) (sourcing.PublicationReceipt, error) {
@@ -174,7 +188,7 @@ func browserApplicationFixture(t *testing.T) ([]byte, sourcing.AcquisitionOperat
 func TestBrowserCaptureReadOnlyRecoveryAllStates(t *testing.T) {
 	for _, state := range []string{sourcing.AcquisitionAcquiring, sourcing.AcquisitionPrepared, sourcing.AcquisitionPublishing, sourcing.AcquisitionPublished, sourcing.AcquisitionFailed} {
 		t.Run(state, func(t *testing.T) {
-			_, op, persisted := browserApplicationFixture(t)
+			body, op, persisted := browserApplicationFixture(t)
 			op.State = state
 			if state == sourcing.AcquisitionAcquiring {
 				op.Command = nil
@@ -184,13 +198,14 @@ func TestBrowserCaptureReadOnlyRecoveryAllStates(t *testing.T) {
 			auth := &browserTestAuthorizer{scope: op.Scope}
 			service, err := NewBrowserCaptureService(store, publisher, nil, auth)
 			require.NoError(t, err)
-			result, err := service.ByKey(context.Background(), op.Key)
+			result, err := service.Verify(context.Background(), op.Key, body)
 			switch state {
 			case sourcing.AcquisitionAcquiring:
 				require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 				require.Zero(t, publisher.verifies)
 			case sourcing.AcquisitionFailed:
-				require.ErrorIs(t, err, sourcing.ErrAcquisitionFailed)
+				require.NoError(t, err)
+				require.Equal(t, sourcing.AcquisitionFailed, result.Operation.State)
 				require.Zero(t, publisher.verifies)
 			default:
 				require.NoError(t, err)
@@ -304,10 +319,49 @@ func TestBrowserCaptureAdmissionCancellationClosesClaimedOperation(t *testing.T)
 	require.NoError(t, store.finishCtxErr)
 }
 
+func TestBrowserCaptureByKeyResumesDurablePrePublicationStates(t *testing.T) {
+	_, prepared, persisted := browserApplicationFixture(t)
+	for _, state := range []string{sourcing.AcquisitionPrepared, sourcing.AcquisitionPublishing} {
+		t.Run(state, func(t *testing.T) {
+			op := prepared
+			op.State = state
+			store := &browserCaptureAdmissionStore{op: op, claim: state == sourcing.AcquisitionPrepared}
+			publisher := &browserTestPublisher{persisted: persisted, publishReceipt: persisted.Receipt}
+			auth := &browserTestAuthorizer{scope: op.Scope}
+			service, err := NewBrowserCaptureService(store, publisher, nil, auth)
+			require.NoError(t, err)
+
+			result, err := service.ByKey(context.Background(), op.Key)
+			require.NoError(t, err)
+			require.NotNil(t, result.Publication)
+			require.Equal(t, sourcing.AcquisitionPublished, result.Operation.State)
+			require.Equal(t, 1, publisher.publishes)
+			if state == sourcing.AcquisitionPrepared {
+				require.Equal(t, 1, store.claimCalls)
+			}
+		})
+	}
+}
+
+func TestBrowserCaptureByKeyExposesDurableFailure(t *testing.T) {
+	_, op, persisted := browserApplicationFixture(t)
+	op.State = sourcing.AcquisitionFailed
+	store := &browserCaptureAdmissionStore{op: op}
+	publisher := &browserTestPublisher{persisted: persisted}
+	service, err := NewBrowserCaptureService(store, publisher, nil, &browserTestAuthorizer{scope: op.Scope})
+	require.NoError(t, err)
+
+	result, err := service.ByKey(context.Background(), op.Key)
+	require.NoError(t, err)
+	require.Equal(t, sourcing.AcquisitionFailed, result.Operation.State)
+	require.Nil(t, result.Publication)
+	require.Zero(t, publisher.publishes)
+}
+
 func TestBrowserCaptureRecoveryAuthUnknownAndWrongAction(t *testing.T) {
 	for _, mode := range []string{"revoked", "switched org", "revoked during verify", "unknown receipt", "wrong action", "canceled"} {
 		t.Run(mode, func(t *testing.T) {
-			_, op, persisted := browserApplicationFixture(t)
+			body, op, persisted := browserApplicationFixture(t)
 			store := &browserReadOnlyStore{op: op}
 			publisher := &browserTestPublisher{persisted: persisted}
 			auth := &browserTestAuthorizer{scope: op.Scope}
@@ -329,7 +383,7 @@ func TestBrowserCaptureRecoveryAuthUnknownAndWrongAction(t *testing.T) {
 			}
 			service, err := NewBrowserCaptureService(store, publisher, nil, auth)
 			require.NoError(t, err)
-			_, err = service.ByKey(ctx, op.Key)
+			_, err = service.Verify(ctx, op.Key, body)
 			require.Error(t, err)
 			require.Zero(t, store.writes)
 			require.Zero(t, publisher.publishes)

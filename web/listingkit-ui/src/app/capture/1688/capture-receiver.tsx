@@ -64,6 +64,7 @@ export function CaptureReceiver() {
       reserved.current = true;
     }
     setView((v) => ({ ...v, busy: true, started: true, bound: consent, result: undefined, message: "Confirming current access..." }));
+    let dispatched = false;
     const stillCurrent = () => {
       const c = current.current;
       return !controller.signal.aborted && !c.isLoading && !c.isSwitching && !c.error && !c.blockingError && c.user?.id === consent.userId && c.effectiveOrganization?.id === consent.organizationId;
@@ -79,15 +80,24 @@ export function CaptureReceiver() {
       }
       if (entry.kind === "handoff" && submit) void notifyCaptureStatus(entry, "processing");
       setView((v) => ({ ...v, message: submit ? "Submitting the frozen capture..." : "Checking the original operation..." }));
-      const result = submit && body
-        ? await capture1688(Object.freeze({ ...consent, key: entry.key, body }), controller.signal)
-        : operationId
-          ? await readBrowserCapture(consent, operationId, controller.signal)
-          : await readBrowserCaptureByKey(consent, entry.key, controller.signal);
+      let result: AcquisitionResult;
+      if (submit && body) {
+        dispatched = true;
+        result = await capture1688(Object.freeze({ ...consent, key: entry.key, body }), controller.signal);
+      } else if (operationId) {
+        result = await readBrowserCapture(consent, operationId, controller.signal);
+      } else {
+        result = await readBrowserCaptureByKey(consent, entry.key, controller.signal);
+      }
       if (!mounted.current || !stillCurrent()) return;
       setView((v) => ({ ...v, result, message: result.outcome === "published" ? `Published version ${result.catalogVersion}` : result.outcome === "failed" ? "The backend recorded this operation as failed." : unknownMessage }));
       if (entry.kind === "handoff") void notifyCaptureStatus(entry, result.outcome === "published" ? "published" : result.outcome === "failed" ? "failed" : "outcome_unknown", result.operationId);
     } catch (failure) {
+      if (!dispatched && submit) {
+        reserved.current = false;
+        if (mounted.current) setView((v) => ({ ...v, started: false, bound: undefined, result: undefined, message: "Capture was not submitted. Restore the original account and enterprise, then try again." }));
+        return;
+      }
       if (!mounted.current || !stillCurrent()) return;
       const code = failure instanceof WorkbenchContextError ? failure.code : "OUTCOME_UNKNOWN";
       const message = code === "ACQUISITION_NOT_FOUND" ? "No operation is visible for this key in the current account and enterprise. This does not prove a prior request failed. No new submission will be made."
