@@ -62,3 +62,31 @@ foreach ($service in @('listingkit-ui', 'current-application')) {
     if (@($sources | Where-Object { $_ -in $forbiddenServingVolumes }).Count -ne 0) { throw "$service mounts an owner-only volume" }
     if (@($model.services.$service.volumes | Where-Object { -not $_.read_only }).Count -ne 0) { throw "$service has a writable private mount" }
 }
+
+$readme = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $compose) 'README.md') -Raw
+$deliveryStart = $readme.IndexOf('## Trust and sign in')
+$deliveryEnd = $readme.IndexOf('## Retain or explicitly destroy')
+if ($deliveryStart -lt 0 -or $deliveryEnd -le $deliveryStart) { throw 'acquisition README must have a bounded trust and sign-in handoff section' }
+$delivery = $readme.Substring($deliveryStart, $deliveryEnd - $deliveryStart)
+foreach ($expected in @(
+    'local-bootstrap-operator@localhost',
+    'https://localhost:18444',
+    '$project-trusted-ca',
+    '$project-tofu-inputs',
+    '/source-ca/root-ca.pem',
+    '/source-password/operator-password',
+    '--network none',
+    '--read-only',
+    'Get-FileHash',
+    'Import-Certificate',
+    'Cert:\CurrentUser\Root',
+    'notepad'
+)) {
+    if ($delivery -notmatch [regex]::Escape($expected)) { throw "missing safe local-login handoff contract: $expected" }
+}
+if ($delivery -match '(?im)(?:Get-Content|cat|type)\s+.*operator-password') {
+    throw 'local-login handoff must not print the operator password to the terminal'
+}
+foreach ($forbidden in @('identity-db-secret', 'source-db-owner-secret', 'commercial-db-owner-secret', 'product-db-owner-secret', 'zitadel-api-secrets', 'zitadel-iac-pat', 'tofu-state', 'runtime-secrets', 'frontend-secrets', 'localhost.key')) {
+    if ($delivery -match [regex]::Escape($forbidden)) { throw "local-login handoff must not export $forbidden" }
+}
