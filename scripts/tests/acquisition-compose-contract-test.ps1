@@ -84,6 +84,16 @@ foreach ($expected in @(
 )) {
     if ($delivery -notmatch [regex]::Escape($expected)) { throw "missing safe local-login handoff contract: $expected" }
 }
+$acl = 'icacls $deliveryDir /inheritance:r /grant:r "${currentUser}:(OI)(CI)F" | Out-Null'
+$aclIndex = $delivery.IndexOf($acl)
+$helperIndex = $delivery.IndexOf('$helper =')
+$aclGuardIndex = $delivery.IndexOf('if ($LASTEXITCODE -ne 0)', $aclIndex)
+if ($aclIndex -lt 0 -or $aclGuardIndex -le $aclIndex -or $helperIndex -le $aclGuardIndex) {
+    throw 'local-login handoff must stop on ACL failure before creating its helper'
+}
+if ($delivery.Substring($aclIndex, $helperIndex - $aclIndex) -notmatch [regex]::Escape('Remove-Item -LiteralPath $deliveryDir -Force')) {
+    throw 'local-login ACL failure may clean up only its just-created empty handoff directory'
+}
 if ($delivery -match '(?im)(?:Get-Content|cat|type)\s+.*operator-password') {
     throw 'local-login handoff must not print the operator password to the terminal'
 }

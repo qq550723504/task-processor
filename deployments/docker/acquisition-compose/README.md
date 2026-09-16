@@ -69,8 +69,15 @@ foreach ($volume in @($caVolume, $passwordVolume)) {
 $deliveryDir = Join-Path $env:LOCALAPPDATA "ListingKit\acquisition\$project"
 if (Test-Path -LiteralPath $deliveryDir) { throw "Private handoff directory already exists: $deliveryDir" }
 New-Item -ItemType Directory -LiteralPath $deliveryDir | Out-Null
+$createdDeliveryDir = $true
 $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 icacls $deliveryDir /inheritance:r /grant:r "${currentUser}:(OI)(CI)F" | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  if ($createdDeliveryDir -and (Test-Path -LiteralPath $deliveryDir) -and @((Get-ChildItem -LiteralPath $deliveryDir -Force)).Count -eq 0) {
+    Remove-Item -LiteralPath $deliveryDir -Force
+  }
+  throw "Could not restrict the private handoff directory: $deliveryDir"
+}
 
 $helper = "$project-handoff-$([guid]::NewGuid().ToString('N'))"
 if (docker container inspect $helper 2>$null) { throw "Unexpected existing helper: $helper" }
