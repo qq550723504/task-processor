@@ -67,3 +67,24 @@ it("keeps the original key when an uncertain submission is explicitly verified",
   await waitFor(() => expect(calls.verify).toHaveBeenCalledOnce());
   expect(calls.verify.mock.calls[0][0]).toEqual(original);
 });
+
+it("renders source warnings preserved by the operation-bound Catalog product", async () => {
+  calls.readProduct.mockResolvedValueOnce({
+    schemaVersion: 1,
+    operationId: operationID,
+    productKey: "crawler:1688:123",
+    publicationId: `source-run:acquisition:${operationID}`,
+    catalogVersion: "1",
+    title: "Captured product",
+    sources: [],
+    images: [],
+    specifications: [],
+    warnings: [{ field: "images", code: "SOURCE_IMAGE_UNVERIFIED" }],
+    missingFacts: [],
+  });
+
+  render(<AcquisitionPage operationId={operationID} />);
+
+  expect(await screen.findByRole("heading", { name: "采集警告" })).toBeInTheDocument();
+  expect(screen.getByText("images：SOURCE_IMAGE_UNVERIFIED")).toBeInTheDocument();
+});
