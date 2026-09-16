@@ -10,7 +10,7 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { OrganizationSwitcher, workbenchErrorMessage } from "@/components/workbench/organization-switcher";
 import { Button } from "@/components/ui/button";
 import { ConsoleNavigation } from "@/components/workbench/console/console-navigation";
-import { isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
+import { parseCaptureEntry } from "@/app/capture/1688/capture-handoff";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
 const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
@@ -55,9 +55,9 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   }, [router, shouldLeaveNoOrganization, shouldRedirectToNoOrganization]);
 
   if (authenticationError) {
-    const match = pathname === "/capture/1688" && typeof window !== "undefined" && !window.location.search
-      ? /^#operationKey=([0-9a-f-]{36})$/.exec(window.location.hash) : null;
-    const browserRecovery = !!match && isAcquisitionUUID(match[1]!);
+    const browserEntry = pathname === "/capture/1688" && typeof window !== "undefined"
+      ? parseCaptureEntry(window.location.href) : null;
+    const browserRecovery = browserEntry?.kind === "recovery" || browserEntry?.kind === "handoff";
     return <AccessState action={browserRecovery ? () => window.location.reload() : redirectToLogin} code={authenticationError.code} browserRecovery={browserRecovery} />;
   }
 

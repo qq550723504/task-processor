@@ -96,6 +96,21 @@ describe("WorkspaceAppShell", () => {
     expect(screen.getByText("capture child")).toBeVisible();
     expect(navigation.replace).not.toHaveBeenCalled();
   });
+  it("preserves a valid extension handoff while the user logs in in a new tab", () => {
+    navigation.pathname = "/capture/1688";
+    window.history.replaceState(null, "", `/capture/1688#extensionId=${"a".repeat(32)}&handoffId=11111111-1111-4111-8111-11111111111a&idempotencyKey=22222222-2222-4222-8222-22222222222b`);
+    injectProfileContext({ error: { code: "AUTHENTICATION_REQUIRED" } });
+
+    render(<WorkspaceAppShell><p>capture child</p></WorkspaceAppShell>);
+
+    expect(screen.getByRole("link", { name: "在新标签页重新登录" })).toHaveAttribute(
+      "href",
+      "/login?returnTo=%2Fworkbench",
+    );
+    expect(screen.getByRole("link", { name: "在新标签页重新登录" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("button", { name: "登录完成后刷新此页核实" })).toBeVisible();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
   it.each(["error", "blockingError"])("keeps %s authentication denial above the profile exemption", field => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
     render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>); expect(screen.queryByText("personal profile")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
