@@ -88,6 +88,14 @@ describe("WorkspaceAppShell", () => {
     navigation.pathname = path; injectProfileContext(); render(<WorkspaceAppShell><p>protected child</p></WorkspaceAppShell>);
     expect(screen.queryByText("protected child")).not.toBeInTheDocument(); expect(navigation.replace).toHaveBeenCalledWith("/workbench/no-organization");
   });
+  it("preserves the browser recovery URL when the account has no organizations", () => {
+    navigation.pathname = "/capture/1688";
+    window.history.replaceState(null, "", "/capture/1688#operationKey=22222222-2222-4222-8222-22222222222b");
+    injectProfileContext();
+    render(<WorkspaceAppShell><p>capture child</p></WorkspaceAppShell>);
+    expect(screen.getByText("capture child")).toBeVisible();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
   it.each(["error", "blockingError"])("keeps %s authentication denial above the profile exemption", field => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
     render(<WorkspaceAppShell><p>personal profile</p></WorkspaceAppShell>); expect(screen.queryByText("personal profile")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();

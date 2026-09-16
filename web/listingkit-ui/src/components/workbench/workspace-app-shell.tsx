@@ -23,6 +23,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
   const context = useWorkbenchContext();
   // Personal identity is bootstrapped by the server page, independently of enterprise grants.
   const isPersonalProfile = pathname === "/workbench/account" || pathname === "/workbench/account/profile";
+  const isBrowserCaptureRoute = pathname === "/capture/1688";
   const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
   const shouldRedirectToNoOrganization =
@@ -31,6 +32,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
     !context.blockingError &&
     context.organizations.length === 0 &&
     !isPersonalProfile &&
+    !isBrowserCaptureRoute &&
     pathname !== NO_ORGANIZATION_ROUTE;
   const shouldLeaveNoOrganization =
     !context.isLoading &&
@@ -107,7 +109,7 @@ export function WorkspaceAppShell({ children }: { children: ReactNode }) {
 
   return (
     <WorkbenchFrame key={pathname} pathname={pathname}>
-      {context.selectionRequired && !isPersonalProfile ? (
+      {context.selectionRequired && !isPersonalProfile && !isBrowserCaptureRoute ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
           role="status"
