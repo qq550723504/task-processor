@@ -74,6 +74,16 @@ describe("Browser receiver lifecycle", () => {
     expect(screen.getByRole("button", { name: "Confirm and submit" })).toBeInTheDocument();
     expect(mocks.status).toHaveBeenCalledWith(expect.anything(), "failed");
   });
+  it("restores submission after a pre-dispatch deadline", async () => {
+    mocks.capture.mockRejectedValue(new WorkbenchContextError(504, "DEADLINE_EXCEEDED", "", []));
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await screen.findByText(/not submitted before the deadline/);
+    expect(screen.queryByRole("button", { name: "Check original operation" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm and submit" })).toBeInTheDocument();
+    expect(window.location.hash).toBe(`#operationKey=${key}`);
+    expect(mocks.status).not.toHaveBeenCalledWith(expect.anything(), "outcome_unknown");
+  });
   it("lost POST response is unknown and manual recovery never POSTs again", async () => {
     mocks.capture.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", [])); render(<CaptureReceiver />); await screen.findByText("Browser fixture"); fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
     await screen.findByText(/Outcome is unknown/); fireEvent.click(screen.getByRole("button", { name: "Check original operation" })); await screen.findByText("Published version 1"); expect(mocks.capture).toHaveBeenCalledTimes(1); expect(mocks.read).toHaveBeenCalledTimes(1);

@@ -100,6 +100,12 @@ export function CaptureReceiver() {
         if (entry.kind === "handoff") void notifyCaptureStatus(entry, "failed");
         return;
       }
+      if (submit && code === "DEADLINE_EXCEEDED") {
+        reserved.current = false;
+        if (mounted.current) setView((v) => ({ ...v, started: false, bound: undefined, result: undefined, message: "Capture was not submitted before the deadline. No operation was created; try again with the same handoff." }));
+        if (entry.kind === "handoff") void notifyCaptureStatus(entry, "failed");
+        return;
+      }
       if (submit && ["INVALID_ACQUISITION", "SOURCE_TOO_LARGE"].includes(code)) {
         reserved.current = false;
         if (mounted.current) setView((v) => ({ ...v, payload: undefined, started: false, bound: undefined, result: undefined, message: "Capture was rejected before admission. No operation was created; start a new handoff from the extension." }));
