@@ -16,41 +16,44 @@ type PendingIntent = AcquisitionOperation;
 
 export function AcquisitionPage({ operationId }: { operationId?: string }) {
   const context = useWorkbenchContext();
-  const router = useRouter();
   const scope = useMemo<AcquisitionContext | null>(() => {
     const userId = context.user?.id;
     const organizationId = context.effectiveOrganization?.id;
     return userId && organizationId ? { userId, organizationId } : null;
   }, [context.effectiveOrganization?.id, context.user?.id]);
+
+  if (context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认企业上下文">采集只在服务端确认的当前企业中执行。</ConsoleState>;
+  if (!scope || context.selectionRequired || context.error || context.blockingError) return <ConsoleState kind="error" title="企业或登录上下文不可用">请先确认登录身份与当前企业，再提交或读取采集结果。</ConsoleState>;
+
+  // A changed verified actor or organization must discard the prior operation
+  // state rather than replaying it under the new server-side scope.
+  return <ScopedAcquisitionPage key={`${scope.userId}:${scope.organizationId}:${operationId ?? ""}`} operationId={operationId} scope={scope} />;
+}
+
+function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; scope: AcquisitionContext }) {
+  const router = useRouter();
   const [source, setSource] = useState("");
   const [recoveryID, setRecoveryID] = useState(operationId ?? "");
   const [pending, setPending] = useState<PendingIntent | null>(null);
   const [result, setResult] = useState<AcquisitionResult | null>(null);
   const [product, setProduct] = useState<AcquisitionProduct | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-	const pendingInScope = pending && pending.userId === scope?.userId && pending.organizationId === scope?.organizationId ? pending : null;
-
-	useEffect(() => { setPending(null); setResult(null); setProduct(null); setError(null); }, [scope?.organizationId, scope?.userId]);
+  const [error, setError] = useState<string | null>(() => operationId && !isAcquisitionUUID(operationId) ? "INVALID_ACQUISITION" : null);
+  const [busy, setBusy] = useState(() => Boolean(operationId && isAcquisitionUUID(operationId)));
 
   useEffect(() => {
-    if (!operationId || !scope || !isAcquisitionUUID(operationId)) return;
+    if (!operationId || !isAcquisitionUUID(operationId)) return;
     const controller = new AbortController();
-		let active = true;
-    setBusy(true); setError(null);
+    let active = true;
     void readAcquisitionProduct(operationId, scope, controller.signal).then((next) => { if (active) setProduct(next); }).catch((failure: unknown) => { if (active) setError(codeOf(failure)); }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; controller.abort(); };
   }, [operationId, scope]);
 
-  if (context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认企业上下文">采集只在服务端确认的当前企业中执行。</ConsoleState>;
-  if (!scope || context.selectionRequired || context.error || context.blockingError) return <ConsoleState kind="error" title="企业或登录上下文不可用">请先确认登录身份与当前企业，再提交或读取采集结果。</ConsoleState>;
   if (operationId) return <ProductDetail operationId={operationId} product={product} busy={busy} error={error} />;
 
   async function submit(verify = false) {
-    if (!scope) return;
     const canonical = canonical1688Source(source);
     if (!canonical) { setError("INVALID_ACQUISITION"); return; }
-    const intent: AcquisitionOperation = pendingInScope ?? { userId: scope.userId, organizationId: scope.organizationId, key: crypto.randomUUID(), source: canonical };
+    const intent: AcquisitionOperation = pending ?? { userId: scope.userId, organizationId: scope.organizationId, key: crypto.randomUUID(), source: canonical };
     setPending(intent); setBusy(true); setError(null);
     try {
       const next = await (verify ? verify1688(intent) : acquire1688(intent));
@@ -59,7 +62,6 @@ export function AcquisitionPage({ operationId }: { operationId?: string }) {
     } catch (failure) { setError(codeOf(failure)); } finally { setBusy(false); }
   }
   async function recover() {
-    if (!scope) return;
     if (!isAcquisitionUUID(recoveryID)) { setError("INVALID_ACQUISITION"); return; }
     setBusy(true); setError(null);
     try {
@@ -70,7 +72,7 @@ export function AcquisitionPage({ operationId }: { operationId?: string }) {
   }
 
   return <ConsolePage title="1688采集" breadcrumbs={findConsoleRoute("/workbench/supply/acquisition")?.trail} description="提交公开商品页或 offer ID。系统仍按当前登录身份和企业授权；不需要源账号或 1688 登录。">
-    <Card className="space-y-4 p-5"><h2 className="text-base font-semibold">采集公开商品</h2><form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}><label className="grid gap-2" htmlFor="acquisition-source"><span>1688 商品页或 offer ID</span><Input id="acquisition-source" value={source} onChange={(event) => { setSource(event.target.value); setPending(null); }} disabled={busy} placeholder="https://detail.1688.com/offer/123.html" /></label><div className="flex gap-2"><Button type="submit" disabled={busy}>提交采集</Button>{pendingInScope && error === "OUTCOME_UNKNOWN" ? <Button type="button" variant="outline" disabled={busy} onClick={() => void submit(true)}>使用原 key 核实</Button> : null}</div></form>{result ? <ResultState result={result} /> : null}{error ? <Failure code={error} /> : null}</Card>
+    <Card className="space-y-4 p-5"><h2 className="text-base font-semibold">采集公开商品</h2><form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}><label className="grid gap-2" htmlFor="acquisition-source"><span>1688 商品页或 offer ID</span><Input id="acquisition-source" value={source} onChange={(event) => { setSource(event.target.value); setPending(null); }} disabled={busy} placeholder="https://detail.1688.com/offer/123.html" /></label><div className="flex gap-2"><Button type="submit" disabled={busy}>提交采集</Button>{pending && error === "OUTCOME_UNKNOWN" ? <Button type="button" variant="outline" disabled={busy} onClick={() => void submit(true)}>使用原 key 核实</Button> : null}</div></form>{result ? <ResultState result={result} /> : null}{error ? <Failure code={error} /> : null}</Card>
     <Card className="mt-5 space-y-3 p-5"><h2 className="text-base font-semibold">找回采集结果</h2><p className="text-sm text-muted-foreground">粘贴操作 ID 仅读取该 ID 在当前身份和企业下的结果；不会创建新操作。</p><form className="flex max-w-xl gap-2" onSubmit={(event) => { event.preventDefault(); void recover(); }}><Input aria-label="操作 ID" value={recoveryID} onChange={(event) => setRecoveryID(event.target.value)} disabled={busy} /><Button type="submit" variant="outline" disabled={busy}>读取</Button></form></Card>
   </ConsolePage>;
 }
