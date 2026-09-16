@@ -45,26 +45,12 @@ resource "zitadel_project_role" "operator" {
   display_name = "ListingKit Operator"
   group        = "ListingKit"
 }
-resource "zitadel_project_role" "admin" {
-  org_id       = zitadel_org.trial.id
-  project_id   = zitadel_project.listingkit.id
-  role_key     = "listingkit_admin"
-  display_name = "ListingKit Admin"
-  group        = "ListingKit"
-}
-resource "zitadel_project_role" "platform_admin" {
-  org_id       = zitadel_org.trial.id
-  project_id   = zitadel_project.listingkit.id
-  role_key     = "platform_admin"
-  display_name = "Platform Admin"
-  group        = "ListingKit"
-}
 resource "zitadel_user_grant" "operator" {
   org_id     = zitadel_org.trial.id
   project_id = zitadel_project.listingkit.id
   user_id    = zitadel_human_user.operator.id
-  role_keys  = ["listingkit_operator", "listingkit_admin", "platform_admin"]
-  depends_on = [zitadel_project_role.operator, zitadel_project_role.admin, zitadel_project_role.platform_admin]
+  role_keys  = ["listingkit_operator"]
+  depends_on = [zitadel_project_role.operator]
 }
 resource "zitadel_application_api" "current_application" {
   org_id           = zitadel_org.trial.id

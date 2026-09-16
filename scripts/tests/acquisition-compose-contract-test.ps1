@@ -24,6 +24,13 @@ foreach ($expected in @(
     if ($rendered -notmatch [regex]::Escape($expected)) { throw "missing acquisition-compose contract: $expected" }
 }
 if ($rendered -match 'referral_runtime|provider-machine\.pat|referral-db') { throw 'acquisition compose must not configure referrals' }
+$terraform = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $compose) 'terraform/main.tf') -Raw
+if ($terraform -notmatch 'resource\s+"zitadel_user_grant"\s+"operator"\s*\{[\s\S]*?role_keys\s*=\s*\["listingkit_operator"\]') {
+    throw 'local bootstrap operator must receive exactly listingkit_operator'
+}
+if ($terraform -match 'role_keys\s*=\s*\[[^\]]*"(?:listingkit_admin|platform_admin)"') {
+    throw 'local bootstrap operator must not receive an administrator role'
+}
 $init = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $compose) 'init.sh') -Raw
 foreach ($expected in @('source_acquisition_runtime', 'productAcquisitionDatabase', '"enabled": false', '-confirm-empty-database product_acquisition')) {
     if ($init -notmatch [regex]::Escape($expected)) { throw "missing explicit acquisition initializer contract: $expected" }
