@@ -31,6 +31,10 @@ describe("real catchall Browser dispatch lifecycle", () => {
     const fetcher = vi.fn().mockRejectedValue(new Error("transport loss")); vi.stubGlobal("fetch", fetcher);
     const response = await call("POST", ""); expect(response.status).toBe(503); expect((await response.json()).code).toBe("OUTCOME_UNKNOWN"); expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it("lost response after by-key recovery is unknown, not read-only unavailable", async () => {
+    const fetcher = vi.fn().mockRejectedValue(new Error("transport loss")); vi.stubGlobal("fetch", fetcher);
+    const response = await call("GET", `/by-key/${key}`); expect(response.status).toBe(503); expect((await response.json()).code).toBe("OUTCOME_UNKNOWN"); expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("missing verified actor fails before dispatch", async () => {
     auth.actor = ""; const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     expect((await call("POST", "")).status).toBe(401); expect(fetcher).not.toHaveBeenCalled();

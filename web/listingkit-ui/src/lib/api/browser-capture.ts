@@ -17,19 +17,19 @@ function sendIntent(intent: BrowserCaptureIntent, suffix: string, signal?: Abort
 }
 export function readBrowserCaptureByKey(context: AcquisitionContext, key: string, signal?: AbortSignal) {
   if (!isAcquisitionUUID(key)) return Promise.reject(error("INVALID_ACQUISITION"));
-  return send(context, `/by-key/${key}`, "GET", signal);
+  return send(context, `/by-key/${key}`, "GET", signal, undefined, undefined, undefined, true);
 }
 export function readBrowserCapture(context: AcquisitionContext, operationId: string, signal?: AbortSignal) {
   if (!isAcquisitionUUID(operationId)) return Promise.reject(error("INVALID_ACQUISITION"));
   return send(context, `/${operationId}`, "GET", signal, undefined, operationId);
 }
-async function send(context: AcquisitionContext, suffix: string, method: "GET" | "POST", signal?: AbortSignal, intent?: BrowserCaptureIntent, expectedId?: string, expectedProduct?: string): Promise<AcquisitionResult> {
+async function send(context: AcquisitionContext, suffix: string, method: "GET" | "POST", signal?: AbortSignal, intent?: BrowserCaptureIntent, expectedId?: string, expectedProduct?: string, sourceMutation = false): Promise<AcquisitionResult> {
   if (![context.userId, context.organizationId].every((v) => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(v))) throw error("INVALID_REQUEST");
   if (signal?.aborted) throw error("DEADLINE_EXCEEDED");
   const controller = new AbortController(); const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   const timeout = setTimeout(abort, 25_000);
-  const unavailable = () => error(method === "POST" ? "OUTCOME_UNKNOWN" : "ACQUISITION_UNAVAILABLE");
+  const unavailable = () => error(sourceMutation || method === "POST" ? "OUTCOME_UNKNOWN" : "ACQUISITION_UNAVAILABLE");
   try {
     const headers = new Headers({ Accept: "application/json", "X-Expected-Organization-ID": context.organizationId, "X-Expected-User-ID": context.userId });
     if (intent) { headers.set("Content-Type", "application/json"); headers.set("Idempotency-Key", intent.key); }

@@ -475,7 +475,13 @@ export async function buildWorkbenchUpstreamRequest(
         if (!assertedActor || !isSafeOrganizationId(assertedActor) || assertedActor !== authenticatedActorSubject) {
           return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
         }
-        if (route.requestContract === "product-acquisition-read" || route.requestContract === "browser-capture-read" || route.requestContract === "browser-capture-by-key") {
+        if (route.requestContract === "browser-capture-by-key") {
+          const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject);
+          if (assertion) return assertion;
+          if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+          break;
+        }
+        if (route.requestContract === "product-acquisition-read" || route.requestContract === "browser-capture-read") {
           if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
           break;
         }
@@ -708,6 +714,7 @@ export async function buildWorkbenchUpstreamRequest(
     sourceMutation:
       route.requestContract === "browser-capture-create" ||
       route.requestContract === "browser-capture-verify" ||
+      route.requestContract === "browser-capture-by-key" ||
       route.requestContract === "product-acquisition-create" ||
       route.requestContract === "product-acquisition-verify" ||
       route.requestContract === "source-account-create" ||

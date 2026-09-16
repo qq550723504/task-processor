@@ -165,6 +165,7 @@ export const DELETE = handleWorkbenchRequest;
 
 function isSourceMutation(method: string, path: string[]) {
   if (method === "POST" && isBrowserCapturePath(method, path)) return true;
+  if (method.toUpperCase() === "GET" && path[3] === "by-key" && isBrowserCapturePath(method, path)) return true;
 
   return (
     method.toUpperCase() === "POST" &&
@@ -198,7 +199,6 @@ function isSourceRequestURL(rawURL: string) {
 }
 
 function isSourceMutationURL(method: string, rawURL: string) {
-  if (method.toUpperCase() !== "POST") return false;
   const path = new URL(rawURL).pathname.split("/").filter(Boolean).slice(2);
   return isSourceMutation(method, path);
 }

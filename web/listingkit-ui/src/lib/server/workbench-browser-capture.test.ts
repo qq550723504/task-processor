@@ -25,7 +25,12 @@ describe("Browser BFF four exact routes", () => {
     expect(result.url).toContain(`/workbench/${base}${suffix}`);
     expect(result.init.body).toBe(method === "POST" ? raw : undefined);
     expect(result.expectedStoreId).toBe(suffix === `/${op}` ? op : undefined);
-    expect(result.sourceMutation).toBe(method === "POST");
+    expect(result.sourceMutation).toBe(method === "POST" || suffix.startsWith("/by-key/"));
+  });
+  it("requires same-origin protection for by-key recovery", async () => {
+    const result = await build(request("GET", `/by-key/${key}`, undefined, (headers) => headers.delete("origin")), `/by-key/${key}`);
+    expect(result).toBeInstanceOf(Response);
+    if (result instanceof Response) expect(result.status).toBe(403);
   });
   it.each(["/", "/child", `/by-key/${key}/child`, "/by-key/not-a-key", "/verify/", "/by-key", `/../browser-captures/${op}`])("denies non-contract path %s", async (suffix) => {
     expect(await build(request("GET", suffix), suffix)).toBeInstanceOf(Response);

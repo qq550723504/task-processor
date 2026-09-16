@@ -23,6 +23,10 @@ describe("Browser transport", () => {
     const [url, options] = fetcher.mock.calls[0]!;
     expect(url).toContain(`/by-key/${key}`); expect(options.method).toBe("GET"); expect(options.body).toBeUndefined();
   });
+  it("treats by-key recovery transport loss as an unknown mutation outcome", async () => {
+    const fetcher = vi.fn().mockRejectedValue(new Error("network")); vi.stubGlobal("fetch", fetcher);
+    await expect(readBrowserCaptureByKey(intent, key)).rejects.toMatchObject({ code: "OUTCOME_UNKNOWN" });
+  });
   it("verify reuses frozen intent and never falls back to create", async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error("network")); vi.stubGlobal("fetch", fetcher);
     await expect(verifyBrowserCapture(intent)).rejects.toMatchObject({ code: "OUTCOME_UNKNOWN" });
