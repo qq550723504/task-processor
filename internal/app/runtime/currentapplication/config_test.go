@@ -97,6 +97,18 @@ func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAcceptsHTTPSLoopbackIdentityOrigin(t *testing.T) {
+	manifest := strings.ReplaceAll(validManifest(), "http://localhost:18080", "https://localhost:18443")
+
+	cfg, err := LoadConfig(writeManifest(t, manifest))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.Identity.IssuerURL != "https://localhost:18443" || cfg.Identity.AuthorizationAPIURL != "https://localhost:18443" {
+		t.Fatalf("HTTPS identity origin = %#v", cfg.Identity)
+	}
+}
+
 func TestLoadConfigAcceptsExplicitlyDisabledReferrals(t *testing.T) {
 	manifest := strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "referrals": {"enabled": false},`, 1)
 	if _, err := LoadConfig(writeManifest(t, manifest)); err != nil {

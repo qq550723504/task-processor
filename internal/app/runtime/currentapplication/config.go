@@ -26,12 +26,13 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion         int             `json:"schemaVersion"`
-	Listen                ListenConfig    `json:"listen"`
-	Identity              IdentityConfig  `json:"identity"`
-	SourceAccountDatabase DatabaseConfig  `json:"sourceAccountDatabase"`
-	CommercialDatabase    DatabaseConfig  `json:"commercialDatabase"`
-	Referrals             ReferralsConfig `json:"referrals"`
+	SchemaVersion              int             `json:"schemaVersion"`
+	Listen                     ListenConfig    `json:"listen"`
+	Identity                   IdentityConfig  `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig  `json:"sourceAccountDatabase"`
+	CommercialDatabase         DatabaseConfig  `json:"commercialDatabase"`
+	ProductAcquisitionDatabase *DatabaseConfig `json:"productAcquisitionDatabase,omitempty"`
+	Referrals                  ReferralsConfig `json:"referrals"`
 }
 
 type ReferralsConfig struct {
@@ -216,6 +217,19 @@ func (cfg *Config) validate() error {
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
 		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
 	}
+	if product := cfg.ProductAcquisitionDatabase; product != nil {
+		if err := product.validate("productAcquisitionDatabase"); err != nil {
+			return err
+		}
+		if product.User != "source_acquisition_runtime" || product.MaxConnections > 8 {
+			return errors.New("product acquisition requires source_acquisition_runtime and at most 8 connections")
+		}
+		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+			if product.Host == other.Host && product.Port == other.Port && product.Database == other.Database {
+				return errors.New("product acquisition requires a dedicated Product database")
+			}
+		}
+	}
 	if cfg.Referrals.Enabled {
 		if err := cfg.Referrals.Database.validate("referrals.referralDatabase"); err != nil {
 			return err
@@ -229,15 +243,15 @@ func (cfg *Config) validate() error {
 
 func validateLoopbackURL(name, raw string) (*url.URL, error) {
 	if raw == "" || strings.TrimSpace(raw) != raw || strings.HasSuffix(raw, "?") || strings.HasSuffix(raw, "#") {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	host := strings.ToLower(parsed.Hostname())
 	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP URL", name)
+		return nil, fmt.Errorf("identity.%s must be a bounded absolute loopback HTTP(S) URL", name)
 	}
 	if parsed.Port() == "" || len(raw) > 2048 {
 		return nil, fmt.Errorf("identity.%s must include an explicit loopback port", name)
