@@ -94,6 +94,12 @@ export function CaptureReceiver() {
       if (entry.kind === "handoff") void notifyCaptureStatus(entry, result.outcome === "published" ? "published" : result.outcome === "failed" ? "failed" : "outcome_unknown", result.operationId);
     } catch (failure) {
       const code = failure instanceof WorkbenchContextError ? failure.code : "OUTCOME_UNKNOWN";
+      if (submit && code === "ACQUISITION_CAPACITY") {
+        reserved.current = false;
+        if (mounted.current) setView((v) => ({ ...v, started: false, bound: undefined, result: undefined, message: "Capture was not admitted because active capacity is full. No operation was created; try again when capacity is available." }));
+        if (entry.kind === "handoff") void notifyCaptureStatus(entry, "failed");
+        return;
+      }
       if (submit && ["INVALID_ACQUISITION", "SOURCE_TOO_LARGE"].includes(code)) {
         reserved.current = false;
         if (mounted.current) setView((v) => ({ ...v, payload: undefined, started: false, bound: undefined, result: undefined, message: "Capture was rejected before admission. No operation was created; start a new handoff from the extension." }));
