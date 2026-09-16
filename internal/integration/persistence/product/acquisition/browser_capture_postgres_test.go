@@ -86,6 +86,27 @@ func TestBrowserCapturePostgresDurableIntentAndCrossActionConflict(t *testing.T)
 	require.EqualValues(t, 1, count)
 }
 
+func TestBrowserCapturePostgresStartPreparedPersistsRecoveryCommandAtomically(t *testing.T) {
+	db := browserStagingDatabase(t)
+	ctx := context.Background()
+	repo, err := NewRepository(ctx, db)
+	require.NoError(t, err)
+	request, command := browserStagingOperation(t)
+	op, claimed, err := repo.StartPrepared(ctx, request, command)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.Equal(t, sourcing.AcquisitionPrepared, op.State)
+	require.NotNil(t, op.Command)
+
+	restarted, err := NewRepository(ctx, db)
+	require.NoError(t, err)
+	recovered, err := restarted.ByKey(ctx, request.Scope, request.Key)
+	require.NoError(t, err)
+	require.Equal(t, sourcing.AcquisitionPrepared, recovered.State)
+	require.NotNil(t, recovered.Command)
+	require.Equal(t, command.PublicationID, recovered.Command.PublicationID)
+}
+
 func TestBrowserCapturePostgresPrepareChecksLockedIntent(t *testing.T) {
 	db := browserStagingDatabase(t)
 	ctx := context.Background()

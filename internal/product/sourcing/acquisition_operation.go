@@ -56,6 +56,14 @@ type AcquisitionOperationStore interface {
 	Finish(context.Context, AcquisitionOperation, string, string) error
 }
 
+// PreparedAcquisitionOperationStore atomically admits an operation with its
+// durable publication command. Browser capture uses this contract because its
+// receiver can recover the command after a process or response failure.
+type PreparedAcquisitionOperationStore interface {
+	AcquisitionOperationStore
+	StartPrepared(context.Context, AcquisitionOperation, PublicationCommand) (AcquisitionOperation, bool, error)
+}
+
 type PublicAcquirer interface {
 	Acquire(context.Context, AcquisitionSource) (AcquisitionEvidence, error)
 }

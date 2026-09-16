@@ -73,19 +73,29 @@ type browserTestPublisher struct {
 }
 
 type browserCaptureAdmissionStore struct {
-	op           sourcing.AcquisitionOperation
-	finishCalls  int
-	finishState  string
-	finishReason string
-	finishCtxErr error
-	prepareErr   error
-	claim        bool
-	claimCalls   int
+	op                 sourcing.AcquisitionOperation
+	startPreparedCalls int
+	startPreparedErr   error
+	finishCalls        int
+	finishState        string
+	claim              bool
+	claimCalls         int
 }
 
 func (s *browserCaptureAdmissionStore) Start(_ context.Context, requested sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
 	s.op = requested
 	s.op.State = sourcing.AcquisitionAcquiring
+	s.op.Fence = 1
+	return s.op, true, nil
+}
+func (s *browserCaptureAdmissionStore) StartPrepared(_ context.Context, requested sourcing.AcquisitionOperation, command sourcing.PublicationCommand) (sourcing.AcquisitionOperation, bool, error) {
+	s.startPreparedCalls++
+	if s.startPreparedErr != nil {
+		return sourcing.AcquisitionOperation{}, false, s.startPreparedErr
+	}
+	s.op = requested
+	s.op.Command = &command
+	s.op.State = sourcing.AcquisitionPrepared
 	s.op.Fence = 1
 	return s.op, true, nil
 }
@@ -96,9 +106,6 @@ func (s *browserCaptureAdmissionStore) ByID(context.Context, sourcing.Publicatio
 	return s.op, nil
 }
 func (s *browserCaptureAdmissionStore) Prepare(context.Context, sourcing.AcquisitionOperation, sourcing.PublicationCommand) (sourcing.AcquisitionOperation, error) {
-	if s.prepareErr != nil {
-		return sourcing.AcquisitionOperation{}, s.prepareErr
-	}
 	return s.op, nil
 }
 func (s *browserCaptureAdmissionStore) Claim(context.Context, sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
@@ -110,8 +117,7 @@ func (s *browserCaptureAdmissionStore) Claim(context.Context, sourcing.Acquisiti
 }
 func (s *browserCaptureAdmissionStore) Finish(ctx context.Context, _ sourcing.AcquisitionOperation, state, reason string) error {
 	s.finishCalls++
-	s.finishState, s.finishReason = state, reason
-	s.finishCtxErr = ctx.Err()
+	s.finishState = state
 	s.op.State, s.op.FailureCode = state, reason
 	return nil
 }
@@ -242,29 +248,48 @@ func TestBrowserCaptureVerifyAndReadNeverWrite(t *testing.T) {
 	require.Zero(t, store.writes)
 }
 
-func TestBrowserCaptureAdmissionFailureClosesClaimedOperation(t *testing.T) {
+func TestBrowserCapturePreflightFailureDoesNotAdmitOperation(t *testing.T) {
 	body, _, persisted := browserApplicationFixture(t)
 	for _, tc := range []struct {
-		name       string
-		readerErr  error
-		prepareErr error
+		name      string
+		readerErr error
+		startErr  error
 	}{
 		{name: "snapshot read", readerErr: errors.New("snapshot unavailable")},
-		{name: "prepare", prepareErr: errors.New("prepare unavailable")},
+		{name: "atomic admission", startErr: errors.New("admission unavailable")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &browserCaptureAdmissionStore{prepareErr: tc.prepareErr}
+			store := &browserCaptureAdmissionStore{startPreparedErr: tc.startErr}
 			publisher := &browserTestPublisher{persisted: persisted}
 			auth := &browserTestAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
 			service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{err: tc.readerErr}, auth)
 			require.NoError(t, err)
 			_, err = service.Capture(context.Background(), "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
 			require.Error(t, err)
-			require.Equal(t, 1, store.finishCalls)
-			require.Equal(t, sourcing.AcquisitionFailed, store.finishState)
-			require.NotEmpty(t, store.finishReason)
+			require.Zero(t, store.finishCalls)
+			if tc.startErr != nil {
+				require.Equal(t, 1, store.startPreparedCalls)
+			} else {
+				require.Zero(t, store.startPreparedCalls)
+			}
 		})
 	}
+}
+
+func TestBrowserCaptureUsesAtomicPreparedAdmission(t *testing.T) {
+	body, op, persisted := browserApplicationFixture(t)
+	store := &browserCaptureAdmissionStore{claim: true}
+	publisher := &browserTestPublisher{persisted: persisted, publishReceipt: persisted.Receipt}
+	service, err := NewBrowserCaptureService(store, publisher, browserCaptureAdmissionReader{}, &browserTestAuthorizer{scope: op.Scope})
+	require.NoError(t, err)
+
+	result, err := service.Capture(context.Background(), op.Key, body)
+	require.NoError(t, err)
+	require.Equal(t, sourcing.AcquisitionPublished, result.Operation.State)
+	require.Equal(t, 1, store.startPreparedCalls)
+	require.Equal(t, 1, store.finishCalls)
+	require.Equal(t, sourcing.AcquisitionPublished, store.finishState)
+	require.Equal(t, 1, publisher.publishes)
 }
 
 type browserCaptureFlippingAuthorizer struct {
@@ -283,7 +308,7 @@ func (a *browserCaptureFlippingAuthorizer) Authorize(ctx context.Context) (sourc
 	return a.scope, nil
 }
 
-func TestBrowserCaptureSecondAuthorizationFailureClosesClaimedOperation(t *testing.T) {
+func TestBrowserCaptureSecondAuthorizationFailureDoesNotAdmitOperation(t *testing.T) {
 	body, _, persisted := browserApplicationFixture(t)
 	store := &browserCaptureAdmissionStore{}
 	authorizer := &browserCaptureFlippingAuthorizer{scope: sourcing.PublicationScope{OrganizationID: "browser-org", ActorID: "browser-actor"}}
@@ -292,11 +317,11 @@ func TestBrowserCaptureSecondAuthorizationFailureClosesClaimedOperation(t *testi
 
 	_, err = service.Capture(context.Background(), "d0ca04d0-1d36-4fce-8305-754c39244d09", body)
 	require.ErrorIs(t, err, sourcing.ErrPublicationForbidden)
-	require.Equal(t, 1, store.finishCalls)
-	require.Equal(t, sourcing.AcquisitionFailed, store.finishState)
+	require.Zero(t, store.finishCalls)
+	require.Zero(t, store.startPreparedCalls)
 }
 
-func TestBrowserCaptureAdmissionCancellationClosesClaimedOperation(t *testing.T) {
+func TestBrowserCaptureAdmissionCancellationDoesNotAdmitOperation(t *testing.T) {
 	body, _, persisted := browserApplicationFixture(t)
 	store := &browserCaptureAdmissionStore{}
 	reader := browserCaptureCancelReader{started: make(chan struct{})}
@@ -314,9 +339,8 @@ func TestBrowserCaptureAdmissionCancellationClosesClaimedOperation(t *testing.T)
 	cancel()
 
 	require.ErrorIs(t, <-done, context.Canceled)
-	require.Equal(t, 1, store.finishCalls)
-	require.Equal(t, sourcing.AcquisitionFailed, store.finishState)
-	require.NoError(t, store.finishCtxErr)
+	require.Zero(t, store.finishCalls)
+	require.Zero(t, store.startPreparedCalls)
 }
 
 func TestBrowserCaptureByKeyResumesDurablePrePublicationStates(t *testing.T) {

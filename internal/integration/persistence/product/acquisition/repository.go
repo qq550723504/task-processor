@@ -178,6 +178,62 @@ func (r *Repository) Start(ctx context.Context, requested sourcing.AcquisitionOp
 	return
 }
 
+// StartPrepared performs admission and command persistence in one transaction.
+// A committed browser operation is therefore always recoverable from its key.
+func (r *Repository) StartPrepared(ctx context.Context, requested sourcing.AcquisitionOperation, cmd sourcing.PublicationCommand) (op sourcing.AcquisitionOperation, claim bool, err error) {
+	if !validIdentity(requested) || !validCommand(requested, cmd) {
+		return op, false, sourcing.ErrInvalidAcquisition
+	}
+	raw, marshalErr := json.Marshal(cmd)
+	if marshalErr != nil || len(raw) > sourcing.MaxAcquisitionCommandBytes {
+		return op, false, sourcing.ErrSourcePublicationTooLarge
+	}
+	err = r.transaction(ctx, func(tx *gorm.DB) error {
+		if e := tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", requested.Scope.OrganizationID).Error; e != nil {
+			return sourcing.ErrAcquisitionUnavailable
+		}
+		var e error
+		op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, true)
+		if e == nil {
+			if op.Source != requested.Source || op.Fingerprint != requested.Fingerprint || op.CaptureSHA256 != requested.CaptureSHA256 {
+				return sourcing.ErrAcquisitionConflict
+			}
+			if op.State != sourcing.AcquisitionAcquiring {
+				return nil
+			}
+			result := tx.Exec("UPDATE "+table+" SET fence=fence+1,lease_until=clock_timestamp()+interval '30 seconds',command=?,command_hash=?,state='prepared' WHERE organization_id=? AND actor_id=? AND idempotency_key=? AND state='acquiring' AND command IS NULL AND lease_until<clock_timestamp() AND fence=?", raw, digest(raw), op.Scope.OrganizationID, op.Scope.ActorID, op.Key, op.Fence)
+			if result.Error != nil {
+				return sourcing.ErrAcquisitionUnavailable
+			}
+			claim = result.RowsAffected == 1
+			if claim {
+				op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
+			}
+			return e
+		}
+		if !errors.Is(e, sourcing.ErrAcquisitionNotFound) {
+			return e
+		}
+		var count struct{ Total, Active int64 }
+		if e := tx.Raw("SELECT count(*) AS total,count(*) FILTER(WHERE state IN ('acquiring','prepared','publishing')) AS active FROM "+table+" WHERE organization_id=?", requested.Scope.OrganizationID).Scan(&count).Error; e != nil {
+			return sourcing.ErrAcquisitionUnavailable
+		}
+		if count.Total >= sourcing.MaxAcquisitionOperations || count.Active >= sourcing.MaxActiveAcquisitionOperations {
+			return sourcing.ErrAcquisitionCapacity
+		}
+		if e := tx.Exec("INSERT INTO "+table+" (organization_id,actor_id,idempotency_key,operation_id,offer_id,source_url,fingerprint,capture_sha256,state,fence,lease_until,command,command_hash) VALUES (?,?,?,?,?,?,?,?,'prepared',1,clock_timestamp()+interval '30 seconds',?,?)", requested.Scope.OrganizationID, requested.Scope.ActorID, requested.Key, requested.ID, requested.Source.OfferID, requested.Source.URL, requested.Fingerprint, requested.CaptureSHA256, raw, digest(raw)).Error; e != nil {
+			return sourcing.ErrAcquisitionUnavailable
+		}
+		op, e = read(tx, requested.Scope, "idempotency_key", requested.Key, false)
+		claim = e == nil
+		return e
+	})
+	if err != nil {
+		claim = false
+	}
+	return
+}
+
 func (r *Repository) ByKey(ctx context.Context, scope sourcing.PublicationScope, key string) (sourcing.AcquisitionOperation, error) {
 	return read(r.db.WithContext(ctx), scope, "idempotency_key", key, false)
 }
@@ -394,3 +450,4 @@ func validFailure(code string) bool {
 }
 
 var _ sourcing.AcquisitionOperationStore = (*Repository)(nil)
+var _ sourcing.PreparedAcquisitionOperationStore = (*Repository)(nil)
