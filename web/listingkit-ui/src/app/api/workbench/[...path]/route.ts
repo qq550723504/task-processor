@@ -59,7 +59,9 @@ async function proxyWorkbenchRequest(
       : upstreamRequest;
   }
   dispatchState.requestId = upstreamRequest.requestId;
-  dispatchState.acquisitionRequest = upstreamRequest.responseContract === "product-acquisition";
+  dispatchState.acquisitionRequest =
+    upstreamRequest.responseContract === "product-acquisition" ||
+    upstreamRequest.responseContract === "product-acquisition-product";
   dispatchState.sourceRequest = dispatchState.acquisitionRequest || upstreamRequest.responseContract.startsWith("source-account-");
   dispatchState.sourceMutation = upstreamRequest.sourceMutation;
   if (request.signal.aborted) return deadlineFailure(dispatchState);
