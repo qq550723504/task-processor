@@ -1,0 +1,36 @@
+http:
+  routers:
+    identity-login:
+      entryPoints: [identity]
+      rule: Host(`localhost`) && PathPrefix(`/ui/v2/login`)
+      priority: 100
+      service: zitadel-login
+      tls: {}
+    identity-api:
+      entryPoints: [identity]
+      rule: Host(`localhost`)
+      priority: 1
+      service: zitadel-api
+      tls: {}
+    listingkit-ui:
+      entryPoints: [application]
+      rule: Host(`localhost`)
+      service: listingkit-ui
+      tls: {}
+  services:
+    zitadel-api:
+      loadBalancer:
+        servers:
+          - url: h2c://127.0.0.1:8080
+    zitadel-login:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:3000
+    listingkit-ui:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:3001
+tls:
+  certificates:
+    - certFile: /private/ca/localhost.crt
+      keyFile: /private/ca/localhost.key
