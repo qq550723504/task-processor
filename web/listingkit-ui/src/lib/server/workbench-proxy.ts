@@ -27,7 +27,7 @@ import {
   sourceAccountPageResponseSchema,
 } from "@/lib/contracts/source-account";
 import { newRequestLogId } from "@/lib/server/request-log";
-import { hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
+import { hasTrustedSameOriginRecovery, hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
 import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
@@ -476,7 +476,7 @@ export async function buildWorkbenchUpstreamRequest(
           return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
         }
         if (route.requestContract === "browser-capture-by-key") {
-          const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject);
+          const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject, true);
           if (assertion) return assertion;
           if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
           break;
@@ -1128,8 +1128,9 @@ function parseSourceAccountListQuery(rawURL: string) {
 function validateSourceMutationBoundary(
   request: Request,
   authenticatedActorSubject: string,
+  recovery = false,
 ) {
-  if (!hasTrustedSameOriginWrite(request)) {
+  if (!(recovery ? hasTrustedSameOriginRecovery(request) : hasTrustedSameOriginWrite(request))) {
     return protocolError(403, "PERMISSION_DENIED", "Same-origin request is required");
   }
   const assertedActor = request.headers.get(EXPECTED_USER_ID_HEADER);

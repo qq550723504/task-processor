@@ -8,7 +8,7 @@ const base = "sourcing/1688/browser-captures";
 beforeEach(() => vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost"));
 afterEach(() => vi.unstubAllEnvs());
 function request(method = "POST", suffix = "", body = JSON.stringify(browserCaptureFixture()), change?: (h: Headers) => void) {
-  const headers = new Headers({ cookie: "shuomi_effective_organization=org-B", "X-Expected-Organization-ID": "org-B", "X-Expected-User-ID": "actor", origin: "http://localhost", "content-type": "application/json", "Idempotency-Key": key });
+  const headers = new Headers({ cookie: "shuomi_effective_organization=org-B", "X-Expected-Organization-ID": "org-B", "X-Expected-User-ID": "actor", origin: "http://localhost", "sec-fetch-site": "same-origin", "content-type": "application/json", "Idempotency-Key": key });
   change?.(headers);
   return new Request(`http://localhost/api/workbench/${base}${suffix}`, { method, headers, ...(method === "POST" ? { body } : {}) });
 }
@@ -27,8 +27,12 @@ describe("Browser BFF four exact routes", () => {
     expect(result.expectedStoreId).toBe(suffix === `/${op}` ? op : undefined);
     expect(result.sourceMutation).toBe(method === "POST" || suffix.startsWith("/by-key/"));
   });
-  it("requires same-origin protection for by-key recovery", async () => {
+  it("accepts browser same-origin by-key recovery without an Origin header", async () => {
     const result = await build(request("GET", `/by-key/${key}`, undefined, (headers) => headers.delete("origin")), `/by-key/${key}`);
+    expect(result).not.toBeInstanceOf(Response);
+  });
+  it("rejects cross-site by-key recovery without an Origin header", async () => {
+    const result = await build(request("GET", `/by-key/${key}`, undefined, (headers) => { headers.delete("origin"); headers.set("sec-fetch-site", "cross-site"); }), `/by-key/${key}`);
     expect(result).toBeInstanceOf(Response);
     if (result instanceof Response) expect(result.status).toBe(403);
   });
