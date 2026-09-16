@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,14 @@ function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; s
   const [product, setProduct] = useState<AcquisitionProduct | null>(null);
   const [error, setError] = useState<string | null>(() => operationId && !isAcquisitionUUID(operationId) ? "INVALID_ACQUISITION" : null);
   const [busy, setBusy] = useState(() => Boolean(operationId && isAcquisitionUUID(operationId)));
+  const active = useRef(true);
+  const inFlight = useRef(false);
+  const abort = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; abort.current?.abort(); };
+  }, []);
 
   useEffect(() => {
     if (!operationId || !isAcquisitionUUID(operationId)) return;
@@ -51,24 +59,42 @@ function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; s
   if (operationId) return <ProductDetail operationId={operationId} product={product} busy={busy} error={error} />;
 
   async function submit(verify = false) {
+    if (!active.current || inFlight.current) return;
     const canonical = canonical1688Source(source);
     if (!canonical) { setError("INVALID_ACQUISITION"); return; }
     const intent: AcquisitionOperation = pending ?? { userId: scope.userId, organizationId: scope.organizationId, key: crypto.randomUUID(), source: canonical };
-    setPending(intent); setBusy(true); setError(null);
+    const controller = new AbortController();
+    abort.current = controller; inFlight.current = true; setPending(intent); setBusy(true); setError(null);
     try {
-      const next = await (verify ? verify1688(intent) : acquire1688(intent));
+      const next = await (verify ? verify1688(intent, controller.signal) : acquire1688(intent, controller.signal));
+      if (!active.current) return;
       setResult(next);
       if (next.outcome === "published") router.push(`/workbench/supply/acquisition/operation/${next.operationId}`);
-    } catch (failure) { setError(codeOf(failure)); } finally { setBusy(false); }
+    } catch (failure) {
+      if (active.current) setError(codeOf(failure));
+    } finally {
+      if (abort.current === controller) abort.current = null;
+      inFlight.current = false;
+      if (active.current) setBusy(false);
+    }
   }
   async function recover() {
+    if (!active.current || inFlight.current) return;
     if (!isAcquisitionUUID(recoveryID)) { setError("INVALID_ACQUISITION"); return; }
-    setBusy(true); setError(null);
+    const controller = new AbortController();
+    abort.current = controller; inFlight.current = true; setBusy(true); setError(null);
     try {
-      const next = await readAcquisition(recoveryID, scope);
+      const next = await readAcquisition(recoveryID, scope, controller.signal);
+      if (!active.current) return;
       setResult(next);
       if (next.outcome === "published") router.push(`/workbench/supply/acquisition/operation/${next.operationId}`);
-    } catch (failure) { setError(codeOf(failure)); } finally { setBusy(false); }
+    } catch (failure) {
+      if (active.current) setError(codeOf(failure));
+    } finally {
+      if (abort.current === controller) abort.current = null;
+      inFlight.current = false;
+      if (active.current) setBusy(false);
+    }
   }
 
   return <ConsolePage title="1688采集" breadcrumbs={findConsoleRoute("/workbench/supply/acquisition")?.trail} description="提交公开商品页或 offer ID。系统仍按当前登录身份和企业授权；不需要源账号或 1688 登录。">

@@ -33,7 +33,7 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		{"internal/app/productsourcing", "internal/app/productsourcing/acquisition_initialization.go", issue398Database, []string{"OpenExistingWritableContext", "Close", "Config"}},
 		{"internal/integration/acquisition/a1688", "internal/integration/acquisition/a1688/public.go", issue398HTTP, []string{"NewPublicImageHTTPClient"}},
 		{"cmd/product-acquisition-init", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", []string{"InitializeAcquisitionDatabase"}},
-		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition"}},
+		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "PublishedAcquisition"}},
 	}
 	var violations []string
 	for _, source := range sources {
@@ -151,6 +151,7 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"initializer sibling", "cmd/product-acquisition-init/other.go", "task-processor/internal/app/productsourcing", "InitializeAcquisitionDatabase", false},
 		{"initializer target subpackage", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing/httpapi", "InitializeAcquisitionDatabase", false},
 		{"module build", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewPublicAcquisition", true},
+		{"module exact receipt read", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "PublishedAcquisition", true},
 		{"module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewPublicAcquisition", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

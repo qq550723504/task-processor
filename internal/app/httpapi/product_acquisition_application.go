@@ -176,7 +176,7 @@ type acquisitionResultDTO struct {
 	MissingFacts   []acquisitionMissingDTO `json:"missingFacts"`
 }
 
-type acquisitionProductSourceDTO struct {
+type acquisitionProvenanceDTO struct {
 	Platform      string `json:"platform,omitempty"`
 	ReferenceType string `json:"referenceType,omitempty"`
 	SourceID      string `json:"sourceId,omitempty"`
@@ -199,7 +199,7 @@ type acquisitionProductDTO struct {
 	PublicationID  string                               `json:"publicationId"`
 	CatalogVersion string                               `json:"catalogVersion"`
 	Title          string                               `json:"title,omitempty"`
-	Sources        []acquisitionProductSourceDTO        `json:"sources"`
+	Sources        []acquisitionProvenanceDTO           `json:"sources"`
 	Images         []acquisitionProductImageDTO         `json:"images"`
 	Specifications []acquisitionProductSpecificationDTO `json:"specifications"`
 	Warnings       []acquisitionWarningDTO              `json:"warnings"`
@@ -253,11 +253,11 @@ func writeAcquisitionProduct(c *gin.Context, published productsourcing.Published
 	dto := acquisitionProductDTO{
 		SchemaVersion: 1, OperationID: result.Operation.ID, ProductKey: receipt.ProductKey, PublicationID: receipt.PublicationID,
 		CatalogVersion: strconv.FormatUint(receipt.CatalogVersion, 10), Title: published.Snapshot.Snapshot.Title,
-		Sources: []acquisitionProductSourceDTO{}, Images: []acquisitionProductImageDTO{}, Specifications: []acquisitionProductSpecificationDTO{},
+		Sources: []acquisitionProvenanceDTO{}, Images: []acquisitionProductImageDTO{}, Specifications: []acquisitionProductSpecificationDTO{},
 		Warnings: []acquisitionWarningDTO{}, MissingFacts: []acquisitionMissingDTO{},
 	}
 	for _, source := range published.Snapshot.Snapshot.Sources {
-		dto.Sources = append(dto.Sources, acquisitionProductSourceDTO{Platform: source.Platform, ReferenceType: source.ReferenceType, SourceID: source.SourceID, URL: source.URL})
+		dto.Sources = append(dto.Sources, acquisitionProvenanceDTO{Platform: source.Platform, ReferenceType: source.ReferenceType, SourceID: source.SourceID, URL: source.URL})
 	}
 	for _, image := range published.Snapshot.Snapshot.Images {
 		dto.Images = append(dto.Images, acquisitionProductImageDTO{URL: image.URL, Role: image.Role, Width: image.Width, Height: image.Height})
