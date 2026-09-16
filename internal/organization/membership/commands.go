@@ -26,6 +26,24 @@ type ProviderWriter interface {
 	Write(context.Context, Operation) (Acknowledgment, error)
 }
 
+// dispatchAllowed is the final gate before a provider mutation. A context
+// deadline can pass just before its cancellation signal is observed, so Err
+// alone is not enough to authorize a non-repeatable provider write.
+func dispatchAllowed(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ErrUnavailable
+	default:
+	}
+	if ctx.Err() != nil {
+		return ErrUnavailable
+	}
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return ErrUnavailable
+	}
+	return nil
+}
+
 // RefreshIdentity must invoke the existing current live-grant authority. It
 // cannot infer a grant from a stored receipt, platform flag or client roles.
 type RefreshIdentity func(context.Context) (context.Context, error)
@@ -180,6 +198,9 @@ func (c *Commands) resume(ctx context.Context, op Operation) (Operation, error) 
 		return dispatched, ErrUnavailable
 	}
 	if _, err := c.service.authorize(ctx, authz.PermissionWorkbenchOrganizationMemberManage); err != nil {
+		return dispatched, err
+	}
+	if err := dispatchAllowed(ctx); err != nil {
 		return dispatched, err
 	}
 	ack, err := c.writer.Write(ctx, dispatched)
