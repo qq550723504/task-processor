@@ -100,3 +100,16 @@ if ($delivery -match '(?im)(?:Get-Content|cat|type)\s+.*operator-password') {
 foreach ($forbidden in @('identity-db-secret', 'source-db-owner-secret', 'commercial-db-owner-secret', 'product-db-owner-secret', 'zitadel-api-secrets', 'zitadel-iac-pat', 'tofu-state', 'runtime-secrets', 'frontend-secrets', 'localhost.key')) {
     if ($delivery -match [regex]::Escape($forbidden)) { throw "local-login handoff must not export $forbidden" }
 }
+
+$retentionStart = $readme.IndexOf('## Retain or explicitly destroy')
+if ($retentionStart -lt 0) { throw 'acquisition README must document retained-instance restart' }
+$retention = $readme.Substring($retentionStart)
+$reloadProject = '$projectLine = Get-Content -LiteralPath .env'
+$reloadIndex = $retention.IndexOf($reloadProject)
+$validateIndex = if ($reloadIndex -ge 0) { $retention.IndexOf("if (@(`$projectLine).Count -ne 1)", $reloadIndex) } else { -1 }
+$assignIndex = if ($validateIndex -ge 0) { $retention.IndexOf("`$project = `$projectLine.Substring('COMPOSE_PROJECT_NAME='.Length)", $validateIndex) } else { -1 }
+$downIndex = $retention.IndexOf('docker compose --project-name $project --env-file .env down')
+$upIndex = $retention.IndexOf('docker compose --project-name $project --env-file .env up --wait')
+if ($reloadIndex -lt 0 -or $validateIndex -le $reloadIndex -or $assignIndex -le $validateIndex -or $downIndex -le $assignIndex -or $upIndex -le $downIndex) {
+    throw 'retained-instance restart must reload and validate its project from .env before compose commands'
+}

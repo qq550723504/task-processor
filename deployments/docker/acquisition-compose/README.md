@@ -140,6 +140,10 @@ and public CA. All serving mounts are read-only.
 Stop/restart retains the named volumes and facts:
 
 ```powershell
+$projectLine = Get-Content -LiteralPath .env | Where-Object { $_ -match '^COMPOSE_PROJECT_NAME=task-processor-acquisition-[0-9a-f]{32}$' }
+if (@($projectLine).Count -ne 1) { throw 'Expected one generated acquisition COMPOSE_PROJECT_NAME in .env' }
+$project = $projectLine.Substring('COMPOSE_PROJECT_NAME='.Length)
+Write-Host "Restarting retained acquisition project: $project"
 docker compose --project-name $project --env-file .env down
 docker compose --project-name $project --env-file .env up --wait
 ```
