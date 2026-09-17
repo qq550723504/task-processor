@@ -137,5 +137,7 @@ function CatalogFacts({ product }: { product: AcquisitionProduct }) {
 }
 function Failure({ code }: { code: string }) { const labels: Record<string, string> = { OUTCOME_UNKNOWN: "原请求结果尚未确定；仅当仍持有原 key 和来源时可核实。", ACQUISITION_NOT_FOUND: "当前身份和企业下未找到该操作。", FORBIDDEN: "当前身份没有采集或读取权限。", INVALID_ACQUISITION: "请输入合法的 1688 商品页、offer ID 或操作 ID。", ACQUISITION_UNAVAILABLE: "采集结果暂不可用；未据此推断其已失败。" }; return <ConsoleState kind="error" title={labels[code] ?? "采集请求未完成"}>{code}</ConsoleState>; }
 function codeOf(failure: unknown) { return failure instanceof AcquisitionAPIError ? failure.code : "ACQUISITION_UNAVAILABLE"; }
-function isDefinitiveSubmissionFailure(code: string) { return code === "FORBIDDEN" || code === "INVALID_ACQUISITION"; }
+function isDefinitiveSubmissionFailure(code: string) {
+  return code === "INVALID_ACQUISITION" || code === "SOURCE_TOO_LARGE" || code === "ACQUISITION_CAPACITY" || code === "ACQUISITION_NOT_FOUND" || code === "SOURCE_UNAVAILABLE";
+}
 function isTerminalAcquisitionResult(result: AcquisitionResult) { return result.outcome === "published" || result.outcome === "failed"; }

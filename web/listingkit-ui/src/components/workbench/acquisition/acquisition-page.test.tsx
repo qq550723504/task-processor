@@ -136,6 +136,24 @@ it.each(["prepared", "acquiring"] as const)("keeps the original key when creatio
   expect(calls.verify.mock.calls[0][0]).toEqual(original);
 });
 
+it.each([
+  ["SOURCE_UNAVAILABLE", 502],
+  ["ACQUISITION_CAPACITY", 429],
+  ["ACQUISITION_NOT_FOUND", 404],
+] as const)("releases the intent after definitive %s so a new operation can be submitted", async (code, status) => {
+  calls.acquire.mockRejectedValueOnce(new AcquisitionAPIError(code, status));
+  calls.acquire.mockResolvedValueOnce({ outcome: "failed", operationId: operationID });
+  render(tree());
+  await userEvent.type(screen.getByLabelText("1688 商品页或 offer ID"), "https://detail.1688.com/offer/123.html");
+  await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
+  await screen.findByRole("alert");
+  const original = calls.acquire.mock.calls[0][0] as AcquisitionOperation;
+  expect(screen.getByRole("button", { name: "提交采集" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
+  await waitFor(() => expect(calls.acquire).toHaveBeenCalledTimes(2));
+  expect((calls.acquire.mock.calls[1][0] as AcquisitionOperation).key).not.toBe(original.key);
+});
+
 it("renders source warnings preserved by the operation-bound Catalog product", async () => {
   calls.readProduct.mockResolvedValueOnce({
     schemaVersion: 1,
