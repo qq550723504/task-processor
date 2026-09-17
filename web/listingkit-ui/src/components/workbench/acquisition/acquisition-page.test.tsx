@@ -14,7 +14,15 @@ function deferred<T>() { let resolve!: (value: T) => void, reject!: (reason?: un
 function tree() { return <AcquisitionPage />; }
 
 beforeEach(() => {
-  calls.context = { user: { id: "actor-A" }, effectiveOrganization: { id: "organization-A" } };
+  calls.context = {
+    user: { id: "actor-A" },
+    effectiveOrganization: { id: "organization-A" },
+    pendingAcquisitionIntent: null,
+    setPendingAcquisitionIntent: (intent: AcquisitionOperation | null) => {
+      calls.context.pendingAcquisitionIntent = intent;
+    },
+    registerOrganizationSwitchGuard: vi.fn(() => vi.fn()),
+  };
   calls.acquire.mockReset(); calls.verify.mockReset(); calls.read.mockReset(); calls.readProduct.mockReset(); calls.push.mockReset();
 });
 afterEach(cleanup);
@@ -28,13 +36,59 @@ it("aborts an A-scope submission and ignores its late published result after swi
   await waitFor(() => expect(calls.acquire).toHaveBeenCalledOnce());
   const signal = calls.acquire.mock.calls[0][1] as AbortSignal;
 
-  calls.context = { user: { id: "actor-B" }, effectiveOrganization: { id: "organization-B" } };
+  calls.context = { ...calls.context, user: { id: "actor-B" }, effectiveOrganization: { id: "organization-B" } };
   view.rerender(tree());
   expect(signal.aborted).toBe(true);
   await act(async () => late.resolve({ outcome: "published", operationId: operationID, productKey: "crawler:1688:123" }));
 
   expect(calls.push).not.toHaveBeenCalled();
   expect(screen.queryByText(`操作 ${operationID}`)).not.toBeInTheDocument();
+});
+
+it("retains an aborted A-scope submission for explicit original-key verification after returning from B", async () => {
+  const late = deferred<{ outcome: "published"; operationId: string; productKey: string }>();
+  calls.acquire.mockReturnValue(late.promise);
+  calls.verify.mockResolvedValueOnce({ outcome: "prepared", operationId: operationID, productKey: "crawler:1688:123" });
+  const view = render(tree());
+  await userEvent.type(screen.getByLabelText("1688 商品页或 offer ID"), "https://detail.1688.com/offer/123.html");
+  await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
+  await waitFor(() => expect(calls.acquire).toHaveBeenCalledOnce());
+  const original = calls.acquire.mock.calls[0][0] as AcquisitionOperation;
+
+  calls.context = {
+    ...calls.context,
+    user: { id: "actor-B" },
+    effectiveOrganization: { id: "organization-B" },
+  };
+  view.rerender(tree());
+  expect(screen.getByRole("status")).toHaveTextContent("另一个企业或身份下有尚未确认的采集请求");
+  await act(async () => late.resolve({ outcome: "published", operationId: operationID, productKey: "crawler:1688:123" }));
+
+  calls.context = {
+    ...calls.context,
+    user: { id: "actor-A" },
+    effectiveOrganization: { id: "organization-A" },
+  };
+  view.rerender(tree());
+  await userEvent.click(screen.getByRole("button", { name: "使用原 key 核实" }));
+  await waitFor(() => expect(calls.verify).toHaveBeenCalledOnce());
+  expect(calls.verify.mock.calls[0][0]).toEqual(original);
+});
+
+it("blocks an organization switch while a submission is still in flight", async () => {
+  let guard: ((target: { id: string; name: string; roles: string[] }) => boolean) | undefined;
+  const late = deferred<{ outcome: "published"; operationId: string; productKey: string }>();
+  calls.acquire.mockReturnValue(late.promise);
+  (calls.context.registerOrganizationSwitchGuard as ReturnType<typeof vi.fn>).mockImplementation((next: typeof guard) => {
+    guard = next;
+    return vi.fn();
+  });
+  render(tree());
+  await userEvent.type(screen.getByLabelText("1688 商品页或 offer ID"), "https://detail.1688.com/offer/123.html");
+  await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
+  await waitFor(() => expect(calls.acquire).toHaveBeenCalledOnce());
+  expect(guard?.({ id: "organization-B", name: "企业 B", roles: [] })).toBe(false);
+  await act(async () => late.resolve({ outcome: "published", operationId: operationID, productKey: "crawler:1688:123" }));
 });
 
 it("aborts an A-scope recovery and ignores its late published result after switching to B", async () => {
@@ -46,7 +100,7 @@ it("aborts an A-scope recovery and ignores its late published result after switc
   await waitFor(() => expect(calls.read).toHaveBeenCalledOnce());
   const signal = calls.read.mock.calls[0][2] as AbortSignal;
 
-  calls.context = { user: { id: "actor-B" }, effectiveOrganization: { id: "organization-B" } };
+  calls.context = { ...calls.context, user: { id: "actor-B" }, effectiveOrganization: { id: "organization-B" } };
   view.rerender(tree());
   expect(signal.aborted).toBe(true);
   await act(async () => late.resolve({ outcome: "published", operationId: operationID, productKey: "crawler:1688:123" }));
@@ -63,6 +117,20 @@ it("keeps the original key when an uncertain submission is explicitly verified",
   await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
   await screen.findByRole("alert");
   const original = calls.acquire.mock.calls[0][0] as AcquisitionOperation;
+  await userEvent.click(screen.getByRole("button", { name: "使用原 key 核实" }));
+  await waitFor(() => expect(calls.verify).toHaveBeenCalledOnce());
+  expect(calls.verify.mock.calls[0][0]).toEqual(original);
+});
+
+it.each(["prepared", "acquiring"] as const)("keeps the original key when creation reports non-terminal %s", async (outcome) => {
+  calls.acquire.mockResolvedValueOnce({ outcome, operationId: operationID });
+  calls.verify.mockResolvedValueOnce({ outcome: "published", operationId: operationID, productKey: "crawler:1688:123" });
+  render(tree());
+  await userEvent.type(screen.getByLabelText("1688 商品页或 offer ID"), "https://detail.1688.com/offer/123.html");
+  await userEvent.click(screen.getByRole("button", { name: "提交采集" }));
+  await screen.findByRole("button", { name: "使用原 key 核实" });
+  const original = calls.acquire.mock.calls[0][0] as AcquisitionOperation;
+  expect(screen.getByRole("button", { name: "提交采集" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "使用原 key 核实" }));
   await waitFor(() => expect(calls.verify).toHaveBeenCalledOnce());
   expect(calls.verify.mock.calls[0][0]).toEqual(original);

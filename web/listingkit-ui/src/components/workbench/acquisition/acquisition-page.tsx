@@ -25,19 +25,22 @@ export function AcquisitionPage({ operationId }: { operationId?: string }) {
   if (context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认企业上下文">采集只在服务端确认的当前企业中执行。</ConsoleState>;
   if (!scope || context.selectionRequired || context.error || context.blockingError) return <ConsoleState kind="error" title="企业或登录上下文不可用">请先确认登录身份与当前企业，再提交或读取采集结果。</ConsoleState>;
 
-  // A changed verified actor or organization must discard the prior operation
-  // state rather than replaying it under the new server-side scope.
-  return <ScopedAcquisitionPage key={`${scope.userId}:${scope.organizationId}:${operationId ?? ""}`} operationId={operationId} scope={scope} />;
+  const submittedIntent = context.pendingAcquisitionIntent;
+  const sameIntentScope = submittedIntent?.userId === scope.userId && submittedIntent.organizationId === scope.organizationId;
+  // The shell preserves a submitted key through workbench navigation, but an
+  // intent is rendered or replayed only after its verified scope is restored.
+  return <ScopedAcquisitionPage key={`${scope.userId}:${scope.organizationId}:${operationId ?? ""}`} operationId={operationId} scope={scope} initialIntent={sameIntentScope ? submittedIntent : null} foreignIntent={!!submittedIntent && !sameIntentScope} onIntentChange={context.setPendingAcquisitionIntent} />;
 }
 
-function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; scope: AcquisitionContext }) {
+function ScopedAcquisitionPage({ operationId, scope, initialIntent, foreignIntent, onIntentChange }: { operationId?: string; scope: AcquisitionContext; initialIntent: PendingIntent | null; foreignIntent: boolean; onIntentChange: (intent: PendingIntent | null) => void }) {
   const router = useRouter();
-  const [source, setSource] = useState("");
+  const context = useWorkbenchContext();
+  const [source, setSource] = useState(initialIntent?.source ?? "");
   const [recoveryID, setRecoveryID] = useState(operationId ?? "");
-  const [pending, setPending] = useState<PendingIntent | null>(null);
+  const [pending, setPending] = useState<PendingIntent | null>(initialIntent);
   const [result, setResult] = useState<AcquisitionResult | null>(null);
   const [product, setProduct] = useState<AcquisitionProduct | null>(null);
-  const [error, setError] = useState<string | null>(() => operationId && !isAcquisitionUUID(operationId) ? "INVALID_ACQUISITION" : null);
+  const [error, setError] = useState<string | null>(() => operationId && !isAcquisitionUUID(operationId) ? "INVALID_ACQUISITION" : (initialIntent ? "OUTCOME_UNKNOWN" : null));
   const [busy, setBusy] = useState(() => Boolean(operationId && isAcquisitionUUID(operationId)));
   const active = useRef(true);
   const inFlight = useRef(false);
@@ -47,6 +50,11 @@ function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; s
     active.current = true;
     return () => { active.current = false; abort.current?.abort(); };
   }, []);
+
+  useEffect(
+    () => context.registerOrganizationSwitchGuard(() => !inFlight.current),
+    [context],
+  );
 
   useEffect(() => {
     if (!operationId || !isAcquisitionUUID(operationId)) return;
@@ -59,19 +67,30 @@ function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; s
   if (operationId) return <ProductDetail operationId={operationId} product={product} busy={busy} error={error} />;
 
   async function submit(verify = false) {
-    if (!active.current || inFlight.current) return;
+    if (!active.current || inFlight.current || foreignIntent) return;
     const canonical = canonical1688Source(source);
     if (!canonical) { setError("INVALID_ACQUISITION"); return; }
     const intent: AcquisitionOperation = pending ?? { userId: scope.userId, organizationId: scope.organizationId, key: crypto.randomUUID(), source: canonical };
     const controller = new AbortController();
-    abort.current = controller; inFlight.current = true; setPending(intent); setBusy(true); setError(null);
+    abort.current = controller; inFlight.current = true; setPending(intent); onIntentChange(intent); setBusy(true); setError(null);
     try {
       const next = await (verify ? verify1688(intent, controller.signal) : acquire1688(intent, controller.signal));
       if (!active.current) return;
       setResult(next);
+      if (isTerminalAcquisitionResult(next)) {
+        setPending(null); onIntentChange(null);
+      } else {
+        setPending(intent); onIntentChange(intent); setError("OUTCOME_UNKNOWN");
+      }
       if (next.outcome === "published") router.push(`/workbench/supply/acquisition/operation/${next.operationId}`);
     } catch (failure) {
-      if (active.current) setError(codeOf(failure));
+      if (!active.current) return;
+      const code = codeOf(failure);
+      if (isDefinitiveSubmissionFailure(code)) {
+        setPending(null); onIntentChange(null); setError(code);
+      } else {
+        setPending(intent); onIntentChange(intent); setError("OUTCOME_UNKNOWN");
+      }
     } finally {
       if (abort.current === controller) abort.current = null;
       inFlight.current = false;
@@ -98,7 +117,7 @@ function ScopedAcquisitionPage({ operationId, scope }: { operationId?: string; s
   }
 
   return <ConsolePage title="1688采集" breadcrumbs={findConsoleRoute("/workbench/supply/acquisition")?.trail} description="提交公开商品页或 offer ID。系统仍按当前登录身份和企业授权；不需要源账号或 1688 登录。">
-    <Card className="space-y-4 p-5"><h2 className="text-base font-semibold">采集公开商品</h2><form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}><label className="grid gap-2" htmlFor="acquisition-source"><span>1688 商品页或 offer ID</span><Input id="acquisition-source" value={source} onChange={(event) => { setSource(event.target.value); setPending(null); }} disabled={busy} placeholder="https://detail.1688.com/offer/123.html" /></label><div className="flex gap-2"><Button type="submit" disabled={busy}>提交采集</Button>{pending && error === "OUTCOME_UNKNOWN" ? <Button type="button" variant="outline" disabled={busy} onClick={() => void submit(true)}>使用原 key 核实</Button> : null}</div></form>{result ? <ResultState result={result} /> : null}{error ? <Failure code={error} /> : null}</Card>
+    <Card className="space-y-4 p-5"><h2 className="text-base font-semibold">采集公开商品</h2>{foreignIntent ? <p role="status">另一个企业或身份下有尚未确认的采集请求。请恢复原上下文后使用原 key 核实。</p> : null}<form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}><label className="grid gap-2" htmlFor="acquisition-source"><span>1688 商品页或 offer ID</span><Input id="acquisition-source" value={source} onChange={(event) => setSource(event.target.value)} disabled={busy || !!pending || foreignIntent} placeholder="https://detail.1688.com/offer/123.html" /></label><div className="flex gap-2"><Button type="submit" disabled={busy || !!pending || foreignIntent}>提交采集</Button>{pending && error === "OUTCOME_UNKNOWN" ? <Button type="button" variant="outline" disabled={busy} onClick={() => void submit(true)}>使用原 key 核实</Button> : null}</div></form>{result ? <ResultState result={result} /> : null}{error ? <Failure code={error} /> : null}</Card>
     <Card className="mt-5 space-y-3 p-5"><h2 className="text-base font-semibold">找回采集结果</h2><p className="text-sm text-muted-foreground">粘贴操作 ID 仅读取该 ID 在当前身份和企业下的结果；不会创建新操作。</p><form className="flex max-w-xl gap-2" onSubmit={(event) => { event.preventDefault(); void recover(); }}><Input aria-label="操作 ID" value={recoveryID} onChange={(event) => setRecoveryID(event.target.value)} disabled={busy} /><Button type="submit" variant="outline" disabled={busy}>读取</Button></form></Card>
   </ConsolePage>;
 }
@@ -118,3 +137,5 @@ function CatalogFacts({ product }: { product: AcquisitionProduct }) {
 }
 function Failure({ code }: { code: string }) { const labels: Record<string, string> = { OUTCOME_UNKNOWN: "原请求结果尚未确定；仅当仍持有原 key 和来源时可核实。", ACQUISITION_NOT_FOUND: "当前身份和企业下未找到该操作。", FORBIDDEN: "当前身份没有采集或读取权限。", INVALID_ACQUISITION: "请输入合法的 1688 商品页、offer ID 或操作 ID。", ACQUISITION_UNAVAILABLE: "采集结果暂不可用；未据此推断其已失败。" }; return <ConsoleState kind="error" title={labels[code] ?? "采集请求未完成"}>{code}</ConsoleState>; }
 function codeOf(failure: unknown) { return failure instanceof AcquisitionAPIError ? failure.code : "ACQUISITION_UNAVAILABLE"; }
+function isDefinitiveSubmissionFailure(code: string) { return code === "FORBIDDEN" || code === "INVALID_ACQUISITION"; }
+function isTerminalAcquisitionResult(result: AcquisitionResult) { return result.outcome === "published" || result.outcome === "failed"; }
