@@ -42,13 +42,14 @@ New-Item -ItemType Directory -Force -Path $handoff | Out-Null
 docker run --rm -v "${project}-trusted-ca:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/root-ca.pem /out/root-ca.pem'
 docker run --rm -v "${project}-tofu-inputs:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/operator-password /out/operator-password.txt'
 icacls $handoff /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)(F)" "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)" | Out-Null
+Write-Output "Private handoff directory: $handoff"
 ```
 
 If a retained trial already uses one of the example ports, select another
 three-port set and put the same values in `.env`. Do not remove or reuse an
 existing project's volumes.
 
-The delivered instance's private handoff files are at
+For the retained delivered instance, the private handoff files are at
 `%LOCALAPPDATA%\ListingKit\account-center\task-processor-account-center-20260919-a\`:
 `operator-password.txt` is the operator password and `root-ca.pem` is the
 public CA. Do not put credentials in the repository, `.env`, terminal history,
