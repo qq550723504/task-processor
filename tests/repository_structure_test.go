@@ -29,6 +29,7 @@ func maintainedOperationalCommands() map[string]struct{} {
 		"store-service-history-migrate":       {},
 		"source-account-ownership-preflight":  {},
 		"source-account-registry-schema-init": {},
+		"organization-membership-schema-init": {},
 		"referral-schema-init":                {},
 	}
 }
