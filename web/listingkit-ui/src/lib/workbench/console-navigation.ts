@@ -8,7 +8,10 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
     { label: "任务中心", href: "/workbench/ai/tasks", availability: "connected", children: [pending("进行中", "ai/tasks/running"), { label: "待确认", href: "/workbench/ai/tasks/pending", availability: "connected" }, { label: "已完成", href: "/workbench/ai/tasks/completed", availability: "connected" }, pending("异常任务", "ai/tasks/errors")] },
     pending("项目中心", "ai/projects"), pending("知识库", "ai/knowledge"), pending("我的报告", "ai/reports"),
   ]),
-  pending("供应市场", "supply", [pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine"), pending("优选申请", "supply/applications")]),
+  pending("供应市场", "supply", [
+    { label: "1688采集", href: "/workbench/supply/acquisition", availability: "connected" },
+    pending("硕米自营", "supply/official"), pending("硕米优选", "supply/selected"), pending("货盘集成", "supply/catalogs"), pending("我的供应链", "supply/mine"), pending("优选申请", "supply/applications"),
+  ]),
   pending("智能市场", "agents", [pending("智能体市场", "agents/market"), pending("我的智能体", "agents/mine"), pending("智能体定制", "agents/custom")]),
   pending("工具市场", "tools", [pending("官方工具", "tools/official"), pending("我的工具", "tools/mine"), pending("工具定制", "tools/custom")]),
   pending("生态服务", "services", [pending("服务市场", "services/market"), pending("我的服务", "services/mine"), pending("申请加入", "services/join")]),
@@ -38,6 +41,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
   if (pathname === "/workbench/account/referrals/complete") {
     const parent = findConsoleRoute("/workbench/account/referrals")!;
     const node: ConsoleNavNode = { label: "完成注册", href: pathname, availability: parent.node.availability };
+    return { node, trail: [...parent.trail, node] };
+  }
+  if (/^\/workbench\/supply\/acquisition\/operation\/[0-9a-f-]+$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/supply/acquisition")!;
+    const node: ConsoleNavNode = { label: "采集结果", href: pathname, availability: "connected" };
     return { node, trail: [...parent.trail, node] };
   }
   if (/^\/workbench\/stores\/[^/]+$/.test(pathname)) {

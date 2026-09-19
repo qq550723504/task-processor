@@ -50,6 +50,7 @@ type productAcquisitionService interface {
 	Acquire(context.Context, string, string) (sourcing.AcquisitionResult, error)
 	Verify(context.Context, string, string) (sourcing.AcquisitionResult, error)
 	Read(context.Context, string) (sourcing.AcquisitionResult, error)
+	ReadPublished(context.Context, string) (productsourcing.PublishedAcquisition, error)
 }
 
 func productAcquisitionRoutes(service productAcquisitionService, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
@@ -57,6 +58,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 		{http.MethodPost, productAcquisitionBase, "acquire"},
 		{http.MethodPost, productAcquisitionBase + "/verify", "verify"},
 		{http.MethodGet, productAcquisitionBase + "/:operation_id", "read"},
+		{http.MethodGet, productAcquisitionBase + "/:operation_id/product", "product"},
 	}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
@@ -75,7 +77,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 				return
 			}
 			var result sourcing.AcquisitionResult
-			if spec.action == "read" {
+			if spec.action == "read" || spec.action == "product" {
 				if c.Request.Body != nil {
 					raw, e := io.ReadAll(io.LimitReader(c.Request.Body, 1))
 					if e != nil || len(raw) > 0 {
@@ -86,6 +88,15 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 				id := c.Param("operation_id")
 				if !acquisitionHTTPUUID(id) {
 					writeAcquisitionError(c, sourcing.ErrInvalidAcquisition)
+					return
+				}
+				if spec.action == "product" {
+					published, readErr := service.ReadPublished(ctx, id)
+					if readErr != nil {
+						writeAcquisitionError(c, readErr)
+						return
+					}
+					writeAcquisitionProduct(c, published)
 					return
 				}
 				result, err = service.Read(ctx, id)
@@ -165,6 +176,36 @@ type acquisitionResultDTO struct {
 	MissingFacts   []acquisitionMissingDTO `json:"missingFacts"`
 }
 
+type acquisitionProvenanceDTO struct {
+	Platform      string `json:"platform,omitempty"`
+	ReferenceType string `json:"referenceType,omitempty"`
+	SourceID      string `json:"sourceId,omitempty"`
+	URL           string `json:"url,omitempty"`
+}
+type acquisitionProductImageDTO struct {
+	URL    string `json:"url"`
+	Role   string `json:"role,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+type acquisitionProductSpecificationDTO struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+type acquisitionProductDTO struct {
+	SchemaVersion  int                                  `json:"schemaVersion"`
+	OperationID    string                               `json:"operationId"`
+	ProductKey     string                               `json:"productKey"`
+	PublicationID  string                               `json:"publicationId"`
+	CatalogVersion string                               `json:"catalogVersion"`
+	Title          string                               `json:"title,omitempty"`
+	Sources        []acquisitionProvenanceDTO           `json:"sources"`
+	Images         []acquisitionProductImageDTO         `json:"images"`
+	Specifications []acquisitionProductSpecificationDTO `json:"specifications"`
+	Warnings       []acquisitionWarningDTO              `json:"warnings"`
+	MissingFacts   []acquisitionMissingDTO              `json:"missingFacts"`
+}
+
 func writeAcquisitionResult(c *gin.Context, result sourcing.AcquisitionResult) {
 	dto := acquisitionResultDTO{SchemaVersion: 1, OperationID: result.Operation.ID, Outcome: result.Operation.State, Replayed: result.Replayed, Warnings: []acquisitionWarningDTO{}, MissingFacts: []acquisitionMissingDTO{}}
 	if !acquisitionHTTPUUID(dto.OperationID) {
@@ -193,6 +234,42 @@ func writeAcquisitionResult(c *gin.Context, result sourcing.AcquisitionResult) {
 	default:
 		writeAcquisitionError(c, sourcing.ErrAcquisitionUnavailable)
 		return
+	}
+	raw, err := json.Marshal(dto)
+	if err != nil || len(raw) > sourcing.MaxAcquisitionCommandBytes {
+		writeAcquisitionError(c, sourcing.ErrAcquisitionUnavailable)
+		return
+	}
+	c.Data(http.StatusOK, "application/json; charset=utf-8", raw)
+}
+
+func writeAcquisitionProduct(c *gin.Context, published productsourcing.PublishedAcquisition) {
+	result := published.Result
+	if result.Operation.State != sourcing.AcquisitionPublished || result.Publication == nil || !acquisitionHTTPUUID(result.Operation.ID) {
+		writeAcquisitionError(c, sourcing.ErrAcquisitionUnknown)
+		return
+	}
+	receipt := result.Publication.Receipt
+	dto := acquisitionProductDTO{
+		SchemaVersion: 1, OperationID: result.Operation.ID, ProductKey: receipt.ProductKey, PublicationID: receipt.PublicationID,
+		CatalogVersion: strconv.FormatUint(receipt.CatalogVersion, 10), Title: published.Snapshot.Snapshot.Title,
+		Sources: []acquisitionProvenanceDTO{}, Images: []acquisitionProductImageDTO{}, Specifications: []acquisitionProductSpecificationDTO{},
+		Warnings: []acquisitionWarningDTO{}, MissingFacts: []acquisitionMissingDTO{},
+	}
+	for _, source := range published.Snapshot.Snapshot.Sources {
+		dto.Sources = append(dto.Sources, acquisitionProvenanceDTO{Platform: source.Platform, ReferenceType: source.ReferenceType, SourceID: source.SourceID, URL: source.URL})
+	}
+	for _, image := range published.Snapshot.Snapshot.Images {
+		dto.Images = append(dto.Images, acquisitionProductImageDTO{URL: image.URL, Role: image.Role, Width: image.Width, Height: image.Height})
+	}
+	for _, specification := range published.Snapshot.Snapshot.Attributes {
+		dto.Specifications = append(dto.Specifications, acquisitionProductSpecificationDTO{Name: specification.Name, Value: specification.Value})
+	}
+	for _, warning := range result.Publication.Envelope.Warnings {
+		dto.Warnings = append(dto.Warnings, acquisitionWarningDTO{Code: warning.Code, Field: warning.Field})
+	}
+	for _, missing := range result.Publication.Envelope.MissingFacts {
+		dto.MissingFacts = append(dto.MissingFacts, acquisitionMissingDTO{Field: missing.Field, Reason: missing.Reason})
 	}
 	raw, err := json.Marshal(dto)
 	if err != nil || len(raw) > sourcing.MaxAcquisitionCommandBytes {

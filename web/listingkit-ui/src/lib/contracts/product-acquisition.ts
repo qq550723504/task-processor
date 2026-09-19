@@ -43,6 +43,20 @@ export const acquisitionResultSchema = z.object({
 });
 export type AcquisitionResult = z.infer<typeof acquisitionResultSchema>;
 
+const sourceSchema = z.object({ platform: bounded.optional(), referenceType: bounded.optional(), sourceId: bounded.optional(), url: bounded.optional() }).strict();
+const imageSchema = z.object({ url: bounded, role: bounded.optional(), width: z.number().int().nonnegative().optional(), height: z.number().int().nonnegative().optional() }).strict();
+const specificationSchema = z.object({ name: bounded, value: bounded }).strict();
+export const acquisitionProductSchema = z.object({
+  schemaVersion: z.literal(1), operationId: uuid,
+  productKey: z.string().regex(/^crawler:1688:[1-9][0-9]{0,19}$/), publicationId: z.string().max(128), catalogVersion: version,
+  title: bounded.optional(), sources: z.array(sourceSchema).max(4096), images: z.array(imageSchema).max(4096), specifications: z.array(specificationSchema).max(4096),
+  warnings: z.array(z.object({ code: bounded, field: bounded }).strict()).max(256),
+  missingFacts: z.array(z.object({ field: bounded, reason: bounded }).strict()).max(256),
+}).strict().superRefine((value, ctx) => {
+  if (value.publicationId !== `source-run:acquisition:${value.operationId}`) ctx.addIssue({ code: "custom", message: "Publication binding is inconsistent" });
+});
+export type AcquisitionProduct = z.infer<typeof acquisitionProductSchema>;
+
 export const acquisitionErrorStatuses: Readonly<Record<string, number>> = {
   INVALID_ACQUISITION: 400, FORBIDDEN: 403, SOURCE_TOO_LARGE: 413,
   ACQUISITION_CAPACITY: 429, IDEMPOTENCY_CONFLICT: 409, ACQUISITION_NOT_FOUND: 404,

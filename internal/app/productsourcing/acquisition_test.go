@@ -2,10 +2,12 @@ package productsourcing
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -44,6 +46,35 @@ func (s *acquisitionStoreSpy) Finish(context.Context, sourcing.AcquisitionOperat
 type acquisitionPublisherSpy struct {
 	verifies int
 	command  sourcing.PublicationCommand
+}
+
+type acquisitionCatalogReaderSpy struct {
+	identity  catalog.SnapshotIdentity
+	version   uint64
+	published catalog.PublishedSnapshot
+	err       error
+}
+
+func (s *acquisitionCatalogReaderSpy) GetCurrentSnapshot(context.Context, catalog.SnapshotIdentity) (catalog.PublishedSnapshot, error) {
+	return catalog.PublishedSnapshot{}, catalog.ErrSnapshotNotReady
+}
+func (s *acquisitionCatalogReaderSpy) GetSnapshot(_ context.Context, identity catalog.SnapshotIdentity, version uint64) (catalog.PublishedSnapshot, error) {
+	s.identity, s.version = identity, version
+	return s.published, s.err
+}
+
+type acquisitionPublishedPublisherSpy struct {
+	persisted sourcing.PersistedPublication
+}
+
+func (*acquisitionPublishedPublisherSpy) Publish(context.Context, sourcing.PublicationCommand) (sourcing.PublicationReceipt, error) {
+	return sourcing.PublicationReceipt{}, sourcing.ErrAcquisitionUnavailable
+}
+func (*acquisitionPublishedPublisherSpy) Verify(context.Context, sourcing.PublicationCommand) (sourcing.PublicationReceipt, error) {
+	return sourcing.PublicationReceipt{}, sourcing.ErrAcquisitionUnavailable
+}
+func (s *acquisitionPublishedPublisherSpy) Read(context.Context, string) (sourcing.PersistedPublication, error) {
+	return s.persisted, nil
 }
 
 func (s *acquisitionPublisherSpy) Publish(context.Context, sourcing.PublicationCommand) (sourcing.PublicationReceipt, error) {
@@ -93,4 +124,53 @@ func TestAcquisitionUnknownUsesFrozenCommandAcrossServiceRebuild(t *testing.T) {
 	_, err = service.Verify(context.Background(), key, "124")
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionConflict)
 	require.Equal(t, 2, publisher.verifies)
+}
+
+func TestReadPublishedUsesOnlyTheOperationReceiptCatalogVersion(t *testing.T) {
+	scope := sourcing.PublicationScope{OrganizationID: "organization-a", ActorID: "actor-a"}
+	operationID := uuid.NewString()
+	command := sourcing.PublicationCommand{PublicationID: "source-run:acquisition:" + operationID, ProductKey: "crawler:1688:981645030344"}
+	op := sourcing.AcquisitionOperation{ID: operationID, Scope: scope, State: sourcing.AcquisitionPublished, Command: &command}
+	receipt := sourcing.PublicationReceipt{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, PublicationID: command.PublicationID, CatalogPublicationID: command.PublicationID, ProductKey: command.ProductKey, CatalogVersion: 7}
+	reader := &acquisitionCatalogReaderSpy{published: catalog.PublishedSnapshot{Identity: catalog.SnapshotIdentity{TenantID: scope.OrganizationID, ProductKey: command.ProductKey}, PublicationID: command.PublicationID, Version: 7, Snapshot: catalog.ProductSnapshot{Title: "Catalog fact"}}}
+	service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{persisted: sourcing.PersistedPublication{Receipt: receipt}}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }))
+	require.NoError(t, err)
+	result, err := service.ReadPublished(context.Background(), operationID)
+	require.NoError(t, err)
+	require.Equal(t, catalog.SnapshotIdentity{TenantID: scope.OrganizationID, ProductKey: command.ProductKey}, reader.identity)
+	require.Equal(t, uint64(7), reader.version)
+	require.Equal(t, "Catalog fact", result.Snapshot.Snapshot.Title)
+}
+
+func TestReadPublishedDoesNotExposeAnotherActorOrAnUnpublishedOperation(t *testing.T) {
+	scope := sourcing.PublicationScope{OrganizationID: "organization-a", ActorID: "actor-a"}
+	operationID := uuid.NewString()
+	command := sourcing.PublicationCommand{PublicationID: "source-run:acquisition:" + operationID, ProductKey: "crawler:1688:981645030344"}
+	reader := &acquisitionCatalogReaderSpy{}
+	for _, tc := range []struct {
+		name, actor, state string
+		want               error
+	}{
+		{name: "other_actor", actor: "actor-b", state: sourcing.AcquisitionPublished, want: sourcing.ErrAcquisitionUnavailable},
+		{name: "not_published", actor: scope.ActorID, state: sourcing.AcquisitionPrepared, want: sourcing.ErrAcquisitionUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			op := sourcing.AcquisitionOperation{ID: operationID, Scope: scope, State: tc.state, Command: &command}
+			service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) {
+				return sourcing.PublicationScope{OrganizationID: scope.OrganizationID, ActorID: tc.actor}, nil
+			}))
+			require.NoError(t, err)
+			_, err = service.ReadPublished(context.Background(), operationID)
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+	require.Empty(t, reader.identity)
+
+	reader.err = catalog.ErrSnapshotNotReady
+	op := sourcing.AcquisitionOperation{ID: operationID, Scope: scope, State: sourcing.AcquisitionPublished, Command: &command}
+	receipt := sourcing.PublicationReceipt{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, PublicationID: command.PublicationID, CatalogPublicationID: command.PublicationID, ProductKey: command.ProductKey, CatalogVersion: 1}
+	service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{persisted: sourcing.PersistedPublication{Receipt: receipt}}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }))
+	require.NoError(t, err)
+	_, err = service.ReadPublished(context.Background(), operationID)
+	require.True(t, errors.Is(err, sourcing.ErrAcquisitionUnknown))
 }

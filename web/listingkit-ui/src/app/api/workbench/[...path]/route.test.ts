@@ -356,6 +356,41 @@ describe("/api/workbench BFF", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("maps a dispatched acquisition product read deadline to 504", async () => {
+    vi.useFakeTimers();
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    authState.identity = { userId: "user-a" };
+    const fetchMock = vi.fn<typeof fetch>((_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = call(
+      GET,
+      new NextRequest(`http://localhost/api/workbench/sourcing/1688/acquisitions/${operationKey}/product`, {
+        headers: {
+          cookie: "shuomi_effective_organization=org-b",
+          "X-Expected-Organization-ID": "org-b",
+          "X-Expected-User-ID": "user-a",
+        },
+      }),
+      ["sourcing", "1688", "acquisitions", operationKey, "product"],
+    );
+    await vi.advanceTimersByTimeAsync(22_000);
+    const response = await pending;
+
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DEADLINE_EXCEEDED",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("reads actor and token from one authenticated session and strips the actor assertion upstream", async () => {
     const session = { identity: "opaque", accessToken: "private-token" };
     authState.session = session;
