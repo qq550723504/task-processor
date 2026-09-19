@@ -55,11 +55,11 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 				if len(routes) != want {
 					t.Fatalf("route count got %d want %d", len(routes), want)
 				}
-				if err := validateCurrentApplicationRoutesWithFeatures(routes, includeAudit, false, false, includeMembership); err != nil {
+				if err := validateCurrentApplicationRoutesWithFeatures(routes, includeAudit, false, false, includeMembership, false); err != nil {
 					t.Fatal(err)
 				}
 				for _, flags := range [][2]bool{{!includeAudit, includeMembership}, {includeAudit, !includeMembership}} {
-					if err := validateCurrentApplicationRoutesWithFeatures(routes, flags[0], false, false, flags[1]); err == nil {
+					if err := validateCurrentApplicationRoutesWithFeatures(routes, flags[0], false, false, flags[1], false); err == nil {
 						t.Fatal("missing or unrequested module admitted")
 					}
 				}
@@ -76,7 +76,7 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 					} {
 						changed := append([]httproute.Descriptor(nil), routes...)
 						mutate(&changed[i])
-						if err := validateCurrentApplicationRoutesWithFeatures(changed, includeAudit, false, false, includeMembership); err == nil {
+						if err := validateCurrentApplicationRoutesWithFeatures(changed, includeAudit, false, false, includeMembership, false); err == nil {
 							t.Fatalf("descriptor %d security drift admitted", i)
 						}
 					}

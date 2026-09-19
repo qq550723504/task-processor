@@ -11,8 +11,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/product/sourcing"
+
+	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type browserHTTPService struct{ calls []string }
@@ -160,7 +164,7 @@ func TestBrowserCaptureHTTPOptionalCompositionPreservesExistingContracts(t *test
 	for _, tc := range []struct {
 		public, browser bool
 		count           int
-	}{{false, false, 10}, {true, false, 13}, {false, true, 14}, {true, true, 17}} {
+	}{{false, false, 10}, {true, false, 14}, {false, true, 14}, {true, true, 18}} {
 		var routes []httproute.Descriptor
 		for _, base := range currentWorkbenchApplicationRoutes {
 			routes = append(routes, httproute.Descriptor{Method: base.Method, Path: base.Path})
@@ -179,4 +183,13 @@ func TestBrowserCaptureHTTPOptionalCompositionPreservesExistingContracts(t *test
 		extra := append(append([]httproute.Descriptor(nil), routes...), httproute.Descriptor{Method: http.MethodPost, Path: browserCaptureBase + "/by-key/:key"})
 		require.Error(t, validateCurrentApplicationRoutesForSourcing(extra, tc.public, tc.browser))
 	}
+}
+
+func TestBrowserCaptureOptionRequiresProductPool(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{}
+	cfg.Workbench.Enabled = true
+	_, err := NewCurrentApplicationWithOptions(context.Background(), &gorm.DB{}, &gorm.DB{}, cfg, logrus.New(), WithBrowserCapture())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "browser capture requires the product acquisition pool")
 }

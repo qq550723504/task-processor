@@ -58,6 +58,13 @@ type currentApplicationOptions struct {
 	referrals            int
 	productAcquisitions  int
 	memberships          int
+	browserCaptures      int
+}
+
+// WithBrowserCapture enables the #399 exact-click browser capture ingress. It
+// shares the independently owned product pool supplied by WithProductAcquisition.
+func WithBrowserCapture() CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.browserCaptures++ }
 }
 
 // WithReferrals supplies an independently owned pool. The caller closes it.
@@ -147,6 +154,21 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		productDB := supplied.productAcquisitionDB
 		factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
+		}
+	}
+	if supplied.browserCaptures > 1 {
+		return nil, errors.New("browser capture supplied more than once")
+	}
+	if supplied.browserCaptures > 0 {
+		if supplied.productAcquisitionDB == nil {
+			return nil, errors.New("browser capture requires the product acquisition pool")
+		}
+		if factories.buildBrowserCapture != nil {
+			return nil, errors.New("browser capture factory and option cannot both be supplied")
+		}
+		browserDB := supplied.productAcquisitionDB
+		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
 		}
 	}
 	if supplied.membership != nil {
