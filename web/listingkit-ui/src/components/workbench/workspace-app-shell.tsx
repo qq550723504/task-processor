@@ -10,6 +10,7 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { OrganizationSwitcher, workbenchErrorMessage } from "@/components/workbench/organization-switcher";
 import { Button } from "@/components/ui/button";
 import { ConsoleNavigation } from "@/components/workbench/console/console-navigation";
+import { parseCaptureEntry } from "@/app/capture/1688/capture-handoff";
 
 const NO_ORGANIZATION_ROUTE = "/workbench/no-organization";
 const MOBILE_NAVIGATION_ID = "workbench-mobile-navigation";
@@ -27,6 +28,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
     "/workbench/account/referrals",
     "/workbench/account/referrals/complete",
   ].includes(pathname);
+  const isBrowserCaptureRoute = pathname === "/capture/1688";
   const authenticationError = [context.blockingError, context.error].find(error => error?.code === "AUTHENTICATION_REQUIRED");
 
   const shouldRedirectToNoOrganization =
@@ -35,6 +37,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
     !context.blockingError &&
     context.organizations.length === 0 &&
     !isPersonalAccountRoute &&
+    !isBrowserCaptureRoute &&
     pathname !== NO_ORGANIZATION_ROUTE;
   const shouldLeaveNoOrganization =
     !context.isLoading &&
@@ -56,7 +59,12 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
     }
   }, [router, shouldLeaveNoOrganization, shouldRedirectToNoOrganization]);
 
-  if (authenticationError) return <AccessState action={redirectToLogin} code={authenticationError.code} />;
+  if (authenticationError) {
+    const browserEntry = pathname === "/capture/1688" && typeof window !== "undefined"
+      ? parseCaptureEntry(window.location.href) : null;
+    const browserRecovery = browserEntry?.kind === "recovery" || browserEntry?.kind === "handoff";
+    return <AccessState action={browserRecovery ? () => window.location.reload() : redirectToLogin} code={authenticationError.code} browserRecovery={browserRecovery} />;
+  }
 
   if (context.isLoading && !isPersonalAccountRoute) {
     return (
@@ -106,7 +114,7 @@ export function WorkspaceAppShell({ children, productAcquisitionAvailable = fals
 
   return (
     <WorkbenchFrame key={pathname} pathname={pathname} productAcquisitionAvailable={productAcquisitionAvailable}>
-      {context.selectionRequired && !isPersonalAccountRoute ? (
+      {context.selectionRequired && !isPersonalAccountRoute && !isBrowserCaptureRoute ? (
         <section
           className="flex min-h-[40vh] items-center justify-center px-6 text-center"
           role="status"
@@ -199,7 +207,7 @@ function DelegatedOperationIndicator({
   );
 }
 
-function AccessState({ action, code }: { action: () => void; code: string }) {
+function AccessState({ action, code, browserRecovery = false }: { action: () => void; code: string; browserRecovery?: boolean }) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-6">
       <section className="max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm">
@@ -207,10 +215,11 @@ function AccessState({ action, code }: { action: () => void; code: string }) {
           {workbenchErrorMessage(code)}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          为保护企业数据，工作台内容已停止加载。
+          {browserRecovery ? "请保留此恢复页面。在新标签页登录后，返回此页刷新并核实原操作；不会重新提交。" : "为保护企业数据，工作台内容已停止加载。"}
         </p>
+        {browserRecovery ? <a className="mt-4 block text-sm underline" href="/login?returnTo=%2Fworkbench" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">在新标签页重新登录</a> : null}
         <Button className="mt-5" onClick={action} variant="outline">
-          重新加载
+          {browserRecovery ? "登录完成后刷新此页核实" : "重新加载"}
         </Button>
       </section>
     </main>
