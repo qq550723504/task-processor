@@ -18,7 +18,10 @@ remain private to the Compose network except for those loopback endpoints.
 ## Start
 
 From this directory, copy the example environment, choose a new lowercase
-project name, and verify the ports are free before starting:
+project name, and verify the ports are free before starting. The bootstrap
+container keeps the operator password and public CA in project-named volumes;
+the extraction commands below create the private handoff files for that exact
+project without printing either value:
 
 ```powershell
 Copy-Item .env.example .env
@@ -26,6 +29,11 @@ $project = "task-processor-account-center-$([guid]::NewGuid().ToString('N'))"
 "COMPOSE_PROJECT_NAME=$project`nACCOUNT_IDENTITY_PORT=19443`nACCOUNT_APPLICATION_PORT=19444`nACCOUNT_MAIL_PORT=19425" | Set-Content -LiteralPath .env -Encoding ascii
 foreach ($port in 19443,19444,19425) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "Port is already in use: $port" } }
 docker compose --env-file .env up --build --wait
+$handoff = Join-Path $env:LOCALAPPDATA "ListingKit\account-center\$project"
+New-Item -ItemType Directory -Force -Path $handoff | Out-Null
+docker run --rm -v "${project}-trusted-ca:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/root-ca.pem /out/root-ca.pem'
+docker run --rm -v "${project}-tofu-inputs:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/operator-password /out/operator-password.txt'
+icacls $handoff /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)(F)" "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)" | Out-Null
 ```
 
 If a retained trial already uses one of the example ports, select another
@@ -49,7 +57,7 @@ the Mailpit UI is not a substitute for the normal login or verification flow.
 
 ```powershell
 docker compose --env-file .env stop
-docker compose --env-file .env start
+docker compose --env-file .env up --no-build --wait
 docker compose --env-file .env ps
 docker compose --env-file .env logs --tail=100 current-application listingkit-ui
 ```
