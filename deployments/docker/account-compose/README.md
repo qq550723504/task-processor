@@ -26,8 +26,16 @@ project without printing either value:
 ```powershell
 Copy-Item .env.example .env
 $project = "task-processor-account-center-$([guid]::NewGuid().ToString('N'))"
-"COMPOSE_PROJECT_NAME=$project`nACCOUNT_IDENTITY_PORT=19443`nACCOUNT_APPLICATION_PORT=19444`nACCOUNT_MAIL_PORT=19425" | Set-Content -LiteralPath .env -Encoding ascii
-foreach ($port in 19443,19444,19425) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "Port is already in use: $port" } }
+$identityPort = 19443
+$applicationPort = 19444
+$mailPort = 19425
+"COMPOSE_PROJECT_NAME=$project`nACCOUNT_IDENTITY_PORT=$identityPort`nACCOUNT_APPLICATION_PORT=$applicationPort`nACCOUNT_MAIL_PORT=$mailPort" | Set-Content -LiteralPath .env -Encoding ascii
+$publicPorts = @($identityPort, $applicationPort, $mailPort)
+if (($publicPorts | Sort-Object -Unique).Count -ne $publicPorts.Count) { throw "Public ports must be distinct" }
+$fixedInternalPorts = @(1025, 3000, 3001, 5432, 5433, 5434, 5435, 5436, 8025, 8080, 8085)
+$internalConflicts = @($identityPort, $applicationPort) | Where-Object { $fixedInternalPorts -contains $_ }
+if ($internalConflicts.Count -gt 0) { throw "Identity/application port collides with a fixed Compose-internal port" }
+foreach ($port in $publicPorts) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "Host port is already in use: $port" } }
 docker compose --env-file .env up --build --wait
 $handoff = Join-Path $env:LOCALAPPDATA "ListingKit\account-center\$project"
 New-Item -ItemType Directory -Force -Path $handoff | Out-Null
