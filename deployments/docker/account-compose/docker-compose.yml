@@ -187,6 +187,12 @@ services:
     command: [-config, /private/runtime/current-application.json]
     environment: { SSL_CERT_FILE: /private/ca/root-ca.pem }
     volumes: [runtime-secrets:/private/runtime:ro, trusted-ca:/private/ca:ro]
+    healthcheck:
+      test: [CMD-SHELL, "wget -S -O /dev/null http://127.0.0.1:8085/api/v1/account/profile 2>&1 | grep -Eq 'HTTP/1\\.[01] [0-9]{3}'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
     depends_on: { schema-init: { condition: service_completed_successfully } }
 
   listingkit-ui:
@@ -207,7 +213,7 @@ services:
       NODE_EXTRA_CA_CERTS: /private/ca/root-ca.pem
       PORT: "3001"
     volumes: [frontend-secrets:/private/frontend:ro, trusted-ca:/private/ca:ro]
-    depends_on: { current-application: { condition: service_started } }
+    depends_on: { current-application: { condition: service_healthy } }
 
 volumes:
   bootstrap-state: { name: "${COMPOSE_PROJECT_NAME}-bootstrap-state" }
