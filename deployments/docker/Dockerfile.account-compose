@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.26-alpine AS go-builder
+
+WORKDIR /src
+RUN apk add --no-cache git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd/current-application ./cmd/current-application
+COPY cmd/referral-schema-init ./cmd/referral-schema-init
+COPY cmd/organization-membership-schema-init ./cmd/organization-membership-schema-init
+COPY cmd/source-account-registry-schema-init ./cmd/source-account-registry-schema-init
+COPY internal ./internal
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-application ./cmd/current-application && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/referral-schema-init ./cmd/referral-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/organization-membership-schema-init ./cmd/organization-membership-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/source-account-registry-schema-init ./cmd/source-account-registry-schema-init
+
+FROM alpine:3.22 AS runtime
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=go-builder /out/current-application /usr/local/bin/current-application
+ENTRYPOINT ["/usr/local/bin/current-application"]
+
+FROM alpine:3.22 AS bootstrap
+RUN apk add --no-cache openssl
+COPY --chmod=0755 deployments/docker/account-compose/bootstrap.sh /usr/local/bin/account-bootstrap
+ENTRYPOINT ["/usr/local/bin/account-bootstrap"]
+
+FROM alpine:3.22 AS schema-init
+RUN apk add --no-cache openssl postgresql17-client tzdata
+COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
+COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
+COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init
+COPY --chmod=0755 deployments/docker/account-compose/init.sh /usr/local/bin/account-schema-init
+ENTRYPOINT ["/usr/local/bin/account-schema-init"]
