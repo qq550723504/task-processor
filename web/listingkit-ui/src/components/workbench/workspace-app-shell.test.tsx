@@ -84,7 +84,21 @@ describe("WorkspaceAppShell", () => {
     render(<WorkspaceAppShell><p>personal redirect</p></WorkspaceAppShell>);
     expect(screen.getByText("personal redirect")).toBeVisible(); expect(navigation.replace).not.toHaveBeenCalled();
   });
-  it.each(["/workbench/account/organization", "/workbench/account/organization/members", "/workbench/account/organization/resources", "/workbench/account/organization/audit", "/workbench/account/unknown", "/workbench/account-evil", "/workbench/account/profile/extra", "/workbench/plans/options", "/workbench/ai/tasks", "/workbench/stores"])("preserves enterprise gate for %s", path => {
+  it.each([
+    "/workbench/account/referrals",
+    "/workbench/account/referrals/complete",
+  ].flatMap(path => [
+    [path, {}],
+    [path, { isLoading: true }],
+    [path, { selectionRequired: true }],
+    [path, { error: { code: "DEPENDENCY_UNAVAILABLE" } }],
+    [path, { blockingError: { code: "ORGANIZATION_ACCESS_REVOKED" } }],
+  ]))("allows exact personal referral route %s through enterprise gates", (path, overrides) => {
+    navigation.pathname = path as string; injectProfileContext(overrides as Record<string, unknown>);
+    render(<WorkspaceAppShell><p>personal referrals</p></WorkspaceAppShell>);
+    expect(screen.getByText("personal referrals")).toBeVisible(); expect(navigation.replace).not.toHaveBeenCalled();
+  });
+  it.each(["/workbench/account/organization", "/workbench/account/organization/members", "/workbench/account/organization/resources", "/workbench/account/organization/audit", "/workbench/account/unknown", "/workbench/account-evil", "/workbench/account/profile/extra", "/workbench/account/referrals/extra", "/workbench/account/referrals/complete/extra", "/workbench/plans/options", "/workbench/ai/tasks", "/workbench/stores"])("preserves enterprise gate for %s", path => {
     navigation.pathname = path; injectProfileContext(); render(<WorkspaceAppShell><p>protected child</p></WorkspaceAppShell>);
     expect(screen.queryByText("protected child")).not.toBeInTheDocument(); expect(navigation.replace).toHaveBeenCalledWith("/workbench/no-organization");
   });
@@ -119,6 +133,16 @@ describe("WorkspaceAppShell", () => {
     navigation.pathname = "/workbench/account"; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
     render(<WorkspaceAppShell><p>personal redirect</p></WorkspaceAppShell>);
     expect(screen.queryByText("personal redirect")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
+  });
+  it.each([
+    ["/workbench/account/referrals", "error"],
+    ["/workbench/account/referrals", "blockingError"],
+    ["/workbench/account/referrals/complete", "error"],
+    ["/workbench/account/referrals/complete", "blockingError"],
+  ])("keeps authentication denial above personal referral route %s via %s", (path, field) => {
+    navigation.pathname = path; injectProfileContext({ [field]: { code: "AUTHENTICATION_REQUIRED" }, isLoading: true });
+    render(<WorkspaceAppShell><p>personal referrals</p></WorkspaceAppShell>);
+    expect(screen.queryByText("personal referrals")).not.toBeInTheDocument(); expect(screen.getByRole("alert")).toBeVisible();
   });
   it("hides stale identity, enterprise switcher and delegation metadata on grant failure", () => {
     navigation.pathname = "/workbench/account/profile"; injectProfileContext({ error: { code: "DEPENDENCY_UNAVAILABLE" }, effectiveOrganization: { id: "org-b", name: "旧企业", roles: [] } });

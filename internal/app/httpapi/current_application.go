@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	a1688 "task-processor/internal/integration/acquisition/a1688"
 	referralstore "task-processor/internal/integration/persistence/referral"
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	"task-processor/internal/integration/zitadelregistration"
@@ -45,15 +46,36 @@ type currentApplicationFactories struct {
 	buildCommercial     func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAcquisition    func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildBrowserCapture func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildMembership     func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAudit   func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
-type currentApplicationOptions struct{ referralDB *gorm.DB }
+type currentApplicationOptions struct {
+	referralDB           *gorm.DB
+	productAcquisitionDB *gorm.DB
+	membership           *MembershipDependencies
+	referrals            int
+	productAcquisitions  int
+	memberships          int
+}
 
 // WithReferrals supplies an independently owned pool. The caller closes it.
 func WithReferrals(db *gorm.DB) CurrentApplicationOption {
-	return func(options *currentApplicationOptions) { options.referralDB = db }
+	return func(options *currentApplicationOptions) { options.referrals++; options.referralDB = db }
+}
+
+// WithProductAcquisition supplies the independently owned product pool.
+func WithProductAcquisition(db *gorm.DB) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) {
+		options.productAcquisitions++
+		options.productAcquisitionDB = db
+	}
+}
+
+// WithMembership supplies the independently owned membership receipt pool and provider credentials.
+func WithMembership(deps MembershipDependencies) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.memberships++; options.membership = &deps }
 }
 
 func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationFactories {
@@ -99,6 +121,43 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("current application startup canceled: %w", err)
 	}
+	var supplied currentApplicationOptions
+	for _, option := range options {
+		if option == nil {
+			return nil, errors.New("current application option unavailable")
+		}
+		option(&supplied)
+	}
+	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.memberships > 1 {
+		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB || supplied.productAcquisitionDB == commercialDB) {
+		return nil, errors.New("product acquisition requires an independent pool")
+	}
+	if supplied.referralDB != nil && (supplied.referralDB == sourceAccountDB || supplied.referralDB == commercialDB || supplied.referralDB == supplied.productAcquisitionDB) {
+		return nil, errors.New("referrals requires an independent pool")
+	}
+	if supplied.membership != nil && (supplied.membership.ReceiptDB == nil || supplied.membership.ReceiptDB == sourceAccountDB || supplied.membership.ReceiptDB == commercialDB || supplied.membership.ReceiptDB == supplied.productAcquisitionDB || supplied.membership.ReceiptDB == supplied.referralDB) {
+		return nil, errors.New("membership requires an independent receipt pool")
+	}
+	if supplied.productAcquisitionDB != nil {
+		if factories.buildAcquisition != nil {
+			return nil, errors.New("product acquisition factory and pool cannot both be supplied")
+		}
+		productDB := supplied.productAcquisitionDB
+		factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
+		}
+	}
+	if supplied.membership != nil {
+		if factories.buildMembership != nil {
+			return nil, errors.New("membership factory and dependencies cannot both be supplied")
+		}
+		membershipDeps := *supplied.membership
+		factories.buildMembership = func(startup context.Context, authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+			return buildMembershipModule(startup, cfg, membershipDeps, authorizer, dependencies)
+		}
+	}
 	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
 	if err != nil {
 		return nil, fmt.Errorf("build current application authorizer: %w", err)
@@ -141,20 +200,15 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		modules = append(modules, browser)
 	}
 	if cfg.Referrals.Enabled {
-		var supplied currentApplicationOptions
-		if len(options) != 1 || options[0] == nil {
+		if supplied.referralDB == nil {
 			return nil, errors.New("referrals dependencies unavailable")
-		}
-		options[0](&supplied)
-		if supplied.referralDB == sourceAccountDB || supplied.referralDB == commercialDB {
-			return nil, errors.New("referrals requires an independent pool")
 		}
 		module, err := buildReferralHTTPModule(ctx, supplied.referralDB, cfg)
 		if err != nil {
 			return nil, err
 		}
 		modules = append(modules, module)
-	} else if len(options) != 0 {
+	} else if supplied.referralDB != nil {
 		return nil, errors.New("disabled referrals must not receive a pool")
 	}
 	if factories.buildAccountAudit != nil {
@@ -167,11 +221,21 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, audit)
 	}
+	if factories.buildMembership != nil {
+		membership, err := factories.buildMembership(ctx, authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build current membership module: %w", err)
+		}
+		if membership == nil {
+			return nil, errors.New("current membership module unavailable")
+		}
+		modules = append(modules, membership)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithBrowser(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildBrowserCapture != nil); err != nil {
+	if err := validateCurrentApplicationRoutesWithBrowser(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil); err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
@@ -179,7 +243,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 
 func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudit bool, includeReferrals ...bool) error {
 	referrals := len(includeReferrals) > 0 && includeReferrals[0]
-	return validateCurrentApplicationRoutesWithFeatures(routes, includeAudit, false, referrals)
+	return validateCurrentApplicationRoutesWithFeatures(routes, includeAudit, false, referrals, false)
 }
 
 func validateCurrentApplicationRoutesForAcquisition(routes []httproute.Descriptor, acquisition bool) error {
@@ -187,20 +251,21 @@ func validateCurrentApplicationRoutesForAcquisition(routes []httproute.Descripto
 }
 
 func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, acquisition, browser bool) error {
-	return validateCurrentApplicationRoutesWithBrowser(routes, false, acquisition, false, browser)
+	return validateCurrentApplicationRoutesWithBrowser(routes, false, acquisition, false, false, browser)
 }
 
-func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals bool) error {
-	return validateCurrentApplicationRoutesWithBrowser(routes, includeAudit, includeAcquisition, includeReferrals, false)
+func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool) error {
+	return validateCurrentApplicationRoutesWithBrowser(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false)
 }
 
-func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeBrowser bool) error {
+func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAcquisition {
 		admitted = append(admitted,
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase},
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase + "/verify"},
 			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id"},
+			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id/product"},
 		)
 	}
 	if includeBrowser {
@@ -217,6 +282,14 @@ func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, 
 	}
 	if includeAudit {
 		expected[currentApplicationRoute{Method: http.MethodGet, Path: accountAuditPath}] = struct{}{}
+	}
+	if includeMembership {
+		for _, route := range currentMembershipRoutes {
+			expected[route] = struct{}{}
+		}
+		if err := validateMembershipDescriptors(routes); err != nil {
+			return err
+		}
 	}
 	referralRoutes := map[currentApplicationRoute]httproute.Descriptor{}
 	if includeReferrals {

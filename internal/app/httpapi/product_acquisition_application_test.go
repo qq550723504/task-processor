@@ -14,16 +14,19 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
 type acquisitionHTTPSpy struct {
 	acquire, verify, read int
 	result                sourcing.AcquisitionResult
+	published             productsourcing.PublishedAcquisition
 	err                   error
 }
 
@@ -39,11 +42,15 @@ func (s *acquisitionHTTPSpy) Read(context.Context, string) (sourcing.Acquisition
 	s.read++
 	return s.result, s.err
 }
+func (s *acquisitionHTTPSpy) ReadPublished(context.Context, string) (productsourcing.PublishedAcquisition, error) {
+	s.read++
+	return s.published, s.err
+}
 
 func acquisitionHandler(t *testing.T, spy *acquisitionHTTPSpy, bind func(context.Context, string) (context.Context, error)) *gin.Engine {
 	t.Helper()
 	routes := productAcquisitionRoutes(spy, bind)
-	require.Len(t, routes, 3)
+	require.Len(t, routes, 4)
 	router := gin.New()
 	for _, route := range routes {
 		require.Equal(t, httproute.AuthPolicyVerifiedIdentity, route.AuthPolicy)
@@ -107,6 +114,13 @@ func TestProductAcquisitionHTTPStrictInputAndBoundedProjection(t *testing.T) {
 	response = request("GET", productAcquisitionBase+"/"+operationID, "", "")
 	require.Equal(t, 200, response.Code)
 	require.Equal(t, 1, spy.read)
+	spy.published = productsourcing.PublishedAcquisition{Result: sourcing.AcquisitionResult{Operation: sourcing.AcquisitionOperation{ID: operationID, State: sourcing.AcquisitionPublished}, Publication: &sourcing.PersistedPublication{Receipt: sourcing.PublicationReceipt{OrganizationID: "B", PublicationID: pubID, ProductKey: "crawler:1688:981645030344", CatalogVersion: 1}, Envelope: sourcing.SourceEnvelope{MissingFacts: []sourcing.MissingFact{{Field: "sku", Reason: "not captured"}}}}}, Snapshot: catalog.PublishedSnapshot{Identity: catalog.SnapshotIdentity{TenantID: "B", ProductKey: "crawler:1688:981645030344"}, PublicationID: pubID, Version: 1, Snapshot: catalog.ProductSnapshot{Title: "Captured bottle", Images: []catalog.Image{{URL: "https://img.test/1.jpg", Role: "candidate"}}, Attributes: []catalog.Attribute{{Name: "material", Value: "glass"}}, Sources: []catalog.SourceRecord{{Platform: "1688", URL: "https://detail.1688.com/offer/981645030344.html"}}}}}
+	response = request("GET", productAcquisitionBase+"/"+operationID+"/product", "", "")
+	require.Equal(t, 200, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), "Captured bottle")
+	require.Contains(t, response.Body.String(), "https://img.test/1.jpg")
+	require.NotContains(t, response.Body.String(), "price")
+	require.Contains(t, response.Body.String(), `"field":"sku"`)
 	spy.result = sourcing.AcquisitionResult{Operation: sourcing.AcquisitionOperation{ID: operationID, State: sourcing.AcquisitionPublishing}}
 	response = request("GET", productAcquisitionBase+"/"+operationID, "", "")
 	require.Equal(t, 200, response.Code)
@@ -168,11 +182,11 @@ func TestProductAcquisitionHTTPBindsLiveCapabilityOnAllActions(t *testing.T) {
 		binds++
 		return ctx, sourcing.ErrPublicationForbidden
 	})
-	for _, tc := range []struct{ method, path string }{{"POST", productAcquisitionBase}, {"POST", productAcquisitionBase + "/verify"}, {"GET", productAcquisitionBase + "/" + uuid.NewString()}} {
+	for _, tc := range []struct{ method, path string }{{"POST", productAcquisitionBase}, {"POST", productAcquisitionBase + "/verify"}, {"GET", productAcquisitionBase + "/" + uuid.NewString()}, {"GET", productAcquisitionBase + "/" + uuid.NewString() + "/product"}} {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"source":"981645030344"}`)))
 		require.Equal(t, 403, w.Code)
 	}
-	require.Equal(t, 3, binds)
+	require.Equal(t, 4, binds)
 	require.Zero(t, spy.acquire+spy.verify+spy.read)
 }

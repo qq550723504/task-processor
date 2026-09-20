@@ -160,7 +160,7 @@ func TestBrowserCaptureHTTPOptionalCompositionPreservesExistingContracts(t *test
 	for _, tc := range []struct {
 		public, browser bool
 		count           int
-	}{{false, false, 10}, {true, false, 13}, {false, true, 14}, {true, true, 17}} {
+	}{{false, false, 10}, {true, false, 14}, {false, true, 14}, {true, true, 18}} {
 		var routes []httproute.Descriptor
 		for _, base := range currentWorkbenchApplicationRoutes {
 			routes = append(routes, httproute.Descriptor{Method: base.Method, Path: base.Path})

@@ -28,7 +28,7 @@ import {
 } from "@/lib/contracts/source-account";
 import { newRequestLogId } from "@/lib/server/request-log";
 import { hasTrustedSameOriginRecovery, hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
-import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
+import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionProductSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
@@ -44,6 +44,7 @@ const REQUEST_ID_MAX_BYTES = 128;
 
 export type WorkbenchResponseContract =
   | "product-acquisition"
+  | "product-acquisition-product"
   | "context"
   | "context-switch"
   | "store-list"
@@ -64,6 +65,7 @@ type WorkbenchRequestContract =
   | "product-acquisition-create"
   | "product-acquisition-verify"
   | "product-acquisition-read"
+  | "product-acquisition-product"
   | "context-get"
   | "context-switch"
   | "store-list"
@@ -317,6 +319,8 @@ const workbenchRouteAllowlist = [
     exactPath(path, "sourcing", "1688", "acquisitions", "verify") ? "sourcing/1688/acquisitions/verify" : null),
   routeDefinition("GET", "product-acquisition-read", "product-acquisition", (path) =>
     path.length === 4 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) ? `sourcing/1688/acquisitions/${path[3]}` : null),
+  routeDefinition("GET", "product-acquisition-product", "product-acquisition-product", (path) =>
+    path.length === 5 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) && path[4] === "product" ? `sourcing/1688/acquisitions/${path[3]}/product` : null),
   routeDefinition("GET", "context-get", "context", (path) =>
     exactPath(path, "context") ? "context" : null,
   ),
@@ -469,7 +473,8 @@ export async function buildWorkbenchUpstreamRequest(
       case "browser-capture-read":
       case "product-acquisition-create":
       case "product-acquisition-verify":
-      case "product-acquisition-read": {
+      case "product-acquisition-read":
+      case "product-acquisition-product": {
         if (!hasExactNoQuery(request)) return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
         const assertedActor = request.headers.get(EXPECTED_USER_ID_HEADER);
         if (!assertedActor || !isSafeOrganizationId(assertedActor) || assertedActor !== authenticatedActorSubject) {
@@ -481,7 +486,7 @@ export async function buildWorkbenchUpstreamRequest(
           if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
           break;
         }
-        if (route.requestContract === "product-acquisition-read" || route.requestContract === "browser-capture-read") {
+        if (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product" || route.requestContract === "browser-capture-read") {
           if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
           break;
         }
@@ -702,7 +707,7 @@ export async function buildWorkbenchUpstreamRequest(
     },
     responseContract: route.responseContract,
     expectedStoreId:
-      (route.requestContract === "product-acquisition-read" || route.requestContract === "browser-capture-read") ? path[3] :
+      (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product" || route.requestContract === "browser-capture-read") ? path[3] :
       route.responseContract === "store-item" ||
       route.responseContract === "store-delete" ||
       route.responseContract === "store-service-lifecycle" ||
@@ -733,7 +738,7 @@ export async function buildWorkbenchBrowserResponse(
     signal?: AbortSignal;
   } = {},
 ) {
-  const acquisitionContract = contract === "product-acquisition";
+  const acquisitionContract = contract === "product-acquisition" || contract === "product-acquisition-product";
   const sourceContract = contract.startsWith("source-account-") || acquisitionContract;
   const invalidSource = () =>
     acquisitionContract
@@ -778,7 +783,7 @@ export async function buildWorkbenchBrowserResponse(
   if (acquisitionContract) {
     if (!parsedBody || !payload) return invalidSource();
     if (upstream.ok) {
-      const checked = acquisitionResultSchema.safeParse(payload);
+      const checked = (contract === "product-acquisition-product" ? acquisitionProductSchema : acquisitionResultSchema).safeParse(payload);
       if (upstream.status !== 200 || !checked.success || (expectedStoreId !== undefined && checked.data.operationId !== expectedStoreId)) return invalidSource();
       return new NextResponse(JSON.stringify(checked.data), {status: 200, headers: safeJSONHeaders()});
     }

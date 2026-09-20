@@ -5,6 +5,14 @@ import { ConsoleNavigation } from "./console-navigation";
 
 afterEach(cleanup);
 
+it("hides the acquisition entry unless the serving deployment enables it", async () => {
+  const view = render(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" productAcquisitionAvailable={false} />);
+  expect(screen.queryByRole("link", { name: "1688采集" })).not.toBeInTheDocument();
+  view.rerender(<ConsoleNavigation pathname="/workbench" ariaLabel="主导航" productAcquisitionAvailable />);
+  await userEvent.click(screen.getByRole("button", { name: "展开供应市场" }));
+  expect(screen.getByRole("link", { name: "1688采集" })).toBeVisible();
+});
+
 it("reveals the selected account page after navigation from another module", async () => {
   const view = render(<ConsoleNavigation pathname="/workbench/stores" ariaLabel="主导航" />);
   view.rerender(<ConsoleNavigation pathname="/workbench/account/organization/members" ariaLabel="主导航" />);

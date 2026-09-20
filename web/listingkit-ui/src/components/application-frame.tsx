@@ -18,6 +18,7 @@ const publicRoutes = new Set([
   "/user-agreement",
   "/ai-compute-billing",
   "/service-agreement",
+  "/referrals/register",
 ]);
 
 export function isPublicRoute(pathname: string | null): boolean {
@@ -31,7 +32,7 @@ export function isWorkbenchRoute(pathname: string | null): boolean {
   );
 }
 
-export function ApplicationFrame({ children }: Readonly<{ children: React.ReactNode }>) {
+export function ApplicationFrame({ children, productAcquisitionAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean }>) {
   const pathname = usePathname();
 
   // Public marketing, legal, and login routes must not initialize the authenticated
@@ -47,7 +48,7 @@ export function ApplicationFrame({ children }: Readonly<{ children: React.ReactN
           <QueryProvider>
             <ToastProvider>
               <WorkbenchContextProvider>
-                <WorkspaceAppShell>{children}</WorkspaceAppShell>
+                <WorkspaceAppShell productAcquisitionAvailable={productAcquisitionAvailable}>{children}</WorkspaceAppShell>
               </WorkbenchContextProvider>
             </ToastProvider>
           </QueryProvider>

@@ -35,7 +35,7 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		{"cmd/product-acquisition-init", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", []string{"InitializeAcquisitionDatabase"}},
 		// Narrow #399 constructor admission; no new root, target or directory exemption.
 		// https://github.com/qq550723504/task-processor/issues/399#issuecomment-5643701012
-		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition"}},
+		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition", "PublishedAcquisition"}},
 	}
 	var violations []string
 	for _, source := range sources {
@@ -158,6 +158,7 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"module cannot publish", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "Publish", false},
 		{"Browser module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewBrowserAcquisition", false},
 		{"initializer cannot build Browser", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", "NewBrowserAcquisition", false},
+		{"module exact receipt read", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "PublishedAcquisition", true},
 		{"module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewPublicAcquisition", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

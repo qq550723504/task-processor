@@ -54,6 +54,13 @@ describe("isPublicRoute", () => {
 
     expect(isPublicRoute("/listing-kits/home")).toBe(false);
   });
+
+  it("admits only the exact anonymous referral registration route", () => {
+    expect(isPublicRoute("/referrals/register")).toBe(true);
+    expect(isPublicRoute("/referrals")).toBe(false);
+    expect(isPublicRoute("/referrals/register/extra")).toBe(false);
+    expect(isPublicRoute("/referrals/register-lookalike")).toBe(false);
+  });
 });
 
 describe("isWorkbenchRoute", () => {
@@ -67,6 +74,7 @@ describe("isWorkbenchRoute", () => {
     expect(isWorkbenchRoute("/workbench/no-organization")).toBe(true);
     expect(isWorkbenchRoute("/workbenches")).toBe(false);
     expect(isWorkbenchRoute(null)).toBe(false);
+    expect(isWorkbenchRoute("/workbench/account/referrals/complete")).toBe(true);
   });
 });
 
@@ -131,7 +139,7 @@ describe("ApplicationFrame", () => {
   });
 
   it("keeps public routes shell-free", () => {
-    vi.mocked(usePathname).mockReturnValue("/privacy-policy");
+    vi.mocked(usePathname).mockReturnValue("/referrals/register");
 
     render(
       <ApplicationFrame>

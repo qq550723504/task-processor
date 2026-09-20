@@ -36,8 +36,9 @@ type referralCommands interface {
 }
 
 type referralHTTPModule struct {
-	commands          referralCommands
-	serviceCredential string
+	commands              referralCommands
+	serviceCredential     string
+	onSlotAcquiredForTest func()
 }
 
 func (referralHTTPModule) Name() string { return "personal-referrals" }
@@ -53,6 +54,9 @@ func (m referralHTTPModule) Register(reg *kernelmodule.Registry) error {
 }
 func (m referralHTTPModule) routes() []httproute.Descriptor {
 	slots := make(chan struct{}, 8)
+	// The nil production default has no behavior change. Tests supply this
+	// package-private hook solely to wait until real TCP requests hold slots.
+	onSlotAcquiredForTest := m.onSlotAcquiredForTest
 	routes := []httproute.Descriptor{
 		{Method: http.MethodPost, Path: referralIntentsPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.start},
 		{Method: http.MethodPost, Path: referralResumePath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.resume},
@@ -81,6 +85,9 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 			select {
 			case slots <- struct{}{}:
 				defer func() { <-slots }()
+				if onSlotAcquiredForTest != nil {
+					onSlotAcquiredForTest()
+				}
 				handler(c)
 			default:
 				writeReferralError(c, referral.ErrLimited)

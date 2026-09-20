@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { consoleNavigation, findConsoleRoute, type ConsoleNavNode } from "@/lib/workbench/console-navigation";
 
-export function ConsoleNavigation({ pathname, ariaLabel, onNavigate }: { pathname: string; ariaLabel: string; onNavigate?: () => void }) {
+export function ConsoleNavigation({ pathname, ariaLabel, onNavigate, productAcquisitionAvailable = false }: { pathname: string; ariaLabel: string; onNavigate?: () => void; productAcquisitionAvailable?: boolean }) {
   const trail = findConsoleRoute(pathname)?.trail ?? [];
-  return <nav aria-label={ariaLabel} className="console-nav"><ul>{consoleNavigation.map((node) => <NavBranch key={`${pathname}:${node.href}`} node={node} pathname={pathname} trail={trail.map((item) => item.href)} depth={1} onNavigate={onNavigate} />)}</ul></nav>;
+  const navigation = productAcquisitionAvailable ? consoleNavigation : consoleNavigation.map(node => node.href === "/workbench/supply" ? { ...node, children: node.children?.filter(child => child.href !== "/workbench/supply/acquisition") } : node);
+  return <nav aria-label={ariaLabel} className="console-nav"><ul>{navigation.map((node) => <NavBranch key={`${pathname}:${node.href}`} node={node} pathname={pathname} trail={trail.map((item) => item.href)} depth={1} onNavigate={onNavigate} />)}</ul></nav>;
 }
 
 function NavBranch({ node, pathname, trail, depth, onNavigate }: { node: ConsoleNavNode; pathname: string; trail: readonly string[]; depth: number; onNavigate?: () => void }) {

@@ -67,7 +67,13 @@ func TestReferralSlowSocketBodyReleasesCapacityWithinRequestBudget(t *testing.T)
 	for _, path := range []string{referralIntentsPath, referralResumePath} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
-			server := buildCurrentApplicationHTTPServer((referralHTTPModule{serviceCredential: strings.Repeat("a", 64)}).routes(), routeAuthDependencies{})
+			entered := make(chan struct{}, 8)
+			commands := &referralHTTPSpy{}
+			server := buildCurrentApplicationHTTPServer((referralHTTPModule{
+				commands:              commands,
+				serviceCredential:     strings.Repeat("a", 64),
+				onSlotAcquiredForTest: func() { entered <- struct{}{} },
+			}).routes(), routeAuthDependencies{})
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
@@ -91,6 +97,13 @@ func TestReferralSlowSocketBodyReleasesCapacityWithinRequestBudget(t *testing.T)
 				_, e = fmt.Fprintf(c, "POST %s HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 128\r\nX-Referral-Service-Credential: %s\r\nX-Referral-Client-IP: 203.0.113.1\r\n\r\n{", path, strings.Repeat("a", 64))
 				if e != nil {
 					t.Fatal(e)
+				}
+			}
+			for i := 0; i < cap(entered); i++ {
+				select {
+				case <-entered:
+				case <-time.After(time.Second):
+					t.Fatal("slow body did not enter a referral handler slot")
 				}
 			}
 			client := &http.Client{Timeout: time.Second}
@@ -129,6 +142,9 @@ func TestReferralSlowSocketBodyReleasesCapacityWithinRequestBudget(t *testing.T)
 			}
 			if status := probe(); status == 429 {
 				t.Error("expired slow bodies retained all eight slots")
+			}
+			if len(commands.calls) != 0 {
+				t.Errorf("partial slow bodies reached referral commands: %v", commands.calls)
 			}
 			t.Logf("real HTTP/1.1 %s socket/capacity probe elapsed %.3fs (server ReadTimeout=%s)", path, time.Since(started).Seconds(), server.ReadTimeout)
 		})
