@@ -180,6 +180,17 @@ Case B 在真实页面上：实参为 `window.contextPath`（标识符，非对�
 
 D6/D7 之外的第三项限制在**服务端**（不在本设计范围内，如实记录）：真实载荷经 `MapAcquisitionEvidence` 展开后 `warnings = 275`、`missingFacts = 183`，其中 `warnings` 超过 `MaxSourceEnvelopeCollectionItems = 256`（触发时累计 `items = 475`，仍低于 `MaxSourceEnvelopeAggregateItems = 1024`，`stringBytes = 18375`），提交被 `413 SOURCE_TOO_LARGE` 拒绝。该上限属 server owner，需单独产品决定（见 §6）。
 
+### 4.5 选项 C：同源重复项折叠（用户已批准实施）
+
+用户对上述服务端上限选择**选项 C**：保留每变体明细，但把**同字段模式 + 同原因/码**的重复项折叠成一条并携带数量，使集合大小与变体数解耦；不做「抬高上限」（选项 A）也不做「按 (code,message) 去重丢失 per-variant field」（选项 B）。
+
+- 位置：`MapAcquisitionEvidence`（`internal/product/sourcing/acquisition.go`）在客户端警告回显之后、`validateSourceEnvelopePreflight` **之前**调用 `foldSourceEnvelopeRepeats(&envelope)`，因此被持久化的 durable command 本身就是有界的。
+- 字段模式归一：`variants.3.sku`、`variants[0].sku` 统一为 `variants[].sku`（先 `\[[0-9]+\]` → `[]`，再 `\.[0-9]+` → `[]`），因为服务端用点号索引、插件用方括号索引。
+- **单例保持逐字节不变**：仅当同组项数 > 1 才折叠；`count == 1` 直接返回原条目，`Count` 为 0 且 `omitempty`，因此既有 envelope 与既有断言（如 `public_test.go` 的 `variants.0.sku`）不受影响。
+- `MissingFact` / `SourceWarning` 各新增一个**可加**的可选字段 `Count int \`json:"count,omitempty"\``（不是把数量编进 `Reason`/`Message` 文本：警告 DTO 不传 `Message`，文本编码的数量无法展示）。
+- 未改动任何上限常量（`MaxSourceEnvelopeCollectionItems` 仍为 256）。
+- 实测（真实采集证据体）：`missingFacts 183 → 7`、`warnings 275 → 11`，归一化后 envelope 17 760 字节（< 2 MiB 上限）。
+
 ## 5. 不做什么
 
 - 不改 1688 反爬 / 登录门槛，不使用任何真实 1688 账号或凭据。
@@ -196,8 +207,11 @@ D6/D7 之外的第三项限制在**服务端**（不在本设计范围内，如�
 - trial 接线分支：同步 v2 字面量与 golden 指纹后，`internal/product/sourcing` 测试通过。
 - 一致性断言（D2）：同一份语义记录，两种页面形状（IIFE 形 / JSON 字面量形）产出**逐字节相同** evidence。两个 golden 当前带同一 `contentSHA256`（`69ea755f…`），但**分处两个分支、需各自维护**——这是已知成本，非共享库；不为此新建跨语言共享层。
 - 端到端（真实页面）：**采集段已 PASS**。最终构建（`1688-browser-dom/v2`，含 D1–D7）在真实页面 `https://detail.1688.com/offer/932524015351.html` 上，经真实 Chrome + 真实 `Extensions.loadUnpacked` + 真实弹层按钮路径完成采集：弹层显示真实标题与“采集完成”，并列出未取得字段；交接页显示真标题、真 URL 与 `92 warnings; 92 missing facts`。
-- 提交段（真实页面）：**FAIL，`413 SOURCE_TOO_LARGE`**，且明确“未创建 operation”。根因已用证据定位（见 §4.4 末段）：提交被接受的实测证据体为 21 812 字节、`variants=45`、`variantAttributes=90`、`missingFacts=92`、`warnings=92`（服务端展开后 `missingFacts=183`、`warnings=275`），触发服务端每集合上限 `MaxSourceEnvelopeCollectionItems=256`。
-- 因此“真实产品结果 / 缺字段展示 / 刷新+重登回读”仍 **`NOT_RUN`**：当前不存在成功 operation 可回读。
+- 提交段（真实页面）：初测 **FAIL，`413 SOURCE_TOO_LARGE`**，且明确“未创建 operation”。根因已用证据定位（见 §4.4 末段）：被拒载荷 21 812 字节、`variants=45`、`variantAttributes=90`、`missingFacts=92`、`warnings=92`（服务端展开后 `missingFacts=183`、`warnings=275`），触发服务端每集合上限 `MaxSourceEnvelopeCollectionItems=256`。
+- 选项 C 实施后**在同一真实页面上重做端到端**：`POST /api/workbench/sourcing/1688/browser-captures` → **`200`**，`{"outcome":"published","productKey":"crawler:1688:932524015351","catalogVersion":"1"}`，且响应中的 `warnings` 携带折叠计数（`"field":"variants[].sku","count":45`）。operation `25135765-1675-5ad8-af58-f5005b7e2d65` 落库为 `state=published`（DB 现有 2 行：1 条历史 `failed`，1 条本次 `published`）。提交页显示 `Published version 1 / Warnings / missing facts 11 / 7`。
+- 回读段：**PASS**。刷新 + 换新会话重新登录后，`GET …/acquisitions/25135765-…` → `200 outcome=published`；`GET …/product` → **`200`**（不再是 `OUTCOME_UNKNOWN`），返回真实标题、1688 来源、14 张图片、50 项规格；结果页显示真实标题、操作 ID 与 Catalog 版本。
+- 缺字段展示：**PASS**。结果页 `规格与缺失信息` 与 `采集警告` 两处均渲染折叠后的计数（如 `variants[].sku：source SKU absent（共 45 处）`）。
+- 新发现的**展示缺陷（非阻塞，需用户决定）**：警告条目只带 `code` + `field` + `count`，DTO 不传 `Message`，而折叠后不同原因但同 `(code, field)` 的条目（如 `variants[].sku` 的“source SKU absent”与“not_observed”）在 UI 上呈现为两条**看起来完全相同**的行（真实页面上有 3 组此类重复，共 11 行里占 6 行）。`missingFacts` 列表因为带 `reason` 不受影响。最小修法是在警告 DTO 上补一个原因/消息字段；本设计不自行扩大范围。
 - 回归证据：插件 `npm test` → **47/47**、`npm run typecheck`、`npm run lint` 干净（新增 5 个用例覆盖 D6/D7 与其拒绝面）。
 - 浏览器级证据（层介于单测与真实页面之间，已执行）：将真实形状页面 `product-real-shape.html` 喂给**仓库已有的真实 Chrome + `Extensions.loadUnpacked` 冒烟路径**（`scripts/browser-smoke.mjs` 的等价副本，脚本放在 gitignored 的 `artifacts/` 下，**未进仓库**），使用 **A1 应用来源**构建的 `dist-fixture`：弹出层显示“采集完成”，交付载荷 `parserVersion = 1688-browser-dom/v2`，且除 `capturedAt`（实拍时间）外与 golden **逐字段相同**，`contentSHA256` 与 golden 一致 ⇒ 两种页面形状经真实注入路径产出同一语义记录。同路径下 JSON 字面量夹具（`product.html`）仍通过（`port-isolation-check.mjs`）。
 - 该浏览器级证据**仍不能替代**真实 1688 页面验证：页面响应仍被替换为夹具，未经过真实反爬、登录会话与真实后端。
