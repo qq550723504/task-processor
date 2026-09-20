@@ -83,8 +83,64 @@ describe('explicit current-page capture', () => {
     expect(payload.evidence.priceFacts).toEqual([{ amount: '12.34000001', currency: null, minQuantity: '2' }]);
   });
 
-  it('keeps skuId as source identity without inventing a separately observed SKU', async () => {
-    const payload=await captureDocument(fixture().window.document,source,new Date());
+  // The live page emits "skuWeight":{6290953586037:0.3}: object keys are bare
+  // decimal numbers, which strict JSON forbids. Only that key position is
+  // normalized; every other strictness rule still applies.
+  it('reads the live page shape whose object keys are bare decimal numbers', async () => {
+    const doc = new JSDOM(readFileSync('tests/fixtures/product.html', 'utf8'), { url: source }).window.document;
+    const payload = await captureDocument(doc, source, new Date('2026-09-12T00:00:00Z'));
+    expect(payload.evidence.title).toBe('棉质收纳袋');
+    expect(payload.evidence.variants).toHaveLength(1);
+  });
+
+  it('normalizes only object key positions, never string contents', async () => {
+    const text = '裸键形字符串 {123:x} 与逗号, 保留';
+    const bulk = JSON.parse(JSON.stringify(model));
+    bulk.result.data.productTitle.fields.title = text;
+    const payload = await captureDocument(observedShape(JSON.stringify(bulk)).window.document, source, new Date());
+    expect(payload.evidence.title).toBe(text);
+  });
+
+  it('still rejects comments, trailing commas and duplicate keys after normalization', async () => {
+    const mutations: Array<[string, (raw: string) => string]> = [
+      ['duplicate key', raw => raw.replace('"title":', '"title":"shadow","title":')],
+      ['trailing comma', raw => `${raw.slice(0, -1)},}`],
+      ['comment', raw => raw.replace('"title":', '/*c*/"title":')],
+    ];
+    for (const [name, mutate] of mutations) {
+      const dom = fixture(); const node = dom.window.document.querySelector('script')!;
+      const mutated = mutate(node.textContent!);
+      expect(mutated, `${name} mutation must change the payload`).not.toBe(node.textContent);
+      node.textContent = mutated;
+      await expect(captureDocument(dom.window.document, source, new Date()), name).rejects.toThrow('UNSUPPORTED_PAGE');
+    }
+  });
+
+  it('accepts live-scale node counts and still bounds the inspected tree', async () => {
+    const at = new Date('2026-09-12T00:00:00Z');
+    const build = (keys: number) => {
+      const grow = JSON.parse(JSON.stringify(model)) as typeof model & { result: { data: Record<string, unknown> } };
+      const bulk: Record<string, number> = {};
+      for (let i = 0; i < keys; i++) bulk[`k${i}`] = i;
+      grow.result.data.bulk = bulk;
+      return observedShape(JSON.stringify(grow)).window.document;
+    };
+    // The live page needs ~16.5k nodes, above the previous 16384 bound.
+    await expect(captureDocument(build(7000), source, at)).resolves.toBeTruthy();
+    await expect(captureDocument(build(30000), source, at)).rejects.toThrow('CAPTURE_TOO_LARGE');
+  });
+
+  it('keeps the real-shape fixture a byte-exact wrapping of the plain fixture', async () => {
+    const plain = readFileSync('tests/fixtures/product.html', 'utf8');
+    const wrapped = readFileSync('tests/fixtures/product-real-shape.html', 'utf8');
+    const start = plain.indexOf('window.context = ') + 'window.context = '.length;
+    const payload = plain.slice(start, plain.indexOf(';</script>', start));
+    expect(payload.startsWith('{')).toBe(true);
+    expect(wrapped).toContain(`window.contextPath = "/default";`);
+    expect(wrapped).toContain(`})(window.contextPath,${payload});`);
+  });
+
+  it('keeps skuId as source identity without inventing a separately observed SKU', async () => {    const payload=await captureDocument(fixture().window.document,source,new Date());
     expect(payload.evidence.variants[0].sourceID).toBe('99999999999999999999');
     expect(payload.evidence.variants[0].sku).toBeNull();
     expect(payload.evidence.missingFacts).toContainEqual({field:'variants[0].sku',reason:'not_observed'});

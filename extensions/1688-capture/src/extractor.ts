@@ -2,6 +2,10 @@ import { parseTree, type Node, type ParseError } from 'jsonc-parser';
 import type { CapturePayload, Evidence, Price } from './wire';
 import { byteLength, fail, MAX_BYTES, pageSource, validateCapture } from './validation';
 
+// Observed live payloads reach ~16.5k nodes, so the previous 16384 bound rejected
+// real pages. The 2MB candidate bound remains the primary resource guard.
+const MAX_NODES = 65536;
+
 // EXTRACT: known 1688 productTitle/gallery/Root field semantics only. No legacy
 // service, window.context access, profile, network or arbitrary script execution.
 // Locates the product document inside 1688's inline scripts. The page assigns
@@ -55,6 +59,43 @@ function objectArgument(call: string): string {
   if (objects.length !== 1) fail('UNSUPPORTED_PAGE');
   return objects[0];
 }
+// The live page writes numeric object keys without quotes
+// ({"skuWeight":{6290953586037:0.3}}), which strict JSON forbids. Only that key
+// position is quoted; string contents and every other token are copied verbatim,
+// so the strict parse below still rejects comments, trailing commas, duplicate
+// keys and executable text.
+function quoteBareNumericKeys(text: string): string {
+  let out = '';
+  let quote = '';
+  let escaped = false;
+  const containers: string[] = [];
+  let expectKey = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quote) {
+      out += char;
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"') { quote = char; expectKey = false; out += char; continue; }
+    if (char === '{') { containers.push('object'); expectKey = true; out += char; continue; }
+    if (char === '[') { containers.push('array'); expectKey = false; out += char; continue; }
+    if (char === '}' || char === ']') { containers.pop(); expectKey = false; out += char; continue; }
+    if (char === ':') { expectKey = false; out += char; continue; }
+    if (char === ',' && containers[containers.length - 1] === 'object') { expectKey = true; out += char; continue; }
+    if (expectKey && char >= '0' && char <= '9') {
+      let end = index;
+      while (end < text.length && text[end] >= '0' && text[end] <= '9') end++;
+      let after = end;
+      while (after < text.length && /\s/.test(text[after])) after++;
+      if (text[after] === ':') { out += `"${text.slice(index, end)}"`; index = end - 1; continue; }
+    }
+    out += char;
+  }
+  return out;
+}
 function contextPayload(text: string): string | null {
   const assignment = /(?:window\s*\.\s*)?context\s*=\s*/g;
   let payload: string | undefined;
@@ -105,12 +146,14 @@ export async function captureDocument(doc: Document, source: string, now: Date):
     raw = candidate;
   }
   if (raw === undefined) fail('UNSUPPORTED_PAGE');
+  const normalized = quoteBareNumericKeys(raw);
+  if (byteLength(normalized) > MAX_BYTES) fail('CAPTURE_TOO_LARGE');
   const errors: ParseError[] = [];
-  const root = parseTree(raw, errors, { disallowComments: true, allowTrailingComma: false });
+  const root = parseTree(normalized, errors, { disallowComments: true, allowTrailingComma: false });
   if (!root || errors.length) fail('UNSUPPORTED_PAGE');
   let nodes = 0;
   function inspect(node: Node, depth = 0) {
-    if (++nodes > 16384 || depth > 32 || performance.now() - started > 8000) fail('CAPTURE_TOO_LARGE');
+    if (++nodes > MAX_NODES || depth > 32 || performance.now() - started > 8000) fail('CAPTURE_TOO_LARGE');
     if (node.type === 'object') {
       const keys = node.children?.map(n => n.children?.[0].value) ?? [];
       if (new Set(keys).size !== keys.length) fail('UNSUPPORTED_PAGE');
@@ -129,7 +172,7 @@ export async function captureDocument(doc: Document, source: string, now: Date):
   function string(node: Node | undefined, numeric = false): string | null {
     if (!node || node.type === 'null') return null;
     if (node.type === 'string') return node.value as string;
-    if (numeric && node.type === 'number') return raw!.slice(node.offset, node.offset + node.length);
+    if (numeric && node.type === 'number') return normalized.slice(node.offset, node.offset + node.length);
     return fail('UNSUPPORTED_PAGE');
   }
   function array(node: Node | undefined): Node[] {

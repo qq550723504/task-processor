@@ -167,6 +167,19 @@ Case B 在真实页面上：实参为 `window.contextPath`（标识符，非对�
 
 真实页面在重复自动导航后被 1688 验证码标记（`punish?x5secdata=…`），无法再取得节点数。该测量**需用户提供可用会话后重做**；不得用夹具节点数替代。
 
+### 4.4 D6 / D7：真实页面复测发现的两条新上限（用户已批准实施）
+
+用户在验证码可读后重新提供会话，`§3.1` 定位规则在**真实页面**上命中正确（3 处 `context=` 命中里 2 处被正确排除，接受项位于脚本偏移 `34`，RHS 为真实 IIFE `(function(b,d){var c=d.module|…`）。但采集仍然失败，实测到两个与夹具无关的真实缺陷：
+
+- **D6 — 载荷不是严格 JSON。** 真实载荷里 `"skuWeight":{6290953586037:0.3000,…}` 使用**未加引号的数字对象键**；`parseTree` 报 **90 个解析错误**（全部落在 `skuWeight`，偏移约 `87084`/`87104`）。仅在对象键位置补引号后 **错误 90 → 0**，标题/SKU/图库均可读，`roundTripOk: true`。
+  - 处理：新增 `quoteBareNumericKeys()`，**只**在对象键位置给裸十进制数字补引号；字符串内容与其余 token 逐字复制；补引号后**仍执行**严格解析，因此注释、尾随逗号、重复键依然被拒（有对应用例）。
+- **D7 — 节点预算过小。** 归一化后实测 **nodes = 16501**，超过插件原先的 `16384` 上限 ⇒ 即使解析成功也会判 `CAPTURE_TOO_LARGE`。
+  - 处理：上限 `16384 → 65536`（约为实测值的 4 倍）；**2MB 字节上限仍是主要资源护栏**；服务端 `4096` 上限与通道①不在本次范围。
+
+**parserVersion 仍为 v2**：D6/D7 只放宽输入接受范围，未改变任何字段语义，且当前不存在 v2 持久化数据。如需 v3 需用户另行决定。
+
+D6/D7 之外的第三项限制在**服务端**（不在本设计范围内，如实记录）：真实载荷经 `MapAcquisitionEvidence` 展开后 `warnings = 275`、`missingFacts = 183`，其中 `warnings` 超过 `MaxSourceEnvelopeCollectionItems = 256`（触发时累计 `items = 475`，仍低于 `MaxSourceEnvelopeAggregateItems = 1024`，`stringBytes = 18375`），提交被 `413 SOURCE_TOO_LARGE` 拒绝。该上限属 server owner，需单独产品决定（见 §6）。
+
 ## 5. 不做什么
 
 - 不改 1688 反爬 / 登录门槛，不使用任何真实 1688 账号或凭据。
@@ -182,7 +195,10 @@ Case B 在真实页面上：实参为 `window.contextPath`（标识符，非对�
 - 服务端（#406）：`go test ./internal/product/sourcing/...`、`go test ./internal/app/httpapi/...` 通过；`go build ./...` 干净。web 契约相关 **152/152 通过**。
 - trial 接线分支：同步 v2 字面量与 golden 指纹后，`internal/product/sourcing` 测试通过。
 - 一致性断言（D2）：同一份语义记录，两种页面形状（IIFE 形 / JSON 字面量形）产出**逐字节相同** evidence。两个 golden 当前带同一 `contentSHA256`（`69ea755f…`），但**分处两个分支、需各自维护**——这是已知成本，非共享库；不为此新建跨语言共享层。
-- 端到端（真实页面）：**`NOT_RUN`**。原因见 §4.3；不得以夹具通过替代。
+- 端到端（真实页面）：**采集段已 PASS**。最终构建（`1688-browser-dom/v2`，含 D1–D7）在真实页面 `https://detail.1688.com/offer/932524015351.html` 上，经真实 Chrome + 真实 `Extensions.loadUnpacked` + 真实弹层按钮路径完成采集：弹层显示真实标题与“采集完成”，并列出未取得字段；交接页显示真标题、真 URL 与 `92 warnings; 92 missing facts`。
+- 提交段（真实页面）：**FAIL，`413 SOURCE_TOO_LARGE`**，且明确“未创建 operation”。根因已用证据定位（见 §4.4 末段）：提交被接受的实测证据体为 21 812 字节、`variants=45`、`variantAttributes=90`、`missingFacts=92`、`warnings=92`（服务端展开后 `missingFacts=183`、`warnings=275`），触发服务端每集合上限 `MaxSourceEnvelopeCollectionItems=256`。
+- 因此“真实产品结果 / 缺字段展示 / 刷新+重登回读”仍 **`NOT_RUN`**：当前不存在成功 operation 可回读。
+- 回归证据：插件 `npm test` → **47/47**、`npm run typecheck`、`npm run lint` 干净（新增 5 个用例覆盖 D6/D7 与其拒绝面）。
 - 浏览器级证据（层介于单测与真实页面之间，已执行）：将真实形状页面 `product-real-shape.html` 喂给**仓库已有的真实 Chrome + `Extensions.loadUnpacked` 冒烟路径**（`scripts/browser-smoke.mjs` 的等价副本，脚本放在 gitignored 的 `artifacts/` 下，**未进仓库**），使用 **A1 应用来源**构建的 `dist-fixture`：弹出层显示“采集完成”，交付载荷 `parserVersion = 1688-browser-dom/v2`，且除 `capturedAt`（实拍时间）外与 golden **逐字段相同**，`contentSHA256` 与 golden 一致 ⇒ 两种页面形状经真实注入路径产出同一语义记录。同路径下 JSON 字面量夹具（`product.html`）仍通过（`port-isolation-check.mjs`）。
 - 该浏览器级证据**仍不能替代**真实 1688 页面验证：页面响应仍被替换为夹具，未经过真实反爬、登录会话与真实后端。
 
