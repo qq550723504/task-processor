@@ -62,8 +62,8 @@ resource "zitadel_application_oidc" "listingkit_ui" {
   org_id                       = zitadel_org.trial.id
   project_id                   = zitadel_project.listingkit.id
   name                         = "ListingKit UI Local"
-  redirect_uris                = ["https://localhost:18444/api/auth/callback/zitadel"]
-  post_logout_redirect_uris    = ["https://localhost:18444"]
+  redirect_uris                = ["https://acquisition.home.arpa/api/auth/callback/zitadel"]
+  post_logout_redirect_uris    = ["https://acquisition.home.arpa"]
   response_types               = ["OIDC_RESPONSE_TYPE_CODE"]
   grant_types                  = ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"]
   app_type                     = "OIDC_APP_TYPE_WEB"
