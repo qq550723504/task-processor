@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { classifyChangedPaths, formatOutputs } = require("./ci-change-classifier.cjs");
 
 test("runs all suites for main push mode", () => {
@@ -10,6 +11,7 @@ test("runs all suites for main push mode", () => {
     frontend: true,
     code_health: true,
     release_authority: true,
+    capture_extension: true,
   });
 });
 
@@ -19,6 +21,7 @@ test("backend-only changes skip frontend", () => {
     frontend: false,
     code_health: true,
     release_authority: false,
+    capture_extension: false,
   });
 });
 
@@ -28,6 +31,7 @@ test("frontend-only changes skip backend", () => {
     frontend: true,
     code_health: true,
     release_authority: false,
+    capture_extension: false,
   });
 });
 
@@ -98,6 +102,7 @@ test("workflow-only changes run backend contracts without frontend or code-healt
     frontend: false,
     code_health: false,
     release_authority: true,
+    capture_extension: true,
   });
 });
 
@@ -141,5 +146,58 @@ test("normalizes windows paths and emits github outputs", () => {
     "frontend=true",
     "code_health=true",
     "release_authority=false",
+    "capture_extension=false",
   ].join("\n"));
+});
+
+test("capture extension has a precise independent classification including its CI owners", () => {
+  for (const changedPath of [
+    "extensions/1688-capture/src/extractor.ts", "extensions\\1688-capture\\package-lock.json",
+    ".github/workflows/ci.yml", ".github/scripts/ci-change-classifier.cjs", ".github/scripts/ci-change-classifier.test.cjs",
+  ]) assert.equal(classifyChangedPaths([changedPath]).capture_extension, true, changedPath);
+  for (const changedPath of ["extensions/1688-capture-other/main.ts", "extensions/other/main.ts", "README.md",
+    "web/listingkit-ui/src/app.tsx", "internal/product/sourcing/service.go", ".github/workflows/listingkit-deploy.yml"]) {
+    assert.equal(classifyChangedPaths([changedPath]).capture_extension, false, changedPath);
+  }
+  const extension=classifyChangedPaths(["extensions/1688-capture/src/extractor.ts"]);
+  assert.deepEqual([extension.backend,extension.frontend,extension.code_health,extension.release_authority],[false,false,false,false]);
+  assert.equal(classifyChangedPaths([],{full:true}).capture_extension,true);
+});
+
+function captureGate() {
+  const workflow=fs.readFileSync(path.join(__dirname,"..","workflows","ci.yml"),"utf8").replaceAll("\r\n","\n");
+  const required=workflow.slice(workflow.indexOf("\n  required-gate:\n"),workflow.indexOf("\n  notify:\n"));
+  const script=required.slice(required.indexOf("        run: |\n")+"        run: |\n".length).split("\n").map(line=>line.startsWith("          ")?line.slice(10):line).join("\n");
+  return {workflow,required,script};
+}
+
+test("capture classification output reaches its isolated job and required gate", () => {
+  const {workflow,required}=captureGate();
+  assert.match(workflow,/capture_extension: \$\{\{ steps\.classify\.outputs\.capture_extension \}\}/);
+  const job=workflow.slice(workflow.indexOf("\n  capture-extension:\n"),workflow.indexOf("\n  code-health:\n"));
+  assert.match(job,/needs\.changes\.outputs\.capture_extension == 'true'/);
+  assert.match(job,/node-version: "24"/);
+  assert.match(job,/working-directory: extensions\/1688-capture/);
+  assert.match(job,/cache-dependency-path: extensions\/1688-capture\/package-lock\.json/);
+  for(const command of ["npm ci","npm test","npm run typecheck","npm run lint","npm run build -- --fixture"]) assert.ok(job.includes(command),command);
+  assert.match(required,/needs:[\s\S]*- capture-extension\b/);
+  assert.match(required,/CAPTURE_EXTENSION_RESULT: \$\{\{ needs\.capture-extension\.result \}\}/);
+  assert.match(required,/CAPTURE_EXTENSION_SELECTED: \$\{\{ needs\.changes\.outputs\.capture_extension \}\}/);
+});
+
+test("actual required-gate shell rejects missing applicable capture checks", () => {
+  const {script}=captureGate();
+  const bash=process.platform==='win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
+  for(const event of ['push','pull_request']) for(const selected of ['true','false','']) {
+    for(const result of ['success','failure','cancelled','skipped','']) {
+      const env={...process.env,CI_EVENT:event,CAPTURE_EXTENSION_SELECTED:selected,CAPTURE_EXTENSION_RESULT:result};
+      for(const key of ['CHANGES_RESULT','DEVELOPMENT_ADMISSION_TEST_RESULT','ARCHITECTURE_CONTRACT_RESULT','ISOLATED_RUNTIME_RESULT',
+        'RELEASE_RESULT','BACKEND_RESULT','FRONTEND_RESULT','CODE_HEALTH_RESULT']) env[key]='success';
+      const run=spawnSync(bash,['-c',script],{env,encoding:'utf8'});
+      if(run.error)throw run.error;
+      const applicable=event==='push'||selected==='true';
+      const shouldPass=applicable ? result==='success' : selected==='false' && ['success','skipped'].includes(result);
+      assert.equal(run.status===0,shouldPass,`${event}/${selected}/${result}: ${run.stderr}`);
+    }
+  }
 });

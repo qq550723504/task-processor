@@ -33,6 +33,7 @@ CN = localhost
 subjectAltName = @alt_names
 [alt_names]
 DNS.1 = localhost
+DNS.2 = acquisition.home.arpa
 IP.1 = 127.0.0.1
 IP.2 = ::1
 EOF

@@ -31,17 +31,18 @@ var (
 )
 
 type AcquisitionOperation struct {
-	Scope       PublicationScope
-	Key         string
-	ID          string
-	Source      AcquisitionSource
-	Fingerprint string
-	State       string
-	Fence       int64
-	LeaseUntil  time.Time
-	Command     *PublicationCommand
-	CommandHash string
-	FailureCode string
+	Scope         PublicationScope
+	Key           string
+	ID            string
+	Source        AcquisitionSource
+	Fingerprint   string
+	CaptureSHA256 string
+	State         string
+	Fence         int64
+	LeaseUntil    time.Time
+	Command       *PublicationCommand
+	CommandHash   string
+	FailureCode   string
 }
 
 // AcquisitionOperationStore retains original commands, not Product facts.
@@ -53,6 +54,14 @@ type AcquisitionOperationStore interface {
 	Prepare(context.Context, AcquisitionOperation, PublicationCommand) (AcquisitionOperation, error)
 	Claim(context.Context, AcquisitionOperation) (AcquisitionOperation, bool, error)
 	Finish(context.Context, AcquisitionOperation, string, string) error
+}
+
+// PreparedAcquisitionOperationStore atomically admits an operation with its
+// durable publication command. Browser capture uses this contract because its
+// receiver can recover the command after a process or response failure.
+type PreparedAcquisitionOperationStore interface {
+	AcquisitionOperationStore
+	StartPrepared(context.Context, AcquisitionOperation, PublicationCommand) (AcquisitionOperation, bool, error)
 }
 
 type PublicAcquirer interface {
