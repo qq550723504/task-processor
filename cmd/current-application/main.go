@@ -55,7 +55,7 @@ func execute() error {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
 		OpenCommercial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
-			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
 		OpenProductAcquisition: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))

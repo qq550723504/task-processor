@@ -23,6 +23,12 @@ func (r *Repository) ListCommittedOperations(ctx context.Context, organizationID
 		return registry.HistoryPage{}, err
 	}
 	query := r.db.WithContext(ctx).Table(operationTable).Select("organization_id, actor_subject, kind, account_id, resulting_version, created_at").Where("organization_id = ?", organizationID)
+	if request.ActorSubject != "" {
+		query = query.Where("actor_subject = ?", request.ActorSubject)
+	}
+	if request.Kind != "" {
+		query = query.Where("kind = ?", request.Kind)
+	}
 	if request.After != nil {
 		p := request.After
 		query = query.Where("(created_at, account_id, resulting_version) < (?, ?::uuid, ?)", p.OccurredAt.UTC(), p.AccountID, p.Version)

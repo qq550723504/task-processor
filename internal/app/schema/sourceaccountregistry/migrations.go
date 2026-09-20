@@ -8,6 +8,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"gorm.io/gorm"
 
+	accountprofileschema "task-processor/internal/app/schema/accountprofile"
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	platformmigration "task-processor/internal/platform/database/migration"
 )
@@ -44,6 +45,9 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 	}
 	if err := sourceaccountstore.VerifySchema(ctx, db); err != nil {
 		return fmt.Errorf("verify source account registry schema: %w", err)
+	}
+	if err := accountprofileschema.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("initialize account profile schema: %w", err)
 	}
 	return nil
 }

@@ -88,7 +88,7 @@ func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" {
 		t.Fatalf("source account user = %q", cfg.SourceAccountDatabase.User)
 	}
-	if cfg.CommercialDatabase.User != "commercial_reader" {
+	if cfg.CommercialDatabase.User != "commercial_runtime" {
 		t.Fatalf("commercial user = %q", cfg.CommercialDatabase.User)
 	}
 	core := cfg.CoreConfig()
@@ -151,9 +151,9 @@ func TestLoadConfigRejectsNonLoopbackOrSharedDatabaseRole(t *testing.T) {
 		"issuer":        strings.Replace(validManifest(), `"issuerURL": "http://localhost:18080"`, `"issuerURL": "https://identity.example"`, 1),
 		"authorization": strings.Replace(validManifest(), `"authorizationAPIURL": "http://localhost:18080"`, `"authorizationAPIURL": "http://127.0.0.1:18081"`, 1),
 		"database_host": strings.Replace(validManifest(), `"host": "127.0.0.1", "port": 15432, "user": "source_account_runtime"`, `"host": "postgres", "port": 15432, "user": "source_account_runtime"`, 1),
-		"shared_role":   strings.Replace(validManifest(), `"user": "commercial_reader"`, `"user": "source_account_runtime"`, 1),
+		"shared_role":   strings.Replace(validManifest(), `"user": "commercial_runtime"`, `"user": "source_account_runtime"`, 1),
 		"source_admin":  strings.Replace(validManifest(), `"user": "source_account_runtime"`, `"user": "postgres"`, 1),
-		"reader_admin":  strings.Replace(validManifest(), `"user": "commercial_reader"`, `"user": "postgres"`, 1),
+		"reader_admin":  strings.Replace(validManifest(), `"user": "commercial_runtime"`, `"user": "postgres"`, 1),
 		"dsn_password":  strings.Replace(validManifest(), `"password": "source-secret"`, `"password": "x host=198.51.100.1"`, 1),
 		"dsn_database":  strings.Replace(validManifest(), `"database": "task_processor"`, `"database": "task_processor sslmode=require"`, 1),
 	}
@@ -294,7 +294,7 @@ func validManifest() string {
     "password": "source-secret", "database": "task_processor", "maxConnections": 4
   },
   "commercialDatabase": {
-    "host": "127.0.0.1", "port": 15432, "user": "commercial_reader",
+    "host": "127.0.0.1", "port": 15432, "user": "commercial_runtime",
     "password": "commercial-secret", "database": "task_processor", "maxConnections": 4
   }
 }`

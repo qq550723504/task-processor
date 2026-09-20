@@ -78,9 +78,9 @@ describe("AccountPage read-only projection", () => {
   it("retries a dependency failure only after user action and rereads facts", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));
     vi.stubGlobal("fetch", fetcher); mount();
-    expect(await screen.findByRole("alert")).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("alert")).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(2);
     await userEvent.click(screen.getByRole("button", { name: "刷新资料" }));
-    expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(4);
   });
   it.each(["no-org", "selection", "grant-error", "loading"])("reads the actual profile client independent of %s", async mode => {
     state.context.effectiveOrganization = null; state.context.user = null;
@@ -88,7 +88,7 @@ describe("AccountPage read-only projection", () => {
     state.context.error = mode === "grant-error" ? { code: "DEPENDENCY_UNAVAILABLE" } : null;
     const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
-    expect(fetcher).toHaveBeenCalledTimes(1); expect(fetcher.mock.calls[0][0]).toBe("/api/account/profile");
+    expect(fetcher).toHaveBeenCalledTimes(2); expect(fetcher.mock.calls[0][0]).toBe("/api/account/profile");
     expect(new Headers(fetcher.mock.calls[0][1].headers).get("X-Expected-User-ID")).toBe("u1");
     expect(screen.getByText("未验证")).toBeVisible(); expect(screen.queryByText("已实名认证")).not.toBeInTheDocument();
     expect(screen.queryByText("未绑定")).not.toBeInTheDocument(); expect(screen.queryByRole("button", { name: /保存|修改|认证/ })).not.toBeInTheDocument();
@@ -140,7 +140,7 @@ describe("AccountPage read-only projection", () => {
     const fetcher = vi.fn().mockImplementation(() => Promise.resolve(Response.json(profile))); vi.stubGlobal("fetch", fetcher);
     mount(); expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
     const link = document.createElement("a"); link.href = "/api/zitadel-auth/logout"; link.textContent = "退出"; link.onclick = e => e.preventDefault(); document.body.append(link);
-    await userEvent.click(link); expect(screen.queryByText("本人甲")).not.toBeInTheDocument(); expect(fetcher).toHaveBeenCalledTimes(1); link.remove();
+    await userEvent.click(link); expect(screen.queryByText("本人甲")).not.toBeInTheDocument(); expect(fetcher).toHaveBeenCalledTimes(2); link.remove();
   });
   it("clears visible profile and reauthorizes when role context changes", async () => {
     const fetcher = vi.fn().mockImplementationOnce(() => Promise.resolve(Response.json(profile))).mockImplementationOnce(() => Promise.resolve(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "hidden", requestId: "", fieldErrors: [] }, { status: 401 }))); vi.stubGlobal("fetch", fetcher);

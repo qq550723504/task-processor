@@ -17,7 +17,30 @@ identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
 application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is required}
 
 umask 077
-if [ -f "$state/.init-complete" ]; then exit 0; fi
+if [ -f "$state/.init-complete" ]; then
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' EXIT
+  cat > "$work/source-account-schema.yaml" <<EOF
+database:
+  host: 127.0.0.1
+  port: 5433
+  user: postgres
+  password: "$(tr -d '\r\n' < "$source_db_owner_secret/source-db-password")"
+  database: source_accounts
+  max_connections: 2
+  max_idle_connections: 1
+  connection_max_lifetime: 1h
+EOF
+  source-account-registry-schema-init -config "$work/source-account-schema.yaml"
+  psql "postgresql://postgres:$(tr -d '\r\n' < "$source_db_owner_secret/source-db-password")@127.0.0.1:5433/source_accounts?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
+GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
+GRANT USAGE ON SCHEMA public TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+SQL
+  psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
+  psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
+  exit 0
+fi
 if [ -f "$state/.init-started" ]; then echo 'local initialization is incomplete; recreate this Compose project' >&2; exit 1; fi
 touch "$state/.init-started"
 chmod 600 "$state/.init-started"
@@ -49,7 +72,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
     "projectID": "$(tr -d '\r\n' < "$runtime/project-id")"
   },
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
-  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_reader", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
+  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
   "membership": {
     "providerOrigin": "${issuer}",
     "readToken": "$(tr -d '\r\n' < "$runtime/membership-read.pat")",
@@ -100,6 +123,7 @@ GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
 ALTER ROLE source_account_runtime SET statement_timeout='10s';
 SQL
 

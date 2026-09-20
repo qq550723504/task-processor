@@ -15,7 +15,11 @@ const runtimePermissionQuery = `SELECT current_user,
     AND has_table_privilege(current_user, 'public.source_account_resources', 'INSERT')
     AND has_table_privilege(current_user, 'public.source_account_resources', 'UPDATE')
     AND has_table_privilege(current_user, 'public.source_account_operations', 'SELECT')
-    AND has_table_privilege(current_user, 'public.source_account_operations', 'INSERT') AS required_privileges,
+    AND has_table_privilege(current_user, 'public.source_account_operations', 'INSERT')
+    AND has_table_privilege(current_user, 'public.account_business_profiles', 'SELECT')
+    AND has_table_privilege(current_user, 'public.account_business_profiles', 'INSERT')
+    AND has_table_privilege(current_user, 'public.account_business_profiles', 'UPDATE')
+    TRUE AS required_privileges,
   has_database_privilege(current_user, current_database(), 'CREATE')
     OR has_schema_privilege(current_user, 'public', 'CREATE')
     OR EXISTS (
@@ -34,7 +38,11 @@ const runtimePermissionQuery = `SELECT current_user,
           ('source_account_resources', 'INSERT'),
           ('source_account_resources', 'UPDATE'),
           ('source_account_operations', 'SELECT'),
-          ('source_account_operations', 'INSERT')
+          ('source_account_operations', 'INSERT'),
+          ('account_business_profiles', 'SELECT'),
+          ('account_business_profiles', 'INSERT'),
+          ('account_business_profiles', 'UPDATE'),
+          ('__account_allocation_moved_to_commercial__', 'SELECT')
         )
     ) AS forbidden_privileges`
 

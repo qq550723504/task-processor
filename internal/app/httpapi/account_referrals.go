@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"github.com/gin-gonic/gin"
+	"strconv"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/referral"
+	economics "task-processor/internal/referraleconomics"
 	"time"
 )
 
@@ -26,7 +29,15 @@ func (m referralHTTPModule) readSelf(c *gin.Context) {
 	if out.Code == "" {
 		availability = "not_created"
 	}
-	writeReferralJSON(c, gin.H{"code": out.Code, "codeAvailability": availability, "count": out.Count, "generatedAt": time.Now().UTC(), "earnings": gin.H{"availability": "unavailable", "amount": nil}})
+	earnings := gin.H{"availability": "unavailable", "amount": nil}
+	if m.economics != nil {
+		if identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); ok {
+			if value, err := m.economics.ReadEarnings(c.Request.Context(), identity.UserID, economics.CurrencyCNY); err == nil {
+				earnings = gin.H{"availability": "available", "currency": value.Currency, "pendingMinor": strconv.FormatInt(value.PendingMinor, 10), "availableMinor": strconv.FormatInt(value.AvailableMinor, 10), "reservedMinor": strconv.FormatInt(value.ReservedMinor, 10), "adjustmentMinor": strconv.FormatInt(value.AdjustmentMinor, 10), "version": strconv.FormatInt(value.Version, 10), "updatedAt": nullableTime(value.UpdatedAt)}
+			}
+		}
+	}
+	writeReferralJSON(c, gin.H{"code": out.Code, "codeAvailability": availability, "count": out.Count, "generatedAt": time.Now().UTC(), "earnings": earnings})
 }
 func (m referralHTTPModule) createSelfCode(c *gin.Context) {
 	if !referralSelfInput(c) {

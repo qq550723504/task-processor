@@ -24,21 +24,24 @@ var (
 )
 
 type Config struct {
-	Referrals           ReferralsConfig           `yaml:"-"`
-	FeatureFlags        FeatureFlagsConfig        `yaml:"featureFlags"`
-	Observability       ObservabilityConfig       `yaml:"observability"`
-	Logging             LoggingConfig             `yaml:"logging"`
-	Processor           ProcessorConfig           `yaml:"processor"`
-	Worker              WorkerConfig              `yaml:"worker"`
-	OpenAI              OpenAIConfig              `yaml:"openai"`
-	Browser             BrowserConfig             `yaml:"browser"`
-	Amazon              AmazonConfig              `yaml:"amazon"`
-	RabbitMQ            *RabbitMQConfig           `yaml:"rabbitmq"`
-	Updater             UpdaterConfig             `yaml:"updater"`
-	Platforms           PlatformsConfig           `yaml:"platforms"`
-	Watermark           *watermark.Config         `yaml:"watermark"`
-	ImageAgent          ImageAgentConfig          `yaml:"imageagent"`
-	Database            *DatabaseConfig           `yaml:"database"`
+	Referrals     ReferralsConfig     `yaml:"-"`
+	FeatureFlags  FeatureFlagsConfig  `yaml:"featureFlags"`
+	Observability ObservabilityConfig `yaml:"observability"`
+	Logging       LoggingConfig       `yaml:"logging"`
+	Processor     ProcessorConfig     `yaml:"processor"`
+	Worker        WorkerConfig        `yaml:"worker"`
+	OpenAI        OpenAIConfig        `yaml:"openai"`
+	Browser       BrowserConfig       `yaml:"browser"`
+	Amazon        AmazonConfig        `yaml:"amazon"`
+	RabbitMQ      *RabbitMQConfig     `yaml:"rabbitmq"`
+	Updater       UpdaterConfig       `yaml:"updater"`
+	Platforms     PlatformsConfig     `yaml:"platforms"`
+	Watermark     *watermark.Config   `yaml:"watermark"`
+	ImageAgent    ImageAgentConfig    `yaml:"imageagent"`
+	Database      *DatabaseConfig     `yaml:"database"`
+	// CommercialDatabase is optional for workers that settle observed AI
+	// usage into the commercial owner.
+	CommercialDatabase  *DatabaseConfig           `yaml:"commercialDatabase"`
 	Redis               *RedisConfig              `yaml:"redis"`
 	Prompts             PromptsConfig             `yaml:"prompts"`
 	Debug               DebugConfig               `yaml:"debug"`
@@ -580,6 +583,27 @@ func knownEnvBindings() map[string]envBinding {
 		"database.max_idle_connections": {
 			Primary:    "TASK_PROCESSOR_DATABASE_MAX_IDLE_CONNECTIONS",
 			Deprecated: []string{"DB_MAX_IDLE_CONNECTIONS"},
+		},
+		"commercialDatabase.host": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_HOST",
+		},
+		"commercialDatabase.port": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_PORT",
+		},
+		"commercialDatabase.user": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_USER",
+		},
+		"commercialDatabase.password": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_PASSWORD",
+		},
+		"commercialDatabase.database": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_NAME",
+		},
+		"commercialDatabase.max_connections": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_MAX_CONNECTIONS",
+		},
+		"commercialDatabase.max_idle_connections": {
+			Primary: "TASK_PROCESSOR_COMMERCIAL_DATABASE_MAX_IDLE_CONNECTIONS",
 		},
 		"redis.host": {
 			Primary:    "TASK_PROCESSOR_REDIS_HOST",

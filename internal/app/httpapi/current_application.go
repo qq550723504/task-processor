@@ -12,10 +12,12 @@ import (
 	"gorm.io/gorm"
 
 	registration "task-processor/internal/app/referralregistration"
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	a1688 "task-processor/internal/integration/acquisition/a1688"
+	moneystore "task-processor/internal/integration/persistence/money"
 	referralstore "task-processor/internal/integration/persistence/referral"
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	"task-processor/internal/integration/zitadelregistration"
@@ -40,13 +42,20 @@ var currentWorkbenchApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodPost, Path: "/api/v1/workbench/source-accounts/:source_account_id/enable"},
 }
 
+var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
+	{Method: http.MethodGet, Path: accountBusinessProfilePath},
+	{Method: http.MethodPut, Path: accountBusinessProfilePath},
+}
+
 type currentApplicationFactories struct {
-	buildWorkbench     workbenchContextModuleBuilder
-	buildSourceAccount func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAcquisition   func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildMembership    func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAudit  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildWorkbench         workbenchContextModuleBuilder
+	buildSourceAccount     func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildCommercial        func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAcquisition       func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildMembership        func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAllocation func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAudit      func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountProfile    func(*gorm.DB) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
@@ -89,9 +98,11 @@ func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationF
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
-		buildAccountAudit: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, db, authorizer)
+		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, authorizer)
 		},
+		buildAccountProfile:    func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
+		buildAccountAllocation: buildAccountResourceAllocationModule,
 	}
 }
 
@@ -178,6 +189,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	includeAccountProfile := factories.buildAccountProfile != nil
+	if includeAccountProfile {
+		accountProfile, profileErr := factories.buildAccountProfile(sourceAccountDB)
+		if profileErr != nil {
+			return nil, fmt.Errorf("build current account profile module: %w", profileErr)
+		}
+		if accountProfile == nil {
+			return nil, errors.New("current account profile module unavailable")
+		}
+		modules = append(modules, accountProfile)
+	}
 	if factories.buildAcquisition != nil {
 		acquisition, err := factories.buildAcquisition(authorizer, *workbench.authDependencies)
 		if err != nil {
@@ -201,7 +223,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, errors.New("disabled referrals must not receive a pool")
 	}
 	if factories.buildAccountAudit != nil {
-		audit, auditErr := factories.buildAccountAudit(sourceAccountDB, authorizer)
+		audit, auditErr := factories.buildAccountAudit(sourceAccountDB, commercialDB, authorizer)
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)
 		}
@@ -220,11 +242,28 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, membership)
 	}
+	includeAccountAllocation := factories.buildAccountAllocation != nil && supplied.membership != nil
+	if includeAccountAllocation {
+		allocation, err := factories.buildAccountAllocation(ctx, cfg, sourceAccountDB, commercialDB, *supplied.membership, authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build current account resource allocation module: %w", err)
+		}
+		if allocation == nil {
+			return nil, errors.New("current account resource allocation module unavailable")
+		}
+		modules = append(modules, allocation)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil); err != nil {
+	var routeErr error
+	if includeAccountProfile {
+		routeErr = validateCurrentApplicationRoutesWithAccountProfile(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountAllocation)
+	} else {
+		routeErr = validateCurrentApplicationRoutesWithFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountAllocation)
+	}
+	if err := routeErr; err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
@@ -239,8 +278,21 @@ func validateCurrentApplicationRoutesForAcquisition(routes []httproute.Descripto
 	return validateCurrentApplicationRoutesWithFeatures(routes, false, acquisition, false, false)
 }
 
-func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool) error {
+func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
+	allocation := len(includeAllocation) > 0 && includeAllocation[0]
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation)
+}
+
+func validateCurrentApplicationRoutesWithAccountProfile(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
+	allocation := len(includeAllocation) > 0 && includeAllocation[0]
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation)
+}
+
+func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if includeAccountProfile {
+		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
+	}
 	if includeAcquisition {
 		admitted = append(admitted,
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase},
@@ -264,6 +316,10 @@ func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor,
 			return err
 		}
 	}
+	if includeAllocation {
+		expected[currentApplicationRoute{Method: http.MethodGet, Path: "/api/v1/account/organization/resources/member-allocations"}] = struct{}{}
+		expected[currentApplicationRoute{Method: http.MethodPut, Path: "/api/v1/account/organization/resources/member-allocations/:member_id"}] = struct{}{}
+	}
 	referralRoutes := map[currentApplicationRoute]httproute.Descriptor{}
 	if includeReferrals {
 		for _, descriptor := range (referralHTTPModule{}).routes() {
@@ -281,7 +337,7 @@ func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor,
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")
 		}
 		route := currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path}
-		if want, ok := referralRoutes[route]; ok && (descriptor.AuthPolicy != want.AuthPolicy || descriptor.OrganizationAccessPolicy != want.OrganizationAccessPolicy || descriptor.Permission != "" || descriptor.OrganizationTargetResolver != nil || descriptor.RequestTimeout != want.RequestTimeout || descriptor.RejectUnreadRequestBody != want.RejectUnreadRequestBody) {
+		if want, ok := referralRoutes[route]; ok && (descriptor.AuthPolicy != want.AuthPolicy || descriptor.OrganizationAccessPolicy != want.OrganizationAccessPolicy || route.Path != accountReferralWithdrawalReviewPath && descriptor.Permission != "" || descriptor.OrganizationTargetResolver != nil || descriptor.RequestTimeout != want.RequestTimeout || descriptor.RejectUnreadRequestBody != want.RejectUnreadRequestBody) {
 			return errors.New("referrals descriptor does not preserve its authority boundary")
 		}
 		if _, ok := expected[route]; !ok {
@@ -340,12 +396,16 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	if err != nil || keys != 10 {
 		return nil, errors.New("referrals durable key verification failed")
 	}
+	payoutMethods, err := moneystore.New(db)
+	if err != nil {
+		return nil, err
+	}
 	provider, err := zitadelregistration.New(zitadelregistration.Config{Origin: r.ProviderOrigin, LoginOrigin: r.OfficialLoginOrigin, Organization: r.SignupOrganizationID, HTTPClient: secrets.HTTPClient, Token: func(context.Context) (string, error) { return secrets.ProviderToken, nil }})
 	if err != nil {
 		return nil, err
 	}
 	service := &registration.Service{Store: repository, Provider: provider, Issuer: r.Issuer, Instance: r.InstanceID, Organization: r.SignupOrganizationID, Now: time.Now, Keys: registration.Keys{Active: r.KeyID, Lookup: secrets.Lookup, Proof: secrets.Proof, Encryption: secrets.Encryption}}
-	return referralHTTPModule{commands: service, serviceCredential: secrets.ServiceCredential}, nil
+	return referralHTTPModule{commands: service, economics: repository, payoutMethods: payoutMethods, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {

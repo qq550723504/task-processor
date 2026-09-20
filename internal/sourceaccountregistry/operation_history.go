@@ -25,8 +25,10 @@ type HistoryPosition struct {
 	Version    int64
 }
 type HistoryRequest struct {
-	Limit int
-	After *HistoryPosition
+	Limit        int
+	After        *HistoryPosition
+	ActorSubject string
+	Kind         OperationKind
 }
 type HistoryPage struct {
 	Items []CommittedOperation
@@ -89,6 +91,14 @@ func (s *HistoryService) List(ctx context.Context, request HistoryRequest) (Hist
 }
 func (r HistoryRequest) Validate() error {
 	if r.Limit < 1 || r.Limit > MaxPageLimit || r.After != nil && r.After.Validate() != nil {
+		return ErrInvalid
+	}
+	if r.ActorSubject != "" && !validScopeValue(r.ActorSubject, MaxActorSubjectBytes) {
+		return ErrInvalid
+	}
+	switch r.Kind {
+	case "", OperationRegister, OperationEnable, OperationDisable:
+	default:
 		return ErrInvalid
 	}
 	return nil

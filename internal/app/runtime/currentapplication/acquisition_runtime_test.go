@@ -15,7 +15,7 @@ import (
 func acquisitionRuntimeConfig() *Config {
 	return &Config{SchemaVersion: 1, Listen: ListenConfig{Host: "127.0.0.1", Port: 18081}, Identity: IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "fixture-project"},
 		SourceAccountDatabase:      DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "source_account_runtime", Password: "fixture-password", Database: "source_account", MaxConnections: 2},
-		CommercialDatabase:         DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "commercial_reader", Password: "fixture-password", Database: "commercial", MaxConnections: 2},
+		CommercialDatabase:         DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "commercial_runtime", Password: "fixture-password", Database: "commercial", MaxConnections: 2},
 		ProductAcquisitionDatabase: &DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "source_acquisition_runtime", Password: "fixture-password", Database: "product", MaxConnections: 8}}
 }
 

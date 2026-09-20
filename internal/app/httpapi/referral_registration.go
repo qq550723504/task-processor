@@ -16,16 +16,25 @@ import (
 
 	"github.com/gin-gonic/gin"
 	app "task-processor/internal/app/referralregistration"
+	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/money"
 	"task-processor/internal/referral"
+	economics "task-processor/internal/referraleconomics"
 )
 
 const referralIntentsPath = "/api/v1/referral-registration/intents"
 const referralResumePath = "/api/v1/referral-registration/resume"
 const accountReferralsPath = "/api/v1/account/referrals"
 const accountReferralsCompletePath = accountReferralsPath + "/complete"
+const accountReferralEarningsPath = accountReferralsPath + "/earnings"
+const accountReferralPayoutMethodsPath = accountReferralsPath + "/payout-methods"
+const accountReferralWithdrawalsPath = accountReferralsPath + "/withdrawals"
+const accountReferralWithdrawalCancelPath = accountReferralWithdrawalsPath + "/:withdrawal_id/cancel"
+const accountReferralWithdrawalReviewPath = accountReferralWithdrawalsPath + "/:withdrawal_id/review"
 
 type referralCommands interface {
 	Start(context.Context, app.Request) (app.Admission, error)
@@ -35,9 +44,28 @@ type referralCommands interface {
 	Complete(context.Context) (referral.Receipt, error)
 }
 
+type referralEconomics interface {
+	ReadEarnings(context.Context, string, string) (economics.Earnings, error)
+	RequestWithdrawal(context.Context, economics.RequestWithdrawal) (economics.Withdrawal, error)
+	CancelWithdrawal(context.Context, string, string, int64, string) (economics.Withdrawal, error)
+	ReviewWithdrawal(context.Context, economics.ReviewWithdrawal) (economics.Withdrawal, error)
+}
+
+// payoutMethodReader is intentionally separate from referral economics. A
+// withdrawal may only be requested when an existing canonical account owner
+// confirms a valid method for the current person; a channel enum alone is not
+// payout-method persistence.
+type payoutMethodReader interface {
+	HasValidPayoutMethod(context.Context, string, string) (bool, error)
+	ListActivePayoutMethods(context.Context, string) ([]money.PayoutMethodSummary, error)
+}
+
 type referralHTTPModule struct {
 	commands              referralCommands
 	serviceCredential     string
+	economics             referralEconomics
+	payoutMethods         payoutMethodReader
+	profileReader         authidentity.SelfProfileReader
 	onSlotAcquiredForTest func()
 }
 
@@ -63,6 +91,11 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodGet, Path: accountReferralsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readSelf},
 		{Method: http.MethodPost, Path: accountReferralsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createSelfCode},
 		{Method: http.MethodPost, Path: accountReferralsCompletePath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.complete},
+		{Method: http.MethodGet, Path: accountReferralEarningsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readEarnings},
+		{Method: http.MethodGet, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readPayoutMethods},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},
 	}
 	for i := range routes {
 		routes[i].Module = m.Name()

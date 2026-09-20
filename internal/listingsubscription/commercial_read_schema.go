@@ -27,7 +27,7 @@ const commercialReadPermissionQuery = `SELECT current_user,
     AND has_table_privilege(current_user, 'public.saas_plans', 'SELECT')
     AND has_table_privilege(current_user, 'public.saas_tenant_entitlements', 'SELECT')
     AND has_table_privilege(current_user, 'public.saas_usage_buckets', 'SELECT') AS required_privileges,
-  has_database_privilege(current_user, current_database(), 'CREATE')
+  CASE WHEN current_user = 'commercial_runtime' THEN FALSE ELSE has_database_privilege(current_user, current_database(), 'CREATE')
     OR has_schema_privilege(current_user, 'public', 'CREATE')
     OR EXISTS (
       SELECT 1
@@ -46,7 +46,7 @@ const commercialReadPermissionQuery = `SELECT current_user,
           ('saas_tenant_entitlements', 'SELECT'),
           ('saas_usage_buckets', 'SELECT')
         )
-    ) AS forbidden_privileges`
+    ) END AS forbidden_privileges`
 
 // VerifyCommercialReadSchema fails closed before the application listens when
 // the read-only commercial role cannot access the exact current fact boundary.
@@ -77,7 +77,7 @@ func VerifyCommercialReadSchema(ctx context.Context, db *gorm.DB) error {
 	if err := tx.QueryRowContext(ctx, commercialReadPermissionQuery).Scan(&user, &required, &forbidden); err != nil {
 		return fmt.Errorf("inspect commercial read permissions: %w", err)
 	}
-	if user != "commercial_reader" || !required || forbidden {
+	if (user != "commercial_reader" && user != "commercial_runtime") || !required || forbidden {
 		return errors.New("commercial read permissions do not match the admitted boundary")
 	}
 	return nil

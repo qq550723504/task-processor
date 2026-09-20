@@ -2,6 +2,7 @@ package imageagentworker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ import (
 	openaiclient "task-processor/internal/integration/openai"
 	productassetpersistence "task-processor/internal/integration/persistence/product/asset"
 	s3integration "task-processor/internal/integration/s3"
+	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -38,7 +40,7 @@ type imageAgentWorkerDependencyResolver struct {
 	LoadConfig         func(string) (*config.Config, error)
 	OpenDB             func(*config.DatabaseConfig) (*gorm.DB, error)
 	CloseDB            func(*config.DatabaseConfig, *gorm.DB) error
-	BuildAI            func(*config.Config, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
+	BuildAI            func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
 	BuildCapabilities  func(imageCapabilityRuntime) (ImageCapabilities, error)
 	BuildArtifactStore func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
 	ArtifactTiming     imageAgentArtifactTiming
@@ -179,8 +181,22 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	if err != nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open image agent worker database: %w", err)
 	}
-	closeDB := func() error { return resolver.CloseDB(cfg.Database, db) }
-	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db, logger)
+	var commercialDB *gorm.DB
+	if cfg.CommercialDatabase != nil {
+		commercialDB, err = resolver.OpenDB(cfg.CommercialDatabase)
+		if err != nil {
+			_ = resolver.CloseDB(cfg.Database, db)
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open commercial usage database: %w", err)
+		}
+	}
+	closeDB := func() error {
+		closeErr := resolver.CloseDB(cfg.Database, db)
+		if commercialDB != nil {
+			closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialDatabase, commercialDB))
+		}
+		return closeErr
+	}
+	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db, commercialDB, logger)
 	if err != nil {
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent provider runtime: %w", err)
@@ -320,7 +336,7 @@ func (timing imageAgentArtifactTiming) validate() error {
 	return nil
 }
 
-func buildImageAgentWorkerAI(cfg *config.Config, db *gorm.DB, logger *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+func buildImageAgentWorkerAI(cfg *config.Config, db, commercialDB *gorm.DB, logger *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 	if cfg == nil || db == nil {
 		return nil, nil, nil, fmt.Errorf("image agent provider configuration and database are required")
 	}
@@ -337,5 +353,9 @@ func buildImageAgentWorkerAI(cfg *config.Config, db *gorm.DB, logger *logrus.Log
 	}
 	credentials := openaiclient.NewGormCredentialResolver(db)
 	manager.SetConfigResolver(credentials)
-	return manager, credentials, aicapabilitystore.NewGormInvocationRecorder(db), nil
+	recorder := aicapabilitystore.NewGormInvocationRecorder(db)
+	if commercialDB != nil {
+		recorder.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(commercialDB)})
+	}
+	return manager, credentials, recorder, nil
 }

@@ -48,7 +48,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
     "projectID": "$(tr -d '\r\n' < "$runtime/project-id")"
   },
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
-  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_reader", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
+  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
   "referrals": {
     "enabled": true,
     "issuer": "https://localhost:18443",

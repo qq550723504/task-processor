@@ -15,7 +15,17 @@ import (
 // It deliberately has no retry policy: callers decide whether recorder failures
 // should affect their request path.
 type GormInvocationRecorder struct {
-	db *gorm.DB
+	db           *gorm.DB
+	usageSettler aicapability.InvocationUsageSettler
+}
+
+// SetUsageSettler attaches the commercial accounting adapter. It is kept as
+// an explicit composition seam because invocation observation and commercial
+// accounting may use different database pools.
+func (r *GormInvocationRecorder) SetUsageSettler(settler aicapability.InvocationUsageSettler) {
+	if r != nil {
+		r.usageSettler = settler
+	}
 }
 
 // NewGormInvocationRecorder creates a recorder backed by db.
@@ -44,7 +54,23 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		return err
 	}
 
-	return r.db.WithContext(ctx).Create(invocationRowFromRecord(record)).Error
+	err := r.db.WithContext(ctx).Create(invocationRowFromRecord(record)).Error
+	if err != nil {
+		// A retry after the provider fact was durably recorded must still be
+		// allowed to finish commercial settlement. The invocation ID is the
+		// stable observation identity.
+		var existing invocationRow
+		if lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error; lookupErr != nil {
+			return err
+		}
+		if existing.TenantID != strings.TrimSpace(record.TenantID) || existing.UserID != strings.TrimSpace(record.UserID) || existing.TotalTokens != record.TotalTokens || existing.Outcome != strings.TrimSpace(string(record.Outcome)) {
+			return err
+		}
+	}
+	if r.usageSettler != nil {
+		return aicapability.SettleSuccessfulInvocation(ctx, record, r.usageSettler)
+	}
+	return nil
 }
 
 func validateUsage(record aicapability.InvocationRecord) error {

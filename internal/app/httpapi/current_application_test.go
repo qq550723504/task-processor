@@ -153,7 +153,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 				buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 				},
-				buildAccountAudit: func(got *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+				buildAccountAudit: func(got, _ *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					if got != sourceDB || authorizer == nil {
 						t.Fatal("audit did not reuse source pool/authorizer")
 					}

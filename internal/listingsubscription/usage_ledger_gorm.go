@@ -20,6 +20,22 @@ func NewGormUsageLedger(repo *GormRepository) UsageLedger {
 	return &gormUsageLedger{repo: repo}
 }
 
+// SettleUsageInTransaction reserves and commits one usage event on the
+// caller's commercial transaction. It is intentionally small: callers that
+// also lock an allocation row can keep allocation and the usage bucket/event
+// in the same transaction without introducing a distributed transaction.
+func (r *GormRepository) SettleUsageInTransaction(ctx context.Context, tx *gorm.DB, input ReserveUsageInput) (UsageEvent, error) {
+	if r == nil || r.db == nil || tx == nil {
+		return UsageEvent{}, ErrUsageLedgerNotConfigured
+	}
+	ledger := &gormUsageLedger{repo: &GormRepository{db: tx}}
+	reserved, err := ledger.Reserve(ctx, input)
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Commit(ctx, reserved.Event.EventID)
+}
+
 type gormUsageLedger struct {
 	repo *GormRepository
 }
@@ -152,7 +168,7 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 		event := usageEventRow{
 			EventID: uuid.NewString(), TenantID: input.TenantID, ModuleCode: input.ModuleCode,
 			Metric: input.Metric, Quantity: input.Quantity, PeriodKey: input.PeriodKey,
-			SourceType: input.SourceType, SourceID: input.SourceID, IdempotencyKey: input.IdempotencyKey,
+			SourceType: input.SourceType, SourceID: input.SourceID, MemberID: input.MemberID, IdempotencyKey: input.IdempotencyKey,
 			Status: string(UsageEventReserved), OccurredAt: input.OccurredAt, Metadata: string(metadata),
 		}
 		if err := tx.Create(&event).Error; err != nil {
@@ -314,7 +330,7 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		reversal := usageEventRow{
 			EventID: uuid.NewString(), TenantID: source.TenantID, ModuleCode: source.ModuleCode,
 			Metric: source.Metric, Quantity: quantity, PeriodKey: source.PeriodKey,
-			SourceType: source.SourceType, SourceID: source.SourceID, IdempotencyKey: idempotencyKey,
+			SourceType: source.SourceType, SourceID: source.SourceID, MemberID: source.MemberID, IdempotencyKey: idempotencyKey,
 			Status: string(UsageEventReversed), OccurredAt: time.Now().UTC(), StorageSnapshot: storageSnapshot, StorageSnapshotAt: storageSnapshotAt, ReversalOf: source.EventID, Metadata: metadata,
 		}
 		if err := tx.Create(&reversal).Error; err != nil {
@@ -872,7 +888,7 @@ func usageEventFromRow(row usageEventRow) UsageEvent {
 	if row.Metadata != "" {
 		_ = json.Unmarshal([]byte(row.Metadata), &metadata)
 	}
-	return UsageEvent{EventID: row.EventID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Metric: row.Metric, Quantity: row.Quantity, PeriodKey: row.PeriodKey, SourceType: row.SourceType, SourceID: row.SourceID, IdempotencyKey: row.IdempotencyKey, Status: UsageEventStatus(row.Status), OccurredAt: row.OccurredAt, StorageSnapshot: cloneUsageInt64Pointer(row.StorageSnapshot), StorageSnapshotAt: cloneUsageTimePointer(row.StorageSnapshotAt), ReversalOf: row.ReversalOf, Metadata: metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return UsageEvent{EventID: row.EventID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Metric: row.Metric, Quantity: row.Quantity, PeriodKey: row.PeriodKey, SourceType: row.SourceType, SourceID: row.SourceID, MemberID: row.MemberID, IdempotencyKey: row.IdempotencyKey, Status: UsageEventStatus(row.Status), OccurredAt: row.OccurredAt, StorageSnapshot: cloneUsageInt64Pointer(row.StorageSnapshot), StorageSnapshotAt: cloneUsageTimePointer(row.StorageSnapshotAt), ReversalOf: row.ReversalOf, Metadata: metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 
 func cloneUsageInt64Pointer(value *int64) *int64 {

@@ -83,3 +83,20 @@ func TestProjectionRejectsMalformedCursorAndUnsafeSource(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProjectionBindsAuditFiltersToQueryAndCursor(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	id := "0198d4f0-0000-7000-8000-000000000001"
+	position := registry.HistoryPosition{OccurredAt: now, AccountID: id, Version: 2}
+	source := &historyStub{page: registry.HistoryPage{Items: []registry.CommittedOperation{{OrganizationID: "B", AccountID: id, ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now}}, Next: &position}}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	query, _ := New(source)
+	filter := Filter{ActorSubject: "actor", Kind: registry.OperationDisable}
+	page, err := query.ReadFiltered(ctx, 1, "", filter)
+	if err != nil || source.request.ActorSubject != "actor" || source.request.Kind != registry.OperationDisable || page.NextCursor == nil {
+		t.Fatalf("filtered read = %#v, err=%v, request=%#v", page, err, source.request)
+	}
+	if _, err := query.ReadFiltered(ctx, 1, *page.NextCursor, Filter{}); !errors.Is(err, registry.ErrInvalid) {
+		t.Fatalf("cursor reused without its filters: %v", err)
+	}
+}

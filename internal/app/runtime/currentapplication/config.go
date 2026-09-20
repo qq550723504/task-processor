@@ -215,8 +215,8 @@ func (cfg *Config) validate() error {
 	if err := cfg.CommercialDatabase.validate("commercialDatabase"); err != nil {
 		return err
 	}
-	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_reader" {
-		return errors.New("current application database roles must be source_account_runtime and commercial_reader")
+	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_runtime" {
+		return errors.New("current application database roles must be source_account_runtime and commercial_runtime")
 	}
 	if cfg.Membership != nil {
 		if err := cfg.Membership.validate(cfg.Identity); err != nil {

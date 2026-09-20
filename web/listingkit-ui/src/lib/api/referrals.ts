@@ -20,12 +20,14 @@ const admissionSchema = z.object({
   }
 });
 const resumeSchema = z.object({ status: z.literal("created") }).strict();
+const earningsUnavailable = z.object({ availability: z.literal("unavailable"), amount: z.null() }).strict();
+const earningsAvailable = z.object({ availability: z.literal("available"), currency: z.literal("CNY"), pendingMinor: z.string().regex(/^(0|[1-9][0-9]{0,18})$/), availableMinor: z.string().regex(/^(0|[1-9][0-9]{0,18})$/), reservedMinor: z.string().regex(/^(0|[1-9][0-9]{0,18})$/), adjustmentMinor: z.string().regex(/^-?(0|[1-9][0-9]{0,18})$/), version: z.string().regex(/^(0|[1-9][0-9]{0,18})$/), updatedAt: utcTimestamp.nullable() }).strict();
 const projectionSchema = z.object({
   code,
   codeAvailability: z.enum(["available", "not_created"]),
   count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   generatedAt: utcTimestamp,
-  earnings: z.object({ availability: z.literal("unavailable"), amount: z.null() }).strict(),
+  earnings: z.union([earningsUnavailable, earningsAvailable]),
 }).strict().superRefine((value, context) => {
   if ((value.codeAvailability === "available") !== (value.code.length > 0)) {
     context.addIssue({ code: "custom", message: "Invalid referral code availability" });
