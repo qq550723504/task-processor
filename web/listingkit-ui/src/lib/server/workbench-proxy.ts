@@ -1,3 +1,4 @@
+import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts/browser-capture";
 import { NextResponse } from "next/server";
 import {
   findNodeAtLocation,
@@ -26,7 +27,7 @@ import {
   sourceAccountPageResponseSchema,
 } from "@/lib/contracts/source-account";
 import { newRequestLogId } from "@/lib/server/request-log";
-import { hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
+import { hasTrustedSameOriginRecovery, hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
 import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionProductSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
@@ -57,6 +58,10 @@ export type WorkbenchResponseContract =
   | "source-account-mutation";
 
 type WorkbenchRequestContract =
+  | "browser-capture-create"
+  | "browser-capture-verify"
+  | "browser-capture-by-key"
+  | "browser-capture-read"
   | "product-acquisition-create"
   | "product-acquisition-verify"
   | "product-acquisition-read"
@@ -300,6 +305,14 @@ const sourceAccountErrorStatuses: Readonly<Record<string, number>> = {
 };
 
 const workbenchRouteAllowlist = [
+  routeDefinition("POST", "browser-capture-create", "product-acquisition", (path) =>
+    exactPath(path, "sourcing", "1688", "browser-captures") ? "sourcing/1688/browser-captures" : null),
+  routeDefinition("POST", "browser-capture-verify", "product-acquisition", (path) =>
+    exactPath(path, "sourcing", "1688", "browser-captures", "verify") ? "sourcing/1688/browser-captures/verify" : null),
+  routeDefinition("GET", "browser-capture-by-key", "product-acquisition", (path) =>
+    path.length === 5 && exactPath(path.slice(0, 4), "sourcing", "1688", "browser-captures", "by-key") && isAcquisitionUUID(path[4]!) ? `sourcing/1688/browser-captures/by-key/${path[4]}` : null),
+  routeDefinition("GET", "browser-capture-read", "product-acquisition", (path) =>
+    path.length === 4 && exactPath(path.slice(0, 3), "sourcing", "1688", "browser-captures") && isAcquisitionUUID(path[3]!) ? `sourcing/1688/browser-captures/${path[3]}` : null),
   routeDefinition("POST", "product-acquisition-create", "product-acquisition", (path) =>
     exactPath(path, "sourcing", "1688", "acquisitions") ? "sourcing/1688/acquisitions" : null),
   routeDefinition("POST", "product-acquisition-verify", "product-acquisition", (path) =>
@@ -395,7 +408,7 @@ export async function buildWorkbenchUpstreamRequest(
   if (
     (route.requestContract.startsWith("store-") ||
       route.requestContract.startsWith("source-account-") ||
-      route.requestContract.startsWith("product-acquisition-")) &&
+      (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-"))) &&
     new URL(request.url).pathname !==
       `/api/workbench/${route.upstreamPath}`
   ) {
@@ -426,13 +439,13 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = (route.requestContract.startsWith("source-account-") || route.requestContract.startsWith("product-acquisition-"))
+    const selectedOrganization = (route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-")))
       ? readSourceSelectedOrganization(request)
       : readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
     if (
       route.requestContract.startsWith("store-") ||
-      route.requestContract.startsWith("source-account-") || route.requestContract.startsWith("product-acquisition-")
+      route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-"))
     ) {
       const expectedOrganization = readExpectedOrganizationAssertion(
         request.headers,
@@ -454,6 +467,10 @@ export async function buildWorkbenchUpstreamRequest(
     }
 
     switch (route.requestContract) {
+      case "browser-capture-create":
+      case "browser-capture-verify":
+      case "browser-capture-by-key":
+      case "browser-capture-read":
       case "product-acquisition-create":
       case "product-acquisition-verify":
       case "product-acquisition-read":
@@ -463,7 +480,13 @@ export async function buildWorkbenchUpstreamRequest(
         if (!assertedActor || !isSafeOrganizationId(assertedActor) || assertedActor !== authenticatedActorSubject) {
           return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
         }
-        if (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product") {
+        if (route.requestContract === "browser-capture-by-key") {
+          const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject, true);
+          if (assertion) return assertion;
+          if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+          break;
+        }
+        if (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product" || route.requestContract === "browser-capture-read") {
           if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
           break;
         }
@@ -474,12 +497,13 @@ export async function buildWorkbenchUpstreamRequest(
         }
         const key = request.headers.get("Idempotency-Key") ?? "";
         if (!isAcquisitionUUID(key)) return protocolError(400, "INVALID_REQUEST", "Idempotency-Key is invalid");
-        const raw = await readRequestBody(request, ACQUISITION_BODY_MAX_BYTES, "SOURCE_TOO_LARGE");
+        const browser = route.requestContract.startsWith("browser-capture-");
+        const raw = await readRequestBody(request, browser ? BROWSER_CAPTURE_MAX_BYTES : ACQUISITION_BODY_MAX_BYTES, "SOURCE_TOO_LARGE");
         if (raw instanceof Response) return raw;
         const parsed = parseJSONBody(raw);
-        const validated = acquisitionRequestSchema.safeParse(parsed?.payload);
+        const validated = browser ? browserCaptureSchema.safeParse(parsed?.payload) : acquisitionRequestSchema.safeParse(parsed?.payload);
         if (!parsed || !validated.success) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
-        body = JSON.stringify(validated.data);
+        body = browser ? parsed.text : JSON.stringify(validated.data);
         headers.set("Content-Type", "application/json"); headers.set("Idempotency-Key", key);
         break;
       }
@@ -683,7 +707,7 @@ export async function buildWorkbenchUpstreamRequest(
     },
     responseContract: route.responseContract,
     expectedStoreId:
-      (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product") ? path[3] :
+      (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product" || route.requestContract === "browser-capture-read") ? path[3] :
       route.responseContract === "store-item" ||
       route.responseContract === "store-delete" ||
       route.responseContract === "store-service-lifecycle" ||
@@ -693,6 +717,9 @@ export async function buildWorkbenchUpstreamRequest(
         : undefined,
     requestId,
     sourceMutation:
+      route.requestContract === "browser-capture-create" ||
+      route.requestContract === "browser-capture-verify" ||
+      route.requestContract === "browser-capture-by-key" ||
       route.requestContract === "product-acquisition-create" ||
       route.requestContract === "product-acquisition-verify" ||
       route.requestContract === "source-account-create" ||
@@ -1106,8 +1133,9 @@ function parseSourceAccountListQuery(rawURL: string) {
 function validateSourceMutationBoundary(
   request: Request,
   authenticatedActorSubject: string,
+  recovery = false,
 ) {
-  if (!hasTrustedSameOriginWrite(request)) {
+  if (!(recovery ? hasTrustedSameOriginRecovery(request) : hasTrustedSameOriginWrite(request))) {
     return protocolError(403, "PERMISSION_DENIED", "Same-origin request is required");
   }
   const assertedActor = request.headers.get(EXPECTED_USER_ID_HEADER);

@@ -41,12 +41,13 @@ var currentWorkbenchApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildWorkbench     workbenchContextModuleBuilder
-	buildSourceAccount func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildCommercial    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAcquisition   func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildMembership    func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAudit  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildWorkbench      workbenchContextModuleBuilder
+	buildSourceAccount  func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildCommercial     func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAcquisition    func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildBrowserCapture func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildMembership     func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAudit   func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
@@ -188,6 +189,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, acquisition)
 	}
+	if factories.buildBrowserCapture != nil {
+		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("build current Browser capture module: %w", err)
+		}
+		if browser == nil {
+			return nil, errors.New("current Browser capture module unavailable")
+		}
+		modules = append(modules, browser)
+	}
 	if cfg.Referrals.Enabled {
 		if supplied.referralDB == nil {
 			return nil, errors.New("referrals dependencies unavailable")
@@ -224,7 +235,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil); err != nil {
+	if err := validateCurrentApplicationRoutesWithBrowser(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil); err != nil {
 		return nil, err
 	}
 	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
@@ -236,10 +247,18 @@ func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudi
 }
 
 func validateCurrentApplicationRoutesForAcquisition(routes []httproute.Descriptor, acquisition bool) error {
-	return validateCurrentApplicationRoutesWithFeatures(routes, false, acquisition, false, false)
+	return validateCurrentApplicationRoutesForSourcing(routes, acquisition, false)
+}
+
+func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, acquisition, browser bool) error {
+	return validateCurrentApplicationRoutesWithBrowser(routes, false, acquisition, false, false, browser)
 }
 
 func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool) error {
+	return validateCurrentApplicationRoutesWithBrowser(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false)
+}
+
+func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAcquisition {
 		admitted = append(admitted,
@@ -247,6 +266,14 @@ func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor,
 			currentApplicationRoute{Method: http.MethodPost, Path: productAcquisitionBase + "/verify"},
 			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id"},
 			currentApplicationRoute{Method: http.MethodGet, Path: productAcquisitionBase + "/:operation_id/product"},
+		)
+	}
+	if includeBrowser {
+		admitted = append(admitted,
+			currentApplicationRoute{Method: http.MethodPost, Path: browserCaptureBase},
+			currentApplicationRoute{Method: http.MethodPost, Path: browserCaptureBase + "/verify"},
+			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/by-key/:key"},
+			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/:operation_id"},
 		)
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
