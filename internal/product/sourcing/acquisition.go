@@ -218,6 +218,7 @@ func MapAcquisitionEvidence(source AcquisitionSource, e AcquisitionEvidence, cha
 	for _, warning := range e.Warnings {
 		envelope.Warnings = append(envelope.Warnings, SourceWarning{Code: warning.Code, Field: warning.Field, Message: "source reported " + warning.Code})
 	}
+	foldSourceEnvelopeRepeats(&envelope)
 	if err := validateSourceEnvelopePreflight(envelope); err != nil {
 		return SourceEnvelope{}, err
 	}

@@ -165,12 +165,12 @@ it("renders source warnings preserved by the operation-bound Catalog product", a
     sources: [],
     images: [],
     specifications: [],
-    warnings: [{ field: "images", code: "SOURCE_IMAGE_UNVERIFIED" }],
+    warnings: [{ field: "variants[].sku", code: "MISSING_FACT", count: 45 }],
     missingFacts: [],
   });
 
   render(<AcquisitionPage operationId={operationID} />);
 
   expect(await screen.findByRole("heading", { name: "采集警告" })).toBeInTheDocument();
-  expect(screen.getByText("images：SOURCE_IMAGE_UNVERIFIED")).toBeInTheDocument();
+  expect(screen.getByText("variants[].sku：MISSING_FACT（共 45 处）")).toBeInTheDocument();
 });

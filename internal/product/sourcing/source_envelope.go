@@ -66,6 +66,9 @@ func (e SourceEnvelope) Normalize() SourceEnvelope {
 type MissingFact struct {
 	Field  string
 	Reason string
+	// Count records how many repeated per-instance occurrences were folded into
+	// this entry. Zero means exactly one occurrence, which is the common case.
+	Count int `json:"count,omitempty"`
 }
 
 // Normalize returns bounded-shape metadata without inventing a missing value.
@@ -149,6 +152,9 @@ type SourceWarning struct {
 	Code    string
 	Message string
 	Field   string
+	// Count records how many repeated per-instance occurrences were folded into
+	// this entry. Zero means exactly one occurrence, which is the common case.
+	Count int `json:"count,omitempty"`
 }
 
 // Normalize returns a warning with trimmed metadata.
