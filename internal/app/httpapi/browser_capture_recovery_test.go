@@ -75,7 +75,7 @@ func TestBrowserCaptureMountedRecoveryDoesNotLogRequestSecrets(t *testing.T) {
 					server := buildHTTPServerFromRoutesAtWithAuthDependencies("127.0.0.1", 0, routes, deps)
 					body := ""
 					if endpoint.method == http.MethodPost {
-						body = `{"captureVersion":1,"evidence":{"schemaVersion":1,"sourceURL":"https://detail.1688.com/offer/981645030344.html","offerID":"981645030344","title":"ISSUE399_SYNTHETIC_BODY_PRIVATE","description":null,"attributes":[],"variants":[],"priceFacts":[],"images":[],"capturedAt":"2026-09-12T00:00:00Z","contentSHA256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","parserVersion":"1688-browser-dom/v1","warnings":[],"missingFacts":[]}}`
+						body = `{"captureVersion":1,"evidence":{"schemaVersion":1,"sourceURL":"https://detail.1688.com/offer/981645030344.html","offerID":"981645030344","title":"ISSUE399_SYNTHETIC_BODY_PRIVATE","description":null,"attributes":[],"variants":[],"priceFacts":[],"images":[],"capturedAt":"2026-09-12T00:00:00Z","contentSHA256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","parserVersion":"1688-browser-dom/v2","warnings":[],"missingFacts":[]}}`
 					}
 					request := httptest.NewRequest(endpoint.method, browserCaptureBase+endpoint.suffix, strings.NewReader(body))
 					request.Header.Set("Authorization", "Bearer operator")
