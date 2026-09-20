@@ -15,7 +15,7 @@ import (
 
 const (
 	BrowserCaptureVersion        = 1
-	BrowserCaptureParserVersion  = "1688-browser-dom/v1"
+	BrowserCaptureParserVersion  = "1688-browser-dom/v2"
 	BrowserCaptureMaxBytes       = 2 * 1024 * 1024
 	browserCaptureMaxStringBytes = 8 * 1024
 	browserCaptureMaxCollection  = 256

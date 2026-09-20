@@ -19,7 +19,7 @@ func browserFixture(t *testing.T) []byte {
 	return body
 }
 
-const browserGoldenCanonical = `{"captureVersion":1,"evidence":{"schemaVersion":1,"sourceURL":"https://detail.1688.com/offer/981645030344.html","offerID":"981645030344","title":"棉质收纳袋","description":"可重复使用的棉质收纳袋。","attributes":[{"name":"材质","value":"棉"}],"variants":[{"sourceID":"99999999999999999999","sku":null,"title":null,"attributes":[{"name":"颜色","value":"蓝色"}],"price":{"amount":"1.23000001","currency":null,"minQuantity":null}}],"priceFacts":[{"amount":"12.34000001","currency":null,"minQuantity":"2"}],"images":[{"url":"https://cbu01.alicdn.com/img/ibank/fixture.jpg","role":"source"}],"capturedAt":"2026-09-12T00:00:00Z","contentSHA256":"69ea755f45b92880d8041c706dbd3fa77cff5b8143e021987faf0f1bdacdb6db","parserVersion":"1688-browser-dom/v1","warnings":[{"code":"MISSING_FACT","field":"priceFacts[0].currency"},{"code":"MISSING_FACT","field":"variants[0].sku"},{"code":"MISSING_FACT","field":"variants[0].price.currency"}],"missingFacts":[{"field":"priceFacts[0].currency","reason":"not_observed"},{"field":"variants[0].sku","reason":"not_observed"},{"field":"variants[0].price.currency","reason":"not_observed"}]}}`
+const browserGoldenCanonical = `{"captureVersion":1,"evidence":{"schemaVersion":1,"sourceURL":"https://detail.1688.com/offer/981645030344.html","offerID":"981645030344","title":"棉质收纳袋","description":"可重复使用的棉质收纳袋。","attributes":[{"name":"材质","value":"棉"}],"variants":[{"sourceID":"99999999999999999999","sku":null,"title":null,"attributes":[{"name":"颜色","value":"蓝色"}],"price":{"amount":"1.23000001","currency":null,"minQuantity":null}}],"priceFacts":[{"amount":"12.34000001","currency":null,"minQuantity":"2"}],"images":[{"url":"https://cbu01.alicdn.com/img/ibank/fixture.jpg","role":"source"}],"capturedAt":"2026-09-12T00:00:00Z","contentSHA256":"69ea755f45b92880d8041c706dbd3fa77cff5b8143e021987faf0f1bdacdb6db","parserVersion":"1688-browser-dom/v2","warnings":[{"code":"MISSING_FACT","field":"priceFacts[0].currency"},{"code":"MISSING_FACT","field":"variants[0].sku"},{"code":"MISSING_FACT","field":"variants[0].price.currency"}],"missingFacts":[{"field":"priceFacts[0].currency","reason":"not_observed"},{"field":"variants[0].sku","reason":"not_observed"},{"field":"variants[0].price.currency","reason":"not_observed"}]}}`
 
 func TestBrowserCaptureCanonicalGolden(t *testing.T) {
 	capture, err := ParseBrowserCapture(browserFixture(t))
@@ -30,7 +30,7 @@ func TestBrowserCaptureCanonicalGolden(t *testing.T) {
 		t.Fatalf("canonical bytes mismatch:\n%s", capture.CanonicalPayload)
 	}
 	// Independent oracle: .NET SHA256 over the frozen UTF-8 canonical string.
-	if capture.PayloadSHA256 != "503afdca81714f7b48638b81f1c6d720e3b29a1f2d2ba4da65c88a849def34c7" {
+	if capture.PayloadSHA256 != "a369a5768b0b88901600e277ee6708eff657552f934b0ebdcf583628be8ed23b" {
 		t.Fatalf("server intent SHA mismatch: %s", capture.PayloadSHA256)
 	}
 	if capture.PayloadSHA256 == "69ea755f45b92880d8041c706dbd3fa77cff5b8143e021987faf0f1bdacdb6db" {
@@ -78,7 +78,7 @@ func TestBrowserCaptureRejectsInvalidWire(t *testing.T) {
 		},
 		"wrong capture version": func(s string) string { return strings.Replace(s, `"captureVersion": 1`, `"captureVersion":2`, 1) },
 		"wrong schema version":  func(s string) string { return strings.Replace(s, `"schemaVersion": 1`, `"schemaVersion":2`, 1) },
-		"wrong parser":          func(s string) string { return strings.Replace(s, "1688-browser-dom/v1", "1688-public/v1", 1) },
+		"wrong parser":          func(s string) string { return strings.Replace(s, "1688-browser-dom/v2", "1688-public/v1", 1) },
 		"unaligned offer": func(s string) string {
 			return strings.Replace(s, `"offerID": "981645030344"`, `"offerID":"981645030345"`, 1)
 		},

@@ -24,7 +24,7 @@ const evidence = z.object({
   priceFacts: z.array(price).max(256),
   images: z.array(z.object({ url: text, role: text }).strict()).max(256),
   capturedAt: text.refine((v) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v))),
-  contentSHA256: z.string().regex(/^[0-9a-f]{64}$/), parserVersion: z.literal("1688-browser-dom/v1"),
+  contentSHA256: z.string().regex(/^[0-9a-f]{64}$/), parserVersion: z.literal("1688-browser-dom/v2"),
   warnings: z.array(z.object({ code: text, field: text }).strict()).max(256),
   missingFacts: z.array(z.object({ field: text, reason: text }).strict()).max(256),
 }).strict();

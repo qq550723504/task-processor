@@ -44,7 +44,7 @@
     ],
     "capturedAt": "2026-09-12T00:00:00.000Z",
     "contentSHA256": "69ea755f45b92880d8041c706dbd3fa77cff5b8143e021987faf0f1bdacdb6db",
-    "parserVersion": "1688-browser-dom/v1",
+    "parserVersion": "1688-browser-dom/v2",
     "warnings": [
       {
         "code": "MISSING_FACT",

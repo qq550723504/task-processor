@@ -8,7 +8,7 @@ export const browserCaptureFixture = () => ({
     attributes: [{ name: "material", value: "cotton" }], variants: [],
     priceFacts: [{ amount: "12.34000001", currency: null, minQuantity: "2" }],
     images: [], capturedAt: "2026-09-12T00:00:00.000Z",
-    contentSHA256: "a".repeat(64), parserVersion: "1688-browser-dom/v1",
+    contentSHA256: "a".repeat(64), parserVersion: "1688-browser-dom/v2",
     warnings: [{ code: "MISSING_FACT", field: "priceFacts[0].currency" }],
     missingFacts: [{ field: "priceFacts[0].currency", reason: "not_observed" }],
   },
