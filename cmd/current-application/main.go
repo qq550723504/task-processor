@@ -67,9 +67,10 @@ func execute() error {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
-			options := make([]httpapi.CurrentApplicationOption, 0, 3)
+			options := make([]httpapi.CurrentApplicationOption, 0, 4)
 			if features.ProductAcquisitionDB != nil {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
+				options = append(options, httpapi.WithBrowserCapture())
 			}
 			if features.ReferralDB != nil {
 				options = append(options, httpapi.WithReferrals(features.ReferralDB))
