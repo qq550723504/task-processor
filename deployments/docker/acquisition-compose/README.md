@@ -8,7 +8,21 @@ acquisition route and deliberately leaves membership and referrals disabled.
 Only loopback HTTPS is published:
 
 - `https://localhost:18443` — ZITADEL issuer and Login V2.
-- `https://localhost:18444` — ListingKit Web/BFF.
+- `https://acquisition.home.arpa` — ListingKit Web/BFF (loopback `:443`).
+
+The application origin is deliberately public-shaped instead of `localhost`
+because the 1688 browser-capture extension refuses to hand evidence to a
+`localhost`/IP/`.local` origin. `home.arpa` is reserved by RFC 8375 and can
+never be a real registrable domain, so this is a local-only name that the
+operator resolves themselves. Add it once, in an elevated shell:
+
+```powershell
+Add-Content -LiteralPath "$env:SystemRoot\System32\drivers\etc\hosts" -Value "127.0.0.1 acquisition.home.arpa"
+```
+
+The identity origin stays on `localhost:18443`; only the application origin
+moves. The leaf certificate carries both names, so `https://localhost:18443`
+keeps working.
 
 The Go application is reachable only at `127.0.0.1:8085` inside the shared
 network namespace. `LISTINGKIT_SERVICE_API_BASE` therefore remains the same
@@ -116,7 +130,7 @@ not bypass TLS validation:
 Import-Certificate -FilePath (Join-Path $deliveryDir 'root-ca.pem') -CertStoreLocation Cert:\CurrentUser\Root
 ```
 
-Sign in at `https://localhost:18444` as
+Sign in at `https://acquisition.home.arpa` as
 `local-bootstrap-operator@localhost`. Open the private password file locally
 with `notepad (Join-Path $deliveryDir 'operator-password.txt')`, type it into
 the browser, and close the editor afterwards; do not read it into PowerShell or

@@ -27,7 +27,7 @@ foreach ($expected in @(
     "$project-product-db-owner-secret",
     "$project-product-runtime-secret",
     'https://localhost:18443',
-    'https://localhost:18444'
+    'https://acquisition.home.arpa'
 )) {
     if ($rendered -notmatch [regex]::Escape($expected)) { throw "missing acquisition-compose contract: $expected" }
 }
@@ -70,7 +70,7 @@ if ($deliveryStart -lt 0 -or $deliveryEnd -le $deliveryStart) { throw 'acquisiti
 $delivery = $readme.Substring($deliveryStart, $deliveryEnd - $deliveryStart)
 foreach ($expected in @(
     'local-bootstrap-operator@localhost',
-    'https://localhost:18444',
+    'https://acquisition.home.arpa',
     '$project-trusted-ca',
     '$project-tofu-inputs',
     '/source-ca/root-ca.pem',
