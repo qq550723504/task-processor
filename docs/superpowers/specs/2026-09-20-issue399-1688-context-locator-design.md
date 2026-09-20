@@ -183,6 +183,8 @@ Case B 在真实页面上：实参为 `window.contextPath`（标识符，非对�
 - trial 接线分支：同步 v2 字面量与 golden 指纹后，`internal/product/sourcing` 测试通过。
 - 一致性断言（D2）：同一份语义记录，两种页面形状（IIFE 形 / JSON 字面量形）产出**逐字节相同** evidence。两个 golden 当前带同一 `contentSHA256`（`69ea755f…`），但**分处两个分支、需各自维护**——这是已知成本，非共享库；不为此新建跨语言共享层。
 - 端到端（真实页面）：**`NOT_RUN`**。原因见 §4.3；不得以夹具通过替代。
+- 浏览器级证据（层介于单测与真实页面之间，已执行）：将真实形状页面 `product-real-shape.html` 喂给**仓库已有的真实 Chrome + `Extensions.loadUnpacked` 冒烟路径**（`scripts/browser-smoke.mjs` 的等价副本，脚本放在 gitignored 的 `artifacts/` 下，**未进仓库**），使用 **A1 应用来源**构建的 `dist-fixture`：弹出层显示“采集完成”，交付载荷 `parserVersion = 1688-browser-dom/v2`，且除 `capturedAt`（实拍时间）外与 golden **逐字段相同**，`contentSHA256` 与 golden 一致 ⇒ 两种页面形状经真实注入路径产出同一语义记录。同路径下 JSON 字面量夹具（`product.html`）仍通过（`port-isolation-check.mjs`）。
+- 该浏览器级证据**仍不能替代**真实 1688 页面验证：页面响应仍被替换为夹具，未经过真实反爬、登录会话与真实后端。
 
 ## 7. 影响面与归属
 
