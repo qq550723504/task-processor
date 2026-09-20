@@ -5,7 +5,7 @@ import type { CapturePayload } from '../src/wire';
 const payload: CapturePayload = { captureVersion: 1, evidence: { schemaVersion: 1,
   sourceURL: 'https://detail.1688.com/offer/9.html', offerID: '9', title: 'Observed', description: null,
   attributes: [], variants: [], priceFacts: [], images: [], capturedAt: '2026-09-12T00:00:00Z',
-  contentSHA256: 'a'.repeat(64), parserVersion: '1688-browser-dom/v1', warnings: [], missingFacts: [] } };
+  contentSHA256: 'a'.repeat(64), parserVersion: '1688-browser-dom/v2', warnings: [], missingFacts: [] } };
 
 it('coalesces repeated capture clicks and never injects on a rejected current page', async () => {
   let resolve!: (v: CapturePayload) => void;

@@ -4,6 +4,87 @@ import { byteLength, fail, MAX_BYTES, pageSource, validateCapture } from './vali
 
 // EXTRACT: known 1688 productTitle/gallery/Root field semantics only. No legacy
 // service, window.context access, profile, network or arbitrary script execution.
+// Locates the product document inside 1688's inline scripts. The page assigns
+// window.context at a statement boundary to either a JSON object literal or an IIFE
+// call whose single object-literal argument carries the document (observed 2026-09).
+// Only the located literal text is ever copied; page globals, cookies and unrelated
+// scripts are never read. Anything ambiguous is rejected instead of guessed.
+function skipSpace(text: string, index: number): number {
+  while (index < text.length && /\s/.test(text[index])) index++;
+  return index;
+}
+function balancedEnd(text: string, index: number, open: string, close: string): number {
+  let depth = 0; let quote = ''; let escaped = false;
+  for (; index < text.length; index++) {
+    const char = text[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'") { quote = char; continue; }
+    if (char === open) depth++;
+    else if (char === close && --depth === 0) return index + 1;
+  }
+  return -1;
+}
+function topLevelItems(text: string): string[] {
+  const items: string[] = [];
+  let start = 0; let depth = 0; let quote = ''; let escaped = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'") { quote = char; continue; }
+    if ('([{'.includes(char)) depth++;
+    else if (')]}'.includes(char)) depth--;
+    else if (char === ',' && depth === 0) { items.push(text.slice(start, index)); start = index + 1; }
+  }
+  items.push(text.slice(start));
+  return items;
+}
+// A second object argument would be ambiguous, so the call is rejected instead.
+function objectArgument(call: string): string {
+  const objects = topLevelItems(call).map(item => item.trim())
+    .filter(item => item.startsWith('{') && balancedEnd(item, 0, '{', '}') === item.length);
+  if (objects.length !== 1) fail('UNSUPPORTED_PAGE');
+  return objects[0];
+}
+function contextPayload(text: string): string | null {
+  const assignment = /(?:window\s*\.\s*)?context\s*=\s*/g;
+  let payload: string | undefined;
+  for (let match = assignment.exec(text); match; match = assignment.exec(text)) {
+    const before = match.index > 0 ? text[match.index - 1] : '';
+    if (/[A-Za-z0-9_$.]/.test(before)) continue;
+    let index = match.index + match[0].length;
+    let extracted: string;
+    if (text[index] === '{') {
+      const end = balancedEnd(text, index, '{', '}');
+      if (end < 0) fail('UNSUPPORTED_PAGE');
+      extracted = text.slice(index, end); index = end;
+    } else if (text[index] === '(') {
+      const called = balancedEnd(text, index, '(', ')');
+      if (called < 0) fail('UNSUPPORTED_PAGE');
+      index = skipSpace(text, called);
+      if (text[index] !== '(') fail('UNSUPPORTED_PAGE');
+      const args = balancedEnd(text, index, '(', ')');
+      if (args < 0) fail('UNSUPPORTED_PAGE');
+      extracted = objectArgument(text.slice(index + 1, args - 1)); index = args;
+    } else fail('UNSUPPORTED_PAGE');
+    index = skipSpace(text, index);
+    if (text[index] === ';') index = skipSpace(text, index + 1);
+    if (index !== text.length) fail('UNSUPPORTED_PAGE');
+    if (payload !== undefined) fail('UNSUPPORTED_PAGE');
+    payload = extracted;
+  }
+  return payload ?? null;
+}
+
 export async function captureDocument(doc: Document, source: string, now: Date): Promise<CapturePayload> {
   const started = performance.now();
   const identity = pageSource(source);
@@ -12,16 +93,14 @@ export async function captureDocument(doc: Document, source: string, now: Date):
   const scripts = doc.querySelectorAll('script:not([src])');
   if (scripts.length > 256) fail('CAPTURE_TOO_LARGE');
   for (const script of scripts) {
-    // Inspect only a bounded prefix; unrelated scripts are never copied.
+    // Only the located literal is copied; other script text is never retained.
     const first = script.firstChild;
     if (!first || first.nodeType !== 3) continue;
     const text = first as Text;
-    const prefix = text.substringData(0, 80);
-    const match = /^\s*(?:window\.)?context\s*=\s*/.exec(prefix);
-    if (!match) continue;
+    if (!text.data.includes('context')) continue;
+    const candidate = contextPayload(text.data);
+    if (candidate === null) continue;
     if (raw !== undefined) fail('UNSUPPORTED_PAGE');
-    if (text.length > MAX_BYTES) fail('CAPTURE_TOO_LARGE');
-    const candidate = text.data.slice(match[0].length).trim().replace(/;\s*$/, '');
     if (byteLength(candidate) > MAX_BYTES) fail('CAPTURE_TOO_LARGE');
     raw = candidate;
   }
@@ -65,7 +144,7 @@ export async function captureDocument(doc: Document, source: string, now: Date):
   if (!title?.trim() || /验证码|请登录|访问受限|captcha|access denied/i.test(title)) fail('UNSUPPORTED_PAGE');
   const e: Evidence = {
     schemaVersion: 1, ...identity, title, description: null, attributes: [], variants: [], priceFacts: [], images: [],
-    capturedAt: now.toISOString(), contentSHA256: '0'.repeat(64), parserVersion: '1688-browser-dom/v1', warnings: [], missingFacts: [],
+    capturedAt: now.toISOString(), contentSHA256: '0'.repeat(64), parserVersion: '1688-browser-dom/v2', warnings: [], missingFacts: [],
   };
   const missing = (field: string) => {
     e.missingFacts.push({ field, reason: 'not_observed' });
@@ -83,9 +162,14 @@ export async function captureDocument(doc: Document, source: string, now: Date):
     const minQuantity = string(path(node, 'beginAmount'), true);
     return { amount, currency, ...(minQuantity !== null ? { minQuantity } : {}) };
   };
-  for (const item of array(path(data, 'price', 'fields', 'finalPriceModel', 'tradeWithoutPromotion', 'offerPriceRanges'))) {
-    const value = price(item, `priceFacts[${e.priceFacts.length}]`);
-    if (value) e.priceFacts.push(value);
+  // The sourcing owner reads price ranges from every result.data key, not only
+  // "price"; the same key set keeps both channels reporting identical facts.
+  const dataKeys = (data?.type === 'object' ? data.children?.map(pair => pair.children?.[0].value as string) : undefined) ?? [];
+  for (const key of [...dataKeys].sort()) {
+    for (const item of array(path(data, key, 'fields', 'finalPriceModel', 'tradeWithoutPromotion', 'offerPriceRanges'))) {
+      const value = price(item, `priceFacts[${e.priceFacts.length}]`);
+      if (value) e.priceFacts.push(value);
+    }
   }
   const sku = path(model, 'skuModel');
   const props = array(path(sku, 'skuProps')).map(n => string(path(n, 'prop')) ?? fail('UNSUPPORTED_PAGE'));

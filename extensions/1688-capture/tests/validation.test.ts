@@ -4,7 +4,7 @@ import { appURL, pageSource, publicImage, validateCapture } from '../src/validat
 export function minimalCapture() {
   return { captureVersion: 1, evidence: { schemaVersion: 1, sourceURL: 'https://detail.1688.com/offer/981645030344.html',
     offerID: '981645030344', title: 'Fixture', description: null, attributes: [], variants: [], priceFacts: [], images: [],
-    capturedAt: '2026-09-12T00:00:00Z', contentSHA256: 'a'.repeat(64), parserVersion: '1688-browser-dom/v1',
+    capturedAt: '2026-09-12T00:00:00Z', contentSHA256: 'a'.repeat(64), parserVersion: '1688-browser-dom/v2',
     warnings: [{ code: 'MISSING_PRICE', field: 'priceFacts' }], missingFacts: [{ field: 'priceFacts', reason: 'not_observed' }] } };
 }
 describe('frozen wire and resource admission', () => {

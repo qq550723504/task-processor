@@ -38,7 +38,7 @@ const evidence = z.strictObject({
   variants: z.array(z.strictObject({ sourceID: text.nullable(), sku: text.nullable(), title: text.nullable(), attributes: attrs, price: price.nullable() })).max(256),
   priceFacts: z.array(price).max(256), images: z.array(z.strictObject({ url: text.refine(publicImage), role: text })).max(256),
   capturedAt: text.refine(v => /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(v) && Number.isFinite(Date.parse(v))),
-  contentSHA256: text.regex(/^[a-f0-9]{64}$/), parserVersion: z.literal('1688-browser-dom/v1'),
+  contentSHA256: text.regex(/^[a-f0-9]{64}$/), parserVersion: z.literal('1688-browser-dom/v2'),
   warnings: z.array(z.strictObject({ code: text, field: text })).max(256),
   missingFacts: z.array(z.strictObject({ field: text, reason: text })).max(256),
 });

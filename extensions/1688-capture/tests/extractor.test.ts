@@ -4,8 +4,12 @@ import { readFileSync } from 'node:fs';
 import { captureDocument } from '../src/extractor';
 
 const source = 'https://detail.1688.com/offer/981645030344.html';
-function fixture(extra = '') {
-  const model = { result: { data: {
+// Observed 1688 wrapper: the document is the single object-literal argument of an
+// IIFE call, assigned after an unrelated window.contextPath statement.
+const iife = (payload: string) => '(function(b,d){var c=d.module||{};var e={};for(var a in c){if(typeof c[a]==="string"){e[a]=c[a]}}'
+  + `Object.assign(e,c[b]||{});Object.assign(d,{module:e});return d})(window.contextPath,${payload})`;
+const observedShape = (payload: string) => new JSDOM(`<script>\nwindow.contextPath = "/default";\nwindow.context = ${iife(payload)};\n</script>`, { url: source });
+const model = { result: { data: {
     productTitle: { fields: { title: '公开商品 <img onerror=alert(1)>' } },
     gallery: { fields: { offerImgList: ['https://cbu01.alicdn.com/img/ibank/product.jpg'] } },
     Root: { fields: { dataJson: { tempModel: { offerId: '981645030344' }, skuModel: {
@@ -15,6 +19,7 @@ function fixture(extra = '') {
       offerPriceRanges: [{ price: '12.34000001', beginAmount: '2' }],
     } } } },
   }, global: { globalData: { model: { offerDetail: { featureAttributes: [{ name: '材质', value: '棉' }] } } } } } };
+function fixture(extra = '') {
   return new JSDOM(`<script>window.context = ${JSON.stringify(model)};</script>${extra}`, { url: source });
 }
 
@@ -30,7 +35,7 @@ describe('explicit current-page capture', () => {
     const payload = await captureDocument(dom.window.document, source, new Date('2026-09-12T00:00:00Z'));
     expect(payload.captureVersion).toBe(1);
     expect(payload.evidence).toMatchObject({ schemaVersion: 1, sourceURL: source, offerID: '981645030344',
-      parserVersion: '1688-browser-dom/v1', title: '公开商品 <img onerror=alert(1)>',
+      parserVersion: '1688-browser-dom/v2', title: '公开商品 <img onerror=alert(1)>',
       attributes: [{ name: '材质', value: '棉' }],
       variants: [{ sourceID: '99999999999999999999', price: { amount: '1.23000001', currency: null } }],
       priceFacts: [{ amount: '12.34000001', currency: null, minQuantity: '2' }],
@@ -38,6 +43,44 @@ describe('explicit current-page capture', () => {
     });
     expect(payload.evidence.contentSHA256).toMatch(/^[a-f0-9]{64}$/);
     expect(payload.evidence.missingFacts.some(f => f.field.includes('currency'))).toBe(true);
+  });
+
+  it('captures the observed 1688 shape where the payload is an IIFE argument', async () => {
+    const html = readFileSync('tests/fixtures/product-real-shape.html', 'utf8');
+    const golden = JSON.parse(readFileSync('tests/fixtures/capture-v1.json', 'utf8'));
+    const doc = new JSDOM(html, { url: source }).window.document;
+    expect(await captureDocument(doc, source, new Date('2026-09-12T00:00:00Z'))).toEqual(golden);
+  });
+
+  it('produces identical evidence from the observed shape and the JSON-literal shape', async () => {
+    const payload = JSON.stringify(model);
+    const at = new Date('2026-09-12T00:00:00Z');
+    const observed = await captureDocument(observedShape(payload).window.document, source, at);
+    const literal = await captureDocument(fixture().window.document, source, at);
+    expect(observed).toEqual(literal);
+  });
+
+  it('rejects ambiguous or non-payload context assignments instead of guessing', async () => {
+    const payload = JSON.stringify(model);
+    const bodies = [
+      `window.contextPath = "/default";`,
+      'window.context = (function(b,d){return d})',
+      `window.context = (function(a,b,c){return c})(window.contextPath,${payload},{"extra":1})`,
+      'window.context = (function(a,b){return b})(window.contextPath,window.contextPath)',
+    ];
+    for (const body of bodies) {
+      const doc = new JSDOM(`<script>${body}</script>`, { url: source }).window.document;
+      await expect(captureDocument(doc, source, new Date())).rejects.toThrow();
+    }
+    const duplicated = fixture(`<script>window.context = ${payload};</script>`);
+    await expect(captureDocument(duplicated.window.document, source, new Date())).rejects.toThrow('UNSUPPORTED_PAGE');
+  });
+
+  it('reads price ranges from any result.data key, as the sourcing owner does', async () => {
+    const dom = fixture(); const node = dom.window.document.querySelector('script')!;
+    node.textContent = node.textContent!.replace('"price":{', '"priceInfo":{');
+    const payload = await captureDocument(dom.window.document, source, new Date());
+    expect(payload.evidence.priceFacts).toEqual([{ amount: '12.34000001', currency: null, minQuantity: '2' }]);
   });
 
   it('keeps skuId as source identity without inventing a separately observed SKU', async () => {
