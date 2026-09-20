@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 
 	"task-processor/internal/app/httpapi"
 	"task-processor/internal/app/runtime/currentapplication"
+	coreconfig "task-processor/internal/core/config"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -55,8 +57,40 @@ func execute() error {
 		OpenCommercial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingReadOnlyContext(ctx, databaseConfig(cfg))
 		},
-		NewApplication: httpapi.NewCurrentApplication,
-		CloseDatabase:  platformdatabase.Close,
+		OpenProductAcquisition: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		OpenReferrals: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		OpenMembership: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
+			options := make([]httpapi.CurrentApplicationOption, 0, 3)
+			if features.ProductAcquisitionDB != nil {
+				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
+			}
+			if features.ReferralDB != nil {
+				options = append(options, httpapi.WithReferrals(features.ReferralDB))
+			}
+			if features.MembershipDB != nil {
+				if features.Membership == nil {
+					return nil, fmt.Errorf("membership configuration unavailable")
+				}
+				options = append(options, httpapi.WithMembership(httpapi.MembershipDependencies{ReceiptDB: features.MembershipDB, ProviderOrigin: features.Membership.ProviderOrigin, ReadToken: features.Membership.ReadToken, WriteToken: features.Membership.WriteToken}))
+			}
+			return httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, options...)
+		},
+		NewApplicationWithAcquisition:             httpapi.NewCurrentApplicationWithAcquisition,
+		NewApplicationWithAcquisitionAndReferrals: httpapi.NewCurrentApplicationWithAcquisitionAndReferrals,
+		NewApplication: func(ctx context.Context, source, commercial *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
+			return httpapi.NewCurrentApplication(ctx, source, commercial, cfg, logger)
+		},
+		NewReferralsApplication: func(ctx context.Context, source, commercial, referrals *gorm.DB, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
+			return httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, httpapi.WithReferrals(referrals))
+		},
+		CloseDatabase: platformdatabase.Close,
 	})
 }
 

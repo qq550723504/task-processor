@@ -23,6 +23,7 @@ const organizationSchema = z
     id: safeIdSchema,
     name: safeDisplayNameSchema,
     roles: z.array(roleSchema).max(128),
+    capabilities: z.object({ "workbench.source_account.manage": z.boolean() }).strict().optional(),
   })
   .strict();
 

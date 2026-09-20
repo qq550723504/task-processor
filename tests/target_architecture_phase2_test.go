@@ -428,12 +428,17 @@ func internalImporterPackageCount(t *testing.T, target string) int {
 	}
 	count := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		_, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
+		importer, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
 		if !ok {
 			continue
 		}
 		for _, imp := range strings.Split(imports, ",") {
 			if importMatchesPrefix(imp, target) {
+				// Keep the historical ceiling. Exclude only an actually present,
+				// exact CURRENT edge, separately guarded across all source text.
+				if imp == target && issue398CurrentLeafImporter(importer, target) {
+					continue
+				}
 				count++
 				break
 			}

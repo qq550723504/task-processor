@@ -20,6 +20,7 @@ import {
   type WorkbenchContext,
   type WorkbenchOrganization,
 } from "@/lib/api/workbench-context";
+import type { AcquisitionOperation } from "@/lib/api/product-acquisition";
 
 type WorkbenchContextValue = {
   user: WorkbenchContext["user"] | null;
@@ -34,6 +35,8 @@ type WorkbenchContextValue = {
   blockingError: WorkbenchContextError | null;
   retry: () => Promise<WorkbenchContext | null>;
   switchOrganization: (organizationId: string) => void;
+  pendingAcquisitionIntent: AcquisitionOperation | null;
+  setPendingAcquisitionIntent: (intent: AcquisitionOperation | null) => void;
   registerOrganizationSwitchGuard: (
     guard: (target: WorkbenchOrganization) => boolean | Promise<boolean>,
   ) => () => void;
@@ -45,6 +48,10 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
   const [blockingError, setBlockingError] =
     useState<WorkbenchContextError | null>(null);
+  // A scoped idempotency intent remains in the workbench shell while a route
+  // changes. It is never a cross-organization authorization grant.
+  const [pendingAcquisitionIntent, setPendingAcquisitionIntent] =
+    useState<AcquisitionOperation | null>(null);
   const guardsRef = useRef(new Set<(target: WorkbenchOrganization) => boolean | Promise<boolean>>());
   const currentContextRef = useRef<WorkbenchContext | null>(null);
   const switchRequestPendingRef = useRef(false);
@@ -170,6 +177,8 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
         return result.isSuccess ? result.data : null;
       },
       switchOrganization,
+      pendingAcquisitionIntent,
+      setPendingAcquisitionIntent,
       registerOrganizationSwitchGuard,
     }),
     [
@@ -182,6 +191,7 @@ export function WorkbenchContextProvider({ children }: PropsWithChildren) {
       storeMutationsPending,
       switchPreparing,
       switchOrganization,
+      pendingAcquisitionIntent,
       registerOrganizationSwitchGuard,
     ],
   );

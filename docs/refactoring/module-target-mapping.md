@@ -8,6 +8,40 @@
 
 ## 1. Purpose
 
+### ACC-1 bounded current-owner calibration (#409)
+
+On main `aff6b8def46cf7c2d989408d115fa3c9628e585e`, personal account reads use
+CurrentIdentity -> `workbenchcontext/httpapi.GetAccountProfile` ->
+`authidentity.SelfProfileReader` -> `authruntime/zitadel.UserInfoClient.ReadSelf`,
+through the dedicated Next account BFF and `src/lib/api/account.ts`. This is a
+current, read-only identity projection independent of Effective Organization;
+there is no admitted profile write owner. The current Console Account surface
+is reused under #409, not replaced because its web directory has a legacy name.
+See `docs/engineering/issue409-account-profile.md` for its presentation boundary.
+This row does not claim #410/#411/#412 implementation, final browser acceptance,
+deployment or real IAM verification.
+
+### ACC-4 bounded current-owner calibration (#412)
+
+The Account audit slice exposes `/workbench/account/organization/audit` through
+the dedicated `/api/account/audit` BFF and `GET /api/v1/account/audit`.
+`internal/app/accountaudit` is a read-only allowlist projection, not an audit
+fact owner: it calls `sourceaccountregistry.HistoryService`, which reuses the
+current Service authorization, then the existing persistence repository's
+`ListCommittedOperations` over `source_account_operations`.
+The permission remains `workbench.source_account.read`; `LiveWrite` selects
+fresh grant resolution and does not grant write permission. The default current
+application has this GET in its exact 11-route code contract. This is code
+mounting, not deployment or production acceptance.
+
+Only committed successful source-account `register / enable / disable`
+receipts are projected. Failed or unknown outcomes, members, renewals, Store
+and general security audit are outside this slice. An empty page describes only
+this source and cannot establish that the enterprise has no other activity.
+The cursor is scoped to the enterprise and ordered by owner operation time,
+account ID and version; it is not global commit order. No new table or second
+fact source is introduced. See `docs/engineering/account-audit-v1.md`.
+
 This document maps current package areas to current target owners. It is an ownership/retirement aid, not a requirement to rename everything at once or migrate old business data, IDs, profiles or runtime state.
 
 Current target ownership domains include:
@@ -79,6 +113,28 @@ Current target ownership domains include:
 | `internal/tenantbridge` | active Organization ↔ legacy numeric tenant mapping | current Organization identity + each consuming domain's current persistence ownership | #301: freeze new consumers; new domains use native Organization identity; RETIRE legacy callers and package by owner; it allows no legacy numeric mapping, old-data migration/backfill or cutover. Never move it to another compatibility facade. |
 | `internal/zitadelprovision` | ZITADEL management/provisioning | integration identity provisioning + app operational entrypoint | External client stays in integration; app owns lifecycle. |
 | `web/listingkit-ui` | current web app with legacy ListingKit/Task-first responsibilities and valid current surfaces | final Figma Product Projection, especially #298 and Store Center surfaces | Retire only the specific Task-first/legacy dependencies. Keep current Console, account, plans and review surfaces as current product work; do not rebuild them merely because of this path name. |
+
+### SRC-2B1 current candidate seam (#398)
+
+Frozen `src2b-acquisition-v1` and bounded guard admission
+[5643032970](https://github.com/qq550723504/task-processor/issues/398#issuecomment-5643032970)
+admit the current sourcing validator, anonymous `integration/acquisition/a1688`
+adapter, `integration/persistence/product/acquisition` staging, and
+`app/productsourcing` coordinator into the optional current application module.
+SRC-1 and Catalog retain evidence/publication and ProductSnapshot authority.
+There is no SourceAccount/Connection/login prerequisite or legacy fallback.
+
+The explicit initializer reuses `platform/database.OpenExistingWritableContext`
+and `Close`; the public adapter reuses `httpimage.NewPublicImageHTTPClient`.
+These are qualified CURRENT leaf capabilities, not RETIRE owners. Precise
+file/API guards do not admit siblings or subpackages. The thin maintained
+`scripts/product-acquisition-init.ps1` owner only invokes the explicitly
+confirmed empty-database initializer; ordinary runtime performs no DDL.
+
+Status: candidate implementation, not a main/deployment receipt. Task-owned
+HTTP/PostgreSQL and mounted authorization/ambiguity tests have local evidence;
+final HEAD, CI and independent complete-call-chain review belong in the PR.
+Real 1688 acceptance remains NOT_RUN; Browser backend/UI is a later slice.
 
 ### 2.1 Bounded current-delivery calibration (#386)
 
