@@ -26,6 +26,7 @@ export function canonical1688Source(value: string): string | null {
 
 export const acquisitionRequestSchema = z.object({ source: z.string().refine((v) => canonical1688Source(v) !== null) }).strict();
 const bounded = z.string().refine((v) => new TextEncoder().encode(v).length <= 8192);
+const count = z.number().int().positive();
 const uuid = z.string().refine(isAcquisitionUUID);
 const version = z.string().regex(/^[1-9][0-9]{0,18}$/).refine((v) => BigInt(v) <= BigInt("9223372036854775807"));
 export const acquisitionResultSchema = z.object({
@@ -33,8 +34,8 @@ export const acquisitionResultSchema = z.object({
   outcome: z.enum(["acquiring", "prepared", "outcome_unknown", "published", "failed"]),
   replayed: z.boolean(), productKey: z.string().regex(/^crawler:1688:[1-9][0-9]{0,19}$/).optional(),
   publicationId: z.string().max(128).optional(), catalogVersion: version.optional(),
-  warnings: z.array(z.object({ code: bounded, field: bounded }).strict()).max(256),
-  missingFacts: z.array(z.object({ field: bounded, reason: bounded }).strict()).max(256),
+  warnings: z.array(z.object({ code: bounded, field: bounded, count: count.optional() }).strict()).max(256),
+  missingFacts: z.array(z.object({ field: bounded, reason: bounded, count: count.optional() }).strict()).max(256),
 }).strict().superRefine((value, ctx) => {
   const published = value.outcome === "published";
   if (published ? !value.productKey || !value.catalogVersion || value.publicationId !== `source-run:acquisition:${value.operationId}` : value.productKey !== undefined || value.publicationId !== undefined || value.catalogVersion !== undefined) {
@@ -50,8 +51,8 @@ export const acquisitionProductSchema = z.object({
   schemaVersion: z.literal(1), operationId: uuid,
   productKey: z.string().regex(/^crawler:1688:[1-9][0-9]{0,19}$/), publicationId: z.string().max(128), catalogVersion: version,
   title: bounded.optional(), sources: z.array(sourceSchema).max(4096), images: z.array(imageSchema).max(4096), specifications: z.array(specificationSchema).max(4096),
-  warnings: z.array(z.object({ code: bounded, field: bounded }).strict()).max(256),
-  missingFacts: z.array(z.object({ field: bounded, reason: bounded }).strict()).max(256),
+  warnings: z.array(z.object({ code: bounded, field: bounded, count: count.optional() }).strict()).max(256),
+  missingFacts: z.array(z.object({ field: bounded, reason: bounded, count: count.optional() }).strict()).max(256),
 }).strict().superRefine((value, ctx) => {
   if (value.publicationId !== `source-run:acquisition:${value.operationId}`) ctx.addIssue({ code: "custom", message: "Publication binding is inconsistent" });
 });

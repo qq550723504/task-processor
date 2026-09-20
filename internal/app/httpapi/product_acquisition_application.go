@@ -177,10 +177,12 @@ func acquisitionHTTPUUID(raw string) bool {
 type acquisitionWarningDTO struct {
 	Code  string `json:"code"`
 	Field string `json:"field"`
+	Count int    `json:"count,omitempty"`
 }
 type acquisitionMissingDTO struct {
 	Field  string `json:"field"`
 	Reason string `json:"reason"`
+	Count  int    `json:"count,omitempty"`
 }
 type acquisitionResultDTO struct {
 	SchemaVersion  int                     `json:"schemaVersion"`
@@ -243,10 +245,10 @@ func writeAcquisitionResult(c *gin.Context, result sourcing.AcquisitionResult) {
 		dto.PublicationID = r.PublicationID
 		dto.CatalogVersion = strconv.FormatUint(r.CatalogVersion, 10)
 		for _, warning := range result.Publication.Envelope.Warnings {
-			dto.Warnings = append(dto.Warnings, acquisitionWarningDTO{Code: warning.Code, Field: warning.Field})
+			dto.Warnings = append(dto.Warnings, acquisitionWarningDTO{Code: warning.Code, Field: warning.Field, Count: warning.Count})
 		}
 		for _, missing := range result.Publication.Envelope.MissingFacts {
-			dto.MissingFacts = append(dto.MissingFacts, acquisitionMissingDTO{Field: missing.Field, Reason: missing.Reason})
+			dto.MissingFacts = append(dto.MissingFacts, acquisitionMissingDTO{Field: missing.Field, Reason: missing.Reason, Count: missing.Count})
 		}
 	case sourcing.AcquisitionAcquiring, sourcing.AcquisitionPrepared, sourcing.AcquisitionFailed:
 	default:
@@ -284,10 +286,10 @@ func writeAcquisitionProduct(c *gin.Context, published productsourcing.Published
 		dto.Specifications = append(dto.Specifications, acquisitionProductSpecificationDTO{Name: specification.Name, Value: specification.Value})
 	}
 	for _, warning := range result.Publication.Envelope.Warnings {
-		dto.Warnings = append(dto.Warnings, acquisitionWarningDTO{Code: warning.Code, Field: warning.Field})
+		dto.Warnings = append(dto.Warnings, acquisitionWarningDTO{Code: warning.Code, Field: warning.Field, Count: warning.Count})
 	}
 	for _, missing := range result.Publication.Envelope.MissingFacts {
-		dto.MissingFacts = append(dto.MissingFacts, acquisitionMissingDTO{Field: missing.Field, Reason: missing.Reason})
+		dto.MissingFacts = append(dto.MissingFacts, acquisitionMissingDTO{Field: missing.Field, Reason: missing.Reason, Count: missing.Count})
 	}
 	raw, err := json.Marshal(dto)
 	if err != nil || len(raw) > sourcing.MaxAcquisitionCommandBytes {
