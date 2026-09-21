@@ -147,6 +147,11 @@ func (m accountIdentityModule) readProfile(c *gin.Context) {
 }
 
 func writeAccountIdentityUpstreamError(c *gin.Context, err error, verificationFailure bool) {
+	var unknown *zitadel.SelfServiceOutcomeUnknownError
+	if errors.As(err, &unknown) {
+		writeAccountIdentityError(c, http.StatusBadGateway, "RESULT_UNVERIFIED")
+		return
+	}
 	var upstream *zitadel.SelfServiceError
 	if errors.As(err, &upstream) {
 		if upstream.StatusCode == http.StatusUnauthorized {

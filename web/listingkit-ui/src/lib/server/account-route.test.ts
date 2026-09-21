@@ -42,14 +42,19 @@ describe("exported account routes", () => {
   expect(response.status).toBe(200);
   expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
  });
- it("keeps identity management inside Shuomi and forwards only the server session token", async () => {
+  it("keeps identity management inside Shuomi and forwards only the server session token", async () => {
   const fetch = vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-identity-operation-v1", operation: "email", state: "verification_pending", source: "zitadel_auth_v1" })); vi.stubGlobal("fetch", fetch);
   const response = await identityEmailPUT(writeIdentityEmail({ Authorization: "Bearer attacker", cookie: "private=cookie" }));
   expect(response.status).toBe(200);
   const [url, init] = fetch.mock.calls[0]; expect(url).toBe("http://127.0.0.1:8085/api/v1/account/identity/email");
   expect(new Headers(init.headers).get("Authorization")).toBe("Bearer fixture-token"); expect(new Headers(init.headers).get("Cookie")).toBeNull();
   expect(await new Response(init.body).json()).toEqual({ email: "user@example.test" });
- });
+  });
+  it("marks an identity mutation unknown when Shuomi loses the dispatched response", async () => {
+   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection reset")));
+   const response = await identityEmailPUT(writeIdentityEmail());
+   expect(response.status).toBe(502); expect(await response.json()).toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
+  });
  it("reads the identity profile inside Shuomi without requiring a client body or cookie", async () => {
   const identityProfile = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "First", lastName: "Last", nickName: "", displayName: "Name", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
   const fetch = vi.fn().mockResolvedValue(Response.json(identityProfile)); vi.stubGlobal("fetch", fetch);
@@ -84,11 +89,16 @@ describe("exported account routes", () => {
   const response = await organizationGET(request("organization", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B" }));
   expect(response.status).toBe(403);expect(response.headers.get("set-cookie")).toBeNull();expect(await response.text()).not.toContain("secret");
  });
- it("bounds exported serverAuth wait", async () => {
+  it("bounds exported serverAuth wait", async () => {
   vi.useFakeTimers(); state.blocked = true;
   const pending = GET(request()); await vi.advanceTimersByTimeAsync(15001);
   expect((await pending).status).toBe(504);
- });
+  });
+  it("bounds identity authentication inside the same deadline", async () => {
+   vi.useFakeTimers(); state.blocked = true;
+   const pending = identityEmailPUT(writeIdentityEmail()); await vi.advanceTimersByTimeAsync(15001);
+   expect((await pending).status).toBe(504);
+  });
  it("bounds response body waiting", async () => {
   vi.useFakeTimers();vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({ start() {} }), { headers: { "Content-Type": "application/json" } })));
   const pending = GET(request());await vi.advanceTimersByTimeAsync(15001);expect((await pending).status).toBe(504);

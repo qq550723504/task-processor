@@ -49,20 +49,12 @@ func (m referralHTTPModule) readEarnings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	earnings, err := m.economics.ReadEarnings(c.Request.Context(), identity.UserID, economics.CurrencyCNY)
+	snapshot, err := m.economics.ReadEarningsSnapshot(c.Request.Context(), identity.UserID, economics.CurrencyCNY, 100)
 	if err != nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
 	}
-	entries := []economics.EarningsLedgerEntry{}
-	if m.ledgerReader != nil {
-		entries, err = m.ledgerReader.ListEarningsLedger(c.Request.Context(), identity.UserID, economics.CurrencyCNY, 100)
-		if err != nil {
-			writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
-			return
-		}
-	}
-	writeReferralEarningsJSON(c, earnings, entries)
+	writeReferralEarningsJSON(c, snapshot.Earnings, snapshot.Entries)
 }
 
 func writeReferralEarningsJSON(c *gin.Context, earnings economics.Earnings, entries []economics.EarningsLedgerEntry) {

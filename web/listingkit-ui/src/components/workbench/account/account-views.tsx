@@ -61,9 +61,9 @@ function IdentityProfileManagement({ data }: { data: AccountProfile }) {
 function IdentityProfileForm({ data, profile }: { data: AccountProfile; profile: { firstName: string; lastName: string; nickName: string; displayName: string; preferredLanguage: string; gender: string } }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<AccountIdentityProfileInput>(() => identityProfileInput(profile));
-  const mutation = useMutation({ mutationFn: (input: AccountIdentityProfileInput) => updateAccountIdentityProfile({ expectedUserId: data.userId, input }), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["account"] }); queryClient.invalidateQueries({ queryKey: ["account", "identity-profile", data.userId] }); } });
+  const mutation = useMutation({ mutationFn: (input: AccountIdentityProfileInput) => updateAccountIdentityProfile({ expectedUserId: data.userId, input }), onSuccess: () => reconcileIdentityQueries(queryClient, data.userId), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
   const field = (key: keyof AccountIdentityProfileInput, label: string) => <label key={key}>{label}<input value={form[key]} onChange={event => setForm(current => current ? { ...current, [key]: event.target.value } : current)} disabled={mutation.isPending} /></label>;
-  return <div className={styles.profileForm}><h3>个人资料</h3><form onSubmit={event => { event.preventDefault(); mutation.mutate(form); }}>{field("firstName", "名")}{field("lastName", "姓")}{field("nickName", "昵称")}{field("displayName", "显示名称")}<div className={styles.formActions}><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "保存中…" : "保存个人资料"}</Button>{mutation.isError ? <span className={styles.errorText}>保存失败，请稍后重试</span> : mutation.isSuccess ? <span className={styles.successText}>个人资料已保存</span> : null}</div></form><p className={styles.note}>资料保存到当前登录用户的 ZITADEL Profile；Shuomi 不建立第二套身份资料。</p></div>;
+  return <div className={styles.profileForm}><h3>个人资料</h3><form onSubmit={event => { event.preventDefault(); mutation.mutate(form); }}>{field("firstName", "名")}{field("lastName", "姓")}{field("nickName", "昵称")}{field("displayName", "显示名称")}<div className={styles.formActions}><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "保存中…" : "保存个人资料"}</Button>{mutation.isError ? <span className={styles.errorText}>{identityMutationErrorText(mutation.error)}</span> : mutation.isSuccess ? <span className={styles.successText}>个人资料已保存</span> : null}</div></form><p className={styles.note}>资料保存到当前登录用户的 ZITADEL Profile；Shuomi 不建立第二套身份资料。</p></div>;
 }
 
 function VerificationPanel({ data, interactive = false }: { data: AccountProfile; interactive?: boolean }) {
@@ -74,11 +74,11 @@ function IdentityContactManagement({ data }: { data: AccountProfile }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState(data.email ?? "");
   const [phone, setPhone] = useState(data.phoneNumber ?? "");
-  const emailMutation = useMutation({ mutationFn: () => setAccountEmail({ expectedUserId: data.userId, email }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["account"] }) });
-  const phoneMutation = useMutation({ mutationFn: () => setAccountPhone({ expectedUserId: data.userId, phone }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["account"] }) });
+  const emailMutation = useMutation({ mutationFn: () => setAccountEmail({ expectedUserId: data.userId, email }), onSuccess: () => reconcileIdentityQueries(queryClient, data.userId), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
+  const phoneMutation = useMutation({ mutationFn: () => setAccountPhone({ expectedUserId: data.userId, phone }), onSuccess: () => reconcileIdentityQueries(queryClient, data.userId), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
   const passwordMutation = useMutation({ mutationFn: (input: { oldPassword: string; newPassword: string }) => updateAccountPassword({ expectedUserId: data.userId, ...input }) });
   const [oldPassword, setOldPassword] = useState(""); const [newPassword, setNewPassword] = useState("");
-  const errorText = (mutation: { isError: boolean; error: unknown }) => mutation.isError ? mutation.error instanceof AccountReadError && mutation.error.code === "IDENTITY_PROVIDER_REJECTED" ? "身份服务拒绝了本次修改" : "操作失败，请稍后重试" : null;
+  const errorText = (mutation: { isError: boolean; error: unknown }) => mutation.isError ? identityMutationErrorText(mutation.error) : null;
   return <div className={styles.profileForm}>
     <form onSubmit={event => { event.preventDefault(); emailMutation.mutate(); }}><label>邮箱地址<input type="email" value={email} onChange={event => setEmail(event.target.value)} disabled={emailMutation.isPending} /></label><div className={styles.formActions}><Button type="submit" disabled={emailMutation.isPending}>{emailMutation.isPending ? "提交中…" : "修改邮箱"}</Button>{errorText(emailMutation) ? <span className={styles.errorText}>{errorText(emailMutation)}</span> : emailMutation.isSuccess ? <span className={styles.successText}>已发送验证邮件</span> : null}</div></form>
     <form onSubmit={event => { event.preventDefault(); phoneMutation.mutate(); }}><label>手机号码<input type="tel" value={phone} onChange={event => setPhone(event.target.value)} disabled={phoneMutation.isPending} placeholder="+8613800000000" /></label><div className={styles.formActions}><Button type="submit" disabled={phoneMutation.isPending}>{phoneMutation.isPending ? "提交中…" : "修改手机号"}</Button>{errorText(phoneMutation) ? <span className={styles.errorText}>{errorText(phoneMutation)}</span> : phoneMutation.isSuccess ? <span className={styles.successText}>已发送短信验证码</span> : null}</div></form>
@@ -94,16 +94,27 @@ function identityProfileInput(profile: { firstName: string; lastName: string; ni
 function IdentityVerificationManagement({ data }: { data: AccountProfile }) {
   const queryClient = useQueryClient();
   const [emailCode, setEmailCode] = useState(""); const [phoneCode, setPhoneCode] = useState("");
-  const emailMutation = useMutation({ mutationFn: () => verifyAccountEmail({ expectedUserId: data.userId, code: emailCode }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["account"] }) });
-  const phoneMutation = useMutation({ mutationFn: () => verifyAccountPhone({ expectedUserId: data.userId, code: phoneCode }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["account"] }) });
-  const emailResend = useMutation({ mutationFn: () => resendAccountEmailVerification({ expectedUserId: data.userId }) });
-  const phoneResend = useMutation({ mutationFn: () => resendAccountPhoneVerification({ expectedUserId: data.userId }) });
-  const error = (mutation: { isError: boolean; error: unknown }) => mutation.isError ? mutation.error instanceof AccountReadError && mutation.error.code === "IDENTITY_VERIFICATION_FAILED" ? "验证码无效或已过期" : "操作失败，请稍后重试" : null;
+  const emailMutation = useMutation({ mutationFn: () => verifyAccountEmail({ expectedUserId: data.userId, code: emailCode }), onSuccess: () => reconcileIdentityQueries(queryClient, data.userId), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
+  const phoneMutation = useMutation({ mutationFn: () => verifyAccountPhone({ expectedUserId: data.userId, code: phoneCode }), onSuccess: () => reconcileIdentityQueries(queryClient, data.userId), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
+  const emailResend = useMutation({ mutationFn: () => resendAccountEmailVerification({ expectedUserId: data.userId }), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
+  const phoneResend = useMutation({ mutationFn: () => resendAccountPhoneVerification({ expectedUserId: data.userId }), onError: error => { if (identityOutcomeUnknown(error)) reconcileIdentityQueries(queryClient, data.userId); } });
+  const error = (mutation: { isError: boolean; error: unknown }) => mutation.isError ? mutation.error instanceof AccountReadError && mutation.error.code === "IDENTITY_VERIFICATION_FAILED" ? "验证码无效或已过期" : identityMutationErrorText(mutation.error) : null;
   return <div className={styles.profileForm}>
     {data.email && data.emailVerified !== true ? <form onSubmit={event => { event.preventDefault(); emailMutation.mutate(); }}><label>邮箱验证码<input value={emailCode} onChange={event => setEmailCode(event.target.value)} inputMode="numeric" disabled={emailMutation.isPending} /></label><div className={styles.formActions}><Button type="submit" disabled={emailMutation.isPending}>验证邮箱</Button><Button type="button" variant="outline" onClick={() => emailResend.mutate()} disabled={emailResend.isPending}>重新发送</Button>{error(emailMutation) ? <span className={styles.errorText}>{error(emailMutation)}</span> : emailMutation.isSuccess || emailResend.isSuccess ? <span className={styles.successText}>{emailMutation.isSuccess ? "邮箱已验证" : "验证码已发送"}</span> : null}</div></form> : null}
     {data.phoneNumber && data.phoneNumberVerified !== true ? <form onSubmit={event => { event.preventDefault(); phoneMutation.mutate(); }}><label>手机验证码<input value={phoneCode} onChange={event => setPhoneCode(event.target.value)} inputMode="numeric" disabled={phoneMutation.isPending} /></label><div className={styles.formActions}><Button type="submit" disabled={phoneMutation.isPending}>验证手机</Button><Button type="button" variant="outline" onClick={() => phoneResend.mutate()} disabled={phoneResend.isPending}>重新发送</Button>{error(phoneMutation) ? <span className={styles.errorText}>{error(phoneMutation)}</span> : phoneMutation.isSuccess || phoneResend.isSuccess ? <span className={styles.successText}>{phoneMutation.isSuccess ? "手机已验证" : "验证码已发送"}</span> : null}</div></form> : null}
     {!data.email && !data.phoneNumber ? <p className={styles.note}>当前没有可验证的邮箱或手机号，请先在账户设置中添加。</p> : <p className={styles.note}>验证码校验由 ZITADEL 官方完成；验证结果刷新后以身份服务返回为准。</p>}
   </div>;
+}
+
+function identityOutcomeUnknown(error: unknown): boolean { return error instanceof AccountReadError && error.code === "RESULT_UNVERIFIED"; }
+function identityMutationErrorText(error: unknown): string {
+  if (identityOutcomeUnknown(error)) return "操作结果待核实，已刷新资料；请勿重复提交，确认当前状态后再操作";
+  if (error instanceof AccountReadError && error.code === "IDENTITY_PROVIDER_REJECTED") return "身份服务拒绝了本次修改";
+  return "操作失败，请稍后重试";
+}
+function reconcileIdentityQueries(queryClient: ReturnType<typeof useQueryClient>, userId: string): void {
+  void queryClient.invalidateQueries({ queryKey: ["account"] });
+  void queryClient.invalidateQueries({ queryKey: ["account", "identity-profile", userId] });
 }
 
 function BusinessProfilePanel({ profile, organizationId }: { profile?: AccountBusinessProfile | null; organizationId?: string }) {

@@ -10,7 +10,7 @@ vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkben
 const profile: AccountProfile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "本人甲", email: null, emailVerified: null, phoneNumber: "+8613800000000", phoneNumberVerified: false, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization: AccountOrganization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "企业乙", roles: ["viewer"], source: "zitadel_project_authorizations", readAt: profile.readAt, authorizationMaxAgeSeconds: 60 };
 const clients: QueryClient[] = [];
-function mount(page: "profile" | "organization" = "profile", expectedUserId = "u1") {
+function mount(page: "profile" | "profile-business" | "organization" = "profile", expectedUserId = "u1") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); clients.push(client);
   const child = (id = expectedUserId) => <QueryClientProvider client={client}><AccountPage page={page} expectedUserId={id} /></QueryClientProvider>;
   const view = render(child()); return { ...view, update: (id = expectedUserId) => view.rerender(child(id)) };
@@ -77,6 +77,22 @@ describe("AccountPage read-only projection", () => {
   it("offers login recovery for an expired profile session", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 }))); mount();
     expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/login?returnTo=%2Fworkbench%2Faccount%2Fprofile");
+  });
+  it("requires the selected organization on the business-profile leaf", async () => {
+    state.context.effectiveOrganization = null;
+    vi.stubGlobal("fetch", vi.fn());
+    mount("profile-business");
+    expect(await screen.findByRole("alert")).toHaveTextContent("请选择当前企业");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("surfaces business-profile organization failures instead of treating them as absent data", async () => {
+    const fetcher = vi.fn((url: string) => url === "/api/account/profile"
+      ? Promise.resolve(Response.json(profile))
+      : Promise.resolve(Response.json({ code: "ORGANIZATION_ACCESS_REVOKED", message: "", requestId: "", fieldErrors: [] }, { status: 403 })));
+    vi.stubGlobal("fetch", fetcher);
+    mount("profile-business");
+    expect(await screen.findByRole("alert")).toHaveTextContent("企业访问已撤销");
+    expect(screen.queryByText("业务档案服务暂未接入")).not.toBeInTheDocument();
   });
   it("retries a dependency failure only after user action and rereads facts", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));

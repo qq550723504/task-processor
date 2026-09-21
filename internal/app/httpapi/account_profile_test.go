@@ -66,11 +66,25 @@ type accountIdentitySelfServiceSpy struct {
 	operation zitadel.SelfServiceOperation
 	body      []byte
 	profile   zitadel.SelfServiceProfile
+	err       error
 }
 
 func (s *accountIdentitySelfServiceSpy) Execute(_ context.Context, token string, operation zitadel.SelfServiceOperation, body []byte) error {
 	s.token, s.operation, s.body = token, operation, append([]byte(nil), body...)
-	return nil
+	return s.err
+}
+
+func TestAccountIdentityPreservesUnknownMutationOutcome(t *testing.T) {
+	spy := &accountIdentitySelfServiceSpy{err: &zitadel.SelfServiceOutcomeUnknownError{}}
+	module := accountIdentityModule{client: spy}
+	request := httptest.NewRequest(http.MethodPut, accountIdentityEmailPath, strings.NewReader(`{"email":"user@example.test"}`))
+	request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = request
+	module.execute(ginContext)
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"code":"RESULT_UNVERIFIED"`)
 }
 
 func (s *accountIdentitySelfServiceSpy) ReadProfile(context.Context, string) (zitadel.SelfServiceProfile, error) {

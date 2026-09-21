@@ -34,7 +34,7 @@ const errorCodes: Record<number, readonly string[]> = {
   403: ["PERMISSION_DENIED", "ORGANIZATION_ACCESS_DENIED", "ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_SUSPENDED"],
   405: ["INVALID_REQUEST"], 409: ["IDENTITY_CONTEXT_CHANGED", "ORGANIZATION_CONTEXT_CHANGED", "ORGANIZATION_SELECTION_REQUIRED"],
   422: ["IDENTITY_PROVIDER_REJECTED", "IDENTITY_VERIFICATION_FAILED"],
-  502: ["INVALID_UPSTREAM_RESPONSE", "DEPENDENCY_UNAVAILABLE"], 503: ["ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE"], 504: ["DEADLINE_EXCEEDED"],
+  502: ["INVALID_UPSTREAM_RESPONSE", "DEPENDENCY_UNAVAILABLE", "RESULT_UNVERIFIED"], 503: ["ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE"], 504: ["DEADLINE_EXCEEDED", "RESULT_UNVERIFIED"],
 };
 // Shared wire validation for the dedicated BFF; UI consumes only the typed client.
 export function parseAccountPayload(kind: "profile", value: unknown): AccountProfile;
@@ -47,7 +47,7 @@ export function parseAccountPayload(kind: "profile" | "organization" | "business
   return result.data;
 }
 export function accountErrorCode(status: number, value: unknown): string {
-  const envelope = z.object({ code: z.string(), message: z.string(), requestId: z.string(), fieldErrors: z.array(z.unknown()).max(0) }).strict().safeParse(value);
+  const envelope = z.object({ code: z.string(), message: z.string(), requestId: z.string(), fieldErrors: z.array(z.unknown()).max(0), outcome: z.enum(["not_sent", "unknown"]).optional() }).strict().safeParse(value);
   if (!envelope.success || !errorCodes[status]?.includes(envelope.data.code)) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
   return envelope.data.code;
 }

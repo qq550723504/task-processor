@@ -47,6 +47,10 @@ type EarningsLedgerEntry struct {
 	AmountMinor                                                    int64
 	OccurredAt                                                     time.Time
 }
+type EarningsSnapshot struct {
+	Earnings Earnings
+	Entries  []EarningsLedgerEntry
+}
 type WithdrawalMethod string
 
 const (
@@ -93,6 +97,7 @@ type Store interface {
 	RecordRefund(context.Context, money.RefundSettlement) error
 	Mature(context.Context, time.Time) error
 	ReadEarnings(context.Context, string, string) (Earnings, error)
+	ReadEarningsSnapshot(context.Context, string, string, int) (EarningsSnapshot, error)
 	ListWithdrawals(context.Context, string) ([]Withdrawal, error)
 	ListPendingWithdrawals(context.Context) ([]Withdrawal, error)
 	RequestWithdrawal(context.Context, RequestWithdrawal) (Withdrawal, error)

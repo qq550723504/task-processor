@@ -3,6 +3,7 @@ package referral
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -419,8 +420,38 @@ func (r *Repository) ReadEarnings(ctx context.Context, referrer, currency string
 	if r == nil || r.db == nil || referrer == "" || currency != economics.CurrencyCNY {
 		return economics.Earnings{}, economics.ErrInvalid
 	}
+	return readEarnings(r.db.WithContext(ctx), referrer, currency)
+}
+
+// ReadEarningsSnapshot reads the projection and its ledger through one
+// repeatable-read transaction so the response cannot combine different
+// committed versions of the same account's monetary facts.
+func (r *Repository) ReadEarningsSnapshot(ctx context.Context, referrer, currency string, limit int) (economics.EarningsSnapshot, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(referrer) == "" || currency != economics.CurrencyCNY || limit <= 0 || limit > 100 {
+		return economics.EarningsSnapshot{}, economics.ErrInvalid
+	}
+	var snapshot economics.EarningsSnapshot
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		snapshot.Earnings, err = readEarnings(tx, strings.TrimSpace(referrer), currency)
+		if err != nil {
+			return err
+		}
+		snapshot.Entries, err = listEarningsLedger(tx, strings.TrimSpace(referrer), currency, limit)
+		return err
+	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		if errors.Is(err, economics.ErrInvalid) {
+			return economics.EarningsSnapshot{}, err
+		}
+		return economics.EarningsSnapshot{}, economics.ErrUnavailable
+	}
+	return snapshot, nil
+}
+
+func readEarnings(db *gorm.DB, referrer, currency string) (economics.Earnings, error) {
 	var p earningProjection
-	err := r.db.WithContext(ctx).Where("referrer=? AND currency=?", referrer, currency).Take(&p).Error
+	err := db.Where("referrer=? AND currency=?", referrer, currency).Take(&p).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return economics.Earnings{Referrer: referrer, Currency: currency}, nil
 	}
@@ -434,8 +465,12 @@ func (r *Repository) ListEarningsLedger(ctx context.Context, referrer, currency 
 	if r == nil || r.db == nil || strings.TrimSpace(referrer) == "" || currency != economics.CurrencyCNY || limit <= 0 || limit > 100 {
 		return nil, economics.ErrInvalid
 	}
+	return listEarningsLedger(r.db.WithContext(ctx), strings.TrimSpace(referrer), currency, limit)
+}
+
+func listEarningsLedger(db *gorm.DB, referrer, currency string, limit int) ([]economics.EarningsLedgerEntry, error) {
 	var rows []earningLedgerEntry
-	if err := r.db.WithContext(ctx).Where("referrer = ? AND currency = ?", strings.TrimSpace(referrer), currency).Order("occurred_at DESC, entry_id DESC").Limit(limit).Find(&rows).Error; err != nil {
+	if err := db.Where("referrer = ? AND currency = ?", referrer, currency).Order("occurred_at DESC, entry_id DESC").Limit(limit).Find(&rows).Error; err != nil {
 		return nil, economics.ErrUnavailable
 	}
 	out := make([]economics.EarningsLedgerEntry, 0, len(rows))

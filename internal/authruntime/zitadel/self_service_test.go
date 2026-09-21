@@ -3,9 +3,11 @@ package zitadel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -104,4 +106,19 @@ func TestSelfServiceClientReturnsUpstreamStatusWithoutBody(t *testing.T) {
 	require.ErrorAs(t, err, &upstreamErr)
 	require.Equal(t, http.StatusBadRequest, upstreamErr.StatusCode)
 	require.NotContains(t, err.Error(), "do not expose this")
+}
+
+func TestSelfServiceClientPreservesUnknownMutationOutcomeAfterDispatch(t *testing.T) {
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		trace := httptrace.ContextClientTrace(request.Context())
+		if trace == nil || trace.WroteRequest == nil {
+			t.Fatal("request was not traced")
+		}
+		trace.WroteRequest(httptrace.WroteRequestInfo{})
+		return nil, errors.New("response lost")
+	})
+
+	err := NewSelfServiceClient("https://issuer.example", &http.Client{Transport: transport}).Execute(context.Background(), "token", SelfServiceUpdatePassword, []byte(`{"oldPassword":"old","newPassword":"new"}`))
+	var unknown *SelfServiceOutcomeUnknownError
+	require.ErrorAs(t, err, &unknown)
 }

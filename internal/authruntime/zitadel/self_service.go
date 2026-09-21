@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"time"
@@ -54,6 +55,15 @@ type SelfServiceClient struct {
 // from an identity provider can contain sensitive or provider-internal data.
 type SelfServiceError struct {
 	StatusCode int
+}
+
+// SelfServiceOutcomeUnknownError means the authenticated-user mutation was
+// dispatched, but the client could not establish whether ZITADEL completed
+// it. Callers must reconcile readable state before offering a retry.
+type SelfServiceOutcomeUnknownError struct{}
+
+func (*SelfServiceOutcomeUnknownError) Error() string {
+	return "ZITADEL self-service mutation outcome is unknown"
 }
 
 type SelfServiceProfile struct {
@@ -113,8 +123,14 @@ func (c *SelfServiceClient) Execute(ctx context.Context, token string, operation
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
+	dispatched := false
+	trace := &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) { dispatched = true }}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	response, err := c.client.Do(req)
 	if err != nil {
+		if dispatched {
+			return &SelfServiceOutcomeUnknownError{}
+		}
 		return errors.New("ZITADEL self-service request unavailable")
 	}
 	defer response.Body.Close()

@@ -5,7 +5,7 @@ import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 
 const validID = (value: string | null | undefined): value is string => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 function json(value: unknown, status: number) { return NextResponse.json(value, { status, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } }); }
-export function accountFailure(status: number, code: string) { return json({ code, message: "Account request could not be completed", requestId: "", fieldErrors: [] }, status); }
+export function accountFailure(status: number, code: string, outcome?: "not_sent" | "unknown") { return json({ code, message: outcome === "unknown" ? "操作结果待核实，请刷新资料确认状态" : "Account request could not be completed", requestId: "", fieldErrors: [], ...(outcome === "unknown" ? { outcome } : {}) }, status); }
 function serviceOrigin(): string | null {
   try {
     const raw = process.env.LISTINGKIT_SERVICE_API_BASE?.trim(); if (!raw) return null;
@@ -87,7 +87,9 @@ const identityOperations: Record<string, readonly ("GET" | "PUT" | "POST")[]> = 
   password: ["PUT"],
 };
 
-export async function proxyAccountIdentity(request: Request, token: string, sessionUserId: string, operation: string): Promise<Response> {
+export type AccountDispatchState = { forwarded: boolean };
+
+export async function proxyAccountIdentity(request: Request, token: string, sessionUserId: string, operation: string, dispatchState: AccountDispatchState = { forwarded: false }): Promise<Response> {
   const methods = identityOperations[operation];
   if (!methods || !methods.includes(request.method as "GET" | "PUT" | "POST") || !token || !validID(sessionUserId) || request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(400, "INVALID_REQUEST");
   const url = new URL(request.url);
@@ -106,14 +108,19 @@ export async function proxyAccountIdentity(request: Request, token: string, sess
     const body = isRead ? undefined : await readAccountRequestBody(request, 16 * 1024, controller.signal);
     const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });
     if (!isRead) headers.set("Content-Type", "application/json");
+    dispatchState.forwarded = true;
     const response = await fetch(`${origin}/api/v1/account/identity/${operation}`, { method: request.method, headers, ...(body === undefined ? {} : { body }), cache: "no-store", redirect: "manual", signal: controller.signal });
     controller.signal.throwIfAborted();
     let payload: unknown;
     try { payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); } catch { throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); }
     controller.signal.throwIfAborted();
-    if (response.status !== 200) return accountFailure(response.status, accountErrorCode(response.status, payload));
+    if (response.status !== 200) {
+      const code = accountErrorCode(response.status, payload);
+      return accountFailure(response.status, code, code === "RESULT_UNVERIFIED" ? "unknown" : undefined);
+    }
     return json(payload, 200);
   } catch (error) {
+    if (dispatchState.forwarded) return accountFailure(controller.signal.aborted ? 504 : 502, "RESULT_UNVERIFIED", "unknown");
     if (controller.signal.aborted) return accountFailure(504, "DEADLINE_EXCEEDED");
     return error instanceof AccountReadError ? accountFailure(error.status, error.code) : accountFailure(400, "INVALID_REQUEST");
   } finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); }

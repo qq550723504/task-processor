@@ -52,6 +52,7 @@ type referralCommands interface {
 
 type referralEconomics interface {
 	ReadEarnings(context.Context, string, string) (economics.Earnings, error)
+	ReadEarningsSnapshot(context.Context, string, string, int) (economics.EarningsSnapshot, error)
 	RequestWithdrawal(context.Context, economics.RequestWithdrawal) (economics.Withdrawal, error)
 	CancelWithdrawal(context.Context, string, string, int64, string) (economics.Withdrawal, error)
 	ReviewWithdrawal(context.Context, economics.ReviewWithdrawal) (economics.Withdrawal, error)
