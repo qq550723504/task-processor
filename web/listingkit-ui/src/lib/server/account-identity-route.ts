@@ -15,7 +15,7 @@ const authenticated = serverAuth(async (request: NextRequest & { auth?: unknown 
   return proxyAccountIdentity(request, readZitadelServerAccessToken(request.auth as never), String(identity.userId), operation);
 });
 
-export async function handleAccountIdentity(request: NextRequest): Promise<Response> {
+async function handleAccountIdentity(request: NextRequest): Promise<Response> {
   if (request.method !== "GET" && request.method !== "PUT" && request.method !== "POST") return accountFailure(405, "INVALID_REQUEST");
   try {
     return (await authenticated(request, { params: Promise.resolve({}) })) ?? accountFailure(503, "DEPENDENCY_UNAVAILABLE");
