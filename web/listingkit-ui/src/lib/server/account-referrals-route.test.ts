@@ -17,6 +17,7 @@ import {
   DELETE as rejectedDELETE,
 } from "@/app/api/account/referrals/route";
 import { POST as complete } from "@/app/api/account/referrals/complete/route";
+import { GET as readPayoutMethods, POST as createPayoutMethod } from "@/app/api/account/referral-payout-methods/route";
 
 function request(path = "referrals", method = "GET", headers: Record<string, string> = {}, signal?: AbortSignal) {
   return new NextRequest(`https://app.test/api/account/${path}`, {
@@ -75,6 +76,27 @@ describe("authenticated account referrals BFF", () => {
     expect(fetch.mock.calls[0][1].body).toBeUndefined();
     expect(fetch.mock.calls[1][1].body).toBeUndefined();
     expect((await createCode(request("referrals", "POST", { Origin: "https://evil.test", "Sec-Fetch-Site": "cross-site" }))).status).toBe(403);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("forwards payout-method creation through the authenticated BFF", async () => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ schemaVersion: "payout-method-v1", methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }, { status: 201 })));
+    vi.stubGlobal("fetch", fetch);
+    const response = await createPayoutMethod(new NextRequest("https://app.test/api/account/referral-payout-methods", {
+      method: "POST",
+      headers: { "X-Expected-User-ID": "subject-1", Origin: "https://app.test", "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json", "Idempotency-Key": "payout-key" },
+      body: JSON.stringify({ type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }),
+    }));
+    if (!response) throw new Error("payout method route returned no response");
+    expect(response.status).toBe(201);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe("http://127.0.0.1:8085/api/v1/account/referrals/payout-methods");
+    expect(fetch.mock.calls[0][1].method).toBe("POST");
+    expect(fetch.mock.calls[0][1].headers.get("Idempotency-Key")).toBe("payout-key");
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" });
+    const readResponse = await readPayoutMethods(request("referral-payout-methods"));
+    if (!readResponse) throw new Error("payout method read route returned no response");
+    expect(readResponse.status).toBe(201);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

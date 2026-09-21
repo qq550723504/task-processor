@@ -85,6 +85,9 @@ func TestSetTargetEnforcesPoolAndConsumedFloorAndRevoke(t *testing.T) {
 	if err := repo.Consume(ctx, q, domain.ConsumeInput{OrganizationID: "org-1", MemberID: "member-1", Quantity: 20, IdempotencyKey: "use-1", SourceType: "test", SourceID: "call-1"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := repo.SetTarget(ctx, q, setInput("member-2", "op-2b", 30, 0)); err != nil {
+		t.Fatalf("active consumed quota should remain inside the member target pool: %v", err)
+	}
 	if _, err := repo.SetTarget(ctx, q, setInput("member-1", "op-3", 19, 1)); !errors.Is(err, domain.ErrConsumedFloor) {
 		t.Fatalf("floor err=%v", err)
 	}
@@ -102,7 +105,7 @@ func TestSetTargetEnforcesPoolAndConsumedFloorAndRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Enterprise.Allocated != 0 || page.Enterprise.Unallocated != 80 || page.Enterprise.Consumed != 20 {
+	if page.Enterprise.Allocated != 30 || page.Enterprise.Unallocated != 50 || page.Enterprise.Consumed != 20 {
 		t.Fatalf("page=%+v", page)
 	}
 }

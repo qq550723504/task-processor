@@ -239,16 +239,14 @@ func (r *Repository) SetTarget(ctx context.Context, quota domain.Quota, input do
 		if err := tx.Model(&allocationRow{}).Where("organization_id = ? AND metric = ? AND window_start = ? AND window_end = ? AND active = ? AND member_id <> ?", quota.OrganizationID, domain.MetricToken, quota.WindowStart, quota.WindowEnd, true, input.MemberID).Select("COALESCE(SUM(allocated), 0)").Scan(&allocated).Error; err != nil {
 			return mapError(err)
 		}
-		// The active rows represent unconsumed reservations. Consumed quota is
-		// owned by the commercial ledger and must still count even when a
-		// removed member's allocation has been made inactive. Otherwise a
-		// replacement member could reuse tokens already consumed by the removed
-		// member.
-		enterpriseConsumed, err := sumUsage(tx, quota)
+		// Active targets already include the active members' consumed tokens.
+		// Only consumed quota whose member allocation is inactive is outside
+		// those targets and must reduce the remaining enterprise pool.
+		inactiveConsumed, err := sumInactiveConsumed(tx, quota)
 		if err != nil {
 			return err
 		}
-		if input.Target > quota.Total-enterpriseConsumed-allocated {
+		if input.Target > quota.Total-inactiveConsumed-allocated {
 			return domain.ErrQuotaExceeded
 		}
 		now := time.Now().UTC().Truncate(time.Microsecond)
@@ -275,6 +273,25 @@ func (r *Repository) SetTarget(ctx context.Context, quota domain.Quota, input do
 		return nil
 	})
 	return result, err
+}
+
+func sumInactiveConsumed(tx *gorm.DB, quota domain.Quota) (int64, error) {
+	var rows []allocationRow
+	if err := tx.Where("organization_id = ? AND metric = ? AND window_start = ? AND window_end = ? AND active = ?", quota.OrganizationID, domain.MetricToken, quota.WindowStart, quota.WindowEnd, false).Find(&rows).Error; err != nil {
+		return 0, mapError(err)
+	}
+	var total int64
+	for _, row := range rows {
+		consumed, err := sumMemberConsumed(tx, quota, row.MemberID)
+		if err != nil {
+			return 0, err
+		}
+		total, err = checkedAdd(total, consumed)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return total, nil
 }
 
 func (r *Repository) RevokeMissingMembers(ctx context.Context, quota domain.Quota, activeMemberIDs []string, actorID string) error {
@@ -308,7 +325,7 @@ func (r *Repository) RevokeMissingMembers(ctx context.Context, quota domain.Quot
 				return mapError(err)
 			}
 			key := fmt.Sprintf("member-removed:%s:%s:%s", quota.OrganizationID, row.MemberID, listingsubscription.UsagePeriodKeyForWindow(quota.WindowStart, quota.WindowEnd))
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&auditRow{OrganizationID: quota.OrganizationID, ActorID: actorID, MemberID: row.MemberID, Operation: "revoke_member_removed", Target: 0, Allocated: consumed, Consumed: consumed, Version: row.Version, IdempotencyKey: key, CreatedAt: row.UpdatedAt}).Error; err != nil {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&auditRow{OrganizationID: quota.OrganizationID, ActorID: actorID, MemberID: row.MemberID, Operation: "revoke", Target: 0, Allocated: consumed, Consumed: consumed, Version: row.Version, IdempotencyKey: key, CreatedAt: row.UpdatedAt}).Error; err != nil {
 				return mapError(err)
 			}
 		}

@@ -39,7 +39,7 @@ async function proxy(request: Request, token: string) {
     "/api/account/referral-withdrawals": "/api/v1/account/referrals/withdrawals",
   };
   const suffix = mapping[path] ?? (path.match(/^\/api\/account\/referral-withdrawals\/[^/]+\/(?:cancel|review)$/) ? path.replace("/api/account/referral-withdrawals", "/api/v1/account/referrals/withdrawals") : "");
-  if (!suffix || request.method === "GET" && !["/api/account/referral-earnings", "/api/account/referral-payout-methods"].includes(path) || request.method === "POST" && ["/api/account/referral-earnings", "/api/account/referral-payout-methods"].includes(path) || !["GET", "POST"].includes(request.method)) return referralFailure(400, "INVALID_REQUEST");
+  if (!suffix || request.method === "GET" && !["/api/account/referral-earnings", "/api/account/referral-payout-methods"].includes(path) || request.method === "POST" && path === "/api/account/referral-earnings" || !["GET", "POST"].includes(request.method)) return referralFailure(400, "INVALID_REQUEST");
   const origin = serviceOrigin();
   if (!origin) return referralFailure(503, "REFERRALS_NOT_CONFIGURED");
   const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });

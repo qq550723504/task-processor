@@ -2,7 +2,7 @@ import { handleAccountReferralEconomics, rejectAccountReferralEconomicsMethod } 
 
 export const dynamic = "force-dynamic";
 export const GET = handleAccountReferralEconomics;
-export const POST = rejectAccountReferralEconomicsMethod;
+export const POST = handleAccountReferralEconomics;
 export const PUT = rejectAccountReferralEconomicsMethod;
 export const PATCH = rejectAccountReferralEconomicsMethod;
 export const DELETE = rejectAccountReferralEconomicsMethod;

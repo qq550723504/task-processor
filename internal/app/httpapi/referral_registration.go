@@ -114,7 +114,7 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodPost, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createPayoutMethod},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
-		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},
 		{Method: http.MethodPost, Path: internalReferralPaymentSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordPaymentSettlement},
 		{Method: http.MethodPost, Path: internalReferralRefundSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordRefundSettlement},
 		{Method: http.MethodPost, Path: internalReferralChargebackSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordChargebackSettlement},
