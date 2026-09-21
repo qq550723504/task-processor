@@ -36,6 +36,13 @@ type ImportOptions struct {
 	// acceptance item, and injecting the failure is the only way to reproduce it
 	// without relying on platform-specific file permissions.
 	Persist func(*Queue, string) error
+	// AwaitHandoff observes the application URL a dispatched handoff opened. It
+	// defaults to the popup's own implementation and exists for the same reason as
+	// Persist: "the click was dispatched but its result could never be observed" is
+	// the failure that decides whether an item stays re-doable, and it cannot be
+	// produced deterministically through the fixture extension, which always opens
+	// its application tab.
+	AwaitHandoff func(*Popup, map[string]bool) (string, error)
 }
 
 // ImportResult is what one item produced.
@@ -52,6 +59,11 @@ type ImportResult struct {
 var (
 	// ErrNoQueuedItem means the queue has nothing this executor may capture.
 	ErrNoQueuedItem = errors.New("batch capture: no capturable item")
+	// ErrBatchBlocked means an item's outcome cannot be decided locally, so the
+	// batch must stop for a person before any further item is submitted. It is
+	// distinct from ErrNoQueuedItem: "nothing can be done safely until someone
+	// verifies the application" is not the same message as "there is nothing to do".
+	ErrBatchBlocked = errors.New("batch capture: batch blocked, a person must verify an item first")
 	// ErrQueueWriteFailed means the record could not be confirmed durable.
 	ErrQueueWriteFailed = errors.New("batch capture: queue write not confirmed")
 )
@@ -72,6 +84,21 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if !queue.ScopeMatches(opts.Approved.ActorID, opts.Approved.OrganizationID) {
 		return ImportResult{}, fmt.Errorf("%w: queue scope is %s/%s", ErrScopeMismatch,
 			queue.ApprovedActorID, queue.ApprovedOrganizationID)
+	}
+	// An item that may already have been submitted must stop the batch before
+	// anything else happens. Skipping over it would submit a later item while an
+	// earlier one is unresolved, and a queue holding only that item would otherwise
+	// be reported as "nothing to do" — which reads as safe when it is precisely the
+	// case that needs a human to verify the application first (design section 4
+	// D2.2, section 10 "restart" rows).
+	if blocked, ok := queue.BlockingItem(); ok {
+		detail := ""
+		if blocked.Reason != "" {
+			detail = ": " + blocked.Reason
+		}
+		return ImportResult{Seq: blocked.Seq, URL: blocked.URL, State: blocked.State}, fmt.Errorf(
+			"%w: item %d is %s%s; verify in the application before anything else, do not re-run it",
+			ErrBatchBlocked, blocked.Seq, blocked.State, detail)
 	}
 	index := -1
 	for i := range queue.Items {
@@ -152,12 +179,31 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 			"%w: page classified as %s (%s)", ErrVerdictStop, verdict, captureNote))
 	}
 
-	appURL, err := popup.Handoff()
+	// The handoff is split into prepare / dispatch / await because only the dispatch
+	// is the point of no return. Validating that the handoff control is usable and
+	// snapshotting the existing tabs both happen before the payload can leave the
+	// executor, so a failure there still leaves the item re-doable. Everything from
+	// the dispatch onwards is recorded as outcome_unknown: an unconfirmed click may
+	// have delivered the payload even though its result URL was never observed.
+	existingTabs, err := popup.PrepareHandoff()
 	if err != nil {
 		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath, fmt.Errorf("handoff: %w", err))
 	}
+	if err := popup.DispatchHandoff(); err != nil {
+		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("dispatch handoff: %w", err))
+	}
 
-	// Point of no return: the application now holds a payload for this item.
+	// Point of no return: the application may now hold a payload for this item.
+	awaitHandoff := opts.AwaitHandoff
+	if awaitHandoff == nil {
+		awaitHandoff = func(p *Popup, existing map[string]bool) (string, error) {
+			return p.AwaitHandoffURL(existing)
+		}
+	}
+	appURL, err := awaitHandoff(popup, existingTabs)
+	if err != nil {
+		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("handoff: %w", err))
+	}
 	ref, err := captureRefFromURL(appURL)
 	if err != nil {
 		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("read handoff key: %w", err))

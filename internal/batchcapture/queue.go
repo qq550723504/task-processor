@@ -363,12 +363,14 @@ func (q *Queue) Save(path string) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp queue file: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := replaceFile(tmpName, path); err != nil {
 		return fmt.Errorf("replace queue file: %w", err)
 	}
 	// The replace is only durable once its directory entry is flushed, so a
 	// failure here must not be reported as a successful save: the caller uses this
-	// return value to decide whether the item may become submittable.
+	// return value to decide whether the item may become submittable. On Windows the
+	// flush happens inside replaceFile (MOVEFILE_WRITE_THROUGH) and this call is a
+	// no-op; see sync_dir_windows.go.
 	if err := syncDir(dir); err != nil {
 		return fmt.Errorf("flush queue directory: %w", err)
 	}

@@ -778,13 +778,28 @@ func fixtureQueue(t *testing.T, scope AppScope) string {
 // test proves a handoff never happened without waiting for a timeout.
 func fixtureAppTabCount(t *testing.T, driver *Driver) int {
 	t.Helper()
-	count := 0
-	for _, page := range driver.Context().Pages() {
-		if strings.HasPrefix(page.URL(), fixtureAppPrefix) {
-			count++
+	return fixtureAppTabCountWithin(t, driver, 0)
+}
+
+// fixtureAppTabCountWithin allows the application tab to appear slightly later than
+// the instant the handoff click was dispatched. It exists only for the test that
+// abandons the app tab's URL, so production code still has exactly one observation
+// point (waitForAppTab) and is not given a second, competing wait.
+func fixtureAppTabCountWithin(t *testing.T, driver *Driver, wait time.Duration) int {
+	t.Helper()
+	deadline := time.Now().Add(wait)
+	for {
+		count := 0
+		for _, page := range driver.Context().Pages() {
+			if strings.HasPrefix(page.URL(), fixtureAppPrefix) {
+				count++
+			}
 		}
+		if count > 0 || !time.Now().Before(deadline) {
+			return count
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	return count
 }
 
 // TestFixtureDriverImportsOneItemEndToEnd is design section 14 S1's acceptance:
@@ -1199,5 +1214,57 @@ func TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "approved scope") {
 		t.Fatalf("the original cause was lost: %v", err)
+	}
+}
+
+// The handoff click is the point of no return: it is the call that creates the
+// application tab carrying the payload, so failing to *observe* that tab must not
+// return the item to a capturable state. Re-capturing it would produce a second
+// payload and a possible second publication (design section 4 D2.1).
+//
+// The observation failure is injected for the same reason as the write failure:
+// the fixture extension always opens its tab, so "the handoff result could not be
+// enumerated" cannot be produced through it.
+func TestFixtureDriverKeepsOutcomeUnknownWhenTheHandoffResultCannotBeObserved(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	_, err := ImportOne(driver, ImportOptions{
+		QueuePath: queuePath,
+		Approved:  fixtureApprovedScope,
+		AwaitHandoff: func(*Popup, map[string]bool) (string, error) {
+			return "", errors.New("tab enumeration failed")
+		},
+	})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown because the handoff was dispatched", err)
+	}
+	if errors.Is(err, ErrVerdictStop) {
+		t.Fatalf("an item that reached the handoff was reported as re-doable: %v", err)
+	}
+
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("state=%s, want outcome_unknown", stored.Items[0].State)
+	}
+	if CanRecapture(stored.Items[0].State) {
+		t.Fatalf("the item is still re-capturable after the handoff was dispatched")
+	}
+	if !RequiresHumanReview(stored.Items[0].State) {
+		t.Fatalf("the item does not require human review")
+	}
+	if stored.Items[0].IdempotencyKey != "" {
+		t.Fatalf("a key was recorded although the handoff result was never observed: %q", stored.Items[0].IdempotencyKey)
+	}
+	// The extension really did open the application tab, which is exactly what makes
+	// the item ambiguous instead of re-doable.
+	if got := fixtureAppTabCountWithin(t, driver, 3*time.Second); got != 1 {
+		t.Fatalf("application tabs=%d, want 1 because the handoff was dispatched", got)
 	}
 }

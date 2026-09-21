@@ -27,8 +27,9 @@ param(
 $ErrorActionPreference = 'Stop'
 # Operational owner for cmd/1688-batch-import. The approved actor and organization
 # are required inputs and are never read from the browser session; the command
-# writes a local queue file and drives exactly one item. Exit code 3 means the
-# outcome is unknown, which requires a human check instead of a retry.
+# writes a local queue file and drives exactly one item. Exit code 3 means stop and
+# verify: either the outcome is unknown, or an earlier item in the queue may already
+# have been published. Both require a human check instead of a retry.
 Push-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 try {
     $arguments = @(

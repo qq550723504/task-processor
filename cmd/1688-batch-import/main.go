@@ -26,9 +26,13 @@ import (
 // Exit codes are part of the interface, because the whole point of the local queue
 // is that a person can tell "done" from "stop and check".
 const (
-	exitOK             = 0
-	exitUsage          = 2
-	exitOutcomeUnknown = 3
+	exitOK    = 0
+	exitUsage = 2
+	// exitStopAndVerify is used both for an unknown outcome and for a blocked
+	// batch. They are the same instruction to the operator — stop and check the
+	// application before touching the queue again — and must never be confused with
+	// a usage error, which would invite a re-run.
+	exitStopAndVerify = 3
 )
 
 type config struct {
@@ -52,7 +56,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "1688-batch-import:", err)
 		var unknown *outcomeUnknownError
 		if errors.As(err, &unknown) {
-			os.Exit(exitOutcomeUnknown)
+			os.Exit(exitStopAndVerify)
+		}
+		var blocked *batchBlockedError
+		if errors.As(err, &blocked) {
+			os.Exit(exitStopAndVerify)
 		}
 		os.Exit(exitUsage)
 	}
@@ -66,6 +74,14 @@ type outcomeUnknownError struct{ err error }
 func (e *outcomeUnknownError) Error() string { return e.err.Error() }
 func (e *outcomeUnknownError) Unwrap() error { return e.err }
 
+// batchBlockedError marks the other stop-for-a-person outcome: an earlier item in
+// the queue may already have been published, so no further item may be submitted
+// until someone checks the application. It is not a usage error.
+type batchBlockedError struct{ err error }
+
+func (e *batchBlockedError) Error() string { return e.err.Error() }
+func (e *batchBlockedError) Unwrap() error { return e.err }
+
 func run(args []string) error {
 	flags := flag.NewFlagSet("1688-batch-import", flag.ContinueOnError)
 	flags.Usage = func() {
@@ -76,7 +92,8 @@ Drives one item of a local batch queue. The actor and organization must be the
 values a person confirmed in the application; they are never read from the browser
 session. The queue file is created when it does not exist.
 
-Exit codes: 0 terminal result recorded, 3 outcome unknown (stop and verify), 2 usage or failure.
+Exit codes: 0 terminal result recorded, 3 stop and verify (outcome unknown or a
+blocked batch), 2 usage or other failure.
 `)
 	}
 	var cfg config
@@ -118,8 +135,22 @@ Exit codes: 0 terminal result recorded, 3 outcome unknown (stop and verify), 2 u
 	})
 	fmt.Printf("item %d %s\n  state: %s\n  idempotency key: %s\n  operation id: %s\n",
 		result.Seq, result.URL, result.State, result.IdempotencyKey, result.OperationID)
+	return describeStop(err, queuePath)
+}
+
+// describeStop turns a stop-for-a-person failure into the message the operator reads.
+//
+// It is a named function so the exit-code contract can be tested without a browser:
+// the mapping is part of the interface, and getting it wrong is what would turn an
+// ambiguous submit into a re-run.
+func describeStop(err error, queuePath string) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, batchcapture.ErrBatchBlocked) {
+		return &batchBlockedError{err: fmt.Errorf(
+			"%w\nVerify in the application before doing anything else. The queue file %s records which item blocked the batch; do not re-run it",
+			err, queuePath)}
 	}
 	if errors.Is(err, batchcapture.ErrOutcomeUnknown) {
 		return &outcomeUnknownError{err: fmt.Errorf(

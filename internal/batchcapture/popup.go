@@ -180,26 +180,58 @@ func (p *Popup) waitSettled(before PopupState) (PopupState, error) {
 	return last, fmt.Errorf("%w: capture did not settle", ErrControlNotFound)
 }
 
-// Handoff clicks the real `在应用中导入` control and returns the URL of the app
-// tab the extension created. That URL carries the idempotency key in its
-// fragment, which is how the executor learns the key: the extension generates it
-// and never exposes it through the popup document.
-func (p *Popup) Handoff() (string, error) {
+// PrepareHandoff validates that a handoff is available and records which page
+// targets already exist.
+//
+// It deliberately does not click anything: a failure here provably happens before
+// the payload leaves the executor, so the caller may still treat the item as
+// re-doable.
+func (p *Popup) PrepareHandoff() (map[string]bool, error) {
 	state, err := p.State()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if !state.Captured() {
-		return "", fmt.Errorf("%w: handoff is not available before a successful capture", ErrNotRecapturable)
+		return nil, fmt.Errorf("%w: handoff is not available before a successful capture", ErrNotRecapturable)
 	}
 	// Snapshot the tabs that already exist. The previous item's application tab is
 	// normally still open and still carries the previous key, so only a tab this
 	// handoff created may be adopted.
-	existing := p.driver.pageTargetIDs()
-	if err := p.click(selHandoff); err != nil {
+	return p.driver.pageTargetIDs(), nil
+}
+
+// DispatchHandoff clicks the extension's real handoff control.
+//
+// This click is the item's point of no return: it hands the captured payload to the
+// application. An error here means the click could not be *confirmed*, not that it
+// did not happen, so the caller must treat the item as possibly submitted from this
+// call onwards (design section 4 D2.1).
+func (p *Popup) DispatchHandoff() error {
+	return p.click(selHandoff)
+}
+
+// AwaitHandoffURL returns the application URL that an already dispatched handoff
+// opened. Failing to observe that URL never undoes the dispatch.
+func (p *Popup) AwaitHandoffURL(existing map[string]bool) (string, error) {
+	return p.driver.waitForAppTab(existing)
+}
+
+// Handoff clicks the real `在应用中导入` control and returns the URL of the app
+// tab the extension created. That URL carries the idempotency key in its
+// fragment, which is how the executor learns the key: the extension generates it
+// and never exposes it through the popup document.
+//
+// Callers that must distinguish "nothing was handed over" from "handed over,
+// outcome unknown" (the importer does) use the three steps above instead.
+func (p *Popup) Handoff() (string, error) {
+	existing, err := p.PrepareHandoff()
+	if err != nil {
 		return "", err
 	}
-	return p.driver.waitForAppTab(existing)
+	if err := p.DispatchHandoff(); err != nil {
+		return "", err
+	}
+	return p.AwaitHandoffURL(existing)
 }
 
 // Reset starts a new capture through the popup's real two-step confirmation.
