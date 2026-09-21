@@ -30,12 +30,12 @@ func (r *GormInvocationRecorder) SetUsageSettler(settler aicapability.Invocation
 	}
 }
 
-func (r *GormInvocationRecorder) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, occurredAt time.Time) error {
+func (r *GormInvocationRecorder) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, maximumTokens int64, occurredAt time.Time) error {
 	reservation, ok := r.usageSettler.(aicapability.InvocationUsageReservation)
 	if !ok {
 		return fmt.Errorf("ai invocation usage reservation is unavailable")
 	}
-	return reservation.ReserveAIInvocationUsage(ctx, tenantID, memberID, invocationID, occurredAt)
+	return reservation.ReserveAIInvocationUsage(ctx, tenantID, memberID, invocationID, maximumTokens, occurredAt)
 }
 
 func (r *GormInvocationRecorder) ReleaseAIInvocationUsage(ctx context.Context, tenantID, invocationID string) error {

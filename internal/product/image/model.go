@@ -100,8 +100,11 @@ type UsageQuote struct {
 	Fingerprint          string
 	MaximumOutputs       int64
 	MaximumModelCalls    int64
-	MaximumCostMicros    int64
-	CostUpperBoundKnown  bool
+	// MaximumTokens is a provider-specific conservative upper bound for one
+	// invocation. It is not observed usage.
+	MaximumTokens       int64
+	MaximumCostMicros   int64
+	CostUpperBoundKnown bool
 }
 
 type ImageAudit struct {

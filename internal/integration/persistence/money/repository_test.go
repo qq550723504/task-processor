@@ -104,7 +104,7 @@ func TestChargebackSettlementIsCanonicalAndBounded(t *testing.T) {
 func TestPayoutMethodValidationDoesNotExposeSecureReference(t *testing.T) {
 	repo := newMoneyRepository(t)
 	now := time.Now().UTC()
-	method := money.PayoutMethod{MethodID: "method-1", SubjectUserID: "user-1", Type: money.PayoutAlipay, DisplayName: "Alipay", MaskedDestination: "a***@example.com", SecureReference: []byte("encrypted-ciphertext"), Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
+	method := money.PayoutMethod{MethodID: "method-1", SubjectUserID: "user-1", Type: money.PayoutAlipay, DisplayName: "Alipay", MaskedDestination: "a***@example.com", SecureReference: []byte("encrypted-ciphertext"), EncryptionKeyID: "key-1", Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
 	if err := repo.CreatePayoutMethod(context.Background(), method); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestPayoutMethodValidationDoesNotExposeSecureReference(t *testing.T) {
 		t.Fatalf("methods=%#v err=%v", methods, err)
 	}
 	review, err := repo.ReadPayoutMethodForReview(context.Background(), "method-1")
-	if err != nil || string(review.SecureReference) != "encrypted-ciphertext" || review.SubjectUserID != "user-1" {
+	if err != nil || string(review.SecureReference) != "encrypted-ciphertext" || review.EncryptionKeyID != "key-1" || review.SubjectUserID != "user-1" {
 		t.Fatalf("review method=%#v err=%v", review, err)
 	}
 }
@@ -125,7 +125,7 @@ func TestPayoutMethodValidationDoesNotExposeSecureReference(t *testing.T) {
 func TestPayoutMethodCreationIsIdempotent(t *testing.T) {
 	repo := newMoneyRepository(t)
 	now := time.Now().UTC()
-	first := money.PayoutMethod{MethodID: "method-1", SubjectUserID: "user-1", Type: money.PayoutAlipay, DisplayName: "Alipay", MaskedDestination: "a***@example.com", SecureReference: []byte("encrypted-ciphertext"), Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
+	first := money.PayoutMethod{MethodID: "method-1", SubjectUserID: "user-1", Type: money.PayoutAlipay, DisplayName: "Alipay", MaskedDestination: "a***@example.com", SecureReference: []byte("encrypted-ciphertext"), EncryptionKeyID: "key-1", Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
 	created, err := repo.CreatePayoutMethodIdempotent(context.Background(), first, "payout-key-1", "fingerprint-1")
 	if err != nil || created.MethodID != "method-1" {
 		t.Fatalf("first create=%#v err=%v", created, err)

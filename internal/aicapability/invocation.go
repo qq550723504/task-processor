@@ -93,9 +93,9 @@ type InvocationReplayReader interface {
 }
 
 // InvocationUsageReservation is the commercial owner boundary used before a
-// provider dispatch. It reserves the member's current remaining allocation;
-// settlement releases the unused reservation and commits observed tokens.
+// provider dispatch. It reserves the caller-supplied conservative token upper
+// bound; settlement releases the unused reservation and commits observed tokens.
 type InvocationUsageReservation interface {
-	ReserveAIInvocationUsage(context.Context, string, string, string, time.Time) error
+	ReserveAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error
 	ReleaseAIInvocationUsage(context.Context, string, string) error
 }

@@ -73,16 +73,19 @@ func TestAIInvocationReservationPrecedesProviderAndReleasesToObservedUsage(t *te
 		t.Fatal(err)
 	}
 	repo := NewGormRepository(db)
-	if err := repo.ReserveAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-1", start.Add(time.Hour)); err != nil {
+	if err := repo.ReserveAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-1", 100, start.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.ReserveAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-2", start.Add(time.Hour)); !errors.Is(err, ErrUsageQuotaExceeded) {
+	if _, err := repo.SettleAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-1", 101, start.Add(2*time.Hour)); !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("settlement beyond reservation=%v, want quota exceeded", err)
+	}
+	if err := repo.ReserveAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-2", 1, start.Add(time.Hour)); !errors.Is(err, ErrUsageQuotaExceeded) {
 		t.Fatalf("second reservation=%v, want quota exceeded", err)
 	}
 	if _, err := repo.SettleAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-1", 12, start.Add(2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.ReserveAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-2", start.Add(3*time.Hour)); err != nil {
+	if err := repo.ReserveAIInvocationUsage(context.Background(), "org-1", "member-1", "inv-2", 88, start.Add(3*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	var bucket usageBucketRow

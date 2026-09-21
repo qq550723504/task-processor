@@ -40,9 +40,13 @@ func DefaultProductImagePrompts() ProductImagePrompts {
 type ProductImageAdapterConfig struct {
 	ReviewMaxRetries *int
 	ReviewObserver   func(ProductImageReviewObservation)
-	ImageClient      ai.ImageGenerator
-	ReviewClient     ai.ChatCompleter
-	Prompts          ProductImagePrompts
+	ReviewMaxTokens  int
+	// ReviewTokenUpperBound is the conservative total-token reservation bound
+	// enforced before dispatch; ReviewMaxTokens caps completion tokens.
+	ReviewTokenUpperBound int64
+	ImageClient           ai.ImageGenerator
+	ReviewClient          ai.ChatCompleter
+	Prompts               ProductImagePrompts
 
 	Provider                   string
 	ImageModel                 string
@@ -116,7 +120,7 @@ func NewProductImageAdapter(config ProductImageAdapterConfig) (*ProductImageAdap
 			return nil, fmt.Errorf("openai product image %s is required and must be canonical", name)
 		}
 	}
-	if config.MaximumSceneOutputs < 1 || config.MaximumSceneOutputs > 16 || config.ImageCostMicrosPerOutput < 0 || config.ReviewCostMicros < 0 {
+	if config.MaximumSceneOutputs < 1 || config.MaximumSceneOutputs > 16 || config.ImageCostMicrosPerOutput < 0 || config.ReviewCostMicros < 0 || config.ReviewMaxTokens < 1 || config.ReviewTokenUpperBound < int64(config.ReviewMaxTokens) {
 		return nil, fmt.Errorf("openai product image limits are invalid")
 	}
 	if config.GeneratedImageFetcher == nil {
@@ -192,9 +196,10 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 		parts = append(parts, imageContentPart(candidate.Asset))
 	}
 	temperature := float32(0)
+	maxTokens := a.config.ReviewMaxTokens
 	response, err := a.config.ReviewClient.CreateChatCompletion(ctx, &ai.ChatCompletionRequest{
-		MaxRetries: a.config.ReviewMaxRetries,
-		Model:      a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
+		MaxTokens: &maxTokens, MaxRetries: a.config.ReviewMaxRetries,
+		Model: a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
 		Messages: []ai.ChatCompletionMessage{{Role: "user", MultiContent: parts}},
 	})
 	if a.config.ReviewObserver != nil {
@@ -365,6 +370,9 @@ func (a *ProductImageAdapter) authorize(authorization *productimage.UsageQuote, 
 		quote.PricingVersion != a.config.PricingVersion {
 		return productimage.ErrCapabilityUnsupported
 	}
+	if operation == "review" && quote.MaximumTokens != a.config.ReviewTokenUpperBound {
+		return productimage.ErrCapabilityUnsupported
+	}
 	return nil
 }
 
@@ -375,6 +383,7 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	maximumOutputs := request.MaximumOutputs
 	model := a.config.ImageModel
 	costPerOutput := a.config.ImageCostMicrosPerOutput
+	var maximumTokens int64
 	switch request.Operation {
 	case "extract_subject", "render_white_background":
 		maximumOutputs = 1
@@ -386,6 +395,7 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 		maximumOutputs = 1
 		model = a.config.ReviewModel
 		costPerOutput = a.config.ReviewCostMicros
+		maximumTokens = a.config.ReviewTokenUpperBound
 	default:
 		return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
 	}
@@ -399,10 +409,10 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	}
 	fingerprintPayload := struct {
 		Operation, InputFingerprint, Provider, Model, RouteReference, CredentialReference, ConfigurationVersion, PricingVersion string
-		MaximumOutputs, MaximumCost                                                                                             int64
+		MaximumOutputs, MaximumTokens, MaximumCost                                                                              int64
 	}{
 		request.Operation, request.InputFingerprint, provider, model, routeReference,
-		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumCost,
+		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumTokens, maximumCost,
 	}
 	encoded, err := json.Marshal(fingerprintPayload)
 	if err != nil {
@@ -413,7 +423,7 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 		Operation: request.Operation, Provider: provider, RouteReference: routeReference, Model: model,
 		CredentialReference: credentialReference, ConfigurationVersion: configurationVersion,
 		PricingVersion: a.config.PricingVersion, Fingerprint: hex.EncodeToString(digest[:]),
-		MaximumOutputs: maximumOutputs, MaximumModelCalls: 1, MaximumCostMicros: maximumCost,
+		MaximumOutputs: maximumOutputs, MaximumModelCalls: 1, MaximumTokens: maximumTokens, MaximumCostMicros: maximumCost,
 		CostUpperBoundKnown: a.config.CostUpperBoundKnown,
 	}, nil
 }

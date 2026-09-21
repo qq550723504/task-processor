@@ -29,11 +29,11 @@ func (a AIInvocationUsageAdapter) SettleAIInvocationUsage(ctx context.Context, t
 // before an external AI call. The reservation is represented by the existing
 // commercial usage event/bucket owner and is released or replaced by the
 // observed-token event in SettleAIInvocationUsage.
-func (a AIInvocationUsageAdapter) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, occurredAt time.Time) error {
+func (a AIInvocationUsageAdapter) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, maximumTokens int64, occurredAt time.Time) error {
 	if a.Repository == nil {
 		return ErrUsageLedgerNotConfigured
 	}
-	return a.Repository.ReserveAIInvocationUsage(ctx, tenantID, memberID, invocationID, occurredAt)
+	return a.Repository.ReserveAIInvocationUsage(ctx, tenantID, memberID, invocationID, maximumTokens, occurredAt)
 }
 
 func (a AIInvocationUsageAdapter) ReleaseAIInvocationUsage(ctx context.Context, tenantID, invocationID string) error {
@@ -158,6 +158,13 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 		if !errors.Is(lookup.Error, gorm.ErrRecordNotFound) {
 			return lookup.Error
 		}
+		var reservation usageEventRow
+		reservationErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ? AND status = ?", tenantID, usageMetricAITokens, "ai_invocation_reservation", invocationID, string(UsageEventReserved)).Take(&reservation).Error
+		if reservationErr == nil && totalTokens > reservation.Quantity {
+			return ErrUsageQuotaExceeded
+		} else if reservationErr != nil && !errors.Is(reservationErr, gorm.ErrRecordNotFound) {
+			return reservationErr
+		}
 		// A provider reservation occupies the bucket's remaining capacity. Free
 		// it before committing the exact observed quantity; rollback restores it
 		// if any later step fails.
@@ -206,9 +213,9 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 	return result, err
 }
 
-func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, occurredAt time.Time) error {
+func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, maximumTokens int64, occurredAt time.Time) error {
 	tenantID, memberID, invocationID = strings.TrimSpace(tenantID), strings.TrimSpace(memberID), strings.TrimSpace(invocationID)
-	if r == nil || r.db == nil || tenantID == "" || memberID == "" || invocationID == "" || occurredAt.IsZero() {
+	if r == nil || r.db == nil || tenantID == "" || memberID == "" || invocationID == "" || maximumTokens <= 0 || occurredAt.IsZero() {
 		return ErrUsageInvalidInput
 	}
 	return runUsageLedgerTransaction(ctx, r.db, func(tx *gorm.DB) error {
@@ -269,11 +276,11 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 			return err
 		}
 		remaining := allocation.Allocated - consumed - reserved
-		if remaining <= 0 {
+		if remaining < maximumTokens {
 			return ErrUsageQuotaExceeded
 		}
 		ledger := &gormUsageLedger{repo: &GormRepository{db: tx}}
-		_, err = ledger.Reserve(ctx, ReserveUsageInput{TenantID: tenantID, ModuleCode: ModuleListingKit, Metric: usageMetricAITokens, Quantity: remaining, PeriodKey: periodKey, SourceType: "ai_invocation_reservation", SourceID: invocationID, MemberID: memberID, IdempotencyKey: reservationKey, OccurredAt: occurredAt.UTC()})
+		_, err = ledger.Reserve(ctx, ReserveUsageInput{TenantID: tenantID, ModuleCode: ModuleListingKit, Metric: usageMetricAITokens, Quantity: maximumTokens, PeriodKey: periodKey, SourceType: "ai_invocation_reservation", SourceID: invocationID, MemberID: memberID, IdempotencyKey: reservationKey, OccurredAt: occurredAt.UTC()})
 		return err
 	})
 }

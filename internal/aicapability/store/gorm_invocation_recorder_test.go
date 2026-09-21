@@ -120,7 +120,7 @@ func (s *recordingInvocationUsageSettler) SettleAIInvocationUsage(context.Contex
 	return nil
 }
 
-func (s *recordingInvocationUsageSettler) ReserveAIInvocationUsage(context.Context, string, string, string, time.Time) error {
+func (s *recordingInvocationUsageSettler) ReserveAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
 	return nil
 }
 

@@ -99,7 +99,7 @@ func (m referralHTTPModule) readWithdrawals(c *gin.Context) {
 }
 
 func (m referralHTTPModule) readWithdrawalQueue(c *gin.Context) {
-	if !m.referralRequest(c) || m.withdrawals == nil || m.payoutMethods == nil || len(m.payoutEncryptionKey) == 0 {
+	if !m.referralRequest(c) || m.withdrawals == nil || m.payoutMethods == nil || len(m.payoutEncryptionKeys) == 0 {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
 	}
@@ -119,7 +119,11 @@ func (m referralHTTPModule) readWithdrawalQueue(c *gin.Context) {
 		if method.SubjectUserID != value.Referrer || economics.WithdrawalMethod(method.Type) != value.Method || method.Status != money.PayoutMethodActive {
 			return money.PayoutMethod{}, "", errors.New("payout method ownership or type mismatch")
 		}
-		destination, decryptErr := decryptPayoutDestination(m.payoutEncryptionKey, method.SubjectUserID, method.Type, method.SecureReference)
+		key, keyOK := m.payoutEncryptionKeys[method.EncryptionKeyID]
+		if !keyOK {
+			return money.PayoutMethod{}, "", errors.New("payout encryption key is unavailable")
+		}
+		destination, decryptErr := decryptPayoutDestination(key, method.SubjectUserID, method.Type, method.SecureReference)
 		return method, destination, decryptErr
 	})
 }
@@ -128,7 +132,7 @@ func (m referralHTTPModule) readWithdrawalQueue(c *gin.Context) {
 // is encrypted before it reaches persistence; ordinary reads only expose the
 // masked projection. It intentionally has no organization context.
 func (m referralHTTPModule) createPayoutMethod(c *gin.Context) {
-	if !m.economicsRequest(c) || m.payoutMethodWriter == nil || len(m.payoutEncryptionKey) == 0 {
+	if !m.economicsRequest(c) || m.payoutMethodWriter == nil || len(m.payoutEncryptionKeys) == 0 || m.payoutEncryptionKeyID == "" {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
 		return
 	}
@@ -149,20 +153,25 @@ func (m referralHTTPModule) createPayoutMethod(c *gin.Context) {
 		return
 	}
 	destination := strings.TrimSpace(body.Destination)
-	key := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
-	if key == "" || len(key) > 128 {
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if idempotencyKey == "" || len(idempotencyKey) > 128 {
 		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
 		return
 	}
 	fingerprint := payoutMethodFingerprint(identity.UserID, typeValue, strings.TrimSpace(body.DisplayName), destination)
-	ciphertext, err := encryptPayoutDestination(m.payoutEncryptionKey, identity.UserID, typeValue, destination)
+	encryptionKey, ok := m.payoutEncryptionKeys[m.payoutEncryptionKeyID]
+	if !ok {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
+		return
+	}
+	ciphertext, err := encryptPayoutDestination(encryptionKey, identity.UserID, typeValue, destination)
 	if err != nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
 		return
 	}
 	now := time.Now().UTC()
-	method := money.PayoutMethod{MethodID: uuid.NewString(), SubjectUserID: identity.UserID, Type: typeValue, DisplayName: strings.TrimSpace(body.DisplayName), MaskedDestination: maskPayoutDestination(destination), SecureReference: ciphertext, Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
-	created, err := m.payoutMethodWriter.CreatePayoutMethodIdempotent(c.Request.Context(), method, key, fingerprint)
+	method := money.PayoutMethod{MethodID: uuid.NewString(), SubjectUserID: identity.UserID, Type: typeValue, DisplayName: strings.TrimSpace(body.DisplayName), MaskedDestination: maskPayoutDestination(destination), SecureReference: ciphertext, EncryptionKeyID: m.payoutEncryptionKeyID, Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
+	created, err := m.payoutMethodWriter.CreatePayoutMethodIdempotent(c.Request.Context(), method, idempotencyKey, fingerprint)
 	if err != nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
 		return

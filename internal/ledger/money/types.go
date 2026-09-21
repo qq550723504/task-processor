@@ -96,6 +96,7 @@ type PayoutMethod struct {
 	DisplayName       string
 	MaskedDestination string
 	SecureReference   []byte
+	EncryptionKeyID   string
 	Status            PayoutMethodStatus
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -116,7 +117,7 @@ type PayoutMethodSummary struct {
 }
 
 func (p PayoutMethod) Validate() error {
-	if strings.TrimSpace(p.MethodID) == "" || strings.TrimSpace(p.SubjectUserID) == "" || (p.Type != PayoutAlipay && p.Type != PayoutBankTransfer) || strings.TrimSpace(p.DisplayName) == "" || strings.TrimSpace(p.MaskedDestination) == "" || len(p.SecureReference) == 0 || (p.Status != PayoutMethodActive && p.Status != PayoutMethodDisabled) || p.Version < 1 {
+	if strings.TrimSpace(p.MethodID) == "" || strings.TrimSpace(p.SubjectUserID) == "" || (p.Type != PayoutAlipay && p.Type != PayoutBankTransfer) || strings.TrimSpace(p.DisplayName) == "" || strings.TrimSpace(p.MaskedDestination) == "" || len(p.SecureReference) == 0 || strings.TrimSpace(p.EncryptionKeyID) == "" || (p.Status != PayoutMethodActive && p.Status != PayoutMethodDisabled) || p.Version < 1 {
 		return ErrInvalid
 	}
 	return nil

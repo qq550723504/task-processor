@@ -54,6 +54,9 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	if quote.MaximumModelCalls != 1 || quote.CostUpperBoundKnown != known || quote.MaximumCostMicros != maximumCost {
 		return productimage.Review{}, productimage.ErrCapabilityUnsupported
 	}
+	if quote.MaximumTokens <= 0 {
+		return productimage.Review{}, productimage.ErrCapabilityUnsupported
+	}
 	invocationID, inputHash := stableReviewInvocationIdentity(identity, request, quote.Fingerprint)
 	reservation, ok := settings.Recorder.(aicapability.InvocationUsageReservation)
 	if !ok {
@@ -79,7 +82,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		}
 	}
 	started := time.Now().UTC()
-	if err := reservation.ReserveAIInvocationUsage(ctx, identity.TenantID, verified.EffectiveMemberID, invocationID, started); err != nil {
+	if err := reservation.ReserveAIInvocationUsage(ctx, identity.TenantID, verified.EffectiveMemberID, invocationID, quote.MaximumTokens, started); err != nil {
 		return productimage.Review{}, err
 	}
 	reservationHeld := true

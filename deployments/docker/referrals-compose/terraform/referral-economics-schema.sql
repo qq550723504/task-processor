@@ -54,9 +54,10 @@ CREATE TABLE IF NOT EXISTS public.ledger_chargeback_settlements (
  CHECK(amount_minor>0));
 CREATE TABLE IF NOT EXISTS public.ledger_payout_methods (
  method_id text PRIMARY KEY, subject_user_id text NOT NULL, type text NOT NULL CHECK(type IN ('ALIPAY','BANK_TRANSFER')),
- display_name text NOT NULL, masked_destination text NOT NULL, secure_reference bytea NOT NULL,
+ display_name text NOT NULL, masked_destination text NOT NULL, secure_reference bytea NOT NULL, encryption_key_id text NOT NULL,
  status text NOT NULL CHECK(status IN ('ACTIVE','DISABLED')), created_at timestamptz NOT NULL,
  updated_at timestamptz NOT NULL, version bigint NOT NULL);
+ALTER TABLE IF EXISTS public.ledger_payout_methods ADD COLUMN IF NOT EXISTS encryption_key_id text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS public.ledger_payout_method_operations (
  idempotency_key text PRIMARY KEY, method_id text NOT NULL REFERENCES public.ledger_payout_methods(method_id),
  fingerprint char(64) NOT NULL, created_at timestamptz NOT NULL);

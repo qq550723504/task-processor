@@ -89,7 +89,8 @@ type referralHTTPModule struct {
 	withdrawals           withdrawalReader
 	payoutMethods         payoutMethodReader
 	payoutMethodWriter    payoutMethodWriter
-	payoutEncryptionKey   []byte
+	payoutEncryptionKeys  map[string][]byte
+	payoutEncryptionKeyID string
 	profileReader         authidentity.SelfProfileReader
 	settlements           settlementWriter
 	onSlotAcquiredForTest func()

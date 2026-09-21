@@ -53,6 +53,7 @@ type payoutMethodRow struct {
 	DisplayName       string
 	MaskedDestination string
 	SecureReference   []byte
+	EncryptionKeyID   string
 	Status            string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -225,7 +226,7 @@ func (r *Repository) CreatePayoutMethod(ctx context.Context, method money.Payout
 	if r == nil || r.db == nil || method.Validate() != nil {
 		return money.ErrInvalid
 	}
-	return r.db.WithContext(ctx).Create(&payoutMethodRow{MethodID: method.MethodID, SubjectUserID: method.SubjectUserID, Type: string(method.Type), DisplayName: method.DisplayName, MaskedDestination: method.MaskedDestination, SecureReference: append([]byte(nil), method.SecureReference...), Status: string(method.Status), CreatedAt: method.CreatedAt.UTC(), UpdatedAt: method.UpdatedAt.UTC(), Version: method.Version}).Error
+	return r.db.WithContext(ctx).Create(&payoutMethodRow{MethodID: method.MethodID, SubjectUserID: method.SubjectUserID, Type: string(method.Type), DisplayName: method.DisplayName, MaskedDestination: method.MaskedDestination, SecureReference: append([]byte(nil), method.SecureReference...), EncryptionKeyID: method.EncryptionKeyID, Status: string(method.Status), CreatedAt: method.CreatedAt.UTC(), UpdatedAt: method.UpdatedAt.UTC(), Version: method.Version}).Error
 }
 
 func (r *Repository) CreatePayoutMethodIdempotent(ctx context.Context, method money.PayoutMethod, idempotencyKey, fingerprint string) (money.PayoutMethod, error) {
@@ -248,7 +249,7 @@ func (r *Repository) CreatePayoutMethodIdempotent(ctx context.Context, method mo
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return money.ErrUnavailable
 		}
-		row := payoutMethodRow{MethodID: method.MethodID, SubjectUserID: method.SubjectUserID, Type: string(method.Type), DisplayName: method.DisplayName, MaskedDestination: method.MaskedDestination, SecureReference: append([]byte(nil), method.SecureReference...), Status: string(method.Status), CreatedAt: method.CreatedAt.UTC(), UpdatedAt: method.UpdatedAt.UTC(), Version: method.Version}
+		row := payoutMethodRow{MethodID: method.MethodID, SubjectUserID: method.SubjectUserID, Type: string(method.Type), DisplayName: method.DisplayName, MaskedDestination: method.MaskedDestination, SecureReference: append([]byte(nil), method.SecureReference...), EncryptionKeyID: method.EncryptionKeyID, Status: string(method.Status), CreatedAt: method.CreatedAt.UTC(), UpdatedAt: method.UpdatedAt.UTC(), Version: method.Version}
 		if err := tx.Create(&row).Error; err != nil {
 			return money.ErrUnavailable
 		}
@@ -262,7 +263,7 @@ func (r *Repository) CreatePayoutMethodIdempotent(ctx context.Context, method mo
 }
 
 func payoutMethodFromRow(row payoutMethodRow) money.PayoutMethod {
-	return money.PayoutMethod{MethodID: row.MethodID, SubjectUserID: row.SubjectUserID, Type: money.PayoutMethodType(row.Type), DisplayName: row.DisplayName, MaskedDestination: row.MaskedDestination, SecureReference: append([]byte(nil), row.SecureReference...), Status: money.PayoutMethodStatus(row.Status), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(), Version: row.Version}
+	return money.PayoutMethod{MethodID: row.MethodID, SubjectUserID: row.SubjectUserID, Type: money.PayoutMethodType(row.Type), DisplayName: row.DisplayName, MaskedDestination: row.MaskedDestination, SecureReference: append([]byte(nil), row.SecureReference...), EncryptionKeyID: row.EncryptionKeyID, Status: money.PayoutMethodStatus(row.Status), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(), Version: row.Version}
 }
 
 func (r *Repository) HasValidPayoutMethod(ctx context.Context, subject string, methodID string) (bool, error) {

@@ -178,6 +178,7 @@ func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operatio
 	config := openaiclient.ProductImageAdapterConfig{
 		ImageClient: images, ReviewClient: reviewer, Prompts: openaiclient.DefaultProductImagePrompts(),
 		Provider: imageRoute.ProviderID, ImageModel: imageRoute.ModelID, ReviewModel: reviewRoute.ModelID,
+		ReviewMaxTokens: 1024, ReviewTokenUpperBound: 8192,
 		RouteReference: imageAgentRouteReference(imageRoute), CredentialReference: imageRoute.CredentialReference,
 		ConfigurationVersion: imageRoute.ConfigurationVersion,
 		ReviewProvider:       reviewRoute.ProviderID, ReviewRouteReference: imageAgentRouteReference(reviewRoute),

@@ -20,7 +20,9 @@ func TestRepositoryRoundTripsUserScopedProfile(t *testing.T) {
 	empty, err := repo.Read(ctx, "user-a")
 	require.NoError(t, err)
 	require.Equal(t, "user-a", empty.UserID)
-	require.Empty(t, empty.Platforms)
+	require.Equal(t, []string{}, empty.Platforms)
+	require.Equal(t, []string{}, empty.Sites)
+	require.Equal(t, []string{}, empty.Services)
 	require.Nil(t, empty.UpdatedAt)
 
 	saved, err := repo.Save(ctx, BusinessProfile{UserID: "user-a", UserRole: "品牌方", ShopSituation: "已有店铺", FactorySituation: "无工厂", Platforms: []string{"1688", "Amazon"}, Sites: []string{"中国", "美国"}, ShopType: "品牌店", Services: []string{"选品", "图片"}})

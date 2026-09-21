@@ -51,7 +51,7 @@ func (r *Repository) Read(ctx context.Context, userID string) (BusinessProfile, 
 	var row profileRow
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return BusinessProfile{UserID: userID}, nil
+		return emptyBusinessProfile(userID), nil
 	}
 	if err != nil {
 		return BusinessProfile{}, err
@@ -100,5 +100,18 @@ func (row profileRow) profile() (BusinessProfile, error) {
 		return BusinessProfile{}, err
 	}
 	updated := row.UpdatedAt.UTC()
+	if platforms == nil {
+		platforms = []string{}
+	}
+	if sites == nil {
+		sites = []string{}
+	}
+	if services == nil {
+		services = []string{}
+	}
 	return BusinessProfile{UserID: row.UserID, UserRole: row.UserRole, ShopSituation: row.ShopSituation, FactorySituation: row.FactorySituation, Platforms: platforms, Sites: sites, ShopType: row.ShopType, Services: services, UpdatedAt: &updated}, nil
+}
+
+func emptyBusinessProfile(userID string) BusinessProfile {
+	return BusinessProfile{UserID: userID, Platforms: []string{}, Sites: []string{}, Services: []string{}}
 }
