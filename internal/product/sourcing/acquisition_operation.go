@@ -9,7 +9,17 @@ import (
 const (
 	AcquisitionTimeout             = 20 * time.Second
 	AcquisitionLease               = 30 * time.Second
-	MaxAcquisitionOperations       = 256
+	// MaxAcquisitionOperations bounds every operation row an organization may create over
+	// its lifetime. Rows are never deleted (no key GC) and terminal rows keep counting, so
+	// this is a hard ceiling, not a soft threshold.
+	//
+	// 2048 is sized from measured storage, not scale assumptions: a published command is
+	// ~18 KiB (browser-capture envelope after normalization), so the worst case is roughly
+	// 36 MiB per organization. At a batch size of 10 that is 204 batches.
+	//
+	// Raising this only moves the ceiling; it does not remove it. Removing it requires
+	// reclaiming terminal rows that can never be replayed (see the batch local-agent design).
+	MaxAcquisitionOperations       = 2048
 	MaxActiveAcquisitionOperations = 32
 	MaxAcquisitionCommandBytes     = 2 << 20
 	AcquisitionProducerKind        = "public_acquisition"
