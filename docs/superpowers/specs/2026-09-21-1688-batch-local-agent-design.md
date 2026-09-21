@@ -216,7 +216,7 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
 1. 执行器提供 `login` 子命令，用**与采集完全相同的启动配置**打开可见窗口（§1.4 已证明这保证同身份）；
 2. 人工扫码；
 3. 执行器在**同一会话内**做一次真实提取自检，成功才写入 profile 并标记可用；
-4. 采集时若检测到被重定向到登录页 ⇒ 该条失败为 `CHALLENGE`，**不自动重登**，等待人工重新扫码。
+4. 采集时若检测到被重定向到登录页 ⇒ 该条失败归入 `SOURCE_UNAVAILABLE`，**不自动重登**，等待人工重新扫码。（不使用 `CHALLENGE` 作为持久化码，原因见 §6）
 
 **不做自动登录、不做验证码代解。**
 
@@ -261,8 +261,8 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
 | 场景 | 结果 |
 |---|---|
 | 提交响应丢失 | 用原 key `ByKey` / verify 核实（既有语义） |
-| 被重定向登录页 | `CHALLENGE`，需人工重登；不自动重试 |
-| 用户取消 | `Finish` **已接受** `acquiring→failed`（`repository.go:323`），能力现成。但注意：**不释放 256 额度**（§8.2）。默认仅用于未认领的行（`command IS NULL`） |
+| 被重定向登录页 | 归入 `SOURCE_UNAVAILABLE`，需人工重登；不自动重试。**评审修正**：不得直接写 `CHALLENGE` 作为持久化失败码——`validFailure`（`repository.go:444-450`）只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT`，未知码会被 `Finish` 以 `ErrInvalidAcquisition` 拒绝，行永久停在 `acquiring`。UI 可另外展示“需重新登录”，但**持久化码必须是已接受的码** |
+| 用户取消 | **仅适用于 `command IS NULL` 的 `acquiring` 行**。`Finish` 接受 `acquiring→failed`（`repository.go:323`），但 `prepared` 行的 `Finish` 会得 `ErrAcquisitionFence`（`:323` 只允许 `publishing→*` 或 `acquiring→failed`），且 `validFailure` 不含 `CANCELLED` ⇒ 应继续用 `SOURCE_UNAVAILABLE`。另注意：**不释放额度**（§8.2） |
 | 并发执行器 | 见 §3 D2，「单组织单执行器」为明确约束 |
 
 ## 7. 授权与租户
@@ -453,10 +453,10 @@ PR #443 第三轮评审提出 13 条，逐条对照 `14df0e520`（含 #444 的 2
 | 1 | 发现缺少生产者区分符 | **BLOCKER** | `AcquisitionOperation` 无 producer 字段；`read`/`Start` 全按 org+actor+key |
 | 2 | 待办意图 → 浏览器证据无合法迁移 | **BLOCKER** | `Start` 认领分支比较 `op.Source/Fingerprint/CaptureSHA256`（`repository.go:143-145`）；首次 `Start` 存公开指纹+空 `CaptureSHA256`，第二次带浏览器指纹 ⇒ `ErrAcquisitionConflict`。**§3 D2 的心跳机制因此不成立** |
 | 3 | 须保留提交人 actor | **BLOCKER** | `read` 过滤 `organization_id=? AND actor_id=?`（`repository.go:338`）；执行器 token ⇒ actor=设备用户 ⇒ 提交人 A 的行认领不到，反而新插一行 |
-| 4 | 终态行须释放容量 | BLOCKER → **已由 #444 降级** | 256→2048 已合并；但终身语义仍在，真正释放需 (c) |
+| 4 | 终态行须释放容量 | BACKLOG（产品已决） | 256→2048 已由 #444 合并；终身语义仍在，真正释放需 (c)。**不属 BLOCKER**：命中门槛需属“核心 happy path 按当前设计无法完成”，2048 行内路径可完成 |
 | 5 | 终态后须允许重试 | **BLOCKER** | `if op.State != AcquisitionAcquiring { return nil }`（`repository.go:148` 之前）⇒ 同 key 永久返回原终态行 |
-| 6 | 须定义可取消迁移 | IMPLEMENTATION_TEST | `Finish` 仅允许 `publishing→*` 或 `acquiring→failed`（`repository.go:323`）；`prepared` 行 ⇒ `ErrAcquisitionFence`；`validFailure`（`:444-450`）不含 `CANCELLED` |
-| 7 | `CHALLENGE` 失败码不可持久化 | IMPLEMENTATION_TEST | `validFailure` 只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT` |
+| 6 | 须定义可取消迁移 | IMPLEMENTATION_TEST → **已修** | `Finish` 仅允许 `publishing→*` 或 `acquiring→failed`（`repository.go:323`）；`prepared` 行 ⇒ `ErrAcquisitionFence`；`validFailure`（`:444-450`）不含 `CANCELLED`。已收窄 §6 取消行为「仅限 `command IS NULL` 的 `acquiring` 行且仍用 `SOURCE_UNAVAILABLE`」 |
+| 7 | `CHALLENGE` 失败码不可持久化 | IMPLEMENTATION_TEST → **已修** | `validFailure` 只接受 4 个码。已把 §3 D2/§6 的 `CHALLENGE` 改为归入 `SOURCE_UNAVAILABLE`，UI 可另行展示“需重新登录” |
 | 8 | 新提交的操作须出现在进度读中 | IMPLEMENTATION_TEST | `Start` INSERT 即 `lease_until=now()+30s`（`repository.go:168`），而 list 谓词要求 `lease_until<now()` ⇒ 新批次前 30 秒不可见 |
 | 9 | 分页需要稳定位置 | IMPLEMENTATION_TEST | 表无 `created_at`（已实测 `information_schema`），`lease_until` 可变 |
 | 10 | 不确定发布须投影为 `outcome_unknown` | IMPLEMENTATION_TEST | 无该持久化状态，不确定发布停留在 `publishing`，由 HTTP 层投影 |
