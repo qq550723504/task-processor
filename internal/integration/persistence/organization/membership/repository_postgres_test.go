@@ -55,7 +55,7 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	repo, err := NewRepository(ctx, db)
+	repo, err := NewRepository(ctx, db, "p")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 		t.Fatalf("dispatch winners=%d", len(claims))
 	}
 	dispatched := <-claims
-	rebuilt, err := NewRepository(ctx, db)
+	rebuilt, err := NewRepository(ctx, db, "p")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if _, err := sqlDB.ExecContext(ctx, `DROP INDEX public.organization_member_active_target`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewRepository(ctx, db); err == nil {
+	if _, err := NewRepository(ctx, db, "p"); err == nil {
 		t.Fatal("missing target reservation index admitted")
 	}
 }

@@ -26,7 +26,7 @@ describe("audit page", () => {
   });
   it("renders profile and membership audit facts", async () => {
     const profile = { eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } };
-    const member = { eventType: "organization_membership.changed", actor: "operator-B", time: "2026-09-11T00:00:00Z", objectType: "organization_member", objectReference: "member-1", operation: "role", result: "succeeded", relation: { type: "organization_member_version", reference: "member-1", version: "2" } };
+    const member = { eventType: "organization_membership.changed", actor: "operator-B", time: "2026-09-11T00:00:00Z", objectType: "organization_member", objectReference: "member-1", operation: "role", result: "succeeded", relation: { type: "organization_membership_operation", reference: "00000000-0000-4000-8000-000000000001", version: "2" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+account_business_profile_audit+organization_member_audit", items: [profile, member] })));
     mount();
     const table = await screen.findByRole("table", { name: "操作记录" });

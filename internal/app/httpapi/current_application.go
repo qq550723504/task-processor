@@ -95,7 +95,11 @@ func WithMembership(deps MembershipDependencies) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) { options.memberships++; options.membership = &deps }
 }
 
-func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationFactories {
+func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...string) currentApplicationFactories {
+	projectID := ""
+	if len(projectIDs) > 0 {
+		projectID = projectIDs[0]
+	}
 	return currentApplicationFactories{
 		buildWorkbench: buildDefaultWorkbenchContextModule,
 		buildSourceAccount: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
@@ -108,10 +112,10 @@ func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationF
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
 		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer)
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
 		},
 		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer)
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer, projectID)
 		},
 		buildAccountProfile:    func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
 		buildAccountAllocation: buildAccountResourceAllocationModule,
@@ -127,10 +131,10 @@ func NewCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB *g
 }
 
 func NewCurrentApplicationWithOptions(ctx context.Context, sourceAccountDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger, options ...CurrentApplicationOption) (*http.Server, error) {
-	if ctx == nil {
+	if ctx == nil || cfg == nil {
 		return nil, errors.New("current application startup context unavailable")
 	}
-	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, defaultCurrentApplicationFactories(ctx), options...)
+	return buildCurrentApplication(ctx, sourceAccountDB, commercialDB, cfg, logger, defaultCurrentApplicationFactories(ctx, cfg.ListingKit.Zitadel.ProjectID), options...)
 }
 
 func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB *gorm.DB, cfg *config.Config, logger *logrus.Logger, factories currentApplicationFactories, options ...CurrentApplicationOption) (*http.Server, error) {

@@ -27,6 +27,7 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
  CREATE UNIQUE INDEX IF NOT EXISTS organization_member_active_target ON public.organization_member_operations(project_id,organization_id,target_user_id) WHERE active;
  CREATE UNIQUE INDEX IF NOT EXISTS organization_member_active_invite_email ON public.organization_member_operations(project_id,organization_id,invite_email) WHERE active AND invite_email IS NOT NULL;
  CREATE TABLE IF NOT EXISTS public.organization_member_audit_events (
+  project_id varchar(128) NOT NULL,
   organization_id varchar(128) NOT NULL,
   actor_id varchar(128) NOT NULL,
   target_user_id varchar(128) NOT NULL,
@@ -34,16 +35,36 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
   operation varchar(32) NOT NULL,
   revision bigint NOT NULL CHECK (revision > 0),
   created_at timestamptz NOT NULL,
-  PRIMARY KEY(organization_id,actor_id,operation_key),
+  PRIMARY KEY(project_id,organization_id,actor_id,operation_key),
   CONSTRAINT organization_member_audit_operation_check CHECK (operation IN ('invite','role','remove'))
  );
+ ALTER TABLE public.organization_member_audit_events ADD COLUMN IF NOT EXISTS project_id varchar(128);
+ UPDATE public.organization_member_audit_events AS audit
+ SET project_id=(SELECT operation.project_id
+                 FROM public.organization_member_operations AS operation
+                 WHERE operation.organization_id=audit.organization_id
+                   AND operation.actor_id=audit.actor_id
+                   AND operation.operation_key=audit.operation_key)
+ WHERE audit.project_id IS NULL
+   AND (SELECT count(*)
+        FROM public.organization_member_operations AS operation
+        WHERE operation.organization_id=audit.organization_id
+          AND operation.actor_id=audit.actor_id
+          AND operation.operation_key=audit.operation_key) = 1;
  DO $$
  BEGIN
-  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey' AND pg_get_constraintdef(oid) <> 'PRIMARY KEY (organization_id, actor_id, operation_key)') THEN
+  IF EXISTS (SELECT 1 FROM public.organization_member_audit_events WHERE project_id IS NULL) THEN
+   RAISE EXCEPTION 'membership audit rows cannot be assigned to a project';
+  END IF;
+ END $$;
+ ALTER TABLE public.organization_member_audit_events ALTER COLUMN project_id SET NOT NULL;
+ DO $$
+ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey' AND pg_get_constraintdef(oid) <> 'PRIMARY KEY (project_id, organization_id, actor_id, operation_key)') THEN
    ALTER TABLE public.organization_member_audit_events DROP CONSTRAINT organization_member_audit_events_pkey;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey') THEN
-   ALTER TABLE public.organization_member_audit_events ADD CONSTRAINT organization_member_audit_events_pkey PRIMARY KEY (organization_id, actor_id, operation_key);
+   ALTER TABLE public.organization_member_audit_events ADD CONSTRAINT organization_member_audit_events_pkey PRIMARY KEY (project_id, organization_id, actor_id, operation_key);
   END IF;
  END $$;`)
 	return err
@@ -85,8 +106,40 @@ func verifySchema(ctx context.Context, db schemaReader) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	if auditPrimaryKey != "PRIMARY KEY (organization_id, actor_id, operation_key)" {
+	if auditPrimaryKey != "PRIMARY KEY (project_id, organization_id, actor_id, operation_key)" {
 		return errors.New("membership audit primary key mismatch")
+	}
+	auditColumns := map[string]string{
+		"project_id": "character varying(128)", "organization_id": "character varying(128)", "actor_id": "character varying(128)",
+		"target_user_id": "character varying(128)", "operation_key": "uuid", "operation": "character varying(32)",
+		"revision": "bigint", "created_at": "timestamp with time zone",
+	}
+	rows, err = db.QueryContext(ctx, `SELECT a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.organization_member_audit_events'::regclass AND a.attnum>0 AND NOT a.attisdropped`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name, kind string
+		var notNull bool
+		if err := rows.Scan(&name, &kind, &notNull); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if auditColumns[name] != kind || !notNull {
+			_ = rows.Close()
+			return errors.New("membership audit column contract mismatch")
+		}
+		delete(auditColumns, name)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(auditColumns) != 0 {
+		return errors.New("membership audit column missing")
 	}
 	want := map[string]string{"project_id": "character varying(128)", "organization_id": "character varying(128)", "actor_id": "character varying(128)", "operation_key": "uuid", "target_user_id": "character varying(128)", "invite_email": "character varying(320)", "fingerprint": "character(64)", "revision": "bigint", "active": "boolean", "payload": "jsonb"}
 	rows, err = db.QueryContext(ctx, `SELECT a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.organization_member_operations'::regclass AND a.attnum>0 AND NOT a.attisdropped`)

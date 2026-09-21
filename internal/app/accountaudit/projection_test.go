@@ -153,7 +153,7 @@ func TestProjectionIncludesProfileAndMembershipAuditFacts(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	history := &historyStub{}
 	profile := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "account_business_profile.updated", Actor: "actor", Time: now, ObjectType: "account_business_profile", ObjectReference: "u1", Operation: "update", Version: 1, Key: "1"}}}}
-	membership := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "organization_membership.changed", Actor: "actor", Time: now.Add(-time.Microsecond), ObjectType: "organization_member", ObjectReference: "member-1", Operation: "role", Version: 2, Key: "00000000-0000-4000-8000-000000000001"}}}}
+	membership := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "organization_membership.changed", Actor: "actor", Time: now.Add(-time.Microsecond), ObjectType: "organization_member", ObjectReference: "member-1", Operation: "role", Version: 2, Key: "00000000-0000-4000-8000-000000000001", RelationReference: "00000000-0000-4000-8000-000000000001"}}}}
 	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
 	query, err := NewWithAuditSources(history, nil, profile, membership)
 	if err != nil {
@@ -168,6 +168,9 @@ func TestProjectionIncludesProfileAndMembershipAuditFacts(t *testing.T) {
 	}
 	if page.Source != "source_account_committed_operations+account_business_profile_audit+organization_member_audit" {
 		t.Fatalf("audit source = %q", page.Source)
+	}
+	if got := page.Items[1].Relation; got.Type != "organization_membership_operation" || got.Reference != "00000000-0000-4000-8000-000000000001" {
+		t.Fatalf("membership relation = %#v", got)
 	}
 }
 

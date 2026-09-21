@@ -81,6 +81,7 @@ type OperationChange struct {
 }
 
 type AuditEvent struct {
+	ProjectID      string
 	OrganizationID string
 	ActorID        string
 	TargetUserID   string
@@ -91,6 +92,7 @@ type AuditEvent struct {
 }
 
 type AuditPosition struct {
+	ProjectID    string
 	CreatedAt    time.Time
 	OperationKey string
 	ActorID      string
@@ -98,11 +100,11 @@ type AuditPosition struct {
 
 func (p AuditPosition) Valid() bool {
 	id, err := uuid.Parse(p.OperationKey)
-	return !p.CreatedAt.IsZero() && p.CreatedAt.Equal(p.CreatedAt.Truncate(time.Microsecond)) && err == nil && id != uuid.Nil && id.String() == p.OperationKey && authidentity.IsBoundedIdentifier(p.ActorID)
+	return authidentity.IsBoundedIdentifier(p.ProjectID) && !p.CreatedAt.IsZero() && p.CreatedAt.Equal(p.CreatedAt.Truncate(time.Microsecond)) && err == nil && id != uuid.Nil && id.String() == p.OperationKey && authidentity.IsBoundedIdentifier(p.ActorID)
 }
 
 func (e AuditEvent) Position() AuditPosition {
-	return AuditPosition{CreatedAt: e.CreatedAt.UTC().Truncate(time.Microsecond), OperationKey: e.OperationKey, ActorID: e.ActorID}
+	return AuditPosition{ProjectID: e.ProjectID, CreatedAt: e.CreatedAt.UTC().Truncate(time.Microsecond), OperationKey: e.OperationKey, ActorID: e.ActorID}
 }
 
 // Each method is a short independent transaction. Begin atomically claims

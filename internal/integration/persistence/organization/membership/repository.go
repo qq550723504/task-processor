@@ -22,16 +22,19 @@ const auditTable = "public.organization_member_audit_events"
 
 var fingerprintPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
-type Repository struct{ db *sql.DB }
+type Repository struct {
+	db        *sql.DB
+	projectID string
+}
 
 func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string, after *domain.AuditPosition) ([]domain.AuditEvent, *domain.AuditPosition, error) {
-	if r == nil || r.db == nil || !authidentity.IsBoundedIdentifier(organizationID) || limit < 1 {
+	if r == nil || r.db == nil || !authidentity.IsBoundedIdentifier(r.projectID) || !authidentity.IsBoundedIdentifier(organizationID) || limit < 1 {
 		return nil, nil, domain.ErrInvalidRequest
 	}
-	query := `SELECT organization_id,actor_id,target_user_id,operation,operation_key::text,revision,created_at FROM ` + auditTable + ` WHERE organization_id=$1`
-	args := []any{organizationID}
+	query := `SELECT project_id,organization_id,actor_id,target_user_id,operation,operation_key::text,revision,created_at FROM ` + auditTable + ` WHERE project_id=$1 AND organization_id=$2`
+	args := []any{r.projectID, organizationID}
 	if actor != "" {
-		query += ` AND actor_id=$2`
+		query += fmt.Sprintf(" AND actor_id=$%d", len(args)+1)
 		args = append(args, actor)
 	}
 	if operation != "" {
@@ -39,7 +42,7 @@ func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string,
 		args = append(args, operation)
 	}
 	if after != nil {
-		if !after.Valid() {
+		if !after.Valid() || after.ProjectID != r.projectID {
 			return nil, nil, domain.ErrInvalidRequest
 		}
 		createdAt := len(args) + 1
@@ -57,7 +60,7 @@ func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string,
 	events := make([]domain.AuditEvent, 0, limit)
 	for rows.Next() {
 		var event domain.AuditEvent
-		if err := rows.Scan(&event.OrganizationID, &event.ActorID, &event.TargetUserID, &event.Operation, &event.OperationKey, &event.Revision, &event.CreatedAt); err != nil {
+		if err := rows.Scan(&event.ProjectID, &event.OrganizationID, &event.ActorID, &event.TargetUserID, &event.Operation, &event.OperationKey, &event.Revision, &event.CreatedAt); err != nil {
 			return nil, nil, domain.ErrUnavailable
 		}
 		if len(events) == limit {
@@ -72,8 +75,8 @@ func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string,
 	return events, nil, nil
 }
 
-func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
-	if ctx == nil || db == nil {
+func NewRepository(ctx context.Context, db *gorm.DB, projectID string) (*Repository, error) {
+	if ctx == nil || db == nil || !authidentity.IsBoundedIdentifier(projectID) {
 		return nil, domain.ErrUnavailable
 	}
 	sqlDB, err := db.DB()
@@ -89,7 +92,7 @@ func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 	if err := verifySchema(ctx, sqlDB); err != nil {
 		return nil, domain.ErrUnavailable
 	}
-	return &Repository{db: sqlDB}, nil
+	return &Repository{db: sqlDB, projectID: projectID}, nil
 }
 
 func validScope(scope domain.OperationScope) bool {
@@ -227,7 +230,7 @@ func (r *Repository) Apply(ctx context.Context, scope domain.OperationScope, key
 		return domain.Operation{}, domain.ErrUnavailable
 	}
 	if next.Phase == domain.PhaseCompleted {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO `+auditTable+` (organization_id,actor_id,target_user_id,operation_key,operation,revision,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, scope.OrganizationID, scope.ActorID, next.TargetUserID, key, string(next.Kind), next.Revision, time.Now().UTC()); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO `+auditTable+` (project_id,organization_id,actor_id,target_user_id,operation_key,operation,revision,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`, scope.ProjectID, scope.OrganizationID, scope.ActorID, next.TargetUserID, key, string(next.Kind), next.Revision, time.Now().UTC()); err != nil {
 			return domain.Operation{}, domain.ErrUnavailable
 		}
 	}

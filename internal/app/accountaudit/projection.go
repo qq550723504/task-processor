@@ -27,14 +27,15 @@ type AuditPosition struct {
 	Key       string
 }
 type AdditionalAuditEvent struct {
-	EventType       string
-	Actor           string
-	Time            time.Time
-	ObjectType      string
-	ObjectReference string
-	Operation       string
-	Version         int64
-	Key             string
+	EventType         string
+	Actor             string
+	Time              time.Time
+	ObjectType        string
+	ObjectReference   string
+	Operation         string
+	Version           int64
+	Key               string
+	RelationReference string
 }
 type AdditionalAuditPage struct {
 	Items []AdditionalAuditEvent
@@ -247,7 +248,11 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		if p.Key == "" {
 			return Page{}, registry.ErrUnavailable
 		}
-		merged = append(merged, mergedEvent{event: Event{EventType: item.EventType, Actor: item.Actor, Time: item.Time.UTC(), ObjectType: item.ObjectType, ObjectReference: item.ObjectReference, Operation: item.Operation, Result: "succeeded", Relation: Relation{Type: item.ObjectType + "_version", Reference: item.ObjectReference, Version: strconv.FormatInt(item.Version, 10)}}, membership: &p, kind: "membership", key: item.Key})
+		relationReference := item.RelationReference
+		if relationReference == "" {
+			return Page{}, registry.ErrUnavailable
+		}
+		merged = append(merged, mergedEvent{event: Event{EventType: item.EventType, Actor: item.Actor, Time: item.Time.UTC(), ObjectType: item.ObjectType, ObjectReference: item.ObjectReference, Operation: item.Operation, Result: "succeeded", Relation: Relation{Type: "organization_membership_operation", Reference: relationReference, Version: strconv.FormatInt(item.Version, 10)}}, membership: &p, kind: "membership", key: item.Key})
 	}
 	sort.SliceStable(merged, func(i, j int) bool {
 		if !merged[i].event.Time.Equal(merged[j].event.Time) {

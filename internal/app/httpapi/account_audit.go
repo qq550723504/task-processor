@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -63,17 +64,24 @@ func (r profileAuditReader) ListRecentAudit(ctx context.Context, organizationID 
 
 type membershipAuditReader struct{ repository *memberstore.Repository }
 
-func membershipAuditKey(actorID, operationKey string) string {
-	return operationKey + "." + actorID
+func membershipAuditKey(projectID, actorID, operationKey string) string {
+	encode := base64.RawURLEncoding.EncodeToString
+	return operationKey + "." + encode([]byte(actorID)) + "." + encode([]byte(projectID))
 }
 
 func membershipAuditPosition(after *accountaudit.AuditPosition) (*membership.AuditPosition, error) {
 	if after == nil {
 		return nil, nil
 	}
-	operationKey, actorID, ok := strings.Cut(after.Key, ".")
-	position := &membership.AuditPosition{CreatedAt: after.CreatedAt, OperationKey: operationKey, ActorID: actorID}
-	if !ok || !position.Valid() {
+	parts := strings.Split(after.Key, ".")
+	if len(parts) != 3 {
+		return nil, registry.ErrInvalid
+	}
+	decode := base64.RawURLEncoding.DecodeString
+	actorBytes, actorErr := decode(parts[1])
+	projectBytes, projectErr := decode(parts[2])
+	position := &membership.AuditPosition{CreatedAt: after.CreatedAt, OperationKey: parts[0], ActorID: string(actorBytes), ProjectID: string(projectBytes)}
+	if actorErr != nil || projectErr != nil || !position.Valid() {
 		return nil, registry.ErrInvalid
 	}
 	return position, nil
@@ -90,10 +98,10 @@ func (r membershipAuditReader) ListRecentAudit(ctx context.Context, organization
 	}
 	page := accountaudit.AdditionalAuditPage{Items: make([]accountaudit.AdditionalAuditEvent, 0, len(items))}
 	for _, item := range items {
-		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "organization_membership.changed", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "organization_member", ObjectReference: item.TargetUserID, Operation: item.Operation, Version: item.Revision, Key: membershipAuditKey(item.ActorID, item.OperationKey)})
+		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "organization_membership.changed", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "organization_member", ObjectReference: item.TargetUserID, Operation: item.Operation, Version: item.Revision, Key: membershipAuditKey(item.ProjectID, item.ActorID, item.OperationKey), RelationReference: item.OperationKey})
 	}
 	if next != nil {
-		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: membershipAuditKey(next.ActorID, next.OperationKey)}
+		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: membershipAuditKey(next.ProjectID, next.ActorID, next.OperationKey)}
 	}
 	return page, nil
 }
@@ -203,7 +211,7 @@ func writeAccountAuditError(c *gin.Context, err error) {
 	}
 	writeWorkbenchProtocolError(c, status, code, "Operation history request could not be completed")
 }
-func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, membershipProjectID string) (kernelmodule.Module, error) {
 	repository, err := store.NewRepository(ctx, sourceDB)
 	if err != nil {
 		return nil, err
@@ -227,7 +235,7 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, member
 	var profileHistory accountaudit.AdditionalHistory = profileAuditReader{repository: profileRepository}
 	var membershipHistory accountaudit.AdditionalHistory
 	if membershipDB != nil {
-		membershipRepository, membershipErr := memberstore.NewRepository(ctx, membershipDB)
+		membershipRepository, membershipErr := memberstore.NewRepository(ctx, membershipDB, membershipProjectID)
 		if membershipErr != nil {
 			return nil, membershipErr
 		}
@@ -246,7 +254,7 @@ func NewAccountAuditApplication(ctx context.Context, db *gorm.DB, verifier zitad
 	if ctx == nil || db == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, registry.ErrUnavailable
 	}
-	module, err := buildAccountAuditModule(ctx, db, db, nil, authorizer)
+	module, err := buildAccountAuditModule(ctx, db, db, nil, authorizer, "")
 	if err != nil {
 		return nil, err
 	}

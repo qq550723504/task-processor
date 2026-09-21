@@ -178,6 +178,14 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 				}()
 				start(t, true)
 			})
+			t.Run(role+"/forbidden/account_business_profile_audit_events_id_seq/UPDATE", func(t *testing.T) {
+				require.NoError(t, owner.Exec(`GRANT UPDATE ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+				defer func() {
+					require.NoError(t, owner.Exec(`REVOKE UPDATE ON SEQUENCE public.account_business_profile_audit_events_id_seq FROM `+role).Error)
+					start(t, false)
+				}()
+				start(t, true)
+			})
 		}
 		t.Run(role+"/inherited", func(t *testing.T) {
 			require.NoError(t, owner.Exec(`CREATE ROLE run1_inherited; GRANT SELECT ON public.run1_additional_fact TO run1_inherited; GRANT run1_inherited TO `+role).Error)

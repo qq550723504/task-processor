@@ -40,8 +40,8 @@ const membershipEvent = z.object({
   time: z.string().max(40).datetime({ precision: null }),
   objectType: z.literal("organization_member"), objectReference: resourceReference,
   operation: membershipOperation, result: z.literal("succeeded"),
-  relation: z.object({ type: z.literal("organization_member_version"), reference: resourceReference, version }).strict(),
-}).strict().refine(value => value.objectReference === value.relation.reference);
+  relation: z.object({ type: z.literal("organization_membership_operation"), reference: z.string().uuid(), version }).strict(),
+}).strict();
 const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent]);
 const cursor = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/);
 const source = z.enum([
