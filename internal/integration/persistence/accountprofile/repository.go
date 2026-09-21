@@ -13,6 +13,7 @@ import (
 const TableName = "account_business_profiles"
 
 type BusinessProfile struct {
+	OrganizationID   string
 	UserID           string
 	UserRole         string
 	ShopSituation    string
@@ -45,6 +46,7 @@ type AuditPosition struct {
 }
 
 type profileRow struct {
+	OrganizationID   string    `gorm:"column:organization_id;primaryKey"`
 	UserID           string    `gorm:"column:user_id;primaryKey"`
 	UserRole         string    `gorm:"column:user_role"`
 	ShopSituation    string    `gorm:"column:shop_situation"`
@@ -79,11 +81,11 @@ func New(db *gorm.DB) (*Repository, error) {
 	return &Repository{db: db}, nil
 }
 
-func (r *Repository) Read(ctx context.Context, userID string) (BusinessProfile, error) {
+func (r *Repository) Read(ctx context.Context, organizationID, userID string) (BusinessProfile, error) {
 	var row profileRow
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Take(&row).Error
+	err := r.db.WithContext(ctx).Where("organization_id = ? AND user_id = ?", organizationID, userID).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return emptyBusinessProfile(userID), nil
+		return emptyBusinessProfile(organizationID, userID), nil
 	}
 	if err != nil {
 		return BusinessProfile{}, err
@@ -96,7 +98,7 @@ func (r *Repository) Read(ctx context.Context, userID string) (BusinessProfile, 
 }
 
 func (r *Repository) Save(ctx context.Context, profile BusinessProfile) (BusinessProfile, error) {
-	return r.SaveWithAudit(ctx, profile, AuditContext{})
+	return r.SaveWithAudit(ctx, profile, AuditContext{OrganizationID: profile.OrganizationID})
 }
 
 func (r *Repository) SaveWithAudit(ctx context.Context, profile BusinessProfile, audit AuditContext) (BusinessProfile, error) {
@@ -113,13 +115,20 @@ func (r *Repository) SaveWithAudit(ctx context.Context, profile BusinessProfile,
 		return BusinessProfile{}, err
 	}
 	now := time.Now().UTC()
-	row := profileRow{UserID: profile.UserID, UserRole: profile.UserRole, ShopSituation: profile.ShopSituation, FactorySituation: profile.FactorySituation, Platforms: string(platforms), Sites: string(sites), ShopType: profile.ShopType, Services: string(services), UpdatedAt: now}
+	organizationID := audit.OrganizationID
+	if organizationID == "" {
+		organizationID = profile.OrganizationID
+	}
+	if organizationID == "" {
+		return BusinessProfile{}, errors.New("account profile organization is required")
+	}
+	row := profileRow{OrganizationID: organizationID, UserID: profile.UserID, UserRole: profile.UserRole, ShopSituation: profile.ShopSituation, FactorySituation: profile.FactorySituation, Platforms: string(platforms), Sites: string(sites), ShopType: profile.ShopType, Services: string(services), UpdatedAt: now}
 	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return BusinessProfile{}, tx.Error
 	}
 	defer tx.Rollback()
-	if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}}, DoUpdates: clause.AssignmentColumns([]string{"user_role", "shop_situation", "factory_situation", "platforms", "sites", "shop_type", "services", "updated_at"})}).Create(&row).Error; err != nil {
+	if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "organization_id"}, {Name: "user_id"}}, DoUpdates: clause.AssignmentColumns([]string{"user_role", "shop_situation", "factory_situation", "platforms", "sites", "shop_type", "services", "updated_at"})}).Create(&row).Error; err != nil {
 		return BusinessProfile{}, err
 	}
 	if audit.OrganizationID != "" && audit.ActorID != "" {
@@ -128,7 +137,7 @@ func (r *Repository) SaveWithAudit(ctx context.Context, profile BusinessProfile,
 		// allocating the per-organization audit version so concurrent writes cannot
 		// observe and reuse the same count.
 		var locked profileRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", profile.UserID).Take(&locked).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND user_id = ?", organizationID, profile.UserID).Take(&locked).Error; err != nil {
 			return BusinessProfile{}, err
 		}
 		var version int64
@@ -203,9 +212,9 @@ func (row profileRow) profile() (BusinessProfile, error) {
 	if services == nil {
 		services = []string{}
 	}
-	return BusinessProfile{UserID: row.UserID, UserRole: row.UserRole, ShopSituation: row.ShopSituation, FactorySituation: row.FactorySituation, Platforms: platforms, Sites: sites, ShopType: row.ShopType, Services: services, UpdatedAt: &updated}, nil
+	return BusinessProfile{OrganizationID: row.OrganizationID, UserID: row.UserID, UserRole: row.UserRole, ShopSituation: row.ShopSituation, FactorySituation: row.FactorySituation, Platforms: platforms, Sites: sites, ShopType: row.ShopType, Services: services, UpdatedAt: &updated}, nil
 }
 
-func emptyBusinessProfile(userID string) BusinessProfile {
-	return BusinessProfile{UserID: userID, Platforms: []string{}, Sites: []string{}, Services: []string{}}
+func emptyBusinessProfile(organizationID, userID string) BusinessProfile {
+	return BusinessProfile{OrganizationID: organizationID, UserID: userID, Platforms: []string{}, Sites: []string{}, Services: []string{}}
 }

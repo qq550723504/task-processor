@@ -30,7 +30,7 @@ func (m accountProfileModule) Register(reg *kernelmodule.Registry) error {
 		return errors.New("account profile repository unavailable")
 	}
 	reg.AddRoutes(
-		httproute.Descriptor{Method: http.MethodGet, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: true, Handler: m.read},
+		httproute.Descriptor{Method: http.MethodGet, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyContextRead, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: true, Handler: m.read},
 		httproute.Descriptor{Method: http.MethodPut, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountOrganizationTarget, RequestTimeout: 15 * time.Second, Handler: m.update},
 	)
 	return nil
@@ -44,7 +44,7 @@ func (m accountProfileModule) read(c *gin.Context) {
 		}
 		return
 	}
-	profile, err := m.repository.Read(c.Request.Context(), identity.UserID)
+	profile, err := m.repository.Read(c.Request.Context(), identity.EffectiveOrganizationID, identity.UserID)
 	if err != nil {
 		writeAccountProfileError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
@@ -143,7 +143,7 @@ func validateBusinessProfileInput(input *businessProfileInput) error {
 
 func accountProfileIdentity(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
-	if !ok || !authidentity.IsBoundedIdentifier(identity.UserID) {
+	if !ok || !authidentity.IsBoundedIdentifier(identity.UserID) || !authidentity.IsBoundedIdentifier(identity.EffectiveOrganizationID) {
 		writeAccountProfileError(c, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED")
 		return identity, false
 	}

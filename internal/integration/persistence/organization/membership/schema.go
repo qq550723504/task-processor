@@ -37,36 +37,7 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
   created_at timestamptz NOT NULL,
   PRIMARY KEY(project_id,organization_id,actor_id,operation_key),
   CONSTRAINT organization_member_audit_operation_check CHECK (operation IN ('invite','role','remove'))
- );
- ALTER TABLE public.organization_member_audit_events ADD COLUMN IF NOT EXISTS project_id varchar(128);
- UPDATE public.organization_member_audit_events AS audit
- SET project_id=(SELECT operation.project_id
-                 FROM public.organization_member_operations AS operation
-                 WHERE operation.organization_id=audit.organization_id
-                   AND operation.actor_id=audit.actor_id
-                   AND operation.operation_key=audit.operation_key)
- WHERE audit.project_id IS NULL
-   AND (SELECT count(*)
-        FROM public.organization_member_operations AS operation
-        WHERE operation.organization_id=audit.organization_id
-          AND operation.actor_id=audit.actor_id
-          AND operation.operation_key=audit.operation_key) = 1;
- DO $$
- BEGIN
-  IF EXISTS (SELECT 1 FROM public.organization_member_audit_events WHERE project_id IS NULL) THEN
-   RAISE EXCEPTION 'membership audit rows cannot be assigned to a project';
-  END IF;
- END $$;
- ALTER TABLE public.organization_member_audit_events ALTER COLUMN project_id SET NOT NULL;
- DO $$
- BEGIN
-  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey' AND pg_get_constraintdef(oid) <> 'PRIMARY KEY (project_id, organization_id, actor_id, operation_key)') THEN
-   ALTER TABLE public.organization_member_audit_events DROP CONSTRAINT organization_member_audit_events_pkey;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey') THEN
-   ALTER TABLE public.organization_member_audit_events ADD CONSTRAINT organization_member_audit_events_pkey PRIMARY KEY (project_id, organization_id, actor_id, operation_key);
-  END IF;
- END $$;`)
+ );`)
 	return err
 }
 

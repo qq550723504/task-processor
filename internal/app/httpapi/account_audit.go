@@ -2,7 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -65,7 +65,7 @@ func (r profileAuditReader) ListRecentAudit(ctx context.Context, organizationID 
 type membershipAuditReader struct{ repository *memberstore.Repository }
 
 func membershipAuditKey(projectID, actorID, operationKey string) string {
-	encode := base64.RawURLEncoding.EncodeToString
+	encode := hex.EncodeToString
 	return operationKey + "." + encode([]byte(actorID)) + "." + encode([]byte(projectID))
 }
 
@@ -77,7 +77,7 @@ func membershipAuditPosition(after *accountaudit.AuditPosition) (*membership.Aud
 	if len(parts) != 3 {
 		return nil, registry.ErrInvalid
 	}
-	decode := base64.RawURLEncoding.DecodeString
+	decode := hex.DecodeString
 	actorBytes, actorErr := decode(parts[1])
 	projectBytes, projectErr := decode(parts[2])
 	position := &membership.AuditPosition{CreatedAt: after.CreatedAt, OperationKey: parts[0], ActorID: string(actorBytes), ProjectID: string(projectBytes)}
