@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"task-processor/internal/authidentity"
 )
 
 var ErrConflict = errors.New("membership operation conflicts with current state")
@@ -92,15 +93,16 @@ type AuditEvent struct {
 type AuditPosition struct {
 	CreatedAt    time.Time
 	OperationKey string
+	ActorID      string
 }
 
 func (p AuditPosition) Valid() bool {
 	id, err := uuid.Parse(p.OperationKey)
-	return !p.CreatedAt.IsZero() && p.CreatedAt.Equal(p.CreatedAt.Truncate(time.Microsecond)) && err == nil && id != uuid.Nil && id.String() == p.OperationKey
+	return !p.CreatedAt.IsZero() && p.CreatedAt.Equal(p.CreatedAt.Truncate(time.Microsecond)) && err == nil && id != uuid.Nil && id.String() == p.OperationKey && authidentity.IsBoundedIdentifier(p.ActorID)
 }
 
 func (e AuditEvent) Position() AuditPosition {
-	return AuditPosition{CreatedAt: e.CreatedAt.UTC().Truncate(time.Microsecond), OperationKey: e.OperationKey}
+	return AuditPosition{CreatedAt: e.CreatedAt.UTC().Truncate(time.Microsecond), OperationKey: e.OperationKey, ActorID: e.ActorID}
 }
 
 // Each method is a short independent transaction. Begin atomically claims

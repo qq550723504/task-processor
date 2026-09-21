@@ -57,4 +57,11 @@ func TestRepositoryPersistsProfileAuditWithTheProfileMutation(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, int64(1), events[0].ID)
 	require.Equal(t, AuditEvent{ID: events[0].ID, OrganizationID: "org-a", ActorID: "actor-a", UserID: "user-a", Operation: "update", Version: 1, CreatedAt: events[0].CreatedAt}, events[0])
+	_, err = repo.SaveWithAudit(context.Background(), BusinessProfile{UserID: "user-a", UserRole: "供应链"}, AuditContext{OrganizationID: "org-a", ActorID: "actor-a"})
+	require.NoError(t, err)
+	events, next, err = repo.ListRecentAudit(context.Background(), "org-a", 20, "actor-a", "update", nil)
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Len(t, events, 2)
+	require.Equal(t, int64(2), events[0].Version)
 }

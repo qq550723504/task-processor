@@ -6,6 +6,7 @@ import { accountFailure } from "./account-proxy";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 
 const validID = (value: string | undefined): value is string => !!value && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+const validOperation = (value: string | undefined): value is "register" | "enable" | "disable" | "set_target" | "revoke" | "update" | "invite" | "role" | "remove" => !!value && ["register", "enable", "disable", "set_target", "revoke", "update", "invite", "role", "remove"].includes(value);
 function origin(): string | null {
   try {
     const raw = process.env.LISTINGKIT_SERVICE_API_BASE?.trim(); if (!raw) return null;
@@ -24,11 +25,15 @@ export async function proxyAccountAudit(request: Request, token: string, userId:
   let query: string;
   let limit: number;
   try {
-    for (const name of url.searchParams.keys()) if (!["limit", "cursor"].includes(name) || url.searchParams.getAll(name).length !== 1) throw new Error("invalid query");
+    for (const name of url.searchParams.keys()) if (!["limit", "cursor", "actor", "operation"].includes(name) || url.searchParams.getAll(name).length !== 1) throw new Error("invalid query");
     const rawLimit = url.searchParams.get("limit");
     if (rawLimit !== null && !/^[1-9][0-9]{0,2}$/.test(rawLimit)) throw new Error("invalid limit");
+    const rawActor = url.searchParams.get("actor");
+    if (rawActor !== null && !validID(rawActor)) throw new Error("invalid actor");
+    const rawOperation = url.searchParams.get("operation");
+    if (rawOperation !== null && !validOperation(rawOperation)) throw new Error("invalid operation");
     limit = rawLimit === null ? 20 : Number(rawLimit);
-    query = auditQuery(limit, url.searchParams.get("cursor") ?? undefined);
+    query = auditQuery(limit, url.searchParams.get("cursor") ?? undefined, rawActor ?? undefined, rawOperation ?? undefined);
   } catch { return accountFailure(400, "INVALID_REQUEST"); }
   const selections = (request.headers.get("cookie") ?? "").split(";").map(value => value.trim()).filter(value => value.startsWith(`${WORKBENCH_COOKIE_NAME}=`));
   if (selections.length === 0) return accountFailure(409, "ORGANIZATION_SELECTION_REQUIRED");

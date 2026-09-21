@@ -123,6 +123,14 @@ func (r *Repository) SaveWithAudit(ctx context.Context, profile BusinessProfile,
 		return BusinessProfile{}, err
 	}
 	if audit.OrganizationID != "" && audit.ActorID != "" {
+		// The profile row is the single durable owner for this user's writes. The
+		// upsert already locks it until commit; take the explicit row lock before
+		// allocating the per-organization audit version so concurrent writes cannot
+		// observe and reuse the same count.
+		var locked profileRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", profile.UserID).Take(&locked).Error; err != nil {
+			return BusinessProfile{}, err
+		}
 		var version int64
 		if err := tx.Model(&auditRow{}).Where("organization_id = ? AND user_id = ?", audit.OrganizationID, profile.UserID).Count(&version).Error; err != nil {
 			return BusinessProfile{}, err

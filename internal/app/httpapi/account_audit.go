@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -62,10 +63,26 @@ func (r profileAuditReader) ListRecentAudit(ctx context.Context, organizationID 
 
 type membershipAuditReader struct{ repository *memberstore.Repository }
 
+func membershipAuditKey(actorID, operationKey string) string {
+	return operationKey + "." + actorID
+}
+
+func membershipAuditPosition(after *accountaudit.AuditPosition) (*membership.AuditPosition, error) {
+	if after == nil {
+		return nil, nil
+	}
+	operationKey, actorID, ok := strings.Cut(after.Key, ".")
+	position := &membership.AuditPosition{CreatedAt: after.CreatedAt, OperationKey: operationKey, ActorID: actorID}
+	if !ok || !position.Valid() {
+		return nil, registry.ErrInvalid
+	}
+	return position, nil
+}
+
 func (r membershipAuditReader) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string, after *accountaudit.AuditPosition) (accountaudit.AdditionalAuditPage, error) {
-	var position *membership.AuditPosition
-	if after != nil {
-		position = &membership.AuditPosition{CreatedAt: after.CreatedAt, OperationKey: after.Key}
+	position, err := membershipAuditPosition(after)
+	if err != nil {
+		return accountaudit.AdditionalAuditPage{}, err
 	}
 	items, next, err := r.repository.ListRecentAudit(ctx, organizationID, limit, actor, operation, position)
 	if err != nil {
@@ -73,10 +90,10 @@ func (r membershipAuditReader) ListRecentAudit(ctx context.Context, organization
 	}
 	page := accountaudit.AdditionalAuditPage{Items: make([]accountaudit.AdditionalAuditEvent, 0, len(items))}
 	for _, item := range items {
-		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "organization_membership.changed", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "organization_member", ObjectReference: item.TargetUserID, Operation: item.Operation, Version: item.Revision, Key: item.OperationKey})
+		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "organization_membership.changed", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "organization_member", ObjectReference: item.TargetUserID, Operation: item.Operation, Version: item.Revision, Key: membershipAuditKey(item.ActorID, item.OperationKey)})
 	}
 	if next != nil {
-		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: next.OperationKey}
+		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: membershipAuditKey(next.ActorID, next.OperationKey)}
 	}
 	return page, nil
 }

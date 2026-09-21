@@ -42,10 +42,13 @@ func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string,
 		if !after.Valid() {
 			return nil, nil, domain.ErrInvalidRequest
 		}
-		query += fmt.Sprintf(" AND (created_at < $%d OR (created_at = $%d AND operation_key < $%d))", len(args)+1, len(args)+1, len(args)+2)
-		args = append(args, after.CreatedAt, after.OperationKey)
+		createdAt := len(args) + 1
+		operationKey := len(args) + 2
+		actorID := len(args) + 3
+		query += fmt.Sprintf(" AND (created_at < $%d OR (created_at = $%d AND (operation_key < $%d OR (operation_key = $%d AND actor_id < $%d))))", createdAt, createdAt, operationKey, operationKey, actorID)
+		args = append(args, after.CreatedAt, after.OperationKey, after.ActorID)
 	}
-	query += fmt.Sprintf(" ORDER BY created_at DESC, operation_key DESC LIMIT %d", limit+1)
+	query += fmt.Sprintf(" ORDER BY created_at DESC, operation_key DESC, actor_id DESC LIMIT %d", limit+1)
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, nil, domain.ErrUnavailable

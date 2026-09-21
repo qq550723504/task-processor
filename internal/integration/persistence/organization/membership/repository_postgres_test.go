@@ -161,6 +161,33 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if err != nil || next != nil || len(audit) != 1 || audit[0].TargetUserID != "target" || audit[0].Operation != "role" {
 		t.Fatalf("membership audit=%+v next=%v err=%v", audit, next, err)
 	}
+	sharedKey := winner
+	sharedKey.Scope.ActorID = winner.Scope.ActorID + "-second"
+	sharedKey.TargetUserID = "target-b"
+	sharedKey.Fingerprint = strings.Repeat("d", 64)
+	if _, err := rebuilt.Begin(ctx, sharedKey); err != nil {
+		t.Fatal(err)
+	}
+	sharedDispatch := uuid.NewString()
+	dispatchedShared, err := rebuilt.Apply(ctx, sharedKey.Scope, sharedKey.Key, 1, domain.OperationChange{Event: domain.EventDispatch, DispatchID: sharedDispatch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rebuilt.Apply(ctx, sharedKey.Scope, sharedKey.Key, dispatchedShared.Revision, domain.OperationChange{Event: domain.EventAcknowledge, DispatchID: sharedDispatch, Acknowledgment: &domain.Acknowledgment{ID: "grant-b", At: time.Now().UTC().Format(time.RFC3339Nano)}}); err != nil {
+		t.Fatal(err)
+	}
+	audit, next, err = rebuilt.ListRecentAudit(ctx, "org", 20, "", "role", nil)
+	if err != nil || next != nil || len(audit) != 2 {
+		t.Fatalf("same operation key lost an audit event: audit=%+v next=%v err=%v", audit, next, err)
+	}
+	page, pageNext, err := rebuilt.ListRecentAudit(ctx, "org", 1, "", "role", nil)
+	if err != nil || len(page) != 1 || pageNext == nil {
+		t.Fatalf("same operation key first page=%+v next=%v err=%v", page, pageNext, err)
+	}
+	page, pageNext, err = rebuilt.ListRecentAudit(ctx, "org", 1, "", "role", pageNext)
+	if err != nil || len(page) != 1 || pageNext != nil || page[0].ActorID == audit[0].ActorID {
+		t.Fatalf("same operation key second page=%+v next=%v err=%v", page, pageNext, err)
+	}
 	if _, err := rebuilt.Begin(ctx, alias); err != nil {
 		t.Fatalf("valid ACK did not release: %v", err)
 	}

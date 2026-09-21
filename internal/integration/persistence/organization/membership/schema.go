@@ -34,9 +34,18 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
   operation varchar(32) NOT NULL,
   revision bigint NOT NULL CHECK (revision > 0),
   created_at timestamptz NOT NULL,
-  PRIMARY KEY(organization_id,operation_key),
+  PRIMARY KEY(organization_id,actor_id,operation_key),
   CONSTRAINT organization_member_audit_operation_check CHECK (operation IN ('invite','role','remove'))
- );`)
+ );
+ DO $$
+ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey' AND pg_get_constraintdef(oid) <> 'PRIMARY KEY (organization_id, actor_id, operation_key)') THEN
+   ALTER TABLE public.organization_member_audit_events DROP CONSTRAINT organization_member_audit_events_pkey;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey') THEN
+   ALTER TABLE public.organization_member_audit_events ADD CONSTRAINT organization_member_audit_events_pkey PRIMARY KEY (organization_id, actor_id, operation_key);
+  END IF;
+ END $$;`)
 	return err
 }
 
@@ -61,6 +70,23 @@ func verifySchema(ctx context.Context, db schemaReader) error {
 	}
 	if auditTableCount != 1 {
 		return errors.New("membership audit table missing")
+	}
+	rows, err = db.QueryContext(ctx, `SELECT pg_catalog.pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='public.organization_member_audit_events'::regclass AND conname='organization_member_audit_events_pkey'`)
+	if err != nil {
+		return err
+	}
+	var auditPrimaryKey string
+	if rows.Next() {
+		if err := rows.Scan(&auditPrimaryKey); err != nil {
+			_ = rows.Close()
+			return err
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if auditPrimaryKey != "PRIMARY KEY (organization_id, actor_id, operation_key)" {
+		return errors.New("membership audit primary key mismatch")
 	}
 	want := map[string]string{"project_id": "character varying(128)", "organization_id": "character varying(128)", "actor_id": "character varying(128)", "operation_key": "uuid", "target_user_id": "character varying(128)", "invite_email": "character varying(320)", "fingerprint": "character(64)", "revision": "bigint", "active": "boolean", "payload": "jsonb"}
 	rows, err = db.QueryContext(ctx, `SELECT a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.organization_member_operations'::regclass AND a.attnum>0 AND NOT a.attisdropped`)
