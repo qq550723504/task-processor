@@ -59,6 +59,21 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 
+func TestNewPlatformSubscriptionOwnerModuleRegistersOnlyOwnerRoutes(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+	module := NewPlatformSubscriptionOwnerModule(stubRouteHandler{})
+
+	require.Equal(t, "listing-kit-platform-admin", module.Name())
+	require.NoError(t, module.Register(reg))
+	keys := routeKeys(reg.Routes())
+	require.Contains(t, keys, "GET /api/v1/listing-kits/platform/subscription-plans")
+	require.Contains(t, keys, "PUT /api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code")
+	require.NotContains(t, keys, "GET /api/v1/listing-kits/platform/tenant-directory")
+	require.NotContains(t, keys, "POST /api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations")
+}
+
 func TestAppendRouteDescriptorsIncludesAuthContextForSupportingHandler(t *testing.T) {
 	t.Parallel()
 

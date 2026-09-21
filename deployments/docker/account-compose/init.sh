@@ -71,7 +71,7 @@ ALTER ROLE commercial_owner_runtime LOGIN PASSWORD :'commercial_password';
 GRANT CONNECT ON DATABASE commercial TO commercial_owner_runtime;
 GRANT USAGE ON SCHEMA public TO commercial_owner_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_modules, public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements, public.saas_usage_counters, public.saas_usage_counter_adjustments, public.saas_subscription_audit_logs TO commercial_owner_runtime;
-GRANT DELETE ON TABLE public.saas_plan_modules TO commercial_owner_runtime;
+GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas_tenant_entitlements TO commercial_owner_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
 ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL
@@ -216,7 +216,7 @@ ALTER ROLE commercial_owner_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$commercia
 GRANT CONNECT ON DATABASE commercial TO commercial_owner_runtime;
 GRANT USAGE ON SCHEMA public TO commercial_owner_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_modules, public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements, public.saas_usage_counters, public.saas_usage_counter_adjustments, public.saas_subscription_audit_logs TO commercial_owner_runtime;
-GRANT DELETE ON TABLE public.saas_plan_modules TO commercial_owner_runtime;
+GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas_tenant_entitlements TO commercial_owner_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
 ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL

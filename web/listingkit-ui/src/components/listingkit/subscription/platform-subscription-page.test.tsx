@@ -120,6 +120,14 @@ describe("PlatformSubscriptionPage", () => {
     ]);
   });
 
+  it("does not request or present identity-provider routes when disabled", () => {
+    renderWithQueryClient(<PlatformSubscriptionPage tenantDirectoryEnabled={false} />);
+
+    expect(mockedGetPlatformTenantDirectory).not.toHaveBeenCalled();
+    expect(screen.queryByText("ZITADEL 租户目录")).not.toBeInTheDocument();
+    expect(screen.queryByText("成员邀请")).not.toBeInTheDocument();
+  });
+
   it("loads a tenant subscription and updates a module entitlement", async () => {
     mockedGetPlatformTenantSubscription.mockResolvedValue({
       tenant_id: "org-target",

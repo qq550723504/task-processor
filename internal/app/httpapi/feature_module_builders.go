@@ -56,7 +56,7 @@ func buildPlatformSubscriptionModule(db *gorm.DB, cfg *config.Config) (kernelmod
 	if err != nil {
 		return nil, err
 	}
-	return listingkithttpapi.NewPlatformAdminModule(handler), nil
+	return listingkithttpapi.NewPlatformSubscriptionOwnerModule(handler), nil
 }
 
 func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {

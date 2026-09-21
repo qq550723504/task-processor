@@ -49,7 +49,6 @@ var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
 
 var currentPlatformSubscriptionApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions"},
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/tenant-directory"},
 	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans"},
 	{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/subscription-plans"},
 	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code"},
@@ -63,7 +62,6 @@ var currentPlatformSubscriptionApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/plan"},
 	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code"},
 	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/usage/:module_code/:period_key/:metric"},
-	{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations"},
 }
 
 type currentApplicationFactories struct {
