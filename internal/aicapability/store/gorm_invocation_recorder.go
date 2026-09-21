@@ -63,6 +63,59 @@ func (r *GormInvocationRecorder) FindInvocation(ctx context.Context, tenantID, m
 	return invocationRecordFromRow(row), true, nil
 }
 
+// ResolveDispatchedInvocation closes the only safe recovery gap after a
+// provider call has crossed the durable dispatch boundary but its response
+// was lost. Resolution is explicit and terminal: a confirmed failure releases
+// the reservation, while a confirmed success must carry provider-observed
+// token usage and is settled through the commercial owner. It never calls a
+// provider and is idempotent for the same terminal fact.
+func (r *GormInvocationRecorder) ResolveDispatchedInvocation(ctx context.Context, record aicapability.InvocationRecord) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("ai invocation recorder database is nil")
+	}
+	if strings.TrimSpace(record.InvocationID) == "" || strings.TrimSpace(record.TenantID) == "" || strings.TrimSpace(record.MemberID) == "" {
+		return fmt.Errorf("ai invocation recovery identity is required")
+	}
+	if record.Outcome != aicapability.InvocationSucceeded && record.Outcome != aicapability.InvocationFailed {
+		return fmt.Errorf("ai invocation recovery outcome must be succeeded or failed")
+	}
+	if record.FinishedAt.IsZero() {
+		return fmt.Errorf("ai invocation recovery finished_at is required")
+	}
+	if record.Outcome == aicapability.InvocationSucceeded && (!record.UsageKnown || record.TotalTokens <= 0) {
+		return fmt.Errorf("successful ai invocation recovery requires observed token usage")
+	}
+	existing, found, err := r.FindInvocation(ctx, record.TenantID, record.MemberID, record.InvocationID, record.InputHash)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("ai invocation recovery requires a durable dispatched record")
+	}
+	if existing.Outcome != aicapability.InvocationDispatched && existing.Outcome != record.Outcome {
+		return fmt.Errorf("ai invocation recovery outcome conflict")
+	}
+	if existing.Outcome != aicapability.InvocationDispatched {
+		// Re-run only the durable commercial settlement/release for the
+		// already-recorded terminal fact. Never ask the provider again.
+		return r.RecordInvocation(ctx, existing)
+	}
+	if existing.Outcome == aicapability.InvocationDispatched {
+		// Preserve the original dispatch identity and metadata while applying
+		// only the terminal, operator-observed result.
+		record.AgentRunID = existing.AgentRunID
+		record.UserID = existing.UserID
+		record.BusinessTaskID = existing.BusinessTaskID
+		record.StartedAt = existing.StartedAt
+		record.Capability = existing.Capability
+		record.Operation = existing.Operation
+		record.ProviderID = existing.ProviderID
+		record.ModelID = existing.ModelID
+		record.InputHash = existing.InputHash
+	}
+	return r.RecordInvocation(ctx, record)
+}
+
 // NewGormInvocationRecorder creates a recorder backed by db.
 func NewGormInvocationRecorder(db *gorm.DB) *GormInvocationRecorder {
 	return &GormInvocationRecorder{db: db}

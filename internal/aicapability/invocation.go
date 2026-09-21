@@ -92,6 +92,14 @@ type InvocationReplayReader interface {
 	FindInvocation(context.Context, string, string, string, string) (InvocationRecord, bool, error)
 }
 
+// InvocationRecovery is an owner-triggered terminal resolution for a durable
+// dispatched invocation whose worker lost the provider response. The caller
+// must supply an externally observed provider outcome; this interface never
+// redispatches a provider call and never invents usage.
+type InvocationRecovery interface {
+	ResolveDispatchedInvocation(context.Context, InvocationRecord) error
+}
+
 // InvocationUsageReservation is the commercial owner boundary used before a
 // provider dispatch. It reserves the caller-supplied conservative token upper
 // bound; settlement releases the unused reservation and commits observed tokens.

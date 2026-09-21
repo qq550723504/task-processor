@@ -29,7 +29,7 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(path string) (*config.Config, error) {
 			require.Equal(t, "config/worker.yaml", path)
-			cfg := &config.Config{Database: &config.DatabaseConfig{}}
+			cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{}}
 			cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 			return cfg, nil
 		},
@@ -56,13 +56,13 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	require.NotNil(t, dependencies.Publisher)
 	require.Nil(t, capabilityInput.OpenAIManager)
 	require.NoError(t, closeFn())
-	require.Equal(t, 1, closed)
+	require.Equal(t, 2, closed)
 }
 
 func TestResolveImageAgentTemporalDependenciesForV2BuildsCompatibilityArtifactStore(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	cfg := &config.Config{Database: &config.DatabaseConfig{}}
+	cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{}}
 	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("invalid-v3-mode", false)
 	storeBuilds := 0
 	resolver := imageAgentWorkerDependencyResolver{
@@ -98,7 +98,7 @@ func TestResolveImageAgentTemporalDependenciesForV2BuildsCompatibilityArtifactSt
 func TestResolveImageAgentTemporalDependenciesForV2UsesCompatibilityArtifactStoreEvenWhenV3TimingIsDefaulted(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-no-v3-fields?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	cfg := &config.Config{Database: &config.DatabaseConfig{}}
+	cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{}}
 	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("", false)
 	storeBuilds := 0
 	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeV2, imageAgentWorkerDependencyResolver{

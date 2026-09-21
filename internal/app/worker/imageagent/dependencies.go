@@ -177,23 +177,21 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent durable artifact store: %w", err)
 		}
 	}
+	if cfg.CommercialDatabase == nil {
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent commercial database configuration is required for token accounting")
+	}
 	db, err := resolver.OpenDB(cfg.Database)
 	if err != nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open image agent worker database: %w", err)
 	}
-	var commercialDB *gorm.DB
-	if cfg.CommercialDatabase != nil {
-		commercialDB, err = resolver.OpenDB(cfg.CommercialDatabase)
-		if err != nil {
-			_ = resolver.CloseDB(cfg.Database, db)
-			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open commercial usage database: %w", err)
-		}
+	commercialDB, err := resolver.OpenDB(cfg.CommercialDatabase)
+	if err != nil {
+		_ = resolver.CloseDB(cfg.Database, db)
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open commercial usage database: %w", err)
 	}
 	closeDB := func() error {
 		closeErr := resolver.CloseDB(cfg.Database, db)
-		if commercialDB != nil {
-			closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialDatabase, commercialDB))
-		}
+		closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialDatabase, commercialDB))
 		return closeErr
 	}
 	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db, commercialDB, logger)
@@ -340,7 +338,7 @@ func buildImageAgentWorkerAI(cfg *config.Config, db, commercialDB *gorm.DB, logg
 	if cfg == nil || db == nil {
 		return nil, nil, nil, fmt.Errorf("image agent provider configuration and database are required")
 	}
-	if cfg.CommercialDatabase == nil {
+	if cfg.CommercialDatabase == nil || commercialDB == nil {
 		return nil, nil, nil, fmt.Errorf("image agent commercial database configuration is required for token accounting")
 	}
 	var componentLogger *logrus.Entry
@@ -357,8 +355,6 @@ func buildImageAgentWorkerAI(cfg *config.Config, db, commercialDB *gorm.DB, logg
 	credentials := openaiclient.NewGormCredentialResolver(db)
 	manager.SetConfigResolver(credentials)
 	recorder := aicapabilitystore.NewGormInvocationRecorder(db)
-	if commercialDB != nil {
-		recorder.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(commercialDB)})
-	}
+	recorder.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(commercialDB)})
 	return manager, credentials, recorder, nil
 }
