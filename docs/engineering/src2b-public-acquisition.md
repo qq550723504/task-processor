@@ -28,10 +28,18 @@ Verify/Read only. A missing receipt is still unknown, not permission to republis
 Only expired acquiring operations without a prepared command may obtain a new
 fenced GET lease. There is no background scheduler, fallback, rebase, TTL or key GC.
 
-Limits: 256 retained operations per organization, 32 active operations (including
+Limits: 2048 retained operations per organization, 32 active operations (including
 prepared/publishing/unknown), 2 MiB command, 8 KiB strings, 256 items per collection,
 1024 aggregate items, 20-second operation deadline, 8-second GET, 30-second GET
 lease. Compressed and expanded provider bodies are each limited to 2 MiB.
+
+The retained-operation limit is a lifetime ceiling: operation rows are never deleted
+and terminal rows keep counting, so raising it defers exhaustion rather than removing
+it. It is sized from observed storage (~18 KiB per published command ⇒ ~36 MiB per
+organization at 2048) rather than from an expected user count. It is not a storage
+bound: `MaxAcquisitionCommandBytes` admits 2 MiB commands, so an organization
+submitting near-limit commands could reach ~4 GiB, and the previous 256-row ceiling
+admitted ~512 MiB by the same arithmetic.
 
 ## Explicit empty-database initialization
 
