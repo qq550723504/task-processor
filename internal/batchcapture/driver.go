@@ -482,11 +482,18 @@ func (d *Driver) waitForAppTab(existing map[string]bool) (string, error) {
 
 // pageTargetIDs snapshots the page targets that already exist, so a handoff can be
 // required to produce a tab outside that set.
-func (d *Driver) pageTargetIDs() map[string]bool {
+//
+// The error is returned rather than swallowed because an empty snapshot is not a
+// harmless default: it claims "no tabs existed", which makes the previous item's
+// still-open application tab look like one this handoff just created. Adopting it
+// would read item one's key while capturing item two and submit under the wrong
+// key (design section 4 D1.2 guard 1). A snapshot that cannot be taken must fail
+// before the handoff click, not after it.
+func (d *Driver) pageTargetIDs() (map[string]bool, error) {
 	seen := map[string]bool{}
 	res, err := d.browserSession.Send("Target.getTargets", nil)
 	if err != nil {
-		return seen
+		return nil, fmt.Errorf("%w: list targets: %v", ErrDriverUnavailable, err)
 	}
 	m, _ := res.(map[string]any)
 	infos, _ := m["targetInfos"].([]any)
@@ -500,7 +507,7 @@ func (d *Driver) pageTargetIDs() map[string]bool {
 			seen[id] = true
 		}
 	}
-	return seen
+	return seen, nil
 }
 
 // rawSession drives a non-flat CDP session. Playwright's CDPSession.Send carries

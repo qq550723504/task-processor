@@ -196,8 +196,13 @@ func (p *Popup) PrepareHandoff() (map[string]bool, error) {
 	}
 	// Snapshot the tabs that already exist. The previous item's application tab is
 	// normally still open and still carries the previous key, so only a tab this
-	// handoff created may be adopted.
-	return p.driver.pageTargetIDs(), nil
+	// handoff created may be adopted. A snapshot that cannot be taken is an error:
+	// treating it as "no tabs" would let the previous item's tab pass as new.
+	existing, err := p.driver.pageTargetIDs()
+	if err != nil {
+		return nil, err
+	}
+	return existing, nil
 }
 
 // DispatchHandoff clicks the extension's real handoff control.

@@ -1268,3 +1268,73 @@ func TestFixtureDriverKeepsOutcomeUnknownWhenTheHandoffResultCannotBeObserved(t 
 		t.Fatalf("application tabs=%d, want 1 because the handoff was dispatched", got)
 	}
 }
+
+// A target snapshot that cannot be taken must be reported as a failure, not as "no
+// tabs existed". The previous item's application tab normally survives into the next
+// item and still carries the previous item's key, so an empty snapshot makes it look
+// like a tab this handoff just created; AppPageByKey would then click the previous
+// payload while the current item records its own key (design section 4 D1.2 guard 1).
+func TestFixtureDriverReportsAFailedTargetSnapshot(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+
+	// The healthy session is the control: the snapshot must work, otherwise an
+	// always-failing implementation would satisfy the assertion below.
+	healthy, err := driver.pageTargetIDs()
+	if err != nil {
+		t.Fatalf("snapshot on a healthy session: %v", err)
+	}
+	if len(healthy) == 0 {
+		t.Fatal("the healthy session reported no page targets at all")
+	}
+
+	// Detaching the browser session makes every Target command fail, which is the
+	// same observable result as a transient enumeration failure.
+	if err := driver.browserSession.Detach(); err != nil {
+		t.Fatalf("detach browser session: %v", err)
+	}
+	failed, err := driver.pageTargetIDs()
+	if err == nil {
+		t.Fatalf("a failed snapshot was reported as the set %v; the previous item's application tab would pass as newly created", failed)
+	}
+}
+
+// A browser that can no longer be asked for the snapshot must fail before the handoff
+// click, so nothing is handed to the application.
+//
+// This asserts the ordering property rather than the snapshot's error return itself:
+// with the session detached the popup cannot read its own state either, so either
+// failure may be the one that surfaces. The snapshot's error return is pinned
+// separately, at the driver and at the source (`popup_contract_test.go`).
+func TestFixtureDriverDoesNotDispatchHandoffWhenTheSessionIsGone(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+
+	popup, err := driver.PrepareItem(fixtureSource)
+	if err != nil {
+		t.Fatalf("prepare item: %v", err)
+	}
+	t.Cleanup(func() { _ = popup.Close() })
+	if _, err := popup.Capture(); err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+
+	if err := driver.browserSession.Detach(); err != nil {
+		t.Fatalf("detach browser session: %v", err)
+	}
+	if _, err := popup.PrepareHandoff(); err == nil {
+		t.Fatal("PrepareHandoff succeeded although the browser reported no targets")
+	}
+	if _, err := popup.Handoff(); err == nil {
+		t.Fatal("the composed handoff proceeded although the browser was unreachable")
+	}
+	// No click means the item never left the executor, so it stays re-doable instead
+	// of becoming ambiguous.
+	if got := fixtureAppTabCountWithin(t, driver, 2*time.Second); got != 0 {
+		t.Fatalf("application tabs=%d, want 0 because the handoff must not be dispatched", got)
+	}
+}

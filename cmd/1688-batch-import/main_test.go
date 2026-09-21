@@ -23,6 +23,19 @@ func validConfig(t *testing.T) config {
 	}
 }
 
+func (c config) args() []string {
+	return []string{
+		"--queue", c.QueuePath,
+		"--url", c.SourceURL,
+		"--batch-id", c.BatchID,
+		"--actor", c.ActorID,
+		"--organization", c.Organization,
+		"--browser", c.BrowserPath,
+		"--extension", c.ExtensionDist,
+		"--profile", c.ProfileDir,
+	}
+}
+
 func TestValidateRequiresEveryFlag(t *testing.T) {
 	cfg := validConfig(t)
 	for _, drop := range []string{"queue", "url", "actor", "organization", "browser", "extension", "profile"} {

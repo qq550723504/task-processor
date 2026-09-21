@@ -54,33 +54,22 @@ var offerPattern = regexp.MustCompile(`^https?://detail\.1688\.com(?::(?:80|443)
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "1688-batch-import:", err)
-		var unknown *outcomeUnknownError
-		if errors.As(err, &unknown) {
-			os.Exit(exitStopAndVerify)
-		}
-		var blocked *batchBlockedError
-		if errors.As(err, &blocked) {
+		var stop *stopAndVerifyError
+		if errors.As(err, &stop) {
 			os.Exit(exitStopAndVerify)
 		}
 		os.Exit(exitUsage)
 	}
 }
 
-// outcomeUnknownError marks the one failure a caller must treat differently: the
-// item may or may not have been published, so the only allowed next step is a
-// human check, never an automatic retry.
-type outcomeUnknownError struct{ err error }
+// stopAndVerifyError marks every failure whose only safe next step is a person
+// checking the application. They differ in how they are explained, not in what they
+// ask for: after any of them the item may already have reached the application, so
+// no automatic retry and no "just re-create the queue" is allowed.
+type stopAndVerifyError struct{ err error }
 
-func (e *outcomeUnknownError) Error() string { return e.err.Error() }
-func (e *outcomeUnknownError) Unwrap() error { return e.err }
-
-// batchBlockedError marks the other stop-for-a-person outcome: an earlier item in
-// the queue may already have been published, so no further item may be submitted
-// until someone checks the application. It is not a usage error.
-type batchBlockedError struct{ err error }
-
-func (e *batchBlockedError) Error() string { return e.err.Error() }
-func (e *batchBlockedError) Unwrap() error { return e.err }
+func (e *stopAndVerifyError) Error() string { return e.err.Error() }
+func (e *stopAndVerifyError) Unwrap() error { return e.err }
 
 func run(args []string) error {
 	flags := flag.NewFlagSet("1688-batch-import", flag.ContinueOnError)
@@ -92,8 +81,9 @@ Drives one item of a local batch queue. The actor and organization must be the
 values a person confirmed in the application; they are never read from the browser
 session. The queue file is created when it does not exist.
 
-Exit codes: 0 terminal result recorded, 3 stop and verify (outcome unknown or a
-blocked batch), 2 usage or other failure.
+Exit codes: 0 terminal result recorded, 3 stop and verify (outcome unknown, an
+unreadable queue that may already hold a submitted item, or a blocked batch),
+2 usage or other failure.
 `)
 	}
 	var cfg config
@@ -113,9 +103,13 @@ blocked batch), 2 usage or other failure.
 		return err
 	}
 
+	// The queue is read before the browser is touched, so this failure must already
+	// carry the stop-and-verify classification: a queue that cannot be read may hide
+	// an item that was already handed over, and "ordinary failure" invites recreating
+	// it.
 	queuePath, err := ensureQueue(cfg)
 	if err != nil {
-		return err
+		return describeStop(err, cfg.QueuePath)
 	}
 
 	driver, err := batchcapture.LaunchDriver(batchcapture.DriverOptions{
@@ -138,23 +132,36 @@ blocked batch), 2 usage or other failure.
 	return describeStop(err, queuePath)
 }
 
-// describeStop turns a stop-for-a-person failure into the message the operator reads.
+// describeStop turns any stop-for-a-person failure into the message the operator reads.
 //
 // It is a named function so the exit-code contract can be tested without a browser:
 // the mapping is part of the interface, and getting it wrong is what would turn an
 // ambiguous submit into a re-run.
+//
+// The unreadable queue is routed here for the same reason. Design section 4 D2.2
+// treats damaged, truncated or unverifiable queue content as outcome_unknown, so
+// reporting it as an ordinary failure would invite recreating or re-running the
+// queue — exactly the duplicate publication the local queue exists to prevent. The
+// distinction is *whether* the queue could be read, not what it said when it could:
+// a mismatched approved scope stays an ordinary failure, because nothing is
+// ambiguous about it.
 func describeStop(err error, queuePath string) error {
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, batchcapture.ErrBatchBlocked) {
-		return &batchBlockedError{err: fmt.Errorf(
+		return &stopAndVerifyError{err: fmt.Errorf(
 			"%w\nVerify in the application before doing anything else. The queue file %s records which item blocked the batch; do not re-run it",
 			err, queuePath)}
 	}
 	if errors.Is(err, batchcapture.ErrOutcomeUnknown) {
-		return &outcomeUnknownError{err: fmt.Errorf(
+		return &stopAndVerifyError{err: fmt.Errorf(
 			"%w\nVerify in the application before doing anything else. The queue file %s records the item as outcome_unknown; do not re-run it",
+			err, queuePath)}
+	}
+	if errors.Is(err, batchcapture.ErrQueueCorrupt) {
+		return &stopAndVerifyError{err: fmt.Errorf(
+			"%w\nVerify in the application before doing anything else. The queue file %s cannot be read confidently, so an item in it may already have reached the application; do not recreate the queue and do not re-run the item",
 			err, queuePath)}
 	}
 	return err
