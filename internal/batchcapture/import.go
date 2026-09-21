@@ -104,22 +104,52 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 
 	// The page is classified from the executor's own observation, never from the
 	// extension's reply, because background.ts collapses every refusal to one code.
-	verdict := driver.ClassifyCurrentPage(true)
-	result.Verdict = verdict
-	if verdict != VerdictProceed {
+	//
+	// Judgment A (a challenge or verification gate) is the one judgment that must be
+	// made BEFORE a capture is triggered, because the design forbids capturing on a
+	// challenge page at all. It is the same predicate Classify applies first, so the
+	// two cannot disagree.
+	observation := driver.ObserveCurrentPage()
+	if !observation.Performed || IsChallengePage(observation.FinalURL, observation.pageEvidence()) {
 		// Nothing has been handed to the application, so the item is left re-doable
-		// rather than finalised: a challenge means a person must clear the gate and
-		// the same item is then re-done (design sections 4 D1.3 and 7).
-		item.State = ItemQueued
-		item.Reason = fmt.Sprintf("page classified as %s before any handoff", verdict)
+		// rather than finalised: a person must clear the gate and the same item is
+		// then re-done (design sections 4 D1.3 and 7).
+		verdict := Classify(observation)
+		result.Verdict = verdict
+		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath,
+			fmt.Errorf("%w: page classified as %s before any capture", ErrVerdictStop, verdict))
+	}
+
+	// Judgment B is whether the required fields were actually obtained. Capture()
+	// returning nil only means the popup settled: the extension signals a refused
+	// capture by leaving handoff disabled, so Captured() is the success signal.
+	// Otherwise a page with no product data would be judged capturable, and a
+	// definitively delisted page would never be recognised as such.
+	popupState, captureErr := popup.Capture()
+	observation.ProductDataPresent = captureErr == nil && popupState.Captured()
+	captureNote := "capture produced no product data"
+	if captureErr != nil {
+		captureNote = captureErr.Error()
+	}
+	verdict := Classify(observation)
+	result.Verdict = verdict
+	switch verdict {
+	case VerdictProceed:
+		// Continue to the handoff below.
+	case VerdictSingleItemFailure:
+		// A definitively delisted product is a deterministic failure of this item
+		// and, in a batch, the loop continues with the next one (design section 7).
+		// No payload was ever handed to the application, so nothing is ambiguous.
+		item.State = ItemFailed
+		item.Reason = fmt.Sprintf("page classified as %s", verdict)
+		result.State = item.State
 		if err := persist(queue, opts.QueuePath); err != nil {
 			return result, fmt.Errorf("%w: %v", ErrQueueWriteFailed, err)
 		}
-		return result, fmt.Errorf("%w: %s", ErrVerdictStop, verdict)
-	}
-
-	if _, err := popup.Capture(); err != nil {
-		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath, fmt.Errorf("capture: %w", err))
+		return result, fmt.Errorf("%w: %s", ErrVerdictStop, item.Reason)
+	default:
+		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath, fmt.Errorf(
+			"%w: page classified as %s (%s)", ErrVerdictStop, verdict, captureNote))
 	}
 
 	appURL, err := popup.Handoff()
@@ -140,7 +170,9 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 		return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
 	}
 
-	page, err := driver.AppPage(appURL)
+	// The tab is resolved by this item's handoff key, so a leftover application tab
+	// from an earlier item cannot be submitted instead (design section 4 D1.2).
+	page, err := driver.AppPageByKey(ref.IdempotencyKey)
 	if err != nil {
 		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("resolve application page: %w", err))
 	}
@@ -205,7 +237,10 @@ func stopAfterHandoff(persist func(*Queue, string) error, queue *Queue, item *It
 	item.Reason = cause.Error()
 	result.State = ItemOutcomeUnknown
 	if err := persist(queue, path); err != nil {
-		return fmt.Errorf("%w: %v (original: %v)", ErrQueueWriteFailed, err, cause)
+		// Both errors matter: the write failure explains the tooling problem, and the
+		// unknown outcome is what forbids an automatic retry. Reporting only the write
+		// failure lets a caller read the run as an ordinary failure and try again.
+		return fmt.Errorf("%w: %v (original: %v); %w", ErrQueueWriteFailed, err, cause, ErrOutcomeUnknown)
 	}
 	return fmt.Errorf("%w: %v", ErrOutcomeUnknown, cause)
 }

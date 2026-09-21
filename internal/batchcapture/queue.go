@@ -366,7 +366,12 @@ func (q *Queue) Save(path string) error {
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("replace queue file: %w", err)
 	}
-	syncDir(dir)
+	// The replace is only durable once its directory entry is flushed, so a
+	// failure here must not be reported as a successful save: the caller uses this
+	// return value to decide whether the item may become submittable.
+	if err := syncDir(dir); err != nil {
+		return fmt.Errorf("flush queue directory: %w", err)
+	}
 	return nil
 }
 
@@ -378,17 +383,4 @@ func digestOf(env envelope) (string, error) {
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-// syncDir flushes the directory entry so that the rename itself survives a
-// power loss. Not every platform supports this (Windows has no directory
-// fsync), so failure is tolerated and the limitation is documented rather than
-// pretended away.
-func syncDir(dir string) {
-	f, err := os.Open(dir)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-	_ = f.Sync()
 }

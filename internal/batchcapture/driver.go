@@ -246,6 +246,14 @@ func (d *Driver) ClassifyCurrentPage(productDataPresent bool) Verdict {
 	return Classify(d.Observe(productDataPresent))
 }
 
+// ObserveCurrentPage reads the page a judgment has to be made from, before any
+// capture has been attempted. The orchestrator uses it so the challenge judgment can
+// be applied first, exactly as Classify orders it, instead of declaring that product
+// data is present.
+func (d *Driver) ObserveCurrentPage() Observation {
+	return d.Observe(false)
+}
+
 // PrepareItem navigates to one product URL and returns a popup that is ready to
 // capture it.
 //

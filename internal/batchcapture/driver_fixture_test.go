@@ -138,9 +138,13 @@ func requireFixtureEnv(t *testing.T) (string, string) {
 		t.Fatalf("parse fixture manifest: %v", err)
 	}
 	if !slices.Contains(parsed.HostPermissions, "https://detail.1688.com/*") {
-		t.Skipf("fixture build must declare host_permissions https://detail.1688.com/* "+
+		// Fatal, not Skip: the operator has already opted in by setting the
+		// environment, so a build that cannot exercise capture means the suite would
+		// report success while testing nothing.
+		t.Fatalf("fixture build must declare host_permissions https://detail.1688.com/* "+
 			"(activeTab cannot be granted without a real action click, which Chromium 144 cannot synthesize); "+
-			"current host_permissions=%v", parsed.HostPermissions)
+			"current host_permissions=%v; rebuild with the permission added or do not set BATCHCAPTURE_EXTENSION_DIST",
+			parsed.HostPermissions)
 	}
 	return browser, extDir
 }
@@ -530,6 +534,28 @@ func TestFixtureDriverReportsUnavailableMechanisms(t *testing.T) {
 	}
 }
 
+// fixtureAppPageByKey finds the application tab for one handoff key. The driver
+// resolves tabs this way in production, so the tests inspect the same tab the
+// executor acted on rather than whichever tab happens to share the URL prefix.
+func fixtureAppPageByKey(t *testing.T, driver *Driver, key string) playwright.Page {
+	t.Helper()
+	if key == "" {
+		t.Fatal("no handoff key to look the application tab up by")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, page := range driver.Context().Pages() {
+			ref, err := captureRefFromURL(page.URL())
+			if err == nil && ref.IdempotencyKey == key {
+				return page
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("no application tab carries handoff key %s", key)
+	return nil
+}
+
 // fixtureAppPage drives one item far enough that the application page is showing a
 // captured payload and an enabled confirmation control.
 func fixtureAppPage(t *testing.T) (*Driver, playwright.Page, string) {
@@ -550,10 +576,11 @@ func fixtureAppPage(t *testing.T) (*Driver, playwright.Page, string) {
 	if err != nil {
 		t.Fatalf("handoff: %v", err)
 	}
-	page, err := driver.AppPage(appURL)
+	ref, err := captureRefFromURL(appURL)
 	if err != nil {
-		t.Fatalf("resolve application page: %v", err)
+		t.Fatalf("read the handoff key: %v", err)
 	}
+	page := fixtureAppPageByKey(t, driver, ref.IdempotencyKey)
 	if _, err := page.WaitForSelector(selConfirmAndSubmit, playwright.PageWaitForSelectorOptions{
 		State: playwright.WaitForSelectorStateAttached,
 	}); err != nil {
@@ -806,10 +833,7 @@ func TestFixtureDriverImportsOneItemEndToEnd(t *testing.T) {
 	if offerID != fixtureOfferID {
 		t.Fatalf("application received offer %q, want %q", offerID, fixtureOfferID)
 	}
-	page, err := driver.AppPage("http://127.0.0.1:" + fixturePort + "/capture/1688")
-	if err != nil {
-		t.Fatalf("resolve application page: %v", err)
-	}
+	page := fixtureAppPageByKey(t, driver, result.IdempotencyKey)
 	if clicks := fixtureClicks(t, page); clicks != 1 {
 		t.Fatalf("confirmation clicked %d times, want exactly 1", clicks)
 	}
@@ -982,10 +1006,7 @@ func TestFixtureDriverDoesNotSubmitUnderADifferentPageScope(t *testing.T) {
 	if CanRecapture(stored.Items[0].State) {
 		t.Fatalf("a scope mismatch left the item re-capturable: %+v", stored.Items[0])
 	}
-	page, err := driver.AppPage(fixtureAppURL)
-	if err != nil {
-		t.Fatalf("resolve application page: %v", err)
-	}
+	page := fixtureAppPageByKey(t, driver, stored.Items[0].IdempotencyKey)
 	if clicks := fixtureClicks(t, page); clicks != 0 {
 		t.Fatalf("the confirmation was clicked %d times under the wrong scope", clicks)
 	}
@@ -1015,10 +1036,7 @@ func TestFixtureDriverRecordsOutcomeUnknownWhenPageRefuses(t *testing.T) {
 	if stored.Items[0].State != ItemOutcomeUnknown {
 		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
 	}
-	page, err := driver.AppPage(fixtureAppURL)
-	if err != nil {
-		t.Fatalf("resolve application page: %v", err)
-	}
+	page := fixtureAppPageByKey(t, driver, stored.Items[0].IdempotencyKey)
 	if clicks := fixtureClicks(t, page); clicks != 0 {
 		t.Fatalf("a refused page was clicked %d times", clicks)
 	}
@@ -1050,5 +1068,136 @@ func TestFixtureDriverTreatsUnrecognisedStatusAsUnknown(t *testing.T) {
 	}
 	if result.State != ItemOutcomeUnknown {
 		t.Fatalf("result state %q, want outcome_unknown", result.State)
+	}
+}
+
+// TestFixtureDriverIgnoresAStaleApplicationTab is the regression test for the
+// second defect found in review: the browser profile is reused and the previous
+// item's application tab is still open when the next item runs. Resolving the page
+// by URL prefix alone would drive the old tab and publish under an older key, so the
+// tab must be resolved by this item's own handoff key.
+func TestFixtureDriverIgnoresAStaleApplicationTab(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+
+	// A leftover tab from an earlier run, same origin and path, different key.
+	staleKey := "3f1d2c9e-8a4b-4d5e-9f60-1b2c3d4e5f60"
+	if _, err := driver.Context().NewPage(); err != nil {
+		t.Fatalf("open a page: %v", err)
+	}
+	stale, err := driver.Context().Pages()[0].Goto(fixtureAppURL + "#operationKey=" + staleKey)
+	if err != nil {
+		t.Fatalf("navigate the stale tab: %v", err)
+	}
+	_ = stale
+
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if result.IdempotencyKey == "" || result.IdempotencyKey == staleKey {
+		t.Fatalf("item ran under key %q, want a fresh key", result.IdempotencyKey)
+	}
+	if result.IdempotencyKey != result.OperationID && result.OperationID == "" {
+		t.Fatalf("no operation was recorded: %+v", result)
+	}
+
+	// The stale tab must not have been touched, and the item's own tab must be the
+	// one that was confirmed.
+	if clicks := fixtureClicks(t, fixtureAppPageByKey(t, driver, staleKey)); clicks != 0 {
+		t.Fatalf("the stale application tab was clicked %d times", clicks)
+	}
+	if clicks := fixtureClicks(t, fixtureAppPageByKey(t, driver, result.IdempotencyKey)); clicks != 1 {
+		t.Fatalf("the item's own application tab was clicked %d times, want exactly 1", clicks)
+	}
+}
+
+// TestFixtureDriverTreatsDelistedPageAsSingleItemFailure is the regression test for
+// the third defect found in review: the pre-capture classification claimed product
+// data was present, so a definitively delisted page could be recorded as capturable.
+// The product-data judgment has to come from whether the capture actually produced
+// the required fields.
+func TestFixtureDriverTreatsDelistedPageAsSingleItemFailure(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	delisted, err := os.ReadFile(filepath.Join("testdata", "challenge-delisted.html"))
+	if err != nil {
+		t.Fatalf("read the delisted fixture: %v", err)
+	}
+	if err := driver.Context().Route("https://detail.1688.com/offer/**", func(route playwright.Route) {
+		if err := route.Fulfill(playwright.RouteFulfillOptions{
+			Status:      playwright.Int(200),
+			ContentType: playwright.String("text/html; charset=utf-8"),
+			Body:        string(delisted),
+		}); err != nil {
+			t.Errorf("fulfil delisted page: %v", err)
+		}
+	}); err != nil {
+		t.Fatalf("route the delisted page: %v", err)
+	}
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrVerdictStop) {
+		t.Fatalf("err=%v, want ErrVerdictStop", err)
+	}
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("a delisted page has no ambiguous outcome: %v", err)
+	}
+	if result.Verdict != VerdictSingleItemFailure {
+		t.Fatalf("verdict=%q, want %q", result.Verdict, VerdictSingleItemFailure)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemFailed {
+		t.Fatalf("state %q, want failed", stored.Items[0].State)
+	}
+	if CanRecapture(stored.Items[0].State) || RequiresHumanReview(stored.Items[0].State) {
+		t.Fatalf("a delisted item was left for retry or review: %+v", stored.Items[0])
+	}
+	if count := fixtureAppTabCount(t, driver); count != 0 {
+		t.Fatalf("a delisted page still opened %d application tabs", count)
+	}
+}
+
+// TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails is the regression test
+// for the sixth defect found in review: when the crash-safe write of the terminal
+// state fails as well, the run must still report an unknown outcome, because that is
+// what forbids an automatic retry. Reporting only the write failure would read as an
+// ordinary failure and invite a second submission.
+func TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	// A scope the user did not approve makes ConfirmAndSubmit refuse, which is the
+	// path that records outcome_unknown.
+	startFixtureApp(t, AppScope{ActorID: "fixture-actor-a", OrganizationID: "fixture-org-someone-else"})
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	// Phase one is the submit intent, phase two binds the handoff key; the third
+	// write is the terminal state, and that is the one made to fail.
+	calls := 0
+	failFinal := func(queue *Queue, path string) error {
+		calls++
+		if calls <= 2 {
+			return nil
+		}
+		return errors.New("disk is gone")
+	}
+	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failFinal})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown to survive the failed write", err)
+	}
+	if !errors.Is(err, ErrQueueWriteFailed) {
+		t.Fatalf("the failed write is not reported: %v", err)
+	}
+	if !strings.Contains(err.Error(), "approved scope") {
+		t.Fatalf("the original cause was lost: %v", err)
 	}
 }

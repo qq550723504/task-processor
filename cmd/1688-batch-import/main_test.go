@@ -19,12 +19,13 @@ func validConfig(t *testing.T) config {
 		Organization:  "org-a",
 		BrowserPath:   "chrome.exe",
 		ExtensionDist: "dist",
+		ProfileDir:    "profile",
 	}
 }
 
 func TestValidateRequiresEveryFlag(t *testing.T) {
 	cfg := validConfig(t)
-	for _, drop := range []string{"queue", "url", "actor", "organization", "browser", "extension"} {
+	for _, drop := range []string{"queue", "url", "actor", "organization", "browser", "extension", "profile"} {
 		broken := cfg
 		switch drop {
 		case "queue":
@@ -39,6 +40,8 @@ func TestValidateRequiresEveryFlag(t *testing.T) {
 			broken.BrowserPath = ""
 		case "extension":
 			broken.ExtensionDist = ""
+		case "profile":
+			broken.ProfileDir = ""
 		}
 		if err := broken.validate(); err == nil {
 			t.Fatalf("validate accepted a config with no %s", drop)

@@ -70,7 +70,7 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("1688-batch-import", flag.ContinueOnError)
 	flags.Usage = func() {
 		fmt.Fprint(flags.Output(), `Usage: 1688-batch-import --queue <file> --url <product-url> \
-  --actor <id> --organization <id> --browser <chrome.exe> --extension <dist-dir> [--profile <dir>] [--headless]
+  --actor <id> --organization <id> --browser <chrome.exe> --extension <dist-dir>   --profile <dir> [--headless]
 
 Drives one item of a local batch queue. The actor and organization must be the
 values a person confirmed in the application; they are never read from the browser
@@ -87,7 +87,7 @@ Exit codes: 0 terminal result recorded, 3 outcome unknown (stop and verify), 2 u
 	flags.StringVar(&cfg.Organization, "organization", "", "approved organization id (required)")
 	flags.StringVar(&cfg.BrowserPath, "browser", "", "fingerprint browser executable (required)")
 	flags.StringVar(&cfg.ExtensionDist, "extension", "", "unpacked extension directory (required)")
-	flags.StringVar(&cfg.ProfileDir, "profile", "", "browser profile directory (optional)")
+	flags.StringVar(&cfg.ProfileDir, "profile", "", "browser profile directory (required; the 1688 login lives here)")
 	flags.BoolVar(&cfg.Headless, "headless", false, "run headless")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -140,6 +140,7 @@ func (c config) validate() error {
 		{"--organization", c.Organization},
 		{"--browser", c.BrowserPath},
 		{"--extension", c.ExtensionDist},
+		{"--profile", c.ProfileDir},
 	}
 	missing := make([]string, 0, len(required))
 	for _, flagValue := range required {

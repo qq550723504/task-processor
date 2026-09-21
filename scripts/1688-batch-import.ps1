@@ -18,6 +18,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$Extension,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
     [string]$Profile,
     [switch]$Headless
 )
@@ -36,9 +38,9 @@ try {
         '-actor', $Actor,
         '-organization', $Organization,
         '-browser', $Browser,
-        '-extension', $Extension
+        '-extension', $Extension,
+        '-profile', $Profile
     )
-    if ($Profile) { $arguments += @('-profile', $Profile) }
     if ($Headless) { $arguments += '-headless' }
     & go @arguments
     $result = $LASTEXITCODE

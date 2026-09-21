@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
@@ -74,37 +72,30 @@ type SubmitOutcome struct {
 	OperationID string `json:"operationId"`
 }
 
-// AppPage resolves the application tab a handoff opened. The caller passes the
-// handoff URL rather than a page so the tab is identified by the same value the
-// idempotency key came from.
-func (d *Driver) AppPage(appURL string) (playwright.Page, error) {
-	prefix, err := appURLPrefix(appURL)
-	if err != nil {
-		return nil, err
+// AppPageByKey resolves the application tab that belongs to one handoff.
+//
+// The browser profile persists across runs and the previous item's application tab
+// is normally still open, so a URL-prefix scan can return a tab belonging to an
+// older item and submit the wrong payload. The tab is therefore identified by the
+// recovery key of the handoff that opened it, which the application carries in the
+// fragment of its own URL once it has normalised it. A key that matches no tab is an
+// error, never a fallback to the first tab that happens to share the URL prefix.
+func (d *Driver) AppPageByKey(key string) (playwright.Page, error) {
+	if key == "" {
+		return nil, fmt.Errorf("%w: no handoff key to resolve the application page by", ErrSubmitUnavailable)
 	}
 	deadline := time.Now().Add(d.timeout)
 	for time.Now().Before(deadline) {
 		for _, page := range d.context.Pages() {
-			if strings.HasPrefix(page.URL(), prefix) {
-				return page, nil
+			ref, err := captureRefFromURL(page.URL())
+			if err != nil || ref.IdempotencyKey != key {
+				continue
 			}
+			return page, nil
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("%w: no tab at %s", ErrSubmitUnavailable, prefix)
-}
-
-// appURLPrefix drops the fragment so the page is found whether or not the
-// application has already normalised the fragment.
-func appURLPrefix(appURL string) (string, error) {
-	parsed, err := url.Parse(appURL)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrHandoffRef, err)
-	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("%w: application url has no origin", ErrHandoffRef)
-	}
-	return parsed.Scheme + "://" + parsed.Host + parsed.Path, nil
+	return nil, fmt.Errorf("%w: no application tab carries handoff key %s", ErrSubmitUnavailable, key)
 }
 
 // ReadAppScope reads the verified identity and organization the capture page is
