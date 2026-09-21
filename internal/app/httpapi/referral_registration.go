@@ -75,6 +75,7 @@ type settlementWriter interface {
 type payoutMethodReader interface {
 	HasValidPayoutMethod(context.Context, string, string) (bool, error)
 	ListActivePayoutMethods(context.Context, string) ([]money.PayoutMethodSummary, error)
+	ReadPayoutMethodForReview(context.Context, string) (money.PayoutMethod, error)
 }
 
 type payoutMethodWriter interface {
@@ -121,9 +122,9 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodPost, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createPayoutMethod},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
 		{Method: http.MethodGet, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readWithdrawals},
-		{Method: http.MethodGet, Path: accountReferralWithdrawalReviewQueuePath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitAdminRead, Handler: m.readWithdrawalQueue},
+		{Method: http.MethodGet, Path: accountReferralWithdrawalReviewQueuePath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitPlatformAdm, Handler: m.readWithdrawalQueue},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
-		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitPlatformAdm, Handler: m.reviewWithdrawal},
 		{Method: http.MethodPost, Path: internalReferralPaymentSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordPaymentSettlement},
 		{Method: http.MethodPost, Path: internalReferralRefundSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordRefundSettlement},
 		{Method: http.MethodPost, Path: internalReferralChargebackSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordChargebackSettlement},

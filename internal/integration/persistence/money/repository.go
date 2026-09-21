@@ -3,6 +3,7 @@ package money
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -286,4 +287,21 @@ func (r *Repository) ListActivePayoutMethods(ctx context.Context, subject string
 		out = append(out, money.PayoutMethodSummary{MethodID: row.MethodID, SubjectUserID: row.SubjectUserID, Type: money.PayoutMethodType(row.Type), DisplayName: row.DisplayName, MaskedDestination: row.MaskedDestination, Status: money.PayoutMethodStatus(row.Status), Version: row.Version})
 	}
 	return out, nil
+}
+
+// ReadPayoutMethodForReview is restricted to the protected manual-payout
+// review boundary. Ordinary account reads must use PayoutMethodSummary and
+// never receive the encrypted destination reference.
+func (r *Repository) ReadPayoutMethodForReview(ctx context.Context, methodID string) (money.PayoutMethod, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(methodID) == "" {
+		return money.PayoutMethod{}, money.ErrInvalid
+	}
+	var row payoutMethodRow
+	if err := r.db.WithContext(ctx).Where("method_id = ?", strings.TrimSpace(methodID)).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return money.PayoutMethod{}, money.ErrNotFound
+		}
+		return money.PayoutMethod{}, money.ErrUnavailable
+	}
+	return payoutMethodFromRow(row), nil
 }

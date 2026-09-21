@@ -101,6 +101,13 @@ func TestCurrentApplicationReferralRouteAdmission(t *testing.T) {
 	if err := validateCurrentApplicationRoutes(append(routes, referrals...), false, true); err != nil {
 		t.Fatal(err)
 	}
+	for _, route := range referrals {
+		if route.Path == accountReferralWithdrawalReviewQueuePath || route.Path == accountReferralWithdrawalReviewPath {
+			if route.Permission != authz.PermissionListingKitPlatformAdm {
+				t.Fatalf("withdrawal review route %s uses %q, want platform-admin permission", route.Path, route.Permission)
+			}
+		}
+	}
 	for i := range referrals {
 		changed := append([]httproute.Descriptor(nil), referrals...)
 		changed[i].AuthPolicy = httproute.AuthPolicyVerifiedIdentity

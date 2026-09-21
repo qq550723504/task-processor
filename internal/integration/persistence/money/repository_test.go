@@ -116,6 +116,10 @@ func TestPayoutMethodValidationDoesNotExposeSecureReference(t *testing.T) {
 	if err != nil || len(methods) != 1 || methods[0].MethodID != "method-1" || methods[0].MaskedDestination != "a***@example.com" {
 		t.Fatalf("methods=%#v err=%v", methods, err)
 	}
+	review, err := repo.ReadPayoutMethodForReview(context.Background(), "method-1")
+	if err != nil || string(review.SecureReference) != "encrypted-ciphertext" || review.SubjectUserID != "user-1" {
+		t.Fatalf("review method=%#v err=%v", review, err)
+	}
 }
 
 func TestPayoutMethodCreationIsIdempotent(t *testing.T) {

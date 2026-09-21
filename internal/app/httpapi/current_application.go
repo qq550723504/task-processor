@@ -190,6 +190,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	var referralMaturity func(context.Context, time.Time) error
 	includeAccountProfile := factories.buildAccountProfile != nil
 	if includeAccountProfile {
 		accountProfile, profileErr := factories.buildAccountProfile(sourceAccountDB)
@@ -230,6 +231,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return nil, err
 		}
 		modules = append(modules, module)
+		if referralModule, ok := module.(referralHTTPModule); ok && referralModule.economics != nil {
+			referralMaturity = referralModule.economics.Mature
+		}
 	} else if supplied.referralDB != nil {
 		return nil, errors.New("disabled referrals must not receive a pool")
 	}
@@ -271,7 +275,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err := validateCurrentApplicationRoutesWithBrowserFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil, includeAccountProfile, includeAccountAllocation); err != nil {
 		return nil, err
 	}
-	return buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies), nil
+	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
+	if referralMaturity != nil {
+		startReferralMaturityLoop(server, referralMaturity, time.Hour, logger)
+	}
+	return server, nil
 }
 
 func validateCurrentApplicationRoutes(routes []httproute.Descriptor, includeAudit bool, includeReferrals ...bool) error {

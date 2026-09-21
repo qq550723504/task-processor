@@ -99,7 +99,7 @@ func (m referralHTTPModule) readWithdrawals(c *gin.Context) {
 }
 
 func (m referralHTTPModule) readWithdrawalQueue(c *gin.Context) {
-	if !m.referralRequest(c) || m.withdrawals == nil {
+	if !m.referralRequest(c) || m.withdrawals == nil || m.payoutMethods == nil || len(m.payoutEncryptionKey) == 0 {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
 	}
@@ -111,7 +111,17 @@ func (m referralHTTPModule) readWithdrawalQueue(c *gin.Context) {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
 	}
-	writeWithdrawalsJSON(c, items)
+	writeWithdrawalReviewQueueJSON(c, items, func(value economics.Withdrawal) (money.PayoutMethod, string, error) {
+		method, readErr := m.payoutMethods.ReadPayoutMethodForReview(c.Request.Context(), value.PayoutMethodID)
+		if readErr != nil {
+			return money.PayoutMethod{}, "", readErr
+		}
+		if method.SubjectUserID != value.Referrer || economics.WithdrawalMethod(method.Type) != value.Method || method.Status != money.PayoutMethodActive {
+			return money.PayoutMethod{}, "", errors.New("payout method ownership or type mismatch")
+		}
+		destination, decryptErr := decryptPayoutDestination(m.payoutEncryptionKey, method.SubjectUserID, method.Type, method.SecureReference)
+		return method, destination, decryptErr
+	})
 }
 
 // createPayoutMethod is the personal money-owner write path. The destination
@@ -180,6 +190,26 @@ func encryptPayoutDestination(key []byte, subject string, methodType money.Payou
 	}
 	associated := []byte(subject + "|" + string(methodType))
 	return aead.Seal(nonce, nonce, []byte(destination), associated), nil
+}
+
+func decryptPayoutDestination(key []byte, subject string, methodType money.PayoutMethodType, ciphertext []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil || len(ciphertext) < aead.NonceSize() {
+		if err == nil {
+			err = errors.New("encrypted payout destination is truncated")
+		}
+		return "", err
+	}
+	associated := []byte(subject + "|" + string(methodType))
+	plaintext, err := aead.Open(nil, ciphertext[:aead.NonceSize()], ciphertext[aead.NonceSize():], associated)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
 }
 
 func maskPayoutDestination(value string) string {
@@ -399,6 +429,19 @@ func writeWithdrawalsJSON(c *gin.Context, values []economics.Withdrawal) {
 		items = append(items, gin.H{"id": value.ID, "currency": value.Currency, "method": value.Method, "payoutMethodId": value.PayoutMethodID, "amountMinor": strconv.FormatInt(value.AmountMinor, 10), "status": value.Status, "payoutReference": value.PayoutReference, "version": strconv.FormatInt(value.Version, 10), "createdAt": value.CreatedAt.UTC(), "updatedAt": value.UpdatedAt.UTC()})
 	}
 	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-withdrawals-v1", "withdrawals": items})
+}
+
+func writeWithdrawalReviewQueueJSON(c *gin.Context, values []economics.Withdrawal, readPayout func(economics.Withdrawal) (money.PayoutMethod, string, error)) {
+	items := make([]gin.H, 0, len(values))
+	for _, value := range values {
+		method, destination, err := readPayout(value)
+		if err != nil {
+			writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
+			return
+		}
+		items = append(items, gin.H{"id": value.ID, "referrer": value.Referrer, "currency": value.Currency, "method": value.Method, "payoutMethodId": value.PayoutMethodID, "payoutDisplayName": method.DisplayName, "maskedDestination": method.MaskedDestination, "payoutDestination": destination, "amountMinor": strconv.FormatInt(value.AmountMinor, 10), "status": value.Status, "payoutReference": value.PayoutReference, "version": strconv.FormatInt(value.Version, 10), "createdAt": value.CreatedAt.UTC(), "updatedAt": value.UpdatedAt.UTC()})
+	}
+	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-withdrawal-review-queue-v1", "withdrawals": items})
 }
 func writeReferralEconomicsJSON(c *gin.Context, status int, value any) {
 	c.Header("Cache-Control", "private, no-store")
