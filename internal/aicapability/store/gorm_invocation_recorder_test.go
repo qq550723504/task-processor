@@ -23,7 +23,7 @@ func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 	finishedAt := startedAt.Add(1500 * time.Millisecond)
 
 	err := recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
-		InvocationID: " invocation-1 ", ParentInvocationID: " parent-1 ", AgentRunID: " run-1 ", TenantID: " tenant-1 ", UserID: " user-1 ", BusinessTaskID: " task-1 ", TraceID: " trace-1 ",
+		InvocationID: " invocation-1 ", ParentInvocationID: " parent-1 ", AgentRunID: " run-1 ", TenantID: " tenant-1 ", UserID: " user-1 ", MemberID: " member-1 ", BusinessTaskID: " task-1 ", TraceID: " trace-1 ",
 		Capability: " product.image.scene ", Operation: " product_image_generate ", RouteMode: " active ", RouteOutcome: " routed ", ProviderID: " openai ", ModelID: " gpt-image-1 ", RequestedRoutingKey: " request-key ", RoutingKey: " route-key ", CredentialReference: " credential-ref ",
 		PolicyVersion: " policy-v1 ", ConfigurationVersion: " config-v1 ", PromptKey: " prompt-key ", PromptVersion: " prompt-v1 ", PromptScope: " tenant ", PromptHash: " prompt-hash ",
 		StartedAt: startedAt, FinishedAt: finishedAt, Attempt: 2, FallbackIndex: 1, PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30, ImageCount: 2, EstimatedCostMicros: 400, Currency: " usd ",
@@ -34,6 +34,7 @@ func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 	var row invocationRow
 	require.NoError(t, db.Where("invocation_id = ?", "invocation-1").First(&row).Error)
 	require.Equal(t, "tenant-1", row.TenantID)
+	require.Equal(t, "member-1", row.MemberID)
 	require.Equal(t, "product.image.scene", row.Capability)
 	require.Equal(t, "active", row.RouteMode)
 	require.Equal(t, "usd", row.Currency)
@@ -69,6 +70,103 @@ func TestGormInvocationRecorderDefaultsBlankCacheStatusToNotApplicable(t *testin
 	var row invocationRow
 	require.NoError(t, db.Where("invocation_id = ?", "invocation-default-cache").First(&row).Error)
 	require.Equal(t, "not_applicable", row.CacheStatus)
+}
+
+func TestGormInvocationRecorderDurableDispatchBoundaryIsUpdatedByFinalFact(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	recorder := NewGormInvocationRecorder(db)
+	started := time.Date(2026, 9, 21, 2, 0, 0, 0, time.UTC)
+	record := aicapability.InvocationRecord{InvocationID: "invocation-dispatch", TenantID: "tenant-1", UserID: "user-1", MemberID: "member-1", InputHash: "input-1", StartedAt: started, Outcome: aicapability.InvocationDispatched}
+	require.NoError(t, recorder.RecordInvocation(context.Background(), record))
+	found, ok, err := recorder.FindInvocation(context.Background(), "tenant-1", "member-1", "invocation-dispatch", "input-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, aicapability.InvocationDispatched, found.Outcome)
+
+	record.FinishedAt = started.Add(time.Second)
+	record.Outcome = aicapability.InvocationSucceeded
+	require.NoError(t, recorder.RecordInvocation(context.Background(), record))
+	found, ok, err = recorder.FindInvocation(context.Background(), "tenant-1", "member-1", "invocation-dispatch", "input-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, aicapability.InvocationSucceeded, found.Outcome)
+}
+
+func TestGormInvocationRecorderRetainsReservationForUnknownUsageSuccess(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	settler := &recordingInvocationUsageSettler{}
+	recorder := NewGormInvocationRecorder(db)
+	recorder.SetUsageSettler(settler)
+
+	require.NoError(t, recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-unknown-usage",
+		TenantID:     "tenant-1",
+		UserID:       "user-1",
+		MemberID:     "member-1",
+		Outcome:      aicapability.InvocationSucceeded,
+		UsageKnown:   false,
+	}))
+	require.Zero(t, settler.releaseCalls)
+	require.Zero(t, settler.settleCalls)
+}
+
+func TestGormInvocationRecorderRecoversDispatchedFailureWithoutRedispatch(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	settler := &recordingInvocationUsageSettler{}
+	recorder := NewGormInvocationRecorder(db)
+	recorder.SetUsageSettler(settler)
+	started := time.Date(2026, 9, 21, 3, 0, 0, 0, time.UTC)
+	require.NoError(t, recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-recover-failed", TenantID: "tenant-1", UserID: "user-1", MemberID: "member-1", InputHash: "input-1", StartedAt: started, Outcome: aicapability.InvocationDispatched,
+	}))
+	require.NoError(t, recorder.ResolveDispatchedInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-recover-failed", TenantID: "tenant-1", MemberID: "member-1", InputHash: "input-1", FinishedAt: started.Add(time.Minute), Outcome: aicapability.InvocationFailed,
+	}))
+	found, ok, err := recorder.FindInvocation(context.Background(), "tenant-1", "member-1", "invocation-recover-failed", "input-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, aicapability.InvocationFailed, found.Outcome)
+	require.Equal(t, 1, settler.releaseCalls)
+	require.Zero(t, settler.settleCalls)
+}
+
+func TestGormInvocationRecorderRecoversDispatchedSuccessOnlyWithObservedUsage(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	settler := &recordingInvocationUsageSettler{}
+	recorder := NewGormInvocationRecorder(db)
+	recorder.SetUsageSettler(settler)
+	started := time.Date(2026, 9, 21, 4, 0, 0, 0, time.UTC)
+	require.NoError(t, recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-recover-success", TenantID: "tenant-1", UserID: "user-1", MemberID: "member-1", InputHash: "input-2", StartedAt: started, Outcome: aicapability.InvocationDispatched,
+	}))
+	require.ErrorContains(t, recorder.ResolveDispatchedInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-recover-success", TenantID: "tenant-1", MemberID: "member-1", InputHash: "input-2", FinishedAt: started.Add(time.Minute), Outcome: aicapability.InvocationSucceeded,
+	}), "observed token usage")
+	require.NoError(t, recorder.ResolveDispatchedInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-recover-success", TenantID: "tenant-1", MemberID: "member-1", InputHash: "input-2", FinishedAt: started.Add(time.Minute), Outcome: aicapability.InvocationSucceeded,
+		PromptTokens: 7, CompletionTokens: 5, TotalTokens: 12, UsageKnown: true,
+	}))
+	require.Equal(t, 1, settler.settleCalls)
+	require.Zero(t, settler.releaseCalls)
+}
+
+type recordingInvocationUsageSettler struct {
+	releaseCalls int
+	settleCalls  int
+}
+
+func (s *recordingInvocationUsageSettler) SettleAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
+	s.settleCalls++
+	return nil
+}
+
+func (s *recordingInvocationUsageSettler) ReserveAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
+	return nil
+}
+
+func (s *recordingInvocationUsageSettler) ReleaseAIInvocationUsage(context.Context, string, string) error {
+	s.releaseCalls++
+	return nil
 }
 
 func TestGormInvocationRecorderRejectsMissingDatabaseBlankIDAndNegativeCounters(t *testing.T) {

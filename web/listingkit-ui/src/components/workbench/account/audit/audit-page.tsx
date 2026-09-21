@@ -42,20 +42,27 @@ function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string;
 }
 function AuditRequests({ scope, expectedUserId, organizationId }: { scope: string; expectedUserId: string; organizationId: string }) {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const [actor, setActor] = useState("");
+  const [operation, setOperation] = useState<"" | "register" | "enable" | "disable" | "set_target" | "revoke">("");
   const cursor = cursors[cursors.length - 1];
-  const query = useQuery({ queryKey: ["account-audit", scope, cursor], queryFn: ({ signal }) => getAccountAudit({ expectedUserId, expectedOrganizationId: organizationId, cursor, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
+  const query = useQuery({ queryKey: ["account-audit", scope, cursor, actor, operation], queryFn: ({ signal }) => getAccountAudit({ expectedUserId, expectedOrganizationId: organizationId, cursor, actor: actor || undefined, operation: operation || undefined, signal }), retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: true, refetchOnReconnect: true });
   if (query.isPending || query.isFetching) return <ConsoleState kind="loading" title="正在读取操作记录">正在确认访问权限。</ConsoleState>;
   if (query.isError) return <AuditError code={query.error instanceof AccountReadError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} />;
   const data = query.data;
-  const operationNames = { register: "登记源账号", enable: "启用源账号", disable: "停用源账号" };
+  const operationNames = { register: "登记源账号", enable: "启用源账号", disable: "停用源账号", set_target: "设置成员额度", revoke: "撤销成员额度" };
   return <>
+    <form className={styles.filters} onSubmit={event => { event.preventDefault(); setCursors([undefined]); }}>
+      <label>操作人 <input value={actor} onChange={event => setActor(event.target.value)} maxLength={128} placeholder="按操作人筛选" /></label>
+      <label>操作类型 <select value={operation} onChange={event => { setOperation(event.target.value as typeof operation); setCursors([undefined]); }}><option value="">全部</option><option value="register">登记</option><option value="enable">启用</option><option value="disable">停用</option><option value="set_target">设置成员额度</option><option value="revoke">撤销成员额度</option></select></label>
+      <Button type="submit" variant="outline">应用筛选</Button>
+    </form>
     {data.items.length === 0 ? <ConsoleState kind="empty" title="暂无操作记录">当前范围内没有已提交的源账号操作。</ConsoleState> : <Card className={styles.panel}>
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="操作记录表格，可横向滚动">
         <table className={styles.table} aria-label="操作记录"><thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作内容</th><th scope="col">模块</th><th scope="col">结果</th></tr></thead>
           <tbody>{data.items.map(item => <tr key={`${item.objectReference}:${item.relation.version}`}>
             <td><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false })}<small>UTC+8</small></time></td>
             <td><span>{item.actor}</span></td>
-            <td><strong>{operationNames[item.operation]}</strong><small>源账号 {item.objectReference}</small><small>操作版本 {item.relation.version}</small></td>
+            <td><strong>{operationNames[item.operation]}</strong><small>{item.objectType === "source_account" ? "源账号" : "成员"} {item.objectReference}</small><small>操作版本 {item.relation.version}</small></td>
             <td><span className={styles.module}>资源与额度</span></td>
             <td><span className={styles.success}>已完成</span></td>
           </tr>)}</tbody>

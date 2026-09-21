@@ -263,6 +263,6 @@ func runtimeTestConfig() *Config {
 			ClientID: "client", ClientSecret: "secret", ProjectID: "project",
 		},
 		SourceAccountDatabase: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "source_account_runtime", Password: "secret", Database: "task_processor", MaxConnections: 2},
-		CommercialDatabase:    DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "commercial_reader", Password: "secret", Database: "task_processor", MaxConnections: 2},
+		CommercialDatabase:    DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "commercial_runtime", Password: "secret", Database: "task_processor", MaxConnections: 2},
 	}
 }

@@ -6,6 +6,7 @@ type runRecord struct {
 	ScopeProtocol      string `gorm:"type:varchar(64);not null;default:''"`
 	TenantID           string `gorm:"primaryKey;type:varchar(64);uniqueIndex:idx_image_agent_v2_runs_owner_idempotency,priority:1"`
 	UserID             string `gorm:"column:owner_user_id;primaryKey;type:varchar(128);index;uniqueIndex:idx_image_agent_v2_runs_owner_idempotency,priority:2"`
+	MemberID           string `gorm:"column:member_id;type:varchar(128);not null;default:''"`
 	ID                 string `gorm:"primaryKey;type:varchar(64)"`
 	BusinessTaskID     string `gorm:"type:varchar(64);index"`
 	TargetPlatform     string `gorm:"type:varchar(64);not null;default:''"`

@@ -107,7 +107,7 @@ func TestSchemaInstallRejectsExistingSchemaWithoutChanges(t *testing.T) {
 		t.Fatal("must not migrate existing schema")
 	}
 	var count int64
-	if err := owner.Raw("SELECT count(*) FROM pg_tables WHERE schemaname='public'").Scan(&count).Error; err != nil || count != 5 {
+	if err := owner.Raw("SELECT count(*) FROM pg_tables WHERE schemaname='public'").Scan(&count).Error; err != nil || count != 12 {
 		t.Fatalf("schema mutated count=%d err=%v", count, err)
 	}
 }

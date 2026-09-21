@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/app/runtime/currentapplication"
+	accountallocationSchema "task-processor/internal/app/schema/accountallocation"
 	registrySchema "task-processor/internal/app/schema/sourceaccountregistry"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -31,10 +32,11 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 	owner, connection := commercialPostgres(t) // Never accepts an external DSN.
 	ctx := context.Background()
 	require.NoError(t, listingsubscription.AutoMigrateRepository(owner))
+	require.NoError(t, accountallocationSchema.Migrate(ctx, owner))
 	require.NoError(t, registrySchema.Migrate(ctx, owner))
 	require.NoError(t, owner.Exec(`REVOKE CREATE ON SCHEMA public FROM PUBLIC`).Error)
 	require.NoError(t, owner.Exec(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC`).Error)
-	for _, role := range []string{"commercial_reader", "source_account_runtime"} {
+	for _, role := range []string{"commercial_reader", "commercial_runtime", "source_account_runtime"} {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'synthetic-run1-password'`).Error)
 		require.NoError(t, owner.Exec(`GRANT CONNECT ON DATABASE issue347 TO `+role).Error)
 		require.NoError(t, owner.Exec(`GRANT USAGE ON SCHEMA public TO `+role).Error)
@@ -43,6 +45,7 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 		}
 	}
 	require.NoError(t, owner.Exec(`ALTER ROLE commercial_reader SET default_transaction_read_only=on`).Error)
+	require.NoError(t, owner.Exec(`ALTER ROLE commercial_runtime SET default_transaction_read_only=on`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.saas_plans(code,name,active,created_at,updated_at) VALUES ('public-plan','Public plan',true,now(),now()),('shadow-plan','Public alternate plan',true,now(),now())`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.saas_tenant_subscriptions(tenant_id,plan_code,status,created_at,updated_at) VALUES ('org-B','public-plan','active',now(),now())`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.saas_tenant_entitlements(tenant_id,module_code,status,limits,created_at,updated_at) VALUES ('org-B','listingkit','active','{"listingkit_generations_succeeded":17}',now(),now())`).Error)
@@ -215,7 +218,7 @@ func TestCommercialReadVerifiedPublicSchemaPostgres(t *testing.T) {
 		require.Less(t, time.Since(started), 2*time.Second)
 	})
 	t.Run("normal_binary_restarts_with_shadows", func(t *testing.T) {
-		config := currentapplication.DatabaseConfig{Host: connection.Host, Port: connection.Port, User: "commercial_reader", Password: "synthetic-run1-password", Database: connection.Database, MaxConnections: 4}
+		config := currentapplication.DatabaseConfig{Host: connection.Host, Port: connection.Port, User: "commercial_runtime", Password: "synthetic-run1-password", Database: connection.Database, MaxConnections: 4}
 		source := config
 		source.User = "source_account_runtime"
 		run1PermissionBinary(t, owner, &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}, CommercialDatabase: config, SourceAccountDatabase: source})

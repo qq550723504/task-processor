@@ -11,7 +11,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
   "listen": {"host": "127.0.0.1", "port": 8085},
   "identity": {"issuerURL": "https://localhost:18443", "authorizationAPIURL": "https://localhost:18443", "clientID": "$(tr -d '\r\n' < "$runtime/api-client-id")", "clientSecret": "$(tr -d '\r\n' < "$runtime/api-client-secret")", "projectID": "$(tr -d '\r\n' < "$runtime/project-id")"},
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
-  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_reader", "password": "$(tr -d '\r\n' < "$commercial_runtime/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
+  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
   "productAcquisitionDatabase": {"host": "127.0.0.1", "port": 5435, "user": "source_acquisition_runtime", "password": "$(tr -d '\r\n' < "$product_runtime/product-runtime-password")", "database": "product_acquisition", "maxConnections": 4},
   "referrals": {"enabled": false}
 }
@@ -38,6 +38,7 @@ GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
 ALTER ROLE source_account_runtime SET statement_timeout='10s';
 SQL
 psql "postgresql://postgres:$(tr -d '\r\n' < "$commercial_owner/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable" -v ON_ERROR_STOP=1 -v "commercial_password=$(tr -d '\r\n' < "$commercial_runtime/commercial-reader-password")" -f /schemas/commercial-schema.sql

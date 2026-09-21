@@ -136,6 +136,8 @@ func TestProductImageAdapterReviewFailsClosedAndReturnsStructuredDecision(t *tes
 	require.NoError(t, err)
 	require.Equal(t, productimage.Review{Score: 0.82, NeedsHumanReview: true, Reasons: []string{"edge artifact"}}, result)
 	require.Equal(t, "json_object", chat.lastRequest.ResponseFormat)
+	require.NotNil(t, chat.lastRequest.MaxTokens)
+	require.Equal(t, 1024, *chat.lastRequest.MaxTokens)
 	require.Len(t, chat.lastRequest.Messages, 1)
 	require.Len(t, chat.lastRequest.Messages[0].MultiContent, 3)
 	require.True(t, strings.HasPrefix(chat.lastRequest.Messages[0].MultiContent[2].ImageURL.URL, "data:image/png;base64,"))
@@ -244,7 +246,7 @@ func validProductImageAdapterConfig(images ai.ImageGenerator, chat ai.ChatComple
 			Subject: "isolate the exact product", WhiteBackground: "place the exact product on white",
 			Scene: "create a controlled product scene", Review: "review the generated product images", Version: "prompts-v1",
 		},
-		MaximumSceneOutputs: 4, ImageCostMicrosPerOutput: 100, ReviewCostMicros: 25, CostUpperBoundKnown: true,
+		MaximumSceneOutputs: 4, ImageCostMicrosPerOutput: 100, ReviewCostMicros: 25, ReviewMaxTokens: 1024, ReviewTokenUpperBound: 8192, CostUpperBoundKnown: true,
 	}
 }
 

@@ -346,7 +346,7 @@ func runToRecord(run imageagent.Run) (runRecord, error) {
 	}
 	return runRecord{
 		ScopeProtocol: run.ScopeProtocol,
-		TenantID:      run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID,
+		TenantID:      run.TenantID, ID: run.ID, BusinessTaskID: run.BusinessTaskID, TargetPlatform: run.TargetPlatform, UserID: run.UserID, MemberID: run.MemberID,
 		PolicyContextJSON: policyContextJSON,
 		Mode:              string(run.Mode), IdempotencyKey: run.IdempotencyKey, Status: string(run.Status), CurrentNode: run.CurrentNode,
 		ActivePlanRevision: run.ActivePlanRevision, Version: run.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(run.MaxConcurrentSlots), BudgetJSON: budgetJSON, UsageJSON: usageJSON, ReservedUsageJSON: []byte("{}"), BlockJSON: blockJSON, CreatedAt: run.StartedAt,
@@ -372,7 +372,7 @@ func recordToRun(row runRecord) (imageagent.Run, error) {
 	}
 	return imageagent.Run{
 		ScopeProtocol: row.ScopeProtocol,
-		ID:            row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, Mode: imageagent.RunMode(row.Mode),
+		ID:            row.ID, TenantID: row.TenantID, BusinessTaskID: row.BusinessTaskID, TargetPlatform: row.TargetPlatform, UserID: row.UserID, MemberID: row.MemberID, Mode: imageagent.RunMode(row.Mode),
 		ImagePolicyContext: policyContext,
 		IdempotencyKey:     row.IdempotencyKey, Status: imageagent.RunStatus(row.Status), CurrentNode: row.CurrentNode,
 		ActivePlanRevision: row.ActivePlanRevision, Version: row.Version, MaxConcurrentSlots: imageagent.NormalizeMaxConcurrentSlots(row.MaxConcurrentSlots), Budget: budget, Usage: usage, Block: block, StartedAt: row.CreatedAt.UTC(),

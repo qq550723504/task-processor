@@ -101,6 +101,13 @@ func TestCurrentApplicationReferralRouteAdmission(t *testing.T) {
 	if err := validateCurrentApplicationRoutes(append(routes, referrals...), false, true); err != nil {
 		t.Fatal(err)
 	}
+	for _, route := range referrals {
+		if route.Path == accountReferralWithdrawalReviewQueuePath || route.Path == accountReferralWithdrawalReviewPath {
+			if route.Permission != authz.PermissionListingKitPlatformAdm {
+				t.Fatalf("withdrawal review route %s uses %q, want platform-admin permission", route.Path, route.Permission)
+			}
+		}
+	}
 	for i := range referrals {
 		changed := append([]httproute.Descriptor(nil), referrals...)
 		changed[i].AuthPolicy = httproute.AuthPolicyVerifiedIdentity
@@ -153,7 +160,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 				buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 				},
-				buildAccountAudit: func(got *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+				buildAccountAudit: func(got, _ *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					if got != sourceDB || authorizer == nil {
 						t.Fatal("audit did not reuse source pool/authorizer")
 					}

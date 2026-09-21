@@ -10,7 +10,9 @@ import { referralFailure, referralJSON, referralMethodNotAllowed } from "./refer
 
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 const utc = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/).refine((value) => Number.isFinite(Date.parse(value)));
-const projection = z.object({ code: z.string().max(200), codeAvailability: z.enum(["available", "not_created"]), count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), generatedAt: utc, earnings: z.object({ availability: z.literal("unavailable"), amount: z.null() }).strict() }).strict().superRefine((value, context) => {
+const earningsUnavailable = z.object({ availability: z.literal("unavailable"), amount: z.null() }).strict();
+const earningsAvailable = z.object({ availability: z.literal("available"), currency: z.literal("CNY"), pendingMinor: z.string(), availableMinor: z.string(), reservedMinor: z.string(), adjustmentMinor: z.string(), version: z.string(), updatedAt: utc.nullable() }).strict();
+const projection = z.object({ code: z.string().max(200), codeAvailability: z.enum(["available", "not_created"]), count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), generatedAt: utc, earnings: z.union([earningsUnavailable, earningsAvailable]) }).strict().superRefine((value, context) => {
   if ((value.codeAvailability === "available") !== (value.code.length > 0)) context.addIssue({ code: "custom", message: "Invalid code availability" });
 });
 const created = z.object({ code: z.string().min(1).max(200) }).strict();

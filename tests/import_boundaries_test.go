@@ -3983,6 +3983,7 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "localagent", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "organization", "membership", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "accountallocation", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
 }
 

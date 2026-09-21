@@ -291,6 +291,7 @@ func addAuthorizationGrant(
 	subject string,
 	projectID string,
 ) error {
+	authorizationID := strings.TrimSpace(authorization.ID)
 	organizationID := strings.TrimSpace(authorization.Organization.ID)
 	if organizationID == "" {
 		return errors.New("ZITADEL authorization contains a blank organization id")
@@ -312,6 +313,7 @@ func addAuthorizationGrant(
 	if !ok {
 		accumulator = &organizationGrantAccumulator{
 			grant: authidentity.OrganizationGrant{
+				AuthorizationID:  authorizationID,
 				OrganizationID:   organizationID,
 				OrganizationName: organizationName,
 				ProjectID:        authorizationProjectID,

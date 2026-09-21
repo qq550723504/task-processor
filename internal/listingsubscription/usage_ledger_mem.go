@@ -115,7 +115,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	event := UsageEvent{
 		EventID: uuid.NewString(), TenantID: input.TenantID, ModuleCode: input.ModuleCode,
 		Metric: input.Metric, Quantity: input.Quantity, PeriodKey: input.PeriodKey, SourceType: input.SourceType,
-		SourceID: input.SourceID, IdempotencyKey: input.IdempotencyKey, Status: UsageEventReserved,
+		SourceID: input.SourceID, MemberID: input.MemberID, IdempotencyKey: input.IdempotencyKey, Status: UsageEventReserved,
 		OccurredAt: input.OccurredAt, Metadata: cloneUsageMetadata(input.Metadata), CreatedAt: now, UpdatedAt: now,
 	}
 	if input.Metric == usageMetricStorageBytesCurrent {
@@ -205,7 +205,7 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 	reversal := UsageEvent{
 		EventID: uuid.NewString(), TenantID: source.event.TenantID, ModuleCode: source.event.ModuleCode,
 		Metric: source.event.Metric, Quantity: quantity, PeriodKey: source.event.PeriodKey, SourceType: source.event.SourceType,
-		SourceID: source.event.SourceID, IdempotencyKey: idempotencyKey, Status: UsageEventReversed,
+		SourceID: source.event.SourceID, MemberID: source.event.MemberID, IdempotencyKey: idempotencyKey, Status: UsageEventReversed,
 		OccurredAt: now, ReversalOf: source.event.EventID, Metadata: redactedMemUsageMetadata(reason), CreatedAt: now, UpdatedAt: now,
 	}
 	reversalOutboxStatus := "cancelled"

@@ -9,6 +9,7 @@ type ExecutionIdentity struct {
 	RunID          string
 	TenantID       string
 	UserID         string
+	MemberID       string
 	BusinessTaskID string
 	TraceID        string
 }

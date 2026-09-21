@@ -18,4 +18,7 @@
 .module, .success { display: inline-block; border: 1px solid var(--border); padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
 .success { border-radius: 999px; color: var(--success-foreground); background: var(--success); }
 .pagination { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 16px; font-size: 13px; }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0; }
+.filters label { display: grid; gap: 6px; color: var(--muted-foreground); font-size: 12px; }
+.filters input, .filters select { min-height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); padding: 0 10px; }
 @media (max-width: 640px) { .panel { padding: 8px; } .coverage { padding: 16px; } .pagination { justify-content: flex-start; } .pagination span { width: 100%; } }

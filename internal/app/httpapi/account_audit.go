@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	accountallocationstore "task-processor/internal/integration/persistence/accountallocation"
 	store "task-processor/internal/integration/persistence/sourceaccountregistry"
 	kernelmodule "task-processor/internal/kernel/module"
 	registry "task-processor/internal/sourceaccountregistry"
@@ -60,12 +61,35 @@ func (m accountAuditModule) read(c *gin.Context) {
 		writeAccountAuditError(c, err)
 		return
 	}
-	page, err := m.query.Read(c.Request.Context(), limit, cursor)
+	filter, err := accountAuditFilterInput(c.Request.URL.Query())
+	if err != nil {
+		writeAccountAuditError(c, err)
+		return
+	}
+	page, err := m.query.ReadFiltered(c.Request.Context(), limit, cursor, filter)
 	if err != nil {
 		writeAccountAuditError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, page)
+}
+
+func accountAuditFilterInput(values url.Values) (accountaudit.Filter, error) {
+	actor := values.Get("actor")
+	if actor != "" && (len(values["actor"]) != 1 || !accountAuditScope.MatchString(actor)) {
+		return accountaudit.Filter{}, registry.ErrInvalid
+	}
+	operation := values.Get("operation")
+	if operation != "" && (len(values["operation"]) != 1 || operation != string(registry.OperationRegister) && operation != string(registry.OperationEnable) && operation != string(registry.OperationDisable) && operation != "set_target" && operation != "revoke") {
+		return accountaudit.Filter{}, registry.ErrInvalid
+	}
+	filter := accountaudit.Filter{ActorSubject: actor}
+	if operation == "set_target" || operation == "revoke" {
+		filter.ResourceOperation = operation
+	} else {
+		filter.Kind = registry.OperationKind(operation)
+	}
+	return filter, nil
 }
 func accountAuditPageInput(raw string) (int, string, error) {
 	if len(raw) > 2300 {
@@ -76,7 +100,7 @@ func accountAuditPageInput(raw string) (int, string, error) {
 		return 0, "", registry.ErrInvalid
 	}
 	for key, value := range values {
-		if (key != "limit" && key != "cursor") || len(value) != 1 || value[0] == "" {
+		if (key != "limit" && key != "cursor" && key != "actor" && key != "operation") || len(value) != 1 || value[0] == "" {
 			return 0, "", registry.ErrInvalid
 		}
 	}
@@ -106,8 +130,8 @@ func writeAccountAuditError(c *gin.Context, err error) {
 	}
 	writeWorkbenchProtocolError(c, status, code, "Operation history request could not be completed")
 }
-func buildAccountAuditModule(ctx context.Context, db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-	repository, err := store.NewRepository(ctx, db)
+func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+	repository, err := store.NewRepository(ctx, sourceDB)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +143,11 @@ func buildAccountAuditModule(ctx context.Context, db *gorm.DB, authorizer *authz
 	if err != nil {
 		return nil, err
 	}
-	query, err := accountaudit.New(history)
+	allocationRepository, err := accountallocationstore.New(commercialDB)
+	if err != nil {
+		return nil, err
+	}
+	query, err := accountaudit.NewWithAllocation(history, allocationRepository)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +160,7 @@ func NewAccountAuditApplication(ctx context.Context, db *gorm.DB, verifier zitad
 	if ctx == nil || db == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, registry.ErrUnavailable
 	}
-	module, err := buildAccountAuditModule(ctx, db, authorizer)
+	module, err := buildAccountAuditModule(ctx, db, db, authorizer)
 	if err != nil {
 		return nil, err
 	}

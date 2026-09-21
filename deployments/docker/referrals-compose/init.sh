@@ -48,7 +48,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
     "projectID": "$(tr -d '\r\n' < "$runtime/project-id")"
   },
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
-  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_reader", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
+  "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
   "referrals": {
     "enabled": true,
     "issuer": "https://localhost:18443",
@@ -93,6 +93,7 @@ GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
 ALTER ROLE source_account_runtime SET statement_timeout='10s';
 SQL
 
@@ -103,6 +104,7 @@ SQL
 printf 'postgresql://postgres:%s@127.0.0.1:5435/referrals?sslmode=disable\n' "$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")" > "$work/referral-owner-dsn"
 chmod 600 "$work/referral-owner-dsn"
 referral-schema-init -dsn-file "$work/referral-owner-dsn"
+psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
 
 mv "$state/.init-started" "$state/.init-complete"

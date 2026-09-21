@@ -27,6 +27,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/app/runtime/currentapplication"
+	accountallocationSchema "task-processor/internal/app/schema/accountallocation"
 	registrySchema "task-processor/internal/app/schema/sourceaccountregistry"
 	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
@@ -36,6 +37,19 @@ var run1AllowedPrivileges = map[string]map[string][]string{
 	"source_account_runtime": {
 		"source_account_resources":  {"SELECT", "INSERT", "UPDATE"},
 		"source_account_operations": {"SELECT", "INSERT"},
+		"account_business_profiles": {"SELECT", "INSERT", "UPDATE"},
+	},
+	"commercial_runtime": {
+		"saas_tenant_subscriptions": {"SELECT"}, "saas_plans": {"SELECT"},
+		"saas_tenant_entitlements":          {"SELECT"},
+		"saas_usage_buckets":                {"SELECT", "INSERT", "UPDATE"},
+		"saas_usage_events":                 {"SELECT", "INSERT", "UPDATE"},
+		"saas_usage_event_outbox":           {"SELECT", "INSERT", "UPDATE"},
+		"saas_subscription_audit_logs":      {"SELECT", "INSERT", "UPDATE"},
+		"account_member_token_locks":        {"SELECT", "INSERT", "UPDATE"},
+		"account_member_token_allocations":  {"SELECT", "INSERT", "UPDATE"},
+		"account_member_token_operations":   {"SELECT", "INSERT", "UPDATE"},
+		"account_member_token_audit_events": {"SELECT", "INSERT", "UPDATE"},
 	},
 	"commercial_reader": {
 		"saas_tenant_subscriptions": {"SELECT"}, "saas_plans": {"SELECT"},
@@ -48,6 +62,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 	owner, connection := commercialPostgres(t) // New disposable PG17, never a supplied DSN.
 	ctx := context.Background()
 	require.NoError(t, listingsubscription.AutoMigrateRepository(owner))
+	require.NoError(t, accountallocationSchema.Migrate(ctx, owner))
 	require.NoError(t, registrySchema.Migrate(ctx, owner))
 	require.NoError(t, owner.Exec(`REVOKE CREATE ON SCHEMA public FROM PUBLIC`).Error)
 	require.NoError(t, owner.Exec(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC`).Error)
@@ -55,7 +70,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 	require.NoError(t, owner.Exec(`INSERT INTO public.saas_plans (code, name, active, created_at, updated_at) VALUES ('run1-test', 'unchanged', true, now(), now())`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.source_account_resources (organization_id,id,platform,display_name,management_status,connection_status,version,created_by,updated_by,created_at,updated_at) VALUES ('run1-org','01991e24-1009-7009-8009-000000000009','1688','unchanged','disabled','pending_connection',1,'fixture','fixture',now(),now())`).Error)
 	cfg := &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}}
-	for _, role := range []string{"source_account_runtime", "commercial_reader"} {
+	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'synthetic-run1-password'`).Error)
 		require.NoError(t, owner.Exec(`GRANT CONNECT ON DATABASE issue347 TO `+role).Error)
 		require.NoError(t, owner.Exec(`GRANT USAGE ON SCHEMA public TO `+role).Error)
@@ -69,7 +84,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 			cfg.CommercialDatabase = dbConfig
 		}
 	}
-	require.NoError(t, owner.Exec(`ALTER ROLE commercial_reader SET default_transaction_read_only=on`).Error)
+	require.NoError(t, owner.Exec(`ALTER ROLE commercial_runtime SET default_transaction_read_only=on`).Error)
 	open := func(c currentapplication.DatabaseConfig, readOnly bool) *gorm.DB {
 		p := &platformdatabase.Config{Host: c.Host, Port: c.Port, User: c.User, Password: c.Password, Database: c.Database, MaxConnections: 2}
 		var db *gorm.DB
@@ -120,7 +135,7 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		}
 	}
 	start(t, false) // Extra table without grants and ordinary pg_catalog access are allowed.
-	for _, role := range []string{"source_account_runtime", "commercial_reader"} {
+	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
 		for _, table := range tables {
 			for _, privilege := range privileges {
 				if slices.Contains(run1AllowedPrivileges[role][table], privilege) {
@@ -262,7 +277,7 @@ func run1PermissionBinary(t *testing.T, owner *gorm.DB, cfg *currentapplication.
 		require.Error(t, e, "application listener remains after exit")
 	}
 	run(false)
-	for _, role := range []string{"source_account_runtime", "commercial_reader"} {
+	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
 		require.NoError(t, owner.Exec(`GRANT UPDATE ON public.goose_source_account_registry_version TO `+role).Error)
 		run(true)
 		require.NoError(t, owner.Exec(`REVOKE UPDATE ON public.goose_source_account_registry_version FROM `+role).Error)

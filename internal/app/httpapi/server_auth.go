@@ -91,7 +91,7 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 		return nil
 	}
 	requiresOrganization := routeRequiresOrganizationResolution(route.OrganizationAccessPolicy)
-	currentIdentity := route.AuthPolicy == httproute.AuthPolicyCurrentIdentity
+	currentIdentity := route.AuthPolicy == httproute.AuthPolicyCurrentIdentity || route.AuthPolicy == httproute.AuthPolicyCurrentIdentityWithVerifiedRoles
 	if !requiresOrganization && !currentIdentity && !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}
@@ -116,7 +116,10 @@ func routeAuthHandlersWithDependencies(route httproute.Descriptor, dependencies 
 		handlers = append(handlers, func(c *gin.Context) {
 			identity, _ := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 			identity.TenantID, identity.EffectiveOrganizationID = "", ""
-			identity.Roles, identity.OrganizationGrants = nil, nil
+			if route.AuthPolicy == httproute.AuthPolicyCurrentIdentity {
+				identity.Roles = nil
+			}
+			identity.OrganizationGrants = nil
 			c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
 			c.Request.Header.Del("X-Requested-Organization-ID")
 			c.Next()

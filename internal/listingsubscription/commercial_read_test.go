@@ -45,7 +45,7 @@ func TestCommercialReadActualGrantAndLedgerWindow(t *testing.T) {
 	require.Equal(t, PlanProfessional, got.Subscription.PlanCode)
 	require.Len(t, got.Plans, 1, "technical default plans are not the sellable catalog")
 	require.Equal(t, "base_payg", got.Plans[0].Code)
-	require.Len(t, got.Usage, 5)
+	require.Len(t, got.Usage, 6)
 	require.Equal(t, "1", *got.Usage[0].Committed, "only the current month is read")
 	require.Equal(t, "0", *got.Usage[0].Reserved)
 	require.Equal(t, "unknown", got.Usage[1].State)

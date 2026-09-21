@@ -15,7 +15,7 @@ import (
 )
 
 var commercialModules = []string{ModuleStoreManagement, ModuleTaskImport, ModuleRules, ModuleOperationStrategy, ModuleListingKit, ModuleOSSStorage}
-var commercialMetrics = []string{usageMetricListingKitGenerationsSucceeded, usageMetricProductImageJobsSucceeded, usageMetricSheinDraftsSucceeded, usageMetricSheinPublishesSucceeded, usageMetricStorageBytesCurrent}
+var commercialMetrics = []string{usageMetricListingKitGenerationsSucceeded, usageMetricProductImageJobsSucceeded, usageMetricSheinDraftsSucceeded, usageMetricSheinPublishesSucceeded, usageMetricAITokens, usageMetricStorageBytesCurrent}
 
 // Commercial PostgreSQL reads must address exactly the public facts admitted by
 // VerifyCommercialReadSchema, independent of each connection's search_path.

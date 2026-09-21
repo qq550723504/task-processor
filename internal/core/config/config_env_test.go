@@ -49,6 +49,7 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE", "nanobanana")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL", "nano-banana-fast")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_TIMEOUT", "300")
+	t.Setenv("TASK_PROCESSOR_COMMERCIAL_DATABASE_HOST", "commercial-db")
 
 	v := newViper()
 
@@ -70,6 +71,25 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "nanobanana", v.GetString("openai.clients.image.apiStyle"))
 	assert.Equal(t, "nano-banana-fast", v.GetString("openai.clients.image.model"))
 	assert.Equal(t, 300, v.GetInt("openai.clients.image.timeout"))
+	assert.Equal(t, "commercial-db", v.GetString("commercialDatabase.host"))
+}
+
+func TestBuildConfigLoadsCommercialDatabaseForWorkerUsageSettlement(t *testing.T) {
+	v := newViper()
+	v.Set("commercialDatabase.host", "commercial-db")
+	v.Set("commercialDatabase.port", 5434)
+	v.Set("commercialDatabase.user", "commercial_runtime")
+	v.Set("commercialDatabase.password", "secret-not-logged")
+	v.Set("commercialDatabase.database", "commercial")
+	v.Set("commercialDatabase.max_connections", 4)
+
+	cfg := BuildConfig(v)
+	require.NotNil(t, cfg.CommercialDatabase)
+	assert.Equal(t, "commercial-db", cfg.CommercialDatabase.Host)
+	assert.Equal(t, 5434, cfg.CommercialDatabase.Port)
+	assert.Equal(t, "commercial_runtime", cfg.CommercialDatabase.User)
+	assert.Equal(t, "commercial", cfg.CommercialDatabase.Database)
+	assert.Equal(t, 4, cfg.CommercialDatabase.MaxConnections)
 }
 
 func TestTracingConfigDefaultsToDisabledTaskProcessorService(t *testing.T) {

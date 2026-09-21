@@ -5,4 +5,17 @@
 .panel { padding: 24px; display: grid; gap: 16px; align-content: start; }
 .panel h2 { font-size: 19px; font-weight: 600; }
 .panel p { color: var(--muted-foreground); line-height: 1.7; }
+.quotaFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.quotaFacts div, .memberRow { border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.quotaFacts dt, .memberRow dt { color: var(--muted-foreground); font-size: 12px; }
+.quotaFacts dd, .memberRow dd { font-weight: 600; margin-top: 4px; }
+.memberRows { display: grid; gap: 10px; }
+.memberRow { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(240px, auto) minmax(190px, auto); gap: 16px; align-items: center; }
+.memberRow small { display: block; color: var(--muted-foreground); margin-top: 4px; overflow-wrap: anywhere; }
+.memberRow dl { display: flex; gap: 18px; }
+.allocationEdit { display: flex; align-items: end; gap: 8px; }
+.allocationEdit label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.allocationEdit input { width: 110px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--background); color: var(--foreground); }
+.readOnly { color: var(--muted-foreground); font-size: 13px; }
+@media (max-width: 900px) { .quotaFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .memberRow { grid-template-columns: 1fr; } .memberRow dl { justify-content: space-between; } .allocationEdit { justify-content: space-between; } }
 @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .panel { padding: 18px; } }

@@ -28,7 +28,7 @@ func TestPhase2ClosureDocumentsRuntimeOwnershipAndDeferredDebt(t *testing.T) {
 	})
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md"), []string{
 		"Final closure inventory",
-		"`core/logger` | 82", "`platform/logging` | 9", "`platform/database` | 21", "`integration/s3` | 4",
+		"`core/logger` | 82", "`platform/logging` | 9", "`platform/database` | 23", "`integration/s3` | 4",
 		"same-platform workerpool", "Goose migration owner", "Legacy consumer register",
 	})
 	requireDocumentPhrases(t, filepath.Join("..", "internal", "platform", "README.md"), []string{

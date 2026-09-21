@@ -75,17 +75,20 @@ Stopping is separate from destruction. Keep the project, named volumes and
 controlled mailbox after handoff. No shared or production IAM, database or
 funding service is used. Destruction is intentionally not part of delivery.
 
-The membership and referral schemas are initialized once by `schema-init` with
-dedicated runtime roles. `current-application` then verifies both schemas,
-provider credentials and the independent database pools before serving; a
+The account profile, membership and referral schemas are initialized once by
+`schema-init` with dedicated runtime roles. `current-application` then verifies
+the existing source-account boundary, provider credentials and independent
+database pools before serving; a
 misconfigured module fails startup instead of appearing as an unavailable page.
 
 ## Scope limits
 
-Profile fields without an existing current owner remain read-only/unavailable.
+Provider-owned identity fields remain read-only; the account-center-owned
+business profile is persisted through the account profile API.
 Resource balances without an authoritative source remain unavailable. Audit
-history currently covers committed source-account register/enable/disable
-receipts only. Referral earnings, commission and withdrawal decisions are not
-implemented or inferred. Product acquisition remains in its retained existing
-instance; this account-center instance does not make source-account login or
-acquisition a prerequisite.
+history covers committed source-account receipts and member Token allocation
+changes. Referral earnings and withdrawals use the immutable ledger projection
+and manual-review state machine; commission entries are created only from
+trusted settled-payment inputs from the commercial/payment owner. Product
+acquisition remains in its retained existing instance; this account-center
+instance does not make source-account login or acquisition a prerequisite.

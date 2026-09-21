@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	allocation "task-processor/internal/accountallocation"
 	"task-processor/internal/authidentity"
 	registry "task-processor/internal/sourceaccountregistry"
 )
@@ -17,6 +18,12 @@ type historyStub struct {
 	page    registry.HistoryPage
 	request registry.HistoryRequest
 	calls   int
+}
+
+type allocationHistoryStub struct{ page allocation.AuditPage }
+
+func (s *allocationHistoryStub) ListRecentAudit(context.Context, string, int, string, string, *allocation.AuditPosition) (allocation.AuditPage, error) {
+	return s.page, nil
 }
 
 func (s *historyStub) List(_ context.Context, r registry.HistoryRequest) (registry.HistoryPage, error) {
@@ -81,5 +88,46 @@ func TestProjectionRejectsMalformedCursorAndUnsafeSource(t *testing.T) {
 	source.page = registry.HistoryPage{Items: []registry.CommittedOperation{{OrganizationID: "A"}}}
 	if _, err := query.Read(ctx, 20, ""); !errors.Is(err, registry.ErrUnavailable) {
 		t.Fatal(err)
+	}
+}
+
+func TestProjectionBindsAuditFiltersToQueryAndCursor(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	id := "0198d4f0-0000-7000-8000-000000000001"
+	position := registry.HistoryPosition{OccurredAt: now, AccountID: id, Version: 2}
+	source := &historyStub{page: registry.HistoryPage{Items: []registry.CommittedOperation{{OrganizationID: "B", AccountID: id, ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now}}, Next: &position}}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	query, _ := New(source)
+	filter := Filter{ActorSubject: "actor", Kind: registry.OperationDisable}
+	page, err := query.ReadFiltered(ctx, 1, "", filter)
+	if err != nil || source.request.ActorSubject != "actor" || source.request.Kind != registry.OperationDisable || page.NextCursor == nil {
+		t.Fatalf("filtered read = %#v, err=%v, request=%#v", page, err, source.request)
+	}
+	if _, err := query.ReadFiltered(ctx, 1, *page.NextCursor, Filter{}); !errors.Is(err, registry.ErrInvalid) {
+		t.Fatalf("cursor reused without its filters: %v", err)
+	}
+}
+
+func TestProjectionEmitsCursorWhenMergedPageTruncatesWithoutSourceCursor(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	history := &historyStub{page: registry.HistoryPage{Items: []registry.CommittedOperation{
+		{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000001", ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now},
+		{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000002", ActorSubject: "actor", Kind: registry.OperationDisable, Version: 3, OccurredAt: now.Add(-time.Microsecond)},
+	}}}
+	allocations := &allocationHistoryStub{page: allocation.AuditPage{Items: []allocation.AuditEvent{
+		{OrganizationID: "B", ActorID: "actor", MemberID: "m-1", Operation: "set_target", Version: 1, IdempotencyKey: "k-1", CreatedAt: now.Add(-2 * time.Microsecond)},
+		{OrganizationID: "B", ActorID: "actor", MemberID: "m-2", Operation: "set_target", Version: 2, IdempotencyKey: "k-2", CreatedAt: now.Add(-3 * time.Microsecond)},
+	}}}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	query, err := NewWithAllocation(history, allocations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := query.Read(ctx, 2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 || page.NextCursor == nil {
+		t.Fatalf("merged page=%+v, want truncated cursor", page)
 	}
 }

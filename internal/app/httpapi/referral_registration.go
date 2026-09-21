@@ -16,16 +16,30 @@ import (
 
 	"github.com/gin-gonic/gin"
 	app "task-processor/internal/app/referralregistration"
+	"task-processor/internal/authidentity"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/money"
 	"task-processor/internal/referral"
+	economics "task-processor/internal/referraleconomics"
 )
 
 const referralIntentsPath = "/api/v1/referral-registration/intents"
 const referralResumePath = "/api/v1/referral-registration/resume"
 const accountReferralsPath = "/api/v1/account/referrals"
 const accountReferralsCompletePath = accountReferralsPath + "/complete"
+const accountReferralEarningsPath = accountReferralsPath + "/earnings"
+const accountReferralPayoutMethodsPath = accountReferralsPath + "/payout-methods"
+const accountReferralWithdrawalsPath = accountReferralsPath + "/withdrawals"
+const accountReferralWithdrawalReviewQueuePath = accountReferralWithdrawalsPath + "/review-queue"
+const accountReferralWithdrawalCancelPath = accountReferralWithdrawalsPath + "/:withdrawal_id/cancel"
+const accountReferralWithdrawalReviewPath = accountReferralWithdrawalsPath + "/:withdrawal_id/review"
+const internalReferralPaymentSettlementPath = "/api/v1/internal/referrals/payment-settlements"
+const internalReferralRefundSettlementPath = "/api/v1/internal/referrals/refund-settlements"
+const internalReferralChargebackSettlementPath = "/api/v1/internal/referrals/chargeback-settlements"
+const internalReferralMaturityPath = "/api/v1/internal/referrals/mature"
 
 type referralCommands interface {
 	Start(context.Context, app.Request) (app.Admission, error)
@@ -35,9 +49,50 @@ type referralCommands interface {
 	Complete(context.Context) (referral.Receipt, error)
 }
 
+type referralEconomics interface {
+	ReadEarnings(context.Context, string, string) (economics.Earnings, error)
+	RequestWithdrawal(context.Context, economics.RequestWithdrawal) (economics.Withdrawal, error)
+	CancelWithdrawal(context.Context, string, string, int64, string) (economics.Withdrawal, error)
+	ReviewWithdrawal(context.Context, economics.ReviewWithdrawal) (economics.Withdrawal, error)
+	Mature(context.Context, time.Time) error
+}
+
+type withdrawalReader interface {
+	ListWithdrawals(context.Context, string) ([]economics.Withdrawal, error)
+	ListPendingWithdrawals(context.Context) ([]economics.Withdrawal, error)
+}
+
+type settlementWriter interface {
+	RecordPaymentSettlementAndNotify(context.Context, money.PaymentSettlement, money.SettlementObserver) error
+	RecordRefundSettlementAndNotify(context.Context, money.RefundSettlement, money.SettlementObserver) error
+	RecordChargebackSettlementAndNotify(context.Context, money.ChargebackSettlement, money.SettlementObserver) error
+}
+
+// payoutMethodReader is intentionally separate from referral economics. A
+// withdrawal may only be requested when an existing canonical account owner
+// confirms a valid method for the current person; a channel enum alone is not
+// payout-method persistence.
+type payoutMethodReader interface {
+	HasValidPayoutMethod(context.Context, string, string) (bool, error)
+	ListActivePayoutMethods(context.Context, string) ([]money.PayoutMethodSummary, error)
+	ReadPayoutMethodForReview(context.Context, string) (money.PayoutMethod, error)
+}
+
+type payoutMethodWriter interface {
+	CreatePayoutMethodIdempotent(context.Context, money.PayoutMethod, string, string) (money.PayoutMethod, error)
+}
+
 type referralHTTPModule struct {
 	commands              referralCommands
 	serviceCredential     string
+	economics             referralEconomics
+	withdrawals           withdrawalReader
+	payoutMethods         payoutMethodReader
+	payoutMethodWriter    payoutMethodWriter
+	payoutEncryptionKeys  map[string][]byte
+	payoutEncryptionKeyID string
+	profileReader         authidentity.SelfProfileReader
+	settlements           settlementWriter
 	onSlotAcquiredForTest func()
 }
 
@@ -63,6 +118,18 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodGet, Path: accountReferralsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readSelf},
 		{Method: http.MethodPost, Path: accountReferralsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createSelfCode},
 		{Method: http.MethodPost, Path: accountReferralsCompletePath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.complete},
+		{Method: http.MethodGet, Path: accountReferralEarningsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readEarnings},
+		{Method: http.MethodGet, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readPayoutMethods},
+		{Method: http.MethodPost, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createPayoutMethod},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
+		{Method: http.MethodGet, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readWithdrawals},
+		{Method: http.MethodGet, Path: accountReferralWithdrawalReviewQueuePath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitPlatformAdm, Handler: m.readWithdrawalQueue},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
+		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitPlatformAdm, Handler: m.reviewWithdrawal},
+		{Method: http.MethodPost, Path: internalReferralPaymentSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordPaymentSettlement},
+		{Method: http.MethodPost, Path: internalReferralRefundSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordRefundSettlement},
+		{Method: http.MethodPost, Path: internalReferralChargebackSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordChargebackSettlement},
+		{Method: http.MethodPost, Path: internalReferralMaturityPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.matureReferralEarnings},
 	}
 	for i := range routes {
 		routes[i].Module = m.Name()
