@@ -107,6 +107,30 @@ func TestAccountIdentityUsesVerifiedUserTokenWithoutOrganizationContext(t *testi
 	require.Contains(t, recorder.Body.String(), `"state":"verification_pending"`)
 }
 
+func TestAccountIdentityMapsVerificationCodeToOfficialProviderField(t *testing.T) {
+	for _, operation := range []struct {
+		path string
+		name zitadel.SelfServiceOperation
+	}{
+		{path: accountIdentityEmailVerifyPath, name: zitadel.SelfServiceVerifyEmail},
+		{path: accountIdentityPhoneVerifyPath, name: zitadel.SelfServiceVerifyPhone},
+	} {
+		t.Run(string(operation.name), func(t *testing.T) {
+			spy := &accountIdentitySelfServiceSpy{}
+			module := accountIdentityModule{client: spy}
+			request := httptest.NewRequest(http.MethodPost, operation.path, strings.NewReader(`{"code":"123456"}`))
+			request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
+			recorder := httptest.NewRecorder()
+			ginContext, _ := gin.CreateTestContext(recorder)
+			ginContext.Request = request
+			module.execute(ginContext)
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Equal(t, operation.name, spy.operation)
+			require.JSONEq(t, `{"verificationCode":"123456"}`, string(spy.body))
+		})
+	}
+}
+
 func TestAccountIdentityRegistersOfficialOperationsWithCorrectMethods(t *testing.T) {
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, (accountIdentityModule{client: &accountIdentitySelfServiceSpy{}}).Register(registry))

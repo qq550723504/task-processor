@@ -208,7 +208,9 @@ func decodeAccountIdentityBody(r *http.Request, operation zitadel.SelfServiceOpe
 		if err := strictIdentityJSON(value, &input); err != nil || !validIdentityText(input.Code, 64) {
 			return nil, errors.New("invalid verification code")
 		}
-		return json.Marshal(input)
+		return json.Marshal(struct {
+			VerificationCode string `json:"verificationCode"`
+		}{VerificationCode: input.Code})
 	case zitadel.SelfServiceResendEmailVerification, zitadel.SelfServiceResendPhoneVerification:
 		var input struct{}
 		if err := strictIdentityJSON(value, &input); err != nil {
