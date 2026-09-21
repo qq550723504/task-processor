@@ -1,35 +1,38 @@
-# 1688 批量/后台采集（本地代理执行器）设计
+# 1688 批量导入（本地执行器驱动既有浏览器采集链路）设计
 
-- 状态：**待评审 v2**（未批准前不进入实现）
-- 基准：`origin/main` = `4942901cb`
-- 相关 Issue：#398、#399、#396（需按 §11 更新）
-- 前置实测证据：§1.4
-- v2 变更：针对 PR #443 评审 4 条 finding 逐条修正，见 §14
+- 状态：**待评审 v3**（未批准前不进入实现）
+- 基准：`origin/main` = `14df0e520`（含 #444 的 2048）
+- 相关 Issue：#398、#399、#396（见 §12）
+- v3 变更：用户 2026-09-21 选定**路线 B**，设计整体重写；v2 的「服务端预建待办行 + 过期重认领当心跳」方案**已废弃**，原因见 §2 与 §15
 
 ## 1. 目标与范围
 
 ### 1.1 使用者与场景
 
-需要在**不逐个打开 1688 页面的前提下**采集多个商品的操作人员：把一批 1688 商品链接交给系统，由本地执行器后台依次抓取，在应用内逐条看到「成功 / 失败 / 待核实」。
+需要在**不逐个打开 1688 页面手工点击采集**的前提下导入多个商品的操作人员：把一批 1688 商品链接交给本地执行器，由它在后台依次驱动浏览器完成采集，用户不必停在任何一个页面上。
 
 ### 1.2 本次可见交付
 
 ```
-在采集页粘贴多行 1688 链接 → 提交
-  → 应用内出现 N 条采集操作，状态实时可见
-  → 本地执行器后台依次执行（用户不需要停在任何页面上）
-  → 每条的最终结果可在应用内查看
+本地执行器：给入一批 1688 链接（≤10）
+  → 执行器后台依次：打开商品页 → 复用已上线的插件采集 → 由采集页提交
+  → 每条结果写入本地队列文件（执行器侧可见进度）
+  → 成功发布的商品逐个出现在应用的商品目录中
 ```
+
+**明确不含**：应用内的「待办列表 / 批量进度页」。待办进度只在**执行器本地**可见（§4 D2）。这是本路线相对路线 A 主动放弃的东西，理由见 §2。
 
 ### 1.3 本次不做
 
 - 不做定时/周期性重采（只做一次性批量）
-- 不做多账号池、不做代理池、不做账号轮换
-- 服务端不持久化 profile 引用或任何 1688 凭据（见 §3 D3）
-- 不改插件路径（③）的任何行为
-- 不恢复 ①（服务端匿名裸 HTTP）—— 已证明结构性不可行
-- 不引入后台调度器、TTL 或 key GC（见 §1.5）
-- 不做 `connectionStatus` 状态机扩展（#396 保持 PAUSED，见 §11）
+- 不做多账号池、代理池、账号轮换
+- **不新增任何服务端路由**（与 v2 的关键差别：v2 的 D5 list 路由已撤销，见 §4 D4）
+- **不新增服务端待办行**；服务端不持久化 profile 引用或任何 1688 凭据
+- 不改 ③（插件采集）的任何现有行为
+- 不恢复 ①（服务端匿名裸 HTTP）—— 已证结构性不可行
+- 不引入后台调度器、TTL 或 key GC（§1.5 第 2 条）
+- 不做 `connectionStatus` 状态机扩展（#396 保持 PAUSED，见 §12）
+- 不处理 `internal/localagent` 的去留（本设计不依赖它；去留按独立任务，见 §13）
 
 ### 1.4 前置实测结论（本设计的依据）
 
@@ -45,12 +48,11 @@
 
 结论：**匿名路径不能作为产品前提**；**登录 profile 在同样被污染的 IP 上 5/5 成功**。
 
-两个附带实现事实：
+三个附带事实：
 
-- Chrome 153 profile 交给 Chromium 144 会**启动即崩**，元凶是 `Default/Sync Data`；⇒ **profile 必须由最终运行的那个浏览器创建**，不能后期迁移。
+- Chrome 153 profile 交给 Chromium 144 会**启动即崩**，元凶是 `Default/Sync Data` ⇒ **profile 必须由最终运行的那个浏览器创建**，不能后期迁移。
 - 1688 路径的 `SetFingerprint` **从未被调用**（只有 amazon/shein/sds 登录调用）⇒ 1688 的浏览器身份 = 二进制 + profile，登录与自动化天然同身份。
-
-**关键耗时**：单次真实抓取实测 **34.745 秒**。这个数字决定了 §3 D2 的认领方案。
+- 单次真实抓取实测 **34.745 秒**。这个数字是 v2 设计崩掉的直接原因（30 秒租约 + `Prepare` 要求租约未过期），也是本路线**完全绕开租约**的理由。
 
 ### 1.5 已记录的既有设计决定（必须遵守）
 
@@ -58,423 +60,283 @@
 
 1. > This is anonymous public acquisition, **not Browser Capture, Source Account management, a Connection, or a login flow.**
 
-   ⇒ 本设计是登录流程，**不属于该 contract**，必须作为**独立 producer** 显式准入，不能挂进 `public_acquisition/v1`。
+   ⇒ 本设计是登录流程，**不属于该 contract**，必须作为**独立 producer** 显式准入，不能挂进 `public_acquisition/v1`。**本设计不新增 producer**：它原样复用 ③ 已准入的 `browser_acquisition` producer。
 
 2. > Only expired acquiring operations without a prepared command may obtain a new fenced **GET** lease. **There is no background scheduler, fallback, rebase, TTL or key GC.**
 
    ⇒ `acquiring` 租约是**服务端 GET 租约**（8 秒 GET / 20 秒操作 deadline / 30 秒租约），**不是**给浏览器长任务用的。
-   ⇒ **不得新增租约续期 API、后台调度器、TTL 或 key GC。** 本设计因此**不采用**「为浏览器长任务延长 acquiring 租约」的方案（见 §3 D2）。
+   ⇒ 不得新增租约续期 API、后台调度器、TTL 或 key GC。**本设计完全不使用 `acquiring` 租约**（§4 D2），因此与这条决定零冲突——这是相对 v2 的实质改进。
 
-3. > Limits: **256 retained operations per organization**, 32 active operations, ... 30-second GET lease.
+3. > Limits: retained operations per organization, 32 active operations, ... 30-second GET lease.
 
-   ⇒ 256 是**按组织保留、无 GC** 的容量，且与 ①/③ 共用（见 §8）。
+   ⇒ 保留上限是**按组织、无 GC 的终身容量**，且与 ①/③ 共用；已由 #444 从 256 提到 **2048**（§9.1）。
 
-## 2. 现状盘点（在 `4942901cb` 上复核）
+## 2. 为什么是路线 B（决定记录）
 
-### 2.1 可直接复用（不要重建）
+PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认：v2 试图**把采集操作行当成待办队列**，而该表不是为队列设计的（详见 §15）。其中一条直接证伪了 v2 的核心机制。
+
+因此列出三条路线交用户决定，用户于 2026-09-21 选定 **(B)**：
+
+| | 内容 | 结论 |
+|---|---|---|
+| (A) | 为批量引入独立持久化队列 owner（`BatchJob`） | **否**：会引入第二事实源，需独立架构设计与评审；按「产品先行」当前投入不成立 |
+| **(B)** | **执行器本地队列 + 复用既有 ③ 链路** | **选定** |
+| (C) | 只交付已上线的 ③，批量等真实用户被阻塞再投入 | 否：忽略用户「要批量/后台导」的真实需求 |
+
+**(B) 的关键性质：它不需要采集契约上的任何变更，也不需要新增服务端路由。**
+
+原因：③ 已经是一条完整、已上线、已端到端验证的链路（扩展取 DOM → 采集页提交 → `StartPrepared` → 发布）。批量缺的**只是「谁来点 N 次」**。执行器驱动浏览器去点，就用不上 v2 引入的每一个新东西：
+
+| v2 需要 | 路线 B |
+|---|---|
+| 服务端预建 `acquiring` 待办行 | **不需要**（抓完才由 ③ 建 `prepared` 行） |
+| 发现谓词 + 生产者区分符 | **不需要**（没有待办行可发现） |
+| 过期重认领当 fence 心跳 | **不需要**（无 `acquiring` 阶段，无 30 秒租约约束） |
+| list 路由 + 分页 + 稳定排序位 | **不需要**（不做应用内待办视图） |
+| `failed → acquiring` 重试迁移 | **不需要**（③ 每次采集用新 key，重试天然可行） |
+| actor 委派语义 | **不需要**（提交由浏览器里的用户会话完成，actor 天然是本人） |
+| 设备令牌 / 新认证路径 | **不需要**（见下） |
+
+> **对先前推荐的修正**：我最初的 (B) 描述里写了「需给执行器一条能提交证据的认证路径（设备令牌）」。核实后这是**不必要的**，而且那条路更差：`internal/localagent/deviceauth` **故意拒绝 refresh token**（`client.go:133`，测试 `TestAuthorizeRejectsRefreshToken`），设备流拿到的是短时令牌，长批量必然中断。正确做法是**执行器不持有任何凭据**——它只驱动浏览器，提交由浏览器中的用户会话（BFF 代理附 `Authorization: Bearer`，`web/listingkit-ui/src/lib/server/workbench-proxy.ts:424`）完成。**凭据面为零新增。**
+
+## 3. 现状盘点（在 `14df0e520` 上复核）
+
+### 3.1 直接复用（不要重建）
 
 | 能力 | 位置 | 复用方式 |
 |---|---|---|
-| 采集操作状态机 + 幂等 + fence + 恢复 | `internal/product/sourcing/acquisition_operation.go` | 直接复用；批量 = N 个 operation |
-| 浏览器采集 ingress（`StartPrepared` 恢复语义） | `internal/app/httpapi/browser_capture_application.go` | **作为本设计的 ingress 模板** |
-| 扫码登录自动化 + profile runtime | `internal/sheinlogin/`、`internal/sdslogin/api.go:42 ManualLogin` | 抽取其模式 |
-| 浏览器配置 / profile 根目录 | `internal/crawler/shared/browser/`、`platforms.alibaba1688.profileRootDir` | 直接复用 |
-| 设备登记与身份 | `internal/localagent/deviceauth`（OAuth 设备码）、`localagent.Actor{TenantID,UserID}` | 直接复用 |
+| 扩展取数（`1688-browser-dom/v2`） | `extensions/1688-capture/`（已上线） | **原样复用**，不重写解析 |
+| 采集提交与发布 | `internal/app/httpapi/browser_capture_application.go`（4 条路由，已上线） | **原样复用**，不改 |
+| 采集页 → 服务端提交 + 用户会话 | `web/listingkit-ui/src/app/capture/1688/capture-receiver.tsx`、`workbench-proxy.ts:309-315` | **原样复用** |
+| 触发采集的扩展内部消息 | `extensions/1688-capture/src/background.ts:32`（`popup.capture`） | 执行器发同一条消息，绕开「必须聚焦窗口才能开 popup」的限制 |
+| CDP 加载扩展 + 驱动 popup | `extensions/1688-capture/scripts/browser-smoke.mjs:78-101`（`Extensions.loadUnpacked` + `Runtime.evaluate{userGesture:true}`） | 作为驱动循环的**已证模板**（Node 参考实现） |
+| Go 侧 CDP 能力 | `github.com/mxschmitt/playwright-go`：`Browser.NewBrowserCDPSession()`（`browser.go:125`）、`Context.NewCDPSession`（`browser_context.go:88`）；已有用法 `internal/sheinlogin/automation_network.go:52` | 执行器用 Go 实现，不新增运行时 |
+| fingerprint-chromium 安装 | `cmd/fingerprint-browser-installer` | 直接复用 |
 
-### 2.2 缺口
+### 3.2 缺口（本设计要补的全部）
 
-| 缺口 | 证据 | 影响 |
+| 缺口 | 证据 | 本设计的补法 |
 |---|---|---|
-| **localagent 的 job 是纯内存** | `internal/localagent/service.go:61-65`（`jobs map[string]*record`） | 重启即丢，不适合批量 |
-| **localagent 与采集操作是两套事实** | `Job`/`JobState` vs `AcquisitionOperation` | 第二事实源，违反 PD-GREENFIELD |
-| **采集操作没有 list 路由** | 仅有 by-key / by-id 读单条 | 批量无法在应用内查看进度 |
-| **local-agent 无任何前端** | `grep -l local-agent web/` 为空 | 用户看不到 |
-| **local-agent 走匿名** | `internal/localagent/runner.go:79` → `Process(ctx,url)` | 就是 0/8 的那条路 |
-| **采集页"贴链接"入口走 ①** | `acquisition-page.tsx:120` → 服务端裸 HTTP | 已证不可行 |
-| **local-agent 路由不在当前应用白名单** | `grep local-agent internal/app/httpapi/current_application.go` 为空；模块由 `composition_modules.go:26` 的另一条组装路径提供 | 不能直接复用，需新增独立路由 |
+| **没有「驱动 N 次」的循环** | 采集一直是人工点 popup | §4 D1：执行器循环 |
+| **没有本地待办队列** | 无 | §4 D2：执行器本地文件（**不是**服务端事实源） |
+| **profile / 会话被并发使用** | 无锁 | §4 D3：profile 本地锁，单执行器 |
 
-### 2.3 legacy 账号辅助路径（不得依赖）
+### 3.3 与 legacy 的关系
 
-legacy crawler 里已存在「public → account-assisted 回退」：`internal/crawler/alibaba1688/worker_processor.go:60-110`（`IsAccountFallbackEligible` + `resolveAccountProfile` + `lockAccountProfile` + `ProcessWithAccountProfile`），挂在 `crawler_service.go:109` 的 worker pool，仅由 `composition_builder.go:118` 的 **legacy 组合**装配（`platforms.alibaba1688.enabled` 默认 `false`）。
+本路线**不依赖、不包装、不抽取** `internal/crawler/alibaba1688` 的任何代码：不调 `ProcessWithAccountProfile`、不调 `Process`、不引入 public→account 回退。浏览器由执行器直接以 profile 启动。
 
-按 Hard-Cut，这套代码**不是当前 owner**，新链路不得依赖或包装。本设计只 `EXTRACT` 其中仍正确的行为（**按 profile 串行加锁**），其余 `RETIRE`。
+## 4. 核心设计决策
 
-## 3. 核心设计决策
+### D1：批量 = 执行器循环调用 N 次既有 ③ 采集
 
-### D1：批量 = N 个既有采集操作，不新建队列实体
+执行器对每条链接执行一次**与人工操作完全等价**的 ③ 采集：导航到商品页 → 触发扩展采集 → 打开采集页（携带 handoff 参数）→ 等待终态。
 
-提交一批 N 个链接 = 创建 N 个 `AcquisitionOperation`。**不新增**批量实体、不新增 localagent 的 Job 事实源。
+- 不新增服务端实体、不新增状态机、不新增路由。
+- 部分失败天然成立：一条失败不影响后续条。
+- 单批上限 **10**（§11-1），实测通过后再提。
 
-- 幂等作用域 = **`(organization_id, actor_id, idempotency_key)`**（`repository.go:338` 的 `read()` 与 `Start` 的存在性检查都按这三列）。
-- **注意**：本设计**不提供**「同组织跨操作人去重」。同一组织两个操作人贴同一链接会产生两行——这是既有作用域决定，本设计不改动。
-  - 影响：可能重复抓取同一商品（重复外部请求，非数据损坏；发布侧按 `crawler:1688:<offerID>` 归一到同一商品）。
-  - 运维约束：批量由**单一操作人**提交，即可避免。
-- 部分失败语义天然成立：一条失败不影响其它条。
-- 容量沿用 `MaxAcquisitionOperations=256`（**终身额度，无 GC，见 §8.1**）/ `MaxActiveAcquisitionOperations=32`。
-  - 注意：预建 `acquiring` 行会**立即计入 32 活跃额度** ⇒ 单批条数机械上不能超过 32（本设计取 10）。
+### D2：待办状态是**执行器本地**的，服务端只看到已提交的操作
 
-> 备选「新增 `BatchJob` 聚合根」被否：会引入第二事实源、第二套状态机、第二套恢复协议。
+- 本地队列（链接、序号、状态、**idempotency key**、operationId、失败原因）持久化在**执行器本地文件**。
+- **明确不是第二事实源**：它不记录任何发布结果，只记录「我打算做什么、做到哪一步」；权威发布结果仍在服务端（由 `by-key` / 采集页回读）。
+- **必须记录 idempotency key**（不是可选项）：④2 的 key 由扩展生成（`crypto.randomUUID()`），执行器驱动采集页时能从 URL fragment `#idempotencyKey=...` 读到。记录它是崩溃恢复时用**同一 key** 重试的唯一手段。
+  否则：提交后崩溃 ⇒ 本地无 key ⇒ 重试时生成**新 key** ⇒ 新 INSERT 一行，而被中断的 `prepared` 行成为**孤儿**且永久占 1 个额度（无 GC，§9.1）。
+- 崩溃恢复：重启读回本地文件；有 key 的用 `by-key` 回读确认或同 key 重试；无 key 的才生成新 key。
+- **代价（已接受）**：应用内看不到「还剩几条」。
 
-### D2：执行器复用既有 fence 认领，**不新增续期 API**（F1 / F4 修正）
+### D3：profile 与会话都在执行器本地，服务端零持久化
 
-#### 既有认领语义（实测确认）
+- 浏览器 profile（已登录 1688）+ 应用会话（已登录应用）都在**同一个本地 profile 目录**。
+- 服务端**不新增**任何 cookie/token/profile 字段。
+- profile 同一时间只能被一个执行器使用 ⇒ **本地锁**（profile 目录下的锁文件）。这是「单执行器」约束的实现方式，不再依赖服务端租约。
 
-| 方法 | 语义 | 证据 |
+### D4（v2 的 D5 撤销）：**不新增 list 路由**
+
+v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销**。理由：它的唯一目的是驱动「应用内待办视图」，而本路线不做该视图；而它的谓词直接来自已被证伪的发现设计（§15）。
+
+⇒ 本设计**不触碰**当前应用的精确路由白名单（`internal/app/httpapi/current_application.go:334-358`）。
+
+### D5：重试与幂等沿用 ③ 的既有语义，不引入 URL 派生 key
+
+- ③ 的幂等键是每次采集新建的 **`crypto.randomUUID()`**（`extensions/1688-capture/src/controller.ts:26`）。
+- ⇒ 同一商品重试 = 新的一次采集 = 新的一行，**重试天然可行**（这正是 v2 的 D6 URL 派生 key 做不到的）。
+- ⇒ 额度消耗 = **采集次数**（含重复与失败）——这是 ③ **已上线**的语义，本设计**不改**。
+- v2 的 D6（服务端从规范化 URL 派生 key）**撤销**：采用它就必须同时解决「失败后永久无法重试」，那需要状态机变更。
+
+## 5. 不变量
+
+1. **服务端零凭据、零 profile 引用**：不得新增任何 cookie/token/profile 持久化字段。
+2. **不新增服务端路由、不新增持久化表、不新增状态机**。
+3. **证据不跨租户**：服务端只按既有身份/租户作用域读写（③ 既有行为）。
+4. **失败不伪造成功**：未知结果必须是 `outcome_unknown`，不得降级为 `failed` 或 `published`。
+5. **单执行器单 profile**：本地锁保证；同一 profile 被两个执行器并发使用是禁止状态。
+6. **不新增调度器、TTL、key GC、租约续期**（§1.5 第 2 条）。
+7. **不依赖 legacy crawler**：不得调用 `internal/crawler/alibaba1688` 的 public→account 回退。
+
+## 6. 状态、前置条件与持久化效果
+
+服务端状态机**完全不变**（`internal/product/sourcing/acquisition_operation.go:16-20`）：`prepared → publishing → published`，失败 `failed`。本路线不产生 `acquiring` 行。
+
+持久化效果：
+
+| 位置 | 内容 | owner |
 |---|---|---|
-| `Start` | 行不存在 ⇒ INSERT `state='acquiring'`, `fence=1`, `lease=now+30s` | `repository.go:168` |
-| `Start` | 行存在且 `state='acquiring' AND command IS NULL AND lease_until<now()` ⇒ **`fence=fence+1`, `lease=now+30s`**（原子认领，外层 `pg_advisory_xact_lock(org)`） | `repository.go:145-152` |
-| `Claim` | **只在 `state='prepared'` 时** `prepared→publishing`；不校验租约 | `repository.go:286-289` |
-| `Prepare` | `acquiring→prepared`，**要求 `fence` 匹配且 `lease_until>now()`** | `repository.go:257-268` |
-| `StartPrepared` | 行不存在 ⇒ 直接 INSERT 为 `state='prepared'`（携带 command） | `repository.go:224` |
-| `StartPrepared` | 行存在且 `acquiring AND command IS NULL AND lease_until<now()` ⇒ 同一事务内**直接写 command 并转 `prepared`** | `repository.go:204` |
+| 服务端 | `product_acquisition_operations` 行（由 ③ 的 `StartPrepared` 建立）+ publication receipt | 既有 |
+| **执行器本地** | 待办队列文件（链接 / 步数 / operationId） | 本设计新增（**非业务事实源**） |
+| 执行器本地 | 浏览器 profile（含 1688 登录态与应用会话） | 本地 |
 
-⇒ **`acquiring` 的原子认领入口是 `Start`，不是 `Claim`。**（评审 F1 仅看 `Claim` 得出「无原子入口」，此处更正。）
-
-#### 但 34.7 秒的抓取撞上 30 秒租约 —— 这是真问题（F4）
-
-`Prepare` 要求 `lease_until>now()`（`repository.go:263`），而 `Prepare` 在抓取**之后**调用。34.7s > 30s ⇒ `Start → 抓取 → Prepare` 必然 `ErrAcquisitionFence`。
-
-#### 解决方案：把既有的**过期重认领**当作 fence 心跳（零新 API，零契约变更）
-
-**心跳的 owner = 新的服务端 ingress handler（在 `internal/app/productsourcing` 当前 owner 内），不是执行器。** 执行器不感知租约，只负责「列出可认领行 → 抓取 → POST 证据」。
-
-既有服务端编排（`internal/app/productsourcing/acquisition.go:45-96`）：
-
-```
-Start(45) → Acquire  ← 整体包在 AcquisitionTimeout=20s 里
-          → Prepare(86) → Claim(96) → Publish → Finish(282)
-```
-
-① 路径下抓取是服务端 GET（≤20s），天然落在 30s 租约内（这就是 §1.5 第 2 条的来源）。
-
-本设计的新 ingress handler 在 **映射证据之前**先重新 `Start` 一次，把已过期的租约换成新 fence：
-
-```
-t=0     应用提交 → handler Start(key)      → 行 acquiring, fence=1, lease=t+30s（进度可见）
-t=0..35 执行器抓取（浏览器 34.7s）           ← 租约在 t=30 过期，这是允许的；不提供排他性
-t=35    执行器 POST 证据
-t=35    handler Start(key)                 → 租约已过期 ⇒ fence=2, lease=t+65s（原子重认领）
-t=35    handler MapAcquisitionEvidence → Prepare(fence=2) → prepared
-t=35    handler Claim → publishing → Publish → Finish → published
-```
-
-- **完全使用既有方法**，不新增 `Renew`、不新增调度器、不新增 TTL/GC —— 与 §1.5 已记录的决定一致。
-- 重认领次数有界：受 120 秒操作 deadline 约束 ⇒ 最多 4 次。
-- 抓取 ≤30 秒时，重认领会 `claim=false`（租约未过期）⇒ 继续用同一 fence 即可，无需特判。
-- 认领者必须始终使用**最近一次 `Start` 返回的 `fence`**。
-
-> 语义澄清：**预建 `acquiring` 行提供的是「进度可见」，不是「抓取排他」。** 30 秒租约不可能覆盖分钟级抓取，所以排除权由 §10-3 的「单组织单执行器」约束承担。
-
-#### 发现（discovery）
-
-新增 list 路由（D5）作为唯一发现入口，过滤条件与认领前置条件**逐字对齐**：
-
-```
-state = 'acquiring' AND command IS NULL AND lease_until < now()
-```
-
-即**只列出可被合法认领的行**。这保证「看到就能认领」，不会出现在活跃租约上的争抢。
-
-#### 恢复行为
+## 7. 失败、重试、重启、取消、并发
 
 | 场景 | 结果 |
 |---|---|
-| 执行器抓取中崩溃 | 租约 30 秒后自然过期 ⇒ 该行重新出现在 list 中，可被再次认领 |
-| 执行器在 `Prepare` 前被杀 | 同上（`command IS NULL`） |
-| `Prepare` 后崩溃 | 行已在 `prepared`，走既有 `Claim`/`Finish` 或 verify 恢复路径 |
-| 两个执行器同时认领 | `pg_advisory_xact_lock(org)` + `fence` 保证只有一方 `RowsAffected=1`；另一方 `claim=false` |
-| 抓取中途被他人抢到（租约过期窗口） | 落败方 `Prepare` 拿到 `ErrAcquisitionFence` ⇒ **必须丢弃本地结果、不得重试发布** |
+| 单条失败（下架 / 无效链接 / 挑战页） | 记录本地失败并**继续下一条**；不自动重试该条 |
+| 被重定向到登录页 | **停止整批**并提示人工重新扫码。**不使用** `CHALLENGE` 作为持久化码——`validFailure`（`repository.go:444-450`）只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT`，未知码会被 `Finish` 以 `ErrInvalidAcquisition` 拒绝并使行停在非终态 |
+| 应用会话过期 | 停止整批并提示人工在应用内重新登录（**不静默失败、不伪造成功**） |
+| 提交响应丢失 | 用 `by-key` 回读确认（既有能力）；**本地队列必须已记录 key**（§4 D2） |
+| 执行器进程被杀 | 重启读回本地队列；有 key 的同 key 重试（`StartPrepared` 对既有 `prepared` 行走 `Claim`→`resolve`，`internal/app/productsourcing/browser_capture.go:135-143`），无 key 的才新建 |
+| 用户取消 | **本地动作**（停止循环）。服务端不新增取消路由；v2 的「服务端取消」撤销 |
+| 并发执行器 | 本地 profile 锁阻止；无服务端竞争面 |
 
-> **明确约束**：本设计假定**每个组织同一时间只有一个执行器**。多执行器会把这个租约过期窗口放大成重复抓取（重复外部请求，触发风控）。多执行器需要独立设计，见 §10-3。
+## 8. 授权与租户
 
-#### 被否方案（记录原因）
+- 全部复用 ③ 既有边界：`AuthPolicyVerifiedIdentity` + `OrganizationAccessPolicyLiveWrite` + 权限 `product_sourcing.write`。
+- **不引入**新权限常量、不引入设备令牌、不引入新认证路径。
+- profile 不进服务端 ⇒ 无服务端 profile 校验；租户隔离由既有身份作用域承担。
 
-- **为浏览器长任务延长 acquiring 租约 / 新增续期 API**：直接推翻 §1.5 第 2 条已记录的决定（"no TTL"、"GET lease"）。**不做。**
-- **执行器持本地队列、抓完才 `StartPrepared`**（③ 的形状）：不需任何 DB 前置行，但**应用在抓取开始前看不到任何待办**，丢掉批量最核心的「进度可见」。作为 §10 的备选保留。
-
-### D3：profile 引用由执行器本地持有，服务端不持久化（F2 修正）
-
-**原 v1 错误**：写成「沿用 `sourceaccount.SourceAccount.ProfileRef` 的既有字段语义」。该 owner 已被 `docs/refactoring/legacy-register.md:117` 标为 `EXTRACT, then RETIRE`，且该条目要求行为须在「**a current owner ... are named**」之后才可保留。把它的字段带进新链路违反 Hard-Cut。
-
-**v2 定义**：新增当前 owner 的契约 `LocalCollectorProfile`，**完全位于执行器本地**：
-
-| 项 | 归属 |
-|---|---|
-| `profileRef`（本机 profile 名） | 执行器本地配置文件 |
-| `profileDir`（本机目录绝对路径） | 执行器本地配置文件 |
-| 组织绑定 | **既有**设备登记身份（`localagent.Actor.TenantID`，来自 OAuth 设备码）；服务端**不新增**任何字段 |
-| 1688 凭据（cookie / token / 密码） | **仅存在本机 profile 目录**；服务端永不接收、永不持久化 |
-
-- 服务端**不新增** profile 表、字段或路由。跨租户检查由既有的身份/租户作用域承担（执行器只能提交其 token 所属租户的操作）。
-- **已知约束**：同一执行器服务其登记身份所属的那个租户。一个执行器跨多个组织使用时，会以该租户的 1688 账号为其它组织抓取——这是归因问题（非数据泄露，商品为公网公开数据），本设计**明确接受并记录**。
-- 升级路径（若将来确需组织级多 profile）：作为 **BACKLOG**，需独立设计，不在本次范围。
-
-### D4：登录由运维在本机扫码一次，失效走显式重登
-
-沿用 `sdslogin` 的 `ManualLogin` 模式（`internal/sdslogin/api.go:42`）：
-
-1. 执行器提供 `login` 子命令，用**与采集完全相同的启动配置**打开可见窗口（§1.4 已证明这保证同身份）；
-2. 人工扫码；
-3. 执行器在**同一会话内**做一次真实提取自检，成功才写入 profile 并标记可用；
-4. 采集时若检测到被重定向到登录页 ⇒ 该条失败归入 `SOURCE_UNAVAILABLE`，**不自动重登**，等待人工重新扫码。（不使用 `CHALLENGE` 作为持久化码，原因见 §6）
-
-**不做自动登录、不做验证码代解。**
-
-### D5：新增一个 list 路由，作为批量进度的唯一读入口
-
-`GET /api/v1/workbench/sourcing/1688/local-agent-operations`
-
-- 返回当前 Organization 下**可认领**的操作（过滤条件见 D2）与近期终态操作摘要（`id`/`state`/`failureCode`/`sourceURL`/`leaseUntil`）。
-- 授权：`PermissionProductSourcingWrite` + `OrganizationAccessPolicyLiveWrite`。
-  （本仓库**没有** `OrganizationAccessPolicyLiveRead`；只读路由也走 `LiveWrite`，先例 `internal/app/httpapi/account_audit.go:40`。）
-- 分页复用 `internal/app/accountaudit/projection.go` 的 cursor 模式，**不新造分页协议**。
-- 返回体**不含**证据正文（沿用 `EnvelopeSummary` 的有界摘要思路）。
-
-> **代价提示（唯一触碰公共契约处）**：当前应用路由集是**精确白名单**，由 `validateCurrentApplicationRoutesInternal`（`current_application.go:338`）按 per-feature 开关逐项比对。新增此路由必须新增一个 flag 并**贯穿整条 wrapper 链**（`validateCurrentApplicationRoutesWithBrowserFeatures` → `...Internal` 及全部调用点）。
-
-### D6：幂等键由服务端派生
-
-- 单条 `idempotency_key` = `(规范化 sourceURL)` 的确定性派生，作用域为 `(organization, actor)`。
-- 作用域内重复提交同一链接 ⇒ `Replayed`，不产生第二条操作。
-- 同 key 不同载荷 ⇒ `ErrAcquisitionConflict`（沿用 `repository.go:143` 既有语义：比较 `Source`/`Fingerprint`/`CaptureSHA256`）。
-
-## 4. 不变量
-
-1. **幂等作用域 = `(organization, actor, key)`**；同一操作人的同一链接只对应一条操作。（**不声称**组织级去重，见 D1。）
-2. **一次执行只有一个有效 fence**：任何写操作必须带最近一次 `Start` 返回的 `fence`；过期即 `ErrAcquisitionFence`。
-3. **证据不跨租户**：服务端只按既有身份/租户作用域读写。
-4. **服务端无 1688 凭据，也无 profile 引用**：不得新增任何 cookie/token/profile 持久化字段。
-5. **失败不伪造成功**：未知结果必须是 `outcome_unknown`，不得降级为 `failed` 或 `published`。
-6. **不新增第二事实源**：批量进度只能由采集操作派生。
-7. **不新增租约续期 API、调度器、TTL 或 key GC**（§1.5）。
-
-## 5. 状态、前置条件与持久化效果
-
-复用既有状态机（`acquisition_operation.go:16-20`）：`acquiring → prepared → publishing → published`，失败 `failed`，不可判定 `outcome_unknown`。
-
-完整时序见 §3 D2。持久化效果：只有 `product_acquisition_operations` 行 + publication receipt。**本设计不新增持久化表。**
-
-## 6. 失败、重试、重启、取消、并发
-
-见 §3 D2 的恢复表。补充：
-
-| 场景 | 结果 |
-|---|---|
-| 提交响应丢失 | 用原 key `ByKey` / verify 核实（既有语义） |
-| 被重定向登录页 | 归入 `SOURCE_UNAVAILABLE`，需人工重登；不自动重试。**评审修正**：不得直接写 `CHALLENGE` 作为持久化失败码——`validFailure`（`repository.go:444-450`）只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT`，未知码会被 `Finish` 以 `ErrInvalidAcquisition` 拒绝，行永久停在 `acquiring`。UI 可另外展示“需重新登录”，但**持久化码必须是已接受的码** |
-| 用户取消 | **仅适用于 `command IS NULL` 的 `acquiring` 行**。`Finish` 接受 `acquiring→failed`（`repository.go:323`），但 `prepared` 行的 `Finish` 会得 `ErrAcquisitionFence`（`:323` 只允许 `publishing→*` 或 `acquiring→failed`），且 `validFailure` 不含 `CANCELLED` ⇒ 应继续用 `SOURCE_UNAVAILABLE`。另注意：**不释放额度**（§8.2） |
-| 并发执行器 | 见 §3 D2，「单组织单执行器」为明确约束 |
-
-## 7. 授权与租户
-
-- 所有路由：`AuthPolicyVerifiedIdentity` + `OrganizationAccessPolicyLiveWrite`（与 ③ 一致）。
-- 执行器身份：沿用 `internal/localagent/deviceauth`（OAuth 设备码）与 `localagent.Actor{TenantID,UserID}`。
-- **不引入**新的权限常量。
-- profile 不进服务端，故无服务端 profile 校验；租户隔离由既有身份作用域承担（D3）。
-
-## 8. 边界
+## 9. 边界
 
 | 项 | 取值 | 来源 |
 |---|---|---|
 | 单条 envelope | 2 MiB | `MaxEncodedEnvelopeBytes` |
 | 命令体 | 2 MiB | `MaxAcquisitionCommandBytes` |
-| **保留操作总数/组织（终身额度，无 GC）** | **256**，与 ①/③ 共用 | `MaxAcquisitionOperations` |
+| **保留操作总数/组织（终身额度，无 GC）** | **2048**（#444 起），与 ①/③ 共用 | `MaxAcquisitionOperations` |
 | 活跃操作数 | 32 | `MaxActiveAcquisitionOperations` |
-| acquiring 租约 | **30 秒**（GET 租约，不可续期；靠过期重认领） | `AcquisitionLease` |
-| 操作 deadline | 20 秒（服务端）/ 平台 `timeout` 120 秒（浏览器） | 既有 |
-| 批量提交条数 | **10（第一轮，见 §8.1）** | 本设计 |
-| 单次抓取上限 | 需 ≤ 120 秒，否则重认领次数超界 | 设计约束 |
+| 单批条数 | **10** | 本设计 |
+| 单条耗时 | 实测约 35 秒；10 条约 6 分钟 | §1.4 |
 
-### 8.1 终身额度：一个**已经存在**的产品上限
+### 9.1 终身额度：一个**已经存在**的产品上限
 
-`MaxAcquisitionOperations = 256` 不是软阈值，而是**终身额度**：
+`MaxAcquisitionOperations` 不是软阈值，而是**终身额度**：
 
 - 容量检查是 `SELECT count(*) ... WHERE organization_id=?`（`repository.go:161-166`），**不带任何状态过滤** ⇒ 已 `published`、已 `failed` 的行**照样计数**。
-- 全包**没有任何 `DELETE`**（`internal/integration/persistence/product/acquisition/` 与 `internal/product/sourcing/` 均已确认），契约文档也写明 *"There is no background scheduler, fallback, rebase, TTL or key GC"*（`src2b-public-acquisition.md:28`）。
-- 256 是**编译期常量，无配置项**（`acquisition_operation.go:12`）。
+- 全包**没有任何 `DELETE`**，契约文档也写明 *"There is no background scheduler, fallback, rebase, TTL or key GC"*。
+- 它是**编译期常量**（`acquisition_operation.go:12`），#444 已由 256 提到 **2048**。
 - 只有 INSERT 消耗额度；同 key 重复提交走 replay，不再消耗。
 
-⇒ **额度 = 该组织累计可创建的采集操作行数，永久。256 ÷ 10 = 25 批，之后永久归零，无恢复手段。**
+**关键：这不是批量引入的问题，而是已上线的 ③ 就存在的上限。**
 
-**关键事实：这不是批量引入的问题，而是已上线的 ③ 就存在的真实上限。**
+③ 的幂等键是 `crypto.randomUUID()`（`controller.ts:26`），走 `StartPrepared`（`internal/app/productsourcing/browser_capture.go:113`），而 `read()` 按 `(org, actor, key)` 查找（`repository.go:338`）⇒ 随机 UUID 永远查不到已有行 ⇒ **每次采集都 INSERT 一行**。⇒ ③ 的额度 = **采集次数**（含重复采集同一商品与失败采集）。试用库实测 3 行中 2 行是 random-UUID 的 `failed` 行，即已永久消耗 2 个额度单位。
 
-③ 的幂等键是 **`crypto.randomUUID()`**（`extensions/1688-capture/src/controller.ts:26`）：
+**这使 (a)「UI 显式展示剩余额度」对已上线功能就有价值**，不只是批量的问题。
 
-- ③ 走 `StartPrepared`（`browser_capture.go:113`），而 `read()` 按 `(org, actor, key)` 查找（`repository.go:338`）⇒ 随机 UUID 永远查不到已有行 ⇒ **每次采集都 INSERT 一行新记录**。
-- ⇒ ③ 的额度消耗 = **采集次数**，**包含重复采集同一商品**。同一商品采 10 次 = 消耗 10/256。
-- ⇒ 试用环境现 3 行（1 published + 2 failed）；**252 次采集后该组织永久失效**。重试同一商品会加速耗尽。
+### 9.2 取消**不能**释放额度
 
-**对比：本设计的 D6（服务端从规范化 URL 派生 key）反而更省额度** —— 同一 URL 重复提交走 replay，**不新增行**（`repository.go:145-152`）。即 ② 的额度语义是「不同商品数」，而 ③ 是「采集次数」。
+- `Finish` 接受 `acquiring → failed`（`repository.go:323`），但**本路线不产生 `acquiring` 行**，故该分支用不上。
+- 无论何种方式终止，**`failed`/`published` 行仍被 `count(*)` 计入**。取消只改状态，**不释放额度**。
+- 唯一能释放额度的是 `DELETE` 该行——契约文档明确排除了 key GC。
+- ⇒ (c)（为终态行加保留期）为 **BACKLOG，需独立评审**。终态 key 仍承担幂等重放识别，而 ③ 的随机 UUID key 永不被重提 ⇒ (c) 的合理形式是「仅回收永不可能被重放的终态行」。
 
-> 这使 §8.1 的选项 (b) 从“以后再说”升为 **当前已上线功能就需要处理的问题**（③ 无需任何代码改动即受该限）。建议单独记录，不混在批量设计里。
-
-### 8.2 取消**不能**释放额度（对 §8.2 初稿的自我更正）
-
-初稿我写了「取消语义必须做，否则无界泄漏」。**该推理是错的**，更正：
-
-- `Finish` 确实接受 `acquiring → failed`（`repository.go:323`）⇒ **终止一条卡住的行在能力上是现成的**，不需要新状态机、不需要新迁移。
-- **但 `failed` 的行仍被 `count(*)` 计入 256。** 取消只改变状态，**不释放额度**。
-- 唯一能释放额度的动作是 `DELETE` 该行——而契约文档明确排除了 key GC。
-
-⇒ **结论：取消是 UX（省一次无效抓取），不是额度泄漏的修复。** 要真正回额度，只有三条路：
-
-| 选项 | 代价 | 结论 |
-|---|---|---|
-| **(a) UI 显式展示剩余额度** | 零契约变更 | **做**（不静默失败） |
-| **(b) 提高 256 常量** | 一行 + 同步修订 `src2b-public-acquisition.md:31` 的 limits 段 + 适配容量测试循环 | **做，取 2048** |
-| (c) 为终态行加保留期 / `DELETE` | **推翻**已记录的 "no ... key GC" ⇒ 需独立评审 | backlog |
-
-**(b) 取值依据**（实测，非拍脑袋）：
-
-- 已发布的 `command` 实测 **18075 字节**（`bytea`，TOAST 后堆行约 4 KB）。
-- `2048 × 18 KB ≈ 36 MB/组织`；`256` 仅 `4.4 MB`。批量 10 条/批 ⇒ **204 批**。
-- 对比：`4096` 约 70 MB/组织，`1024` 约 18 MB。取 2048 是“8 倍余量 + 表保持小”的折中。
-
-> **诚实标注：这不消除那个天花板，只是把墙往后挪。** 在“无 GC、终态行永久计数”不变的前提下，任何有限常量都会被撞到。真正消除需要 (c)。
->
-> **(c) 为何不是“随便加的 GC”**：终态行的 key 仍然承担**幂等重放识别**（同 key 重提必须返回原结果而不是重新发布）——这正是记录里写 "no key GC" 的原因。但 ③ 的 key 是随机 UUID，**永远不会被重提**，所以 ③ 的历史行对重放识别没有任何价值。⇒ (c) 的合理形式是“仅回收永不可能重放的终态行”，需单独设计。
-
-### 8.3 形状推论：预建行 vs 抓完才建行
-
-既然额度在**建行**时消耗且永不回收：
-
-- **§3 D2 的「提交时预建 `acquiring` 行」**：打错的链接、已下架商品、执行器离线 ⇒ 该行永久停在 `acquiring`，**永久占 1/256**。一批 10 条全无效 = 一次损失 10/256。
-- **备选「执行器持本地队列 + 抓完才 `StartPrepared`」**：只在**抓取成功之后**建行 ⇒ 无效链接**不消耗额度**。代价是提交后在应用内看不到「待办」，只能看到结果。
-
-⇒ 在 256 终身额度**确认存在**的前提下，备选形状在额度语义上更正确（额度 = 成功采集的商品数），且**不碰任何采集契约**。
-
-**决定：仍采用 D2 的「提交时预建 `acquiring` 行」。** 理由：
-
-1. 用户需求是「批量 / **后台**导」——预建行让**执行器离线时也能提交**，待其上线后自动认领；备选形状做不到。
-2. 预建行是「待办进度可见」的唯一来源；备选形状下用户提交 10 条后只能看到“一条条出现”，看不到“还剩几条”。
-3. (b) 已把额度提升到 2048，**无效链接永久消耗额度**的严重性从“致命”降为“可接受”。
-4. 残留风险（有效 URL 但商品已下架 ⇒ 永久消耗 1 行）由 (c) 覆盖，不由形状选择覆盖。
-
-⇒ 差异只剩“无效链接是否消耗额度”，不足以放弃后台能力。
-
-## 9. 验证证据（实现时按此验收）
+## 10. 验证证据（实现时按此验收）
 
 | 不变量 | 验证方式 |
 |---|---|
-| 幂等（操作人作用域） | 同操作人同链接提交两次 ⇒ `Replayed`，行数不增 |
-| **跨操作人不重复的边界** | 同组织两个操作人提交同一链接 ⇒ **产生两行**（记录为已知行为，非缺陷） |
-| 租约心跳 | 构造 >30 秒抓取 ⇒ 重认领后 `Prepare` 成功；不重认领则 `ErrAcquisitionFence` |
-| 崩溃恢复 | 抓取中 kill 执行器 ⇒ 30 秒后重新出现在 list 中并可被认领 |
-| 响应丢失 | 提交成功后丢弃响应 ⇒ `ByKey` 读回 `published` |
-| 并发 fence | 两执行器同时认领 ⇒ 仅一方 `RowsAffected=1`；落败方 `Prepare` 得 `ErrAcquisitionFence` |
-| 跨租户 | 用 Org B 身份访问 Org A 的操作 ⇒ 404/403 |
-| 无凭据/无 profile 持久化 | 扫描持久化层，无新增 cookie/token/profile 字段 |
-| 容量 | 达到 **2048** 终身额度后新提交返回 `ErrAcquisitionCapacity`；UI 显示剩余额度（阈值已由 #444 提升，见 §8.1） |
-| 取消不释放额度 | 取消**只改变状态，不释放额度**（§8.2）；不得再声称“取消后该链接可重新提交”——现有 `Start` 对终态行直接返回原 op 且不认领，失败后重试是**未解决的评审发现**（见 §14） |
-| 真实批量 | 3 条真实链接端到端，全绿并在应用内可见 |
+| 单条等价性 | 执行器驱动的单条采集结果与人工点 popup 的结果一致（同一 envelope 契约、同一发布结果） |
+| 批量隔离 | 10 条中第 3 条失败 ⇒ 其余 9 条仍到达终态，且第 3 条本地有失败原因 |
+| 登录态失效 | profile 登出后运行 ⇒ **整批停止**并给出明确提示，不产生伪造成功 |
+| 应用会话失效 | 应用会话过期后运行 ⇒ 整批停止并提示重新登录 |
+| 崩溃恢复 | 第 5 条执行中 kill 执行器 ⇒ 重启后**用同一 key** 重试，且不产生新的孤儿 `prepared` 行（与 §10 的“单条等价性”同时验证） |
+| 无孤儿行 | 批量跑完后查 `product_acquisition_operations`，无非终态行残留 |
+| 单执行器 | 第二个执行器对同一 profile 启动 ⇒ 被本地锁拒绝 |
+| 零新增面 | `git diff` 中无新增服务端路由、无新增持久化表、无新增权限常量、无 profile/凭据字段 |
+| 无 legacy 依赖 | 全链路 grep 无 `internal/crawler/alibaba1688` 调用 |
+| 跨租户 | 用 Org B 身份访问 Org A 的操作 ⇒ 404/403（③ 既有行为回归） |
+| 维度 | 达到 2048 终身额度后新采集返回 429 `ACQUISITION_CAPACITY`（§9.1） |
+| 真实批量 | 3 条真实链接端到端全绿，商品逐个出现在应用目录中 |
 
-## 10. 待决项（评审时必须给出结论）
+## 11. 待决项
 
-1. ~~批量上限~~ **已定：单批 10 条**（见 §8.1）。理由：风控只在 5 条上验证过，10 是 2 倍的下一步；10 × ~40 秒 ≈ 7 分钟；且给 32 活跃额度和 256 终身额度都留出余量。做成常量 `maxLocalAgentBatchSize`，实测通过后再提。
-2. ~~形状取舍~~ **已定：继续用「提交时预建 `acquiring` 行」（D2 不变）**，理由见 §8.3。
-3. ~~是否一并把 256 提高~~ **已定：提高到 2048**（§8.1）；需同步修订 `src2b-public-acquisition.md:31` 的 limits 段。
-4. **多执行器**是否允许？（当前设计假定单组织单执行器；多执行器需要独立的租约/去重设计）
-5. **登录态探测**：周期存活检查，还是一条失败即提示重登？
-6. **执行器是否允许租户跨组织使用**（D3 已记录为「接受」；如需禁止则需服务端 profile/组织绑定字段，属 BACKLOG）
+1. ~~批量上限~~ **已定：单批 10 条**（风控只在 5 条上验证过；10 × ~35 秒 ≈ 6 分钟）。
+2. ~~形状~~ **已定：路线 B**（§2）。
+3. ~~是否提高额度常量~~ **已定并已合并：2048**（#444）。
+4. **剩余额度怎么展示**（本设计唯一可能触碰契约的点）。三选一：
+   - (a1) 在既有采集响应体上**追加**一个 `remainingOperations` 字段（附加式，但需同步 web 侧 schema）；
+   - (a2) **不加字段**，只在 429 `ACQUISITION_CAPACITY` 时给出清晰提示；
+   - (a3) 执行器本地按`采集次数`自行计数（不权威，仅提示）。
+   > 建议 (a1)，但它是契约新增，需你确认。
+5. **登录态探测**：整批开始前只探一次（失败即整批停止），还是每条前都探？
+6. **多执行器**是否允许（当前设计假定单 profile 单执行器，由本地锁保证）？
 
-## 11. 冲突引用（需由协调方更新）
+## 12. 冲突引用（需由协调方更新）
 
-本设计与既有决定存在**直接冲突**；历史证据保留，**不写成 PASS**：
-
-- **Issue #396（PAUSED）** 原本写着：
-  > 匿名公开商品采集**不得依赖**本 Issue、SourceAccount、connectionStatus、**历史 profile/session** 或旧 SourceAccount owner。
-
-  **2026-09-21 用户明确推翻该前提**：1688 采集**不再要求匿名**，账号态（持久化 profile）是允许的优先路径。处理方式：
-  - 被推翻的**仅是“必须匿名”这一条前提**。本设计仍然**不依赖** #396 本身、`SourceAccount`、`connectionStatus` 或旧 SourceAccount owner——只依赖**独立的本机 profile**（§3 D3）。
-  - #396 自身范围仍**保持 PAUSED**；其历史证据与结论保留。
+- **Issue #396（PAUSED）** 原文要求匿名采集**不得依赖历史 profile/session**。**2026-09-21 用户明确推翻该前提**：1688 采集不再要求匿名，账号态（持久化 profile）是允许的优先路径。记录：`#issuecomment-5758793730`（Decision ID `PD-1688-ACCOUNT-STATE-2026-09-21`）。
+  - 被推翻的**仅是「必须匿名」这一条前提**。本设计仍**不依赖** #396 本身、`SourceAccount`、`connectionStatus` 或旧 SourceAccount owner，只依赖**独立的本机 profile**（§4 D3）。
+  - #396 自身范围仍**保持 PAUSED**；历史证据与结论保留。
   - 该决定**不授权**真实环境的数据访问/迁移/删除，也**不授权**使用共享凭据或他人账号。
-- **`src2b-acquisition-v1`（#398 契约文档）** 排除登录流程的边界**不变**。本设计**不并入**该 contract，而是作为**独立 producer** 准入；需在 #398 记录该新 producer 的存在与边界（§1.5 第 1 条）。
-- **`src2b-public-acquisition.md`** 的 "no background scheduler, fallback, rebase, TTL or key GC" 继续遵守（§3 D2）；其中 "retained" 上限已按 §8.1 由 #444 从 256 提到 2048，**终身语义不变**。
+- **`src2b-acquisition-v1`（#398 契约文档）** 排除登录流程的边界**不变**。本设计**不并入**该 contract，也**不新增 producer**（原样复用 ③ 的 `browser_acquisition`）。
+- **`src2b-public-acquisition.md`** 的 "no background scheduler, fallback, rebase, TTL or key GC" 继续遵守；**本设计不涉及 `acquiring` 租约**，故与该条零冲突。retained 上限已由 #444 由 256 提到 2048，终身语义不变。
 
-## 12. Legacy 处置
+## 13. Legacy 处置
 
 ```text
-Legacy decision: EXTRACT（仅 profile 锁）+ RETIRE（回退选择）
-Reusable behavior (EXTRACT): 按 (tenant, account) 串行加锁的 profile 持久化/加锁行为
-Retired behavior (RETIRE): public → account-assisted 回退选择。§1.5 与 §11 明确禁止该回退，
-                            不得作为可复用行为抽取；S3 不得泛化地“抽取旧行为”。
-Current owner: internal/product/sourcing（操作与证据）+ 新的本地执行器 ingress
-Cutover/deletion condition: 新链路端到端可用后，删除 internal/crawler/alibaba1688 的
-                            worker 装配（composition_builder.go:118）与旧 sourceaccount 边
+Legacy decision: RETIRE
+Reusable behavior: 无。本路线不抽取任何 legacy 行为——不调 ProcessWithAccountProfile、
+                   不调 Process、不引入 public→account 回退；浏览器由执行器以 profile 直接启动。
+Current owner: 无新增 owner。沿用已上线的 ③ 链路（internal/app/httpapi/browser_capture_application.go
+               + extensions/1688-capture）作为唯一 owner。
+Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/alibaba1688 的
+               public→account 回退与 internal/localagent 的匿名 runner（internal/localagent/runner.go:79）
+               无消费者后，按独立任务删除；不建兼容层。
 ```
 
-> **修正（评审 finding）**：初稿把「public → account-assisted 回退选择」列入 `EXTRACT`，与 §1.5/§11 的
-> no-fallback 边界**直接矛盾**，会让 S3 重新引入被明令禁止的回退。已改为：仅 profile 锁为 `EXTRACT`，
-> **回退选择为 `RETIRE`**。
+- `internal/crawler/alibaba1688` 与 `internal/localagent` **不在本设计范围内**：本设计既不使用它们，也不负责删除它们。它们当前都不在当前应用组合中（`grep` 已确认）。
+- 本设计**不新增** legacy 依赖，也不以「保持旧代码可用」为由新增任何 fallback。
 
-- `internal/localagent` 的内存 `Job` 事实源按 **RETIRE** 处理：批量进度改由采集操作派生（D1/D5），其唯一消费者迁移完成后删除，**不做兼容层**。
-- `internal/sourceaccount.SourceAccount.ProfileRef` **不被本设计引用**（F2 修正）。
+## 14. 实现切片（每片可独立验证、可回滚）
 
-## 13. 实现切片（每片可独立验证、可回滚）
+1. **S1 — 单条驱动跑通**：Go 执行器用 `playwright-go` 启动 fingerprint-chromium + 加载扩展 + 发 `popup.capture` + 打开采集页，完成 1 条并回读终态。
+   验证：§10 的「单条等价性」。
+2. **S2 — 本地队列 + 批量**：≤10 条循环、本地队列文件（**含 key 持久化**，§4 D2）、失败隔离、崩溃恢复、登录态/会话失效即停。
+   验证：§10 的「批量隔离 / 崩溃恢复 / 登录态失效 / 应用会话失效」。
+3. **S3 — 单执行器锁**：本地 profile 锁。
+   验证：§10 的「单执行器」。
+4. **S4 — 剩余额度展示**（依赖 §11-4 的决定）。
+5. **S5 — 文档**：#398 记录「复用 ③ producer、不新增 producer」；legacy register 记录 RETIRE 条目。
 
-1. **S1**：采集操作 list 路由 + 取消路由（D5，含精确白名单 flag）+ 分页复用 + 剩余额度展示 —— 独立可验证，无新事实源
-2. **S2**：执行器 ingress（D2 认领/心跳/恢复）+ 幂等派生（D6）
-3. **S3**：账号态执行器（D3/D4 + legacy 行为 EXTRACT）
-4. **S4**：采集页批量入口 + 进度列表 UI（含单批 10 条校验）
-5. **S5**：端到端真实批量验证（§9 末行）
+每片在实现层独立可验证，**不要求每片单独 PR**。
 
-每片默认是实现/提交边界，不单独开 PR；最终交付一个主要 PR。
+## 15. 评审发现处置记录
 
-## 14. v2 修正记录（对应 PR #443 评审）
+### 15.1 v2 的 4 条（第一/二轮）
 
-| Finding | 评审结论 | 核实结果 | v2 处理 |
-|---|---|---|---|
-| **F1** `Claim` 无法认领 `acquiring` | BLOCKER | **部分成立**：「`Claim` 只处理 `prepared`」属实（`repository.go:286`）；但「无原子入口」**不成立**——`Start`（`repository.go:145-152`）就是原子认领入口。**但底下的洞是真的**：见 F4。 | §3 D2 补齐**发现 + 认领 + 恢复**的完整定义 |
-| **F2** profile 引用挂在已 RETIRE 的 owner | BLOCKER | **成立**（`legacy-register.md:117`） | §3 D3 改为执行器本地 `LocalCollectorProfile`，服务端零持久化 |
-| **F3** 幂等只在 actor 作用域 | BLOCKER | **成立**（`repository.go:338` 按 org+actor 过滤） | §3 D1 / §4-1 修正不变量表述；分类下调为 `IMPLEMENTATION_TEST`（不构成数据损坏） |
-| **F4** 30 秒租约、无续期、无过期字段 | BLOCKER | **成立且最严重**：`AcquisitionLease=30s`、`Prepare` 要求 `lease_until>now()`（`repository.go:263`）、实测抓取 34.7s、`count(*)` 无状态过滤 ⇒ 256 为终身额度 | §3 D2 用**过期重认领当 fence 心跳**（零新 API）；§1.5/§8 补齐租约与容量事实；**明确不采用**租约续期方案 |
-
-## 15. 第三轮评审发现（未修正，待产品决定）
-
-PR #443 第三轮评审提出 13 条，逐条对照 `14df0e520`（含 #444 的 2048）上的真实代码核实。
-**其中 6 条证实本设计当前形态无法实现**，且它们的共同根因是同一个：**把采集操作行当成
-「待办队列」使用，而该行并不是为队列设计的。**
-
-### 15.1 根因
-
-`product_acquisition_operations` 缺少队列必需的四个要素：
-
-| 队列需要 | 该表实际 | 后果 |
+| Finding | 结论 | 处置 |
 |---|---|---|
-| 生产者区分符 | **无**（`AcquisitionOperation` 结构只有 `Fingerprint`，无 producer 字段） | 发现谓词无法区分本地代理提交与 ① 的遗留行 |
-| 稳定排序位 | **无** `created_at`/`updated_at`/`completed_at` | 分页无法稳定 |
-| 可重试语义 | **无** `failed → acquiring` 迁移；`Start` 对终态行直接返回原 op 且 `claim=false` | 一次失败永久毒化该 URL |
-| 作用域可委派 | 读写均按 `(organization, actor, key)` 过滤 | 提交人 ≠ 设备用户时无法认领 |
+| F1 `Claim` 无法认领 `acquiring` | 部分成立：`Claim` 只处理 `prepared`（`repository.go:286`）属实；「无原子入口」不成立（`Start` 即入口） | v2 补齐定义；**v3 后整个 `acquiring` 阶段不复存在，本条消解** |
+| F2 profile 引用挂在已 RETIRE 的 owner | 成立（`legacy-register.md:117`） | v2 改为执行器本地 `LocalCollectorProfile`；v3 保持（§4 D3） |
+| F3 幂等只在 actor 作用域 | 成立（`repository.go:338`） | v3 下 actor 天然是本人（提交由浏览器会话完成），本条消解 |
+| F4 30 秒租约 vs 34.7 秒抓取 | 成立且最严重 | v2 用「过期重认领当心跳」；**该机制经第三轮核实为不可行**（§16 第 2 条）；v3 完全不使用 `acquiring`，本条消解 |
 
-### 15.2 逐条核实结果
+### 15.2 第三轮 13 条
 
-| # | 评审内容 | 分类 | 核实证据 |
+| # | 评审内容 | 分类 | v3 处置 |
 |---|---|---|---|
-| 1 | 发现缺少生产者区分符 | **BLOCKER** | `AcquisitionOperation` 无 producer 字段；`read`/`Start` 全按 org+actor+key |
-| 2 | 待办意图 → 浏览器证据无合法迁移 | **BLOCKER** | `Start` 认领分支比较 `op.Source/Fingerprint/CaptureSHA256`（`repository.go:143-145`）；首次 `Start` 存公开指纹+空 `CaptureSHA256`，第二次带浏览器指纹 ⇒ `ErrAcquisitionConflict`。**§3 D2 的心跳机制因此不成立** |
-| 3 | 须保留提交人 actor | **BLOCKER** | `read` 过滤 `organization_id=? AND actor_id=?`（`repository.go:338`）；执行器 token ⇒ actor=设备用户 ⇒ 提交人 A 的行认领不到，反而新插一行 |
-| 4 | 终态行须释放容量 | BACKLOG（产品已决） | 256→2048 已由 #444 合并；终身语义仍在，真正释放需 (c)。**不属 BLOCKER**：命中门槛需属“核心 happy path 按当前设计无法完成”，2048 行内路径可完成 |
-| 5 | 终态后须允许重试 | **BLOCKER** | `if op.State != AcquisitionAcquiring { return nil }`（`repository.go:148` 之前）⇒ 同 key 永久返回原终态行 |
-| 6 | 须定义可取消迁移 | IMPLEMENTATION_TEST → **已修** | `Finish` 仅允许 `publishing→*` 或 `acquiring→failed`（`repository.go:323`）；`prepared` 行 ⇒ `ErrAcquisitionFence`；`validFailure`（`:444-450`）不含 `CANCELLED`。已收窄 §6 取消行为「仅限 `command IS NULL` 的 `acquiring` 行且仍用 `SOURCE_UNAVAILABLE`」 |
-| 7 | `CHALLENGE` 失败码不可持久化 | IMPLEMENTATION_TEST → **已修** | `validFailure` 只接受 4 个码。已把 §3 D2/§6 的 `CHALLENGE` 改为归入 `SOURCE_UNAVAILABLE`，UI 可另行展示“需重新登录” |
-| 8 | 新提交的操作须出现在进度读中 | IMPLEMENTATION_TEST | `Start` INSERT 即 `lease_until=now()+30s`（`repository.go:168`），而 list 谓词要求 `lease_until<now()` ⇒ 新批次前 30 秒不可见 |
-| 9 | 分页需要稳定位置 | IMPLEMENTATION_TEST | 表无 `created_at`（已实测 `information_schema`），`lease_until` 可变 |
-| 10 | 不确定发布须投影为 `outcome_unknown` | IMPLEMENTATION_TEST | 无该持久化状态，不确定发布停留在 `publishing`，由 HTTP 层投影 |
-| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | list 只返回过期 `acquiring` + 终态；无调度器 ⇒ `prepared` 行无人推进 |
-| 12 | 抽取计划须移除已退役回退 | IMPLEMENTATION_TEST | **已修**：§12 改为「profile 锁 = EXTRACT，回退选择 = RETIRE」 |
-| 13 | 须按 2048 校验容量 | IMPLEMENTATION_TEST | **已修**：§9 容量行与 §11 已更新为 2048 |
+| 1 | 发现缺少生产者区分符 | BLOCKER | **消解**：无待办行可发现（§2） |
+| 2 | 待办意图 → 浏览器证据无合法迁移 | BLOCKER | **消解**：不做两阶段 `Start`。v2 的心跳机制经核实必然 `ErrAcquisitionConflict`（§16） |
+| 3 | 须保留提交人 actor | BLOCKER | **消解**：提交由浏览器内用户会话完成（`workbench-proxy.ts:424`），无需委派 |
+| 4 | 终态行须释放容量 | BACKLOG（产品已决） | #444 提到 2048；真正释放为 (c)，需独立评审（§9.2） |
+| 5 | 终态后须允许重试 | BLOCKER | **消解**：沿用 ③ 的每采集新 key，重试天然可行（§4 D5） |
+| 6 | 须定义可取消迁移 | IMPLEMENTATION_TEST | **已修**：取消改为本地动作（§7） |
+| 7 | `CHALLENGE` 不可持久化 | IMPLEMENTATION_TEST | **已修**：改用 `SOURCE_UNAVAILABLE`（§7） |
+| 8 | 新提交操作须出现在进度读 | IMPLEMENTATION_TEST | **消解**：不做应用内进度读（§4 D2） |
+| 9 | 分页需要稳定位置 | IMPLEMENTATION_TEST | **消解**：不新增 list 路由（§4 D4） |
+| 10 | 不确定发布须投影为 `outcome_unknown` | IMPLEMENTATION_TEST | 保留为不变量（§5-4），由既有 HTTP 投影承担 |
+| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | **部分消解**：v2 靠「发现谓词」恢复，该谓词连同 list 路由一并撤销。v3 的恢复改为**同 key 重试**：`StartPrepared` 对既有 `prepared` 行会走 `Claim`→`resolve`（`internal/app/productsourcing/browser_capture.go:135-143`），**同一请求内**完成发布。⇒ 执行器**必须**本地记录 key（§4 D2）；否则新 key 会新建行、旧 `prepared` 行成为**孤儿且永久占额度**——这是 ③ **已上线**的既有行为，本设计不改，但必须按 §4 D2 规避 |
+| 12 | 抽取计划须移除已退役回退 | IMPLEMENTATION_TEST | **已修**：§13 改为纯 `RETIRE`，且本设计不抽取任何 legacy 行为 |
+| 13 | 须按 2048 校验容量 | IMPLEMENTATION_TEST | **已修**：§9.1 与 §10 已按 2048 |
 
-### 15.3 结论与所需决定
+## 16. v3 变更记录
 
-**本设计不是「只新增一条路由」。** 要做到可用，需要在采集契约上补齐上表四个要素之一或多个
-（生产者区分符、排序位、重试迁移、actor 委派），每一项都是契约变更。
-
-三条可选路线，**需产品决定后才继续**：
-
-- **(A) 为批量引入独立持久化队列 owner（`BatchJob`）**：根因正解，但这是 v1 明确排除的
-  「第二事实源」，属新增持久化事实 owner，需独立架构设计与评审。
-- **(B) 执行器持本地队列 + 仅同 actor + 不做应用内待办视图**：可绕开 #1/#2/#8/#9，
-  但 #3/#5/#11 仍在，且丢掉「批量/后台导」最核心的应用内进度可见。
-- **(C) 先只交付已上线的 ③（单品采集）**，批量等真实用户被阻塞时再投入。
-
-**在决定前不开始 S1**：S1 的 list 谓词直接来自上述被证伪的发现设计。
+1. **路线 B 由用户 2026-09-21 选定**（§2）。设计整体重写；v2 的服务端待办行、发现谓词、过期重认领心跳、list 路由、服务端取消、URL 派生 key 全部撤销。
+2. **v2 核心机制被证伪**：`Start` 在复用既有行前比较 `Source`/`Fingerprint`/`CaptureSHA256`（`repository.go:143-145`）。v2 的 t=0 `Start` 写入公开式指纹 + 空 `CaptureSHA256`（`repository.go:168`），t=35 带浏览器指纹回来再 `Start` 必然 `ErrAcquisitionConflict`，拿不到新 fence ⇒ 心跳不成立。v3 因此完全不使用 `acquiring` 阶段。
+3. **对先前推荐的修正**：设备令牌路径不必要且更差（`deviceauth` 拒绝 refresh token，`client.go:133`）；改为执行器零凭据、由浏览器会话提交（§2）。
+4. **`CHALLENGE` 与取消语义修正**（§7）：`validFailure` 只接受 4 个码；取消是本地动作。
+5. **§13 由 `EXTRACT | RETIRE` 改为纯 `RETIRE`**：本路线不抽取任何 legacy 行为（v2 曾错误地把被禁的 public→account 回退列入 `EXTRACT`）。
