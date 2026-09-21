@@ -203,12 +203,35 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 | scope 一致 + `200` 终态（`published`/`failed`） | 已建行并结束 | 记录结果 |
 | scope 一致 + `200` 非终态（`acquiring`/`prepared`/`publishing`） | 已建行但未结束（响应丢失 / 20 秒 deadline 中断） | 记 `outcome_unknown`，**停止该条**，提示人工核实；**不自动重试** |
 | scope 一致 + **`404 ACQUISITION_NOT_FOUND`** | 仅表示「**当前**账号与企业下看不到该 key」 | **按既有实现语义处理：不证明失败，不自动重新提交**（`capture-receiver.tsx:121-123` 原文：*"No operation is visible for this key in the current account and enterprise. This does not prove a prior request failed. No new submission will be made."*）⇒ 记 `outcome_unknown`，提示人工核实 |
-| 队列中**明确记为「已采集但未提交」**（从未点过提交，无外部副作用） | 重走流程是安全的 | 允许重新采集（新 key） |
+| 队列条目状态为 **`captured`**（已采集、**从未进入提交路径**，无外部副作用） | 重走流程是安全的 | 允许重新采集（新 key） |
+| 队列条目状态为 **`submitting`**（可能已提交） | 不可判定是否已派发 | `outcome_unknown` + 人工核实；仅满足 §4 D2.1 的两个回退条件时才回退为可重采 |
 
-- 只有**最后一档**允许自动重新采集，且它的依据是**「本地确认未曾提交」**，**不是** `404`。
+- 只有**状态为 `captured`** 的条目允许自动重新采集（见 §4 D2.1 的状态机），**不是** `404`。
 - ⇒ 记录 key 的价值：**不把「已成功提交」误判为「没提交过」而重复发布**。它**不**声称能自动推进或自动重试已提交的条目（那需要改契约或加路由，§1.3/§5 明确不做）。
 - **如实标注的代价**：已提交但未确认终态的条目需要人工核实，批量会在此停下。这是有意选择——商品重复发布与跨 scope 归属错误是数据正确性问题，优先级高于自动化程度（命中 AGENTS 的 BLOCKER 条件：跨租户归属、重复且不可安全恢复的外部副作用）。
 - **代价（已接受）**：应用内看不到「还剩几条」。
+
+#### D2.1 提交意图必须**悲观预写**（否则「未提交」不可判定）
+
+上一版把「队列中明确记为已采集但未提交」当成可重采的依据，但这个判定**在执行器侧拿不到**：提交是**页面**发起的，不是执行器发起的——`capture-receiver.tsx:85-86` 在调 `capture1688(...)` 前一刻才置 `dispatched = true`，而该变量只存在于页面内。⇒ 若执行器在「用户点了确认」与「执行器把这个事实写进队列」之间被杀，重启后队列里仍写着「已采集未提交」，就会重新采集并可能**二次发布同一商品**。
+
+⇒ 修正后的规则：
+
+- 本地队列条目的状态机固定为：
+
+```
+queued → capturing → captured → submitting → (published | failed | outcome_unknown)
+```
+
+- **必须在触发 `popup.handoff` 之前**（即采集页尚未拿到 payload、按钮尚未出现之前）就把该条持久化为 `submitting`，并连同 **key 与原始 scope** 一起落盘。这是「悲观」的含义：宁可多记「可能已提交」，不可少记。
+  - 插入点明确：`handoff()` 是 payload 变可见的唯一路径（`controller.ts:24`），因此预写就放在发 `popup.handoff` **之前**。
+- **只有 `captured` 状态（从未进入 `submitting`）才允许自动重新采集。**
+- 从 `submitting` 回退到 `captured`（即可重采）**必须同时满足两个可观测条件**，缺一不可：
+  1. 执行器**读到了页面自己给出的「未派发」终态文案**——即 `capture-receiver.tsx:74-79` 的 *"No new request was dispatched"*，或 `:111` 的 *"Capture was rejected before admission. No operation was created"*，或 `:115` 的 *"Capture was not submitted"*；且
+  2. `by-key` 在 **scope 校验一致**的前提下返回 `404 ACQUISITION_NOT_FOUND`。
+- 其余任何情况（包括「不确定用户是否点过」「页面文案没读到」「scope 不一致」）⇒ 一律 `outcome_unknown`，**停下等人工核实，不自动重采**。
+
+⇒ 用一句话概括本设计的恢复底线：**「不确定是否提交过」时，选择不提交。** 宁多一次人工核实，不多一次重复发布。
 
 ### D3：profile 与会话都在执行器本地，服务端零持久化
 
@@ -259,7 +282,7 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | 被重定向到登录页 | **停止整批**并提示人工重新扫码。**不使用** `CHALLENGE` 作为持久化码——`validFailure`（`repository.go:444-450`）只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT`，未知码会被 `Finish` 以 `ErrInvalidAcquisition` 拒绝并使行停在非终态 |
 | 应用会话过期 | 停止整批并提示人工在应用内重新登录（**不静默失败、不伪造成功**） |
 | 提交响应丢失 | 用 `by-key` 回读确认（既有能力，判定见 §4 D2）；**本地队列必须已记录 key 与原始 scope** |
-| 执行器进程被杀 | 重启读回本地队列；先校 scope：不一致 ⇒ 整批停止；一致 ⇒ 按 §4 D2 分支表处理（**`404` 不等于可重采集**） |
+| 执行器进程被杀 | 重启读回本地队列；先校 scope：不一致 ⇒ 整批停止；一致 ⇒ 按 §4 D2 分支表处理；**凡属 `submitting` 的条目一律 `outcome_unknown`**，除非同时满足 §4 D2.1 的两个回退条件 |
 | 重启后换了账号/组织 | **整批停止**，提示用原始账号与企业重新登录；不自动提交 |
 | 上一条未确认即取第二条 | 禁止：reset 必须在**上一条已到终态**之后（§4 D1.1） |
 | 用户取消 | **本地动作**（停止循环）。服务端不新增取消路由；v2 的「服务端取消」撤销。已提交但未终态的条目按上行处理 |
@@ -314,6 +337,9 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | **确认边界** | 任何 POST 都由用户手动点击触发；执行器从未自行点击「Confirm and submit」（可验证：全程无对 `run(true)` 按钮的自动点击） |
 | **scope 绑定** | 重启后用**另一个**账号/组织运行 ⇒ 整批停止并提示用原账号重登；**不得**因 `404` 而重新提交 |
 | **404 不授权提交** | 人为构造 scope 一致 + `by-key` `404` ⇒ 执行器记 `outcome_unknown` 并停下，**无新 POST** |
+| **提交意图悲观预写** | 在 `popup.handoff` 之前 kill 执行器/拔网线 ⇒ 重启后该条为 `submitting`，**不**被当作可重采，无新 POST（人为在点击确认后立即 kill 亦可验证） |
+| **仅 `captured` 可重采** | 正常跑完后队列中无 `submitting` 且未终态的条目被自动重采；人为制造 `submitting` ⇒ 停下 |
+| **回退双条件** | 只有同时拿到页面「未派发」文案与 scope 一致的 `404` 才回退为可重采 |
 | 批量隔离 | 10 条中第 3 条失败 ⇒ 其余 9 条仍到达终态，且第 3 条本地有失败原因 |
 | 登录态失效 | profile 登出后运行 ⇒ **整批停止**并给出明确提示，不产生伪造成功 |
 | 应用会话失效 | 应用会话过期后运行 ⇒ 整批停止并提示重新登录 |
@@ -424,6 +450,14 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 
 两条都是**真实缺陷**，其中第 17 条是**我引入的回归**：我引用真实代码得出错误行为结论，而仓库里已有的前端实现已按正确语义写成（并把该纠正直接告知用户）——我只读了后端 `repository.go:348`/`product_acquisition_application.go:315`，没读前端对该投影的**产品语义**。
 
+### 15.5 第六轮 1 条（针对 v3.2）
+
+| # | 评审内容 | 分类 | 处置 |
+|---|---|---|---|
+| 18 | **提交意图必须在允许重采之前持久化** | **BLOCKER（成立，已修）** | 核实成立，而且它指出我第五轮的修复**仍然不可判定**：我把「本地明确记为未提交」当作可重采依据，但提交是**页面**发起的（`capture-receiver.tsx:85-86` 在调 `capture1688(...)` 前一刻才置页面局部的 `dispatched = true`），执行器**根本观察不到**这个动作。⇒ 点击后、落盘前被杀 ⇒ 重启后队列里仍写着「未提交」⇒ 可能二次发布。**已新增 §4 D2.1**：条目状态机 `queued → capturing → captured → submitting → 终态`；**必须在发 `popup.handoff` 之前**（payload 变可见之前）悲观预写 `submitting` + key + scope；只有 `captured` 允许自动重采；从 `submitting` 回退必须**同时**满足「读到页面自己给出的未派发文案」（`capture-receiver.tsx:74-79`/`:111`/`:115`）与「scope 一致的 `404`」。§7/§10 已同步 |
+
+这条是对我上一轮修复的**直接反驳**，且成立。我把「正确语义」理解对了，但把它**建立在一个执行器拿不到的观测点上**——两次修复的共同模式都是「引用了真实代码，却推断出该代码并不提供的能力」。§10 因此新增两项可执行的 fault-injection 验收（「提交意图悲观预写」「仅 `captured` 可重采」）。
+
 两条 findings 都是**真实缺陷**，已直接修正设计，无需产品决定。第 14 条之所以能拿下来，是因为它指出了「复用已上线链路」这一路线的一个隐藏前提：既有链路是**为单次人工点击设计的有状态流程**，不是无状态 API。这一点已写入 §3.2 缺口表。
 
 ## 16. v3 变更记录
@@ -437,3 +471,4 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 7. **修正 D2 的 key 语义**：原写「同 key 重试」是错的——key 由扩展在交付时内部生成（`controller.ts:26`），执行器无法指定也无法复用；引用的 `StartPrepared` 恢复路径需要重新提交 payload，而重建 payload 必然生成新 key。已改为「`by-key` 回读 + 按结果分支」的判定表。
 8. **新增 §4 D1.2（提交确认边界）**：第五轮评审指出执行器不能代替用户点「Confirm and submit」——契约要求每条 POST 前展示已核实身份与企业并取得显式确认（`README.md:124-128`，`capture-receiver.tsx:145`）。已明确执行器不点该按钮，批量形态为「执行器跑腿 + 用户逐条确认」。
 9. **修正 D2 的 `404` 语义（我的回归）**：原写「`404` ⇒ 安全重采集」，与既有实现**直接相反**——`capture-receiver.tsx:121-123` 原文明确 "This does not prove a prior request failed. No new submission will be made."，且 `ByKey` 按 `(organization_id, actor_id, key)` 查询（`repository.go:338`）使 `404` 也可能是 scope 不符。已改为「记录原始 scope + 回读前校 scope + `404` 归 `outcome_unknown`」，仅「本地确认未提交」允许重采。
+10. **新增 §4 D2.1（提交意图悲观预写）**：第六轮评审指出上一版的「本地确认未提交」不可判定——提交由页面发起（`capture-receiver.tsx:85-86`），执行器看不到。已定义条目状态机、在 `popup.handoff` 之前预写 `submitting` + key + scope、以及回退为可重采的双条件。
