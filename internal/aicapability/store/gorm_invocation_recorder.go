@@ -116,7 +116,10 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		if err := aicapability.SettleSuccessfulInvocation(ctx, record, r.usageSettler); err != nil {
 			return err
 		}
-		if (record.Outcome != aicapability.InvocationSucceeded && record.Outcome != aicapability.InvocationDispatched) || (record.Outcome == aicapability.InvocationSucceeded && !record.UsageKnown) {
+		// An unknown-usage success retains the pre-dispatch reservation. Releasing
+		// it would let repeated successful calls bypass the member and enterprise
+		// token limits before the usage fact can be reconciled.
+		if record.Outcome != aicapability.InvocationSucceeded && record.Outcome != aicapability.InvocationDispatched {
 			if reservation, ok := r.usageSettler.(aicapability.InvocationUsageReservation); ok {
 				return reservation.ReleaseAIInvocationUsage(ctx, record.TenantID, record.InvocationID)
 			}

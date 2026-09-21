@@ -107,6 +107,7 @@ function ScopedReferrals({ mode, expectedUserId, registrationAvailable }: { mode
   if (projection.isError && !receipt) return <ReferralError error={projection.error} />;
   if (projection.isError) return <div className={styles.pageBody}><section className={styles.notice} role="status"><strong>推广关系已确认</strong><p>确认时间：{formatTime(receipt!.boundAt)}</p></section><ConsoleState kind="error" title="推广汇总暂不可用"><p>关系回执已保留，请稍后重试汇总读取。</p></ConsoleState></div>;
   const data = projection.data;
+  const effectiveAvailableMinor = data.earnings.availability === "available" ? addMinor(data.earnings.availableMinor, data.earnings.adjustmentMinor) : null;
   return <div className={styles.pageBody}>
     {mode === "complete" ? <section className={styles.notice} aria-labelledby="complete-title">
       <h2 id="complete-title">确认新注册关系</h2>
@@ -116,7 +117,7 @@ function ScopedReferrals({ mode, expectedUserId, registrationAvailable }: { mode
     </section> : null}
     <section className={styles.grid} aria-label="推广概览">
       <article className={styles.metric}><span>已建立关系</span><strong>{data.count}</strong><small>来自不可变推广关系的实时计数</small></article>
-      <article className={styles.metric}><span>可提现收益</span><strong className={data.earnings.availability === "available" ? undefined : styles.unavailable}>{data.earnings.availability === "available" ? formatMinor(data.earnings.availableMinor) : "收益数据暂不可用"}</strong><small>{data.earnings.availability === "available" ? `待结算 ${formatMinor(data.earnings.pendingMinor)} · 冻结 ${formatMinor(data.earnings.reservedMinor)}` : "当前没有可读取的收益 projection"}</small></article>
+      <article className={styles.metric}><span>可提现收益</span><strong className={data.earnings.availability === "available" ? undefined : styles.unavailable}>{effectiveAvailableMinor === null ? "收益数据暂不可用" : formatMinor(effectiveAvailableMinor)}</strong><small>{data.earnings.availability === "available" ? `待结算 ${formatMinor(data.earnings.pendingMinor)} · 冻结 ${formatMinor(data.earnings.reservedMinor)} · 调整 ${formatMinor(data.earnings.adjustmentMinor)}` : "当前没有可读取的收益 projection"}</small></article>
     </section>
     <section className={styles.codeCard} aria-labelledby="code-title"><div><h2 id="code-title">我的推广码</h2>{data.codeAvailability === "available" ? <><code>{data.code}</code><p>生成于本次读取：{formatTime(data.generatedAt)}</p></> : <p>尚未创建推广码</p>}</div>{data.codeAvailability === "available" ? registrationAvailable ? <Button asChild variant="outline"><Link href={`/referrals/register?code=${encodeURIComponent(data.code)}`} prefetch={false}>打开邀请链接</Link></Button> : <span className={styles.unavailable}>注册入口暂不可用</span> : <Button type="button" onClick={() => createCode.mutate()} disabled={createCode.isPending}>{createCode.isPending ? "正在创建…" : "创建推广码"}</Button>}</section>
     <section className={styles.codeCard} aria-labelledby="withdrawal-title"><div><h2 id="withdrawal-title">申请提现</h2><p>最低 ¥100；申请后进入人工审核。结算前提是账户已完成邮箱和手机号验证。</p></div>{payoutMethods.isPending ? <p>正在读取已验证收款方式…</p> : payoutMethods.isError ? <p className={styles.error} role="alert">收款方式暂不可用，请稍后重试。</p> : payoutMethods.data?.methods.length === 0 ? <p className={styles.unavailable}>暂无可用收款方式，请先完成收款方式登记。</p> : <form onSubmit={event => { event.preventDefault(); withdrawal.mutate(); }}><label>金额（分）<input inputMode="numeric" pattern="[0-9]*" value={amountMinor} onChange={event => setAmountMinor(event.target.value)} placeholder="10000" disabled={data.earnings.availability !== "available" || withdrawal.isPending} /></label><label>收款方式<select value={selectedPayoutMethod?.methodId ?? ""} onChange={event => setPayoutMethodId(event.target.value)} disabled={withdrawal.isPending}>{payoutMethods.data?.methods.map((item: PayoutMethod) => <option key={item.methodId} value={item.methodId}>{item.displayName} · {item.maskedDestination}</option>)}</select></label><Button type="submit" disabled={data.earnings.availability !== "available" || withdrawal.isPending || amountMinor === "" || !selectedPayoutMethod}>{withdrawal.isPending ? "提交中…" : "申请提现"}</Button>{withdrawal.isError ? <p className={styles.error} role="alert">提现未提交：请确认余额、验证状态和版本仍有效。</p> : null}{withdrawalResult ? <div className={styles.notice} role="status"><p>提现状态：{withdrawalResult.status}。</p>{withdrawalResult.status === "REQUESTED" ? <Button type="button" variant="outline" onClick={() => cancelWithdrawal.mutate()} disabled={cancelWithdrawal.isPending}>{cancelWithdrawal.isPending ? "取消中…" : "取消提现申请"}</Button> : null}{cancelWithdrawal.isError ? <p className={styles.error}>取消提现未完成：请稍后重新核对状态。</p> : null}</div> : null}</form>}</section>
@@ -158,4 +159,8 @@ function formatMinor(value: string) {
   const digits = negative ? value.slice(1) : value;
   const padded = digits.padStart(3, "0");
   return `${negative ? "-" : ""}¥${padded.slice(0, -2)}.${padded.slice(-2)}`;
+}
+
+function addMinor(left: string, right: string) {
+  return (BigInt(left) + BigInt(right)).toString();
 }

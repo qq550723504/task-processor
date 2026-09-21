@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	listingkitschema "task-processor/internal/listingkit/schema"
 	listingkitstore "task-processor/internal/listingkit/store"
+	"task-processor/internal/listingsubscription"
 	"task-processor/internal/pkg/appenv"
 	platformdatabase "task-processor/internal/platform/database"
 	workbenchschema "task-processor/internal/workbench/schema"
@@ -52,6 +53,9 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		},
 		MigrateWorkbench: workbenchschema.AutoMigrateRuntime,
 		MigrateCommercial: func(db *gorm.DB) error {
+			if err := listingsubscription.AutoMigrateRepository(db); err != nil {
+				return err
+			}
 			return accountallocationschema.Migrate(context.Background(), db)
 		},
 	}

@@ -101,6 +101,14 @@ describe("ReferralsPage", () => {
     expect(fetch).toHaveBeenCalledWith("/api/account/referral-withdrawals/withdrawal-1/cancel", expect.objectContaining({ method: "POST" }));
   });
 
+  it("shows available earnings after immutable refund adjustments", async () => {
+    const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "-2000", version: "2", updatedAt: "2026-09-13T10:00:00Z" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(projection)));
+    mount();
+    expect(await screen.findByText("¥100.00")).toBeVisible();
+    expect(screen.getByText(/调整 -¥20.00/)).toBeVisible();
+  });
+
   it("clears an old subject result and prevents a late response from returning", async () => {
     let resolve!: (value: Response) => void;
     const fetch = vi.fn(() => new Promise<Response>((done) => { resolve = done; }));

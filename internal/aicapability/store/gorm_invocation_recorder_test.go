@@ -92,6 +92,43 @@ func TestGormInvocationRecorderDurableDispatchBoundaryIsUpdatedByFinalFact(t *te
 	require.Equal(t, aicapability.InvocationSucceeded, found.Outcome)
 }
 
+func TestGormInvocationRecorderRetainsReservationForUnknownUsageSuccess(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	settler := &recordingInvocationUsageSettler{}
+	recorder := NewGormInvocationRecorder(db)
+	recorder.SetUsageSettler(settler)
+
+	require.NoError(t, recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
+		InvocationID: "invocation-unknown-usage",
+		TenantID:     "tenant-1",
+		UserID:       "user-1",
+		MemberID:     "member-1",
+		Outcome:      aicapability.InvocationSucceeded,
+		UsageKnown:   false,
+	}))
+	require.Zero(t, settler.releaseCalls)
+	require.Zero(t, settler.settleCalls)
+}
+
+type recordingInvocationUsageSettler struct {
+	releaseCalls int
+	settleCalls  int
+}
+
+func (s *recordingInvocationUsageSettler) SettleAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
+	s.settleCalls++
+	return nil
+}
+
+func (s *recordingInvocationUsageSettler) ReserveAIInvocationUsage(context.Context, string, string, string, time.Time) error {
+	return nil
+}
+
+func (s *recordingInvocationUsageSettler) ReleaseAIInvocationUsage(context.Context, string, string) error {
+	s.releaseCalls++
+	return nil
+}
+
 func TestGormInvocationRecorderRejectsMissingDatabaseBlankIDAndNegativeCounters(t *testing.T) {
 	require.EqualError(t, AutoMigrateInvocationLedger(nil), "ai invocation ledger database is nil")
 	require.EqualError(t, (*GormInvocationRecorder)(nil).RecordInvocation(context.Background(), aicapability.InvocationRecord{InvocationID: "x"}), "ai invocation recorder database is nil")
