@@ -15,12 +15,16 @@
 
 ```
 本地执行器：给入一批 1688 链接（≤10）
-  → 执行器后台依次：打开商品页 → 复用已上线的插件采集 → 由采集页提交
+  → 执行器后台依次：打开商品页 → 复用已上线的插件采集 → 交付到采集页
+  → 用户当看到已核实身份与企业后逐条点「Confirm and submit」
   → 每条结果写入本地队列文件（执行器侧可见进度）
   → 成功发布的商品逐个出现在应用的商品目录中
 ```
 
-**明确不含**：应用内的「待办列表 / 批量进度页」。待办进度只在**执行器本地**可见（§4 D2）。这是本路线相对路线 A 主动放弃的东西，理由见 §2。
+**明确不含**：
+
+- 应用内的「待办列表 / 批量进度页」。待办进度只在**执行器本地**可见（§4 D2）。这是本路线相对路线 A 主动放弃的东西，理由见 §2。
+- **无人值守提交**。按已准入的 ③ 契约（`extensions/1688-capture/README.md:124-128`）与唯一产品提交入口（`capture-receiver.tsx:145`），**每条 POST 都由人确认**；执行器只做跑腿（§4 D1.2）。
 
 ### 1.3 本次不做
 
@@ -31,6 +35,8 @@
 - 不改 ③（插件采集）的任何现有行为
 - 不恢复 ①（服务端匿名裸 HTTP）—— 已证结构性不可行
 - 不引入后台调度器、TTL 或 key GC（§1.5 第 2 条）
+- **不做批量级一次性确认**（不自行放行「替代逐条确认」的新准入；如需零点击自动化，属新产品决定，须单独提报，见 §4 D1.2）
+- **不以 `404` 作为「可重新提交」的依据**（与该键下「不证明失败」的既有语义可能冲突，见 §4 D2）
 - 不做 `connectionStatus` 状态机扩展（#396 保持 PAUSED，见 §12）
 - 不处理 `internal/localagent` 的去留（本设计不依赖它；去留按独立任务，见 §13）
 
@@ -119,6 +125,7 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 |---|---|---|
 | **没有「驱动 N 次」的循环** | 采集一直是人工点 popup | §4 D1：执行器循环 |
 | **既有链路是「单次人工点击」的有状态流程，不是无状态 API** | `Controller` 是 background 模块级单例；`capture()`/`handoff()` 在已完成后直接返回（`controller.ts:18/:24`），只有 `popup.new`（`background.ts:34`）重置 | §4 D1.1：每条之间的 reset 转换 |
+| **提交需要逐条真实确认，执行器不能代劳** | 契约 `README.md:124-128` 要求展示已核实身份/组织并取得显式确认；唯一提交入口是用户手点按钮 `capture-receiver.tsx:145` | §4 D1.2：执行器只跑腿，人逐条确认 |
 | **没有本地待办队列** | 无 | §4 D2：执行器本地文件（**不是**服务端事实源） |
 | **profile / 会话被并发使用** | 无锁 | §4 D3：profile 本地锁，单执行器 |
 
@@ -130,7 +137,7 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 
 ### D1：批量 = 执行器循环调用 N 次既有 ③ 采集
 
-执行器对每条链接执行一次**与人工操作完全等价**的 ③ 采集：导航到商品页 → 触发扩展采集 → 打开采集页（携带 handoff 参数）→ 等待终态。
+执行器对每条链接执行一次**与人工操作等价的** ③ 采集：导航到商品页 → 触发扩展采集 → 打开采集页（携带 handoff 参数）→ **用户确认并提交** → 等待终态。
 
 - 不新增服务端实体、不新增状态机、不新增路由。
 - 部分失败天然成立：一条失败不影响后续条。
@@ -156,21 +163,51 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 
 **实现方式**：执行器**驱动 popup 页面模拟真实点击**，而不是直接发 `popup.new` 消息。理由：`background.ts:28` 只接受来源为 `popup.html` 且无 `tab` 的消息，所以两种方式都必须驱动 popup；模拟点击不依赖内部消息字符串契约，也更贴合「这是用户操作」的语义。
 
+#### D1.2 提交前的确认边界（**本设计最重要的合规约束**）
+
+已准入的 ③ 契约要的是**每一条提交前都向用户展示已核实身份与企业并取得显式确认**：
+
+> Before any POST, the app must replace the initial fragment with `#operationKey=<original UUID>`, **show the currently verified user and Effective Organization, and obtain explicit confirmation** using the existing BFF context-drift protections.
+> —— `extensions/1688-capture/README.md:124-128`
+
+且产品上唯一的提交触发器是**用户手动点的按钮**（`capture-receiver.tsx:145`：`onClick={() => void run(true)}`，按钮文字「Confirm and submit」）。
+
+⇒ **执行器一律不自行点击该按钮。** 本路线的边界是：
+
+| 执行器做 | 执行器**不**做 |
+|---|---|
+| 导航、触发采集、交付、**打开采集页并停留在确认前** | **不**点「Confirm and submit」 |
+| 回读终态 | 不代替用户确认身份/组织 |
+| 本地排队与进度 | 不创建一个「批量级一次性确认」来替代逐条确认 |
+
+⇒ 批量因此是**「执行器跑腿 + 用户按确认」**：执行器自动完成 90% 的机械动作（开页、采集、交付），人的动作降为「看到身份/组织 → 点确认」。每条的人工成本约一次点击，而不是一次完整采集。
+
+**为什么不做「批量级一次性确认」**：它需要新准入（新契约 + 独立评审），且它会**降低**而不是保持现有保证——现有确认锁住的是「**这一笔**操作将要归属的 actor 与组织」；一次性确认无法在每条提交时重新校验上下文漂移（`capture-receiver.tsx:110-119` 处理的正是「上下文变了就不提交」）。**本设计不自行放行这一点**；若将来要自动化到零点击，属于新产品决定，需单独提报。
+
+⇒ **代价（已如实计入）**：批量不是无人值守。人必须在场逐条确认。它仍然解决了真实痛点：不再需要人工逐个打开商品页、点采集、再点导入。
+
 ### D2：待办状态是**执行器本地**的，服务端只看到已提交的操作
 
-- 本地队列（链接、序号、状态、**idempotency key**、operationId、失败原因）持久化在**执行器本地文件**。
+- 本地队列（链接、序号、状态、**idempotency key**、**原始 scope（actor + Effective Organization）**、operationId、失败原因）持久化在**执行器本地文件**。
 - **明确不是第二事实源**：它不记录任何发布结果，只记录「我打算做什么、做到哪一步」；权威发布结果仍在服务端（由 `by-key` / 采集页回读）。
 - **必须记录 idempotency key，但它的语义是「回读句柄」，不是「重试凭据」**：③ 的 key 由扩展在交付时内部生成（`src/controller.ts:26` 的 `crypto.randomUUID()`），**执行器无法指定它，也无法复用它重新提交**（重建 payload 走 `handoff()` 必然生成新 key）。执行器驱动采集页时能从 URL fragment `#idempotencyKey=...` 读到它，**仅用于回读**。
-- **崩溃恢复的确切判定**（回读 = `GET …/by-key/<key>`）：
+- **必须同时记录原始 scope**（actor id + Effective Organization id，从采集页已展示的**服务端已核实身份**读回，`capture-receiver.tsx:139-140`）。原因：`ByKey` 按 `(organization_id, actor_id, idempotency_key)` 查询（`internal/integration/persistence/product/acquisition/repository.go:338`）⇒ **同一 key 在另一个账号/组织下会被故意隐藏**，`404` **不**等于「从未建行」。
 
-  | 回读结果 | 含义 | 动作 |
-  |---|---|---|
-  | `200` + 终态（`published`/`failed`） | 已建行并结束 | 记录结果 |
-  | `200` + **非终态**（`acquiring`/`prepared`/`publishing`） | 已建行但未结束（响应丢失 / 20 秒 deadline 中断） | 记 `outcome_unknown`，**停止该条**，提示人工在应用内核实。**不自动重试**：执行器无法复用该 key，重试必然新建一行并可能二次发布同一商品 |
-  | **`404 ACQUISITION_NOT_FOUND`** | **该 key 从未建行**（`internal/integration/persistence/product/acquisition/repository.go:348` 的 `RowsAffected != 1`；HTTP 投影 `internal/app/httpapi/product_acquisition_application.go:315`）⇒ 无孤儿行、零额度消耗 | **安全丢弃该 key，重新采集（新 key）** |
+#### 回读结果的分支表（**不含「404 ⇒ 自动重采集」**）
 
-- ⇒ 记录 key 的价值：**不把「已成功提交」误判为「没提交过」而重复发布**。它**不**声称能自动推进卡住的非终态行（那需要改契约或加路由，§1.3/§5 明确不做）。
-- **如实标注的代价**：非终态条目需要人工核实，批量会在此停下。这是有意选择——商品重复发布是数据正确性问题，优先级高于自动化程度。
+先核对当前 scope 与队列记录的原始 scope：
+
+| 情况 | 含义 | 动作 |
+|---|---|---|
+| **scope 不一致**（重启后换了账号/组织） | 无法相信任何回读结果 | **整批停止**，提示人工用**原始账号与企业**重新登录后重试；**不自动做任何提交** |
+| scope 一致 + `200` 终态（`published`/`failed`） | 已建行并结束 | 记录结果 |
+| scope 一致 + `200` 非终态（`acquiring`/`prepared`/`publishing`） | 已建行但未结束（响应丢失 / 20 秒 deadline 中断） | 记 `outcome_unknown`，**停止该条**，提示人工核实；**不自动重试** |
+| scope 一致 + **`404 ACQUISITION_NOT_FOUND`** | 仅表示「**当前**账号与企业下看不到该 key」 | **按既有实现语义处理：不证明失败，不自动重新提交**（`capture-receiver.tsx:121-123` 原文：*"No operation is visible for this key in the current account and enterprise. This does not prove a prior request failed. No new submission will be made."*）⇒ 记 `outcome_unknown`，提示人工核实 |
+| 队列中**明确记为「已采集但未提交」**（从未点过提交，无外部副作用） | 重走流程是安全的 | 允许重新采集（新 key） |
+
+- 只有**最后一档**允许自动重新采集，且它的依据是**「本地确认未曾提交」**，**不是** `404`。
+- ⇒ 记录 key 的价值：**不把「已成功提交」误判为「没提交过」而重复发布**。它**不**声称能自动推进或自动重试已提交的条目（那需要改契约或加路由，§1.3/§5 明确不做）。
+- **如实标注的代价**：已提交但未确认终态的条目需要人工核实，批量会在此停下。这是有意选择——商品重复发布与跨 scope 归属错误是数据正确性问题，优先级高于自动化程度（命中 AGENTS 的 BLOCKER 条件：跨租户归属、重复且不可安全恢复的外部副作用）。
 - **代价（已接受）**：应用内看不到「还剩几条」。
 
 ### D3：profile 与会话都在执行器本地，服务端零持久化
@@ -221,8 +258,9 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | 单条失败（下架 / 无效链接 / 挑战页） | 记录本地失败并**继续下一条**；不自动重试该条 |
 | 被重定向到登录页 | **停止整批**并提示人工重新扫码。**不使用** `CHALLENGE` 作为持久化码——`validFailure`（`repository.go:444-450`）只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT`，未知码会被 `Finish` 以 `ErrInvalidAcquisition` 拒绝并使行停在非终态 |
 | 应用会话过期 | 停止整批并提示人工在应用内重新登录（**不静默失败、不伪造成功**） |
-| 提交响应丢失 | 用 `by-key` 回读确认（既有能力，判定见 §4 D2）；**本地队列必须已记录 key** |
-| 执行器进程被杀 | 重启读回本地队列；对已记 key 的条目先 `by-key`：终态 ⇒ 记结果，非终态 ⇒ 记 `outcome_unknown` 并停下待人工核实，`404` ⇒ 丢弃 key 重新采集（§4 D2） |
+| 提交响应丢失 | 用 `by-key` 回读确认（既有能力，判定见 §4 D2）；**本地队列必须已记录 key 与原始 scope** |
+| 执行器进程被杀 | 重启读回本地队列；先校 scope：不一致 ⇒ 整批停止；一致 ⇒ 按 §4 D2 分支表处理（**`404` 不等于可重采集**） |
+| 重启后换了账号/组织 | **整批停止**，提示用原始账号与企业重新登录；不自动提交 |
 | 上一条未确认即取第二条 | 禁止：reset 必须在**上一条已到终态**之后（§4 D1.1） |
 | 用户取消 | **本地动作**（停止循环）。服务端不新增取消路由；v2 的「服务端取消」撤销。已提交但未终态的条目按上行处理 |
 | 并发执行器 | 本地 profile 锁阻止；无服务端竞争面 |
@@ -273,11 +311,14 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | 单条等价性 | 执行器驱动的单条采集结果与人工点 popup 的结果一致（同一 envelope 契约、同一发布结果） |
 | **批量不重复第 1 条** | 3 条**不同**链接 ⇒ 3 个**不同** `offer_id`/`productKey`；若 reset 缺失会出现 3 条相同结果 |
 | **reset 边界** | 上一条未到终态时执行器**不**发 reset；下一条不得在上一条未确认时开始 |
+| **确认边界** | 任何 POST 都由用户手动点击触发；执行器从未自行点击「Confirm and submit」（可验证：全程无对 `run(true)` 按钮的自动点击） |
+| **scope 绑定** | 重启后用**另一个**账号/组织运行 ⇒ 整批停止并提示用原账号重登；**不得**因 `404` 而重新提交 |
+| **404 不授权提交** | 人为构造 scope 一致 + `by-key` `404` ⇒ 执行器记 `outcome_unknown` 并停下，**无新 POST** |
 | 批量隔离 | 10 条中第 3 条失败 ⇒ 其余 9 条仍到达终态，且第 3 条本地有失败原因 |
 | 登录态失效 | profile 登出后运行 ⇒ **整批停止**并给出明确提示，不产生伪造成功 |
 | 应用会话失效 | 应用会话过期后运行 ⇒ 整批停止并提示重新登录 |
 | 崩溃恢复（已建行） | kill 执行器后重启 ⇒ 对已提交条目走 `by-key`，**不产生第二次发布** |
-| 崩溃恢复（未建行） | 在 POST 之前 kill ⇒ 重启后 `by-key` 返回 `404` ⇒ 安全重采集，且不新增孤儿行 |
+| 崩溃恢复（未建行） | 在**从未提交过**的条目上 kill ⇒ 重启后允许重采（依据是**本地确认未提交**，而非 `404`） |
 | 非终态不自动重试 | 人为制造非终态条目 ⇒ 执行器记 `outcome_unknown` 并停下，不自动重试 |
 | 单执行器 | 第二个执行器对同一 profile 启动 ⇒ 被本地锁拒绝 |
 | 零新增面 | `git diff` 中无新增服务端路由、无新增持久化表、无新增权限常量、无 profile/凭据字段 |
@@ -298,6 +339,7 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
    > 建议 (a1)，但它是契约新增，需你确认。
 5. **登录态探测**：整批开始前只探一次（失败即整批停止），还是每条前都探？
 6. **多执行器**是否允许（当前设计假定单 profile 单执行器，由本地锁保证）？
+7. **是否接受「逐条人工确认」作为批量形态**（§4 D1.2）。若不可接受，则本路线的可达上限就是「执行器跑腿 + 人工确认」，而「完全无人值守」需新的产品决定与独立准入。
 
 ## 12. 冲突引用（需由协调方更新）
 
@@ -362,7 +404,7 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 | 8 | 新提交操作须出现在进度读 | IMPLEMENTATION_TEST | **消解**：不做应用内进度读（§4 D2） |
 | 9 | 分页需要稳定位置 | IMPLEMENTATION_TEST | **消解**：不新增 list 路由（§4 D4） |
 | 10 | 不确定发布须投影为 `outcome_unknown` | IMPLEMENTATION_TEST | 保留为不变量（§5-4），由既有 HTTP 投影承担 |
-| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | **v3 第一版回答错了，已由第四轮评审纠正**（见 §15.3）。v2 靠「发现谓词」恢复，该谓词连同 list 路由一并撤销。v3 现在的回答：恢复 = **`by-key` 回读 + 按结果分支**（§4 D2），其中非终态条目**不自动重试**（执行器无法复用扩展生成的 key），而是停下等人工核实；仅 `404 ACQUISITION_NOT_FOUND`（即从未建行）才安全重采集 |
+| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | **v3 的回答经第四、五轮两次纠正**（§15.3/§15.4）。恢复 = **`by-key` 回读 + 按结果分支**（§4 D2）；已提交但非终态的条目**不自动重试**，停下等人工核实；`404` **不**作为可重采依据（§15.4） |
 | 12 | 抽取计划须移除已退役回退 | IMPLEMENTATION_TEST | **已修**：§13 改为纯 `RETIRE`，且本设计不抽取任何 legacy 行为 |
 | 13 | 须按 2048 校验容量 | IMPLEMENTATION_TEST | **已修**：§9.1 与 §10 已按 2048 |
 
@@ -371,7 +413,16 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 | # | 评审内容 | 分类 | 处置 |
 |---|---|---|---|
 | 14 | **批量中必须在每条之间 reset 扩展 controller** | **BLOCKER（成立，已修）** | 核实成立且是硬缺陷：`Controller` 是 background 模块级单例（`background.ts:25`），`capture()` 在已有 payload 时直接返回（`controller.ts:18`），`handoff()` 在已交付时直接返回（`controller.ts:24`），唯一 reset 是 `popup.new`（`background.ts:34`）⇒ 我原来的 D1 循环会在第 2 条重复第 1 条的结果。**已新增 §4 D1.1**：定义每条之间的 reset 顺序、边界论证（`popup.new` 的两步确认所防的「误触丢操作」已由「执行器先确认上一条到终态」满足），以及实现方式（驱动 popup 页面模拟点击，而非直发内部消息） |
-| 15 | **同 key 崩溃重试无法执行** | **IMPLEMENTATION_TEST（成立，已修）** | 核实成立，且揭穿了我 v3 第一版里的一个真错误：我写了「同 key 重试走 `StartPrepared` 的 `Claim`→`resolve`（`browser_capture.go:135-143`）」，但该路径**需要重新提交 payload**，而重建 payload 走 `handoff()` 必然生成**新随机 key**（`controller.ts:26`）⇒ 执行器**根本没有**「复用同一 key 重试」的能力；我引用的代码路径真实，但它不提供我声称的能力。**已改为 §4 D2 的回读分支表**：`200` 终态⇒记结果；`200` 非终态⇒`outcome_unknown` 并停下待人工核实（不自动重试，避免重复发布）；`404 ACQUISITION_NOT_FOUND`（`repository.go:348` → `product_acquisition_application.go:315`）⇒ 丢弃 key 安全重采集。§10 验证项已相应改为可执行的 4 条 |
+| 15 | **同 key 崩溃重试无法执行** | **IMPLEMENTATION_TEST（成立，已修）** | 核实成立，且揭穿了我 v3 第一版里的一个真错误：我写了「同 key 重试走 `StartPrepared` 的 `Claim`→`resolve`（`browser_capture.go:135-143`）」，但该路径**需要重新提交 payload**，而重建 payload 走 `handoff()` 必然生成**新随机 key**（`controller.ts:26`）⇒ 执行器**根本没有**「复用同一 key 重试」的能力；我引用的代码路径真实，但它不提供我声称的能力。**已改为 §4 D2 的回读分支表**：`200` 终态⇒记结果；`200` 非终态⇒`outcome_unknown` 并停下待人工核实（不自动重试，避免重复发布）；`404 ACQUISITION_NOT_FOUND`（`repository.go:348` → `product_acquisition_application.go:315`）⇒ 丢弃 key 安全重采集。§10 验证项已相应改为可执行的 4 条。（**本行后半段的 `404` 结论已在第五轮被第 17 条推翻，见 §15.4；此处置换同样需要原始 scope 校验**）|
+
+### 15.4 第五轮 2 条（针对 v3.1）
+
+| # | 评审内容 | 分类 | 处置 |
+|---|---|---|---|
+| 16 | **提交前的显式确认不能由执行器代劳** | **BLOCKER（成立，已修）** | 核实成立，且有契约原文：`extensions/1688-capture/README.md:124-128` 要求 *"show the currently verified user and Effective Organization, and obtain explicit confirmation"*，而唯一产品提交入口是用户手点的按钮（`capture-receiver.tsx:145`）。我原来的 D1 只写「等待终态」，**默认了执行器会去点提交**——那会替换掉保护 actor/组织归属的确认。**已新增 §4 D1.2**：执行器**一律不点**「Confirm and submit」，只做导航/采集/交付/回读；批量形态定为「执行器跑腿 + 用户逐条确认」；并明确**不自行放行**批量级一次性确认。§1.2/§1.3/§10/§11-7 已同步 |
+| 17 | **`404` 恢复必须绑定原始 actor 与组织** | **BLOCKER（成立，已修，且是我的硬错误）** | 核实成立且命中 AGENTS 的 BLOCKER 条件（跨租户归属 + 重复且不可安全恢复的外部副作用）。`ByKey` 按 `(organization_id, actor_id, idempotency_key)` 查询（`internal/integration/persistence/product/acquisition/repository.go:338`）⇒ 同一 key 在另一个账号/组织下**被故意隐藏**，`404` **不**证明「从未建行」。更严重的是：**既有实现本来就写着这一点**——`capture-receiver.tsx:121-123` 原文是 *"This does not prove a prior request failed. **No new submission will be made.**"*。我的「`404` ⇒ 安全重采集」与该已实现行为**直接相反**。**已改为 §4 D2**：本地队列记录**原始 scope**，回读前先校 scope（不一致⇒整批停止）；`404` 归入 `outcome_unknown`，**只有「本地明确记为未提交」才允许重采**。§1.3/§7/§10/§11 已同步 |
+
+两条都是**真实缺陷**，其中第 17 条是**我引入的回归**：我引用真实代码得出错误行为结论，而仓库里已有的前端实现已按正确语义写成（并把该纠正直接告知用户）——我只读了后端 `repository.go:348`/`product_acquisition_application.go:315`，没读前端对该投影的**产品语义**。
 
 两条 findings 都是**真实缺陷**，已直接修正设计，无需产品决定。第 14 条之所以能拿下来，是因为它指出了「复用已上线链路」这一路线的一个隐藏前提：既有链路是**为单次人工点击设计的有状态流程**，不是无状态 API。这一点已写入 §3.2 缺口表。
 
@@ -384,3 +435,5 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 5. **§13 由 `EXTRACT | RETIRE` 改为纯 `RETIRE`**：本路线不抽取任何 legacy 行为（v2 曾错误地把被禁的 public→account 回退列入 `EXTRACT`）。
 6. **新增 §4 D1.1（每条之间的 reset）**：第四轮评审指出 `Controller` 是单例且 `capture()`/`handoff()` 会直接返回，只循环发消息会重复第 1 条的结果。已定义 reset 顺序、边界论证与实现方式，并相应加入 §10 验证项。
 7. **修正 D2 的 key 语义**：原写「同 key 重试」是错的——key 由扩展在交付时内部生成（`controller.ts:26`），执行器无法指定也无法复用；引用的 `StartPrepared` 恢复路径需要重新提交 payload，而重建 payload 必然生成新 key。已改为「`by-key` 回读 + 按结果分支」的判定表。
+8. **新增 §4 D1.2（提交确认边界）**：第五轮评审指出执行器不能代替用户点「Confirm and submit」——契约要求每条 POST 前展示已核实身份与企业并取得显式确认（`README.md:124-128`，`capture-receiver.tsx:145`）。已明确执行器不点该按钮，批量形态为「执行器跑腿 + 用户逐条确认」。
+9. **修正 D2 的 `404` 语义（我的回归）**：原写「`404` ⇒ 安全重采集」，与既有实现**直接相反**——`capture-receiver.tsx:121-123` 原文明确 "This does not prove a prior request failed. No new submission will be made."，且 `ByKey` 按 `(organization_id, actor_id, key)` 查询（`repository.go:338`）使 `404` 也可能是 scope 不符。已改为「记录原始 scope + 回读前校 scope + `404` 归 `outcome_unknown`」，仅「本地确认未提交」允许重采。
