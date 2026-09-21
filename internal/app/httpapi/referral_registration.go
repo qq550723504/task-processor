@@ -71,11 +71,17 @@ type payoutMethodReader interface {
 	ListActivePayoutMethods(context.Context, string) ([]money.PayoutMethodSummary, error)
 }
 
+type payoutMethodWriter interface {
+	CreatePayoutMethod(context.Context, money.PayoutMethod) error
+}
+
 type referralHTTPModule struct {
 	commands              referralCommands
 	serviceCredential     string
 	economics             referralEconomics
 	payoutMethods         payoutMethodReader
+	payoutMethodWriter    payoutMethodWriter
+	payoutEncryptionKey   []byte
 	profileReader         authidentity.SelfProfileReader
 	settlements           settlementWriter
 	onSlotAcquiredForTest func()
@@ -105,6 +111,7 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodPost, Path: accountReferralsCompletePath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.complete},
 		{Method: http.MethodGet, Path: accountReferralEarningsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readEarnings},
 		{Method: http.MethodGet, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readPayoutMethods},
+		{Method: http.MethodPost, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createPayoutMethod},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},

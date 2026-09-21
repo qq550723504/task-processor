@@ -162,6 +162,7 @@ func (r *Repository) Snapshot(ctx context.Context, quota domain.Quota) (domain.S
 		return domain.Snapshot{}, err
 	}
 	var allocated int64
+	var consumedByInactive int64
 	result := domain.Snapshot{OrganizationID: quota.OrganizationID, Metric: domain.MetricToken, WindowStart: quota.WindowStart, WindowEnd: quota.WindowEnd, Allocations: make([]domain.Allocation, 0, len(rows))}
 	for _, row := range rows {
 		memberConsumed, err := r.memberConsumed(ctx, quota, row.MemberID)
@@ -174,13 +175,24 @@ func (r *Repository) Snapshot(ctx context.Context, quota domain.Quota) (domain.S
 			if err != nil {
 				return domain.Snapshot{}, err
 			}
+		} else {
+			// A removed member's unused reservation is released, but its
+			// already-consumed floor remains unavailable to replacement members.
+			consumedByInactive, err = checkedAdd(consumedByInactive, memberConsumed)
+			if err != nil {
+				return domain.Snapshot{}, err
+			}
 		}
 		result.Allocations = append(result.Allocations, value)
 	}
 	if allocated > quota.Total || consumed > quota.Total {
 		return domain.Snapshot{}, domain.ErrQuotaExceeded
 	}
-	result.Enterprise = domain.EnterpriseView{Total: quota.Total, Allocated: allocated, Unallocated: quota.Total - allocated, Consumed: consumed}
+	unallocated := quota.Total - allocated - consumedByInactive
+	if unallocated < 0 {
+		return domain.Snapshot{}, domain.ErrQuotaExceeded
+	}
+	result.Enterprise = domain.EnterpriseView{Total: quota.Total, Allocated: allocated, Unallocated: unallocated, Consumed: consumed}
 	return result, nil
 }
 
@@ -227,7 +239,16 @@ func (r *Repository) SetTarget(ctx context.Context, quota domain.Quota, input do
 		if err := tx.Model(&allocationRow{}).Where("organization_id = ? AND metric = ? AND window_start = ? AND window_end = ? AND active = ? AND member_id <> ?", quota.OrganizationID, domain.MetricToken, quota.WindowStart, quota.WindowEnd, true, input.MemberID).Select("COALESCE(SUM(allocated), 0)").Scan(&allocated).Error; err != nil {
 			return mapError(err)
 		}
-		if input.Target > quota.Total-allocated {
+		// The active rows represent unconsumed reservations. Consumed quota is
+		// owned by the commercial ledger and must still count even when a
+		// removed member's allocation has been made inactive. Otherwise a
+		// replacement member could reuse tokens already consumed by the removed
+		// member.
+		enterpriseConsumed, err := sumUsage(tx, quota)
+		if err != nil {
+			return err
+		}
+		if input.Target > quota.Total-enterpriseConsumed-allocated {
 			return domain.ErrQuotaExceeded
 		}
 		now := time.Now().UTC().Truncate(time.Microsecond)

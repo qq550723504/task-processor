@@ -175,7 +175,8 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		}
 		return merged[i].key > merged[j].key
 	})
-	if len(merged) > limit {
+	mergedTruncated := len(merged) > limit
+	if mergedTruncated {
 		merged = merged[:limit]
 	}
 	result := Page{SchemaVersion: "account-audit-v1", UserID: identity.UserID, EffectiveOrganizationID: identity.EffectiveOrganizationID, Source: "source_account_committed_operations", Items: make([]Event, 0, len(merged))}
@@ -192,7 +193,11 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if len(allocationPage.Items) > 0 {
 		result.Source = "source_account_committed_operations+account_member_token_audit"
 	}
-	if history.Next != nil || allocationPage.Next != nil {
+	// Each source is fetched independently. The merged page can therefore be
+	// truncated even when neither source returned its own page cursor; the
+	// cursor still needs to carry the last emitted position from both streams
+	// so the events beyond the merge boundary remain reachable.
+	if mergedTruncated || history.Next != nil || allocationPage.Next != nil {
 		wire := positionWire{Organization: identity.EffectiveOrganizationID, Actor: filter.ActorSubject, Kind: string(filter.Kind), ResourceOperation: filter.ResourceOperation}
 		if nextState.source != nil {
 			wire.Source = &sourcePosition{Time: nextState.source.OccurredAt.UTC(), Account: nextState.source.AccountID, Version: strconv.FormatInt(nextState.source.Version, 10)}

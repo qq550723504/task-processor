@@ -430,7 +430,8 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 		return nil, err
 	}
 	service := &registration.Service{Store: repository, Provider: provider, Issuer: r.Issuer, Instance: r.InstanceID, Organization: r.SignupOrganizationID, Now: time.Now, Keys: registration.Keys{Active: r.KeyID, Lookup: secrets.Lookup, Proof: secrets.Proof, Encryption: secrets.Encryption}}
-	return referralHTTPModule{commands: service, economics: repository, payoutMethods: payoutMethods, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
+	payoutEncryptionKey := append([]byte(nil), secrets.Encryption[r.KeyID]...)
+	return referralHTTPModule{commands: service, economics: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKey: payoutEncryptionKey, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {

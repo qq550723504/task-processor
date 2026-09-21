@@ -563,6 +563,13 @@ func (r *Repository) transitionWithdrawal(ctx context.Context, input economics.R
 			if err != nil {
 				return err
 			}
+			// Refund/chargeback adjustments reduce the effective earnings after
+			// a withdrawal has reserved funds. Do not let an approved request
+			// pay out while the remaining unreserved projection is negative;
+			// the manual reviewer must reject/correct it first.
+			if p.AvailableMinor+p.AdjustmentMinor < 0 {
+				return economics.ErrInsufficient
+			}
 			if p.ReservedMinor < row.AmountMinor {
 				return economics.ErrUnavailable
 			}

@@ -2,9 +2,12 @@ package imageagentworker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 	"unicode"
 
@@ -51,6 +54,37 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	if quote.MaximumModelCalls != 1 || quote.CostUpperBoundKnown != known || quote.MaximumCostMicros != maximumCost {
 		return productimage.Review{}, productimage.ErrCapabilityUnsupported
 	}
+	invocationID, inputHash := stableReviewInvocationIdentity(identity, request, quote.Fingerprint)
+	reservation, ok := settings.Recorder.(aicapability.InvocationUsageReservation)
+	if !ok {
+		return productimage.Review{}, productimage.ErrExternalCapabilityUnavailable
+	}
+	lookup, hasLookup := settings.Recorder.(aicapability.InvocationReplayReader)
+	if hasLookup {
+		existing, found, lookupErr := lookup.FindInvocation(ctx, identity.TenantID, verified.EffectiveMemberID, invocationID, inputHash)
+		if lookupErr != nil {
+			return productimage.Review{}, lookupErr
+		}
+		if found && existing.Outcome == aicapability.InvocationSucceeded {
+			replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			replayErr := settings.Recorder.RecordInvocation(replayCtx, existing)
+			cancel()
+			if replayErr != nil {
+				return productimage.Review{}, fmt.Errorf("image review usage settlement failed: %w", replayErr)
+			}
+			return productimage.Review{Score: existing.ReviewScore, NeedsHumanReview: existing.ReviewNeedsHumanReview, Reasons: append([]string(nil), existing.ReviewReasons...)}, nil
+		}
+	}
+	started := time.Now().UTC()
+	if err := reservation.ReserveAIInvocationUsage(ctx, identity.TenantID, verified.EffectiveMemberID, invocationID, started); err != nil {
+		return productimage.Review{}, err
+	}
+	reservationHeld := true
+	defer func() {
+		if reservationHeld {
+			_ = reservation.ReleaseAIInvocationUsage(context.WithoutCancel(ctx), identity.TenantID, invocationID)
+		}
+	}()
 	var observation openai.ProductImageReviewObservation
 	observed := false
 	zero := 0
@@ -61,7 +95,6 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	if err != nil {
 		return productimage.Review{}, err
 	}
-	started := time.Now().UTC()
 	result, providerErr := adapter.Review(ctx, request)
 	if providerErr == nil {
 		result, providerErr = productimage.ValidateReview(result)
@@ -71,14 +104,15 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	}
 	finished := time.Now().UTC()
 	record := aicapability.InvocationRecord{
-		InvocationID: uuid.NewString(), AgentRunID: identity.AgentRunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: verified.EffectiveMemberID,
+		InvocationID: invocationID, AgentRunID: identity.AgentRunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: verified.EffectiveMemberID,
 		BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
 		Capability: aicapability.CapabilityProductImageScene, Operation: aicapability.OperationProductImageReview,
 		RouteOutcome: aicapability.RouteOutcomeActive, ProviderID: quote.Provider, ModelID: quote.Model,
 		RoutingKey: quote.RouteReference, CredentialReference: quote.CredentialReference, ConfigurationVersion: quote.ConfigurationVersion,
 		PromptKey: "product-image-review", PromptVersion: observation.PromptVersion, PromptHash: observation.PromptHash,
 		StartedAt: started, FinishedAt: finished, Attempt: 1, Outcome: aicapability.InvocationSucceeded,
-		ProviderRequestID: safeReviewReference(observation.ProviderRequestID),
+		ProviderRequestID: safeReviewReference(observation.ProviderRequestID), InputHash: inputHash,
+		ReviewScore: result.Score, ReviewNeedsHumanReview: result.NeedsHumanReview, ReviewReasons: append([]string(nil), result.Reasons...),
 	}
 	usage := observation.Usage
 	// The current wire contract has no presence bit. Zero/missing usage stays unknown.
@@ -106,8 +140,26 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		if providerErr == nil {
 			return productimage.Review{}, fmt.Errorf("image review usage settlement failed: %w", err)
 		}
+	} else {
+		reservationHeld = false
 	}
 	return result, providerErr
+}
+
+func stableReviewInvocationIdentity(identity aiidentity.Identity, request productimage.ReviewRequest, quoteFingerprint string) (string, string) {
+	parts := []string{identity.TenantID, identity.AgentRunID, identity.BusinessTaskID, quoteFingerprint, request.Product.ProductKey}
+	for _, asset := range request.Sources {
+		parts = append(parts, "source", asset.SourceAssetID, asset.URL)
+	}
+	for _, candidate := range request.Candidates {
+		parts = append(parts, "candidate", candidate.Asset.SourceAssetID, candidate.Asset.URL)
+	}
+	payload := strings.Join(parts, "\x00")
+	digest := sha256.Sum256([]byte(payload))
+	hash := hex.EncodeToString(digest[:])
+	// uuid.NewSHA1 gives the existing invocation schema a stable UUID while
+	// retaining a deterministic identity across Temporal activity retries.
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("account-center-review:"+hash)).String(), hash
 }
 
 func reviewProviderErrorCategory(err error) aicapability.ErrorCategory {

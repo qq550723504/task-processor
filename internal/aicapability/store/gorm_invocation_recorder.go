@@ -3,6 +3,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -26,6 +28,39 @@ func (r *GormInvocationRecorder) SetUsageSettler(settler aicapability.Invocation
 	if r != nil {
 		r.usageSettler = settler
 	}
+}
+
+func (r *GormInvocationRecorder) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, occurredAt time.Time) error {
+	reservation, ok := r.usageSettler.(aicapability.InvocationUsageReservation)
+	if !ok {
+		return fmt.Errorf("ai invocation usage reservation is unavailable")
+	}
+	return reservation.ReserveAIInvocationUsage(ctx, tenantID, memberID, invocationID, occurredAt)
+}
+
+func (r *GormInvocationRecorder) ReleaseAIInvocationUsage(ctx context.Context, tenantID, invocationID string) error {
+	reservation, ok := r.usageSettler.(aicapability.InvocationUsageReservation)
+	if !ok {
+		return fmt.Errorf("ai invocation usage reservation is unavailable")
+	}
+	return reservation.ReleaseAIInvocationUsage(ctx, tenantID, invocationID)
+}
+
+func (r *GormInvocationRecorder) FindInvocation(ctx context.Context, tenantID, memberID, invocationID, inputHash string) (aicapability.InvocationRecord, bool, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(tenantID) == "" || strings.TrimSpace(memberID) == "" || strings.TrimSpace(invocationID) == "" {
+		return aicapability.InvocationRecord{}, false, fmt.Errorf("ai invocation lookup input is invalid")
+	}
+	var row invocationRow
+	if err := r.db.WithContext(ctx).Where("invocation_id = ? AND tenant_id = ? AND member_id = ?", invocationID, tenantID, memberID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return aicapability.InvocationRecord{}, false, nil
+		}
+		return aicapability.InvocationRecord{}, false, err
+	}
+	if inputHash != "" && row.InputHash != strings.TrimSpace(inputHash) {
+		return aicapability.InvocationRecord{}, false, fmt.Errorf("ai invocation identity conflict")
+	}
+	return invocationRecordFromRow(row), true, nil
 }
 
 // NewGormInvocationRecorder creates a recorder backed by db.
@@ -68,7 +103,14 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		}
 	}
 	if r.usageSettler != nil {
-		return aicapability.SettleSuccessfulInvocation(ctx, record, r.usageSettler)
+		if err := aicapability.SettleSuccessfulInvocation(ctx, record, r.usageSettler); err != nil {
+			return err
+		}
+		if record.Outcome != aicapability.InvocationSucceeded || !record.UsageKnown {
+			if reservation, ok := r.usageSettler.(aicapability.InvocationUsageReservation); ok {
+				return reservation.ReleaseAIInvocationUsage(ctx, record.TenantID, record.InvocationID)
+			}
+		}
 	}
 	return nil
 }
@@ -126,6 +168,9 @@ type invocationRow struct {
 	UpstreamJobID        string    `gorm:"column:upstream_job_id;size:256;index:idx_ai_invocations_upstream_job_id"`
 	InputHash            string    `gorm:"column:input_hash;size:128"`
 	OutputHash           string    `gorm:"column:output_hash;size:128"`
+	ReviewScore          float64   `gorm:"column:review_score"`
+	ReviewNeedsHuman     bool      `gorm:"column:review_needs_human"`
+	ReviewReasonsJSON    string    `gorm:"column:review_reasons;type:text"`
 }
 
 func (invocationRow) TableName() string { return "ai_invocations" }
@@ -141,6 +186,7 @@ func invocationRowFromRecord(record aicapability.InvocationRecord) invocationRow
 	if cacheStatus == "" {
 		cacheStatus = aicapability.CacheStatusNotApplicable
 	}
+	reasons, _ := json.Marshal(record.ReviewReasons)
 	return invocationRow{
 		EstimatedCostKnown: record.EstimatedCostKnown, UsageKnown: record.UsageKnown,
 		InvocationID: trim(record.InvocationID), ParentInvocationID: trim(record.ParentInvocationID), AgentRunID: trim(record.AgentRunID),
@@ -152,7 +198,16 @@ func invocationRowFromRecord(record aicapability.InvocationRecord) invocationRow
 		StartedAt: startedAt, FinishedAt: finishedAt, LatencyMilliseconds: latencyMilliseconds,
 		Attempt: record.Attempt, FallbackIndex: record.FallbackIndex, PromptTokens: record.PromptTokens, CompletionTokens: record.CompletionTokens, TotalTokens: record.TotalTokens, ImageCount: record.ImageCount, EstimatedCostMicros: record.EstimatedCostMicros, Currency: trim(record.Currency),
 		Outcome: trim(string(record.Outcome)), ErrorCategory: trim(string(record.ErrorCategory)), RouteErrorCategory: trim(string(record.RouteErrorCategory)), ErrorCode: trim(record.ErrorCode),
-		ProviderRequestID: trim(record.ProviderRequestID), UpstreamJobID: trim(record.UpstreamJobID), InputHash: trim(record.InputHash), OutputHash: trim(record.OutputHash),
+		ProviderRequestID: trim(record.ProviderRequestID), UpstreamJobID: trim(record.UpstreamJobID), InputHash: trim(record.InputHash), OutputHash: trim(record.OutputHash), ReviewScore: record.ReviewScore, ReviewNeedsHuman: record.ReviewNeedsHumanReview, ReviewReasonsJSON: string(reasons),
+	}
+}
+
+func invocationRecordFromRow(row invocationRow) aicapability.InvocationRecord {
+	var reasons []string
+	_ = json.Unmarshal([]byte(row.ReviewReasonsJSON), &reasons)
+	return aicapability.InvocationRecord{
+		InvocationID: row.InvocationID, ParentInvocationID: row.ParentInvocationID, AgentRunID: row.AgentRunID, TenantID: row.TenantID, UserID: row.UserID, MemberID: row.MemberID, BusinessTaskID: row.BusinessTaskID, TraceID: row.TraceID,
+		Capability: aicapability.Capability(row.Capability), Operation: aicapability.Operation(row.Operation), RouteMode: aicapability.RoutingMode(row.RouteMode), RouteOutcome: aicapability.RouteOutcome(row.RouteOutcome), CacheStatus: aicapability.CacheStatus(row.CacheStatus), ProviderID: row.ProviderID, ModelID: row.ModelID, RequestedRoutingKey: row.RequestedRoutingKey, RoutingKey: row.RoutingKey, CredentialReference: row.CredentialReference, PolicyVersion: row.PolicyVersion, ConfigurationVersion: row.ConfigurationVersion, PromptKey: row.PromptKey, PromptVersion: row.PromptVersion, PromptScope: row.PromptScope, PromptHash: row.PromptHash, StartedAt: row.StartedAt, FinishedAt: row.FinishedAt, LatencyMilliseconds: row.LatencyMilliseconds, Attempt: row.Attempt, FallbackIndex: row.FallbackIndex, PromptTokens: row.PromptTokens, CompletionTokens: row.CompletionTokens, TotalTokens: row.TotalTokens, ImageCount: row.ImageCount, EstimatedCostMicros: row.EstimatedCostMicros, EstimatedCostKnown: row.EstimatedCostKnown, UsageKnown: row.UsageKnown, Currency: row.Currency, Outcome: aicapability.InvocationOutcome(row.Outcome), ErrorCategory: aicapability.ErrorCategory(row.ErrorCategory), RouteErrorCategory: aicapability.ErrorCategory(row.RouteErrorCategory), ErrorCode: row.ErrorCode, ProviderRequestID: row.ProviderRequestID, UpstreamJobID: row.UpstreamJobID, InputHash: row.InputHash, OutputHash: row.OutputHash, ReviewScore: row.ReviewScore, ReviewNeedsHumanReview: row.ReviewNeedsHuman, ReviewReasons: reasons,
 	}
 }
 

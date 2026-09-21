@@ -70,8 +70,28 @@ type InvocationRecord struct {
 	UpstreamJobID        string
 	InputHash            string
 	OutputHash           string
+	// Review result is kept as a small, typed replay envelope so a Temporal
+	// retry can return a completed review without dispatching the provider a
+	// second time. It is not a prompt or provider response payload.
+	ReviewScore            float64
+	ReviewNeedsHumanReview bool
+	ReviewReasons          []string
 }
 
 type InvocationRecorder interface {
 	RecordInvocation(context.Context, InvocationRecord) error
+}
+
+// InvocationReplayReader is optional for non-durable test recorders. The
+// production recorder implements it to close the provider retry boundary.
+type InvocationReplayReader interface {
+	FindInvocation(context.Context, string, string, string, string) (InvocationRecord, bool, error)
+}
+
+// InvocationUsageReservation is the commercial owner boundary used before a
+// provider dispatch. It reserves the member's current remaining allocation;
+// settlement releases the unused reservation and commits observed tokens.
+type InvocationUsageReservation interface {
+	ReserveAIInvocationUsage(context.Context, string, string, string, time.Time) error
+	ReleaseAIInvocationUsage(context.Context, string, string) error
 }

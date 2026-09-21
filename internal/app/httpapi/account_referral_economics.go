@@ -1,8 +1,12 @@
 package httpapi
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/ledger/money"
 	economics "task-processor/internal/referraleconomics"
@@ -22,6 +27,11 @@ type withdrawalBody struct {
 }
 type cancelBody struct {
 	ExpectedVersion string `json:"expectedVersion"`
+}
+type payoutMethodBody struct {
+	Type        string `json:"type"`
+	DisplayName string `json:"displayName"`
+	Destination string `json:"destination"`
 }
 type reviewBody struct {
 	Action                   string `json:"action"`
@@ -68,6 +78,71 @@ func (m referralHTTPModule) readPayoutMethods(c *gin.Context) {
 		items = append(items, gin.H{"methodId": method.MethodID, "type": method.Type, "displayName": method.DisplayName, "maskedDestination": method.MaskedDestination, "version": strconv.FormatInt(method.Version, 10)})
 	}
 	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "payout-methods-v1", "methods": items})
+}
+
+// createPayoutMethod is the personal money-owner write path. The destination
+// is encrypted before it reaches persistence; ordinary reads only expose the
+// masked projection. It intentionally has no organization context.
+func (m referralHTTPModule) createPayoutMethod(c *gin.Context) {
+	if !m.economicsRequest(c) || m.payoutMethodWriter == nil || len(m.payoutEncryptionKey) == 0 {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
+		return
+	}
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+	if !ok {
+		return
+	}
+	var body payoutMethodBody
+	decoder := json.NewDecoder(io.LimitReader(c.Request.Body, 8<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || strings.TrimSpace(body.DisplayName) == "" || strings.TrimSpace(body.Destination) == "" {
+		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	typeValue := money.PayoutMethodType(strings.TrimSpace(body.Type))
+	if typeValue != money.PayoutAlipay && typeValue != money.PayoutBankTransfer || len([]rune(body.DisplayName)) > 128 || len([]rune(body.Destination)) > 512 {
+		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	destination := strings.TrimSpace(body.Destination)
+	ciphertext, err := encryptPayoutDestination(m.payoutEncryptionKey, identity.UserID, typeValue, destination)
+	if err != nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
+		return
+	}
+	now := time.Now().UTC()
+	method := money.PayoutMethod{MethodID: uuid.NewString(), SubjectUserID: identity.UserID, Type: typeValue, DisplayName: strings.TrimSpace(body.DisplayName), MaskedDestination: maskPayoutDestination(destination), SecureReference: ciphertext, Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
+	if err := m.payoutMethodWriter.CreatePayoutMethod(c.Request.Context(), method); err != nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
+		return
+	}
+	writeReferralEconomicsJSON(c, http.StatusCreated, gin.H{"schemaVersion": "payout-method-v1", "methodId": method.MethodID, "type": method.Type, "displayName": method.DisplayName, "maskedDestination": method.MaskedDestination, "version": strconv.FormatInt(method.Version, 10)})
+}
+
+func encryptPayoutDestination(key []byte, subject string, methodType money.PayoutMethodType, destination string) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	associated := []byte(subject + "|" + string(methodType))
+	return aead.Seal(nonce, nonce, []byte(destination), associated), nil
+}
+
+func maskPayoutDestination(value string) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= 4 {
+		return strings.Repeat("*", len(runes))
+	}
+	return fmt.Sprintf("%s***%s", string(runes[:1]), string(runes[len(runes)-3:]))
 }
 
 func (m referralHTTPModule) requestWithdrawal(c *gin.Context) {

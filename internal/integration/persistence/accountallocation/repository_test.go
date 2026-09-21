@@ -102,7 +102,7 @@ func TestSetTargetEnforcesPoolAndConsumedFloorAndRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Enterprise.Allocated != 0 || page.Enterprise.Unallocated != 100 || page.Enterprise.Consumed != 20 {
+	if page.Enterprise.Allocated != 0 || page.Enterprise.Unallocated != 80 || page.Enterprise.Consumed != 20 {
 		t.Fatalf("page=%+v", page)
 	}
 }
