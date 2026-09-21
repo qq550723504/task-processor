@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 const state = vi.hoisted(() => ({ user: "u1", token: "fixture-token", blocked: false }));
 vi.mock("@/auth", () => ({ serverAuth: (handler: (r: NextRequest) => Promise<Response>) => (request: NextRequest) => state.blocked ? new Promise(() => {}) : handler(Object.assign(request, { auth: { accessToken: state.token, identityVersion: 3, identity: { userId: state.user, tenantId: "A" } } })) }));
 import { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } from "@/app/api/account/profile/route";
-import { PUT as businessProfilePUT } from "@/app/api/account/business-profile/route";
+import { GET as businessProfileGET, PUT as businessProfilePUT } from "@/app/api/account/business-profile/route";
 import { GET as organizationGET } from "@/app/api/account/organization/route";
 
 const profile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "Alice", email: null, emailVerified: null, phoneNumber: null, phoneNumberVerified: null, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
@@ -29,6 +29,13 @@ describe("exported account routes", () => {
   const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
   const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
   const response = await businessProfilePUT(writeBusinessProfile());
+  expect(response.status).toBe(200);
+  expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+ it("binds business profile reads to the selected cookie organization", async () => {
+  const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfileGET(request("business-profile", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B" }));
   expect(response.status).toBe(200);
   expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
  });

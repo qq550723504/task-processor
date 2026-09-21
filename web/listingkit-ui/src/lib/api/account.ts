@@ -55,7 +55,7 @@ type ProfileOptions = { expectedUserId: string; signal?: AbortSignal };
 type OrganizationOptions = ProfileOptions & { expectedOrganizationId: string };
 export function getAccountProfile(options: ProfileOptions): Promise<AccountProfile> { return readAccount("profile", options) as Promise<AccountProfile>; }
 export function getAccountOrganization(options: OrganizationOptions): Promise<AccountOrganization> { return readAccount("organization", options) as Promise<AccountOrganization>; }
-export function getAccountBusinessProfile(options: ProfileOptions): Promise<AccountBusinessProfile> { return readAccount("business-profile", options) as Promise<AccountBusinessProfile>; }
+export function getAccountBusinessProfile(options: OrganizationOptions): Promise<AccountBusinessProfile> { return readAccount("business-profile", options) as Promise<AccountBusinessProfile>; }
 export async function updateAccountBusinessProfile(options: ProfileOptions & { expectedOrganizationId: string; input: AccountBusinessProfileInput }): Promise<AccountBusinessProfile> {
   return writeBusinessProfile(options);
 }
@@ -63,7 +63,7 @@ export async function updateAccountBusinessProfile(options: ProfileOptions & { e
 async function readAccount(kind: "profile" | "organization" | "business-profile", options: ProfileOptions | OrganizationOptions) {
   if (!id.safeParse(options.expectedUserId).success) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
   const organization = "expectedOrganizationId" in options ? options.expectedOrganizationId : undefined;
-  if (kind === "organization" && !id.safeParse(organization).success) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED");
+  if ((kind === "organization" || kind === "business-profile") && !id.safeParse(organization).success) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED");
   const controller = new AbortController();
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });

@@ -43,7 +43,7 @@ function ScopedAccount({ page, scope, expectedUserId, organizationId }: { page: 
 }
 function AccountRequest({ page, scope, expectedUserId, organizationId, sequence }: { page: PageKind; scope: string; expectedUserId: string; organizationId?: string; sequence: number }) {
   const response = useQuery({ queryKey: ["account", page, scope, sequence], queryFn: async ({ signal }) => {
-    const business = async () => getAccountBusinessProfile({ expectedUserId, signal }).catch(() => null);
+    const business = async () => organizationId ? getAccountBusinessProfile({ expectedUserId, expectedOrganizationId: organizationId, signal }).catch(() => null) : null;
     if (page === "profile") { const [profile, businessProfile] = await Promise.all([getAccountProfile({ expectedUserId, signal }), business()]); return { kind: "profile" as const, profile, business: businessProfile }; }
     if (page === "overview") { const [profile, businessProfile, organization] = await Promise.all([getAccountProfile({ expectedUserId, signal }), business(), getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal })]); return { kind: "overview" as const, profile, business: businessProfile, organization }; }
     return { kind: "organization" as const, organization: await getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal }) };

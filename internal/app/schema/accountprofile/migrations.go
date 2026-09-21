@@ -12,8 +12,12 @@ import (
 )
 
 const versionTableRelation = "public.goose_account_profile_version"
-const baselineVersion = int64(2026092001)
-const auditVersion = int64(2026092101)
+
+// The profile shape is organization-scoped now. A new baseline intentionally
+// invalidates databases initialized with the old user-only shape; greenfield
+// installs must create the current schema, while stale state must be recreated.
+const baselineVersion = int64(2026092102)
+const auditVersion = int64(2026092103)
 
 func Migrations() []*goose.Migration {
 	return []*goose.Migration{
