@@ -38,13 +38,14 @@ describe("ReferralsPage", () => {
   });
 
   it("uses the dedicated backend projection for the earnings page", async () => {
-    const earnings = { schemaVersion: "referral-earnings-v1", referrer: "subject-1", currency: "CNY", pendingMinor: "2000", availableMinor: "10000", reservedMinor: "0", adjustmentMinor: "-500", version: "3", updatedAt: "2026-09-13T10:00:00Z", source: "referral_earnings_projection", entries: [{ entryId: "entry-1", referrer: "subject-1", currency: "CNY", paymentId: "payment-1", entryType: "COMMISSION", amountMinor: "10000", referenceId: "payment-1", occurredAt: "2026-09-13T10:00:00Z" }] };
+    const earnings = { schemaVersion: "referral-earnings-v1", referrer: "subject-1", currency: "CNY", pendingMinor: "2000", availableMinor: "10000", reservedMinor: "0", adjustmentMinor: "-500", version: "3", updatedAt: "2026-09-13T10:00:00Z", source: "referral_earnings_projection", entryLimit: 100, entries: [{ entryId: "entry-1", referrer: "subject-1", currency: "CNY", paymentId: "payment-1", entryType: "COMMISSION", amountMinor: "10000", referenceId: "payment-1", occurredAt: "2026-09-13T10:00:00Z" }] };
     const fetch = vi.fn().mockResolvedValue(Response.json(earnings));
     vi.stubGlobal("fetch", fetch);
     mount("overview", "subject-1", true, "earnings");
     expect(await screen.findByText("¥95.00")).toBeVisible();
     expect(screen.getByText(/Projection 版本：3/)).toBeVisible();
     expect(screen.getByText(/COMMISSION · ¥100.00 · 业务单据 payment-1/)).toBeVisible();
+    expect(screen.getByText("逐笔列表仅展示最新最多 100 条记录；汇总以完整收益 projection 为准。")).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-earnings");
   });

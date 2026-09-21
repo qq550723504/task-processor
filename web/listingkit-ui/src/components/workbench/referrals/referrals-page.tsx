@@ -205,7 +205,7 @@ function EarningsView({ data }: { data: ReferralEarnings }) {
       <article className={styles.metric}><span>待结算</span><strong>{formatMinor(data.pendingMinor)}</strong><small>等待结算周期完成</small></article>
       <article className={styles.metric}><span>冻结中</span><strong>{formatMinor(data.reservedMinor)}</strong><small>当前被提现流程占用</small></article>
     </section>
-    <section className={styles.codeCard} aria-labelledby="earnings-detail-title"><div><h2 id="earnings-detail-title">收益明细</h2><ul><li>可用收益：{formatMinor(data.availableMinor)}</li><li>退款/拒付调整：{formatMinor(data.adjustmentMinor)}</li><li>Projection 版本：{data.version}</li></ul>{data.entries?.length ? <ul aria-label="逐笔收益记录">{data.entries.map(entry => <li key={entry.entryId}>{entry.entryType} · {formatMinor(entry.amountMinor)} · 业务单据 {entry.referenceId} · {formatTime(entry.occurredAt)}</li>)}</ul> : <p>当前没有可展示的逐笔收益记录。</p>}<p>汇总以服务端收益 projection 为准；逐笔记录来自同一权威 earnings ledger。</p><p>数据更新时间：{data.updatedAt ? formatTime(data.updatedAt) : "未提供"}</p></div></section>
+    <section className={styles.codeCard} aria-labelledby="earnings-detail-title"><div><h2 id="earnings-detail-title">收益明细</h2><ul><li>可用收益：{formatMinor(data.availableMinor)}</li><li>退款/拒付调整：{formatMinor(data.adjustmentMinor)}</li><li>Projection 版本：{data.version}</li></ul>{data.entries?.length ? <ul aria-label="逐笔收益记录">{data.entries.map(entry => <li key={entry.entryId}>{entry.entryType} · {formatMinor(entry.amountMinor)} · 业务单据 {entry.referenceId} · {formatTime(entry.occurredAt)}</li>)}</ul> : <p>当前没有可展示的逐笔收益记录。</p>}<p>逐笔列表仅展示最新最多 {data.entryLimit} 条记录；汇总以完整收益 projection 为准。</p><p>数据更新时间：{data.updatedAt ? formatTime(data.updatedAt) : "未提供"}</p></div></section>
   </div>;
 }
 

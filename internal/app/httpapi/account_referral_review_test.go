@@ -65,6 +65,7 @@ func TestWriteReferralEarningsJSONIncludesOwnedLedgerEntries(t *testing.T) {
 	writeReferralEarningsJSON(c, earnings, entries)
 	var response struct {
 		SchemaVersion string `json:"schemaVersion"`
+		EntryLimit    int    `json:"entryLimit"`
 		Entries       []struct {
 			EntryID     string `json:"entryId"`
 			PaymentID   string `json:"paymentId"`
@@ -75,7 +76,7 @@ func TestWriteReferralEarningsJSONIncludesOwnedLedgerEntries(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.SchemaVersion != "referral-earnings-v1" || len(response.Entries) != 1 || response.Entries[0].EntryID != "entry-1" || response.Entries[0].PaymentID != "payment-1" || response.Entries[0].EntryType != "COMMISSION" || response.Entries[0].AmountMinor != "10000" {
+	if response.SchemaVersion != "referral-earnings-v1" || response.EntryLimit != 100 || len(response.Entries) != 1 || response.Entries[0].EntryID != "entry-1" || response.Entries[0].PaymentID != "payment-1" || response.Entries[0].EntryType != "COMMISSION" || response.Entries[0].AmountMinor != "10000" {
 		t.Fatalf("earnings response=%s", w.Body.String())
 	}
 }

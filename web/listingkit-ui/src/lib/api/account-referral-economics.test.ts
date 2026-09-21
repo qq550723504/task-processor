@@ -17,6 +17,7 @@ describe("account referral economics client", () => {
       version: "3",
       updatedAt: "2026-09-13T10:00:00Z",
       source: "referral_earnings_projection",
+      entryLimit: 100,
     }));
     vi.stubGlobal("fetch", fetch);
 

@@ -10,7 +10,7 @@ vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkben
 const profile: AccountProfile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "本人甲", email: null, emailVerified: null, phoneNumber: "+8613800000000", phoneNumberVerified: false, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization: AccountOrganization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "企业乙", roles: ["viewer"], source: "zitadel_project_authorizations", readAt: profile.readAt, authorizationMaxAgeSeconds: 60 };
 const clients: QueryClient[] = [];
-function mount(page: "profile" | "profile-business" | "organization" = "profile", expectedUserId = "u1") {
+function mount(page: "profile" | "profile-settings" | "profile-business" | "profile-verification" | "organization" = "profile", expectedUserId = "u1") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); clients.push(client);
   const child = (id = expectedUserId) => <QueryClientProvider client={client}><AccountPage page={page} expectedUserId={id} /></QueryClientProvider>;
   const view = render(child()); return { ...view, update: (id = expectedUserId) => view.rerender(child(id)) };
@@ -67,6 +67,46 @@ describe("AccountPage read-only projection", () => {
     expect(businessCall).toBeDefined();
     expect(new Headers(businessCall?.[1].headers).get("X-Expected-Organization-ID")).toBe("B");
     expect(screen.getByRole("link", { name: "我的账户" })).toHaveAttribute("href", "/workbench/account");
+  });
+  it.each(["profile-settings", "profile-verification"] as const)("does not read the business profile on the %s leaf", async page => {
+    const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    vi.stubGlobal("fetch", fetcher);
+    mount(page);
+    expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
+    await waitFor(() => expect(fetcher).toHaveBeenCalled());
+    expect(fetcher.mock.calls.some(([url]) => url === "/api/account/business-profile")).toBe(false);
+  });
+  it("clears password inputs after the password provider confirms success", async () => {
+    const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
+    const operation = { schemaVersion: "account-identity-operation-v1", operation: "password", state: "updated", source: "zitadel_auth_v1" };
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identity) : url === "/api/account/identity/password" ? Response.json(operation) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    mount("profile-settings");
+    const oldPassword = await screen.findByLabelText("当前密码");
+    const newPassword = screen.getByLabelText("新密码");
+    await user.type(oldPassword, "old-secret");
+    await user.type(newPassword, "new-secret");
+    await user.click(screen.getByRole("button", { name: "修改密码" }));
+    await waitFor(() => expect(fetcher.mock.calls.some(([url]) => url === "/api/account/identity/password")).toBe(true));
+    await waitFor(() => { expect(oldPassword).toHaveValue(""); expect(newPassword).toHaveValue(""); });
+  });
+  it("surfaces a failed verification resend instead of hiding the mutation error", async () => {
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    mount("profile-verification");
+    await user.click((await screen.findAllByRole("button", { name: "重新发送" }))[0]);
+    expect(await screen.findByText("操作失败，请稍后重试")).toBeVisible();
+  });
+  it("offers login recovery when a verification resend sees an expired session", async () => {
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 })));
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    mount("profile-verification");
+    await user.click((await screen.findAllByRole("button", { name: "重新发送" }))[0]);
+    expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/login?returnTo=%2Fworkbench%2Faccount%2Fprofile%2Fverification");
   });
   it("distinguishes undisclosed optional claims from a failed read", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...profile, displayName: null, phoneNumber: null, phoneNumberVerified: null }))); mount();
