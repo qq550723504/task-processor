@@ -74,16 +74,27 @@ export function updateAccountPassword(options: AccountIdentityOptions & { oldPas
 async function requestIdentity(operation: string, method: "PUT" | "POST", expectedUserId: string, body: Record<string, string>, signal?: AbortSignal): Promise<AccountIdentityOperation> {
   const controller = new AbortController(); const abort = () => controller.abort(); signal?.addEventListener("abort", abort, { once: true }); if (signal?.aborted) abort();
   const timer = setTimeout(abort, 15000);
+  let dispatched = false;
   try {
     controller.signal.throwIfAborted();
+    dispatched = true;
     const response = await fetch(`/api/account/identity/${operation}`, { method, headers: { Accept: "application/json", "Content-Type": "application/json", "X-Expected-User-ID": expectedUserId }, body: JSON.stringify(body), credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
-    const payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); controller.signal.throwIfAborted();
-    if (response.status !== 200) throw new AccountReadError(response.status, accountErrorCode(response.status, payload));
-    const parsed = operationResponseSchema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
+    let payload: unknown;
+    try { payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); }
+    catch (error) { if (dispatched) throw new AccountReadError(controller.signal.aborted ? 504 : 502, "RESULT_UNVERIFIED"); throw error; }
+    controller.signal.throwIfAborted();
+    if (response.status !== 200) {
+      let code: string;
+      try { code = accountErrorCode(response.status, payload); }
+      catch (error) { if (dispatched) throw new AccountReadError(502, "RESULT_UNVERIFIED"); throw error; }
+      throw new AccountReadError(response.status, code);
+    }
+    const parsed = operationResponseSchema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "RESULT_UNVERIFIED");
     return parsed.data;
   } catch (error) {
-    if (controller.signal.aborted) throw new AccountReadError(504, "DEADLINE_EXCEEDED");
     if (error instanceof AccountReadError) throw error;
+    if (dispatched) throw new AccountReadError(controller.signal.aborted ? 504 : 502, "RESULT_UNVERIFIED");
+    if (controller.signal.aborted) throw new AccountReadError(504, "DEADLINE_EXCEEDED");
     if (error instanceof InvalidStrictJSONResponseError) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
     throw new AccountReadError(502, "DEPENDENCY_UNAVAILABLE");
   } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
