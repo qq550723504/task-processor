@@ -38,6 +38,7 @@ GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
 ALTER ROLE source_account_runtime SET statement_timeout='10s';
 SQL
 psql "postgresql://postgres:$(tr -d '\r\n' < "$commercial_owner/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable" -v ON_ERROR_STOP=1 -v "commercial_password=$(tr -d '\r\n' < "$commercial_runtime/commercial-reader-password")" -f /schemas/commercial-schema.sql

@@ -74,6 +74,9 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 			}
 			return productimage.Review{Score: existing.ReviewScore, NeedsHumanReview: existing.ReviewNeedsHumanReview, Reasons: append([]string(nil), existing.ReviewReasons...)}, nil
 		}
+		if found {
+			return productimage.Review{}, fmt.Errorf("image review invocation is already durably dispatched and cannot be replayed safely: %w", productimage.ErrExternalCapabilityUnavailable)
+		}
 	}
 	started := time.Now().UTC()
 	if err := reservation.ReserveAIInvocationUsage(ctx, identity.TenantID, verified.EffectiveMemberID, invocationID, started); err != nil {
@@ -85,6 +88,23 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 			_ = reservation.ReleaseAIInvocationUsage(context.WithoutCancel(ctx), identity.TenantID, invocationID)
 		}
 	}()
+	record := aicapability.InvocationRecord{
+		InvocationID: invocationID, AgentRunID: identity.AgentRunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: verified.EffectiveMemberID,
+		BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
+		Capability: aicapability.CapabilityProductImageScene, Operation: aicapability.OperationProductImageReview,
+		RouteOutcome: aicapability.RouteOutcomeActive, ProviderID: quote.Provider, ModelID: quote.Model,
+		RoutingKey: quote.RouteReference, CredentialReference: quote.CredentialReference, ConfigurationVersion: quote.ConfigurationVersion,
+		PromptKey: "product-image-review", StartedAt: started, Attempt: 1, Outcome: aicapability.InvocationDispatched, InputHash: inputHash,
+	}
+	recordCtx, recordCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	if err := settings.Recorder.RecordInvocation(recordCtx, record); err != nil {
+		recordCancel()
+		return productimage.Review{}, fmt.Errorf("image review dispatch boundary failed: %w", err)
+	}
+	recordCancel()
+	// The durable dispatched row now owns the reservation. A retry must observe
+	// that row and fail closed instead of issuing another provider request.
+	reservationHeld = false
 	var observation openai.ProductImageReviewObservation
 	observed := false
 	zero := 0
@@ -93,6 +113,14 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		config.ReviewObserver = func(value openai.ProductImageReviewObservation) { observation, observed = value, true }
 	})
 	if err != nil {
+		record.FinishedAt = time.Now().UTC()
+		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(err), "review_adapter_failed"
+		failureCtx, failureCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		failureErr := settings.Recorder.RecordInvocation(failureCtx, record)
+		failureCancel()
+		if failureErr != nil {
+			return productimage.Review{}, fmt.Errorf("image review adapter failure recording failed: %w", failureErr)
+		}
 		return productimage.Review{}, err
 	}
 	result, providerErr := adapter.Review(ctx, request)
@@ -100,20 +128,24 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		result, providerErr = productimage.ValidateReview(result)
 	}
 	if !observed {
+		if providerErr == nil {
+			return result, fmt.Errorf("image review provider result was not observed: %w", productimage.ErrExternalCapabilityUnavailable)
+		}
+		record.FinishedAt = time.Now().UTC()
+		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(providerErr), "review_provider_failed"
+		failureCtx, failureCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		failureErr := settings.Recorder.RecordInvocation(failureCtx, record)
+		failureCancel()
+		if failureErr != nil {
+			return result, fmt.Errorf("image review provider failure recording failed: %w", failureErr)
+		}
 		return result, providerErr
 	}
 	finished := time.Now().UTC()
-	record := aicapability.InvocationRecord{
-		InvocationID: invocationID, AgentRunID: identity.AgentRunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: verified.EffectiveMemberID,
-		BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
-		Capability: aicapability.CapabilityProductImageScene, Operation: aicapability.OperationProductImageReview,
-		RouteOutcome: aicapability.RouteOutcomeActive, ProviderID: quote.Provider, ModelID: quote.Model,
-		RoutingKey: quote.RouteReference, CredentialReference: quote.CredentialReference, ConfigurationVersion: quote.ConfigurationVersion,
-		PromptKey: "product-image-review", PromptVersion: observation.PromptVersion, PromptHash: observation.PromptHash,
-		StartedAt: started, FinishedAt: finished, Attempt: 1, Outcome: aicapability.InvocationSucceeded,
-		ProviderRequestID: safeReviewReference(observation.ProviderRequestID), InputHash: inputHash,
-		ReviewScore: result.Score, ReviewNeedsHumanReview: result.NeedsHumanReview, ReviewReasons: append([]string(nil), result.Reasons...),
-	}
+	record.FinishedAt, record.Outcome = finished, aicapability.InvocationSucceeded
+	record.PromptVersion, record.PromptHash = observation.PromptVersion, observation.PromptHash
+	record.ProviderRequestID = safeReviewReference(observation.ProviderRequestID)
+	record.ReviewScore, record.ReviewNeedsHumanReview, record.ReviewReasons = result.Score, result.NeedsHumanReview, append([]string(nil), result.Reasons...)
 	usage := observation.Usage
 	// The current wire contract has no presence bit. Zero/missing usage stays unknown.
 	if usage.PromptTokens >= 0 && usage.CompletionTokens >= 0 && usage.TotalTokens > 0 && usage.PromptTokens+usage.CompletionTokens == usage.TotalTokens {

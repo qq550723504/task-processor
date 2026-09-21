@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/app/configadapter"
+	accountallocationschema "task-processor/internal/app/schema/accountallocation"
 	"task-processor/internal/core/config"
 	listingkitschema "task-processor/internal/listingkit/schema"
 	listingkitstore "task-processor/internal/listingkit/store"
@@ -17,18 +18,23 @@ import (
 )
 
 type runtimeDependencies struct {
-	LoadConfig       func(configPath string) (*config.Config, error)
-	OpenDB           func(cfg *config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB          func(db *gorm.DB) error
-	MigrateAll       func(db *gorm.DB) error
-	MigrateSheinSync func(db *gorm.DB) error
-	MigrateWorkbench func(db *gorm.DB) error
+	LoadConfig        func(configPath string) (*config.Config, error)
+	OpenDB            func(cfg *config.DatabaseConfig) (*gorm.DB, error)
+	OpenCommercial    func(cfg *config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB           func(db *gorm.DB) error
+	MigrateAll        func(db *gorm.DB) error
+	MigrateSheinSync  func(db *gorm.DB) error
+	MigrateWorkbench  func(db *gorm.DB) error
+	MigrateCommercial func(db *gorm.DB) error
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig: config.LoadConfigFromFileWithoutValidation,
 		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.Open(configadapter.Database(cfg))
+		},
+		OpenCommercial: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.Open(configadapter.Database(cfg))
 		},
 		CloseDB: func(db *gorm.DB) error {
@@ -45,6 +51,9 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			return listingkitstore.AutoMigrateSheinSyncRepository(db)
 		},
 		MigrateWorkbench: workbenchschema.AutoMigrateRuntime,
+		MigrateCommercial: func(db *gorm.DB) error {
+			return accountallocationschema.Migrate(context.Background(), db)
+		},
 	}
 }
 
@@ -64,6 +73,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if deps.OpenDB == nil {
 		deps.OpenDB = defaults.OpenDB
 	}
+	if deps.OpenCommercial == nil {
+		deps.OpenCommercial = defaults.OpenCommercial
+	}
 	if deps.CloseDB == nil {
 		deps.CloseDB = defaults.CloseDB
 	}
@@ -76,6 +88,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if deps.MigrateWorkbench == nil {
 		deps.MigrateWorkbench = defaults.MigrateWorkbench
 	}
+	if deps.MigrateCommercial == nil {
+		deps.MigrateCommercial = defaults.MigrateCommercial
+	}
 
 	logger := appenv.SetupLoggerWithLevel(opts.LogLevel)
 	appenv.PrintVersionInfo(logger, appenv.VersionInfo{Version: opts.Version, BuildTime: opts.BuildTime})
@@ -83,6 +98,28 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	cfg, err := deps.LoadConfig(opts.ConfigPath())
 	if err != nil {
 		return fmt.Errorf("load config failed: %w", err)
+	}
+	if opts.Scope == "commercial" {
+		if cfg.CommercialDatabase == nil {
+			return fmt.Errorf("commercial database config is required")
+		}
+		commercialDB, err := deps.OpenCommercial(cfg.CommercialDatabase)
+		if err != nil {
+			return fmt.Errorf("connect commercial database failed: %w", err)
+		}
+		if commercialDB == nil {
+			return fmt.Errorf("commercial database config is required")
+		}
+		defer func() {
+			if err := deps.CloseDB(commercialDB); err != nil {
+				logger.WithError(err).Warn("close commercial database failed")
+			}
+		}()
+		if err := deps.MigrateCommercial(commercialDB); err != nil {
+			return fmt.Errorf("commercial schema migration failed: %w", err)
+		}
+		logger.WithField("scope", opts.Scope).Info("listingkit schema migrate completed")
+		return nil
 	}
 	db, err := deps.OpenDB(cfg.Database)
 	if err != nil {
@@ -99,6 +136,26 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 
 	if err := runMigration(db, opts.Scope, deps); err != nil {
 		return fmt.Errorf("listingkit schema migrate failed: %w", err)
+	}
+	if opts.Scope == "" || opts.Scope == "all" {
+		if cfg.CommercialDatabase == nil {
+			return fmt.Errorf("commercial database config is required for all scope")
+		}
+		commercialDB, err := deps.OpenCommercial(cfg.CommercialDatabase)
+		if err != nil {
+			return fmt.Errorf("connect commercial database failed: %w", err)
+		}
+		if commercialDB == nil {
+			return fmt.Errorf("commercial database config is required for all scope")
+		}
+		defer func() {
+			if err := deps.CloseDB(commercialDB); err != nil {
+				logger.WithError(err).Warn("close commercial database failed")
+			}
+		}()
+		if err := deps.MigrateCommercial(commercialDB); err != nil {
+			return fmt.Errorf("commercial schema migration failed: %w", err)
+		}
 	}
 	logger.WithField("scope", opts.Scope).Info("listingkit schema migrate completed")
 	return nil
@@ -125,7 +182,7 @@ func runMigration(db *gorm.DB, scope string, deps runtimeDependencies) error {
 
 func validateMigrationScope(scope string) error {
 	switch scope {
-	case "", "all", "shein-sync", "workbench":
+	case "", "all", "commercial", "shein-sync", "workbench":
 		return nil
 	default:
 		return flag.ErrHelp

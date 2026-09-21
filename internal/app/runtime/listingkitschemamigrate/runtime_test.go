@@ -98,6 +98,44 @@ func TestRunDispatchesSheinSyncScopeAndClosesDatabase(t *testing.T) {
 	}
 }
 
+func TestRunDispatchesCommercialScopeToCommercialDatabase(t *testing.T) {
+	commercial := &gorm.DB{}
+	openedCommercial, migratedCommercial, closedCommercial := false, false, false
+	err := runWithDependencies(context.Background(), Options{Config: "config/test.yaml", LogLevel: "error", Scope: "commercial"}, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{CommercialDatabase: &config.DatabaseConfig{}}, nil
+		},
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			t.Fatal("primary database must not be opened for commercial scope")
+			return nil, nil
+		},
+		OpenCommercial: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			openedCommercial = true
+			return commercial, nil
+		},
+		CloseDB: func(got *gorm.DB) error {
+			if got != commercial {
+				t.Fatal("closed unexpected database")
+			}
+			closedCommercial = true
+			return nil
+		},
+		MigrateCommercial: func(got *gorm.DB) error {
+			if got != commercial {
+				t.Fatal("migrated unexpected database")
+			}
+			migratedCommercial = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("runWithDependencies returned error: %v", err)
+	}
+	if !openedCommercial || !migratedCommercial || !closedCommercial {
+		t.Fatalf("expected commercial open/migrate/close, got open=%v migrate=%v close=%v", openedCommercial, migratedCommercial, closedCommercial)
+	}
+}
+
 func TestMigrationScopeDispatchesExactMigratorsInOrder(t *testing.T) {
 	db := &gorm.DB{}
 	for _, test := range []struct {
@@ -262,7 +300,7 @@ func TestMigrationScopeFlagHelpAdvertisesAllSupportedScopes(t *testing.T) {
 	fs.SetOutput(&output)
 	ParseFlagsFrom(fs, "--help")
 	fs.PrintDefaults()
-	for _, scope := range []string{"all", "shein-sync", "workbench"} {
+	for _, scope := range []string{"all", "commercial", "shein-sync", "workbench"} {
 		if !strings.Contains(output.String(), scope) {
 			t.Fatalf("scope help does not advertise %q: %s", scope, output.String())
 		}

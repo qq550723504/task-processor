@@ -42,11 +42,11 @@ func installSchemaTx(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("account allocation schema transaction is nil")
 	}
 	statements := []string{
-		`CREATE TABLE public.account_member_token_locks (
+		`CREATE TABLE IF NOT EXISTS public.account_member_token_locks (
     organization_id VARCHAR(128) NOT NULL PRIMARY KEY,
     updated_at TIMESTAMPTZ NOT NULL
 )`,
-		`CREATE TABLE public.account_member_token_allocations (
+		`CREATE TABLE IF NOT EXISTS public.account_member_token_allocations (
     organization_id VARCHAR(128) NOT NULL,
     member_id VARCHAR(128) NOT NULL,
     metric VARCHAR(32) NOT NULL DEFAULT 'token',
@@ -61,7 +61,7 @@ func installSchemaTx(ctx context.Context, tx *sql.Tx) error {
     CONSTRAINT account_member_token_allocations_ids_check CHECK (octet_length(organization_id) BETWEEN 1 AND 128 AND organization_id = btrim(organization_id) AND octet_length(member_id) BETWEEN 1 AND 128 AND member_id = btrim(member_id)),
     CONSTRAINT account_member_token_allocations_values_check CHECK (allocated >= 0 AND version >= 0 AND window_end > window_start)
 )`,
-		`CREATE TABLE public.account_member_token_operations (
+		`CREATE TABLE IF NOT EXISTS public.account_member_token_operations (
     idempotency_key VARCHAR(128) NOT NULL PRIMARY KEY,
     organization_id VARCHAR(128) NOT NULL,
     member_id VARCHAR(128) NOT NULL,
@@ -76,7 +76,7 @@ func installSchemaTx(ctx context.Context, tx *sql.Tx) error {
     created_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT account_member_token_operations_values_check CHECK (target >= 0 AND version > 0 AND allocated >= 0 AND consumed >= 0 AND window_end > window_start)
 )`,
-		`CREATE TABLE public.account_member_token_audit_events (
+		`CREATE TABLE IF NOT EXISTS public.account_member_token_audit_events (
     id BIGSERIAL PRIMARY KEY,
     organization_id VARCHAR(128) NOT NULL,
     actor_id VARCHAR(128) NOT NULL,
@@ -95,6 +95,12 @@ func installSchemaTx(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("install account allocation schema: %w", err)
 		}
+	}
+	if _, err := tx.ExecContext(ctx, `GRANT SELECT, INSERT, UPDATE ON TABLE public.account_member_token_locks, public.account_member_token_allocations, public.account_member_token_operations, public.account_member_token_audit_events TO commercial_runtime`); err != nil {
+		return fmt.Errorf("grant account allocation runtime privileges: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_runtime`); err != nil {
+		return fmt.Errorf("grant account allocation sequence privileges: %w", err)
 	}
 	return nil
 }

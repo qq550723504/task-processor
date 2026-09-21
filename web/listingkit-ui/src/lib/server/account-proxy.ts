@@ -62,10 +62,10 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
     catch { throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); }
     controller.signal.throwIfAborted();
     if (response.status !== 200) return accountFailure(response.status, accountErrorCode(response.status, payload));
-    if (kind === "member-allocations") {
+    if (kind === "member-allocations" && request.method === "GET") {
       if (!payload || typeof payload !== "object" || !("organizationId" in payload) || payload.organizationId !== organization) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
-      return json(payload, 200);
     }
+    if (kind === "member-allocations") return json(payload, 200);
     const result = parseAccountPayload(kind, payload);
     if (result.userId !== sessionUserId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
     if ("effectiveOrganizationId" in result && result.effectiveOrganizationId !== organization) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");

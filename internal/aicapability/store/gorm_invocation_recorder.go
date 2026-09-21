@@ -89,16 +89,26 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		return err
 	}
 
-	err := r.db.WithContext(ctx).Create(invocationRowFromRecord(record)).Error
-	if err != nil {
-		// A retry after the provider fact was durably recorded must still be
-		// allowed to finish commercial settlement. The invocation ID is the
-		// stable observation identity.
-		var existing invocationRow
-		if lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error; lookupErr != nil {
+	row := invocationRowFromRecord(record)
+	var existing invocationRow
+	lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error
+	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}
-		if existing.TenantID != strings.TrimSpace(record.TenantID) || existing.UserID != strings.TrimSpace(record.UserID) || existing.MemberID != strings.TrimSpace(record.MemberID) || existing.TotalTokens != record.TotalTokens || existing.Outcome != strings.TrimSpace(string(record.Outcome)) {
+	} else if lookupErr != nil {
+		return lookupErr
+	} else {
+		if existing.TenantID != strings.TrimSpace(record.TenantID) || existing.UserID != strings.TrimSpace(record.UserID) || existing.MemberID != strings.TrimSpace(record.MemberID) || existing.InputHash != strings.TrimSpace(record.InputHash) {
+			return fmt.Errorf("ai invocation identity conflict")
+		}
+		if existing.Outcome == string(aicapability.InvocationSucceeded) && record.Outcome == aicapability.InvocationDispatched {
+			return nil
+		}
+		if existing.Outcome != string(aicapability.InvocationDispatched) && existing.Outcome != strings.TrimSpace(string(record.Outcome)) {
+			return fmt.Errorf("ai invocation outcome conflict")
+		}
+		if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
 			return err
 		}
 	}
@@ -106,7 +116,7 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		if err := aicapability.SettleSuccessfulInvocation(ctx, record, r.usageSettler); err != nil {
 			return err
 		}
-		if record.Outcome != aicapability.InvocationSucceeded || !record.UsageKnown {
+		if (record.Outcome != aicapability.InvocationSucceeded && record.Outcome != aicapability.InvocationDispatched) || (record.Outcome == aicapability.InvocationSucceeded && !record.UsageKnown) {
 			if reservation, ok := r.usageSettler.(aicapability.InvocationUsageReservation); ok {
 				return reservation.ReleaseAIInvocationUsage(ctx, record.TenantID, record.InvocationID)
 			}

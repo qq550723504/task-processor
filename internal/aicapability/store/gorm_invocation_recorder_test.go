@@ -72,6 +72,26 @@ func TestGormInvocationRecorderDefaultsBlankCacheStatusToNotApplicable(t *testin
 	require.Equal(t, "not_applicable", row.CacheStatus)
 }
 
+func TestGormInvocationRecorderDurableDispatchBoundaryIsUpdatedByFinalFact(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	recorder := NewGormInvocationRecorder(db)
+	started := time.Date(2026, 9, 21, 2, 0, 0, 0, time.UTC)
+	record := aicapability.InvocationRecord{InvocationID: "invocation-dispatch", TenantID: "tenant-1", UserID: "user-1", MemberID: "member-1", InputHash: "input-1", StartedAt: started, Outcome: aicapability.InvocationDispatched}
+	require.NoError(t, recorder.RecordInvocation(context.Background(), record))
+	found, ok, err := recorder.FindInvocation(context.Background(), "tenant-1", "member-1", "invocation-dispatch", "input-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, aicapability.InvocationDispatched, found.Outcome)
+
+	record.FinishedAt = started.Add(time.Second)
+	record.Outcome = aicapability.InvocationSucceeded
+	require.NoError(t, recorder.RecordInvocation(context.Background(), record))
+	found, ok, err = recorder.FindInvocation(context.Background(), "tenant-1", "member-1", "invocation-dispatch", "input-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, aicapability.InvocationSucceeded, found.Outcome)
+}
+
 func TestGormInvocationRecorderRejectsMissingDatabaseBlankIDAndNegativeCounters(t *testing.T) {
 	require.EqualError(t, AutoMigrateInvocationLedger(nil), "ai invocation ledger database is nil")
 	require.EqualError(t, (*GormInvocationRecorder)(nil).RecordInvocation(context.Background(), aicapability.InvocationRecord{InvocationID: "x"}), "ai invocation recorder database is nil")

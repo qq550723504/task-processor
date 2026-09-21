@@ -17,8 +17,12 @@ const (
 type InvocationOutcome string
 
 const (
-	InvocationSucceeded InvocationOutcome = "succeeded"
-	InvocationFailed    InvocationOutcome = "failed"
+	// InvocationDispatched is a durable provider-dispatch boundary. Once this
+	// fact exists, retries must not issue the provider call again without a
+	// provider-side idempotency contract.
+	InvocationDispatched InvocationOutcome = "dispatched"
+	InvocationSucceeded  InvocationOutcome = "succeeded"
+	InvocationFailed     InvocationOutcome = "failed"
 )
 
 type InvocationRecord struct {
