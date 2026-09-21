@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -51,10 +52,10 @@ func (r profileAuditReader) ListRecentAudit(ctx context.Context, organizationID 
 	}
 	page := accountaudit.AdditionalAuditPage{Items: make([]accountaudit.AdditionalAuditEvent, 0, len(items))}
 	for _, item := range items {
-		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "account_business_profile.updated", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "account_business_profile", ObjectReference: item.UserID, Operation: item.Operation, Version: item.Version, Key: strconv.FormatInt(item.ID, 10)})
+		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "account_business_profile.updated", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "account_business_profile", ObjectReference: item.UserID, Operation: item.Operation, Version: item.Version, Key: fmt.Sprintf("%020d", item.ID)})
 	}
 	if next != nil {
-		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: strconv.FormatInt(next.ID, 10)}
+		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: fmt.Sprintf("%020d", next.ID)}
 	}
 	return page, nil
 }

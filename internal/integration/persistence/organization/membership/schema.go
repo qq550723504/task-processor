@@ -11,7 +11,7 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
 	if tx == nil {
 		return errors.New("membership schema transaction unavailable")
 	}
-	_, err := tx.ExecContext(ctx, `CREATE TABLE public.organization_member_operations (
+	_, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS public.organization_member_operations (
  project_id varchar(128) NOT NULL,
  organization_id varchar(128) NOT NULL,
  actor_id varchar(128) NOT NULL,
@@ -24,9 +24,9 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
  payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object' AND octet_length(payload::text) <= 16384),
  PRIMARY KEY(project_id,organization_id,actor_id,operation_key)
  );
- CREATE UNIQUE INDEX organization_member_active_target ON public.organization_member_operations(project_id,organization_id,target_user_id) WHERE active;
- CREATE UNIQUE INDEX organization_member_active_invite_email ON public.organization_member_operations(project_id,organization_id,invite_email) WHERE active AND invite_email IS NOT NULL;
- CREATE TABLE public.organization_member_audit_events (
+ CREATE UNIQUE INDEX IF NOT EXISTS organization_member_active_target ON public.organization_member_operations(project_id,organization_id,target_user_id) WHERE active;
+ CREATE UNIQUE INDEX IF NOT EXISTS organization_member_active_invite_email ON public.organization_member_operations(project_id,organization_id,invite_email) WHERE active AND invite_email IS NOT NULL;
+ CREATE TABLE IF NOT EXISTS public.organization_member_audit_events (
   organization_id varchar(128) NOT NULL,
   actor_id varchar(128) NOT NULL,
   target_user_id varchar(128) NOT NULL,
