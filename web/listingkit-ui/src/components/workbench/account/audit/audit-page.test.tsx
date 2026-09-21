@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AuditPage } from "./audit-page";
+import { AuditPage, auditRowKey } from "./audit-page";
 
 const state = vi.hoisted(() => ({ context: { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null as { code: string } | null, blockingError: null as { code: string } | null } }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
@@ -17,6 +17,12 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("keeps audit row keys unique across relation types and actors", () => {
+    const base = { eventType: "event", relation: { type: "relation", reference: "same", version: "1" } };
+    expect(auditRowKey({ ...base, actor: "actor-a", eventType: "profile" })).not.toBe(auditRowKey({ ...base, actor: "actor-a", eventType: "resource" }));
+    expect(auditRowKey({ ...base, actor: "actor-a", eventType: "membership" })).not.toBe(auditRowKey({ ...base, actor: "actor-b", eventType: "membership" }));
+  });
+
   it("renders source facts and coverage without fake metrics or actions", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, items: [event] })));
     mount(); const table = await screen.findByRole("table", { name: "操作记录" }); expect(table).toBeVisible();
