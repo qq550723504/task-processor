@@ -24,6 +24,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"task-processor/internal/app/runtime/currentapplication"
+	accountallocationSchema "task-processor/internal/app/schema/accountallocation"
 	registrySchema "task-processor/internal/app/schema/sourceaccountregistry"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -69,15 +70,16 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 	owner, connection := commercialPostgres(t)
 	ctx := context.Background()
 	require.NoError(t, listingsubscription.AutoMigrateRepository(owner))
+	require.NoError(t, accountallocationSchema.Migrate(ctx, owner))
 	require.NoError(t, registrySchema.Migrate(ctx, owner))
 	require.NoError(t, owner.Exec(`REVOKE CREATE ON SCHEMA public FROM PUBLIC`).Error)
-	for _, role := range []string{"source_account_runtime", "commercial_reader"} {
+	for _, role := range []string{"source_account_runtime", "commercial_runtime"} {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'synthetic-startup-password'; GRANT CONNECT ON DATABASE issue347 TO `+role+`; GRANT USAGE ON SCHEMA public TO `+role).Error)
 		for table, privileges := range run1AllowedPrivileges[role] {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)
 		}
 	}
-	require.NoError(t, owner.Exec(`ALTER ROLE commercial_reader SET default_transaction_read_only=on`).Error)
+	require.NoError(t, owner.Exec(`ALTER ROLE commercial_runtime SET default_transaction_read_only=on`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.source_account_resources(organization_id,id,platform,display_name,management_status,connection_status,version,created_by,updated_by,created_at,updated_at) VALUES ('org-B','01991e24-1009-7009-8009-000000000009','1688','retained','disabled','pending_connection',1,'fixture','fixture',now(),now())`).Error)
 	var tables []string
 	require.NoError(t, owner.Raw(`SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename`).Scan(&tables).Error)
@@ -97,7 +99,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			trace := &startupSchemaTrace{entered: make(chan context.Context, 1), release: make(chan struct{}, 1)}
 			defer close(trace.release)
-			source, commercial := open("source_account_runtime", trace), open("commercial_reader", nil)
+			source, commercial := open("source_account_runtime", trace), open("commercial_runtime", nil)
 			parent, cancel := context.WithCancel(ctx)
 			if mode == "remaining_deadline" {
 				cancel()
@@ -112,7 +114,7 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 			cfg := &currentapplication.Config{SchemaVersion: 1, Listen: currentapplication.ListenConfig{Host: "127.0.0.1", Port: 18443}, Identity: currentapplication.IdentityConfig{IssuerURL: "http://127.0.0.1:18080", AuthorizationAPIURL: "http://127.0.0.1:18080", ClientID: "run1", ClientSecret: "synthetic-identity", ProjectID: "run1"}}
 			cfg.SourceAccountDatabase = currentapplication.DatabaseConfig{Host: connection.Host, Port: connection.Port, User: "source_account_runtime", Password: "synthetic-startup-password", Database: connection.Database, MaxConnections: 1}
 			cfg.CommercialDatabase = cfg.SourceAccountDatabase
-			cfg.CommercialDatabase.User = "commercial_reader"
+			cfg.CommercialDatabase.User = "commercial_runtime"
 			done := make(chan error, 1)
 			go func() {
 				done <- currentapplication.Run(parent, cfg, log, currentapplication.Dependencies{

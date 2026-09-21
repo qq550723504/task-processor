@@ -78,6 +78,29 @@ describe("ReferralsPage", () => {
     expect(screen.getByText("注册入口暂不可用")).toBeVisible();
   });
 
+  it("allows a user to cancel only the requested withdrawal", async () => {
+    const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
+    const requested = { schemaVersion: "referral-withdrawal-v1", id: "withdrawal-1", currency: "CNY", method: "ALIPAY", payoutMethodId: "method-1", amountMinor: "10000", status: "REQUESTED", payoutReference: "", version: "2", createdAt: "2026-09-13T10:01:00Z", updatedAt: "2026-09-13T10:01:00Z" };
+    const canceled = { ...requested, status: "CANCELED", version: "3", updatedAt: "2026-09-13T10:02:00Z" };
+    const fetch = vi.fn((input: string, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
+      if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: [{ methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }] }));
+      if (path === "/api/account/referral-withdrawals" && init?.method === "POST") return Promise.resolve(Response.json(requested));
+      if (path === "/api/account/referral-withdrawals/withdrawal-1/cancel" && init?.method === "POST") return Promise.resolve(Response.json(canceled));
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    mount();
+    await user.type(await screen.findByLabelText("金额（分）"), "10000");
+    await user.click(screen.getByRole("button", { name: "申请提现" }));
+    expect(await screen.findByRole("button", { name: "取消提现申请" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "取消提现申请" }));
+    expect(await screen.findByText("提现状态：CANCELED。")).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith("/api/account/referral-withdrawals/withdrawal-1/cancel", expect.objectContaining({ method: "POST" }));
+  });
+
   it("clears an old subject result and prevents a late response from returning", async () => {
     let resolve!: (value: Response) => void;
     const fetch = vi.fn(() => new Promise<Response>((done) => { resolve = done; }));
