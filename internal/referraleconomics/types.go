@@ -13,6 +13,7 @@ const (
 	CommissionRateBPS      = int64(1000)
 	BPSDenominator         = int64(10000)
 	MinimumWithdrawalMinor = int64(10000)
+	SettlementPeriodDays   = 14
 )
 
 var (
@@ -40,6 +41,11 @@ type Earnings struct {
 	PendingMinor, AvailableMinor, ReservedMinor, AdjustmentMinor int64
 	Version                                                      int64
 	UpdatedAt                                                    time.Time
+}
+type EarningsLedgerEntry struct {
+	EntryID, Referrer, Currency, PaymentID, EntryType, ReferenceID string
+	AmountMinor                                                    int64
+	OccurredAt                                                     time.Time
 }
 type WithdrawalMethod string
 

@@ -76,6 +76,49 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
   } finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); }
 }
 
+const identityOperations: Record<string, readonly ("GET" | "PUT" | "POST")[]> = {
+  profile: ["GET", "PUT"],
+  email: ["PUT"],
+  "email/resend": ["POST"],
+  "email/verify": ["POST"],
+  phone: ["PUT"],
+  "phone/resend": ["POST"],
+  "phone/verify": ["POST"],
+  password: ["PUT"],
+};
+
+export async function proxyAccountIdentity(request: Request, token: string, sessionUserId: string, operation: string): Promise<Response> {
+  const methods = identityOperations[operation];
+  if (!methods || !methods.includes(request.method as "GET" | "PUT" | "POST") || !token || !validID(sessionUserId) || request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(400, "INVALID_REQUEST");
+  const url = new URL(request.url);
+  const isRead = request.method === "GET";
+  if (url.pathname !== `/api/account/identity/${operation}` || url.search || request.url.endsWith("?") || (!isRead && request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") || (isRead && (request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding")))) {
+    void request.body?.cancel().catch(() => undefined);
+    return accountFailure(400, "INVALID_REQUEST");
+  }
+  const origin = serviceOrigin();
+  if (!origin) return accountFailure(503, "ACCOUNT_NOT_CONFIGURED");
+  const controller = new AbortController(); const abort = () => controller.abort();
+  request.signal.addEventListener("abort", abort, { once: true }); if (request.signal.aborted) abort();
+  const timer = setTimeout(abort, 15000);
+  try {
+    controller.signal.throwIfAborted();
+    const body = isRead ? undefined : await readAccountRequestBody(request, 16 * 1024, controller.signal);
+    const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });
+    if (!isRead) headers.set("Content-Type", "application/json");
+    const response = await fetch(`${origin}/api/v1/account/identity/${operation}`, { method: request.method, headers, ...(body === undefined ? {} : { body }), cache: "no-store", redirect: "manual", signal: controller.signal });
+    controller.signal.throwIfAborted();
+    let payload: unknown;
+    try { payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); } catch { throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); }
+    controller.signal.throwIfAborted();
+    if (response.status !== 200) return accountFailure(response.status, accountErrorCode(response.status, payload));
+    return json(payload, 200);
+  } catch (error) {
+    if (controller.signal.aborted) return accountFailure(504, "DEADLINE_EXCEEDED");
+    return error instanceof AccountReadError ? accountFailure(error.status, error.code) : accountFailure(400, "INVALID_REQUEST");
+  } finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); }
+}
+
 async function readAccountRequestBody(request: Request, maxBytes: number, signal: AbortSignal) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("missing request body");

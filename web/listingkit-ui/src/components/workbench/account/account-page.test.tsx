@@ -23,7 +23,7 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
     expect(screen.getByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
     expect(screen.getByText("可用操作以当前企业权限为准。")).toBeVisible();
-    expect(screen.getByText("当前仅覆盖源账号；成员、权限、续费及失败尝试尚未纳入。")).toBeVisible();
+    expect(screen.getByText("只展示已提交成功的业务事件；失败尝试及未提交的 provider 操作不纳入。")).toBeVisible();
     expect(screen.queryByRole("button", { name: /邀请|移除/ })).not.toBeInTheDocument();
   });
   it("links members with permission-qualified wording alongside delivered sibling cards", async () => {
@@ -40,7 +40,7 @@ describe("AccountPage read-only projection", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
     expect(screen.getByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
-    expect(screen.getByText("当前仅覆盖源账号；成员、权限、续费及失败尝试尚未纳入。")).toBeVisible();
+    expect(screen.getByText("只展示已提交成功的业务事件；失败尝试及未提交的 provider 操作不纳入。")).toBeVisible();
     expect(screen.getByText("企业额度与已记录用量进入资源与额度查看；成员 Token 分配使用当前企业 entitlement window。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看成员与权限" })).toBeVisible();
@@ -48,8 +48,8 @@ describe("AccountPage read-only projection", () => {
   it("links the delivered audit slice with its bounded scope and retains the member entry", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
-    expect(screen.getByText("源账号登记、启用和停用的已提交成功记录")).toBeVisible();
-    expect(screen.getByText("当前仅覆盖源账号；成员、权限、续费及失败尝试尚未纳入。")).toBeVisible();
+    expect(screen.getByText("查看源账号、成员额度、经营画像和成员权限的已提交成功记录")).toBeVisible();
+    expect(screen.getByText("只展示已提交成功的业务事件；失败尝试及未提交的 provider 操作不纳入。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看成员与权限" })).toBeVisible();
   });

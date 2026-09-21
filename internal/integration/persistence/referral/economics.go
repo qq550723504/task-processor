@@ -191,7 +191,7 @@ func (r *Repository) RecordSettledPayment(ctx context.Context, payment money.Pay
 		relation := relations[0]
 		var existing earningClaim
 		if err := tx.Where("payment_id=?", payment.PaymentID).Take(&existing).Error; err == nil {
-			if existing.Referrer != relation.Referrer || existing.Issuer != relation.Issuer || existing.Subject != payment.PayerUserID || existing.Currency != payment.Currency || existing.CommissionMinor != commission || existing.NetCashMinor != payment.CommissionableAmountMinor || !existing.AvailableAt.Equal(payment.SettledAt.UTC().AddDate(0, 0, 14)) {
+			if existing.Referrer != relation.Referrer || existing.Issuer != relation.Issuer || existing.Subject != payment.PayerUserID || existing.Currency != payment.Currency || existing.CommissionMinor != commission || existing.NetCashMinor != payment.CommissionableAmountMinor || !existing.AvailableAt.Equal(payment.SettledAt.UTC().AddDate(0, 0, economics.SettlementPeriodDays)) {
 				return economics.ErrConflict
 			}
 			return nil
@@ -199,7 +199,7 @@ func (r *Repository) RecordSettledPayment(ctx context.Context, payment money.Pay
 			return economics.ErrUnavailable
 		}
 		now := time.Now().UTC()
-		claim := earningClaim{PaymentID: payment.PaymentID, Issuer: relation.Issuer, Subject: payment.PayerUserID, Referrer: relation.Referrer, Currency: payment.Currency, NetCashMinor: payment.CommissionableAmountMinor, CommissionMinor: commission, AvailableAt: payment.SettledAt.UTC().AddDate(0, 0, 14), State: "PENDING", CreatedAt: now, UpdatedAt: now}
+		claim := earningClaim{PaymentID: payment.PaymentID, Issuer: relation.Issuer, Subject: payment.PayerUserID, Referrer: relation.Referrer, Currency: payment.Currency, NetCashMinor: payment.CommissionableAmountMinor, CommissionMinor: commission, AvailableAt: payment.SettledAt.UTC().AddDate(0, 0, economics.SettlementPeriodDays), State: "PENDING", CreatedAt: now, UpdatedAt: now}
 		if err := tx.Create(&claim).Error; err != nil {
 			return economics.ErrUnavailable
 		}
@@ -428,6 +428,21 @@ func (r *Repository) ReadEarnings(ctx context.Context, referrer, currency string
 		return economics.Earnings{}, economics.ErrUnavailable
 	}
 	return economics.Earnings{Referrer: p.Referrer, Currency: p.Currency, PendingMinor: p.PendingMinor, AvailableMinor: p.AvailableMinor, ReservedMinor: p.ReservedMinor, AdjustmentMinor: p.AdjustmentMinor, Version: p.Version, UpdatedAt: p.UpdatedAt.UTC()}, nil
+}
+
+func (r *Repository) ListEarningsLedger(ctx context.Context, referrer, currency string, limit int) ([]economics.EarningsLedgerEntry, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(referrer) == "" || currency != economics.CurrencyCNY || limit <= 0 || limit > 100 {
+		return nil, economics.ErrInvalid
+	}
+	var rows []earningLedgerEntry
+	if err := r.db.WithContext(ctx).Where("referrer = ? AND currency = ?", strings.TrimSpace(referrer), currency).Order("occurred_at DESC, entry_id DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, economics.ErrUnavailable
+	}
+	out := make([]economics.EarningsLedgerEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, economics.EarningsLedgerEntry{EntryID: row.EntryID, Referrer: row.Referrer, Currency: row.Currency, PaymentID: row.PaymentID, EntryType: row.EntryType, AmountMinor: row.AmountMinor, ReferenceID: row.ReferenceID, OccurredAt: row.OccurredAt.UTC()})
+	}
+	return out, nil
 }
 
 func (r *Repository) ListWithdrawals(ctx context.Context, referrer string) ([]economics.Withdrawal, error) {

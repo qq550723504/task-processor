@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReferralsPage } from "./referrals-page";
+import { ReferralsPage, type ReferralView } from "./referrals-page";
 
 const state = vi.hoisted(() => ({
   context: { user: { id: "subject-1" } as { id: string } | null, isLoading: false, isSwitching: false, error: null as { code: string } | null, blockingError: null as { code: string } | null },
@@ -11,12 +11,12 @@ const state = vi.hoisted(() => ({
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 
 const clients: QueryClient[] = [];
-function mount(mode: "overview" | "complete" = "overview", expectedUserId = "subject-1", registrationAvailable = true) {
+function mount(mode: "overview" | "complete" = "overview", expectedUserId = "subject-1", registrationAvailable = true, view?: ReferralView) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   clients.push(client);
-  const child = (subject = expectedUserId) => <QueryClientProvider client={client}><ReferralsPage mode={mode} expectedUserId={subject} registrationAvailable={registrationAvailable} /></QueryClientProvider>;
-  const view = render(child());
-  return { ...view, update: (subject = expectedUserId) => view.rerender(child(subject)) };
+  const child = (subject = expectedUserId) => <QueryClientProvider client={client}><ReferralsPage mode={mode} view={view} expectedUserId={subject} registrationAvailable={registrationAvailable} /></QueryClientProvider>;
+  const rendered = render(child());
+  return { ...rendered, update: (subject = expectedUserId) => rendered.rerender(child(subject)) };
 }
 
 afterEach(() => {
@@ -27,6 +27,28 @@ afterEach(() => {
 });
 
 describe("ReferralsPage", () => {
+  it("reads promotion rules from the backend contract", async () => {
+    const rules = { schemaVersion: "referral-rules-v1", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract" };
+    const fetch = vi.fn().mockResolvedValue(Response.json(rules));
+    vi.stubGlobal("fetch", fetch);
+    mount("overview", "subject-1", true, "rules");
+    expect(await screen.findByText("10%，按人民币最小货币单位计算。")).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-rules");
+  });
+
+  it("uses the dedicated backend projection for the earnings page", async () => {
+    const earnings = { schemaVersion: "referral-earnings-v1", referrer: "subject-1", currency: "CNY", pendingMinor: "2000", availableMinor: "10000", reservedMinor: "0", adjustmentMinor: "-500", version: "3", updatedAt: "2026-09-13T10:00:00Z", source: "referral_earnings_projection", entries: [{ entryId: "entry-1", referrer: "subject-1", currency: "CNY", paymentId: "payment-1", entryType: "COMMISSION", amountMinor: "10000", referenceId: "payment-1", occurredAt: "2026-09-13T10:00:00Z" }] };
+    const fetch = vi.fn().mockResolvedValue(Response.json(earnings));
+    vi.stubGlobal("fetch", fetch);
+    mount("overview", "subject-1", true, "earnings");
+    expect(await screen.findByText("¥95.00")).toBeVisible();
+    expect(screen.getByText(/Projection 版本：3/)).toBeVisible();
+    expect(screen.getByText(/COMMISSION · ¥100.00 · 业务单据 payment-1/)).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-earnings");
+  });
+
   it("shows actual relation count and leaves unsupported earnings unavailable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
     mount();

@@ -35,12 +35,13 @@ async function proxy(request: Request, token: string) {
   const path = new URL(request.url).pathname;
   const mapping: Record<string, string> = {
     "/api/account/referral-earnings": "/api/v1/account/referrals/earnings",
+    "/api/account/referral-rules": "/api/v1/account/referrals/rules",
     "/api/account/referral-payout-methods": "/api/v1/account/referrals/payout-methods",
     "/api/account/referral-withdrawals": "/api/v1/account/referrals/withdrawals",
     "/api/account/referral-withdrawals/review-queue": "/api/v1/account/referrals/withdrawals/review-queue",
   };
   const suffix = mapping[path] ?? (path.match(/^\/api\/account\/referral-withdrawals\/[^/]+\/(?:cancel|review)$/) ? path.replace("/api/account/referral-withdrawals", "/api/v1/account/referrals/withdrawals") : "");
-  if (!suffix || request.method === "GET" && !["/api/account/referral-earnings", "/api/account/referral-payout-methods", "/api/account/referral-withdrawals", "/api/account/referral-withdrawals/review-queue"].includes(path) || request.method === "POST" && path === "/api/account/referral-earnings" || !["GET", "POST"].includes(request.method)) return referralFailure(400, "INVALID_REQUEST");
+  if (!suffix || request.method === "GET" && !["/api/account/referral-earnings", "/api/account/referral-rules", "/api/account/referral-payout-methods", "/api/account/referral-withdrawals", "/api/account/referral-withdrawals/review-queue"].includes(path) || request.method === "POST" && path === "/api/account/referral-earnings" || !["GET", "POST"].includes(request.method)) return referralFailure(400, "INVALID_REQUEST");
   const origin = serviceOrigin();
   if (!origin) return referralFailure(503, "REFERRALS_NOT_CONFIGURED");
   const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });

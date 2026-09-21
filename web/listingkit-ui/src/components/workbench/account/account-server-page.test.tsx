@@ -3,7 +3,7 @@ import { AccountServerPage } from "./account-server-page";
 const auth = vi.hoisted(() => ({ session: null as unknown }));
 vi.mock("@/auth", () => ({ serverAuth: () => Promise.resolve(auth.session) }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
-vi.mock("./account-page", () => ({ AccountPage: () => null }));
+vi.mock("./account-page", () => ({ AccountPage: () => null, accountPagePath: (page: string) => `/workbench/account/${page}` }));
 afterEach(() => { auth.session = null; });
 it.each([null, { accessToken: "token" }, { accessToken: "token", error: "RefreshAccessTokenError" }])("rejects absent or incomplete server identity", async session => {
   auth.session = session;

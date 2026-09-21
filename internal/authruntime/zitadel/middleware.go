@@ -65,7 +65,8 @@ func (m *middleware) Handle(c *gin.Context) {
 		c.Request.Header.Del(header)
 	}
 
-	c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
+	requestContext := authidentity.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity)
+	c.Request = c.Request.WithContext(WithBearerToken(requestContext, token))
 	c.Request.Header.Set("X-Tenant-ID", identity.TenantID)
 	c.Request.Header.Set("tenant-id", identity.TenantID)
 	c.Request.Header.Set("X-User-ID", identity.UserID)
