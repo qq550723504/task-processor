@@ -110,7 +110,8 @@ legacy crawler 里已存在「public → account-assisted 回退」：`internal/
   - 影响：可能重复抓取同一商品（重复外部请求，非数据损坏；发布侧按 `crawler:1688:<offerID>` 归一到同一商品）。
   - 运维约束：批量由**单一操作人**提交，即可避免。
 - 部分失败语义天然成立：一条失败不影响其它条。
-- 容量沿用 `MaxAcquisitionOperations=256`（**保留总量，无 GC**）/ `MaxActiveAcquisitionOperations=32`。
+- 容量沿用 `MaxAcquisitionOperations=256`（**终身额度，无 GC，见 §8.1**）/ `MaxActiveAcquisitionOperations=32`。
+  - 注意：预建 `acquiring` 行会**立即计入 32 活跃额度** ⇒ 单批条数机械上不能超过 32（本设计取 10）。
 
 > 备选「新增 `BatchJob` 聚合根」被否：会引入第二事实源、第二套状态机、第二套恢复协议。
 
@@ -261,7 +262,7 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
 |---|---|
 | 提交响应丢失 | 用原 key `ByKey` / verify 核实（既有语义） |
 | 被重定向登录页 | `CHALLENGE`，需人工重登；不自动重试 |
-| 用户取消 | **本次不做**。未认领的行会保留在 `acquiring` 且占用 256 保留额度（§10-2） |
+| 用户取消 | **本次必须实现**（§8.2：不做会造成终身额度无界泄漏）。取消仅限未认领（`acquiring` 且 `command IS NULL`）的行；已 `prepared` 的行走既有 `Finish(…, AcquisitionFailed, "CANCELLED")` |
 | 并发执行器 | 见 §3 D2，「单组织单执行器」为明确约束 |
 
 ## 7. 授权与租户
@@ -277,14 +278,46 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
 |---|---|---|
 | 单条 envelope | 2 MiB | `MaxEncodedEnvelopeBytes` |
 | 命令体 | 2 MiB | `MaxAcquisitionCommandBytes` |
-| **保留操作总数/组织（无 GC）** | **256**，与 ①/③ 共用 | `MaxAcquisitionOperations` |
+| **保留操作总数/组织（终身额度，无 GC）** | **256**，与 ①/③ 共用 | `MaxAcquisitionOperations` |
 | 活跃操作数 | 32 | `MaxActiveAcquisitionOperations` |
 | acquiring 租约 | **30 秒**（GET 租约，不可续期；靠过期重认领） | `AcquisitionLease` |
 | 操作 deadline | 20 秒（服务端）/ 平台 `timeout` 120 秒（浏览器） | 既有 |
-| 批量提交条数 | **建议 ≤ 32** | §10-1 |
+| 批量提交条数 | **10（第一轮，见 §8.1）** | 本设计 |
 | 单次抓取上限 | 需 ≤ 120 秒，否则重认领次数超界 | 设计约束 |
 
-> **容量提醒**：256 是**保留总量且无 GC**，①/③/② 共用。批量导入会快速消耗该额度，达到上限后新提交返回 `ErrAcquisitionCapacity`。这是 §10-1 必须定批量上限的原因。
+### 8.1 终身额度：批量必须面对的硬上限
+
+`MaxAcquisitionOperations = 256` 不是一个软阈值，而是**终身额度**：
+
+- 容量检查是 `SELECT count(*) ... WHERE organization_id=?`，**不带任何状态过滤**（`repository.go:161-165`）⇒ 已 `published` 的行**照样计数**。
+- 整个包**没有任何 `DELETE` 路径**（已 grep 确认），且 `docs/engineering/src2b-public-acquisition.md` 明确写了 *"no ... TTL or key GC"*。
+- 256 是**编译期常量**，无配置项（`acquisition_operation.go:12`）。
+- 只有 **INSERT** 消耗额度；同一 key 重复提交走 replay，不再消耗。⇒ **额度 = 该组织累计可采集的不同商品数，永久。**
+
+算一下：**256 ÷ 10 = 25 批**，而且 ①/③ 共用同一额度、③ 是单条消耗。⇒ **一个组织累计采满 256 个商品后，采集能力永久失效，且没有任何恢复手段。**
+
+这在“批量导入”这个功能上是致命的：功能的目标就是导入很多商品。三个选项：
+
+| 选项 | 代价 |
+|---|---|
+| **(a) 接受并把剩余额度显式展示** | 零契约变更；UI 显示“剩余 N 条”，接近上限时提前告知 |
+| (b) 提高 256 常量 | 改动一行，但这是 `src2b-public-acquisition.md` 已记录的契约上限 ⇒ 需同步修订该文档 |
+| (c) 为终态行加保留期/GC | **推翻**已记录的 "no TTL/key GC" ⇒ 需独立评审 |
+
+**建议先 (a)**：零契约变更、不多建平台，由真实使用触发 (b)/(c)。但必须在 UI 里真实展示，不能静默失败。
+
+### 8.2 额度泄漏：为什么取消语义不能省
+
+预建 `acquiring` 行的设计（§3 D2）在**提交时就消耗终身额度**。结合“无取消语义、无 GC”：
+
+- 一个打错的链接、一个已下架的商品 ⇒ 该行永久停在 `acquiring`，**永久占用 1/256**。
+- 一批 10 条全部无效 ⇒ 一次损失 10/256。
+
+⇒ §10-2 “取消语义”从“可选”升为 **必须做**；否则这是一个无界泄漏。
+
+（备选的“执行器持本地队列 + 抓完才 `StartPrepared`”**没有**这个泄漏，因为它只在抓取成功后才建行。代价是提交后在应用内看不到待办。若取消语义不实现，这个备选反而更安全——见 §10-2。）
+
+> **对照 ①/③**：256 是三者共用。② 是唯一会“批量预建行”的 producer，所以额度问题在 ② 上才暴露。
 
 ## 9. 验证证据（实现时按此验收）
 
@@ -298,27 +331,31 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
 | 并发 fence | 两执行器同时认领 ⇒ 仅一方 `RowsAffected=1`；落败方 `Prepare` 得 `ErrAcquisitionFence` |
 | 跨租户 | 用 Org B 身份访问 Org A 的操作 ⇒ 404/403 |
 | 无凭据/无 profile 持久化 | 扫描持久化层，无新增 cookie/token/profile 字段 |
-| 容量 | 达到 256 保留上限后新提交返回 `ErrAcquisitionCapacity` |
+| 容量 | 达到 256 终身额度后新提交返回 `ErrAcquisitionCapacity`；UI 显示剩余额度 |
+| 取消不泄漏额度 | 取消未认领行后，该链接可重新提交（不出现“永久占 1/256”） |
 | 真实批量 | 3 条真实链接端到端，全绿并在应用内可见 |
 
 ## 10. 待决项（评审时必须给出结论）
 
-1. **批量上限**取多少？（建议 32；受 256 保留额度约束）
-2. **取消**语义要不要做？（不做则未认领行长期占用保留额度）
+1. ~~批量上限~~ **已定：单批 10 条**（见 §8.1）。理由：风控只在 5 条上验证过，10 是 2 倍的下一步；10 × ~40 秒 ≈ 7 分钟；且给 32 活跃额度和 256 终身额度都留出余量。做成常量 `maxLocalAgentBatchSize`，实测通过后再提。
+2. **取消**语义——**必须做**（见 §8.2：不做会造成终身额度的无界泄漏），不再是可选项。
 3. **多执行器**是否允许？（当前设计假定单组织单执行器；多执行器需要独立的租约/去重设计）
 4. **登录态探测**：周期存活检查，还是一条失败即提示重登？
 5. **执行器是否允许租户跨组织使用**（D3 已记录为「接受」；如需禁止则需服务端 profile/组织绑定字段，属 BACKLOG）
 
 ## 11. 冲突引用（需由协调方更新）
 
-本设计与既有决定存在**直接冲突**，必须由用户明确的阶段决定更新，不能由 Agent 自行放行：
+本设计与既有决定存在**直接冲突**；历史证据保留，**不写成 PASS**：
 
-- **Issue #396（PAUSED）** 明确写着：
+- **Issue #396（PAUSED）** 原本写着：
   > 匿名公开商品采集**不得依赖**本 Issue、SourceAccount、connectionStatus、**历史 profile/session** 或旧 SourceAccount owner。
 
-  本设计恰恰**依赖持久化 profile**。⇒ 需要用户明确「推翻 #396 的匿名前提，1688 采集改为账号态优先」，并更新该 Issue 的范围与冲突引用（历史证据保留，不写成 PASS）。
-- **`src2b-acquisition-v1`（#398 契约文档）** 明确排除登录流程（§1.5 第 1 条）。本设计**不并入**该 contract，而是作为**独立 producer** 准入；需在 #398 记录该新 producer 的存在与边界。
-- 上述决定**不授权**真实环境的数据访问/迁移/删除。
+  **2026-09-21 用户明确推翻该前提**：1688 采集**不再要求匿名**，账号态（持久化 profile）是允许的优先路径。处理方式：
+  - 被推翻的**仅是“必须匿名”这一条前提**。本设计仍然**不依赖** #396 本身、`SourceAccount`、`connectionStatus` 或旧 SourceAccount owner——只依赖**独立的本机 profile**（§3 D3）。
+  - #396 自身范围仍**保持 PAUSED**；其历史证据与结论保留。
+  - 该决定**不授权**真实环境的数据访问/迁移/删除，也**不授权**使用共享凭据或他人账号。
+- **`src2b-acquisition-v1`（#398 契约文档）** 排除登录流程的边界**不变**。本设计**不并入**该 contract，而是作为**独立 producer** 准入；需在 #398 记录该新 producer 的存在与边界（§1.5 第 1 条）。
+- **`src2b-public-acquisition.md`** 的 "no background scheduler, fallback, rebase, TTL or key GC" 继续遵守（§3 D2）；但其中 "256 retained" 对 ② 构成终身上限，按 §8.1 处理。
 
 ## 12. Legacy 处置
 
@@ -335,10 +372,10 @@ Cutover/deletion condition: 新链路端到端可用后，删除 internal/crawle
 
 ## 13. 实现切片（每片可独立验证、可回滚）
 
-1. **S1**：采集操作 list 路由（D5，含精确白名单 flag）+ 分页复用 —— 独立可验证，无新事实源
+1. **S1**：采集操作 list 路由 + 取消路由（D5，含精确白名单 flag）+ 分页复用 + 剩余额度展示 —— 独立可验证，无新事实源
 2. **S2**：执行器 ingress（D2 认领/心跳/恢复）+ 幂等派生（D6）
 3. **S3**：账号态执行器（D3/D4 + legacy 行为 EXTRACT）
-4. **S4**：采集页批量入口 + 进度列表 UI
+4. **S4**：采集页批量入口 + 进度列表 UI（含单批 10 条校验）
 5. **S5**：端到端真实批量验证（§9 末行）
 
 每片默认是实现/提交边界，不单独开 PR；最终交付一个主要 PR。
