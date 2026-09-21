@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
+. /usr/local/lib/compose-init-state.sh
 
 state=/schema-state
+init_version=account-profile-audit-v2
 terraform_source=/terraform-source
 source_db_owner_secret=/secrets/source-owner
 source_runtime_secret=/secrets/source-runtime
@@ -14,6 +16,7 @@ frontend=/frontend
 
 umask 077
 if [ -f "$state/.init-complete" ]; then
+  require_current_init_marker "$state/.init-complete" "$init_version"
   exit 0
 fi
 if [ -f "$state/.init-started" ]; then
@@ -109,4 +112,4 @@ referral-schema-init -dsn-file "$work/referral-owner-dsn"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
 
-mv "$state/.init-started" "$state/.init-complete"
+write_current_init_marker "$state/.init-complete" "$init_version"

@@ -1,8 +1,12 @@
 #!/bin/sh
 set -eu
-state=/schema-state; source_owner=/secrets/source-owner; source_runtime=/secrets/source-runtime; commercial_owner=/secrets/commercial-owner; commercial_runtime=/secrets/commercial-runtime; product_owner=/secrets/product-owner; product_runtime=/secrets/product-runtime; runtime=/runtime; frontend=/frontend
+. /usr/local/lib/compose-init-state.sh
+state=/schema-state; init_version=account-profile-audit-v2; source_owner=/secrets/source-owner; source_runtime=/secrets/source-runtime; commercial_owner=/secrets/commercial-owner; commercial_runtime=/secrets/commercial-runtime; product_owner=/secrets/product-owner; product_runtime=/secrets/product-runtime; runtime=/runtime; frontend=/frontend
 umask 077
-if [ -f "$state/.init-complete" ]; then exit 0; fi
+if [ -f "$state/.init-complete" ]; then
+  require_current_init_marker "$state/.init-complete" "$init_version"
+  exit 0
+fi
 if [ -f "$state/.init-started" ]; then echo 'local initialization is incomplete; do not retry this project' >&2; exit 1; fi
 touch "$state/.init-started"; chmod 600 "$state/.init-started"; mkdir -p "$runtime" "$frontend"
 cat > "$runtime/current-application.json.tmp" <<EOF
@@ -52,4 +56,4 @@ cat > "$work/product-acquisition-init.json" <<EOF
 EOF
 chmod 600 "$work/product-acquisition-init.json"
 product-acquisition-init -config "$work/product-acquisition-init.json" -confirm-empty-database product_acquisition
-mv "$state/.init-started" "$state/.init-complete"
+write_current_init_marker "$state/.init-complete" "$init_version"

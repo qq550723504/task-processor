@@ -40,6 +40,7 @@ RUN apk add --no-cache openssl postgresql17-client tzdata
 
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init
+COPY --chmod=0755 deployments/docker/compose-init-state.sh /usr/local/lib/compose-init-state.sh
 COPY --chmod=0755 deployments/docker/referrals-compose/init.sh /usr/local/bin/referrals-schema-init
 
 ENTRYPOINT ["/usr/local/bin/referrals-schema-init"]
