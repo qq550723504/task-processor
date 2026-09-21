@@ -364,8 +364,8 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
 | 并发 fence | 两执行器同时认领 ⇒ 仅一方 `RowsAffected=1`；落败方 `Prepare` 得 `ErrAcquisitionFence` |
 | 跨租户 | 用 Org B 身份访问 Org A 的操作 ⇒ 404/403 |
 | 无凭据/无 profile 持久化 | 扫描持久化层，无新增 cookie/token/profile 字段 |
-| 容量 | 达到 256 终身额度后新提交返回 `ErrAcquisitionCapacity`；UI 显示剩余额度 |
-| 取消不泄漏额度 | 取消未认领行后，该链接可重新提交（不出现“永久占 1/256”） |
+| 容量 | 达到 **2048** 终身额度后新提交返回 `ErrAcquisitionCapacity`；UI 显示剩余额度（阈值已由 #444 提升，见 §8.1） |
+| 取消不释放额度 | 取消**只改变状态，不释放额度**（§8.2）；不得再声称“取消后该链接可重新提交”——现有 `Start` 对终态行直接返回原 op 且不认领，失败后重试是**未解决的评审发现**（见 §14） |
 | 真实批量 | 3 条真实链接端到端，全绿并在应用内可见 |
 
 ## 10. 待决项（评审时必须给出结论）
@@ -389,17 +389,23 @@ state = 'acquiring' AND command IS NULL AND lease_until < now()
   - #396 自身范围仍**保持 PAUSED**；其历史证据与结论保留。
   - 该决定**不授权**真实环境的数据访问/迁移/删除，也**不授权**使用共享凭据或他人账号。
 - **`src2b-acquisition-v1`（#398 契约文档）** 排除登录流程的边界**不变**。本设计**不并入**该 contract，而是作为**独立 producer** 准入；需在 #398 记录该新 producer 的存在与边界（§1.5 第 1 条）。
-- **`src2b-public-acquisition.md`** 的 "no background scheduler, fallback, rebase, TTL or key GC" 继续遵守（§3 D2）；但其中 "256 retained" 对 ② 构成终身上限，按 §8.1 处理。
+- **`src2b-public-acquisition.md`** 的 "no background scheduler, fallback, rebase, TTL or key GC" 继续遵守（§3 D2）；其中 "retained" 上限已按 §8.1 由 #444 从 256 提到 2048，**终身语义不变**。
 
 ## 12. Legacy 处置
 
 ```text
-Legacy decision: EXTRACT
-Reusable behavior: public → account-assisted 回退选择、按 (tenant, account) 串行加锁
+Legacy decision: EXTRACT（仅 profile 锁）+ RETIRE（回退选择）
+Reusable behavior (EXTRACT): 按 (tenant, account) 串行加锁的 profile 持久化/加锁行为
+Retired behavior (RETIRE): public → account-assisted 回退选择。§1.5 与 §11 明确禁止该回退，
+                            不得作为可复用行为抽取；S3 不得泛化地“抽取旧行为”。
 Current owner: internal/product/sourcing（操作与证据）+ 新的本地执行器 ingress
 Cutover/deletion condition: 新链路端到端可用后，删除 internal/crawler/alibaba1688 的
                             worker 装配（composition_builder.go:118）与旧 sourceaccount 边
 ```
+
+> **修正（评审 finding）**：初稿把「public → account-assisted 回退选择」列入 `EXTRACT`，与 §1.5/§11 的
+> no-fallback 边界**直接矛盾**，会让 S3 重新引入被明令禁止的回退。已改为：仅 profile 锁为 `EXTRACT`，
+> **回退选择为 `RETIRE`**。
 
 - `internal/localagent` 的内存 `Job` 事实源按 **RETIRE** 处理：批量进度改由采集操作派生（D1/D5），其唯一消费者迁移完成后删除，**不做兼容层**。
 - `internal/sourceaccount.SourceAccount.ProfileRef` **不被本设计引用**（F2 修正）。
@@ -422,3 +428,53 @@ Cutover/deletion condition: 新链路端到端可用后，删除 internal/crawle
 | **F2** profile 引用挂在已 RETIRE 的 owner | BLOCKER | **成立**（`legacy-register.md:117`） | §3 D3 改为执行器本地 `LocalCollectorProfile`，服务端零持久化 |
 | **F3** 幂等只在 actor 作用域 | BLOCKER | **成立**（`repository.go:338` 按 org+actor 过滤） | §3 D1 / §4-1 修正不变量表述；分类下调为 `IMPLEMENTATION_TEST`（不构成数据损坏） |
 | **F4** 30 秒租约、无续期、无过期字段 | BLOCKER | **成立且最严重**：`AcquisitionLease=30s`、`Prepare` 要求 `lease_until>now()`（`repository.go:263`）、实测抓取 34.7s、`count(*)` 无状态过滤 ⇒ 256 为终身额度 | §3 D2 用**过期重认领当 fence 心跳**（零新 API）；§1.5/§8 补齐租约与容量事实；**明确不采用**租约续期方案 |
+
+## 15. 第三轮评审发现（未修正，待产品决定）
+
+PR #443 第三轮评审提出 13 条，逐条对照 `14df0e520`（含 #444 的 2048）上的真实代码核实。
+**其中 6 条证实本设计当前形态无法实现**，且它们的共同根因是同一个：**把采集操作行当成
+「待办队列」使用，而该行并不是为队列设计的。**
+
+### 15.1 根因
+
+`product_acquisition_operations` 缺少队列必需的四个要素：
+
+| 队列需要 | 该表实际 | 后果 |
+|---|---|---|
+| 生产者区分符 | **无**（`AcquisitionOperation` 结构只有 `Fingerprint`，无 producer 字段） | 发现谓词无法区分本地代理提交与 ① 的遗留行 |
+| 稳定排序位 | **无** `created_at`/`updated_at`/`completed_at` | 分页无法稳定 |
+| 可重试语义 | **无** `failed → acquiring` 迁移；`Start` 对终态行直接返回原 op 且 `claim=false` | 一次失败永久毒化该 URL |
+| 作用域可委派 | 读写均按 `(organization, actor, key)` 过滤 | 提交人 ≠ 设备用户时无法认领 |
+
+### 15.2 逐条核实结果
+
+| # | 评审内容 | 分类 | 核实证据 |
+|---|---|---|---|
+| 1 | 发现缺少生产者区分符 | **BLOCKER** | `AcquisitionOperation` 无 producer 字段；`read`/`Start` 全按 org+actor+key |
+| 2 | 待办意图 → 浏览器证据无合法迁移 | **BLOCKER** | `Start` 认领分支比较 `op.Source/Fingerprint/CaptureSHA256`（`repository.go:143-145`）；首次 `Start` 存公开指纹+空 `CaptureSHA256`，第二次带浏览器指纹 ⇒ `ErrAcquisitionConflict`。**§3 D2 的心跳机制因此不成立** |
+| 3 | 须保留提交人 actor | **BLOCKER** | `read` 过滤 `organization_id=? AND actor_id=?`（`repository.go:338`）；执行器 token ⇒ actor=设备用户 ⇒ 提交人 A 的行认领不到，反而新插一行 |
+| 4 | 终态行须释放容量 | BLOCKER → **已由 #444 降级** | 256→2048 已合并；但终身语义仍在，真正释放需 (c) |
+| 5 | 终态后须允许重试 | **BLOCKER** | `if op.State != AcquisitionAcquiring { return nil }`（`repository.go:148` 之前）⇒ 同 key 永久返回原终态行 |
+| 6 | 须定义可取消迁移 | IMPLEMENTATION_TEST | `Finish` 仅允许 `publishing→*` 或 `acquiring→failed`（`repository.go:323`）；`prepared` 行 ⇒ `ErrAcquisitionFence`；`validFailure`（`:444-450`）不含 `CANCELLED` |
+| 7 | `CHALLENGE` 失败码不可持久化 | IMPLEMENTATION_TEST | `validFailure` 只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT` |
+| 8 | 新提交的操作须出现在进度读中 | IMPLEMENTATION_TEST | `Start` INSERT 即 `lease_until=now()+30s`（`repository.go:168`），而 list 谓词要求 `lease_until<now()` ⇒ 新批次前 30 秒不可见 |
+| 9 | 分页需要稳定位置 | IMPLEMENTATION_TEST | 表无 `created_at`（已实测 `information_schema`），`lease_until` 可变 |
+| 10 | 不确定发布须投影为 `outcome_unknown` | IMPLEMENTATION_TEST | 无该持久化状态，不确定发布停留在 `publishing`，由 HTTP 层投影 |
+| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | list 只返回过期 `acquiring` + 终态；无调度器 ⇒ `prepared` 行无人推进 |
+| 12 | 抽取计划须移除已退役回退 | IMPLEMENTATION_TEST | **已修**：§12 改为「profile 锁 = EXTRACT，回退选择 = RETIRE」 |
+| 13 | 须按 2048 校验容量 | IMPLEMENTATION_TEST | **已修**：§9 容量行与 §11 已更新为 2048 |
+
+### 15.3 结论与所需决定
+
+**本设计不是「只新增一条路由」。** 要做到可用，需要在采集契约上补齐上表四个要素之一或多个
+（生产者区分符、排序位、重试迁移、actor 委派），每一项都是契约变更。
+
+三条可选路线，**需产品决定后才继续**：
+
+- **(A) 为批量引入独立持久化队列 owner（`BatchJob`）**：根因正解，但这是 v1 明确排除的
+  「第二事实源」，属新增持久化事实 owner，需独立架构设计与评审。
+- **(B) 执行器持本地队列 + 仅同 actor + 不做应用内待办视图**：可绕开 #1/#2/#8/#9，
+  但 #3/#5/#11 仍在，且丢掉「批量/后台导」最核心的应用内进度可见。
+- **(C) 先只交付已上线的 ③（单品采集）**，批量等真实用户被阻塞时再投入。
+
+**在决定前不开始 S1**：S1 的 list 谓词直接来自上述被证伪的发现设计。
