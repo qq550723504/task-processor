@@ -57,6 +57,9 @@ func execute() error {
 		OpenCommercial: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenCommercialOwner: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenProductAcquisition: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -67,7 +70,10 @@ func execute() error {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
-			options := make([]httpapi.CurrentApplicationOption, 0, 4)
+			options := make([]httpapi.CurrentApplicationOption, 0, 5)
+			if features.CommercialOwnerDB != nil {
+				options = append(options, httpapi.WithCommercialOwnerDatabase(features.CommercialOwnerDB))
+			}
 			if features.ProductAcquisitionDB != nil {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
 				options = append(options, httpapi.WithBrowserCapture())
