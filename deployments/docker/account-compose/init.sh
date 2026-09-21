@@ -42,13 +42,46 @@ SQL
   commercial_dsn="postgresql://postgres:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable"
   commercial_password=$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")
   psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "commercial_password=$commercial_password" -f "$terraform_source/commercial-schema.sql"
+  cat > "$work/commercial-schema.yaml" <<EOF
+commercialDatabase:
+  host: 127.0.0.1
+  port: 5434
+  user: postgres
+  password: "$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")"
+  database: commercial
+  max_connections: 2
+  max_idle_connections: 1
+  connection_max_lifetime: 1h
+EOF
+  listingkit-schema-migrate -config "$work/commercial-schema.yaml" -scope commercial -log-level warn
   psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "commercial_password=$commercial_password" <<SQL
 ALTER ROLE commercial_runtime LOGIN PASSWORD :'commercial_password';
 GRANT CONNECT ON DATABASE commercial TO commercial_runtime;
 GRANT USAGE ON SCHEMA public TO commercial_runtime;
+GRANT SELECT ON TABLE public.saas_modules TO commercial_runtime;
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements FROM commercial_runtime;
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'commercial_owner_runtime') THEN
+    EXECUTE 'CREATE ROLE commercial_owner_runtime LOGIN';
+  END IF;
+END
+\$\$;
+ALTER ROLE commercial_owner_runtime LOGIN PASSWORD :'commercial_password';
+GRANT CONNECT ON DATABASE commercial TO commercial_owner_runtime;
+GRANT USAGE ON SCHEMA public TO commercial_owner_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_modules, public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements, public.saas_usage_counters, public.saas_usage_counter_adjustments, public.saas_subscription_audit_logs TO commercial_owner_runtime;
+GRANT DELETE ON TABLE public.saas_plan_modules TO commercial_owner_runtime;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
+ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL
   if grep -q '"user": "commercial_reader"' "$runtime/current-application.json"; then
     sed 's/"user": "commercial_reader"/"user": "commercial_runtime"/' "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
+    chmod 600 "$runtime/current-application.json.tmp"
+    mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
+  fi
+  if ! grep -q '"commercialOwnerDatabase"' "$runtime/current-application.json"; then
+    sed "/\"commercialDatabase\":/a\\  \"commercialOwnerDatabase\": {\"host\": \"127.0.0.1\", \"port\": 5434, \"user\": \"commercial_owner_runtime\", \"password\": \"$(tr -d '\r\n' < \"$commercial_runtime_secret/commercial-reader-password\")\", \"database\": \"commercial\", \"maxConnections\": 2}," "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
     chmod 600 "$runtime/current-application.json.tmp"
     mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
   fi
@@ -99,6 +132,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
   },
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
   "commercialDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 4},
+  "commercialOwnerDatabase": {"host": "127.0.0.1", "port": 5434, "user": "commercial_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "commercial", "maxConnections": 2},
   "membership": {
     "providerOrigin": "${issuer}",
     "readToken": "$(tr -d '\r\n' < "$runtime/membership-read.pat")",
@@ -156,6 +190,36 @@ ALTER ROLE source_account_runtime SET statement_timeout='10s';
 SQL
 
 psql "postgresql://postgres:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable" -v ON_ERROR_STOP=1 -v "commercial_password=$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")" -f "$terraform_source/commercial-schema.sql"
+cat > "$work/commercial-schema.yaml" <<EOF
+commercialDatabase:
+  host: 127.0.0.1
+  port: 5434
+  user: postgres
+  password: "$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")"
+  database: commercial
+  max_connections: 2
+  max_idle_connections: 1
+  connection_max_lifetime: 1h
+EOF
+listingkit-schema-migrate -config "$work/commercial-schema.yaml" -scope commercial -log-level warn
+psql "postgresql://postgres:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'commercial_owner_runtime') THEN
+    EXECUTE 'CREATE ROLE commercial_owner_runtime LOGIN PASSWORD ''$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")''';
+  END IF;
+END
+\$\$;
+GRANT SELECT ON TABLE public.saas_modules TO commercial_runtime;
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements FROM commercial_runtime;
+ALTER ROLE commercial_owner_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")';
+GRANT CONNECT ON DATABASE commercial TO commercial_owner_runtime;
+GRANT USAGE ON SCHEMA public TO commercial_owner_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_modules, public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements, public.saas_usage_counters, public.saas_usage_counter_adjustments, public.saas_subscription_audit_logs TO commercial_owner_runtime;
+GRANT DELETE ON TABLE public.saas_plan_modules TO commercial_owner_runtime;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
+ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
+SQL
 
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
 CREATE ROLE referral_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$referral_runtime_secret/referral-runtime-password")';

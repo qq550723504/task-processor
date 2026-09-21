@@ -47,10 +47,30 @@ var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodPut, Path: accountBusinessProfilePath},
 }
 
+var currentPlatformSubscriptionApplicationRoutes = []currentApplicationRoute{
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions"},
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/tenant-directory"},
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans"},
+	{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/subscription-plans"},
+	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code"},
+	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/modules/:module_code"},
+	{Method: http.MethodDelete, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/modules/:module_code"},
+	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/status"},
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/tenants"},
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/audit-logs"},
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id"},
+	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/audit-logs"},
+	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/plan"},
+	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code"},
+	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/usage/:module_code/:period_key/:metric"},
+	{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations"},
+}
+
 type currentApplicationFactories struct {
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildPlatformSubscription       func(*gorm.DB, *config.Config) (kernelmodule.Module, error)
 	buildAcquisition                func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
@@ -62,6 +82,7 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	commercialOwnerDB    *gorm.DB
 	referralDB           *gorm.DB
 	productAcquisitionDB *gorm.DB
 	membership           *MembershipDependencies
@@ -69,6 +90,12 @@ type currentApplicationOptions struct {
 	productAcquisitions  int
 	memberships          int
 	browserCaptures      int
+}
+
+// WithCommercialOwnerDatabase supplies the independently owned commercial
+// owner pool used only by platform subscription and entitlement routes.
+func WithCommercialOwnerDatabase(db *gorm.DB) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.commercialOwnerDB = db }
 }
 
 // WithBrowserCapture enables the #399 exact-click browser capture ingress. It
@@ -111,6 +138,7 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
+		buildPlatformSubscription: buildPlatformSubscriptionModule,
 		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
 		},
@@ -156,6 +184,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.memberships > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.commercialOwnerDB != nil && (supplied.commercialOwnerDB == sourceAccountDB || supplied.commercialOwnerDB == commercialDB) {
+		return nil, errors.New("commercial owner requires an independent pool")
 	}
 	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB || supplied.productAcquisitionDB == commercialDB) {
 		return nil, errors.New("product acquisition requires an independent pool")
@@ -220,6 +251,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	includePlatformSubscription := supplied.commercialOwnerDB != nil && factories.buildPlatformSubscription != nil
+	if includePlatformSubscription {
+		platformSubscription, platformErr := factories.buildPlatformSubscription(supplied.commercialOwnerDB, cfg)
+		if platformErr != nil {
+			return nil, fmt.Errorf("build current platform subscription module: %w", platformErr)
+		}
+		if platformSubscription == nil {
+			return nil, errors.New("current platform subscription module unavailable")
+		}
+		modules = append(modules, platformSubscription)
+	}
 	var referralMaturity func(context.Context, time.Time) error
 	includeAccountProfile := factories.buildAccountProfile != nil
 	if includeAccountProfile {
@@ -308,7 +350,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithBrowserFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil, includeAccountProfile, includeAccountAllocation); err != nil {
+	if err := validateCurrentApplicationRoutesWithBrowserFeaturesAndPlatformSubscription(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil, includeAccountProfile, includeAccountAllocation, includePlatformSubscription); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -333,23 +375,27 @@ func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, 
 
 func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false, false)
 }
 
 func validateCurrentApplicationRoutesWithAccountProfile(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false, false)
 }
 
 func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser, false)
 }
 
 func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser, includeAccountProfile, includeAllocation bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, false)
 }
 
-func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool) error {
+func validateCurrentApplicationRoutesWithBrowserFeaturesAndPlatformSubscription(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser, includeAccountProfile, includeAllocation, includePlatformSubscription bool) error {
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, includePlatformSubscription)
+}
+
+func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, includePlatformSubscription bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAccountProfile {
 		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
@@ -388,6 +434,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if includeAllocation {
 		expected[currentApplicationRoute{Method: http.MethodGet, Path: "/api/v1/account/organization/resources/member-allocations"}] = struct{}{}
 		expected[currentApplicationRoute{Method: http.MethodPut, Path: "/api/v1/account/organization/resources/member-allocations/:member_id"}] = struct{}{}
+	}
+	if includePlatformSubscription {
+		for _, route := range currentPlatformSubscriptionApplicationRoutes {
+			expected[route] = struct{}{}
+		}
 	}
 	referralRoutes := map[currentApplicationRoute]httproute.Descriptor{}
 	if includeReferrals {

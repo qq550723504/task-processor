@@ -91,6 +91,9 @@ func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	if cfg.CommercialDatabase.User != "commercial_runtime" {
 		t.Fatalf("commercial user = %q", cfg.CommercialDatabase.User)
 	}
+	if cfg.CommercialOwnerDatabase == nil || cfg.CommercialOwnerDatabase.User != "commercial_owner_runtime" {
+		t.Fatalf("commercial owner user = %#v", cfg.CommercialOwnerDatabase)
+	}
 	core := cfg.CoreConfig()
 	if core == nil || !core.Workbench.Enabled || core.ListingKit.Zitadel.ProjectID != "listingkit-project" {
 		t.Fatalf("CoreConfig() = %#v", core)
@@ -296,6 +299,10 @@ func validManifest() string {
   "commercialDatabase": {
     "host": "127.0.0.1", "port": 15432, "user": "commercial_runtime",
     "password": "commercial-secret", "database": "task_processor", "maxConnections": 4
+  },
+  "commercialOwnerDatabase": {
+    "host": "127.0.0.1", "port": 15432, "user": "commercial_owner_runtime",
+    "password": "commercial-owner-secret", "database": "task_processor", "maxConnections": 2
   }
 }`
 }
