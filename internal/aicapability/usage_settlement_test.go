@@ -20,7 +20,7 @@ func (r *recordingUsageSettler) SettleAIInvocationUsage(_ context.Context, tenan
 func TestSettleSuccessfulInvocationUsesObservedTokensOnly(t *testing.T) {
 	settler := &recordingUsageSettler{}
 	at := time.Date(2026, 9, 20, 1, 2, 3, 0, time.UTC)
-	record := InvocationRecord{InvocationID: "inv-1", TenantID: "org-1", UserID: "member-1", PromptTokens: 7, CompletionTokens: 5, TotalTokens: 12, UsageKnown: true, Outcome: InvocationSucceeded, FinishedAt: at}
+	record := InvocationRecord{InvocationID: "inv-1", TenantID: "org-1", UserID: "user-1", MemberID: "member-1", PromptTokens: 7, CompletionTokens: 5, TotalTokens: 12, UsageKnown: true, Outcome: InvocationSucceeded, FinishedAt: at}
 	if err := SettleSuccessfulInvocation(context.Background(), record, settler); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestSettleSuccessfulInvocationUsesObservedTokensOnly(t *testing.T) {
 
 func TestSettleSuccessfulInvocationIgnoresFailedOrUnknownUsage(t *testing.T) {
 	settler := &recordingUsageSettler{}
-	record := InvocationRecord{InvocationID: "inv-1", TenantID: "org-1", UserID: "member-1", TotalTokens: 12, UsageKnown: true, Outcome: InvocationFailed, FinishedAt: time.Now()}
+	record := InvocationRecord{InvocationID: "inv-1", TenantID: "org-1", UserID: "user-1", MemberID: "member-1", TotalTokens: 12, UsageKnown: true, Outcome: InvocationFailed, FinishedAt: time.Now()}
 	if err := SettleSuccessfulInvocation(context.Background(), record, settler); err != nil {
 		t.Fatal(err)
 	}

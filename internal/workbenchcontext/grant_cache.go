@@ -231,6 +231,7 @@ func normalizeGrants(grants []authidentity.OrganizationGrant, expectedProjectID 
 	byOrganization := make(map[string]authidentity.OrganizationGrant, len(grants))
 	roleSets := make(map[string]map[string]struct{}, len(grants))
 	for _, grant := range grants {
+		grant.AuthorizationID = strings.TrimSpace(grant.AuthorizationID)
 		grant.OrganizationID = strings.TrimSpace(grant.OrganizationID)
 		grant.OrganizationName = strings.TrimSpace(grant.OrganizationName)
 		grant.ProjectID = strings.TrimSpace(grant.ProjectID)
@@ -253,6 +254,7 @@ func normalizeGrants(grants []authidentity.OrganizationGrant, expectedProjectID 
 		}
 		if !exists || (existing.OrganizationName == "" && grant.OrganizationName != "") {
 			byOrganization[grant.OrganizationID] = authidentity.OrganizationGrant{
+				AuthorizationID:  grant.AuthorizationID,
 				OrganizationID:   grant.OrganizationID,
 				OrganizationName: grant.OrganizationName,
 				ProjectID:        grant.ProjectID,

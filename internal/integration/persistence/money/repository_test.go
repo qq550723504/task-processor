@@ -35,6 +35,7 @@ func TestPaymentSettlementIsCanonicalAndPayloadConflicts(t *testing.T) {
 	repo := newMoneyRepository(t)
 	ctx := context.Background()
 	p := paymentFact()
+	p.SettledAt = p.SettledAt.Add(789 * time.Nanosecond)
 	if err := repo.RecordPaymentSettlement(ctx, p); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +75,29 @@ func TestRefundSettlementIsBoundedAndIdempotent(t *testing.T) {
 	r.RefundID, r.AmountMinor = "refund-2", 6001
 	if !errors.Is(repo.RecordRefundSettlement(ctx, r), money.ErrConflict) {
 		t.Fatal("expected refund payload conflict")
+	}
+}
+
+func TestChargebackSettlementIsCanonicalAndBounded(t *testing.T) {
+	repo := newMoneyRepository(t)
+	ctx := context.Background()
+	if err := repo.RecordPaymentSettlement(ctx, paymentFact()); err != nil {
+		t.Fatal(err)
+	}
+	chargeback := money.ChargebackSettlement{ChargebackID: "chargeback-1", PaymentID: "pay-1", AmountMinor: 4000, OccurredAt: time.Date(2026, 9, 22, 1, 0, 0, 123456789, time.UTC), ProviderReference: "provider-chargeback-1"}
+	if err := repo.RecordChargebackSettlement(ctx, chargeback); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RecordChargebackSettlement(ctx, chargeback); err != nil {
+		t.Fatalf("replay should be idempotent: %v", err)
+	}
+	chargeback.ChargebackID, chargeback.AmountMinor = "chargeback-2", 6000
+	if err := repo.RecordChargebackSettlement(ctx, chargeback); err != nil {
+		t.Fatal(err)
+	}
+	chargeback.ChargebackID, chargeback.AmountMinor = "chargeback-3", 1
+	if !errors.Is(repo.RecordChargebackSettlement(ctx, chargeback), money.ErrInvalid) {
+		t.Fatal("expected cumulative chargeback bound")
 	}
 }
 

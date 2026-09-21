@@ -56,6 +56,16 @@ type refundOperationRow struct {
 
 func (refundOperationRow) TableName() string { return "public.referral_refund_operations" }
 
+type chargebackOperationRow struct {
+	PaymentID    string    `gorm:"column:payment_id;primaryKey"`
+	ChargebackID string    `gorm:"column:chargeback_id;primaryKey"`
+	AmountMinor  int64     `gorm:"column:amount_minor"`
+	OccurredAt   time.Time `gorm:"column:occurred_at"`
+	CreatedAt    time.Time `gorm:"column:created_at"`
+}
+
+func (chargebackOperationRow) TableName() string { return "public.referral_chargeback_operations" }
+
 type earningProjection struct {
 	Referrer        string `gorm:"column:referrer;primaryKey"`
 	Currency        string `gorm:"column:currency;primaryKey"`
@@ -138,10 +148,21 @@ type canonicalRefundRow struct {
 
 func (canonicalRefundRow) TableName() string { return "public.ledger_refund_settlements" }
 
+type canonicalChargebackRow struct {
+	ChargebackID      string
+	PaymentID         string
+	AmountMinor       int64
+	OccurredAt        time.Time
+	ProviderReference string
+}
+
+func (canonicalChargebackRow) TableName() string { return "public.ledger_chargeback_settlements" }
+
 func (r *Repository) RecordSettledPayment(ctx context.Context, payment money.PaymentSettlement) error {
 	if r == nil || r.db == nil || payment.Validate() != nil || payment.Currency != economics.CurrencyCNY {
 		return economics.ErrInvalid
 	}
+	payment.SettledAt = money.NormalizeTimestamp(payment.SettledAt)
 	commission, err := economics.CommissionForCashMinor(payment.CommissionableAmountMinor)
 	if err != nil {
 		return nil
@@ -207,6 +228,7 @@ func (r *Repository) RecordRefund(ctx context.Context, refund money.RefundSettle
 	if r == nil || r.db == nil || refund.Validate() != nil {
 		return economics.ErrInvalid
 	}
+	refund.OccurredAt = money.NormalizeTimestamp(refund.OccurredAt)
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var canonical canonicalRefundRow
 		if err := tx.Where("refund_id = ? AND payment_id = ? AND amount_minor = ? AND occurred_at = ? AND provider_reference = ?", refund.RefundID, refund.PaymentID, refund.AmountMinor, refund.OccurredAt.UTC(), refund.ProviderReference).Take(&canonical).Error; errors.Is(err, gorm.ErrRecordNotFound) {
@@ -279,6 +301,82 @@ func (r *Repository) RecordRefund(ctx context.Context, refund money.RefundSettle
 
 func (r *Repository) ObserveRefundSettlement(ctx context.Context, refund money.RefundSettlement) error {
 	return r.RecordRefund(ctx, refund)
+}
+
+func (r *Repository) RecordChargeback(ctx context.Context, chargeback money.ChargebackSettlement) error {
+	if r == nil || r.db == nil || chargeback.Validate() != nil {
+		return economics.ErrInvalid
+	}
+	chargeback.OccurredAt = money.NormalizeTimestamp(chargeback.OccurredAt)
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var canonical canonicalChargebackRow
+		if err := tx.Where("chargeback_id = ? AND payment_id = ? AND amount_minor = ? AND occurred_at = ? AND provider_reference = ?", chargeback.ChargebackID, chargeback.PaymentID, chargeback.AmountMinor, chargeback.OccurredAt, chargeback.ProviderReference).Take(&canonical).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+			return economics.ErrInvalid
+		} else if err != nil {
+			return economics.ErrUnavailable
+		}
+		var claim earningClaim
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id=?", chargeback.PaymentID).Take(&claim).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+			return economics.ErrInvalid
+		} else if err != nil {
+			return economics.ErrUnavailable
+		}
+		if chargeback.AmountMinor > claim.NetCashMinor-claim.RefundedMinor {
+			return economics.ErrInvalid
+		}
+		var operation chargebackOperationRow
+		if err := tx.Where("payment_id=? AND chargeback_id=?", chargeback.PaymentID, chargeback.ChargebackID).Take(&operation).Error; err == nil {
+			if operation.AmountMinor != chargeback.AmountMinor || !operation.OccurredAt.Equal(chargeback.OccurredAt) {
+				return economics.ErrConflict
+			}
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return economics.ErrUnavailable
+		}
+		before := claim.State
+		adjustment, err := economics.CommissionRefundAdjustment(claim.CommissionMinor, claim.NetCashMinor, claim.RefundedMinor, chargeback.AmountMinor)
+		if err != nil {
+			return err
+		}
+		claim.RefundedMinor += chargeback.AmountMinor
+		if claim.RefundedMinor == claim.NetCashMinor {
+			claim.State = "REVERSED"
+		}
+		now := time.Now().UTC()
+		claim.UpdatedAt = now
+		if err := tx.Save(&claim).Error; err != nil {
+			return economics.ErrUnavailable
+		}
+		if adjustment > 0 {
+			if err := tx.Create(&earningLedgerEntry{EntryID: uuid.NewString(), Referrer: claim.Referrer, Currency: claim.Currency, PaymentID: claim.PaymentID, EntryType: "CHARGEBACK_ADJUSTMENT", AmountMinor: -adjustment, ReferenceID: chargeback.ChargebackID, OccurredAt: chargeback.OccurredAt}).Error; err != nil {
+				return economics.ErrUnavailable
+			}
+		}
+		projection, err := lockProjection(tx, claim.Referrer, claim.Currency)
+		if err != nil {
+			return err
+		}
+		if adjustment > 0 {
+			if before == "PENDING" {
+				projection.PendingMinor -= adjustment
+			} else {
+				projection.AdjustmentMinor -= adjustment
+			}
+		}
+		projection.Version++
+		projection.UpdatedAt = now
+		if err := tx.Save(&projection).Error; err != nil {
+			return economics.ErrUnavailable
+		}
+		if err := tx.Create(&economicsAuditRow{Referrer: claim.Referrer, Actor: "commercial_owner", ObjectType: "earning", ObjectReference: claim.PaymentID, Operation: "chargeback_adjustment", AmountMinor: -adjustment, IdempotencyKey: "chargeback:" + chargeback.ChargebackID, CreatedAt: now}).Error; err != nil {
+			return economics.ErrUnavailable
+		}
+		return tx.Create(&chargebackOperationRow{PaymentID: chargeback.PaymentID, ChargebackID: chargeback.ChargebackID, AmountMinor: chargeback.AmountMinor, OccurredAt: chargeback.OccurredAt, CreatedAt: now}).Error
+	})
+}
+
+func (r *Repository) ObserveChargebackSettlement(ctx context.Context, chargeback money.ChargebackSettlement) error {
+	return r.RecordChargeback(ctx, chargeback)
 }
 
 func (r *Repository) Mature(ctx context.Context, at time.Time) error {
@@ -359,7 +457,9 @@ func (r *Repository) RequestWithdrawal(ctx context.Context, input economics.Requ
 		if p.Version != input.ExpectedVersion {
 			return economics.ErrConflict
 		}
-		if p.AvailableMinor+p.AdjustmentMinor < 0 || p.AvailableMinor+p.AdjustmentMinor-p.ReservedMinor < input.AmountMinor {
+		// AvailableMinor is already reduced when a withdrawal is reserved;
+		// subtracting ReservedMinor again would reject valid later requests.
+		if p.AvailableMinor+p.AdjustmentMinor < 0 || p.AvailableMinor+p.AdjustmentMinor < input.AmountMinor {
 			return economics.ErrInsufficient
 		}
 		now := time.Now().UTC()
@@ -453,6 +553,20 @@ func (r *Repository) transitionWithdrawal(ctx context.Context, input economics.R
 			}
 			p.ReservedMinor -= row.AmountMinor
 			p.AvailableMinor += row.AmountMinor
+			p.Version++
+			p.UpdatedAt = now
+			if err := tx.Save(&p).Error; err != nil {
+				return economics.ErrUnavailable
+			}
+		} else if input.Action == economics.WithdrawalPaid {
+			p, err := lockProjection(tx, row.Referrer, row.Currency)
+			if err != nil {
+				return err
+			}
+			if p.ReservedMinor < row.AmountMinor {
+				return economics.ErrUnavailable
+			}
+			p.ReservedMinor -= row.AmountMinor
 			p.Version++
 			p.UpdatedAt = now
 			if err := tx.Save(&p).Error; err != nil {

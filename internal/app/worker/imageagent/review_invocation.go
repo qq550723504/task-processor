@@ -3,6 +3,7 @@ package imageagentworker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 	"unicode"
@@ -33,7 +34,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	identity := aiidentity.FromContext(ctx)
 	verified, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	settings := p.reviewGovernance
-	if !ok || verified.EffectiveOrganizationID == "" || verified.EffectiveOrganizationID != identity.TenantID || verified.TenantID != identity.TenantID || verified.UserID != identity.UserID || identity.AgentRunID == "" || identity.BusinessTaskID == "" || nilDependency(settings.Recorder) || settings.Logger == nil || request.Authorization == nil {
+	if !ok || verified.EffectiveOrganizationID == "" || verified.EffectiveOrganizationID != identity.TenantID || verified.TenantID != identity.TenantID || verified.UserID != identity.UserID || verified.EffectiveMemberID == "" || identity.AgentRunID == "" || identity.BusinessTaskID == "" || nilDependency(settings.Recorder) || settings.Logger == nil || request.Authorization == nil {
 		return productimage.Review{}, productimage.ErrInputInvalid
 	}
 	if err := ctx.Err(); err != nil {
@@ -70,7 +71,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	}
 	finished := time.Now().UTC()
 	record := aicapability.InvocationRecord{
-		InvocationID: uuid.NewString(), AgentRunID: identity.AgentRunID, TenantID: identity.TenantID, UserID: identity.UserID,
+		InvocationID: uuid.NewString(), AgentRunID: identity.AgentRunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: verified.EffectiveMemberID,
 		BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
 		Capability: aicapability.CapabilityProductImageScene, Operation: aicapability.OperationProductImageReview,
 		RouteOutcome: aicapability.RouteOutcomeActive, ProviderID: quote.Provider, ModelID: quote.Model,
@@ -102,6 +103,9 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	defer cancel()
 	if err := settings.Recorder.RecordInvocation(recordCtx, record); err != nil {
 		settings.Logger.WithFields(logrus.Fields{"event": "image_review_record_degraded", "invocation_id": record.InvocationID, "outcome": record.Outcome, "record_status": "failed"}).Error("image review invocation recording failed")
+		if providerErr == nil {
+			return productimage.Review{}, fmt.Errorf("image review usage settlement failed: %w", err)
+		}
 	}
 	return result, providerErr
 }

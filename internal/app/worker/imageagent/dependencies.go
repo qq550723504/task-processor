@@ -340,6 +340,9 @@ func buildImageAgentWorkerAI(cfg *config.Config, db, commercialDB *gorm.DB, logg
 	if cfg == nil || db == nil {
 		return nil, nil, nil, fmt.Errorf("image agent provider configuration and database are required")
 	}
+	if cfg.CommercialDatabase == nil {
+		return nil, nil, nil, fmt.Errorf("image agent commercial database configuration is required for token accounting")
+	}
 	var componentLogger *logrus.Entry
 	if logger != nil {
 		componentLogger = logrus.NewEntry(logger).WithField("component", "image-agent-openai")

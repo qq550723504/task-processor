@@ -35,6 +35,10 @@ const accountReferralPayoutMethodsPath = accountReferralsPath + "/payout-methods
 const accountReferralWithdrawalsPath = accountReferralsPath + "/withdrawals"
 const accountReferralWithdrawalCancelPath = accountReferralWithdrawalsPath + "/:withdrawal_id/cancel"
 const accountReferralWithdrawalReviewPath = accountReferralWithdrawalsPath + "/:withdrawal_id/review"
+const internalReferralPaymentSettlementPath = "/api/v1/internal/referrals/payment-settlements"
+const internalReferralRefundSettlementPath = "/api/v1/internal/referrals/refund-settlements"
+const internalReferralChargebackSettlementPath = "/api/v1/internal/referrals/chargeback-settlements"
+const internalReferralMaturityPath = "/api/v1/internal/referrals/mature"
 
 type referralCommands interface {
 	Start(context.Context, app.Request) (app.Admission, error)
@@ -49,6 +53,13 @@ type referralEconomics interface {
 	RequestWithdrawal(context.Context, economics.RequestWithdrawal) (economics.Withdrawal, error)
 	CancelWithdrawal(context.Context, string, string, int64, string) (economics.Withdrawal, error)
 	ReviewWithdrawal(context.Context, economics.ReviewWithdrawal) (economics.Withdrawal, error)
+	Mature(context.Context, time.Time) error
+}
+
+type settlementWriter interface {
+	RecordPaymentSettlementAndNotify(context.Context, money.PaymentSettlement, money.SettlementObserver) error
+	RecordRefundSettlementAndNotify(context.Context, money.RefundSettlement, money.SettlementObserver) error
+	RecordChargebackSettlementAndNotify(context.Context, money.ChargebackSettlement, money.SettlementObserver) error
 }
 
 // payoutMethodReader is intentionally separate from referral economics. A
@@ -66,6 +77,7 @@ type referralHTTPModule struct {
 	economics             referralEconomics
 	payoutMethods         payoutMethodReader
 	profileReader         authidentity.SelfProfileReader
+	settlements           settlementWriter
 	onSlotAcquiredForTest func()
 }
 
@@ -96,6 +108,10 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},
+		{Method: http.MethodPost, Path: internalReferralPaymentSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordPaymentSettlement},
+		{Method: http.MethodPost, Path: internalReferralRefundSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordRefundSettlement},
+		{Method: http.MethodPost, Path: internalReferralChargebackSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordChargebackSettlement},
+		{Method: http.MethodPost, Path: internalReferralMaturityPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.matureReferralEarnings},
 	}
 	for i := range routes {
 		routes[i].Module = m.Name()

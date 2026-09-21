@@ -37,13 +37,17 @@ var schema = []string{
  CHECK(net_cash_minor>0 AND commission_minor>0 AND refunded_minor>=0 AND refunded_minor<=net_cash_minor), CHECK(currency='CNY'))`,
 	`CREATE TABLE public.referral_earnings_ledger (
  entry_id text PRIMARY KEY, referrer text NOT NULL, currency char(3) NOT NULL, payment_id text NOT NULL,
- entry_type text NOT NULL CHECK(entry_type IN ('COMMISSION','REFUND_ADJUSTMENT','REVERSAL')),
+ entry_type text NOT NULL CHECK(entry_type IN ('COMMISSION','REFUND_ADJUSTMENT','CHARGEBACK_ADJUSTMENT','REVERSAL')),
  amount_minor bigint NOT NULL, reference_id text NOT NULL, occurred_at timestamptz NOT NULL,
  UNIQUE(payment_id,entry_type,reference_id), CHECK(currency='CNY'), CHECK(amount_minor<>0))`,
 	`CREATE TABLE public.referral_refund_operations (
- payment_id text NOT NULL REFERENCES public.referral_earning_claims(payment_id), refund_id text NOT NULL,
- amount_minor bigint NOT NULL CHECK(amount_minor>0), refunded_at timestamptz NOT NULL, created_at timestamptz NOT NULL,
- PRIMARY KEY(payment_id,refund_id))`,
+	 payment_id text NOT NULL REFERENCES public.referral_earning_claims(payment_id), refund_id text NOT NULL,
+	 amount_minor bigint NOT NULL CHECK(amount_minor>0), refunded_at timestamptz NOT NULL, created_at timestamptz NOT NULL,
+	 PRIMARY KEY(payment_id,refund_id))`,
+	`CREATE TABLE public.referral_chargeback_operations (
+	 payment_id text NOT NULL REFERENCES public.referral_earning_claims(payment_id), chargeback_id text NOT NULL,
+	 amount_minor bigint NOT NULL CHECK(amount_minor>0), occurred_at timestamptz NOT NULL, created_at timestamptz NOT NULL,
+	 PRIMARY KEY(payment_id,chargeback_id))`,
 	`CREATE TABLE public.referral_earnings_projection (
  referrer text NOT NULL, currency char(3) NOT NULL, pending_minor bigint NOT NULL DEFAULT 0,
  available_minor bigint NOT NULL DEFAULT 0, reserved_minor bigint NOT NULL DEFAULT 0,

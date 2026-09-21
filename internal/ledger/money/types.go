@@ -40,6 +40,20 @@ type RefundSettlement struct {
 	ProviderReference string
 }
 
+type ChargebackSettlement struct {
+	ChargebackID      string
+	PaymentID         string
+	AmountMinor       int64
+	OccurredAt        time.Time
+	ProviderReference string
+}
+
+// NormalizeTimestamp matches PostgreSQL timestamptz precision. Canonical
+// facts must compare the value that persistence can actually round-trip.
+func NormalizeTimestamp(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
+}
+
 func (p PaymentSettlement) Validate() error {
 	if strings.TrimSpace(p.PaymentID) == "" || strings.TrimSpace(p.PayerUserID) == "" || strings.TrimSpace(p.Currency) == "" || p.Status != PaymentSettled || p.SettledAt.IsZero() || p.GrossAmountMinor <= 0 || p.DiscountAmountMinor < 0 || p.CommissionableAmountMinor <= 0 || p.DiscountAmountMinor > p.GrossAmountMinor || p.CommissionableAmountMinor > p.GrossAmountMinor-p.DiscountAmountMinor || strings.TrimSpace(p.ProviderReference) == "" || p.Version < 1 {
 		return ErrInvalid
@@ -49,6 +63,13 @@ func (p PaymentSettlement) Validate() error {
 
 func (r RefundSettlement) Validate() error {
 	if strings.TrimSpace(r.RefundID) == "" || strings.TrimSpace(r.PaymentID) == "" || r.AmountMinor <= 0 || r.OccurredAt.IsZero() || strings.TrimSpace(r.ProviderReference) == "" {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func (c ChargebackSettlement) Validate() error {
+	if strings.TrimSpace(c.ChargebackID) == "" || strings.TrimSpace(c.PaymentID) == "" || c.AmountMinor <= 0 || c.OccurredAt.IsZero() || strings.TrimSpace(c.ProviderReference) == "" {
 		return ErrInvalid
 	}
 	return nil
@@ -104,6 +125,7 @@ func (p PayoutMethod) Validate() error {
 type SettlementStore interface {
 	RecordPaymentSettlement(context.Context, PaymentSettlement) error
 	RecordRefundSettlement(context.Context, RefundSettlement) error
+	RecordChargebackSettlement(context.Context, ChargebackSettlement) error
 }
 
 // SettlementObserver is the one-way projection boundary for downstream
@@ -112,4 +134,5 @@ type SettlementStore interface {
 type SettlementObserver interface {
 	ObservePaymentSettlement(context.Context, PaymentSettlement) error
 	ObserveRefundSettlement(context.Context, RefundSettlement) error
+	ObserveChargebackSettlement(context.Context, ChargebackSettlement) error
 }

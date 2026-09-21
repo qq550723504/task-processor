@@ -23,7 +23,7 @@ func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 	finishedAt := startedAt.Add(1500 * time.Millisecond)
 
 	err := recorder.RecordInvocation(context.Background(), aicapability.InvocationRecord{
-		InvocationID: " invocation-1 ", ParentInvocationID: " parent-1 ", AgentRunID: " run-1 ", TenantID: " tenant-1 ", UserID: " user-1 ", BusinessTaskID: " task-1 ", TraceID: " trace-1 ",
+		InvocationID: " invocation-1 ", ParentInvocationID: " parent-1 ", AgentRunID: " run-1 ", TenantID: " tenant-1 ", UserID: " user-1 ", MemberID: " member-1 ", BusinessTaskID: " task-1 ", TraceID: " trace-1 ",
 		Capability: " product.image.scene ", Operation: " product_image_generate ", RouteMode: " active ", RouteOutcome: " routed ", ProviderID: " openai ", ModelID: " gpt-image-1 ", RequestedRoutingKey: " request-key ", RoutingKey: " route-key ", CredentialReference: " credential-ref ",
 		PolicyVersion: " policy-v1 ", ConfigurationVersion: " config-v1 ", PromptKey: " prompt-key ", PromptVersion: " prompt-v1 ", PromptScope: " tenant ", PromptHash: " prompt-hash ",
 		StartedAt: startedAt, FinishedAt: finishedAt, Attempt: 2, FallbackIndex: 1, PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30, ImageCount: 2, EstimatedCostMicros: 400, Currency: " usd ",
@@ -34,6 +34,7 @@ func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 	var row invocationRow
 	require.NoError(t, db.Where("invocation_id = ?", "invocation-1").First(&row).Error)
 	require.Equal(t, "tenant-1", row.TenantID)
+	require.Equal(t, "member-1", row.MemberID)
 	require.Equal(t, "product.image.scene", row.Capability)
 	require.Equal(t, "active", row.RouteMode)
 	require.Equal(t, "usd", row.Currency)

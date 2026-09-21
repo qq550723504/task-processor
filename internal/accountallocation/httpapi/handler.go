@@ -77,6 +77,16 @@ func (h *Handler) list(c *gin.Context) {
 		writeError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
 	}
+	activeMemberIDs := make([]string, 0, len(page.Items))
+	for _, member := range page.Items {
+		if member.State == "active" {
+			activeMemberIDs = append(activeMemberIDs, member.ID)
+		}
+	}
+	if err := h.service.RevokeMissingMembers(c.Request.Context(), identity.EffectiveOrganizationID, activeMemberIDs, identity.UserID); err != nil && !errors.Is(err, accountallocation.ErrUnavailable) {
+		writeAllocationError(c, err)
+		return
+	}
 	snapshot, err := h.service.Snapshot(c.Request.Context(), identity.EffectiveOrganizationID)
 	if err != nil {
 		writeAllocationError(c, err)
@@ -86,7 +96,7 @@ func (h *Handler) list(c *gin.Context) {
 	for _, allocation := range snapshot.Allocations {
 		byMember[allocation.MemberID] = allocation
 	}
-	response := allocationResponse{SchemaVersion: "account-member-token-allocation-v1", Metric: snapshot.Metric, WindowStart: snapshot.WindowStart.UTC().Format(time.RFC3339Nano), WindowEnd: snapshot.WindowEnd.UTC().Format(time.RFC3339Nano), Enterprise: enterpriseViewResponse(snapshot.Enterprise), Members: make([]memberResponse, 0, len(page.Items))}
+	response := allocationResponse{SchemaVersion: "account-member-token-allocation-v1", OrganizationID: snapshot.OrganizationID, Metric: snapshot.Metric, WindowStart: snapshot.WindowStart.UTC().Format(time.RFC3339Nano), WindowEnd: snapshot.WindowEnd.UTC().Format(time.RFC3339Nano), Enterprise: enterpriseViewResponse(snapshot.Enterprise), Members: make([]memberResponse, 0, len(page.Items))}
 	for _, member := range page.Items {
 		if member.State != "active" {
 			continue
@@ -180,17 +190,18 @@ func parseNonnegative(value string) (int64, error) {
 }
 
 type allocationResponse struct {
-	SchemaVersion string             `json:"schemaVersion,omitempty"`
-	Metric        string             `json:"metric"`
-	WindowStart   string             `json:"windowStart"`
-	WindowEnd     string             `json:"windowEnd"`
-	Enterprise    enterpriseResponse `json:"enterprise,omitempty"`
-	Members       []memberResponse   `json:"members,omitempty"`
-	Allocated     string             `json:"allocated"`
-	Consumed      string             `json:"consumed"`
-	Remaining     string             `json:"remaining"`
-	Version       string             `json:"version"`
-	Active        bool               `json:"active"`
+	SchemaVersion  string             `json:"schemaVersion,omitempty"`
+	OrganizationID string             `json:"organizationId"`
+	Metric         string             `json:"metric"`
+	WindowStart    string             `json:"windowStart"`
+	WindowEnd      string             `json:"windowEnd"`
+	Enterprise     enterpriseResponse `json:"enterprise,omitempty"`
+	Members        []memberResponse   `json:"members,omitempty"`
+	Allocated      string             `json:"allocated"`
+	Consumed       string             `json:"consumed"`
+	Remaining      string             `json:"remaining"`
+	Version        string             `json:"version"`
+	Active         bool               `json:"active"`
 }
 type enterpriseResponse struct {
 	Total       string `json:"total"`
@@ -211,7 +222,7 @@ func enterpriseViewResponse(value accountallocation.EnterpriseView) enterpriseRe
 	return enterpriseResponse{Total: strconv.FormatInt(value.Total, 10), Allocated: strconv.FormatInt(value.Allocated, 10), Unallocated: strconv.FormatInt(value.Unallocated, 10), Consumed: strconv.FormatInt(value.Consumed, 10)}
 }
 func allocationResponseFrom(value accountallocation.Allocation) allocationResponse {
-	result := allocationResponse{Metric: value.Metric, WindowStart: value.WindowStart.UTC().Format(time.RFC3339Nano), WindowEnd: value.WindowEnd.UTC().Format(time.RFC3339Nano), Allocated: strconv.FormatInt(value.Allocated, 10), Consumed: strconv.FormatInt(value.Consumed, 10), Remaining: strconv.FormatInt(value.Remaining, 10), Version: strconv.FormatInt(value.Version, 10), Active: value.Active}
+	result := allocationResponse{OrganizationID: value.OrganizationID, Metric: value.Metric, WindowStart: value.WindowStart.UTC().Format(time.RFC3339Nano), WindowEnd: value.WindowEnd.UTC().Format(time.RFC3339Nano), Allocated: strconv.FormatInt(value.Allocated, 10), Consumed: strconv.FormatInt(value.Consumed, 10), Remaining: strconv.FormatInt(value.Remaining, 10), Version: strconv.FormatInt(value.Version, 10), Active: value.Active}
 	return result
 }
 func identityFromRequest(c *gin.Context) (authidentity.AuthenticatedIdentity, bool) {

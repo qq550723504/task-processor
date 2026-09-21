@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	money "task-processor/internal/ledger/money"
 )
 
@@ -31,6 +32,16 @@ type refundRow struct {
 	OccurredAt        time.Time
 	ProviderReference string
 }
+
+type chargebackRow struct {
+	ChargebackID      string `gorm:"column:chargeback_id;primaryKey"`
+	PaymentID         string
+	AmountMinor       int64
+	OccurredAt        time.Time
+	ProviderReference string
+}
+
+func (chargebackRow) TableName() string { return "ledger_chargeback_settlements" }
 
 func (refundRow) TableName() string { return "ledger_refund_settlements" }
 
@@ -62,14 +73,14 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return money.ErrUnavailable
 	}
-	return db.AutoMigrate(&paymentRow{}, &refundRow{}, &payoutMethodRow{})
+	return db.AutoMigrate(&paymentRow{}, &refundRow{}, &chargebackRow{}, &payoutMethodRow{})
 }
 
 func (r *Repository) RecordPaymentSettlement(ctx context.Context, payment money.PaymentSettlement) error {
 	if r == nil || r.db == nil || payment.Validate() != nil {
 		return money.ErrInvalid
 	}
-	row := paymentRow{PaymentID: payment.PaymentID, PayerUserID: payment.PayerUserID, Currency: payment.Currency, GrossAmountMinor: payment.GrossAmountMinor, DiscountAmountMinor: payment.DiscountAmountMinor, CommissionableAmountMinor: payment.CommissionableAmountMinor, Status: string(payment.Status), SettledAt: payment.SettledAt.UTC(), ProviderReference: payment.ProviderReference, Version: payment.Version}
+	row := paymentRow{PaymentID: payment.PaymentID, PayerUserID: payment.PayerUserID, Currency: payment.Currency, GrossAmountMinor: payment.GrossAmountMinor, DiscountAmountMinor: payment.DiscountAmountMinor, CommissionableAmountMinor: payment.CommissionableAmountMinor, Status: string(payment.Status), SettledAt: money.NormalizeTimestamp(payment.SettledAt), ProviderReference: payment.ProviderReference, Version: payment.Version}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing paymentRow
 		err := tx.Where("payment_id = ?", row.PaymentID).Take(&existing).Error
@@ -105,7 +116,7 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var payment paymentRow
-		if err := tx.Where("payment_id = ?", refund.PaymentID).Take(&payment).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id = ?", refund.PaymentID).Take(&payment).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return money.ErrNotFound
 			}
@@ -114,7 +125,7 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 		var existing refundRow
 		err := tx.Where("refund_id = ?", refund.RefundID).Take(&existing).Error
 		if err == nil {
-			if existing.PaymentID != refund.PaymentID || existing.AmountMinor != refund.AmountMinor || !existing.OccurredAt.Equal(refund.OccurredAt.UTC()) || existing.ProviderReference != refund.ProviderReference {
+			if existing.PaymentID != refund.PaymentID || existing.AmountMinor != refund.AmountMinor || !existing.OccurredAt.Equal(money.NormalizeTimestamp(refund.OccurredAt)) || existing.ProviderReference != refund.ProviderReference {
 				return money.ErrConflict
 			}
 			return nil
@@ -126,10 +137,54 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 		if err := tx.Model(&refundRow{}).Where("payment_id = ?", refund.PaymentID).Select("COALESCE(SUM(amount_minor), 0)").Scan(&refunded).Error; err != nil {
 			return money.ErrUnavailable
 		}
-		if refund.AmountMinor > payment.CommissionableAmountMinor-refunded {
+		var chargedBack int64
+		if err := tx.Model(&chargebackRow{}).Where("payment_id = ?", refund.PaymentID).Select("COALESCE(SUM(amount_minor), 0)").Scan(&chargedBack).Error; err != nil {
+			return money.ErrUnavailable
+		}
+		if refund.AmountMinor > payment.CommissionableAmountMinor-refunded-chargedBack {
 			return money.ErrInvalid
 		}
-		if err := tx.Create(&refundRow{RefundID: refund.RefundID, PaymentID: refund.PaymentID, AmountMinor: refund.AmountMinor, OccurredAt: refund.OccurredAt.UTC(), ProviderReference: refund.ProviderReference}).Error; err != nil {
+		if err := tx.Create(&refundRow{RefundID: refund.RefundID, PaymentID: refund.PaymentID, AmountMinor: refund.AmountMinor, OccurredAt: money.NormalizeTimestamp(refund.OccurredAt), ProviderReference: refund.ProviderReference}).Error; err != nil {
+			return money.ErrUnavailable
+		}
+		return nil
+	})
+}
+
+func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback money.ChargebackSettlement) error {
+	if r == nil || r.db == nil || chargeback.Validate() != nil {
+		return money.ErrInvalid
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var payment paymentRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id = ?", chargeback.PaymentID).Take(&payment).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return money.ErrNotFound
+			}
+			return money.ErrUnavailable
+		}
+		var existing chargebackRow
+		err := tx.Where("chargeback_id = ?", chargeback.ChargebackID).Take(&existing).Error
+		if err == nil {
+			if existing.PaymentID != chargeback.PaymentID || existing.AmountMinor != chargeback.AmountMinor || !existing.OccurredAt.Equal(money.NormalizeTimestamp(chargeback.OccurredAt)) || existing.ProviderReference != chargeback.ProviderReference {
+				return money.ErrConflict
+			}
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return money.ErrUnavailable
+		}
+		var refunded, chargedBack int64
+		if err := tx.Model(&refundRow{}).Where("payment_id = ?", chargeback.PaymentID).Select("COALESCE(SUM(amount_minor), 0)").Scan(&refunded).Error; err != nil {
+			return money.ErrUnavailable
+		}
+		if err := tx.Model(&chargebackRow{}).Where("payment_id = ?", chargeback.PaymentID).Select("COALESCE(SUM(amount_minor), 0)").Scan(&chargedBack).Error; err != nil {
+			return money.ErrUnavailable
+		}
+		if chargeback.AmountMinor > payment.CommissionableAmountMinor-refunded-chargedBack {
+			return money.ErrInvalid
+		}
+		if err := tx.Create(&chargebackRow{ChargebackID: chargeback.ChargebackID, PaymentID: chargeback.PaymentID, AmountMinor: chargeback.AmountMinor, OccurredAt: money.NormalizeTimestamp(chargeback.OccurredAt), ProviderReference: chargeback.ProviderReference}).Error; err != nil {
 			return money.ErrUnavailable
 		}
 		return nil
@@ -144,6 +199,16 @@ func (r *Repository) RecordRefundSettlementAndNotify(ctx context.Context, refund
 		return err
 	}
 	return observer.ObserveRefundSettlement(ctx, refund)
+}
+
+func (r *Repository) RecordChargebackSettlementAndNotify(ctx context.Context, chargeback money.ChargebackSettlement, observer money.SettlementObserver) error {
+	if observer == nil {
+		return money.ErrInvalid
+	}
+	if err := r.RecordChargebackSettlement(ctx, chargeback); err != nil {
+		return err
+	}
+	return observer.ObserveChargebackSettlement(ctx, chargeback)
 }
 
 func (r *Repository) CreatePayoutMethod(ctx context.Context, method money.PayoutMethod) error {

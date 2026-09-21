@@ -22,11 +22,11 @@ func SettleSuccessfulInvocation(ctx context.Context, record InvocationRecord, se
 	if record.Outcome != InvocationSucceeded || !record.UsageKnown {
 		return nil
 	}
-	if record.TenantID == "" || record.UserID == "" || record.InvocationID == "" || record.TotalTokens <= 0 || record.PromptTokens < 0 || record.CompletionTokens < 0 || record.PromptTokens+record.CompletionTokens != record.TotalTokens || record.FinishedAt.IsZero() {
+	if record.TenantID == "" || record.UserID == "" || record.MemberID == "" || record.InvocationID == "" || record.TotalTokens <= 0 || record.PromptTokens < 0 || record.CompletionTokens < 0 || record.PromptTokens+record.CompletionTokens != record.TotalTokens || record.FinishedAt.IsZero() {
 		return ErrInvalidInvocationUsage
 	}
 	if settler == nil {
 		return ErrInvalidInvocationUsage
 	}
-	return settler.SettleAIInvocationUsage(ctx, record.TenantID, record.UserID, record.InvocationID, int64(record.TotalTokens), record.FinishedAt.UTC())
+	return settler.SettleAIInvocationUsage(ctx, record.TenantID, record.MemberID, record.InvocationID, int64(record.TotalTokens), record.FinishedAt.UTC())
 }

@@ -63,7 +63,7 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		if lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error; lookupErr != nil {
 			return err
 		}
-		if existing.TenantID != strings.TrimSpace(record.TenantID) || existing.UserID != strings.TrimSpace(record.UserID) || existing.TotalTokens != record.TotalTokens || existing.Outcome != strings.TrimSpace(string(record.Outcome)) {
+		if existing.TenantID != strings.TrimSpace(record.TenantID) || existing.UserID != strings.TrimSpace(record.UserID) || existing.MemberID != strings.TrimSpace(record.MemberID) || existing.TotalTokens != record.TotalTokens || existing.Outcome != strings.TrimSpace(string(record.Outcome)) {
 			return err
 		}
 	}
@@ -86,6 +86,7 @@ type invocationRow struct {
 	AgentRunID           string    `gorm:"column:agent_run_id;size:128"`
 	TenantID             string    `gorm:"column:tenant_id;size:128;index:idx_ai_invocations_tenant_started,priority:1"`
 	UserID               string    `gorm:"column:user_id;size:128"`
+	MemberID             string    `gorm:"column:member_id;size:128"`
 	BusinessTaskID       string    `gorm:"column:business_task_id;size:128;index:idx_ai_invocations_business_task_id"`
 	TraceID              string    `gorm:"column:trace_id;size:128"`
 	Capability           string    `gorm:"column:capability;size:128;index:idx_ai_invocations_capability_started,priority:1"`
@@ -143,7 +144,7 @@ func invocationRowFromRecord(record aicapability.InvocationRecord) invocationRow
 	return invocationRow{
 		EstimatedCostKnown: record.EstimatedCostKnown, UsageKnown: record.UsageKnown,
 		InvocationID: trim(record.InvocationID), ParentInvocationID: trim(record.ParentInvocationID), AgentRunID: trim(record.AgentRunID),
-		TenantID: trim(record.TenantID), UserID: trim(record.UserID), BusinessTaskID: trim(record.BusinessTaskID), TraceID: trim(record.TraceID),
+		TenantID: trim(record.TenantID), UserID: trim(record.UserID), MemberID: trim(record.MemberID), BusinessTaskID: trim(record.BusinessTaskID), TraceID: trim(record.TraceID),
 		Capability: trim(string(record.Capability)), Operation: trim(string(record.Operation)), RouteMode: trim(string(record.RouteMode)), RouteOutcome: trim(string(record.RouteOutcome)), CacheStatus: string(cacheStatus),
 		ProviderID: trim(record.ProviderID), ModelID: trim(record.ModelID), RequestedRoutingKey: trim(record.RequestedRoutingKey), RoutingKey: trim(record.RoutingKey), CredentialReference: trim(record.CredentialReference),
 		PolicyVersion: trim(record.PolicyVersion), ConfigurationVersion: trim(record.ConfigurationVersion),

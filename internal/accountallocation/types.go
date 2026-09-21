@@ -70,6 +70,27 @@ type AuditEvent struct {
 	CreatedAt      time.Time
 }
 
+// AuditPosition is the stable cursor for the commercial allocation audit
+// stream. The idempotency key is unique and is used as the tie-breaker when
+// two events share the same database timestamp.
+type AuditPosition struct {
+	CreatedAt      time.Time
+	IdempotencyKey string
+}
+
+func (p AuditPosition) Valid() bool {
+	return !p.CreatedAt.IsZero() && p.CreatedAt.Equal(p.CreatedAt.Truncate(time.Microsecond)) && p.IdempotencyKey != ""
+}
+
+func (e AuditEvent) Position() AuditPosition {
+	return AuditPosition{CreatedAt: e.CreatedAt.UTC().Truncate(time.Microsecond), IdempotencyKey: e.IdempotencyKey}
+}
+
+type AuditPage struct {
+	Items []AuditEvent
+	Next  *AuditPosition
+}
+
 type SetTargetInput struct {
 	OrganizationID  string
 	MemberID        string
@@ -92,6 +113,14 @@ type Repository interface {
 	Snapshot(context.Context, Quota) (Snapshot, error)
 	SetTarget(context.Context, Quota, SetTargetInput) (Allocation, error)
 	Consume(context.Context, Quota, ConsumeInput) error
+}
+
+// StaleAllocationReleaser is an optional commercial-owner operation used by
+// the account boundary after it observes the live membership directory. It
+// releases only unused reservations for members no longer present; membership
+// remains the canonical owner of member state.
+type StaleAllocationReleaser interface {
+	RevokeMissingMembers(context.Context, Quota, []string, string) error
 }
 
 type QuotaReader interface {
@@ -141,4 +170,19 @@ func (s *Service) Consume(ctx context.Context, input ConsumeInput) error {
 		return err
 	}
 	return s.repo.Consume(ctx, quota, input)
+}
+
+func (s *Service) RevokeMissingMembers(ctx context.Context, organizationID string, activeMemberIDs []string, actorID string) error {
+	if s == nil || s.quotas == nil || s.repo == nil || organizationID == "" || actorID == "" {
+		return ErrInvalidRequest
+	}
+	releaser, ok := s.repo.(StaleAllocationReleaser)
+	if !ok {
+		return ErrUnavailable
+	}
+	quota, err := s.quotas.ReadTokenQuota(ctx, organizationID)
+	if err != nil {
+		return err
+	}
+	return releaser.RevokeMissingMembers(ctx, quota, activeMemberIDs, actorID)
 }

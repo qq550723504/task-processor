@@ -26,7 +26,7 @@ func VerifyPermissions(ctx context.Context, db *gorm.DB) error {
 	if err != nil || !safe {
 		return d.ErrUnavailable
 	}
-	for _, table := range []string{"referral_codes", "registration_intents", "referral_relations", "referral_receipts", "registration_admission_buckets", "referral_earning_claims", "referral_earnings_ledger", "referral_refund_operations", "referral_earnings_projection", "referral_withdrawals", "referral_withdrawal_operations", "referral_earnings_audit_events"} {
+	for _, table := range []string{"referral_codes", "registration_intents", "referral_relations", "referral_receipts", "registration_admission_buckets", "referral_earning_claims", "referral_earnings_ledger", "referral_refund_operations", "referral_chargeback_operations", "referral_earnings_projection", "referral_withdrawals", "referral_withdrawal_operations", "referral_earnings_audit_events"} {
 		for _, permission := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"} {
 			want := permission == "SELECT" || permission == "INSERT" || (table == "registration_admission_buckets" && (permission == "UPDATE" || permission == "DELETE")) || (table == "registration_intents" && permission == "UPDATE") || (table == "referral_earning_claims" && permission == "UPDATE") || (table == "referral_earnings_projection" && permission == "UPDATE") || (table == "referral_withdrawals" && permission == "UPDATE")
 			var have bool
@@ -37,7 +37,7 @@ func VerifyPermissions(ctx context.Context, db *gorm.DB) error {
 	}
 	var invalid int64
 	err = db.WithContext(ctx).Raw(`SELECT count(*) FROM pg_attribute WHERE attrelid IN
-	 ('public.registration_intents'::regclass,'public.referral_codes'::regclass,'public.referral_relations'::regclass,'public.referral_receipts'::regclass,'public.registration_admission_buckets'::regclass,'public.referral_earning_claims'::regclass,'public.referral_earnings_ledger'::regclass,'public.referral_refund_operations'::regclass,'public.referral_earnings_projection'::regclass,'public.referral_withdrawals'::regclass,'public.referral_withdrawal_operations'::regclass,'public.referral_earnings_audit_events'::regclass)
+	 ('public.registration_intents'::regclass,'public.referral_codes'::regclass,'public.referral_relations'::regclass,'public.referral_receipts'::regclass,'public.registration_admission_buckets'::regclass,'public.referral_earning_claims'::regclass,'public.referral_earnings_ledger'::regclass,'public.referral_refund_operations'::regclass,'public.referral_chargeback_operations'::regclass,'public.referral_earnings_projection'::regclass,'public.referral_withdrawals'::regclass,'public.referral_withdrawal_operations'::regclass,'public.referral_earnings_audit_events'::regclass)
  AND attnum>0 AND NOT attisdropped AND
  (has_column_privilege(current_user,attrelid,attname,'REFERENCES') OR
  has_column_privilege(current_user,attrelid,attname,'UPDATE') <>

@@ -97,9 +97,9 @@ type Repository struct {
 	commercial *listingsubscription.GormRepository
 }
 
-func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string) ([]domain.AuditEvent, error) {
+func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string, after *domain.AuditPosition) (domain.AuditPage, error) {
 	if r == nil || r.db == nil || organizationID == "" || limit < 1 {
-		return nil, domain.ErrInvalidRequest
+		return domain.AuditPage{}, domain.ErrInvalidRequest
 	}
 	query := r.db.WithContext(ctx).Where("organization_id = ?", organizationID)
 	if actor != "" {
@@ -108,15 +108,28 @@ func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string,
 	if operation != "" {
 		query = query.Where("operation = ?", operation)
 	}
+	if after != nil {
+		if !after.Valid() {
+			return domain.AuditPage{}, domain.ErrInvalidRequest
+		}
+		query = query.Where("(created_at < ?) OR (created_at = ? AND idempotency_key < ?)", after.CreatedAt, after.CreatedAt, after.IdempotencyKey)
+	}
 	var rows []auditRow
-	if err := query.Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error; err != nil {
-		return nil, mapError(err)
+	// Read one extra row so the projection can distinguish an exhausted stream
+	// from a page that needs a cursor.
+	if err := query.Order("created_at DESC, idempotency_key DESC").Limit(limit + 1).Find(&rows).Error; err != nil {
+		return domain.AuditPage{}, mapError(err)
 	}
-	result := make([]domain.AuditEvent, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, domain.AuditEvent{OrganizationID: row.OrganizationID, ActorID: row.ActorID, MemberID: row.MemberID, Operation: row.Operation, Target: row.Target, Allocated: row.Allocated, Consumed: row.Consumed, Version: row.Version, IdempotencyKey: row.IdempotencyKey, CreatedAt: row.CreatedAt.UTC()})
+	page := domain.AuditPage{Items: make([]domain.AuditEvent, 0, limit)}
+	for i, row := range rows {
+		if i == limit {
+			position := page.Items[len(page.Items)-1].Position()
+			page.Next = &position
+			break
+		}
+		page.Items = append(page.Items, domain.AuditEvent{OrganizationID: row.OrganizationID, ActorID: row.ActorID, MemberID: row.MemberID, Operation: row.Operation, Target: row.Target, Allocated: row.Allocated, Consumed: row.Consumed, Version: row.Version, IdempotencyKey: row.IdempotencyKey, CreatedAt: row.CreatedAt.UTC().Truncate(time.Microsecond)})
 	}
-	return result, nil
+	return page, nil
 }
 
 func New(db *gorm.DB) (*Repository, error) {
@@ -194,7 +207,7 @@ func (r *Repository) SetTarget(ctx context.Context, quota domain.Quota, input do
 			return mapError(err)
 		}
 		var row allocationRow
-		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND member_id = ? AND metric = ?", quota.OrganizationID, input.MemberID, domain.MetricToken).Take(&row).Error
+		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND member_id = ? AND metric = ? AND window_start = ? AND window_end = ?", quota.OrganizationID, input.MemberID, domain.MetricToken, quota.WindowStart, quota.WindowEnd).Take(&row).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			row = allocationRow{OrganizationID: quota.OrganizationID, MemberID: input.MemberID, Metric: domain.MetricToken, WindowStart: quota.WindowStart, WindowEnd: quota.WindowEnd, Version: 0}
 		} else if err != nil {
@@ -217,6 +230,7 @@ func (r *Repository) SetTarget(ctx context.Context, quota domain.Quota, input do
 		if input.Target > quota.Total-allocated {
 			return domain.ErrQuotaExceeded
 		}
+		now := time.Now().UTC().Truncate(time.Microsecond)
 		storedTarget := input.Target
 		active := input.Target > 0
 		// target=0 is the explicit revoke operation. Preserve already consumed
@@ -225,21 +239,60 @@ func (r *Repository) SetTarget(ctx context.Context, quota domain.Quota, input do
 		if !active && consumed > 0 {
 			storedTarget = consumed
 		}
-		row.Allocated, row.Version, row.Active, row.WindowStart, row.WindowEnd, row.UpdatedAt = storedTarget, input.ExpectedVersion+1, active, quota.WindowStart, quota.WindowEnd, time.Now().UTC()
+		row.Allocated, row.Version, row.Active, row.WindowStart, row.WindowEnd, row.UpdatedAt = storedTarget, input.ExpectedVersion+1, active, quota.WindowStart, quota.WindowEnd, now
 		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "organization_id"}, {Name: "member_id"}, {Name: "metric"}}, DoUpdates: clause.AssignmentColumns([]string{"allocated", "version", "active", "window_start", "window_end", "updated_at"})}).Create(&row).Error; err != nil {
 			return mapError(err)
 		}
-		operation = operationRow{IdempotencyKey: input.IdempotencyKey, OrganizationID: quota.OrganizationID, MemberID: input.MemberID, Fingerprint: fingerprint, Target: input.Target, Version: row.Version, Allocated: row.Allocated, Consumed: consumed, Active: row.Active, WindowStart: quota.WindowStart, WindowEnd: quota.WindowEnd, CreatedAt: time.Now().UTC()}
+		operation = operationRow{IdempotencyKey: input.IdempotencyKey, OrganizationID: quota.OrganizationID, MemberID: input.MemberID, Fingerprint: fingerprint, Target: input.Target, Version: row.Version, Allocated: row.Allocated, Consumed: consumed, Active: row.Active, WindowStart: quota.WindowStart, WindowEnd: quota.WindowEnd, CreatedAt: now}
 		if err := tx.Create(&operation).Error; err != nil {
 			return mapError(err)
 		}
-		if err := tx.Create(&auditRow{OrganizationID: quota.OrganizationID, ActorID: input.ActorID, MemberID: input.MemberID, Operation: operationName(input.Target), Target: input.Target, Allocated: row.Allocated, Consumed: consumed, Version: row.Version, IdempotencyKey: input.IdempotencyKey, CreatedAt: time.Now().UTC()}).Error; err != nil {
+		if err := tx.Create(&auditRow{OrganizationID: quota.OrganizationID, ActorID: input.ActorID, MemberID: input.MemberID, Operation: operationName(input.Target), Target: input.Target, Allocated: row.Allocated, Consumed: consumed, Version: row.Version, IdempotencyKey: input.IdempotencyKey, CreatedAt: now}).Error; err != nil {
 			return mapError(err)
 		}
 		result = allocationFromOperation(operation)
 		return nil
 	})
 	return result, err
+}
+
+func (r *Repository) RevokeMissingMembers(ctx context.Context, quota domain.Quota, activeMemberIDs []string, actorID string) error {
+	if r == nil || r.db == nil || !validQuota(quota) || actorID == "" {
+		return domain.ErrInvalidRequest
+	}
+	active := make(map[string]struct{}, len(activeMemberIDs))
+	for _, id := range activeMemberIDs {
+		if id != "" {
+			active[id] = struct{}{}
+		}
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := r.lockOrganization(tx, quota.OrganizationID); err != nil {
+			return err
+		}
+		var rows []allocationRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND metric = ? AND window_start = ? AND window_end = ? AND active = ?", quota.OrganizationID, domain.MetricToken, quota.WindowStart, quota.WindowEnd, true).Find(&rows).Error; err != nil {
+			return mapError(err)
+		}
+		for _, row := range rows {
+			if _, ok := active[row.MemberID]; ok {
+				continue
+			}
+			consumed, err := sumMemberConsumed(tx, quota, row.MemberID)
+			if err != nil {
+				return err
+			}
+			row.Allocated, row.Active, row.Version, row.UpdatedAt = consumed, false, row.Version+1, time.Now().UTC().Truncate(time.Microsecond)
+			if err := tx.Save(&row).Error; err != nil {
+				return mapError(err)
+			}
+			key := fmt.Sprintf("member-removed:%s:%s:%s", quota.OrganizationID, row.MemberID, listingsubscription.UsagePeriodKeyForWindow(quota.WindowStart, quota.WindowEnd))
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&auditRow{OrganizationID: quota.OrganizationID, ActorID: actorID, MemberID: row.MemberID, Operation: "revoke_member_removed", Target: 0, Allocated: consumed, Consumed: consumed, Version: row.Version, IdempotencyKey: key, CreatedAt: row.UpdatedAt}).Error; err != nil {
+				return mapError(err)
+			}
+		}
+		return nil
+	})
 }
 
 func (r *Repository) Consume(ctx context.Context, quota domain.Quota, input domain.ConsumeInput) error {
@@ -262,7 +315,7 @@ func (r *Repository) Consume(ctx context.Context, quota domain.Quota, input doma
 			return mapError(err)
 		}
 		var row allocationRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND member_id = ? AND metric = ?", quota.OrganizationID, input.MemberID, domain.MetricToken).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND member_id = ? AND metric = ? AND window_start = ? AND window_end = ?", quota.OrganizationID, input.MemberID, domain.MetricToken, quota.WindowStart, quota.WindowEnd).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.ErrAllocationRequired
 		} else if err != nil {
 			return mapError(err)

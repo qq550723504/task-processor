@@ -68,12 +68,14 @@ func TestAuthorizationClientUsesOfficialV2ContractAndSyntheticFixture(t *testing
 	require.NoError(t, err)
 	assert.Equal(t, []authidentity.OrganizationGrant{
 		{
+			AuthorizationID:   "synthetic-authorization-a-000001",
 			OrganizationID:   "synthetic-acceptance-org-a-000001",
 			OrganizationName: "ListingKit Acceptance Organization A",
 			ProjectID:        "synthetic-project-000001",
 			Roles:            []string{"listingkit_admin"},
 		},
 		{
+			AuthorizationID:   "synthetic-authorization-b-000001",
 			OrganizationID:   "synthetic-acceptance-org-b-000001",
 			OrganizationName: "ListingKit Acceptance Organization B",
 			ProjectID:        "synthetic-project-000001",
@@ -118,8 +120,8 @@ func TestAuthorizationClientPaginatesWithStableOffsets(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []authidentity.OrganizationGrant{
-		{OrganizationID: "org-a", OrganizationName: "Organization A", ProjectID: "project-1", Roles: []string{"admin"}},
-		{OrganizationID: "org-b", OrganizationName: "Organization B", ProjectID: "project-1", Roles: []string{"viewer"}},
+		{AuthorizationID: "auth-2", OrganizationID: "org-a", OrganizationName: "Organization A", ProjectID: "project-1", Roles: []string{"admin"}},
+		{AuthorizationID: "auth-1", OrganizationID: "org-b", OrganizationName: "Organization B", ProjectID: "project-1", Roles: []string{"viewer"}},
 	}, got)
 	mu.Lock()
 	assert.Equal(t, []int{0, 1}, offsets)
@@ -149,7 +151,7 @@ func TestAuthorizationClientAcceptsProtoJSONUint64Pagination(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, []authidentity.OrganizationGrant{{
-				OrganizationID: "org-1", OrganizationName: "Organization 1", ProjectID: "project-1", Roles: []string{"viewer"},
+				AuthorizationID: "opaque-auth-id", OrganizationID: "org-1", OrganizationName: "Organization 1", ProjectID: "project-1", Roles: []string{"viewer"},
 			}}, got)
 		})
 	}
@@ -299,7 +301,7 @@ func TestAuthorizationClientFiltersUntrustedItemsAndDeduplicatesScopedRoles(t *t
 
 	require.NoError(t, err)
 	assert.Equal(t, []authidentity.OrganizationGrant{{
-		OrganizationID: "org-a", OrganizationName: "Organization A", ProjectID: "project-1",
+		AuthorizationID: "auth-valid-1", OrganizationID: "org-a", OrganizationName: "Organization A", ProjectID: "project-1",
 		Roles: []string{"admin", "operator", "viewer"},
 	}}, got)
 }

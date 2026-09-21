@@ -173,7 +173,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		ScopeProtocol: identity.ScopeProtocol,
 		ID:            input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
 		ImagePolicyContext: input.ImagePolicyContext,
-		TenantID:           identity.TenantID, UserID: identity.UserID,
+		TenantID:           identity.TenantID, UserID: identity.UserID, MemberID: identity.MemberID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
 		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,
 		Budget: input.Budget, MaxConcurrentSlots: input.MaxConcurrentSlots,
@@ -610,7 +610,7 @@ func verifiedExecutionIdentity(ctx context.Context) (ExecutionIdentity, error) {
 		return ExecutionIdentity{}, ErrIdentityRequired
 	}
 	ai := aiidentity.FromContext(ctx)
-	return ExecutionIdentity{TenantID: identity.TenantID, UserID: identity.UserID, TraceID: ai.TraceID}, nil
+	return ExecutionIdentity{TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, TraceID: ai.TraceID}, nil
 }
 
 func cloneBlock(block *Block) *Block {

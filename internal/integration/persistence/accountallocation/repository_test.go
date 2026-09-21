@@ -161,7 +161,7 @@ func TestConsumeIdempotencyKeyRejectsCrossWindowReplay(t *testing.T) {
 	}
 
 	nextWindow := domain.Quota{OrganizationID: "org-1", Metric: domain.MetricToken, Total: 100, WindowStart: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), WindowEnd: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)}
-	if _, err := repo.SetTarget(ctx, nextWindow, setInput("member-1", "allocation-2", 10, 1)); err != nil {
+	if _, err := repo.SetTarget(ctx, nextWindow, setInput("member-1", "allocation-2", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Consume(ctx, nextWindow, input); !errors.Is(err, domain.ErrIdempotencyConflict) {
@@ -173,5 +173,31 @@ func TestConsumeIdempotencyKeyRejectsCrossWindowReplay(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("usage rows=%d, want 1", count)
+	}
+}
+
+func TestListRecentAuditUsesStableCursor(t *testing.T) {
+	repo := newTestRepository(t)
+	ctx := context.Background()
+	q := testQuota()
+	for i, member := range []string{"member-1", "member-2", "member-3"} {
+		if _, err := repo.SetTarget(ctx, q, setInput(member, "audit-"+string(rune('1'+i)), int64(10+i), 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := repo.ListRecentAudit(ctx, "org-1", 2, "admin-1", "", nil)
+	if err != nil || len(first.Items) != 2 || first.Next == nil {
+		t.Fatalf("first page=%#v err=%v", first, err)
+	}
+	second, err := repo.ListRecentAudit(ctx, "org-1", 2, "admin-1", "", first.Next)
+	if err != nil || len(second.Items) != 1 || second.Next != nil {
+		t.Fatalf("second page=%#v err=%v", second, err)
+	}
+	seen := map[string]bool{}
+	for _, item := range first.Items {
+		seen[item.IdempotencyKey] = true
+	}
+	if seen[second.Items[0].IdempotencyKey] {
+		t.Fatalf("cursor repeated audit event: first=%#v second=%#v", first, second)
 	}
 }
