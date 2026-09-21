@@ -96,11 +96,15 @@ func installSchemaTx(ctx context.Context, tx *sql.Tx) error {
 			return fmt.Errorf("install account allocation schema: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `GRANT SELECT, INSERT, UPDATE ON TABLE public.account_member_token_locks, public.account_member_token_allocations, public.account_member_token_operations, public.account_member_token_audit_events TO commercial_runtime`); err != nil {
+	if _, err := tx.ExecContext(ctx, `DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'commercial_runtime') THEN
+        EXECUTE 'GRANT SELECT, INSERT, UPDATE ON TABLE public.account_member_token_locks, public.account_member_token_allocations, public.account_member_token_operations, public.account_member_token_audit_events TO commercial_runtime';
+        EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_runtime';
+    END IF;
+END
+$$`); err != nil {
 		return fmt.Errorf("grant account allocation runtime privileges: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_runtime`); err != nil {
-		return fmt.Errorf("grant account allocation sequence privileges: %w", err)
 	}
 	return nil
 }
