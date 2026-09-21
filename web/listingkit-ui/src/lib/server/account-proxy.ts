@@ -24,7 +24,7 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
     void request.body?.cancel().catch(() => undefined); return accountFailure(400, "INVALID_REQUEST");
   }
   let organization: string | undefined;
-  if (kind === "organization" || kind === "member-allocations") {
+  if (kind === "organization" || kind === "member-allocations" || (kind === "business-profile" && request.method === "PUT")) {
     const selections = (request.headers.get("cookie") ?? "").split(";").map(v => v.trim()).filter(v => v.startsWith(`${WORKBENCH_COOKIE_NAME}=`));
     if (selections.length === 0) return accountFailure(409, "ORGANIZATION_SELECTION_REQUIRED");
     if (selections.length !== 1) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");

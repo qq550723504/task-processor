@@ -20,7 +20,9 @@ const runtimePermissionQuery = `SELECT current_user,
     AND has_table_privilege(current_user, 'public.account_business_profiles', 'INSERT')
     AND has_table_privilege(current_user, 'public.account_business_profiles', 'UPDATE')
     AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'SELECT')
-    AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'INSERT') AS required_privileges,
+    AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'INSERT')
+    AND has_sequence_privilege(current_user, 'public.account_business_profile_audit_events_id_seq', 'USAGE')
+    AND has_sequence_privilege(current_user, 'public.account_business_profile_audit_events_id_seq', 'SELECT') AS required_privileges,
   has_database_privilege(current_user, current_database(), 'CREATE')
     OR has_schema_privilege(current_user, 'public', 'CREATE')
     OR EXISTS (

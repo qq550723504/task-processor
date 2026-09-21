@@ -59,6 +59,9 @@ func newMembershipFixture(t *testing.T) *membershipFixture {
 		for table, privileges := range allowed {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)
 		}
+		if role == "source_account_runtime" {
+			require.NoError(t, owner.Exec(`GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+		}
 		cfg := &platformdatabase.Config{Host: "127.0.0.1", Port: connection.Port, User: role, Password: "membership-fixture-password", Database: connection.Database, MaxConnections: 3, MaxIdleConnections: 1}
 		var pool *gorm.DB
 		if role == "commercial_reader" {

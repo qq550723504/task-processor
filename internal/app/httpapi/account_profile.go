@@ -31,7 +31,7 @@ func (m accountProfileModule) Register(reg *kernelmodule.Registry) error {
 	}
 	reg.AddRoutes(
 		httproute.Descriptor{Method: http.MethodGet, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: true, Handler: m.read},
-		httproute.Descriptor{Method: http.MethodPut, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 15 * time.Second, Handler: m.update},
+		httproute.Descriptor{Method: http.MethodPut, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountOrganizationTarget, RequestTimeout: 15 * time.Second, Handler: m.update},
 	)
 	return nil
 }

@@ -92,10 +92,10 @@ func (m accountAuditModule) Register(modules *kernelmodule.Registry) error {
 	modules.AddRoutes(httproute.Descriptor{Method: http.MethodGet, Path: accountAuditPath, Module: m.Name(), Permission: authz.PermissionWorkbenchSourceAccountRead, AuthPolicy: httproute.AuthPolicyVerifiedIdentity,
 		// LiveWrite is the existing resolver policy for fresh grants. This GET
 		// requires only read permission and never invokes a mutation.
-		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountAuditTarget, RejectUnreadRequestBody: true, RequestTimeout: registry.Timeout, Handler: m.read})
+		OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountOrganizationTarget, RejectUnreadRequestBody: true, RequestTimeout: registry.Timeout, Handler: m.read})
 	return nil
 }
-func accountAuditTarget(request *http.Request) (string, error) {
+func accountOrganizationTarget(request *http.Request) (string, error) {
 	values := request.Header.Values("X-Requested-Organization-ID")
 	if len(values) == 0 {
 		return "", workbenchcontext.ErrOrganizationSelectionRequired

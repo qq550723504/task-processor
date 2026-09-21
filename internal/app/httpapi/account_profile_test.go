@@ -14,7 +14,9 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/httproute"
 	profileStore "task-processor/internal/integration/persistence/accountprofile"
+	kernelmodule "task-processor/internal/kernel/module"
 )
 
 func TestAccountBusinessProfilePersistsAcrossReadsWithoutOrganizationLeakage(t *testing.T) {
@@ -55,6 +57,25 @@ func TestAccountBusinessProfilePersistsAcrossReadsWithoutOrganizationLeakage(t *
 	require.Contains(t, other.Body.String(), `"userId":"user-b"`)
 	require.Contains(t, other.Body.String(), `"userRole":null`)
 	require.NotContains(t, other.Body.String(), "品牌方")
+}
+
+func TestAccountBusinessProfileMutationRequiresLiveOrganizationResolution(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	repository, err := profileStore.New(db)
+	require.NoError(t, err)
+	modules := kernelmodule.NewRegistry()
+	require.NoError(t, (accountProfileModule{repository: repository}).Register(modules))
+	var mutation *httproute.Descriptor
+	for _, route := range modules.Routes() {
+		if route.Method == http.MethodPut && route.Path == accountBusinessProfilePath {
+			copy := route
+			mutation = &copy
+		}
+	}
+	require.NotNil(t, mutation)
+	require.Equal(t, httproute.OrganizationAccessPolicyLiveWrite, mutation.OrganizationAccessPolicy)
+	require.NotNil(t, mutation.OrganizationTargetResolver)
 }
 
 // The production repository intentionally keeps the row private. This test
