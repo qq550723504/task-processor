@@ -54,7 +54,7 @@ func newMembershipFixture(t *testing.T) *membershipFixture {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'membership-fixture-password'; GRANT CONNECT ON DATABASE issue347 TO `+role+`; GRANT USAGE ON SCHEMA public TO `+role).Error)
 		allowed := run1AllowedPrivileges[role]
 		if role == "organization_membership_runtime" {
-			allowed = map[string][]string{"organization_member_operations": {"SELECT", "INSERT", "UPDATE"}}
+			allowed = map[string][]string{"organization_member_operations": {"SELECT", "INSERT", "UPDATE"}, "organization_member_audit_events": {"SELECT", "INSERT"}}
 		}
 		for table, privileges := range allowed {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)

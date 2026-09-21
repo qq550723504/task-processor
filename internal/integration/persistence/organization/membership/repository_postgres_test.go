@@ -157,6 +157,10 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	audit, next, err := rebuilt.ListRecentAudit(ctx, "org", 20, "", "role", nil)
+	if err != nil || next != nil || len(audit) != 1 || audit[0].TargetUserID != "target" || audit[0].Operation != "role" {
+		t.Fatalf("membership audit=%+v next=%v err=%v", audit, next, err)
+	}
 	if _, err := rebuilt.Begin(ctx, alias); err != nil {
 		t.Fatalf("valid ACK did not release: %v", err)
 	}
@@ -169,6 +173,7 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
  GRANT CONNECT ON DATABASE membership_test TO organization_membership_runtime;
  GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
  GRANT SELECT,INSERT,UPDATE ON public.organization_member_operations TO organization_membership_runtime;
+ GRANT SELECT,INSERT ON public.organization_member_audit_events TO organization_membership_runtime;
  CREATE TABLE public.unrelated_facts (id integer);`).Error; err != nil {
 		t.Fatal(err)
 	}

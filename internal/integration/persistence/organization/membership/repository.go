@@ -7,7 +7,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -16,10 +18,56 @@ import (
 )
 
 const table = "public.organization_member_operations"
+const auditTable = "public.organization_member_audit_events"
 
 var fingerprintPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type Repository struct{ db *sql.DB }
+
+func (r *Repository) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string, after *domain.AuditPosition) ([]domain.AuditEvent, *domain.AuditPosition, error) {
+	if r == nil || r.db == nil || !authidentity.IsBoundedIdentifier(organizationID) || limit < 1 {
+		return nil, nil, domain.ErrInvalidRequest
+	}
+	query := `SELECT organization_id,actor_id,target_user_id,operation,operation_key::text,revision,created_at FROM ` + auditTable + ` WHERE organization_id=$1`
+	args := []any{organizationID}
+	if actor != "" {
+		query += ` AND actor_id=$2`
+		args = append(args, actor)
+	}
+	if operation != "" {
+		query += fmt.Sprintf(" AND operation=$%d", len(args)+1)
+		args = append(args, operation)
+	}
+	if after != nil {
+		if !after.Valid() {
+			return nil, nil, domain.ErrInvalidRequest
+		}
+		query += fmt.Sprintf(" AND (created_at < $%d OR (created_at = $%d AND operation_key < $%d))", len(args)+1, len(args)+1, len(args)+2)
+		args = append(args, after.CreatedAt, after.OperationKey)
+	}
+	query += fmt.Sprintf(" ORDER BY created_at DESC, operation_key DESC LIMIT %d", limit+1)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, domain.ErrUnavailable
+	}
+	defer rows.Close()
+	events := make([]domain.AuditEvent, 0, limit)
+	for rows.Next() {
+		var event domain.AuditEvent
+		if err := rows.Scan(&event.OrganizationID, &event.ActorID, &event.TargetUserID, &event.Operation, &event.OperationKey, &event.Revision, &event.CreatedAt); err != nil {
+			return nil, nil, domain.ErrUnavailable
+		}
+		if len(events) == limit {
+			position := events[len(events)-1].Position()
+			return events, &position, nil
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, domain.ErrUnavailable
+	}
+	return events, nil, nil
+}
 
 func NewRepository(ctx context.Context, db *gorm.DB) (*Repository, error) {
 	if ctx == nil || db == nil {
@@ -174,6 +222,11 @@ func (r *Repository) Apply(ctx context.Context, scope domain.OperationScope, key
 	_, err = tx.ExecContext(ctx, `UPDATE `+table+` SET payload=$1,revision=$2,active=$3 WHERE project_id=$4 AND organization_id=$5 AND actor_id=$6 AND operation_key=$7`, payload, next.Revision, active, scope.ProjectID, scope.OrganizationID, scope.ActorID, key)
 	if err != nil {
 		return domain.Operation{}, domain.ErrUnavailable
+	}
+	if next.Phase == domain.PhaseCompleted {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO `+auditTable+` (organization_id,actor_id,target_user_id,operation_key,operation,revision,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, scope.OrganizationID, scope.ActorID, next.TargetUserID, key, string(next.Kind), next.Revision, time.Now().UTC()); err != nil {
+			return domain.Operation{}, domain.ErrUnavailable
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.Operation{}, domain.ErrUnavailable

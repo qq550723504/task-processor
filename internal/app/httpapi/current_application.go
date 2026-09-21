@@ -48,15 +48,16 @@ var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildWorkbench         workbenchContextModuleBuilder
-	buildSourceAccount     func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildCommercial        func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAcquisition       func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildBrowserCapture    func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildMembership        func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAllocation func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAudit      func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAccountProfile    func(*gorm.DB) (kernelmodule.Module, error)
+	buildWorkbench                  workbenchContextModuleBuilder
+	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAcquisition                func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAccountAudit               func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
@@ -107,7 +108,10 @@ func defaultCurrentApplicationFactories(ctx context.Context) currentApplicationF
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
 		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, authorizer)
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer)
+		},
+		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer)
 		},
 		buildAccountProfile:    func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
 		buildAccountAllocation: buildAccountResourceAllocationModule,
@@ -260,7 +264,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, errors.New("disabled referrals must not receive a pool")
 	}
 	if factories.buildAccountAudit != nil {
-		audit, auditErr := factories.buildAccountAudit(sourceAccountDB, commercialDB, authorizer)
+		var audit kernelmodule.Module
+		var auditErr error
+		if supplied.membership != nil && factories.buildAccountAuditWithMembership != nil {
+			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, authorizer)
+		} else {
+			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, authorizer)
+		}
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)
 		}

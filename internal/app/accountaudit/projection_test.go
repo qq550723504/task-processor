@@ -22,7 +22,13 @@ type historyStub struct {
 
 type allocationHistoryStub struct{ page allocation.AuditPage }
 
+type additionalHistoryStub struct{ page AdditionalAuditPage }
+
 func (s *allocationHistoryStub) ListRecentAudit(context.Context, string, int, string, string, *allocation.AuditPosition) (allocation.AuditPage, error) {
+	return s.page, nil
+}
+
+func (s *additionalHistoryStub) ListRecentAudit(context.Context, string, int, string, string, *AuditPosition) (AdditionalAuditPage, error) {
 	return s.page, nil
 }
 
@@ -129,5 +135,27 @@ func TestProjectionEmitsCursorWhenMergedPageTruncatesWithoutSourceCursor(t *test
 	}
 	if len(page.Items) != 2 || page.NextCursor == nil {
 		t.Fatalf("merged page=%+v, want truncated cursor", page)
+	}
+}
+
+func TestProjectionIncludesProfileAndMembershipAuditFacts(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	history := &historyStub{}
+	profile := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "account_business_profile.updated", Actor: "actor", Time: now, ObjectType: "account_business_profile", ObjectReference: "u1", Operation: "update", Version: 1, Key: "1"}}}}
+	membership := &additionalHistoryStub{page: AdditionalAuditPage{Items: []AdditionalAuditEvent{{EventType: "organization_membership.changed", Actor: "actor", Time: now.Add(-time.Microsecond), ObjectType: "organization_member", ObjectReference: "member-1", Operation: "role", Version: 2, Key: "00000000-0000-4000-8000-000000000001"}}}}
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	query, err := NewWithAuditSources(history, nil, profile, membership)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := query.Read(ctx, 20, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 || page.Items[0].ObjectType != "account_business_profile" || page.Items[1].ObjectType != "organization_member" {
+		t.Fatalf("audit page = %#v", page.Items)
+	}
+	if page.Source != "source_account_committed_operations+account_business_profile_audit+organization_member_audit" {
+		t.Fatalf("audit source = %q", page.Source)
 	}
 }

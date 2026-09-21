@@ -24,6 +24,15 @@ describe("audit page", () => {
     expect(screen.getByText(/源账号已提交操作/)).toBeVisible(); expect(screen.queryByText("86")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /导出|邀请|续费/ })).not.toBeInTheDocument();
   });
+  it("renders profile and membership audit facts", async () => {
+    const profile = { eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } };
+    const member = { eventType: "organization_membership.changed", actor: "operator-B", time: "2026-09-11T00:00:00Z", objectType: "organization_member", objectReference: "member-1", operation: "role", result: "succeeded", relation: { type: "organization_member_version", reference: "member-1", version: "2" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+account_business_profile_audit+organization_member_audit", items: [profile, member] })));
+    mount();
+    expect(await screen.findByText("更新账户资料")).toBeVisible();
+    expect(screen.getByText("更新成员角色")).toBeVisible();
+    expect(screen.getByText("成员与权限")).toBeVisible();
+  });
   it("distinguishes empty from dependency failure and allows retry", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "secret", requestId: "", fieldErrors: [] }, { status: 503 })).mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
     mount(); expect(await screen.findByText("操作记录暂不可用")).toBeVisible(); expect(screen.queryByText("暂无操作记录")).not.toBeInTheDocument();

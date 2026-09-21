@@ -13,7 +13,9 @@ const runtimePermissionQuery = `SELECT current_user,
  AND has_schema_privilege(current_user,'public','USAGE')
  AND has_table_privilege(current_user,'public.organization_member_operations','SELECT')
  AND has_table_privilege(current_user,'public.organization_member_operations','INSERT')
- AND has_table_privilege(current_user,'public.organization_member_operations','UPDATE') AS required,
+ AND has_table_privilege(current_user,'public.organization_member_operations','UPDATE')
+ AND has_table_privilege(current_user,'public.organization_member_audit_events','SELECT')
+ AND has_table_privilege(current_user,'public.organization_member_audit_events','INSERT') AS required,
  has_database_privilege(current_user,current_database(),'CREATE')
  OR has_database_privilege(current_user,current_database(),'TEMPORARY')
  OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls))
@@ -26,7 +28,12 @@ const runtimePermissionQuery = `SELECT current_user,
  AND CASE WHEN privilege.privilege_type IN ('SELECT','INSERT','UPDATE','REFERENCES')
  THEN has_any_column_privilege(current_user,relation.oid,privilege.privilege_type)
  ELSE has_table_privilege(current_user,relation.oid,privilege.privilege_type) END
- AND NOT (namespace.nspname='public' AND relation.relname='organization_member_operations' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE'))
+ AND NOT (
+   namespace.nspname='public' AND (
+     relation.relname='organization_member_operations' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE')
+     OR relation.relname='organization_member_audit_events' AND privilege.privilege_type IN ('SELECT','INSERT')
+   )
+ )
  ) AS forbidden`
 
 func VerifyRuntimePermissions(ctx context.Context, db *gorm.DB) error {

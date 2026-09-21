@@ -24,6 +24,17 @@ var installationStatements = []string{`CREATE TABLE public.account_business_prof
     CONSTRAINT account_business_profiles_user_id_check CHECK (octet_length(user_id) BETWEEN 1 AND 128 AND user_id = btrim(user_id)),
     CONSTRAINT account_business_profiles_text_check CHECK (octet_length(user_role) <= 128 AND octet_length(shop_situation) <= 128 AND octet_length(factory_situation) <= 128 AND octet_length(shop_type) <= 128),
     CONSTRAINT account_business_profiles_json_check CHECK (platforms IS JSON AND sites IS JSON AND services IS JSON)
+)`, `CREATE TABLE public.account_business_profile_audit_events (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id VARCHAR(128) NOT NULL,
+    actor_id VARCHAR(128) NOT NULL,
+    user_id VARCHAR(128) NOT NULL,
+    operation VARCHAR(32) NOT NULL,
+    version BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT account_business_profile_audit_ids_check CHECK (octet_length(organization_id) BETWEEN 1 AND 128 AND organization_id = btrim(organization_id) AND octet_length(actor_id) BETWEEN 1 AND 128 AND actor_id = btrim(actor_id) AND octet_length(user_id) BETWEEN 1 AND 128 AND user_id = btrim(user_id)),
+    CONSTRAINT account_business_profile_audit_operation_check CHECK (operation = 'update'),
+    CONSTRAINT account_business_profile_audit_version_check CHECK (version > 0)
 )`}
 
 func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {

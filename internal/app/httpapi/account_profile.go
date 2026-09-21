@@ -63,7 +63,7 @@ func (m accountProfileModule) update(c *gin.Context) {
 		return
 	}
 	profile := profileStore.BusinessProfile{UserID: identity.UserID, UserRole: input.UserRole, ShopSituation: input.ShopSituation, FactorySituation: input.FactorySituation, Platforms: input.Platforms, Sites: input.Sites, ShopType: input.ShopType, Services: input.Services}
-	saved, err := m.repository.Save(c.Request.Context(), profile)
+	saved, err := m.repository.SaveWithAudit(c.Request.Context(), profile, profileStore.AuditContext{OrganizationID: identity.EffectiveOrganizationID, ActorID: identity.UserID})
 	if err != nil {
 		writeAccountProfileError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return

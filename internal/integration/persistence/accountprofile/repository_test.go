@@ -12,7 +12,7 @@ import (
 func TestRepositoryRoundTripsUserScopedProfile(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&profileRow{}))
+	require.NoError(t, db.AutoMigrate(&profileRow{}, &auditRow{}))
 	repo, err := New(db)
 	require.NoError(t, err)
 
@@ -38,4 +38,23 @@ func TestRepositoryRoundTripsUserScopedProfile(t *testing.T) {
 	require.Equal(t, "供应链", updated.UserRole)
 	require.Empty(t, updated.ShopSituation)
 	require.Equal(t, []string{"SHEIN"}, updated.Platforms)
+}
+
+func TestRepositoryPersistsProfileAuditWithTheProfileMutation(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&profileRow{}, &auditRow{}))
+	repo, err := New(db)
+	require.NoError(t, err)
+
+	saved, err := repo.SaveWithAudit(context.Background(), BusinessProfile{UserID: "user-a", UserRole: "品牌方"}, AuditContext{OrganizationID: "org-a", ActorID: "actor-a"})
+	require.NoError(t, err)
+	require.NotNil(t, saved.UpdatedAt)
+
+	events, next, err := repo.ListRecentAudit(context.Background(), "org-a", 20, "actor-a", "update", nil)
+	require.NoError(t, err)
+	require.Nil(t, next)
+	require.Len(t, events, 1)
+	require.Equal(t, int64(1), events[0].ID)
+	require.Equal(t, AuditEvent{ID: events[0].ID, OrganizationID: "org-a", ActorID: "actor-a", UserID: "user-a", Operation: "update", Version: 1, CreatedAt: events[0].CreatedAt}, events[0])
 }

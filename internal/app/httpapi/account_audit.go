@@ -16,8 +16,11 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	accountallocationstore "task-processor/internal/integration/persistence/accountallocation"
+	accountprofilestore "task-processor/internal/integration/persistence/accountprofile"
+	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	store "task-processor/internal/integration/persistence/sourceaccountregistry"
 	kernelmodule "task-processor/internal/kernel/module"
+	membership "task-processor/internal/organization/membership"
 	registry "task-processor/internal/sourceaccountregistry"
 	"task-processor/internal/workbenchcontext"
 )
@@ -28,6 +31,54 @@ var accountAuditScope = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`
 var accountAuditLimit = regexp.MustCompile(`^[1-9][0-9]{0,2}$`)
 
 type accountAuditModule struct{ query *accountaudit.Query }
+
+type profileAuditReader struct {
+	repository *accountprofilestore.Repository
+}
+
+func (r profileAuditReader) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string, after *accountaudit.AuditPosition) (accountaudit.AdditionalAuditPage, error) {
+	var position *accountprofilestore.AuditPosition
+	if after != nil {
+		id, err := strconv.ParseInt(after.Key, 10, 64)
+		if err != nil || id < 1 {
+			return accountaudit.AdditionalAuditPage{}, registry.ErrInvalid
+		}
+		position = &accountprofilestore.AuditPosition{CreatedAt: after.CreatedAt, ID: id}
+	}
+	items, next, err := r.repository.ListRecentAudit(ctx, organizationID, limit, actor, operation, position)
+	if err != nil {
+		return accountaudit.AdditionalAuditPage{}, err
+	}
+	page := accountaudit.AdditionalAuditPage{Items: make([]accountaudit.AdditionalAuditEvent, 0, len(items))}
+	for _, item := range items {
+		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "account_business_profile.updated", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "account_business_profile", ObjectReference: item.UserID, Operation: item.Operation, Version: item.Version, Key: strconv.FormatInt(item.ID, 10)})
+	}
+	if next != nil {
+		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: strconv.FormatInt(next.ID, 10)}
+	}
+	return page, nil
+}
+
+type membershipAuditReader struct{ repository *memberstore.Repository }
+
+func (r membershipAuditReader) ListRecentAudit(ctx context.Context, organizationID string, limit int, actor, operation string, after *accountaudit.AuditPosition) (accountaudit.AdditionalAuditPage, error) {
+	var position *membership.AuditPosition
+	if after != nil {
+		position = &membership.AuditPosition{CreatedAt: after.CreatedAt, OperationKey: after.Key}
+	}
+	items, next, err := r.repository.ListRecentAudit(ctx, organizationID, limit, actor, operation, position)
+	if err != nil {
+		return accountaudit.AdditionalAuditPage{}, err
+	}
+	page := accountaudit.AdditionalAuditPage{Items: make([]accountaudit.AdditionalAuditEvent, 0, len(items))}
+	for _, item := range items {
+		page.Items = append(page.Items, accountaudit.AdditionalAuditEvent{EventType: "organization_membership.changed", Actor: item.ActorID, Time: item.CreatedAt, ObjectType: "organization_member", ObjectReference: item.TargetUserID, Operation: item.Operation, Version: item.Revision, Key: item.OperationKey})
+	}
+	if next != nil {
+		page.Next = &accountaudit.AuditPosition{CreatedAt: next.CreatedAt, Key: next.OperationKey}
+	}
+	return page, nil
+}
 
 func (accountAuditModule) Name() string { return "account-audit" }
 func (m accountAuditModule) Enabled(cfg *config.Config) bool {
@@ -80,12 +131,16 @@ func accountAuditFilterInput(values url.Values) (accountaudit.Filter, error) {
 		return accountaudit.Filter{}, registry.ErrInvalid
 	}
 	operation := values.Get("operation")
-	if operation != "" && (len(values["operation"]) != 1 || operation != string(registry.OperationRegister) && operation != string(registry.OperationEnable) && operation != string(registry.OperationDisable) && operation != "set_target" && operation != "revoke") {
+	if operation != "" && (len(values["operation"]) != 1 || operation != string(registry.OperationRegister) && operation != string(registry.OperationEnable) && operation != string(registry.OperationDisable) && operation != "set_target" && operation != "revoke" && operation != "update" && operation != "invite" && operation != "role" && operation != "remove") {
 		return accountaudit.Filter{}, registry.ErrInvalid
 	}
 	filter := accountaudit.Filter{ActorSubject: actor}
 	if operation == "set_target" || operation == "revoke" {
 		filter.ResourceOperation = operation
+	} else if operation == "update" {
+		filter.ProfileOperation = operation
+	} else if operation == "invite" || operation == "role" || operation == "remove" {
+		filter.MembershipOperation = operation
 	} else {
 		filter.Kind = registry.OperationKind(operation)
 	}
@@ -130,7 +185,7 @@ func writeAccountAuditError(c *gin.Context, err error) {
 	}
 	writeWorkbenchProtocolError(c, status, code, "Operation history request could not be completed")
 }
-func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 	repository, err := store.NewRepository(ctx, sourceDB)
 	if err != nil {
 		return nil, err
@@ -147,7 +202,20 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB *gorm.D
 	if err != nil {
 		return nil, err
 	}
-	query, err := accountaudit.NewWithAllocation(history, allocationRepository)
+	profileRepository, err := accountprofilestore.New(sourceDB)
+	if err != nil {
+		return nil, err
+	}
+	var profileHistory accountaudit.AdditionalHistory = profileAuditReader{repository: profileRepository}
+	var membershipHistory accountaudit.AdditionalHistory
+	if membershipDB != nil {
+		membershipRepository, membershipErr := memberstore.NewRepository(ctx, membershipDB)
+		if membershipErr != nil {
+			return nil, membershipErr
+		}
+		membershipHistory = membershipAuditReader{repository: membershipRepository}
+	}
+	query, err := accountaudit.NewWithAuditSources(history, allocationRepository, profileHistory, membershipHistory)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +228,7 @@ func NewAccountAuditApplication(ctx context.Context, db *gorm.DB, verifier zitad
 	if ctx == nil || db == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, registry.ErrUnavailable
 	}
-	module, err := buildAccountAuditModule(ctx, db, db, authorizer)
+	module, err := buildAccountAuditModule(ctx, db, db, nil, authorizer)
 	if err != nil {
 		return nil, err
 	}

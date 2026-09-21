@@ -25,7 +25,18 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
  PRIMARY KEY(project_id,organization_id,actor_id,operation_key)
  );
  CREATE UNIQUE INDEX organization_member_active_target ON public.organization_member_operations(project_id,organization_id,target_user_id) WHERE active;
- CREATE UNIQUE INDEX organization_member_active_invite_email ON public.organization_member_operations(project_id,organization_id,invite_email) WHERE active AND invite_email IS NOT NULL;`)
+ CREATE UNIQUE INDEX organization_member_active_invite_email ON public.organization_member_operations(project_id,organization_id,invite_email) WHERE active AND invite_email IS NOT NULL;
+ CREATE TABLE public.organization_member_audit_events (
+  organization_id varchar(128) NOT NULL,
+  actor_id varchar(128) NOT NULL,
+  target_user_id varchar(128) NOT NULL,
+  operation_key uuid NOT NULL,
+  operation varchar(32) NOT NULL,
+  revision bigint NOT NULL CHECK (revision > 0),
+  created_at timestamptz NOT NULL,
+  PRIMARY KEY(organization_id,operation_key),
+  CONSTRAINT organization_member_audit_operation_check CHECK (operation IN ('invite','role','remove'))
+ );`)
 	return err
 }
 
@@ -34,8 +45,25 @@ type schemaReader interface {
 }
 
 func verifySchema(ctx context.Context, db schemaReader) error {
+	var auditTableCount int
+	rows, err := db.QueryContext(ctx, `SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='organization_member_audit_events' AND c.relkind='r'`)
+	if err != nil {
+		return err
+	}
+	if rows.Next() {
+		if err := rows.Scan(&auditTableCount); err != nil {
+			_ = rows.Close()
+			return err
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if auditTableCount != 1 {
+		return errors.New("membership audit table missing")
+	}
 	want := map[string]string{"project_id": "character varying(128)", "organization_id": "character varying(128)", "actor_id": "character varying(128)", "operation_key": "uuid", "target_user_id": "character varying(128)", "invite_email": "character varying(320)", "fingerprint": "character(64)", "revision": "bigint", "active": "boolean", "payload": "jsonb"}
-	rows, err := db.QueryContext(ctx, `SELECT a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.organization_member_operations'::regclass AND a.attnum>0 AND NOT a.attisdropped`)
+	rows, err = db.QueryContext(ctx, `SELECT a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.organization_member_operations'::regclass AND a.attnum>0 AND NOT a.attisdropped`)
 	if err != nil {
 		return err
 	}
