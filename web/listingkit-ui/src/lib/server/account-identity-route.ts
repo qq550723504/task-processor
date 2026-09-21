@@ -12,7 +12,8 @@ function authenticatedFor(dispatchState: AccountDispatchState) {
     const prefix = "/api/account/identity/";
     const operation = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : "";
     const identity = readZitadelIdentityFromSession(request.auth as never);
-    if (!operations.has(operation) || !identity?.userId) return accountFailure(400, "INVALID_REQUEST");
+    if (!identity?.userId) return accountFailure(401, "AUTHENTICATION_REQUIRED");
+    if (!operations.has(operation)) return accountFailure(400, "INVALID_REQUEST");
     return proxyAccountIdentity(request, readZitadelServerAccessToken(request.auth as never), String(identity.userId), operation, dispatchState);
   });
 }

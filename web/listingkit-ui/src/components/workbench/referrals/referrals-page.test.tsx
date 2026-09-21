@@ -104,6 +104,18 @@ describe("ReferralsPage", () => {
     expect(screen.getByText("注册入口暂不可用")).toBeVisible();
   });
 
+  it("renders unavailable earnings instead of a disabled payout-method spinner", async () => {
+    const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
+    const fetch = vi.fn((input: string) => String(input).includes("referral-withdrawals")
+      ? Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }))
+      : Promise.resolve(Response.json(projection)));
+    vi.stubGlobal("fetch", fetch);
+    mount("overview", "subject-1", true, "withdrawals");
+    expect(await screen.findByText("收益数据暂不可用，暂不能读取收款方式或提交提现申请。请刷新后重试。")).toBeVisible();
+    expect(screen.queryByText("正在读取已验证收款方式…")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("allows a user to cancel only the requested withdrawal", async () => {
     const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
     const requested = { schemaVersion: "referral-withdrawal-v1", id: "withdrawal-1", currency: "CNY", method: "ALIPAY", payoutMethodId: "method-1", amountMinor: "10000", status: "REQUESTED", payoutReference: "", version: "2", createdAt: "2026-09-13T10:01:00Z", updatedAt: "2026-09-13T10:01:00Z" };

@@ -61,6 +61,12 @@ describe("exported account routes", () => {
    const response = await identityEmailPUT(writeIdentityEmail());
    expect(response.status).toBe(401); expect((await response.json()).code).toBe("AUTHENTICATION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
   });
+  it("returns authentication required when the identity session is absent", async () => {
+   state.user = "";
+   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+   const response = await identityEmailPUT(writeIdentityEmail());
+   expect(response.status).toBe(401); expect((await response.json()).code).toBe("AUTHENTICATION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
+  });
  it("reads the identity profile inside Shuomi without requiring a client body or cookie", async () => {
   const identityProfile = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "First", lastName: "Last", nickName: "", displayName: "Name", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
   const fetch = vi.fn().mockResolvedValue(Response.json(identityProfile)); vi.stubGlobal("fetch", fetch);
