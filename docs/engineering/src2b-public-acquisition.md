@@ -35,8 +35,11 @@ lease. Compressed and expanded provider bodies are each limited to 2 MiB.
 
 The retained-operation limit is a lifetime ceiling: operation rows are never deleted
 and terminal rows keep counting, so raising it defers exhaustion rather than removing
-it. It is sized from measured storage (~18 KiB per published command ⇒ ~36 MiB per
-organization at 2048) rather than from an expected user count.
+it. It is sized from observed storage (~18 KiB per published command ⇒ ~36 MiB per
+organization at 2048) rather than from an expected user count. It is not a storage
+bound: `MaxAcquisitionCommandBytes` admits 2 MiB commands, so an organization
+submitting near-limit commands could reach ~4 GiB, and the previous 256-row ceiling
+admitted ~512 MiB by the same arithmetic.
 
 ## Explicit empty-database initialization
 
