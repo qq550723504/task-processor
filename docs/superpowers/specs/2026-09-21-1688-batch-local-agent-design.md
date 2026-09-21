@@ -223,13 +223,26 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 queued → capturing → captured → submitting → (published | failed | outcome_unknown)
 ```
 
-- **必须在触发 `popup.handoff` 之前**（即采集页尚未拿到 payload、按钮尚未出现之前）就把该条持久化为 `submitting`，并连同 **key 与原始 scope** 一起落盘。这是「悲观」的含义：宁可多记「可能已提交」，不可少记。
-  - 插入点明确：`handoff()` 是 payload 变可见的唯一路径（`controller.ts:24`），因此预写就放在发 `popup.handoff` **之前**。
+- **预写分两阶段（因为 key 与 scope 在 handoff 之前根本不存在）**。上一版写「在 `popup.handoff` 之前把 `submitting` **连同 key 与 scope** 一起落盘」是**不可执行的**：
+
+  - key 由扩展在 `handoff()` **内部**生成（`controller.ts:26` 的 `crypto.randomUUID()`），发消息之前执行器拿不到它；
+  - 已核实 scope 只展示在 handoff **创建出来的那个采集页**上（`capture-receiver.tsx:139-140`），之前也不存在；
+  - 而本设计又禁止修改既有采集链路（§1.3）⇒ 不存在「先拿到 key/scope 再 handoff」的路径。
+
+  ⇒ 修正为：
+
+  | 阶段 | 时机 | 写入内容 | 可执行性依据 |
+  |---|---|---|---|
+  | **① 保守标记（仅标记）** | 发 `popup.handoff` **之前** | 仅 `submitting`，**无 key、无 scope** | 执行器写自己的文件，不依赖任何外部信息 |
+  | **② 绑定 key 与 scope** | handoff 返回、采集页出现之后 | 从 URL 读 key；从页面展示读已核实身份/组织 | key：handoff hash 已含 `idempotencyKey`（`handoff.ts:54-56`），页面随后归一为 `#operationKey=`（`capture-receiver.tsx:62`，参见 `handoff.ts:60`）；scope：`capture-receiver.tsx:139-140` |
+
+- **阶段① 的语义是「此条可能已被提交，永不自动重采」**。标记本身不携带任何身份信息，所以它**不会**被误用为「可重采」的依据——这是故意的。
 - **只有 `captured` 状态（从未进入 `submitting`）才允许自动重新采集。**
-- 从 `submitting` 回退到 `captured`（即可重采）**必须同时满足两个可观测条件**，缺一不可：
+- **阶段① 与阶段② 之间崩溃** ⇒ 状态为 `submitting` 且无 key/scope ⇒ 无法回读、无法校 scope ⇒ 直接 `outcome_unknown` + 人工核实。**不自动重采**。代价是一次人工核实；换来的是不可能重复发布。
+- 从 `submitting` 回退到 `captured`（即可重采）**必须同时满足两个可观测条件**，缺一不可（这也意味着阶段② 必须已完成，否则不可能满足条件 2）：
   1. 执行器**读到了页面自己给出的「未派发」终态文案**——即 `capture-receiver.tsx:74-79` 的 *"No new request was dispatched"*，或 `:111` 的 *"Capture was rejected before admission. No operation was created"*，或 `:115` 的 *"Capture was not submitted"*；且
   2. `by-key` 在 **scope 校验一致**的前提下返回 `404 ACQUISITION_NOT_FOUND`。
-- 其余任何情况（包括「不确定用户是否点过」「页面文案没读到」「scope 不一致」）⇒ 一律 `outcome_unknown`，**停下等人工核实，不自动重采**。
+- 其余任何情况（包括「不确定用户是否点过」「页面文案没读到」「scope 不一致」「阶段② 未完成」）⇒ 一律 `outcome_unknown`，**停下等人工核实，不自动重采**。
 
 ⇒ 用一句话概括本设计的恢复底线：**「不确定是否提交过」时，选择不提交。** 宁多一次人工核实，不多一次重复发布。
 
@@ -337,7 +350,9 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | **确认边界** | 任何 POST 都由用户手动点击触发；执行器从未自行点击「Confirm and submit」（可验证：全程无对 `run(true)` 按钮的自动点击） |
 | **scope 绑定** | 重启后用**另一个**账号/组织运行 ⇒ 整批停止并提示用原账号重登；**不得**因 `404` 而重新提交 |
 | **404 不授权提交** | 人为构造 scope 一致 + `by-key` `404` ⇒ 执行器记 `outcome_unknown` 并停下，**无新 POST** |
-| **提交意图悲观预写** | 在 `popup.handoff` 之前 kill 执行器/拔网线 ⇒ 重启后该条为 `submitting`，**不**被当作可重采，无新 POST（人为在点击确认后立即 kill 亦可验证） |
+| **提交意图悲观预写（阶段①）** | 在 `popup.handoff` 之前 kill 执行器/拔网线 ⇒ 重启后该条为 `submitting`（**无 key/scope**），**不**被当作可重采，无新 POST |
+| **预写不含 key/scope** | 检查阶段① 落盘内容：只有 `submitting`，无 key、无 scope（证明不依赖 handoff 后才能得到的信息） |
+| **阶段①→② 之间崩溃** | 在 handoff 返回后、阶段② 写入前 kill ⇒ 重启后该条为 `submitting` 且无 key ⇒ `outcome_unknown`，无新 POST |
 | **仅 `captured` 可重采** | 正常跑完后队列中无 `submitting` 且未终态的条目被自动重采；人为制造 `submitting` ⇒ 停下 |
 | **回退双条件** | 只有同时拿到页面「未派发」文案与 scope 一致的 `404` 才回退为可重采 |
 | 批量隔离 | 10 条中第 3 条失败 ⇒ 其余 9 条仍到达终态，且第 3 条本地有失败原因 |
@@ -458,6 +473,14 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 
 这条是对我上一轮修复的**直接反驳**，且成立。我把「正确语义」理解对了，但把它**建立在一个执行器拿不到的观测点上**——两次修复的共同模式都是「引用了真实代码，却推断出该代码并不提供的能力」。§10 因此新增两项可执行的 fault-injection 验收（「提交意图悲观预写」「仅 `captured` 可重采」）。
 
+### 15.6 第七轮 1 条（针对 v3.3）
+
+| # | 评审内容 | 分类 | 处置 |
+|---|---|---|---|
+| 19 | **预写意图必须可执行** | **BLOCKER（成立，已修）** | 核实成立，而且它指出我第六轮的修复**自相矛盾**：我写「在 `popup.handoff` 之前把 `submitting` **连同 key 与 scope** 落盘」，但 (a) key 由扩展在 `handoff()` **内部**生成（`controller.ts:26`），发消息之前执行器拿不到；(b) 已核实 scope 只展示在 handoff **创建的那个采集页**上（`capture-receiver.tsx:139-140`）；而本设计又禁止修改采集链路（§1.3）⇒ 该写入**不可执行**。**已改为 §4 D2.1 的两阶段预写**：阶段①（handoff 前）只写 **`submitting` 标记**，无 key/无 scope——不依赖任何外部信息，因此可执行；阶段②（handoff 返回后）从 URL 与页面绑定 key/scope。并明确「阶段①↔② 之间崩溃 ⇒ `outcome_unknown`，不自动重采」。§10 新增三项验收（含「预写不含 key/scope」与「阶段①→② 之间崩溃」） |
+
+第三轮连续指出我的修复建立在执行器拿不到的观测点上。共同模式已经很清楚：**我把「语义正确」误当成「可实现」**。§15.5/§15.6 因此各保留一条相同教训，作为后续 S1 实现时的检查项：任何「执行器必须先知道 X 才能安全行动」的规则，都必须先回答「X 在某时刻真的可观测吗」。
+
 两条 findings 都是**真实缺陷**，已直接修正设计，无需产品决定。第 14 条之所以能拿下来，是因为它指出了「复用已上线链路」这一路线的一个隐藏前提：既有链路是**为单次人工点击设计的有状态流程**，不是无状态 API。这一点已写入 §3.2 缺口表。
 
 ## 16. v3 变更记录
@@ -471,4 +494,5 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 7. **修正 D2 的 key 语义**：原写「同 key 重试」是错的——key 由扩展在交付时内部生成（`controller.ts:26`），执行器无法指定也无法复用；引用的 `StartPrepared` 恢复路径需要重新提交 payload，而重建 payload 必然生成新 key。已改为「`by-key` 回读 + 按结果分支」的判定表。
 8. **新增 §4 D1.2（提交确认边界）**：第五轮评审指出执行器不能代替用户点「Confirm and submit」——契约要求每条 POST 前展示已核实身份与企业并取得显式确认（`README.md:124-128`，`capture-receiver.tsx:145`）。已明确执行器不点该按钮，批量形态为「执行器跑腿 + 用户逐条确认」。
 9. **修正 D2 的 `404` 语义（我的回归）**：原写「`404` ⇒ 安全重采集」，与既有实现**直接相反**——`capture-receiver.tsx:121-123` 原文明确 "This does not prove a prior request failed. No new submission will be made."，且 `ByKey` 按 `(organization_id, actor_id, key)` 查询（`repository.go:338`）使 `404` 也可能是 scope 不符。已改为「记录原始 scope + 回读前校 scope + `404` 归 `outcome_unknown`」，仅「本地确认未提交」允许重采。
-10. **新增 §4 D2.1（提交意图悲观预写）**：第六轮评审指出上一版的「本地确认未提交」不可判定——提交由页面发起（`capture-receiver.tsx:85-86`），执行器看不到。已定义条目状态机、在 `popup.handoff` 之前预写 `submitting` + key + scope、以及回退为可重采的双条件。
+10. **新增 §4 D2.1（提交意图悲观预写）**：第六轮评审指出上一版的「本地确认未提交」不可判定——提交由页面发起（`capture-receiver.tsx:85-86`），执行器看不到。已定义条目状态机、在 `popup.handoff` 之前预写 `submitting`、以及回退为可重采的双条件。
+11. **D2.1 改为两阶段预写**：第七轮评审指出「handoff 之前写 key+scope」不可执行（key 在 `handoff()` 内部生成 `controller.ts:26`，scope 在 handoff 创建的页面上）。阶段① 仅写 `submitting` 标记；阶段② 再绑定 key/scope。
