@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+# Keep this entrypoint materialized as LF on existing Windows worktrees.
 
 state=/state
 terraform_source=/terraform-source

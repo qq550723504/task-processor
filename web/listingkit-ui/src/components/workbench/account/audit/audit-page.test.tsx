@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuditPage } from "./audit-page";
@@ -19,8 +19,8 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear())
 describe("audit page", () => {
   it("renders source facts and coverage without fake metrics or actions", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, items: [event] })));
-    mount(); expect(await screen.findByRole("table", { name: "操作记录" })).toBeVisible();
-    expect(screen.getByText("operator-B")).toBeVisible(); expect(screen.getByText("停用源账号")).toBeVisible();
+    mount(); const table = await screen.findByRole("table", { name: "操作记录" }); expect(table).toBeVisible();
+    expect(within(table).getByText("operator-B")).toBeVisible(); expect(within(table).getByText("停用源账号")).toBeVisible();
     expect(screen.getByText(/源账号已提交操作/)).toBeVisible(); expect(screen.queryByText("86")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /导出|邀请|续费/ })).not.toBeInTheDocument();
   });
@@ -29,9 +29,10 @@ describe("audit page", () => {
     const member = { eventType: "organization_membership.changed", actor: "operator-B", time: "2026-09-11T00:00:00Z", objectType: "organization_member", objectReference: "member-1", operation: "role", result: "succeeded", relation: { type: "organization_member_version", reference: "member-1", version: "2" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+account_business_profile_audit+organization_member_audit", items: [profile, member] })));
     mount();
-    expect(await screen.findByText("更新账户资料")).toBeVisible();
-    expect(screen.getByText("更新成员角色")).toBeVisible();
-    expect(screen.getByText("成员与权限")).toBeVisible();
+    const table = await screen.findByRole("table", { name: "操作记录" });
+    expect(within(table).getByText("更新账户资料")).toBeVisible();
+    expect(within(table).getByText("更新成员角色")).toBeVisible();
+    expect(within(table).getByText("成员与权限")).toBeVisible();
   });
   it("distinguishes empty from dependency failure and allows retry", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "secret", requestId: "", fieldErrors: [] }, { status: 503 })).mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
