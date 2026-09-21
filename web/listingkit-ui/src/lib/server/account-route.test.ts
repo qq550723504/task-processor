@@ -55,6 +55,12 @@ describe("exported account routes", () => {
    const response = await identityEmailPUT(writeIdentityEmail());
    expect(response.status).toBe(502); expect(await response.json()).toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
   });
+  it("returns authentication required when the identity session has no access token", async () => {
+   state.token = "";
+   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+   const response = await identityEmailPUT(writeIdentityEmail());
+   expect(response.status).toBe(401); expect((await response.json()).code).toBe("AUTHENTICATION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
+  });
  it("reads the identity profile inside Shuomi without requiring a client body or cookie", async () => {
   const identityProfile = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "First", lastName: "Last", nickName: "", displayName: "Name", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
   const fetch = vi.fn().mockResolvedValue(Response.json(identityProfile)); vi.stubGlobal("fetch", fetch);
@@ -98,6 +104,14 @@ describe("exported account routes", () => {
    vi.useFakeTimers(); state.blocked = true;
    const pending = identityEmailPUT(writeIdentityEmail()); await vi.advanceTimersByTimeAsync(15001);
    expect((await pending).status).toBe(504);
+  });
+  it("preserves an unknown identity outcome when the route deadline fires after forwarding", async () => {
+   vi.useFakeTimers(); vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+   const pending = identityEmailPUT(writeIdentityEmail()); await vi.advanceTimersByTimeAsync(15001);
+   const response = await pending;
+   expect(response).toMatchObject({ status: 504 });
+   const payload = await response.json();
+   expect(payload).toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
   });
  it("bounds response body waiting", async () => {
   vi.useFakeTimers();vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({ start() {} }), { headers: { "Content-Type": "application/json" } })));

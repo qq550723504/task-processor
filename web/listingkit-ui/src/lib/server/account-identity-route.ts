@@ -24,17 +24,20 @@ async function handleAccountIdentity(request: NextRequest): Promise<Response> {
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, 15000);
+  const dispatchState: AccountDispatchState = { forwarded: false };
+  const deadlineFailure = () => dispatchState.forwarded
+    ? accountFailure(504, "RESULT_UNVERIFIED", "unknown")
+    : accountFailure(504, "DEADLINE_EXCEEDED");
   let finish = () => {};
   const ended = new Promise<Response>(resolve => {
-    finish = () => resolve(accountFailure(504, "DEADLINE_EXCEEDED"));
+    finish = () => resolve(deadlineFailure());
     controller.signal.addEventListener("abort", finish, { once: true });
   });
   try {
-    const dispatchState: AccountDispatchState = { forwarded: false };
     const scoped = new NextRequest(request, { signal: controller.signal });
     const result = await Promise.race([authenticatedFor(dispatchState)(scoped, { params: Promise.resolve({}) }), ended]);
-    return controller.signal.aborted ? accountFailure(504, "DEADLINE_EXCEEDED") : result ?? accountFailure(503, "DEPENDENCY_UNAVAILABLE");
-  } catch { return controller.signal.aborted ? accountFailure(504, "DEADLINE_EXCEEDED") : accountFailure(503, "DEPENDENCY_UNAVAILABLE");
+    return controller.signal.aborted ? deadlineFailure() : result ?? accountFailure(503, "DEPENDENCY_UNAVAILABLE");
+  } catch { return controller.signal.aborted ? deadlineFailure() : accountFailure(503, "DEPENDENCY_UNAVAILABLE");
   } finally {
     clearTimeout(timer);
     request.signal.removeEventListener("abort", abort);

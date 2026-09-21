@@ -90,8 +90,10 @@ const identityOperations: Record<string, readonly ("GET" | "PUT" | "POST")[]> = 
 export type AccountDispatchState = { forwarded: boolean };
 
 export async function proxyAccountIdentity(request: Request, token: string, sessionUserId: string, operation: string, dispatchState: AccountDispatchState = { forwarded: false }): Promise<Response> {
+  if (!token) return accountFailure(401, "AUTHENTICATION_REQUIRED");
+  if (!validID(sessionUserId)) return accountFailure(400, "INVALID_REQUEST");
   const methods = identityOperations[operation];
-  if (!methods || !methods.includes(request.method as "GET" | "PUT" | "POST") || !token || !validID(sessionUserId) || request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(400, "INVALID_REQUEST");
+  if (!methods || !methods.includes(request.method as "GET" | "PUT" | "POST") || request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(400, "INVALID_REQUEST");
   const url = new URL(request.url);
   const isRead = request.method === "GET";
   if (url.pathname !== `/api/account/identity/${operation}` || url.search || request.url.endsWith("?") || (!isRead && request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") || (isRead && (request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding")))) {
