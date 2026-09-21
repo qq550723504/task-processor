@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Sanitized local fixture: the shape of a 1688 login/verification redirect.
+     No account data, no network requests, no real markers. Used only to drive
+     the executor's classifier; see design section 4 D1.3. -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>请登录 - 1688</title>
+  </head>
+  <body>
+    <div class="login-box">
+      <h1>请登录后继续</h1>
+      <form action="/member/login" method="post">
+        <input name="account" />
+        <input name="password" type="password" />
+        <button type="submit">登录</button>
+      </form>
+      <p>登录后可查看商品详情。</p>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1054 @@
+package batchcapture
+
+// The browser-side tests here are fixture-only: they substitute the public 1688
+// page response and a transport-only receiver, exactly as
+// extensions/1688-capture/scripts/browser-smoke.mjs does. They cannot prove 1688
+// or backend acceptance, and they deliberately never touch a real 1688 account
+// (design section 17 item 8).
+//
+// They are skipped unless both a fingerprint browser binary and a fixture
+// extension build are supplied, because neither belongs in CI: the browser is a
+// large local artifact and the fixture build is a generated directory.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mxschmitt/playwright-go"
+)
+
+const (
+	fixturePort      = "4399"
+	fixtureOfferID   = "981645030344"
+	fixtureSource    = "https://detail.1688.com/offer/" + fixtureOfferID + ".html"
+	fixtureAppURL    = "http://127.0.0.1:" + fixturePort + "/capture/1688"
+	fixtureAppPrefix = "http://127.0.0.1:" + fixturePort + "/capture/1688"
+)
+
+// fixtureReceiver is the transport-only application stand-in. It performs the
+// same `capture.read` handshake the real capture page performs, presents the same
+// machine-readable scope/submit contract the executor drives, and records what it
+// received, so the test can tell whether the extension actually produced a payload
+// that reached an application context.
+//
+// It is not the real receiver: it does not submit, does not authenticate, and does
+// not prove any backend behaviour. Its scope values and terminal outcome are
+// settable so the guard paths can be exercised deliberately.
+const fixtureReceiver = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="referrer" content="no-referrer"><title>Batch Fixture Receiver</title></head><body>
+<h1>Transport Fixture — 不是真实后端</h1><p id="status">等待受限capture消息</p>
+<dl><dt>Current verified account</dt><dd data-batch-scope-actor></dd>
+<dt>Effective enterprise</dt><dd data-batch-scope-organization></dd></dl>
+<button id="confirm" data-batch-confirm-submit disabled>Confirm and submit</button>
+<div id="refusal" data-batch-submit-refusal hidden></div>
+<div id="result" data-batch-submit-result=""></div>
+<pre id="summary"></pre>
+<script>
+const params = new URLSearchParams(location.hash.slice(1));
+const extensionId=params.get('extensionId'),handoffId=params.get('handoffId'),idempotencyKey=params.get('idempotencyKey');
+window.fixtureReceived=null;
+window.fixtureStatus='INIT';
+window.__fixtureClicks=0;
+window.__fixtureScope=FIXTURE_SCOPE_PLACEHOLDER;
+window.__fixtureOutcome=FIXTURE_OUTCOME_PLACEHOLDER;
+window.__fixtureRefusal=FIXTURE_REFUSAL_PLACEHOLDER;
+if(window.__fixtureRefusal){const banner=document.querySelector('#refusal');banner.textContent=window.__fixtureRefusal;banner.hidden=false;}
+window.renderFixtureScope=()=>{
+  document.querySelector('[data-batch-scope-actor]').textContent=window.__fixtureScope.actorId;
+  document.querySelector('[data-batch-scope-organization]').textContent=window.__fixtureScope.organizationId;
+};
+window.hideFixtureScope=()=>{
+  document.querySelector('[data-batch-scope-actor]').removeAttribute('data-batch-scope-actor');
+  document.querySelector('[data-batch-scope-organization]').removeAttribute('data-batch-scope-organization');
+};
+window.renderFixtureScope();
+document.querySelector('#confirm').addEventListener('click',()=>{
+  window.__fixtureClicks+=1;
+  const refusal=document.querySelector('#refusal');
+  if(window.__fixtureRefusal){refusal.textContent=window.__fixtureRefusal;refusal.hidden=false;document.querySelector('#confirm').disabled=true;return;}
+  const node=document.querySelector('#result');
+  node.setAttribute('data-batch-submit-result',window.__fixtureOutcome.status);
+  if(window.__fixtureOutcome.operationId){node.setAttribute('data-batch-operation-id',window.__fixtureOutcome.operationId);}
+  node.textContent=window.__fixtureOutcome.status;
+});
+async function readCapture(){
+  if(!extensionId){document.querySelector('#status').textContent='恢复模式：只有原key，无自动POST';window.fixtureStatus='RECOVERY_ONLY';return;}
+  let response;
+  for(let attempt=0;attempt<10;attempt++){
+    response=await chrome.runtime.sendMessage(extensionId,{version:1,type:'capture.read',handoffId,idempotencyKey});
+    if(response?.type==='capture.payload')break;
+    await new Promise(resolve=>setTimeout(resolve,250));
+  }
+  if(response?.type!=='capture.payload'){document.querySelector('#status').textContent='CAPTURE_UNAVAILABLE';window.fixtureStatus='CAPTURE_UNAVAILABLE';return;}
+  window.fixtureReceived=response;
+  history.replaceState(null,'','#operationKey='+idempotencyKey);
+  document.querySelector('#summary').textContent=JSON.stringify(response.payload,null,2);
+  document.querySelector('#status').textContent='FIXTURE_CAPTURE_RECEIVED';window.fixtureStatus='FIXTURE_CAPTURE_RECEIVED';
+  document.querySelector('#confirm').disabled=false;
+}
+readCapture().catch(e=>{document.querySelector('#status').textContent='CAPTURE_UNAVAILABLE';window.fixtureStatus='THREW:'+String(e);});
+</script></body></html>`
+
+// requireFixtureEnv returns the browser binary and fixture extension directory, or
+// skips the test. The manifest name is checked so a production build can never be
+// used by accident, because a production build's application URL is a real origin.
+func requireFixtureEnv(t *testing.T) (string, string) {
+	t.Helper()
+	browser := os.Getenv("BATCHCAPTURE_BROWSER")
+	extDir := os.Getenv("BATCHCAPTURE_EXTENSION_DIST")
+	if browser == "" || extDir == "" {
+		t.Skip("set BATCHCAPTURE_BROWSER and BATCHCAPTURE_EXTENSION_DIST to run the fixture browser tests")
+	}
+	manifest, err := os.ReadFile(filepath.Join(extDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read fixture manifest: %v", err)
+	}
+	if !strings.Contains(string(manifest), "Fixture") {
+		t.Fatalf("refusing to drive a non-fixture extension build at %s", extDir)
+	}
+	// The application URL is compiled into the service worker, so that is where
+	// the fixture target has to be confirmed before anything is driven.
+	worker, err := os.ReadFile(filepath.Join(extDir, "background.js"))
+	if err != nil {
+		t.Fatalf("read fixture service worker: %v", err)
+	}
+	if !strings.Contains(string(worker), fixtureAppURL) {
+		t.Fatalf("fixture build does not target %s; rebuild with CAPTURE_APP_URL=%s", fixtureAppURL, fixtureAppURL)
+	}
+	// Measured constraint: the shipped extension declares only activeTab and
+	// scripting, and Chrome grants activeTab when a person invokes the action.
+	// Chromium 144 has no Extensions.triggerAction, so a programmatic
+	// chrome.action.openPopup() never grants it and chrome.scripting.executeScript
+	// fails with "manifest must request permission to access the respective host".
+	// The browser tests therefore need a fixture build that declares the product
+	// host explicitly; see the S1 report for the decision this needs.
+	var parsed struct {
+		HostPermissions []string `json:"host_permissions"`
+	}
+	if err := json.Unmarshal(manifest, &parsed); err != nil {
+		t.Fatalf("parse fixture manifest: %v", err)
+	}
+	if !slices.Contains(parsed.HostPermissions, "https://detail.1688.com/*") {
+		t.Skipf("fixture build must declare host_permissions https://detail.1688.com/* "+
+			"(activeTab cannot be granted without a real action click, which Chromium 144 cannot synthesize); "+
+			"current host_permissions=%v", parsed.HostPermissions)
+	}
+	return browser, extDir
+}
+
+// startFixtureApp serves the transport-only receiver on the port the fixture
+// extension build targets.
+// startFixtureApp serves the transport-only receiver with the given scope, so a
+// test can make the page present a scope the user did not approve.
+func startFixtureApp(t *testing.T, scope AppScope) {
+	t.Helper()
+	serveFixtureApp(t, scope, "")
+}
+
+// startFixtureAppRefusing serves a receiver that shows a refusal banner while its
+// confirmation control remains enabled, which is the case guard 3 exists for: the
+// control's own state is not evidence that the page will accept the submission.
+func startFixtureAppRefusing(t *testing.T, scope AppScope, refusal string) {
+	t.Helper()
+	serveFixtureApp(t, scope, refusal)
+}
+
+func serveFixtureApp(t *testing.T, scope AppScope, refusal string) {
+	t.Helper()
+	serveFixtureAppWithOutcome(t, scope, refusal, SubmitOutcome{Status: "published", OperationID: "fixture-operation-1"})
+}
+
+// startFixtureAppWithOutcome serves a receiver whose terminal result is chosen by
+// the test, so the driver's handling of a status it does not recognise can be
+// exercised rather than assumed.
+func startFixtureAppWithOutcome(t *testing.T, scope AppScope, outcome SubmitOutcome) {
+	t.Helper()
+	serveFixtureAppWithOutcome(t, scope, "", outcome)
+}
+
+func serveFixtureAppWithOutcome(t *testing.T, scope AppScope, refusal string, outcome SubmitOutcome) {
+	t.Helper()
+	scopeJSON, err := json.Marshal(map[string]string{
+		"actorId":        scope.ActorID,
+		"organizationId": scope.OrganizationID,
+	})
+	if err != nil {
+		t.Fatalf("encode fixture scope: %v", err)
+	}
+	refusalJSON, err := json.Marshal(refusal)
+	if err != nil {
+		t.Fatalf("encode fixture refusal: %v", err)
+	}
+	outcomeJSON, err := json.Marshal(map[string]string{
+		"status":      outcome.Status,
+		"operationId": outcome.OperationID,
+	})
+	if err != nil {
+		t.Fatalf("encode fixture outcome: %v", err)
+	}
+	body := strings.Replace(fixtureReceiver, "FIXTURE_SCOPE_PLACEHOLDER", string(scopeJSON), 1)
+	body = strings.Replace(body, "FIXTURE_REFUSAL_PLACEHOLDER", string(refusalJSON), 1)
+	body = strings.Replace(body, "FIXTURE_OUTCOME_PLACEHOLDER", string(outcomeJSON), 1)
+	listener, err := net.Listen("tcp", "127.0.0.1:"+fixturePort)
+	if err != nil {
+		t.Fatalf("fixture port %s is unavailable: %v", fixturePort, err)
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/capture/1688" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		_, _ = w.Write([]byte(body))
+	})}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdown)
+	})
+}
+
+// routeFixtureProduct substitutes the public product response for the fixture
+// offer so the extension extracts a known document from a real 1688 URL.
+func routeFixtureProduct(t *testing.T, driver *Driver) {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("testdata", "batch-product.html"))
+	if err != nil {
+		t.Fatalf("read product fixture: %v", err)
+	}
+	err = driver.Context().Route("**/*", func(route playwright.Route) {
+		request := route.Request()
+		if strings.HasPrefix(request.URL(), "https://detail.1688.com/offer/") {
+			_ = route.Fulfill(playwright.RouteFulfillOptions{
+				ContentType: playwright.String("text/html; charset=utf-8"),
+				Body:        playwright.String(string(body)),
+			})
+			return
+		}
+		_ = route.Continue()
+	})
+	if err != nil {
+		t.Fatalf("route product page: %v", err)
+	}
+}
+
+func launchFixtureDriver(t *testing.T, browser, extDir string) *Driver {
+	t.Helper()
+	driver, err := LaunchDriver(DriverOptions{
+		ExecutablePath: browser,
+		ProfileDir:     t.TempDir(),
+		ExtensionDist:  extDir,
+		Headless:       true,
+		ControlTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("launch driver: %v", err)
+	}
+	t.Cleanup(func() { _ = driver.Close() })
+	return driver
+}
+
+// fixtureAppState reads the receiver's recorded state from the application tab.
+func fixtureAppState(t *testing.T, driver *Driver) (status string, offerID string, missing int) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, page := range driver.Context().Pages() {
+			if !strings.HasPrefix(page.URL(), fixtureAppPrefix) {
+				continue
+			}
+			raw, err := page.Evaluate(`(() => {
+  const r = window.fixtureReceived;
+  return {
+    status: window.fixtureStatus || '',
+    offerID: r && r.payload && r.payload.evidence ? r.payload.evidence.offerID : '',
+    missing: r && r.payload && r.payload.evidence ? (r.payload.evidence.missingFacts || []).length : -1,
+  };
+})()`)
+			if err != nil {
+				continue
+			}
+			m, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			status, _ = m["status"].(string)
+			offerID, _ = m["offerID"].(string)
+			switch v := m["missing"].(type) {
+			case float64:
+				missing = int(v)
+			case int:
+				missing = v
+			}
+			if status != "" && status != "INIT" {
+				return status, offerID, missing
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return "", "", -1
+}
+
+// TestFixtureDriverCapturesAndHandsOffItem proves the S1 browser mechanism end to
+// end on a substituted page: the real action popup opens, its real capture
+// control produces a capture the extension accepts, and its real handoff control
+// opens an application tab whose fragment carries the generated idempotency key.
+func TestFixtureDriverCapturesAndHandsOffItem(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+
+	driver.OpenSourcePage(fixtureSource)
+	if got := driver.Observe(true).FinalURL; got != fixtureSource {
+		t.Fatalf("source page not observed: %q", got)
+	}
+	if verdict := driver.ClassifyCurrentPage(true); verdict != VerdictProceed {
+		t.Fatalf("product page classified as %q, want proceed", verdict)
+	}
+
+	popup, err := driver.OpenPopup()
+	if err != nil {
+		t.Fatalf("open action popup: %v", err)
+	}
+	defer func() { _ = popup.Close() }()
+	captured, err := popup.Capture()
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if !captured.Captured() {
+		t.Fatalf("capture did not produce a handoffable payload: %+v", captured)
+	}
+
+	handoffURL, err := popup.Handoff()
+	if err != nil {
+		t.Fatalf("handoff: %v", err)
+	}
+	ref, err := captureRefFromURL(handoffURL)
+	if err != nil {
+		t.Fatalf("handoff url %q: %v", handoffURL, err)
+	}
+	if ref.IdempotencyKey == "" {
+		t.Fatalf("handoff url %q carried no idempotency key", handoffURL)
+	}
+	// The application normalises the fragment, so the extension id is present only
+	// when the tab was observed before the normalisation.
+	if ref.ExtensionID != "" && ref.ExtensionID != driver.ExtensionID() {
+		t.Fatalf("handoff extension id %q, want %q", ref.ExtensionID, driver.ExtensionID())
+	}
+
+	status, offerID, missing := fixtureAppState(t, driver)
+	if status != "FIXTURE_CAPTURE_RECEIVED" {
+		t.Fatalf("application context did not receive the capture: status=%q", status)
+	}
+	if offerID != fixtureOfferID {
+		t.Fatalf("application received offer %q, want %q", offerID, fixtureOfferID)
+	}
+	if missing < 0 {
+		t.Fatalf("application received no missing-facts list")
+	}
+}
+
+// TestFixtureDriverResetIsolatesItems proves design section 4 D1.1 against the
+// measured popup lifetime: the handoff opens the application tab, which closes the
+// action popup, while the background controller keeps holding the payload it
+// already captured. The next item must therefore reopen the popup and clear that
+// capture, and it must carry a different idempotency key. Reusing the key would
+// make item two read back as item one's operation.
+func TestFixtureDriverResetIsolatesItems(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+
+	// Item one.
+	firstPopup, err := driver.PrepareItem(fixtureSource)
+	if err != nil {
+		t.Fatalf("prepare item one: %v", err)
+	}
+	defer func() { _ = firstPopup.Close() }()
+	first, err := firstPopup.Capture()
+	if err != nil || !first.Captured() {
+		t.Fatalf("first capture: state=%+v err=%v", first, err)
+	}
+	firstURL, err := firstPopup.Handoff()
+	if err != nil {
+		t.Fatalf("first handoff: %v", err)
+	}
+	firstRef, err := captureRefFromURL(firstURL)
+	if err != nil {
+		t.Fatalf("first handoff url: %v", err)
+	}
+
+	// The handoff opened a tab, so the popup that was attached for item one is
+	// gone and the next item has to open its own.
+	secondPopup, err := driver.PrepareItem(fixtureSource)
+	if err != nil {
+		t.Fatalf("prepare item two: %v", err)
+	}
+	defer func() { _ = secondPopup.Close() }()
+	afterReset, err := secondPopup.State()
+	if err != nil {
+		t.Fatalf("item two popup state: %v", err)
+	}
+	if afterReset.Captured() || afterReset.FreshShown {
+		t.Fatalf("item two popup still holds item one's capture: %+v", afterReset)
+	}
+
+	second, err := secondPopup.Capture()
+	if err != nil || !second.Captured() {
+		t.Fatalf("second capture: state=%+v err=%v", second, err)
+	}
+	secondURL, err := secondPopup.Handoff()
+	if err != nil {
+		t.Fatalf("second handoff: %v", err)
+	}
+	secondRef, err := captureRefFromURL(secondURL)
+	if err != nil {
+		t.Fatalf("second handoff url: %v", err)
+	}
+	if firstRef.IdempotencyKey == secondRef.IdempotencyKey {
+		t.Fatalf("second item reused the first item's idempotency key %q", firstRef.IdempotencyKey)
+	}
+}
+
+// TestFixtureDriverPrepareItemClearsCarriedCapture is the failure the batch loop
+// would otherwise produce: a capture left in the background controller by a
+// previous item being captured and handed off again as the next item. The
+// controller deliberately keeps its payload across popup openings
+// (background.ts:25, controller.ts:18), so only an explicit reset clears it.
+func TestFixtureDriverPrepareItemClearsCarriedCapture(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+
+	firstPopup, err := driver.PrepareItem(fixtureSource)
+	if err != nil {
+		t.Fatalf("prepare first item: %v", err)
+	}
+	if _, err := firstPopup.Capture(); err != nil {
+		t.Fatalf("first capture: %v", err)
+	}
+	if _, err := firstPopup.Handoff(); err != nil {
+		t.Fatalf("first handoff: %v", err)
+	}
+	_ = firstPopup.Close()
+
+	// Reopening the popup without PrepareItem must still show the carried capture,
+	// which is exactly why PrepareItem performs the reset.
+	carried, err := driver.OpenPopup()
+	if err != nil {
+		t.Fatalf("reopen popup: %v", err)
+	}
+	defer func() { _ = carried.Close() }()
+	state, err := carried.State()
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	if !state.FreshShown {
+		t.Fatalf("controller did not carry the previous capture, so this test no longer proves the reset is needed: %+v", state)
+	}
+	if err := carried.Reset(); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	cleared, err := carried.State()
+	if err != nil {
+		t.Fatalf("state after reset: %v", err)
+	}
+	if cleared.Captured() || cleared.FreshShown {
+		t.Fatalf("reset did not clear the carried capture: %+v", cleared)
+	}
+}
+
+// TestFixtureDriverStopsOnChallenge proves design section 4 D1.3 at the driver
+// level: a substituted risk-control response is classified as a batch pause
+// rather than as a product failure, and it is never overridden by the fact that
+// the executor asked for a capture.
+func TestFixtureDriverStopsOnChallenge(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	driver := launchFixtureDriver(t, browser, extDir)
+
+	challengeBody, err := os.ReadFile(filepath.Join("testdata", "challenge-risk-control.html"))
+	if err != nil {
+		t.Fatalf("read challenge fixture: %v", err)
+	}
+	err = driver.Context().Route("**/*", func(route playwright.Route) {
+		if strings.HasPrefix(route.Request().URL(), "https://detail.1688.com/offer/") {
+			_ = route.Fulfill(playwright.RouteFulfillOptions{
+				ContentType: playwright.String("text/html; charset=utf-8"),
+				Body:        playwright.String(string(challengeBody)),
+			})
+			return
+		}
+		_ = route.Continue()
+	})
+	if err != nil {
+		t.Fatalf("route challenge page: %v", err)
+	}
+
+	driver.OpenSourcePage(fixtureSource)
+	verdict := driver.ClassifyCurrentPage(true)
+	if verdict != VerdictPauseBatch {
+		t.Fatalf("challenge page classified as %q, want pause_batch", verdict)
+	}
+	action := verdict.Action()
+	if !action.StopBatch || !action.RedoCurrentItemAfterHuman || action.ContinueToNextItem {
+		t.Fatalf("pause_batch action lets the batch continue: %+v", action)
+	}
+}
+
+// TestFixtureDriverReportsUnavailableMechanisms keeps the failure mode honest: a
+// missing extension directory must be reported as an unavailable driver rather
+// than silently driving nothing.
+func TestFixtureDriverReportsUnavailableMechanisms(t *testing.T) {
+	if _, err := LaunchDriver(DriverOptions{}); !errors.Is(err, ErrDriverUnavailable) {
+		t.Fatalf("empty options returned %v, want ErrDriverUnavailable", err)
+	}
+	dir := t.TempDir()
+	_, err := LaunchDriver(DriverOptions{
+		ExecutablePath: filepath.Join(dir, "missing-browser.exe"),
+		ProfileDir:     dir,
+		ExtensionDist:  dir,
+	})
+	if !errors.Is(err, ErrDriverUnavailable) {
+		t.Fatalf("missing browser returned %v, want ErrDriverUnavailable", err)
+	}
+	if err := fmt.Errorf("%w: probe", ErrDriverUnavailable); !errors.Is(err, ErrDriverUnavailable) {
+		t.Fatal("wrapped driver error lost its identity")
+	}
+}
+
+// fixtureAppPage drives one item far enough that the application page is showing a
+// captured payload and an enabled confirmation control.
+func fixtureAppPage(t *testing.T) (*Driver, playwright.Page, string) {
+	t.Helper()
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	popup, err := driver.PrepareItem(fixtureSource)
+	if err != nil {
+		t.Fatalf("prepare item: %v", err)
+	}
+	t.Cleanup(func() { _ = popup.Close() })
+	if _, err := popup.Capture(); err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	appURL, err := popup.Handoff()
+	if err != nil {
+		t.Fatalf("handoff: %v", err)
+	}
+	page, err := driver.AppPage(appURL)
+	if err != nil {
+		t.Fatalf("resolve application page: %v", err)
+	}
+	if _, err := page.WaitForSelector(selConfirmAndSubmit, playwright.PageWaitForSelectorOptions{
+		State: playwright.WaitForSelectorStateAttached,
+	}); err != nil {
+		t.Fatalf("confirmation control never appeared: %v", err)
+	}
+	// The control exists from first paint and is only enabled once the payload has
+	// arrived, so waiting for it to be enabled is what makes "the click was allowed"
+	// true rather than a matter of timing.
+	if _, err := page.WaitForFunction(`() => {
+		const node = document.querySelector('`+selConfirmAndSubmit+`');
+		return node !== null && !node.disabled;
+	}`, nil); err != nil {
+		t.Fatalf("confirmation control never became enabled: %v", err)
+	}
+	return driver, page, appURL
+}
+
+// fixtureClicks reports how many times the confirmation control was really
+// clicked, which is how a guard is proven to have prevented the submission rather
+// than merely reported an error after it.
+func fixtureClicks(t *testing.T, page playwright.Page) int {
+	t.Helper()
+	raw, err := page.Evaluate("window.__fixtureClicks")
+	if err != nil {
+		t.Fatalf("read click counter: %v", err)
+	}
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		t.Fatalf("click counter is %T, want a number", raw)
+		return 0
+	}
+}
+
+// TestFixtureDriverConfirmsSubmitWithApprovedScope is design section 17.1's
+// "drive Confirm and submit and read the terminal state" step.
+func TestFixtureDriverConfirmsSubmitWithApprovedScope(t *testing.T) {
+	driver, page, _ := fixtureAppPage(t)
+	scope, err := driver.ReadAppScope(page)
+	if err != nil {
+		t.Fatalf("read scope: %v", err)
+	}
+	if !scope.IsComplete() {
+		t.Fatalf("scope incomplete: %+v", scope)
+	}
+	outcome, err := driver.ConfirmAndSubmit(page, scope)
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if outcome.Status != "published" {
+		t.Fatalf("outcome status %q, want published", outcome.Status)
+	}
+	if outcome.OperationID != "fixture-operation-1" {
+		t.Fatalf("outcome operation id %q", outcome.OperationID)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 1 {
+		t.Fatalf("confirmation control clicked %d times, want exactly 1", clicks)
+	}
+}
+
+// TestFixtureDriverRefusesScopeThatIsNotTheApprovedScope proves guard 1 does
+// prevent the click: the page must not be submitted under an organization the
+// executor was not approved for, and the refusal must happen before the click.
+func TestFixtureDriverRefusesScopeThatIsNotTheApprovedScope(t *testing.T) {
+	driver, page, _ := fixtureAppPage(t)
+	approved := AppScope{ActorID: "fixture-actor-a", OrganizationID: "fixture-org-approved"}
+	if _, err := driver.ConfirmAndSubmit(page, approved); !errors.Is(err, ErrScopeMismatch) {
+		t.Fatalf("err=%v, want ErrScopeMismatch", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("a mismatched scope still clicked the control %d times", clicks)
+	}
+}
+
+// TestFixtureDriverTreatsPageRefusalAsFinal proves guard 3: once the page refuses,
+// nothing is clicked and no retry is attempted.
+func TestFixtureDriverTreatsPageRefusalAsFinal(t *testing.T) {
+	driver, page, _ := fixtureAppPage(t)
+	scope, err := driver.ReadAppScope(page)
+	if err != nil {
+		t.Fatalf("read scope: %v", err)
+	}
+	if _, err := page.Evaluate(`(() => {
+		window.__fixtureRefusal = '当前用户与企业未确认，已拒绝本次操作。';
+		const node = document.querySelector('#refusal');
+		node.textContent = window.__fixtureRefusal;
+		node.hidden = false;
+	})()`); err != nil {
+		t.Fatalf("stage refusal: %v", err)
+	}
+	if _, err := driver.ConfirmAndSubmit(page, scope); !errors.Is(err, ErrSubmitRefused) {
+		t.Fatalf("err=%v, want ErrSubmitRefused", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("a refused page was still clicked %d times", clicks)
+	}
+	// A second attempt must not sneak a click in either.
+	if _, err := driver.ConfirmAndSubmit(page, scope); !errors.Is(err, ErrSubmitRefused) {
+		t.Fatalf("second attempt err=%v, want ErrSubmitRefused", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("a retry clicked a refused page %d times", clicks)
+	}
+}
+
+// TestFixtureDriverFailsClosedWithoutReadableScope proves an unreadable scope stops
+// the item instead of submitting under whatever the session happens to be.
+func TestFixtureDriverFailsClosedWithoutReadableScope(t *testing.T) {
+	driver, page, _ := fixtureAppPage(t)
+	if _, err := page.Evaluate("window.hideFixtureScope()"); err != nil {
+		t.Fatalf("hide scope: %v", err)
+	}
+	if _, err := driver.ReadAppScope(page); !errors.Is(err, ErrScopeUnavailable) {
+		t.Fatalf("err=%v, want ErrScopeUnavailable", err)
+	}
+	if _, err := driver.ConfirmAndSubmit(page, AppScope{ActorID: "fixture-actor-a", OrganizationID: "fixture-org-a"}); !errors.Is(err, ErrScopeUnavailable) {
+		t.Fatalf("confirm err=%v, want ErrScopeUnavailable", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("an unreadable scope still clicked the control %d times", clicks)
+	}
+}
+
+// TestFixtureDriverRefusesDisabledControl proves guard 2 addresses the real
+// control's own state rather than clicking whatever element is present.
+func TestFixtureDriverRefusesDisabledControl(t *testing.T) {
+	driver, page, _ := fixtureAppPage(t)
+	scope, err := driver.ReadAppScope(page)
+	if err != nil {
+		t.Fatalf("read scope: %v", err)
+	}
+	if _, err := page.Evaluate(`document.querySelector('` + selConfirmAndSubmit + `').disabled = true`); err != nil {
+		t.Fatalf("disable control: %v", err)
+	}
+	if _, err := driver.ConfirmAndSubmit(page, scope); !errors.Is(err, ErrSubmitUnavailable) {
+		t.Fatalf("err=%v, want ErrSubmitUnavailable", err)
+	} else if !strings.Contains(err.Error(), "control_disabled") {
+		// Clicking a disabled control dispatches no event, so the submission stays
+		// safe either way; what this asserts is that the operator is told the real
+		// reason instead of being handed an unreadable-result timeout.
+		t.Fatalf("a disabled control was not reported as such: %v", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("a disabled control was clicked %d times", clicks)
+	}
+}
+
+// TestFixtureDriverRecordsNonTerminalResultAsNotTerminal proves the driver never
+// invents a terminal state: a page that reports nothing definitive must surface as
+// an error so the queue records outcome_unknown (design section 15.10).
+func TestFixtureDriverRecordsNonTerminalResultAsNotTerminal(t *testing.T) {
+	driver, page, _ := fixtureAppPage(t)
+	scope, err := driver.ReadAppScope(page)
+	if err != nil {
+		t.Fatalf("read scope: %v", err)
+	}
+	if _, err := page.Evaluate(`window.__fixtureOutcome = {status:'', operationId:''}`); err != nil {
+		t.Fatalf("stage non-terminal outcome: %v", err)
+	}
+	driver.timeout = 2 * time.Second
+	if _, err := driver.ConfirmAndSubmit(page, scope); !errors.Is(err, ErrSubmitUnavailable) {
+		t.Fatalf("err=%v, want ErrSubmitUnavailable", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 1 {
+		t.Fatalf("click counter %d, want 1 (the click happened, only the result was unreadable)", clicks)
+	}
+}
+
+// fixtureApprovedScope is the scope the fixture receiver presents, so the approved
+// scope and the page agree unless a test deliberately changes one of them.
+var fixtureApprovedScope = AppScope{ActorID: "fixture-actor-a", OrganizationID: "fixture-org-a"}
+
+// fixtureQueue writes a one-item queue whose scope a person has already approved,
+// which is the state design section 4 D1.4 requires before any item may run.
+func fixtureQueue(t *testing.T, scope AppScope) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "queue.json")
+	queue := NewQueue("fixture-batch")
+	if err := queue.ApproveScope(scope.ActorID, scope.OrganizationID); err != nil {
+		t.Fatalf("approve scope: %v", err)
+	}
+	queue.Items = append(queue.Items, Item{Seq: 1, URL: fixtureSource, State: ItemQueued})
+	if err := queue.Save(path); err != nil {
+		t.Fatalf("save queue: %v", err)
+	}
+	return path
+}
+
+// fixtureAppTabCount counts open tabs at the fixture application, which is how a
+// test proves a handoff never happened without waiting for a timeout.
+func fixtureAppTabCount(t *testing.T, driver *Driver) int {
+	t.Helper()
+	count := 0
+	for _, page := range driver.Context().Pages() {
+		if strings.HasPrefix(page.URL(), fixtureAppPrefix) {
+			count++
+		}
+	}
+	return count
+}
+
+// TestFixtureDriverImportsOneItemEndToEnd is design section 14 S1's acceptance:
+// one item is driven from the queue to a read-back terminal result.
+func TestFixtureDriverImportsOneItemEndToEnd(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if result.State != ItemSubmitted {
+		t.Fatalf("result state %q, want submitted", result.State)
+	}
+	if result.IdempotencyKey == "" {
+		t.Fatal("no idempotency key was recorded")
+	}
+	if result.OperationID != "fixture-operation-1" {
+		t.Fatalf("operation id %q, want fixture-operation-1", result.OperationID)
+	}
+
+	// The durable record must agree with the returned result, not just the variable
+	// the driver happened to keep in memory.
+	stored, err := Load(queuePath)
+	if err != nil {
+		t.Fatalf("reload queue: %v", err)
+	}
+	if stored.Items[0].State != ItemSubmitted {
+		t.Fatalf("stored state %q, want submitted", stored.Items[0].State)
+	}
+	if stored.Items[0].IdempotencyKey != result.IdempotencyKey {
+		t.Fatalf("stored key %q, want %q", stored.Items[0].IdempotencyKey, result.IdempotencyKey)
+	}
+	if stored.Items[0].OperationID != result.OperationID {
+		t.Fatalf("stored operation id %q", stored.Items[0].OperationID)
+	}
+
+	status, offerID, _ := fixtureAppState(t, driver)
+	if status != "FIXTURE_CAPTURE_RECEIVED" {
+		t.Fatalf("application did not receive the payload: status=%q", status)
+	}
+	if offerID != fixtureOfferID {
+		t.Fatalf("application received offer %q, want %q", offerID, fixtureOfferID)
+	}
+	page, err := driver.AppPage("http://127.0.0.1:" + fixturePort + "/capture/1688")
+	if err != nil {
+		t.Fatalf("resolve application page: %v", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 1 {
+		t.Fatalf("confirmation clicked %d times, want exactly 1", clicks)
+	}
+}
+
+// TestFixtureDriverDoesNotHandoffWhenIntentWriteFails is the acceptance item for
+// design section 4 D2.2: a write that is not confirmed durable must stop the item
+// before anything can be submitted.
+func TestFixtureDriverDoesNotHandoffWhenIntentWriteFails(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	calls := 0
+	failing := func(queue *Queue, path string) error {
+		calls++
+		return errors.New("injected write failure")
+	}
+	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failing})
+	if !errors.Is(err, ErrQueueWriteFailed) {
+		t.Fatalf("err=%v, want ErrQueueWriteFailed", err)
+	}
+	if calls != 1 {
+		t.Fatalf("persist called %d times, want 1 (the item must stop at the first unconfirmed write)", calls)
+	}
+	// Nothing may have reached the application.
+	if count := fixtureAppTabCount(t, driver); count != 0 {
+		t.Fatalf("%d application tabs were opened despite an unconfirmed write", count)
+	}
+	if status := fixtureStatus(t, driver); status != "INIT" {
+		t.Fatalf("the extension state advanced to %q without a confirmed write", status)
+	}
+}
+
+// TestFixtureDriverRecordsOutcomeUnknownWhenKeyWriteFails covers the window that
+// design section 4 D2.1 cannot remove: the payload is already visible to the
+// application when the key write is attempted, so a failure there must leave an
+// outcome_unknown record rather than a re-doable one.
+func TestFixtureDriverRecordsOutcomeUnknownWhenKeyWriteFails(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	calls := 0
+	failingAfterFirst := func(queue *Queue, path string) error {
+		calls++
+		if calls == 1 {
+			return queue.Save(path)
+		}
+		return errors.New("injected write failure")
+	}
+	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failingAfterFirst})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	// The key could not be written, so the purely local record still says "submitting".
+	// That is the safe outcome, and the property to assert is that it is not
+	// re-capturable: a second capture is how a duplicate publication happens.
+	if CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a failed key write left the item re-capturable: %+v", stored.Items[0])
+	}
+	if _, blocked := stored.BlockingItem(); !blocked {
+		t.Fatal("the queue does not report the item as blocking the batch")
+	}
+}
+
+// fixtureStatus reads the fixture receiver's own status marker.
+func fixtureStatus(t *testing.T, driver *Driver) string {
+	t.Helper()
+	for _, page := range driver.Context().Pages() {
+		if !strings.HasPrefix(page.URL(), fixtureAppPrefix) {
+			continue
+		}
+		raw, err := page.Evaluate("window.fixtureStatus")
+		if err != nil {
+			t.Fatalf("read fixture status: %v", err)
+		}
+		status, _ := raw.(string)
+		return status
+	}
+	return "INIT"
+}
+
+// routeFixtureChallenge serves a measured-shape risk-control page instead of a
+// product page, so the pre-handoff gate can be exercised without real 1688 traffic.
+func routeFixtureChallenge(t *testing.T, driver *Driver) {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("testdata", "challenge-risk-control.html"))
+	if err != nil {
+		t.Fatalf("read challenge fixture: %v", err)
+	}
+	err = driver.Context().Route("**/*", func(route playwright.Route) {
+		if strings.HasPrefix(route.Request().URL(), "https://detail.1688.com/offer/") {
+			_ = route.Fulfill(playwright.RouteFulfillOptions{
+				ContentType: playwright.String("text/html; charset=utf-8"),
+				Body:        playwright.String(string(body)),
+			})
+			return
+		}
+		_ = route.Continue()
+	})
+	if err != nil {
+		t.Fatalf("route challenge page: %v", err)
+	}
+}
+
+// TestFixtureDriverStopsBeforeHandoffOnChallenge is design section 4 D1.3: a
+// challenge stops the batch, and because nothing was handed off the item stays
+// re-doable so a person can clear the gate and the same item is then re-done.
+func TestFixtureDriverStopsBeforeHandoffOnChallenge(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureChallenge(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrVerdictStop) {
+		t.Fatalf("err=%v, want ErrVerdictStop", err)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemQueued {
+		t.Fatalf("state %q, want queued (nothing was submitted, so the item is re-doable)", stored.Items[0].State)
+	}
+	if !CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a challenge left the item un-recapturable: %+v", stored.Items[0])
+	}
+	if count := fixtureAppTabCount(t, driver); count != 0 {
+		t.Fatalf("a challenge page still opened %d application tabs", count)
+	}
+}
+
+// TestFixtureDriverDoesNotSubmitUnderADifferentPageScope is the acceptance item for
+// design section 4 D1.2 guard 1 on the post-handoff path: the application is showing
+// a scope the user did not approve, so nothing may be submitted and, because the
+// payload is already visible to the application, the item must be recorded as
+// undecidable rather than re-doable.
+func TestFixtureDriverDoesNotSubmitUnderADifferentPageScope(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, AppScope{ActorID: "fixture-actor-a", OrganizationID: "fixture-org-someone-else"})
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	if !strings.Contains(err.Error(), "approved scope") {
+		t.Fatalf("the failure does not name the scope as the cause: %v", err)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
+	}
+	if CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a scope mismatch left the item re-capturable: %+v", stored.Items[0])
+	}
+	page, err := driver.AppPage(fixtureAppURL)
+	if err != nil {
+		t.Fatalf("resolve application page: %v", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("the confirmation was clicked %d times under the wrong scope", clicks)
+	}
+}
+
+// TestFixtureDriverRecordsOutcomeUnknownWhenPageRefuses is design section 4 D1.2
+// guard 3: a page that refuses is final. Because the payload was already visible to
+// the application, the item becomes undecidable instead of being retried.
+func TestFixtureDriverRecordsOutcomeUnknownWhenPageRefuses(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureAppRefusing(t, fixtureApprovedScope, "当前用户与企业未确认，已拒绝本次操作。")
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	if !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("the failure does not name the refusal as the cause: %v", err)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
+	}
+	page, err := driver.AppPage(fixtureAppURL)
+	if err != nil {
+		t.Fatalf("resolve application page: %v", err)
+	}
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("a refused page was clicked %d times", clicks)
+	}
+}
+
+// TestFixtureDriverTreatsUnrecognisedStatusAsUnknown proves the driver does not
+// invent a terminal state: a status it does not understand must stop the item as
+// outcome_unknown rather than be recorded as a successful publication.
+func TestFixtureDriverTreatsUnrecognisedStatusAsUnknown(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureAppWithOutcome(t, fixtureApprovedScope, SubmitOutcome{Status: "something_new", OperationID: "fixture-operation-9"})
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	if !strings.Contains(err.Error(), "something_new") {
+		t.Fatalf("the failure does not name the unrecognised status: %v", err)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown", result.State)
+	}
+}
