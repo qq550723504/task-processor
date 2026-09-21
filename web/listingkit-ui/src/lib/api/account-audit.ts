@@ -8,6 +8,8 @@ const resourceReference = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0
 const version = z.string().regex(/^[1-9][0-9]{0,18}$/);
 const sourceOperation = z.enum(["register", "enable", "disable"]);
 const resourceOperation = z.enum(["set_target", "revoke"]);
+const profileOperation = z.literal("update");
+const membershipOperation = z.enum(["invite", "role", "remove"]);
 const sourceEvent = z.object({
   eventType: z.literal("source_account.operation_committed"),
   actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
@@ -24,11 +26,37 @@ const resourceEvent = z.object({
   operation: resourceOperation, result: z.literal("succeeded"),
   relation: z.object({ type: z.literal("member_token_allocation_version"), reference: resourceReference, version }).strict(),
 }).strict().refine(value => value.objectReference === value.relation.reference);
-const event = z.union([sourceEvent, resourceEvent]);
+const profileEvent = z.object({
+  eventType: z.literal("account_business_profile.updated"),
+  actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
+  time: z.string().max(40).datetime({ precision: null }),
+  objectType: z.literal("account_business_profile"), objectReference: resourceReference,
+  operation: profileOperation, result: z.literal("succeeded"),
+  relation: z.object({ type: z.literal("account_business_profile_version"), reference: resourceReference, version }).strict(),
+}).strict().refine(value => value.objectReference === value.relation.reference);
+const membershipEvent = z.object({
+  eventType: z.literal("organization_membership.changed"),
+  actor: z.string().min(1).max(256).regex(/^[^\x00-\x1f\x7f]+$/),
+  time: z.string().max(40).datetime({ precision: null }),
+  objectType: z.literal("organization_member"), objectReference: resourceReference,
+  operation: membershipOperation, result: z.literal("succeeded"),
+  relation: z.object({ type: z.literal("organization_membership_operation"), reference: z.string().uuid(), version }).strict(),
+}).strict();
+const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent]);
 const cursor = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/);
+const source = z.enum([
+  "source_account_committed_operations",
+  "source_account_committed_operations+account_member_token_audit",
+  "source_account_committed_operations+account_business_profile_audit",
+  "source_account_committed_operations+organization_member_audit",
+  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit",
+  "source_account_committed_operations+account_member_token_audit+organization_member_audit",
+  "source_account_committed_operations+account_business_profile_audit+organization_member_audit",
+  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit",
+]);
 const page = z.object({
   schemaVersion: z.literal("account-audit-v1"), userId: identity, effectiveOrganizationId: identity,
-  source: z.union([z.literal("source_account_committed_operations"), z.literal("source_account_committed_operations+account_member_token_audit")]), items: z.array(event).max(100), nextCursor: cursor.nullable(),
+  source, items: z.array(event).max(100), nextCursor: cursor.nullable(),
 }).strict().refine(value => value.items.length > 0 || value.nextCursor === null);
 export type AccountAuditPage = z.infer<typeof page>;
 export const AUDIT_RESPONSE_MAX_BYTES = 128 * 1024;
@@ -38,7 +66,7 @@ export function parseAccountAudit(value: unknown): AccountAuditPage {
   if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
   return parsed.data;
 }
-export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof sourceOperation> | z.infer<typeof resourceOperation>; signal?: AbortSignal };
+export type AuditOptions = { expectedUserId: string; expectedOrganizationId: string; limit?: number; cursor?: string; actor?: string; operation?: z.infer<typeof sourceOperation> | z.infer<typeof resourceOperation> | z.infer<typeof profileOperation> | z.infer<typeof membershipOperation>; signal?: AbortSignal };
 export function auditQuery(limit = 20, after?: string, actor?: string, kind?: AuditOptions["operation"]): string {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || after !== undefined && !cursor.safeParse(after).success) throw new AccountReadError(400, "INVALID_REQUEST");
   const query = new URLSearchParams({ limit: String(limit) });

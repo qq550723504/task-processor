@@ -102,7 +102,7 @@ func ownedDatabase(t *testing.T) (*gorm.DB, *gorm.DB) {
 	if err = Install(ctx, owner); err != nil {
 		t.Fatal(err)
 	}
-	if e := owner.Exec(`CREATE ROLE referral_runtime LOGIN PASSWORD '` + password + `'; REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE ON SCHEMA public TO referral_runtime; REVOKE CREATE,TEMP ON DATABASE referrals FROM PUBLIC; GRANT CONNECT ON DATABASE referrals TO referral_runtime; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA public TO referral_runtime; GRANT UPDATE(state,ciphertext,lease_until) ON public.registration_intents TO referral_runtime; GRANT UPDATE,DELETE ON public.registration_admission_buckets TO referral_runtime`).Error; e != nil {
+	if e := owner.Exec(`CREATE ROLE referral_runtime LOGIN PASSWORD '` + password + `'; REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE ON SCHEMA public TO referral_runtime; REVOKE CREATE,TEMP ON DATABASE referrals FROM PUBLIC; GRANT CONNECT ON DATABASE referrals TO referral_runtime; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA public TO referral_runtime; GRANT SELECT,INSERT,UPDATE ON TABLE public.referral_earning_claims, public.referral_earnings_projection, public.referral_withdrawals TO referral_runtime; GRANT UPDATE(state,ciphertext,lease_until) ON public.registration_intents TO referral_runtime; GRANT UPDATE,DELETE ON public.registration_admission_buckets TO referral_runtime`).Error; e != nil {
 		t.Fatal(e)
 	}
 	host, _ := c.Host(ctx)

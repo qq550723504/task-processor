@@ -26,5 +26,6 @@ FROM alpine:3.22 AS schema-init
 RUN apk add --no-cache openssl postgresql17-client tzdata
 COPY --from=go-builder /out/product-acquisition-init /usr/local/bin/product-acquisition-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init
+COPY --chmod=0755 deployments/docker/compose-init-state.sh /usr/local/lib/compose-init-state.sh
 COPY --chmod=0755 deployments/docker/acquisition-compose/init.sh /usr/local/bin/acquisition-schema-init
 ENTRYPOINT ["/usr/local/bin/acquisition-schema-init"]

@@ -54,10 +54,13 @@ func newMembershipFixture(t *testing.T) *membershipFixture {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'membership-fixture-password'; GRANT CONNECT ON DATABASE issue347 TO `+role+`; GRANT USAGE ON SCHEMA public TO `+role).Error)
 		allowed := run1AllowedPrivileges[role]
 		if role == "organization_membership_runtime" {
-			allowed = map[string][]string{"organization_member_operations": {"SELECT", "INSERT", "UPDATE"}}
+			allowed = map[string][]string{"organization_member_operations": {"SELECT", "INSERT", "UPDATE"}, "organization_member_audit_events": {"SELECT", "INSERT"}}
 		}
 		for table, privileges := range allowed {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)
+		}
+		if role == "source_account_runtime" {
+			require.NoError(t, owner.Exec(`GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
 		}
 		cfg := &platformdatabase.Config{Host: "127.0.0.1", Port: connection.Port, User: role, Password: "membership-fixture-password", Database: connection.Database, MaxConnections: 3, MaxIdleConnections: 1}
 		var pool *gorm.DB

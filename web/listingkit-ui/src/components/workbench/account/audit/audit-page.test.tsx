@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AuditPage } from "./audit-page";
+import { AuditPage, auditRowKey } from "./audit-page";
 
 const state = vi.hoisted(() => ({ context: { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null as { code: string } | null, blockingError: null as { code: string } | null } }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
@@ -17,12 +17,28 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("keeps audit row keys unique across relation types and actors", () => {
+    const base = { eventType: "event", relation: { type: "relation", reference: "same", version: "1" } };
+    expect(auditRowKey({ ...base, actor: "actor-a", eventType: "profile" })).not.toBe(auditRowKey({ ...base, actor: "actor-a", eventType: "resource" }));
+    expect(auditRowKey({ ...base, actor: "actor-a", eventType: "membership" })).not.toBe(auditRowKey({ ...base, actor: "actor-b", eventType: "membership" }));
+  });
+
   it("renders source facts and coverage without fake metrics or actions", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, items: [event] })));
-    mount(); expect(await screen.findByRole("table", { name: "操作记录" })).toBeVisible();
-    expect(screen.getByText("operator-B")).toBeVisible(); expect(screen.getByText("停用源账号")).toBeVisible();
+    mount(); const table = await screen.findByRole("table", { name: "操作记录" }); expect(table).toBeVisible();
+    expect(within(table).getByText("operator-B")).toBeVisible(); expect(within(table).getByText("停用源账号")).toBeVisible();
     expect(screen.getByText(/源账号已提交操作/)).toBeVisible(); expect(screen.queryByText("86")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /导出|邀请|续费/ })).not.toBeInTheDocument();
+  });
+  it("renders profile and membership audit facts", async () => {
+    const profile = { eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } };
+    const member = { eventType: "organization_membership.changed", actor: "operator-B", time: "2026-09-11T00:00:00Z", objectType: "organization_member", objectReference: "member-1", operation: "role", result: "succeeded", relation: { type: "organization_membership_operation", reference: "00000000-0000-4000-8000-000000000001", version: "2" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+account_business_profile_audit+organization_member_audit", items: [profile, member] })));
+    mount();
+    const table = await screen.findByRole("table", { name: "操作记录" });
+    expect(within(table).getByText("更新账户资料")).toBeVisible();
+    expect(within(table).getByText("更新成员角色")).toBeVisible();
+    expect(within(table).getByText("成员与权限")).toBeVisible();
   });
   it("distinguishes empty from dependency failure and allows retry", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "secret", requestId: "", fieldErrors: [] }, { status: 503 })).mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);

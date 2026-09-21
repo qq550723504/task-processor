@@ -56,7 +56,7 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 	if err := memberstore.VerifyRuntimePermissions(ctx, deps.ReceiptDB); err != nil {
 		return nil, err
 	}
-	store, err := memberstore.NewRepository(ctx, deps.ReceiptDB)
+	store, err := memberstore.NewRepository(ctx, deps.ReceiptDB, cfg.ListingKit.Zitadel.ProjectID)
 	if err != nil {
 		return nil, err
 	}

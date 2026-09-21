@@ -1,3 +1,5 @@
 *.go text eol=lf
 deployments/docker/referrals-compose/*.sh text eol=lf
 deployments/docker/acquisition-compose/*.sh text eol=lf
+deployments/docker/account-compose/*.sh text eol=lf
+deployments/docker/compose-init-state.sh text eol=lf

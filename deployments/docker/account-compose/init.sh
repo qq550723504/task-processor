@@ -36,6 +36,8 @@ EOF
 GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
+GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
 SQL
   commercial_dsn="postgresql://postgres:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable"
   commercial_password=$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")
@@ -52,6 +54,17 @@ SQL
   fi
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
+  membership_dsn="postgresql://postgres:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5436/membership?sslmode=disable"
+  printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
+  chmod 600 "$work/membership-owner-dsn"
+  organization-membership-schema-init -dsn-file "$work/membership-owner-dsn"
+  psql "$membership_dsn" -v ON_ERROR_STOP=1 <<SQL
+GRANT CONNECT ON DATABASE membership TO organization_membership_runtime;
+GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations TO organization_membership_runtime;
+GRANT SELECT, INSERT ON TABLE public.organization_member_audit_events TO organization_membership_runtime;
+ALTER ROLE organization_membership_runtime SET statement_timeout='10s';
+SQL
   exit 0
 fi
 if [ -f "$state/.init-started" ]; then echo 'local initialization is incomplete; recreate this Compose project' >&2; exit 1; fi
@@ -137,6 +150,8 @@ GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
+GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
 ALTER ROLE source_account_runtime SET statement_timeout='10s';
 SQL
 
@@ -164,6 +179,7 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
 GRANT CONNECT ON DATABASE membership TO organization_membership_runtime;
 GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations TO organization_membership_runtime;
+GRANT SELECT, INSERT ON TABLE public.organization_member_audit_events TO organization_membership_runtime;
 ALTER ROLE organization_membership_runtime SET statement_timeout='10s';
 SQL
 

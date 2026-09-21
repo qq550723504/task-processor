@@ -77,8 +77,10 @@ fresh local instance.
 ## Stop, restart, and destroy
 
 Stopping retains all project-owned volumes and facts. A later `up` reuses the
-completed initializer marker and does not run schema or authorization setup in
-the serving processes:
+matching current-version initializer marker and does not run schema or
+authorization setup in the serving processes. A marker from an older image is
+rejected; after a schema or permission contract change, destroy this isolated
+local project and start it again rather than retrying against stale state:
 
 ```powershell
 docker compose --project-name $project --env-file .env down

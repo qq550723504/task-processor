@@ -53,6 +53,9 @@ func TestAccountAuditBrowserFixture(t *testing.T) {
 		for table, privileges := range run1AllowedPrivileges[role] {
 			require.NoError(t, owner.Exec("GRANT "+strings.Join(privileges, ",")+" ON public."+table+" TO "+role).Error)
 		}
+		if role == "source_account_runtime" {
+			require.NoError(t, owner.Exec(`GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+		}
 	}
 	require.NoError(t, owner.Exec("ALTER ROLE commercial_reader SET default_transaction_read_only=on").Error)
 	source := openSourceAccountApplicationDB(t, fmt.Sprintf("host=127.0.0.1 port=%d dbname=issue347 user=source_account_runtime password=synthetic-audit-password sslmode=disable", connection.Port))

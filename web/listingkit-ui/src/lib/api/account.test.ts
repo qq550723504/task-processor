@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AccountReadError, getAccountProfile, getAccountOrganization } from "./account";
+import { AccountReadError, getAccountProfile, getAccountOrganization, updateAccountBusinessProfile } from "./account";
 
 const profile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "Alice", email: null, emailVerified: null, phoneNumber: null, phoneNumberVerified: null, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "Enterprise B", roles: ["listingkit_viewer"], source: "zitadel_project_authorizations", readAt: "2026-09-07T01:00:00Z", authorizationMaxAgeSeconds: 60 };
@@ -27,6 +27,13 @@ describe("account client", () => {
   const controller = new AbortController();
   vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {controller.abort(); return Response.json(profile);}));
   await expect(getAccountProfile({ expectedUserId: "u1", signal: controller.signal })).rejects.toMatchObject({ code: "DEADLINE_EXCEEDED" });
+ });
+ it("binds business profile writes to the selected organization", async () => {
+  const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
+  await updateAccountBusinessProfile({ expectedUserId: "u1", expectedOrganizationId: "B", input: { userRole: "品牌方", shopSituation: "", factorySituation: "", platforms: [], sites: [], shopType: "", services: [] } });
+  expect(fetch.mock.calls[0][0]).toBe("/api/account/business-profile");
+  expect(fetch.mock.calls[0][1].headers).toMatchObject({ "X-Expected-User-ID": "u1", "X-Expected-Organization-ID": "B" });
  });
  it("keeps a typed safe error instead of a provider message", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "private secret", requestId: "", fieldErrors: [] }, { status: 503 })));

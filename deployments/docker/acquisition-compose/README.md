@@ -162,6 +162,18 @@ docker compose --project-name $project --env-file .env down
 docker compose --project-name $project --env-file .env up --wait
 ```
 
+The schema initializer records a current-version marker. A marker from an older
+image is rejected so a new schema or permission contract cannot be silently
+skipped. After that failure, destroy this isolated local project and start it
+again instead of retrying against stale state:
+
+```powershell
+$resolved = (docker compose --project-name $project --env-file .env config --format json | ConvertFrom-Json).name
+if ($resolved -ne $project) { throw "Compose project resolution mismatch: $resolved" }
+Write-Host "Destroying only Compose project: $resolved"
+docker compose --project-name $resolved --env-file .env down -v
+```
+
 Destruction is intentionally not part of normal use. Before any destructive
 command, resolve and display the exact project from `.env`, verify it against
 `docker compose config`, and obtain the instance owner's explicit approval.

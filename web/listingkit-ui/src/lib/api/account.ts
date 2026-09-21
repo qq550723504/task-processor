@@ -55,15 +55,15 @@ type ProfileOptions = { expectedUserId: string; signal?: AbortSignal };
 type OrganizationOptions = ProfileOptions & { expectedOrganizationId: string };
 export function getAccountProfile(options: ProfileOptions): Promise<AccountProfile> { return readAccount("profile", options) as Promise<AccountProfile>; }
 export function getAccountOrganization(options: OrganizationOptions): Promise<AccountOrganization> { return readAccount("organization", options) as Promise<AccountOrganization>; }
-export function getAccountBusinessProfile(options: ProfileOptions): Promise<AccountBusinessProfile> { return readAccount("business-profile", options) as Promise<AccountBusinessProfile>; }
-export async function updateAccountBusinessProfile(options: ProfileOptions & { input: AccountBusinessProfileInput }): Promise<AccountBusinessProfile> {
+export function getAccountBusinessProfile(options: OrganizationOptions): Promise<AccountBusinessProfile> { return readAccount("business-profile", options) as Promise<AccountBusinessProfile>; }
+export async function updateAccountBusinessProfile(options: ProfileOptions & { expectedOrganizationId: string; input: AccountBusinessProfileInput }): Promise<AccountBusinessProfile> {
   return writeBusinessProfile(options);
 }
 
 async function readAccount(kind: "profile" | "organization" | "business-profile", options: ProfileOptions | OrganizationOptions) {
   if (!id.safeParse(options.expectedUserId).success) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
   const organization = "expectedOrganizationId" in options ? options.expectedOrganizationId : undefined;
-  if (kind === "organization" && !id.safeParse(organization).success) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED");
+  if ((kind === "organization" || kind === "business-profile") && !id.safeParse(organization).success) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED");
   const controller = new AbortController();
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -89,13 +89,14 @@ async function readAccount(kind: "profile" | "organization" | "business-profile"
   } finally { clearTimeout(timer); options.signal?.removeEventListener("abort", abort); }
 }
 
-async function writeBusinessProfile(options: ProfileOptions & { input: AccountBusinessProfileInput }) {
+async function writeBusinessProfile(options: ProfileOptions & { expectedOrganizationId: string; input: AccountBusinessProfileInput }) {
   if (!id.safeParse(options.expectedUserId).success) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
+  if (!id.safeParse(options.expectedOrganizationId).success) throw new AccountReadError(409, "ORGANIZATION_CONTEXT_CHANGED");
   const controller = new AbortController(); const abort = () => controller.abort(); options.signal?.addEventListener("abort", abort, { once: true }); if (options.signal?.aborted) abort();
   const timer = setTimeout(abort, 15000);
   try {
     controller.signal.throwIfAborted();
-    const response = await fetch("/api/account/business-profile", { method: "PUT", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Expected-User-ID": options.expectedUserId }, body: JSON.stringify(options.input), credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
+    const response = await fetch("/api/account/business-profile", { method: "PUT", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Expected-User-ID": options.expectedUserId, "X-Expected-Organization-ID": options.expectedOrganizationId }, body: JSON.stringify(options.input), credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
     const payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); controller.signal.throwIfAborted();
     if (response.status !== 200) throw new AccountReadError(response.status, accountErrorCode(response.status, payload));
     const result = parseAccountPayload("business-profile", payload); if (result.userId !== options.expectedUserId) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED"); return result;

@@ -4,13 +4,17 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"task-processor/internal/app/accountaudit"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
+	accountprofilestore "task-processor/internal/integration/persistence/accountprofile"
 	kernelmodule "task-processor/internal/kernel/module"
 	registry "task-processor/internal/sourceaccountregistry"
 	"task-processor/internal/workbenchcontext"
@@ -117,5 +121,37 @@ func TestAccountAuditHTTPUsesFreshOrgReadPermission(t *testing.T) {
 	}
 	if got := modules.Routes()[0]; got.Method != http.MethodGet || got.Permission != authz.PermissionWorkbenchSourceAccountRead {
 		t.Fatal("wrong route contract")
+	}
+}
+
+func TestProfileAuditReaderUsesFixedWidthCursorAcrossTimestampTie(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE account_business_profile_audit_events (
+id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id TEXT NOT NULL, actor_id TEXT NOT NULL,
+user_id TEXT NOT NULL, operation TEXT NOT NULL, version INTEGER NOT NULL, created_at DATETIME NOT NULL
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for _, id := range []int{9, 10} {
+		if err := db.Exec("INSERT INTO account_business_profile_audit_events (id, organization_id, actor_id, user_id, operation, version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, "org", "actor", "u"+strconv.Itoa(id), "update", id, now).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	repository, err := accountprofilestore.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := profileAuditReader{repository: repository}
+	first, err := reader.ListRecentAudit(context.Background(), "org", 1, "", "", nil)
+	if err != nil || len(first.Items) != 1 || first.Items[0].ObjectReference != "u10" || first.Next == nil {
+		t.Fatalf("first page = %#v, err=%v", first, err)
+	}
+	second, err := reader.ListRecentAudit(context.Background(), "org", 1, "", "", first.Next)
+	if err != nil || len(second.Items) != 1 || second.Items[0].ObjectReference != "u9" || second.Next != nil {
+		t.Fatalf("second page = %#v, err=%v", second, err)
 	}
 }

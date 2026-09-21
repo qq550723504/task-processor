@@ -28,7 +28,8 @@ func VerifyPermissions(ctx context.Context, db *gorm.DB) error {
 	}
 	for _, table := range []string{"referral_codes", "registration_intents", "referral_relations", "referral_receipts", "registration_admission_buckets", "referral_earning_claims", "referral_earnings_ledger", "referral_refund_operations", "referral_chargeback_operations", "referral_earnings_projection", "referral_withdrawals", "referral_withdrawal_operations", "referral_earnings_audit_events"} {
 		for _, permission := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"} {
-			want := permission == "SELECT" || permission == "INSERT" || (table == "registration_admission_buckets" && (permission == "UPDATE" || permission == "DELETE")) || (table == "registration_intents" && permission == "UPDATE") || (table == "referral_earning_claims" && permission == "UPDATE") || (table == "referral_earnings_projection" && permission == "UPDATE") || (table == "referral_withdrawals" && permission == "UPDATE")
+			// registration_intents uses a column-scoped UPDATE grant; its exact writable columns are checked below.
+			want := permission == "SELECT" || permission == "INSERT" || (table == "registration_admission_buckets" && (permission == "UPDATE" || permission == "DELETE")) || (table == "referral_earning_claims" && permission == "UPDATE") || (table == "referral_earnings_projection" && permission == "UPDATE") || (table == "referral_withdrawals" && permission == "UPDATE")
 			var have bool
 			if err = db.WithContext(ctx).Raw("SELECT has_table_privilege(current_user,?,?)", "public."+table, permission).Scan(&have).Error; err != nil || have != want {
 				return d.ErrUnavailable

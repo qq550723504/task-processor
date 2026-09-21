@@ -20,7 +20,13 @@ describe("audit BFF exported route", () => {
     expect(fetch.mock.calls[0][0]).toBe("http://127.0.0.1:8085/api/v1/account/audit?limit=20");
     expect(Object.fromEntries(fetch.mock.calls[0][1].headers)).toEqual({ accept: "application/json", authorization: "Bearer fixture-token", "x-requested-organization-id": "B" });
   });
-  it.each(["?limit=0", "?limit=101", "?limit=1&limit=2", "?org=A", "?cursor=", "?limit=01", "?limit=1&raw=x"])("rejects query %s before upstream", async query => {
+  it("forwards the allowlisted audit filters", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
+    const result = await GET(request("?limit=20&actor=actor-1&operation=update"));
+    expect(result.status).toBe(200);
+    expect(fetch.mock.calls[0][0]).toBe("http://127.0.0.1:8085/api/v1/account/audit?limit=20&actor=actor-1&operation=update");
+  });
+  it.each(["?limit=0", "?limit=101", "?limit=1&limit=2", "?org=A", "?cursor=", "?limit=01", "?limit=1&raw=x", "?actor=bad%20actor", "?operation=unknown"])("rejects query %s before upstream", async query => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     expect((await GET(request(query))).status).toBe(400); expect(fetch).not.toHaveBeenCalled();
   });

@@ -141,6 +141,9 @@ func referralBinaryConfig(t *testing.T, owner *gorm.DB, connection *config.Datab
 		for table, privileges := range run1AllowedPrivileges[role] {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)
 		}
+		if role == "source_account_runtime" {
+			require.NoError(t, owner.Exec(`GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+		}
 	}
 	require.NoError(t, owner.Exec(`GRANT SELECT,INSERT ON public.referral_codes,public.registration_intents,public.referral_relations,public.referral_receipts,public.registration_admission_buckets TO referral_runtime; GRANT UPDATE(state,ciphertext,lease_until) ON public.registration_intents TO referral_runtime; GRANT UPDATE,DELETE ON public.registration_admission_buckets TO referral_runtime; ALTER ROLE commercial_reader SET default_transaction_read_only=on`).Error)
 	cfg.SourceAccountDatabase = dbConfig("source_account_runtime")

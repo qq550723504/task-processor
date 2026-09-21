@@ -35,9 +35,10 @@ import (
 
 var run1AllowedPrivileges = map[string]map[string][]string{
 	"source_account_runtime": {
-		"source_account_resources":  {"SELECT", "INSERT", "UPDATE"},
-		"source_account_operations": {"SELECT", "INSERT"},
-		"account_business_profiles": {"SELECT", "INSERT", "UPDATE"},
+		"source_account_resources":              {"SELECT", "INSERT", "UPDATE"},
+		"source_account_operations":             {"SELECT", "INSERT"},
+		"account_business_profiles":             {"SELECT", "INSERT", "UPDATE"},
+		"account_business_profile_audit_events": {"SELECT", "INSERT"},
 	},
 	"commercial_runtime": {
 		"saas_tenant_subscriptions": {"SELECT"}, "saas_plans": {"SELECT"},
@@ -76,6 +77,9 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 		require.NoError(t, owner.Exec(`GRANT USAGE ON SCHEMA public TO `+role).Error)
 		for table, privileges := range run1AllowedPrivileges[role] {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON TABLE `+pgx.Identifier{"public", table}.Sanitize()+` TO `+role).Error)
+		}
+		if role == "source_account_runtime" {
+			require.NoError(t, owner.Exec(`GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
 		}
 		dbConfig := currentapplication.DatabaseConfig{Host: "127.0.0.1", Port: connection.Port, User: role, Password: "synthetic-run1-password", Database: connection.Database, MaxConnections: 2}
 		if role == "source_account_runtime" {
@@ -164,6 +168,24 @@ func TestCurrentApplicationPermissionInventoryPostgres(t *testing.T) {
 					start(t, true)
 				})
 			}
+		}
+		if role == "source_account_runtime" {
+			t.Run(role+"/missing/account_business_profile_audit_events_id_seq/USAGE", func(t *testing.T) {
+				require.NoError(t, owner.Exec(`REVOKE USAGE ON SEQUENCE public.account_business_profile_audit_events_id_seq FROM `+role).Error)
+				defer func() {
+					require.NoError(t, owner.Exec(`GRANT USAGE ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+					start(t, false)
+				}()
+				start(t, true)
+			})
+			t.Run(role+"/forbidden/account_business_profile_audit_events_id_seq/UPDATE", func(t *testing.T) {
+				require.NoError(t, owner.Exec(`GRANT UPDATE ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+				defer func() {
+					require.NoError(t, owner.Exec(`REVOKE UPDATE ON SEQUENCE public.account_business_profile_audit_events_id_seq FROM `+role).Error)
+					start(t, false)
+				}()
+				start(t, true)
+			})
 		}
 		t.Run(role+"/inherited", func(t *testing.T) {
 			require.NoError(t, owner.Exec(`CREATE ROLE run1_inherited; GRANT SELECT ON public.run1_additional_fact TO run1_inherited; GRANT run1_inherited TO `+role).Error)

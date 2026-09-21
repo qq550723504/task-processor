@@ -78,6 +78,9 @@ func TestCurrentApplicationStartupSchemaContextPostgres(t *testing.T) {
 		for table, privileges := range run1AllowedPrivileges[role] {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)
 		}
+		if role == "source_account_runtime" {
+			require.NoError(t, owner.Exec(`GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO `+role).Error)
+		}
 	}
 	require.NoError(t, owner.Exec(`ALTER ROLE commercial_runtime SET default_transaction_read_only=on`).Error)
 	require.NoError(t, owner.Exec(`INSERT INTO public.source_account_resources(organization_id,id,platform,display_name,management_status,connection_status,version,created_by,updated_by,created_at,updated_at) VALUES ('org-B','01991e24-1009-7009-8009-000000000009','1688','retained','disabled','pending_connection',1,'fixture','fixture',now(),now())`).Error)

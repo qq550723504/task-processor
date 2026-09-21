@@ -14,13 +14,15 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/httproute"
 	profileStore "task-processor/internal/integration/persistence/accountprofile"
+	kernelmodule "task-processor/internal/kernel/module"
 )
 
 func TestAccountBusinessProfilePersistsAcrossReadsWithoutOrganizationLeakage(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&profileRowForTest{}))
+	require.NoError(t, db.AutoMigrate(&profileRowForTest{}, &profileAuditRowForTest{}))
 	repository, err := profileStore.New(db)
 	require.NoError(t, err)
 	module := accountProfileModule{repository: repository}
@@ -29,7 +31,7 @@ func TestAccountBusinessProfilePersistsAcrossReadsWithoutOrganizationLeakage(t *
 		recorder := httptest.NewRecorder()
 		ginContext, _ := gin.CreateTestContext(recorder)
 		request := httptest.NewRequest(method, accountBusinessProfilePath, strings.NewReader(body))
-		request = request.WithContext(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: userID, HomeOrganizationID: "home-a"}))
+		request = request.WithContext(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: userID, HomeOrganizationID: "home-a", EffectiveOrganizationID: "home-a"}))
 		ginContext.Request = request
 		if method == http.MethodPut {
 			module.update(ginContext)
@@ -57,10 +59,39 @@ func TestAccountBusinessProfilePersistsAcrossReadsWithoutOrganizationLeakage(t *
 	require.NotContains(t, other.Body.String(), "品牌方")
 }
 
+func TestAccountBusinessProfileMutationRequiresLiveOrganizationResolution(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	repository, err := profileStore.New(db)
+	require.NoError(t, err)
+	modules := kernelmodule.NewRegistry()
+	require.NoError(t, (accountProfileModule{repository: repository}).Register(modules))
+	var mutation *httproute.Descriptor
+	for _, route := range modules.Routes() {
+		if route.Method == http.MethodPut && route.Path == accountBusinessProfilePath {
+			copy := route
+			mutation = &copy
+		}
+	}
+	require.NotNil(t, mutation)
+	require.Equal(t, httproute.OrganizationAccessPolicyLiveWrite, mutation.OrganizationAccessPolicy)
+	require.NotNil(t, mutation.OrganizationTargetResolver)
+	var read *httproute.Descriptor
+	for _, route := range modules.Routes() {
+		if route.Method == http.MethodGet && route.Path == accountBusinessProfilePath {
+			copy := route
+			read = &copy
+		}
+	}
+	require.NotNil(t, read)
+	require.Equal(t, httproute.OrganizationAccessPolicyContextRead, read.OrganizationAccessPolicy)
+}
+
 // The production repository intentionally keeps the row private. This test
 // mirrors its columns so the handler contract can run without a PostgreSQL
 // fixture; PostgreSQL schema and permissions are verified by the schema tests.
 type profileRowForTest struct {
+	OrganizationID   string    `gorm:"column:organization_id;primaryKey"`
 	UserID           string    `gorm:"column:user_id;primaryKey"`
 	UserRole         string    `gorm:"column:user_role"`
 	ShopSituation    string    `gorm:"column:shop_situation"`
@@ -73,3 +104,15 @@ type profileRowForTest struct {
 }
 
 func (profileRowForTest) TableName() string { return profileStore.TableName }
+
+type profileAuditRowForTest struct {
+	ID             uint      `gorm:"column:id;primaryKey;autoIncrement"`
+	OrganizationID string    `gorm:"column:organization_id;not null"`
+	ActorID        string    `gorm:"column:actor_id;not null"`
+	UserID         string    `gorm:"column:user_id;not null"`
+	Operation      string    `gorm:"column:operation;not null"`
+	Version        int64     `gorm:"column:version;not null"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null"`
+}
+
+func (profileAuditRowForTest) TableName() string { return "account_business_profile_audit_events" }

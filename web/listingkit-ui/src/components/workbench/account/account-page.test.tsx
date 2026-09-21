@@ -61,8 +61,11 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByRole("link", { name: "查看成员与权限" })).toBeVisible();
   });
   it("offers an account return link in the breadcrumb", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(profile))); mount();
+    const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
+    const businessCall = fetcher.mock.calls.find(([url]) => url === "/api/account/business-profile");
+    expect(businessCall).toBeDefined();
+    expect(new Headers(businessCall?.[1].headers).get("X-Expected-Organization-ID")).toBe("B");
     expect(screen.getByRole("link", { name: "我的账户" })).toHaveAttribute("href", "/workbench/account");
   });
   it("distinguishes undisclosed optional claims from a failed read", async () => {
@@ -88,7 +91,7 @@ describe("AccountPage read-only projection", () => {
     state.context.error = mode === "grant-error" ? { code: "DEPENDENCY_UNAVAILABLE" } : null;
     const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
-    expect(fetcher).toHaveBeenCalledTimes(2); expect(fetcher.mock.calls[0][0]).toBe("/api/account/profile");
+    expect(fetcher).toHaveBeenCalledTimes(1); expect(fetcher.mock.calls[0][0]).toBe("/api/account/profile");
     expect(new Headers(fetcher.mock.calls[0][1].headers).get("X-Expected-User-ID")).toBe("u1");
     expect(screen.getByText("未验证")).toBeVisible(); expect(screen.queryByText("已实名认证")).not.toBeInTheDocument();
     expect(screen.queryByText("未绑定")).not.toBeInTheDocument(); expect(screen.queryByRole("button", { name: /保存|修改|认证/ })).not.toBeInTheDocument();

@@ -3,11 +3,13 @@ import { NextRequest } from "next/server";
 const state = vi.hoisted(() => ({ user: "u1", token: "fixture-token", blocked: false }));
 vi.mock("@/auth", () => ({ serverAuth: (handler: (r: NextRequest) => Promise<Response>) => (request: NextRequest) => state.blocked ? new Promise(() => {}) : handler(Object.assign(request, { auth: { accessToken: state.token, identityVersion: 3, identity: { userId: state.user, tenantId: "A" } } })) }));
 import { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } from "@/app/api/account/profile/route";
+import { GET as businessProfileGET, PUT as businessProfilePUT } from "@/app/api/account/business-profile/route";
 import { GET as organizationGET } from "@/app/api/account/organization/route";
 
 const profile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "Alice", email: null, emailVerified: null, phoneNumber: null, phoneNumberVerified: null, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "B", roles: ["listingkit_viewer"], source: "zitadel_project_authorizations", readAt: "2026-09-07T01:00:00Z", authorizationMaxAgeSeconds: 60 };
 function request(kind = "profile", headers: Record<string, string> = {}, signal?: AbortSignal) { return new NextRequest(`http://localhost/api/account/${kind}`, { headers: { "X-Expected-User-ID": "u1", ...headers }, signal }); }
+function writeBusinessProfile(headers: Record<string, string> = {}) { return new NextRequest("http://localhost/api/account/business-profile", { method: "PUT", headers: { "X-Expected-User-ID": "u1", "Content-Type": "application/json", cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", ...headers }, body: JSON.stringify({ userRole: "品牌方", shopSituation: "", factorySituation: "", platforms: [], sites: [], shopType: "", services: [] }) }); }
 beforeEach(() => { state.user = "u1"; state.token = "fixture-token"; state.blocked = false; vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:8085/api/v1"); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 describe("exported account routes", () => {
@@ -22,6 +24,25 @@ describe("exported account routes", () => {
   const fetch = vi.fn().mockResolvedValue(Response.json(organization)); vi.stubGlobal("fetch", fetch);
   const response = await organizationGET(request("organization", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", "X-Requested-Organization-ID": "attacker" }));
   expect(response.status).toBe(200);expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+ it("binds business profile writes to the selected cookie organization", async () => {
+  const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfilePUT(writeBusinessProfile());
+  expect(response.status).toBe(200);
+  expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+ it("binds business profile reads to the selected cookie organization", async () => {
+  const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfileGET(request("business-profile", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B" }));
+  expect(response.status).toBe(200);
+  expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+ it("rejects business profile writes without a selected organization", async () => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfilePUT(writeBusinessProfile({ cookie: "", "X-Expected-Organization-ID": "" }));
+  expect((await response.json()).code).toBe("ORGANIZATION_SELECTION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
  });
  it.each([
   [{}, "ORGANIZATION_SELECTION_REQUIRED"],
