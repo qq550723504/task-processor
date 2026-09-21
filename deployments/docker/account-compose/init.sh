@@ -39,26 +39,11 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source
 SQL
   commercial_dsn="postgresql://postgres:$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")@127.0.0.1:5434/commercial?sslmode=disable"
   commercial_password=$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")
-  if ! psql "$commercial_dsn" -tAc "SELECT 1 FROM pg_roles WHERE rolname='commercial_runtime'" | grep -q '^1$'; then
-    psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "commercial_password=$commercial_password" -c "CREATE ROLE commercial_runtime LOGIN PASSWORD :'commercial_password'"
-  fi
+  psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "commercial_password=$commercial_password" -f "$terraform_source/commercial-schema.sql"
   psql "$commercial_dsn" -v ON_ERROR_STOP=1 -v "commercial_password=$commercial_password" <<SQL
 ALTER ROLE commercial_runtime LOGIN PASSWORD :'commercial_password';
-CREATE TABLE IF NOT EXISTS public.account_member_token_locks (organization_id varchar(128) PRIMARY KEY, updated_at timestamptz NOT NULL);
-CREATE TABLE IF NOT EXISTS public.account_member_token_allocations (
- organization_id varchar(128) NOT NULL, member_id varchar(128) NOT NULL, metric varchar(32) NOT NULL DEFAULT 'token', allocated bigint NOT NULL DEFAULT 0,
- version bigint NOT NULL DEFAULT 0, active boolean NOT NULL DEFAULT false, window_start timestamptz NOT NULL, window_end timestamptz NOT NULL, updated_at timestamptz NOT NULL,
- PRIMARY KEY (organization_id, member_id, metric), CHECK(metric='token'), CHECK(allocated>=0 AND version>=0 AND window_end>window_start));
-CREATE TABLE IF NOT EXISTS public.account_member_token_operations (
- idempotency_key varchar(128) PRIMARY KEY, organization_id varchar(128) NOT NULL, member_id varchar(128) NOT NULL, fingerprint char(64) NOT NULL,
- target bigint NOT NULL, version bigint NOT NULL, allocated bigint NOT NULL, consumed bigint NOT NULL, active boolean NOT NULL, window_start timestamptz NOT NULL, window_end timestamptz NOT NULL, created_at timestamptz NOT NULL);
-CREATE TABLE IF NOT EXISTS public.account_member_token_audit_events (
- id bigserial PRIMARY KEY, organization_id varchar(128) NOT NULL, actor_id varchar(128) NOT NULL, member_id varchar(128) NOT NULL, operation varchar(32) NOT NULL,
- target bigint NOT NULL, allocated bigint NOT NULL, consumed bigint NOT NULL, version bigint NOT NULL, idempotency_key varchar(128) NOT NULL UNIQUE, created_at timestamptz NOT NULL);
 GRANT CONNECT ON DATABASE commercial TO commercial_runtime;
 GRANT USAGE ON SCHEMA public TO commercial_runtime;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.account_member_token_locks, public.account_member_token_allocations, public.account_member_token_operations, public.account_member_token_audit_events TO commercial_runtime;
-GRANT USAGE, SELECT ON SEQUENCE public.account_member_token_audit_events_id_seq TO commercial_runtime;
 SQL
   if grep -q '"user": "commercial_reader"' "$runtime/current-application.json"; then
     sed 's/"user": "commercial_reader"/"user": "commercial_runtime"/' "$runtime/current-application.json" > "$runtime/current-application.json.tmp"

@@ -66,7 +66,7 @@ func TestAIInvocationReservationPrecedesProviderAndReleasesToObservedUsage(t *te
 	}
 	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	if err := db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, "org-1", ModuleListingKit, StatusActive, start, end, `{"ai_tokens":100}`).Error; err != nil {
+	if err := db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, "org-1", ModuleListingKit, StatusActive, start, end, `{"ai_tokens":200}`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`INSERT INTO account_member_token_allocations (organization_id,member_id,metric,allocated,version,active,window_start,window_end,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, "org-1", "member-1", "token", 100, 1, true, start, end, start).Error; err != nil {

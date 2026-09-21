@@ -13,7 +13,7 @@ import {
   ReferralRequestError,
   type ReferralReceipt,
 } from "@/lib/api/referrals";
-import { cancelReferralWithdrawal, getReferralPayoutMethods, requestReferralWithdrawal, type PayoutMethod, type ReferralWithdrawal } from "@/lib/api/account-referral-economics";
+import { cancelReferralWithdrawal, createReferralPayoutMethod, getReferralPayoutMethods, getReferralWithdrawals, requestReferralWithdrawal, type PayoutMethod, type ReferralWithdrawal } from "@/lib/api/account-referral-economics";
 import { AccountShell } from "../account/account-shell";
 import { ConsoleState } from "../console/console-page";
 import styles from "./referrals.module.css";
@@ -65,8 +65,21 @@ function ScopedReferrals({ mode, expectedUserId, registrationAvailable }: { mode
     refetchOnReconnect: false,
     enabled: mode === "overview" && projection.data?.earnings.availability === "available",
   });
+  const withdrawalHistory = useQuery({
+    queryKey: ["account", "referral-withdrawals", expectedUserId] as const,
+    queryFn: ({ signal }) => getReferralWithdrawals(expectedUserId, signal),
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    enabled: mode === "overview",
+  });
   const [amountMinor, setAmountMinor] = useState("");
   const [payoutMethodId, setPayoutMethodId] = useState("");
+  const [payoutType, setPayoutType] = useState<"ALIPAY" | "BANK_TRANSFER">("ALIPAY");
+  const [payoutDisplayName, setPayoutDisplayName] = useState("");
+  const [payoutDestination, setPayoutDestination] = useState("");
   const [withdrawalResult, setWithdrawalResult] = useState<ReferralWithdrawal | null>(null);
   const selectedPayoutMethod = payoutMethods.data?.methods.find((item) => item.methodId === payoutMethodId) ?? payoutMethods.data?.methods[0];
   const withdrawal = useMutation({
@@ -76,14 +89,19 @@ function ScopedReferrals({ mode, expectedUserId, registrationAvailable }: { mode
       if (!selectedPayoutMethod) throw new Error("payout method unavailable");
       return requestReferralWithdrawal(expectedUserId, { amountMinor, payoutMethodId: selectedPayoutMethod.methodId, expectedVersion: currentEarnings.version }, crypto.randomUUID());
     },
-    onSuccess: (result) => { setWithdrawalResult(result); setAmountMinor(""); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); },
+    onSuccess: (result) => { setWithdrawalResult(result); setAmountMinor(""); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-withdrawals", expectedUserId] }); },
+  });
+  const cancelTarget = withdrawalResult ?? withdrawalHistory.data?.withdrawals.find((item) => item.status === "REQUESTED");
+  const createPayoutMethod = useMutation({
+    mutationFn: () => createReferralPayoutMethod(expectedUserId, { type: payoutType, displayName: payoutDisplayName, destination: payoutDestination }, crypto.randomUUID()),
+    onSuccess: () => { setPayoutDisplayName(""); setPayoutDestination(""); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); },
   });
   const cancelWithdrawal = useMutation({
     mutationFn: () => {
-      if (!withdrawalResult || withdrawalResult.status !== "REQUESTED") throw new Error("withdrawal not cancelable");
-      return cancelReferralWithdrawal(expectedUserId, withdrawalResult.id, withdrawalResult.version, crypto.randomUUID());
+      if (!cancelTarget || cancelTarget.status !== "REQUESTED") throw new Error("withdrawal not cancelable");
+      return cancelReferralWithdrawal(expectedUserId, cancelTarget.id, cancelTarget.version, crypto.randomUUID());
     },
-    onSuccess: (result) => { setWithdrawalResult(result); void queryClient.invalidateQueries({ queryKey }); },
+    onSuccess: (result) => { setWithdrawalResult(result); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-withdrawals", expectedUserId] }); },
   });
   const createCode = useMutation({
     mutationFn: async () => {
@@ -119,8 +137,9 @@ function ScopedReferrals({ mode, expectedUserId, registrationAvailable }: { mode
       <article className={styles.metric}><span>已建立关系</span><strong>{data.count}</strong><small>来自不可变推广关系的实时计数</small></article>
       <article className={styles.metric}><span>可提现收益</span><strong className={data.earnings.availability === "available" ? undefined : styles.unavailable}>{effectiveAvailableMinor === null ? "收益数据暂不可用" : formatMinor(effectiveAvailableMinor)}</strong><small>{data.earnings.availability === "available" ? `待结算 ${formatMinor(data.earnings.pendingMinor)} · 冻结 ${formatMinor(data.earnings.reservedMinor)} · 调整 ${formatMinor(data.earnings.adjustmentMinor)}` : "当前没有可读取的收益 projection"}</small></article>
     </section>
+    {mode === "overview" ? <section className={styles.codeCard} aria-labelledby="withdrawal-history-title"><div><h2 id="withdrawal-history-title">提现记录</h2>{withdrawalHistory.isPending ? <p>正在读取提现记录…</p> : withdrawalHistory.isError ? <p className={styles.error} role="alert">提现记录暂不可用，请稍后重试。</p> : withdrawalHistory.data?.withdrawals.length === 0 ? <p>暂无提现申请。</p> : <ul>{withdrawalHistory.data?.withdrawals.map((item) => <li key={item.id}>申请 {formatMinor(item.amountMinor)} · {item.status} · {formatTime(item.updatedAt)}</li>)}</ul>}</div></section> : null}
     <section className={styles.codeCard} aria-labelledby="code-title"><div><h2 id="code-title">我的推广码</h2>{data.codeAvailability === "available" ? <><code>{data.code}</code><p>生成于本次读取：{formatTime(data.generatedAt)}</p></> : <p>尚未创建推广码</p>}</div>{data.codeAvailability === "available" ? registrationAvailable ? <Button asChild variant="outline"><Link href={`/referrals/register?code=${encodeURIComponent(data.code)}`} prefetch={false}>打开邀请链接</Link></Button> : <span className={styles.unavailable}>注册入口暂不可用</span> : <Button type="button" onClick={() => createCode.mutate()} disabled={createCode.isPending}>{createCode.isPending ? "正在创建…" : "创建推广码"}</Button>}</section>
-    <section className={styles.codeCard} aria-labelledby="withdrawal-title"><div><h2 id="withdrawal-title">申请提现</h2><p>最低 ¥100；申请后进入人工审核。结算前提是账户已完成邮箱和手机号验证。</p></div>{payoutMethods.isPending ? <p>正在读取已验证收款方式…</p> : payoutMethods.isError ? <p className={styles.error} role="alert">收款方式暂不可用，请稍后重试。</p> : payoutMethods.data?.methods.length === 0 ? <p className={styles.unavailable}>暂无可用收款方式，请先完成收款方式登记。</p> : <form onSubmit={event => { event.preventDefault(); withdrawal.mutate(); }}><label>金额（分）<input inputMode="numeric" pattern="[0-9]*" value={amountMinor} onChange={event => setAmountMinor(event.target.value)} placeholder="10000" disabled={data.earnings.availability !== "available" || withdrawal.isPending} /></label><label>收款方式<select value={selectedPayoutMethod?.methodId ?? ""} onChange={event => setPayoutMethodId(event.target.value)} disabled={withdrawal.isPending}>{payoutMethods.data?.methods.map((item: PayoutMethod) => <option key={item.methodId} value={item.methodId}>{item.displayName} · {item.maskedDestination}</option>)}</select></label><Button type="submit" disabled={data.earnings.availability !== "available" || withdrawal.isPending || amountMinor === "" || !selectedPayoutMethod}>{withdrawal.isPending ? "提交中…" : "申请提现"}</Button>{withdrawal.isError ? <p className={styles.error} role="alert">提现未提交：请确认余额、验证状态和版本仍有效。</p> : null}{withdrawalResult ? <div className={styles.notice} role="status"><p>提现状态：{withdrawalResult.status}。</p>{withdrawalResult.status === "REQUESTED" ? <Button type="button" variant="outline" onClick={() => cancelWithdrawal.mutate()} disabled={cancelWithdrawal.isPending}>{cancelWithdrawal.isPending ? "取消中…" : "取消提现申请"}</Button> : null}{cancelWithdrawal.isError ? <p className={styles.error}>取消提现未完成：请稍后重新核对状态。</p> : null}</div> : null}</form>}</section>
+    <section className={styles.codeCard} aria-labelledby="withdrawal-title"><div><h2 id="withdrawal-title">申请提现</h2><p>最低 ¥100；申请后进入人工审核。结算前提是账户已完成邮箱和手机号验证。</p></div>{payoutMethods.isPending ? <p>正在读取已验证收款方式…</p> : payoutMethods.isError ? <p className={styles.error} role="alert">收款方式暂不可用，请稍后重试。</p> : payoutMethods.data?.methods.length === 0 ? <form onSubmit={event => { event.preventDefault(); createPayoutMethod.mutate(); }}><p className={styles.unavailable}>请先登记一个收款方式。</p><label>渠道<select value={payoutType} onChange={event => setPayoutType(event.target.value as "ALIPAY" | "BANK_TRANSFER")}><option value="ALIPAY">支付宝</option><option value="BANK_TRANSFER">银行转账</option></select></label><label>名称<input value={payoutDisplayName} onChange={event => setPayoutDisplayName(event.target.value)} required maxLength={128} /></label><label>账号或收款地址<input value={payoutDestination} onChange={event => setPayoutDestination(event.target.value)} required maxLength={512} /></label><Button type="submit" disabled={createPayoutMethod.isPending}>{createPayoutMethod.isPending ? "登记中…" : "登记收款方式"}</Button>{createPayoutMethod.isError ? <p className={styles.error} role="alert">收款方式登记未完成，请稍后重试。</p> : null}</form> : <form onSubmit={event => { event.preventDefault(); withdrawal.mutate(); }}><label>金额（分）<input inputMode="numeric" pattern="[0-9]*" value={amountMinor} onChange={event => setAmountMinor(event.target.value)} placeholder="10000" disabled={data.earnings.availability !== "available" || withdrawal.isPending} /></label><label>收款方式<select value={selectedPayoutMethod?.methodId ?? ""} onChange={event => setPayoutMethodId(event.target.value)} disabled={withdrawal.isPending}>{payoutMethods.data?.methods.map((item: PayoutMethod) => <option key={item.methodId} value={item.methodId}>{item.displayName} · {item.maskedDestination}</option>)}</select></label><Button type="submit" disabled={data.earnings.availability !== "available" || withdrawal.isPending || amountMinor === "" || !selectedPayoutMethod}>{withdrawal.isPending ? "提交中…" : "申请提现"}</Button>{withdrawal.isError ? <p className={styles.error} role="alert">提现未提交：请确认余额、验证状态和版本仍有效。</p> : null}{cancelTarget ? <div className={styles.notice} role="status"><p>提现状态：{cancelTarget.status}。</p>{cancelTarget.status === "REQUESTED" ? <Button type="button" variant="outline" onClick={() => cancelWithdrawal.mutate()} disabled={cancelWithdrawal.isPending}>{cancelWithdrawal.isPending ? "取消中…" : "取消提现申请"}</Button> : null}{cancelWithdrawal.isError ? <p className={styles.error}>取消提现未完成：请稍后重新核对状态。</p> : null}</div> : null}</form>}</section>
     {createCode.isError ? <ReferralError error={createCode.error} compact /> : null}
     <p className={styles.observed}>数据观察时间：{formatTime(data.generatedAt)}</p>
   </div>;

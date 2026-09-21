@@ -9,6 +9,7 @@ GRANT SELECT, INSERT ON TABLE public.referral_earnings_ledger, public.referral_r
 GRANT SELECT, INSERT ON TABLE public.ledger_payment_settlements, public.ledger_refund_settlements, public.ledger_chargeback_settlements TO referral_runtime;
 GRANT USAGE, SELECT ON SEQUENCE public.referral_earnings_audit_events_id_seq TO referral_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_payout_methods TO referral_runtime;
+GRANT SELECT, INSERT ON TABLE public.ledger_payout_method_operations TO referral_runtime;
 GRANT UPDATE (state, ciphertext, lease_until) ON TABLE public.registration_intents TO referral_runtime;
 GRANT UPDATE, DELETE ON TABLE public.registration_admission_buckets TO referral_runtime;
 ALTER ROLE referral_runtime SET statement_timeout='10s';

@@ -57,3 +57,6 @@ CREATE TABLE IF NOT EXISTS public.ledger_payout_methods (
  display_name text NOT NULL, masked_destination text NOT NULL, secure_reference bytea NOT NULL,
  status text NOT NULL CHECK(status IN ('ACTIVE','DISABLED')), created_at timestamptz NOT NULL,
  updated_at timestamptz NOT NULL, version bigint NOT NULL);
+CREATE TABLE IF NOT EXISTS public.ledger_payout_method_operations (
+ idempotency_key text PRIMARY KEY, method_id text NOT NULL REFERENCES public.ledger_payout_methods(method_id),
+ fingerprint char(64) NOT NULL, created_at timestamptz NOT NULL);

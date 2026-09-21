@@ -58,6 +58,15 @@ type payoutMethodRow struct {
 	Version           int64
 }
 
+type payoutMethodOperationRow struct {
+	IdempotencyKey string `gorm:"column:idempotency_key;primaryKey"`
+	MethodID       string
+	Fingerprint    string
+	CreatedAt      time.Time
+}
+
+func (payoutMethodOperationRow) TableName() string { return "ledger_payout_method_operations" }
+
 func (payoutMethodRow) TableName() string { return "ledger_payout_methods" }
 
 type Repository struct{ db *gorm.DB }
@@ -73,7 +82,7 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return money.ErrUnavailable
 	}
-	return db.AutoMigrate(&paymentRow{}, &refundRow{}, &chargebackRow{}, &payoutMethodRow{})
+	return db.AutoMigrate(&paymentRow{}, &refundRow{}, &chargebackRow{}, &payoutMethodRow{}, &payoutMethodOperationRow{})
 }
 
 func (r *Repository) RecordPaymentSettlement(ctx context.Context, payment money.PaymentSettlement) error {
@@ -216,6 +225,43 @@ func (r *Repository) CreatePayoutMethod(ctx context.Context, method money.Payout
 		return money.ErrInvalid
 	}
 	return r.db.WithContext(ctx).Create(&payoutMethodRow{MethodID: method.MethodID, SubjectUserID: method.SubjectUserID, Type: string(method.Type), DisplayName: method.DisplayName, MaskedDestination: method.MaskedDestination, SecureReference: append([]byte(nil), method.SecureReference...), Status: string(method.Status), CreatedAt: method.CreatedAt.UTC(), UpdatedAt: method.UpdatedAt.UTC(), Version: method.Version}).Error
+}
+
+func (r *Repository) CreatePayoutMethodIdempotent(ctx context.Context, method money.PayoutMethod, idempotencyKey, fingerprint string) (money.PayoutMethod, error) {
+	if r == nil || r.db == nil || method.Validate() != nil || idempotencyKey == "" || fingerprint == "" {
+		return money.PayoutMethod{}, money.ErrInvalid
+	}
+	var out money.PayoutMethod
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var operation payoutMethodOperationRow
+		if err := tx.Where("idempotency_key = ?", idempotencyKey).Take(&operation).Error; err == nil {
+			if operation.Fingerprint != fingerprint {
+				return money.ErrConflict
+			}
+			var row payoutMethodRow
+			if err := tx.Where("method_id = ?", operation.MethodID).Take(&row).Error; err != nil {
+				return money.ErrUnavailable
+			}
+			out = payoutMethodFromRow(row)
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return money.ErrUnavailable
+		}
+		row := payoutMethodRow{MethodID: method.MethodID, SubjectUserID: method.SubjectUserID, Type: string(method.Type), DisplayName: method.DisplayName, MaskedDestination: method.MaskedDestination, SecureReference: append([]byte(nil), method.SecureReference...), Status: string(method.Status), CreatedAt: method.CreatedAt.UTC(), UpdatedAt: method.UpdatedAt.UTC(), Version: method.Version}
+		if err := tx.Create(&row).Error; err != nil {
+			return money.ErrUnavailable
+		}
+		if err := tx.Create(&payoutMethodOperationRow{IdempotencyKey: idempotencyKey, MethodID: method.MethodID, Fingerprint: fingerprint, CreatedAt: time.Now().UTC()}).Error; err != nil {
+			return money.ErrUnavailable
+		}
+		out = method
+		return nil
+	})
+	return out, err
+}
+
+func payoutMethodFromRow(row payoutMethodRow) money.PayoutMethod {
+	return money.PayoutMethod{MethodID: row.MethodID, SubjectUserID: row.SubjectUserID, Type: money.PayoutMethodType(row.Type), DisplayName: row.DisplayName, MaskedDestination: row.MaskedDestination, SecureReference: append([]byte(nil), row.SecureReference...), Status: money.PayoutMethodStatus(row.Status), CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(), Version: row.Version}
 }
 
 func (r *Repository) HasValidPayoutMethod(ctx context.Context, subject string, methodID string) (bool, error) {

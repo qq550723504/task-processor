@@ -362,7 +362,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")
 		}
 		route := currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path}
-		if want, ok := referralRoutes[route]; ok && (descriptor.AuthPolicy != want.AuthPolicy || descriptor.OrganizationAccessPolicy != want.OrganizationAccessPolicy || route.Path != accountReferralWithdrawalReviewPath && descriptor.Permission != "" || descriptor.OrganizationTargetResolver != nil || descriptor.RequestTimeout != want.RequestTimeout || descriptor.RejectUnreadRequestBody != want.RejectUnreadRequestBody) {
+		if want, ok := referralRoutes[route]; ok && (descriptor.AuthPolicy != want.AuthPolicy || descriptor.OrganizationAccessPolicy != want.OrganizationAccessPolicy || route.Path != accountReferralWithdrawalReviewPath && route.Path != accountReferralWithdrawalReviewQueuePath && descriptor.Permission != "" || descriptor.OrganizationTargetResolver != nil || descriptor.RequestTimeout != want.RequestTimeout || descriptor.RejectUnreadRequestBody != want.RejectUnreadRequestBody) {
 			return errors.New("referrals descriptor does not preserve its authority boundary")
 		}
 		if _, ok := expected[route]; !ok {
@@ -431,7 +431,7 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	}
 	service := &registration.Service{Store: repository, Provider: provider, Issuer: r.Issuer, Instance: r.InstanceID, Organization: r.SignupOrganizationID, Now: time.Now, Keys: registration.Keys{Active: r.KeyID, Lookup: secrets.Lookup, Proof: secrets.Proof, Encryption: secrets.Encryption}}
 	payoutEncryptionKey := append([]byte(nil), secrets.Encryption[r.KeyID]...)
-	return referralHTTPModule{commands: service, economics: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKey: payoutEncryptionKey, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
+	return referralHTTPModule{commands: service, economics: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKey: payoutEncryptionKey, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {

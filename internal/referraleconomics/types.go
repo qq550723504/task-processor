@@ -87,6 +87,8 @@ type Store interface {
 	RecordRefund(context.Context, money.RefundSettlement) error
 	Mature(context.Context, time.Time) error
 	ReadEarnings(context.Context, string, string) (Earnings, error)
+	ListWithdrawals(context.Context, string) ([]Withdrawal, error)
+	ListPendingWithdrawals(context.Context) ([]Withdrawal, error)
 	RequestWithdrawal(context.Context, RequestWithdrawal) (Withdrawal, error)
 	CancelWithdrawal(context.Context, string, string, int64, string) (Withdrawal, error)
 	ReviewWithdrawal(context.Context, ReviewWithdrawal) (Withdrawal, error)

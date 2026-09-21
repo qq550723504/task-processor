@@ -242,9 +242,6 @@ func (r *Repository) RecordRefund(ctx context.Context, refund money.RefundSettle
 		} else if err != nil {
 			return economics.ErrUnavailable
 		}
-		if refund.AmountMinor > claim.NetCashMinor-claim.RefundedMinor {
-			return economics.ErrInvalid
-		}
 		var operation refundOperationRow
 		if err := tx.Where("payment_id=? AND refund_id=?", refund.PaymentID, refund.RefundID).Take(&operation).Error; err == nil {
 			if operation.AmountMinor != refund.AmountMinor || !operation.RefundedAt.Equal(refund.OccurredAt.UTC()) {
@@ -253,6 +250,9 @@ func (r *Repository) RecordRefund(ctx context.Context, refund money.RefundSettle
 			return nil
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return economics.ErrUnavailable
+		}
+		if refund.AmountMinor > claim.NetCashMinor-claim.RefundedMinor {
+			return economics.ErrInvalid
 		}
 		newRefunded := claim.RefundedMinor + refund.AmountMinor
 		adjustment, err := economics.CommissionRefundAdjustment(claim.CommissionMinor, claim.NetCashMinor, claim.RefundedMinor, refund.AmountMinor)
@@ -321,9 +321,6 @@ func (r *Repository) RecordChargeback(ctx context.Context, chargeback money.Char
 		} else if err != nil {
 			return economics.ErrUnavailable
 		}
-		if chargeback.AmountMinor > claim.NetCashMinor-claim.RefundedMinor {
-			return economics.ErrInvalid
-		}
 		var operation chargebackOperationRow
 		if err := tx.Where("payment_id=? AND chargeback_id=?", chargeback.PaymentID, chargeback.ChargebackID).Take(&operation).Error; err == nil {
 			if operation.AmountMinor != chargeback.AmountMinor || !operation.OccurredAt.Equal(chargeback.OccurredAt) {
@@ -332,6 +329,9 @@ func (r *Repository) RecordChargeback(ctx context.Context, chargeback money.Char
 			return nil
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return economics.ErrUnavailable
+		}
+		if chargeback.AmountMinor > claim.NetCashMinor-claim.RefundedMinor {
+			return economics.ErrInvalid
 		}
 		before := claim.State
 		adjustment, err := economics.CommissionRefundAdjustment(claim.CommissionMinor, claim.NetCashMinor, claim.RefundedMinor, chargeback.AmountMinor)
@@ -428,6 +428,36 @@ func (r *Repository) ReadEarnings(ctx context.Context, referrer, currency string
 		return economics.Earnings{}, economics.ErrUnavailable
 	}
 	return economics.Earnings{Referrer: p.Referrer, Currency: p.Currency, PendingMinor: p.PendingMinor, AvailableMinor: p.AvailableMinor, ReservedMinor: p.ReservedMinor, AdjustmentMinor: p.AdjustmentMinor, Version: p.Version, UpdatedAt: p.UpdatedAt.UTC()}, nil
+}
+
+func (r *Repository) ListWithdrawals(ctx context.Context, referrer string) ([]economics.Withdrawal, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(referrer) == "" {
+		return nil, economics.ErrInvalid
+	}
+	var rows []withdrawalRow
+	if err := r.db.WithContext(ctx).Where("referrer = ?", strings.TrimSpace(referrer)).Order("created_at DESC, id DESC").Limit(100).Find(&rows).Error; err != nil {
+		return nil, economics.ErrUnavailable
+	}
+	out := make([]economics.Withdrawal, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, withdrawalFromRow(row))
+	}
+	return out, nil
+}
+
+func (r *Repository) ListPendingWithdrawals(ctx context.Context) ([]economics.Withdrawal, error) {
+	if r == nil || r.db == nil {
+		return nil, economics.ErrInvalid
+	}
+	var rows []withdrawalRow
+	if err := r.db.WithContext(ctx).Where("status IN ?", []string{string(economics.WithdrawalRequested), string(economics.WithdrawalApproved)}).Order("created_at ASC, id ASC").Limit(100).Find(&rows).Error; err != nil {
+		return nil, economics.ErrUnavailable
+	}
+	out := make([]economics.Withdrawal, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, withdrawalFromRow(row))
+	}
+	return out, nil
 }
 
 func (r *Repository) RequestWithdrawal(ctx context.Context, input economics.RequestWithdrawal) (economics.Withdrawal, error) {

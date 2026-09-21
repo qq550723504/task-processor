@@ -33,6 +33,7 @@ const accountReferralsCompletePath = accountReferralsPath + "/complete"
 const accountReferralEarningsPath = accountReferralsPath + "/earnings"
 const accountReferralPayoutMethodsPath = accountReferralsPath + "/payout-methods"
 const accountReferralWithdrawalsPath = accountReferralsPath + "/withdrawals"
+const accountReferralWithdrawalReviewQueuePath = accountReferralWithdrawalsPath + "/review-queue"
 const accountReferralWithdrawalCancelPath = accountReferralWithdrawalsPath + "/:withdrawal_id/cancel"
 const accountReferralWithdrawalReviewPath = accountReferralWithdrawalsPath + "/:withdrawal_id/review"
 const internalReferralPaymentSettlementPath = "/api/v1/internal/referrals/payment-settlements"
@@ -56,6 +57,11 @@ type referralEconomics interface {
 	Mature(context.Context, time.Time) error
 }
 
+type withdrawalReader interface {
+	ListWithdrawals(context.Context, string) ([]economics.Withdrawal, error)
+	ListPendingWithdrawals(context.Context) ([]economics.Withdrawal, error)
+}
+
 type settlementWriter interface {
 	RecordPaymentSettlementAndNotify(context.Context, money.PaymentSettlement, money.SettlementObserver) error
 	RecordRefundSettlementAndNotify(context.Context, money.RefundSettlement, money.SettlementObserver) error
@@ -72,13 +78,14 @@ type payoutMethodReader interface {
 }
 
 type payoutMethodWriter interface {
-	CreatePayoutMethod(context.Context, money.PayoutMethod) error
+	CreatePayoutMethodIdempotent(context.Context, money.PayoutMethod, string, string) (money.PayoutMethod, error)
 }
 
 type referralHTTPModule struct {
 	commands              referralCommands
 	serviceCredential     string
 	economics             referralEconomics
+	withdrawals           withdrawalReader
 	payoutMethods         payoutMethodReader
 	payoutMethodWriter    payoutMethodWriter
 	payoutEncryptionKey   []byte
@@ -113,6 +120,8 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodGet, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readPayoutMethods},
 		{Method: http.MethodPost, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createPayoutMethod},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},
+		{Method: http.MethodGet, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readWithdrawals},
+		{Method: http.MethodGet, Path: accountReferralWithdrawalReviewQueuePath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitAdminRead, Handler: m.readWithdrawalQueue},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalCancelPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.cancelWithdrawal},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalReviewPath, AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles, Permission: authz.PermissionListingKitAdminWrite, Handler: m.reviewWithdrawal},
 		{Method: http.MethodPost, Path: internalReferralPaymentSettlementPath, AuthPolicy: httproute.AuthPolicyPublic, Handler: m.recordPaymentSettlement},

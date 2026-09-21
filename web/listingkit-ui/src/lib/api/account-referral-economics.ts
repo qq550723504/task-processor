@@ -4,7 +4,9 @@ import { readBoundedStrictJSON } from "./strict-json-response";
 
 const amount = z.string().regex(/^(0|[1-9][0-9]{0,18})$/);
 const payoutMethods = z.object({ schemaVersion: z.literal("payout-methods-v1"), methods: z.array(z.object({ methodId: z.string().min(1), type: z.enum(["ALIPAY", "BANK_TRANSFER"]), displayName: z.string().min(1), maskedDestination: z.string().min(1), version: amount }).strict()) }).strict();
+const payoutMethod = z.object({ schemaVersion: z.literal("payout-method-v1"), methodId: z.string().min(1), type: z.enum(["ALIPAY", "BANK_TRANSFER"]), displayName: z.string().min(1), maskedDestination: z.string().min(1), version: amount }).strict();
 const withdrawal = z.object({ schemaVersion: z.literal("referral-withdrawal-v1"), id: z.string().min(1), currency: z.literal("CNY"), method: z.enum(["ALIPAY", "BANK_TRANSFER"]), payoutMethodId: z.string().min(1), amountMinor: amount, status: z.enum(["REQUESTED", "APPROVED", "PAID", "CANCELED", "REJECTED"]), payoutReference: z.string(), version: amount, createdAt: z.string().datetime({ precision: null }), updatedAt: z.string().datetime({ precision: null }) }).strict();
+const withdrawals = z.object({ schemaVersion: z.literal("referral-withdrawals-v1"), withdrawals: z.array(withdrawal.omit({ schemaVersion: true })).max(100) }).strict();
 export type PayoutMethod = z.infer<typeof payoutMethods>["methods"][number];
 export type ReferralWithdrawal = z.infer<typeof withdrawal>;
 async function request<T>(path: string, schema: z.ZodType<T>, expectedUserId: string, init: RequestInit = {}): Promise<T> {
@@ -15,5 +17,7 @@ async function request<T>(path: string, schema: z.ZodType<T>, expectedUserId: st
   const parsed = schema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
 }
 export const getReferralPayoutMethods = (expectedUserId: string, signal?: AbortSignal) => request("/api/account/referral-payout-methods", payoutMethods, expectedUserId, { signal });
+export function createReferralPayoutMethod(expectedUserId: string, body: { type: "ALIPAY" | "BANK_TRANSFER"; displayName: string; destination: string }, idempotencyKey: string, signal?: AbortSignal) { return request("/api/account/referral-payout-methods", payoutMethod, expectedUserId, { method: "POST", signal, headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) }); }
+export const getReferralWithdrawals = (expectedUserId: string, signal?: AbortSignal) => request("/api/account/referral-withdrawals", withdrawals, expectedUserId, { signal });
 export function requestReferralWithdrawal(expectedUserId: string, body: { amountMinor: string; payoutMethodId: string; expectedVersion: string }, idempotencyKey: string, signal?: AbortSignal) { return request("/api/account/referral-withdrawals", withdrawal, expectedUserId, { method: "POST", signal, headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) }); }
 export function cancelReferralWithdrawal(expectedUserId: string, withdrawalId: string, expectedVersion: string, idempotencyKey: string, signal?: AbortSignal) { return request(`/api/account/referral-withdrawals/${encodeURIComponent(withdrawalId)}/cancel`, withdrawal, expectedUserId, { method: "POST", signal, headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ expectedVersion }) }); }

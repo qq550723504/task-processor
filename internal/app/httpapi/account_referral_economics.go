@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,6 +81,39 @@ func (m referralHTTPModule) readPayoutMethods(c *gin.Context) {
 	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "payout-methods-v1", "methods": items})
 }
 
+func (m referralHTTPModule) readWithdrawals(c *gin.Context) {
+	if !m.referralRequest(c) || m.withdrawals == nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+	if !ok {
+		return
+	}
+	items, err := m.withdrawals.ListWithdrawals(c.Request.Context(), identity.UserID)
+	if err != nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	writeWithdrawalsJSON(c, items)
+}
+
+func (m referralHTTPModule) readWithdrawalQueue(c *gin.Context) {
+	if !m.referralRequest(c) || m.withdrawals == nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	if _, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); !ok {
+		return
+	}
+	items, err := m.withdrawals.ListPendingWithdrawals(c.Request.Context())
+	if err != nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	writeWithdrawalsJSON(c, items)
+}
+
 // createPayoutMethod is the personal money-owner write path. The destination
 // is encrypted before it reaches persistence; ordinary reads only expose the
 // masked projection. It intentionally has no organization context.
@@ -105,6 +139,12 @@ func (m referralHTTPModule) createPayoutMethod(c *gin.Context) {
 		return
 	}
 	destination := strings.TrimSpace(body.Destination)
+	key := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if key == "" || len(key) > 128 {
+		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	fingerprint := payoutMethodFingerprint(identity.UserID, typeValue, strings.TrimSpace(body.DisplayName), destination)
 	ciphertext, err := encryptPayoutDestination(m.payoutEncryptionKey, identity.UserID, typeValue, destination)
 	if err != nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
@@ -112,11 +152,17 @@ func (m referralHTTPModule) createPayoutMethod(c *gin.Context) {
 	}
 	now := time.Now().UTC()
 	method := money.PayoutMethod{MethodID: uuid.NewString(), SubjectUserID: identity.UserID, Type: typeValue, DisplayName: strings.TrimSpace(body.DisplayName), MaskedDestination: maskPayoutDestination(destination), SecureReference: ciphertext, Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
-	if err := m.payoutMethodWriter.CreatePayoutMethod(c.Request.Context(), method); err != nil {
+	created, err := m.payoutMethodWriter.CreatePayoutMethodIdempotent(c.Request.Context(), method, key, fingerprint)
+	if err != nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
 		return
 	}
-	writeReferralEconomicsJSON(c, http.StatusCreated, gin.H{"schemaVersion": "payout-method-v1", "methodId": method.MethodID, "type": method.Type, "displayName": method.DisplayName, "maskedDestination": method.MaskedDestination, "version": strconv.FormatInt(method.Version, 10)})
+	writeReferralEconomicsJSON(c, http.StatusCreated, gin.H{"schemaVersion": "payout-method-v1", "methodId": created.MethodID, "type": created.Type, "displayName": created.DisplayName, "maskedDestination": created.MaskedDestination, "version": strconv.FormatInt(created.Version, 10)})
+}
+
+func payoutMethodFingerprint(subject string, methodType money.PayoutMethodType, displayName, destination string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{subject, string(methodType), displayName, destination}, "\x00")))
+	return fmt.Sprintf("%x", sum[:])
 }
 
 func encryptPayoutDestination(key []byte, subject string, methodType money.PayoutMethodType, destination string) ([]byte, error) {
@@ -346,6 +392,13 @@ func nullableTime(value time.Time) *string {
 }
 func writeWithdrawalJSON(c *gin.Context, value economics.Withdrawal) {
 	writeReferralEconomicsJSON(c, 200, gin.H{"schemaVersion": "referral-withdrawal-v1", "id": value.ID, "currency": value.Currency, "method": value.Method, "payoutMethodId": value.PayoutMethodID, "amountMinor": strconv.FormatInt(value.AmountMinor, 10), "status": value.Status, "payoutReference": value.PayoutReference, "version": strconv.FormatInt(value.Version, 10), "createdAt": value.CreatedAt.UTC(), "updatedAt": value.UpdatedAt.UTC()})
+}
+func writeWithdrawalsJSON(c *gin.Context, values []economics.Withdrawal) {
+	items := make([]gin.H, 0, len(values))
+	for _, value := range values {
+		items = append(items, gin.H{"id": value.ID, "currency": value.Currency, "method": value.Method, "payoutMethodId": value.PayoutMethodID, "amountMinor": strconv.FormatInt(value.AmountMinor, 10), "status": value.Status, "payoutReference": value.PayoutReference, "version": strconv.FormatInt(value.Version, 10), "createdAt": value.CreatedAt.UTC(), "updatedAt": value.UpdatedAt.UTC()})
+	}
+	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-withdrawals-v1", "withdrawals": items})
 }
 func writeReferralEconomicsJSON(c *gin.Context, status int, value any) {
 	c.Header("Cache-Control", "private, no-store")

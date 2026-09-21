@@ -117,3 +117,22 @@ func TestPayoutMethodValidationDoesNotExposeSecureReference(t *testing.T) {
 		t.Fatalf("methods=%#v err=%v", methods, err)
 	}
 }
+
+func TestPayoutMethodCreationIsIdempotent(t *testing.T) {
+	repo := newMoneyRepository(t)
+	now := time.Now().UTC()
+	first := money.PayoutMethod{MethodID: "method-1", SubjectUserID: "user-1", Type: money.PayoutAlipay, DisplayName: "Alipay", MaskedDestination: "a***@example.com", SecureReference: []byte("encrypted-ciphertext"), Status: money.PayoutMethodActive, CreatedAt: now, UpdatedAt: now, Version: 1}
+	created, err := repo.CreatePayoutMethodIdempotent(context.Background(), first, "payout-key-1", "fingerprint-1")
+	if err != nil || created.MethodID != "method-1" {
+		t.Fatalf("first create=%#v err=%v", created, err)
+	}
+	replay := first
+	replay.MethodID = "method-2"
+	replayed, err := repo.CreatePayoutMethodIdempotent(context.Background(), replay, "payout-key-1", "fingerprint-1")
+	if err != nil || replayed.MethodID != "method-1" {
+		t.Fatalf("replay=%#v err=%v", replayed, err)
+	}
+	if _, err := repo.CreatePayoutMethodIdempotent(context.Background(), replay, "payout-key-1", "different-fingerprint"); !errors.Is(err, money.ErrConflict) {
+		t.Fatalf("payload conflict=%v", err)
+	}
+}

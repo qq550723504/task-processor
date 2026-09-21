@@ -40,16 +40,18 @@ describe("ReferralsPage", () => {
   it("distinguishes not-created from a real zero count and creates only on explicit click", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(Response.json({ code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }))
+      .mockResolvedValueOnce(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }))
       .mockResolvedValueOnce(Response.json({ code: "CODE1234" }))
-      .mockResolvedValueOnce(Response.json({ code: "CODE1234", codeAvailability: "available", count: 0, generatedAt: "2026-09-13T10:01:00Z", earnings: { availability: "unavailable", amount: null } }));
+      .mockResolvedValueOnce(Response.json({ code: "CODE1234", codeAvailability: "available", count: 0, generatedAt: "2026-09-13T10:01:00Z", earnings: { availability: "unavailable", amount: null } }))
+      .mockResolvedValueOnce(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }));
     vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
     mount();
     expect(await screen.findByText("尚未创建推广码")).toBeVisible();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     await user.click(screen.getByRole("button", { name: "创建推广码" }));
     expect(await screen.findByText("CODE1234")).toBeVisible();
-    expect(fetch.mock.calls[1][1].method).toBe("POST");
+    expect(fetch.mock.calls[2][1].method).toBe("POST");
   });
 
   it("does not treat an organization switch as loss of personal referral access", async () => {
@@ -63,11 +65,13 @@ describe("ReferralsPage", () => {
   it("reads personal facts when enterprise context is unavailable", async () => {
     state.context.user = null;
     state.context.blockingError = { code: "DEPENDENCY_UNAVAILABLE" };
-    const fetch = vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }));
+    const fetch = vi.fn((input: string) => String(input).includes("referral-withdrawals")
+      ? Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }))
+      : Promise.resolve(Response.json({ code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
     vi.stubGlobal("fetch", fetch);
     mount();
     expect(await screen.findByText("CODE1234")).toBeVisible();
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("keeps personal count readable but disables an unconfigured invitation entry", async () => {
@@ -85,6 +89,7 @@ describe("ReferralsPage", () => {
     const fetch = vi.fn((input: string, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
+      if (path === "/api/account/referral-withdrawals" && !init?.method) return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }));
       if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: [{ methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }] }));
       if (path === "/api/account/referral-withdrawals" && init?.method === "POST") return Promise.resolve(Response.json(requested));
       if (path === "/api/account/referral-withdrawals/withdrawal-1/cancel" && init?.method === "POST") return Promise.resolve(Response.json(canceled));

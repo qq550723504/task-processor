@@ -89,6 +89,18 @@ func (r *GormRepository) SumCommittedMemberUsage(ctx context.Context, tx *gorm.D
 	return total, nil
 }
 
+func (r *GormRepository) SumReservedMemberUsage(ctx context.Context, tx *gorm.DB, tenantID, memberID, metric string, start, end time.Time) (int64, error) {
+	if r == nil || tx == nil || tenantID == "" || memberID == "" || metric == "" || start.IsZero() || !end.After(start) {
+		return 0, ErrUsageInvalidInput
+	}
+	var total int64
+	query := tx.WithContext(ctx).Model(&memberUsageRow{}).Where("tenant_id = ? AND member_id = ? AND metric = ? AND source_type = ? AND status = ? AND occurred_at >= ? AND occurred_at < ?", tenantID, memberID, metric, "ai_invocation_reservation", string(UsageEventReserved), start.UTC(), end.UTC())
+	if err := query.Select("COALESCE(SUM(quantity), 0)").Scan(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 func (r *GormRepository) SumCommittedUsage(ctx context.Context, tx *gorm.DB, tenantID, metric string, start, end time.Time) (int64, error) {
 	if r == nil || tx == nil || tenantID == "" || metric == "" || start.IsZero() || !end.After(start) {
 		return 0, ErrUsageInvalidInput
@@ -252,7 +264,11 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 		if err != nil {
 			return err
 		}
-		remaining := allocation.Allocated - consumed
+		reserved, err := r.SumReservedMemberUsage(ctx, tx, tenantID, memberID, usageMetricAITokens, *entitlement.StartsAt, *entitlement.ExpiresAt)
+		if err != nil {
+			return err
+		}
+		remaining := allocation.Allocated - consumed - reserved
 		if remaining <= 0 {
 			return ErrUsageQuotaExceeded
 		}
