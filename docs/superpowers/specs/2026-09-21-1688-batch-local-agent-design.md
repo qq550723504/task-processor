@@ -118,6 +118,7 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 | 缺口 | 证据 | 本设计的补法 |
 |---|---|---|
 | **没有「驱动 N 次」的循环** | 采集一直是人工点 popup | §4 D1：执行器循环 |
+| **既有链路是「单次人工点击」的有状态流程，不是无状态 API** | `Controller` 是 background 模块级单例；`capture()`/`handoff()` 在已完成后直接返回（`controller.ts:18/:24`），只有 `popup.new`（`background.ts:34`）重置 | §4 D1.1：每条之间的 reset 转换 |
 | **没有本地待办队列** | 无 | §4 D2：执行器本地文件（**不是**服务端事实源） |
 | **profile / 会话被并发使用** | 无锁 | §4 D3：profile 本地锁，单执行器 |
 
@@ -135,13 +136,41 @@ PR #443 第三轮评审提出 13 条，逐条对照真实代码核实后确认�
 - 部分失败天然成立：一条失败不影响后续条。
 - 单批上限 **10**（§11-1），实测通过后再提。
 
+#### D1.1 每条之间的 reset（必须显式实现）
+
+`Controller` 是 background 的**模块级单例**（`extensions/1688-capture/src/background.ts:25`），且：
+
+- `capture()` 在已有 payload 时**直接返回**（`src/controller.ts:18`：`if (this.payload) return Promise.resolve()`）
+- `handoff()` 在已交付时**直接返回**（`src/controller.ts:24`：`if (this.handed) return Promise.resolve()`）
+
+⇒ 只循环发 `popup.capture` 会在第 2 条**重复第 1 条的结果**，批量根本不工作。唯一的 reset 是 `popup.new`（`background.ts:34`）。
+
+⇒ 每条之间的顺序必须是：
+
+```
+读状态 → 采集 → 交付 → 等待终态被本地确认
+  → 导航到第 N+1 条商品页 → reset → 下一轮采集
+```
+
+**边界论证**：`popup.new` 在 UI 上是**两步确认**（`fresh` → `new-confirm-button`，`src/popup.ts:39-41`），边界语为「新采集会建立另一笔操作。已交给应用的操作请先在原页面核实。」它要防的是**用户误触、丢掉一笔尚未核实的操作**。批量中该前提由**执行器先确认上一条已到终态**替代 ⇒ 发 reset 时边界条件已被**显式满足**，不是绕过。
+
+**实现方式**：执行器**驱动 popup 页面模拟真实点击**，而不是直接发 `popup.new` 消息。理由：`background.ts:28` 只接受来源为 `popup.html` 且无 `tab` 的消息，所以两种方式都必须驱动 popup；模拟点击不依赖内部消息字符串契约，也更贴合「这是用户操作」的语义。
+
 ### D2：待办状态是**执行器本地**的，服务端只看到已提交的操作
 
 - 本地队列（链接、序号、状态、**idempotency key**、operationId、失败原因）持久化在**执行器本地文件**。
 - **明确不是第二事实源**：它不记录任何发布结果，只记录「我打算做什么、做到哪一步」；权威发布结果仍在服务端（由 `by-key` / 采集页回读）。
-- **必须记录 idempotency key**（不是可选项）：④2 的 key 由扩展生成（`crypto.randomUUID()`），执行器驱动采集页时能从 URL fragment `#idempotencyKey=...` 读到。记录它是崩溃恢复时用**同一 key** 重试的唯一手段。
-  否则：提交后崩溃 ⇒ 本地无 key ⇒ 重试时生成**新 key** ⇒ 新 INSERT 一行，而被中断的 `prepared` 行成为**孤儿**且永久占 1 个额度（无 GC，§9.1）。
-- 崩溃恢复：重启读回本地文件；有 key 的用 `by-key` 回读确认或同 key 重试；无 key 的才生成新 key。
+- **必须记录 idempotency key，但它的语义是「回读句柄」，不是「重试凭据」**：③ 的 key 由扩展在交付时内部生成（`src/controller.ts:26` 的 `crypto.randomUUID()`），**执行器无法指定它，也无法复用它重新提交**（重建 payload 走 `handoff()` 必然生成新 key）。执行器驱动采集页时能从 URL fragment `#idempotencyKey=...` 读到它，**仅用于回读**。
+- **崩溃恢复的确切判定**（回读 = `GET …/by-key/<key>`）：
+
+  | 回读结果 | 含义 | 动作 |
+  |---|---|---|
+  | `200` + 终态（`published`/`failed`） | 已建行并结束 | 记录结果 |
+  | `200` + **非终态**（`acquiring`/`prepared`/`publishing`） | 已建行但未结束（响应丢失 / 20 秒 deadline 中断） | 记 `outcome_unknown`，**停止该条**，提示人工在应用内核实。**不自动重试**：执行器无法复用该 key，重试必然新建一行并可能二次发布同一商品 |
+  | **`404 ACQUISITION_NOT_FOUND`** | **该 key 从未建行**（`internal/integration/persistence/product/acquisition/repository.go:348` 的 `RowsAffected != 1`；HTTP 投影 `internal/app/httpapi/product_acquisition_application.go:315`）⇒ 无孤儿行、零额度消耗 | **安全丢弃该 key，重新采集（新 key）** |
+
+- ⇒ 记录 key 的价值：**不把「已成功提交」误判为「没提交过」而重复发布**。它**不**声称能自动推进卡住的非终态行（那需要改契约或加路由，§1.3/§5 明确不做）。
+- **如实标注的代价**：非终态条目需要人工核实，批量会在此停下。这是有意选择——商品重复发布是数据正确性问题，优先级高于自动化程度。
 - **代价（已接受）**：应用内看不到「还剩几条」。
 
 ### D3：profile 与会话都在执行器本地，服务端零持久化
@@ -192,9 +221,10 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | 单条失败（下架 / 无效链接 / 挑战页） | 记录本地失败并**继续下一条**；不自动重试该条 |
 | 被重定向到登录页 | **停止整批**并提示人工重新扫码。**不使用** `CHALLENGE` 作为持久化码——`validFailure`（`repository.go:444-450`）只接受 `SOURCE_UNAVAILABLE`/`INVALID_SOURCE`/`SOURCE_TOO_LARGE`/`PUBLICATION_CONFLICT`，未知码会被 `Finish` 以 `ErrInvalidAcquisition` 拒绝并使行停在非终态 |
 | 应用会话过期 | 停止整批并提示人工在应用内重新登录（**不静默失败、不伪造成功**） |
-| 提交响应丢失 | 用 `by-key` 回读确认（既有能力）；**本地队列必须已记录 key**（§4 D2） |
-| 执行器进程被杀 | 重启读回本地队列；有 key 的同 key 重试（`StartPrepared` 对既有 `prepared` 行走 `Claim`→`resolve`，`internal/app/productsourcing/browser_capture.go:135-143`），无 key 的才新建 |
-| 用户取消 | **本地动作**（停止循环）。服务端不新增取消路由；v2 的「服务端取消」撤销 |
+| 提交响应丢失 | 用 `by-key` 回读确认（既有能力，判定见 §4 D2）；**本地队列必须已记录 key** |
+| 执行器进程被杀 | 重启读回本地队列；对已记 key 的条目先 `by-key`：终态 ⇒ 记结果，非终态 ⇒ 记 `outcome_unknown` 并停下待人工核实，`404` ⇒ 丢弃 key 重新采集（§4 D2） |
+| 上一条未确认即取第二条 | 禁止：reset 必须在**上一条已到终态**之后（§4 D1.1） |
+| 用户取消 | **本地动作**（停止循环）。服务端不新增取消路由；v2 的「服务端取消」撤销。已提交但未终态的条目按上行处理 |
 | 并发执行器 | 本地 profile 锁阻止；无服务端竞争面 |
 
 ## 8. 授权与租户
@@ -241,11 +271,14 @@ v2 的 D5（采集操作 list 路由 + 分页 + 精确白名单 flag）**撤销*
 | 不变量 | 验证方式 |
 |---|---|
 | 单条等价性 | 执行器驱动的单条采集结果与人工点 popup 的结果一致（同一 envelope 契约、同一发布结果） |
+| **批量不重复第 1 条** | 3 条**不同**链接 ⇒ 3 个**不同** `offer_id`/`productKey`；若 reset 缺失会出现 3 条相同结果 |
+| **reset 边界** | 上一条未到终态时执行器**不**发 reset；下一条不得在上一条未确认时开始 |
 | 批量隔离 | 10 条中第 3 条失败 ⇒ 其余 9 条仍到达终态，且第 3 条本地有失败原因 |
 | 登录态失效 | profile 登出后运行 ⇒ **整批停止**并给出明确提示，不产生伪造成功 |
 | 应用会话失效 | 应用会话过期后运行 ⇒ 整批停止并提示重新登录 |
-| 崩溃恢复 | 第 5 条执行中 kill 执行器 ⇒ 重启后**用同一 key** 重试，且不产生新的孤儿 `prepared` 行（与 §10 的“单条等价性”同时验证） |
-| 无孤儿行 | 批量跑完后查 `product_acquisition_operations`，无非终态行残留 |
+| 崩溃恢复（已建行） | kill 执行器后重启 ⇒ 对已提交条目走 `by-key`，**不产生第二次发布** |
+| 崩溃恢复（未建行） | 在 POST 之前 kill ⇒ 重启后 `by-key` 返回 `404` ⇒ 安全重采集，且不新增孤儿行 |
+| 非终态不自动重试 | 人为制造非终态条目 ⇒ 执行器记 `outcome_unknown` 并停下，不自动重试 |
 | 单执行器 | 第二个执行器对同一 profile 启动 ⇒ 被本地锁拒绝 |
 | 零新增面 | `git diff` 中无新增服务端路由、无新增持久化表、无新增权限常量、无 profile/凭据字段 |
 | 无 legacy 依赖 | 全链路 grep 无 `internal/crawler/alibaba1688` 调用 |
@@ -295,7 +328,7 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 
 1. **S1 — 单条驱动跑通**：Go 执行器用 `playwright-go` 启动 fingerprint-chromium + 加载扩展 + 发 `popup.capture` + 打开采集页，完成 1 条并回读终态。
    验证：§10 的「单条等价性」。
-2. **S2 — 本地队列 + 批量**：≤10 条循环、本地队列文件（**含 key 持久化**，§4 D2）、失败隔离、崩溃恢复、登录态/会话失效即停。
+2. **S2 — 本地队列 + 批量**：≤10 条循环、**每条之间的 reset（§4 D1.1）**、本地队列文件（**含 key 持久化**，§4 D2）、失败隔离、崩溃恢复、登录态/会话失效即停。
    验证：§10 的「批量隔离 / 崩溃恢复 / 登录态失效 / 应用会话失效」。
 3. **S3 — 单执行器锁**：本地 profile 锁。
    验证：§10 的「单执行器」。
@@ -329,9 +362,18 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 | 8 | 新提交操作须出现在进度读 | IMPLEMENTATION_TEST | **消解**：不做应用内进度读（§4 D2） |
 | 9 | 分页需要稳定位置 | IMPLEMENTATION_TEST | **消解**：不新增 list 路由（§4 D4） |
 | 10 | 不确定发布须投影为 `outcome_unknown` | IMPLEMENTATION_TEST | 保留为不变量（§5-4），由既有 HTTP 投影承担 |
-| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | **部分消解**：v2 靠「发现谓词」恢复，该谓词连同 list 路由一并撤销。v3 的恢复改为**同 key 重试**：`StartPrepared` 对既有 `prepared` 行会走 `Claim`→`resolve`（`internal/app/productsourcing/browser_capture.go:135-143`），**同一请求内**完成发布。⇒ 执行器**必须**本地记录 key（§4 D2）；否则新 key 会新建行、旧 `prepared` 行成为**孤儿且永久占额度**——这是 ③ **已上线**的既有行为，本设计不改，但必须按 §4 D2 规避 |
+| 11 | `prepared` 行重启后须可恢复 | IMPLEMENTATION_TEST | **v3 第一版回答错了，已由第四轮评审纠正**（见 §15.3）。v2 靠「发现谓词」恢复，该谓词连同 list 路由一并撤销。v3 现在的回答：恢复 = **`by-key` 回读 + 按结果分支**（§4 D2），其中非终态条目**不自动重试**（执行器无法复用扩展生成的 key），而是停下等人工核实；仅 `404 ACQUISITION_NOT_FOUND`（即从未建行）才安全重采集 |
 | 12 | 抽取计划须移除已退役回退 | IMPLEMENTATION_TEST | **已修**：§13 改为纯 `RETIRE`，且本设计不抽取任何 legacy 行为 |
 | 13 | 须按 2048 校验容量 | IMPLEMENTATION_TEST | **已修**：§9.1 与 §10 已按 2048 |
+
+### 15.3 第四轮 2 条（针对 v3）
+
+| # | 评审内容 | 分类 | 处置 |
+|---|---|---|---|
+| 14 | **批量中必须在每条之间 reset 扩展 controller** | **BLOCKER（成立，已修）** | 核实成立且是硬缺陷：`Controller` 是 background 模块级单例（`background.ts:25`），`capture()` 在已有 payload 时直接返回（`controller.ts:18`），`handoff()` 在已交付时直接返回（`controller.ts:24`），唯一 reset 是 `popup.new`（`background.ts:34`）⇒ 我原来的 D1 循环会在第 2 条重复第 1 条的结果。**已新增 §4 D1.1**：定义每条之间的 reset 顺序、边界论证（`popup.new` 的两步确认所防的「误触丢操作」已由「执行器先确认上一条到终态」满足），以及实现方式（驱动 popup 页面模拟点击，而非直发内部消息） |
+| 15 | **同 key 崩溃重试无法执行** | **IMPLEMENTATION_TEST（成立，已修）** | 核实成立，且揭穿了我 v3 第一版里的一个真错误：我写了「同 key 重试走 `StartPrepared` 的 `Claim`→`resolve`（`browser_capture.go:135-143`）」，但该路径**需要重新提交 payload**，而重建 payload 走 `handoff()` 必然生成**新随机 key**（`controller.ts:26`）⇒ 执行器**根本没有**「复用同一 key 重试」的能力；我引用的代码路径真实，但它不提供我声称的能力。**已改为 §4 D2 的回读分支表**：`200` 终态⇒记结果；`200` 非终态⇒`outcome_unknown` 并停下待人工核实（不自动重试，避免重复发布）；`404 ACQUISITION_NOT_FOUND`（`repository.go:348` → `product_acquisition_application.go:315`）⇒ 丢弃 key 安全重采集。§10 验证项已相应改为可执行的 4 条 |
+
+两条 findings 都是**真实缺陷**，已直接修正设计，无需产品决定。第 14 条之所以能拿下来，是因为它指出了「复用已上线链路」这一路线的一个隐藏前提：既有链路是**为单次人工点击设计的有状态流程**，不是无状态 API。这一点已写入 §3.2 缺口表。
 
 ## 16. v3 变更记录
 
@@ -340,3 +382,5 @@ Cutover/deletion condition: 本设计不执行删除。确认 internal/crawler/a
 3. **对先前推荐的修正**：设备令牌路径不必要且更差（`deviceauth` 拒绝 refresh token，`client.go:133`）；改为执行器零凭据、由浏览器会话提交（§2）。
 4. **`CHALLENGE` 与取消语义修正**（§7）：`validFailure` 只接受 4 个码；取消是本地动作。
 5. **§13 由 `EXTRACT | RETIRE` 改为纯 `RETIRE`**：本路线不抽取任何 legacy 行为（v2 曾错误地把被禁的 public→account 回退列入 `EXTRACT`）。
+6. **新增 §4 D1.1（每条之间的 reset）**：第四轮评审指出 `Controller` 是单例且 `capture()`/`handoff()` 会直接返回，只循环发消息会重复第 1 条的结果。已定义 reset 顺序、边界论证与实现方式，并相应加入 §10 验证项。
+7. **修正 D2 的 key 语义**：原写「同 key 重试」是错的——key 由扩展在交付时内部生成（`controller.ts:26`），执行器无法指定也无法复用；引用的 `StartPrepared` 恢复路径需要重新提交 payload，而重建 payload 必然生成新 key。已改为「`by-key` 回读 + 按结果分支」的判定表。
