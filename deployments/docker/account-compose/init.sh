@@ -58,7 +58,6 @@ EOF
 ALTER ROLE commercial_runtime LOGIN PASSWORD :'commercial_password';
 GRANT CONNECT ON DATABASE commercial TO commercial_runtime;
 GRANT USAGE ON SCHEMA public TO commercial_runtime;
-GRANT SELECT ON TABLE public.saas_modules TO commercial_runtime;
 REVOKE INSERT, UPDATE, DELETE ON TABLE public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements FROM commercial_runtime;
 DO \$\$
 BEGIN
@@ -210,7 +209,6 @@ BEGIN
   END IF;
 END
 \$\$;
-GRANT SELECT ON TABLE public.saas_modules TO commercial_runtime;
 REVOKE INSERT, UPDATE, DELETE ON TABLE public.saas_plans, public.saas_plan_modules, public.saas_tenant_subscriptions, public.saas_tenant_entitlements FROM commercial_runtime;
 ALTER ROLE commercial_owner_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")';
 GRANT CONNECT ON DATABASE commercial TO commercial_owner_runtime;
