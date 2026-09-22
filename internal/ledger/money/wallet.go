@@ -26,25 +26,25 @@ const (
 type WalletEntryKind string
 
 const (
-	WalletEntryTopUpCredit         WalletEntryKind = "TOP_UP_CREDIT"
-	WalletEntryPurchaseReserve     WalletEntryKind = "PURCHASE_RESERVE"
-	WalletEntryPurchaseCommit      WalletEntryKind = "PURCHASE_COMMIT"
-	WalletEntryPurchaseRelease     WalletEntryKind = "PURCHASE_RELEASE"
-	WalletEntryRefundReversal      WalletEntryKind = "REFUND_REVERSAL"
-	WalletEntryChargebackReversal  WalletEntryKind = "CHARGEBACK_REVERSAL"
-	WalletEntryDebtRepayment       WalletEntryKind = "DEBT_REPAYMENT"
+	WalletEntryTopUpCredit        WalletEntryKind = "TOP_UP_CREDIT"
+	WalletEntryPurchaseReserve    WalletEntryKind = "PURCHASE_RESERVE"
+	WalletEntryPurchaseCommit     WalletEntryKind = "PURCHASE_COMMIT"
+	WalletEntryPurchaseRelease    WalletEntryKind = "PURCHASE_RELEASE"
+	WalletEntryRefundReversal     WalletEntryKind = "REFUND_REVERSAL"
+	WalletEntryChargebackReversal WalletEntryKind = "CHARGEBACK_REVERSAL"
+	WalletEntryDebtRepayment      WalletEntryKind = "DEBT_REPAYMENT"
 )
 
 type OrganizationWalletSnapshot struct {
-	OrganizationID    string
-	Currency          string
-	AvailableMinor    int64
-	ReservedMinor     int64
-	DebtMinor         int64
+	OrganizationID     string
+	Currency           string
+	AvailableMinor     int64
+	ReservedMinor      int64
+	DebtMinor          int64
 	LifetimeTopUpMinor int64
 	LifetimeSpendMinor int64
-	Version           int64
-	UpdatedAt         time.Time
+	Version            int64
+	UpdatedAt          time.Time
 }
 
 func (snapshot OrganizationWalletSnapshot) Validate() error {
@@ -63,19 +63,19 @@ func (snapshot OrganizationWalletSnapshot) Validate() error {
 }
 
 type WalletEntry struct {
-	EntryID         string
-	OrganizationID  string
-	Currency        string
-	Kind            WalletEntryKind
-	AvailableDelta  int64
-	ReservedDelta   int64
-	DebtDelta       int64
-	AvailableAfter  int64
-	ReservedAfter   int64
-	DebtAfter       int64
+	EntryID           string
+	OrganizationID    string
+	Currency          string
+	Kind              WalletEntryKind
+	AvailableDelta    int64
+	ReservedDelta     int64
+	DebtDelta         int64
+	AvailableAfter    int64
+	ReservedAfter     int64
+	DebtAfter         int64
 	CommercialOrderID string
-	SourceIdentity  string
-	OccurredAt      time.Time
+	SourceIdentity    string
+	OccurredAt        time.Time
 }
 
 type WalletEntryPage struct {
@@ -84,16 +84,16 @@ type WalletEntryPage struct {
 }
 
 type WalletReservation struct {
-	ReservationID    string
-	OperationID      string
-	OrganizationID   string
+	ReservationID     string
+	OperationID       string
+	OrganizationID    string
 	CommercialOrderID string
-	Currency         string
-	AmountMinor      int64
-	State            WalletReservationState
-	Version          int64
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Currency          string
+	AmountMinor       int64
+	State             WalletReservationState
+	Version           int64
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type ReserveWalletFundsInput struct {
@@ -124,14 +124,14 @@ type ReleaseWalletReservationInput struct {
 // deliberately separate from PaymentSettlement: beneficiary Organization
 // cannot be inferred from the payer's current membership after payment.
 type OrganizationTopUpSettlement struct {
-	PaymentID          string
-	CommercialOrderID  string
-	OrganizationID     string
-	Currency           string
-	AmountMinor        int64
-	SettledAt          time.Time
-	ProviderReference  string
-	Version            int64
+	PaymentID         string
+	CommercialOrderID string
+	OrganizationID    string
+	Currency          string
+	AmountMinor       int64
+	SettledAt         time.Time
+	ProviderReference string
+	Version           int64
 }
 
 func (settlement OrganizationTopUpSettlement) Validate() error {
@@ -156,14 +156,14 @@ const (
 )
 
 type OrganizationWalletReversal struct {
-	ReversalID       string
-	PaymentID        string
+	ReversalID        string
+	PaymentID         string
 	CommercialOrderID string
-	OrganizationID   string
-	Kind             WalletReversalKind
-	Currency         string
-	AmountMinor      int64
-	OccurredAt       time.Time
+	OrganizationID    string
+	Kind              WalletReversalKind
+	Currency          string
+	AmountMinor       int64
+	OccurredAt        time.Time
 	ProviderReference string
 }
 
