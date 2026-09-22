@@ -167,6 +167,7 @@ type Order struct {
 	Items               []OrderItem
 	IdempotencyKey      string
 	RequestFingerprint  string
+	Version             int64
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -180,6 +181,7 @@ func (order Order) Validate() error {
 		!validOrderStatus(order.Status) ||
 		strings.TrimSpace(order.IdempotencyKey) == "" ||
 		strings.TrimSpace(order.RequestFingerprint) == "" ||
+		order.Version < 1 ||
 		order.CreatedAt.IsZero() ||
 		order.UpdatedAt.IsZero() {
 		return ErrInvalid

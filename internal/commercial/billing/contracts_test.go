@@ -66,6 +66,7 @@ func TestResourcePurchaseOrderBindsQuoteItemAndAmount(t *testing.T) {
 		Status:             OrderPending,
 		IdempotencyKey:     "idem-1",
 		RequestFingerprint: "fp-1",
+		Version:            1,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 		Items: []OrderItem{{
@@ -86,6 +87,19 @@ func TestResourcePurchaseOrderBindsQuoteItemAndAmount(t *testing.T) {
 	}
 }
 
+func TestOrderValidationRequiresPositiveVersion(t *testing.T) {
+	order := validResourcePurchaseOrder(time.Now().UTC())
+	order.Version = 0
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("order without a positive version = nil, want ErrInvalid")
+	}
+
+	order.Version = -1
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("order with a negative version = nil, want ErrInvalid")
+	}
+}
+
 func TestWalletTopUpOrderCannotCarryResourceItem(t *testing.T) {
 	now := time.Now().UTC()
 	order := Order{
@@ -97,6 +111,7 @@ func TestWalletTopUpOrderCannotCarryResourceItem(t *testing.T) {
 		Status:             OrderPending,
 		IdempotencyKey:     "idem-1",
 		RequestFingerprint: "fp-1",
+		Version:            1,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 		Items: []OrderItem{{
@@ -169,6 +184,7 @@ func validResourcePurchaseOrder(now time.Time) Order {
 		Status:             OrderPending,
 		IdempotencyKey:     "idem-1",
 		RequestFingerprint: "fp-1",
+		Version:            1,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 		Items: []OrderItem{{
@@ -191,6 +207,7 @@ func validWalletTopUpOrder(now time.Time) Order {
 		Status:             OrderPending,
 		IdempotencyKey:     "idem-1",
 		RequestFingerprint: "fp-1",
+		Version:            1,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
