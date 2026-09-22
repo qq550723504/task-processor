@@ -27,7 +27,8 @@ if [ -f "$marker" ]; then
     "$commercial_runtime_secret/commercial-reader-password" "$referral_db_owner_secret/referral-db-password" \
     "$referral_runtime_secret/referral-runtime-password" "$membership_db_owner_secret/membership-db-password" \
     "$membership_runtime_secret/membership-runtime-password" "$zitadel_api_secrets/zitadel-masterkey" \
-    "$zitadel_api_secrets/runtime-config.yaml" "$tofu_inputs/operator-password" "$frontend_secrets/auth-secret"; do
+    "$zitadel_api_secrets/runtime-config.yaml" "$tofu_inputs/operator-password" "$tofu_inputs/viewer-password" \
+    "$tofu_inputs/insufficient-password" "$frontend_secrets/auth-secret"; do
     test -f "$path"
   done
   exit 0
@@ -58,6 +59,12 @@ write_random 32 "$frontend_secrets/auth-secret"
 { printf 'Local!'; openssl rand -hex 18; } > "$tofu_inputs/operator-password.tmp"
 chmod 600 "$tofu_inputs/operator-password.tmp"
 mv "$tofu_inputs/operator-password.tmp" "$tofu_inputs/operator-password"
+{ printf 'Local!'; openssl rand -hex 18; } > "$tofu_inputs/viewer-password.tmp"
+chmod 600 "$tofu_inputs/viewer-password.tmp"
+mv "$tofu_inputs/viewer-password.tmp" "$tofu_inputs/viewer-password"
+{ printf 'Local!'; openssl rand -hex 18; } > "$tofu_inputs/insufficient-password.tmp"
+chmod 600 "$tofu_inputs/insufficient-password.tmp"
+mv "$tofu_inputs/insufficient-password.tmp" "$tofu_inputs/insufficient-password"
 
 identity_db_password=$(cat "$identity_db_secret/identity-db-password")
 cat > "$zitadel_api_secrets/runtime-config.yaml.tmp" <<EOF

@@ -13,13 +13,15 @@ COPY cmd/referral-schema-init ./cmd/referral-schema-init
 COPY cmd/organization-membership-schema-init ./cmd/organization-membership-schema-init
 COPY cmd/source-account-registry-schema-init ./cmd/source-account-registry-schema-init
 COPY cmd/listingkit-schema-migrate ./cmd/listingkit-schema-migrate
+COPY cmd/account-acceptance-fixture ./cmd/account-acceptance-fixture
 COPY internal ./internal
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-application ./cmd/current-application && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/referral-schema-init ./cmd/referral-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/organization-membership-schema-init ./cmd/organization-membership-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/source-account-registry-schema-init ./cmd/source-account-registry-schema-init && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-schema-migrate ./cmd/listingkit-schema-migrate
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-schema-migrate ./cmd/listingkit-schema-migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-acceptance-fixture ./cmd/account-acceptance-fixture
 
 FROM alpine:3.22 AS runtime
 RUN apk add --no-cache ca-certificates tzdata
@@ -39,3 +41,8 @@ COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/s
 COPY --from=go-builder /out/listingkit-schema-migrate /usr/local/bin/listingkit-schema-migrate
 COPY --chmod=0755 deployments/docker/account-compose/init.sh /usr/local/bin/account-schema-init
 ENTRYPOINT ["/usr/local/bin/account-schema-init"]
+
+FROM alpine:3.22 AS acceptance
+RUN apk add --no-cache ca-certificates
+COPY --from=go-builder /out/account-acceptance-fixture /usr/local/bin/account-acceptance-fixture
+ENTRYPOINT ["/usr/local/bin/account-acceptance-fixture"]

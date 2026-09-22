@@ -14,6 +14,7 @@ import (
 // maintainedOperationalCommands is shared by classification, documentation and owner guards.
 func maintainedOperationalCommands() map[string]struct{} {
 	return map[string]struct{}{
+		"account-acceptance-fixture":          {},
 		"1688-batch-import":                   {},
 		"1688-local-agent":                    {},
 		"fingerprint-browser-installer":       {},
