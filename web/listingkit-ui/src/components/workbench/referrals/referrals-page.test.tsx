@@ -141,7 +141,7 @@ describe("ReferralsPage", () => {
     expect(fetch).toHaveBeenCalledWith("/api/account/referral-withdrawals/withdrawal-1/cancel", expect.objectContaining({ method: "POST" }));
   });
 
-  it("blocks an immediate retry when a withdrawal result is unknown", async () => {
+  it("reconciles facts before clearing an unknown withdrawal result", async () => {
     const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
     const fetch = vi.fn((input: string, init?: RequestInit) => {
       const path = String(input);
@@ -158,7 +158,9 @@ describe("ReferralsPage", () => {
     await user.click(screen.getByRole("button", { name: "申请提现" }));
     expect((await screen.findAllByText("操作结果待核实"))[0]).toBeVisible();
     expect(screen.getByRole("button", { name: "申请提现" })).toBeDisabled();
-    expect(screen.getByRole("link", { name: "刷新提现状态" })).toHaveAttribute("href", "/workbench/account/referrals/withdrawals");
+    await user.click(screen.getByRole("button", { name: "刷新提现状态" }));
+    await waitFor(() => expect(screen.queryByText("操作结果待核实")).not.toBeInTheDocument());
+    expect(fetch.mock.calls.filter(([input]) => input === "/api/account/referrals").length).toBe(2);
   });
 
   it("shows available earnings after immutable refund adjustments", async () => {

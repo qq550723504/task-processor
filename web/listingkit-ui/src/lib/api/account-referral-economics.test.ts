@@ -41,4 +41,10 @@ describe("account referral economics client", () => {
     await expect(createReferralPayoutMethod("subject-1", { type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }, "payout-key"))
       .rejects.toMatchObject({ status: 502, code: "RESULT_UNVERIFIED", outcome: "unknown" });
   });
+
+  it.each(["CONFLICT", "PAYOUT_ELIGIBILITY_UNMET", "INVALID_TRANSITION"])("preserves a definite referral conflict: %s", async code => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code, message: "rejected", requestId: "", fieldErrors: [] }, { status: 409 })));
+    await expect(createReferralPayoutMethod("subject-1", { type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }, "payout-key"))
+      .rejects.toMatchObject({ status: 409, code, outcome: undefined });
+  });
 });
