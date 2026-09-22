@@ -112,6 +112,36 @@ func TestWalletTopUpOrderCannotCarryResourceItem(t *testing.T) {
 	}
 }
 
+func TestFulfilledWalletTopUpRequiresPaymentProof(t *testing.T) {
+	now := time.Now().UTC()
+	order := validWalletTopUpOrder(now)
+	order.Status = OrderFulfilled
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("fulfilled wallet top-up without payment proof = nil, want ErrInvalid")
+	}
+
+	order.PaymentID = "payment-1"
+	if err := order.Validate(); err != nil {
+		t.Fatalf("fulfilled wallet top-up with payment proof rejected: %v", err)
+	}
+}
+
+func TestWalletTopUpRejectsResourcePurchaseLifecycleStates(t *testing.T) {
+	now := time.Now().UTC()
+	for _, status := range []OrderStatus{
+		OrderFundsReserved,
+		OrderFulfilling,
+		OrderReconciliationRequired,
+	} {
+		order := validWalletTopUpOrder(now)
+		order.Status = status
+		order.PaymentID = "payment-1"
+		if !errors.Is(order.Validate(), ErrInvalid) {
+			t.Fatalf("wallet top-up status %s = nil, want ErrInvalid", status)
+		}
+	}
+}
+
 func TestResourcePurchasePostReservationStatesRequireWalletReservation(t *testing.T) {
 	now := time.Now().UTC()
 	for _, status := range []OrderStatus{
@@ -148,5 +178,20 @@ func validResourcePurchaseOrder(now time.Time) Order {
 			ResourceQuantity: 100,
 			AmountMinor:      1999,
 		}},
+	}
+}
+
+func validWalletTopUpOrder(now time.Time) Order {
+	return Order{
+		OrderID:            "order-1",
+		OrganizationID:     "org-1",
+		Kind:               OrderWalletTopUp,
+		Currency:           CurrencyCNY,
+		AmountMinor:        10000,
+		Status:             OrderPending,
+		IdempotencyKey:     "idem-1",
+		RequestFingerprint: "fp-1",
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 }

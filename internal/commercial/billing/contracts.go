@@ -190,11 +190,20 @@ func (order Order) Validate() error {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
-		if len(order.Items) != 0 {
+		if len(order.Items) != 0 || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") {
 			return ErrInvalid
 		}
 	}
 	return nil
+}
+
+func topUpUsesResourcePurchaseLifecycle(status OrderStatus) bool {
+	switch status {
+	case OrderFundsReserved, OrderFulfilling, OrderReconciliationRequired:
+		return true
+	default:
+		return false
+	}
 }
 
 func requiresWalletReservation(status OrderStatus) bool {

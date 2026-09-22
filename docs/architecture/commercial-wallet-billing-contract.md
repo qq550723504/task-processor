@@ -232,6 +232,11 @@ failure and does not authorize automatic re-charge.
 A fulfilled resource order must retain proof of both the canonical money
 reservation commit and the canonical source-bound resource grant.
 
+Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
+top-up must carry an accepted provider payment reference; without that proof it
+is invalid. Top-up intent remains pending or explicitly cancelled until the
+provider settlement binding is accepted.
+
 ## 5. Resource acquisition contract
 
 `internal/ledger/orgresource` remains the only resource balance owner.
@@ -249,6 +254,11 @@ source_identity = <canonical order/item identity>
 The source claim is unique and replayable. Same source + same fingerprint returns
 the immutable previous result. Same source + different fingerprint is a
 conflict.
+
+The durable source-claim key is `(source_type, source_identity)` across all
+resource types. `resource_type` is part of the immutable result and request
+fingerprint, but never widens the source deduplication scope; one commercial
+order item cannot mint two different resource types.
 
 The persisted source identity is a fixed-size SHA-256 digest (with the
 commercial source type prefix) over an unambiguous length-prefixed encoding of
