@@ -313,3 +313,71 @@ func TestOperationalWrapperPreservesTheExitCode(t *testing.T) {
 		}
 	}
 }
+
+// TestOfferURLKeepsOnlyTheFormTheExtensionIsAllowedToRead pins the rule that the
+// queue may only hold the one URL shape the executor will navigate. The extension
+// reads through its declared host grant https://detail.1688.com/*, because
+// activeTab cannot be granted without a real action click, so an http:// input that
+// never redirects would be navigated to and then fail at executeScript with
+// "manifest must request permission to access the respective host". Query and
+// fragment are dropped because the extension's own pageSource drops them: they are
+// not part of an offer's identity, and keeping them would let one offer be queued
+// under two spellings.
+func TestOfferURLKeepsOnlyTheFormTheExtensionIsAllowedToRead(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://detail.1688.com/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
+		{"http://detail.1688.com/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
+		{"http://detail.1688.com:80/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
+		{"https://detail.1688.com:443/offer/981645030344.html?spm=1", "https://detail.1688.com/offer/981645030344.html"},
+		{"https://detail.1688.com/offer/981645030344.html#detail", "https://detail.1688.com/offer/981645030344.html"},
+	}
+	for _, tc := range cases {
+		got, ok := offerURL(tc.in)
+		if !ok {
+			t.Fatalf("offerURL(%s) refused an accepted page", tc.in)
+		}
+		if got != tc.want {
+			t.Fatalf("offerURL(%s) = %s, want %s", tc.in, got, tc.want)
+		}
+	}
+	for _, raw := range []string{"", "https://example.com/offer/981645030344.html", "https://detail.1688.com/offer/0.html"} {
+		if got, ok := offerURL(raw); ok {
+			t.Fatalf("offerURL(%s) = %q, want refusal", raw, got)
+		}
+	}
+}
+
+// TestMainQueuesTheURLTheExecutorWillNavigate is the writer half of the rule above:
+// what the queue stores is the https form, so the run navigates a host the extension
+// is allowed to read, and two spellings of one offer stay one item.
+func TestMainQueuesTheURLTheExecutorWillNavigate(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.SourceURL = "http://detail.1688.com:80/offer/981645030344.html"
+	path, err := ensureQueue(cfg)
+	if err != nil {
+		t.Fatalf("ensure queue: %v", err)
+	}
+	queue, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(queue.Items) != 1 {
+		t.Fatalf("unexpected items: %+v", queue.Items)
+	}
+	if queue.Items[0].URL != "https://detail.1688.com/offer/981645030344.html" {
+		t.Fatalf("queued URL %q is not the normalized https URL", queue.Items[0].URL)
+	}
+	// The same offer spelled with a tracking parameter is the same item, not a second
+	// delivery of it.
+	cfg.SourceURL = "https://detail.1688.com/offer/981645030344.html?spm=a.b.c"
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("ensure queue again: %v", err)
+	}
+	again, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load again: %v", err)
+	}
+	if len(again.Items) != 1 {
+		t.Fatalf("one offer was queued twice: %+v", again.Items)
+	}
+}

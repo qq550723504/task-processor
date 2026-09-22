@@ -80,7 +80,9 @@ try {
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker',{timeout:600000});
   const id = worker.url().split('/')[2];
   const manifest = await worker.evaluate(() => chrome.runtime.getManifest());
-  if (JSON.stringify(manifest.permissions) !== JSON.stringify(['activeTab','scripting']) || manifest.host_permissions) throw Error('Unexpected permissions');
+  // The shipped build's grant must stay byte-identical to what the manifest test pins; a
+  // smoke run that only checks "no host_permissions" would pass a widened grant silently.
+  if (JSON.stringify(manifest.permissions) !== JSON.stringify(['activeTab','scripting']) || JSON.stringify(manifest.host_permissions) !== JSON.stringify(['https://detail.1688.com/*'])) throw Error('Unexpected permissions');
   await page.goto('https://detail.1688.com/offer/981645030344.html');
   console.log(JSON.stringify({ stage:'CLICK_EXTENSION_ACTION_AND_CAPTURE', id }));
   if (automated) {
