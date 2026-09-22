@@ -66,7 +66,7 @@ func TestPurchasedResourceGrantFixesCommercialSourceIdentity(t *testing.T) {
 	if executor.executed.SourceType != SourceCommercialOrderItem {
 		t.Fatalf("source type = %q", executor.executed.SourceType)
 	}
-	wantSourceIdentity := purchasedGrantSourceIdentity("order-1", "item-1")
+	wantSourceIdentity := purchasedGrantSourceIdentity("org-1", "order-1", "item-1")
 	if executor.executed.SourceIdentity != wantSourceIdentity {
 		t.Fatalf("source identity = %q", executor.executed.SourceIdentity)
 	}
@@ -132,15 +132,49 @@ func TestPurchasedResourceGrantReplaysBeforeApplyingCurrentQuantityLimit(t *test
 }
 
 func TestPurchasedResourceGrantSourceIdentityIsUnambiguous(t *testing.T) {
-	if first, second := purchasedGrantSourceIdentity("order:a", "item"), purchasedGrantSourceIdentity("order", "a:item"); first == second {
+	if first, second := purchasedGrantSourceIdentity("org", "order:a", "item"), purchasedGrantSourceIdentity("org", "order", "a:item"); first == second {
 		t.Fatalf("source identities collide: %q", first)
 	}
 }
 
 func TestPurchasedResourceGrantSourceIdentityFitsPersistenceLimit(t *testing.T) {
-	identity := purchasedGrantSourceIdentity(strings.Repeat("o", 128), strings.Repeat("i", 128))
+	identity := purchasedGrantSourceIdentity(strings.Repeat("g", 128), strings.Repeat("o", 128), strings.Repeat("i", 128))
 	if len(identity) > 192 {
 		t.Fatalf("source identity length = %d, want <= 192", len(identity))
+	}
+}
+
+func TestPurchasedResourceGrantSourceIdentityIncludesOrganization(t *testing.T) {
+	firstExecutor := &purchasedGrantExecutorStub{}
+	firstService, err := NewPurchasedResourceGrantService(firstExecutor, purchasedGrantAuthorizerStub{max: 100})
+	if err != nil {
+		t.Fatalf("new first service: %v", err)
+	}
+	secondExecutor := &purchasedGrantExecutorStub{}
+	secondService, err := NewPurchasedResourceGrantService(secondExecutor, purchasedGrantAuthorizerStub{max: 100})
+	if err != nil {
+		t.Fatalf("new second service: %v", err)
+	}
+	base := PurchasedResourceGrantInput{
+		OperationID:           "operation-1",
+		CommercialOrderID:     "order-1",
+		CommercialOrderItemID: "item-1",
+		ResourceType:          ResourceAIPoint,
+		Quantity:              1,
+		Principal:             Principal{ID: "commercial-owner", Kind: PrincipalTrustedCommercial},
+	}
+	first := base
+	first.OrganizationID = "org-1"
+	second := base
+	second.OrganizationID = "org-2"
+	if _, err := firstService.GrantPurchasedResource(context.Background(), first); err != nil {
+		t.Fatalf("first grant: %v", err)
+	}
+	if _, err := secondService.GrantPurchasedResource(context.Background(), second); err != nil {
+		t.Fatalf("second grant: %v", err)
+	}
+	if firstExecutor.executed.SourceIdentity == secondExecutor.executed.SourceIdentity {
+		t.Fatalf("source identity is shared across organizations: %q", firstExecutor.executed.SourceIdentity)
 	}
 }
 

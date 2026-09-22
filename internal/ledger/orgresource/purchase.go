@@ -128,7 +128,7 @@ func (service *PurchasedResourceGrantService) GrantPurchasedResource(ctx context
 		ResourceType:          input.ResourceType,
 		Quantity:              input.Quantity,
 		SourceType:            SourceCommercialOrderItem,
-		SourceIdentity:        purchasedGrantSourceIdentity(input.CommercialOrderID, input.CommercialOrderItemID),
+		SourceIdentity:        purchasedGrantSourceIdentity(input.OrganizationID, input.CommercialOrderID, input.CommercialOrderItemID),
 		ActorID:               input.Principal.ID,
 	}
 	execution.RequestFingerprint, err = fingerprintPurchasedResourceGrant(execution)
@@ -192,8 +192,8 @@ func validatePurchasedGrantIdentity(input PurchasedResourceGrantInput) error {
 	return nil
 }
 
-func purchasedGrantSourceIdentity(orderID, orderItemID string) string {
-	canonical := fmt.Sprintf("%d:%s%d:%s", len(orderID), orderID, len(orderItemID), orderItemID)
+func purchasedGrantSourceIdentity(organizationID, orderID, orderItemID string) string {
+	canonical := fmt.Sprintf("%d:%s%d:%s%d:%s", len(organizationID), organizationID, len(orderID), orderID, len(orderItemID), orderItemID)
 	sum := sha256.Sum256([]byte(canonical))
 	return SourceCommercialOrderItem + ":" + hex.EncodeToString(sum[:])
 }

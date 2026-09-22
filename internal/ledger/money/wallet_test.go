@@ -28,6 +28,12 @@ func TestOrganizationWalletSnapshotValidation(t *testing.T) {
 	if !errors.Is(invalid.Validate(), ErrInvalid) {
 		t.Fatalf("negative available must be invalid")
 	}
+
+	invalid = valid
+	invalid.DebtMinor = 50
+	if !errors.Is(invalid.Validate(), ErrInvalid) {
+		t.Fatalf("wallet with debt and available balance must be invalid")
+	}
 }
 
 func TestOrganizationTopUpSettlementRequiresExplicitOrganizationBinding(t *testing.T) {

@@ -53,6 +53,7 @@ func (snapshot OrganizationWalletSnapshot) Validate() error {
 		snapshot.AvailableMinor < 0 ||
 		snapshot.ReservedMinor < 0 ||
 		snapshot.DebtMinor < 0 ||
+		(snapshot.DebtMinor > 0 && snapshot.AvailableMinor > 0) ||
 		snapshot.LifetimeTopUpMinor < 0 ||
 		snapshot.LifetimeSpendMinor < 0 ||
 		snapshot.Version < 1 ||

@@ -129,6 +129,9 @@ available first and records the remainder as wallet debt. Later credits repay
 wallet debt before increasing available. An external reversal is never rejected
 merely because the browser-visible balance is too small.
 
+The wallet invariant is fail-closed: a snapshot with positive debt has zero
+available balance. New credits repay debt before restoring spendable funds.
+
 ### 3.4 Wallet purchase reservation
 
 Commercial purchase uses a durable money reservation:
@@ -248,7 +251,7 @@ The grant identity is fixed to:
 
 ```text
 source_type = commercial_order_item
-source_identity = <canonical order/item identity>
+source_identity = <canonical organization/order/item identity>
 ```
 
 The source claim is unique and replayable. Same source + same fingerprint returns
@@ -262,9 +265,9 @@ order item cannot mint two different resource types.
 
 The persisted source identity is a fixed-size SHA-256 digest (with the
 commercial source type prefix) over an unambiguous length-prefixed encoding of
-the canonical order ID and order-item ID. Delimiter concatenation is not a
-uniqueness contract, and the resulting identity remains within the resource
-owner's 192-byte persistence limit.
+the canonical Organization ID, order ID, and order-item ID. Delimiter
+concatenation is not a uniqueness contract, and the resulting identity remains
+within the resource owner's 192-byte persistence limit.
 
 The purchased grant supports only the three approved resource types and a
 positive bounded quantity. Authorization is supplied by runtime assembly using
