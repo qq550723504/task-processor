@@ -35,11 +35,12 @@ $ErrorActionPreference = 'Stop'
 #
 # Exit code 3 means stop and verify: either the outcome is unknown, or an earlier item
 # in the queue may already have been published. Both require a human check instead of
-# a retry.
+# a retry. The wrapper preserves that code by building the binary and running it
+# directly: `go`'s run subcommand reports any non-zero exit as 1, which would erase
+# the very signal this command exists to carry.
 Push-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 try {
     $arguments = @(
-        'run', './cmd/1688-batch-import',
         '-queue', $Queue,
         '-url', $Url,
         '-actor', $Actor,
@@ -48,8 +49,15 @@ try {
         '-extension', $Extension,
         '-profile', $Profile
     )
-    & go @arguments
-    $result = $LASTEXITCODE
+    $binary = Join-Path ([System.IO.Path]::GetTempPath()) ("1688-batch-import-{0}.exe" -f [guid]::NewGuid().ToString('N'))
+    try {
+        & go build -o $binary ./cmd/1688-batch-import
+        if ($LASTEXITCODE -ne 0) { throw "go build failed" }
+        & $binary @arguments
+        $result = $LASTEXITCODE
+    } finally {
+        Remove-Item -LiteralPath $binary -Force -ErrorAction SilentlyContinue
+    }
 } finally {
     Pop-Location
 }

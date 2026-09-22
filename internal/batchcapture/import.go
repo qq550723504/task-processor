@@ -76,6 +76,12 @@ var (
 	ErrBatchBlocked = errors.New("batch capture: batch blocked, a person must verify an item first")
 	// ErrQueueWriteFailed means the record could not be confirmed durable.
 	ErrQueueWriteFailed = errors.New("batch capture: queue write not confirmed")
+	// ErrItemStateUnconfirmed means a write failed after a handoff, so the durable
+	// queue still holds the state it had BEFORE that write. That state is
+	// ItemSubmitting, not the state the write intended to record, and an operator
+	// reading a message that asserted the intended state would be looking at a
+	// label the file does not contain.
+	ErrItemStateUnconfirmed = errors.New("batch capture: durable item state may be behind")
 	// ErrScopeUnconfirmed means the batch has no confirmed scope and this run could
 	// not obtain one. It is deliberately not ErrScopeMismatch: nothing disagreed,
 	// the consent design section 4 D1.4 requires simply was not given.
@@ -253,8 +259,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if err := persist(queue, opts.QueuePath); err != nil {
 		// The key could not be made durable while the payload is already visible, so
 		// whether the item was published cannot be decided locally.
-		result.State = item.State
-		return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
+		return unconfirmedWrite(item, result, nil, err, true)
 	}
 
 	// The tab is resolved by this item's handoff key, so a leftover application tab
@@ -278,8 +283,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 		// The confirmed scope must be durable before it is acted on, for the same
 		// reason the key must be: the payload is already visible to the application.
 		if err := persist(queue, opts.QueuePath); err != nil {
-			result.State = item.State
-			return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
+			return unconfirmedWrite(item, result, nil, err, true)
 		}
 		approved = confirmed
 	}
@@ -309,7 +313,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	}
 	result.State = item.State
 	if err := persist(queue, opts.QueuePath); err != nil {
-		return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
+		return unconfirmedWrite(item, result, nil, err, true)
 	}
 	if item.State == ItemOutcomeUnknown {
 		return result, fmt.Errorf("%w: %s", ErrOutcomeUnknown, item.Reason)
@@ -368,6 +372,36 @@ func NeedsVisibleSession(result ImportResult, err error) bool {
 	return errors.Is(err, ErrVerdictStop) && result.Verdict.Action().RedoCurrentItemAfterHuman
 }
 
+// unconfirmedWrite reports a persist that could not be confirmed durable, and returns
+// the state the durable queue actually holds.
+//
+// Save replaces the file atomically, so an unconfirmed write leaves the PREVIOUS
+// record in place. After phase 1 that record says ItemSubmitting, whatever the failed
+// write intended to say (queued, outcome_unknown, submitted, failed). Reporting the
+// intended state would name a label the operator cannot find in the file and would
+// hide the one thing that has to be verified: which of the two records survived.
+//
+// outcomeUnknown adds ErrOutcomeUnknown for the paths where the payload may already
+// have been visible to the application; it is not added for a stop that happened
+// before the handoff, because then no external side effect can exist.
+func unconfirmedWrite(item *Item, result ImportResult, cause, writeErr error, outcomeUnknown bool) (ImportResult, error) {
+	reason := "the queue write could not be confirmed"
+	if cause != nil {
+		reason = cause.Error()
+	}
+	item.State = ItemSubmitting
+	item.Reason = reason
+	result.State = ItemSubmitting
+	tail := fmt.Errorf("%w: the queue file may still record %q; verify in the application before doing anything else", ErrItemStateUnconfirmed, item.State)
+	// The cause is deliberately not wrapped with %w. A wrapped cause would keep
+	// matching ErrVerdictStop, and NeedsVisibleSession reads that as "clear the gate and
+	// redo the item" — which is not available while the file still says submitting.
+	if outcomeUnknown {
+		return result, fmt.Errorf("%w: %v (original: %v); %w; %w", ErrQueueWriteFailed, writeErr, cause, ErrOutcomeUnknown, tail)
+	}
+	return result, fmt.Errorf("%w: %v (original: %v); %w", ErrQueueWriteFailed, writeErr, cause, tail)
+}
+
 // ErrOutcomeUnknown means whether the item was published cannot be decided locally.
 var ErrOutcomeUnknown = errors.New("batch capture: outcome unknown, stop and verify")
 
@@ -382,7 +416,12 @@ func stopWithoutSubmit(persist func(*Queue, string) error, queue *Queue, item *I
 	item.Reason = cause.Error()
 	result.State = ItemQueued
 	if err := persist(queue, path); err != nil {
-		return result, fmt.Errorf("%w: %v (original: %w)", ErrQueueWriteFailed, err, cause)
+		// The write that would have returned the item to a re-doable state did not
+		// land, so the file still holds the phase-1 record: ItemSubmitting. That record
+		// blocks the batch on its own, so the cause is reported as text rather than
+		// wrapped: NeedsVisibleSession would otherwise read this as "clear the gate and
+		// redo the item", which is not available while the file says submitting.
+		return unconfirmedWrite(item, result, cause, err, false)
 	}
 	return result, cause
 }
@@ -401,7 +440,7 @@ func stopAfterHandoff(persist func(*Queue, string) error, queue *Queue, item *It
 		// Both errors matter: the write failure explains the tooling problem, and the
 		// unknown outcome is what forbids an automatic retry. Reporting only the write
 		// failure lets a caller read the run as an ordinary failure and try again.
-		return result, fmt.Errorf("%w: %v (original: %w); %w", ErrQueueWriteFailed, err, cause, ErrOutcomeUnknown)
+		return unconfirmedWrite(item, result, cause, err, true)
 	}
 	// The cause stays wrapped as well as the outcome classification, because the two
 	// answer different questions: ErrOutcomeUnknown is what forbids an automatic

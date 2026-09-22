@@ -255,3 +255,29 @@ func TestRunRejectsHeadlessMode(t *testing.T) {
 		t.Fatalf("a rejected run touched the queue file: %v", statErr)
 	}
 }
+
+// TestOperationalWrapperPreservesTheExitCode is the seventh review round's first
+// finding. The wrapper is the owner an operator actually runs, and the exit code is
+// its whole product: 3 means "stop and verify, the item may already have reached the
+// application". `go`'s run subcommand reports any non-zero program status as 1
+// (verified: a program exiting 3 under `go run .` yields shell status 1), so a wrapper
+// that launches the program that way silently downgrades the one signal that forbids
+// a retry. Building the binary and running it directly is the only way the code
+// survives, and the property is only observable by running the wrapper on Windows,
+// which a unit test cannot do — so the script's own text is the contract asserted here.
+func TestOperationalWrapperPreservesTheExitCode(t *testing.T) {
+	const path = "../../scripts/1688-batch-import.ps1"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	script := string(raw)
+	if strings.Contains(script, "go run") {
+		t.Fatalf("%s launches the program through `go run`, which collapses exit 3 to 1", path)
+	}
+	for _, want := range []string{"go build -o", "$LASTEXITCODE", "exit $result", "Remove-Item"} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("%s no longer builds and runs the binary directly (%q is missing)", path, want)
+		}
+	}
+}

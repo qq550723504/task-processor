@@ -35,6 +35,16 @@ const (
 	fixtureAppPrefix = "http://127.0.0.1:" + fixturePort + "/capture/1688"
 )
 
+// The fixture application reports operation ids in the UUID shape the real result
+// contract requires (isAcquisitionUUID in product-acquisition.ts). A stub value such
+// as "fixture-operation-1" is not merely unrealistic here: accepting one is exactly
+// the behaviour the driver must refuse, so a fixture that used one would make the
+// real contract untestable.
+const (
+	fixtureOperationID = "3f1c8a52-6f5e-4a1d-9c47-8f2a5b0d6e31"
+	fixtureOtherID     = "7b2d4c19-8e3a-4f60-b5d2-1a9c7e4f8036"
+)
+
 // fixtureReceiver is the transport-only application stand-in. It performs the
 // same `capture.read` handshake the real capture page performs, presents the same
 // machine-readable scope/submit contract the executor drives, and records what it
@@ -168,7 +178,7 @@ func startFixtureAppRefusing(t *testing.T, scope AppScope, refusal string) {
 
 func serveFixtureApp(t *testing.T, scope AppScope, refusal string) {
 	t.Helper()
-	serveFixtureAppWithOutcome(t, scope, refusal, SubmitOutcome{Status: "published", OperationID: "fixture-operation-1"})
+	serveFixtureAppWithOutcome(t, scope, refusal, SubmitOutcome{Status: "published", OperationID: fixtureOperationID})
 }
 
 // startFixtureAppWithOutcome serves a receiver whose terminal result is chosen by
@@ -249,12 +259,19 @@ func routeFixtureProduct(t *testing.T, driver *Driver) {
 
 func launchFixtureDriver(t *testing.T, browser, extDir string) *Driver {
 	t.Helper()
+	return launchFixtureDriverWithTimeout(t, browser, extDir, 30*time.Second)
+}
+
+// launchFixtureDriverWithTimeout exists for the tests that assert the driver keeps
+// waiting: they pay the control timeout on purpose, so they get to bound it.
+func launchFixtureDriverWithTimeout(t *testing.T, browser, extDir string, timeout time.Duration) *Driver {
+	t.Helper()
 	driver, err := LaunchDriver(DriverOptions{
 		ExecutablePath: browser,
 		ProfileDir:     t.TempDir(),
 		ExtensionDist:  extDir,
 		Headless:       true,
-		ControlTimeout: 30 * time.Second,
+		ControlTimeout: timeout,
 	})
 	if err != nil {
 		t.Fatalf("launch driver: %v", err)
@@ -638,8 +655,8 @@ func TestFixtureDriverConfirmsSubmitWithApprovedScope(t *testing.T) {
 	if outcome.Status != "published" {
 		t.Fatalf("outcome status %q, want published", outcome.Status)
 	}
-	if outcome.OperationID != "fixture-operation-1" {
-		t.Fatalf("outcome operation id %q", outcome.OperationID)
+	if outcome.OperationID != fixtureOperationID {
+		t.Fatalf("outcome operation id %q, want %q", outcome.OperationID, fixtureOperationID)
 	}
 	if clicks := fixtureClicks(t, page); clicks != 1 {
 		t.Fatalf("confirmation control clicked %d times, want exactly 1", clicks)
@@ -821,8 +838,8 @@ func TestFixtureDriverImportsOneItemEndToEnd(t *testing.T) {
 	if result.IdempotencyKey == "" {
 		t.Fatal("no idempotency key was recorded")
 	}
-	if result.OperationID != "fixture-operation-1" {
-		t.Fatalf("operation id %q, want fixture-operation-1", result.OperationID)
+	if result.OperationID != fixtureOperationID {
+		t.Fatalf("operation id %q, want %q", result.OperationID, fixtureOperationID)
 	}
 
 	// The durable record must agree with the returned result, not just the variable
@@ -907,6 +924,14 @@ func TestFixtureDriverRecordsOutcomeUnknownWhenKeyWriteFails(t *testing.T) {
 	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failingAfterFirst})
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	// The message must not claim the file records the outcome this run reached: the
+	// write is exactly what failed, so the durable record is still the submitting one.
+	if !errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("the unconfirmed write is not distinguished from a recorded outcome: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"submitting"`) {
+		t.Fatalf("the operator is not told which state the file holds: %v", err)
 	}
 	// The returned result has to name the state the run stopped in. Reporting the zero
 	// value here would print an empty state for an item that is in fact submitting, so
@@ -1071,7 +1096,7 @@ func TestFixtureDriverRecordsOutcomeUnknownWhenPageRefuses(t *testing.T) {
 // outcome_unknown rather than be recorded as a successful publication.
 func TestFixtureDriverTreatsUnrecognisedStatusAsUnknown(t *testing.T) {
 	browser, extDir := requireFixtureEnv(t)
-	startFixtureAppWithOutcome(t, fixtureApprovedScope, SubmitOutcome{Status: "something_new", OperationID: "fixture-operation-9"})
+	startFixtureAppWithOutcome(t, fixtureApprovedScope, SubmitOutcome{Status: "something_new", OperationID: fixtureOtherID})
 	driver := launchFixtureDriver(t, browser, extDir)
 	routeFixtureProduct(t, driver)
 	queuePath := fixtureQueue(t, fixtureApprovedScope)
@@ -1089,6 +1114,64 @@ func TestFixtureDriverTreatsUnrecognisedStatusAsUnknown(t *testing.T) {
 	}
 	if stored.Items[0].State != ItemOutcomeUnknown {
 		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown", result.State)
+	}
+}
+
+// TestFixtureDriverRefusesATerminalStatusWithoutAnOperationID is the seventh review
+// round's second finding: the application's result contract requires `operationId` for
+// every outcome (web/listingkit-ui/src/lib/contracts/product-acquisition.ts:7-9), so a
+// render that names a status without one is a partial or drifted page. Accepting it
+// would record a publication nobody can look up, or a terminal failure with an empty
+// operation id for an item that did reach the application. The driver waits instead,
+// and the item ends as outcome_unknown rather than as a success.
+func TestFixtureDriverRefusesATerminalStatusWithoutAnOperationID(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	// `published` with no operation id is the exact render the fixture produces when the
+	// outcome carries none.
+	startFixtureAppWithOutcome(t, fixtureApprovedScope, SubmitOutcome{Status: "published", OperationID: ""})
+	driver := launchFixtureDriverWithTimeout(t, browser, extDir, 5*time.Second)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown", result.State)
+	}
+	if result.OperationID != "" {
+		t.Fatalf("result operation id %q, want empty", result.OperationID)
+	}
+	// The click did happen; what must not happen is recording it as a publication.
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State == ItemSubmitted {
+		t.Fatal("a status without an operation id was recorded as a successful submission")
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("stored state %q, want outcome_unknown", stored.Items[0].State)
+	}
+}
+
+// TestFixtureDriverRefusesATerminalStatusWithAMalformedOperationID covers the other
+// half of the same contract: a value that is present but cannot be an operation id is
+// drift too, and UUID shape is the part of the contract that is observable here.
+func TestFixtureDriverRefusesATerminalStatusWithAMalformedOperationID(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureAppWithOutcome(t, fixtureApprovedScope, SubmitOutcome{Status: "published", OperationID: "fixture-operation-1"})
+	driver := launchFixtureDriverWithTimeout(t, browser, extDir, 5*time.Second)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
 	}
 	if result.State != ItemOutcomeUnknown {
 		t.Fatalf("result state %q, want outcome_unknown", result.State)
@@ -1201,6 +1284,11 @@ func TestFixtureDriverTreatsDelistedPageAsSingleItemFailure(t *testing.T) {
 // state fails as well, the run must still report an unknown outcome, because that is
 // what forbids an automatic retry. Reporting only the write failure would read as an
 // ordinary failure and invite a second submission.
+//
+// The seventh review round added the second half: the message must not claim the file
+// records that outcome, because the write that would have recorded it is the write
+// that failed. The file still holds the phase-one record, so the reported state is
+// submitting and ErrItemStateUnconfirmed says why it is not the intended one.
 func TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails(t *testing.T) {
 	browser, extDir := requireFixtureEnv(t)
 	// A scope the user did not approve makes ConfirmAndSubmit refuse, which is the
@@ -1211,12 +1299,14 @@ func TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails(t *testing.T) {
 	queuePath := fixtureQueue(t, fixtureApprovedScope)
 
 	// Phase one is the submit intent, phase two binds the handoff key; the third
-	// write is the terminal state, and that is the one made to fail.
+	// write is the terminal state, and that is the one made to fail. The first two
+	// must really land, or the file-level assertions below would be checking the
+	// queue's initial state instead of the record the failed write failed to replace.
 	calls := 0
 	failFinal := func(queue *Queue, path string) error {
 		calls++
 		if calls <= 2 {
-			return nil
+			return queue.Save(path)
 		}
 		return errors.New("disk is gone")
 	}
@@ -1224,14 +1314,138 @@ func TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails(t *testing.T) {
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("err=%v, want ErrOutcomeUnknown to survive the failed write", err)
 	}
-	if result.State != ItemOutcomeUnknown {
-		t.Fatalf("result state %q, want outcome_unknown even though the write failed", result.State)
+	if !errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("the unconfirmed write is not distinguished from a recorded outcome: %v", err)
 	}
 	if !errors.Is(err, ErrQueueWriteFailed) {
 		t.Fatalf("the failed write is not reported: %v", err)
 	}
+	if result.State != ItemSubmitting {
+		t.Fatalf("result state %q, want submitting: the file still holds the phase-one record", result.State)
+	}
 	if !strings.Contains(err.Error(), "approved scope") {
 		t.Fatalf("the original cause was lost: %v", err)
+	}
+	// The durable file is the one that decides what may happen next, so assert on it
+	// rather than on the in-memory queue the failing write never replaced.
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemSubmitting {
+		t.Fatalf("stored state %q, want submitting: the phase-one record is what survived", stored.Items[0].State)
+	}
+	if CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a failed terminal write left the item re-capturable: %+v", stored.Items[0])
+	}
+	if _, blocked := stored.BlockingItem(); !blocked {
+		t.Fatal("the queue does not report the item as blocking the batch")
+	}
+}
+
+// TestFixtureDriverKeepsSubmittingWhenTheTerminalWriteFails covers the third raw
+// write-failure site the seventh review round named: the write that would record the
+// terminal result itself. The application has already accepted the payload, so the run
+// must still end as outcome_unknown and forbid a retry — but the file, which is what
+// decides what happens next, still holds the phase-one record. The message and the
+// returned state have to say that instead of claiming a result that was never written.
+func TestFixtureDriverKeepsSubmittingWhenTheTerminalWriteFails(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	// An approved queue writes the submit intent, then the handoff key, and only then
+	// the terminal result, so the third write is the terminal one.
+	calls := 0
+	failTerminal := func(queue *Queue, path string) error {
+		calls++
+		if calls <= 2 {
+			return queue.Save(path)
+		}
+		return errors.New("disk is gone")
+	}
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failTerminal})
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown: the application already holds the payload", err)
+	}
+	if !errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("the unconfirmed write is not distinguished from a recorded outcome: %v", err)
+	}
+	if result.State != ItemSubmitting {
+		t.Fatalf("result state %q, want submitting: the terminal record never landed", result.State)
+	}
+	// The result that was read back in memory is still reported; only its durability
+	// is unknown. Dropping it would hide which operation the operator must look for.
+	if result.OperationID != fixtureOperationID {
+		t.Fatalf("result operation id %q, want %q", result.OperationID, fixtureOperationID)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.Items[0].State != ItemSubmitting {
+		t.Fatalf("stored state %q, want submitting: the terminal record never landed", stored.Items[0].State)
+	}
+	if stored.Items[0].OperationID != "" {
+		t.Fatalf("the file records an operation id that was never written: %+v", stored.Items[0])
+	}
+	if CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a failed terminal write left the item re-capturable: %+v", stored.Items[0])
+	}
+}
+
+// TestFixtureDriverKeepsSubmittingWhenTheScopeWriteFails covers the same class for the
+// confirmed scope. An unapproved queue obtains the person's confirmation only after the
+// payload is visible to the application, so a failure writing that approval must not be
+// reported as a recorded approval — the file still holds the phase-one record.
+func TestFixtureDriverKeepsSubmittingWhenTheScopeWriteFails(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureUnapprovedQueue(t)
+
+	calls := 0
+	failApprove := func(queue *Queue, path string) error {
+		calls++
+		if calls <= 2 {
+			return queue.Save(path)
+		}
+		return errors.New("disk is gone")
+	}
+	asked := false
+	result, err := ImportOne(driver, ImportOptions{
+		QueuePath: queuePath,
+		Approved:  fixtureApprovedScope,
+		Persist:   failApprove,
+		ConfirmScope: func(AppScope) (bool, error) {
+			asked = true
+			return true, nil
+		},
+	})
+	if !asked {
+		t.Fatal("the run never asked for the scope confirmation")
+	}
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("err=%v, want ErrOutcomeUnknown: the payload is already visible", err)
+	}
+	if !errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("the unconfirmed write is not distinguished from a recorded outcome: %v", err)
+	}
+	if result.State != ItemSubmitting {
+		t.Fatalf("result state %q, want submitting", result.State)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.ScopeApproved {
+		t.Fatal("the queue records a scope approval that was never written")
+	}
+	if stored.Items[0].State != ItemSubmitting {
+		t.Fatalf("stored state %q, want submitting", stored.Items[0].State)
 	}
 }
 

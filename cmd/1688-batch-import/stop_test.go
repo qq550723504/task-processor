@@ -31,6 +31,24 @@ func TestDescribeStopMapsStopForAPersonFailuresToStopAndVerify(t *testing.T) {
 			want: []string{"queue.json", "outcome_unknown", "do not re-run"},
 		},
 		{
+			// The write that would have recorded the outcome failed, so the file holds
+			// the earlier record. Naming outcome_unknown here would send the operator
+			// looking for a label the file does not contain.
+			name: "outcome unknown but the file was not updated",
+			err: fmt.Errorf("%w: disk is gone; %w; %w", batchcapture.ErrQueueWriteFailed,
+				batchcapture.ErrOutcomeUnknown, batchcapture.ErrItemStateUnconfirmed),
+			want: []string{"queue.json", "could not be updated", "submitting", "do not re-run"},
+		},
+		{
+			// A stop before the handoff also cannot return the item to a re-doable
+			// state once the write back to queued fails, because the phase-one record
+			// is still in the file.
+			name: "stop before the handoff could not be recorded",
+			err: fmt.Errorf("%w: disk is gone; %w", batchcapture.ErrQueueWriteFailed,
+				batchcapture.ErrItemStateUnconfirmed),
+			want: []string{"queue.json", "could not be updated", "submitting", "do not re-run"},
+		},
+		{
 			// A damaged queue may already hide a submitted item: the queue is the
 			// only record that an item was handed over, so an unreadable one is
 			// indistinguishable from "handed over and the record was lost".

@@ -239,12 +239,25 @@ func (d *Driver) waitForTerminalResult(page playwright.Page) (SubmitOutcome, err
 		text, _ := raw.(string)
 		last = text
 		var outcome SubmitOutcome
-		if err := json.Unmarshal([]byte(text), &outcome); err == nil && outcome.Status != "" {
+		if err := json.Unmarshal([]byte(text), &outcome); err == nil && readableTerminalResult(outcome.Status, outcome.OperationID) {
 			return outcome, nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	return SubmitOutcome{}, fmt.Errorf("%w: no terminal result (last %q)", ErrSubmitUnavailable, last)
+}
+
+// readableTerminalResult reports whether a rendered status and operation id form a
+// result this package may record.
+//
+// The application's own result contract requires `operationId` for every outcome and
+// binds a publication to it (web/listingkit-ui/src/lib/contracts/product-acquisition.ts:7-9
+// and :33-43), so a page that names a status without one is a partial or drifted
+// render. Recording it would either claim a publication nobody can look up, or a
+// terminal failure that records an empty operation id for an item that did reach the
+// application. Such a render keeps waiting and ends as outcome_unknown instead.
+func readableTerminalResult(status, operationID string) bool {
+	return status != "" && uuidPattern.MatchString(operationID)
 }
 
 // jsonString renders one Go string as a JavaScript string literal so the approved

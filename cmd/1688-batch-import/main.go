@@ -237,6 +237,14 @@ func describeStop(err error, queuePath string) error {
 			"%w\nVerify in the application before doing anything else. The queue file %s records which item blocked the batch; do not re-run it",
 			err, queuePath)}
 	}
+	if errors.Is(err, batchcapture.ErrItemStateUnconfirmed) {
+		// The durable file could not be updated, so it still holds the previous
+		// record. Claiming the item is recorded as outcome_unknown would point the
+		// operator at a label that is not in the file.
+		return &stopAndVerifyError{err: fmt.Errorf(
+			"%w\nThe queue file %s could not be updated, so it may still record this item as submitting rather than the outcome this run reached. Verify in the application before doing anything else; do not re-run it",
+			err, queuePath)}
+	}
 	if errors.Is(err, batchcapture.ErrOutcomeUnknown) {
 		return &stopAndVerifyError{err: fmt.Errorf(
 			"%w\nVerify in the application before doing anything else. The queue file %s records the item as outcome_unknown; do not re-run it",
