@@ -49,12 +49,35 @@ func (m referralHTTPModule) readEarnings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	earnings, err := m.economics.ReadEarnings(c.Request.Context(), identity.UserID, economics.CurrencyCNY)
+	snapshot, err := m.economics.ReadEarningsSnapshot(c.Request.Context(), identity.UserID, economics.CurrencyCNY, 100)
 	if err != nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
 		return
 	}
-	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-earnings-v1", "referrer": earnings.Referrer, "currency": earnings.Currency, "pendingMinor": strconv.FormatInt(earnings.PendingMinor, 10), "availableMinor": strconv.FormatInt(earnings.AvailableMinor, 10), "reservedMinor": strconv.FormatInt(earnings.ReservedMinor, 10), "adjustmentMinor": strconv.FormatInt(earnings.AdjustmentMinor, 10), "version": strconv.FormatInt(earnings.Version, 10), "updatedAt": nullableTime(earnings.UpdatedAt), "source": "referral_earnings_projection"})
+	writeReferralEarningsJSON(c, snapshot.Earnings, snapshot.Entries)
+}
+
+func writeReferralEarningsJSON(c *gin.Context, earnings economics.Earnings, entries []economics.EarningsLedgerEntry) {
+	items := make([]gin.H, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, gin.H{"entryId": entry.EntryID, "referrer": entry.Referrer, "currency": entry.Currency, "paymentId": entry.PaymentID, "entryType": entry.EntryType, "amountMinor": strconv.FormatInt(entry.AmountMinor, 10), "referenceId": entry.ReferenceID, "occurredAt": entry.OccurredAt.UTC()})
+	}
+	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-earnings-v1", "referrer": earnings.Referrer, "currency": earnings.Currency, "pendingMinor": strconv.FormatInt(earnings.PendingMinor, 10), "availableMinor": strconv.FormatInt(earnings.AvailableMinor, 10), "reservedMinor": strconv.FormatInt(earnings.ReservedMinor, 10), "adjustmentMinor": strconv.FormatInt(earnings.AdjustmentMinor, 10), "version": strconv.FormatInt(earnings.Version, 10), "updatedAt": nullableTime(earnings.UpdatedAt), "source": "referral_earnings_projection", "entryLimit": 100, "entries": items})
+}
+
+func (m referralHTTPModule) readRules(c *gin.Context) {
+	if !m.referralRequest(c) {
+		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	if _, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context()); !ok {
+		return
+	}
+	writeReferralRulesJSON(c)
+}
+
+func writeReferralRulesJSON(c *gin.Context) {
+	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-rules-v1", "currency": economics.CurrencyCNY, "commissionRateBps": economics.CommissionRateBPS, "settlementPeriodDays": economics.SettlementPeriodDays, "minimumWithdrawalMinor": strconv.FormatInt(economics.MinimumWithdrawalMinor, 10), "withdrawalReview": "manual", "earningsBasis": "canonical_settled_payment_refund_chargeback", "source": "referral_economics_contract"})
 }
 
 func (m referralHTTPModule) readPayoutMethods(c *gin.Context) {

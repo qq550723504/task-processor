@@ -31,6 +31,7 @@ const referralResumePath = "/api/v1/referral-registration/resume"
 const accountReferralsPath = "/api/v1/account/referrals"
 const accountReferralsCompletePath = accountReferralsPath + "/complete"
 const accountReferralEarningsPath = accountReferralsPath + "/earnings"
+const accountReferralRulesPath = accountReferralsPath + "/rules"
 const accountReferralPayoutMethodsPath = accountReferralsPath + "/payout-methods"
 const accountReferralWithdrawalsPath = accountReferralsPath + "/withdrawals"
 const accountReferralWithdrawalReviewQueuePath = accountReferralWithdrawalsPath + "/review-queue"
@@ -51,10 +52,15 @@ type referralCommands interface {
 
 type referralEconomics interface {
 	ReadEarnings(context.Context, string, string) (economics.Earnings, error)
+	ReadEarningsSnapshot(context.Context, string, string, int) (economics.EarningsSnapshot, error)
 	RequestWithdrawal(context.Context, economics.RequestWithdrawal) (economics.Withdrawal, error)
 	CancelWithdrawal(context.Context, string, string, int64, string) (economics.Withdrawal, error)
 	ReviewWithdrawal(context.Context, economics.ReviewWithdrawal) (economics.Withdrawal, error)
 	Mature(context.Context, time.Time) error
+}
+
+type earningsLedgerReader interface {
+	ListEarningsLedger(context.Context, string, string, int) ([]economics.EarningsLedgerEntry, error)
 }
 
 type withdrawalReader interface {
@@ -86,6 +92,7 @@ type referralHTTPModule struct {
 	commands              referralCommands
 	serviceCredential     string
 	economics             referralEconomics
+	ledgerReader          earningsLedgerReader
 	withdrawals           withdrawalReader
 	payoutMethods         payoutMethodReader
 	payoutMethodWriter    payoutMethodWriter
@@ -119,6 +126,7 @@ func (m referralHTTPModule) routes() []httproute.Descriptor {
 		{Method: http.MethodPost, Path: accountReferralsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createSelfCode},
 		{Method: http.MethodPost, Path: accountReferralsCompletePath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.complete},
 		{Method: http.MethodGet, Path: accountReferralEarningsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readEarnings},
+		{Method: http.MethodGet, Path: accountReferralRulesPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readRules},
 		{Method: http.MethodGet, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.readPayoutMethods},
 		{Method: http.MethodPost, Path: accountReferralPayoutMethodsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.createPayoutMethod},
 		{Method: http.MethodPost, Path: accountReferralWithdrawalsPath, AuthPolicy: httproute.AuthPolicyCurrentIdentity, Handler: m.requestWithdrawal},

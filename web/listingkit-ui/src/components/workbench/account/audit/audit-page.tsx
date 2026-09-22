@@ -36,7 +36,7 @@ function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string;
   const [sequence, setSequence] = useState(0);
   return <div className={styles.page}>
     <Card className={styles.coverage}>
-      <h2>源账号已提交操作</h2>
+      <h2>已提交操作记录</h2>
       <p>当前展示账户资料、成员、额度与源账号的已完成操作。失败尝试及未提交的 provider 操作不纳入。</p>
       <p>时间为业务操作时间；记录只供追溯，管理动作请前往对应资源页面。</p>
     </Card>
@@ -60,7 +60,7 @@ function AuditRequests({ scope, expectedUserId, organizationId }: { scope: strin
       <label>操作类型 <select value={operation} onChange={event => { setOperation(event.target.value as typeof operation); setCursors([undefined]); }}><option value="">全部</option><option value="update">更新账户资料</option><option value="invite">邀请成员</option><option value="role">更新成员角色</option><option value="remove">移除成员</option><option value="register">登记源账号</option><option value="enable">启用源账号</option><option value="disable">停用源账号</option><option value="set_target">设置成员额度</option><option value="revoke">撤销成员额度</option></select></label>
       <Button type="submit" variant="outline">应用筛选</Button>
     </form>
-    {data.items.length === 0 ? <ConsoleState kind="empty" title="暂无操作记录">当前范围内没有已提交的源账号操作。</ConsoleState> : <Card className={styles.panel}>
+    {data.items.length === 0 ? <ConsoleState kind="empty" title="暂无操作记录">当前范围内没有已提交的操作。</ConsoleState> : <Card className={styles.panel}>
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="操作记录表格，可横向滚动">
         <table className={styles.table} aria-label="操作记录"><thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作内容</th><th scope="col">模块</th><th scope="col">结果</th></tr></thead>
           <tbody>{data.items.map(item => <tr key={auditRowKey(item)}>
