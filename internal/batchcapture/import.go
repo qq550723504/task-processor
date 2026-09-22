@@ -287,6 +287,12 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if err != nil {
 		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("resolve application page: %w", err))
 	}
+	// The tab's URL carries the key before the page has rendered the scope and submit
+	// control the checks below read, so a slow render must not be recorded as an
+	// unobservable outcome.
+	if err := driver.waitForAppPageReady(page); err != nil {
+		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("wait for the application page: %w", err))
+	}
 	// Consent is obtained here, and only here: the application is showing the item it
 	// just received next to the identity it verified, so this is the first moment the
 	// authoritative value exists (design section 4 D1.4 and its "取用点说明").

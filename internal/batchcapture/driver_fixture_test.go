@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +72,7 @@ window.__fixtureClicks=0;
 window.__fixtureScope=FIXTURE_SCOPE_PLACEHOLDER;
 window.__fixtureOutcome=FIXTURE_OUTCOME_PLACEHOLDER;
 window.__fixtureRefusal=FIXTURE_REFUSAL_PLACEHOLDER;
+window.__fixtureHydrateDelay=FIXTURE_HYDRATE_DELAY_PLACEHOLDER;
 if(window.__fixtureRefusal){const banner=document.querySelector('#refusal');banner.textContent=window.__fixtureRefusal;banner.hidden=false;}
 window.renderFixtureScope=()=>{
   document.querySelector('[data-batch-scope-actor]').textContent=window.__fixtureScope.actorId;
@@ -81,6 +83,10 @@ window.hideFixtureScope=()=>{
   document.querySelector('[data-batch-scope-organization]').removeAttribute('data-batch-scope-organization');
 };
 window.renderFixtureScope();
+// The real page renders its scope and enables its control asynchronously, after its own
+// context reads resolve. A delay reproduces the window in which the tab's URL already
+// carries the handoff key while the contract is still absent.
+if(window.__fixtureHydrateDelay>0){setTimeout(()=>{window.renderFixtureScope();},window.__fixtureHydrateDelay);}
 document.querySelector('#confirm').addEventListener('click',()=>{
   window.__fixtureClicks+=1;
   const refusal=document.querySelector('#refusal');
@@ -91,6 +97,7 @@ document.querySelector('#confirm').addEventListener('click',()=>{
   node.textContent=window.__fixtureOutcome.status;
 });
 async function readCapture(){
+  if(window.__fixtureHydrateDelay>0){await new Promise(resolve=>setTimeout(resolve,window.__fixtureHydrateDelay));}
   if(!extensionId){document.querySelector('#status').textContent='恢复模式：只有原key，无自动POST';window.fixtureStatus='RECOVERY_ONLY';return;}
   let response;
   for(let attempt=0;attempt<10;attempt++){
@@ -191,6 +198,19 @@ func startFixtureAppWithOutcome(t *testing.T, scope AppScope, outcome SubmitOutc
 
 func serveFixtureAppWithOutcome(t *testing.T, scope AppScope, refusal string, outcome SubmitOutcome) {
 	t.Helper()
+	serveFixtureAppHydrating(t, scope, refusal, outcome, 0)
+}
+
+// startFixtureAppHydratingLate serves a receiver whose scope and confirmation control only
+// render after delay. The handoff URL carries the key from the first paint, so this is the
+// real single-page-application race the driver has to wait out.
+func startFixtureAppHydratingLate(t *testing.T, scope AppScope, delay time.Duration) {
+	t.Helper()
+	serveFixtureAppHydrating(t, scope, "", SubmitOutcome{Status: "published", OperationID: fixtureOperationID}, int(delay.Milliseconds()))
+}
+
+func serveFixtureAppHydrating(t *testing.T, scope AppScope, refusal string, outcome SubmitOutcome, hydrateDelayMs int) {
+	t.Helper()
 	scopeJSON, err := json.Marshal(map[string]string{
 		"actorId":        scope.ActorID,
 		"organizationId": scope.OrganizationID,
@@ -212,6 +232,7 @@ func serveFixtureAppWithOutcome(t *testing.T, scope AppScope, refusal string, ou
 	body := strings.Replace(fixtureReceiver, "FIXTURE_SCOPE_PLACEHOLDER", string(scopeJSON), 1)
 	body = strings.Replace(body, "FIXTURE_REFUSAL_PLACEHOLDER", string(refusalJSON), 1)
 	body = strings.Replace(body, "FIXTURE_OUTCOME_PLACEHOLDER", string(outcomeJSON), 1)
+	body = strings.Replace(body, "FIXTURE_HYDRATE_DELAY_PLACEHOLDER", strconv.Itoa(hydrateDelayMs), 1)
 	listener, err := net.Listen("tcp", "127.0.0.1:"+fixturePort)
 	if err != nil {
 		t.Fatalf("fixture port %s is unavailable: %v", fixturePort, err)
@@ -1893,5 +1914,33 @@ func TestFixtureDriverRefusesAnUnapprovedQueueWhenTheApplicationDisagrees(t *tes
 	page := fixtureAppPageByKey(t, driver, stored.Items[0].IdempotencyKey)
 	if clicks := fixtureClicks(t, page); clicks != 0 {
 		t.Fatalf("the confirmation was clicked %d times under a mismatched scope", clicks)
+	}
+}
+
+// TestFixtureDriverWaitsForTheApplicationPageToHydrate is the end-to-end acceptance for
+// the readiness wait: the application's URL carries the handoff key from the first paint,
+// while its verified scope and enabled submit control only appear once its own context
+// reads resolve. A one-shot read taken in that window is an empty document, and recording
+// it as an outcome used to block the item permanently even though the page was only slow.
+func TestFixtureDriverWaitsForTheApplicationPageToHydrate(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureAppHydratingLate(t, fixtureApprovedScope, 1500*time.Millisecond)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if result.State != ItemSubmitted {
+		t.Fatalf("result state %q, want submitted: the driver must wait out the render", result.State)
+	}
+	if result.OperationID != fixtureOperationID {
+		t.Fatalf("operation id %q, want %q", result.OperationID, fixtureOperationID)
+	}
+	page := fixtureAppPageByKey(t, driver, result.IdempotencyKey)
+	if clicks := fixtureClicks(t, page); clicks != 1 {
+		t.Fatalf("confirmation clicked %d times, want exactly 1", clicks)
 	}
 }

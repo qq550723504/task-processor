@@ -98,6 +98,96 @@ func (d *Driver) AppPageByKey(key string) (playwright.Page, error) {
 	return nil, fmt.Errorf("%w: no application tab carries handoff key %s", ErrSubmitUnavailable, key)
 }
 
+// appContract is one render of the capture page's machine-readable contract.
+type appContract struct {
+	ActorID        string `json:"actorId"`
+	OrganizationID string `json:"organizationId"`
+	Refusal        string `json:"refusal"`
+	Control        string `json:"control"`
+}
+
+// ScopeReadable reports whether both halves of the verified scope were rendered.
+func (c appContract) ScopeReadable() bool {
+	return c.ActorID != "" && c.OrganizationID != ""
+}
+
+// Ready reports whether the page may be acted on: it shows an enabled submit control
+// next to a readable scope, or a refusal that has to be acted on instead. A refusal
+// short-circuits the wait because it is a deterministic answer, not a half-rendered
+// document.
+func (c appContract) Ready() bool {
+	return c.Refusal != "" || (c.ScopeReadable() && c.Control == "ready")
+}
+
+// appContractScript reads the whole contract in one evaluation, so the readiness check
+// sees a single render rather than a mix of several.
+const appContractScript = `(() => {
+	const text = selector => {
+		const node = document.querySelector(selector);
+		return node === null ? '' : (node.textContent || '').trim();
+	};
+	const control = document.querySelector('` + selConfirmAndSubmit + `');
+	return JSON.stringify({
+		actorId: text('` + selScopeActor + `'),
+		organizationId: text('` + selScopeOrganization + `'),
+		refusal: text('` + selSubmitRefusal + `'),
+		control: control === null ? 'missing' : (control.disabled ? 'disabled' : 'ready')
+	});
+})()`
+
+// appContractPollInterval is how often the readiness check re-reads the page. It is the
+// same cadence waitForTerminalResult uses, because both wait for the same document.
+const appContractPollInterval = 200 * time.Millisecond
+
+// waitForAppContract waits until the capture page has rendered the contract ReadAppScope
+// and ConfirmAndSubmit read, and reports why it never did if it did not.
+//
+// Resolving the tab only proves its URL carries this item's handoff key. The application
+// is a single-page app: it writes that key into the URL before its asynchronous context
+// and handoff reads have produced a verified scope and an enabled submit control, so a
+// read taken then finds a document that is still empty. ConfirmAndSubmit reports that as
+// unavailable, stopAfterHandoff records the item as outcome_unknown, and the item is then
+// permanently blocked - even though the page was only slow. Polling inside the driver's
+// timeout turns "not yet" into a wait instead of a terminal verdict; a page that never
+// renders the contract still ends as an error.
+func waitForAppContract(evaluate func(string) (any, error), timeout, poll time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var last appContract
+	seen := false
+	for time.Now().Before(deadline) {
+		value, err := evaluate(appContractScript)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrSubmitUnavailable, err)
+		}
+		text, _ := value.(string)
+		var contract appContract
+		if err := json.Unmarshal([]byte(text), &contract); err != nil {
+			return fmt.Errorf("%w: %v", ErrSubmitUnavailable, err)
+		}
+		last, seen = contract, true
+		if contract.Ready() {
+			return nil
+		}
+		time.Sleep(poll)
+	}
+	if !seen {
+		return fmt.Errorf("%w: the application page never answered the readiness check", ErrSubmitUnavailable)
+	}
+	if !last.ScopeReadable() {
+		// The scope never rendered, which is the same diagnosis ReadAppScope would give,
+		// just after waiting rather than on the first empty read.
+		return fmt.Errorf("%w: the application page never showed a verified identity and organization", ErrScopeUnavailable)
+	}
+	return fmt.Errorf("%w: the application page never offered an enabled submit control (control %q, refusal %q)",
+		ErrSubmitUnavailable, last.Control, last.Refusal)
+}
+
+// waitForAppPageReady waits until the application tab has rendered the contract the rest
+// of this file reads. See waitForAppContract for why the wait is not optional.
+func (d *Driver) waitForAppPageReady(page playwright.Page) error {
+	return waitForAppContract(func(script string) (any, error) { return page.Evaluate(script) }, d.timeout, appContractPollInterval)
+}
+
 // ReadAppScope reads the verified identity and organization the capture page is
 // showing.
 func (d *Driver) ReadAppScope(page playwright.Page) (AppScope, error) {
