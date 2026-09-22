@@ -56,6 +56,9 @@ type Offer struct {
 	ResourceType   orgresource.ResourceType
 	Currency       string
 	PricingVersion string
+	// UnitPriceMinor is server-owned pricing data. It is intentionally absent
+	// from browser requests and remains unset until an approved offer exists.
+	UnitPriceMinor int64
 	MinQuantity    int64
 	MaxQuantity    int64
 	Status         OfferStatus
