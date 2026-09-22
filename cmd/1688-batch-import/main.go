@@ -54,6 +54,26 @@ type config struct {
 // accepts is a URL the extension would also accept.
 var offerPattern = regexp.MustCompile(`^https?://detail\.1688\.com(?::(?:80|443))?/offer/([1-9][0-9]{0,19})\.html(?:[?#].*)?$`)
 
+// offerURL reduces an accepted page to the one form this executor navigates: the
+// canonical source the extension itself records.
+//
+// The scheme matters, and not cosmetically. The extension reads through its declared
+// host grant (https://detail.1688.com/*), because activeTab can only be granted by a
+// real action click and an unattended batch run has none. Queuing an http:// URL that
+// does not redirect would navigate the browser to a host that grant does not cover,
+// and the read would fail at executeScript with "manifest must request permission to
+// access the respective host" after the item was already recorded. Query and fragment
+// are dropped the same way pageSource drops them: they are not part of an offer's
+// identity, and keeping them would let one offer be queued under two spellings and
+// so submitted twice.
+func offerURL(raw string) (string, bool) {
+	match := offerPattern.FindStringSubmatch(raw)
+	if match == nil {
+		return "", false
+	}
+	return "https://detail.1688.com/offer/" + match[1] + ".html", true
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "1688-batch-import:", err)
@@ -280,7 +300,7 @@ func (c config) validate() error {
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required flags: %s", strings.Join(missing, ", "))
 	}
-	if !offerPattern.MatchString(c.SourceURL) {
+	if _, ok := offerURL(c.SourceURL); !ok {
 		return fmt.Errorf("--url is not a 1688 product detail URL: %s", c.SourceURL)
 	}
 	return nil
@@ -295,11 +315,17 @@ func (c config) validate() error {
 // unverified expectation as consent, which is what a scripted run would then walk
 // straight past. An existing approval is never rewritten.
 func ensureQueue(cfg config) (string, error) {
+	// The queue is the record the run navigates from, so the URL it stores is the
+	// normalized one no matter how the flag was spelled.
+	sourceURL, ok := offerURL(cfg.SourceURL)
+	if !ok {
+		return "", fmt.Errorf("--url is not a 1688 product detail URL: %s", cfg.SourceURL)
+	}
 	queue, err := batchcapture.Load(cfg.QueuePath)
 	switch {
 	case errors.Is(err, batchcapture.ErrQueueMissing):
 		queue = batchcapture.NewQueue(cfg.BatchID)
-		queue.Items = append(queue.Items, batchcapture.Item{Seq: 1, URL: cfg.SourceURL, State: batchcapture.ItemQueued})
+		queue.Items = append(queue.Items, batchcapture.Item{Seq: 1, URL: sourceURL, State: batchcapture.ItemQueued})
 		if err := queue.Save(cfg.QueuePath); err != nil {
 			return "", err
 		}
@@ -315,7 +341,7 @@ func ensureQueue(cfg config) (string, error) {
 			cfg.QueuePath, queue.ApprovedActorID, queue.ApprovedOrganizationID, cfg.ActorID, cfg.Organization)
 	}
 	for _, item := range queue.Items {
-		if item.URL == cfg.SourceURL {
+		if item.URL == sourceURL {
 			return cfg.QueuePath, nil
 		}
 	}
@@ -325,7 +351,7 @@ func ensureQueue(cfg config) (string, error) {
 			seq = item.Seq + 1
 		}
 	}
-	queue.Items = append(queue.Items, batchcapture.Item{Seq: seq, URL: cfg.SourceURL, State: batchcapture.ItemQueued})
+	queue.Items = append(queue.Items, batchcapture.Item{Seq: seq, URL: sourceURL, State: batchcapture.ItemQueued})
 	if err := queue.Save(cfg.QueuePath); err != nil {
 		return "", err
 	}
