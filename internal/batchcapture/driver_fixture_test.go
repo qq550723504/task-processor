@@ -1338,3 +1338,146 @@ func TestFixtureDriverDoesNotDispatchHandoffWhenTheSessionIsGone(t *testing.T) {
 		t.Fatalf("application tabs=%d, want 0 because the handoff must not be dispatched", got)
 	}
 }
+
+// fixtureUnapprovedQueue writes a one-item queue that carries no confirmed scope,
+// which is the state design section 4 D1.4 leaves a batch in until its first item
+// has been delivered and a person has confirmed the identity the application
+// reports. It is deliberately distinct from fixtureQueue, which is post-confirmation.
+func fixtureUnapprovedQueue(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "queue.json")
+	queue := NewQueue("fixture-batch")
+	queue.Items = append(queue.Items, Item{Seq: 1, URL: fixtureSource, State: ItemQueued})
+	if err := queue.Save(path); err != nil {
+		t.Fatalf("save queue: %v", err)
+	}
+	return path
+}
+
+// TestFixtureDriverConfirmsTheApplicationReportedScope is the F5-1 acceptance test
+// for design section 4 D1.4: an unapproved batch becomes attributed to the identity
+// the APPLICATION reports, after a person confirms it, and only then is anything
+// submitted. The declared scope is only an expectation that has to agree.
+func TestFixtureDriverConfirmsTheApplicationReportedScope(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureUnapprovedQueue(t)
+
+	var asked []AppScope
+	result, err := ImportOne(driver, ImportOptions{
+		QueuePath: queuePath,
+		Approved:  fixtureApprovedScope,
+		ConfirmScope: func(scope AppScope) (bool, error) {
+			asked = append(asked, scope)
+			return true, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(asked) != 1 {
+		t.Fatalf("the confirmation was requested %d times, want exactly 1", len(asked))
+	}
+	if asked[0] != fixtureApprovedScope {
+		t.Fatalf("the person was asked about %+v, want the application-reported %+v", asked[0], fixtureApprovedScope)
+	}
+	if result.State != ItemSubmitted {
+		t.Fatalf("state %q, want submitted", result.State)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if !stored.ScopeApproved || !stored.ScopeMatches(fixtureApprovedScope.ActorID, fixtureApprovedScope.OrganizationID) {
+		t.Fatalf("the confirmed scope was not persisted: %+v", stored)
+	}
+	page := fixtureAppPageByKey(t, driver, stored.Items[0].IdempotencyKey)
+	if clicks := fixtureClicks(t, page); clicks != 1 {
+		t.Fatalf("the confirmation was clicked %d times, want 1", clicks)
+	}
+}
+
+// TestFixtureDriverStopsWhenThePersonDeclinesTheScope is design section 4 D1.4's
+// refusal: no person confirmed the identity, so nothing may be attributed to it. The
+// payload is already visible to the application, so the item is left undecidable
+// rather than re-doable, exactly like every other post-handoff stop.
+func TestFixtureDriverStopsWhenThePersonDeclinesTheScope(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureUnapprovedQueue(t)
+
+	_, err := ImportOne(driver, ImportOptions{
+		QueuePath:    queuePath,
+		Approved:     fixtureApprovedScope,
+		ConfirmScope: func(AppScope) (bool, error) { return false, nil },
+	})
+	if !errors.Is(err, ErrScopeUnconfirmed) {
+		t.Fatalf("err=%v, want ErrScopeUnconfirmed", err)
+	}
+	if !errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("a declined scope after the handoff is not ambiguous: %v", err)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.ScopeApproved {
+		t.Fatalf("a refusal approved the batch: %+v", stored)
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
+	}
+	if CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a declined scope left the item re-capturable: %+v", stored.Items[0])
+	}
+	page := fixtureAppPageByKey(t, driver, stored.Items[0].IdempotencyKey)
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("the confirmation was clicked %d times although nobody confirmed the scope", clicks)
+	}
+}
+
+// TestFixtureDriverRefusesAnUnapprovedQueueWhenTheApplicationDisagrees pins the
+// declared-vs-reported comparison on the pre-approval path: the flags are an
+// expectation, and an application reporting something else stops the batch before
+// anyone is even asked to confirm it.
+func TestFixtureDriverRefusesAnUnapprovedQueueWhenTheApplicationDisagrees(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, AppScope{ActorID: "fixture-actor-a", OrganizationID: "fixture-org-someone-else"})
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureUnapprovedQueue(t)
+
+	asked := false
+	_, err := ImportOne(driver, ImportOptions{
+		QueuePath: queuePath,
+		Approved:  fixtureApprovedScope,
+		ConfirmScope: func(AppScope) (bool, error) {
+			asked = true
+			return true, nil
+		},
+	})
+	if !errors.Is(err, ErrScopeMismatch) {
+		t.Fatalf("err=%v, want ErrScopeMismatch", err)
+	}
+	if asked {
+		t.Fatalf("a person was asked to confirm a scope the application did not report")
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if stored.ScopeApproved {
+		t.Fatalf("a mismatch approved the batch: %+v", stored)
+	}
+	if stored.Items[0].State != ItemOutcomeUnknown {
+		t.Fatalf("state %q, want outcome_unknown", stored.Items[0].State)
+	}
+	page := fixtureAppPageByKey(t, driver, stored.Items[0].IdempotencyKey)
+	if clicks := fixtureClicks(t, page); clicks != 0 {
+		t.Fatalf("the confirmation was clicked %d times under a mismatched scope", clicks)
+	}
+}

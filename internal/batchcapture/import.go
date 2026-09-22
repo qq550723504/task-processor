@@ -3,6 +3,8 @@ package batchcapture
 import (
 	"errors"
 	"fmt"
+
+	"github.com/mxschmitt/playwright-go"
 )
 
 // ImportOne drives one queued item from the local queue to a terminal result.
@@ -27,10 +29,18 @@ import (
 type ImportOptions struct {
 	// QueuePath is the queue file to read and update.
 	QueuePath string
-	// Approved is the batch scope a human confirmed (design D1.4). It is compared
-	// against the queue's stored scope and against the application page, so neither
-	// the queue nor the live session can widen it.
+	// Approved is the scope the operator declared for this batch, typically from
+	// command-line flags. It is NOT consent: design section 4 D1.4 requires the
+	// batch's authoritative scope to be read from the application and confirmed by a
+	// person. Approved is only an expectation, compared against what the application
+	// actually reports; a disagreement stops the batch rather than widening it.
 	Approved AppScope
+	// ConfirmScope is the design section 4 D1.4 consent step. It is called with the
+	// identity the APPLICATION reports as verified - never with the browser profile's
+	// own idea of who is signed in - and returns whether a person confirmed that the
+	// batch may be attributed to it. When it is nil an unapproved queue cannot start
+	// a batch at all, because there is no way to ask anyone.
+	ConfirmScope func(AppScope) (bool, error)
 	// Persist writes the queue. It defaults to the queue's own atomic Save. It is a
 	// field because "a write that is not confirmed durable must not hand off" is an
 	// acceptance item, and injecting the failure is the only way to reproduce it
@@ -66,6 +76,10 @@ var (
 	ErrBatchBlocked = errors.New("batch capture: batch blocked, a person must verify an item first")
 	// ErrQueueWriteFailed means the record could not be confirmed durable.
 	ErrQueueWriteFailed = errors.New("batch capture: queue write not confirmed")
+	// ErrScopeUnconfirmed means the batch has no confirmed scope and this run could
+	// not obtain one. It is deliberately not ErrScopeMismatch: nothing disagreed,
+	// the consent design section 4 D1.4 requires simply was not given.
+	ErrScopeUnconfirmed = errors.New("batch capture: batch scope was not confirmed")
 )
 
 // ImportOne captures and submits the first capturable item in the queue.
@@ -81,10 +95,6 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if err != nil {
 		return ImportResult{}, err
 	}
-	if !queue.ScopeMatches(opts.Approved.ActorID, opts.Approved.OrganizationID) {
-		return ImportResult{}, fmt.Errorf("%w: queue scope is %s/%s", ErrScopeMismatch,
-			queue.ApprovedActorID, queue.ApprovedOrganizationID)
-	}
 	// An item that may already have been submitted must stop the batch before
 	// anything else happens. Skipping over it would submit a later item while an
 	// earlier one is unresolved, and a queue holding only that item would otherwise
@@ -99,6 +109,28 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 		return ImportResult{Seq: blocked.Seq, URL: blocked.URL, State: blocked.State}, fmt.Errorf(
 			"%w: item %d is %s%s; verify in the application before anything else, do not re-run it",
 			ErrBatchBlocked, blocked.Seq, blocked.State, detail)
+	}
+	// Consent (design section 4 D1.4). The queue holds the batch's only
+	// authoritative scope, and it may only become approved from the identity the
+	// APPLICATION reports as verified, after a person confirms it. An unapproved
+	// queue is the normal state for a batch's first item: this run obtains the
+	// confirmation at the moment the application first shows the identity, which is
+	// after the item has been delivered to it and before the submit.
+	//
+	// Without a channel through which to ask, an unapproved queue must stop the batch
+	// before the browser is touched. Adopting whatever identity the live session
+	// happens to carry is the failure this step exists to prevent, and an unattended
+	// run can never confirm anything.
+	needConsent := !queue.ScopeApproved
+	if needConsent {
+		if opts.ConfirmScope == nil {
+			return ImportResult{}, fmt.Errorf(
+				"%w: queue %s carries no confirmed scope and this run cannot ask a person; nothing was submitted",
+				ErrScopeUnconfirmed, opts.QueuePath)
+		}
+	} else if !queue.ScopeMatches(opts.Approved.ActorID, opts.Approved.OrganizationID) {
+		return ImportResult{}, fmt.Errorf("%w: queue scope is %s/%s", ErrScopeMismatch,
+			queue.ApprovedActorID, queue.ApprovedOrganizationID)
 	}
 	index := -1
 	for i := range queue.Items {
@@ -117,8 +149,16 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	// No key and no scope are written, because neither is knowable yet and writing a
 	// value the executor has not observed is what design section 15.6 rejected.
 	item.State = ItemSubmitting
-	item.ApprovedActorID = opts.Approved.ActorID
-	item.ApprovedOrganizationID = opts.Approved.OrganizationID
+	if needConsent {
+		// Neither value is knowable yet, and writing the flags' values would record a
+		// scope no person has confirmed (design section 4 D1.4). ApproveScope fills in
+		// the scope for the whole batch once there is a confirmed value to fill it with.
+		item.ApprovedActorID = ""
+		item.ApprovedOrganizationID = ""
+	} else {
+		item.ApprovedActorID = opts.Approved.ActorID
+		item.ApprovedOrganizationID = opts.Approved.OrganizationID
+	}
 	if err := persist(queue, opts.QueuePath); err != nil {
 		return ImportResult{}, fmt.Errorf("%w: %v", ErrQueueWriteFailed, err)
 	}
@@ -222,12 +262,31 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if err != nil {
 		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("resolve application page: %w", err))
 	}
+	// Consent is obtained here, and only here: the application is showing the item it
+	// just received next to the identity it verified, so this is the first moment the
+	// authoritative value exists (design section 4 D1.4 and its "取用点说明").
+	approved := opts.Approved
+	if needConsent {
+		confirmed, err := confirmScope(driver, page, opts)
+		if err != nil {
+			return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, err)
+		}
+		if err := queue.ApproveScope(confirmed.ActorID, confirmed.OrganizationID); err != nil {
+			return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("approve scope: %w", err))
+		}
+		// The confirmed scope must be durable before it is acted on, for the same
+		// reason the key must be: the payload is already visible to the application.
+		if err := persist(queue, opts.QueuePath); err != nil {
+			return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
+		}
+		approved = confirmed
+	}
 	// The approved scope is compared against the page inside the same browser task
 	// that clicks the control (ConfirmAndSubmit). There is deliberately no separate
 	// read-then-compare here: a comparison performed in a different task from the
 	// click is exactly the race this design's guard 1 exists to remove, and a second
 	// check that no input can distinguish is untestable defence.
-	outcome, err := driver.ConfirmAndSubmit(page, opts.Approved)
+	outcome, err := driver.ConfirmAndSubmit(page, approved)
 	if err != nil {
 		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, err)
 	}
@@ -256,10 +315,56 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	return result, nil
 }
 
+// confirmScope reads the server-verified identity from the application page and has
+// a person confirm it (design section 4 D1.4 step 1 and 2).
+//
+// The value comes from the application, never from the browser profile or the flags;
+// the flags are only the operator's declared expectation and are compared against
+// what the application reports. A disagreement stops the batch, because only a
+// person can say which of the two is right, and neither may be assumed.
+func confirmScope(driver *Driver, page playwright.Page, opts ImportOptions) (AppScope, error) {
+	observed, err := driver.ReadAppScope(page)
+	if err != nil {
+		return AppScope{}, fmt.Errorf("read the identity the application verified: %w", err)
+	}
+	if observed != opts.Approved {
+		return AppScope{}, fmt.Errorf(
+			"%w: the application reports %s/%s but this run was started for %s/%s",
+			ErrScopeMismatch, observed.ActorID, observed.OrganizationID, opts.Approved.ActorID, opts.Approved.OrganizationID)
+	}
+	confirmed, err := opts.ConfirmScope(observed)
+	if err != nil {
+		return AppScope{}, fmt.Errorf("ask for scope confirmation: %w", err)
+	}
+	if !confirmed {
+		return AppScope{}, fmt.Errorf(
+			"%w: the identity the application reported (%s/%s) was not confirmed, so nothing was attributed to it",
+			ErrScopeUnconfirmed, observed.ActorID, observed.OrganizationID)
+	}
+	return observed, nil
+}
+
 // ErrVerdictStop means the batch must pause because the page was not a capturable
 // product page. It is separate from ErrOutcomeUnknown: nothing was submitted, so
 // the item is re-doable rather than ambiguous.
 var ErrVerdictStop = errors.New("batch capture: page requires a human before continuing")
+
+// NeedsVisibleSession reports whether the failure is resolved by a person acting
+// inside the browser the executor opened - a login wall, a verification redirect or
+// a risk-control page (design section 4 D1.3).
+//
+// Such a stop is the one case where closing the browser destroys the thing the
+// operator needs: the session they must sign in or clear a verification page in.
+// The item is still re-capturable at that point (nothing was handed to the
+// application), so the correct continuation is to keep the window open and redo the
+// item once the person has dealt with it.
+//
+// The verdict is required, not just the error: a definitively delisted product also
+// stops its item with ErrVerdictStop, and no person is needed for it. VerdictAction
+// already carries that distinction, so it is not re-derived here.
+func NeedsVisibleSession(result ImportResult, err error) bool {
+	return errors.Is(err, ErrVerdictStop) && result.Verdict.Action().RedoCurrentItemAfterHuman
+}
 
 // ErrOutcomeUnknown means whether the item was published cannot be decided locally.
 var ErrOutcomeUnknown = errors.New("batch capture: outcome unknown, stop and verify")
@@ -270,7 +375,7 @@ func stopWithoutSubmit(persist func(*Queue, string) error, queue *Queue, item *I
 	item.State = ItemQueued
 	item.Reason = cause.Error()
 	if err := persist(queue, path); err != nil {
-		return fmt.Errorf("%w: %v (original: %v)", ErrQueueWriteFailed, err, cause)
+		return fmt.Errorf("%w: %v (original: %w)", ErrQueueWriteFailed, err, cause)
 	}
 	return cause
 }
@@ -286,7 +391,11 @@ func stopAfterHandoff(persist func(*Queue, string) error, queue *Queue, item *It
 		// Both errors matter: the write failure explains the tooling problem, and the
 		// unknown outcome is what forbids an automatic retry. Reporting only the write
 		// failure lets a caller read the run as an ordinary failure and try again.
-		return fmt.Errorf("%w: %v (original: %v); %w", ErrQueueWriteFailed, err, cause, ErrOutcomeUnknown)
+		return fmt.Errorf("%w: %v (original: %w); %w", ErrQueueWriteFailed, err, cause, ErrOutcomeUnknown)
 	}
-	return fmt.Errorf("%w: %v", ErrOutcomeUnknown, cause)
+	// The cause stays wrapped as well as the outcome classification, because the two
+	// answer different questions: ErrOutcomeUnknown is what forbids an automatic
+	// retry, and the cause (a scope refusal, an unobservable handoff) is what the
+	// operator has to act on.
+	return fmt.Errorf("%w: %w", ErrOutcomeUnknown, cause)
 }

@@ -100,7 +100,11 @@ func TestValidateAcceptsOnlyOfferPages(t *testing.T) {
 	}
 }
 
-func TestEnsureQueueCreatesAnApprovedQueue(t *testing.T) {
+// TestEnsureQueueCreatesAnUnapprovedQueue pins the F5-1 behaviour: a queue a run
+// creates on its own carries no confirmed scope, because the flags are the operator's
+// expectation and not consent (design section 4 D1.4). The approval is written later,
+// from the identity the application reports and a person confirms.
+func TestEnsureQueueCreatesAnUnapprovedQueue(t *testing.T) {
 	cfg := validConfig(t)
 	path, err := ensureQueue(cfg)
 	if err != nil {
@@ -113,8 +117,14 @@ func TestEnsureQueueCreatesAnApprovedQueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if !queue.ScopeMatches(cfg.ActorID, cfg.Organization) {
-		t.Fatalf("the created queue is not approved for the requested scope: %+v", queue)
+	if queue.ScopeApproved {
+		t.Fatalf("a fresh queue was marked as scope-approved from flags alone: %+v", queue)
+	}
+	if queue.ApprovedActorID != "" || queue.ApprovedOrganizationID != "" {
+		t.Fatalf("a fresh queue recorded an unverified scope: %q/%q", queue.ApprovedActorID, queue.ApprovedOrganizationID)
+	}
+	if queue.ScopeMatches(cfg.ActorID, cfg.Organization) {
+		t.Fatalf("an unapproved queue matched a scope")
 	}
 	if len(queue.Items) != 1 || queue.Items[0].URL != cfg.SourceURL {
 		t.Fatalf("unexpected items: %+v", queue.Items)
@@ -169,23 +179,53 @@ func TestEnsureQueueAppendsNewURLsWithIncreasingSeq(t *testing.T) {
 }
 
 // TestEnsureQueueRefusesADifferentScope proves a second run cannot silently
-// re-attribute an existing batch to another identity.
+// re-attribute an already-approved batch to another identity. It only applies once a
+// scope has been confirmed: an unapproved queue has nothing to contradict yet.
 func TestEnsureQueueRefusesADifferentScope(t *testing.T) {
+	cfg := validConfig(t)
+	path, err := ensureQueue(cfg)
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	// Stand in for the confirmed-scope step, which needs a browser and a person.
+	queue, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := queue.ApproveScope(cfg.ActorID, cfg.Organization); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if err := queue.Save(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	other := cfg
+	other.Organization = "org-b"
+	_, err = ensureQueue(other)
+	if !errors.Is(err, batchcapture.ErrScopeMismatch) && !strings.Contains(err.Error(), "approved for") {
+		t.Fatalf("err=%v, want a scope refusal", err)
+	}
+	stored, loadErr := batchcapture.Load(cfg.QueuePath)
+	if loadErr != nil {
+		t.Fatalf("load: %v", loadErr)
+	}
+	if stored.ApprovedOrganizationID != cfg.Organization {
+		t.Fatalf("the stored approval was rewritten to %q", stored.ApprovedOrganizationID)
+	}
+}
+
+// TestEnsureQueueAcceptsAnUnapprovedQueueUnderAnyScope is the other half of the same
+// rule: before anyone has confirmed anything there is no approved scope for a run to
+// disagree with, so the run proceeds and obtains the confirmation itself.
+func TestEnsureQueueAcceptsAnUnapprovedQueueUnderAnyScope(t *testing.T) {
 	cfg := validConfig(t)
 	if _, err := ensureQueue(cfg); err != nil {
 		t.Fatalf("first: %v", err)
 	}
 	other := cfg
+	other.ActorID = "actor-b"
 	other.Organization = "org-b"
-	_, err := ensureQueue(other)
-	if !errors.Is(err, batchcapture.ErrScopeMismatch) && !strings.Contains(err.Error(), "approved for") {
-		t.Fatalf("err=%v, want a scope refusal", err)
-	}
-	queue, loadErr := batchcapture.Load(cfg.QueuePath)
-	if loadErr != nil {
-		t.Fatalf("load: %v", loadErr)
-	}
-	if queue.ApprovedOrganizationID != cfg.Organization {
-		t.Fatalf("the stored approval was rewritten to %q", queue.ApprovedOrganizationID)
+	if _, err := ensureQueue(other); err != nil {
+		t.Fatalf("an unapproved queue refused a run: %v", err)
 	}
 }

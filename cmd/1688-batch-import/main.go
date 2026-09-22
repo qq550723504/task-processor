@@ -3,19 +3,22 @@
 //
 // It is the runnable entry point for design section 14 slice S1 ("one item driven
 // end to end, with the terminal state read back"). It talks to a real 1688 page
-// through the operator's own browser profile, so it refuses to run without an
-// explicitly approved actor and organization and never invents one: the scope a
-// human confirmed is the scope the submission is attributed to.
+// through the operator's own browser profile, so the actor and organization it is
+// started for are treated as the operator's DECLARED expectation, never as consent:
+// the batch's authoritative scope is read from the application and confirmed by a
+// person at the moment the application first shows it (design section 4 D1.4).
 //
 // It does not create a server route, does not change the extension, and does not
 // add a producer. See docs/superpowers/specs/2026-09-21-1688-batch-local-agent-design.md
-// sections 4 D1.4 and 17.1.
+// sections 4 D1.3, 4 D1.4 and 17.1.
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -77,9 +80,11 @@ func run(args []string) error {
 		fmt.Fprint(flags.Output(), `Usage: 1688-batch-import --queue <file> --url <product-url> \
   --actor <id> --organization <id> --browser <chrome.exe> --extension <dist-dir>   --profile <dir> [--headless]
 
-Drives one item of a local batch queue. The actor and organization must be the
-values a person confirmed in the application; they are never read from the browser
-session. The queue file is created when it does not exist.
+Drives one item of a local batch queue. --actor and --organization are the scope this
+run EXPECTS. They are not consent: the batch is attributed only to the identity the
+application reports as verified, after a person confirms it on the terminal. A scope
+that disagrees with the application stops the batch. The queue file is created when
+it does not exist, without a confirmed scope.
 
 Exit codes: 0 terminal result recorded, 3 stop and verify (outcome unknown, an
 unreadable queue that may already hold a submitted item, or a blocked batch),
@@ -90,8 +95,8 @@ unreadable queue that may already hold a submitted item, or a blocked batch),
 	flags.StringVar(&cfg.QueuePath, "queue", "", "local batch queue file (created when missing)")
 	flags.StringVar(&cfg.SourceURL, "url", "", "1688 product detail URL")
 	flags.StringVar(&cfg.BatchID, "batch-id", "local-batch", "batch identifier recorded in a new queue")
-	flags.StringVar(&cfg.ActorID, "actor", "", "approved actor id (required)")
-	flags.StringVar(&cfg.Organization, "organization", "", "approved organization id (required)")
+	flags.StringVar(&cfg.ActorID, "actor", "", "actor id this run expects the application to report (required)")
+	flags.StringVar(&cfg.Organization, "organization", "", "organization id this run expects the application to report (required)")
 	flags.StringVar(&cfg.BrowserPath, "browser", "", "fingerprint browser executable (required)")
 	flags.StringVar(&cfg.ExtensionDist, "extension", "", "unpacked extension directory (required)")
 	flags.StringVar(&cfg.ProfileDir, "profile", "", "browser profile directory (required; the 1688 login lives here)")
@@ -123,13 +128,80 @@ unreadable queue that may already hold a submitted item, or a blocked batch),
 	}
 	defer func() { _ = driver.Close() }()
 
-	result, err := batchcapture.ImportOne(driver, batchcapture.ImportOptions{
+	opts := batchcapture.ImportOptions{
 		QueuePath: queuePath,
 		Approved:  batchcapture.AppScope{ActorID: cfg.ActorID, OrganizationID: cfg.Organization},
-	})
+		// The confirmation is read from the terminal the operator is looking at, not
+		// from a flag, so a scripted run cannot answer it on a person's behalf.
+		ConfirmScope: promptScopeConfirmation(os.Stdin, os.Stdout),
+	}
+	result, err := repeatWhileGateNeedsAHuman(
+		func() (batchcapture.ImportResult, error) { return batchcapture.ImportOne(driver, opts) },
+		func(r batchcapture.ImportResult, cause error) bool {
+			return waitForGateCleared(os.Stdin, os.Stdout, r, cause)
+		},
+	)
 	fmt.Printf("item %d %s\n  state: %s\n  idempotency key: %s\n  operation id: %s\n",
 		result.Seq, result.URL, result.State, result.IdempotencyKey, result.OperationID)
 	return describeStop(err, queuePath)
+}
+
+// repeatWhileGateNeedsAHuman is the design section 4 D1.3 pause: a challenge or a
+// login wall stops the batch, a person clears it inside the browser the executor
+// opened, and then the SAME item is re-done from navigation.
+//
+// The two callbacks are separate so the loop can be tested without a browser: the
+// redo is only safe because a gate stop happens before any handoff, leaving the item
+// re-capturable.
+func repeatWhileGateNeedsAHuman(
+	attempt func() (batchcapture.ImportResult, error),
+	askToContinue func(batchcapture.ImportResult, error) bool,
+) (batchcapture.ImportResult, error) {
+	for {
+		result, err := attempt()
+		if !batchcapture.NeedsVisibleSession(result, err) || !askToContinue(result, err) {
+			return result, err
+		}
+	}
+}
+
+// waitForGateCleared prints what the person has to do and blocks until they say it is
+// done. The browser stays open for exactly this wait: it holds the locked-out session
+// that only a person can restore.
+func waitForGateCleared(in io.Reader, out io.Writer, result batchcapture.ImportResult, cause error) bool {
+	fmt.Fprintf(out, "\nThe batch stopped before anything was submitted:\n  %v\n\n"+
+		"Deal with the gate in the browser window that is still open (sign in, solve the\n"+
+		"verification, or clear the risk-control page), then press Enter to redo item %d.\n"+
+		"Type anything else to stop.\nContinue? [y/N] ", cause, result.Seq)
+	return readYes(in)
+}
+
+// promptScopeConfirmation is the CLI half of design section 4 D1.4: the executor
+// shows the identity the APPLICATION verified and asks a person to confirm it before
+// the batch's scope is bound.
+func promptScopeConfirmation(in io.Reader, out io.Writer) func(batchcapture.AppScope) (bool, error) {
+	return func(scope batchcapture.AppScope) (bool, error) {
+		fmt.Fprintf(out, "\nThe application reports this verified identity for the batch:\n"+
+			"  actor:        %s\n  organization: %s\n\n"+
+			"Attribute this batch to that organization? [y/N] ", scope.ActorID, scope.OrganizationID)
+		return readYes(in), nil
+	}
+}
+
+// readYes reads one line and treats anything that is not an explicit yes as a
+// refusal, including EOF. A missing answer is never a default: the whole point of
+// the prompt is that a person looked at the value.
+func readYes(in io.Reader) bool {
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && line == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // describeStop turns any stop-for-a-person failure into the message the operator reads.
@@ -196,26 +268,30 @@ func (c config) validate() error {
 }
 
 // ensureQueue creates the queue when it is absent and otherwise adds the item if it
-// is not already recorded. An existing queue's approved scope is never rewritten:
-// approval belongs to the run that a person confirmed.
+// is not already recorded.
+//
+// A new queue is deliberately created WITHOUT a confirmed scope. Approval belongs to
+// the identity the application reports and a person confirms at the first item's
+// delivery (design section 4 D1.4); writing the flags' values here would mark an
+// unverified expectation as consent, which is what a scripted run would then walk
+// straight past. An existing approval is never rewritten.
 func ensureQueue(cfg config) (string, error) {
 	queue, err := batchcapture.Load(cfg.QueuePath)
 	switch {
 	case errors.Is(err, batchcapture.ErrQueueMissing):
 		queue = batchcapture.NewQueue(cfg.BatchID)
-		if err := queue.ApproveScope(cfg.ActorID, cfg.Organization); err != nil {
-			return "", err
-		}
 		queue.Items = append(queue.Items, batchcapture.Item{Seq: 1, URL: cfg.SourceURL, State: batchcapture.ItemQueued})
 		if err := queue.Save(cfg.QueuePath); err != nil {
 			return "", err
 		}
-		fmt.Printf("created queue %s\n", cfg.QueuePath)
+		fmt.Printf("created queue %s (no confirmed scope yet)\n", cfg.QueuePath)
 		return cfg.QueuePath, nil
 	case err != nil:
 		return "", err
 	}
-	if !queue.ScopeMatches(cfg.ActorID, cfg.Organization) {
+	// Only a queue that already carries a confirmed scope can disagree with this run.
+	// An unapproved queue has no scope to contradict; the confirmation happens later.
+	if queue.ScopeApproved && !queue.ScopeMatches(cfg.ActorID, cfg.Organization) {
 		return "", fmt.Errorf("queue %s is approved for %s/%s, not for %s/%s",
 			cfg.QueuePath, queue.ApprovedActorID, queue.ApprovedOrganizationID, cfg.ActorID, cfg.Organization)
 	}
