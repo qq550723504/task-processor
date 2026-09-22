@@ -20,8 +20,7 @@ param(
     [string]$Extension,
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
-    [string]$Profile,
-    [switch]$Headless
+    [string]$Profile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,7 +29,9 @@ $ErrorActionPreference = 'Stop'
 # identity the application reports as verified, after a person confirms it at the
 # terminal. The command prompts on stdin twice when needed (confirm the scope; redo
 # the item after clearing a captcha or login wall), so run it from an interactive
-# console and leave the browser window open until it exits.
+# console and leave the browser window open until it exits. There is deliberately no
+# headless switch: the person who clears the captcha and confirms the scope needs a
+# visible window, and the command refuses --headless for that reason.
 #
 # Exit code 3 means stop and verify: either the outcome is unknown, or an earlier item
 # in the queue may already have been published. Both require a human check instead of
@@ -47,7 +48,6 @@ try {
         '-extension', $Extension,
         '-profile', $Profile
     )
-    if ($Headless) { $arguments += '-headless' }
     & go @arguments
     $result = $LASTEXITCODE
 } finally {

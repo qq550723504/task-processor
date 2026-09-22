@@ -165,7 +165,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 
 	popup, err := driver.PrepareItem(item.URL)
 	if err != nil {
-		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath, fmt.Errorf("prepare item: %w", err))
+		return stopWithoutSubmit(persist, queue, item, opts.QueuePath, result, fmt.Errorf("prepare item: %w", err))
 	}
 	defer func() { _ = popup.Close() }()
 
@@ -183,7 +183,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 		// then re-done (design sections 4 D1.3 and 7).
 		verdict := Classify(observation)
 		result.Verdict = verdict
-		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath,
+		return stopWithoutSubmit(persist, queue, item, opts.QueuePath, result,
 			fmt.Errorf("%w: page classified as %s before any capture", ErrVerdictStop, verdict))
 	}
 
@@ -215,7 +215,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 		}
 		return result, fmt.Errorf("%w: %s", ErrVerdictStop, item.Reason)
 	default:
-		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath, fmt.Errorf(
+		return stopWithoutSubmit(persist, queue, item, opts.QueuePath, result, fmt.Errorf(
 			"%w: page classified as %s (%s)", ErrVerdictStop, verdict, captureNote))
 	}
 
@@ -227,10 +227,10 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	// have delivered the payload even though its result URL was never observed.
 	existingTabs, err := popup.PrepareHandoff()
 	if err != nil {
-		return result, stopWithoutSubmit(persist, queue, item, opts.QueuePath, fmt.Errorf("handoff: %w", err))
+		return stopWithoutSubmit(persist, queue, item, opts.QueuePath, result, fmt.Errorf("handoff: %w", err))
 	}
 	if err := popup.DispatchHandoff(); err != nil {
-		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("dispatch handoff: %w", err))
+		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("dispatch handoff: %w", err))
 	}
 
 	// Point of no return: the application may now hold a payload for this item.
@@ -242,17 +242,18 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	}
 	appURL, err := awaitHandoff(popup, existingTabs)
 	if err != nil {
-		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("handoff: %w", err))
+		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("handoff: %w", err))
 	}
 	ref, err := captureRefFromURL(appURL)
 	if err != nil {
-		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("read handoff key: %w", err))
+		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("read handoff key: %w", err))
 	}
 	item.IdempotencyKey = ref.IdempotencyKey
 	result.IdempotencyKey = ref.IdempotencyKey
 	if err := persist(queue, opts.QueuePath); err != nil {
 		// The key could not be made durable while the payload is already visible, so
 		// whether the item was published cannot be decided locally.
+		result.State = item.State
 		return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
 	}
 
@@ -260,7 +261,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	// from an earlier item cannot be submitted instead (design section 4 D1.2).
 	page, err := driver.AppPageByKey(ref.IdempotencyKey)
 	if err != nil {
-		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("resolve application page: %w", err))
+		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("resolve application page: %w", err))
 	}
 	// Consent is obtained here, and only here: the application is showing the item it
 	// just received next to the identity it verified, so this is the first moment the
@@ -269,14 +270,15 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if needConsent {
 		confirmed, err := confirmScope(driver, page, opts)
 		if err != nil {
-			return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, err)
+			return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, err)
 		}
 		if err := queue.ApproveScope(confirmed.ActorID, confirmed.OrganizationID); err != nil {
-			return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("approve scope: %w", err))
+			return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("approve scope: %w", err))
 		}
 		// The confirmed scope must be durable before it is acted on, for the same
 		// reason the key must be: the payload is already visible to the application.
 		if err := persist(queue, opts.QueuePath); err != nil {
+			result.State = item.State
 			return result, fmt.Errorf("%w: %v; %w", ErrQueueWriteFailed, err, ErrOutcomeUnknown)
 		}
 		approved = confirmed
@@ -288,7 +290,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	// check that no input can distinguish is untestable defence.
 	outcome, err := driver.ConfirmAndSubmit(page, approved)
 	if err != nil {
-		return result, stopAfterHandoff(persist, queue, item, opts.QueuePath, result, err)
+		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, err)
 	}
 	// A terminal result was read back, which design section 15.10 requires to be
 	// recorded rather than replaced by an unknown.
@@ -371,19 +373,27 @@ var ErrOutcomeUnknown = errors.New("batch capture: outcome unknown, stop and ver
 
 // stopWithoutSubmit leaves an item re-doable. It is only correct before a handoff,
 // because before a handoff the application has never seen a payload for this item.
-func stopWithoutSubmit(persist func(*Queue, string) error, queue *Queue, item *Item, path string, cause error) error {
+//
+// It returns the result so the caller reports the state the queue now holds: returning
+// the pre-stop value would print an empty state while the queue says queued, which is
+// exactly the kind of mismatch an operator cannot reconcile during recovery.
+func stopWithoutSubmit(persist func(*Queue, string) error, queue *Queue, item *Item, path string, result ImportResult, cause error) (ImportResult, error) {
 	item.State = ItemQueued
 	item.Reason = cause.Error()
+	result.State = ItemQueued
 	if err := persist(queue, path); err != nil {
-		return fmt.Errorf("%w: %v (original: %w)", ErrQueueWriteFailed, err, cause)
+		return result, fmt.Errorf("%w: %v (original: %w)", ErrQueueWriteFailed, err, cause)
 	}
-	return cause
+	return result, cause
 }
 
 // stopAfterHandoff records that the item's outcome cannot be decided locally. The
 // item is never returned to a capturable state: a second capture would risk a
 // second publication, which is the failure this package exists to prevent.
-func stopAfterHandoff(persist func(*Queue, string) error, queue *Queue, item *Item, path string, result ImportResult, cause error) error {
+//
+// Like stopWithoutSubmit it returns the result rather than only the error, so the
+// caller cannot report a state that disagrees with the durable queue.
+func stopAfterHandoff(persist func(*Queue, string) error, queue *Queue, item *Item, path string, result ImportResult, cause error) (ImportResult, error) {
 	item.State = ItemOutcomeUnknown
 	item.Reason = cause.Error()
 	result.State = ItemOutcomeUnknown
@@ -391,11 +401,11 @@ func stopAfterHandoff(persist func(*Queue, string) error, queue *Queue, item *It
 		// Both errors matter: the write failure explains the tooling problem, and the
 		// unknown outcome is what forbids an automatic retry. Reporting only the write
 		// failure lets a caller read the run as an ordinary failure and try again.
-		return fmt.Errorf("%w: %v (original: %w); %w", ErrQueueWriteFailed, err, cause, ErrOutcomeUnknown)
+		return result, fmt.Errorf("%w: %v (original: %w); %w", ErrQueueWriteFailed, err, cause, ErrOutcomeUnknown)
 	}
 	// The cause stays wrapped as well as the outcome classification, because the two
 	// answer different questions: ErrOutcomeUnknown is what forbids an automatic
 	// retry, and the cause (a scope refusal, an unobservable handoff) is what the
 	// operator has to act on.
-	return fmt.Errorf("%w: %w", ErrOutcomeUnknown, cause)
+	return result, fmt.Errorf("%w: %w", ErrOutcomeUnknown, cause)
 }

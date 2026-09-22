@@ -86,6 +86,10 @@ application reports as verified, after a person confirms it on the terminal. A s
 that disagrees with the application stops the batch. The queue file is created when
 it does not exist, without a confirmed scope.
 
+This command needs a person, so --headless cannot satisfy design section 4 D1.3/D1.4:
+there is no visible window to clear a captcha or login wall in, and no one to confirm
+the scope, so --headless is rejected instead of pretending those steps can happen.
+
 Exit codes: 0 terminal result recorded, 3 stop and verify (outcome unknown, an
 unreadable queue that may already hold a submitted item, or a blocked batch),
 2 usage or other failure.
@@ -100,12 +104,19 @@ unreadable queue that may already hold a submitted item, or a blocked batch),
 	flags.StringVar(&cfg.BrowserPath, "browser", "", "fingerprint browser executable (required)")
 	flags.StringVar(&cfg.ExtensionDist, "extension", "", "unpacked extension directory (required)")
 	flags.StringVar(&cfg.ProfileDir, "profile", "", "browser profile directory (required; the 1688 login lives here)")
-	flags.BoolVar(&cfg.Headless, "headless", false, "run headless")
+	flags.BoolVar(&cfg.Headless, "headless", false, "run headless (only valid when nothing can require a person)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if err := cfg.validate(); err != nil {
 		return err
+	}
+	// Design section 4 D1.3 keeps the browser visible for the person who has to clear
+	// a login wall or a captcha, and section 4 D1.4 requires that same person to
+	// confirm the batch scope. Neither step can happen in a headless run, so the mode
+	// is refused up front rather than producing a prompt that points at no window.
+	if cfg.Headless {
+		return fmt.Errorf("--headless is not supported: a person must be able to clear a login wall or captcha in a visible window and confirm the batch scope")
 	}
 
 	// The queue is read before the browser is touched, so this failure must already

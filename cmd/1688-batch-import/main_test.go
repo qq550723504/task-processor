@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -227,5 +228,30 @@ func TestEnsureQueueAcceptsAnUnapprovedQueueUnderAnyScope(t *testing.T) {
 	other.Organization = "org-b"
 	if _, err := ensureQueue(other); err != nil {
 		t.Fatalf("an unapproved queue refused a run: %v", err)
+	}
+}
+
+// TestRunRejectsHeadlessMode keeps the CLI from offering a mode in which the design's
+// human steps are impossible: section 4 D1.3 needs a visible window to clear a login
+// wall or captcha in, and section 4 D1.4 needs a person to confirm the batch scope.
+// A headless run would keep the gate loop alive while pointing the operator at a window
+// that does not exist. The refusal happens before any browser or queue work.
+func TestRunRejectsHeadlessMode(t *testing.T) {
+	cfg := validConfig(t)
+	args := append(cfg.args(), "--headless")
+
+	err := run(args)
+	if err == nil {
+		t.Fatal("run accepted --headless")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("the refusal does not explain itself: %v", err)
+	}
+	if !strings.Contains(err.Error(), "visible window") {
+		t.Fatalf("the refusal does not name the missing window: %v", err)
+	}
+	// Nothing may have been created: the check precedes the queue and the browser.
+	if _, statErr := os.Stat(cfg.QueuePath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("a rejected run touched the queue file: %v", statErr)
 	}
 }

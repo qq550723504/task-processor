@@ -904,9 +904,15 @@ func TestFixtureDriverRecordsOutcomeUnknownWhenKeyWriteFails(t *testing.T) {
 		}
 		return errors.New("injected write failure")
 	}
-	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failingAfterFirst})
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failingAfterFirst})
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("err=%v, want ErrOutcomeUnknown", err)
+	}
+	// The returned result has to name the state the run stopped in. Reporting the zero
+	// value here would print an empty state for an item that is in fact submitting, so
+	// an operator reading the CLI output could not tell what to look for.
+	if result.State != ItemSubmitting {
+		t.Fatalf("result state %q, want submitting (the state whose durability was not confirmed)", result.State)
 	}
 	stored, loadErr := Load(queuePath)
 	if loadErr != nil {
@@ -973,9 +979,12 @@ func TestFixtureDriverStopsBeforeHandoffOnChallenge(t *testing.T) {
 	routeFixtureChallenge(t, driver)
 	queuePath := fixtureQueue(t, fixtureApprovedScope)
 
-	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope})
 	if !errors.Is(err, ErrVerdictStop) {
 		t.Fatalf("err=%v, want ErrVerdictStop", err)
+	}
+	if result.State != ItemQueued {
+		t.Fatalf("result state %q, want queued to match the durable queue", result.State)
 	}
 	stored, loadErr := Load(queuePath)
 	if loadErr != nil {
@@ -1166,6 +1175,12 @@ func TestFixtureDriverTreatsDelistedPageAsSingleItemFailure(t *testing.T) {
 	if result.Verdict != VerdictSingleItemFailure {
 		t.Fatalf("verdict=%q, want %q", result.Verdict, VerdictSingleItemFailure)
 	}
+	// The returned result must agree with what was made durable. Before this was
+	// fixed, the pre-handoff stops returned the zero value (an empty state) while the
+	// queue held a real state, so the CLI printed a blank state during recovery.
+	if result.State != ItemFailed {
+		t.Fatalf("result state %q, want failed to match the durable queue", result.State)
+	}
 	stored, loadErr := Load(queuePath)
 	if loadErr != nil {
 		t.Fatalf("reload queue: %v", loadErr)
@@ -1205,9 +1220,12 @@ func TestFixtureDriverKeepsUnknownOutcomeWhenTheFinalWriteFails(t *testing.T) {
 		}
 		return errors.New("disk is gone")
 	}
-	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failFinal})
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failFinal})
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("err=%v, want ErrOutcomeUnknown to survive the failed write", err)
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown even though the write failed", result.State)
 	}
 	if !errors.Is(err, ErrQueueWriteFailed) {
 		t.Fatalf("the failed write is not reported: %v", err)
@@ -1232,7 +1250,7 @@ func TestFixtureDriverKeepsOutcomeUnknownWhenTheHandoffResultCannotBeObserved(t 
 	routeFixtureProduct(t, driver)
 	queuePath := fixtureQueue(t, fixtureApprovedScope)
 
-	_, err := ImportOne(driver, ImportOptions{
+	result, err := ImportOne(driver, ImportOptions{
 		QueuePath: queuePath,
 		Approved:  fixtureApprovedScope,
 		AwaitHandoff: func(*Popup, map[string]bool) (string, error) {
@@ -1244,6 +1262,9 @@ func TestFixtureDriverKeepsOutcomeUnknownWhenTheHandoffResultCannotBeObserved(t 
 	}
 	if errors.Is(err, ErrVerdictStop) {
 		t.Fatalf("an item that reached the handoff was reported as re-doable: %v", err)
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown to match the durable queue", result.State)
 	}
 
 	stored, loadErr := Load(queuePath)
@@ -1410,7 +1431,7 @@ func TestFixtureDriverStopsWhenThePersonDeclinesTheScope(t *testing.T) {
 	routeFixtureProduct(t, driver)
 	queuePath := fixtureUnapprovedQueue(t)
 
-	_, err := ImportOne(driver, ImportOptions{
+	result, err := ImportOne(driver, ImportOptions{
 		QueuePath:    queuePath,
 		Approved:     fixtureApprovedScope,
 		ConfirmScope: func(AppScope) (bool, error) { return false, nil },
@@ -1420,6 +1441,9 @@ func TestFixtureDriverStopsWhenThePersonDeclinesTheScope(t *testing.T) {
 	}
 	if !errors.Is(err, ErrOutcomeUnknown) {
 		t.Fatalf("a declined scope after the handoff is not ambiguous: %v", err)
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown to match the durable queue", result.State)
 	}
 	stored, loadErr := Load(queuePath)
 	if loadErr != nil {
@@ -1452,7 +1476,7 @@ func TestFixtureDriverRefusesAnUnapprovedQueueWhenTheApplicationDisagrees(t *tes
 	queuePath := fixtureUnapprovedQueue(t)
 
 	asked := false
-	_, err := ImportOne(driver, ImportOptions{
+	result, err := ImportOne(driver, ImportOptions{
 		QueuePath: queuePath,
 		Approved:  fixtureApprovedScope,
 		ConfirmScope: func(AppScope) (bool, error) {
@@ -1465,6 +1489,9 @@ func TestFixtureDriverRefusesAnUnapprovedQueueWhenTheApplicationDisagrees(t *tes
 	}
 	if asked {
 		t.Fatalf("a person was asked to confirm a scope the application did not report")
+	}
+	if result.State != ItemOutcomeUnknown {
+		t.Fatalf("result state %q, want outcome_unknown to match the durable queue", result.State)
 	}
 	stored, loadErr := Load(queuePath)
 	if loadErr != nil {
