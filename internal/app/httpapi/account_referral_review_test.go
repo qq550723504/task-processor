@@ -54,6 +54,55 @@ func TestWithdrawalReviewQueueIncludesClaimantAndPayoutInstructions(t *testing.T
 	}
 }
 
+func TestWriteReferralEarningsJSONIncludesOwnedLedgerEntries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	when := time.Date(2026, 9, 21, 1, 2, 3, 0, time.UTC)
+	earnings := economics.Earnings{Referrer: "user-1", Currency: economics.CurrencyCNY, PendingMinor: 2000, AvailableMinor: 10000, ReservedMinor: 0, AdjustmentMinor: -500, Version: 3, UpdatedAt: when}
+	entries := []economics.EarningsLedgerEntry{{EntryID: "entry-1", Referrer: "user-1", Currency: economics.CurrencyCNY, PaymentID: "payment-1", EntryType: "COMMISSION", AmountMinor: 10000, ReferenceID: "payment-1", OccurredAt: when}}
+
+	writeReferralEarningsJSON(c, earnings, entries)
+	var response struct {
+		SchemaVersion string `json:"schemaVersion"`
+		EntryLimit    int    `json:"entryLimit"`
+		Entries       []struct {
+			EntryID     string `json:"entryId"`
+			PaymentID   string `json:"paymentId"`
+			EntryType   string `json:"entryType"`
+			AmountMinor string `json:"amountMinor"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.SchemaVersion != "referral-earnings-v1" || response.EntryLimit != 100 || len(response.Entries) != 1 || response.Entries[0].EntryID != "entry-1" || response.Entries[0].PaymentID != "payment-1" || response.Entries[0].EntryType != "COMMISSION" || response.Entries[0].AmountMinor != "10000" {
+		t.Fatalf("earnings response=%s", w.Body.String())
+	}
+}
+
+func TestWriteReferralRulesJSONUsesEconomicsContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	writeReferralRulesJSON(c)
+	var response struct {
+		SchemaVersion          string `json:"schemaVersion"`
+		Currency               string `json:"currency"`
+		CommissionRateBPS      int64  `json:"commissionRateBps"`
+		SettlementPeriodDays   int    `json:"settlementPeriodDays"`
+		MinimumWithdrawalMinor string `json:"minimumWithdrawalMinor"`
+		WithdrawalReview       string `json:"withdrawalReview"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.SchemaVersion != "referral-rules-v1" || response.Currency != economics.CurrencyCNY || response.CommissionRateBPS != economics.CommissionRateBPS || response.SettlementPeriodDays != economics.SettlementPeriodDays || response.MinimumWithdrawalMinor != "10000" || response.WithdrawalReview != "manual" {
+		t.Fatalf("rules response=%s", w.Body.String())
+	}
+}
+
 func TestReferralMaturityLoopStopsWithServerShutdown(t *testing.T) {
 	server := &http.Server{}
 	called := make(chan struct{}, 4)

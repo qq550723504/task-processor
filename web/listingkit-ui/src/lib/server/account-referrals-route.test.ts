@@ -18,6 +18,7 @@ import {
 } from "@/app/api/account/referrals/route";
 import { POST as complete } from "@/app/api/account/referrals/complete/route";
 import { GET as readPayoutMethods, POST as createPayoutMethod } from "@/app/api/account/referral-payout-methods/route";
+import { GET as readEconomics } from "@/app/api/account/referral-earnings/route";
 
 function request(path = "referrals", method = "GET", headers: Record<string, string> = {}, signal?: AbortSignal) {
   return new NextRequest(`https://app.test/api/account/${path}`, {
@@ -119,7 +120,15 @@ describe("authenticated account referrals BFF", () => {
     state.blocked = true;
     const pending = read(request());
     await vi.advanceTimersByTimeAsync(15001);
-    expect((await pending).status).toBe(504);
+    expect((await pending)?.status).toBe(504);
+  });
+
+  it("keeps referral economics authentication within the one request deadline", async () => {
+    vi.useFakeTimers();
+    state.blocked = true;
+    const pending = readEconomics(request("referral-earnings"));
+    await vi.advanceTimersByTimeAsync(15001);
+    expect((await pending)?.status).toBe(504);
   });
 
   it("never dispatches after authentication resolves beyond the total deadline", async () => {
@@ -134,6 +143,23 @@ describe("authenticated account referrals BFF", () => {
     release();
     await vi.runAllTimersAsync();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves an unknown outcome when a referral write times out after dispatch", async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn().mockResolvedValue(new Response(new ReadableStream({ start() {} }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    const pending = createPayoutMethod(new NextRequest("https://app.test/api/account/referral-payout-methods", {
+      method: "POST",
+      headers: { "X-Expected-User-ID": "subject-1", Origin: "https://app.test", "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json", "Idempotency-Key": "payout-key" },
+      body: JSON.stringify({ type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }),
+    }));
+    await vi.advanceTimersByTimeAsync(15001);
+    const response = await pending;
+    if (!response) throw new Error("payout method route returned no response");
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it("cancels a hanging empty-body read when the request is aborted", async () => {

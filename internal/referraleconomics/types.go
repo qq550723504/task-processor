@@ -13,6 +13,7 @@ const (
 	CommissionRateBPS      = int64(1000)
 	BPSDenominator         = int64(10000)
 	MinimumWithdrawalMinor = int64(10000)
+	SettlementPeriodDays   = 14
 )
 
 var (
@@ -40,6 +41,15 @@ type Earnings struct {
 	PendingMinor, AvailableMinor, ReservedMinor, AdjustmentMinor int64
 	Version                                                      int64
 	UpdatedAt                                                    time.Time
+}
+type EarningsLedgerEntry struct {
+	EntryID, Referrer, Currency, PaymentID, EntryType, ReferenceID string
+	AmountMinor                                                    int64
+	OccurredAt                                                     time.Time
+}
+type EarningsSnapshot struct {
+	Earnings Earnings
+	Entries  []EarningsLedgerEntry
 }
 type WithdrawalMethod string
 
@@ -87,6 +97,7 @@ type Store interface {
 	RecordRefund(context.Context, money.RefundSettlement) error
 	Mature(context.Context, time.Time) error
 	ReadEarnings(context.Context, string, string) (Earnings, error)
+	ReadEarningsSnapshot(context.Context, string, string, int) (EarningsSnapshot, error)
 	ListWithdrawals(context.Context, string) ([]Withdrawal, error)
 	ListPendingWithdrawals(context.Context) ([]Withdrawal, error)
 	RequestWithdrawal(context.Context, RequestWithdrawal) (Withdrawal, error)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/httproute"
 	profileStore "task-processor/internal/integration/persistence/accountprofile"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -57,6 +59,115 @@ func TestAccountBusinessProfilePersistsAcrossReadsWithoutOrganizationLeakage(t *
 	require.Contains(t, other.Body.String(), `"userId":"user-b"`)
 	require.Contains(t, other.Body.String(), `"userRole":null`)
 	require.NotContains(t, other.Body.String(), "品牌方")
+}
+
+type accountIdentitySelfServiceSpy struct {
+	token     string
+	operation zitadel.SelfServiceOperation
+	body      []byte
+	profile   zitadel.SelfServiceProfile
+	err       error
+}
+
+func (s *accountIdentitySelfServiceSpy) Execute(_ context.Context, token string, operation zitadel.SelfServiceOperation, body []byte) error {
+	s.token, s.operation, s.body = token, operation, append([]byte(nil), body...)
+	return s.err
+}
+
+func TestAccountIdentityPreservesUnknownMutationOutcome(t *testing.T) {
+	spy := &accountIdentitySelfServiceSpy{err: &zitadel.SelfServiceOutcomeUnknownError{}}
+	module := accountIdentityModule{client: spy}
+	request := httptest.NewRequest(http.MethodPut, accountIdentityEmailPath, strings.NewReader(`{"email":"user@example.test"}`))
+	request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = request
+	module.execute(ginContext)
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"code":"RESULT_UNVERIFIED"`)
+}
+
+func (s *accountIdentitySelfServiceSpy) ReadProfile(context.Context, string) (zitadel.SelfServiceProfile, error) {
+	return s.profile, nil
+}
+
+func TestAccountIdentityUsesVerifiedUserTokenWithoutOrganizationContext(t *testing.T) {
+	spy := &accountIdentitySelfServiceSpy{}
+	module := accountIdentityModule{client: spy}
+	request := httptest.NewRequest(http.MethodPut, accountIdentityEmailPath, strings.NewReader(`{"email":"user@example.test"}`))
+	request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = request
+	module.execute(ginContext)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, "user-token", spy.token)
+	require.Equal(t, zitadel.SelfServiceSetEmail, spy.operation)
+	require.JSONEq(t, `{"email":"user@example.test"}`, string(spy.body))
+	require.Contains(t, recorder.Body.String(), `"state":"verification_pending"`)
+}
+
+func TestAccountIdentityMapsVerificationCodeToOfficialProviderField(t *testing.T) {
+	for _, operation := range []struct {
+		path string
+		name zitadel.SelfServiceOperation
+	}{
+		{path: accountIdentityEmailVerifyPath, name: zitadel.SelfServiceVerifyEmail},
+		{path: accountIdentityPhoneVerifyPath, name: zitadel.SelfServiceVerifyPhone},
+	} {
+		t.Run(string(operation.name), func(t *testing.T) {
+			spy := &accountIdentitySelfServiceSpy{}
+			module := accountIdentityModule{client: spy}
+			request := httptest.NewRequest(http.MethodPost, operation.path, strings.NewReader(`{"code":"123456"}`))
+			request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
+			recorder := httptest.NewRecorder()
+			ginContext, _ := gin.CreateTestContext(recorder)
+			ginContext.Request = request
+			module.execute(ginContext)
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Equal(t, operation.name, spy.operation)
+			require.JSONEq(t, `{"verificationCode":"123456"}`, string(spy.body))
+		})
+	}
+}
+
+func TestAccountIdentityRegistersOfficialOperationsWithCorrectMethods(t *testing.T) {
+	registry := kernelmodule.NewRegistry()
+	require.NoError(t, (accountIdentityModule{client: &accountIdentitySelfServiceSpy{}}).Register(registry))
+	want := map[string][]string{
+		accountIdentityProfilePath:     {http.MethodGet, http.MethodPut},
+		accountIdentityEmailPath:       {http.MethodPut},
+		accountIdentityEmailResendPath: {http.MethodPost},
+		accountIdentityEmailVerifyPath: {http.MethodPost},
+		accountIdentityPhonePath:       {http.MethodPut},
+		accountIdentityPhoneResendPath: {http.MethodPost},
+		accountIdentityPhoneVerifyPath: {http.MethodPost},
+		accountIdentityPasswordPath:    {http.MethodPut},
+	}
+	for path := range want {
+		slices.Sort(want[path])
+	}
+	got := make(map[string][]string)
+	for _, route := range registry.Routes() {
+		got[route.Path] = append(got[route.Path], route.Method)
+	}
+	for path := range got {
+		slices.Sort(got[path])
+	}
+	require.Equal(t, want, got)
+}
+
+func TestAccountIdentityReadsProfileUsingVerifiedUserToken(t *testing.T) {
+	spy := &accountIdentitySelfServiceSpy{profile: zitadel.SelfServiceProfile{FirstName: "First", LastName: "Last", DisplayName: "Name"}}
+	module := accountIdentityModule{client: spy}
+	request := httptest.NewRequest(http.MethodGet, accountIdentityProfilePath, nil)
+	request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = request
+	module.readProfile(ginContext)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.JSONEq(t, `{"schemaVersion":"account-identity-profile-v1","userId":"user-a","firstName":"First","lastName":"Last","nickName":"","displayName":"Name","preferredLanguage":"","gender":"","source":"zitadel_auth_v1"}`, recorder.Body.String())
 }
 
 func TestAccountBusinessProfileMutationRequiresLiveOrganizationResolution(t *testing.T) {

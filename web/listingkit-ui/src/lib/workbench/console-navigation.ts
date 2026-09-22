@@ -18,7 +18,20 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   pending("数据服务", "data", [pending("数据市场", "data/market"), pending("API管理", "data/api"), pending("我的数据", "data/mine")]),
   pending("店铺中心", "store-center", [{ label: "我的店铺", href: "/workbench/stores", availability: "connected" }, pending("店铺商品", "store-products"), pending("订单履约", "store-orders")]),
   pending("套餐与权益", "plans", [{ label: "套餐方案", href: "/workbench/plans/options", availability: "connected" }, { label: "我的权益", href: "/workbench/plans/entitlements", availability: "connected" }, pending("用量明细", "plans/usage"), pending("充值中心", "plans/top-up"), pending("账单与订单", "plans/orders")]),
-  { label: "我的账户", href: "/workbench/account", availability: "connected", children: [{ label: "账户资料", href: "/workbench/account/profile", availability: "connected" }, { label: "企业空间", href: "/workbench/account/organization", availability: "connected", children: [{ label: "成员与权限", href: "/workbench/account/organization/members", availability: "connected" }, { label: "资源与额度", href: "/workbench/account/organization/resources", availability: "connected" }, { label: "操作记录", href: "/workbench/account/organization/audit", availability: "connected" }] }, { label: "推广与收益", href: "/workbench/account/referrals", availability: "connected" }] },
+  { label: "我的账户", href: "/workbench/account", availability: "connected", children: [
+    { label: "账户资料", href: "/workbench/account/profile", availability: "connected", children: [
+      { label: "账户设置", href: "/workbench/account/profile/settings", availability: "connected" },
+      { label: "经营画像", href: "/workbench/account/profile/business", availability: "connected" },
+      { label: "认证信息", href: "/workbench/account/profile/verification", availability: "connected" },
+    ] },
+    { label: "企业空间", href: "/workbench/account/organization", availability: "connected", children: [{ label: "成员与权限", href: "/workbench/account/organization/members", availability: "connected" }, { label: "资源与额度", href: "/workbench/account/organization/resources", availability: "connected" }, { label: "操作记录", href: "/workbench/account/organization/audit", availability: "connected" }] },
+    { label: "推广与收益", href: "/workbench/account/referrals", availability: "connected", children: [
+      { label: "推广中心", href: "/workbench/account/referrals/center", availability: "connected" },
+      { label: "收益明细", href: "/workbench/account/referrals/earnings", availability: "connected" },
+      { label: "提现管理", href: "/workbench/account/referrals/withdrawals", availability: "connected" },
+      { label: "推广规则", href: "/workbench/account/referrals/rules", availability: "connected" },
+    ] },
+  ] },
 ];
 
 export type ConsoleRoute = { node: ConsoleNavNode; trail: readonly ConsoleNavNode[] };

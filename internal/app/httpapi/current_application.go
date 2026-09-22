@@ -45,6 +45,15 @@ var currentWorkbenchApplicationRoutes = []currentApplicationRoute{
 var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodGet, Path: accountBusinessProfilePath},
 	{Method: http.MethodPut, Path: accountBusinessProfilePath},
+	{Method: http.MethodGet, Path: accountIdentityProfilePath},
+	{Method: http.MethodPut, Path: accountIdentityProfilePath},
+	{Method: http.MethodPut, Path: accountIdentityEmailPath},
+	{Method: http.MethodPost, Path: accountIdentityEmailResendPath},
+	{Method: http.MethodPost, Path: accountIdentityEmailVerifyPath},
+	{Method: http.MethodPut, Path: accountIdentityPhonePath},
+	{Method: http.MethodPost, Path: accountIdentityPhoneResendPath},
+	{Method: http.MethodPost, Path: accountIdentityPhoneVerifyPath},
+	{Method: http.MethodPut, Path: accountIdentityPasswordPath},
 }
 
 var currentPlatformSubscriptionApplicationRoutes = []currentApplicationRoute{
@@ -76,6 +85,7 @@ type currentApplicationFactories struct {
 	buildAccountAudit               func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
+	buildAccountIdentity            func(*config.Config) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
@@ -143,7 +153,10 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer, projectID)
 		},
-		buildAccountProfile:    func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
+		buildAccountProfile: func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
+		buildAccountIdentity: func(cfg *config.Config) (kernelmodule.Module, error) {
+			return accountIdentityModule{client: zitadelruntime.NewSelfServiceClient(cfg.ListingKit.Zitadel.IssuerURL, &http.Client{Timeout: 5 * time.Second})}, nil
+		},
 		buildAccountAllocation: buildAccountResourceAllocationModule,
 	}
 }
@@ -271,6 +284,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return nil, errors.New("current account profile module unavailable")
 		}
 		modules = append(modules, accountProfile)
+		if factories.buildAccountIdentity != nil {
+			accountIdentity, identityErr := factories.buildAccountIdentity(cfg)
+			if identityErr != nil {
+				return nil, fmt.Errorf("build current account identity module: %w", identityErr)
+			}
+			if accountIdentity == nil {
+				return nil, errors.New("current account identity module unavailable")
+			}
+			modules = append(modules, accountIdentity)
+		}
 	}
 	if factories.buildAcquisition != nil {
 		acquisition, err := factories.buildAcquisition(authorizer, *workbench.authDependencies)
@@ -527,7 +550,7 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	for keyID, key := range secrets.Encryption {
 		payoutEncryptionKeys[keyID] = append([]byte(nil), key...)
 	}
-	return referralHTTPModule{commands: service, economics: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
+	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {
