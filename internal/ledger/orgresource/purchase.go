@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	OperationGrantCommercialPurchase = "grant_commercial_purchase"
-	SourceCommercialOrderItem        = "commercial_order_item"
+	OperationGrantCommercialPurchase               = "grant_commercial_purchase"
+	SourceCommercialOrderItem                      = "commercial_order_item"
 	PrincipalTrustedCommercial       PrincipalKind = "trusted_commercial"
 )
 
@@ -27,52 +27,52 @@ type PurchasedGrantAuthorizer interface {
 }
 
 type PurchasedResourceGrantInput struct {
-	OrganizationID       string
-	OperationID          string
-	CommercialOrderID    string
+	OrganizationID        string
+	OperationID           string
+	CommercialOrderID     string
 	CommercialOrderItemID string
-	ResourceType         ResourceType
-	Quantity             int64
-	Principal            Principal
+	ResourceType          ResourceType
+	Quantity              int64
+	Principal             Principal
 }
 
 type PurchasedResourceGrantReplay struct {
-	OrganizationID       string
-	OperationID          string
-	CommercialOrderID    string
+	OrganizationID        string
+	OperationID           string
+	CommercialOrderID     string
 	CommercialOrderItemID string
-	ResourceType         ResourceType
-	Quantity             int64
-	SourceType           string
-	SourceIdentity       string
-	RequestFingerprint  string
+	ResourceType          ResourceType
+	Quantity              int64
+	SourceType            string
+	SourceIdentity        string
+	RequestFingerprint    string
 }
 
 type PurchasedResourceGrantExecution struct {
-	OrganizationID       string
-	OperationID          string
-	OperationType        string
-	CommercialOrderID    string
+	OrganizationID        string
+	OperationID           string
+	OperationType         string
+	CommercialOrderID     string
 	CommercialOrderItemID string
-	ResourceType         ResourceType
-	Quantity             int64
-	SourceType           string
-	SourceIdentity       string
-	ActorID              string
-	RequestFingerprint  string
+	ResourceType          ResourceType
+	Quantity              int64
+	SourceType            string
+	SourceIdentity        string
+	ActorID               string
+	RequestFingerprint    string
 }
 
 type PurchasedResourceGrantSnapshot struct {
-	OperationID          string       `json:"operation_id"`
-	OrganizationID       string       `json:"organization_id"`
-	CommercialOrderID    string       `json:"commercial_order_id"`
+	OperationID           string       `json:"operation_id"`
+	OrganizationID        string       `json:"organization_id"`
+	CommercialOrderID     string       `json:"commercial_order_id"`
 	CommercialOrderItemID string       `json:"commercial_order_item_id"`
-	ResourceType         ResourceType `json:"resource_type"`
-	Quantity             string       `json:"quantity"`
-	BalanceAfter         string       `json:"balance_after"`
-	SourceType           string       `json:"source_type"`
-	SourceIdentity       string       `json:"source_identity"`
-	EventID              string       `json:"event_id"`
+	ResourceType          ResourceType `json:"resource_type"`
+	Quantity              string       `json:"quantity"`
+	BalanceAfter          string       `json:"balance_after"`
+	SourceType            string       `json:"source_type"`
+	SourceIdentity        string       `json:"source_identity"`
+	EventID               string       `json:"event_id"`
 }
 
 type PurchasedResourceGrantResult struct {
@@ -145,7 +145,7 @@ func (service *PurchasedResourceGrantService) GrantPurchasedResource(ctx context
 		Quantity:              execution.Quantity,
 		SourceType:            execution.SourceType,
 		SourceIdentity:        execution.SourceIdentity,
-		RequestFingerprint:   execution.RequestFingerprint,
+		RequestFingerprint:    execution.RequestFingerprint,
 	}
 	if result, found, replayErr := service.executor.ReplayPurchasedResourceGrant(ctx, replay); replayErr != nil {
 		return PurchasedResourceGrantResult{}, replayErr
