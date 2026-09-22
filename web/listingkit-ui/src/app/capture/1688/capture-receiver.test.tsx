@@ -105,3 +105,116 @@ describe("Browser receiver lifecycle", () => {
     render(<CaptureReceiver />); await screen.findByText('<img src=x onerror="alert(1)">'); expect(document.querySelector("img")).toBeNull();
   });
 });
+
+// The batch executor drives this page without reading its prose. It reads one DOM
+// contract: the verified scope, the real confirmation control, the page's own refusal
+// (design section 4 D1.2 guard 3), and a terminal result it may record (section 15.10).
+// These tests pin that contract to the exact selectors internal/batchcapture/apppage.go
+// queries.
+describe("Executor-readable application contract", () => {
+  const node = (selector: string) => document.querySelector(selector);
+  // The containers are structural: they must exist whether or not they carry a value,
+  // so an assertion that nothing was published cannot pass by the contract being absent.
+  const value = (selector: string, attribute?: string) => {
+    const found = node(selector);
+    expect(found).not.toBeNull();
+    return attribute ? found?.getAttribute(attribute) : found?.textContent;
+  };
+  const result = () => value("[data-batch-submit-result]", "data-batch-submit-result");
+  const refusal = () => value("[data-batch-submit-refusal]");
+  const submit = async () => {
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+  };
+  it("exposes the verified scope and marks the control the executor must click", async () => {
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    expect(node("[data-batch-scope-actor]")?.textContent).toBe("actor");
+    expect(node("[data-batch-scope-organization]")?.textContent).toBe("org-B");
+    // The executor resolves the control with a first-match query, so exactly one node may
+    // carry the marker; a second one would make which control gets clicked ambiguous.
+    expect(document.querySelectorAll("[data-batch-confirm-submit]")).toHaveLength(1);
+    expect(node("[data-batch-confirm-submit]")).toBe(screen.getByRole("button", { name: "Confirm and submit" }));
+    expect(screen.getByRole("button", { name: "Confirm and submit" })).toBeEnabled();
+  });
+  it("never marks a control the executor could mistake for the submit control", async () => {
+    let finish!: (value: typeof receipt) => void;
+    mocks.capture.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await waitFor(() => expect(mocks.capture).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Stop waiting" })).toBeVisible();
+    expect(document.querySelectorAll("[data-batch-confirm-submit]")).toHaveLength(0);
+    await act(async () => finish(receipt));
+  });
+  it("publishes no scope contract while the application has not verified a context", async () => {
+    mocks.context = { ...mocks.context, isLoading: true };
+    render(<CaptureReceiver />); await screen.findByText("Browser fixture");
+    expect(node("[data-batch-scope-actor]")).toBeNull();
+    expect(node("[data-batch-scope-organization]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Confirm and submit" })).toBeDisabled();
+  });
+  it("records a terminal published result with its operation id and no refusal", async () => {
+    await submit();
+    expect(result()).toBe(""); expect(refusal()).toBe("");
+    await screen.findByText("Published version 1");
+    expect(result()).toBe("published");
+    expect(node("[data-batch-submit-result]")?.getAttribute("data-batch-operation-id")).toBe(op);
+    expect(refusal()).toBe("");
+  });
+  it("records a terminal failure as a terminal result, not as a refusal", async () => {
+    mocks.capture.mockResolvedValue({ ...receipt, outcome: "failed", productKey: undefined, publicationId: undefined, catalogVersion: undefined });
+    await submit(); await screen.findByText(/recorded this operation as failed/);
+    expect(result()).toBe("failed"); expect(refusal()).toBe("");
+  });
+  it("never publishes an in-flight read as a terminal result", async () => {
+    mocks.read.mockResolvedValue({ ...receipt, outcome: "acquiring", productKey: undefined, publicationId: undefined, catalogVersion: undefined });
+    window.history.replaceState(null, "", `/capture/1688#operationKey=${key}`);
+    render(<CaptureReceiver />); fireEvent.click(await screen.findByRole("button", { name: "Check original operation" }));
+    await screen.findByText(/Outcome is unknown/);
+    expect(result()).toBe(""); expect(refusal()).toBe("");
+  });
+  it.each([
+    ["CONTEXT_UNAVAILABLE", "retry-drift", /Context changed/],
+    ["ACQUISITION_CAPACITY", "ACQUISITION_CAPACITY", /capacity is full/],
+    ["DEADLINE_EXCEEDED", "DEADLINE_EXCEEDED", /not submitted before the deadline/],
+    ["INVALID_ACQUISITION", "INVALID_ACQUISITION", /rejected before admission/],
+    ["SOURCE_TOO_LARGE", "SOURCE_TOO_LARGE", /rejected before admission/],
+    ["NOT_DISPATCHED", "retry-unknown", /was not submitted/],
+  ])("marks the page's own %s refusal so the executor never retries it", async (code, mode, message) => {
+    if (mode === "retry-drift") mocks.retry.mockResolvedValue(fresh("other"));
+    else if (mode === "retry-unknown") mocks.retry.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", []));
+    else mocks.capture.mockRejectedValue(new WorkbenchContextError(400, mode, "", []));
+    await submit(); await screen.findByText(message);
+    expect(refusal()).toBe(code);
+    expect(result()).toBe("");
+  });
+  it("leaves an indeterminate outcome unmarked so the executor records unknown", async () => {
+    mocks.capture.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", []));
+    await submit(); await screen.findByText(/Outcome is unknown/);
+    expect(result()).toBe(""); expect(refusal()).toBe("");
+  });
+  it("clears the refusal when the operator restores context and asks again", async () => {
+    mocks.retry.mockResolvedValue(fresh("other"));
+    await submit(); await screen.findByText(/Context changed/);
+    expect(refusal()).toBe("CONTEXT_UNAVAILABLE");
+    mocks.retry.mockResolvedValue(fresh());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await screen.findByText("Published version 1");
+    expect(refusal()).toBe(""); expect(result()).toBe("published");
+  });
+  it("does not carry a previous refusal into a new indeterminate attempt", async () => {
+    mocks.retry.mockResolvedValue(fresh("other"));
+    await submit(); await screen.findByText(/Context changed/);
+    expect(refusal()).toBe("CONTEXT_UNAVAILABLE");
+    mocks.retry.mockResolvedValue(fresh());
+    mocks.capture.mockRejectedValue(new WorkbenchContextError(503, "OUTCOME_UNKNOWN", "", []));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
+    await screen.findByText(/Outcome is unknown/);
+    expect(refusal()).toBe(""); expect(result()).toBe("");
+  });
+  it("adds no visible text, so the page a person reads is unchanged", async () => {
+    await submit(); await screen.findByText("Published version 1");
+    expect(node("[data-batch-submit-result]")).not.toBeVisible();
+    expect(node("[data-batch-submit-refusal]")).not.toBeVisible();
+  });
+});
