@@ -75,8 +75,19 @@ type WalletEntry struct {
 	ReservedAfter     int64
 	DebtAfter         int64
 	CommercialOrderID string
+	PaymentID         string
 	SourceIdentity    string
 	OccurredAt        time.Time
+}
+
+func (entry WalletEntry) Validate() error {
+	switch entry.Kind {
+	case WalletEntryTopUpCredit, WalletEntryRefundReversal, WalletEntryChargebackReversal:
+		if strings.TrimSpace(entry.PaymentID) == "" {
+			return ErrInvalid
+		}
+	}
+	return nil
 }
 
 type WalletEntryPage struct {

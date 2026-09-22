@@ -78,3 +78,26 @@ func TestOrganizationWalletReversalRequiresCanonicalKind(t *testing.T) {
 		t.Fatalf("unknown reversal kind must be invalid")
 	}
 }
+
+func TestWalletEntryRequiresPaymentBindingForTopUpAndReversals(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryTopUpCredit,
+		WalletEntryRefundReversal,
+		WalletEntryChargebackReversal,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := WalletEntry{Kind: kind, PaymentID: "payment-1"}
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("entry with payment binding rejected: %v", err)
+			}
+			entry.PaymentID = ""
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("entry without payment binding = nil, want ErrInvalid")
+			}
+		})
+	}
+
+	if err := (WalletEntry{Kind: WalletEntryPurchaseCommit}).Validate(); err != nil {
+		t.Fatalf("purchase entry without payment binding rejected: %v", err)
+	}
+}
