@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { getCommercialOverview } from "@/lib/api/commercial";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 import { EntitlementsOverview, PlanOptions } from "./commercial-views";
+import { CapabilityGatedView, CommercialOverviewView, UsageDetailsView } from "./commercial-module-views";
 import styles from "./commercial.module.css";
 
-type PageKind = "options" | "entitlements";
+export type PageKind = "overview" | "options" | "entitlements" | "usage" | "top-up" | "orders";
 
 export function CommercialPage({ page }: { page: PageKind }) {
   const context = useWorkbenchContext();
@@ -26,9 +27,19 @@ export function CommercialPage({ page }: { page: PageKind }) {
 }
 
 function PageFrame({ page, organization, actions, children }: { page: PageKind; organization: string; actions?: ReactNode; children: ReactNode }) {
-  const title = page === "options" ? "套餐方案" : "我的权益";
-  return <ConsolePage className={styles.page} title={title} breadcrumbs={[{ label: "套餐与权益" }, { label: title }]} description={<>
-    <p>{page === "options" ? "查看已批准的方案说明；实际订阅和已授予权益分别展示。" : "查看当前企业的订阅、已授予权益及已记录用量。"}</p>
+  const titles: Record<PageKind, string> = { overview: "套餐与权益", options: "套餐方案", entitlements: "我的权益", usage: "用量明细", "top-up": "充值中心", orders: "账单与订单" };
+  const title = titles[page];
+  const breadcrumbs = page === "overview" ? [{ label: title }] : [{ label: "套餐与权益" }, { label: title }];
+  const descriptions: Record<PageKind, string> = {
+    overview: "统一查看当前方案、企业权益、订阅用量，以及已开放的商业能力。",
+    options: "查看已批准的方案说明；实际订阅和已授予权益分别展示。",
+    entitlements: "查看当前企业的订阅、已授予权益及已记录用量。",
+    usage: "查看当前订阅用量、账期与记录状态；金额由账单 owner 单独提供。",
+    "top-up": "管理企业钱包与充值；当前能力受真实资金 owner 约束。",
+    orders: "查看账单、订单、退款与发票记录；当前能力受真实账单 owner 约束。",
+  };
+  return <ConsolePage className={styles.page} title={title} breadcrumbs={breadcrumbs} description={<>
+    <p>{descriptions[page]}</p>
     <p>当前有效企业：{organization}</p>
   </>} actions={actions}>{children}</ConsolePage>;
 }
@@ -36,8 +47,11 @@ function PageFrame({ page, organization, actions, children }: { page: PageKind; 
 function ScopedCommercial({ page, scope, organizationId, organizationName }: { page: PageKind; scope: string; organizationId: string; organizationName: string }) {
   const [sequence, setSequence] = useState(0);
   const refresh = () => setSequence(value => value + 1);
+  if (page === "top-up" || page === "orders") {
+    return <PageFrame page={page} organization={`${organizationName || "未提供名称"}（${organizationId}）`}><CapabilityGatedView page={page} /></PageFrame>;
+  }
   return <PageFrame page={page} organization={`${organizationName || "未提供名称"}（${organizationId}）`} actions={<>
-    <Button asChild variant="outline"><Link prefetch={false} href={page === "options" ? "/workbench/plans/entitlements" : "/workbench/plans/options"}>{page === "options" ? "查看我的权益" : "查看套餐方案"}</Link></Button>
+    {page === "overview" ? <Button asChild variant="outline"><Link prefetch={false} href="/workbench/plans/entitlements">查看我的权益</Link></Button> : <Button asChild variant="outline"><Link prefetch={false} href={page === "options" ? "/workbench/plans/entitlements" : "/workbench/plans/options"}>{page === "options" ? "查看我的权益" : "查看套餐方案"}</Link></Button>}
     <Button variant="outline" onClick={refresh}>刷新数据</Button>
   </>}>
     <CommercialRequest key={sequence} page={page} scope={scope} organizationId={organizationId} sequence={sequence} />
@@ -54,7 +68,10 @@ function CommercialRequest({ page, scope, organizationId, sequence }: { page: Pa
   if (response.isPending || response.isFetching) return <ConsoleState kind="loading" title="正在读取商业数据">正在校验当前企业权限，旧结果已隐藏。观察时间与周期尚未取得。</ConsoleState>;
   if (response.isError) return <ReadError error={response.error} />;
   if (!response.data || response.data.organization_id !== organizationId) return <ReadError error={{ code: "INVALID_UPSTREAM_RESPONSE" }} />;
-  return page === "options" ? <PlanOptions data={response.data} /> : <EntitlementsOverview data={response.data} />;
+  if (page === "overview") return <CommercialOverviewView data={response.data} />;
+  if (page === "options") return <PlanOptions data={response.data} />;
+  if (page === "usage") return <UsageDetailsView data={response.data} />;
+  return <EntitlementsOverview data={response.data} />;
 }
 
 function ReadError({ error }: { error: unknown }) {

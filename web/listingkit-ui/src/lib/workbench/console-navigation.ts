@@ -17,7 +17,13 @@ export const consoleNavigation: readonly ConsoleNavNode[] = [
   pending("生态服务", "services", [pending("服务市场", "services/market"), pending("我的服务", "services/mine"), pending("申请加入", "services/join")]),
   pending("数据服务", "data", [pending("数据市场", "data/market"), pending("API管理", "data/api"), pending("我的数据", "data/mine")]),
   pending("店铺中心", "store-center", [{ label: "我的店铺", href: "/workbench/stores", availability: "connected" }, pending("店铺商品", "store-products"), pending("订单履约", "store-orders")]),
-  pending("套餐与权益", "plans", [{ label: "套餐方案", href: "/workbench/plans/options", availability: "connected" }, { label: "我的权益", href: "/workbench/plans/entitlements", availability: "connected" }, pending("用量明细", "plans/usage"), pending("充值中心", "plans/top-up"), pending("账单与订单", "plans/orders")]),
+  { label: "套餐与权益", href: "/workbench/plans", availability: "connected", children: [
+    { label: "套餐方案", href: "/workbench/plans/options", availability: "connected" },
+    { label: "我的权益", href: "/workbench/plans/entitlements", availability: "connected" },
+    { label: "用量明细", href: "/workbench/plans/usage", availability: "connected" },
+    { label: "充值中心", href: "/workbench/plans/top-up", availability: "connected" },
+    { label: "账单与订单", href: "/workbench/plans/orders", availability: "connected" },
+  ] },
   { label: "我的账户", href: "/workbench/account", availability: "connected", children: [
     { label: "账户资料", href: "/workbench/account/profile", availability: "connected", children: [
       { label: "账户设置", href: "/workbench/account/profile/settings", availability: "connected" },
