@@ -141,6 +141,16 @@ func TestFulfilledWalletTopUpRequiresPaymentProof(t *testing.T) {
 	}
 }
 
+func TestCancelledWalletTopUpRejectsPaymentEvidence(t *testing.T) {
+	order := validWalletTopUpOrder(time.Now().UTC())
+	order.Status = OrderCancelled
+	order.PaymentID = "payment-1"
+
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("cancelled wallet top-up with payment evidence = nil, want ErrInvalid")
+	}
+}
+
 func TestWalletTopUpRejectsResourcePurchaseLifecycleStates(t *testing.T) {
 	now := time.Now().UTC()
 	for _, status := range []OrderStatus{
@@ -208,6 +218,27 @@ func TestCancelledResourcePurchaseRejectsGrantEvidence(t *testing.T) {
 
 	if !errors.Is(order.Validate(), ErrInvalid) {
 		t.Fatalf("cancelled resource order with grant evidence = nil, want ErrInvalid")
+	}
+}
+
+func TestResourcePurchaseSourceIDsMustBeCanonical(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Order)
+	}{
+		{name: "order id", mutate: func(order *Order) { order.OrderID = " order-1" }},
+		{name: "organization id", mutate: func(order *Order) { order.OrganizationID = "org-1 " }},
+		{name: "order item id", mutate: func(order *Order) { order.Items[0].OrderItemID = " item-1" }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			order := validResourcePurchaseOrder(time.Now().UTC())
+			test.mutate(&order)
+			if !errors.Is(order.Validate(), ErrInvalid) {
+				t.Fatalf("resource order with non-canonical %s = nil, want ErrInvalid", test.name)
+			}
+		})
 	}
 }
 

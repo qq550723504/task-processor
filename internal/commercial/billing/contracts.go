@@ -144,7 +144,7 @@ type OrderItem struct {
 
 func (item OrderItem) Validate() error {
 	resourceType, ok := ResourceTypeForProduct(item.ProductKind)
-	if strings.TrimSpace(item.OrderItemID) == "" ||
+	if !isCanonicalIdentifier(item.OrderItemID) ||
 		!ok ||
 		item.ResourceType != resourceType ||
 		item.ResourceQuantity <= 0 ||
@@ -176,8 +176,8 @@ type Order struct {
 }
 
 func (order Order) Validate() error {
-	if strings.TrimSpace(order.OrderID) == "" ||
-		strings.TrimSpace(order.OrganizationID) == "" ||
+	if !isCanonicalIdentifier(order.OrderID) ||
+		!isCanonicalIdentifier(order.OrganizationID) ||
 		(order.Kind != OrderWalletTopUp && order.Kind != OrderResourcePurchase) ||
 		order.Currency != CurrencyCNY ||
 		order.AmountMinor <= 0 ||
@@ -195,11 +195,15 @@ func (order Order) Validate() error {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
-		if len(order.Items) != 0 || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") {
+		if len(order.Items) != 0 || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") || (order.Status == OrderCancelled && strings.TrimSpace(order.PaymentID) != "") {
 			return ErrInvalid
 		}
 	}
 	return nil
+}
+
+func isCanonicalIdentifier(value string) bool {
+	return value != "" && strings.TrimSpace(value) == value
 }
 
 func hasResourceGrantProof(order Order) bool {

@@ -245,7 +245,9 @@ would desynchronize wallet and resource accounting.
 Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
 top-up must carry an accepted provider payment reference; without that proof it
 is invalid. Top-up intent remains pending or explicitly cancelled until the
-provider settlement binding is accepted.
+provider settlement binding is accepted. A cancelled top-up must not carry
+payment evidence, because a settled payment cannot be released as if it were
+never credited.
 
 ## 5. Resource acquisition contract
 
@@ -274,7 +276,9 @@ The persisted source identity is a fixed-size SHA-256 digest (with the
 commercial source type prefix) over an unambiguous length-prefixed encoding of
 the canonical Organization ID, order ID, and order-item ID. Delimiter
 concatenation is not a uniqueness contract, and the resulting identity remains
-within the resource owner's 192-byte persistence limit.
+within the resource owner's 192-byte persistence limit. Leading or trailing
+whitespace in these source-binding identifiers is rejected before billing
+derives or persists the identity.
 
 The purchased grant supports only the three approved resource types and a
 positive bounded quantity. Authorization is supplied by runtime assembly using
