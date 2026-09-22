@@ -170,3 +170,32 @@ func TestWaitForGateClearedNamesTheItemAndKeepsTheBrowserOpen(t *testing.T) {
 		}
 	}
 }
+
+// TestGatePromptOnlyAsksForAnInputItsReaderAccepts is the eighth-round fix. The prompt
+// told the operator to "press Enter to redo item N", but readYes treats an empty line
+// as a refusal - deliberately, so that a missing answer is never a default - so an
+// operator who followed the displayed instruction ended the command instead of
+// continuing the item in the still-open browser. Every instruction the prompt gives must
+// name an input its reader accepts, and a bare Enter is not one of them.
+func TestGatePromptOnlyAsksForAnInputItsReaderAccepts(t *testing.T) {
+	var out bytes.Buffer
+	ok := waitForGateCleared(strings.NewReader("y\n"), &out,
+		batchcapture.ImportResult{Seq: 7}, fmt.Errorf("%w: page classified as pause_batch", batchcapture.ErrVerdictStop))
+	if !ok {
+		t.Fatalf("an explicit yes was not accepted")
+	}
+	shown := strings.ToLower(out.String())
+	if strings.Contains(shown, "press enter") {
+		t.Fatalf("the prompt asks the operator to press Enter, which readYes refuses: %q", out.String())
+	}
+	if !strings.Contains(shown, "type y") {
+		t.Fatalf("the prompt does not tell the operator to answer y, the only input that continues: %q", out.String())
+	}
+	// The named answer has to be the one the reader accepts, and a bare Enter must not be.
+	if !readYes(strings.NewReader("y\n")) {
+		t.Fatalf("the prompt names an answer the reader refuses")
+	}
+	if readYes(strings.NewReader("\n")) {
+		t.Fatalf("a bare Enter was accepted although the prompt says it stops")
+	}
+}

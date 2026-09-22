@@ -886,12 +886,36 @@ func TestFixtureDriverDoesNotHandoffWhenIntentWriteFails(t *testing.T) {
 		calls++
 		return errors.New("injected write failure")
 	}
-	_, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failing})
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failing})
 	if !errors.Is(err, ErrQueueWriteFailed) {
 		t.Fatalf("err=%v, want ErrQueueWriteFailed", err)
 	}
 	if calls != 1 {
 		t.Fatalf("persist called %d times, want 1 (the item must stop at the first unconfirmed write)", calls)
+	}
+	// The failure happened before the dispatch, so nothing reached the application and
+	// the file still holds a re-capturable state. Reporting it as an unknown outcome (or
+	// as a record the file may not hold) would send the operator to verify an application
+	// that never received anything and would burn the one signal that means "do not
+	// re-run", so the crash-safety classification must not leak in here.
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("a pre-handoff write failure was reported as an unknown outcome: %v", err)
+	}
+	if errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("a pre-handoff write failure was reported as a possibly-submitting record: %v", err)
+	}
+	if !CanRecapture(result.State) {
+		t.Fatalf("result state %q is not re-capturable although nothing was handed off", result.State)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if !CanRecapture(stored.Items[0].State) {
+		t.Fatalf("the failed intent write left the item un-recapturable: %+v", stored.Items[0])
+	}
+	if _, blocked := stored.BlockingItem(); blocked {
+		t.Fatalf("the failed intent write blocked the batch although nothing was handed off")
 	}
 	// Nothing may have reached the application.
 	if count := fixtureAppTabCount(t, driver); count != 0 {
@@ -1023,6 +1047,93 @@ func TestFixtureDriverStopsBeforeHandoffOnChallenge(t *testing.T) {
 	}
 	if count := fixtureAppTabCount(t, driver); count != 0 {
 		t.Fatalf("a challenge page still opened %d application tabs", count)
+	}
+}
+
+// TestFixtureDriverDoesNotRecordSubmittingBeforeTheHandoff is the crash-recovery
+// property behind design section 4 D2.1's placement of phase one. Navigation, page
+// classification and extension capture cannot reach the application, so a run that
+// stops there must never have written submitting: a process killed in that window would
+// otherwise leave an item that provably never left the executor permanently blocked on
+// human verification, with no CLI path to resume it.
+//
+// The kill itself cannot be produced by a test, but the durable writes can be recorded,
+// and that is enough to show the record never advanced past a re-capturable state before
+// the handoff.
+func TestFixtureDriverDoesNotRecordSubmittingBeforeTheHandoff(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureChallenge(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	var written []ItemState
+	recording := func(queue *Queue, path string) error {
+		for _, item := range queue.Items {
+			written = append(written, item.State)
+		}
+		return queue.Save(path)
+	}
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: recording})
+	if !errors.Is(err, ErrVerdictStop) {
+		t.Fatalf("err=%v, want ErrVerdictStop", err)
+	}
+	for _, state := range written {
+		if state == ItemSubmitting {
+			t.Fatalf("a pre-handoff stop recorded submitting, so a crash there would block the item: %v", written)
+		}
+	}
+	if result.State != ItemQueued {
+		t.Fatalf("result state %q, want queued", result.State)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if !CanRecapture(stored.Items[0].State) {
+		t.Fatalf("a pre-handoff stop left the item un-recapturable: %+v", stored.Items[0])
+	}
+	if _, blocked := stored.BlockingItem(); blocked {
+		t.Fatalf("a pre-handoff stop blocked the batch: %+v", stored.Items[0])
+	}
+}
+
+// TestFixtureDriverKeepsAPreHandoffItemRedoableWhenTheStopWriteFails pins the sibling
+// of the move above. The write that records a pre-handoff stop is not the safety
+// barrier - phase one is, and it has not run - so a failure there must not be reported
+// as "the file may say submitting" (it does not) or as stop-and-verify. Nothing was
+// handed off, the file still holds a state ImportOne will re-do from, and a gate stop
+// must still be recoverable in the browser that is still open.
+func TestFixtureDriverKeepsAPreHandoffItemRedoableWhenTheStopWriteFails(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureChallenge(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	failing := func(*Queue, string) error { return errors.New("injected write failure") }
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failing})
+	if !errors.Is(err, ErrQueueWriteFailed) {
+		t.Fatalf("err=%v, want ErrQueueWriteFailed", err)
+	}
+	if errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("a failed pre-handoff revert was reported as a possibly-submitting record: %v", err)
+	}
+	if !errors.Is(err, ErrVerdictStop) {
+		t.Fatalf("the gate cause was lost, so the operator cannot be offered the redo: %v", err)
+	}
+	if !NeedsVisibleSession(result, err) {
+		t.Fatalf("a challenge whose stop write failed is no longer recoverable in the open browser: %v", err)
+	}
+	if result.State != ItemQueued {
+		t.Fatalf("result state %q, want queued (the file never advanced past it)", result.State)
+	}
+	stored, loadErr := Load(queuePath)
+	if loadErr != nil {
+		t.Fatalf("reload queue: %v", loadErr)
+	}
+	if !CanRecapture(stored.Items[0].State) {
+		t.Fatalf("the item became un-recapturable after a failed pre-handoff revert: %+v", stored.Items[0])
 	}
 }
 

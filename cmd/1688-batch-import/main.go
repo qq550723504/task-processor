@@ -182,8 +182,8 @@ func repeatWhileGateNeedsAHuman(
 func waitForGateCleared(in io.Reader, out io.Writer, result batchcapture.ImportResult, cause error) bool {
 	fmt.Fprintf(out, "\nThe batch stopped before anything was submitted:\n  %v\n\n"+
 		"Deal with the gate in the browser window that is still open (sign in, solve the\n"+
-		"verification, or clear the risk-control page), then press Enter to redo item %d.\n"+
-		"Type anything else to stop.\nContinue? [y/N] ", cause, result.Seq)
+		"verification, or clear the risk-control page), then type y to redo item %d.\n"+
+		"Anything else, including a bare Enter, stops.\nContinue? [y/N] ", cause, result.Seq)
 	return readYes(in)
 }
 

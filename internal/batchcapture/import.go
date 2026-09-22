@@ -13,9 +13,12 @@ import (
 // enforce the two persistence rules the design spent five review rounds getting
 // right:
 //
-//   - The submit intent is written pessimistically BEFORE anything can be submitted
-//     (section 4 D2.1). The browser is not touched until that write is durable, so a
-//     crash can never leave a submitted item looking re-capturable.
+//   - The submit intent is written pessimistically BEFORE the handoff click, which
+//     is the only step that can make the application hold this item (section 4 D2.1).
+//     The write is confirmed durable before the click, so a crash can never leave a
+//     submitted item looking re-capturable. It is deliberately NOT written before
+//     navigation or capture: those are local, so a crash there must leave the item
+//     re-doable rather than blocked on human verification.
 //   - The idempotency key joins the record as soon as it is knowable, which is when
 //     the handoff returns the application URL. From that moment the payload is
 //     visible to the application and a submission is possible, so every later
@@ -150,24 +153,11 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	}
 	item := &queue.Items[index]
 	result := ImportResult{Seq: item.Seq, URL: item.URL}
-
-	// Phase one: record the intent to submit before the item can become submittable.
-	// No key and no scope are written, because neither is knowable yet and writing a
-	// value the executor has not observed is what design section 15.6 rejected.
-	item.State = ItemSubmitting
-	if needConsent {
-		// Neither value is knowable yet, and writing the flags' values would record a
-		// scope no person has confirmed (design section 4 D1.4). ApproveScope fills in
-		// the scope for the whole batch once there is a confirmed value to fill it with.
-		item.ApprovedActorID = ""
-		item.ApprovedOrganizationID = ""
-	} else {
-		item.ApprovedActorID = opts.Approved.ActorID
-		item.ApprovedOrganizationID = opts.Approved.OrganizationID
-	}
-	if err := persist(queue, opts.QueuePath); err != nil {
-		return ImportResult{}, fmt.Errorf("%w: %v", ErrQueueWriteFailed, err)
-	}
+	// previousState is the state the durable file holds for this item until phase one
+	// below replaces it. Every state ImportOne is willing to start from is re-capturable,
+	// so it is also the state a pre-handoff stop falls back to when a later write cannot
+	// land (see stopWithoutSubmit).
+	previousState := item.State
 
 	popup, err := driver.PrepareItem(item.URL)
 	if err != nil {
@@ -235,6 +225,43 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 	if err != nil {
 		return stopWithoutSubmit(persist, queue, item, opts.QueuePath, result, fmt.Errorf("handoff: %w", err))
 	}
+
+	// Phase one: record the intent to submit before the item can become submittable.
+	//
+	// It is written here, at the handoff boundary, rather than when the item is
+	// selected. Nothing before this point can reach the application - navigation, page
+	// classification and extension capture are all local - so an earlier record would
+	// make a crash during those steps look like an item that might have been submitted,
+	// blocking it on human verification although it provably never left the executor.
+	// Design section 4 D2.1 keeps auto-recapture forbidden only for a state that may
+	// have reached a submission, and its state machine is queued -> capturing ->
+	// captured -> submitting: this is exactly the captured -> submitting step.
+	//
+	// No key and no scope are written, because neither is knowable yet and writing a
+	// value the executor has not observed is what design section 15.6 rejected.
+	item.State = ItemSubmitting
+	if needConsent {
+		// Neither value is knowable yet, and writing the flags' values would record a
+		// scope no person has confirmed (design section 4 D1.4). ApproveScope fills in
+		// the scope for the whole batch once there is a confirmed value to fill it with.
+		item.ApprovedActorID = ""
+		item.ApprovedOrganizationID = ""
+	} else {
+		item.ApprovedActorID = opts.Approved.ActorID
+		item.ApprovedOrganizationID = opts.Approved.OrganizationID
+	}
+	if err := persist(queue, opts.QueuePath); err != nil {
+		// Fail-closed: the dispatch below is only allowed once this record is durable, so
+		// a failed write stops the item before the application can see anything. Because
+		// the dispatch never happened, the item is still re-capturable and the file still
+		// holds previousState: this is an ordinary re-runnable failure, never the
+		// outcome_unknown the post-dispatch paths have to report.
+		item.State = previousState
+		item.Reason = ""
+		result.State = previousState
+		return result, fmt.Errorf("%w: %v (nothing was handed off, so the item can be re-done)", ErrQueueWriteFailed, err)
+	}
+
 	if err := popup.DispatchHandoff(); err != nil {
 		return stopAfterHandoff(persist, queue, item, opts.QueuePath, result, fmt.Errorf("dispatch handoff: %w", err))
 	}
@@ -412,16 +439,24 @@ var ErrOutcomeUnknown = errors.New("batch capture: outcome unknown, stop and ver
 // the pre-stop value would print an empty state while the queue says queued, which is
 // exactly the kind of mismatch an operator cannot reconcile during recovery.
 func stopWithoutSubmit(persist func(*Queue, string) error, queue *Queue, item *Item, path string, result ImportResult, cause error) (ImportResult, error) {
+	// The item never reached the handoff, so phase one has not run: nothing has made it
+	// un-recapturable and the file still holds a state ImportOne was willing to start
+	// from. This write therefore only records the reason, and the item stays re-doable
+	// even if it does not land - a failed revert is an ordinary failure, not the
+	// "the file may say submitting" case the post-handoff paths must report.
+	previous := item.State
 	item.State = ItemQueued
 	item.Reason = cause.Error()
 	result.State = ItemQueued
 	if err := persist(queue, path); err != nil {
-		// The write that would have returned the item to a re-doable state did not
-		// land, so the file still holds the phase-1 record: ItemSubmitting. That record
-		// blocks the batch on its own, so the cause is reported as text rather than
-		// wrapped: NeedsVisibleSession would otherwise read this as "clear the gate and
-		// redo the item", which is not available while the file says submitting.
-		return unconfirmedWrite(item, result, cause, err, false)
+		item.State = previous
+		item.Reason = ""
+		result.State = previous
+		// The cause stays wrapped so NeedsVisibleSession still recognises a gate stop:
+		// the operator can clear it in the still-open browser and redo this item.
+		return result, fmt.Errorf(
+			"%w: %v; %q was never handed off and the file still records it as %q, so the item can be re-done once the cause is cleared; %w",
+			ErrQueueWriteFailed, err, item.URL, previous, cause)
 	}
 	return result, cause
 }
