@@ -54,8 +54,9 @@ function AccountSettingsPanel({ data, editable = false, returnTo }: { data: Acco
 function IdentityProfileManagement({ data, returnTo }: { data: AccountProfile; returnTo: string }) {
   const profileQuery = useQuery({ queryKey: ["account", "identity-profile", data.userId], queryFn: () => getAccountIdentityProfile({ expectedUserId: data.userId }), retry: false });
   if (profileQuery.isPending) return <p className={styles.note}>正在读取 ZITADEL 个人资料…</p>;
-  if (profileQuery.isError || !profileQuery.data) return <p className={styles.errorText}>个人资料暂时无法读取，请稍后重试。</p>;
-  return <IdentityProfileForm key={profileQuery.data.userId} data={data} profile={profileQuery.data} returnTo={returnTo} />;
+  if (profileQuery.isError || !profileQuery.data) return <><p className={styles.errorText}>个人资料暂时无法读取，请稍后重试。</p>{profileQuery.isError && identityMutationNeedsLogin(profileQuery.error) ? <IdentityLoginRecovery returnTo={returnTo} /> : null}</>;
+  const profileKey = [profileQuery.data.userId, profileQuery.data.firstName, profileQuery.data.lastName, profileQuery.data.nickName, profileQuery.data.displayName, profileQuery.data.preferredLanguage, profileQuery.data.gender].join("\u001f");
+  return <IdentityProfileForm key={profileKey} data={data} profile={profileQuery.data} returnTo={returnTo} />;
 }
 
 function IdentityProfileForm({ data, profile, returnTo }: { data: AccountProfile; profile: { firstName: string; lastName: string; nickName: string; displayName: string; preferredLanguage: string; gender: string }; returnTo: string }) {

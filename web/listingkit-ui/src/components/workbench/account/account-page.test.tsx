@@ -99,6 +99,25 @@ describe("AccountPage read-only projection", () => {
     await waitFor(() => expect(fetcher.mock.calls.some(([url]) => url === "/api/account/identity/password")).toBe(true));
     await waitFor(() => { expect(oldPassword).toHaveValue(""); expect(newPassword).toHaveValue(""); });
   });
+  it("resets the identity profile form when a refreshed provider profile changes", async () => {
+    const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
+    const refreshedIdentity = { ...identity, firstName: "更新" };
+    let identityReads = 0;
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identityReads++ === 0 ? identity : refreshedIdentity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    mount("profile-settings");
+    expect(await screen.findByLabelText("名")).toHaveValue("本人");
+    await user.click(screen.getByRole("button", { name: "刷新资料" }));
+    await waitFor(() => expect(screen.getByLabelText("名")).toHaveValue("更新"));
+  });
+  it("offers login recovery when the identity profile read expires", async () => {
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 })));
+    vi.stubGlobal("fetch", fetcher);
+    mount("profile-settings");
+    expect(await screen.findByText("个人资料暂时无法读取，请稍后重试。")).toBeVisible();
+    expect(screen.getByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/login?returnTo=%2Fworkbench%2Faccount%2Fprofile%2Fsettings");
+  });
   it("surfaces a failed verification resend instead of hiding the mutation error", async () => {
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
     vi.stubGlobal("fetch", fetcher);
