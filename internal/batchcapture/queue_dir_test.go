@@ -161,13 +161,27 @@ func TestSavePropagatesAnAncestorDirectoryFlushFailure(t *testing.T) {
 // TestSavePropagatesADirectoryFlushFailure is the sibling of the ancestor case, and the
 // regression test for the first directory-durability defect: a discarded flush error let
 // Save report success for a rename that was not durable.
+//
+// The injected failure is selective on purpose: only the queue's OWN directory fails, so
+// the error can only come from the leaf flush. If that flush were dropped, nothing would
+// fail and the save would report success, which is exactly the defect.
 func TestSavePropagatesADirectoryFlushFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "batch.json")
+	dir := filepath.Dir(path)
 
 	queue := NewQueue("batch-1")
 	queue.Items = append(queue.Items, Item{Seq: 1, URL: "https://detail.1688.com/offer/981645030344.html", State: ItemQueued})
-	if err := queue.save(path, func(string) error { return os.ErrPermission }); err == nil {
-		t.Fatal("save reported success although the queue directory could not be flushed")
+	err := queue.save(path, func(d string) error {
+		if d == dir {
+			return os.ErrPermission
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("save reported success although the queue directory itself could not be flushed")
+	}
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("save error %v does not carry the directory flush failure", err)
 	}
 }
 
@@ -184,9 +198,16 @@ func TestQueueSaveFlushesTheWholePathThroughItsInjectedFlush(t *testing.T) {
 	if !strings.Contains(text, "func (q *Queue) Save(path string) error { return q.save(path, syncDir) }") {
 		t.Fatal("Save no longer injects syncDir into the durability path")
 	}
-	saveBody, _, found := strings.Cut(text, "func flushQueueDirAncestors(")
+	// The two flushes are checked inside save's own body: cutting at the next "func "
+	// keeps the check from being satisfied by an identical call in a helper such as
+	// restoreQueueFile, which is how a dropped leaf flush could pass unnoticed.
+	_, saveBody, found := strings.Cut(text, "func (q *Queue) save(")
 	if !found {
-		t.Fatal("queue.go no longer defines flushQueueDirAncestors")
+		t.Fatal("queue.go no longer defines save")
+	}
+	saveBody, _, found = strings.Cut(saveBody, "\nfunc ")
+	if !found {
+		t.Fatal("save is the last function in queue.go; the contract check needs a boundary")
 	}
 	if !strings.Contains(saveBody, "if err := syncDirFn(dir); err != nil {") {
 		t.Fatal("save no longer flushes the queue's own directory through the injected flush")

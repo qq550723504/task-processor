@@ -28,6 +28,71 @@ func failNthDirFlush(n int) (func(string) error, *int) {
 	}, calls
 }
 
+// failDirFlushAt fails exactly the nth directory flush call, which is how a test names
+// one step of the save's flush sequence (1 is the queue directory itself, 2 is its
+// immediate parent) without failing the steps before it.
+func failDirFlushAt(n int) (func(string) error, *int) {
+	calls := new(int)
+	return func(string) error {
+		*calls++
+		if *calls == n {
+			return os.ErrPermission
+		}
+		return nil
+	}, calls
+}
+
+// TestSaveRestoresThePreviousContentWhenAnAncestorFlushFailsAfterTheReplace covers the
+// ancestor half of the same contract. The queue directory itself flushes successfully, so
+// the failure comes from the flush that registers the queue directory in its parent -
+// a second post-replace failure point that needs the same treatment as the leaf. The
+// file existed before the save, so the restore rewrites the previous content instead of
+// removing it.
+func TestSaveRestoresThePreviousContentWhenAnAncestorFlushFailsAfterTheReplace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "queue.json")
+	queue := NewQueue("ancestor-restore-batch")
+	queue.Items = []Item{{Seq: 1, URL: "https://detail.1688.com/offer/981645030344.html", State: ItemCaptured}}
+	if err := queue.Save(path); err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read initial content: %v", err)
+	}
+
+	queue.Items[0].State = ItemSubmitting
+	// Call 1 is the queue directory itself, call 2 is its immediate parent, and the
+	// restore's own flush is call 3.
+	syncDirFn, calls := failDirFlushAt(2)
+	err = queue.save(path, syncDirFn)
+	if err == nil {
+		t.Fatalf("a failed ancestor flush was reported as a successful save")
+	}
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("the ancestor flush failure was lost: %v", err)
+	}
+	if errors.Is(err, errQueueContentUnrestored) {
+		t.Fatalf("a restored save was reported as unrestorable: %v", err)
+	}
+	if *calls < 3 {
+		t.Fatalf("flushed %d times, want the leaf, the failed ancestor and the restore", *calls)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read content after the failed save: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("the file does not hold the previous content\n got: %s\nwant: %s", after, before)
+	}
+	stored, err := Load(path)
+	if err != nil {
+		t.Fatalf("reload queue: %v", err)
+	}
+	if stored.Items[0].State != ItemCaptured {
+		t.Fatalf("state=%s, want %s", stored.Items[0].State, ItemCaptured)
+	}
+}
+
 func TestSaveRestoresThePreviousContentWhenTheDirectoryFlushFailsAfterTheReplace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "queue.json")
 	queue := NewQueue("restore-batch")
