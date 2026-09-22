@@ -256,6 +256,38 @@ func TestRunRejectsHeadlessMode(t *testing.T) {
 	}
 }
 
+// TestOperationalWrapperKeepsCallerRelativePaths is the same finding's portable half.
+// The behavioral test (wrapper_paths_test.go) needs Windows and a real PowerShell, so
+// this pins the structural property the fix relies on: every location-valued argument
+// is resolved against the caller's directory BEFORE the wrapper changes directory, and
+// none of them is passed through afterwards. A value like -url or -actor is not a
+// location and must not be rewritten.
+func TestOperationalWrapperKeepsCallerRelativePaths(t *testing.T) {
+	const path = "../../scripts/1688-batch-import.ps1"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	script := string(raw)
+	changeDir := strings.Index(script, "\nPush-Location")
+	if changeDir < 0 {
+		t.Fatalf("%s no longer changes into the repository root", path)
+	}
+	for _, location := range []string{"$Queue", "$Browser", "$Extension", "$Profile"} {
+		line := location + " = [System.IO.Path]::GetFullPath(" + location + ")"
+		at := strings.Index(script, line)
+		if at < 0 {
+			t.Fatalf("%s no longer resolves %s against the caller's location: a relative value would be re-based onto the repository", path, location)
+		}
+		if at > changeDir {
+			t.Fatalf("%s resolves %s after Push-Location, so the resolution no longer sees the caller's directory", path, location)
+		}
+	}
+	if strings.Contains(script, "GetFullPath($Url)") {
+		t.Fatalf("%s treats the product URL as a filesystem location", path)
+	}
+}
+
 // TestOperationalWrapperPreservesTheExitCode is the seventh review round's first
 // finding. The wrapper is the owner an operator actually runs, and the exit code is
 // its whole product: 3 means "stop and verify, the item may already have reached the

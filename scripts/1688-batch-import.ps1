@@ -24,6 +24,19 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Four of these parameters name files or directories (-queue, -browser, -extension,
+# -profile) and the caller gives them relative to WHERE THEY ARE STANDING. The
+# Push-Location below changes the base directory to the repository root before the
+# binary sees the arguments, so a relative value would silently be re-based onto the
+# repository: the run would create or read a different queue, open a different profile,
+# or fail to find an input that exists. Resolving them here, against the caller's
+# location, keeps the command's meaning independent of where it was invoked from.
+# -url, -actor and -organization are values rather than locations and are left alone.
+$Queue = [System.IO.Path]::GetFullPath($Queue)
+$Browser = [System.IO.Path]::GetFullPath($Browser)
+$Extension = [System.IO.Path]::GetFullPath($Extension)
+$Profile = [System.IO.Path]::GetFullPath($Profile)
+
 # Operational owner for cmd/1688-batch-import. The actor and organization given here
 # are the scope this run EXPECTS, not consent: the batch is attributed only to the
 # identity the application reports as verified, after a person confirms it at the
