@@ -23,7 +23,7 @@ async function request<T>(path: string, schema: z.ZodType<T>, expectedUserId: st
     const response = await fetch(path, { ...init, headers, credentials: "same-origin", cache: "no-store", redirect: "error" });
     const payload = await readBoundedStrictJSON(response, 128 * 1024);
     if (!response.ok) { const error = accountErrorDetails(response.status, payload); throw new AccountReadError(response.status, error.code, error.outcome); }
-    const parsed = schema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
+    const parsed = schema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, write && dispatched ? "RESULT_UNVERIFIED" : "INVALID_UPSTREAM_RESPONSE", write && dispatched ? "unknown" : undefined); return parsed.data;
   } catch (error) {
     if (error instanceof AccountReadError) throw error;
     if (dispatched) throw new AccountReadError(502, "RESULT_UNVERIFIED", "unknown");

@@ -6,7 +6,7 @@ import { readZitadelServerAccessToken } from "./zitadel-server-token";
 
 const AUTH_DEADLINE_MS = 15_000;
 
-export async function requireReferralUserId(returnTo: string) {
+export async function requireAuthenticatedUserId(returnTo: string) {
   const session = await boundedServerAuth();
   const identity = readZitadelIdentityFromSession(session);
   if (!identity || !readZitadelServerAccessToken(session) || readZitadelSessionError(session)) {
@@ -14,6 +14,8 @@ export async function requireReferralUserId(returnTo: string) {
   }
   return String(identity.userId);
 }
+
+export const requireReferralUserId = requireAuthenticatedUserId;
 
 async function boundedServerAuth() {
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -132,3 +132,14 @@ func TestSelfServiceClientPreservesUnknownMutationOutcomeAfterDispatch(t *testin
 	var unknown *SelfServiceOutcomeUnknownError
 	require.ErrorAs(t, err, &unknown)
 }
+
+func TestSelfServiceClientPreservesUnknownMutationOutcomeForUpstream5xx(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	err := NewSelfServiceClient(server.URL, server.Client()).Execute(context.Background(), "token", SelfServiceSetEmail, []byte(`{"email":"user@example.test"}`))
+	var unknown *SelfServiceOutcomeUnknownError
+	require.ErrorAs(t, err, &unknown)
+}

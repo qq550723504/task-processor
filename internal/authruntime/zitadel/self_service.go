@@ -136,6 +136,9 @@ func (c *SelfServiceClient) Execute(ctx context.Context, token string, operation
 	defer response.Body.Close()
 	_, _ = io.CopyN(io.Discard, response.Body, 1024)
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		if dispatched && response.StatusCode >= http.StatusInternalServerError {
+			return &SelfServiceOutcomeUnknownError{}
+		}
 		return &SelfServiceError{StatusCode: response.StatusCode}
 	}
 	return nil

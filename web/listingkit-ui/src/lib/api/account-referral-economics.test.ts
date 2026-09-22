@@ -35,4 +35,10 @@ describe("account referral economics client", () => {
     await expect(createReferralPayoutMethod("subject-1", { type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }, "payout-key"))
       .rejects.toMatchObject({ status: 502, code: "RESULT_UNVERIFIED", outcome: "unknown" });
   });
+
+  it("classifies a referral POST schema failure as an unknown outcome", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "referral-payout-v0" })));
+    await expect(createReferralPayoutMethod("subject-1", { type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }, "payout-key"))
+      .rejects.toMatchObject({ status: 502, code: "RESULT_UNVERIFIED", outcome: "unknown" });
+  });
 });
