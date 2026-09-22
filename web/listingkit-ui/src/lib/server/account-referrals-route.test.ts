@@ -18,6 +18,7 @@ import {
 } from "@/app/api/account/referrals/route";
 import { POST as complete } from "@/app/api/account/referrals/complete/route";
 import { GET as readPayoutMethods, POST as createPayoutMethod } from "@/app/api/account/referral-payout-methods/route";
+import { GET as readEconomics } from "@/app/api/account/referral-earnings/route";
 
 function request(path = "referrals", method = "GET", headers: Record<string, string> = {}, signal?: AbortSignal) {
   return new NextRequest(`https://app.test/api/account/${path}`, {
@@ -119,7 +120,15 @@ describe("authenticated account referrals BFF", () => {
     state.blocked = true;
     const pending = read(request());
     await vi.advanceTimersByTimeAsync(15001);
-    expect((await pending).status).toBe(504);
+    expect((await pending)?.status).toBe(504);
+  });
+
+  it("keeps referral economics authentication within the one request deadline", async () => {
+    vi.useFakeTimers();
+    state.blocked = true;
+    const pending = readEconomics(request("referral-earnings"));
+    await vi.advanceTimersByTimeAsync(15001);
+    expect((await pending)?.status).toBe(504);
   });
 
   it("never dispatches after authentication resolves beyond the total deadline", async () => {

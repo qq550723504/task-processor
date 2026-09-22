@@ -70,12 +70,19 @@ describe("AccountPage read-only projection", () => {
   });
   it.each(["profile-settings", "profile-verification"] as const)("does not read the business profile on the %s leaf", async page => {
     const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
-    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : url === "/api/account/identity/profile" ? Response.json(identity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
     vi.stubGlobal("fetch", fetcher);
     mount(page);
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(fetcher.mock.calls.some(([url]) => url === "/api/account/business-profile")).toBe(false);
+  });
+  it("requires a selected organization before showing verification authorization", async () => {
+    state.context.effectiveOrganization = null;
+    vi.stubGlobal("fetch", vi.fn());
+    mount("profile-verification");
+    expect(await screen.findByRole("alert")).toHaveTextContent("请选择当前企业");
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("clears password inputs after the password provider confirms success", async () => {
     const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
@@ -93,7 +100,7 @@ describe("AccountPage read-only projection", () => {
     await waitFor(() => { expect(oldPassword).toHaveValue(""); expect(newPassword).toHaveValue(""); });
   });
   it("surfaces a failed verification resend instead of hiding the mutation error", async () => {
-    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
     vi.stubGlobal("fetch", fetcher);
     const user = userEvent.setup();
     mount("profile-verification");
@@ -101,7 +108,7 @@ describe("AccountPage read-only projection", () => {
     expect(await screen.findByText("操作失败，请稍后重试")).toBeVisible();
   });
   it("offers login recovery when a verification resend sees an expired session", async () => {
-    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 })));
+    const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 })));
     vi.stubGlobal("fetch", fetcher);
     const user = userEvent.setup();
     mount("profile-verification");

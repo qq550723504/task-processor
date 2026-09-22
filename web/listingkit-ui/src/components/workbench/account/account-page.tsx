@@ -41,8 +41,8 @@ export function AccountPage({ page, expectedUserId }: { page: AccountPageKind; e
   const scope = JSON.stringify([expectedUserId, context.user?.id, organization?.id, context.roles, context.error?.code, context.blockingError?.code, context.selectionRequired, context.isLoading]);
   let content;
   if (leaving || authError || identityChanged) content = <ReadError page={page} code={identityChanged ? "IDENTITY_CONTEXT_CHANGED" : "AUTHENTICATION_REQUIRED"} />;
-  else if (context.isSwitching || ((page === "organization" || page === "overview" || page === "profile-business") && context.isLoading)) content = <ConsoleState kind="loading" title="正在确认当前上下文">旧资料已清除。</ConsoleState>;
-  else if ((page === "organization" || page === "overview" || page === "profile-business") && (context.error || context.blockingError || !context.user || !organization || context.selectionRequired)) content = <ReadError code={context.blockingError?.code ?? context.error?.code ?? "ORGANIZATION_SELECTION_REQUIRED"} page={page} />;
+  else if (context.isSwitching || ((page === "organization" || page === "overview" || page === "profile-business" || page === "profile-verification") && context.isLoading)) content = <ConsoleState kind="loading" title="正在确认当前上下文">旧资料已清除。</ConsoleState>;
+  else if ((page === "organization" || page === "overview" || page === "profile-business" || page === "profile-verification") && (context.error || context.blockingError || !context.user || !organization || context.selectionRequired)) content = <ReadError code={context.blockingError?.code ?? context.error?.code ?? "ORGANIZATION_SELECTION_REQUIRED"} page={page} />;
   else content = <ScopedAccount key={`${page}:${scope}`} page={page} scope={scope} expectedUserId={expectedUserId} organizationId={organization?.id} />;
   return <AccountShell pathname={accountPagePath(page)} title={title} description={page === "overview" ? "查看当前账户、企业与收益状态" : page === "profile" ? "查看你的账户信息与当前资料状态" : page === "profile-settings" ? "管理账户信息、联系方式与登录安全" : page === "profile-business" ? "维护用于业务服务匹配的经营画像" : page === "profile-verification" ? "查看身份与企业授权认证状态" : "查看当前企业信息与项目访问权限"}>{content}</AccountShell>;
 }
@@ -60,8 +60,13 @@ function AccountRequest({ page, scope, expectedUserId, organizationId, sequence 
     };
     if (profileSection(page)) {
       const readsBusinessProfile = page === "profile" || page === "profile-business";
-      const [profile, businessProfile] = await Promise.all([getAccountProfile({ expectedUserId, signal }), readsBusinessProfile ? business(page === "profile-business") : Promise.resolve(null)]);
-      return { kind: "profile" as const, profile, business: businessProfile };
+      const readsOrganization = page === "profile-verification";
+      const [profile, businessProfile, organization] = await Promise.all([
+        getAccountProfile({ expectedUserId, signal }),
+        readsBusinessProfile ? business(page === "profile-business") : Promise.resolve(null),
+        readsOrganization ? getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal }) : Promise.resolve(null),
+      ]);
+      return { kind: "profile" as const, profile, business: businessProfile, organization };
     }
     if (page === "overview") { const [profile, businessProfile, organization] = await Promise.all([getAccountProfile({ expectedUserId, signal }), business(), getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal })]); return { kind: "overview" as const, profile, business: businessProfile, organization }; }
     return { kind: "organization" as const, organization: await getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal }) };
@@ -70,7 +75,7 @@ function AccountRequest({ page, scope, expectedUserId, organizationId, sequence 
   if (response.isError) return <ReadError code={response.error instanceof AccountReadError ? response.error.code : "UNKNOWN"} page={page} />;
   if (response.data.kind === "organization") return <OrganizationView data={response.data.organization} />;
   if (response.data.kind === "overview") return <AccountOverviewView profile={response.data.profile} business={response.data.business} organization={response.data.organization} />;
-  return <ProfileView data={response.data.profile} business={response.data.business} organizationId={organizationId} section={profileSection(page)} />;
+  return <ProfileView data={response.data.profile} business={response.data.business} organization={response.data.organization} organizationId={organizationId} section={profileSection(page)} />;
 }
 function ReadError({ code, page = "profile" }: { code: string; page?: AccountPageKind }) {
   const messages: Record<string, string> = { AUTHENTICATION_REQUIRED: "登录已失效", IDENTITY_CONTEXT_CHANGED: "登录身份已变化", ACCOUNT_NOT_CONFIGURED: "账户资料服务尚未配置", DEPENDENCY_UNAVAILABLE: "资料服务暂不可用", DEADLINE_EXCEEDED: "资料读取超时", PERMISSION_DENIED: "无查看权限", ORGANIZATION_ACCESS_DENIED: "企业访问被拒绝", ORGANIZATION_ACCESS_REVOKED: "企业访问已撤销", ORGANIZATION_SUSPENDED: "企业访问已暂停", ORGANIZATION_CONTEXT_CHANGED: "当前企业已变化", ORGANIZATION_SELECTION_REQUIRED: "请选择当前企业", INVALID_UPSTREAM_RESPONSE: "资料响应无效" };

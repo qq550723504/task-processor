@@ -24,11 +24,16 @@ export async function handleAccountReferralEconomics(request: NextRequest) {
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, 15_000);
+  let finish = () => {};
+  const ended = new Promise<Response>(resolve => {
+    finish = () => resolve(referralFailure(504, "DEADLINE_EXCEEDED"));
+    controller.signal.addEventListener("abort", finish, { once: true });
+  });
   try {
-    const result = await authenticated(new NextRequest(request, { signal: controller.signal }), { params: Promise.resolve({}) });
+    const result = await Promise.race([authenticated(new NextRequest(request, { signal: controller.signal }), { params: Promise.resolve({}) }), ended]);
     return controller.signal.aborted ? referralFailure(504, "DEADLINE_EXCEEDED") : result;
   } catch { return controller.signal.aborted ? referralFailure(504, "DEADLINE_EXCEEDED") : referralFailure(503, "DEPENDENCY_UNAVAILABLE"); }
-  finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); }
+  finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); controller.signal.removeEventListener("abort", finish); }
 }
 
 async function proxy(request: Request, token: string) {

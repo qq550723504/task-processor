@@ -30,11 +30,11 @@ export function AccountOverviewView({ profile, organization }: { profile: Accoun
 
 type ProfileSection = "summary" | "settings" | "business" | "verification";
 
-export function ProfileView({ data, business, organizationId, section = "summary" }: { data: AccountProfile; business?: AccountBusinessProfile | null; organizationId?: string; section?: ProfileSection }) {
+export function ProfileView({ data, business, organization, organizationId, section = "summary" }: { data: AccountProfile; business?: AccountBusinessProfile | null; organization?: AccountOrganization | null; organizationId?: string; section?: ProfileSection }) {
   const identity = <ProfileIdentity data={data} />;
   if (section === "settings") return <>{identity}<AccountSettingsPanel data={data} editable returnTo="/workbench/account/profile/settings" /><Provenance data={data} /></>;
   if (section === "business") return <>{identity}<BusinessProfilePanel profile={business} organizationId={organizationId} /><Provenance data={data} /></>;
-  if (section === "verification") return <>{identity}<VerificationPanel data={data} interactive returnTo="/workbench/account/profile/verification" /><Provenance data={data} /></>;
+  if (section === "verification") return <>{identity}<VerificationPanel data={data} interactive organization={organization} returnTo="/workbench/account/profile/verification" /><Provenance data={data} /></>;
   return <>{identity}
     {![data.displayName, data.email, data.phoneNumber].some(value => value?.trim()) ? <ConsoleState kind="empty" title="暂未提供个人资料">登录服务本次未提供显示名称、手机号码或电子邮箱。你仍可查看账户标识并刷新资料。</ConsoleState> : null}
     <div className={styles.profileGrid}><div className={styles.profileMain}>
@@ -66,8 +66,8 @@ function IdentityProfileForm({ data, profile, returnTo }: { data: AccountProfile
   return <div className={styles.profileForm}><h3>个人资料</h3><form onSubmit={event => { event.preventDefault(); mutation.mutate(form); }}>{field("firstName", "名")}{field("lastName", "姓")}{field("nickName", "昵称")}{field("displayName", "显示名称")}<div className={styles.formActions}><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "保存中…" : "保存个人资料"}</Button>{mutation.isError ? <span className={styles.errorText}>{identityMutationErrorText(mutation.error)}</span> : mutation.isSuccess ? <span className={styles.successText}>个人资料已保存</span> : null}{mutation.isError && identityMutationNeedsLogin(mutation.error) ? <IdentityLoginRecovery returnTo={returnTo} /> : null}</div></form><p className={styles.note}>资料保存到当前登录用户的 ZITADEL Profile；Shuomi 不建立第二套身份资料。</p></div>;
 }
 
-function VerificationPanel({ data, interactive = false, returnTo }: { data: AccountProfile; interactive?: boolean; returnTo?: string }) {
-  return <Panel title="认证信息" description="认证状态由 ZITADEL 官方 Auth API 返回" className={styles.status}><Fields items={[["手机验证", verification(data.phoneNumberVerified)], ["邮箱验证", verification(data.emailVerified)], ["企业授权", "已读取当前企业授权"]]} />{interactive ? <IdentityVerificationManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/verification"} /> : null}</Panel>;
+function VerificationPanel({ data, organization, interactive = false, returnTo }: { data: AccountProfile; organization?: AccountOrganization | null; interactive?: boolean; returnTo?: string }) {
+  return <Panel title="认证信息" description="认证状态由 ZITADEL 官方 Auth API 返回" className={styles.status}><Fields items={[["手机验证", verification(data.phoneNumberVerified)], ["邮箱验证", verification(data.emailVerified)], ["企业授权", organization ? "已读取当前企业授权" : "未读取当前企业授权"]]} />{interactive ? <IdentityVerificationManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/verification"} /> : null}</Panel>;
 }
 
 function IdentityContactManagement({ data, returnTo }: { data: AccountProfile; returnTo: string }) {
