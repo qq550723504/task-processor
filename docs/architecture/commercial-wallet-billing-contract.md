@@ -416,6 +416,87 @@ error, the owner reads the durable operation before classifying the result.
 The caller may retry only the same operation identity when the owner contract
 allows replay.
 
+### 11.1 Durable wallet and order identity
+
+Every immutable wallet entry must retain enough identity to explain the money
+change and prove its Organization binding:
+
+```text
+entry_id
+organization_id
+currency
+entry_kind
+amount_delta_minor
+available_after_minor
+reserved_after_minor
+debt_after_minor
+source_identity
+commercial_order_id?
+payment_id?
+occurred_at
+```
+
+The initial entry kinds remain bounded to top-up credit, purchase reservation,
+purchase commit/release, refund reversal, chargeback reversal, and debt
+repayment. Tenant/browser callers never receive a generic money adjustment
+endpoint.
+
+The durable commercial order and item identity must include the order's
+Organization, kind, status, currency, immutable amount, quote reference,
+idempotency key, request fingerprint, version, and timestamps. A
+`commercial_order_item` binds a resource quantity and amount to the canonical
+order; it is the only source identity accepted by the purchased-resource grant
+contract.
+
+### 11.2 Provider settlement binding
+
+Provider integration is a separate adapter capability. When it exists, the
+adapter must first verify external payment finality, submit the accepted
+settlement to `internal/ledger/money`, and bind it to the canonical top-up
+order. Wallet credit requires both the accepted settlement and that
+Organization-scoped order binding. The Organization must never be inferred
+from the payer's current membership after payment.
+
+Refund and chargeback use the original payment/order/Organization binding and
+are applied exactly once. With no provider adapter, top-up intent remains
+`FEATURE_UNAVAILABLE`; no fake provider success is permitted.
+
+### 11.3 Query and error semantics
+
+Order and wallet lists use stable cursor pagination. Order filters are bounded
+to cursor, limit, date range, kind, product kind, status, and server-defined
+identifier/description search; they are not arbitrary SQL-like filters.
+
+The public contract distinguishes at least:
+
+```text
+FORBIDDEN
+FEATURE_UNAVAILABLE
+OFFER_UNAVAILABLE
+QUOTE_EXPIRED
+INSUFFICIENT_FUNDS
+IDEMPOTENCY_CONFLICT
+NOT_FOUND
+CONFLICT
+RECONCILIATION_REQUIRED
+DEPENDENCY_UNAVAILABLE
+INVALID_REQUEST
+```
+
+Unavailable capability, empty balance, insufficient funds, and unknown write
+outcome must not collapse into one generic error.
+
+### 11.4 Implementation admission gate
+
+Before #455 removes a wallet or order capability gate, the implementation must
+demonstrate exact Organization isolation, minor-unit string money end to end,
+reservation exact-once behavior, quote expiry, insufficient funds,
+source-bound resource fulfillment, payment/refund/chargeback reversal,
+idempotent replay/conflict, and unknown-outcome reconciliation. A fulfilled
+order must prove resource fulfillment, and no irreversible debit may lack a
+recovery path. Provider absence keeps top-up gated, and invoice remains gated
+until a separate invoice owner exists.
+
 ## 12. Figma acceptance mapping
 
 ### Wallet / 充值中心 `431:5166`
@@ -450,6 +531,9 @@ This contract does not:
 - expose a generic resource mint;
 - allow operators to spend Organization money;
 - convert Figma examples into business data.
+
+In particular, Figma example prices never seed production. Invoice creation is
+deliberately not authorized by this contract.
 
 ## 14. Delivery sequence
 
