@@ -145,6 +145,23 @@ describe("authenticated account referrals BFF", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("preserves an unknown outcome when a referral write times out after dispatch", async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn().mockResolvedValue(new Response(new ReadableStream({ start() {} }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    const pending = createPayoutMethod(new NextRequest("https://app.test/api/account/referral-payout-methods", {
+      method: "POST",
+      headers: { "X-Expected-User-ID": "subject-1", Origin: "https://app.test", "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json", "Idempotency-Key": "payout-key" },
+      body: JSON.stringify({ type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }),
+    }));
+    await vi.advanceTimersByTimeAsync(15001);
+    const response = await pending;
+    if (!response) throw new Error("payout method route returned no response");
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("cancels a hanging empty-body read when the request is aborted", async () => {
     const abort = new AbortController();
     let cancelled = false;

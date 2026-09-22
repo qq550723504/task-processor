@@ -231,10 +231,10 @@ function upstreamFailure(status: number, payload: unknown) {
 }
 
 export function referralMethodNotAllowed() { return failure(405, "INVALID_REQUEST"); }
-export function referralFailure(status: number, code: string) { return failure(status, code); }
+export function referralFailure(status: number, code: string, outcome?: "not_sent" | "unknown") { return failure(status, code, outcome); }
 export function referralJSON(value: unknown, status = 200) { return json(value, status); }
 
-function failure(status: number, code: string) {
-  return json({ code, message: "Referral request could not be completed", requestId: "", fieldErrors: [] }, status);
+function failure(status: number, code: string, outcome?: "not_sent" | "unknown") {
+  return json({ code, message: "Referral request could not be completed", requestId: "", fieldErrors: [], ...(outcome ? { outcome } : {}) }, status);
 }
 function json(value: unknown, status: number) { return NextResponse.json(value, { status, headers: responseHeaders }); }

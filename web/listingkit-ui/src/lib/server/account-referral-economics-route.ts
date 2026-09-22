@@ -7,20 +7,22 @@ import { hasTrustedSameOriginWrite } from "./same-origin-write";
 import { referralFailure, referralJSON, referralMethodNotAllowed } from "./referral-registration-route";
 
 const validID = (value: string | null | undefined): value is string => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
-const authenticated = serverAuth(async (request: NextRequest & { auth?: unknown }) => {
-  const identity = readZitadelIdentityFromSession(request.auth as never);
-  const token = readZitadelServerAccessToken(request.auth as never);
-  const expected = request.headers.get("x-expected-user-id");
-  if (!identity || !token) return referralFailure(401, "AUTHENTICATION_REQUIRED");
-  if (!expected || expected !== String(identity.userId) || !validID(expected)) return referralFailure(409, "IDENTITY_CONTEXT_CHANGED");
-  const result = await proxy(request, token);
-  return result;
-});
+function authenticatedFor(dispatchState: { forwarded: boolean }) {
+  return serverAuth(async (request: NextRequest & { auth?: unknown }) => {
+    const identity = readZitadelIdentityFromSession(request.auth as never);
+    const token = readZitadelServerAccessToken(request.auth as never);
+    const expected = request.headers.get("x-expected-user-id");
+    if (!identity || !token) return referralFailure(401, "AUTHENTICATION_REQUIRED");
+    if (!expected || expected !== String(identity.userId) || !validID(expected)) return referralFailure(409, "IDENTITY_CONTEXT_CHANGED");
+    return proxy(request, token, dispatchState);
+  });
+}
 
 export async function handleAccountReferralEconomics(request: NextRequest) {
   if (request.signal.aborted) return referralFailure(504, "DEADLINE_EXCEEDED");
   if (request.method === "POST" && !hasTrustedSameOriginWrite(request)) return referralFailure(403, "PERMISSION_DENIED");
   const controller = new AbortController();
+  const dispatchState = { forwarded: false };
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, 15_000);
@@ -29,14 +31,17 @@ export async function handleAccountReferralEconomics(request: NextRequest) {
     finish = () => resolve(referralFailure(504, "DEADLINE_EXCEEDED"));
     controller.signal.addEventListener("abort", finish, { once: true });
   });
+  const deadline = () => request.method === "POST" && dispatchState.forwarded
+    ? referralFailure(504, "RESULT_UNVERIFIED", "unknown")
+    : referralFailure(504, "DEADLINE_EXCEEDED");
   try {
-    const result = await Promise.race([authenticated(new NextRequest(request, { signal: controller.signal }), { params: Promise.resolve({}) }), ended]);
-    return controller.signal.aborted ? referralFailure(504, "DEADLINE_EXCEEDED") : result;
-  } catch { return controller.signal.aborted ? referralFailure(504, "DEADLINE_EXCEEDED") : referralFailure(503, "DEPENDENCY_UNAVAILABLE"); }
+    const result = await Promise.race([authenticatedFor(dispatchState)(new NextRequest(request, { signal: controller.signal }), { params: Promise.resolve({}) }), ended]);
+    return controller.signal.aborted ? deadline() : result;
+  } catch { return controller.signal.aborted ? deadline() : referralFailure(503, "DEPENDENCY_UNAVAILABLE"); }
   finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); controller.signal.removeEventListener("abort", finish); }
 }
 
-async function proxy(request: Request, token: string) {
+async function proxy(request: Request, token: string, dispatchState: { forwarded: boolean }) {
   const path = new URL(request.url).pathname;
   const mapping: Record<string, string> = {
     "/api/account/referral-earnings": "/api/v1/account/referrals/earnings",
@@ -58,6 +63,7 @@ async function proxy(request: Request, token: string) {
     const key = request.headers.get("Idempotency-Key");
     if (!key || key.length > 128) return referralFailure(400, "INVALID_REQUEST");
     headers.set("Idempotency-Key", key);
+    dispatchState.forwarded = true;
     const response = await fetch(`${origin}${suffix}`, { method: "POST", headers, body: JSON.stringify(body), cache: "no-store", redirect: "manual", signal: request.signal });
     return upstream(response);
   }

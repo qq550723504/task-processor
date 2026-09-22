@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AccountReadError, accountErrorCode } from "./account";
+import { AccountReadError, accountErrorDetails } from "./account";
 import { readBoundedStrictJSON } from "./strict-json-response";
 
 const amount = z.string().regex(/^(0|[1-9][0-9]{0,18})$/);
@@ -18,7 +18,7 @@ async function request<T>(path: string, schema: z.ZodType<T>, expectedUserId: st
   const headers = new Headers(init.headers); headers.set("Accept", "application/json"); headers.set("X-Expected-User-ID", expectedUserId);
   const response = await fetch(path, { ...init, headers, credentials: "same-origin", cache: "no-store", redirect: "error" });
   const payload = await readBoundedStrictJSON(response, 128 * 1024);
-  if (!response.ok) throw new AccountReadError(response.status, accountErrorCode(response.status, payload));
+  if (!response.ok) { const error = accountErrorDetails(response.status, payload); throw new AccountReadError(response.status, error.code, error.outcome); }
   const parsed = schema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
 }
 export const getReferralPayoutMethods = (expectedUserId: string, signal?: AbortSignal) => request("/api/account/referral-payout-methods", payoutMethods, expectedUserId, { signal });

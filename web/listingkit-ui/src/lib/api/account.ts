@@ -25,8 +25,9 @@ export type AccountProfile = z.infer<typeof profileSchema>;
 export type AccountOrganization = z.infer<typeof organizationSchema>;
 export type AccountBusinessProfile = z.infer<typeof businessProfileSchema>;
 export type AccountBusinessProfileInput = z.infer<typeof businessProfileInputSchema>;
+export type AccountErrorOutcome = "not_sent" | "unknown";
 export class AccountReadError extends Error {
-  constructor(readonly status: number, readonly code: string) { super(`Account read failed (${code})`); this.name = "AccountReadError"; }
+  constructor(readonly status: number, readonly code: string, readonly outcome?: AccountErrorOutcome) { super(`Account read failed (${code})`); this.name = "AccountReadError"; }
 }
 
 const errorCodes: Record<number, readonly string[]> = {
@@ -47,9 +48,12 @@ export function parseAccountPayload(kind: "profile" | "organization" | "business
   return result.data;
 }
 export function accountErrorCode(status: number, value: unknown): string {
+  return accountErrorDetails(status, value).code;
+}
+export function accountErrorDetails(status: number, value: unknown): { code: string; outcome?: AccountErrorOutcome } {
   const envelope = z.object({ code: z.string(), message: z.string(), requestId: z.string(), fieldErrors: z.array(z.unknown()).max(0), outcome: z.enum(["not_sent", "unknown"]).optional() }).strict().safeParse(value);
   if (!envelope.success || !errorCodes[status]?.includes(envelope.data.code)) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE");
-  return envelope.data.code;
+  return { code: envelope.data.code, outcome: envelope.data.outcome };
 }
 
 type ProfileOptions = { expectedUserId: string; signal?: AbortSignal };
@@ -77,7 +81,7 @@ async function readAccount(kind: "profile" | "organization" | "business-profile"
     const response = await fetch(`/api/account/${kind}`, { method: "GET", headers, credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
     const payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal);
     controller.signal.throwIfAborted();
-    if (response.status !== 200) throw new AccountReadError(response.status, accountErrorCode(response.status, payload));
+    if (response.status !== 200) { const error = accountErrorDetails(response.status, payload); throw new AccountReadError(response.status, error.code, error.outcome); }
     const result = parseAccountPayload(kind, payload);
     if (result.userId !== options.expectedUserId) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED");
     if ("effectiveOrganizationId" in result && result.effectiveOrganizationId !== organization) throw new AccountReadError(409, "ORGANIZATION_CONTEXT_CHANGED");
@@ -99,7 +103,7 @@ async function writeBusinessProfile(options: ProfileOptions & { expectedOrganiza
     controller.signal.throwIfAborted();
     const response = await fetch("/api/account/business-profile", { method: "PUT", headers: { Accept: "application/json", "Content-Type": "application/json", "X-Expected-User-ID": options.expectedUserId, "X-Expected-Organization-ID": options.expectedOrganizationId }, body: JSON.stringify(options.input), credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
     const payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); controller.signal.throwIfAborted();
-    if (response.status !== 200) throw new AccountReadError(response.status, accountErrorCode(response.status, payload));
+    if (response.status !== 200) { const error = accountErrorDetails(response.status, payload); throw new AccountReadError(response.status, error.code, error.outcome); }
     const result = parseAccountPayload("business-profile", payload); if (result.userId !== options.expectedUserId) throw new AccountReadError(409, "IDENTITY_CONTEXT_CHANGED"); return result;
   } catch (error) {
     if (controller.signal.aborted) throw new AccountReadError(504, "DEADLINE_EXCEEDED");

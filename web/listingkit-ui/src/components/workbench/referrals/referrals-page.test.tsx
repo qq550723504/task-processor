@@ -141,6 +141,26 @@ describe("ReferralsPage", () => {
     expect(fetch).toHaveBeenCalledWith("/api/account/referral-withdrawals/withdrawal-1/cancel", expect.objectContaining({ method: "POST" }));
   });
 
+  it("blocks an immediate retry when a withdrawal result is unknown", async () => {
+    const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
+    const fetch = vi.fn((input: string, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
+      if (path === "/api/account/referral-withdrawals" && !init?.method) return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }));
+      if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: [{ methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }] }));
+      if (path === "/api/account/referral-withdrawals" && init?.method === "POST") return Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 }));
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    mount("overview", "subject-1", true, "withdrawals");
+    await user.type(await screen.findByLabelText("金额（分）"), "10000");
+    await user.click(screen.getByRole("button", { name: "申请提现" }));
+    expect((await screen.findAllByText("操作结果待核实"))[0]).toBeVisible();
+    expect(screen.getByRole("button", { name: "申请提现" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "刷新提现状态" })).toHaveAttribute("href", "/workbench/account/referrals/withdrawals");
+  });
+
   it("shows available earnings after immutable refund adjustments", async () => {
     const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "-2000", version: "2", updatedAt: "2026-09-13T10:00:00Z" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(projection)));
@@ -230,7 +250,7 @@ describe("ReferralsPage", () => {
     mount();
     await user.click(await screen.findByRole("button", { name: "创建推广码" }));
     expect(await screen.findByText("推广服务暂不可用")).toBeVisible();
-    expect(screen.getByText("操作结果尚未确认。请使用原操作恢复或稍后重新核对。")).toBeVisible();
+    expect(screen.getByText("操作结果尚未确认。请先刷新相关状态核对服务端事实，再决定是否重试。")).toBeVisible();
     expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
   });
 
@@ -240,7 +260,7 @@ describe("ReferralsPage", () => {
     const user = userEvent.setup();
     mount("complete");
     await user.click(await screen.findByRole("button", { name: "完成推广关系" }));
-    expect(await screen.findByText("操作结果尚未确认。请使用原操作恢复或稍后重新核对。")).toBeVisible();
+    expect(await screen.findByText("操作结果尚未确认。请先刷新相关状态核对服务端事实，再决定是否重试。")).toBeVisible();
     expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
   });
 });
