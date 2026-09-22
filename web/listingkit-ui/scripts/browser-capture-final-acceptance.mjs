@@ -92,8 +92,11 @@ try {
   }
   const extensionManifest = JSON.parse(await readFile(join(pluginRoot, "dist-fixture", "manifest.json"), "utf8"));
   assert.deepEqual(extensionManifest.permissions.slice().sort(), ["activeTab", "scripting"]);
-  // Same grant the manifest test pins: one host, https only. A wider build must fail here too.
-  assert.deepEqual(extensionManifest.host_permissions, ["https://detail.1688.com/*"]);
+  // This checks the archived pin, not the current build. pluginHead predates the shipped host
+  // grant, so that frozen revision legitimately declares none — and this chain is supposed to
+  // test exactly the revision it pins. Carrying the grant into this chain means bumping
+  // pluginHead after the grant is on main, never loosening this line to match a newer build.
+  assert.equal(extensionManifest.host_permissions, undefined);
   stage = "compile";
   const binary = join(dir, "browser-capture.test.exe");
   await run("go", ["test", "-c", "-o", binary, "./internal/app/httpapi"], { cwd: repo });

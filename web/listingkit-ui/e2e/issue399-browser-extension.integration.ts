@@ -197,7 +197,10 @@ export function registerFrozenExtensionCombination() {
         return api.chrome.runtime.getManifest();
       });
       assert.deepEqual(permissions.permissions.slice().sort(), ["activeTab", "scripting"]);
-      assert.deepEqual(permissions.host_permissions, ["https://detail.1688.com/*"]);
+      // The archived pin is older than the shipped host grant, so the revision under test here
+      // has none. This is an assertion about pluginHead, not about the current dist; see the
+      // matching note in scripts/browser-capture-final-acceptance.mjs.
+      assert.equal(permissions.host_permissions, undefined);
       const targets = await browserCDP.send("Target.getTargets", { filter: [{ type: "tab", exclude: false }] });
       const tabs = targets.targetInfos.filter(target => target.type === "tab");
       assert.equal(tabs.length, 1, "OWNED_SOURCE_TAB_NOT_UNIQUE");
