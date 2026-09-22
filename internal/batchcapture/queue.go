@@ -300,8 +300,8 @@ func Load(path string) (*Queue, error) {
 // Save writes the queue atomically and flushes it to stable storage.
 //
 // The sequence is: write a sibling temp file, flush its contents, atomically
-// replace the target, flush the target's directory, and flush the parent of every
-// directory this call created. On the platforms this executor runs on, os.Rename
+// replace the target, and flush the target's directory together with every ancestor
+// above it. On the platforms this executor runs on, os.Rename
 // replaces an existing file (MoveFileEx with MOVEFILE_REPLACE_EXISTING on Windows,
 // rename(2) elsewhere), so a reader never observes a half-written queue.
 //
@@ -353,8 +353,7 @@ func (q *Queue) save(path string, syncDirFn func(string) error) error {
 	if dir == "" {
 		dir = "."
 	}
-	createdDirs, err := mkdirQueueDir(dir)
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create queue directory: %w", err)
 	}
 	tmp, err := os.CreateTemp(dir, ".batch-queue-*.tmp")
@@ -397,18 +396,20 @@ func (q *Queue) save(path string, syncDirFn func(string) error) error {
 	if err := syncDirFn(dir); err != nil {
 		return flushFailedAfterReplace(path, previous, previousErr, syncDirFn, fmt.Errorf("flush queue directory: %w", err))
 	}
-	// Flushing a directory registers its CONTENTS; the directory's own NAME lives in
-	// its parent, so every directory this call created is still unregistered until
-	// that parent is flushed as well. Without this, a power loss after a save that
-	// returned success can remove the whole queue directory, and the next run would
-	// then read no queue at all (ErrQueueMissing), rebuild the item as queued, and be
-	// willing to publish it a second time - the duplicate publication the durable
-	// pre-write exists to prevent. The list is shallowest-first so each parent is
-	// registered before the child it names.
-	for _, created := range createdDirs {
-		if err := syncDirFn(filepath.Dir(created)); err != nil {
-			return flushFailedAfterReplace(path, previous, previousErr, syncDirFn, fmt.Errorf("flush parent of newly created queue directory: %w", err))
-		}
+	// Flushing a directory registers its CONTENTS; a directory's own NAME lives in its
+	// parent, so flushing only the queue's directory leaves every directory on the path
+	// unregistered, and a power loss after a save that returned success can remove the
+	// whole queue tree. The next run would then read no queue at all (ErrQueueMissing),
+	// rebuild the item as queued, and be willing to publish it a second time - the
+	// duplicate publication the durable pre-write exists to prevent.
+	//
+	// Every ancestor is flushed, not only the directories this call created. A save that
+	// created directories and then failed before their parents were registered leaves
+	// them behind, and the retry finds them already present; deriving the flush set from
+	// the path rather than from what this call happened to create is what makes that
+	// retry register what the failed save left unregistered.
+	if err := flushQueueDirAncestors(dir, syncDirFn); err != nil {
+		return flushFailedAfterReplace(path, previous, previousErr, syncDirFn, fmt.Errorf("flush queue directory ancestor: %w", err))
 	}
 	return nil
 }
@@ -492,38 +493,35 @@ func restoreQueueFile(path string, previous []byte, previousErr error, syncDirFn
 	return nil
 }
 
-// mkdirQueueDir creates dir and any missing parents, and returns the directories it
-// actually created, ordered shallowest-first.
+// flushQueueDirAncestors flushes every directory above dir, shallowest-first.
 //
-// Save needs that list because a directory's contents are made durable by flushing
-// the directory, while its NAME is made durable by flushing its parent. Flushing
-// only dir therefore leaves every newly created ancestor unregistered, which is a
-// silent durability hole exactly when the operator points --queue at a path whose
-// directories do not exist yet.
-func mkdirQueueDir(dir string) ([]string, error) {
-	var created []string
+// A directory's contents are made durable by flushing the directory, while its NAME is
+// made durable by flushing its parent, so the path to the queue file is only durable
+// once every directory on it has been flushed. The set cannot be reduced to the
+// directories a single Save creates: an earlier save may have created directories and
+// failed before registering them, so a later save that finds them already present must
+// still flush their parents. Walking the path each time is what makes a retry repair a
+// failed save instead of trusting a directory this process did not create.
+//
+// dir itself is flushed by the caller, which is why the walk starts at its parent.
+func flushQueueDirAncestors(dir string, syncDirFn func(string) error) error {
+	var ancestors []string
 	for p := dir; ; {
-		if _, err := os.Stat(p); err == nil {
-			break
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		created = append(created, p)
 		parent := filepath.Dir(p)
 		if parent == p {
 			break
 		}
+		ancestors = append(ancestors, parent) // deepest-first as the walk climbs
 		p = parent
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
+	// Shallowest-first, so each directory's own name is registered before the child it
+	// names is relied on.
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		if err := syncDirFn(ancestors[i]); err != nil {
+			return fmt.Errorf("flush %s: %w", ancestors[i], err)
+		}
 	}
-	// Collected deepest-first while walking up; the caller must flush the
-	// shallowest parent first.
-	for i, j := 0, len(created)-1; i < j; i, j = i+1, j-1 {
-		created[i], created[j] = created[j], created[i]
-	}
-	return created, nil
+	return nil
 }
 
 func digestOf(env envelope) (string, error) {
