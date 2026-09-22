@@ -235,7 +235,9 @@ failure and does not authorize automatic re-charge.
 A fulfilled resource order must retain proof of both the canonical money
 reservation commit and the canonical source-bound resource grant.
 The order's durable grant proof carries the grant operation ID, canonical
-`commercial_order_item` source type, and persisted source identity.
+`commercial_order_item` source type, and a source identity that exactly matches
+the deterministic identity for the order's organization, order, and order item
+as computed by the orgresource owner.
 
 Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
 top-up must carry an accepted provider payment reference; without that proof it

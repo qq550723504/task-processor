@@ -183,9 +183,14 @@ func TestFulfilledResourcePurchaseRequiresGrantProof(t *testing.T) {
 
 	order.ResourceGrantOperationID = "grant-operation-1"
 	order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
-	order.ResourceGrantSourceIdentity = "commercial_order_item:source-digest"
+	order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
 	if err := order.Validate(); err != nil {
 		t.Fatalf("fulfilled resource order with grant proof rejected: %v", err)
+	}
+
+	order.ResourceGrantSourceIdentity = "commercial_order_item:other-order-proof"
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("fulfilled resource order with copied grant source identity = nil, want ErrInvalid")
 	}
 
 	order.ResourceGrantSourceType = "arbitrary-source"

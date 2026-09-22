@@ -203,10 +203,17 @@ func (order Order) Validate() error {
 }
 
 func hasResourceGrantProof(order Order) bool {
+	if len(order.Items) != 1 || order.Items[0].Validate() != nil {
+		return false
+	}
+	expectedSourceIdentity := orgresource.CommercialOrderItemSourceIdentity(
+		order.OrganizationID,
+		order.OrderID,
+		order.Items[0].OrderItemID,
+	)
 	return strings.TrimSpace(order.ResourceGrantOperationID) != "" &&
-		strings.TrimSpace(order.ResourceGrantSourceType) == orgresource.SourceCommercialOrderItem &&
-		len(strings.TrimSpace(order.ResourceGrantSourceIdentity)) > 0 &&
-		len(strings.TrimSpace(order.ResourceGrantSourceIdentity)) <= 192
+		order.ResourceGrantSourceType == orgresource.SourceCommercialOrderItem &&
+		order.ResourceGrantSourceIdentity == expectedSourceIdentity
 }
 
 func topUpUsesResourcePurchaseLifecycle(status OrderStatus) bool {

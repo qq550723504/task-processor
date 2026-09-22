@@ -192,10 +192,17 @@ func validatePurchasedGrantIdentity(input PurchasedResourceGrantInput) error {
 	return nil
 }
 
-func purchasedGrantSourceIdentity(organizationID, orderID, orderItemID string) string {
+// CommercialOrderItemSourceIdentity returns the canonical source identity for
+// a commercial order item grant. Keep this calculation in the resource owner
+// so consumers validate the same source binding that the grant path persists.
+func CommercialOrderItemSourceIdentity(organizationID, orderID, orderItemID string) string {
 	canonical := fmt.Sprintf("%d:%s%d:%s%d:%s", len(organizationID), organizationID, len(orderID), orderID, len(orderItemID), orderItemID)
 	sum := sha256.Sum256([]byte(canonical))
 	return SourceCommercialOrderItem + ":" + hex.EncodeToString(sum[:])
+}
+
+func purchasedGrantSourceIdentity(organizationID, orderID, orderItemID string) string {
+	return CommercialOrderItemSourceIdentity(organizationID, orderID, orderItemID)
 }
 
 func fingerprintPurchasedResourceGrant(input PurchasedResourceGrantExecution) (string, error) {
