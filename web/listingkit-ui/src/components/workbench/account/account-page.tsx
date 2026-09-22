@@ -12,7 +12,6 @@ import { AccountOverviewView, OrganizationView, ProfileView } from "./account-vi
 import styles from "./account.module.css";
 import { accountPagePath, type AccountPageKind } from "./account-page-route";
 
-export { accountPagePath } from "./account-page-route";
 export type { AccountPageKind } from "./account-page-route";
 type ProfileSection = "summary" | "settings" | "business" | "verification";
 
