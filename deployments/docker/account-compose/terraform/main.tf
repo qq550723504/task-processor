@@ -13,6 +13,16 @@ variable "operator_password" {
   type      = string
   sensitive = true
 }
+
+variable "viewer_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "insufficient_password" {
+  type      = string
+  sensitive = true
+}
 variable "identity_port" { type = number }
 variable "application_port" { type = number }
 
@@ -34,6 +44,30 @@ resource "zitadel_human_user" "operator" {
   email                        = "local-bootstrap-operator@localhost"
   is_email_verified            = true
   initial_password             = var.operator_password
+  initial_skip_password_change = true
+}
+
+resource "zitadel_human_user" "viewer" {
+  org_id                       = zitadel_org.account.id
+  user_name                    = "local-acceptance-viewer@localhost"
+  first_name                   = "Local"
+  last_name                    = "Acceptance Viewer"
+  display_name                 = "Local Acceptance Viewer"
+  email                        = "local-acceptance-viewer@localhost"
+  is_email_verified            = true
+  initial_password             = var.viewer_password
+  initial_skip_password_change = true
+}
+
+resource "zitadel_human_user" "insufficient" {
+  org_id                       = zitadel_org.account.id
+  user_name                    = "local-acceptance-insufficient@localhost"
+  first_name                   = "Local"
+  last_name                    = "Acceptance Insufficient"
+  display_name                 = "Local Acceptance Insufficient"
+  email                        = "local-acceptance-insufficient@localhost"
+  is_email_verified            = true
+  initial_password             = var.insufficient_password
   initial_skip_password_change = true
 }
 
@@ -138,6 +172,14 @@ resource "zitadel_user_grant" "operator" {
   depends_on = [zitadel_project_role.viewer, zitadel_project_role.operator, zitadel_project_role.admin, zitadel_project_role.platform_admin]
 }
 
+resource "zitadel_user_grant" "viewer" {
+  org_id     = zitadel_org.account.id
+  project_id = zitadel_project.listingkit.id
+  user_id    = zitadel_human_user.viewer.id
+  role_keys  = ["listingkit_viewer"]
+  depends_on = [zitadel_project_role.viewer]
+}
+
 resource "zitadel_application_api" "current_application" {
   org_id           = zitadel_org.account.id
   project_id       = zitadel_project.listingkit.id
@@ -171,6 +213,9 @@ output "provider_pat" {
 }
 output "signup_org_id" { value = zitadel_org.account.id }
 output "project_id" { value = zitadel_project.listingkit.id }
+output "bootstrap_user_id" { value = zitadel_human_user.operator.id }
+output "viewer_user_id" { value = zitadel_human_user.viewer.id }
+output "insufficient_user_id" { value = zitadel_human_user.insufficient.id }
 output "membership_read_pat" {
   value     = zitadel_personal_access_token.membership_read.token
   sensitive = true
