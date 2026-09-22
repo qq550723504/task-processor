@@ -167,6 +167,23 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByRole("button", { name: "修改邮箱" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "修改手机号" })).toBeDisabled();
   });
+  it("keeps verification controls disabled after an unknown outcome while account facts reconcile", async () => {
+    const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
+    const unknown = { code: "RESULT_UNVERIFIED", message: "", requestId: "", fieldErrors: [], outcome: "unknown" };
+    const fetcher = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "/api/account/profile" || url === "/api/account/organization" || url === "/api/account/identity/profile") return Promise.resolve(Response.json(url === "/api/account/profile" ? profile : url === "/api/account/organization" ? organization : identity));
+      if (url === "/api/account/identity/phone/verify" && init?.method === "POST") return Promise.resolve(Response.json(unknown, { status: 504 }));
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    mount("profile-verification");
+    await user.type(await screen.findByLabelText("手机验证码"), "123456");
+    await user.click(screen.getByRole("button", { name: "验证手机" }));
+    expect(await screen.findByText("操作结果待核实，已刷新资料；请确认当前验证状态后，再点击“刷新资料”重新发送。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "验证手机" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新发送" })).toBeDisabled();
+  });
   it("distinguishes undisclosed optional claims from a failed read", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...profile, displayName: null, phoneNumber: null, phoneNumberVerified: null }))); mount();
     expect(await screen.findByRole("heading", { name: "暂未提供个人资料" })).toBeVisible();
