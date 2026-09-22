@@ -115,10 +115,10 @@ func (service *PurchasedResourceGrantService) GrantPurchasedResource(ctx context
 	if err != nil {
 		return PurchasedResourceGrantResult{}, fmt.Errorf("%w: commercial grant authority rejected", ErrForbidden)
 	}
-	if authorization.MaxQuantity <= 0 || input.Quantity > authorization.MaxQuantity {
-		return PurchasedResourceGrantResult{}, fmt.Errorf("%w: quantity exceeds commercial grant limit", ErrInvalidInput)
-	}
 
+	// Replay an existing durable result before applying the current mutable
+	// quantity policy. Authorization still gates access to the replay, but a
+	// policy change must not hide an already committed grant.
 	execution := PurchasedResourceGrantExecution{
 		OrganizationID:        input.OrganizationID,
 		OperationID:           input.OperationID,
@@ -152,6 +152,9 @@ func (service *PurchasedResourceGrantService) GrantPurchasedResource(ctx context
 	} else if found {
 		result.Replayed = true
 		return result, nil
+	}
+	if authorization.MaxQuantity <= 0 || input.Quantity > authorization.MaxQuantity {
+		return PurchasedResourceGrantResult{}, fmt.Errorf("%w: quantity exceeds commercial grant limit", ErrInvalidInput)
 	}
 	return service.executor.ExecutePurchasedResourceGrant(ctx, execution)
 }
@@ -190,7 +193,7 @@ func validatePurchasedGrantIdentity(input PurchasedResourceGrantInput) error {
 }
 
 func purchasedGrantSourceIdentity(orderID, orderItemID string) string {
-	return orderID + ":" + orderItemID
+	return fmt.Sprintf("%d:%s%d:%s", len(orderID), orderID, len(orderItemID), orderItemID)
 }
 
 func fingerprintPurchasedResourceGrant(input PurchasedResourceGrantExecution) (string, error) {

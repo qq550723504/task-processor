@@ -111,3 +111,42 @@ func TestWalletTopUpOrderCannotCarryResourceItem(t *testing.T) {
 		t.Fatalf("wallet top-up must not mint resources directly")
 	}
 }
+
+func TestResourcePurchasePostReservationStatesRequireWalletReservation(t *testing.T) {
+	now := time.Now().UTC()
+	for _, status := range []OrderStatus{
+		OrderFundsReserved,
+		OrderFulfilling,
+		OrderFulfilled,
+		OrderReconciliationRequired,
+	} {
+		order := validResourcePurchaseOrder(now)
+		order.Status = status
+		if err := order.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("status %s without wallet reservation = %v, want ErrInvalid", status, err)
+		}
+	}
+}
+
+func validResourcePurchaseOrder(now time.Time) Order {
+	return Order{
+		OrderID:            "order-1",
+		OrganizationID:     "org-1",
+		Kind:               OrderResourcePurchase,
+		QuoteID:            "quote-1",
+		Currency:           CurrencyCNY,
+		AmountMinor:        1999,
+		Status:             OrderPending,
+		IdempotencyKey:     "idem-1",
+		RequestFingerprint: "fp-1",
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		Items: []OrderItem{{
+			OrderItemID:      "item-1",
+			ProductKind:      ProductAIPoint,
+			ResourceType:     orgresource.ResourceAIPoint,
+			ResourceQuantity: 100,
+			AmountMinor:      1999,
+		}},
+	}
+}

@@ -250,6 +250,10 @@ The source claim is unique and replayable. Same source + same fingerprint return
 the immutable previous result. Same source + different fingerprint is a
 conflict.
 
+The persisted source identity uses an unambiguous length-prefixed encoding of
+the canonical order ID and order-item ID; delimiter concatenation is not a
+uniqueness contract.
+
 The purchased grant supports only the three approved resource types and a
 positive bounded quantity. Authorization is supplied by runtime assembly using
 the trusted commercial principal; a tenant role string supplied by HTTP is not

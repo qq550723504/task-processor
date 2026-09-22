@@ -65,13 +65,13 @@ func TestPurchasedResourceGrantFixesCommercialSourceIdentity(t *testing.T) {
 	if executor.executed.SourceType != SourceCommercialOrderItem {
 		t.Fatalf("source type = %q", executor.executed.SourceType)
 	}
-	if executor.executed.SourceIdentity != "order-1:item-1" {
+	if executor.executed.SourceIdentity != "7:order-16:item-1" {
 		t.Fatalf("source identity = %q", executor.executed.SourceIdentity)
 	}
 	if executor.executed.RequestFingerprint == "" {
 		t.Fatalf("request fingerprint must be fixed by resource owner")
 	}
-	if result.Snapshot.SourceIdentity != "order-1:item-1" {
+	if result.Snapshot.SourceIdentity != "7:order-16:item-1" {
 		t.Fatalf("snapshot source identity = %q", result.Snapshot.SourceIdentity)
 	}
 }
@@ -96,6 +96,42 @@ func TestPurchasedResourceGrantRejectsQuantityBeyondRegisteredCommercialLimit(t 
 	}
 	if executor.executed.OperationID != "" {
 		t.Fatalf("executor must not run after quantity rejection")
+	}
+}
+
+func TestPurchasedResourceGrantReplaysBeforeApplyingCurrentQuantityLimit(t *testing.T) {
+	executor := &purchasedGrantExecutorStub{
+		found: true,
+		replay: PurchasedResourceGrantResult{Snapshot: PurchasedResourceGrantSnapshot{
+			OperationID: "operation-1",
+			Quantity:    "10",
+		}},
+	}
+	service, err := NewPurchasedResourceGrantService(executor, purchasedGrantAuthorizerStub{max: 5})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	result, err := service.GrantPurchasedResource(context.Background(), PurchasedResourceGrantInput{
+		OrganizationID:        "org-1",
+		OperationID:           "operation-1",
+		CommercialOrderID:     "order-1",
+		CommercialOrderItemID: "item-1",
+		ResourceType:          ResourceDataRow,
+		Quantity:              10,
+		Principal:             Principal{ID: "commercial-owner", Kind: PrincipalTrustedCommercial},
+	})
+	if err != nil {
+		t.Fatalf("replay must not be rejected by a changed quantity limit: %v", err)
+	}
+	if !result.Replayed || executor.executed.OperationID != "" {
+		t.Fatalf("result = %#v, execution = %#v", result, executor.executed)
+	}
+}
+
+func TestPurchasedResourceGrantSourceIdentityIsUnambiguous(t *testing.T) {
+	if first, second := purchasedGrantSourceIdentity("order:a", "item"), purchasedGrantSourceIdentity("order", "a:item"); first == second {
+		t.Fatalf("source identities collide: %q", first)
 	}
 }
 
