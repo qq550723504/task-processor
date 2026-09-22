@@ -49,9 +49,10 @@ export function AccountPage({ page, expectedUserId }: { page: AccountPageKind; e
 
 function ScopedAccount({ page, scope, expectedUserId, organizationId }: { page: AccountPageKind; scope: string; expectedUserId: string; organizationId?: string }) {
   const [sequence, setSequence] = useState(0);
-  return <><AccountRequest key={sequence} page={page} scope={scope} expectedUserId={expectedUserId} organizationId={organizationId} sequence={sequence} /><div className={styles.refresh}><Button variant="outline" onClick={() => setSequence(value => value + 1)}>刷新资料</Button></div></>;
+  const [identityVerificationOutcomeUnknown, setIdentityVerificationOutcomeUnknown] = useState(false);
+  return <><AccountRequest key={sequence} page={page} scope={scope} expectedUserId={expectedUserId} organizationId={organizationId} sequence={sequence} identityVerificationOutcomeUnknown={identityVerificationOutcomeUnknown} onIdentityVerificationOutcomeUnknown={() => setIdentityVerificationOutcomeUnknown(true)} /><div className={styles.refresh}><Button variant="outline" onClick={() => { setIdentityVerificationOutcomeUnknown(false); setSequence(value => value + 1); }}>刷新资料</Button></div></>;
 }
-function AccountRequest({ page, scope, expectedUserId, organizationId, sequence }: { page: AccountPageKind; scope: string; expectedUserId: string; organizationId?: string; sequence: number }) {
+function AccountRequest({ page, scope, expectedUserId, organizationId, sequence, identityVerificationOutcomeUnknown, onIdentityVerificationOutcomeUnknown }: { page: AccountPageKind; scope: string; expectedUserId: string; organizationId?: string; sequence: number; identityVerificationOutcomeUnknown: boolean; onIdentityVerificationOutcomeUnknown: () => void }) {
   const response = useQuery({ queryKey: ["account", page, scope, sequence], queryFn: async ({ signal }) => {
     const business = async (required = false) => {
       if (!organizationId) { if (required) throw new AccountReadError(409, "ORGANIZATION_SELECTION_REQUIRED"); return null; }
@@ -75,7 +76,7 @@ function AccountRequest({ page, scope, expectedUserId, organizationId, sequence 
   if (response.isError) return <ReadError code={response.error instanceof AccountReadError ? response.error.code : "UNKNOWN"} page={page} />;
   if (response.data.kind === "organization") return <OrganizationView data={response.data.organization} />;
   if (response.data.kind === "overview") return <AccountOverviewView profile={response.data.profile} business={response.data.business} organization={response.data.organization} />;
-  return <ProfileView data={response.data.profile} business={response.data.business} organization={response.data.organization} organizationId={organizationId} section={profileSection(page)} />;
+  return <ProfileView data={response.data.profile} business={response.data.business} organization={response.data.organization} organizationId={organizationId} section={profileSection(page)} identityVerificationOutcomeUnknown={identityVerificationOutcomeUnknown} onIdentityVerificationOutcomeUnknown={onIdentityVerificationOutcomeUnknown} />;
 }
 function ReadError({ code, page = "profile" }: { code: string; page?: AccountPageKind }) {
   const messages: Record<string, string> = { AUTHENTICATION_REQUIRED: "登录已失效", IDENTITY_CONTEXT_CHANGED: "登录身份已变化", ACCOUNT_NOT_CONFIGURED: "账户资料服务尚未配置", DEPENDENCY_UNAVAILABLE: "资料服务暂不可用", DEADLINE_EXCEEDED: "资料读取超时", PERMISSION_DENIED: "无查看权限", ORGANIZATION_ACCESS_DENIED: "企业访问被拒绝", ORGANIZATION_ACCESS_REVOKED: "企业访问已撤销", ORGANIZATION_SUSPENDED: "企业访问已暂停", ORGANIZATION_CONTEXT_CHANGED: "当前企业已变化", ORGANIZATION_SELECTION_REQUIRED: "请选择当前企业", INVALID_UPSTREAM_RESPONSE: "资料响应无效" };

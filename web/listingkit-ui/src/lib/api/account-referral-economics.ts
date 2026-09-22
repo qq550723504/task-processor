@@ -16,10 +16,19 @@ export type ReferralEarnings = z.infer<typeof referralEarnings>;
 export type ReferralRules = z.infer<typeof referralRules>;
 async function request<T>(path: string, schema: z.ZodType<T>, expectedUserId: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers); headers.set("Accept", "application/json"); headers.set("X-Expected-User-ID", expectedUserId);
-  const response = await fetch(path, { ...init, headers, credentials: "same-origin", cache: "no-store", redirect: "error" });
-  const payload = await readBoundedStrictJSON(response, 128 * 1024);
-  if (!response.ok) { const error = accountErrorDetails(response.status, payload); throw new AccountReadError(response.status, error.code, error.outcome); }
-  const parsed = schema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
+  const write = init.method === "POST";
+  let dispatched = false;
+  try {
+    dispatched = write;
+    const response = await fetch(path, { ...init, headers, credentials: "same-origin", cache: "no-store", redirect: "error" });
+    const payload = await readBoundedStrictJSON(response, 128 * 1024);
+    if (!response.ok) { const error = accountErrorDetails(response.status, payload); throw new AccountReadError(response.status, error.code, error.outcome); }
+    const parsed = schema.safeParse(payload); if (!parsed.success) throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
+  } catch (error) {
+    if (error instanceof AccountReadError) throw error;
+    if (dispatched) throw new AccountReadError(502, "RESULT_UNVERIFIED", "unknown");
+    throw error;
+  }
 }
 export const getReferralPayoutMethods = (expectedUserId: string, signal?: AbortSignal) => request("/api/account/referral-payout-methods", payoutMethods, expectedUserId, { signal });
 export const getReferralEarnings = (expectedUserId: string, signal?: AbortSignal) => request("/api/account/referral-earnings", referralEarnings, expectedUserId, { signal });

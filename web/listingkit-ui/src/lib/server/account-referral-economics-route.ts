@@ -37,7 +37,10 @@ export async function handleAccountReferralEconomics(request: NextRequest) {
   try {
     const result = await Promise.race([authenticatedFor(dispatchState)(new NextRequest(request, { signal: controller.signal }), { params: Promise.resolve({}) }), ended]);
     return controller.signal.aborted ? deadline() : result;
-  } catch { return controller.signal.aborted ? deadline() : referralFailure(503, "DEPENDENCY_UNAVAILABLE"); }
+  } catch {
+    if (request.method === "POST" && dispatchState.forwarded) return referralFailure(502, "RESULT_UNVERIFIED", "unknown");
+    return controller.signal.aborted ? deadline() : referralFailure(503, "DEPENDENCY_UNAVAILABLE");
+  }
   finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); controller.signal.removeEventListener("abort", finish); }
 }
 
@@ -65,16 +68,17 @@ async function proxy(request: Request, token: string, dispatchState: { forwarded
     headers.set("Idempotency-Key", key);
     dispatchState.forwarded = true;
     const response = await fetch(`${origin}${suffix}`, { method: "POST", headers, body: JSON.stringify(body), cache: "no-store", redirect: "manual", signal: request.signal });
-    return upstream(response);
+    return upstream(response, true);
   }
   const response = await fetch(`${origin}${suffix}`, { method: "GET", headers, cache: "no-store", redirect: "manual", signal: request.signal });
-  return upstream(response);
+  return upstream(response, false);
 }
 
-async function upstream(response: Response) {
+async function upstream(response: Response, write: boolean) {
   const payload = await readBoundedStrictJSON(response, 128 * 1024).catch(() => undefined);
-  if (payload === undefined) return referralFailure(502, "INVALID_UPSTREAM_RESPONSE");
-  return response.ok ? referralJSON(payload, response.status) : referralFailure(response.status, errorCode(payload));
+  if (payload === undefined) return write ? referralFailure(502, "RESULT_UNVERIFIED", "unknown") : referralFailure(502, "INVALID_UPSTREAM_RESPONSE");
+  if (response.ok) return referralJSON(payload, response.status);
+  return write && response.status >= 500 ? referralFailure(502, "RESULT_UNVERIFIED", "unknown") : referralFailure(response.status, errorCode(payload));
 }
 function errorCode(payload: unknown) { return payload && typeof payload === "object" && !Array.isArray(payload) && typeof (payload as { code?: unknown }).code === "string" ? (payload as { code: string }).code : "DEPENDENCY_UNAVAILABLE"; }
 function serviceOrigin() {

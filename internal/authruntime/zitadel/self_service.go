@@ -168,12 +168,20 @@ func (c *SelfServiceClient) ReadProfile(ctx context.Context, token string) (Self
 		return empty, &SelfServiceError{StatusCode: response.StatusCode}
 	}
 	var payload struct {
-		Profile SelfServiceProfile `json:"profile"`
+		SelfServiceProfile
+		UserID  string          `json:"userId"`
+		Details json.RawMessage `json:"details"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
 		return empty, errors.New("ZITADEL self-service profile response invalid")
 	}
-	return payload.Profile, nil
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) || payload.UserID == "" || len(payload.Details) == 0 {
+		return empty, errors.New("ZITADEL self-service profile response invalid")
+	}
+	return payload.SelfServiceProfile, nil
 }
 
 type bearerTokenContextKey struct{}

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getReferralEarnings, getReferralRules } from "./account-referral-economics";
+import { createReferralPayoutMethod, getReferralEarnings, getReferralRules } from "./account-referral-economics";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,5 +28,11 @@ describe("account referral economics client", () => {
   it("reads rules from the backend economics contract", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "referral-rules-v1", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract" })));
     await expect(getReferralRules("subject-1")).resolves.toMatchObject({ commissionRateBps: 1000, minimumWithdrawalMinor: "10000" });
+  });
+
+  it("classifies a referral POST transport loss as an unknown outcome", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("connection lost")));
+    await expect(createReferralPayoutMethod("subject-1", { type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }, "payout-key"))
+      .rejects.toMatchObject({ status: 502, code: "RESULT_UNVERIFIED", outcome: "unknown" });
   });
 });

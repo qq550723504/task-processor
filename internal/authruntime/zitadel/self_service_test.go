@@ -38,13 +38,23 @@ func TestSelfServiceClientReadsOfficialProfile(t *testing.T) {
 		require.Equal(t, http.MethodGet, r.Method)
 		require.Equal(t, "/auth/v1/users/me/profile", r.URL.Path)
 		require.Equal(t, "Bearer user-token", r.Header.Get("Authorization"))
-		_, _ = w.Write([]byte(`{"profile":{"firstName":"First","lastName":"Last","displayName":"Name","gender":"GENDER_UNSPECIFIED"}}`))
+		_, _ = w.Write([]byte(`{"userId":"user-1","details":{"sequence":"1"},"firstName":"First","lastName":"Last","displayName":"Name","gender":"GENDER_UNSPECIFIED"}`))
 	}))
 	defer server.Close()
 
 	profile, err := NewSelfServiceClient(server.URL, server.Client()).ReadProfile(context.Background(), "user-token")
 	require.NoError(t, err)
 	require.Equal(t, SelfServiceProfile{FirstName: "First", LastName: "Last", DisplayName: "Name", Gender: "GENDER_UNSPECIFIED"}, profile)
+}
+
+func TestSelfServiceClientRejectsNestedProfileShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"userId":"user-1","details":{"sequence":"1"},"profile":{"firstName":"Wrong"}}`))
+	}))
+	defer server.Close()
+
+	_, err := NewSelfServiceClient(server.URL, server.Client()).ReadProfile(context.Background(), "user-token")
+	require.Error(t, err)
 }
 
 func TestSelfServiceClientMapsOfficialOperations(t *testing.T) {
