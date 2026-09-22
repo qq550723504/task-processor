@@ -308,31 +308,67 @@ func (d *Driver) pageRefusal(page playwright.Page) (string, error) {
 
 // waitForTerminalResult waits for the capture page to report a terminal state.
 //
-// A readable terminal state is the only successful return. Everything else is an
-// error, because design section 15.10 requires a deterministic result to be
-// recorded and anything less to become `outcome_unknown` rather than be guessed.
+// A readable terminal state is the only successful return. A refusal is returned as
+// ErrSubmitRefused instead of being waited out: design section 4 D1.2 guard 3 says the
+// page's own "nothing was dispatched" answer is final, and the page gives that answer
+// after the click as often as before it - a submitting attempt can lose its context,
+// exhaust capacity or pass its deadline. Ignoring it here would spend the whole driver
+// timeout and then record a generic transfer failure instead of the page's own reason.
+//
+// Everything else is an error, because design section 15.10 requires a deterministic
+// result to be recorded and anything less to become `outcome_unknown` rather than be
+// guessed.
 func (d *Driver) waitForTerminalResult(page playwright.Page) (SubmitOutcome, error) {
-	deadline := time.Now().Add(d.timeout)
+	return waitForSubmitResult(func(script string) (any, error) { return page.Evaluate(script) }, d.timeout, appContractPollInterval)
+}
+
+// submitProbe is the page state the terminal wait reads in one evaluation. The result
+// channel and the refusal channel come from the same DOM snapshot, so a page cannot be
+// read as refusing in one read and as having published in the next.
+type submitProbe struct {
+	Status      string `json:"status"`
+	OperationID string `json:"operationId"`
+	Refusal     string `json:"refusal"`
+}
+
+// submitResultScript reads both terminal channels of the capture page.
+const submitResultScript = `(() => {
+		const result = document.querySelector('` + selSubmitResult + `');
+		const refusal = document.querySelector('` + selSubmitRefusal + `');
+		return JSON.stringify({
+			status: result === null ? '' : (result.getAttribute('data-batch-submit-result') || '').trim(),
+			operationId: result === null ? '' : (result.getAttribute('data-batch-operation-id') || '').trim(),
+			refusal: refusal === null ? '' : (refusal.textContent || '').trim()
+		});
+	})()`
+
+// waitForSubmitResult polls the capture page until it reports a result, a refusal, or the
+// deadline passes. The read is injected so the wait is testable without a browser.
+//
+// A refusal is checked before the result on purpose. Both channels are supposed to be
+// mutually exclusive per attempt, but if a drifted page ever renders both, the refusal is
+// the answer that stops a person: recording the rendered result would claim an operation
+// the page says it never dispatched.
+func waitForSubmitResult(evaluate func(string) (any, error), timeout, poll time.Duration) (SubmitOutcome, error) {
+	deadline := time.Now().Add(timeout)
 	var last string
 	for time.Now().Before(deadline) {
-		raw, err := page.Evaluate(`(() => {
-			const node = document.querySelector('` + selSubmitResult + `');
-			if (node === null) { return ''; }
-			return JSON.stringify({
-				status: (node.getAttribute('data-batch-submit-result') || '').trim(),
-				operationId: (node.getAttribute('data-batch-operation-id') || '').trim()
-			});
-		})()`)
+		value, err := evaluate(submitResultScript)
 		if err != nil {
 			return SubmitOutcome{}, fmt.Errorf("%w: %v", ErrSubmitUnavailable, err)
 		}
-		text, _ := raw.(string)
+		text, _ := value.(string)
 		last = text
-		var outcome SubmitOutcome
-		if err := json.Unmarshal([]byte(text), &outcome); err == nil && readableTerminalResult(outcome.Status, outcome.OperationID) {
-			return outcome, nil
+		var probe submitProbe
+		if err := json.Unmarshal([]byte(text), &probe); err == nil {
+			if probe.Refusal != "" {
+				return SubmitOutcome{}, fmt.Errorf("%w: %s", ErrSubmitRefused, probe.Refusal)
+			}
+			if readableTerminalResult(probe.Status, probe.OperationID) {
+				return SubmitOutcome{Status: probe.Status, OperationID: probe.OperationID}, nil
+			}
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(poll)
 	}
 	return SubmitOutcome{}, fmt.Errorf("%w: no terminal result (last %q)", ErrSubmitUnavailable, last)
 }
