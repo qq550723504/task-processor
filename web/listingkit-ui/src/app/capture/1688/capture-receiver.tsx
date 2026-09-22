@@ -22,6 +22,11 @@ const terminalStatuses = ["published", "failed", "outcome_unknown"];
 // that produced it, so a stop is diagnosable without reading this page's prose.
 const refusalContextUnavailable = "CONTEXT_UNAVAILABLE";
 const refusalNotDispatched = "NOT_DISPATCHED";
+// The two branches below are pre-attempt rather than click-time, but they are the same
+// class: the page knows nothing was dispatched, so it must say so instead of letting the
+// executor wait out its timeout and record a generic transfer failure.
+const refusalHandoffUnreadable = "HANDOFF_UNREADABLE";
+const refusalKeyUnretained = "OPERATION_KEY_UNRETAINED";
 
 export function CaptureReceiver() {
   const context = useWorkbenchContext();
@@ -57,7 +62,9 @@ export function CaptureReceiver() {
         const payload = await readCaptureHandoff(entry, controller.signal);
         if (!controller.signal.aborted) setView((v) => ({ ...v, entry, payload, message: "Confirm the current account and enterprise before submitting." }));
       } catch {
-        if (!controller.signal.aborted) setView((v) => ({ ...v, message: "Browser handoff expired. Nothing was submitted by this page; request a new handoff in the extension." }));
+        // "Nothing was submitted by this page" is definitive, not a guess: the frozen
+        // payload never arrived, so no control was ever rendered to click.
+        if (!controller.signal.aborted) setView((v) => ({ ...v, refusal: refusalHandoffUnreadable, message: "Browser handoff expired. Nothing was submitted by this page; request a new handoff in the extension." }));
       }
     })();
     return () => { mounted.current = false; controller.abort(); active.current?.abort(); };
@@ -73,7 +80,7 @@ export function CaptureReceiver() {
     if (submit) {
       // The fragment stores only the original key. No payload/identity/storage/logging.
       try { window.history.replaceState(null, "", `/capture/1688#operationKey=${entry.key}`); }
-      catch { busy.current = false; active.current = null; setView((v) => ({ ...v, message: "Recovery key could not be retained. Nothing was submitted." })); return; }
+      catch { busy.current = false; active.current = null; setView((v) => ({ ...v, refusal: refusalKeyUnretained, message: "Recovery key could not be retained. Nothing was submitted." })); return; }
       reserved.current = true;
     }
     setView((v) => ({ ...v, busy: true, started: true, bound: consent, result: undefined, refusal: undefined, message: "Confirming current access..." }));

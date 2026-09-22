@@ -126,6 +126,37 @@ describe("Executor-readable application contract", () => {
     render(<CaptureReceiver />); await screen.findByText("Browser fixture");
     fireEvent.click(screen.getByRole("button", { name: "Confirm and submit" }));
   };
+  it("marks a handoff the page could not read as a refusal and never a result", async () => {
+    // The payload never arrived, so this page rendered no control at all. Without the
+    // refusal the executor could only poll its readiness contract to the deadline and then
+    // record a generic transfer failure for a handoff the page already explained.
+    mocks.handoff.mockRejectedValue(new Error("expired"));
+    render(<CaptureReceiver />); await screen.findByText(/Browser handoff expired/);
+    expect(refusal()).toBe("HANDOFF_UNREADABLE");
+    expect(result()).toBe("");
+    expect(node("[data-batch-confirm-submit]")).toBeNull();
+  });
+  it("marks refusing to submit without a retained recovery key as a refusal", async () => {
+    // The page declined before dispatch because it could not keep the key that a person
+    // would need to recover the operation. Nothing was submitted, and the executor must not
+    // treat this as an unknown outcome it can retry.
+    const replace = vi.spyOn(window.history, "replaceState").mockImplementation(() => { throw new Error("storage blocked"); });
+    try {
+      await submit();
+      await screen.findByText(/Recovery key could not be retained/);
+      expect(refusal()).toBe("OPERATION_KEY_UNRETAINED");
+      expect(result()).toBe("");
+    } finally { replace.mockRestore(); }
+  });
+  it("does not claim a refusal when the page cannot know whether anything was submitted", async () => {
+    // A malformed or expired handoff fragment is the one branch that must stay unmarked:
+    // the page cannot say a request was never submitted, and a refusal would tell the
+    // executor to stop for a reason the page does not actually have.
+    window.history.replaceState(null, "", "/capture/1688#notAHandoff=1");
+    render(<CaptureReceiver />); await screen.findByText(/invalid or expired/);
+    expect(refusal()).toBe("");
+    expect(result()).toBe("");
+  });
   it("exposes the verified scope and marks the control the executor must click", async () => {
     render(<CaptureReceiver />); await screen.findByText("Browser fixture");
     expect(node("[data-batch-scope-actor]")?.textContent).toBe("actor");
