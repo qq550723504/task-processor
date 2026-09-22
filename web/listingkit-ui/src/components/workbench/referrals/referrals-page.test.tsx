@@ -141,14 +141,19 @@ describe("ReferralsPage", () => {
     expect(fetch).toHaveBeenCalledWith("/api/account/referral-withdrawals/withdrawal-1/cancel", expect.objectContaining({ method: "POST" }));
   });
 
-  it("reconciles facts before clearing an unknown withdrawal result", async () => {
+  it("replays an unknown withdrawal write with its original idempotency key", async () => {
     const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
+    const withdrawalResult = { schemaVersion: "referral-withdrawal-v1", id: "withdrawal-1", currency: "CNY", method: "ALIPAY", payoutMethodId: "method-1", amountMinor: "10000", status: "REQUESTED", payoutReference: "", version: "2", createdAt: "2026-09-13T10:01:00Z", updatedAt: "2026-09-13T10:01:00Z" };
+    let withdrawalWrites = 0;
     const fetch = vi.fn((input: string, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
       if (path === "/api/account/referral-withdrawals" && !init?.method) return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }));
       if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: [{ methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }] }));
-      if (path === "/api/account/referral-withdrawals" && init?.method === "POST") return Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 }));
+      if (path === "/api/account/referral-withdrawals" && init?.method === "POST") {
+        withdrawalWrites += 1;
+        return withdrawalWrites === 1 ? Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 })) : Promise.resolve(Response.json(withdrawalResult));
+      }
       throw new Error(`unexpected fetch: ${path}`);
     });
     vi.stubGlobal("fetch", fetch);
@@ -160,25 +165,62 @@ describe("ReferralsPage", () => {
     expect(screen.getByRole("button", { name: "申请提现" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "刷新提现状态" }));
     await waitFor(() => expect(screen.queryByText("操作结果待核实")).not.toBeInTheDocument());
+    const writes = fetch.mock.calls.filter(([input, init]) => input === "/api/account/referral-withdrawals" && init?.method === "POST");
+    expect(writes).toHaveLength(2);
+    expect(new Headers(writes[0]?.[1]?.headers).get("Idempotency-Key")).toBe(new Headers(writes[1]?.[1]?.headers).get("Idempotency-Key"));
     expect(fetch.mock.calls.filter(([input]) => input === "/api/account/referrals").length).toBe(2);
   });
 
-  it("replaces a stale cancellation result with the reconciled withdrawal", async () => {
+  it("replays an unknown payout-method write with its original idempotency key", async () => {
+    const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
+    const method = { schemaVersion: "payout-method-v1", methodId: "method-1", type: "ALIPAY", displayName: "支付宝账户", maskedDestination: "***1234", version: "1" };
+    const listedMethod = { methodId: method.methodId, type: method.type, displayName: method.displayName, maskedDestination: method.maskedDestination, version: method.version };
+    let payoutWrites = 0;
+    const fetch = vi.fn((input: string, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
+      if (path === "/api/account/referral-withdrawals") return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }));
+      if (path === "/api/account/referral-payout-methods" && init?.method === "POST") {
+        payoutWrites += 1;
+        return payoutWrites === 1
+          ? Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 }))
+          : Promise.resolve(Response.json(method, { status: 201 }));
+      }
+      if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: payoutWrites >= 2 ? [listedMethod] : [] }));
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    mount("overview", "subject-1", true, "withdrawals");
+    await user.type(await screen.findByLabelText("名称"), "支付宝账户");
+    await user.type(screen.getByLabelText("账号或收款地址"), "buyer@example.test");
+    await user.click(screen.getByRole("button", { name: "登记收款方式" }));
+    expect((await screen.findAllByText("操作结果待核实"))[0]).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "刷新提现状态" }));
+    await waitFor(() => expect(screen.queryByText("操作结果待核实")).not.toBeInTheDocument());
+    const writes = fetch.mock.calls.filter(([input, init]) => input === "/api/account/referral-payout-methods" && init?.method === "POST");
+    expect(writes).toHaveLength(2);
+    expect(new Headers(writes[0]?.[1]?.headers).get("Idempotency-Key")).toBe(new Headers(writes[1]?.[1]?.headers).get("Idempotency-Key"));
+    expect(screen.getByText("支付宝账户 · ***1234")).toBeVisible();
+  });
+
+  it("replays an unknown cancellation with its original idempotency key", async () => {
     const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
     const requested = { schemaVersion: "referral-withdrawal-v1", id: "withdrawal-1", currency: "CNY", method: "ALIPAY", payoutMethodId: "method-1", amountMinor: "10000", status: "REQUESTED", payoutReference: "", version: "2", createdAt: "2026-09-13T10:01:00Z", updatedAt: "2026-09-13T10:01:00Z" };
     const canceled = { id: requested.id, currency: requested.currency, method: requested.method, payoutMethodId: requested.payoutMethodId, amountMinor: requested.amountMinor, status: "CANCELED", payoutReference: requested.payoutReference, version: "3", createdAt: requested.createdAt, updatedAt: "2026-09-13T10:02:00Z" };
-    let cancelAttempted = false;
+    const canceledResult = { schemaVersion: "referral-withdrawal-v1", ...canceled };
+    let cancelWrites = 0;
     const fetch = vi.fn((input: string, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
       if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: [{ methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }] }));
       if (path === "/api/account/referral-withdrawals" && init?.method === "POST") return Promise.resolve(Response.json(requested));
       if (path === "/api/account/referral-withdrawals/withdrawal-1/cancel") {
-        cancelAttempted = true;
-        return Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 }));
+        cancelWrites += 1;
+        return cancelWrites === 1 ? Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 })) : Promise.resolve(Response.json(canceledResult));
       }
       if (path === "/api/account/referral-withdrawals") {
-        return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: cancelAttempted ? [canceled] : [] }));
+        return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: cancelWrites >= 2 ? [canceled] : [] }));
       }
       throw new Error(`unexpected fetch: ${path}`);
     });
@@ -191,6 +233,9 @@ describe("ReferralsPage", () => {
     expect((await screen.findAllByText("操作结果待核实"))[0]).toBeVisible();
     await user.click(screen.getByRole("button", { name: "刷新提现状态" }));
     await waitFor(() => expect(screen.queryByText("操作结果待核实")).not.toBeInTheDocument());
+    const writes = fetch.mock.calls.filter(([input, init]) => input === "/api/account/referral-withdrawals/withdrawal-1/cancel" && init?.method === "POST");
+    expect(writes).toHaveLength(2);
+    expect(new Headers(writes[0]?.[1]?.headers).get("Idempotency-Key")).toBe(new Headers(writes[1]?.[1]?.headers).get("Idempotency-Key"));
     expect(screen.getByText("提现状态：CANCELED。")).toBeVisible();
     expect(screen.queryByRole("button", { name: "取消提现申请" })).not.toBeInTheDocument();
   });

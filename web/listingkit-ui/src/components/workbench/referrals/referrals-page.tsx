@@ -20,7 +20,11 @@ import { ConsoleState } from "../console/console-page";
 import styles from "./referrals.module.css";
 
 export type ReferralView = "overview" | "complete" | "center" | "earnings" | "withdrawals" | "rules";
-type UnknownReferralWrite = "payout-method" | "withdrawal" | "cancel";
+type PayoutMethodInput = { type: "ALIPAY" | "BANK_TRANSFER"; displayName: string; destination: string };
+type UnknownReferralWrite =
+  | { kind: "payout-method"; input: PayoutMethodInput; idempotencyKey: string }
+  | { kind: "withdrawal"; input: { amountMinor: string; payoutMethodId: string; expectedVersion: string }; idempotencyKey: string }
+  | { kind: "cancel"; withdrawalId: string; expectedVersion: string; idempotencyKey: string };
 type ReferralWithdrawalState = ReferralWithdrawal | Awaited<ReturnType<typeof getReferralWithdrawals>>["withdrawals"][number];
 const referralPaths: Record<ReferralView, string> = {
   overview: "/workbench/account/referrals",
@@ -118,29 +122,43 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
   const [withdrawalResult, setWithdrawalResult] = useState<ReferralWithdrawalState | null>(null);
   const [unknownWrite, setUnknownWrite] = useState<UnknownReferralWrite | null>(null);
   const [reconcilingUnknownWrite, setReconcilingUnknownWrite] = useState(false);
-  const markUnknownWrite = (kind: UnknownReferralWrite, error: unknown) => {
-    if (error instanceof AccountReadError && error.outcome === "unknown") setUnknownWrite(kind);
-  };
+  const payoutMethodAttempt = useRef<Extract<UnknownReferralWrite, { kind: "payout-method" }> | null>(null);
+  const withdrawalAttempt = useRef<Extract<UnknownReferralWrite, { kind: "withdrawal" }> | null>(null);
+  const cancelAttempt = useRef<Extract<UnknownReferralWrite, { kind: "cancel" }> | null>(null);
   const reconcileUnknownWrite = async () => {
-    if (!unknownWrite || reconcilingUnknownWrite) return;
+    const pending = unknownWrite;
+    if (!pending || reconcilingUnknownWrite) return;
     setReconcilingUnknownWrite(true);
     try {
-      let reconciledWithdrawals: Awaited<ReturnType<typeof getReferralWithdrawals>>["withdrawals"] | undefined;
-      if (unknownWrite === "payout-method") {
+      if (pending.kind === "payout-method") {
+        await createReferralPayoutMethod(expectedUserId, pending.input, pending.idempotencyKey);
         await queryClient.fetchQuery({ queryKey: ["account", "referral-payout-methods", expectedUserId] as const, queryFn: ({ signal }) => getReferralPayoutMethods(expectedUserId, signal), staleTime: 0 });
-      } else {
+        createPayoutMethod.reset();
+        payoutMethodAttempt.current = null;
+        setUnknownWrite(null);
+        return;
+      }
+      if (pending.kind === "withdrawal") {
+        const result = await requestReferralWithdrawal(expectedUserId, pending.input, pending.idempotencyKey);
         const [, withdrawals] = await Promise.all([
           queryClient.fetchQuery({ queryKey, queryFn: ({ signal }) => getAccountReferrals(expectedUserId, signal), staleTime: 0 }),
           queryClient.fetchQuery({ queryKey: ["account", "referral-withdrawals", expectedUserId] as const, queryFn: ({ signal }) => getReferralWithdrawals(expectedUserId, signal), staleTime: 0 }),
         ]);
-        reconciledWithdrawals = withdrawals.withdrawals;
+        withdrawal.reset();
+        withdrawalAttempt.current = null;
+        setWithdrawalResult(withdrawals.withdrawals.find((item) => item.id === result.id) ?? result);
+        setUnknownWrite(null);
+        return;
       }
-      if (unknownWrite === "payout-method") createPayoutMethod.reset();
-      if (unknownWrite === "withdrawal") withdrawal.reset();
-      if (unknownWrite === "cancel") {
+      const result = await cancelReferralWithdrawal(expectedUserId, pending.withdrawalId, pending.expectedVersion, pending.idempotencyKey);
+      const [, withdrawals] = await Promise.all([
+        queryClient.fetchQuery({ queryKey, queryFn: ({ signal }) => getAccountReferrals(expectedUserId, signal), staleTime: 0 }),
+        queryClient.fetchQuery({ queryKey: ["account", "referral-withdrawals", expectedUserId] as const, queryFn: ({ signal }) => getReferralWithdrawals(expectedUserId, signal), staleTime: 0 }),
+      ]);
+      if (pending.kind === "cancel") {
         cancelWithdrawal.reset();
-        const reconciled = reconciledWithdrawals?.find((item) => item.id === withdrawalResult?.id) ?? null;
-        setWithdrawalResult(reconciled);
+        cancelAttempt.current = null;
+        setWithdrawalResult(withdrawals.withdrawals.find((item) => item.id === pending.withdrawalId) ?? result);
       }
       setUnknownWrite(null);
     } catch {
@@ -155,24 +173,29 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
       const currentEarnings = projection.data?.earnings;
       if (!currentEarnings || currentEarnings.availability !== "available") throw new Error("earnings unavailable");
       if (!selectedPayoutMethod) throw new Error("payout method unavailable");
-      return requestReferralWithdrawal(expectedUserId, { amountMinor, payoutMethodId: selectedPayoutMethod.methodId, expectedVersion: currentEarnings.version }, crypto.randomUUID());
+      const input = { amountMinor, payoutMethodId: selectedPayoutMethod.methodId, expectedVersion: currentEarnings.version };
+      const idempotencyKey = crypto.randomUUID();
+      withdrawalAttempt.current = { kind: "withdrawal", input, idempotencyKey };
+      return requestReferralWithdrawal(expectedUserId, input, idempotencyKey);
     },
-    onSuccess: (result) => { setUnknownWrite(null); setWithdrawalResult(result); setAmountMinor(""); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-withdrawals", expectedUserId] }); },
-    onError: (error) => markUnknownWrite("withdrawal", error),
+    onSuccess: (result) => { withdrawalAttempt.current = null; setUnknownWrite(null); setWithdrawalResult(result); setAmountMinor(""); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-withdrawals", expectedUserId] }); },
+    onError: (error) => { const attempt = withdrawalAttempt.current; if (error instanceof AccountReadError && error.outcome === "unknown" && attempt) setUnknownWrite(attempt); else withdrawalAttempt.current = null; },
   });
   const cancelTarget = withdrawalResult ?? withdrawalHistory.data?.withdrawals.find((item) => item.status === "REQUESTED");
   const createPayoutMethod = useMutation({
-    mutationFn: () => createReferralPayoutMethod(expectedUserId, { type: payoutType, displayName: payoutDisplayName, destination: payoutDestination }, crypto.randomUUID()),
-    onSuccess: () => { setUnknownWrite(null); setPayoutDisplayName(""); setPayoutDestination(""); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); },
-    onError: (error) => markUnknownWrite("payout-method", error),
+    mutationFn: () => { const input = { type: payoutType, displayName: payoutDisplayName, destination: payoutDestination }; const idempotencyKey = crypto.randomUUID(); payoutMethodAttempt.current = { kind: "payout-method", input, idempotencyKey }; return createReferralPayoutMethod(expectedUserId, input, idempotencyKey); },
+    onSuccess: () => { payoutMethodAttempt.current = null; setUnknownWrite(null); setPayoutDisplayName(""); setPayoutDestination(""); void queryClient.invalidateQueries({ queryKey: ["account", "referral-payout-methods", expectedUserId] }); },
+    onError: (error) => { const attempt = payoutMethodAttempt.current; if (error instanceof AccountReadError && error.outcome === "unknown" && attempt) setUnknownWrite(attempt); else payoutMethodAttempt.current = null; },
   });
   const cancelWithdrawal = useMutation({
     mutationFn: () => {
       if (!cancelTarget || cancelTarget.status !== "REQUESTED") throw new Error("withdrawal not cancelable");
-      return cancelReferralWithdrawal(expectedUserId, cancelTarget.id, cancelTarget.version, crypto.randomUUID());
+      const idempotencyKey = crypto.randomUUID();
+      cancelAttempt.current = { kind: "cancel", withdrawalId: cancelTarget.id, expectedVersion: cancelTarget.version, idempotencyKey };
+      return cancelReferralWithdrawal(expectedUserId, cancelTarget.id, cancelTarget.version, idempotencyKey);
     },
-    onSuccess: (result) => { setUnknownWrite(null); setWithdrawalResult(result); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-withdrawals", expectedUserId] }); },
-    onError: (error) => markUnknownWrite("cancel", error),
+    onSuccess: (result) => { cancelAttempt.current = null; setUnknownWrite(null); setWithdrawalResult(result); void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: ["account", "referral-withdrawals", expectedUserId] }); },
+    onError: (error) => { const attempt = cancelAttempt.current; if (error instanceof AccountReadError && error.outcome === "unknown" && attempt) setUnknownWrite(attempt); else cancelAttempt.current = null; },
   });
   const createCode = useMutation({
     mutationFn: async () => {
@@ -225,7 +248,7 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
     </section> : null}
     {showWithdrawals ? <section className={styles.codeCard} aria-labelledby="withdrawal-history-title"><div><h2 id="withdrawal-history-title">提现记录</h2>{withdrawalHistory.isPending ? <p>正在读取提现记录…</p> : withdrawalHistory.isError ? <p className={styles.error} role="alert">提现记录暂不可用，请稍后重试。</p> : withdrawalHistory.data?.withdrawals.length === 0 ? <p>暂无提现申请。</p> : <ul>{withdrawalHistory.data?.withdrawals.map((item) => <li key={item.id}>申请 {formatMinor(item.amountMinor)} · {item.status} · {formatTime(item.updatedAt)}</li>)}</ul>}</div></section> : null}
     {showCenter ? <section className={styles.codeCard} aria-labelledby="code-title"><div><h2 id="code-title">我的推广码</h2>{data.codeAvailability === "available" ? <><code>{data.code}</code><p>生成于本次读取：{formatTime(data.generatedAt)}</p></> : <p>尚未创建推广码</p>}</div>{data.codeAvailability === "available" ? registrationAvailable ? <Button asChild variant="outline"><Link href={`/referrals/register?code=${encodeURIComponent(data.code)}`} prefetch={false}>打开邀请链接</Link></Button> : <span className={styles.unavailable}>注册入口暂不可用</span> : <Button type="button" onClick={() => createCode.mutate()} disabled={createCode.isPending}>{createCode.isPending ? "正在创建…" : "创建推广码"}</Button>}</section> : null}
-    {showWithdrawals ? <section className={styles.codeCard} aria-labelledby="withdrawal-title"><div><h2 id="withdrawal-title">申请提现</h2><p>最低 ¥100；申请后进入人工审核。结算前提是账户已完成邮箱和手机号验证。</p></div>{unknownWrite ? <div className={styles.notice} role="alert"><strong>操作结果待核实</strong><p>提现或收款方式操作可能已经提交，不能直接重试。请先刷新提现状态，确认服务端事实后再操作。</p><Button type="button" variant="outline" onClick={() => void reconcileUnknownWrite()} disabled={reconcilingUnknownWrite}>{reconcilingUnknownWrite ? "正在刷新提现状态…" : "刷新提现状态"}</Button></div> : null}{data.earnings.availability !== "available" ? <p className={styles.unavailable} role="status">收益数据暂不可用，暂不能读取收款方式或提交提现申请。请刷新后重试。</p> : payoutMethods.isPending ? <p>正在读取已验证收款方式…</p> : payoutMethods.isError ? <p className={styles.error} role="alert">收款方式暂不可用，请稍后重试。</p> : payoutMethods.data?.methods.length === 0 ? <form onSubmit={event => { event.preventDefault(); createPayoutMethod.mutate(); }}><p className={styles.unavailable}>请先登记一个收款方式。</p><label>渠道<select value={payoutType} onChange={event => setPayoutType(event.target.value as "ALIPAY" | "BANK_TRANSFER")} disabled={unknownWrite !== null}><option value="ALIPAY">支付宝</option><option value="BANK_TRANSFER">银行转账</option></select></label><label>名称<input value={payoutDisplayName} onChange={event => setPayoutDisplayName(event.target.value)} required maxLength={128} disabled={unknownWrite !== null} /></label><label>账号或收款地址<input value={payoutDestination} onChange={event => setPayoutDestination(event.target.value)} required maxLength={512} disabled={unknownWrite !== null} /></label><Button type="submit" disabled={createPayoutMethod.isPending || unknownWrite !== null}>{createPayoutMethod.isPending ? "登记中…" : "登记收款方式"}</Button>{createPayoutMethod.isError ? <ReferralError error={createPayoutMethod.error} compact /> : null}</form> : <form onSubmit={event => { event.preventDefault(); withdrawal.mutate(); }}><label>金额（分）<input inputMode="numeric" pattern="[0-9]*" value={amountMinor} onChange={event => setAmountMinor(event.target.value)} placeholder="10000" disabled={data.earnings.availability !== "available" || withdrawal.isPending || unknownWrite !== null} /></label><label>收款方式<select value={selectedPayoutMethod?.methodId ?? ""} onChange={event => setPayoutMethodId(event.target.value)} disabled={withdrawal.isPending || unknownWrite !== null}>{payoutMethods.data?.methods.map((item: PayoutMethod) => <option key={item.methodId} value={item.methodId}>{item.displayName} · {item.maskedDestination}</option>)}</select></label><Button type="submit" disabled={data.earnings.availability !== "available" || withdrawal.isPending || unknownWrite !== null || amountMinor === "" || !selectedPayoutMethod}>{withdrawal.isPending ? "提交中…" : "申请提现"}</Button>{withdrawal.isError ? <ReferralError error={withdrawal.error} compact /> : null}{cancelTarget ? <div className={styles.notice} role="status"><p>提现状态：{cancelTarget.status}。</p>{cancelTarget.status === "REQUESTED" ? <Button type="button" variant="outline" onClick={() => cancelWithdrawal.mutate()} disabled={cancelWithdrawal.isPending || unknownWrite !== null}>{cancelWithdrawal.isPending ? "取消中…" : "取消提现申请"}</Button> : null}{cancelWithdrawal.isError ? <ReferralError error={cancelWithdrawal.error} compact /> : null}</div> : null}</form>}</section> : null}
+    {showWithdrawals ? <section className={styles.codeCard} aria-labelledby="withdrawal-title"><div><h2 id="withdrawal-title">申请提现</h2><p>最低 ¥100；申请后进入人工审核。结算前提是账户已完成邮箱和手机号验证。</p></div>{unknownWrite ? <div className={styles.notice} role="alert"><strong>操作结果待核实</strong><p>提现或收款方式操作可能已经提交，不能生成新请求。刷新会使用原幂等键核对并恢复结果。</p><Button type="button" variant="outline" onClick={() => void reconcileUnknownWrite()} disabled={reconcilingUnknownWrite}>{reconcilingUnknownWrite ? "正在刷新提现状态…" : "刷新提现状态"}</Button></div> : null}{data.earnings.availability !== "available" ? <p className={styles.unavailable} role="status">收益数据暂不可用，暂不能读取收款方式或提交提现申请。请刷新后重试。</p> : payoutMethods.isPending ? <p>正在读取已验证收款方式…</p> : payoutMethods.isError ? <p className={styles.error} role="alert">收款方式暂不可用，请稍后重试。</p> : payoutMethods.data?.methods.length === 0 ? <form onSubmit={event => { event.preventDefault(); createPayoutMethod.mutate(); }}><p className={styles.unavailable}>请先登记一个收款方式。</p><label>渠道<select value={payoutType} onChange={event => setPayoutType(event.target.value as "ALIPAY" | "BANK_TRANSFER")} disabled={unknownWrite !== null}><option value="ALIPAY">支付宝</option><option value="BANK_TRANSFER">银行转账</option></select></label><label>名称<input value={payoutDisplayName} onChange={event => setPayoutDisplayName(event.target.value)} required maxLength={128} disabled={unknownWrite !== null} /></label><label>账号或收款地址<input value={payoutDestination} onChange={event => setPayoutDestination(event.target.value)} required maxLength={512} disabled={unknownWrite !== null} /></label><Button type="submit" disabled={createPayoutMethod.isPending || unknownWrite !== null}>{createPayoutMethod.isPending ? "登记中…" : "登记收款方式"}</Button>{createPayoutMethod.isError ? <ReferralError error={createPayoutMethod.error} compact /> : null}</form> : <form onSubmit={event => { event.preventDefault(); withdrawal.mutate(); }}><label>金额（分）<input inputMode="numeric" pattern="[0-9]*" value={amountMinor} onChange={event => setAmountMinor(event.target.value)} placeholder="10000" disabled={data.earnings.availability !== "available" || withdrawal.isPending || unknownWrite !== null} /></label><label>收款方式<select value={selectedPayoutMethod?.methodId ?? ""} onChange={event => setPayoutMethodId(event.target.value)} disabled={withdrawal.isPending || unknownWrite !== null}>{payoutMethods.data?.methods.map((item: PayoutMethod) => <option key={item.methodId} value={item.methodId}>{item.displayName} · {item.maskedDestination}</option>)}</select></label><Button type="submit" disabled={data.earnings.availability !== "available" || withdrawal.isPending || unknownWrite !== null || amountMinor === "" || !selectedPayoutMethod}>{withdrawal.isPending ? "提交中…" : "申请提现"}</Button>{withdrawal.isError ? <ReferralError error={withdrawal.error} compact /> : null}{cancelTarget ? <div className={styles.notice} role="status"><p>提现状态：{cancelTarget.status}。</p>{cancelTarget.status === "REQUESTED" ? <Button type="button" variant="outline" onClick={() => cancelWithdrawal.mutate()} disabled={cancelWithdrawal.isPending || unknownWrite !== null}>{cancelWithdrawal.isPending ? "取消中…" : "取消提现申请"}</Button> : null}{cancelWithdrawal.isError ? <ReferralError error={cancelWithdrawal.error} compact /> : null}</div> : null}</form>}</section> : null}
     {createCode.isError ? <ReferralError error={createCode.error} compact /> : null}
     <p className={styles.observed}>数据观察时间：{formatTime(data.generatedAt)}</p>
   </div>;
