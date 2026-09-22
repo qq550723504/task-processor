@@ -926,6 +926,68 @@ func TestFixtureDriverDoesNotHandoffWhenIntentWriteFails(t *testing.T) {
 	}
 }
 
+// TestFixtureDriverStopsBeforeTheHandoffWhenTheIntentWriteCouldNotBeRestored covers the
+// one phase-one failure that is not an ordinary re-runnable one. The intent write is the
+// record that makes the item submittable, and a save can fail after its atomic replace
+// has already become visible (the directory flush that makes the replacement durable
+// happens last). queue.Save writes the previous content back in that case, but when it
+// cannot, the file may hold submitting - the one state that forbids an automatic redo.
+//
+// So the item must still not be handed off, and the run must NOT tell the operator the
+// item can simply be re-done: BlockingItem would stop the next run on that same record
+// and the operator would have no way to reconcile the advice with the file.
+func TestFixtureDriverStopsBeforeTheHandoffWhenTheIntentWriteCouldNotBeRestored(t *testing.T) {
+	browser, extDir := requireFixtureEnv(t)
+	startFixtureApp(t, fixtureApprovedScope)
+	driver := launchFixtureDriver(t, browser, extDir)
+	routeFixtureProduct(t, driver)
+	queuePath := fixtureQueue(t, fixtureApprovedScope)
+
+	calls := 0
+	// A real save whose every directory flush fails: the replacement lands, nothing can
+	// be confirmed durable, and the previous content cannot be written back either.
+	failingFlush := func(queue *Queue, path string) error {
+		calls++
+		return queue.save(path, func(string) error { return os.ErrPermission })
+	}
+	result, err := ImportOne(driver, ImportOptions{QueuePath: queuePath, Approved: fixtureApprovedScope, Persist: failingFlush})
+	if !errors.Is(err, ErrQueueWriteFailed) {
+		t.Fatalf("err=%v, want ErrQueueWriteFailed", err)
+	}
+	if calls != 1 {
+		t.Fatalf("persist called %d times, want 1 (the item must stop at the first unconfirmed write)", calls)
+	}
+	// The file may say submitting, so the state must be reported as unconfirmed rather
+	// than as a re-capturable one, and it must not claim an unknown outcome: the
+	// application provably never saw a payload.
+	if !errors.Is(err, ErrItemStateUnconfirmed) {
+		t.Fatalf("err=%v, want ErrItemStateUnconfirmed", err)
+	}
+	if errors.Is(err, ErrOutcomeUnknown) {
+		t.Fatalf("a pre-handoff unrestored write was reported as an unknown outcome: %v", err)
+	}
+	if errors.Is(err, ErrVerdictStop) {
+		t.Fatalf("the redo affordance leaked into a write the file cannot confirm: %v", err)
+	}
+	if NeedsVisibleSession(result, err) {
+		t.Fatalf("the item was offered for a redo although the file may record it as submitting")
+	}
+	if result.State != ItemSubmitting {
+		t.Fatalf("state=%s, want %s", result.State, ItemSubmitting)
+	}
+	if strings.Contains(err.Error(), "the item can be re-done") {
+		t.Fatalf("the message promises a redo the file may not allow: %v", err)
+	}
+	// The whole point: nothing reached the application, and the extension was never asked
+	// to capture or hand off.
+	if count := fixtureAppTabCount(t, driver); count != 0 {
+		t.Fatalf("%d application tabs were opened despite an unrestored write", count)
+	}
+	if status := fixtureStatus(t, driver); status != "INIT" {
+		t.Fatalf("the extension state advanced to %q without a confirmed write", status)
+	}
+}
+
 // TestFixtureDriverRecordsOutcomeUnknownWhenKeyWriteFails covers the window that
 // design section 4 D2.1 cannot remove: the payload is already visible to the
 // application when the key write is attempted, so a failure there must leave an

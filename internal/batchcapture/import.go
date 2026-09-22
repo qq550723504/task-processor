@@ -251,15 +251,7 @@ func ImportOne(driver *Driver, opts ImportOptions) (ImportResult, error) {
 		item.ApprovedOrganizationID = opts.Approved.OrganizationID
 	}
 	if err := persist(queue, opts.QueuePath); err != nil {
-		// Fail-closed: the dispatch below is only allowed once this record is durable, so
-		// a failed write stops the item before the application can see anything. Because
-		// the dispatch never happened, the item is still re-capturable and the file still
-		// holds previousState: this is an ordinary re-runnable failure, never the
-		// outcome_unknown the post-dispatch paths have to report.
-		item.State = previousState
-		item.Reason = ""
-		result.State = previousState
-		return result, fmt.Errorf("%w: %v (nothing was handed off, so the item can be re-done)", ErrQueueWriteFailed, err)
+		return phaseOneFailedWrite(item, result, err, previousState)
 	}
 
 	if err := popup.DispatchHandoff(); err != nil {
@@ -402,9 +394,10 @@ func NeedsVisibleSession(result ImportResult, err error) bool {
 // unconfirmedWrite reports a persist that could not be confirmed durable, and returns
 // the state the durable queue actually holds.
 //
-// Save replaces the file atomically, so an unconfirmed write leaves the PREVIOUS
-// record in place. After phase 1 that record says ItemSubmitting, whatever the failed
-// write intended to say (queued, outcome_unknown, submitted, failed). Reporting the
+// Save replaces the file atomically and writes the previous content back when a flush
+// fails after the replacement, so an unconfirmed write leaves the PREVIOUS record in
+// place. After phase 1 that record says ItemSubmitting, whatever the failed write
+// intended to say (queued, outcome_unknown, submitted, failed). Reporting the
 // intended state would name a label the operator cannot find in the file and would
 // hide the one thing that has to be verified: which of the two records survived.
 //
@@ -432,6 +425,34 @@ func unconfirmedWrite(item *Item, result ImportResult, cause, writeErr error, ou
 // ErrOutcomeUnknown means whether the item was published cannot be decided locally.
 var ErrOutcomeUnknown = errors.New("batch capture: outcome unknown, stop and verify")
 
+// phaseOneFailedWrite classifies a failed phase-one write, which is the record that makes
+// the item submittable and therefore the last thing that happens before the dispatch.
+//
+// Fail-closed is the easy half: the dispatch below is only allowed once this record is
+// durable, so a failed write stops the item before the application can see anything.
+// Because the dispatch never happened the item is still re-capturable and the file still
+// holds previousState - an ordinary re-runnable failure, never the outcome_unknown the
+// post-dispatch paths have to report.
+//
+// The exception is a save that replaced the file and then could not flush it: the file
+// then holds ItemSubmitting, which is the one state that forbids an automatic redo. An
+// operator told "nothing was handed off, so the item can be re-done" would follow that
+// advice, be stopped by BlockingItem, and be unable to reconcile the two - so that case
+// reports the unconfirmed state instead (design section 4 D2.2, AGENTS.md's rule that a
+// finding may not be answered with a message the file contradicts).
+func phaseOneFailedWrite(item *Item, result ImportResult, err error, previousState ItemState) (ImportResult, error) {
+	if errors.Is(err, errQueueContentUnrestored) {
+		// Nothing was handed off, so this is deliberately NOT ErrOutcomeUnknown: the
+		// application provably never saw a payload. What is unconfirmed is the item's
+		// state in the file.
+		return unconfirmedWrite(item, result, nil, err, false)
+	}
+	item.State = previousState
+	item.Reason = ""
+	result.State = previousState
+	return result, fmt.Errorf("%w: %v (nothing was handed off, so the item can be re-done)", ErrQueueWriteFailed, err)
+}
+
 // stopWithoutSubmit leaves an item re-doable. It is only correct before a handoff,
 // because before a handoff the application has never seen a payload for this item.
 //
@@ -449,6 +470,15 @@ func stopWithoutSubmit(persist func(*Queue, string) error, queue *Queue, item *I
 	item.Reason = cause.Error()
 	result.State = ItemQueued
 	if err := persist(queue, path); err != nil {
+		if errors.Is(err, errQueueContentUnrestored) {
+			// The file may hold either state, and both are re-capturable, so the item can
+			// still be re-done - but the message must not claim to know which one is in the
+			// file. The cause stays wrapped so NeedsVisibleSession still recognises a gate
+			// stop: the operator can clear it in the still-open browser and redo this item.
+			return result, fmt.Errorf(
+				"%w: %v; %q was never handed off and the queue file holds a re-capturable state (%q or %q), so the item can be re-done once the cause is cleared; %w",
+				ErrQueueWriteFailed, err, item.URL, previous, ItemQueued, cause)
+		}
 		item.State = previous
 		item.Reason = ""
 		result.State = previous

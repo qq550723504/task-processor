@@ -308,6 +308,15 @@ func Load(path string) (*Queue, error) {
 // A non-nil error means the state is NOT durable. Callers must treat that as
 // fatal for the current step: in particular, the handoff must not be performed
 // unless the pre-write succeeded.
+//
+// A non-nil error also means the file still holds the content it held before this
+// call. The replace is atomic, but it becomes durable only once the directories
+// involved are flushed, and a flush can fail after the replacement is already
+// visible; the previous content is then written back so that a caller which reports
+// "nothing changed, the item can be re-done" is describing the file and not just its
+// own intent. A save that cannot do that returns an error carrying
+// errQueueContentUnrestored instead, and callers must not report the previous state
+// as the file's contents in that case.
 func (q *Queue) Save(path string) error { return q.save(path, syncDir) }
 
 // save carries Save's body with its directory flush injected, so the durability
@@ -371,6 +380,12 @@ func (q *Queue) save(path string, syncDirFn func(string) error) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp queue file: %w", err)
 	}
+	// The content the file holds now, so a failure after the replacement below can put
+	// it back. A read that fails for any reason other than "no file yet" does not abort
+	// the save - a file whose contents cannot be read is still allowed to be replaced -
+	// it only means the previous content cannot be restored, which is reported if the
+	// replacement turns out to need it.
+	previous, previousErr := os.ReadFile(path)
 	if err := replaceFile(tmpName, path); err != nil {
 		return fmt.Errorf("replace queue file: %w", err)
 	}
@@ -380,7 +395,7 @@ func (q *Queue) save(path string, syncDirFn func(string) error) error {
 	// flush happens inside replaceFile (MOVEFILE_WRITE_THROUGH) and this call is a
 	// no-op; see sync_dir_windows.go.
 	if err := syncDirFn(dir); err != nil {
-		return fmt.Errorf("flush queue directory: %w", err)
+		return flushFailedAfterReplace(path, previous, previousErr, syncDirFn, fmt.Errorf("flush queue directory: %w", err))
 	}
 	// Flushing a directory registers its CONTENTS; the directory's own NAME lives in
 	// its parent, so every directory this call created is still unregistered until
@@ -392,8 +407,87 @@ func (q *Queue) save(path string, syncDirFn func(string) error) error {
 	// registered before the child it names.
 	for _, created := range createdDirs {
 		if err := syncDirFn(filepath.Dir(created)); err != nil {
-			return fmt.Errorf("flush parent of newly created queue directory: %w", err)
+			return flushFailedAfterReplace(path, previous, previousErr, syncDirFn, fmt.Errorf("flush parent of newly created queue directory: %w", err))
 		}
+	}
+	return nil
+}
+
+// errQueueContentUnrestored marks a save that failed after its replacement had already
+// become visible and could not put the previous content back. The queue file may hold
+// the content that save wrote, so a caller may not report the state it meant to replace
+// as the one the file still holds; see phaseOneFailedWrite in import.go.
+var errQueueContentUnrestored = errors.New("queue file content could not be restored")
+
+// flushFailedAfterReplace handles a save that failed after its replacement became
+// visible. Flushing a directory registers the file's directory entry, so until that
+// succeeds the new content is visible but not guaranteed to survive a crash, while the
+// callers of Save treat a failed save as "the file still holds the previous state".
+// Writing the previous content back makes that assumption true again.
+//
+// If the restore fails as well the file may hold the content this save wrote. Returning
+// no error is not an option (the new content is not durable), and reporting the previous
+// state would describe a record the file does not contain - for the pre-handoff intent
+// write that state is a re-capturable one, so the operator would be sent to redo an item
+// the file records as possibly submitted.
+func flushFailedAfterReplace(path string, previous []byte, previousErr error, syncDirFn func(string) error, flushErr error) error {
+	if restoreErr := restoreQueueFile(path, previous, previousErr, syncDirFn); restoreErr != nil {
+		return fmt.Errorf("%w: %w (and the previous content could not be restored: %v)",
+			errQueueContentUnrestored, flushErr, restoreErr)
+	}
+	return flushErr
+}
+
+// restoreQueueFile puts back the content the queue file held before a replacement whose
+// durability could not be confirmed, using the same durable sequence Save uses.
+func restoreQueueFile(path string, previous []byte, previousErr error, syncDirFn func(string) error) error {
+	dir := filepath.Dir(path)
+	if dir == "" {
+		dir = "."
+	}
+	switch {
+	case previousErr == nil:
+		// Fall through to rewriting the previous content below.
+	case errors.Is(previousErr, os.ErrNotExist):
+		// The file did not exist before this save, so removing what the save created is
+		// as close to the previous state as a restore can get.
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove queue file whose replacement was not confirmed: %w", err)
+		}
+		if err := syncDirFn(dir); err != nil {
+			return fmt.Errorf("flush queue directory after removing it: %w", err)
+		}
+		return nil
+	default:
+		// The file exists but its content is unknown. Removing it would lose a queue, so
+		// there is nothing safe to do here.
+		return fmt.Errorf("read the previous queue file: %v", previousErr)
+	}
+	tmp, err := os.CreateTemp(dir, ".batch-queue-restore-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create restore temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		// Best-effort cleanup; after a successful rename this is a no-op.
+		_ = os.Remove(tmpName)
+	}()
+	if _, err := tmp.Write(previous); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write restore temp file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("flush restore temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close restore temp file: %w", err)
+	}
+	if err := replaceFile(tmpName, path); err != nil {
+		return fmt.Errorf("replace queue file with its previous content: %w", err)
+	}
+	if err := syncDirFn(dir); err != nil {
+		return fmt.Errorf("flush queue directory after restoring it: %w", err)
 	}
 	return nil
 }
