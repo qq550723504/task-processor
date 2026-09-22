@@ -172,14 +172,6 @@ resource "zitadel_user_grant" "operator" {
   depends_on = [zitadel_project_role.viewer, zitadel_project_role.operator, zitadel_project_role.admin, zitadel_project_role.platform_admin]
 }
 
-resource "zitadel_user_grant" "viewer" {
-  org_id     = zitadel_org.account.id
-  project_id = zitadel_project.listingkit.id
-  user_id    = zitadel_human_user.viewer.id
-  role_keys  = ["listingkit_viewer"]
-  depends_on = [zitadel_project_role.viewer]
-}
-
 resource "zitadel_application_api" "current_application" {
   org_id           = zitadel_org.account.id
   project_id       = zitadel_project.listingkit.id
