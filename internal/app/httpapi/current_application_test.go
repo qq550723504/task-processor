@@ -321,6 +321,46 @@ func TestBuildCurrentApplicationRejectsRouteDrift(t *testing.T) {
 	}
 }
 
+func TestCurrentApplicationAdmitsPlatformSubscriptionOwnerRoutes(t *testing.T) {
+	deps := newRouteAuthDependencies()
+	ownerRoutes := append([]currentApplicationRoute(nil), currentPlatformSubscriptionApplicationRoutes...)
+	factories := currentApplicationFactories{
+		buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
+			return workbenchContextBuildResult{
+				module:           currentApplicationTestModule{name: "workbench", routes: currentWorkbenchApplicationRoutes},
+				authDependencies: &deps,
+			}, nil
+		},
+		buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return nil, nil
+		},
+		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return nil, nil
+		},
+		buildPlatformSubscription: func(*gorm.DB, *config.Config) (kernelmodule.Module, error) {
+			return currentApplicationTestModule{name: "listing-kit-platform-admin", routes: ownerRoutes}, nil
+		},
+	}
+
+	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithCommercialOwnerDatabase(&gorm.DB{}))
+	if err != nil {
+		t.Fatalf("buildCurrentApplication() error = %v", err)
+	}
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/listing-kits/platform/subscription-plans"},
+		{http.MethodPut, "/api/v1/listing-kits/platform/subscriptions/org-test/entitlements/listingkit"},
+	} {
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, httptest.NewRequest(route.method, route.path, nil))
+		if response.Code == http.StatusNotFound {
+			t.Fatalf("owner route %s %s was not reachable", route.method, route.path)
+		}
+	}
+}
+
 func currentApplicationTestConfig() *config.Config {
 	return &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{
 		IssuerURL: "http://localhost:18080", AuthorizationAPIURL: "http://localhost:18080", ClientID: "client", ClientSecret: "secret", ProjectID: "project", AuthorizationRequired: true,

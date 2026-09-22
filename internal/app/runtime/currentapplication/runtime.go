@@ -18,6 +18,7 @@ type Dependencies struct {
 	IdentityPreflight                         func(context.Context, IdentityConfig) error
 	OpenSourceAccount                         func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenCommercial                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenCommercialOwner                       func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition                    func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenReferrals                             func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMembership                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
@@ -35,6 +36,7 @@ type Dependencies struct {
 // ApplicationFeatures keeps separately owned, opt-in current modules together
 // only at the serving composition boundary.
 type ApplicationFeatures struct {
+	CommercialOwnerDB    *gorm.DB
 	ProductAcquisitionDB *gorm.DB
 	ReferralDB           *gorm.DB
 	MembershipDB         *gorm.DB
@@ -83,6 +85,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if cfg.ProductAcquisitionDatabase != nil && dependencies.OpenProductAcquisition == nil {
 		return errors.New("current product acquisition lifecycle unavailable")
 	}
+	if cfg.CommercialOwnerDatabase != nil && dependencies.OpenCommercialOwner == nil {
+		return errors.New("current commercial owner lifecycle unavailable")
+	}
 	if cfg.Referrals.Enabled && dependencies.OpenReferrals == nil {
 		return errors.New("current application referrals lifecycle unavailable")
 	}
@@ -90,6 +95,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return errors.New("membership runtime dependencies unavailable")
 	}
 	if dependencies.NewApplicationWithFeatures == nil {
+		if cfg.CommercialOwnerDatabase != nil {
+			return errors.New("current application combined commercial owner lifecycle unavailable")
+		}
 		if cfg.Membership != nil && (cfg.ProductAcquisitionDatabase != nil || cfg.Referrals.Enabled) {
 			return errors.New("current application combined membership lifecycle unavailable")
 		}
@@ -131,13 +139,28 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		return fmt.Errorf("current application startup canceled: %w", err)
 	}
 
+	var commercialOwnerDB *gorm.DB
+	if cfg.CommercialOwnerDatabase != nil {
+		commercialOwnerDB, err = dependencies.OpenCommercialOwner(startupContext, *cfg.CommercialOwnerDatabase)
+		if err != nil {
+			return fmt.Errorf("open existing commercial owner database: %w", err)
+		}
+		if commercialOwnerDB == nil || commercialOwnerDB == sourceAccountDB || commercialOwnerDB == commercialDB {
+			return errors.New("commercial owner database unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(commercialOwnerDB)) }()
+		if err := startupContext.Err(); err != nil {
+			return fmt.Errorf("current application startup canceled: %w", err)
+		}
+	}
+
 	var productDB *gorm.DB
 	if cfg.ProductAcquisitionDatabase != nil {
 		productDB, err = dependencies.OpenProductAcquisition(startupContext, *cfg.ProductAcquisitionDatabase)
 		if err != nil {
 			return fmt.Errorf("open existing product acquisition database: %w", err)
 		}
-		if productDB == nil || productDB == sourceAccountDB || productDB == commercialDB {
+		if productDB == nil || productDB == sourceAccountDB || productDB == commercialDB || productDB == commercialOwnerDB {
 			return errors.New("current product acquisition database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(productDB)) }()
@@ -151,7 +174,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return fmt.Errorf("open existing referral database: %w", err)
 		}
-		if referralDB == nil || referralDB == sourceAccountDB || referralDB == commercialDB || referralDB == productDB {
+		if referralDB == nil || referralDB == sourceAccountDB || referralDB == commercialDB || referralDB == commercialOwnerDB || referralDB == productDB {
 			return errors.New("current application referral database unavailable")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(referralDB)) }()
@@ -165,7 +188,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		if err != nil {
 			return fmt.Errorf("open existing membership database: %w", err)
 		}
-		if membershipDB == nil || membershipDB == sourceAccountDB || membershipDB == commercialDB || membershipDB == productDB || membershipDB == referralDB {
+		if membershipDB == nil || membershipDB == sourceAccountDB || membershipDB == commercialDB || membershipDB == commercialOwnerDB || membershipDB == productDB || membershipDB == referralDB {
 			return errors.New("membership requires an independent database pool")
 		}
 		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(membershipDB)) }()
@@ -176,12 +199,12 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	if dependencies.Listen == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
-	if dependencies.NewApplicationWithFeatures == nil && productDB == nil && referralDB == nil && membershipDB == nil && dependencies.NewApplication == nil {
+	if dependencies.NewApplicationWithFeatures == nil && commercialOwnerDB == nil && productDB == nil && referralDB == nil && membershipDB == nil && dependencies.NewApplication == nil {
 		return errors.New("current application serving lifecycle unavailable")
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{ProductAcquisitionDB: productDB, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
 	} else if productDB != nil {

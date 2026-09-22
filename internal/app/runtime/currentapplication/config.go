@@ -31,6 +31,7 @@ type Config struct {
 	Identity                   IdentityConfig    `json:"identity"`
 	SourceAccountDatabase      DatabaseConfig    `json:"sourceAccountDatabase"`
 	CommercialDatabase         DatabaseConfig    `json:"commercialDatabase"`
+	CommercialOwnerDatabase    *DatabaseConfig   `json:"commercialOwnerDatabase,omitempty"`
 	ProductAcquisitionDatabase *DatabaseConfig   `json:"productAcquisitionDatabase,omitempty"`
 	Membership                 *MembershipConfig `json:"membership,omitempty"`
 	Referrals                  ReferralsConfig   `json:"referrals"`
@@ -218,11 +219,23 @@ func (cfg *Config) validate() error {
 	if cfg.SourceAccountDatabase.User != "source_account_runtime" || cfg.CommercialDatabase.User != "commercial_runtime" {
 		return errors.New("current application database roles must be source_account_runtime and commercial_runtime")
 	}
+	if owner := cfg.CommercialOwnerDatabase; owner != nil {
+		if err := owner.validate("commercialOwnerDatabase"); err != nil {
+			return err
+		}
+		if owner.User != "commercial_owner_runtime" {
+			return errors.New("commercial owner database requires commercial_owner_runtime")
+		}
+	}
 	if cfg.Membership != nil {
 		if err := cfg.Membership.validate(cfg.Identity); err != nil {
 			return err
 		}
-		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+		others := []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase}
+		if cfg.CommercialOwnerDatabase != nil {
+			others = append(others, *cfg.CommercialOwnerDatabase)
+		}
+		for _, other := range others {
 			if cfg.Membership.Database.Host == other.Host && cfg.Membership.Database.Port == other.Port && cfg.Membership.Database.Database == other.Database {
 				return errors.New("membership requires a dedicated database")
 			}
@@ -235,7 +248,11 @@ func (cfg *Config) validate() error {
 		if product.User != "source_acquisition_runtime" || product.MaxConnections > 8 {
 			return errors.New("product acquisition requires source_acquisition_runtime and at most 8 connections")
 		}
-		for _, other := range []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase} {
+		others := []DatabaseConfig{cfg.SourceAccountDatabase, cfg.CommercialDatabase}
+		if cfg.CommercialOwnerDatabase != nil {
+			others = append(others, *cfg.CommercialOwnerDatabase)
+		}
+		for _, other := range others {
 			if product.Host == other.Host && product.Port == other.Port && product.Database == other.Database {
 				return errors.New("product acquisition requires a dedicated Product database")
 			}
