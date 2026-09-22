@@ -15,7 +15,9 @@ export async function requireAuthenticatedUserId(returnTo: string) {
   return String(identity.userId);
 }
 
-export const requireReferralUserId = requireAuthenticatedUserId;
+export function requireReferralUserId(returnTo: string) {
+  return requireAuthenticatedUserId(returnTo);
+}
 
 async function boundedServerAuth() {
   let timer: ReturnType<typeof setTimeout> | undefined;
