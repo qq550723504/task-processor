@@ -92,7 +92,8 @@ try {
   }
   const extensionManifest = JSON.parse(await readFile(join(pluginRoot, "dist-fixture", "manifest.json"), "utf8"));
   assert.deepEqual(extensionManifest.permissions.slice().sort(), ["activeTab", "scripting"]);
-  assert.equal(extensionManifest.host_permissions, undefined);
+  // Same grant the manifest test pins: one host, https only. A wider build must fail here too.
+  assert.deepEqual(extensionManifest.host_permissions, ["https://detail.1688.com/*"]);
   stage = "compile";
   const binary = join(dir, "browser-capture.test.exe");
   await run("go", ["test", "-c", "-o", binary, "./internal/app/httpapi"], { cwd: repo });

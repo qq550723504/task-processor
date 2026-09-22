@@ -62,8 +62,15 @@ only its closed disposable profiles after preserving the receipts.
 
 ## Capture boundary
 
-- Permissions are exactly `activeTab` and `scripting`. No host, cookies,
-  storage, tabs, history, webRequest, clipboard or downloads permissions.
+- Permissions are exactly `activeTab` and `scripting`, plus a host grant narrowed
+  to the single page kind this extension reads: `https://detail.1688.com/*`
+  (https only, no subdomain wildcard, no `<all_urls>`). No cookies, storage,
+  tabs, history, webRequest, clipboard or downloads permissions.
+- The host grant exists because `activeTab` alone is a per-gesture grant: it is
+  valid for one user action on one tab, and the batch executor drives tabs
+  unattended. The grant does not widen what is read — the extractor still
+  rejects every URL that is not `detail.1688.com/offer/<ID>.html`, and the
+  injection is still main-frame and isolated-world only.
 - The popup's explicit capture action selects only the active tab. Injection
   targets its main frame in the isolated world. The same document ID and
   canonical source are checked again after extraction.

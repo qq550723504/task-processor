@@ -141,13 +141,14 @@ func requireFixtureEnv(t *testing.T) (string, string) {
 	if !strings.Contains(string(worker), fixtureAppURL) {
 		t.Fatalf("fixture build does not target %s; rebuild with CAPTURE_APP_URL=%s", fixtureAppURL, fixtureAppURL)
 	}
-	// Measured constraint: the shipped extension declares only activeTab and
-	// scripting, and Chrome grants activeTab when a person invokes the action.
-	// Chromium 144 has no Extensions.triggerAction, so a programmatic
+	// Measured constraint: Chrome grants activeTab when a person invokes the action,
+	// and Chromium 144 has no Extensions.triggerAction, so a programmatic
 	// chrome.action.openPopup() never grants it and chrome.scripting.executeScript
 	// fails with "manifest must request permission to access the respective host".
-	// The browser tests therefore need a fixture build that declares the product
-	// host explicitly; see the S1 report for the decision this needs.
+	// The extension therefore declares https://detail.1688.com/* as a host grant, and
+	// this suite runs against the ordinary --fixture build; no patched copy is needed.
+	// The check stays fatal rather than skipped: with the environment set, a build that
+	// cannot exercise capture would report success while testing nothing.
 	var parsed struct {
 		HostPermissions []string `json:"host_permissions"`
 	}
@@ -160,7 +161,7 @@ func requireFixtureEnv(t *testing.T) (string, string) {
 		// report success while testing nothing.
 		t.Fatalf("fixture build must declare host_permissions https://detail.1688.com/* "+
 			"(activeTab cannot be granted without a real action click, which Chromium 144 cannot synthesize); "+
-			"current host_permissions=%v; rebuild with the permission added or do not set BATCHCAPTURE_EXTENSION_DIST",
+			"current host_permissions=%v; rebuild from extensions/1688-capture or do not set BATCHCAPTURE_EXTENSION_DIST",
 			parsed.HostPermissions)
 	}
 	return browser, extDir

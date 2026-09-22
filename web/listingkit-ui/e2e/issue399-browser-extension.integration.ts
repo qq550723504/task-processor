@@ -197,7 +197,7 @@ export function registerFrozenExtensionCombination() {
         return api.chrome.runtime.getManifest();
       });
       assert.deepEqual(permissions.permissions.slice().sort(), ["activeTab", "scripting"]);
-      assert.equal(permissions.host_permissions, undefined);
+      assert.deepEqual(permissions.host_permissions, ["https://detail.1688.com/*"]);
       const targets = await browserCDP.send("Target.getTargets", { filter: [{ type: "tab", exclude: false }] });
       const tabs = targets.targetInfos.filter(target => target.type === "tab");
       assert.equal(tabs.length, 1, "OWNED_SOURCE_TAB_NOT_UNIQUE");
