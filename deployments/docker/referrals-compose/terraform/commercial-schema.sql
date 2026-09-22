@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS public.saas_plans (
 );
 CREATE TABLE IF NOT EXISTS public.saas_tenant_subscriptions (
   id bigserial PRIMARY KEY,
-  tenant_id text NOT NULL UNIQUE,
+  tenant_id text NOT NULL,
+  CONSTRAINT uni_saas_tenant_subscriptions_tenant_id UNIQUE (tenant_id),
   plan_code text NOT NULL,
   status text NOT NULL,
   starts_at timestamptz,
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.saas_tenant_entitlements (
   limits text NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, module_code)
+  CONSTRAINT idx_saas_tenant_module UNIQUE (tenant_id, module_code)
 );
 CREATE TABLE IF NOT EXISTS public.saas_usage_buckets (
   tenant_id text NOT NULL,
@@ -44,12 +45,14 @@ CREATE TABLE IF NOT EXISTS public.saas_usage_events (
   quantity bigint NOT NULL, period_key text NOT NULL, source_type text NOT NULL, source_id text NOT NULL,
   member_id text NOT NULL DEFAULT '', idempotency_key text NOT NULL, status text NOT NULL,
   occurred_at timestamptz NOT NULL, storage_snapshot bigint, storage_snapshot_at timestamptz,
-  reversal_of text UNIQUE, metadata text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, idempotency_key));
+  reversal_of text, metadata text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uni_saas_usage_events_reversal_of UNIQUE (reversal_of),
+  CONSTRAINT idx_saas_usage_event_tenant_idempotency_key UNIQUE (tenant_id, idempotency_key));
 CREATE TABLE IF NOT EXISTS public.saas_usage_event_outbox (
-  id bigserial PRIMARY KEY, event_id text NOT NULL UNIQUE REFERENCES public.saas_usage_events(event_id), destination text NOT NULL DEFAULT 'openmeter',
+  id bigserial PRIMARY KEY, event_id text NOT NULL REFERENCES public.saas_usage_events(event_id), destination text NOT NULL DEFAULT 'openmeter',
   status text NOT NULL DEFAULT 'pending', attempts integer NOT NULL DEFAULT 0, next_attempt_at timestamptz, last_error text NOT NULL DEFAULT '',
-  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uni_saas_usage_event_outbox_event_id UNIQUE (event_id));
 CREATE TABLE IF NOT EXISTS public.saas_subscription_audit_logs (
   id bigserial PRIMARY KEY, tenant_id text NOT NULL, module_code text NOT NULL DEFAULT '', action text NOT NULL, actor_id text NOT NULL DEFAULT '', reason text NOT NULL DEFAULT '', payload text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS public.account_member_token_locks (organization_id varchar(128) PRIMARY KEY, updated_at timestamptz NOT NULL);
