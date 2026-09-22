@@ -82,18 +82,18 @@ func (offer Offer) Validate() error {
 }
 
 type Quote struct {
-	QuoteID         string
-	OrganizationID  string
-	OfferID         string
-	ProductKind     ProductKind
-	ResourceType    orgresource.ResourceType
+	QuoteID          string
+	OrganizationID   string
+	OfferID          string
+	ProductKind      ProductKind
+	ResourceType     orgresource.ResourceType
 	ResourceQuantity int64
-	Currency        string
-	TotalMinor      int64
-	PricingVersion  string
-	ExpiresAt       time.Time
-	Fingerprint     string
-	CreatedAt       time.Time
+	Currency         string
+	TotalMinor       int64
+	PricingVersion   string
+	ExpiresAt        time.Time
+	Fingerprint      string
+	CreatedAt        time.Time
 }
 
 func (quote Quote) Validate() error {
@@ -242,15 +242,15 @@ type OrderPage struct {
 }
 
 type OrderSummary struct {
-	Currency                 string
-	From                     time.Time
-	Until                    time.Time
-	SpendMinor               int64
-	StoreRenewalSpendMinor   int64
-	AIPointSpendMinor        int64
-	DataRowSpendMinor        int64
-	OtherSpendMinor          int64
-	ObservedAt               time.Time
+	Currency               string
+	From                   time.Time
+	Until                  time.Time
+	SpendMinor             int64
+	StoreRenewalSpendMinor int64
+	AIPointSpendMinor      int64
+	DataRowSpendMinor      int64
+	OtherSpendMinor        int64
+	ObservedAt             time.Time
 }
 
 type OfferCatalog interface {
