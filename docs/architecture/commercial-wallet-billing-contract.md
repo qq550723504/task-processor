@@ -145,6 +145,9 @@ release(order) -> available
 The money owner does not decide whether a resource grant succeeded. It accepts a
 commit/release command only from the registered commercial owner contract,
 bound to the same reservation/order identity.
+The fulfilled order must retain both the reservation identity and the committed
+reservation state; a reservation that is merely `RESERVED` or `RELEASED` is not
+money-commit proof.
 
 Timeout is not a business result. A lost acknowledgement must be resolved by
 authoritative replay/readback before the caller decides whether another attempt
@@ -247,7 +250,7 @@ top-up must carry an accepted provider payment reference; without that proof it
 is invalid. Top-up intent remains pending or explicitly cancelled until the
 provider settlement binding is accepted. A cancelled top-up must not carry
 payment evidence, because a settled payment cannot be released as if it were
-never credited.
+never credited. Non-fulfilled top-up states must not carry payment evidence.
 
 ## 5. Resource acquisition contract
 
@@ -468,8 +471,9 @@ occurred_at
 
 The initial entry kinds remain bounded to top-up credit, purchase reservation,
 purchase commit/release, refund reversal, chargeback reversal, and debt
-repayment. Tenant/browser callers never receive a generic money adjustment
-endpoint.
+repayment; unknown kinds and entries missing common identity/balance fields are
+invalid. Top-up and refund/chargeback reversal entries must carry `payment_id`.
+Tenant/browser callers never receive a generic money adjustment endpoint.
 
 The durable commercial order and item identity must include the order's
 Organization, kind, status, currency, immutable amount, quote reference,

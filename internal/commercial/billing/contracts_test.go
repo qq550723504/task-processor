@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/ledger/money"
 	"task-processor/internal/ledger/orgresource"
 )
 
@@ -141,6 +142,15 @@ func TestFulfilledWalletTopUpRequiresPaymentProof(t *testing.T) {
 	}
 }
 
+func TestPendingWalletTopUpRejectsPaymentEvidence(t *testing.T) {
+	order := validWalletTopUpOrder(time.Now().UTC())
+	order.PaymentID = "payment-1"
+
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("pending wallet top-up with payment evidence = nil, want ErrInvalid")
+	}
+}
+
 func TestCancelledWalletTopUpRejectsPaymentEvidence(t *testing.T) {
 	order := validWalletTopUpOrder(time.Now().UTC())
 	order.Status = OrderCancelled
@@ -194,6 +204,12 @@ func TestFulfilledResourcePurchaseRequiresGrantProof(t *testing.T) {
 	order.ResourceGrantOperationID = "grant-operation-1"
 	order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
 	order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
+	order.WalletReservationState = money.WalletReservationReserved
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("fulfilled resource order with uncommitted wallet reservation = nil, want ErrInvalid")
+	}
+
+	order.WalletReservationState = money.WalletReservationCommitted
 	if err := order.Validate(); err != nil {
 		t.Fatalf("fulfilled resource order with grant proof rejected: %v", err)
 	}

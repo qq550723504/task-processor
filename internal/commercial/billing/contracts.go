@@ -163,6 +163,7 @@ type Order struct {
 	AmountMinor                 int64
 	Status                      OrderStatus
 	WalletReservationID         string
+	WalletReservationState      money.WalletReservationState
 	PaymentID                   string
 	ResourceGrantOperationID    string
 	ResourceGrantSourceType     string
@@ -191,11 +192,11 @@ func (order Order) Validate() error {
 	}
 	switch order.Kind {
 	case OrderResourcePurchase:
-		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || (order.Status == OrderFulfilled && !hasResourceGrantProof(order)) || (order.Status == OrderCancelled && hasResourceGrantEvidence(order)) {
+		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || (order.Status == OrderFulfilled && (!hasResourceGrantProof(order) || order.WalletReservationState != money.WalletReservationCommitted)) || (order.Status == OrderCancelled && hasResourceGrantEvidence(order)) {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
-		if len(order.Items) != 0 || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") || (order.Status == OrderCancelled && strings.TrimSpace(order.PaymentID) != "") {
+		if len(order.Items) != 0 || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") || (order.Status != OrderFulfilled && strings.TrimSpace(order.PaymentID) != "") {
 			return ErrInvalid
 		}
 	}

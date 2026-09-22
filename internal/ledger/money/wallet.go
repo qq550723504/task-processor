@@ -81,11 +81,24 @@ type WalletEntry struct {
 }
 
 func (entry WalletEntry) Validate() error {
+	if strings.TrimSpace(entry.EntryID) == "" ||
+		strings.TrimSpace(entry.OrganizationID) == "" ||
+		entry.Currency != WalletCurrencyCNY ||
+		entry.AvailableAfter < 0 ||
+		entry.ReservedAfter < 0 ||
+		entry.DebtAfter < 0 ||
+		entry.OccurredAt.IsZero() {
+		return ErrInvalid
+	}
 	switch entry.Kind {
 	case WalletEntryTopUpCredit, WalletEntryRefundReversal, WalletEntryChargebackReversal:
 		if strings.TrimSpace(entry.PaymentID) == "" {
 			return ErrInvalid
 		}
+	case WalletEntryPurchaseReserve, WalletEntryPurchaseCommit, WalletEntryPurchaseRelease, WalletEntryDebtRepayment:
+		return nil
+	default:
+		return ErrInvalid
 	}
 	return nil
 }

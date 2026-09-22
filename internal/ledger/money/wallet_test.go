@@ -86,7 +86,8 @@ func TestWalletEntryRequiresPaymentBindingForTopUpAndReversals(t *testing.T) {
 		WalletEntryChargebackReversal,
 	} {
 		t.Run(string(kind), func(t *testing.T) {
-			entry := WalletEntry{Kind: kind, PaymentID: "payment-1"}
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
 			if err := entry.Validate(); err != nil {
 				t.Fatalf("entry with payment binding rejected: %v", err)
 			}
@@ -97,7 +98,26 @@ func TestWalletEntryRequiresPaymentBindingForTopUpAndReversals(t *testing.T) {
 		})
 	}
 
-	if err := (WalletEntry{Kind: WalletEntryPurchaseCommit}).Validate(); err != nil {
+	if err := validWalletEntry(WalletEntryPurchaseCommit).Validate(); err != nil {
 		t.Fatalf("purchase entry without payment binding rejected: %v", err)
+	}
+}
+
+func TestWalletEntryRejectsUnknownKind(t *testing.T) {
+	if err := validWalletEntry(WalletEntryKind("UNKNOWN")).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown wallet entry kind = %v, want ErrInvalid", err)
+	}
+}
+
+func validWalletEntry(kind WalletEntryKind) WalletEntry {
+	return WalletEntry{
+		EntryID:        "entry-1",
+		OrganizationID: "org-1",
+		Currency:       WalletCurrencyCNY,
+		Kind:           kind,
+		AvailableAfter: 100,
+		ReservedAfter:  0,
+		DebtAfter:      0,
+		OccurredAt:     time.Now().UTC(),
 	}
 }
