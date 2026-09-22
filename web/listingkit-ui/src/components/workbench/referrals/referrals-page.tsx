@@ -21,6 +21,7 @@ import styles from "./referrals.module.css";
 
 export type ReferralView = "overview" | "complete" | "center" | "earnings" | "withdrawals" | "rules";
 type UnknownReferralWrite = "payout-method" | "withdrawal" | "cancel";
+type ReferralWithdrawalState = ReferralWithdrawal | Awaited<ReturnType<typeof getReferralWithdrawals>>["withdrawals"][number];
 const referralPaths: Record<ReferralView, string> = {
   overview: "/workbench/account/referrals",
   complete: "/workbench/account/referrals/complete",
@@ -114,7 +115,7 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
   const [payoutType, setPayoutType] = useState<"ALIPAY" | "BANK_TRANSFER">("ALIPAY");
   const [payoutDisplayName, setPayoutDisplayName] = useState("");
   const [payoutDestination, setPayoutDestination] = useState("");
-  const [withdrawalResult, setWithdrawalResult] = useState<ReferralWithdrawal | null>(null);
+  const [withdrawalResult, setWithdrawalResult] = useState<ReferralWithdrawalState | null>(null);
   const [unknownWrite, setUnknownWrite] = useState<UnknownReferralWrite | null>(null);
   const [reconcilingUnknownWrite, setReconcilingUnknownWrite] = useState(false);
   const markUnknownWrite = (kind: UnknownReferralWrite, error: unknown) => {
@@ -124,16 +125,23 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
     if (!unknownWrite || reconcilingUnknownWrite) return;
     setReconcilingUnknownWrite(true);
     try {
-      const reads = unknownWrite === "payout-method"
-        ? [queryClient.fetchQuery({ queryKey: ["account", "referral-payout-methods", expectedUserId] as const, queryFn: ({ signal }) => getReferralPayoutMethods(expectedUserId, signal), staleTime: 0 })]
-        : [
+      let reconciledWithdrawals: Awaited<ReturnType<typeof getReferralWithdrawals>>["withdrawals"] | undefined;
+      if (unknownWrite === "payout-method") {
+        await queryClient.fetchQuery({ queryKey: ["account", "referral-payout-methods", expectedUserId] as const, queryFn: ({ signal }) => getReferralPayoutMethods(expectedUserId, signal), staleTime: 0 });
+      } else {
+        const [, withdrawals] = await Promise.all([
           queryClient.fetchQuery({ queryKey, queryFn: ({ signal }) => getAccountReferrals(expectedUserId, signal), staleTime: 0 }),
           queryClient.fetchQuery({ queryKey: ["account", "referral-withdrawals", expectedUserId] as const, queryFn: ({ signal }) => getReferralWithdrawals(expectedUserId, signal), staleTime: 0 }),
-        ];
-      await Promise.all(reads);
+        ]);
+        reconciledWithdrawals = withdrawals.withdrawals;
+      }
       if (unknownWrite === "payout-method") createPayoutMethod.reset();
       if (unknownWrite === "withdrawal") withdrawal.reset();
-      if (unknownWrite === "cancel") cancelWithdrawal.reset();
+      if (unknownWrite === "cancel") {
+        cancelWithdrawal.reset();
+        const reconciled = reconciledWithdrawals?.find((item) => item.id === withdrawalResult?.id) ?? null;
+        setWithdrawalResult(reconciled);
+      }
       setUnknownWrite(null);
     } catch {
       // Keep the lock when reconciliation itself fails; the provider fact is still unknown.

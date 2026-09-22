@@ -93,7 +93,8 @@ export async function proxyAccountIdentity(request: Request, token: string, sess
   if (!token) return accountFailure(401, "AUTHENTICATION_REQUIRED");
   if (!validID(sessionUserId)) return accountFailure(400, "INVALID_REQUEST");
   const methods = identityOperations[operation];
-  if (!methods || !methods.includes(request.method as "GET" | "PUT" | "POST") || request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(400, "INVALID_REQUEST");
+  if (!methods || !methods.includes(request.method as "GET" | "PUT" | "POST")) return accountFailure(400, "INVALID_REQUEST");
+  if (request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
   const url = new URL(request.url);
   const isRead = request.method === "GET";
   if (url.pathname !== `/api/account/identity/${operation}` || url.search || request.url.endsWith("?") || (!isRead && request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") || (isRead && (request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding")))) {

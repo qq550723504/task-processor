@@ -163,6 +163,38 @@ describe("ReferralsPage", () => {
     expect(fetch.mock.calls.filter(([input]) => input === "/api/account/referrals").length).toBe(2);
   });
 
+  it("replaces a stale cancellation result with the reconciled withdrawal", async () => {
+    const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "0", version: "1", updatedAt: "2026-09-13T10:00:00Z" } };
+    const requested = { schemaVersion: "referral-withdrawal-v1", id: "withdrawal-1", currency: "CNY", method: "ALIPAY", payoutMethodId: "method-1", amountMinor: "10000", status: "REQUESTED", payoutReference: "", version: "2", createdAt: "2026-09-13T10:01:00Z", updatedAt: "2026-09-13T10:01:00Z" };
+    const canceled = { id: requested.id, currency: requested.currency, method: requested.method, payoutMethodId: requested.payoutMethodId, amountMinor: requested.amountMinor, status: "CANCELED", payoutReference: requested.payoutReference, version: "3", createdAt: requested.createdAt, updatedAt: "2026-09-13T10:02:00Z" };
+    let cancelAttempted = false;
+    const fetch = vi.fn((input: string, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/account/referrals") return Promise.resolve(Response.json(projection));
+      if (path === "/api/account/referral-payout-methods") return Promise.resolve(Response.json({ schemaVersion: "payout-methods-v1", methods: [{ methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }] }));
+      if (path === "/api/account/referral-withdrawals" && init?.method === "POST") return Promise.resolve(Response.json(requested));
+      if (path === "/api/account/referral-withdrawals/withdrawal-1/cancel") {
+        cancelAttempted = true;
+        return Promise.resolve(Response.json({ code: "RESULT_UNVERIFIED", message: "unknown", requestId: "", fieldErrors: [], outcome: "unknown" }, { status: 504 }));
+      }
+      if (path === "/api/account/referral-withdrawals") {
+        return Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: cancelAttempted ? [canceled] : [] }));
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    mount("overview", "subject-1", true, "withdrawals");
+    await user.type(await screen.findByLabelText("金额（分）"), "10000");
+    await user.click(screen.getByRole("button", { name: "申请提现" }));
+    await user.click(await screen.findByRole("button", { name: "取消提现申请" }));
+    expect((await screen.findAllByText("操作结果待核实"))[0]).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "刷新提现状态" }));
+    await waitFor(() => expect(screen.queryByText("操作结果待核实")).not.toBeInTheDocument());
+    expect(screen.getByText("提现状态：CANCELED。")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "取消提现申请" })).not.toBeInTheDocument();
+  });
+
   it("shows available earnings after immutable refund adjustments", async () => {
     const projection = { code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "available", currency: "CNY", pendingMinor: "0", availableMinor: "12000", reservedMinor: "0", adjustmentMinor: "-2000", version: "2", updatedAt: "2026-09-13T10:00:00Z" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(projection)));
