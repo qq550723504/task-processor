@@ -173,6 +173,27 @@ func TestResourcePurchasePostReservationStatesRequireWalletReservation(t *testin
 	}
 }
 
+func TestFulfilledResourcePurchaseRequiresGrantProof(t *testing.T) {
+	order := validResourcePurchaseOrder(time.Now().UTC())
+	order.Status = OrderFulfilled
+	order.WalletReservationID = "reservation-1"
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("fulfilled resource order without grant proof = nil, want ErrInvalid")
+	}
+
+	order.ResourceGrantOperationID = "grant-operation-1"
+	order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
+	order.ResourceGrantSourceIdentity = "commercial_order_item:source-digest"
+	if err := order.Validate(); err != nil {
+		t.Fatalf("fulfilled resource order with grant proof rejected: %v", err)
+	}
+
+	order.ResourceGrantSourceType = "arbitrary-source"
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("fulfilled resource order with non-canonical grant source = nil, want ErrInvalid")
+	}
+}
+
 func validResourcePurchaseOrder(now time.Time) Order {
 	return Order{
 		OrderID:            "order-1",

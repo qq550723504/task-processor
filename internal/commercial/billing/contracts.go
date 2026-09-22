@@ -155,21 +155,24 @@ func (item OrderItem) Validate() error {
 }
 
 type Order struct {
-	OrderID             string
-	OrganizationID      string
-	Kind                OrderKind
-	QuoteID             string
-	Currency            string
-	AmountMinor         int64
-	Status              OrderStatus
-	WalletReservationID string
-	PaymentID           string
-	Items               []OrderItem
-	IdempotencyKey      string
-	RequestFingerprint  string
-	Version             int64
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	OrderID                     string
+	OrganizationID              string
+	Kind                        OrderKind
+	QuoteID                     string
+	Currency                    string
+	AmountMinor                 int64
+	Status                      OrderStatus
+	WalletReservationID         string
+	PaymentID                   string
+	ResourceGrantOperationID    string
+	ResourceGrantSourceType     string
+	ResourceGrantSourceIdentity string
+	Items                       []OrderItem
+	IdempotencyKey              string
+	RequestFingerprint          string
+	Version                     int64
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
 }
 
 func (order Order) Validate() error {
@@ -188,7 +191,7 @@ func (order Order) Validate() error {
 	}
 	switch order.Kind {
 	case OrderResourcePurchase:
-		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") {
+		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || (order.Status == OrderFulfilled && !hasResourceGrantProof(order)) {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
@@ -197,6 +200,13 @@ func (order Order) Validate() error {
 		}
 	}
 	return nil
+}
+
+func hasResourceGrantProof(order Order) bool {
+	return strings.TrimSpace(order.ResourceGrantOperationID) != "" &&
+		strings.TrimSpace(order.ResourceGrantSourceType) == orgresource.SourceCommercialOrderItem &&
+		len(strings.TrimSpace(order.ResourceGrantSourceIdentity)) > 0 &&
+		len(strings.TrimSpace(order.ResourceGrantSourceIdentity)) <= 192
 }
 
 func topUpUsesResourcePurchaseLifecycle(status OrderStatus) bool {
