@@ -171,9 +171,21 @@ func (c *SelfServiceClient) ReadProfile(ctx context.Context, token string) (Self
 		return empty, &SelfServiceError{StatusCode: response.StatusCode}
 	}
 	var payload struct {
-		SelfServiceProfile
-		UserID  string          `json:"userId"`
-		Details json.RawMessage `json:"details"`
+		Details *struct {
+			Sequence      string `json:"sequence"`
+			CreationDate  string `json:"creationDate"`
+			ChangeDate    string `json:"changeDate"`
+			ResourceOwner string `json:"resourceOwner"`
+		} `json:"details"`
+		Profile *struct {
+			FirstName         string `json:"firstName"`
+			LastName          string `json:"lastName"`
+			NickName          string `json:"nickName"`
+			DisplayName       string `json:"displayName"`
+			PreferredLanguage string `json:"preferredLanguage"`
+			Gender            string `json:"gender"`
+			AvatarURL         string `json:"avatarUrl"`
+		} `json:"profile"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(body)))
 	decoder.DisallowUnknownFields()
@@ -181,10 +193,17 @@ func (c *SelfServiceClient) ReadProfile(ctx context.Context, token string) (Self
 		return empty, errors.New("ZITADEL self-service profile response invalid")
 	}
 	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) || payload.UserID == "" || len(payload.Details) == 0 {
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) || payload.Details == nil || payload.Profile == nil {
 		return empty, errors.New("ZITADEL self-service profile response invalid")
 	}
-	return payload.SelfServiceProfile, nil
+	return SelfServiceProfile{
+		FirstName:         payload.Profile.FirstName,
+		LastName:          payload.Profile.LastName,
+		NickName:          payload.Profile.NickName,
+		DisplayName:       payload.Profile.DisplayName,
+		PreferredLanguage: payload.Profile.PreferredLanguage,
+		Gender:            payload.Profile.Gender,
+	}, nil
 }
 
 type bearerTokenContextKey struct{}
