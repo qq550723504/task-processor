@@ -199,6 +199,18 @@ func TestFulfilledResourcePurchaseRequiresGrantProof(t *testing.T) {
 	}
 }
 
+func TestCancelledResourcePurchaseRejectsGrantEvidence(t *testing.T) {
+	order := validResourcePurchaseOrder(time.Now().UTC())
+	order.Status = OrderCancelled
+	order.ResourceGrantOperationID = "grant-operation-1"
+	order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
+	order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
+
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("cancelled resource order with grant evidence = nil, want ErrInvalid")
+	}
+}
+
 func validResourcePurchaseOrder(now time.Time) Order {
 	return Order{
 		OrderID:            "order-1",

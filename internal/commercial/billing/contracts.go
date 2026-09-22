@@ -191,7 +191,7 @@ func (order Order) Validate() error {
 	}
 	switch order.Kind {
 	case OrderResourcePurchase:
-		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || (order.Status == OrderFulfilled && !hasResourceGrantProof(order)) {
+		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || (order.Status == OrderFulfilled && !hasResourceGrantProof(order)) || (order.Status == OrderCancelled && hasResourceGrantEvidence(order)) {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
@@ -214,6 +214,12 @@ func hasResourceGrantProof(order Order) bool {
 	return strings.TrimSpace(order.ResourceGrantOperationID) != "" &&
 		order.ResourceGrantSourceType == orgresource.SourceCommercialOrderItem &&
 		order.ResourceGrantSourceIdentity == expectedSourceIdentity
+}
+
+func hasResourceGrantEvidence(order Order) bool {
+	return strings.TrimSpace(order.ResourceGrantOperationID) != "" ||
+		strings.TrimSpace(order.ResourceGrantSourceType) != "" ||
+		strings.TrimSpace(order.ResourceGrantSourceIdentity) != ""
 }
 
 func topUpUsesResourcePurchaseLifecycle(status OrderStatus) bool {

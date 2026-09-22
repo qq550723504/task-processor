@@ -238,6 +238,9 @@ The order's durable grant proof carries the grant operation ID, canonical
 `commercial_order_item` source type, and a source identity that exactly matches
 the deterministic identity for the order's organization, order, and order item
 as computed by the orgresource owner.
+Cancellation is pre-grant only: a cancelled resource order must not carry any
+grant evidence, because releasing its reservation after a successful grant
+would desynchronize wallet and resource accounting.
 
 Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
 top-up must carry an accepted provider payment reference; without that proof it
