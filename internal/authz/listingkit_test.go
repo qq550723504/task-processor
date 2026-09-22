@@ -166,9 +166,9 @@ func TestListingKitAuthorizerEnforcesCommercialPermissionMatrix(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		role          string
-		wantRead      bool
-		wantPurchase  bool
+		role            string
+		wantRead        bool
+		wantPurchase    bool
 		wantWalletTopUp bool
 	}{
 		{role: "listingkit_viewer"},
