@@ -193,7 +193,9 @@ func validatePurchasedGrantIdentity(input PurchasedResourceGrantInput) error {
 }
 
 func purchasedGrantSourceIdentity(orderID, orderItemID string) string {
-	return fmt.Sprintf("%d:%s%d:%s", len(orderID), orderID, len(orderItemID), orderItemID)
+	canonical := fmt.Sprintf("%d:%s%d:%s", len(orderID), orderID, len(orderItemID), orderItemID)
+	sum := sha256.Sum256([]byte(canonical))
+	return SourceCommercialOrderItem + ":" + hex.EncodeToString(sum[:])
 }
 
 func fingerprintPurchasedResourceGrant(input PurchasedResourceGrantExecution) (string, error) {

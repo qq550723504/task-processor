@@ -3,6 +3,7 @@ package orgresource
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -65,13 +66,14 @@ func TestPurchasedResourceGrantFixesCommercialSourceIdentity(t *testing.T) {
 	if executor.executed.SourceType != SourceCommercialOrderItem {
 		t.Fatalf("source type = %q", executor.executed.SourceType)
 	}
-	if executor.executed.SourceIdentity != "7:order-16:item-1" {
+	wantSourceIdentity := purchasedGrantSourceIdentity("order-1", "item-1")
+	if executor.executed.SourceIdentity != wantSourceIdentity {
 		t.Fatalf("source identity = %q", executor.executed.SourceIdentity)
 	}
 	if executor.executed.RequestFingerprint == "" {
 		t.Fatalf("request fingerprint must be fixed by resource owner")
 	}
-	if result.Snapshot.SourceIdentity != "7:order-16:item-1" {
+	if result.Snapshot.SourceIdentity != wantSourceIdentity {
 		t.Fatalf("snapshot source identity = %q", result.Snapshot.SourceIdentity)
 	}
 }
@@ -132,6 +134,13 @@ func TestPurchasedResourceGrantReplaysBeforeApplyingCurrentQuantityLimit(t *test
 func TestPurchasedResourceGrantSourceIdentityIsUnambiguous(t *testing.T) {
 	if first, second := purchasedGrantSourceIdentity("order:a", "item"), purchasedGrantSourceIdentity("order", "a:item"); first == second {
 		t.Fatalf("source identities collide: %q", first)
+	}
+}
+
+func TestPurchasedResourceGrantSourceIdentityFitsPersistenceLimit(t *testing.T) {
+	identity := purchasedGrantSourceIdentity(strings.Repeat("o", 128), strings.Repeat("i", 128))
+	if len(identity) > 192 {
+		t.Fatalf("source identity length = %d, want <= 192", len(identity))
 	}
 }
 

@@ -250,9 +250,11 @@ The source claim is unique and replayable. Same source + same fingerprint return
 the immutable previous result. Same source + different fingerprint is a
 conflict.
 
-The persisted source identity uses an unambiguous length-prefixed encoding of
-the canonical order ID and order-item ID; delimiter concatenation is not a
-uniqueness contract.
+The persisted source identity is a fixed-size SHA-256 digest (with the
+commercial source type prefix) over an unambiguous length-prefixed encoding of
+the canonical order ID and order-item ID. Delimiter concatenation is not a
+uniqueness contract, and the resulting identity remains within the resource
+owner's 192-byte persistence limit.
 
 The purchased grant supports only the three approved resource types and a
 positive bounded quantity. Authorization is supplied by runtime assembly using
