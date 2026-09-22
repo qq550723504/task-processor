@@ -134,20 +134,49 @@ func (p *Popup) Capture() (PopupState, error) {
 }
 
 // waitDisabled waits until a control reports itself disabled.
+//
+// The script answers with a real boolean (or null when the control is absent), and
+// the ANSWER is the boolean's value. Reading only the assertion's success - "the
+// reply was a boolean" - is what this used to do, and it made the gate a no-op:
+// false means "the control is still enabled", which is exactly the state the gate
+// exists to keep waiting for, but it was accepted as proof that the click had
+// engaged the control. The gate then reported a click that never started as a
+// settled failure and paused a valid item.
 func (p *Popup) waitDisabled(selector string) error {
-	deadline := time.Now().Add(p.timeout)
+	return pollControl(p.raw.evaluate, fmt.Sprintf(
+		`(() => { const el = document.querySelector(%q); return el ? Boolean(el.disabled) : null; })()`, selector),
+		p.timeout,
+		fmt.Errorf("%w: %s was never engaged", ErrControlNotFound, selector))
+}
+
+// evaluateBool reads the answer of a popup control script. Every script here returns
+// a real boolean, or null when the control is absent, so the first result is the
+// value to act on and the second only reports whether a boolean came back at all.
+func evaluateBool(evaluate func(string) (any, error), script string) (answer bool, ok bool, err error) {
+	value, err := evaluate(script)
+	if err != nil {
+		return false, false, err
+	}
+	answer, ok = value.(bool)
+	return answer, ok, nil
+}
+
+// pollControl evaluates one control script until its answer is true, and reports
+// pending if it never becomes true before the timeout.
+func pollControl(evaluate func(string) (any, error), script string, timeout time.Duration, pending error) error {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		value, err := p.raw.evaluate(fmt.Sprintf(
-			`(() => { const el = document.querySelector(%q); return el ? Boolean(el.disabled) : null; })()`, selector))
+		answer, ok, err := evaluateBool(evaluate, script)
 		if err != nil {
 			return err
 		}
-		if ok, _ := value.(bool); ok {
+		// A missing control (null) answers no boolean and is still pending.
+		if ok && answer {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("%w: %s was never engaged", ErrControlNotFound, selector)
+	return pending
 }
 
 // waitSettled waits until the popup reaches an outcome. The document has no busy
@@ -287,35 +316,32 @@ func (p *Popup) Close() error {
 // click dispatches a real click on a real control. It is one synchronous
 // evaluation so the popup decides once, and it never substitutes an internal
 // message for the control.
-func (p *Popup) click(selector string) error {
+// controlClick clicks one control and reports ErrControlNotFound unless the script
+// confirmed that the click happened. The script answers false when the control is
+// missing or already disabled, so the boolean's VALUE has to be checked: a boolean
+// reply means the script ran, not that a click occurred.
+func controlClick(evaluate func(string) (any, error), selector string) error {
 	script := fmt.Sprintf(`(() => {
   const el = document.querySelector(%q);
   if (!el || el.disabled) return false;
   el.click();
   return true;
 })()`, selector)
-	value, err := p.raw.evaluate(script)
+	clicked, ok, err := evaluateBool(evaluate, script)
 	if err != nil {
 		return err
 	}
-	if ok, _ := value.(bool); !ok {
+	if !ok || !clicked {
 		return fmt.Errorf("%w: %s", ErrControlNotFound, selector)
 	}
 	return nil
 }
 
+func (p *Popup) click(selector string) error { return controlClick(p.raw.evaluate, selector) }
+
 func (p *Popup) waitVisible(selector string) error {
-	deadline := time.Now().Add(p.timeout)
-	for time.Now().Before(deadline) {
-		value, err := p.raw.evaluate(fmt.Sprintf(
-			`(() => { const el = document.querySelector(%q); return el ? !el.hidden : false; })()`, selector))
-		if err != nil {
-			return err
-		}
-		if ok, _ := value.(bool); ok {
-			return nil
-		}
-		time.Sleep(150 * time.Millisecond)
-	}
-	return fmt.Errorf("%w: %s never became visible", ErrControlNotFound, selector)
+	return pollControl(p.raw.evaluate, fmt.Sprintf(
+		`(() => { const el = document.querySelector(%q); return el ? !el.hidden : false; })()`, selector),
+		p.timeout,
+		fmt.Errorf("%w: %s never became visible", ErrControlNotFound, selector))
 }
