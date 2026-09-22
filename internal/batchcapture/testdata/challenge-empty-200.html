@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Sanitized local fixture: an HTTP 200 page with neither product data nor any
+     risk-control marker. This is the residual-ambiguity case from design section
+     4 D1.3, which must default to pausing the batch rather than silently
+     skipping the item. -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>1688</title>
+  </head>
+  <body>
+    <div id="content"></div>
+    <script>
+      // A real page in this shape renders nothing usable and states nothing
+      // definitive about the product.
+      window.__boot = { ready: false };
+    </script>
+  </body>
+</html>
