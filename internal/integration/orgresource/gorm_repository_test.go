@@ -156,6 +156,46 @@ func TestWelcomeGrantRepositoryRejectsChangedFingerprintForOperationOrSource(t *
 	}
 }
 
+func TestWelcomeGrantRepositoryRejectsSourceReuseAcrossResourceTypes(t *testing.T) {
+	db := openSQLiteStore(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := NewGormRepository(db, TransactionConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := orgresource.NewService(repository, &mutableEligibilityVerifier{approval: orgresource.WelcomeGrantApproval{
+		OrganizationID: "org-a", EvidenceID: "evidence-v1",
+	}}, allowWelcomeGrantAuthorizer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GrantWelcomeStoreRenewalPeriod(context.Background(), orgresource.GrantWelcomeStoreRenewalPeriodInput{
+		OrganizationID: "org-a",
+		OperationID:    "operation-a",
+		Principal:      orgresource.Principal{ID: "onboarding", Kind: orgresource.PrincipalTrustedProvisioning},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = repository.ExecuteWelcomeGrant(context.Background(), orgresource.WelcomeGrantExecution{
+		OrganizationID:     "org-a",
+		OperationID:        "operation-b",
+		OperationType:      orgresource.OperationGrantWelcomeStoreRenewalPeriod,
+		ResourceType:       orgresource.ResourceAIPoint,
+		Quantity:           1,
+		SourceType:         orgresource.SourceOnboardingWelcomeStorePeriod,
+		SourceIdentity:     "org-a",
+		ApprovalEvidenceID: "evidence-v1",
+		ActorID:            "onboarding",
+		RequestFingerprint: "different-resource-fingerprint",
+	})
+	if !errors.Is(err, orgresource.ErrIdempotencyKeyConflict) {
+		t.Fatalf("cross-resource source reuse error = %v, want ErrIdempotencyKeyConflict", err)
+	}
+}
+
 func TestWelcomeGrantRecoversFromCommitResponseLossByReadBack(t *testing.T) {
 	db := openSQLiteStore(t)
 	if err := AutoMigrate(db); err != nil {

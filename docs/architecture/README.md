@@ -64,6 +64,8 @@ Use these as the main source of truth for structural work:
 - `project-boundaries.md`
   - default package ownership, dependency direction, forbidden imports, and
     placement rules for new code
+- `commercial-wallet-billing-contract.md`
+  - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`

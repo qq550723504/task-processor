@@ -1,0 +1,427 @@
+package money
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestOrganizationWalletSnapshotValidation(t *testing.T) {
+	now := time.Now().UTC()
+	valid := OrganizationWalletSnapshot{
+		OrganizationID:     "org-1",
+		Currency:           WalletCurrencyCNY,
+		AvailableMinor:     100,
+		ReservedMinor:      20,
+		DebtMinor:          0,
+		LifetimeTopUpMinor: 200,
+		LifetimeSpendMinor: 80,
+		Version:            1,
+		UpdatedAt:          now,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid wallet rejected: %v", err)
+	}
+
+	invalid := valid
+	invalid.AvailableMinor = -1
+	if !errors.Is(invalid.Validate(), ErrInvalid) {
+		t.Fatalf("negative available must be invalid")
+	}
+
+	invalid = valid
+	invalid.DebtMinor = 50
+	if !errors.Is(invalid.Validate(), ErrInvalid) {
+		t.Fatalf("wallet with debt and available balance must be invalid")
+	}
+}
+
+func TestOrganizationTopUpSettlementRequiresExplicitOrganizationBinding(t *testing.T) {
+	settlement := OrganizationTopUpSettlement{
+		PaymentID:         "payment-1",
+		CommercialOrderID: "order-1",
+		OrganizationID:    "org-1",
+		Currency:          WalletCurrencyCNY,
+		AmountMinor:       1000,
+		SettledAt:         time.Now().UTC(),
+		ProviderReference: "provider-1",
+		Version:           1,
+	}
+	if err := settlement.Validate(); err != nil {
+		t.Fatalf("valid settlement rejected: %v", err)
+	}
+
+	settlement.OrganizationID = ""
+	if !errors.Is(settlement.Validate(), ErrInvalid) {
+		t.Fatalf("top-up settlement without organization binding must be invalid")
+	}
+}
+
+func TestOrganizationWalletReversalRequiresCanonicalKind(t *testing.T) {
+	reversal := OrganizationWalletReversal{
+		ReversalID:        "refund-1",
+		PaymentID:         "payment-1",
+		CommercialOrderID: "order-1",
+		OrganizationID:    "org-1",
+		Kind:              WalletReversalRefund,
+		Currency:          WalletCurrencyCNY,
+		AmountMinor:       500,
+		OccurredAt:        time.Now().UTC(),
+		ProviderReference: "provider-refund-1",
+	}
+	if err := reversal.Validate(); err != nil {
+		t.Fatalf("valid reversal rejected: %v", err)
+	}
+
+	reversal.Kind = "OTHER"
+	if !errors.Is(reversal.Validate(), ErrInvalid) {
+		t.Fatalf("unknown reversal kind must be invalid")
+	}
+}
+
+func TestWalletEntryRequiresPaymentBindingForTopUpAndReversals(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryTopUpCredit,
+		WalletEntryRefundReversal,
+		WalletEntryChargebackReversal,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("entry with payment binding rejected: %v", err)
+			}
+			entry.PaymentID = ""
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("entry without payment binding = nil, want ErrInvalid")
+			}
+		})
+	}
+
+	if err := validWalletEntry(WalletEntryPurchaseCommit).Validate(); err != nil {
+		t.Fatalf("purchase entry without payment binding rejected: %v", err)
+	}
+}
+
+func TestSettlementWalletEntriesRequireCommercialOrderBinding(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryTopUpCredit,
+		WalletEntryRefundReversal,
+		WalletEntryChargebackReversal,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			entry.CommercialOrderID = ""
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("%s entry without commercial order binding = nil, want ErrInvalid", kind)
+			}
+		})
+	}
+}
+
+func TestWalletPurchaseEntriesRejectPaymentBinding(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryPurchaseReserve,
+		WalletEntryPurchaseCommit,
+		WalletEntryPurchaseRelease,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("%s entry with provider payment binding = nil, want ErrInvalid", kind)
+			}
+		})
+	}
+}
+
+func TestWalletEntryRejectsUnknownKind(t *testing.T) {
+	if err := validWalletEntry(WalletEntryKind("UNKNOWN")).Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown wallet entry kind = %v, want ErrInvalid", err)
+	}
+}
+
+func TestWalletEntryRequiresCanonicalSourceIdentity(t *testing.T) {
+	entry := validWalletEntry(WalletEntryPurchaseCommit)
+	entry.SourceIdentity = ""
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("wallet entry without source identity = nil, want ErrInvalid")
+	}
+
+	entry.SourceIdentity = " source-1"
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("wallet entry with non-canonical source identity = nil, want ErrInvalid")
+	}
+
+	entry.SourceIdentity = strings.Repeat("s", 129)
+	if err := entry.Validate(); err != nil {
+		t.Fatalf("wallet entry with long canonical source identity rejected: %v", err)
+	}
+}
+
+func TestWalletEntryRejectsDebtAndAvailableAfterBalance(t *testing.T) {
+	entry := validWalletEntry(WalletEntryPurchaseCommit)
+	entry.AvailableAfter = 100
+	entry.DebtAfter = 50
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("wallet entry with debt and available after balance = nil, want ErrInvalid")
+	}
+}
+
+func TestWalletEntryDeltasMustMatchAfterBalances(t *testing.T) {
+	tests := []struct {
+		name   string
+		kind   WalletEntryKind
+		mutate func(*WalletEntry)
+	}{
+		{
+			name: "top-up implies negative prior available",
+			kind: WalletEntryTopUpCredit,
+			mutate: func(entry *WalletEntry) {
+				entry.PaymentID = "payment-1"
+				entry.AvailableDelta = 100
+				entry.AvailableAfter = 50
+			},
+		},
+		{
+			name: "reservation implies negative prior reserved",
+			kind: WalletEntryPurchaseReserve,
+			mutate: func(entry *WalletEntry) {
+				entry.AvailableDelta = -100
+				entry.ReservedDelta = 100
+				entry.AvailableAfter = 0
+				entry.ReservedAfter = 0
+			},
+		},
+		{
+			name: "reversal implies negative prior debt",
+			kind: WalletEntryRefundReversal,
+			mutate: func(entry *WalletEntry) {
+				entry.PaymentID = "payment-1"
+				entry.AvailableDelta = -100
+				entry.DebtDelta = 100
+				entry.AvailableAfter = 0
+				entry.DebtAfter = 0
+			},
+		},
+		{
+			name: "minimum negative delta overflows prior balance",
+			kind: WalletEntryDebtRepayment,
+			mutate: func(entry *WalletEntry) {
+				entry.DebtDelta = -1 << 63
+				entry.AvailableAfter = 0
+				entry.DebtAfter = 1
+			},
+		},
+		{
+			name: "derived prior wallet violates debt-first invariant",
+			kind: WalletEntryDebtRepayment,
+			mutate: func(entry *WalletEntry) {
+				entry.DebtDelta = -100
+				entry.DebtAfter = 0
+				entry.AvailableAfter = 100
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := validWalletEntry(test.kind)
+			test.mutate(&entry)
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("entry with inconsistent prior balance = nil, want ErrInvalid")
+			}
+		})
+	}
+}
+
+func TestPurchaseReleaseRepaysDebtBeforeRestoringAvailable(t *testing.T) {
+	tests := []struct {
+		name           string
+		availableDelta int64
+		debtDelta      int64
+		availableAfter int64
+		debtAfter      int64
+	}{
+		{name: "entire release repays debt", debtDelta: -100},
+		{name: "remaining release becomes available", availableDelta: 60, debtDelta: -40, availableAfter: 60},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := validWalletEntry(WalletEntryPurchaseRelease)
+			entry.AvailableDelta = test.availableDelta
+			entry.ReservedDelta = -100
+			entry.DebtDelta = test.debtDelta
+			entry.AvailableAfter = test.availableAfter
+			entry.ReservedAfter = 0
+			entry.DebtAfter = test.debtAfter
+
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("purchase release applying debt-first allocation rejected: %v", err)
+			}
+		})
+	}
+
+	entry := validWalletEntry(WalletEntryPurchaseRelease)
+	entry.AvailableDelta = 0
+	entry.ReservedDelta = -100
+	entry.DebtDelta = -110
+	entry.AvailableAfter = 0
+	entry.ReservedAfter = 0
+	entry.DebtAfter = 0
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("purchase release repaying more debt than reserved funds = nil, want ErrInvalid")
+	}
+}
+
+func TestWalletEntryRequiresKindSpecificDeltas(t *testing.T) {
+	entry := validWalletEntry(WalletEntryTopUpCredit)
+	entry.PaymentID = "payment-1"
+	entry.AvailableDelta = -100
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("top-up with negative available delta = nil, want ErrInvalid")
+	}
+
+	entry = validWalletEntry(WalletEntryPurchaseReserve)
+	entry.AvailableDelta = 0
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("purchase reserve with zero available delta = nil, want ErrInvalid")
+	}
+
+	entry = validWalletEntry(WalletEntryPurchaseReserve)
+	entry.AvailableDelta = 100
+	entry.ReservedDelta = -100
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("purchase reserve with reversed deltas = nil, want ErrInvalid")
+	}
+}
+
+func TestWalletReversalEntriesConsumeAvailableAndCreateDebt(t *testing.T) {
+	for _, kind := range []WalletEntryKind{WalletEntryRefundReversal, WalletEntryChargebackReversal} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			entry.AvailableDelta = -60
+			entry.DebtDelta = 40
+			entry.AvailableAfter = 0
+			entry.DebtAfter = 40
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("reversal consuming available and recording debt rejected: %v", err)
+			}
+
+			entry.AvailableDelta = 0
+			entry.DebtDelta = 100
+			entry.DebtAfter = 100
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("reversal recorded fully as debt rejected: %v", err)
+			}
+
+			entry.AvailableDelta = -100
+			entry.DebtDelta = 0
+			entry.DebtAfter = 0
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("reversal consuming available only rejected: %v", err)
+			}
+
+			entry.AvailableDelta = 100
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("reversal with positive available delta = nil, want ErrInvalid")
+			}
+
+			entry.AvailableDelta = 0
+			entry.DebtDelta = -100
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("reversal with negative debt delta = nil, want ErrInvalid")
+			}
+
+			entry.AvailableDelta = 0
+			entry.DebtDelta = 0
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("reversal with no monetary effect = nil, want ErrInvalid")
+			}
+		})
+	}
+}
+
+func TestWalletPurchaseEntryRequiresCommercialOrderBinding(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryPurchaseReserve,
+		WalletEntryPurchaseCommit,
+		WalletEntryPurchaseRelease,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.CommercialOrderID = ""
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("purchase entry without commercial order binding = nil, want ErrInvalid")
+			}
+		})
+	}
+}
+
+func TestWalletDebtRepaymentRequiresTopUpSettlementBinding(t *testing.T) {
+	for _, field := range []string{"payment id", "commercial order id"} {
+		t.Run(field, func(t *testing.T) {
+			entry := validWalletEntry(WalletEntryDebtRepayment)
+			entry.PaymentID = "payment-1"
+			switch field {
+			case "payment id":
+				entry.PaymentID = ""
+			case "commercial order id":
+				entry.CommercialOrderID = ""
+			}
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("debt repayment without %s = nil, want ErrInvalid", field)
+			}
+		})
+	}
+
+	entry := validWalletEntry(WalletEntryDebtRepayment)
+	entry.PaymentID = "payment-1"
+	if err := entry.Validate(); err != nil {
+		t.Fatalf("debt repayment with accepted top-up binding rejected: %v", err)
+	}
+}
+
+func validWalletEntry(kind WalletEntryKind) WalletEntry {
+	entry := WalletEntry{
+		EntryID:           "entry-1",
+		OrganizationID:    "org-1",
+		Currency:          WalletCurrencyCNY,
+		Kind:              kind,
+		CommercialOrderID: "order-1",
+		AvailableAfter:    100,
+		ReservedAfter:     0,
+		DebtAfter:         0,
+		SourceIdentity:    "wallet-entry-1",
+		OccurredAt:        time.Now().UTC(),
+	}
+	switch kind {
+	case WalletEntryTopUpCredit:
+		entry.AvailableDelta = 100
+	case WalletEntryRefundReversal:
+		entry.AvailableDelta = -100
+		entry.AvailableAfter = 0
+	case WalletEntryChargebackReversal:
+		entry.DebtDelta = 100
+		entry.AvailableAfter = 0
+		entry.DebtAfter = 100
+	case WalletEntryPurchaseReserve:
+		entry.AvailableDelta = -100
+		entry.ReservedDelta = 100
+		entry.AvailableAfter = 0
+		entry.ReservedAfter = 100
+	case WalletEntryPurchaseCommit:
+		entry.ReservedDelta = -100
+	case WalletEntryPurchaseRelease:
+		entry.AvailableDelta = 100
+		entry.ReservedDelta = -100
+	case WalletEntryDebtRepayment:
+		entry.DebtDelta = -100
+		entry.AvailableAfter = 0
+		entry.PaymentID = "payment-1"
+	}
+	return entry
+}
