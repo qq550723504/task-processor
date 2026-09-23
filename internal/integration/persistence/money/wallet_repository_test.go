@@ -153,6 +153,51 @@ func TestOrganizationWalletReversalCreatesDebtAndRepaysOnNextTopUp(t *testing.T)
 	}
 }
 
+func TestOrganizationWalletDelayedReversalPreservesProcessingOrder(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	settledAt := time.Now().UTC().Add(-4 * time.Hour)
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-delayed-reversal", PayerUserID: "user-delayed-reversal", Currency: "CNY", GrossAmountMinor: 1000, CommissionableAmountMinor: 1000, Status: ledgermoney.PaymentSettled, SettledAt: settledAt, ProviderReference: "provider-delayed-reversal", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-delayed-reversal", CommercialOrderID: "topup-delayed-reversal", OrganizationID: "org-delayed-reversal", Currency: "CNY", AmountMinor: 1000, SettledAt: settledAt, ProviderReference: "provider-delayed-reversal", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "purchase-delayed-reversal", OrganizationID: "org-delayed-reversal", CommercialOrderID: "purchase-delayed-reversal", Currency: "CNY", AmountMinor: 300})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OperationID: "commit-delayed-reversal", OrganizationID: "org-delayed-reversal", CommercialOrderID: "purchase-delayed-reversal", ReservationID: reservation.ReservationID}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := repository.ReadOrganizationWallet(ctx, "org-delayed-reversal", "CNY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerOccurredAt := settledAt.Add(time.Hour)
+	if _, err := repository.ApplyTopUpReversal(ctx, "", ledgermoney.OrganizationWalletReversal{ReversalID: "refund-delayed-reversal", PaymentID: "pay-delayed-reversal", CommercialOrderID: "topup-delayed-reversal", OrganizationID: "org-delayed-reversal", Kind: ledgermoney.WalletReversalRefund, Currency: "CNY", AmountMinor: 200, OccurredAt: providerOccurredAt, ProviderReference: "provider-refund-delayed-reversal"}); err != nil {
+		t.Fatal(err)
+	}
+	var entry organizationWalletEntryRow
+	if err := db.Where("source_identity = ?", "refund-delayed-reversal").Take(&entry).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !entry.OccurredAt.After(before.UpdatedAt) {
+		t.Fatalf("ledger reversal timestamp=%s must follow prior wallet mutation=%s", entry.OccurredAt, before.UpdatedAt)
+	}
+	var reversal walletReversalRow
+	if err := db.Where("reversal_id = ?", "refund-delayed-reversal").Take(&reversal).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reversal.OccurredAt.Equal(providerOccurredAt.Truncate(time.Microsecond)) {
+		t.Fatalf("provider occurrence timestamp=%s, want preserved %s", reversal.OccurredAt, providerOccurredAt.Truncate(time.Microsecond))
+	}
+	after, err := repository.ReadOrganizationWallet(ctx, "org-delayed-reversal", "CNY")
+	if err != nil || !after.UpdatedAt.After(before.UpdatedAt) {
+		t.Fatalf("wallet after delayed reversal=%#v err=%v; updated_at must remain monotonic", after, err)
+	}
+}
+
 func TestOrganizationWalletRejectsInsufficientFundsAndConflictingSettlement(t *testing.T) {
 	repository, _ := walletRepository(t)
 	ctx := context.Background()

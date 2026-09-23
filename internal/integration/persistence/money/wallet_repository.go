@@ -309,18 +309,25 @@ func (r *Repository) ApplyTopUpReversal(ctx context.Context, _ string, reversal 
 		row.AvailableMinor -= availableLoss
 		row.DebtMinor += debtIncrease
 		row.Version++
-		row.UpdatedAt = ledgermoney.NormalizeTimestamp(reversal.OccurredAt)
+		// Wallet history is ordered by processing time because the after-balances
+		// reflect the serialized mutation order, not provider event-time order.
+		// PostgreSQL and SQLite persist timestamps at microsecond precision.
+		processedAt := time.Now().UTC().Truncate(time.Microsecond)
+		if !processedAt.After(row.UpdatedAt.Truncate(time.Microsecond)) {
+			processedAt = row.UpdatedAt.Truncate(time.Microsecond).Add(time.Microsecond)
+		}
+		row.UpdatedAt = processedAt
 		if err := tx.Save(&row).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
-		if err := tx.Create(&walletReversalRow{ReversalID: reversal.ReversalID, PaymentID: reversal.PaymentID, CommercialOrderID: reversal.CommercialOrderID, OrganizationID: reversal.OrganizationID, Kind: string(reversal.Kind), AmountMinor: reversal.AmountMinor, ProviderReference: reversal.ProviderReference, OccurredAt: row.UpdatedAt}).Error; err != nil {
+		if err := tx.Create(&walletReversalRow{ReversalID: reversal.ReversalID, PaymentID: reversal.PaymentID, CommercialOrderID: reversal.CommercialOrderID, OrganizationID: reversal.OrganizationID, Kind: string(reversal.Kind), AmountMinor: reversal.AmountMinor, ProviderReference: reversal.ProviderReference, OccurredAt: ledgermoney.NormalizeTimestamp(reversal.OccurredAt)}).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		kind := ledgermoney.WalletEntryRefundReversal
 		if reversal.Kind == ledgermoney.WalletReversalChargeback {
 			kind = ledgermoney.WalletEntryChargebackReversal
 		}
-		if err := tx.Create(&organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: reversal.OrganizationID, Currency: reversal.Currency, Kind: string(kind), AvailableDelta: -availableLoss, DebtDelta: debtIncrease, AvailableAfter: row.AvailableMinor, ReservedAfter: row.ReservedMinor, DebtAfter: row.DebtMinor, CommercialOrderID: reversal.CommercialOrderID, PaymentID: reversal.PaymentID, SourceIdentity: reversal.ReversalID, OccurredAt: row.UpdatedAt}).Error; err != nil {
+		if err := tx.Create(&organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: reversal.OrganizationID, Currency: reversal.Currency, Kind: string(kind), AvailableDelta: -availableLoss, DebtDelta: debtIncrease, AvailableAfter: row.AvailableMinor, ReservedAfter: row.ReservedMinor, DebtAfter: row.DebtMinor, CommercialOrderID: reversal.CommercialOrderID, PaymentID: reversal.PaymentID, SourceIdentity: reversal.ReversalID, OccurredAt: processedAt}).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		out = walletSnapshot(row)
