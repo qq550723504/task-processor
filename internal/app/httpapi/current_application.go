@@ -286,7 +286,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, platformSubscription)
 	}
-	if supplied.commercialOwnerDB != nil && factories.buildCommercialBilling != nil {
+	// Billing requires both its commercial owner and the canonical money owner.
+	// Keep unrelated platform subscriptions available when referrals/money is disabled.
+	if supplied.commercialOwnerDB != nil && supplied.referralDB != nil && factories.buildCommercialBilling != nil {
 		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, supplied.referralDB, authorizer)
 		if billingErr != nil {
 			return nil, fmt.Errorf("build current commercial billing module: %w", billingErr)

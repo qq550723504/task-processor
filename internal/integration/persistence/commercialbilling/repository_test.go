@@ -152,6 +152,7 @@ func TestQuoteFailsClosedWithoutApprovedPrice(t *testing.T) {
 func TestOrderFiltersCursorAndSummaryUseCompleteCanonicalOrders(t *testing.T) {
 	repository := commercialRepository(t)
 	created := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	fulfilled := created.Add(3 * time.Hour)
 	orders := make([]orderRow, 0, 105)
 	items := make([]orderItemRow, 0, 105)
 	for i := 0; i < 105; i++ {
@@ -162,7 +163,7 @@ func TestOrderFiltersCursorAndSummaryUseCompleteCanonicalOrders(t *testing.T) {
 			product = billing.ProductDataRow
 			amount = 9
 		}
-		orders = append(orders, orderRow{OrderID: id, OrganizationID: "org-orders", Kind: string(billing.OrderResourcePurchase), Description: billing.DescribeOrder(billing.OrderResourcePurchase, product, 1), Currency: billing.CurrencyCNY, AmountMinor: amount, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-" + id, RequestFingerprint: "fingerprint-" + id, Version: 1, CreatedAt: created, UpdatedAt: created})
+		orders = append(orders, orderRow{OrderID: id, OrganizationID: "org-orders", Kind: string(billing.OrderResourcePurchase), Description: billing.DescribeOrder(billing.OrderResourcePurchase, product, 1), Currency: billing.CurrencyCNY, AmountMinor: amount, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-" + id, RequestFingerprint: "fingerprint-" + id, Version: 1, CreatedAt: created, UpdatedAt: fulfilled})
 		items = append(items, orderItemRow{OrderItemID: "item-" + id, OrderID: id, ProductKind: string(product), ResourceType: "ai_point", ResourceQuantity: 1, AmountMinor: amount})
 	}
 	if err := repository.db.Create(&orders).Error; err != nil {
@@ -192,7 +193,11 @@ func TestOrderFiltersCursorAndSummaryUseCompleteCanonicalOrders(t *testing.T) {
 	if err != nil || len(third.Items) != 5 || third.NextCursor != "" {
 		t.Fatalf("third page=%#v err=%v", third, err)
 	}
-	summary, err := repository.ReadOrderSummary(context.Background(), "org-orders", created.Add(-time.Hour), created.Add(time.Hour))
+	createdWindow, err := repository.ReadOrderSummary(context.Background(), "org-orders", created.Add(-time.Hour), created.Add(time.Hour))
+	if err != nil || createdWindow.SpendMinor != 0 {
+		t.Fatalf("summary by creation window=%#v err=%v; spend should follow terminal fulfillment time", createdWindow, err)
+	}
+	summary, err := repository.ReadOrderSummary(context.Background(), "org-orders", created.Add(2*time.Hour), created.Add(4*time.Hour))
 	if err != nil || summary.SpendMinor != 217 || summary.AIPointSpendMinor != 208 || summary.DataRowSpendMinor != 9 {
 		t.Fatalf("summary=%#v err=%v", summary, err)
 	}

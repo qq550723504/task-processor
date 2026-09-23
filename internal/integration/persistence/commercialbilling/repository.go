@@ -384,7 +384,10 @@ func (r *Repository) ReadOrderSummary(ctx context.Context, organizationID string
 		ProductKind string
 		SpendMinor  int64
 	}
-	if err := r.db.WithContext(ctx).Table("commercial_orders").Select("commercial_order_items.product_kind AS product_kind, SUM(commercial_orders.amount_minor) AS spend_minor").Joins("JOIN commercial_order_items ON commercial_order_items.order_id = commercial_orders.order_id").Where("commercial_orders.organization_id = ? AND commercial_orders.kind = ? AND commercial_orders.status = ? AND commercial_orders.created_at >= ? AND commercial_orders.created_at < ?", organizationID, string(billing.OrderResourcePurchase), string(billing.OrderFulfilled), from.UTC(), until.UTC()).Group("commercial_order_items.product_kind").Scan(&rows).Error; err != nil {
+	// Fulfilled orders receive their terminal timestamp in updated_at when the
+	// fulfillment/reconciliation path commits. Spend windows follow that event,
+	// not when the order was originally created.
+	if err := r.db.WithContext(ctx).Table("commercial_orders").Select("commercial_order_items.product_kind AS product_kind, SUM(commercial_orders.amount_minor) AS spend_minor").Joins("JOIN commercial_order_items ON commercial_order_items.order_id = commercial_orders.order_id").Where("commercial_orders.organization_id = ? AND commercial_orders.kind = ? AND commercial_orders.status = ? AND commercial_orders.updated_at >= ? AND commercial_orders.updated_at < ?", organizationID, string(billing.OrderResourcePurchase), string(billing.OrderFulfilled), from.UTC(), until.UTC()).Group("commercial_order_items.product_kind").Scan(&rows).Error; err != nil {
 		return billing.OrderSummary{}, billing.ErrFeatureUnavailable
 	}
 	for _, row := range rows {
