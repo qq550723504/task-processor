@@ -17,19 +17,19 @@ import (
 	"task-processor/internal/ledger/orgresource"
 )
 
-func buildCommercialBillingModule(ctx context.Context, db *gorm.DB, _ *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-	if ctx == nil || db == nil {
-		return nil, errors.New("commercial billing database unavailable")
+func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *gorm.DB, _ *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+	if ctx == nil || commercialDB == nil || moneyDB == nil {
+		return nil, errors.New("commercial billing or canonical money database unavailable")
 	}
-	wallet, err := moneystore.New(db)
+	wallet, err := moneystore.New(moneyDB)
 	if err != nil {
 		return nil, err
 	}
-	commercial, err := commercialstore.New(db)
+	commercial, err := commercialstore.New(commercialDB)
 	if err != nil {
 		return nil, err
 	}
-	resourceRepository, err := orgresourceadapter.NewGormRepository(db, orgresourceadapter.TransactionConfig{})
+	resourceRepository, err := orgresourceadapter.NewGormRepository(commercialDB, orgresourceadapter.TransactionConfig{})
 	if err != nil {
 		return nil, err
 	}

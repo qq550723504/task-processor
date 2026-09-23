@@ -18,18 +18,19 @@ import (
 
 func main() {
 	manifest := flag.String("config", "", "absolute path to the private commercial schema-owner database JSON config")
+	moneyManifest := flag.String("money-config", "", "absolute path to the private canonical money schema-owner database JSON config")
 	flag.Parse()
-	if *manifest == "" {
-		fmt.Fprintln(os.Stderr, "-config is required")
+	if *manifest == "" || *moneyManifest == "" {
+		fmt.Fprintln(os.Stderr, "-config and -money-config are required")
 		os.Exit(2)
 	}
-	if err := run(*manifest); err != nil {
+	if err := run(*manifest, *moneyManifest); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(manifestPath string) error {
+func run(manifestPath, moneyManifestPath string) error {
 	dbConfig, err := loadSchemaOwnerConfig(manifestPath)
 	if err != nil {
 		return err
@@ -39,24 +40,48 @@ func run(manifestPath string) error {
 		return fmt.Errorf("open commercial owner database: %w", err)
 	}
 	defer platformdatabase.Close(db)
-	var canCreate bool
-	if err := db.Raw("SELECT current_schema() = 'public' AND has_schema_privilege(current_user, 'public', 'CREATE')").Scan(&canCreate).Error; err != nil {
-		return fmt.Errorf("verify commercial schema-owner privileges: %w", err)
+	moneyConfig, err := loadSchemaOwnerConfig(moneyManifestPath)
+	if err != nil {
+		return err
 	}
-	if !canCreate {
-		return fmt.Errorf("commercial schema migration role requires CREATE on the public schema")
+	moneyDB, err := platformdatabase.OpenExistingWritableContext(context.Background(), moneyConfig)
+	if err != nil {
+		return fmt.Errorf("open canonical money owner database: %w", err)
 	}
-	if err := moneystore.AutoMigrate(db); err != nil {
-		return fmt.Errorf("migrate money owner schema: %w", err)
+	defer platformdatabase.Close(moneyDB)
+	for _, owner := range []struct {
+		name string
+		db   *gorm.DB
+	}{{"commercial", db}, {"money", moneyDB}} {
+		var canCreate bool
+		if err := owner.db.Raw("SELECT current_schema() = 'public' AND has_schema_privilege(current_user, 'public', 'CREATE')").Scan(&canCreate).Error; err != nil {
+			return fmt.Errorf("verify %s schema-owner privileges: %w", owner.name, err)
+		}
+		if !canCreate {
+			return fmt.Errorf("%s schema migration role requires CREATE on the public schema", owner.name)
+		}
 	}
-	if err := commercialstore.AutoMigrate(db); err != nil {
-		return fmt.Errorf("migrate commercial billing schema: %w", err)
+	if err := migrateOwnerSchemas(moneyDB, db); err != nil {
+		return err
 	}
-	if err := orgresourceadapter.AutoMigrate(db); err != nil {
-		return fmt.Errorf("migrate organization resource schema: %w", err)
+	if err := grantMoneyRuntimeAccess(moneyDB); err != nil {
+		return fmt.Errorf("grant canonical money runtime table access: %w", err)
 	}
 	if err := grantCommercialRuntimeAccess(db); err != nil {
 		return fmt.Errorf("grant commercial runtime table access: %w", err)
+	}
+	return nil
+}
+
+func migrateOwnerSchemas(moneyDB, commercialDB *gorm.DB) error {
+	if err := moneystore.AutoMigrate(moneyDB); err != nil {
+		return fmt.Errorf("migrate canonical money owner schema: %w", err)
+	}
+	if err := commercialstore.AutoMigrate(commercialDB); err != nil {
+		return fmt.Errorf("migrate commercial billing schema: %w", err)
+	}
+	if err := orgresourceadapter.AutoMigrate(commercialDB); err != nil {
+		return fmt.Errorf("migrate organization resource schema: %w", err)
 	}
 	return nil
 }
@@ -73,9 +98,6 @@ func grantCommercialRuntimeAccess(db interface{ Exec(string, ...any) *gorm.DB })
 func commercialRuntimeGrants() []string {
 	return []string{
 		`GRANT USAGE ON SCHEMA public TO commercial_owner_runtime`,
-		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations TO commercial_owner_runtime`,
-		`GRANT SELECT, INSERT ON TABLE public.ledger_organization_wallet_entries, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals TO commercial_owner_runtime`,
-		`GRANT SELECT ON TABLE public.ledger_payment_settlements TO commercial_owner_runtime`,
 		`GRANT SELECT ON TABLE public.commercial_offers TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.commercial_quotes, public.commercial_order_items TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_orders TO commercial_owner_runtime`,
@@ -83,6 +105,24 @@ func commercialRuntimeGrants() []string {
 		`GRANT SELECT, INSERT ON TABLE public.saas_organization_resource_source_claims, public.saas_organization_resource_events, public.saas_organization_resource_audit_logs TO commercial_owner_runtime`,
 		`GRANT USAGE, SELECT ON SEQUENCE public.saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
 	}
+}
+
+func moneyRuntimeGrants() []string {
+	return []string{
+		`GRANT USAGE ON SCHEMA public TO referral_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations TO referral_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.ledger_organization_wallet_entries, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals TO referral_runtime`,
+		`GRANT SELECT ON TABLE public.ledger_payment_settlements TO referral_runtime`,
+	}
+}
+
+func grantMoneyRuntimeAccess(db interface{ Exec(string, ...any) *gorm.DB }) error {
+	for _, grant := range moneyRuntimeGrants() {
+		if err := db.Exec(grant).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type schemaOwnerManifest struct {

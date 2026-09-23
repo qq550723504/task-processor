@@ -58,11 +58,19 @@ func TestAccountComposeMigratesCommercialOwnerSchemaBeforeApplicationStartup(t *
 	for _, required := range []string{
 		`"user":"postgres"`,
 		`"maxConnections":2`,
-		`commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json"`,
+		`"port":5435`,
+		`"database":"referrals"`,
+		`commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json" -money-config "$work/canonical-money-schema.json"`,
 	} {
 		if !strings.Contains(initText, required) {
 			t.Fatalf("account-compose commercial owner migration is missing %q", required)
 		}
+	}
+	if strings.Count(initText, `-money-config "$work/canonical-money-schema.json"`) != 1 || strings.Count(initText, "migrate_commercial_owner_schema\n") != 2 {
+		t.Fatal("both fresh and repeated account-compose initialization must migrate wallet schema on the canonical money database")
+	}
+	if strings.Count(initText, `-f "$terraform_source/referral-grants.sql"`+"\n  migrate_commercial_owner_schema") != 1 || strings.Count(initText, `-f "$terraform_source/referral-grants.sql"`+"\nmigrate_commercial_owner_schema") != 1 {
+		t.Fatal("canonical money migration must run after referral runtime role and base schema setup in both initialization paths")
 	}
 
 	dockerfile, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "Dockerfile.account-compose"))

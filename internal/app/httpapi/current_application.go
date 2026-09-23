@@ -88,7 +88,7 @@ type currentApplicationFactories struct {
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildCommercialBilling          func(context.Context, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildCommercialBilling          func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildPlatformSubscription       func(*gorm.DB, *config.Config) (kernelmodule.Module, error)
 	buildAcquisition                func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
@@ -287,7 +287,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		modules = append(modules, platformSubscription)
 	}
 	if supplied.commercialOwnerDB != nil && factories.buildCommercialBilling != nil {
-		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, authorizer)
+		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, supplied.referralDB, authorizer)
 		if billingErr != nil {
 			return nil, fmt.Errorf("build current commercial billing module: %w", billingErr)
 		}

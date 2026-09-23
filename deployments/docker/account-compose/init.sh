@@ -20,7 +20,10 @@ migrate_commercial_owner_schema() {
   cat > "$work/commercial-owner-schema.json" <<EOF
 {"host":"127.0.0.1","port":5434,"user":"postgres","password":"$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")","database":"commercial","maxConnections":2,"maxIdleConnections":1}
 EOF
-  commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json"
+  cat > "$work/canonical-money-schema.json" <<EOF
+{"host":"127.0.0.1","port":5435,"user":"postgres","password":"$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")","database":"referrals","maxConnections":2,"maxIdleConnections":1}
+EOF
+  commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json" -money-config "$work/canonical-money-schema.json"
 }
 
 umask 077
@@ -81,7 +84,6 @@ GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
 ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL
-  migrate_commercial_owner_schema
   if grep -q '"user": "commercial_reader"' "$runtime/current-application.json"; then
     sed 's/"user": "commercial_reader"/"user": "commercial_runtime"/' "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
     chmod 600 "$runtime/current-application.json.tmp"
@@ -94,6 +96,7 @@ SQL
   fi
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
+  migrate_commercial_owner_schema
   membership_dsn="postgresql://postgres:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5436/membership?sslmode=disable"
   printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
   chmod 600 "$work/membership-owner-dsn"
@@ -226,7 +229,6 @@ GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
 ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL
-migrate_commercial_owner_schema
 
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
 CREATE ROLE referral_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$referral_runtime_secret/referral-runtime-password")';
@@ -236,6 +238,7 @@ chmod 600 "$work/referral-owner-dsn"
 referral-schema-init -dsn-file "$work/referral-owner-dsn"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
+migrate_commercial_owner_schema
 
 psql "postgresql://postgres:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5436/membership?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
 CREATE ROLE organization_membership_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$membership_runtime_secret/membership-runtime-password")';
