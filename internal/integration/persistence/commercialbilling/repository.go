@@ -61,6 +61,7 @@ type orderRow struct {
 	Currency                    string    `gorm:"column:currency;size:3;not null"`
 	AmountMinor                 int64     `gorm:"column:amount_minor;not null"`
 	Status                      string    `gorm:"column:status;size:32;not null;index"`
+	FailureCode                 string    `gorm:"column:failure_code;size:32;not null;default:''"`
 	WalletReservationID         string    `gorm:"column:wallet_reservation_id;size:128"`
 	WalletReservationState      string    `gorm:"column:wallet_reservation_state;size:16;not null;default:''"`
 	PaymentID                   string    `gorm:"column:payment_id;size:128"`
@@ -285,6 +286,7 @@ func (r *Repository) UpdateOrder(ctx context.Context, order billing.Order) error
 			return billing.ErrConflict
 		}
 		row.Status = string(order.Status)
+		row.FailureCode = string(order.FailureCode)
 		row.WalletReservationID = order.WalletReservationID
 		row.WalletReservationState = string(order.WalletReservationState)
 		row.PaymentID = order.PaymentID
@@ -435,7 +437,7 @@ func orderFromRows(row orderRow, item orderItemRow) billing.Order {
 	if item.OrderItemID != "" {
 		items = []billing.OrderItem{{OrderItemID: item.OrderItemID, ProductKind: billing.ProductKind(item.ProductKind), ResourceType: orgresource.ResourceType(item.ResourceType), ResourceQuantity: item.ResourceQuantity, AmountMinor: item.AmountMinor}}
 	}
-	return billing.Order{OrderID: row.OrderID, OrganizationID: row.OrganizationID, Kind: billing.OrderKind(row.Kind), QuoteID: row.QuoteID, Currency: row.Currency, AmountMinor: row.AmountMinor, Status: billing.OrderStatus(row.Status), WalletReservationID: row.WalletReservationID, WalletReservationState: money.WalletReservationState(row.WalletReservationState), PaymentID: row.PaymentID, ResourceGrantOperationID: row.ResourceGrantOperationID, ResourceGrantSourceType: row.ResourceGrantSourceType, ResourceGrantSourceIdentity: row.ResourceGrantSourceIdentity, Items: items, IdempotencyKey: row.IdempotencyKey, RequestFingerprint: row.RequestFingerprint, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return billing.Order{OrderID: row.OrderID, OrganizationID: row.OrganizationID, Kind: billing.OrderKind(row.Kind), QuoteID: row.QuoteID, Currency: row.Currency, AmountMinor: row.AmountMinor, Status: billing.OrderStatus(row.Status), FailureCode: billing.OrderFailureCode(row.FailureCode), WalletReservationID: row.WalletReservationID, WalletReservationState: money.WalletReservationState(row.WalletReservationState), PaymentID: row.PaymentID, ResourceGrantOperationID: row.ResourceGrantOperationID, ResourceGrantSourceType: row.ResourceGrantSourceType, ResourceGrantSourceIdentity: row.ResourceGrantSourceIdentity, Items: items, IdempotencyKey: row.IdempotencyKey, RequestFingerprint: row.RequestFingerprint, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 func fingerprint(value any) string {
 	encoded, _ := json.Marshal(value)

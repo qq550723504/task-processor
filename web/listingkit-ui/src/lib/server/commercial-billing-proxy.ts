@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
-import { WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
+import { BodyReadTimeoutError, BodyTooLargeError, readBodyWithinLimit, WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
 import { newRequestLogId } from "./request-log";
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -42,8 +42,21 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
   let body: ArrayBuffer | undefined;
   if (request.method !== "GET") {
     if (request.body === null) return failure(400, "INVALID_REQUEST");
-    body = await request.arrayBuffer();
-    if (body.byteLength > MAX_BODY_BYTES) return failure(400, "INVALID_REQUEST");
+    const contentLength = request.headers.get("content-length");
+    if (contentLength !== null) {
+      if (!/^\d+$/.test(contentLength) || !Number.isSafeInteger(Number(contentLength))) return failure(400, "INVALID_REQUEST");
+      if (Number(contentLength) > MAX_BODY_BYTES) { void request.body.cancel().catch(() => undefined); return failure(413, "INVALID_REQUEST"); }
+    }
+    try {
+      const bytes = await readBodyWithinLimit(request.body, MAX_BODY_BYTES, 15_000, request.signal);
+      const copy = new Uint8Array(bytes.byteLength);
+      copy.set(bytes);
+      body = copy.buffer;
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) return failure(413, "INVALID_REQUEST");
+      if (error instanceof BodyReadTimeoutError) return failure(408, "INVALID_REQUEST");
+      return request.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(400, "INVALID_REQUEST");
+    }
   } else if (request.body !== null) {
     await request.body.cancel().catch(() => undefined);
     return failure(400, "INVALID_REQUEST");

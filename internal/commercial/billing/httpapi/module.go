@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/commercial/billing"
 	"task-processor/internal/httproute"
+	"task-processor/internal/ledger/money"
 )
 
 const (
@@ -65,7 +66,7 @@ func (h *Handler) WalletEntries(c *gin.Context) {
 	limit := 50
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 || parsed > 100 {
+		if err != nil || parsed < 1 || parsed > money.MaxOrganizationWalletEntryPageSize {
 			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 			return
 		}
@@ -361,6 +362,7 @@ type orderResponse struct {
 	Currency            string              `json:"currency"`
 	AmountMinor         string              `json:"total_minor"`
 	Status              string              `json:"status"`
+	FailureCode         string              `json:"failure_code,omitempty"`
 	WalletReservationID *string             `json:"wallet_reservation_id,omitempty"`
 	Items               []orderItemResponse `json:"items"`
 	CreatedAt           string              `json:"created_at"`
@@ -379,7 +381,7 @@ func orderResponseFromDomain(order billing.Order) orderResponse {
 	for _, item := range order.Items {
 		items = append(items, orderItemResponse{OrderItemID: item.OrderItemID, ProductKind: string(item.ProductKind), ResourceType: string(item.ResourceType), ResourceQuantity: strconv.FormatInt(item.ResourceQuantity, 10), AmountMinor: strconv.FormatInt(item.AmountMinor, 10)})
 	}
-	return orderResponse{OrderID: order.OrderID, OrganizationID: order.OrganizationID, Kind: string(order.Kind), QuoteID: nullable(order.QuoteID), Currency: order.Currency, AmountMinor: strconv.FormatInt(order.AmountMinor, 10), Status: string(order.Status), WalletReservationID: nullable(order.WalletReservationID), Items: items, CreatedAt: order.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: order.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+	return orderResponse{OrderID: order.OrderID, OrganizationID: order.OrganizationID, Kind: string(order.Kind), QuoteID: nullable(order.QuoteID), Currency: order.Currency, AmountMinor: strconv.FormatInt(order.AmountMinor, 10), Status: string(order.Status), FailureCode: string(order.FailureCode), WalletReservationID: nullable(order.WalletReservationID), Items: items, CreatedAt: order.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: order.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 
 func effectiveOrganization(c *gin.Context) (string, bool) {

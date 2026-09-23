@@ -119,7 +119,7 @@ func (r *Repository) ListOrganizationWalletEntries(ctx context.Context, organiza
 		return ledgermoney.WalletEntryPage{}, ledgermoney.ErrUnavailable
 	}
 	organizationID = strings.TrimSpace(organizationID)
-	if organizationID == "" || currency != ledgermoney.WalletCurrencyCNY || limit < 0 || limit > 100 {
+	if organizationID == "" || currency != ledgermoney.WalletCurrencyCNY || limit < 0 || limit > ledgermoney.MaxOrganizationWalletEntryPageSize {
 		return ledgermoney.WalletEntryPage{}, ledgermoney.ErrInvalid
 	}
 	if limit == 0 {

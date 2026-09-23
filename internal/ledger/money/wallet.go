@@ -8,6 +8,7 @@ import (
 )
 
 const WalletCurrencyCNY = "CNY"
+const MaxOrganizationWalletEntryPageSize = 50
 
 var (
 	ErrWalletInsufficientBalance = errors.New("organization wallet balance is insufficient")

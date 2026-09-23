@@ -19,6 +19,8 @@ var (
 	ErrInsufficientFunds      = errors.New("commercial wallet funds are insufficient")
 	ErrConflict               = errors.New("commercial billing operation conflict")
 	ErrNotFound               = errors.New("commercial billing resource not found")
+	ErrOrderCancelled         = errors.New("commercial order was cancelled")
+	ErrResourceGrantRejected  = errors.New("commercial resource grant was rejected")
 	ErrReconciliationRequired = errors.New("commercial billing reconciliation is required")
 	ErrFeatureUnavailable     = errors.New("commercial billing feature is unavailable")
 )
@@ -129,6 +131,8 @@ const (
 
 type OrderStatus string
 
+type OrderFailureCode string
+
 const (
 	OrderPending                OrderStatus = "PENDING"
 	OrderFundsReserved          OrderStatus = "FUNDS_RESERVED"
@@ -136,6 +140,11 @@ const (
 	OrderFulfilled              OrderStatus = "FULFILLED"
 	OrderCancelled              OrderStatus = "CANCELLED"
 	OrderReconciliationRequired OrderStatus = "RECONCILIATION_REQUIRED"
+)
+
+const (
+	OrderFailureInsufficientFunds OrderFailureCode = "INSUFFICIENT_FUNDS"
+	OrderFailureGrantRejected     OrderFailureCode = "RESOURCE_GRANT_REJECTED"
 )
 
 type OrderItem struct {
@@ -166,6 +175,7 @@ type Order struct {
 	Currency                    string
 	AmountMinor                 int64
 	Status                      OrderStatus
+	FailureCode                 OrderFailureCode
 	WalletReservationID         string
 	WalletReservationState      money.WalletReservationState
 	PaymentID                   string
@@ -191,7 +201,8 @@ func (order Order) Validate() error {
 		strings.TrimSpace(order.RequestFingerprint) == "" ||
 		order.Version < 1 ||
 		order.CreatedAt.IsZero() ||
-		order.UpdatedAt.IsZero() {
+		order.UpdatedAt.IsZero() ||
+		(order.FailureCode != "" && (order.Status != OrderCancelled || (order.FailureCode != OrderFailureInsufficientFunds && order.FailureCode != OrderFailureGrantRejected))) {
 		return ErrInvalid
 	}
 	switch order.Kind {

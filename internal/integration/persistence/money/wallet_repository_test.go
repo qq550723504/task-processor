@@ -257,4 +257,11 @@ func TestTopUpEntriesPreserveReservedBalance(t *testing.T) {
 	}
 }
 
+func TestWalletEntryPagesRejectOversizedLimit(t *testing.T) {
+	repository, _ := walletRepository(t)
+	if _, err := repository.ListOrganizationWalletEntries(context.Background(), "org-page-limit", ledgermoney.WalletCurrencyCNY, "", ledgermoney.MaxOrganizationWalletEntryPageSize+1); !errors.Is(err, ledgermoney.ErrInvalid) {
+		t.Fatalf("oversized wallet entry page error = %v; want invalid", err)
+	}
+}
+
 func mustWalletError(_ ledgermoney.OrganizationWalletSnapshot, err error) error { return err }

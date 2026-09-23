@@ -22,6 +22,12 @@ type loseFirstCommitAcknowledgement struct {
 	lose bool
 }
 
+type terminalPurchasedResourceGrant struct{}
+
+func (terminalPurchasedResourceGrant) GrantPurchasedResource(context.Context, orgresource.PurchasedResourceGrantInput) (orgresource.PurchasedResourceGrantResult, error) {
+	return orgresource.PurchasedResourceGrantResult{}, orgresource.ErrInvalidInput
+}
+
 func (wallet *loseFirstCommitAcknowledgement) CommitCommercialPurchase(ctx context.Context, input money.CommitWalletReservationInput) (money.WalletReservation, error) {
 	result, err := wallet.OrganizationWalletCommander.CommitCommercialPurchase(ctx, input)
 	if err == nil && wallet.lose {
@@ -203,6 +209,42 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	walletSnapshot, err := wallet.ReadOrganizationWallet(ctx, "org-purchase", "CNY")
 	if err != nil || walletSnapshot.AvailableMinor != 30 || walletSnapshot.ReservedMinor != 0 || walletSnapshot.LifetimeSpendMinor != 70 {
 		t.Fatalf("wallet after purchase = %#v, err=%v", walletSnapshot, err)
+	}
+	lowFundsQuote, err := service.CreateQuote(ctx, billing.QuoteRequest{OrganizationID: "org-purchase", OfferID: "offer-purchase", Quantity: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lowFundsRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: lowFundsQuote.QuoteID, IdempotencyKey: "purchase-low-funds"}
+	firstLowFunds, err := service.CreateResourceOrder(ctx, lowFundsRequest)
+	if !errors.Is(err, billing.ErrInsufficientFunds) || firstLowFunds.Status != billing.OrderCancelled || firstLowFunds.FailureCode != billing.OrderFailureInsufficientFunds {
+		t.Fatalf("first low-funds request = %#v, err=%v", firstLowFunds, err)
+	}
+	replayedLowFunds, err := service.CreateResourceOrder(ctx, lowFundsRequest)
+	if !errors.Is(err, billing.ErrInsufficientFunds) || replayedLowFunds.Status != billing.OrderCancelled || replayedLowFunds.FailureCode != billing.OrderFailureInsufficientFunds {
+		t.Fatalf("replayed low-funds request = %#v, err=%v", replayedLowFunds, err)
+	}
+	if err := wallet.RecordPaymentSettlement(ctx, money.PaymentSettlement{PaymentID: "payment-terminal-grant", PayerUserID: "user-a", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: money.PaymentSettled, SettledAt: time.Now().UTC(), ProviderReference: "provider-terminal-grant", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wallet.CreditSettledTopUp(ctx, "", money.OrganizationTopUpSettlement{PaymentID: "payment-terminal-grant", CommercialOrderID: "topup-terminal-grant", OrganizationID: "org-purchase", Currency: "CNY", AmountMinor: 100, SettledAt: time.Now().UTC(), ProviderReference: "provider-terminal-grant", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	terminalService, err := billing.NewService(commercial, commercial, commercial, commercial, wallet, terminalPurchasedResourceGrant{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalQuote, err := terminalService.CreateQuote(ctx, billing.QuoteRequest{OrganizationID: "org-purchase", OfferID: "offer-purchase", Quantity: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminalRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: terminalQuote.QuoteID, IdempotencyKey: "purchase-terminal-grant"}
+	firstTerminal, err := terminalService.CreateResourceOrder(ctx, terminalRequest)
+	if !errors.Is(err, billing.ErrResourceGrantRejected) || firstTerminal.Status != billing.OrderCancelled || firstTerminal.FailureCode != billing.OrderFailureGrantRejected {
+		t.Fatalf("first terminal grant failure = %#v, err=%v", firstTerminal, err)
+	}
+	replayedTerminal, err := terminalService.CreateResourceOrder(ctx, terminalRequest)
+	if !errors.Is(err, billing.ErrResourceGrantRejected) || replayedTerminal.Status != billing.OrderCancelled || replayedTerminal.FailureCode != billing.OrderFailureGrantRejected {
+		t.Fatalf("replayed terminal grant failure = %#v, err=%v", replayedTerminal, err)
 	}
 	var resourceBalance struct{ Available int64 }
 	if err := db.WithContext(ctx).Table("saas_organization_resource_buckets").Select("available").Where("organization_id = ? AND resource_type = ?", "org-purchase", orgresource.ResourceAIPoint).Take(&resourceBalance).Error; err != nil || resourceBalance.Available != 10 {

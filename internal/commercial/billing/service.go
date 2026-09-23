@@ -75,6 +75,9 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 		if order.QuoteID != request.QuoteID {
 			return Order{}, ErrConflict
 		}
+		if order.Status == OrderCancelled {
+			return order, cancellationError(order.FailureCode)
+		}
 		if order.Status == OrderReconciliationRequired || order.Status == OrderFundsReserved || order.Status == OrderFulfilling {
 			return s.ReconcileResourceOrder(ctx, order.OrganizationID, order.OrderID)
 		}
@@ -95,6 +98,7 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 	if err != nil {
 		if errors.Is(err, money.ErrWalletInsufficientBalance) {
 			order.Status = OrderCancelled
+			order.FailureCode = OrderFailureInsufficientFunds
 			order.UpdatedAt = s.now().UTC()
 			_ = s.updateOrder(ctx, &order)
 			return order, ErrInsufficientFunds
@@ -128,11 +132,12 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 			return order, ErrReconciliationRequired
 		}
 		order.Status = OrderCancelled
+		order.FailureCode = OrderFailureGrantRejected
 		order.WalletReservationID = ""
 		order.WalletReservationState = ""
 		order.UpdatedAt = s.now().UTC()
 		_ = s.updateOrder(ctx, &order)
-		return order, err
+		return order, ErrResourceGrantRejected
 	}
 	if !matchesGrantProof(order, grant.Snapshot) {
 		order.Status = OrderReconciliationRequired
@@ -198,11 +203,12 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 			released, releaseErr := s.wallet.ReleaseCommercialPurchase(ctx, money.ReleaseWalletReservationInput{OperationID: "release:" + order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, ReservationID: order.WalletReservationID, Reason: "resource_grant_failed"})
 			if releaseErr == nil && released.State == money.WalletReservationReleased {
 				order.Status = OrderCancelled
+				order.FailureCode = OrderFailureGrantRejected
 				order.WalletReservationID = ""
 				order.WalletReservationState = ""
 				order.UpdatedAt = s.now().UTC()
 				if s.updateOrder(ctx, &order) == nil {
-					return order, err
+					return order, ErrResourceGrantRejected
 				}
 			}
 		}
@@ -227,6 +233,17 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 		return order, ErrReconciliationRequired
 	}
 	return order, nil
+}
+
+func cancellationError(code OrderFailureCode) error {
+	switch code {
+	case OrderFailureInsufficientFunds:
+		return ErrInsufficientFunds
+	case OrderFailureGrantRejected:
+		return ErrResourceGrantRejected
+	default:
+		return ErrOrderCancelled
+	}
 }
 
 func (s *Service) updateOrder(ctx context.Context, order *Order) error {
