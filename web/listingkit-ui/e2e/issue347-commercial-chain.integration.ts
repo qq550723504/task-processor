@@ -8,9 +8,10 @@ import {getCommercialOrderSummary,getCommercialOrders,getCommercialWallet,getCom
 // Explicitly collected by the PostgreSQL harness config, not Playwright.
 // Only external/session identity retrieval is substituted. The route export,
 // BFF transport, typed client, Go auth/owner and PostgreSQL execute for real.
-vi.mock("@/auth",()=>({serverAuth:(handler:(r:NextRequest)=>Promise<Response>)=>handler}));
-vi.mock("@/lib/server/zitadel-server-token",()=>({readZitadelServerAccessToken:()=>"fixture-token"}));
-vi.mock("@/lib/server/zitadel-auth",()=>({readZitadelIdentityFromSession:()=>({userId:"fixture-user"})}));
+const fixtureSession=vi.hoisted(()=>({fixture:"issue347-commercial-chain",accessToken:"fixture-token",userId:"fixture-user"}));
+vi.mock("@/auth",()=>({serverAuth:(handler:(request:NextRequest & {auth?:unknown},context?:unknown)=>Promise<Response|void>)=>async(request:NextRequest,context?:unknown)=>{Object.defineProperty(request,"auth",{value:fixtureSession,configurable:true});return handler(request as NextRequest & {auth?:unknown},context);}}));
+vi.mock("@/lib/server/zitadel-server-token",()=>({readZitadelServerAccessToken:(session:unknown)=>{if(session!==fixtureSession)throw new Error("commercial BFF route did not receive the authenticated fixture session");return "fixture-token";}}));
+vi.mock("@/lib/server/zitadel-auth",()=>({readZitadelIdentityFromSession:(session:unknown)=>{if(session!==fixtureSession)throw new Error("commercial BFF route did not pass the authenticated fixture session to identity lookup");return {userId:"fixture-user"};}}));
 import * as route from "@/app/api/workbench/commercial/overview/route";
 import * as walletRoute from "@/app/api/workbench/commercial/wallet/route";
 import * as walletEntriesRoute from "@/app/api/workbench/commercial/wallet/entries/route";
