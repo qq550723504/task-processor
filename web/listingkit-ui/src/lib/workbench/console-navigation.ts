@@ -62,6 +62,11 @@ export function findConsoleRoute(pathname: string): ConsoleRoute | undefined {
     const node: ConsoleNavNode = { label: "完成注册", href: pathname, availability: parent.node.availability };
     return { node, trail: [...parent.trail, node] };
   }
+  if (/^\/workbench\/plans\/orders\/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pathname)) {
+    const parent = findConsoleRoute("/workbench/plans/orders")!;
+    const node: ConsoleNavNode = { label: "订单详情", href: pathname, availability: parent.node.availability };
+    return { node, trail: [...parent.trail, node] };
+  }
   if (/^\/workbench\/supply\/acquisition\/operation\/[0-9a-f-]+$/.test(pathname)) {
     const parent = findConsoleRoute("/workbench/supply/acquisition")!;
     const node: ConsoleNavNode = { label: "采集结果", href: pathname, availability: "connected" };

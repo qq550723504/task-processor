@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { CommercialOverview, CommercialUsage } from "@/lib/api/commercial";
-import { ConsoleState } from "../console/console-page";
 import styles from "./commercial.module.css";
 
 const usageLabels: Record<CommercialUsage["metric"], string> = {
@@ -95,7 +94,7 @@ export function CommercialOverviewView({ data }: { data: CommercialOverview }) {
     </Panel>
     <div className={styles.sectionHeading}><h2>管理入口</h2><p>方案、权益、用量、充值和账单分开管理，避免信息混在一起。</p></div>
     <ModuleEntries />
-    <div className={styles.overviewColumns}><UsageSummary data={data} /><Panel title="费用与提醒"><p className={styles.subtle}>当前商业读取链不提供现金余额、充值流水或账单金额。</p><div className={styles.noticeList}><div><strong>充值与钱包</strong><span>当前 owner 未接入</span><PageLink href="/workbench/plans/top-up">查看状态</PageLink></div><div><strong>账单与订单</strong><span>当前 owner 未接入</span><PageLink href="/workbench/plans/orders">查看状态</PageLink></div></div></Panel></div>
+    <div className={styles.overviewColumns}><UsageSummary data={data} /><Panel title="钱包与账单"><p className={styles.subtle}>钱包余额、资金流水、账单汇总与订单由独立商业 owner 提供，不从订阅用量推导。</p><div className={styles.noticeList}><div><strong>企业钱包</strong><span>打开页面读取当前企业钱包快照</span><PageLink href="/workbench/plans/top-up">查看钱包</PageLink></div><div><strong>账单与订单</strong><span>打开页面读取当前企业账单与订单</span><PageLink href="/workbench/plans/orders">查看账单</PageLink></div></div></Panel></div>
   </div>;
 }
 
@@ -121,14 +120,5 @@ export function UsageDetailsView({ data }: { data: CommercialOverview }) {
       <div className={styles.usageTableWrap}><table className={styles.usageTable}><caption className="sr-only">当前订阅用量明细</caption><thead><tr><th>时间</th><th>类型</th><th>计量指标</th><th>账期</th><th>已记录用量</th><th>预留用量</th><th>金额</th></tr></thead><tbody>{visibleRows.map(row => <tr key={row.metric}><td>{row.updated_at?.slice(0, 16).replace("T", " ") ?? "未提供"}</td><td>{usageTypes[row.metric]}</td><td>{usageLabels[row.metric]}</td><td>{usageWindow(row)}</td><td>{formatUsage(row)}</td><td>{row.state === "known" ? `${formatInteger(row.reserved)} ${unitLabels[row.unit]}` : `未知（${unitLabels[row.unit]}）`}</td><td>未提供</td></tr>)}</tbody></table></div>
       <p className={styles.subtle}>共 {visibleRows.length} 项 · 当前响应仅包含 {time === "current" ? "当前账期" : "已返回"} 的订阅用量账本指标。</p>
     </Panel>
-  </div>;
-}
-
-export function CapabilityGatedView({ page }: { page: "top-up" | "orders" }) {
-  const topUp = page === "top-up";
-  return <div className={styles.stack}>
-    <ConsoleState kind="unavailable" title={topUp ? "钱包与充值暂未开放" : "账单与订单暂未开放"}><p>{topUp ? "当前没有已接入的钱包、充值或资金流水 owner；余额、充值记录和充值成功状态均不会在页面生成。" : "当前没有已接入的账单、订单或发票 owner；页面不会生成消费金额、订单状态或导出结果。"}</p><p>如需开通，请由对应商业能力 owner 提供经过批准的只读或写入合同。</p></ConsoleState>
-    <Panel title={topUp ? "账户余额" : "账单摘要"} className={styles.gatedHero}><div className={styles.gatedMetric}><p>{topUp ? "可用余额" : "近 30 天支出"}</p><strong>未提供</strong><span>{topUp ? "现金余额 owner 未接入" : "账单金额 owner 未接入"}</span></div><Button disabled>{topUp ? "账户充值暂未开放" : "发票管理暂未开放"}</Button></Panel>
-    <div className={styles.twoColumns}><Panel title={topUp ? "使用充值余额" : "筛选账单与订单"}><p className={styles.subtle}>{topUp ? "店铺服务、订阅用量和数据资源的充值入口将在真实钱包能力接入后开放。" : "搜索、日期、类型、状态和导出动作依赖账单 owner；当前仅保留原型结构。"}</p><div className={styles.gatedRows}>{(topUp ? ["店铺服务", "订阅用量", "数据资源"] : ["店铺服务", "订阅用量充值", "数据资源充值", "其他服务"]).map(label => <div key={label}><span>{label}</span><strong>未提供</strong><Button disabled variant="outline" size="sm">暂未开放</Button></div>)}</div></Panel><Panel title={topUp ? "充值与资源关系" : "订单与发票关系"}><p className={styles.subtle}>{topUp ? "充值、扣减、退款和资源换算必须由同一资金/资源 owner 定义。" : "订单、支付、退款和发票必须由同一账单 owner 定义。"}</p><p className={styles.subtle}>本页面不建立第二事实源，不从订阅用量推导资金事实。</p></Panel></div>
   </div>;
 }
