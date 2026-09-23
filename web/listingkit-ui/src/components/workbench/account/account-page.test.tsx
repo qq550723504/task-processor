@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountOrganization, AccountProfile } from "@/lib/api/account";
@@ -63,6 +63,8 @@ describe("AccountPage read-only projection", () => {
   it("offers an account return link in the breadcrumb", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
+    expect(screen.getByText("账户状态")).toBeVisible();
+    expect(screen.getByText("待完善")).toBeVisible();
     const businessCall = fetcher.mock.calls.find(([url]) => url === "/api/account/business-profile");
     expect(businessCall).toBeDefined();
     expect(new Headers(businessCall?.[1].headers).get("X-Expected-Organization-ID")).toBe("B");
@@ -73,10 +75,24 @@ describe("AccountPage read-only projection", () => {
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : url === "/api/account/identity/profile" ? Response.json(identity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
     vi.stubGlobal("fetch", fetcher);
     mount(page);
-    expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: page === "profile-settings" ? "账户信息" : "本人甲" })).toBeVisible();
     if (page === "profile-settings") expect(screen.getByText("显示名称")).toBeVisible();
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(fetcher.mock.calls.some(([url]) => url === "/api/account/business-profile")).toBe(false);
+  });
+  it("groups account settings in one main area without collapsing identity-owner forms", async () => {
+    const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 }))));
+    mount("profile-settings");
+    const settings = await screen.findByRole("region", { name: "账户资料设置" });
+    expect(within(settings).getByRole("heading", { name: "账户信息" })).toBeVisible();
+    expect(within(settings).getByRole("heading", { name: "联系方式" })).toBeVisible();
+    expect(within(settings).getByRole("heading", { name: "登录与安全" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "本人甲" })).not.toBeInTheDocument();
+    await screen.findByLabelText("名");
+    expect(within(settings).getByRole("button", { name: "保存个人资料" })).toBeVisible();
+    expect(within(settings).getByRole("button", { name: "更换邮箱" })).toBeVisible();
+    expect(within(settings).getByRole("button", { name: "修改密码" })).toBeVisible();
   });
   it("requires a selected organization before showing verification authorization", async () => {
     state.context.effectiveOrganization = null;
@@ -210,6 +226,25 @@ describe("AccountPage read-only projection", () => {
     mount("profile-business");
     expect(await screen.findByRole("alert")).toHaveTextContent("企业访问已撤销");
     expect(screen.queryByText("业务档案服务暂未接入")).not.toBeInTheDocument();
+  });
+  it("groups existing business-profile fields into the five Figma sections without changing owner fields", async () => {
+    const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "跨境电商卖家", shopSituation: "已有店铺", factorySituation: "有长期合作工厂", platforms: ["Amazon"], sites: ["美国站"], shopType: "自营店", services: ["商品采集与刊登"], source: "account_profile", updatedAt: null, readAt: profile.readAt };
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/business-profile" ? Response.json(business) : Response.json(organization))));
+    mount("profile-business");
+    expect(await screen.findByRole("region", { name: "经营角色" })).toBeVisible();
+    const shops = screen.getByRole("region", { name: "店铺情况" });
+    const platforms = screen.getByRole("region", { name: "选择店铺平台、经营站点与店铺类型" });
+    const factory = screen.getByRole("region", { name: "你是否拥有工厂或供应链？" });
+    const services = screen.getByRole("region", { name: "你目前需要什么服务？" });
+    expect(within(shops).getByText("已有店铺")).toBeVisible();
+    expect(within(shops).queryByText("自营店")).not.toBeInTheDocument();
+    expect(within(platforms).getByText("Amazon")).toBeVisible();
+    expect(within(platforms).getByText("美国站")).toBeVisible();
+    expect(within(platforms).getByText("自营店")).toBeVisible();
+    expect(within(factory).getByText("有长期合作工厂")).toBeVisible();
+    expect(within(factory).queryByText("商品采集与刊登")).not.toBeInTheDocument();
+    expect(within(services).getByText("商品采集与刊登")).toBeVisible();
+    expect(screen.getByText("身份联系方式仍由登录服务管理；经营画像由账户中心持久化。")).toBeVisible();
   });
   it("retries a dependency failure only after user action and rereads facts", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));

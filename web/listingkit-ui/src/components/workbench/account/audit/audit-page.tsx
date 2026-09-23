@@ -63,10 +63,10 @@ function AuditRequests({ scope, expectedUserId, organizationId }: { scope: strin
       <label>操作人 <input value={actor} onChange={event => { setActor(event.target.value); setCursors([undefined]); }} maxLength={128} placeholder="按操作人筛选" /></label>
       <Button type="submit" variant="outline">应用筛选</Button>
     </form>
-    {data.items.length === 0 ? <ConsoleState kind="empty" title="暂无操作记录">当前范围内没有已提交的操作。</ConsoleState> : <Card className={styles.panel}>
+    <Card className={styles.panel}>
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="操作记录表格，可横向滚动">
         <table className={styles.table} aria-label="操作记录"><thead><tr><th scope="col">时间</th><th scope="col">操作人</th><th scope="col">操作内容</th><th scope="col">模块</th><th scope="col">结果</th></tr></thead>
-          <tbody>{data.items.map(item => <tr key={auditRowKey(item)}>
+          <tbody>{data.items.length === 0 ? <tr><td colSpan={5} className={styles.emptyCell}>当前范围内没有已提交的操作。</td></tr> : data.items.map(item => <tr key={auditRowKey(item)}>
             <td><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false })}<small>UTC+8</small></time></td>
             <td><span>{item.actor}</span></td>
             <td><strong>{operationNames[item.operation as keyof typeof operationNames] ?? item.operation}</strong><small>{item.objectType === "source_account" ? "源账号" : item.objectType === "account_business_profile" ? "账户资料" : item.objectType === "organization_member" ? "成员" : "额度"} {item.objectReference}</small><small>操作版本 {item.relation.version}</small></td>
@@ -75,7 +75,7 @@ function AuditRequests({ scope, expectedUserId, organizationId }: { scope: strin
           </tr>)}</tbody>
         </table>
       </div>
-    </Card>}
+    </Card>
     <nav className={styles.pagination} aria-label="操作记录分页">
       <span>第 {cursors.length} 页 · 本页 {data.items.length} 条</span>
       <Button variant="outline" disabled={cursors.length === 1} onClick={() => setCursors(value => value.slice(0, -1))}>上一页</Button>

@@ -46,7 +46,10 @@ describe("audit page", () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "secret", requestId: "", fieldErrors: [] }, { status: 503 })).mockResolvedValue(Response.json(empty)); vi.stubGlobal("fetch", fetch);
     mount(); expect(await screen.findByText("操作记录暂不可用")).toBeVisible(); expect(screen.queryByText("暂无操作记录")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "刷新记录" }));
-    expect(await screen.findByText("暂无操作记录")).toBeVisible(); expect(screen.queryByText("secret")).not.toBeInTheDocument();
+    expect(await screen.findByText("当前范围内没有已提交的操作。")).toBeVisible(); expect(screen.queryByText("secret")).not.toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "操作记录" }); expect(table).toBeVisible();
+    expect(within(table).getByRole("columnheader", { name: "时间" })).toBeVisible();
+    expect(within(table).getByRole("columnheader", { name: "结果" })).toBeVisible();
   });
   it("cancels old organization requests and rejects late results", async () => {
     let release!: (response: Response) => void;
@@ -56,7 +59,7 @@ describe("audit page", () => {
     state.context.isSwitching = true; view.update();
     expect(requests[0].signal?.aborted).toBe(true);
     state.context.isSwitching = false; state.context.effectiveOrganization = { id: "C" }; view.update();
-    expect(await screen.findByText("暂无操作记录")).toBeVisible();
+    expect(await screen.findByText("当前范围内没有已提交的操作。")).toBeVisible();
     await act(async () => release(Response.json({ ...empty, items: [event] })));
     expect(screen.queryByText("operator-B")).not.toBeInTheDocument();
   });

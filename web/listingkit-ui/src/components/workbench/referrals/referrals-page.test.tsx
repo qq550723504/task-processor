@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReferralsPage, type ReferralView } from "./referrals-page";
+import styles from "./referrals.module.css";
 
 const state = vi.hoisted(() => ({
   context: { user: { id: "subject-1" } as { id: string } | null, isLoading: false, isSwitching: false, error: null as { code: string } | null, blockingError: null as { code: string } | null },
@@ -27,6 +28,47 @@ afterEach(() => {
 });
 
 describe("ReferralsPage", () => {
+  it("keeps four owner-backed overview facts in one horizontal metrics group", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: string) => Promise.resolve(String(input).includes("referral-withdrawals")
+      ? Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] })
+      : Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }))));
+    mount("overview", "subject-1", true, "overview");
+    const overview = await screen.findByRole("region", { name: "推广与收益概览" });
+    expect(within(overview).getAllByRole("article")).toHaveLength(4);
+    expect(within(overview).getByText("已建立推广关系")).toBeVisible();
+    expect(within(overview).getByText("推广码状态")).toBeVisible();
+    expect(within(overview).getAllByText("暂不可用")).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "推广与收益管理" })).toBeVisible();
+    const activity = screen.getByRole("region", { name: "近期收益动态表格，可横向滚动" });
+    expect(within(activity).getByRole("columnheader", { name: "时间" })).toBeVisible();
+    expect(within(activity).getByRole("columnheader", { name: "金额" })).toBeVisible();
+    expect(within(activity).getByText("当前 owner 未提供近期收益事件。")).toBeVisible();
+  });
+
+  it("separates center summary facts from the promotion-code group", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
+    mount("overview", "subject-1", true, "center");
+    const summary = await screen.findByRole("region", { name: "推广数据摘要" });
+    const code = screen.getByRole("region", { name: "我的推广信息" });
+    expect(within(summary).getByText("已建立推广关系")).toBeVisible();
+    expect(within(code).getByRole("heading", { name: "我的推广" })).toBeVisible();
+    expect(within(code).getByText("CODE1234")).toBeVisible();
+    expect(within(code).queryByText("转化统计暂不可用")).not.toBeInTheDocument();
+    const conversion = screen.getByRole("region", { name: "推广转化" });
+    const steps = within(conversion).getByRole("list");
+    expect(steps).toHaveClass(styles.conversionSteps);
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(4);
+    const funnel = within(steps).getAllByRole("listitem");
+    expect(within(funnel[0]).getByText("访问")).toBeVisible();
+    expect(within(funnel[1]).getByText("注册")).toBeVisible();
+    expect(within(funnel[2]).getByText("付费")).toBeVisible();
+    expect(within(funnel[2]).getByText("未提供")).toBeVisible();
+    expect(within(funnel[3]).getByText("收益")).toBeVisible();
+    expect(within(funnel[3]).getByText("金额未提供")).toBeVisible();
+    expect(within(steps).queryByText("2")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "收益事件表格，可横向滚动" })).toHaveClass(styles.earningsTableWrap);
+  });
+
   it("reads promotion rules from the backend contract", async () => {
     const rules = { schemaVersion: "referral-rules-v1", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract" };
     const fetch = vi.fn().mockResolvedValue(Response.json(rules));
@@ -45,8 +87,11 @@ describe("ReferralsPage", () => {
     expect(await screen.findByText("¥95.00")).toBeVisible();
     expect(screen.getByText(/Projection 版本：3/)).toBeVisible();
     const tableRegion = screen.getByRole("region", { name: "逐笔收益记录，可横向滚动" });
+    expect(tableRegion).toHaveClass(styles.earningsTableWrap);
     const table = within(tableRegion).getByRole("table");
     expect(screen.getByText("COMMISSION")).toBeVisible(); expect(within(table).getByText("¥100.00")).toBeVisible(); expect(within(table).getByText("payment-1")).toBeVisible();
+    expect(screen.getByRole("group", { name: "收益筛选" })).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "收益筛选" })).getAllByRole("combobox")).toHaveLength(2);
     expect(screen.getByText("逐笔列表仅展示最新最多 100 条记录；汇总以完整收益 projection 为准。")).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-earnings");
@@ -55,7 +100,8 @@ describe("ReferralsPage", () => {
   it("shows actual relation count and leaves unsupported earnings unavailable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
     mount("overview", "subject-1", true, "center");
-    expect(await screen.findByText("2")).toBeVisible();
+    const summary = await screen.findByRole("region", { name: "推广数据摘要" });
+    expect(within(summary).getByText("2")).toBeVisible();
     expect(screen.getByText("CODE1234")).toBeVisible();
     expect(screen.getAllByText("未提供").length).toBeGreaterThan(0);
     expect(screen.queryByText(/¥0|￥0|0\.00/)).not.toBeInTheDocument();
@@ -101,7 +147,7 @@ describe("ReferralsPage", () => {
   it("keeps personal count readable but disables an unconfigured invitation entry", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
     mount("overview", "subject-1", false, "center");
-    expect(await screen.findByText("2")).toBeVisible();
+    expect(within(await screen.findByRole("region", { name: "推广数据摘要" })).getByText("2")).toBeVisible();
     expect(screen.queryByRole("link", { name: "打开邀请链接" })).not.toBeInTheDocument();
     expect(screen.getByText("注册入口暂不可用")).toBeVisible();
   });
@@ -135,6 +181,9 @@ describe("ReferralsPage", () => {
     const user = userEvent.setup();
     mount("overview", "subject-1", true, "withdrawals");
     await user.type(await screen.findByLabelText("金额（分）"), "10000");
+    expect(screen.getByRole("heading", { name: "收款账户" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "提现记录表格，可横向滚动" })).toHaveClass(styles.earningsTableWrap);
+    expect(screen.getByRole("region", { name: "提现概览" })).toHaveTextContent("累计提现");
     await user.click(screen.getByRole("button", { name: "申请提现" }));
     expect(await screen.findByRole("button", { name: "取消提现申请" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "取消提现申请" }));
@@ -202,7 +251,7 @@ describe("ReferralsPage", () => {
     const writes = fetch.mock.calls.filter(([input, init]) => input === "/api/account/referral-payout-methods" && init?.method === "POST");
     expect(writes).toHaveLength(2);
     expect(new Headers(writes[0]?.[1]?.headers).get("Idempotency-Key")).toBe(new Headers(writes[1]?.[1]?.headers).get("Idempotency-Key"));
-    expect(screen.getByText("支付宝账户 · ***1234")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "收款账户" })).getByText(/支付宝账户/)).toBeVisible();
   });
 
   it("replays an unknown cancellation with its original idempotency key", async () => {

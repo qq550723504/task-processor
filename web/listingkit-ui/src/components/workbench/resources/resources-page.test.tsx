@@ -25,6 +25,15 @@ it("projects real grants and usage while unknown resource and Store facts never 
   expect(screen.getByText("9007199254740993 字节")).toBeVisible();
   expect(screen.getAllByText(/未知（作业次）/).length).toBeGreaterThan(0);
   expect(within(screen.getByRole("region", { name: "店铺资源" })).getByText(/实际店铺数量未提供/)).toBeVisible();
+  const topMetrics = screen.getByRole("region", { name: "企业资源权益摘要" });
+  expect(within(topMetrics).getAllByRole("heading")).toHaveLength(3);
+  const memberDirectory = await screen.findByRole("region", { name: "成员 AI Token 分配" });
+  expect(topMetrics.compareDocumentPosition(memberDirectory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(memberDirectory.compareDocumentPosition(screen.getByRole("region", { name: "源账号资源" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const memberTable = within(memberDirectory).getByRole("table");
+  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "token积分额度", "数据额度", "操作"]);
+  expect(topMetrics.compareDocumentPosition(screen.getByRole("region", { name: "源账号资源" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole("group", { name: "成员资源筛选" })).toBeVisible();
   expect(screen.getByRole("link", { name: "管理源账号" })).toHaveAttribute("href", "/workbench/account/organization/resources/source-accounts");
   expect(screen.getByText(/可选企业资源/)).toBeVisible();
   expect(screen.queryByText(/8,650|¥3,000|0 家已绑定/)).not.toBeInTheDocument();
@@ -36,10 +45,31 @@ it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED
   render(tree()); await screen.findByText("企业实际合同");
   await userEvent.click(screen.getByRole("button", { name: "刷新资源" }));
   expect(await screen.findByRole("alert")).toBeVisible();
+  const fallbackMetrics = screen.getByRole("region", { name: "企业资源权益摘要" });
+  expect(within(fallbackMetrics).getAllByRole("heading", { level: 3 })).toHaveLength(3);
+  expect(within(fallbackMetrics).getAllByText("资源余额未提供")).toHaveLength(2);
+  const memberTable = screen.getByRole("region", { name: "成员资源表格，可横向滚动" });
+  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "token积分额度", "数据额度", "操作"]);
+  expect(within(memberTable).getByText("成员资源数据未提供 / 暂不可用")).toBeVisible();
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
   expect(screen.queryByText("无订阅")).not.toBeInTheDocument();
   expect(screen.queryByText(/private token/)).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "管理源账号" })).toBeVisible();
+});
+
+it("shows unavailable owner fields without deriving them and keeps the real token allocation editable", async () => {
+  state.context.roles = ["admin"];
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-member-token-allocation-v1", organizationId: "org-B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "user-1", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] })));
+  render(tree());
+  await screen.findByRole("region", { name: "成员 AI Token 分配" });
+  await screen.findByText("成员甲");
+  const directory = screen.getByRole("region", { name: "成员 AI Token 分配" });
+  const table = within(directory).getByRole("table");
+  const row = within(table).getByRole("row", { name: /成员甲/ });
+  expect(within(row).getAllByText("未提供")).toHaveLength(4);
+  expect(within(row).getByText("4500")).toBeVisible();
+  expect(within(row).getByText("已消费 1200 · 剩余 3300")).toBeVisible();
+  expect(within(row).getByRole("button", { name: "保存目标" })).toBeVisible();
 });
 
 it.each(["organization", "actor", "roles", "switching", "logout", "revoke"])("clears facts immediately on %s", async kind => {

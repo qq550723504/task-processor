@@ -30,7 +30,7 @@ function Validity({ row }: { row: CommercialSubscription | CommercialOverview["e
   </dl>;
 }
 
-function ResourceCards({ options = false }: { options?: boolean }) {
+export function ResourceCards({ options = false }: { options?: boolean }) {
   const cards = [
     { name: "店铺服务", color: "blue", value: options ? "价格未提供" : "使用数量未提供", details: [options ? "币种与计价周期尚未提供" : "服务中的店铺数、到期数尚未提供", "绑定店铺不开始计费，显式激活才开始服务周期", "本页不提供购买、续费或重新激活"] },
     { name: "AI 点数", color: "teal", value: "资源余额未提供", details: ["企业 AI 点数读取尚未接入", "AI 点数不等于模型 token 数，也不等于现金", "充值与资源购买暂未开放"] },
@@ -70,19 +70,19 @@ export function PlanOptions({ data }: { data: CommercialOverview }) {
   </div>;
 }
 
-export function EntitlementsOverview({ data }: { data: CommercialOverview }) {
+export function EntitlementsOverview({ data, showResourceSummary = true, showResourceCards = true }: { data: CommercialOverview; showResourceSummary?: boolean; showResourceCards?: boolean }) {
   return <div className={styles.stack}>
     <Observation data={data} />
     <Panel title="企业总权益" className={styles.summary}>
       <p className={styles.subtle}>企业资源读取尚未接入；下方另列实际订阅、已授予权益和已记录用量。</p>
-      <div className={styles.resourceSummary}>
+      {showResourceSummary ? <div className={styles.resourceSummary}>
         <div className={styles.blue}><p>店铺服务</p><strong>使用数量未提供</strong><small>有效期与到期数量未提供</small></div>
         <div className={styles.teal}><p>AI 点数余额</p><strong>未提供</strong><small>资源余额 · 未接入</small></div>
         <div className={styles.purple}><p>数据额度余额</p><strong>未提供</strong><small>资源余额 · 未接入</small></div>
-      </div>
+      </div> : null}
     </Panel>
     <div className={styles.sectionHeading}><h2>权益构成</h2><p>资源、已授予权益与用量分别呈现。</p></div>
-    <ResourceCards />
+    {showResourceCards ? <ResourceCards /> : null}
     <div className={styles.twoColumns}>
       <Panel title="已授予权益">
         <p className={styles.subtle}>仅展示已授予的限制，不含方案继承额度；不代表所有平台功能均已开通，也不代表成员访问权限。</p>

@@ -18,6 +18,7 @@
 .table td:first-child { border-left: 1px solid var(--border); border-radius: 8px 0 0 8px; width: 160px; }
 .table td:last-child { border-right: 1px solid var(--border); border-radius: 0 8px 8px 0; }
 .table td:nth-child(2) { max-width: 160px; overflow-wrap: anywhere; }
+.emptyCell { color: var(--muted-foreground); text-align: center; padding: 28px 12px !important; }
 .table small { display: block; margin-top: 6px; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
 .module, .success { display: inline-block; border: 1px solid var(--border); padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
 .success { border-radius: 999px; color: var(--success-foreground); background: var(--success); }
