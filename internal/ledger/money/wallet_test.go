@@ -2,6 +2,7 @@ package money
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -119,6 +120,11 @@ func TestWalletEntryRequiresCanonicalSourceIdentity(t *testing.T) {
 	entry.SourceIdentity = " source-1"
 	if !errors.Is(entry.Validate(), ErrInvalid) {
 		t.Fatalf("wallet entry with non-canonical source identity = nil, want ErrInvalid")
+	}
+
+	entry.SourceIdentity = strings.Repeat("s", 129)
+	if err := entry.Validate(); err != nil {
+		t.Fatalf("wallet entry with long canonical source identity rejected: %v", err)
 	}
 }
 

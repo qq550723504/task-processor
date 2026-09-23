@@ -120,7 +120,7 @@ func (entry WalletEntry) Validate() error {
 }
 
 func isCanonicalWalletSourceIdentity(value string) bool {
-	return isCanonicalWalletIdentifier(value)
+	return value != "" && strings.TrimSpace(value) == value
 }
 
 func isCanonicalWalletIdentifier(value string) bool {
