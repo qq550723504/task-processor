@@ -104,6 +104,23 @@ func TestWalletEntryRequiresPaymentBindingForTopUpAndReversals(t *testing.T) {
 	}
 }
 
+func TestSettlementWalletEntriesRequireCommercialOrderBinding(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryTopUpCredit,
+		WalletEntryRefundReversal,
+		WalletEntryChargebackReversal,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			entry.CommercialOrderID = ""
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("%s entry without commercial order binding = nil, want ErrInvalid", kind)
+			}
+		})
+	}
+}
+
 func TestWalletEntryRejectsUnknownKind(t *testing.T) {
 	if err := validWalletEntry(WalletEntryKind("UNKNOWN")).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown wallet entry kind = %v, want ErrInvalid", err)

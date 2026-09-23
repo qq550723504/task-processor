@@ -491,7 +491,10 @@ invalid. The after snapshot must preserve the debt-first invariant: a positive
 refund/chargeback reversal, and debt-repayment entries must carry `payment_id`.
 A debt-repayment entry must also carry the originating top-up's canonical
 `commercial_order_id`, including when the accepted settlement is fully absorbed
-by existing debt and no available-balance credit remains.
+by existing debt and no available-balance credit remains. Top-up credits and
+refund/chargeback reversals must also carry the original canonical
+`commercial_order_id` so every settlement-backed balance change remains bound to
+its beneficiary order.
 Entry deltas are kind-specific: top-up credits increase available balance;
 refund and chargeback reversals decrease available balance and may increase
 debt for the portion not covered by available funds; purchase reservation

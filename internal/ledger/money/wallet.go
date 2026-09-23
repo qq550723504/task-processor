@@ -95,11 +95,11 @@ func (entry WalletEntry) Validate() error {
 	}
 	switch entry.Kind {
 	case WalletEntryTopUpCredit:
-		if strings.TrimSpace(entry.PaymentID) == "" || entry.AvailableDelta <= 0 || entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+		if strings.TrimSpace(entry.PaymentID) == "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta <= 0 || entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryRefundReversal, WalletEntryChargebackReversal:
-		if strings.TrimSpace(entry.PaymentID) == "" || entry.AvailableDelta > 0 || entry.ReservedDelta != 0 || entry.DebtDelta < 0 || (entry.AvailableDelta == 0 && entry.DebtDelta == 0) {
+		if strings.TrimSpace(entry.PaymentID) == "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta > 0 || entry.ReservedDelta != 0 || entry.DebtDelta < 0 || (entry.AvailableDelta == 0 && entry.DebtDelta == 0) {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseReserve:
