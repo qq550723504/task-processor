@@ -33,10 +33,11 @@ CURRENT STATE：原 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前候选清单十九个运维入口为：
+  - 当前候选清单二十个运维入口为：
     - `account-acceptance-fixture`
     - `1688-batch-import`
     - `1688-local-agent`
+    - `commercial-owner-schema-migrate`
     - `fingerprint-browser-installer`
     - `listing-scheduler`
     - `listingkit-identity-preflight`
@@ -63,6 +64,7 @@ CURRENT STATE：原 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，属于 #301 Source Account 迁移的只读运维预检；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。
   - `source-account-registry-schema-init` 由 `scripts/source-account-registry-local-acceptance.ps1` 维护，只初始化 #368 当前 Source Account registry 的空库 schema；不读取、迁移或兼容旧 Source Account 数据。
   - `organization-membership-schema-init` 由 `deployments/docker/account-compose` 维护，只初始化本账户中心实例的组织成员回执 schema；不读取、迁移或兼容旧成员数据。
+  - `commercial-owner-schema-migrate` 由 `scripts/commercial-owner-schema-migrate.ps1` 维护；仅针对私有 manifest 指定的独立 commercial-owner 数据库初始化当前 money、commercial billing 与 orgresource schema，不自动切换数据库或操作生产数据。
   - `account-acceptance-fixture` 由 `deployments/docker/account-compose` 的 `acceptance` profile 维护，只通过官方 ZITADEL API 创建并回读隔离验收组织与角色授权，写入项目私有的脱敏 manifest；不提供生产路由、不写业务事实表。
   - `product-acquisition-init` 由 `scripts/product-acquisition-init.ps1` 显式委托，要求私有配置路径和精确空库名称确认；只初始化 #398 当前 Product 采集的五张表及 runtime grants，不创建数据库或角色，不自动执行，不迁移旧数据。准入见 #398 评论 5643032970。
   - `referral-schema-init` 由 `scripts/referral-schema-init.ps1` 维护，通过显式 DSN 文件初始化当前推广注册空库 schema；执行范围和验证要求见 [推广注册运维说明](../engineering/referral-registration.md)。
