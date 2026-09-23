@@ -132,6 +132,10 @@ func TestOrganizationWalletReversalCreatesDebtAndRepaysOnNextTopUp(t *testing.T)
 	if _, err := repository.ApplyTopUpReversal(ctx, "", ledgermoney.OrganizationWalletReversal{ReversalID: "refund-2", PaymentID: "pay-2", CommercialOrderID: "order-topup-2", OrganizationID: "org-a", Kind: ledgermoney.WalletReversalRefund, Currency: "CNY", AmountMinor: 700, OccurredAt: settledAt.Add(time.Hour), ProviderReference: "provider-refund-2"}); err != nil {
 		t.Fatal(err)
 	}
+	changedOccurrence := ledgermoney.OrganizationWalletReversal{ReversalID: "refund-2", PaymentID: "pay-2", CommercialOrderID: "order-topup-2", OrganizationID: "org-a", Kind: ledgermoney.WalletReversalRefund, Currency: "CNY", AmountMinor: 700, OccurredAt: settledAt.Add(2 * time.Hour), ProviderReference: "provider-refund-2"}
+	if _, err := repository.ApplyTopUpReversal(ctx, "", changedOccurrence); !errors.Is(err, ledgermoney.ErrConflict) {
+		t.Fatalf("replay with changed occurrence time err=%v; want conflict", err)
+	}
 	wallet, err := repository.ReadOrganizationWallet(ctx, "org-a", "CNY")
 	if err != nil || wallet.AvailableMinor != 0 || wallet.DebtMinor != 700 {
 		t.Fatalf("reversed wallet=%#v err=%v", wallet, err)

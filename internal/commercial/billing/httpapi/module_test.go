@@ -69,6 +69,21 @@ func TestUnavailableOfferMapsToOfferUnavailableResponse(t *testing.T) {
 	}
 }
 
+func TestOrderResponseIncludesCanonicalDescription(t *testing.T) {
+	response := orderResponseFromDomain(billing.Order{OrderID: "order-1", Description: "AI 点数 × 10"})
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["description"] != "AI 点数 × 10" {
+		t.Fatalf("order response description = %#v; want canonical description", payload["description"])
+	}
+}
+
 func TestChunkedWriteRequestGetsExplicitInvalidRequestResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	response := httptest.NewRecorder()

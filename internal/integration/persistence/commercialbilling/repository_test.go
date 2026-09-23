@@ -104,7 +104,7 @@ func TestQuoteIsServerPricedAndOrderReplayRejectsChangedPayload(t *testing.T) {
 		t.Fatalf("quote=%#v err=%v", quote, err)
 	}
 	order, err := repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, quote)
-	if err != nil || order.Status != billing.OrderPending || order.AmountMinor != 70 {
+	if err != nil || order.Status != billing.OrderPending || order.AmountMinor != 70 || order.Description != "AI 点数 × 10" {
 		t.Fatalf("order=%#v err=%v", order, err)
 	}
 	replayed, err := repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, quote)
@@ -114,6 +114,10 @@ func TestQuoteIsServerPricedAndOrderReplayRejectsChangedPayload(t *testing.T) {
 	_, err = repository.CreatePendingResourceOrder(context.Background(), billing.CreateResourceOrderRequest{OrganizationID: "org-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-1"}, func() billing.Quote { changed := quote; changed.ResourceQuantity = 11; return changed }())
 	if !errors.Is(err, billing.ErrConflict) {
 		t.Fatalf("changed idempotency payload err=%v", err)
+	}
+	searched, err := repository.ListOrders(context.Background(), "org-a", billing.OrderFilter{Query: "AI 点数", Limit: 10})
+	if err != nil || len(searched.Items) != 1 || searched.Items[0].Description != "AI 点数 × 10" {
+		t.Fatalf("description search result=%#v err=%v", searched, err)
 	}
 }
 
@@ -158,7 +162,7 @@ func TestOrderFiltersCursorAndSummaryUseCompleteCanonicalOrders(t *testing.T) {
 			product = billing.ProductDataRow
 			amount = 9
 		}
-		orders = append(orders, orderRow{OrderID: id, OrganizationID: "org-orders", Kind: string(billing.OrderResourcePurchase), Currency: billing.CurrencyCNY, AmountMinor: amount, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-" + id, RequestFingerprint: "fingerprint-" + id, Version: 1, CreatedAt: created, UpdatedAt: created})
+		orders = append(orders, orderRow{OrderID: id, OrganizationID: "org-orders", Kind: string(billing.OrderResourcePurchase), Description: billing.DescribeOrder(billing.OrderResourcePurchase, product, 1), Currency: billing.CurrencyCNY, AmountMinor: amount, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-" + id, RequestFingerprint: "fingerprint-" + id, Version: 1, CreatedAt: created, UpdatedAt: created})
 		items = append(items, orderItemRow{OrderItemID: "item-" + id, OrderID: id, ProductKind: string(product), ResourceType: "ai_point", ResourceQuantity: 1, AmountMinor: amount})
 	}
 	if err := repository.db.Create(&orders).Error; err != nil {

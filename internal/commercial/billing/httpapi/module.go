@@ -358,6 +358,7 @@ type orderResponse struct {
 	OrderID             string              `json:"order_id"`
 	OrganizationID      string              `json:"organization_id"`
 	Kind                string              `json:"kind"`
+	Description         string              `json:"description"`
 	QuoteID             *string             `json:"quote_id,omitempty"`
 	Currency            string              `json:"currency"`
 	AmountMinor         string              `json:"total_minor"`
@@ -381,7 +382,7 @@ func orderResponseFromDomain(order billing.Order) orderResponse {
 	for _, item := range order.Items {
 		items = append(items, orderItemResponse{OrderItemID: item.OrderItemID, ProductKind: string(item.ProductKind), ResourceType: string(item.ResourceType), ResourceQuantity: strconv.FormatInt(item.ResourceQuantity, 10), AmountMinor: strconv.FormatInt(item.AmountMinor, 10)})
 	}
-	return orderResponse{OrderID: order.OrderID, OrganizationID: order.OrganizationID, Kind: string(order.Kind), QuoteID: nullable(order.QuoteID), Currency: order.Currency, AmountMinor: strconv.FormatInt(order.AmountMinor, 10), Status: string(order.Status), FailureCode: string(order.FailureCode), WalletReservationID: nullable(order.WalletReservationID), Items: items, CreatedAt: order.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: order.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+	return orderResponse{OrderID: order.OrderID, OrganizationID: order.OrganizationID, Kind: string(order.Kind), Description: order.Description, QuoteID: nullable(order.QuoteID), Currency: order.Currency, AmountMinor: strconv.FormatInt(order.AmountMinor, 10), Status: string(order.Status), FailureCode: string(order.FailureCode), WalletReservationID: nullable(order.WalletReservationID), Items: items, CreatedAt: order.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: order.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 
 func effectiveOrganization(c *gin.Context) (string, bool) {

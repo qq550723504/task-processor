@@ -275,7 +275,7 @@ func (r *Repository) ApplyTopUpReversal(ctx context.Context, _ string, reversal 
 		}
 		var existing walletReversalRow
 		if err := tx.Where("reversal_id = ?", reversal.ReversalID).Take(&existing).Error; err == nil {
-			if existing.PaymentID != reversal.PaymentID || existing.AmountMinor != reversal.AmountMinor || existing.Kind != string(reversal.Kind) || existing.ProviderReference != reversal.ProviderReference {
+			if existing.PaymentID != reversal.PaymentID || existing.AmountMinor != reversal.AmountMinor || existing.Kind != string(reversal.Kind) || existing.ProviderReference != reversal.ProviderReference || !existing.OccurredAt.Equal(ledgermoney.NormalizeTimestamp(reversal.OccurredAt)) {
 				return ledgermoney.ErrConflict
 			}
 			var row organizationWalletRow

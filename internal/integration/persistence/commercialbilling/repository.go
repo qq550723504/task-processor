@@ -58,6 +58,7 @@ type orderRow struct {
 	OrganizationID              string    `gorm:"column:organization_id;size:128;not null;index;uniqueIndex:uq_commercial_orders_org_idempotency,priority:1"`
 	Kind                        string    `gorm:"column:kind;size:32;not null"`
 	QuoteID                     string    `gorm:"column:quote_id;size:128"`
+	Description                 string    `gorm:"column:description;size:256;not null;default:''"`
 	Currency                    string    `gorm:"column:currency;size:3;not null"`
 	AmountMinor                 int64     `gorm:"column:amount_minor;not null"`
 	Status                      string    `gorm:"column:status;size:32;not null;index"`
@@ -222,7 +223,7 @@ func (r *Repository) CreatePendingResourceOrder(ctx context.Context, request bil
 			return billing.ErrFeatureUnavailable
 		}
 		now := r.now().UTC()
-		row := orderRow{OrderID: uuid.NewString(), OrganizationID: request.OrganizationID, Kind: string(billing.OrderResourcePurchase), QuoteID: quote.QuoteID, Currency: quote.Currency, AmountMinor: quote.TotalMinor, Status: string(billing.OrderPending), IdempotencyKey: request.IdempotencyKey, RequestFingerprint: fingerprint, Version: 1, CreatedAt: now, UpdatedAt: now}
+		row := orderRow{OrderID: uuid.NewString(), OrganizationID: request.OrganizationID, Kind: string(billing.OrderResourcePurchase), QuoteID: quote.QuoteID, Description: billing.DescribeOrder(billing.OrderResourcePurchase, quote.ProductKind, quote.ResourceQuantity), Currency: quote.Currency, AmountMinor: quote.TotalMinor, Status: string(billing.OrderPending), IdempotencyKey: request.IdempotencyKey, RequestFingerprint: fingerprint, Version: 1, CreatedAt: now, UpdatedAt: now}
 		item := orderItemRow{OrderItemID: uuid.NewString(), OrderID: row.OrderID, ProductKind: string(quote.ProductKind), ResourceType: string(quote.ResourceType), ResourceQuantity: quote.ResourceQuantity, AmountMinor: quote.TotalMinor}
 		result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "organization_id"}, {Name: "idempotency_key"}}, DoNothing: true}).Create(&row)
 		if result.Error != nil {
@@ -331,7 +332,7 @@ func (r *Repository) ListOrders(ctx context.Context, organizationID string, filt
 	query := r.db.WithContext(ctx).Where("commercial_orders.organization_id = ?", organizationID).Order("commercial_orders.created_at DESC, commercial_orders.order_id DESC").Limit(limit + 1)
 	if filter.Query != "" {
 		needle := "%" + strings.TrimSpace(filter.Query) + "%"
-		query = query.Joins("JOIN commercial_order_items ON commercial_order_items.order_id = commercial_orders.order_id").Where("commercial_orders.order_id LIKE ? OR commercial_orders.quote_id LIKE ? OR commercial_order_items.product_kind LIKE ?", needle, needle, needle)
+		query = query.Joins("LEFT JOIN commercial_order_items ON commercial_order_items.order_id = commercial_orders.order_id").Where("commercial_orders.order_id LIKE ? OR commercial_orders.quote_id LIKE ? OR commercial_orders.description LIKE ? OR commercial_order_items.product_kind LIKE ?", needle, needle, needle, needle)
 	}
 	if filter.Kind != nil {
 		query = query.Where("commercial_orders.kind = ?", string(*filter.Kind))
@@ -439,7 +440,7 @@ func orderFromRows(row orderRow, item orderItemRow) billing.Order {
 	if item.OrderItemID != "" {
 		items = []billing.OrderItem{{OrderItemID: item.OrderItemID, ProductKind: billing.ProductKind(item.ProductKind), ResourceType: orgresource.ResourceType(item.ResourceType), ResourceQuantity: item.ResourceQuantity, AmountMinor: item.AmountMinor}}
 	}
-	return billing.Order{OrderID: row.OrderID, OrganizationID: row.OrganizationID, Kind: billing.OrderKind(row.Kind), QuoteID: row.QuoteID, Currency: row.Currency, AmountMinor: row.AmountMinor, Status: billing.OrderStatus(row.Status), FailureCode: billing.OrderFailureCode(row.FailureCode), WalletReservationID: row.WalletReservationID, WalletReservationState: money.WalletReservationState(row.WalletReservationState), PaymentID: row.PaymentID, ResourceGrantOperationID: row.ResourceGrantOperationID, ResourceGrantSourceType: row.ResourceGrantSourceType, ResourceGrantSourceIdentity: row.ResourceGrantSourceIdentity, Items: items, IdempotencyKey: row.IdempotencyKey, RequestFingerprint: row.RequestFingerprint, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return billing.Order{OrderID: row.OrderID, OrganizationID: row.OrganizationID, Kind: billing.OrderKind(row.Kind), Description: row.Description, QuoteID: row.QuoteID, Currency: row.Currency, AmountMinor: row.AmountMinor, Status: billing.OrderStatus(row.Status), FailureCode: billing.OrderFailureCode(row.FailureCode), WalletReservationID: row.WalletReservationID, WalletReservationState: money.WalletReservationState(row.WalletReservationState), PaymentID: row.PaymentID, ResourceGrantOperationID: row.ResourceGrantOperationID, ResourceGrantSourceType: row.ResourceGrantSourceType, ResourceGrantSourceIdentity: row.ResourceGrantSourceIdentity, Items: items, IdempotencyKey: row.IdempotencyKey, RequestFingerprint: row.RequestFingerprint, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 func fingerprint(value any) string {
 	encoded, _ := json.Marshal(value)

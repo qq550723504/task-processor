@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -171,6 +172,7 @@ type Order struct {
 	OrderID                     string
 	OrganizationID              string
 	Kind                        OrderKind
+	Description                 string
 	QuoteID                     string
 	Currency                    string
 	AmountMinor                 int64
@@ -188,6 +190,29 @@ type Order struct {
 	Version                     int64
 	CreatedAt                   time.Time
 	UpdatedAt                   time.Time
+}
+
+// DescribeOrder returns the immutable, server-derived display and search text
+// for an order from its canonical kind and item facts.
+func DescribeOrder(kind OrderKind, productKind ProductKind, quantity int64) string {
+	if kind == OrderWalletTopUp {
+		return "钱包充值"
+	}
+	if kind != OrderResourcePurchase || quantity <= 0 {
+		return ""
+	}
+	var label string
+	switch productKind {
+	case ProductStoreRenewalPeriod:
+		label = "店铺续费期"
+	case ProductAIPoint:
+		label = "AI 点数"
+	case ProductDataRow:
+		label = "数据资源"
+	default:
+		return ""
+	}
+	return fmt.Sprintf("%s × %d", label, quantity)
 }
 
 func (order Order) Validate() error {
