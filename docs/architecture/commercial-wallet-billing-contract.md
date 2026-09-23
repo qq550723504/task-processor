@@ -487,8 +487,11 @@ The initial entry kinds remain bounded to top-up credit, purchase reservation,
 purchase commit/release, refund reversal, chargeback reversal, and debt
 repayment; unknown kinds and entries missing common identity/balance fields are
 invalid. The after snapshot must preserve the debt-first invariant: a positive
-`debt_after_minor` requires zero `available_after_minor`. Top-up and
-refund/chargeback reversal entries must carry `payment_id`.
+`debt_after_minor` requires zero `available_after_minor`. Top-up,
+refund/chargeback reversal, and debt-repayment entries must carry `payment_id`.
+A debt-repayment entry must also carry the originating top-up's canonical
+`commercial_order_id`, including when the accepted settlement is fully absorbed
+by existing debt and no available-balance credit remains.
 Entry deltas are kind-specific: top-up credits increase available balance;
 refund and chargeback reversals decrease available balance and may increase
 debt for the portion not covered by available funds; purchase reservation

@@ -115,7 +115,7 @@ func (entry WalletEntry) Validate() error {
 			return ErrInvalid
 		}
 	case WalletEntryDebtRepayment:
-		if entry.AvailableDelta != 0 || entry.ReservedDelta != 0 || entry.DebtDelta >= 0 {
+		if strings.TrimSpace(entry.PaymentID) == "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta != 0 || entry.ReservedDelta != 0 || entry.DebtDelta >= 0 {
 			return ErrInvalid
 		}
 	default:

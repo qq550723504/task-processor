@@ -289,6 +289,30 @@ func TestWalletPurchaseEntryRequiresCommercialOrderBinding(t *testing.T) {
 	}
 }
 
+func TestWalletDebtRepaymentRequiresTopUpSettlementBinding(t *testing.T) {
+	for _, field := range []string{"payment id", "commercial order id"} {
+		t.Run(field, func(t *testing.T) {
+			entry := validWalletEntry(WalletEntryDebtRepayment)
+			entry.PaymentID = "payment-1"
+			switch field {
+			case "payment id":
+				entry.PaymentID = ""
+			case "commercial order id":
+				entry.CommercialOrderID = ""
+			}
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("debt repayment without %s = nil, want ErrInvalid", field)
+			}
+		})
+	}
+
+	entry := validWalletEntry(WalletEntryDebtRepayment)
+	entry.PaymentID = "payment-1"
+	if err := entry.Validate(); err != nil {
+		t.Fatalf("debt repayment with accepted top-up binding rejected: %v", err)
+	}
+}
+
 func validWalletEntry(kind WalletEntryKind) WalletEntry {
 	entry := WalletEntry{
 		EntryID:           "entry-1",
@@ -323,6 +347,7 @@ func validWalletEntry(kind WalletEntryKind) WalletEntry {
 	case WalletEntryDebtRepayment:
 		entry.DebtDelta = -100
 		entry.AvailableAfter = 0
+		entry.PaymentID = "payment-1"
 	}
 	return entry
 }
