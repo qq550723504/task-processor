@@ -28,6 +28,15 @@ func (terminalPurchasedResourceGrant) GrantPurchasedResource(context.Context, or
 	return orgresource.PurchasedResourceGrantResult{}, orgresource.ErrInvalidInput
 }
 
+type failCancelledOrderUpdate struct{ *Repository }
+
+func (store failCancelledOrderUpdate) UpdateOrder(ctx context.Context, order billing.Order) error {
+	if order.Status == billing.OrderCancelled {
+		return billing.ErrFeatureUnavailable
+	}
+	return store.Repository.UpdateOrder(ctx, order)
+}
+
 func (wallet *loseFirstCommitAcknowledgement) CommitCommercialPurchase(ctx context.Context, input money.CommitWalletReservationInput) (money.WalletReservation, error) {
 	result, err := wallet.OrganizationWalletCommander.CommitCommercialPurchase(ctx, input)
 	if err == nil && wallet.lose {
@@ -245,6 +254,23 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	replayedTerminal, err := terminalService.CreateResourceOrder(ctx, terminalRequest)
 	if !errors.Is(err, billing.ErrResourceGrantRejected) || replayedTerminal.Status != billing.OrderCancelled || replayedTerminal.FailureCode != billing.OrderFailureGrantRejected {
 		t.Fatalf("replayed terminal grant failure = %#v, err=%v", replayedTerminal, err)
+	}
+	updateFailureService, err := billing.NewService(commercial, commercial, failCancelledOrderUpdate{Repository: commercial}, commercial, wallet, grantService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateFailureQuote, err := updateFailureService.CreateQuote(ctx, billing.QuoteRequest{OrganizationID: "org-purchase", OfferID: "offer-purchase", Quantity: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateFailureRequest := billing.CreateResourceOrderRequest{OrganizationID: "org-purchase", QuoteID: updateFailureQuote.QuoteID, IdempotencyKey: "purchase-cancel-persistence-failure"}
+	uncertainOrder, err := updateFailureService.CreateResourceOrder(ctx, updateFailureRequest)
+	if !errors.Is(err, billing.ErrReconciliationRequired) || uncertainOrder.OrderID != "" {
+		t.Fatalf("failed terminal persistence = %#v, err=%v; want unknown reconciliation outcome", uncertainOrder, err)
+	}
+	persistedAfterFailure, found, err := commercial.FindResourceOrderByIdempotency(ctx, "org-purchase", updateFailureRequest.IdempotencyKey)
+	if err != nil || !found || persistedAfterFailure.Status != billing.OrderPending {
+		t.Fatalf("order after cancellation persistence failure = %#v found=%v err=%v", persistedAfterFailure, found, err)
 	}
 	var resourceBalance struct{ Available int64 }
 	if err := db.WithContext(ctx).Table("saas_organization_resource_buckets").Select("available").Where("organization_id = ? AND resource_type = ?", "org-purchase", orgresource.ResourceAIPoint).Take(&resourceBalance).Error; err != nil || resourceBalance.Available != 10 {

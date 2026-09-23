@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
-import { BodyReadTimeoutError, BodyTooLargeError, readBodyWithinLimit, WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
+import { BodyTooLargeError, readBodyWithinLimit, WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
 import { newRequestLogId } from "./request-log";
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -39,49 +39,57 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
   const origin = configuredOrigin();
   if (!origin) return failure(503, "DEPENDENCY_UNAVAILABLE");
 
-  let body: ArrayBuffer | undefined;
-  if (request.method !== "GET") {
-    if (request.body === null) return failure(400, "INVALID_REQUEST");
-    const contentLength = request.headers.get("content-length");
-    if (contentLength !== null) {
-      if (!/^\d+$/.test(contentLength) || !Number.isSafeInteger(Number(contentLength))) return failure(400, "INVALID_REQUEST");
-      if (Number(contentLength) > MAX_BODY_BYTES) { void request.body.cancel().catch(() => undefined); return failure(413, "INVALID_REQUEST"); }
-    }
-    try {
-      const bytes = await readBodyWithinLimit(request.body, MAX_BODY_BYTES, 15_000, request.signal);
-      const copy = new Uint8Array(bytes.byteLength);
-      copy.set(bytes);
-      body = copy.buffer;
-    } catch (error) {
-      if (error instanceof BodyTooLargeError) return failure(413, "INVALID_REQUEST");
-      if (error instanceof BodyReadTimeoutError) return failure(408, "INVALID_REQUEST");
-      return request.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(400, "INVALID_REQUEST");
-    }
-  } else if (request.body !== null) {
-    await request.body.cancel().catch(() => undefined);
-    return failure(400, "INVALID_REQUEST");
-  }
-  const incomingURL = new URL(request.url);
-  const path = `${incomingURL.pathname.replace("/api/workbench/", "/api/v1/workbench/")}${incomingURL.search}`;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  request.signal.addEventListener("abort", abort, { once: true });
+  if (request.signal.aborted) abort();
+  const deadline = setTimeout(abort, 15_000);
   try {
+    controller.signal.throwIfAborted();
+    let body: ArrayBuffer | undefined;
+    if (request.method !== "GET") {
+      if (request.body === null) return failure(400, "INVALID_REQUEST");
+      const contentLength = request.headers.get("content-length");
+      if (contentLength !== null) {
+        if (!/^\d+$/.test(contentLength) || !Number.isSafeInteger(Number(contentLength))) return failure(400, "INVALID_REQUEST");
+        if (Number(contentLength) > MAX_BODY_BYTES) { void request.body.cancel().catch(() => undefined); return failure(413, "INVALID_REQUEST"); }
+      }
+      try {
+        const bytes = await readBodyWithinLimit(request.body, MAX_BODY_BYTES, undefined, controller.signal);
+        const copy = new Uint8Array(bytes.byteLength);
+        copy.set(bytes);
+        body = copy.buffer;
+      } catch (error) {
+        if (error instanceof BodyTooLargeError) return failure(413, "INVALID_REQUEST");
+        return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(400, "INVALID_REQUEST");
+      }
+    } else if (request.body !== null) {
+      await request.body.cancel().catch(() => undefined);
+      return failure(400, "INVALID_REQUEST");
+    }
+    const incomingURL = new URL(request.url);
+    const path = `${incomingURL.pathname.replace("/api/workbench/", "/api/v1/workbench/")}${incomingURL.search}`;
     const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${accessToken}`, "X-Requested-Organization-ID": organization, "X-Request-ID": newRequestLogId() });
     if (body) headers.set("Content-Type", request.headers.get("content-type") ?? "application/json");
     const idempotencyKey = request.headers.get("Idempotency-Key");
     if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
-    const upstream = await fetch(new URL(path, origin), { method: request.method, headers, body, cache: "no-store", redirect: "manual", signal: request.signal });
+    const upstream = await fetch(new URL(path, origin), { method: request.method, headers, body, cache: "no-store", redirect: "manual", signal: controller.signal });
     if (upstream.status >= 300 && upstream.status < 400) {
       await upstream.body?.cancel().catch(() => undefined);
       return failure(502, "INVALID_UPSTREAM_RESPONSE");
     }
     let payload: unknown;
     try {
-      payload = await readBoundedStrictJSON(upstream, upstream.status >= 200 && upstream.status < 300 ? MAX_RESPONSE_BYTES : 8192, request.signal);
+      payload = await readBoundedStrictJSON(upstream, upstream.status >= 200 && upstream.status < 300 ? MAX_RESPONSE_BYTES : 8192, controller.signal);
     } catch {
-      return request.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(502, "INVALID_UPSTREAM_RESPONSE");
+      return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(502, "INVALID_UPSTREAM_RESPONSE");
     }
-    request.signal.throwIfAborted();
+    controller.signal.throwIfAborted();
     return safeJSON(payload, upstream.status);
   } catch {
-    return request.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(503, "DEPENDENCY_UNAVAILABLE");
+    return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(503, "DEPENDENCY_UNAVAILABLE");
+  } finally {
+    clearTimeout(deadline);
+    request.signal.removeEventListener("abort", abort);
   }
 }

@@ -100,7 +100,9 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 			order.Status = OrderCancelled
 			order.FailureCode = OrderFailureInsufficientFunds
 			order.UpdatedAt = s.now().UTC()
-			_ = s.updateOrder(ctx, &order)
+			if updateErr := s.updateOrder(ctx, &order); updateErr != nil {
+				return Order{}, ErrReconciliationRequired
+			}
 			return order, ErrInsufficientFunds
 		}
 		order.Status = OrderReconciliationRequired
@@ -136,7 +138,9 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 		order.WalletReservationID = ""
 		order.WalletReservationState = ""
 		order.UpdatedAt = s.now().UTC()
-		_ = s.updateOrder(ctx, &order)
+		if updateErr := s.updateOrder(ctx, &order); updateErr != nil {
+			return Order{}, ErrReconciliationRequired
+		}
 		return order, ErrResourceGrantRejected
 	}
 	if !matchesGrantProof(order, grant.Snapshot) {
@@ -210,6 +214,7 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 				if s.updateOrder(ctx, &order) == nil {
 					return order, ErrResourceGrantRejected
 				}
+				return Order{}, ErrReconciliationRequired
 			}
 		}
 		return order, ErrReconciliationRequired

@@ -43,7 +43,29 @@ it("times out and cancels a stalled request stream", async () => {
   const pending = proxyCommercialBilling(request, "fixture-token");
   await vi.advanceTimersByTimeAsync(15_000);
   const response = await pending;
-  expect(response.status).toBe(408);
+  expect(response.status).toBe(504);
   expect(cancelled).toBe(true);
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it("aborts a stalled upstream request at the fixed deadline", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("COMMERCIAL_API_ORIGIN", "http://localhost:8888");
+  const fetchMock = vi.fn((_url: URL, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    init.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const request = new Request("http://localhost/api/workbench/commercial/orders", {
+    method: "POST",
+    headers: { cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "content-type": "application/json" },
+    body: "{}",
+  });
+
+  const pending = proxyCommercialBilling(request, "fixture-token");
+  for (let index = 0; index < 10 && fetchMock.mock.calls.length === 0; index++) await Promise.resolve();
+  expect(fetchMock).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(15_000);
+  const response = await pending;
+  expect(response.status).toBe(504);
+  expect((fetchMock.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
 });
