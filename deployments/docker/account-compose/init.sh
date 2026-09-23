@@ -16,6 +16,13 @@ frontend=/frontend
 identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
 application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is required}
 
+migrate_commercial_owner_schema() {
+  cat > "$work/commercial-owner-schema.json" <<EOF
+{"host":"127.0.0.1","port":5434,"user":"postgres","password":"$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")","database":"commercial","maxConnections":2,"maxIdleConnections":1}
+EOF
+  commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json"
+}
+
 umask 077
 if [ -f "$state/.init-complete" ]; then
   work=$(mktemp -d)
@@ -74,6 +81,7 @@ GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
 ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL
+  migrate_commercial_owner_schema
   if grep -q '"user": "commercial_reader"' "$runtime/current-application.json"; then
     sed 's/"user": "commercial_reader"/"user": "commercial_runtime"/' "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
     chmod 600 "$runtime/current-application.json.tmp"
@@ -218,6 +226,7 @@ GRANT DELETE ON TABLE public.saas_modules, public.saas_plan_modules, public.saas
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_owner_runtime;
 ALTER ROLE commercial_owner_runtime SET statement_timeout='10s';
 SQL
+migrate_commercial_owner_schema
 
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
 CREATE ROLE referral_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$referral_runtime_secret/referral-runtime-password")';

@@ -13,6 +13,7 @@ COPY cmd/referral-schema-init ./cmd/referral-schema-init
 COPY cmd/organization-membership-schema-init ./cmd/organization-membership-schema-init
 COPY cmd/source-account-registry-schema-init ./cmd/source-account-registry-schema-init
 COPY cmd/listingkit-schema-migrate ./cmd/listingkit-schema-migrate
+COPY cmd/commercial-owner-schema-migrate ./cmd/commercial-owner-schema-migrate
 COPY cmd/account-acceptance-fixture ./cmd/account-acceptance-fixture
 COPY internal ./internal
 
@@ -21,6 +22,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-applicati
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/organization-membership-schema-init ./cmd/organization-membership-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/source-account-registry-schema-init ./cmd/source-account-registry-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-schema-migrate ./cmd/listingkit-schema-migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/commercial-owner-schema-migrate ./cmd/commercial-owner-schema-migrate && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-acceptance-fixture ./cmd/account-acceptance-fixture
 
 FROM alpine:3.22 AS runtime
@@ -39,6 +41,7 @@ COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-
 COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init
 COPY --from=go-builder /out/listingkit-schema-migrate /usr/local/bin/listingkit-schema-migrate
+COPY --from=go-builder /out/commercial-owner-schema-migrate /usr/local/bin/commercial-owner-schema-migrate
 COPY --chmod=0755 deployments/docker/account-compose/init.sh /usr/local/bin/account-schema-init
 ENTRYPOINT ["/usr/local/bin/account-schema-init"]
 
