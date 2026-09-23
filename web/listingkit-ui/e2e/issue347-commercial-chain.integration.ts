@@ -3,18 +3,31 @@ import type {AddressInfo} from "node:net";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {NextRequest} from "next/server";
 import {getCommercialOverview} from "@/lib/api/commercial";
+import {getCommercialOrderSummary,getCommercialOrders,getCommercialWallet,getCommercialWalletEntries} from "@/lib/api/commercial-billing";
 
 // Explicitly collected by the PostgreSQL harness config, not Playwright.
 // Only external/session identity retrieval is substituted. The route export,
 // BFF transport, typed client, Go auth/owner and PostgreSQL execute for real.
 vi.mock("@/auth",()=>({serverAuth:(handler:(r:NextRequest)=>Promise<Response>)=>handler}));
 vi.mock("@/lib/server/zitadel-server-token",()=>({readZitadelServerAccessToken:()=>"fixture-token"}));
+vi.mock("@/lib/server/zitadel-auth",()=>({readZitadelIdentityFromSession:()=>({userId:"fixture-user"})}));
 import * as route from "@/app/api/workbench/commercial/overview/route";
+import * as walletRoute from "@/app/api/workbench/commercial/wallet/route";
+import * as walletEntriesRoute from "@/app/api/workbench/commercial/wallet/entries/route";
+import * as ordersRoute from "@/app/api/workbench/commercial/orders/route";
+import * as orderSummaryRoute from "@/app/api/workbench/commercial/orders/summary/route";
 
 const upstream=process.env.COMMERCIAL_INTEGRATION_ORIGIN;
 if(!upstream || new URL(upstream).hostname!=="127.0.0.1") throw new Error("Start this suite through TestCommercialHTTPPostgresBFFClientZeroWrites; a private loopback fixture is required");
 const nativeFetch=globalThis.fetch;
 let server:Server,bffOrigin:string,selected="org-B";
+const bffRoutes=new Map<string,(request:NextRequest)=>Promise<Response>>([
+  ["/api/workbench/commercial/overview",request=>route.GET(request)],
+  ["/api/workbench/commercial/wallet",request=>walletRoute.GET(request)],
+  ["/api/workbench/commercial/wallet/entries",request=>walletEntriesRoute.GET(request)],
+  ["/api/workbench/commercial/orders",request=>ordersRoute.GET(request)],
+  ["/api/workbench/commercial/orders/summary",request=>orderSummaryRoute.GET(request)],
+]);
 beforeAll(async()=>{
   process.env.COMMERCIAL_API_ORIGIN=upstream;
   server=createServer(async(req,res)=>{
@@ -22,7 +35,8 @@ beforeAll(async()=>{
     try {
       const headers=new Headers();for(const [key,value] of Object.entries(req.headers)) if(value!==undefined)headers.set(key,Array.isArray(value)?value.join(","):value);
       const request=new NextRequest(new URL(req.url!,bffOrigin),{method:req.method,headers,signal:controller.signal});
-      const response=req.method==="GET"?await route.GET(request):route.POST();
+      const handler=req.method==="GET"?bffRoutes.get(new URL(req.url!,bffOrigin).pathname):undefined;
+      const response=handler?await handler(request):req.method==="POST"?route.POST():new Response(null,{status:404});
       res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
     } catch {res.statusCode=500;res.end();}
   });
@@ -62,4 +76,21 @@ it("executes actual HTTP client → Next BFF → Go verified scope → subscript
   const apiMethod=await nativeFetch(`${upstream}/api/v1/workbench/commercial/overview`,{method:"POST"});expect(apiMethod.status).toBe(404);
   const badQuery=await nativeFetch(`${bffOrigin}/api/workbench/commercial/overview?tenant_id=victim`,{headers:{cookie:"shuomi_effective_organization=org-B","X-Expected-Organization-ID":"org-B"}});expect(badQuery.status).toBe(400);
   console.info("CHAIN PASS: actual HTTP BFF/client; home A/effective B; current-window ledger; signed exact BIGINT; no subscription; expired/disabled/future; role denial; live revoke/cache drift/outage; scope switching; cancellation; unsupported cash/resources");
+});
+
+it("reads wallet, entries, orders, and summary through their actual BFF routes and separate read-only owners",async()=>{
+  const wallet=await getCommercialWallet("fixture-user","org-B");
+  expect(wallet).toMatchObject({organization_id:"org-B",currency:"CNY",available_minor:"0",reserved_minor:"0",debt_minor:"0",lifetime_topup_minor:"0",lifetime_spend_minor:"0",version:"1"});
+  const entries=await getCommercialWalletEntries("fixture-user","org-B");
+  expect(entries).toMatchObject({organization_id:"org-B",items:[],next_cursor:""});
+  const orders=await getCommercialOrders("fixture-user","org-B");
+  expect(orders).toMatchObject({organization_id:"org-B",items:[],next_cursor:""});
+  const summary=await getCommercialOrderSummary("fixture-user","org-B");
+  expect(summary.organization_id).toBe("org-B");
+  expect(summary.spend_minor).toBe("0");
+  expect(Date.parse(summary.from)).toBeLessThan(Date.parse(summary.until));
+  selected="org-C";
+  await expect(getCommercialWallet("fixture-user","org-B")).rejects.toMatchObject({status:409,code:"ORGANIZATION_CONTEXT_CHANGED"});
+  selected="org-B";
+  console.info("BILLING READ PASS: actual wallet/entries/orders/summary BFF routes; isolated empty billing+money owners; no fabricated payment or accounting rows");
 });
