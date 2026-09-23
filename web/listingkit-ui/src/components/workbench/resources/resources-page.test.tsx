@@ -98,6 +98,7 @@ it("shows unavailable owner fields without deriving them and keeps the real toke
   state.context.roles = ["admin"];
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-member-token-allocation-v1", organizationId: "org-B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "user-1", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] })));
   render(tree());
+  expect(await screen.findByText("member@example.test")).toBeVisible();
   await screen.findByRole("region", { name: "成员 AI Token 分配" });
   await screen.findByText("成员甲");
   const directory = screen.getByRole("region", { name: "成员 AI Token 分配" });

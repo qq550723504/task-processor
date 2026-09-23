@@ -255,7 +255,7 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
     {showOverview ? <section className={styles.overviewSections} aria-label="推广与收益管理">
       <div className={styles.entryGrid} aria-label="推广管理入口">{([["推广中心", "推广码与可用关系数据", referralPaths.center], ["收益明细", "来自权威支付事实的收益 projection", referralPaths.earnings], ["提现管理", "收款方式与人工提现申请", referralPaths.withdrawals], ["推广规则", "当前有效的收益与结算规则", referralPaths.rules]] as const).map(([title, description, href]) => <article className={styles.entryCard} key={href}><div><h2>{title}</h2><p>{description}</p></div><Button asChild variant="outline"><Link href={href} prefetch={false}>查看详情</Link></Button></article>)}</div>
       <div className={styles.activityGrid} aria-label="收益和提现记录"><article className={styles.activityTableCard}><div><h2>近期收益动态</h2><p>当前账户页面没有独立收益动态汇总；逐笔事实见收益明细。</p></div><div className={styles.earningsTableWrap} role="region" aria-label="近期收益动态表格，可横向滚动" tabIndex={0}><table className={styles.earningsTable}><thead><tr><th>时间</th><th>事件</th><th>来源</th><th>金额</th><th>状态</th></tr></thead><tbody><tr><td colSpan={5} className={styles.emptyCell}>当前 owner 未提供近期收益事件。</td></tr></tbody></table></div><Button asChild variant="outline"><Link href={referralPaths.earnings} prefetch={false}>查看收益</Link></Button></article>
-      <article className={styles.entryCard}><div><h2>提现状态</h2>{withdrawalHistory.isPending ? <p>正在读取提现记录…</p> : withdrawalHistory.isError ? <p role="alert">提现记录暂不可用，请稍后重试。</p> : withdrawalHistory.data?.withdrawals.length === 0 ? <p>暂无提现申请。</p> : <ul>{withdrawalHistory.data?.withdrawals.slice(0, 3).map(item => <li key={item.id}>{formatMinor(item.amountMinor)} · {item.status} · {formatTime(item.updatedAt)}</li>)}</ul>}</div><Button asChild variant="outline"><Link href={referralPaths.withdrawals} prefetch={false}>管理提现</Link></Button></article></div>
+      {view !== "complete" ? <article className={styles.entryCard}><div><h2>提现状态</h2>{withdrawalHistory.isPending ? <p>正在读取提现记录…</p> : withdrawalHistory.isError ? <p role="alert">提现记录暂不可用，请稍后重试。</p> : withdrawalHistory.data?.withdrawals.length === 0 ? <p>暂无提现申请。</p> : <ul>{withdrawalHistory.data?.withdrawals.slice(0, 3).map(item => <li key={item.id}>{formatMinor(item.amountMinor)} · {item.status} · {formatTime(item.updatedAt)}</li>)}</ul>}</div><Button asChild variant="outline"><Link href={referralPaths.withdrawals} prefetch={false}>管理提现</Link></Button></article> : null}</div>
     </section> : null}
     {showCenter ? <>
       <section className={styles.centerWorkspace} aria-label="推广中心信息">
@@ -283,7 +283,7 @@ function ReferralRulesView({ data }: { data: ReferralRules }) {
       <article className={styles.ruleCard}><h2>收益如何计算</h2><p>当前有效比例为 {data.commissionRateBps / 100}%；最终金额以不可变收益账本投影为准。</p></article>
       <article className={styles.ruleCard}><h2>结算与退款处理</h2><p>结算周期为 {data.settlementPeriodDays} 日。退款与拒付通过 owner 记录的调整进入收益投影。</p></article>
       <article className={styles.ruleCard}><h2>提现规则</h2><p>最低申请金额 {formatMinor(data.minimumWithdrawalMinor)}；申请经人工审核，外部打款渠道由平台处理。</p></article>
-      <article className={styles.ruleCard}><h2>违规推广处理</h2><p>推广关系、订单和收益异常由平台规则处理；当前页面不提供审批或风控操作。</p></article>
+      <article className={styles.ruleCard}><h2>违规推广处理</h2><p>当前推广规则 owner 未返回违规推广处理政策。未提供。</p></article>
     </div>
   </div>;
 }

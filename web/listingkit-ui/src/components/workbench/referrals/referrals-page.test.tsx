@@ -75,6 +75,8 @@ describe("ReferralsPage", () => {
     vi.stubGlobal("fetch", fetch);
     mount("overview", "subject-1", true, "rules");
     expect(await screen.findByText("当前有效比例为 10%；最终金额以不可变收益账本投影为准。")).toBeVisible();
+    expect(screen.getByText("当前推广规则 owner 未返回违规推广处理政策。未提供。")).toBeVisible();
+    expect(screen.queryByText("推广关系、订单和收益异常由平台规则处理；当前页面不提供审批或风控操作。")).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-rules");
   });
@@ -329,10 +331,22 @@ describe("ReferralsPage", () => {
     const user = userEvent.setup();
     mount("complete");
     expect(await screen.findByRole("button", { name: "完成推广关系" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "提现状态" })).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "完成推广关系" }));
     expect(await screen.findByText("推广关系已确认")).toBeVisible();
     expect(fetch.mock.calls[1][0]).toBe("/api/account/referrals/complete");
+  });
+
+  it("omits the withdrawal summary from registration completion", async () => {
+    const projection = { code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
+    const fetch = vi.fn().mockResolvedValue(Response.json(projection));
+    vi.stubGlobal("fetch", fetch);
+    mount("complete");
+    expect(await screen.findByRole("button", { name: "完成推广关系" })).toBeVisible();
+    expect(screen.queryByText("正在读取提现记录…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "提现状态" })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a successful receipt when the projection refresh is unavailable", async () => {

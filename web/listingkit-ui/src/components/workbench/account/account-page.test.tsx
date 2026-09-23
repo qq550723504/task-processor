@@ -297,6 +297,25 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByText("update · u1")).toBeVisible();
     expect(fetcher).toHaveBeenCalledTimes(5);
   });
+  it.each([
+    ["expired", "已过期", "active", "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"],
+    ["disabled", "已停用", "disabled", null, null],
+    ["not_started", "尚未生效", "active", "2026-10-01T00:00:00Z", null],
+  ])("shows the owner effective subscription status %s", async (effectiveStatus, label, status, startsAt, expiresAt) => {
+    const observedAt = "2026-09-07T00:00:00Z";
+    const metrics = ["listingkit_generations_succeeded", "product_image_jobs_succeeded", "shein_drafts_succeeded", "shein_publishes_succeeded", "storage_bytes_current"] as const;
+    const commercial = {
+      organization_id: "B", observed_at: observedAt,
+      plans: [{ code: "base_payg", name: "基础方案 · 按需使用", source: "approved_product_description", availability: "not_for_sale", price: null, currency: null }],
+      subscription: { plan_code: "paid-pilot-contract", plan_name: "Paid Pilot", status, effective_status: effectiveStatus, starts_at: startsAt, expires_at: expiresAt, updated_at: observedAt },
+      entitlements: [],
+      usage: metrics.map((metric, index) => ({ module_code: index === 4 ? "oss_storage" : "listingkit", metric, source: "subscription_usage_ledger", unit: index === 4 ? "byte" : "operation", period_key: index === 4 ? "__current__" : "2026-09", window_start: index === 4 ? null : "2026-09-01T00:00:00Z", window_end: index === 4 ? null : "2026-10-01T00:00:00Z", state: "unknown", committed: null, reserved: null, updated_at: null })),
+      resource_balance: { state: "unsupported", value: null }, cash_balance: { state: "unsupported", value: null },
+    };
+    const fetcher = vi.fn((input: string) => String(input) === "/api/workbench/commercial/overview" ? Promise.resolve(Response.json(commercial)) : String(input) === "/api/account/organization" ? Promise.resolve(Response.json(organization)) : Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
+    vi.stubGlobal("fetch", fetcher); mount("organization");
+    expect(await screen.findByText(`当前订阅：Paid Pilot · ${label}`)).toBeVisible();
+  });
   it.each(["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE", "DEADLINE_EXCEEDED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "unexpected"])("shows a safe %s state without data or raw error", async code => {
     const status = code === "AUTHENTICATION_REQUIRED" ? 401 : code === "IDENTITY_CONTEXT_CHANGED" ? 409 : code === "DEADLINE_EXCEEDED" ? 504 : code.includes("PERMISSION") || code.includes("REVOKED") ? 403 : 503;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code, message: "private-secret", requestId: "", fieldErrors: [] }, { status }))); mount();
