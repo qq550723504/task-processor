@@ -15,7 +15,10 @@ import (
 )
 
 var commercialModules = []string{ModuleStoreManagement, ModuleTaskImport, ModuleRules, ModuleOperationStrategy, ModuleListingKit, ModuleOSSStorage}
-var commercialMetrics = []string{usageMetricListingKitGenerationsSucceeded, usageMetricProductImageJobsSucceeded, usageMetricSheinDraftsSucceeded, usageMetricSheinPublishesSucceeded, usageMetricAITokens, usageMetricStorageBytesCurrent}
+
+// These are the five customer-facing observations frozen by the commercial
+// read contract. Model-token metering is not an AI-point balance or limit.
+var commercialMetrics = []string{usageMetricListingKitGenerationsSucceeded, usageMetricProductImageJobsSucceeded, usageMetricSheinDraftsSucceeded, usageMetricSheinPublishesSucceeded, usageMetricStorageBytesCurrent}
 
 // Commercial PostgreSQL reads must address exactly the public facts admitted by
 // VerifyCommercialReadSchema, independent of each connection's search_path.
