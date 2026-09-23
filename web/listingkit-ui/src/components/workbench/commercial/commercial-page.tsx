@@ -38,7 +38,7 @@ function PageFrame({ page, organization, actions, children }: { page: PageKind; 
     entitlements: "查看当前企业的订阅、已授予权益及已记录用量。",
     usage: "查看当前订阅用量、账期与记录状态；金额由账单 owner 单独提供。",
     "top-up": "管理企业钱包与充值；当前能力受真实资金 owner 约束。",
-    orders: "查看账单、订单、退款与发票记录；当前能力受真实账单 owner 约束。",
+    orders: "查看企业账单汇总与订单记录；退款和发票暂不可用。",
     "order-detail": "查看当前企业订单 owner 返回的订单事实。",
   };
   return <ConsolePage className={styles.page} title={title} breadcrumbs={breadcrumbs} description={<>

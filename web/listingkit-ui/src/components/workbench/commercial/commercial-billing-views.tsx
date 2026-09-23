@@ -25,6 +25,11 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Shanghai" }).format(new Date(value));
 }
 
+function shanghaiDayBoundary(value: string, dayOffset = 0) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + dayOffset, -8)).toISOString();
+}
+
 function Panel({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return <Card role="region" aria-label={title} className={`${styles.panel} ${className}`}><h2>{title}</h2>{children}</Card>;
 }
@@ -62,10 +67,9 @@ export function OrdersView({ summary, page, onFilter, onNext }: { summary: Comme
   const [until, setUntil] = useState("");
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const fromISO = from ? `${from}T00:00:00Z` : "";
-    const untilDate = until ? new Date(`${until}T00:00:00Z`) : null;
-    if (untilDate) untilDate.setUTCDate(untilDate.getUTCDate() + 1);
-    onFilter({ query: query.trim(), kind, status, from: fromISO, until: untilDate?.toISOString() ?? "" });
+    const fromISO = from ? shanghaiDayBoundary(from) : "";
+    const untilISO = until ? shanghaiDayBoundary(until, 1) : "";
+    onFilter({ query: query.trim(), kind, status, from: fromISO, until: untilISO });
   };
   return <div className={styles.stack}>
     <div className={styles.billingStats}><Stat label="近 30 天支出" value={minorAmount(summary.spend_minor, summary.currency)} note={`${timeLabel(summary.from)} – ${timeLabel(summary.until)}`} /><Stat tone="blue" label="店铺服务" value={minorAmount(summary.store_renewal_spend_minor, summary.currency)} note="当前账单 owner 汇总" /><Stat label="AI 点数" value={minorAmount(summary.ai_point_spend_minor, summary.currency)} note="当前账单 owner 汇总" /><Stat tone="purple" label="数据资源" value={minorAmount(summary.data_row_spend_minor, summary.currency)} note="当前账单 owner 汇总" /></div>
@@ -93,8 +97,4 @@ export function OrderDetailView({ order }: { order: CommercialOrder }) {
     <Panel title="订单项目">{order.items.length === 0 ? <p className={styles.subtle}>该订单没有返回项目明细。</p> : <div className={styles.billingTableWrap}><table className={styles.billingTable}><caption className="sr-only">订单项目明细</caption><thead><tr><th>资源类型</th><th>数量</th><th>金额</th></tr></thead><tbody>{order.items.map(item => <tr key={item.order_item_id}><td>{item.product_kind}</td><td>{item.resource_quantity}</td><td>{minorAmount(item.amount_minor, order.currency)}</td></tr>)}</tbody></table></div>}</Panel>
     <Button asChild variant="outline"><Link href="/workbench/plans/orders" prefetch={false}>返回账单与订单</Link></Button>
   </div>;
-}
-
-export function BillingSummaryStats({ summary }: { summary: CommercialOrderSummary }) {
-  return <div className={styles.billingStats}><Stat label="近 30 天支出" value={minorAmount(summary.spend_minor, summary.currency)} note="真实账单汇总" /><Stat tone="blue" label="店铺服务" value={minorAmount(summary.store_renewal_spend_minor, summary.currency)} note="真实账单汇总" /><Stat label="AI 点数" value={minorAmount(summary.ai_point_spend_minor, summary.currency)} note="真实账单汇总" /><Stat tone="purple" label="数据资源" value={minorAmount(summary.data_row_spend_minor, summary.currency)} note="真实账单汇总" /></div>;
 }

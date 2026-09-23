@@ -34,6 +34,7 @@ it("loads the wallet through the current identity and organization and keeps pay
 it("loads organization-scoped order summaries and detail deep links", async () => {
   render(tree("orders"));
   expect(await screen.findByRole("heading", { name: "账单与订单" })).toBeVisible();
+  expect(screen.getByText("查看企业账单汇总与订单记录；退款和发票暂不可用。")).toBeVisible();
   expect(state.summary).toHaveBeenCalledWith("reader", "org-B", expect.any(AbortSignal));
   expect(state.orders).toHaveBeenCalledWith("reader", "org-B", expect.objectContaining({ cursor: undefined }), expect.any(AbortSignal));
   cleanup(); client.clear();

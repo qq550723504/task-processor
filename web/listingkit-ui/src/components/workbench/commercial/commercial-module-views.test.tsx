@@ -52,6 +52,6 @@ it("renders owner-backed orders and submits bounded search and date/type/status 
   fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "2026-09-01" } });
   fireEvent.change(screen.getByLabelText("结束日期"), { target: { value: "2026-09-23" } });
   await userEvent.click(screen.getByRole("button", { name: "筛选" }));
-  expect(onFilter).toHaveBeenCalledWith({ query: "renewal", kind: "RESOURCE_PURCHASE", status: "FULFILLED", from: "2026-09-01T00:00:00Z", until: "2026-09-24T00:00:00.000Z" });
+  expect(onFilter).toHaveBeenCalledWith({ query: "renewal", kind: "RESOURCE_PURCHASE", status: "FULFILLED", from: "2026-08-31T16:00:00.000Z", until: "2026-09-23T16:00:00.000Z" });
   expect(screen.getByText(/不提供购买、退款、发票开具或导出写操作/)).toBeVisible();
 });

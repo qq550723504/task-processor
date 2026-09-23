@@ -19,7 +19,6 @@ const orderPage = z.object({ organization_id: id, items: z.array(order).max(50),
 const orderSummary = z.object({ organization_id: id, currency: z.literal("CNY"), from: timestamp, until: timestamp, spend_minor: nonnegative, store_renewal_spend_minor: nonnegative, ai_point_spend_minor: nonnegative, data_row_spend_minor: nonnegative, other_spend_minor: nonnegative, observed_at: timestamp }).strict().refine(value => Date.parse(value.from) < Date.parse(value.until));
 
 export type CommercialWallet = z.infer<typeof wallet>;
-export type CommercialWalletEntry = z.infer<typeof walletEntry>;
 export type CommercialWalletEntryPage = z.infer<typeof walletEntryPage>;
 export type CommercialOrder = z.infer<typeof order>;
 export type CommercialOrderPage = z.infer<typeof orderPage>;
