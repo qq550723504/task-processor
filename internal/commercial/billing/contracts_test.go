@@ -178,6 +178,34 @@ func TestWalletTopUpRejectsResourcePurchaseLifecycleStates(t *testing.T) {
 	}
 }
 
+func TestTopUpOrderRejectsResourcePurchaseEvidence(t *testing.T) {
+	for _, status := range []OrderStatus{OrderPending, OrderCancelled, OrderFulfilled} {
+		for _, evidence := range []string{"wallet reservation id", "wallet reservation state", "resource grant"} {
+			t.Run(string(status)+"/"+evidence, func(t *testing.T) {
+				order := validWalletTopUpOrder(time.Now().UTC())
+				order.Status = status
+				if status == OrderFulfilled {
+					order.PaymentID = "payment-1"
+				}
+				switch evidence {
+				case "wallet reservation id":
+					order.WalletReservationID = "reservation-1"
+				case "wallet reservation state":
+					order.WalletReservationState = money.WalletReservationReserved
+				case "resource grant":
+					order.ResourceGrantOperationID = "grant-operation-1"
+					order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
+					order.ResourceGrantSourceIdentity = "commercial-order-item:top-up-test"
+				}
+
+				if !errors.Is(order.Validate(), ErrInvalid) {
+					t.Fatalf("%s top-up with %s evidence = nil, want ErrInvalid", status, evidence)
+				}
+			})
+		}
+	}
+}
+
 func TestResourcePurchasePostReservationStatesRequireWalletReservation(t *testing.T) {
 	now := time.Now().UTC()
 	for _, status := range []OrderStatus{

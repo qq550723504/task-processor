@@ -196,7 +196,7 @@ func (order Order) Validate() error {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
-		if len(order.Items) != 0 || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") || (order.Status != OrderFulfilled && strings.TrimSpace(order.PaymentID) != "") {
+		if len(order.Items) != 0 || hasWalletReservationEvidence(order) || hasResourceGrantEvidence(order) || topUpUsesResourcePurchaseLifecycle(order.Status) || (order.Status == OrderFulfilled && strings.TrimSpace(order.PaymentID) == "") || (order.Status != OrderFulfilled && strings.TrimSpace(order.PaymentID) != "") {
 			return ErrInvalid
 		}
 	}
