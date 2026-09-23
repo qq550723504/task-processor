@@ -252,8 +252,9 @@ states that can represent an in-progress or completed/uncertain grant.
 Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
 top-up must carry an accepted provider payment reference; without that proof it
 is invalid. Top-up intent remains pending or explicitly cancelled until the
-provider settlement binding is accepted. Top-up orders never carry resource
-purchase items, wallet reservation evidence, or resource grant evidence. A
+provider settlement binding is accepted. Top-up orders never carry a resource
+quote, purchase items, wallet reservation evidence, or resource grant evidence.
+Resource purchases never carry provider payment evidence. A
 cancelled top-up must not carry payment evidence, because a settled payment
 cannot be released as if it were never credited. Non-fulfilled top-up states
 must not carry payment evidence.

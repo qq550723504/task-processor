@@ -206,6 +206,24 @@ func TestTopUpOrderRejectsResourcePurchaseEvidence(t *testing.T) {
 	}
 }
 
+func TestOrderKindsRejectOtherKindEvidence(t *testing.T) {
+	t.Run("top-up rejects resource quote", func(t *testing.T) {
+		order := validWalletTopUpOrder(time.Now().UTC())
+		order.QuoteID = "quote-1"
+		if !errors.Is(order.Validate(), ErrInvalid) {
+			t.Fatalf("top-up with resource quote = nil, want ErrInvalid")
+		}
+	})
+
+	t.Run("resource purchase rejects provider payment", func(t *testing.T) {
+		order := validResourcePurchaseOrder(time.Now().UTC())
+		order.PaymentID = "payment-1"
+		if !errors.Is(order.Validate(), ErrInvalid) {
+			t.Fatalf("resource purchase with provider payment = nil, want ErrInvalid")
+		}
+	})
+}
+
 func TestResourcePurchasePostReservationStatesRequireWalletReservation(t *testing.T) {
 	now := time.Now().UTC()
 	for _, status := range []OrderStatus{
