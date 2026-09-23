@@ -194,7 +194,57 @@ func TestOrganizationWalletDelayedReversalPreservesProcessingOrder(t *testing.T)
 	}
 	after, err := repository.ReadOrganizationWallet(ctx, "org-delayed-reversal", "CNY")
 	if err != nil || !after.UpdatedAt.After(before.UpdatedAt) {
-		t.Fatalf("wallet after delayed reversal=%#v err=%v; updated_at must remain monotonic", after, err)
+		t.Fatalf("wallet before delayed reversal=%s, after=%s err=%v; updated_at must remain monotonic", before.UpdatedAt, after.UpdatedAt, err)
+	}
+}
+
+func TestOrganizationWalletDelayedTopUpPreservesProcessingOrder(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, payment := range []ledgermoney.PaymentSettlement{
+		{PaymentID: "pay-initial-delayed-topup", PayerUserID: "user-delayed-topup", Currency: "CNY", GrossAmountMinor: 1000, CommissionableAmountMinor: 1000, Status: ledgermoney.PaymentSettled, SettledAt: now, ProviderReference: "provider-initial-delayed-topup", Version: 1},
+		{PaymentID: "pay-late-delayed-topup", PayerUserID: "user-delayed-topup", Currency: "CNY", GrossAmountMinor: 500, CommissionableAmountMinor: 500, Status: ledgermoney.PaymentSettled, SettledAt: now.Add(-time.Hour), ProviderReference: "provider-late-delayed-topup", Version: 1},
+	} {
+		if err := repository.RecordPaymentSettlement(ctx, payment); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-initial-delayed-topup", CommercialOrderID: "topup-initial-delayed", OrganizationID: "org-delayed-topup", Currency: "CNY", AmountMinor: 1000, SettledAt: now, ProviderReference: "provider-initial-delayed-topup", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "purchase-before-delayed-topup", OrganizationID: "org-delayed-topup", CommercialOrderID: "purchase-before-delayed-topup", Currency: "CNY", AmountMinor: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OperationID: "commit-before-delayed-topup", OrganizationID: "org-delayed-topup", CommercialOrderID: "purchase-before-delayed-topup", ReservationID: reservation.ReservationID}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := repository.ReadOrganizationWallet(ctx, "org-delayed-topup", "CNY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settledAt := now.Add(-time.Hour)
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-late-delayed-topup", CommercialOrderID: "topup-late-delayed", OrganizationID: "org-delayed-topup", Currency: "CNY", AmountMinor: 500, SettledAt: settledAt, ProviderReference: "provider-late-delayed-topup", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var settlement walletTopUpSettlementRow
+	if err := db.Where("payment_id = ?", "pay-late-delayed-topup").Take(&settlement).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !settlement.SettledAt.Equal(settledAt.Truncate(time.Microsecond)) {
+		t.Fatalf("provider settled_at=%s, want preserved %s", settlement.SettledAt, settledAt.Truncate(time.Microsecond))
+	}
+	var entry organizationWalletEntryRow
+	if err := db.Where("source_identity = ?", "pay-late-delayed-topup").Take(&entry).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !entry.OccurredAt.After(before.UpdatedAt) {
+		t.Fatalf("ledger top-up timestamp=%s must follow prior wallet mutation=%s", entry.OccurredAt, before.UpdatedAt)
+	}
+	after, err := repository.ReadOrganizationWallet(ctx, "org-delayed-topup", "CNY")
+	if err != nil || !after.UpdatedAt.After(before.UpdatedAt) {
+		t.Fatalf("wallet after delayed top-up=%#v err=%v; updated_at must remain monotonic", after, err)
 	}
 }
 

@@ -227,26 +227,27 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 			return ledgermoney.ErrInvalid
 		}
 		availableBefore, debtBefore := row.AvailableMinor, row.DebtMinor
-		now := ledgermoney.NormalizeTimestamp(settlement.SettledAt)
+		settledAt := ledgermoney.NormalizeTimestamp(settlement.SettledAt)
+		processedAt := nextWalletProcessingTimestamp(row.UpdatedAt)
 		row.AvailableMinor, row.DebtMinor, row.LifetimeTopUpMinor = available, debt, row.LifetimeTopUpMinor+settlement.AmountMinor
 		row.Version++
-		row.UpdatedAt = now
-		if err := tx.Save(&row).Error; err != nil {
+		row.UpdatedAt = processedAt
+		if err := saveWalletRow(tx, row); err != nil {
 			return ledgermoney.ErrUnavailable
 		}
-		if err := tx.Create(&walletTopUpSettlementRow{PaymentID: settlement.PaymentID, CommercialOrderID: settlement.CommercialOrderID, OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, AmountMinor: settlement.AmountMinor, SettledAt: now, ProviderReference: settlement.ProviderReference, Version: settlement.Version}).Error; err != nil {
+		if err := tx.Create(&walletTopUpSettlementRow{PaymentID: settlement.PaymentID, CommercialOrderID: settlement.CommercialOrderID, OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, AmountMinor: settlement.AmountMinor, SettledAt: settledAt, ProviderReference: settlement.ProviderReference, Version: settlement.Version}).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		debtRepaid := debtBefore - debt
 		availableAdded := available - availableBefore
 		if debtRepaid > 0 {
-			debtEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryDebtRepayment), AvailableAfter: availableBefore, ReservedAfter: row.ReservedMinor, DebtDelta: -debtRepaid, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID + ":debt", OccurredAt: now}
+			debtEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryDebtRepayment), AvailableAfter: availableBefore, ReservedAfter: row.ReservedMinor, DebtDelta: -debtRepaid, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID + ":debt", OccurredAt: processedAt}
 			if err := tx.Create(&debtEntry).Error; err != nil {
 				return ledgermoney.ErrUnavailable
 			}
 		}
 		if availableAdded > 0 {
-			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, ReservedAfter: row.ReservedMinor, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: now}
+			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, ReservedAfter: row.ReservedMinor, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: processedAt}
 			if err := tx.Create(&creditEntry).Error; err != nil {
 				return ledgermoney.ErrUnavailable
 			}
@@ -311,13 +312,9 @@ func (r *Repository) ApplyTopUpReversal(ctx context.Context, _ string, reversal 
 		row.Version++
 		// Wallet history is ordered by processing time because the after-balances
 		// reflect the serialized mutation order, not provider event-time order.
-		// PostgreSQL and SQLite persist timestamps at microsecond precision.
-		processedAt := time.Now().UTC().Truncate(time.Microsecond)
-		if !processedAt.After(row.UpdatedAt.Truncate(time.Microsecond)) {
-			processedAt = row.UpdatedAt.Truncate(time.Microsecond).Add(time.Microsecond)
-		}
+		processedAt := nextWalletProcessingTimestamp(row.UpdatedAt)
 		row.UpdatedAt = processedAt
-		if err := tx.Save(&row).Error; err != nil {
+		if err := saveWalletRow(tx, row); err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		if err := tx.Create(&walletReversalRow{ReversalID: reversal.ReversalID, PaymentID: reversal.PaymentID, CommercialOrderID: reversal.CommercialOrderID, OrganizationID: reversal.OrganizationID, Kind: string(reversal.Kind), AmountMinor: reversal.AmountMinor, ProviderReference: reversal.ProviderReference, OccurredAt: ledgermoney.NormalizeTimestamp(reversal.OccurredAt)}).Error; err != nil {
@@ -375,13 +372,13 @@ func (r *Repository) ReserveCommercialPurchase(ctx context.Context, input ledger
 		if wallet.ReservedMinor > math.MaxInt64-input.AmountMinor {
 			return ledgermoney.ErrInvalid
 		}
-		now := time.Now().UTC()
+		now := nextWalletProcessingTimestamp(wallet.UpdatedAt)
 		reservation := walletReservationRow{OrganizationID: input.OrganizationID, ReservationID: uuid.NewString(), OperationID: input.OperationID, CommercialOrderID: input.CommercialOrderID, Currency: input.Currency, AmountMinor: input.AmountMinor, State: string(ledgermoney.WalletReservationReserved), CreatedAt: now, UpdatedAt: now}
 		wallet.AvailableMinor -= input.AmountMinor
 		wallet.ReservedMinor += input.AmountMinor
 		wallet.Version++
 		wallet.UpdatedAt = now
-		if err := tx.Save(&wallet).Error; err != nil {
+		if err := saveWalletRow(tx, wallet); err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		if err := tx.Create(&reservation).Error; err != nil {
@@ -462,11 +459,11 @@ func (r *Repository) finishReservation(ctx context.Context, operationID, organiz
 		}
 		wallet.ReservedMinor -= reservation.AmountMinor
 		wallet.Version++
-		wallet.UpdatedAt = time.Now().UTC()
+		wallet.UpdatedAt = nextWalletProcessingTimestamp(wallet.UpdatedAt)
 		reservation.State = string(terminal)
 		reservation.FinishOperationID = &operationID
 		reservation.UpdatedAt = wallet.UpdatedAt
-		if err := tx.Save(&wallet).Error; err != nil {
+		if err := saveWalletRow(tx, wallet); err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		if err := tx.Save(&reservation).Error; err != nil {
@@ -491,6 +488,30 @@ func lockOrCreateWallet(tx *gorm.DB, organizationID, currency string) (organizat
 		return organizationWalletRow{}, ledgermoney.ErrUnavailable
 	}
 	return row, nil
+}
+
+func nextWalletProcessingTimestamp(previous time.Time) time.Time {
+	// PostgreSQL and SQLite persist timestamps at microsecond precision.
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	previous = previous.UTC().Truncate(time.Microsecond)
+	if !now.After(previous) {
+		return previous.Add(time.Microsecond)
+	}
+	return now
+}
+
+func saveWalletRow(tx *gorm.DB, wallet organizationWalletRow) error {
+	return tx.Model(&organizationWalletRow{}).
+		Where("organization_id = ? AND currency = ?", wallet.OrganizationID, wallet.Currency).
+		UpdateColumns(map[string]any{
+			"available_minor":      wallet.AvailableMinor,
+			"reserved_minor":       wallet.ReservedMinor,
+			"debt_minor":           wallet.DebtMinor,
+			"lifetime_topup_minor": wallet.LifetimeTopUpMinor,
+			"lifetime_spend_minor": wallet.LifetimeSpendMinor,
+			"version":              wallet.Version,
+			"updated_at":           wallet.UpdatedAt,
+		}).Error
 }
 
 func createWalletEntry(tx *gorm.DB, wallet organizationWalletRow, kind ledgermoney.WalletEntryKind, availableDelta, reservedDelta, debtDelta int64, orderID, paymentID, source string, occurredAt time.Time) error {
