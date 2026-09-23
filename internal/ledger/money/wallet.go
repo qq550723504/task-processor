@@ -103,15 +103,15 @@ func (entry WalletEntry) Validate() error {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseReserve:
-		if !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta >= 0 || entry.ReservedDelta <= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+		if entry.PaymentID != "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta >= 0 || entry.ReservedDelta <= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseCommit:
-		if !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta != 0 || entry.ReservedDelta >= 0 || entry.DebtDelta != 0 {
+		if entry.PaymentID != "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta != 0 || entry.ReservedDelta >= 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseRelease:
-		if !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta <= 0 || entry.ReservedDelta >= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+		if entry.PaymentID != "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta <= 0 || entry.ReservedDelta >= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryDebtRepayment:

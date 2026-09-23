@@ -121,6 +121,22 @@ func TestSettlementWalletEntriesRequireCommercialOrderBinding(t *testing.T) {
 	}
 }
 
+func TestWalletPurchaseEntriesRejectPaymentBinding(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryPurchaseReserve,
+		WalletEntryPurchaseCommit,
+		WalletEntryPurchaseRelease,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("%s entry with provider payment binding = nil, want ErrInvalid", kind)
+			}
+		})
+	}
+}
+
 func TestWalletEntryRejectsUnknownKind(t *testing.T) {
 	if err := validWalletEntry(WalletEntryKind("UNKNOWN")).Validate(); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown wallet entry kind = %v, want ErrInvalid", err)
@@ -356,6 +372,8 @@ func validWalletEntry(kind WalletEntryKind) WalletEntry {
 	case WalletEntryPurchaseReserve:
 		entry.AvailableDelta = -100
 		entry.ReservedDelta = 100
+		entry.AvailableAfter = 0
+		entry.ReservedAfter = 100
 	case WalletEntryPurchaseCommit:
 		entry.ReservedDelta = -100
 	case WalletEntryPurchaseRelease:

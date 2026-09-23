@@ -494,7 +494,9 @@ A debt-repayment entry must also carry the originating top-up's canonical
 by existing debt and no available-balance credit remains. Top-up credits and
 refund/chargeback reversals must also carry the original canonical
 `commercial_order_id` so every settlement-backed balance change remains bound to
-its beneficiary order.
+its beneficiary order. Purchase reservation, commit, and release entries must
+not carry `payment_id`; provider settlement evidence belongs only to top-up and
+reversal ledger entries.
 Entry deltas are kind-specific: top-up credits increase available balance;
 refund and chargeback reversals decrease available balance and may increase
 debt for the portion not covered by available funds; purchase reservation
