@@ -482,11 +482,12 @@ repayment; unknown kinds and entries missing common identity/balance fields are
 invalid. The after snapshot must preserve the debt-first invariant: a positive
 `debt_after_minor` requires zero `available_after_minor`. Top-up and
 refund/chargeback reversal entries must carry `payment_id`.
-Entry deltas are kind-specific: credits and reversals increase available
-balance; purchase reservation moves an equal amount from available to
-reserved; purchase commit decreases reserved; purchase release moves an equal
-amount back to available; and debt repayment decreases debt. Reversed or
-zero-direction deltas are invalid.
+Entry deltas are kind-specific: top-up credits increase available balance;
+refund and chargeback reversals decrease available balance and may increase
+debt for the portion not covered by available funds; purchase reservation
+moves an equal amount from available to reserved; purchase commit decreases
+reserved; purchase release moves an equal amount back to available; and debt
+repayment decreases debt. Reversed or zero-effect deltas are invalid.
 Purchase reservation, commit, and release entries must also carry the
 canonical `commercial_order_id` binding.
 Tenant/browser callers never receive a generic money adjustment endpoint.

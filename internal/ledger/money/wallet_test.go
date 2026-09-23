@@ -159,6 +159,52 @@ func TestWalletEntryRequiresKindSpecificDeltas(t *testing.T) {
 	}
 }
 
+func TestWalletReversalEntriesConsumeAvailableAndCreateDebt(t *testing.T) {
+	for _, kind := range []WalletEntryKind{WalletEntryRefundReversal, WalletEntryChargebackReversal} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.PaymentID = "payment-1"
+			entry.AvailableDelta = -60
+			entry.DebtDelta = 40
+			entry.AvailableAfter = 0
+			entry.DebtAfter = 40
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("reversal consuming available and recording debt rejected: %v", err)
+			}
+
+			entry.AvailableDelta = 0
+			entry.DebtDelta = 100
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("reversal recorded fully as debt rejected: %v", err)
+			}
+
+			entry.AvailableDelta = -100
+			entry.DebtDelta = 0
+			entry.DebtAfter = 0
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("reversal consuming available only rejected: %v", err)
+			}
+
+			entry.AvailableDelta = 100
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("reversal with positive available delta = nil, want ErrInvalid")
+			}
+
+			entry.AvailableDelta = 0
+			entry.DebtDelta = -100
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("reversal with negative debt delta = nil, want ErrInvalid")
+			}
+
+			entry.AvailableDelta = 0
+			entry.DebtDelta = 0
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("reversal with no monetary effect = nil, want ErrInvalid")
+			}
+		})
+	}
+}
+
 func TestWalletPurchaseEntryRequiresCommercialOrderBinding(t *testing.T) {
 	for _, kind := range []WalletEntryKind{
 		WalletEntryPurchaseReserve,
@@ -189,8 +235,15 @@ func validWalletEntry(kind WalletEntryKind) WalletEntry {
 		OccurredAt:        time.Now().UTC(),
 	}
 	switch kind {
-	case WalletEntryTopUpCredit, WalletEntryRefundReversal, WalletEntryChargebackReversal:
+	case WalletEntryTopUpCredit:
 		entry.AvailableDelta = 100
+	case WalletEntryRefundReversal:
+		entry.AvailableDelta = -100
+		entry.AvailableAfter = 0
+	case WalletEntryChargebackReversal:
+		entry.DebtDelta = 100
+		entry.AvailableAfter = 0
+		entry.DebtAfter = 100
 	case WalletEntryPurchaseReserve:
 		entry.AvailableDelta = -100
 		entry.ReservedDelta = 100
