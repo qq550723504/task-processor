@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { createRequire } from "node:module";
@@ -21,6 +21,38 @@ it("uses backend capability instead of context role names", async () => {
   render(page()); expect(await screen.findByText("成员甲")).toBeVisible();
   expect(screen.queryByRole("button", { name: "邀请成员" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "移除成员" })).not.toBeInTheDocument();
+});
+it("shows exact owner-backed member summary labels and the seven-column member table", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ ...result, total: 3, items: [
+    { ...result.items[0], displayName: "管理员甲", roles: ["listingkit_admin"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-13T00:00:00Z" },
+    { ...result.items[0], id: "grant-2", userId: "user-2", displayName: "成员乙", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-11T00:00:00Z", changedAt: "2026-09-13T00:00:00Z" },
+    { ...result.items[0], id: "grant-3", userId: "user-3", displayName: "成员丙", roles: ["listingkit_viewer"], state: "inactive", createdAt: "2026-09-10T00:00:00Z", changedAt: "2026-09-12T00:00:00Z" },
+  ] }))));
+  render(page());
+  const summary = await screen.findByRole("region", { name: "成员目录摘要" });
+  expect(within(summary).getByText("正式成员")).toBeVisible();
+  expect(within(summary).getByText("管理员")).toBeVisible();
+  expect(within(summary).getByText("邀请中")).toBeVisible();
+  expect(within(summary).getByText("已停用")).toBeVisible();
+  expect(within(summary).getByText("2", { exact: true })).toBeVisible();
+  expect(within(summary).getAllByText("1", { exact: true })).toHaveLength(2);
+  expect(within(summary).getByText("未提供", { exact: true })).toBeVisible();
+  const table = screen.getByRole("table", { name: "当前企业成员" });
+  expect(within(table).getAllByRole("columnheader")).toHaveLength(7);
+  expect(within(table).getByText("管理员甲")).toBeVisible();
+  expect(within(table).getAllByText("未提供")).toHaveLength(6);
+});
+it("withholds admin and inactive counts when the directory page is incomplete", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({
+    ...result,
+    total: 21,
+    items: [{ ...result.items[0], roles: ["listingkit_admin"], state: "inactive" }],
+  }))));
+  render(page());
+  const summary = await screen.findByRole("region", { name: "成员目录摘要" });
+  expect(within(summary).queryByText("21", { exact: true })).not.toBeInTheDocument();
+  expect(within(summary).getAllByText("未提供", { exact: true })).toHaveLength(4);
+  expect(within(summary).getAllByText("目录分页未覆盖全体成员")).toHaveLength(3);
 });
 it("starts a role edit with the member's current role", async () => {
   const data = {...result,canManage:true,assignableRoles:["listingkit_viewer","listingkit_operator"],items:[{...result.items[0],roles:["listingkit_operator"],canChangeRole:true}]};
