@@ -86,6 +86,16 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 	}
 }
 
+func TestCommercialBillingAdmittedRoutesIncludeSummary(t *testing.T) {
+	want := currentApplicationRoute{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/summary"}
+	for _, route := range currentCommercialBillingApplicationRoutes {
+		if route == want {
+			return
+		}
+	}
+	t.Fatalf("commercial billing admitted routes omit registered route %s %s", want.Method, want.Path)
+}
+
 func TestCurrentApplicationReferralRouteAdmission(t *testing.T) {
 	routes := make([]httproute.Descriptor, 0)
 	for _, r := range currentWorkbenchApplicationRoutes {

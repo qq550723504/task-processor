@@ -72,6 +72,13 @@ func TestQuoteIsServerPricedAndOrderReplayRejectsChangedPayload(t *testing.T) {
 	}
 }
 
+func TestOrderIdempotencyHasDatabaseUniqueFence(t *testing.T) {
+	repository := commercialRepository(t)
+	if !repository.db.Migrator().HasIndex(&orderRow{}, "uq_commercial_orders_org_idempotency") {
+		t.Fatal("commercial order idempotency must be protected by a composite database unique index")
+	}
+}
+
 func TestQuoteFailsClosedWithoutApprovedPrice(t *testing.T) {
 	repository := commercialRepository(t)
 	offer := billing.Offer{OfferID: "offer-unpriced", ProductKind: billing.ProductDataRow, ResourceType: orgresource.ResourceDataRow, Currency: billing.CurrencyCNY, PricingVersion: "pricing-1", MinQuantity: 1, MaxQuantity: 10, Status: billing.OfferActive}
@@ -250,5 +257,92 @@ func TestResourcePurchaseReplayReconcilesLostCommitAcknowledgement(t *testing.T)
 	walletSnapshot, err := walletRepository.ReadOrganizationWallet(ctx, "org-reconcile", "CNY")
 	if err != nil || walletSnapshot.AvailableMinor != 30 || walletSnapshot.ReservedMinor != 0 || walletSnapshot.LifetimeSpendMinor != 70 {
 		t.Fatalf("wallet after reconciliation = %#v, err=%v", walletSnapshot, err)
+	}
+}
+
+func TestResourcePurchaseReplayResumesDurableIntermediateOrders(t *testing.T) {
+	for _, initialStatus := range []billing.OrderStatus{billing.OrderFundsReserved, billing.OrderFulfilling} {
+		t.Run(string(initialStatus), func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open("file:commercial-resume-"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, migrate := range []func(*gorm.DB) error{moneystore.AutoMigrate, AutoMigrate, orgresourceadapter.AutoMigrate} {
+				if err := migrate(db); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := context.Background()
+			wallet, err := moneystore.New(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commercial, err := New(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resourceRepository, err := orgresourceadapter.NewGormRepository(db, orgresourceadapter.TransactionConfig{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			grantService, err := orgresource.NewPurchasedResourceGrantService(resourceRepository, orgresourceadapter.TrustedCommercialGrantAuthorizer{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			service, err := billing.NewService(commercial, commercial, commercial, commercial, wallet, grantService)
+			if err != nil {
+				t.Fatal(err)
+			}
+			orgID := "org-resume-" + string(initialStatus)
+			paymentID := "payment-resume-" + string(initialStatus)
+			if err := wallet.RecordPaymentSettlement(ctx, money.PaymentSettlement{PaymentID: paymentID, PayerUserID: "user-a", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: money.PaymentSettled, SettledAt: time.Now().UTC(), ProviderReference: "provider-" + paymentID, Version: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := wallet.CreditSettledTopUp(ctx, "", money.OrganizationTopUpSettlement{PaymentID: paymentID, CommercialOrderID: "topup-" + paymentID, OrganizationID: orgID, Currency: "CNY", AmountMinor: 100, SettledAt: time.Now().UTC(), ProviderReference: "provider-" + paymentID, Version: 1}); err != nil {
+				t.Fatal(err)
+			}
+			offerID := "offer-" + string(initialStatus)
+			if err := commercial.SaveOffer(ctx, billing.Offer{OfferID: offerID, ProductKind: billing.ProductAIPoint, ResourceType: orgresource.ResourceAIPoint, Currency: billing.CurrencyCNY, UnitPriceMinor: 7, PricingVersion: "pricing-1", MinQuantity: 1, MaxQuantity: 1000, Status: billing.OfferActive}); err != nil {
+				t.Fatal(err)
+			}
+			quote, err := service.CreateQuote(ctx, billing.QuoteRequest{OrganizationID: orgID, OfferID: offerID, Quantity: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := billing.CreateResourceOrderRequest{OrganizationID: orgID, QuoteID: quote.QuoteID, IdempotencyKey: "retry-" + string(initialStatus)}
+			order, err := commercial.CreatePendingResourceOrder(ctx, request, quote)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reservation, err := wallet.ReserveCommercialPurchase(ctx, money.ReserveWalletFundsInput{OperationID: order.OrderID, OrganizationID: orgID, CommercialOrderID: order.OrderID, Currency: quote.Currency, AmountMinor: quote.TotalMinor})
+			if err != nil {
+				t.Fatal(err)
+			}
+			order.WalletReservationID = reservation.ReservationID
+			order.WalletReservationState = reservation.State
+			order.Status = initialStatus
+			if initialStatus == billing.OrderFulfilling {
+				grant, grantErr := grantService.GrantPurchasedResource(ctx, orgresource.PurchasedResourceGrantInput{OrganizationID: orgID, OperationID: "grant:" + order.OrderID, CommercialOrderID: order.OrderID, CommercialOrderItemID: order.Items[0].OrderItemID, ResourceType: order.Items[0].ResourceType, Quantity: order.Items[0].ResourceQuantity, Principal: orgresource.Principal{ID: "commercial-billing", Kind: orgresource.PrincipalTrustedCommercial}})
+				if grantErr != nil {
+					t.Fatal(grantErr)
+				}
+				order.ResourceGrantOperationID = grant.Snapshot.OperationID
+				order.ResourceGrantSourceType = grant.Snapshot.SourceType
+				order.ResourceGrantSourceIdentity = grant.Snapshot.SourceIdentity
+			}
+			order.UpdatedAt = time.Now().UTC()
+			if err := commercial.UpdateOrder(ctx, order); err != nil {
+				t.Fatal(err)
+			}
+
+			recovered, err := service.CreateResourceOrder(ctx, request)
+			if err != nil || recovered.Status != billing.OrderFulfilled || recovered.WalletReservationState != money.WalletReservationCommitted {
+				t.Fatalf("recovered order = %#v, err=%v", recovered, err)
+			}
+			walletSnapshot, err := wallet.ReadOrganizationWallet(ctx, orgID, "CNY")
+			if err != nil || walletSnapshot.AvailableMinor != 30 || walletSnapshot.ReservedMinor != 0 || walletSnapshot.LifetimeSpendMinor != 70 {
+				t.Fatalf("wallet after recovery = %#v, err=%v", walletSnapshot, err)
+			}
+		})
 	}
 }

@@ -58,6 +58,10 @@ func TestOrganizationWalletTopUpReserveAndCommitAreIdempotent(t *testing.T) {
 	if err != nil || wallet.AvailableMinor != 600 || wallet.ReservedMinor != 0 || wallet.LifetimeSpendMinor != 400 {
 		t.Fatalf("wallet=%#v err=%v", wallet, err)
 	}
+	secondReservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "order-2", OrganizationID: "org-a", CommercialOrderID: "order-2", Currency: "CNY", AmountMinor: 300})
+	if err != nil || secondReservation.State != ledgermoney.WalletReservationReserved {
+		t.Fatalf("second reservation=%#v err=%v", secondReservation, err)
+	}
 }
 
 func TestOrganizationWalletReversalCreatesDebtAndRepaysOnNextTopUp(t *testing.T) {
@@ -178,6 +182,40 @@ func TestTopUpDebtRepaymentProducesValidImmutableEntry(t *testing.T) {
 	entry := walletEntry(entries[0])
 	if entry.Kind != ledgermoney.WalletEntryDebtRepayment || entry.Validate() != nil || entry.DebtDelta != -100 {
 		t.Fatalf("debt repayment entry=%#v validation=%v", entry, entry.Validate())
+	}
+}
+
+func TestReleaseRepaysReversalDebtBeforeReturningAvailableFunds(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	settledAt := time.Now().UTC()
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-release-debt", PayerUserID: "user-release-debt", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: ledgermoney.PaymentSettled, SettledAt: settledAt, ProviderReference: "provider-release-debt", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-release-debt", CommercialOrderID: "topup-release-debt", OrganizationID: "org-release-debt", Currency: "CNY", AmountMinor: 100, SettledAt: settledAt, ProviderReference: "provider-release-debt", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "purchase-release-debt", OrganizationID: "org-release-debt", CommercialOrderID: "purchase-release-debt", Currency: "CNY", AmountMinor: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ApplyTopUpReversal(ctx, "", ledgermoney.OrganizationWalletReversal{ReversalID: "refund-release-debt", PaymentID: "pay-release-debt", CommercialOrderID: "topup-release-debt", OrganizationID: "org-release-debt", Kind: ledgermoney.WalletReversalRefund, Currency: "CNY", AmountMinor: 100, OccurredAt: settledAt.Add(time.Minute), ProviderReference: "provider-refund-release-debt"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ReleaseCommercialPurchase(ctx, ledgermoney.ReleaseWalletReservationInput{OperationID: "release-purchase", OrganizationID: "org-release-debt", CommercialOrderID: "purchase-release-debt", ReservationID: reservation.ReservationID, Reason: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	wallet, err := repository.ReadOrganizationWallet(ctx, "org-release-debt", "CNY")
+	if err != nil || wallet.AvailableMinor != 0 || wallet.ReservedMinor != 0 || wallet.DebtMinor != 0 {
+		t.Fatalf("wallet after release=%#v err=%v", wallet, err)
+	}
+	var entryRow organizationWalletEntryRow
+	if err := db.Where("commercial_order_id = ? AND entry_kind = ?", "purchase-release-debt", ledgermoney.WalletEntryPurchaseRelease).Take(&entryRow).Error; err != nil {
+		t.Fatal(err)
+	}
+	entry := walletEntry(entryRow)
+	if entry.AvailableDelta != 0 || entry.ReservedDelta != -100 || entry.DebtDelta != -100 || entry.Validate() != nil {
+		t.Fatalf("release entry=%#v validation=%v", entry, entry.Validate())
 	}
 }
 

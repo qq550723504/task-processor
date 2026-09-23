@@ -49,8 +49,8 @@ type organizationWalletEntryRow struct {
 func (organizationWalletEntryRow) TableName() string { return "ledger_organization_wallet_entries" }
 
 type walletReservationRow struct {
-	OrganizationID    string    `gorm:"column:organization_id;primaryKey;size:128"`
-	ReservationID     string    `gorm:"column:reservation_id;uniqueIndex;size:128;not null"`
+	OrganizationID    string    `gorm:"column:organization_id;size:128;not null;index"`
+	ReservationID     string    `gorm:"column:reservation_id;primaryKey;size:128"`
 	OperationID       string    `gorm:"column:operation_id;uniqueIndex:uq_wallet_reservation_operation,priority:1;size:128;not null"`
 	CommercialOrderID string    `gorm:"column:commercial_order_id;uniqueIndex:uq_wallet_reservation_operation,priority:2;size:128;not null"`
 	Currency          string    `gorm:"column:currency;size:3;not null"`
@@ -265,16 +265,19 @@ func (r *Repository) ApplyTopUpReversal(ctx context.Context, _ string, reversal 
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return ledgermoney.ErrUnavailable
 		}
+		row, err := lockOrCreateWallet(tx, reversal.OrganizationID, reversal.Currency)
+		if err != nil {
+			return err
+		}
+		// Every reversal for this settlement locks the same organization wallet
+		// before reading the accumulated total, making the wallet row the
+		// serialization fence for both the balance and settlement limit.
 		var reversed int64
 		if err := tx.Model(&walletReversalRow{}).Where("payment_id = ?", reversal.PaymentID).Select("COALESCE(SUM(amount_minor), 0)").Scan(&reversed).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
-		if reversal.AmountMinor > settlement.AmountMinor-reversed {
+		if reversed > settlement.AmountMinor || reversal.AmountMinor > settlement.AmountMinor-reversed {
 			return ledgermoney.ErrConflict
-		}
-		row, err := lockOrCreateWallet(tx, reversal.OrganizationID, reversal.Currency)
-		if err != nil {
-			return err
 		}
 		availableLoss := minInt64(row.AvailableMinor, reversal.AmountMinor)
 		debtIncrease := reversal.AmountMinor - availableLoss
@@ -390,12 +393,16 @@ func (r *Repository) finishReservation(ctx context.Context, organizationID, orde
 			return ledgermoney.ErrWalletReservationConflict
 		}
 		availableDelta := int64(0)
+		debtDelta := int64(0)
 		if terminal == ledgermoney.WalletReservationReleased {
-			availableDelta = reservation.AmountMinor
+			debtRepaid := minInt64(wallet.DebtMinor, reservation.AmountMinor)
+			debtDelta = -debtRepaid
+			availableDelta = reservation.AmountMinor - debtRepaid
 			if wallet.AvailableMinor > math.MaxInt64-availableDelta {
 				return ledgermoney.ErrInvalid
 			}
 			wallet.AvailableMinor += availableDelta
+			wallet.DebtMinor -= debtRepaid
 		} else {
 			if wallet.LifetimeSpendMinor > math.MaxInt64-reservation.AmountMinor {
 				return ledgermoney.ErrInvalid
@@ -413,7 +420,7 @@ func (r *Repository) finishReservation(ctx context.Context, organizationID, orde
 		if err := tx.Save(&reservation).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
-		if err := createWalletEntry(tx, wallet, kind, availableDelta, -reservation.AmountMinor, 0, orderID, "", orderID, wallet.UpdatedAt); err != nil {
+		if err := createWalletEntry(tx, wallet, kind, availableDelta, -reservation.AmountMinor, debtDelta, orderID, "", orderID, wallet.UpdatedAt); err != nil {
 			return err
 		}
 		out = reservationFromRow(reservation)

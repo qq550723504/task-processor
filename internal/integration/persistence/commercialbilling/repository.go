@@ -55,7 +55,7 @@ func (quoteRow) TableName() string { return "commercial_quotes" }
 
 type orderRow struct {
 	OrderID                     string    `gorm:"column:order_id;primaryKey;size:128"`
-	OrganizationID              string    `gorm:"column:organization_id;size:128;not null;index"`
+	OrganizationID              string    `gorm:"column:organization_id;size:128;not null;index;uniqueIndex:uq_commercial_orders_org_idempotency,priority:1"`
 	Kind                        string    `gorm:"column:kind;size:32;not null"`
 	QuoteID                     string    `gorm:"column:quote_id;size:128"`
 	Currency                    string    `gorm:"column:currency;size:3;not null"`
@@ -67,7 +67,7 @@ type orderRow struct {
 	ResourceGrantOperationID    string    `gorm:"column:resource_grant_operation_id;size:128"`
 	ResourceGrantSourceType     string    `gorm:"column:resource_grant_source_type;size:64"`
 	ResourceGrantSourceIdentity string    `gorm:"column:resource_grant_source_identity;size:192"`
-	IdempotencyKey              string    `gorm:"column:idempotency_key;size:192;not null"`
+	IdempotencyKey              string    `gorm:"column:idempotency_key;size:192;not null;uniqueIndex:uq_commercial_orders_org_idempotency,priority:2"`
 	RequestFingerprint          string    `gorm:"column:request_fingerprint;size:64;not null"`
 	Version                     int64     `gorm:"column:version;not null;default:1"`
 	CreatedAt                   time.Time `gorm:"column:created_at;not null"`
@@ -223,8 +223,24 @@ func (r *Repository) CreatePendingResourceOrder(ctx context.Context, request bil
 		now := r.now().UTC()
 		row := orderRow{OrderID: uuid.NewString(), OrganizationID: request.OrganizationID, Kind: string(billing.OrderResourcePurchase), QuoteID: quote.QuoteID, Currency: quote.Currency, AmountMinor: quote.TotalMinor, Status: string(billing.OrderPending), IdempotencyKey: request.IdempotencyKey, RequestFingerprint: fingerprint, Version: 1, CreatedAt: now, UpdatedAt: now}
 		item := orderItemRow{OrderItemID: uuid.NewString(), OrderID: row.OrderID, ProductKind: string(quote.ProductKind), ResourceType: string(quote.ResourceType), ResourceQuantity: quote.ResourceQuantity, AmountMinor: quote.TotalMinor}
-		if err := tx.Create(&row).Error; err != nil {
+		result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "organization_id"}, {Name: "idempotency_key"}}, DoNothing: true}).Create(&row)
+		if result.Error != nil {
 			return billing.ErrFeatureUnavailable
+		}
+		if result.RowsAffected == 0 {
+			var existing orderRow
+			if err := tx.Where("organization_id = ? AND idempotency_key = ?", request.OrganizationID, request.IdempotencyKey).Take(&existing).Error; err != nil {
+				return billing.ErrFeatureUnavailable
+			}
+			if existing.RequestFingerprint != fingerprint {
+				return billing.ErrConflict
+			}
+			var existingItem orderItemRow
+			if err := tx.Where("order_id = ?", existing.OrderID).Take(&existingItem).Error; err != nil {
+				return billing.ErrFeatureUnavailable
+			}
+			out = orderFromRows(existing, existingItem)
+			return nil
 		}
 		if err := tx.Create(&item).Error; err != nil {
 			return billing.ErrFeatureUnavailable

@@ -75,7 +75,7 @@ func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourc
 		if order.QuoteID != request.QuoteID {
 			return Order{}, ErrConflict
 		}
-		if order.Status == OrderReconciliationRequired {
+		if order.Status == OrderReconciliationRequired || order.Status == OrderFundsReserved || order.Status == OrderFulfilling {
 			return s.ReconcileResourceOrder(ctx, order.OrganizationID, order.OrderID)
 		}
 	} else {
@@ -174,7 +174,7 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 	if err != nil {
 		return Order{}, err
 	}
-	if order.Status != OrderReconciliationRequired {
+	if order.Status != OrderReconciliationRequired && order.Status != OrderFundsReserved && order.Status != OrderFulfilling {
 		return order, nil
 	}
 	if order.WalletReservationState == money.WalletReservationCommitted {

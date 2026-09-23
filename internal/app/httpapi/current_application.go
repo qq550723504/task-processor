@@ -80,6 +80,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/orders"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/:order_id"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/summary"},
 	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/wallet/top-up-intents"},
 }
 
