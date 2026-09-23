@@ -272,7 +272,10 @@ func matchesGrantProof(order Order, snapshot orgresource.PurchasedResourceGrantS
 }
 
 func terminalGrantError(err error) bool {
-	return errors.Is(err, orgresource.ErrForbidden) || errors.Is(err, orgresource.ErrInvalidInput) || errors.Is(err, orgresource.ErrIdempotencyKeyConflict)
+	// A source-claim conflict can mean that the resource owner already credited
+	// a different grant for this durable source. Keep the wallet reservation and
+	// require reconciliation rather than reporting a terminal rejection.
+	return errors.Is(err, orgresource.ErrForbidden) || errors.Is(err, orgresource.ErrInvalidInput)
 }
 
 func (s *Service) CreateWalletTopUpOrder(context.Context, CreateWalletTopUpOrderRequest) (Order, error) {

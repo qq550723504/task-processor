@@ -28,6 +28,23 @@ func (terminalPurchasedResourceGrant) GrantPurchasedResource(context.Context, or
 	return orgresource.PurchasedResourceGrantResult{}, orgresource.ErrInvalidInput
 }
 
+type conflictingPurchasedResourceGrant struct {
+	delegate billing.PurchasedResourceGrantPort
+	seeded   bool
+}
+
+func (grant *conflictingPurchasedResourceGrant) GrantPurchasedResource(ctx context.Context, input orgresource.PurchasedResourceGrantInput) (orgresource.PurchasedResourceGrantResult, error) {
+	if !grant.seeded {
+		grant.seeded = true
+		conflicting := input
+		conflicting.Quantity--
+		if _, err := grant.delegate.GrantPurchasedResource(ctx, conflicting); err != nil {
+			return orgresource.PurchasedResourceGrantResult{}, err
+		}
+	}
+	return grant.delegate.GrantPurchasedResource(ctx, input)
+}
+
 type failCancelledOrderUpdate struct{ *Repository }
 
 func (store failCancelledOrderUpdate) UpdateOrder(ctx context.Context, order billing.Order) error {
@@ -275,6 +292,74 @@ func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *te
 	var resourceBalance struct{ Available int64 }
 	if err := db.WithContext(ctx).Table("saas_organization_resource_buckets").Select("available").Where("organization_id = ? AND resource_type = ?", "org-purchase", orgresource.ResourceAIPoint).Take(&resourceBalance).Error; err != nil || resourceBalance.Available != 10 {
 		t.Fatalf("resource balance after purchase = %#v, err=%v", resourceBalance, err)
+	}
+}
+
+func TestResourceGrantIdempotencyConflictKeepsReservationForReconciliation(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:commercial-grant-conflict-"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, migrate := range []func(*gorm.DB) error{moneystore.AutoMigrate, AutoMigrate, orgresourceadapter.AutoMigrate} {
+		if err := migrate(db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	wallet, err := moneystore.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commercial, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resourceRepository, err := orgresourceadapter.NewGormRepository(db, orgresourceadapter.TransactionConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grantService, err := orgresource.NewPurchasedResourceGrantService(resourceRepository, orgresourceadapter.TrustedCommercialGrantAuthorizer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflictGrant := &conflictingPurchasedResourceGrant{delegate: grantService}
+	service, err := billing.NewService(commercial, commercial, commercial, commercial, wallet, conflictGrant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wallet.RecordPaymentSettlement(ctx, money.PaymentSettlement{PaymentID: "payment-grant-conflict", PayerUserID: "user-a", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: money.PaymentSettled, SettledAt: time.Now().UTC(), ProviderReference: "provider-grant-conflict", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wallet.CreditSettledTopUp(ctx, "", money.OrganizationTopUpSettlement{PaymentID: "payment-grant-conflict", CommercialOrderID: "topup-grant-conflict", OrganizationID: "org-grant-conflict", Currency: "CNY", AmountMinor: 100, SettledAt: time.Now().UTC(), ProviderReference: "provider-grant-conflict", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := commercial.SaveOffer(ctx, billing.Offer{OfferID: "offer-grant-conflict", ProductKind: billing.ProductAIPoint, ResourceType: orgresource.ResourceAIPoint, Currency: billing.CurrencyCNY, UnitPriceMinor: 7, PricingVersion: "pricing-1", MinQuantity: 1, MaxQuantity: 1000, Status: billing.OfferActive}); err != nil {
+		t.Fatal(err)
+	}
+	quote, err := service.CreateQuote(ctx, billing.QuoteRequest{OrganizationID: "org-grant-conflict", OfferID: "offer-grant-conflict", Quantity: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := billing.CreateResourceOrderRequest{OrganizationID: "org-grant-conflict", QuoteID: quote.QuoteID, IdempotencyKey: "purchase-grant-conflict"}
+	order, err := service.CreateResourceOrder(ctx, request)
+	if !errors.Is(err, billing.ErrReconciliationRequired) || order.Status != billing.OrderReconciliationRequired {
+		t.Fatalf("grant conflict outcome = %#v, err=%v; want reconciliation required", order, err)
+	}
+	walletSnapshot, err := wallet.ReadOrganizationWallet(ctx, "org-grant-conflict", "CNY")
+	if err != nil || walletSnapshot.AvailableMinor != 30 || walletSnapshot.ReservedMinor != 70 || walletSnapshot.LifetimeSpendMinor != 0 {
+		t.Fatalf("wallet after grant conflict = %#v, err=%v; reservation must remain held", walletSnapshot, err)
+	}
+	var resourceBalance struct{ Available int64 }
+	if err := db.WithContext(ctx).Table("saas_organization_resource_buckets").Select("available").Where("organization_id = ? AND resource_type = ?", "org-grant-conflict", orgresource.ResourceAIPoint).Take(&resourceBalance).Error; err != nil || resourceBalance.Available != 9 {
+		t.Fatalf("resource balance after conflicting source claim = %#v, err=%v", resourceBalance, err)
+	}
+	replayed, err := service.CreateResourceOrder(ctx, request)
+	if !errors.Is(err, billing.ErrReconciliationRequired) || replayed.Status != billing.OrderReconciliationRequired {
+		t.Fatalf("replayed grant conflict = %#v, err=%v; reservation must remain held", replayed, err)
+	}
+	walletSnapshot, err = wallet.ReadOrganizationWallet(ctx, "org-grant-conflict", "CNY")
+	if err != nil || walletSnapshot.ReservedMinor != 70 || walletSnapshot.LifetimeSpendMinor != 0 {
+		t.Fatalf("wallet after conflicting replay = %#v, err=%v; reservation must remain held", walletSnapshot, err)
 	}
 }
 

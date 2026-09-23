@@ -1771,5 +1771,5 @@ function safeJSONHeaders() {
 }
 
 export class BodyTooLargeError extends Error {}
-export class BodyReadTimeoutError extends Error {}
+class BodyReadTimeoutError extends Error {}
 class InvalidUpstreamBodyError extends Error {}
