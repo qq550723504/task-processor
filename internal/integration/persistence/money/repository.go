@@ -84,7 +84,10 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return money.ErrUnavailable
 	}
-	return db.AutoMigrate(&paymentRow{}, &refundRow{}, &chargebackRow{}, &payoutMethodRow{}, &payoutMethodOperationRow{})
+	if err := db.AutoMigrate(&paymentRow{}, &refundRow{}, &chargebackRow{}, &payoutMethodRow{}, &payoutMethodOperationRow{}); err != nil {
+		return err
+	}
+	return AutoMigrateWallet(db)
 }
 
 func (r *Repository) RecordPaymentSettlement(ctx context.Context, payment money.PaymentSettlement) error {
