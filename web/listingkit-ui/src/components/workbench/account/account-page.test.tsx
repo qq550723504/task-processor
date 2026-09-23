@@ -74,6 +74,7 @@ describe("AccountPage read-only projection", () => {
     vi.stubGlobal("fetch", fetcher);
     mount(page);
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
+    if (page === "profile-settings") expect(screen.getByText("显示名称")).toBeVisible();
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(fetcher.mock.calls.some(([url]) => url === "/api/account/business-profile")).toBe(false);
   });
@@ -234,6 +235,32 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByText("归属企业（Home）：A")).toBeVisible(); expect(screen.getByText("当前有效企业：B")).toBeVisible();
     expect(screen.getByText("当前组织角色：viewer")).toBeVisible(); expect(screen.queryByText("8,650")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /管理成员|管理资源|邀请/ })).not.toBeInTheDocument();
+  });
+  it("renders returned enterprise owner facts and labels a failed commercial read unavailable", async () => {
+    const memberList = { schemaVersion: "membership-v1", userId: "u1", organizationId: "B", items: [{ id: "member-1", userId: "member-user", organizationId: "B", projectId: "project-1", displayName: "成员甲", loginName: "member@example.test", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false }], total: 8, canManage: false, assignableRoles: [] };
+    const allocation = { schemaVersion: "account-member-token-allocation-v1", organizationId: "B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "member-user", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] };
+    const audit = { schemaVersion: "account-audit-v1", userId: "u1", effectiveOrganizationId: "B", source: "source_account_committed_operations+account_business_profile_audit", items: [{ eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } }], nextCursor: null };
+    const fetcher = vi.fn((input: string) => {
+      const path = String(input);
+      if (path === "/api/account/organization") return Promise.resolve(Response.json(organization));
+      if (path === "/api/account/members?limit=20&offset=0") return Promise.resolve(Response.json(memberList));
+      if (path === "/api/workbench/commercial/overview") return Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 }));
+      if (path === "/api/account/member-allocations") return Promise.resolve(Response.json(allocation));
+      if (path.startsWith("/api/account/audit?")) return Promise.resolve(Response.json(audit));
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetcher); mount("organization");
+
+    expect(await screen.findByText("8")).toBeVisible();
+    expect(screen.getByText("当前页有效成员 1 人")).toBeVisible();
+    expect(screen.getByText("权益服务未返回订阅")).toBeVisible();
+    expect(screen.getAllByText("暂不可用").length).toBeGreaterThan(0);
+    expect(screen.getByText("9000")).toBeVisible();
+    expect(screen.getAllByText("1200")).toHaveLength(2);
+    expect(screen.getByText("3300")).toBeVisible();
+    expect(screen.getByText("operator-B")).toBeVisible();
+    expect(screen.getByText("update · u1")).toBeVisible();
+    expect(fetcher).toHaveBeenCalledTimes(5);
   });
   it.each(["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE", "DEADLINE_EXCEEDED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "unexpected"])("shows a safe %s state without data or raw error", async code => {
     const status = code === "AUTHENTICATION_REQUIRED" ? 401 : code === "IDENTITY_CONTEXT_CHANGED" ? 409 : code === "DEADLINE_EXCEEDED" ? 504 : code.includes("PERMISSION") || code.includes("REVOKED") ? 403 : 503;

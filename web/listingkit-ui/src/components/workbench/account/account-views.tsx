@@ -54,7 +54,7 @@ function ProfileIdentity({ data }: { data: AccountProfile }) {
 function AccountSettingsPanel({ data, editable = false, returnTo, identityContactOutcomeUnknown = false, onIdentityContactOutcomeUnknown }: { data: AccountProfile; editable?: boolean; returnTo?: string; identityContactOutcomeUnknown?: boolean; onIdentityContactOutcomeUnknown?: () => void }) {
   return <div className={styles.settingsSections}>
     <Panel title={editable ? "账户信息" : "账户设置"} description="个人身份资料由 ZITADEL 官方 Auth API 管理">
-      <Fields items={[["用户名", provided(data.displayName)], ["国家 / 地区", "未提供"], ["省 / 州", "未提供"], ["城市", "未提供"]]} />
+      <Fields items={[["显示名称", provided(data.displayName)], ["国家 / 地区", "未提供"], ["省 / 州", "未提供"], ["城市", "未提供"]]} />
       {editable ? <IdentityProfileManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/settings"} /> : <p className={styles.note}>进入账户设置后，可在 Shuomi 内修改个人资料；字段由当前登录身份服务提供。</p>}
     </Panel>
     {editable ? <IdentityContactManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/settings"} identityContactOutcomeUnknown={identityContactOutcomeUnknown} onIdentityContactOutcomeUnknown={onIdentityContactOutcomeUnknown} /> : <Panel title="联系方式"><Fields items={[["手机号码", <>{provided(data.phoneNumber)} · {verification(data.phoneNumberVerified)}</>], ["邮箱地址", <>{provided(data.email)} · {verification(data.emailVerified)}</>]]} /><p className={styles.note}>修改和验证由 ZITADEL 官方流程完成。</p></Panel>}
