@@ -248,6 +248,46 @@ func TestOrganizationWalletDelayedTopUpPreservesProcessingOrder(t *testing.T) {
 	}
 }
 
+func TestOrganizationWalletTopUpDebtRepaymentPrecedesAvailableCredit(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, payment := range []ledgermoney.PaymentSettlement{
+		{PaymentID: "pay-split-original", PayerUserID: "user-split", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: ledgermoney.PaymentSettled, SettledAt: now, ProviderReference: "provider-split-original", Version: 1},
+		{PaymentID: "pay-split-repayment", PayerUserID: "user-split", Currency: "CNY", GrossAmountMinor: 150, CommissionableAmountMinor: 150, Status: ledgermoney.PaymentSettled, SettledAt: now.Add(time.Minute), ProviderReference: "provider-split-repayment", Version: 1},
+	} {
+		if err := repository.RecordPaymentSettlement(ctx, payment); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-split-original", CommercialOrderID: "topup-split-original", OrganizationID: "org-split-topup", Currency: "CNY", AmountMinor: 100, SettledAt: now, ProviderReference: "provider-split-original", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "spend-split-original", OrganizationID: "org-split-topup", CommercialOrderID: "spend-split-original", Currency: "CNY", AmountMinor: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OperationID: "commit-split-original", OrganizationID: "org-split-topup", CommercialOrderID: "spend-split-original", ReservationID: reservation.ReservationID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ApplyTopUpReversal(ctx, "", ledgermoney.OrganizationWalletReversal{ReversalID: "chargeback-split-original", PaymentID: "pay-split-original", CommercialOrderID: "topup-split-original", OrganizationID: "org-split-topup", Kind: ledgermoney.WalletReversalChargeback, Currency: "CNY", AmountMinor: 100, OccurredAt: now.Add(time.Minute), ProviderReference: "provider-chargeback-split-original"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-split-repayment", CommercialOrderID: "topup-split-repayment", OrganizationID: "org-split-topup", Currency: "CNY", AmountMinor: 150, SettledAt: now.Add(time.Minute), ProviderReference: "provider-split-repayment", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var debtEntry, creditEntry organizationWalletEntryRow
+	if err := db.Where("source_identity = ?", "pay-split-repayment:debt").Take(&debtEntry).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("source_identity = ?", "pay-split-repayment").Take(&creditEntry).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !debtEntry.OccurredAt.Before(creditEntry.OccurredAt) || debtEntry.DebtAfter != 0 || debtEntry.AvailableAfter != 0 || creditEntry.AvailableAfter != 50 {
+		t.Fatalf("debt repayment entry=%#v, available credit entry=%#v; history must preserve their sequential after-balances", debtEntry, creditEntry)
+	}
+}
+
 func TestOrganizationWalletRejectsInsufficientFundsAndConflictingSettlement(t *testing.T) {
 	repository, _ := walletRepository(t)
 	ctx := context.Background()

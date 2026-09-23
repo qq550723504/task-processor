@@ -228,18 +228,22 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 		}
 		availableBefore, debtBefore := row.AvailableMinor, row.DebtMinor
 		settledAt := ledgermoney.NormalizeTimestamp(settlement.SettledAt)
+		debtRepaid := debtBefore - debt
+		availableAdded := available - availableBefore
 		processedAt := nextWalletProcessingTimestamp(row.UpdatedAt)
+		creditProcessedAt := processedAt
+		if debtRepaid > 0 && availableAdded > 0 {
+			creditProcessedAt = nextWalletProcessingTimestamp(processedAt)
+		}
 		row.AvailableMinor, row.DebtMinor, row.LifetimeTopUpMinor = available, debt, row.LifetimeTopUpMinor+settlement.AmountMinor
 		row.Version++
-		row.UpdatedAt = processedAt
+		row.UpdatedAt = creditProcessedAt
 		if err := saveWalletRow(tx, row); err != nil {
 			return ledgermoney.ErrUnavailable
 		}
 		if err := tx.Create(&walletTopUpSettlementRow{PaymentID: settlement.PaymentID, CommercialOrderID: settlement.CommercialOrderID, OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, AmountMinor: settlement.AmountMinor, SettledAt: settledAt, ProviderReference: settlement.ProviderReference, Version: settlement.Version}).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
-		debtRepaid := debtBefore - debt
-		availableAdded := available - availableBefore
 		if debtRepaid > 0 {
 			debtEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryDebtRepayment), AvailableAfter: availableBefore, ReservedAfter: row.ReservedMinor, DebtDelta: -debtRepaid, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID + ":debt", OccurredAt: processedAt}
 			if err := tx.Create(&debtEntry).Error; err != nil {
@@ -247,7 +251,7 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 			}
 		}
 		if availableAdded > 0 {
-			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, ReservedAfter: row.ReservedMinor, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: processedAt}
+			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, ReservedAfter: row.ReservedMinor, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: creditProcessedAt}
 			if err := tx.Create(&creditEntry).Error; err != nil {
 				return ledgermoney.ErrUnavailable
 			}
