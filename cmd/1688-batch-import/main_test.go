@@ -66,13 +66,15 @@ func TestValidateRequiresEveryFlag(t *testing.T) {
 	}
 }
 
-// TestValidateAcceptsOnlyOfferPages pins that the command's admission rule matches
-// the extension's own pageSource rule, so a URL the executor accepts is one the
-// extension will also accept rather than failing later in the browser.
+// TestValidateAcceptsOnlyOfferPages pins that the command's admission rule stays
+// inside what the executor can actually read. It is deliberately stricter than the
+// extension's own pageSource rule, which also accepts http:// because it inspects a
+// page the person already opened: this command NAVIGATES to the URL through a
+// browser whose extension holds an https-only host grant, so an http:// link that
+// does not redirect would be queued, navigated, and then fail at executeScript.
 func TestValidateAcceptsOnlyOfferPages(t *testing.T) {
 	accepted := []string{
 		"https://detail.1688.com/offer/981645030344.html",
-		"http://detail.1688.com/offer/1.html",
 		"https://detail.1688.com:443/offer/981645030344.html?spm=1",
 		"https://detail.1688.com/offer/981645030344.html#detail",
 	}
@@ -85,6 +87,12 @@ func TestValidateAcceptsOnlyOfferPages(t *testing.T) {
 	}
 	rejected := []string{
 		"",
+		// An http:// link is refused rather than upgraded: the executor navigates
+		// through an https-only host grant, and silently rewriting the operator's
+		// URL would hide that the link they pasted is not the one being read.
+		"http://detail.1688.com/offer/981645030344.html",
+		"http://detail.1688.com:80/offer/981645030344.html",
+		"https://detail.1688.com:8443/offer/981645030344.html",
 		"https://example.com/offer/981645030344.html",
 		"https://detail.1688.com/offer/0.html",
 		"https://detail.1688.com/offer/.html",
@@ -314,20 +322,14 @@ func TestOperationalWrapperPreservesTheExitCode(t *testing.T) {
 	}
 }
 
-// TestOfferURLKeepsOnlyTheFormTheExtensionIsAllowedToRead pins the rule that the
-// queue may only hold the one URL shape the executor will navigate. The extension
-// reads through its declared host grant https://detail.1688.com/*, because
-// activeTab cannot be granted without a real action click, so an http:// input that
-// never redirects would be navigated to and then fail at executeScript with
-// "manifest must request permission to access the respective host". Query and
-// fragment are dropped because the extension's own pageSource drops them: they are
-// not part of an offer's identity, and keeping them would let one offer be queued
-// under two spellings.
-func TestOfferURLKeepsOnlyTheFormTheExtensionIsAllowedToRead(t *testing.T) {
+// TestOfferURLKeepsOnlyTheFormTheExecutorWillNavigate pins that the queue holds the
+// one URL shape the executor will navigate: https, no port, and the query and
+// fragment dropped, which is the canonical source the extension's pageSource
+// records. Dropping them also keeps one offer from being queued under two spellings
+// and so submitted twice.
+func TestOfferURLKeepsOnlyTheFormTheExecutorWillNavigate(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"https://detail.1688.com/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
-		{"http://detail.1688.com/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
-		{"http://detail.1688.com:80/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
 		{"https://detail.1688.com:443/offer/981645030344.html?spm=1", "https://detail.1688.com/offer/981645030344.html"},
 		{"https://detail.1688.com/offer/981645030344.html#detail", "https://detail.1688.com/offer/981645030344.html"},
 	}
@@ -340,7 +342,13 @@ func TestOfferURLKeepsOnlyTheFormTheExtensionIsAllowedToRead(t *testing.T) {
 			t.Fatalf("offerURL(%s) = %s, want %s", tc.in, got, tc.want)
 		}
 	}
-	for _, raw := range []string{"", "https://example.com/offer/981645030344.html", "https://detail.1688.com/offer/0.html"} {
+	for _, raw := range []string{
+		"",
+		"http://detail.1688.com/offer/981645030344.html",
+		"http://detail.1688.com:80/offer/981645030344.html",
+		"https://example.com/offer/981645030344.html",
+		"https://detail.1688.com/offer/0.html",
+	} {
 		if got, ok := offerURL(raw); ok {
 			t.Fatalf("offerURL(%s) = %q, want refusal", raw, got)
 		}
@@ -348,11 +356,12 @@ func TestOfferURLKeepsOnlyTheFormTheExtensionIsAllowedToRead(t *testing.T) {
 }
 
 // TestMainQueuesTheURLTheExecutorWillNavigate is the writer half of the rule above:
-// what the queue stores is the https form, so the run navigates a host the extension
-// is allowed to read, and two spellings of one offer stay one item.
+// what the queue stores is the canonical https form with no port, so the run
+// navigates a host the extension is allowed to read, and two spellings of one offer
+// stay one item.
 func TestMainQueuesTheURLTheExecutorWillNavigate(t *testing.T) {
 	cfg := validConfig(t)
-	cfg.SourceURL = "http://detail.1688.com:80/offer/981645030344.html"
+	cfg.SourceURL = "https://detail.1688.com:443/offer/981645030344.html"
 	path, err := ensureQueue(cfg)
 	if err != nil {
 		t.Fatalf("ensure queue: %v", err)
@@ -365,7 +374,7 @@ func TestMainQueuesTheURLTheExecutorWillNavigate(t *testing.T) {
 		t.Fatalf("unexpected items: %+v", queue.Items)
 	}
 	if queue.Items[0].URL != "https://detail.1688.com/offer/981645030344.html" {
-		t.Fatalf("queued URL %q is not the normalized https URL", queue.Items[0].URL)
+		t.Fatalf("queued URL %q is not the canonical https URL", queue.Items[0].URL)
 	}
 	// The same offer spelled with a tracking parameter is the same item, not a second
 	// delivery of it.
