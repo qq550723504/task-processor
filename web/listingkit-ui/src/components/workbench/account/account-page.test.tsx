@@ -257,6 +257,26 @@ describe("AccountPage read-only projection", () => {
     expect(within(services).getAllByRole("button", { pressed: true })).toHaveLength(16);
     expect(within(services).getByRole("textbox", { name: "其他选项（逗号分隔）" })).toBeDisabled();
   });
+  it("deduplicates custom business-profile values against selected predefined values before saving", async () => {
+    const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "", shopSituation: "", factorySituation: "", platforms: [], sites: [], shopType: "", services: [], source: "account_profile", updatedAt: null, readAt: profile.readAt };
+    const fetcher = vi.fn((input: string, init?: RequestInit) => {
+      const path = String(input);
+      if (path === "/api/account/profile") return Promise.resolve(Response.json(profile));
+      if (path === "/api/account/business-profile" && init?.method === "PUT") return Promise.resolve(Response.json({ ...business, ...JSON.parse(String(init.body)) }));
+      if (path === "/api/account/business-profile") return Promise.resolve(Response.json(business));
+      return Promise.resolve(Response.json(organization));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const user = userEvent.setup();
+    mount("profile-business");
+    const platforms = await screen.findByRole("region", { name: "选择店铺平台、经营站点与店铺类型" });
+    await user.click(within(platforms).getByRole("button", { name: "Amazon" }));
+    await user.type(within(platforms).getAllByRole("textbox", { name: "其他选项（逗号分隔）" })[0]!, "Amazon");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+    await screen.findByText("已保存");
+    const save = fetcher.mock.calls.find(([url, init]) => url === "/api/account/business-profile" && init?.method === "PUT");
+    expect(JSON.parse(String(save?.[1]?.body)).platforms).toEqual(["Amazon"]);
+  });
   it("retries a dependency failure only after user action and rereads facts", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));
     vi.stubGlobal("fetch", fetcher); mount();
@@ -304,6 +324,8 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByText("9000")).toBeVisible();
     expect(screen.getAllByText("1200")).toHaveLength(2);
     expect(screen.getByText("3300")).toBeVisible();
+    expect(screen.getByText("账号标识")).toBeVisible();
+    expect(screen.queryByText("成员 / 角色")).not.toBeInTheDocument();
     expect(screen.getByText("operator-B")).toBeVisible();
     expect(screen.getByText("update · u1")).toBeVisible();
     expect(fetcher).toHaveBeenCalledTimes(5);
