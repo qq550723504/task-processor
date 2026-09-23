@@ -24,6 +24,7 @@ const (
 	walletEntriesPath = walletPath + "/entries"
 	quotePath         = "/api/v1/workbench/commercial/quotes"
 	orderPath         = "/api/v1/workbench/commercial/orders"
+	orderSummaryPath  = orderPath + "/summary"
 	orderDetailPath   = orderPath + "/:order_id"
 	topUpIntentPath   = walletPath + "/top-up-intents"
 	maxBodyBytes      = 16 * 1024
@@ -145,7 +146,65 @@ func (h *Handler) Orders(c *gin.Context) {
 		writeError(c, http.StatusConflict, "ORGANIZATION_SELECTION_REQUIRED")
 		return
 	}
-	page, err := h.service.ListOrders(c.Request.Context(), organizationID, billing.OrderFilter{Limit: 50})
+	query := c.Request.URL.Query()
+	for key := range query {
+		switch key {
+		case "q", "kind", "product_kind", "status", "from", "until", "cursor", "limit":
+		default:
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+	}
+	filter := billing.OrderFilter{Limit: 50, Query: strings.TrimSpace(c.Query("q")), Cursor: c.Query("cursor")}
+	if raw := c.Query("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > 100 {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		filter.Limit = limit
+	}
+	if raw := c.Query("kind"); raw != "" {
+		kind := billing.OrderKind(raw)
+		if kind != billing.OrderWalletTopUp && kind != billing.OrderResourcePurchase {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		filter.Kind = &kind
+	}
+	if raw := c.Query("product_kind"); raw != "" {
+		product := billing.ProductKind(raw)
+		if _, ok := billing.ResourceTypeForProduct(product); !ok {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		filter.ProductKind = &product
+	}
+	if raw := c.Query("status"); raw != "" {
+		status := billing.OrderStatus(raw)
+		if !validOrderStatus(status) {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		filter.Status = &status
+	}
+	if raw := c.Query("from"); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		filter.From = &value
+	}
+	if raw := c.Query("until"); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		filter.Until = &value
+	}
+	page, err := h.service.ListOrders(c.Request.Context(), organizationID, filter)
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -155,6 +214,46 @@ func (h *Handler) Orders(c *gin.Context) {
 		items = append(items, orderResponseFromDomain(order))
 	}
 	writeJSON(c, http.StatusOK, map[string]any{"organization_id": organizationID, "items": items, "next_cursor": page.NextCursor})
+}
+
+func (h *Handler) OrderSummary(c *gin.Context) {
+	if !validReadRequest(c) || h == nil || h.service == nil {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	organizationID, ok := effectiveOrganization(c)
+	if !ok {
+		writeError(c, http.StatusConflict, "ORGANIZATION_SELECTION_REQUIRED")
+		return
+	}
+	until := time.Now().UTC()
+	from := until.Add(-30 * 24 * time.Hour)
+	if raw := c.Query("from"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		from = parsed.UTC()
+	}
+	if raw := c.Query("until"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+			return
+		}
+		until = parsed.UTC()
+	}
+	if !from.Before(until) || until.Sub(from) > 366*24*time.Hour {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	summary, err := h.service.ReadOrderSummary(c.Request.Context(), organizationID, from, until)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, map[string]any{"organization_id": organizationID, "currency": summary.Currency, "from": summary.From.Format(time.RFC3339Nano), "until": summary.Until.Format(time.RFC3339Nano), "spend_minor": strconv.FormatInt(summary.SpendMinor, 10), "store_renewal_spend_minor": strconv.FormatInt(summary.StoreRenewalSpendMinor, 10), "ai_point_spend_minor": strconv.FormatInt(summary.AIPointSpendMinor, 10), "data_row_spend_minor": strconv.FormatInt(summary.DataRowSpendMinor, 10), "other_spend_minor": strconv.FormatInt(summary.OtherSpendMinor, 10), "observed_at": summary.ObservedAt.Format(time.RFC3339Nano)})
 }
 
 func (h *Handler) Order(c *gin.Context) {
@@ -199,6 +298,7 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 		{http.MethodPost, quotePath, purchase, handler.CreateQuote},
 		{http.MethodPost, orderPath, purchase, handler.CreateOrder},
 		{http.MethodGet, orderPath, read, handler.Orders},
+		{http.MethodGet, orderSummaryPath, read, handler.OrderSummary},
 		{http.MethodGet, orderDetailPath, read, handler.Order},
 		{http.MethodPost, topUpIntentPath, topup, handler.TopUpIntent},
 	} {
@@ -354,4 +454,13 @@ func nullable(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func validOrderStatus(status billing.OrderStatus) bool {
+	switch status {
+	case billing.OrderPending, billing.OrderFundsReserved, billing.OrderFulfilling, billing.OrderFulfilled, billing.OrderCancelled, billing.OrderReconciliationRequired:
+		return true
+	default:
+		return false
+	}
 }

@@ -120,4 +120,65 @@ func TestOrganizationWalletRejectsInsufficientFundsAndConflictingSettlement(t *t
 	}
 }
 
+func TestWalletEntryCursorUsesOccurredAtAndEntryIDOrdering(t *testing.T) {
+	repository, db := walletRepository(t)
+	base := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	rows := []organizationWalletEntryRow{
+		{EntryID: "entry-a", OrganizationID: "org-cursor", Currency: "CNY", Kind: string(ledgermoney.WalletEntryPurchaseCommit), ReservedDelta: -1, ReservedAfter: 1, CommercialOrderID: "order-a", SourceIdentity: "source-a", OccurredAt: base},
+		{EntryID: "entry-b", OrganizationID: "org-cursor", Currency: "CNY", Kind: string(ledgermoney.WalletEntryPurchaseCommit), ReservedDelta: -1, ReservedAfter: 0, CommercialOrderID: "order-b", SourceIdentity: "source-b", OccurredAt: base},
+		{EntryID: "entry-c", OrganizationID: "org-cursor", Currency: "CNY", Kind: string(ledgermoney.WalletEntryPurchaseCommit), ReservedDelta: -1, ReservedAfter: 0, CommercialOrderID: "order-c", SourceIdentity: "source-c", OccurredAt: base.Add(-time.Minute)},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	first, err := repository.ListOrganizationWalletEntries(context.Background(), "org-cursor", "CNY", "", 1)
+	if err != nil || len(first.Items) != 1 || first.Items[0].EntryID != "entry-b" || first.NextCursor == "" {
+		t.Fatalf("first page=%#v err=%v", first, err)
+	}
+	second, err := repository.ListOrganizationWalletEntries(context.Background(), "org-cursor", "CNY", first.NextCursor, 1)
+	if err != nil || len(second.Items) != 1 || second.Items[0].EntryID != "entry-a" || second.NextCursor == "" {
+		t.Fatalf("second page=%#v err=%v", second, err)
+	}
+	third, err := repository.ListOrganizationWalletEntries(context.Background(), "org-cursor", "CNY", second.NextCursor, 1)
+	if err != nil || len(third.Items) != 1 || third.Items[0].EntryID != "entry-c" || third.NextCursor != "" {
+		t.Fatalf("third page=%#v err=%v", third, err)
+	}
+}
+
+func TestTopUpDebtRepaymentProducesValidImmutableEntry(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	settledAt := time.Now().UTC()
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-debt", PayerUserID: "user-debt", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: ledgermoney.PaymentSettled, SettledAt: settledAt, ProviderReference: "provider-debt", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-debt", CommercialOrderID: "order-debt", OrganizationID: "org-debt", Currency: "CNY", AmountMinor: 100, SettledAt: settledAt, ProviderReference: "provider-debt", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "purchase-debt", OrganizationID: "org-debt", CommercialOrderID: "purchase-debt", Currency: "CNY", AmountMinor: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OperationID: "commit-debt", OrganizationID: "org-debt", CommercialOrderID: "purchase-debt", ReservationID: reservation.ReservationID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ApplyTopUpReversal(ctx, "", ledgermoney.OrganizationWalletReversal{ReversalID: "refund-debt", PaymentID: "pay-debt", CommercialOrderID: "order-debt", OrganizationID: "org-debt", Kind: ledgermoney.WalletReversalRefund, Currency: "CNY", AmountMinor: 100, OccurredAt: settledAt.Add(time.Minute), ProviderReference: "provider-refund-debt"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-repay", PayerUserID: "user-debt", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: ledgermoney.PaymentSettled, SettledAt: settledAt.Add(2 * time.Minute), ProviderReference: "provider-repay", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-repay", CommercialOrderID: "order-repay", OrganizationID: "org-debt", Currency: "CNY", AmountMinor: 100, SettledAt: settledAt.Add(2 * time.Minute), ProviderReference: "provider-repay", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var entries []organizationWalletEntryRow
+	if err := db.Where("payment_id = ?", "pay-repay").Find(&entries).Error; err != nil || len(entries) != 1 {
+		t.Fatalf("entries=%#v err=%v", entries, err)
+	}
+	entry := walletEntry(entries[0])
+	if entry.Kind != ledgermoney.WalletEntryDebtRepayment || entry.Validate() != nil || entry.DebtDelta != -100 {
+		t.Fatalf("debt repayment entry=%#v validation=%v", entry, entry.Validate())
+	}
+}
+
 func mustWalletError(_ ledgermoney.OrganizationWalletSnapshot, err error) error { return err }

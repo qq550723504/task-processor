@@ -2,6 +2,7 @@ package money
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"math"
@@ -126,7 +127,19 @@ func (r *Repository) ListOrganizationWalletEntries(ctx context.Context, organiza
 	}
 	query := r.db.WithContext(ctx).Where("organization_id = ? AND currency = ?", organizationID, currency).Order("occurred_at DESC, entry_id DESC").Limit(limit + 1)
 	if strings.TrimSpace(cursor) != "" {
-		query = query.Where("entry_id < ?", strings.TrimSpace(cursor))
+		decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(cursor))
+		if err != nil {
+			return ledgermoney.WalletEntryPage{}, ledgermoney.ErrInvalid
+		}
+		parts := strings.SplitN(string(decoded), "|", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+			return ledgermoney.WalletEntryPage{}, ledgermoney.ErrInvalid
+		}
+		occurredAt, err := time.Parse(time.RFC3339Nano, parts[0])
+		if err != nil {
+			return ledgermoney.WalletEntryPage{}, ledgermoney.ErrInvalid
+		}
+		query = query.Where("(occurred_at < ?) OR (occurred_at = ? AND entry_id < ?)", occurredAt.UTC(), occurredAt.UTC(), parts[1])
 	}
 	var rows []organizationWalletEntryRow
 	if err := query.Find(&rows).Error; err != nil {
@@ -134,7 +147,8 @@ func (r *Repository) ListOrganizationWalletEntries(ctx context.Context, organiza
 	}
 	page := ledgermoney.WalletEntryPage{Items: make([]ledgermoney.WalletEntry, 0, minInt(len(rows), limit))}
 	if len(rows) > limit {
-		page.NextCursor = rows[limit-1].EntryID
+		last := rows[limit-1]
+		page.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(last.OccurredAt.UTC().Format(time.RFC3339Nano) + "|" + last.EntryID))
 		rows = rows[:limit]
 	}
 	for _, row := range rows {
@@ -201,8 +215,19 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 		if err := tx.Create(&walletTopUpSettlementRow{PaymentID: settlement.PaymentID, CommercialOrderID: settlement.CommercialOrderID, OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, AmountMinor: settlement.AmountMinor, SettledAt: now, ProviderReference: settlement.ProviderReference, Version: settlement.Version}).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
-		if err := tx.Create(&organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: available - availableBefore, DebtDelta: debt - debtBefore, AvailableAfter: row.AvailableMinor, ReservedAfter: row.ReservedMinor, DebtAfter: row.DebtMinor, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: now}).Error; err != nil {
-			return ledgermoney.ErrUnavailable
+		debtRepaid := debtBefore - debt
+		availableAdded := available - availableBefore
+		if debtRepaid > 0 {
+			debtEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryDebtRepayment), DebtDelta: -debtRepaid, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID + ":debt", OccurredAt: now}
+			if err := tx.Create(&debtEntry).Error; err != nil {
+				return ledgermoney.ErrUnavailable
+			}
+		}
+		if availableAdded > 0 {
+			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: now}
+			if err := tx.Create(&creditEntry).Error; err != nil {
+				return ledgermoney.ErrUnavailable
+			}
 		}
 		out = walletSnapshot(row)
 		return nil
