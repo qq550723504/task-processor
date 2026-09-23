@@ -21,12 +21,13 @@ const upstream=process.env.COMMERCIAL_INTEGRATION_ORIGIN;
 if(!upstream || new URL(upstream).hostname!=="127.0.0.1") throw new Error("Start this suite through TestCommercialHTTPPostgresBFFClientZeroWrites; a private loopback fixture is required");
 const nativeFetch=globalThis.fetch;
 let server:Server,bffOrigin:string,selected="org-B";
+const asResponse=async(value:Response|void|Promise<Response|void>):Promise<Response>=>await value??new Response(null,{status:401});
 const bffRoutes=new Map<string,(request:NextRequest)=>Promise<Response>>([
-  ["/api/workbench/commercial/overview",request=>route.GET(request)],
-  ["/api/workbench/commercial/wallet",request=>walletRoute.GET(request)],
-  ["/api/workbench/commercial/wallet/entries",request=>walletEntriesRoute.GET(request)],
-  ["/api/workbench/commercial/orders",request=>ordersRoute.GET(request)],
-  ["/api/workbench/commercial/orders/summary",request=>orderSummaryRoute.GET(request)],
+  ["/api/workbench/commercial/overview",request=>asResponse(route.GET(request))],
+  ["/api/workbench/commercial/wallet",request=>asResponse(walletRoute.GET(request,{params:Promise.resolve({})}))],
+  ["/api/workbench/commercial/wallet/entries",request=>asResponse(walletEntriesRoute.GET(request,{params:Promise.resolve({})}))],
+  ["/api/workbench/commercial/orders",request=>asResponse(ordersRoute.GET(request,{params:Promise.resolve({})}))],
+  ["/api/workbench/commercial/orders/summary",request=>asResponse(orderSummaryRoute.GET(request,{params:Promise.resolve({})}))],
 ]);
 beforeAll(async()=>{
   process.env.COMMERCIAL_API_ORIGIN=upstream;
