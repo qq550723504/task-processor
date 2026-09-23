@@ -392,7 +392,12 @@ func effectiveOrganization(c *gin.Context) (string, bool) {
 	return strings.TrimSpace(identity.EffectiveOrganizationID), true
 }
 func writeOrganization(c *gin.Context) (string, bool) {
-	if !validWriteRequest(c) {
+	if c.Request.Method != http.MethodPost {
+		writeError(c, http.StatusMethodNotAllowed, "INVALID_REQUEST")
+		return "", false
+	}
+	if c.Request.ContentLength < 0 {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 		return "", false
 	}
 	organizationID, ok := effectiveOrganization(c)
@@ -404,9 +409,6 @@ func writeOrganization(c *gin.Context) (string, bool) {
 }
 func validReadRequest(c *gin.Context) bool {
 	return c.Request.Method == http.MethodGet && c.Request.URL.RawQuery == "" || c.Request.Method == http.MethodGet
-}
-func validWriteRequest(c *gin.Context) bool {
-	return c.Request.Method == http.MethodPost && c.Request.ContentLength >= 0
 }
 func decodeStrict(c *gin.Context, target any) bool {
 	if c.Request.ContentLength > maxBodyBytes {

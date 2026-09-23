@@ -247,10 +247,18 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 	order.ResourceGrantOperationID = grant.Snapshot.OperationID
 	order.ResourceGrantSourceType = grant.Snapshot.SourceType
 	order.ResourceGrantSourceIdentity = grant.Snapshot.SourceIdentity
+	order.Status = OrderFulfilling
+	order.UpdatedAt = s.now().UTC()
+	if err := s.updateOrder(ctx, &order); err != nil {
+		return order, ErrReconciliationRequired
+	}
 	committed, err := s.wallet.CommitCommercialPurchase(ctx, money.CommitWalletReservationInput{OperationID: "commit:" + order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, ReservationID: order.WalletReservationID})
 	if err != nil || committed.State != money.WalletReservationCommitted {
+		order.Status = OrderReconciliationRequired
 		order.UpdatedAt = s.now().UTC()
-		_ = s.updateOrder(ctx, &order)
+		if err := s.updateOrder(ctx, &order); err != nil {
+			return Order{}, ErrReconciliationRequired
+		}
 		return order, ErrReconciliationRequired
 	}
 	order.WalletReservationState = committed.State

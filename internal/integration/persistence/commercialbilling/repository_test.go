@@ -537,7 +537,23 @@ func TestResourcePurchaseReplayResumesDurableIntermediateOrders(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			recovered, err := service.CreateResourceOrder(ctx, request)
+			recoveryService := service
+			if initialStatus == billing.OrderFundsReserved {
+				uncertainWallet := &loseFirstCommitAcknowledgement{OrganizationWalletReader: wallet, OrganizationWalletCommander: wallet, lose: true}
+				recoveryService, err = billing.NewService(commercial, commercial, commercial, commercial, uncertainWallet, grantService)
+				if err != nil {
+					t.Fatal(err)
+				}
+				firstRecovery, recoveryErr := recoveryService.CreateResourceOrder(ctx, request)
+				if !errors.Is(recoveryErr, billing.ErrReconciliationRequired) || firstRecovery.Status != billing.OrderReconciliationRequired || firstRecovery.ResourceGrantOperationID == "" {
+					t.Fatalf("lost commit acknowledgement after FUNDS_RESERVED recovery = %#v, err=%v; grant proof must already be durable", firstRecovery, recoveryErr)
+				}
+				persistedRecovery, readErr := commercial.ReadOrder(ctx, orgID, order.OrderID)
+				if readErr != nil || persistedRecovery.Status != billing.OrderReconciliationRequired || persistedRecovery.ResourceGrantOperationID == "" {
+					t.Fatalf("durable recovery after lost commit acknowledgement = %#v, err=%v", persistedRecovery, readErr)
+				}
+			}
+			recovered, err := recoveryService.CreateResourceOrder(ctx, request)
 			if err != nil || recovered.Status != billing.OrderFulfilled || recovered.WalletReservationState != money.WalletReservationCommitted {
 				t.Fatalf("recovered order = %#v, err=%v", recovered, err)
 			}

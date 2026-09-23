@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -65,5 +66,28 @@ func TestUnavailableOfferMapsToOfferUnavailableResponse(t *testing.T) {
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || payload.Code != "OFFER_UNAVAILABLE" {
 		t.Fatalf("payload=%s err=%v; want OFFER_UNAVAILABLE", response.Body.String(), err)
+	}
+}
+
+func TestChunkedWriteRequestGetsExplicitInvalidRequestResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	request := httptest.NewRequest(http.MethodPost, quotePath, strings.NewReader(`{"offer_id":"offer-1","quantity":"1"}`))
+	request.ContentLength = -1
+	request.TransferEncoding = []string{"chunked"}
+	ctx.Request = request
+
+	if _, ok := writeOrganization(ctx); ok {
+		t.Fatal("chunked write request must be rejected before service execution")
+	}
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d; want %d", response.Code, http.StatusBadRequest)
+	}
+	var payload struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || payload.Code != "INVALID_REQUEST" {
+		t.Fatalf("payload=%s err=%v; want INVALID_REQUEST", response.Body.String(), err)
 	}
 }
