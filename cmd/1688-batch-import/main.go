@@ -50,22 +50,20 @@ type config struct {
 	Headless      bool
 }
 
-// offerPattern mirrors the extension's own pageSource rule, so a URL this command
-// accepts is a URL the extension would also accept.
-var offerPattern = regexp.MustCompile(`^https?://detail\.1688\.com(?::(?:80|443))?/offer/([1-9][0-9]{0,19})\.html(?:[?#].*)?$`)
+// offerPattern is deliberately stricter than the extension's own pageSource rule,
+// which also accepts http:// because it reads a page the person already opened. This
+// command navigates to the URL, and the extension it drives reads through an
+// https-only host grant, so an http:// link that does not redirect would be recorded
+// and navigated before executeScript refused it. An http link is refused up front
+// rather than upgraded, so the operator is told their link is not the one being read.
+var offerPattern = regexp.MustCompile(`^https://detail\.1688\.com(?::443)?/offer/([1-9][0-9]{0,19})\.html(?:[?#].*)?$`)
 
 // offerURL reduces an accepted page to the one form this executor navigates: the
-// canonical source the extension itself records.
-//
-// The scheme matters, and not cosmetically. The extension reads through its declared
-// host grant (https://detail.1688.com/*), because activeTab can only be granted by a
-// real action click and an unattended batch run has none. Queuing an http:// URL that
-// does not redirect would navigate the browser to a host that grant does not cover,
-// and the read would fail at executeScript with "manifest must request permission to
-// access the respective host" after the item was already recorded. Query and fragment
-// are dropped the same way pageSource drops them: they are not part of an offer's
-// identity, and keeping them would let one offer be queued under two spellings and
-// so submitted twice.
+// canonical source the extension itself records. The default port is dropped so two
+// spellings of one offer cannot become two queue items, and the query and fragment
+// are dropped the same way pageSource drops them, for the same reason — they are not
+// part of an offer's identity, and keeping them would let one offer be queued twice
+// and so submitted twice.
 func offerURL(raw string) (string, bool) {
 	match := offerPattern.FindStringSubmatch(raw)
 	if match == nil {
@@ -117,7 +115,7 @@ unreadable queue that may already hold a submitted item, or a blocked batch),
 	}
 	var cfg config
 	flags.StringVar(&cfg.QueuePath, "queue", "", "local batch queue file (created when missing)")
-	flags.StringVar(&cfg.SourceURL, "url", "", "1688 product detail URL")
+	flags.StringVar(&cfg.SourceURL, "url", "", "https 1688 product detail URL")
 	flags.StringVar(&cfg.BatchID, "batch-id", "local-batch", "batch identifier recorded in a new queue")
 	flags.StringVar(&cfg.ActorID, "actor", "", "actor id this run expects the application to report (required)")
 	flags.StringVar(&cfg.Organization, "organization", "", "organization id this run expects the application to report (required)")
@@ -301,7 +299,7 @@ func (c config) validate() error {
 		return fmt.Errorf("missing required flags: %s", strings.Join(missing, ", "))
 	}
 	if _, ok := offerURL(c.SourceURL); !ok {
-		return fmt.Errorf("--url is not a 1688 product detail URL: %s", c.SourceURL)
+		return fmt.Errorf("--url must be an https 1688 product detail URL, for example https://detail.1688.com/offer/981645030344.html: %s", c.SourceURL)
 	}
 	return nil
 }
@@ -316,10 +314,10 @@ func (c config) validate() error {
 // straight past. An existing approval is never rewritten.
 func ensureQueue(cfg config) (string, error) {
 	// The queue is the record the run navigates from, so the URL it stores is the
-	// normalized one no matter how the flag was spelled.
+	// canonical one no matter how the flag was spelled.
 	sourceURL, ok := offerURL(cfg.SourceURL)
 	if !ok {
-		return "", fmt.Errorf("--url is not a 1688 product detail URL: %s", cfg.SourceURL)
+		return "", fmt.Errorf("--url must be an https 1688 product detail URL, for example https://detail.1688.com/offer/981645030344.html: %s", cfg.SourceURL)
 	}
 	queue, err := batchcapture.Load(cfg.QueuePath)
 	switch {
