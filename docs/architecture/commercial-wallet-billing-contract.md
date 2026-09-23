@@ -237,6 +237,11 @@ failure and does not authorize automatic re-charge.
 
 A fulfilled resource order must retain proof of both the canonical money
 reservation commit and the canonical source-bound resource grant.
+`RECONCILIATION_REQUIRED` may retain a reserved wallet reservation while the
+grant outcome is uncertain, but once its reservation is `COMMITTED`, the order
+must also retain the complete canonical source-bound grant proof. A committed
+charge without that proof is invalid and cannot be accepted as a recoverable
+order state.
 The order's durable grant proof carries the grant operation ID, canonical
 `commercial_order_item` source type, and a source identity that exactly matches
 the deterministic identity for the order's organization, order, and order item

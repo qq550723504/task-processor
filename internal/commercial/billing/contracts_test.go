@@ -261,7 +261,7 @@ func TestResourcePurchaseLifecycleRequiresMatchingWalletReservationState(t *test
 		if test.status == OrderPending {
 			order.WalletReservationID = ""
 		}
-		if test.status == OrderFulfilled {
+		if test.status == OrderFulfilled || (test.status == OrderReconciliationRequired && test.state == money.WalletReservationCommitted) {
 			order.ResourceGrantOperationID = "grant-operation-1"
 			order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
 			order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
@@ -311,6 +311,24 @@ func TestFulfilledResourcePurchaseRequiresGrantProof(t *testing.T) {
 	order.ResourceGrantSourceType = "arbitrary-source"
 	if !errors.Is(order.Validate(), ErrInvalid) {
 		t.Fatalf("fulfilled resource order with non-canonical grant source = nil, want ErrInvalid")
+	}
+}
+
+func TestCommittedReconciliationResourcePurchaseRequiresGrantProof(t *testing.T) {
+	order := validResourcePurchaseOrder(time.Now().UTC())
+	order.Status = OrderReconciliationRequired
+	order.WalletReservationID = "reservation-1"
+	order.WalletReservationState = money.WalletReservationCommitted
+
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("committed reconciliation resource order without grant proof = nil, want ErrInvalid")
+	}
+
+	order.ResourceGrantOperationID = "grant-operation-1"
+	order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
+	order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
+	if err := order.Validate(); err != nil {
+		t.Fatalf("committed reconciliation resource order with grant proof rejected: %v", err)
 	}
 }
 
