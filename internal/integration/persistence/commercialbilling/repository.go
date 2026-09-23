@@ -366,7 +366,9 @@ func (r *Repository) ListOrders(ctx context.Context, organizationID string, filt
 	}
 	for _, row := range rows {
 		var item orderItemRow
-		_ = r.db.WithContext(ctx).Where("order_id = ?", row.OrderID).Take(&item).Error
+		if err := r.db.WithContext(ctx).Where("order_id = ?", row.OrderID).Take(&item).Error; err != nil {
+			return billing.OrderPage{}, billing.ErrFeatureUnavailable
+		}
 		page.Items = append(page.Items, orderFromRows(row, item))
 	}
 	return page, nil

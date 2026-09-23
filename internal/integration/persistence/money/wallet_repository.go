@@ -349,6 +349,19 @@ func (r *Repository) ReserveCommercialPurchase(ctx context.Context, input ledger
 		if err != nil {
 			return err
 		}
+		// A same-key request can pass the initial lookup before another
+		// transaction reserves the wallet. Re-read after acquiring the wallet
+		// lock so it replays that reservation instead of cancelling the order
+		// for insufficient balance.
+		if err := tx.Where("organization_id = ? AND operation_id = ? AND commercial_order_id = ?", input.OrganizationID, input.OperationID, input.CommercialOrderID).Take(&existing).Error; err == nil {
+			if existing.AmountMinor != input.AmountMinor || existing.Currency != input.Currency {
+				return ledgermoney.ErrWalletReservationConflict
+			}
+			out = reservationFromRow(existing)
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return ledgermoney.ErrUnavailable
+		}
 		if wallet.AvailableMinor < input.AmountMinor {
 			return ledgermoney.ErrWalletInsufficientBalance
 		}

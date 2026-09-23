@@ -194,6 +194,20 @@ func TestOrderFiltersCursorAndSummaryUseCompleteCanonicalOrders(t *testing.T) {
 	}
 }
 
+func TestListOrdersFailsWhenLoadingCanonicalItemsFails(t *testing.T) {
+	repository := commercialRepository(t)
+	now := time.Now().UTC()
+	if err := repository.db.Create(&orderRow{OrderID: "order-item-read-failure", OrganizationID: "org-item-read-failure", Kind: string(billing.OrderResourcePurchase), Currency: billing.CurrencyCNY, AmountMinor: 10, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-item-read-failure", RequestFingerprint: "fingerprint-item-read-failure", Version: 1, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.db.Migrator().DropTable(&orderItemRow{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ListOrders(context.Background(), "org-item-read-failure", billing.OrderFilter{Limit: 10}); !errors.Is(err, billing.ErrFeatureUnavailable) {
+		t.Fatalf("list orders after item lookup failure = %v; want dependency error", err)
+	}
+}
+
 func TestResourcePurchasePersistsReservationAndGrantProofBeforeFulfillment(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:commercial-purchase-"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

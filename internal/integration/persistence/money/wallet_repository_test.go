@@ -74,6 +74,43 @@ func TestOrganizationWalletTopUpReserveAndCommitAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestReservationRechecksIdempotencyAfterWalletLock(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	settledAt := time.Now().UTC()
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-race-reserve", PayerUserID: "user-a", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: ledgermoney.PaymentSettled, SettledAt: settledAt, ProviderReference: "provider-race-reserve", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-race-reserve", CommercialOrderID: "topup-race-reserve", OrganizationID: "org-race-reserve", Currency: "CNY", AmountMinor: 100, SettledAt: settledAt, ProviderReference: "provider-race-reserve", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	input := ledgermoney.ReserveWalletFundsInput{OperationID: "order-race-reserve", OrganizationID: "org-race-reserve", CommercialOrderID: "order-race-reserve", Currency: "CNY", AmountMinor: 100}
+	first, err := repository.ReserveCommercialPurchase(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a concurrent same-key caller whose first lookup ran before the
+	// competing reservation committed, while the post-wallet-lock lookup sees
+	// the now-durable reservation. SQLite does not implement row-level FOR UPDATE.
+	hideInitialLookup := true
+	if err := db.Callback().Query().Before("gorm:query").Register("test:miss-initial-wallet-reservation-lookup", func(tx *gorm.DB) {
+		if hideInitialLookup && tx.Statement.Table == "ledger_organization_wallet_reservations" {
+			hideInitialLookup = false
+			tx.AddError(gorm.ErrRecordNotFound)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := repository.ReserveCommercialPurchase(ctx, input)
+	if err != nil || replayed.ReservationID != first.ReservationID {
+		t.Fatalf("same-key reservation after initial miss = %#v, err=%v; want existing reservation", replayed, err)
+	}
+	wallet, err := repository.ReadOrganizationWallet(ctx, "org-race-reserve", "CNY")
+	if err != nil || wallet.AvailableMinor != 0 || wallet.ReservedMinor != 100 {
+		t.Fatalf("wallet after same-key race = %#v err=%v; reserve must apply once", wallet, err)
+	}
+}
+
 func TestOrganizationWalletReversalCreatesDebtAndRepaysOnNextTopUp(t *testing.T) {
 	repository, _ := walletRepository(t)
 	ctx := context.Background()
