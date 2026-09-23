@@ -246,6 +246,17 @@ describe("AccountPage read-only projection", () => {
     expect(within(services).getByText("商品采集与刊登")).toBeVisible();
     expect(screen.getByText("身份联系方式仍由登录服务管理；经营画像由账户中心持久化。")).toBeVisible();
   });
+  it("prevents custom service entries from exceeding the owner limit after all predefined choices are selected", async () => {
+    const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "", shopSituation: "", factorySituation: "", platforms: [], sites: [], shopType: "", services: [], source: "account_profile", updatedAt: null, readAt: profile.readAt };
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/business-profile" ? Response.json(business) : Response.json(organization))));
+    const user = userEvent.setup();
+    mount("profile-business");
+    const services = await screen.findByRole("region", { name: "你目前需要什么服务？" });
+    const options = ["AI选品与市场分析", "商品采集与刊登", "商品图片与内容生成", "POD商品定制", "供应链与货盘对接", "店铺智能运营", "广告投放与优化", "客服自动化", "订单库存与ERP", "多店铺矩阵管理", "创业培训与陪跑", "店铺联合运营", "品牌出海", "企业功能定制", "OPC电商社区落地", "暂时不确定"];
+    for (const option of options) await user.click(within(services).getByRole("button", { name: option }));
+    expect(within(services).getAllByRole("button", { pressed: true })).toHaveLength(16);
+    expect(within(services).getByRole("textbox", { name: "其他选项（逗号分隔）" })).toBeDisabled();
+  });
   it("retries a dependency failure only after user action and rereads facts", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));
     vi.stubGlobal("fetch", fetcher); mount();
