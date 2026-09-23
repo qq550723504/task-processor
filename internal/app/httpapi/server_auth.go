@@ -190,7 +190,8 @@ func workbenchAuthenticationMiddleware(verifier zitadelruntime.Verifier) gin.Han
 		} {
 			c.Request.Header.Del(header)
 		}
-		c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity))
+		requestContext := authidentity.WithAuthenticatedIdentity(c.Request.Context(), identity)
+		c.Request = c.Request.WithContext(zitadelruntime.WithBearerToken(requestContext, token))
 		c.Request.Header.Set("X-User-ID", identity.UserID)
 		c.Request.Header.Set("X-User-Type", "zitadel")
 		c.Next()

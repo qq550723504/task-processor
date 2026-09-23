@@ -73,10 +73,22 @@ var currentPlatformSubscriptionApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/usage/:module_code/:period_key/:metric"},
 }
 
+var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet/entries"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/quotes"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/orders"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/:order_id"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/summary"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/wallet/top-up-intents"},
+}
+
 type currentApplicationFactories struct {
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildCommercialBilling          func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildPlatformSubscription       func(*gorm.DB, *config.Config) (kernelmodule.Module, error)
 	buildAcquisition                func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
@@ -101,7 +113,7 @@ type currentApplicationOptions struct {
 }
 
 // WithCommercialOwnerDatabase supplies the independently owned commercial
-// owner pool used only by platform subscription and entitlement routes.
+// owner pool used by platform subscription and commercial billing routes.
 func WithCommercialOwnerDatabase(db *gorm.DB) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) { options.commercialOwnerDB = db }
 }
@@ -146,6 +158,7 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
+		buildCommercialBilling:    buildCommercialBillingModule,
 		buildPlatformSubscription: buildPlatformSubscriptionModule,
 		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
@@ -272,6 +285,18 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return nil, errors.New("current platform subscription module unavailable")
 		}
 		modules = append(modules, platformSubscription)
+	}
+	// Billing requires both its commercial owner and the canonical money owner.
+	// Keep unrelated platform subscriptions available when referrals/money is disabled.
+	if supplied.commercialOwnerDB != nil && supplied.referralDB != nil && factories.buildCommercialBilling != nil {
+		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, supplied.referralDB, authorizer)
+		if billingErr != nil {
+			return nil, fmt.Errorf("build current commercial billing module: %w", billingErr)
+		}
+		if commercialBilling == nil {
+			return nil, errors.New("current commercial billing module unavailable")
+		}
+		modules = append(modules, commercialBilling)
 	}
 	var referralMaturity func(context.Context, time.Time) error
 	includeAccountProfile := factories.buildAccountProfile != nil
@@ -458,6 +483,23 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	if includePlatformSubscription {
 		for _, route := range currentPlatformSubscriptionApplicationRoutes {
+			expected[route] = struct{}{}
+		}
+	}
+	includeCommercialBilling := false
+	for _, descriptor := range routes {
+		for _, candidate := range currentCommercialBillingApplicationRoutes {
+			if descriptor.Method == candidate.Method && descriptor.Path == candidate.Path {
+				includeCommercialBilling = true
+				break
+			}
+		}
+		if includeCommercialBilling {
+			break
+		}
+	}
+	if includeCommercialBilling {
+		for _, route := range currentCommercialBillingApplicationRoutes {
 			expected[route] = struct{}{}
 		}
 	}

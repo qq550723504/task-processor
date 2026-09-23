@@ -1382,7 +1382,7 @@ function readCookie(header: string | null, name: string): string | null {
   return "";
 }
 
-async function readBodyWithinLimit(
+export async function readBodyWithinLimit(
   stream: ReadableStream<Uint8Array> | null,
   limit: number,
   timeoutMs?: number,
@@ -1770,6 +1770,6 @@ function safeJSONHeaders() {
   });
 }
 
-class BodyTooLargeError extends Error {}
+export class BodyTooLargeError extends Error {}
 class BodyReadTimeoutError extends Error {}
 class InvalidUpstreamBodyError extends Error {}

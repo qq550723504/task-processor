@@ -13,7 +13,7 @@ identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
 application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is required}
 
 umask 077
-test -f "$bootstrap_pat"; test -f "$trusted_ca/root-ca.pem"; test -f "$tofu_inputs/operator-password"
+test -f "$bootstrap_pat"; test -f "$trusted_ca/root-ca.pem"; test -f "$tofu_inputs/operator-password"; test -f "$tofu_inputs/viewer-password"; test -f "$tofu_inputs/insufficient-password"
 if [ -f "$state/.terraform-complete" ]; then exit 0; fi
 if [ -f "$state/.terraform-started" ]; then echo 'local OpenTofu initialization is incomplete; recreate this Compose project' >&2; exit 1; fi
 touch "$state/.terraform-started"
@@ -32,6 +32,8 @@ tofu init -input=false
 tofu apply -input=false -auto-approve \
   -var="bootstrap_pat=$(tr -d '\r\n' < "$bootstrap_pat")" \
   -var="operator_password=$(tr -d '\r\n' < "$tofu_inputs/operator-password")" \
+  -var="viewer_password=$(tr -d '\r\n' < "$tofu_inputs/viewer-password")" \
+  -var="insufficient_password=$(tr -d '\r\n' < "$tofu_inputs/insufficient-password")" \
   -var="identity_port=$identity_port" \
   -var="application_port=$application_port" \
   -state="$state/terraform.tfstate"
@@ -48,6 +50,9 @@ write_output api_client_id "$runtime/api-client-id"
 write_output api_client_secret "$runtime/api-client-secret"
 write_output signup_org_id "$runtime/signup-org-id"
 write_output project_id "$runtime/project-id"
+write_output bootstrap_user_id "$runtime/bootstrap-user-id"
+write_output viewer_user_id "$runtime/viewer-user-id"
+write_output insufficient_user_id "$runtime/insufficient-user-id"
 write_output oidc_client_id "$frontend/oidc-client-id"
 write_output oidc_client_secret "$frontend/oidc-client-secret"
 write_output project_id "$frontend/project-id"

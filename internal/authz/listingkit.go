@@ -26,6 +26,9 @@ const (
 	PermissionWorkbenchSourceAccountManage      = "workbench.source_account.manage"
 	PermissionWorkbenchOrganizationMemberRead   = "workbench.organization_member.read"
 	PermissionWorkbenchOrganizationMemberManage = "workbench.organization_member.manage"
+	PermissionWorkbenchCommercialRead            = "workbench.commercial.read"
+	PermissionWorkbenchCommercialPurchase        = "workbench.commercial.purchase"
+	PermissionWorkbenchCommercialWalletTopUp     = "workbench.commercial.wallet_topup"
 )
 
 var workbenchStorePermissions = []string{
@@ -44,6 +47,12 @@ var workbenchSourceAccountPermissions = []string{
 var workbenchOrganizationMemberPermissions = []string{
 	PermissionWorkbenchOrganizationMemberRead,
 	PermissionWorkbenchOrganizationMemberManage,
+}
+
+var workbenchCommercialPermissions = []string{
+	PermissionWorkbenchCommercialRead,
+	PermissionWorkbenchCommercialPurchase,
+	PermissionWorkbenchCommercialWalletTopUp,
 }
 
 const listingKitModel = `
@@ -103,6 +112,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_operator", PermissionWorkbenchStoreLifecycle},
 		{"listingkit_operator", PermissionWorkbenchSourceAccountRead},
 		{"listingkit_operator", PermissionWorkbenchSourceAccountManage},
+		{"listingkit_operator", PermissionWorkbenchCommercialRead},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
 		{"listingkit_admin", PermissionListingKitPromptWrite},
@@ -117,6 +127,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_admin", PermissionWorkbenchStoreDelete},
 		{"listingkit_admin", PermissionWorkbenchSourceAccountRead},
 		{"listingkit_admin", PermissionWorkbenchSourceAccountManage},
+		{"listingkit_admin", PermissionWorkbenchCommercialRead},
+		{"listingkit_admin", PermissionWorkbenchCommercialPurchase},
+		{"listingkit_admin", PermissionWorkbenchCommercialWalletTopUp},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
 		{"platform_admin", PermissionListingKitPromptWrite},
@@ -132,6 +145,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"platform_admin", PermissionWorkbenchStoreDelete},
 		{"platform_admin", PermissionWorkbenchSourceAccountRead},
 		{"platform_admin", PermissionWorkbenchSourceAccountManage},
+		{"platform_admin", PermissionWorkbenchCommercialRead},
+		{"platform_admin", PermissionWorkbenchCommercialPurchase},
+		{"platform_admin", PermissionWorkbenchCommercialWalletTopUp},
 		{"admin", PermissionListingKitPlatformAdm},
 		{"admin", PermissionListingKitAdminRead},
 		{"admin", PermissionListingKitPromptWrite},
@@ -181,6 +197,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 				return nil, err
 			}
 		}
+		for _, permission := range workbenchCommercialPermissions {
+			if _, err := enforcer.AddPolicy(role, permission); err != nil {
+				return nil, err
+			}
+		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
@@ -216,6 +237,11 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			}
 		}
 		for _, permission := range workbenchSourceAccountPermissions {
+			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
+				return nil, err
+			}
+		}
+		for _, permission := range workbenchCommercialPermissions {
 			if _, err := enforcer.AddPolicy(subject, permission); err != nil {
 				return nil, err
 			}

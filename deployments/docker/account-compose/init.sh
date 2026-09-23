@@ -16,6 +16,16 @@ frontend=/frontend
 identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
 application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is required}
 
+migrate_commercial_owner_schema() {
+  cat > "$work/commercial-owner-schema.json" <<EOF
+{"host":"127.0.0.1","port":5434,"user":"postgres","password":"$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")","database":"commercial","maxConnections":2,"maxIdleConnections":1}
+EOF
+  cat > "$work/canonical-money-schema.json" <<EOF
+{"host":"127.0.0.1","port":5435,"user":"postgres","password":"$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")","database":"referrals","maxConnections":2,"maxIdleConnections":1}
+EOF
+  commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json" -money-config "$work/canonical-money-schema.json"
+}
+
 umask 077
 if [ -f "$state/.init-complete" ]; then
   work=$(mktemp -d)
@@ -86,6 +96,7 @@ SQL
   fi
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
+  migrate_commercial_owner_schema
   membership_dsn="postgresql://postgres:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5436/membership?sslmode=disable"
   printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
   chmod 600 "$work/membership-owner-dsn"
@@ -227,6 +238,7 @@ chmod 600 "$work/referral-owner-dsn"
 referral-schema-init -dsn-file "$work/referral-owner-dsn"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
 psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
+migrate_commercial_owner_schema
 
 psql "postgresql://postgres:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5436/membership?sslmode=disable" -v ON_ERROR_STOP=1 <<SQL
 CREATE ROLE organization_membership_runtime LOGIN PASSWORD '$(tr -d '\r\n' < "$membership_runtime_secret/membership-runtime-password")';

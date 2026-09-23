@@ -85,13 +85,26 @@ type LocalApplicationResult struct {
 }
 
 type MultiOrganizationAcceptanceSpec struct {
-	UserID        string
-	Organizations []AcceptanceOrganizationSpec
+	UserID                   string
+	Organizations            []AcceptanceOrganizationSpec
+	AdditionalAuthorizations []AcceptanceAuthorizationSpec
 }
 
 type AcceptanceOrganizationSpec struct {
-	Name     string
+	Name string
+	// RoleKeys are the roles assigned to the primary acceptance user.
 	RoleKeys []string
+	// ProjectRoleKeys are the roles made available to the organization grant.
+	// When empty, RoleKeys is used. Keeping these separate lets a single
+	// organization contain an admin, viewer, and insufficient-role identity
+	// without granting all roles to the primary operator.
+	ProjectRoleKeys []string
+}
+
+type AcceptanceAuthorizationSpec struct {
+	UserID           string
+	OrganizationName string
+	RoleKeys         []string
 }
 
 type AcceptanceOrganizationResult struct {
@@ -101,9 +114,17 @@ type AcceptanceOrganizationResult struct {
 }
 
 type MultiOrganizationAcceptanceResult struct {
-	UserID        string
-	ProjectID     string
-	Organizations []AcceptanceOrganizationResult
+	UserID                   string
+	ProjectID                string
+	Organizations            []AcceptanceOrganizationResult
+	AdditionalAuthorizations []AcceptanceAuthorizationResult
+}
+
+type AcceptanceAuthorizationResult struct {
+	UserID           string
+	OrganizationID   string
+	OrganizationName string
+	RoleKeys         []string
 }
 
 // String intentionally omits generated client secrets. Results are commonly
@@ -362,7 +383,7 @@ func ProvisionLocalMultiOrganizationAcceptance(ctx context.Context, cfg Config, 
 
 	for _, requested := range normalizedSpec.Organizations {
 		organizationID := organizationIDs[requested.Name]
-		if ensureErr := client.ensureProjectGrant(ctx, projectID, organizationID, requested.RoleKeys); ensureErr != nil {
+		if ensureErr := client.ensureProjectGrant(ctx, projectID, organizationID, requested.ProjectRoleKeys); ensureErr != nil {
 			return MultiOrganizationAcceptanceResult{}, ensureErr
 		}
 	}
@@ -379,9 +400,25 @@ func ProvisionLocalMultiOrganizationAcceptance(ctx context.Context, cfg Config, 
 			RoleKeys:         append([]string(nil), requested.RoleKeys...),
 		})
 	}
+	for _, requested := range normalizedSpec.AdditionalAuthorizations {
+		organizationID := organizationIDs[requested.OrganizationName]
+		if ensureErr := client.ensureAuthorization(ctx, requested.UserID, projectID, organizationID, requested.RoleKeys); ensureErr != nil {
+			return MultiOrganizationAcceptanceResult{}, ensureErr
+		}
+		result.AdditionalAuthorizations = append(result.AdditionalAuthorizations, AcceptanceAuthorizationResult{
+			UserID: requested.UserID, OrganizationID: organizationID, OrganizationName: requested.OrganizationName,
+			RoleKeys: append([]string(nil), requested.RoleKeys...),
+		})
+	}
 	for _, requested := range normalizedSpec.Organizations {
 		organizationID := organizationIDs[requested.Name]
-		if verifyErr := client.verifyAcceptanceState(ctx, normalizedSpec.UserID, projectID, organizationID, requested.Name, requested.RoleKeys); verifyErr != nil {
+		if verifyErr := client.verifyAcceptanceState(ctx, normalizedSpec.UserID, projectID, organizationID, requested.Name, requested.ProjectRoleKeys, requested.RoleKeys); verifyErr != nil {
+			return MultiOrganizationAcceptanceResult{}, verifyErr
+		}
+	}
+	for _, requested := range normalizedSpec.AdditionalAuthorizations {
+		organizationID := organizationIDs[requested.OrganizationName]
+		if verifyErr := client.verifyAuthorization(ctx, requested.UserID, projectID, organizationID, requested.RoleKeys); verifyErr != nil {
 			return MultiOrganizationAcceptanceResult{}, verifyErr
 		}
 	}
@@ -400,12 +437,17 @@ func normalizeMultiOrganizationAcceptanceSpec(spec MultiOrganizationAcceptanceSp
 			continue
 		}
 		roleKeys := normalizeStrings(organization.RoleKeys)
+		projectRoleKeys := normalizeStrings(organization.ProjectRoleKeys)
+		if len(projectRoleKeys) == 0 {
+			projectRoleKeys = append([]string(nil), roleKeys...)
+		}
 		if index, found := organizationsByName[name]; found {
 			normalized.Organizations[index].RoleKeys = mergeUniqueStrings(normalized.Organizations[index].RoleKeys, roleKeys)
+			normalized.Organizations[index].ProjectRoleKeys = mergeUniqueStrings(normalized.Organizations[index].ProjectRoleKeys, projectRoleKeys)
 			continue
 		}
 		organizationsByName[name] = len(normalized.Organizations)
-		normalized.Organizations = append(normalized.Organizations, AcceptanceOrganizationSpec{Name: name, RoleKeys: roleKeys})
+		normalized.Organizations = append(normalized.Organizations, AcceptanceOrganizationSpec{Name: name, RoleKeys: roleKeys, ProjectRoleKeys: projectRoleKeys})
 	}
 	if len(normalized.Organizations) != 2 {
 		return MultiOrganizationAcceptanceSpec{}, errors.New("exactly two distinct organization names are required for multi-organization acceptance")
@@ -414,6 +456,40 @@ func normalizeMultiOrganizationAcceptanceSpec(spec MultiOrganizationAcceptanceSp
 		if len(organization.RoleKeys) == 0 {
 			return MultiOrganizationAcceptanceSpec{}, errors.New("each acceptance organization requires at least one role key")
 		}
+		if len(organization.ProjectRoleKeys) == 0 {
+			return MultiOrganizationAcceptanceSpec{}, errors.New("each acceptance organization requires at least one project role key")
+		}
+		for _, role := range organization.RoleKeys {
+			if !containsString(organization.ProjectRoleKeys, role) {
+				return MultiOrganizationAcceptanceSpec{}, fmt.Errorf("organization %q primary roles must be included in project role keys", organization.Name)
+			}
+		}
+	}
+
+	seenAuthorizations := make(map[string]int, len(spec.AdditionalAuthorizations))
+	for _, authorization := range spec.AdditionalAuthorizations {
+		userID := strings.TrimSpace(authorization.UserID)
+		organizationName := strings.TrimSpace(authorization.OrganizationName)
+		roleKeys := normalizeStrings(authorization.RoleKeys)
+		if userID == "" || organizationName == "" || len(roleKeys) == 0 {
+			return MultiOrganizationAcceptanceSpec{}, errors.New("additional acceptance authorizations require user, organization, and role keys")
+		}
+		organizationIndex, found := organizationsByName[organizationName]
+		if !found {
+			return MultiOrganizationAcceptanceSpec{}, fmt.Errorf("additional authorization references unknown organization %q", organizationName)
+		}
+		for _, role := range roleKeys {
+			if !containsString(normalized.Organizations[organizationIndex].ProjectRoleKeys, role) {
+				return MultiOrganizationAcceptanceSpec{}, fmt.Errorf("additional authorization role %q is not available in organization %q", role, organizationName)
+			}
+		}
+		key := userID + "\x00" + organizationName
+		if index, found := seenAuthorizations[key]; found {
+			normalized.AdditionalAuthorizations[index].RoleKeys = mergeUniqueStrings(normalized.AdditionalAuthorizations[index].RoleKeys, roleKeys)
+			continue
+		}
+		seenAuthorizations[key] = len(normalized.AdditionalAuthorizations)
+		normalized.AdditionalAuthorizations = append(normalized.AdditionalAuthorizations, AcceptanceAuthorizationSpec{UserID: userID, OrganizationName: organizationName, RoleKeys: roleKeys})
 	}
 	return normalized, nil
 }
@@ -1319,7 +1395,7 @@ func (c client) verifyAuthorization(ctx context.Context, userID, projectID, orga
 	return nil
 }
 
-func (c client) verifyAcceptanceState(ctx context.Context, userID, projectID, organizationID, name string, roleKeys []string) error {
+func (c client) verifyAcceptanceState(ctx context.Context, userID, projectID, organizationID, name string, projectRoleKeys, userRoleKeys []string) error {
 	organization, found, err := c.findOrganizationByID(ctx, organizationID)
 	if err != nil {
 		return fmt.Errorf("final acceptance organization read-back: %w", err)
@@ -1327,10 +1403,10 @@ func (c client) verifyAcceptanceState(ctx context.Context, userID, projectID, or
 	if !found || organization.State != "ORGANIZATION_STATE_ACTIVE" || strings.TrimSpace(organization.Name) != name {
 		return errors.New("final acceptance organization state did not match")
 	}
-	if err := c.verifyProjectGrant(ctx, projectID, organizationID, roleKeys); err != nil {
+	if err := c.verifyProjectGrant(ctx, projectID, organizationID, projectRoleKeys); err != nil {
 		return err
 	}
-	return c.verifyAuthorization(ctx, userID, projectID, organizationID, roleKeys)
+	return c.verifyAuthorization(ctx, userID, projectID, organizationID, userRoleKeys)
 }
 
 func (c client) findUserGrant(ctx context.Context, projectID string, identity authidentity.AuthenticatedIdentity) (userGrant, bool, error) {

@@ -19,9 +19,9 @@ remain private to the Compose network except for those loopback endpoints.
 
 From this directory, copy the example environment, choose a new lowercase
 project name, and verify the ports are free before starting. The bootstrap
-container keeps the operator password and public CA in project-named volumes;
-the extraction commands below create the private handoff files for that exact
-project without printing either value:
+container keeps the operator/viewer/insufficient-role passwords and public CA
+in project-named volumes; the extraction commands below create the private
+handoff files for that exact project without printing any value:
 
 ```powershell
 Copy-Item .env.example .env
@@ -37,10 +37,11 @@ $internalConflicts = @($identityPort, $applicationPort) | Where-Object { $fixedI
 if ($internalConflicts.Count -gt 0) { throw "Identity/application port collides with a fixed Compose-internal port" }
 foreach ($port in $publicPorts) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "Host port is already in use: $port" } }
 docker compose --env-file .env up --build --wait
+docker compose --env-file .env --profile acceptance run --rm acceptance-fixture
 $handoff = Join-Path $env:LOCALAPPDATA "ListingKit\account-center\$project"
 New-Item -ItemType Directory -Force -Path $handoff | Out-Null
 docker run --rm -v "${project}-trusted-ca:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/root-ca.pem /out/root-ca.pem'
-docker run --rm -v "${project}-tofu-inputs:/source:ro" -v "${handoff}:/out" alpine:3.22 sh -c 'cp /source/operator-password /out/operator-password.txt'
+docker run --rm --mount "type=volume,src=${project}-tofu-inputs,dst=/source,readonly" --mount "type=volume,src=${project}-acceptance-state,dst=/state,readonly" --mount "type=bind,src=$handoff,dst=/out" alpine:3.22 sh -ec 'cp /source/operator-password /out/operator-password.txt; cp /source/viewer-password /out/viewer-password.txt; cp /source/insufficient-password /out/insufficient-password.txt; cp /state/manifest.json /out/manifest.json'
 icacls $handoff /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)(F)" "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)" | Out-Null
 Write-Output "Private handoff directory: $handoff"
 ```
@@ -49,15 +50,25 @@ If a retained trial already uses one of the example ports, select another
 three-port set and put the same values in `.env`. Do not remove or reuse an
 existing project's volumes.
 
-For the retained delivered instance, the private handoff files are at
-`%LOCALAPPDATA%\ListingKit\account-center\task-processor-account-center-20260919-a\`:
-`operator-password.txt` is the operator password and `root-ca.pem` is the
-public CA. Do not put credentials in the repository, `.env`, terminal history,
-issue, PR or logs. Henry must decide whether to trust this CA for the current
-Windows user; the application never disables TLS verification.
+For a newly created instance, the private handoff files are at
+`%LOCALAPPDATA%\ListingKit\account-center\<project-name>\`:
+`operator-password.txt`, `viewer-password.txt`, and
+`insufficient-password.txt` are the three local login passwords;
+`manifest.json` contains only sanitized fixture IDs, organization names, role
+keys, and URLs; `root-ca.pem` is the public CA. Existing instances created
+before this fixture was added do not contain these files; create a new
+isolated project instead of reusing their volumes. Do not put credentials in
+the repository, `.env`, terminal history, issue, PR or logs. Henry must decide
+whether to trust this CA for the current Windows user; the application never
+disables TLS verification.
 
-Sign in at the application URL as `local-bootstrap-operator@localhost` using
-the private password file. Use only local addresses such as
+Sign in at the application URL as `local-bootstrap-operator@localhost`,
+`local-acceptance-viewer@localhost`, or
+`local-acceptance-insufficient@localhost` using the matching private password
+file. The first user receives `listingkit_admin` in Organization A and
+`listingkit_viewer` in Organization B; the other two receive viewer and
+operator-only grants in Organization A for negative authorization checks. Use
+only local addresses such as
 `member@example.test` for invitations. New referral registrations use the
 official Login V2 verification email delivered to this instance's Mailpit;
 the Mailpit UI is not a substitute for the normal login or verification flow.
@@ -80,6 +91,19 @@ The account profile, membership and referral schemas are initialized once by
 the existing source-account boundary, provider credentials and independent
 database pools before serving; a
 misconfigured module fails startup instead of appearing as an unavailable page.
+
+The separate membership directory PAT has the read-only ZITADEL instance role
+`IAM_OWNER_VIEWER`: the directory contains role assignments from multiple
+organizations, which an organization-scoped viewer cannot read. The application
+still authorizes each signed-in caller against the live grant for the selected
+organization and filters the provider query to that organization.
+
+The one-shot `acceptance-fixture` service is part of this isolated Compose
+project only. Run it explicitly with the `acceptance` profile after the normal
+stack is healthy. It uses the existing ZITADEL provisioning owner to
+create/read back Organization A/B and the three user authorizations, then
+writes the sanitized manifest to the project-owned `acceptance-state` volume.
+It does not add a production route or insert business facts into PostgreSQL.
 
 ## Scope limits
 

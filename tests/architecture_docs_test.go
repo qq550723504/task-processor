@@ -1907,3 +1907,40 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 		}
 	}
 }
+
+
+func TestCommercialWalletBillingContractLocksCanonicalOwners(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "commercial-wallet-billing-contract.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	text := string(content)
+
+	for _, required := range []string{
+		"internal/ledger/money",
+		"internal/commercial/billing",
+		"internal/ledger/orgresource",
+		"internal/listingsubscription",
+		"commercial_order_item",
+		"Idempotency-Key",
+		"RECONCILIATION_REQUIRED",
+		"workbench.commercial.read",
+		"workbench.commercial.purchase",
+		"workbench.commercial.wallet_topup",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must lock %q", path, required)
+		}
+	}
+
+	for _, forbidden := range []string{
+		"Figma example prices never seed production",
+		"browser never receives a generic positive-credit API",
+		"Invoice creation is deliberately not authorized by this contract",
+	} {
+		if !strings.Contains(text, forbidden) {
+			t.Errorf("%s must retain safety boundary %q", path, forbidden)
+		}
+	}
+}

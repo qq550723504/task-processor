@@ -70,7 +70,10 @@ Current target ownership domains include:
 | `internal/listingkit` | mixed legacy listing orchestration/API/runtime | `internal/listing/*`, `internal/marketplace/*`, `internal/product/*`, `internal/integration/*`, `internal/app/*` according to ownership | #29: extract valid behavior, switch caller, retire old path. Do not preserve root ListingKit as permanent facade. |
 | `internal/compatibility/listingkit` | remaining historical drain paths | current real owner above | Drain only. No new consumer or feature landing. A future #30 owner may EXTRACT valid behavior or RETIRE the handoff; it must not migrate old tasks/data or add a compatibility path. #300 owns guard/obvious cleanup. |
 | `internal/listingadmin` | listing-admin behavior | `internal/listing/settings` or `internal/app/httpapi` | Split business policy from transport/assembly. |
-| `internal/listingsubscription` | listing-era plans/entitlements/usage behavior | `internal/commercial/*`, current resource/entitlement owners, narrow listing policy where truly listing-specific | Do not restore old task-quota authority. |
+| `internal/listingsubscription` | listing-era plans/entitlements/usage behavior | `internal/commercial/*`, current resource/entitlement owners, narrow listing policy where truly listing-specific | Do not restore old task-quota authority; do not add wallet/payment/order ownership here. |
+| `internal/ledger/money` | canonical payment/refund/chargeback and payout-method facts; Organization wallet target owner | `internal/ledger/money` + `internal/integration/persistence/money` | CURRENT money owner. Extend only with money semantics; pricing, commercial orders and resource balances stay outside. See #457 contract. |
+| `internal/ledger/orgresource` | Organization platform-resource balance/events/reservations | `internal/ledger/orgresource` + `internal/integration/orgresource` | CURRENT resource owner. Commercial acquisition may enter only through the narrow source-bound purchased-resource grant; no generic browser mint. |
+| `internal/commercial/billing` | sellable offer / authoritative quote / commercial order and recovery coordination | `internal/commercial/billing` | TARGET/CURRENT landing zone introduced by #457. It composes money and resource owners and must not duplicate their balances or settlement facts. |
 | `internal/platformtask` | task execution helpers | `internal/listing/task` or runtime owner such as Temporal/queue | Business task semantics and runtime execution stay separate. |
 | `internal/taskstatus` | task status helpers | owning listing/runtime domain or `internal/shared` for truly generic primitives | Do not make internal Task the user product model. |
 | old `internal/catalog` | old canonical product package | `internal/product/catalog` | **RETIRE: package is already absent; keep it absent.** |
@@ -201,6 +204,9 @@ Do not add a new internal compatibility wrapper just because retirement is incon
 | Runtime assembly | `internal/app/*` | business packages |
 | External client/integration | `internal/integration/<system>` | Product/Listing business owners |
 | Commerce Tools | `internal/commercetool` contract + narrow domain adapters | direct DB/provider/marketplace-client access |
+| Organization wallet / monetary ledger | `internal/ledger/money` | `internal/listingsubscription`, UI/BFF balance calculation, orgresource |
+| Commercial offers / quotes / orders | `internal/commercial/billing` | `internal/listingsubscription`, referral economics, money ledger tables |
+| Purchased AI points/data rows/store periods | source-bound purchase contract in `internal/ledger/orgresource` | generic positive mint or UI-side balance mutation |
 | Agent runtime/capability | current Agent/AI Capability owners | legacy Task/Workflow ownership |
 | Organization/membership/identity policy | current Organization/identity owner | `internal/tenantbridge` or new compatibility package |
 | New AI Workbench UI | #298/Figma product projection | old Task-first ListingKit IA |

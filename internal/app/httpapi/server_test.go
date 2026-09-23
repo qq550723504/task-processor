@@ -511,6 +511,29 @@ func TestWorkbenchOrganizationResolverNilFailsClosed(t *testing.T) {
 	require.Contains(t, response.Body.String(), "DEPENDENCY_UNAVAILABLE")
 }
 
+func TestWorkbenchCurrentIdentityPreservesBearerTokenForUserScopedHandlers(t *testing.T) {
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method:     http.MethodGet,
+		Path:       "/account/identity/profile",
+		AuthPolicy: httproute.AuthPolicyCurrentIdentity,
+		Handler: func(c *gin.Context) {
+			require.Equal(t, "current-request-token", zitadelruntime.BearerTokenFromContext(c.Request.Context()))
+			c.Status(http.StatusNoContent)
+		},
+	}}, routeAuthDependencies{
+		workbenchVerifier: mountedVerifierStub{identity: mountedVerifiedIdentity()},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/account/identity/profile", nil)
+	request.Header.Set("Authorization", "Bearer current-request-token")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+}
+
 func assertOrganizationPolicySkipsResolver(t *testing.T, policy httproute.OrganizationAccessPolicy) {
 	t.Helper()
 	events := []string{}

@@ -181,6 +181,21 @@ services:
       referral-db: { condition: service_healthy }
       membership-db: { condition: service_healthy }
 
+  acceptance-fixture:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: acceptance }
+    profiles: [acceptance]
+    network_mode: service:runtime-network
+    environment:
+      ACCOUNT_IDENTITY_PORT: "${ACCOUNT_IDENTITY_PORT}"
+      SSL_CERT_FILE: /private/ca/root-ca.pem
+    volumes:
+      - acceptance-state:/state
+      - trusted-ca:/private/ca:ro
+      - runtime-secrets:/runtime:ro
+      - zitadel-iac-pat:/zitadel/iac:ro
+    depends_on:
+      tofu-init: { condition: service_completed_successfully }
+
   current-application:
     build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: runtime }
     network_mode: service:runtime-network
@@ -244,6 +259,7 @@ volumes:
   schema-state: { name: "${COMPOSE_PROJECT_NAME}-schema-state" }
   runtime-secrets: { name: "${COMPOSE_PROJECT_NAME}-runtime-secrets" }
   frontend-secrets: { name: "${COMPOSE_PROJECT_NAME}-frontend-secrets" }
+  acceptance-state: { name: "${COMPOSE_PROJECT_NAME}-acceptance-state" }
   identity-db: { name: "${COMPOSE_PROJECT_NAME}-identity-db" }
   source-db: { name: "${COMPOSE_PROJECT_NAME}-source-db" }
   commercial-db: { name: "${COMPOSE_PROJECT_NAME}-commercial-db" }

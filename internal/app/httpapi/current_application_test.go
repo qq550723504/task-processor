@@ -86,6 +86,16 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 	}
 }
 
+func TestCommercialBillingAdmittedRoutesIncludeSummary(t *testing.T) {
+	want := currentApplicationRoute{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/summary"}
+	for _, route := range currentCommercialBillingApplicationRoutes {
+		if route == want {
+			return
+		}
+	}
+	t.Fatalf("commercial billing admitted routes omit registered route %s %s", want.Method, want.Path)
+}
+
 func TestCurrentApplicationReferralRouteAdmission(t *testing.T) {
 	routes := make([]httproute.Descriptor, 0)
 	for _, r := range currentWorkbenchApplicationRoutes {
@@ -324,6 +334,7 @@ func TestBuildCurrentApplicationRejectsRouteDrift(t *testing.T) {
 func TestCurrentApplicationAdmitsPlatformSubscriptionOwnerRoutes(t *testing.T) {
 	deps := newRouteAuthDependencies()
 	ownerRoutes := append([]currentApplicationRoute(nil), currentPlatformSubscriptionApplicationRoutes...)
+	billingBuilderCalled := false
 	factories := currentApplicationFactories{
 		buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
 			return workbenchContextBuildResult{
@@ -340,11 +351,18 @@ func TestCurrentApplicationAdmitsPlatformSubscriptionOwnerRoutes(t *testing.T) {
 		buildPlatformSubscription: func(*gorm.DB, *config.Config) (kernelmodule.Module, error) {
 			return currentApplicationTestModule{name: "listing-kit-platform-admin", routes: ownerRoutes}, nil
 		},
+		buildCommercialBilling: func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			billingBuilderCalled = true
+			return nil, errors.New("billing must not be built without its canonical money database")
+		},
 	}
 
 	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories, WithCommercialOwnerDatabase(&gorm.DB{}))
 	if err != nil {
 		t.Fatalf("buildCurrentApplication() error = %v", err)
+	}
+	if billingBuilderCalled {
+		t.Fatal("commercial billing must remain disabled when no canonical money pool is configured")
 	}
 	for _, route := range []struct {
 		method string

@@ -11,7 +11,9 @@ import { browserCaptureSchema, BROWSER_CAPTURE_BASE } from "@/lib/contracts/brow
 import { acquisitionResultSchema } from "@/lib/contracts/product-acquisition";
 
 const nativeFetch = globalThis.fetch;
-const pluginHead = "7d689dc19461b2b6b60ffc972020e6c06283fca0";
+// The extension revision this chain freezes and validates. It is the main merge that put
+// the host grant into the shipped build; bumping it requires re-running this chain.
+const pluginHead = "231875c085b9d2c4c390d446f84d971e62e3bd04";
 const sourceURL = "https://detail.1688.com/offer/981645030344.html";
 const missedInterceptionProbe = "https://detail.1688.com/offer/0.html?issue399-denied-probe";
 type Manifest = {
@@ -197,7 +199,9 @@ export function registerFrozenExtensionCombination() {
         return api.chrome.runtime.getManifest();
       });
       assert.deepEqual(permissions.permissions.slice().sort(), ["activeTab", "scripting"]);
-      assert.equal(permissions.host_permissions, undefined);
+      // Same grant the pinned revision declares, and the reason the pin moved: the executor
+      // navigates the offer page with no action click, so nothing covers the read but a host grant.
+      assert.deepEqual(permissions.host_permissions, ["https://detail.1688.com/*"]);
       const targets = await browserCDP.send("Target.getTargets", { filter: [{ type: "tab", exclude: false }] });
       const tabs = targets.targetInfos.filter(target => target.type === "tab");
       assert.equal(tabs.length, 1, "OWNED_SOURCE_TAB_NOT_UNIQUE");

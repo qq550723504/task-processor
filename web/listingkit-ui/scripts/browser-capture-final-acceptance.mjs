@@ -19,7 +19,10 @@ const dir = await mkdtemp(join(tmpdir(), "issue399-browser-"));
 await privateDirectory(dir);
 const expectedSha = process.argv[2];
 const allowOwnedHMR = process.argv.includes("--allow-owned-hmr");
-const pluginHead = "7d689dc19461b2b6b60ffc972020e6c06283fca0";
+// The extension revision this chain freezes and validates. It is the main merge that
+// put the host grant below into the shipped build, so the revision under test and the
+// manifest expectation can only drift apart if one is changed without the other.
+const pluginHead = "231875c085b9d2c4c390d446f84d971e62e3bd04";
 const children = [];
 let container, containerName, pgPort, webPort, stage = "source", passed = false;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -92,7 +95,9 @@ try {
   }
   const extensionManifest = JSON.parse(await readFile(join(pluginRoot, "dist-fixture", "manifest.json"), "utf8"));
   assert.deepEqual(extensionManifest.permissions.slice().sort(), ["activeTab", "scripting"]);
-  assert.equal(extensionManifest.host_permissions, undefined);
+  // The pinned revision must carry the grant the executor reads through: it navigates the
+  // offer page with no action click, so there is no activeTab to cover the read.
+  assert.deepEqual(extensionManifest.host_permissions, ["https://detail.1688.com/*"]);
   stage = "compile";
   const binary = join(dir, "browser-capture.test.exe");
   await run("go", ["test", "-c", "-o", binary, "./internal/app/httpapi"], { cwd: repo });

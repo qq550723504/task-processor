@@ -13,6 +13,16 @@ variable "operator_password" {
   type      = string
   sensitive = true
 }
+
+variable "viewer_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "insufficient_password" {
+  type      = string
+  sensitive = true
+}
 variable "identity_port" { type = number }
 variable "application_port" { type = number }
 
@@ -34,6 +44,30 @@ resource "zitadel_human_user" "operator" {
   email                        = "local-bootstrap-operator@localhost"
   is_email_verified            = true
   initial_password             = var.operator_password
+  initial_skip_password_change = true
+}
+
+resource "zitadel_human_user" "viewer" {
+  org_id                       = zitadel_org.account.id
+  user_name                    = "local-acceptance-viewer@localhost"
+  first_name                   = "Local"
+  last_name                    = "Acceptance Viewer"
+  display_name                 = "Local Acceptance Viewer"
+  email                        = "local-acceptance-viewer@localhost"
+  is_email_verified            = true
+  initial_password             = var.viewer_password
+  initial_skip_password_change = true
+}
+
+resource "zitadel_human_user" "insufficient" {
+  org_id                       = zitadel_org.account.id
+  user_name                    = "local-acceptance-insufficient@localhost"
+  first_name                   = "Local"
+  last_name                    = "Acceptance Insufficient"
+  display_name                 = "Local Acceptance Insufficient"
+  email                        = "local-acceptance-insufficient@localhost"
+  is_email_verified            = true
+  initial_password             = var.insufficient_password
   initial_skip_password_change = true
 }
 
@@ -63,16 +97,18 @@ resource "zitadel_machine_user" "membership_read" {
   description = "Local Compose only; organization membership reader"
   with_secret = false
 }
-resource "zitadel_org_member" "membership_read" {
-  org_id  = zitadel_org.account.id
+// The directory PAT must read role assignments in each selected customer
+// organization. Its instance role is read-only; the application still
+// authorizes the caller and constrains every directory query to that org.
+resource "zitadel_instance_member" "membership_read" {
   user_id = zitadel_machine_user.membership_read.id
-  roles   = ["ORG_OWNER_VIEWER"]
+  roles   = ["IAM_OWNER_VIEWER"]
 }
 resource "zitadel_personal_access_token" "membership_read" {
   org_id          = zitadel_org.account.id
   user_id         = zitadel_machine_user.membership_read.id
   expiration_date = "2099-01-01T00:00:00Z"
-  depends_on      = [zitadel_org_member.membership_read]
+  depends_on      = [zitadel_instance_member.membership_read]
 }
 
 resource "zitadel_machine_user" "membership_write" {
@@ -171,6 +207,9 @@ output "provider_pat" {
 }
 output "signup_org_id" { value = zitadel_org.account.id }
 output "project_id" { value = zitadel_project.listingkit.id }
+output "bootstrap_user_id" { value = zitadel_human_user.operator.id }
+output "viewer_user_id" { value = zitadel_human_user.viewer.id }
+output "insufficient_user_id" { value = zitadel_human_user.insufficient.id }
 output "membership_read_pat" {
   value     = zitadel_personal_access_token.membership_read.token
   sensitive = true

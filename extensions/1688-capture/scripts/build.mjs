@@ -18,6 +18,11 @@ await build({ entryPoints:[resolve(root,'src/injected.ts')], outfile:resolve(out
 const manifest = {
   manifest_version:3, name: fixture ? '1688 商品采集 — 任务 Fixture' : '1688 商品采集', version:'0.1.0', minimum_chrome_version:'120',
   description:'用户点击后采集当前1688商品资料，并在当前应用确认导入。', permissions:['activeTab','scripting'],
+  // The extractor only ever reads detail.1688.com/offer/<id>.html and rejects every other URL itself
+  // (src/validation.ts). activeTab alone would require a user gesture per tab; the batch executor
+  // drives unattended, so the grant is declared here instead. Narrowest form: that one host, https
+  // only, no subdomain wildcard, no <all_urls>. Widening this is a product decision, not a detail.
+  host_permissions:['https://detail.1688.com/*'],
   action:{default_popup:'popup.html'}, background:{service_worker:'background.js',type:'module'},
   // Match patterns ignore ports: background additionally enforces exact origin.
   externally_connectable:{matches:[`${app.protocol}//${app.hostname}/capture/1688`]},
