@@ -137,6 +137,73 @@ func TestWalletEntryRejectsDebtAndAvailableAfterBalance(t *testing.T) {
 	}
 }
 
+func TestWalletEntryDeltasMustMatchAfterBalances(t *testing.T) {
+	tests := []struct {
+		name   string
+		kind   WalletEntryKind
+		mutate func(*WalletEntry)
+	}{
+		{
+			name: "top-up implies negative prior available",
+			kind: WalletEntryTopUpCredit,
+			mutate: func(entry *WalletEntry) {
+				entry.PaymentID = "payment-1"
+				entry.AvailableDelta = 100
+				entry.AvailableAfter = 50
+			},
+		},
+		{
+			name: "reservation implies negative prior reserved",
+			kind: WalletEntryPurchaseReserve,
+			mutate: func(entry *WalletEntry) {
+				entry.AvailableDelta = -100
+				entry.ReservedDelta = 100
+				entry.AvailableAfter = 0
+				entry.ReservedAfter = 0
+			},
+		},
+		{
+			name: "reversal implies negative prior debt",
+			kind: WalletEntryRefundReversal,
+			mutate: func(entry *WalletEntry) {
+				entry.PaymentID = "payment-1"
+				entry.AvailableDelta = -100
+				entry.DebtDelta = 100
+				entry.AvailableAfter = 0
+				entry.DebtAfter = 0
+			},
+		},
+		{
+			name: "minimum negative delta overflows prior balance",
+			kind: WalletEntryDebtRepayment,
+			mutate: func(entry *WalletEntry) {
+				entry.DebtDelta = -1 << 63
+				entry.AvailableAfter = 0
+				entry.DebtAfter = 1
+			},
+		},
+		{
+			name: "derived prior wallet violates debt-first invariant",
+			kind: WalletEntryDebtRepayment,
+			mutate: func(entry *WalletEntry) {
+				entry.DebtDelta = -100
+				entry.DebtAfter = 0
+				entry.AvailableAfter = 100
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := validWalletEntry(test.kind)
+			test.mutate(&entry)
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("entry with inconsistent prior balance = nil, want ErrInvalid")
+			}
+		})
+	}
+}
+
 func TestWalletEntryRequiresKindSpecificDeltas(t *testing.T) {
 	entry := validWalletEntry(WalletEntryTopUpCredit)
 	entry.PaymentID = "payment-1"
@@ -174,6 +241,7 @@ func TestWalletReversalEntriesConsumeAvailableAndCreateDebt(t *testing.T) {
 
 			entry.AvailableDelta = 0
 			entry.DebtDelta = 100
+			entry.DebtAfter = 100
 			if err := entry.Validate(); err != nil {
 				t.Fatalf("reversal recorded fully as debt rejected: %v", err)
 			}
@@ -254,6 +322,7 @@ func validWalletEntry(kind WalletEntryKind) WalletEntry {
 		entry.ReservedDelta = -100
 	case WalletEntryDebtRepayment:
 		entry.DebtDelta = -100
+		entry.AvailableAfter = 0
 	}
 	return entry
 }

@@ -280,6 +280,26 @@ func TestCancelledResourcePurchaseRejectsGrantEvidence(t *testing.T) {
 	}
 }
 
+func TestPreGrantResourcePurchaseStatesRejectGrantEvidence(t *testing.T) {
+	for _, status := range []OrderStatus{OrderPending, OrderFundsReserved} {
+		t.Run(string(status), func(t *testing.T) {
+			order := validResourcePurchaseOrder(time.Now().UTC())
+			order.Status = status
+			if status == OrderFundsReserved {
+				order.WalletReservationID = "reservation-1"
+				order.WalletReservationState = money.WalletReservationReserved
+			}
+			order.ResourceGrantOperationID = "grant-operation-1"
+			order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
+			order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
+
+			if !errors.Is(order.Validate(), ErrInvalid) {
+				t.Fatalf("%s resource order with grant evidence = nil, want ErrInvalid", status)
+			}
+		})
+	}
+}
+
 func TestCancelledResourcePurchaseRejectsCommittedReservation(t *testing.T) {
 	order := validResourcePurchaseOrder(time.Now().UTC())
 	order.Status = OrderCancelled

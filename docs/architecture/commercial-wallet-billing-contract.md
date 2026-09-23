@@ -244,6 +244,10 @@ as computed by the orgresource owner.
 Cancellation is pre-grant only: a cancelled resource order must not carry any
 grant or wallet-reservation evidence, because releasing its reservation after a
 successful commit or grant would desynchronize wallet and resource accounting.
+The `PENDING` and `FUNDS_RESERVED` states are also pre-grant: they must not carry
+grant evidence, so cancellation or reservation release cannot race with an
+already-recorded resource mint. Grant evidence is retained only in lifecycle
+states that can represent an in-progress or completed/uncertain grant.
 
 Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
 top-up must carry an accepted provider payment reference; without that proof it
@@ -490,6 +494,10 @@ reserved; purchase release moves an equal amount back to available; and debt
 repayment decreases debt. Reversed or zero-effect deltas are invalid.
 Purchase reservation, commit, and release entries must also carry the
 canonical `commercial_order_id` binding.
+Each after-balance minus its corresponding delta must yield a nonnegative prior
+balance without integer overflow. The derived prior wallet snapshot must also
+preserve the debt-first invariant: positive prior debt requires zero prior
+available balance.
 Tenant/browser callers never receive a generic money adjustment endpoint.
 
 The durable commercial order and item identity must include the order's

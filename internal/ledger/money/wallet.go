@@ -89,7 +89,8 @@ func (entry WalletEntry) Validate() error {
 		entry.DebtAfter < 0 ||
 		(entry.DebtAfter > 0 && entry.AvailableAfter > 0) ||
 		!isCanonicalWalletSourceIdentity(entry.SourceIdentity) ||
-		entry.OccurredAt.IsZero() {
+		entry.OccurredAt.IsZero() ||
+		!hasValidWalletEntryPriorBalances(entry) {
 		return ErrInvalid
 	}
 	switch entry.Kind {
@@ -121,6 +122,33 @@ func (entry WalletEntry) Validate() error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func hasValidWalletEntryPriorBalances(entry WalletEntry) bool {
+	availableBefore, availableOK := walletEntryPriorBalance(entry.AvailableAfter, entry.AvailableDelta)
+	_, reservedOK := walletEntryPriorBalance(entry.ReservedAfter, entry.ReservedDelta)
+	debtBefore, debtOK := walletEntryPriorBalance(entry.DebtAfter, entry.DebtDelta)
+	return availableOK && reservedOK && debtOK && !(debtBefore > 0 && availableBefore > 0)
+}
+
+func walletEntryPriorBalance(after, delta int64) (int64, bool) {
+	if after < 0 {
+		return 0, false
+	}
+	if delta > 0 {
+		if after < delta {
+			return 0, false
+		}
+		return after - delta, true
+	}
+	if delta < 0 {
+		maxInt64 := int64(^uint64(0) >> 1)
+		if after > maxInt64+delta {
+			return 0, false
+		}
+		return after - delta, true
+	}
+	return after, true
 }
 
 func isCanonicalWalletSourceIdentity(value string) bool {
