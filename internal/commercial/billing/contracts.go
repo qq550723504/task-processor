@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -18,6 +19,9 @@ var (
 	ErrQuoteExpired           = errors.New("commercial quote is expired")
 	ErrInsufficientFunds      = errors.New("commercial wallet funds are insufficient")
 	ErrConflict               = errors.New("commercial billing operation conflict")
+	ErrNotFound               = errors.New("commercial billing resource not found")
+	ErrOrderCancelled         = errors.New("commercial order was cancelled")
+	ErrResourceGrantRejected  = errors.New("commercial resource grant was rejected")
 	ErrReconciliationRequired = errors.New("commercial billing reconciliation is required")
 	ErrFeatureUnavailable     = errors.New("commercial billing feature is unavailable")
 )
@@ -56,6 +60,9 @@ type Offer struct {
 	ResourceType   orgresource.ResourceType
 	Currency       string
 	PricingVersion string
+	// UnitPriceMinor is server-owned pricing data. It is intentionally absent
+	// from browser requests and remains unset until an approved offer exists.
+	UnitPriceMinor int64
 	MinQuantity    int64
 	MaxQuantity    int64
 	Status         OfferStatus
@@ -125,6 +132,8 @@ const (
 
 type OrderStatus string
 
+type OrderFailureCode string
+
 const (
 	OrderPending                OrderStatus = "PENDING"
 	OrderFundsReserved          OrderStatus = "FUNDS_RESERVED"
@@ -132,6 +141,11 @@ const (
 	OrderFulfilled              OrderStatus = "FULFILLED"
 	OrderCancelled              OrderStatus = "CANCELLED"
 	OrderReconciliationRequired OrderStatus = "RECONCILIATION_REQUIRED"
+)
+
+const (
+	OrderFailureInsufficientFunds OrderFailureCode = "INSUFFICIENT_FUNDS"
+	OrderFailureGrantRejected     OrderFailureCode = "RESOURCE_GRANT_REJECTED"
 )
 
 type OrderItem struct {
@@ -158,10 +172,12 @@ type Order struct {
 	OrderID                     string
 	OrganizationID              string
 	Kind                        OrderKind
+	Description                 string
 	QuoteID                     string
 	Currency                    string
 	AmountMinor                 int64
 	Status                      OrderStatus
+	FailureCode                 OrderFailureCode
 	WalletReservationID         string
 	WalletReservationState      money.WalletReservationState
 	PaymentID                   string
@@ -176,6 +192,29 @@ type Order struct {
 	UpdatedAt                   time.Time
 }
 
+// DescribeOrder returns the immutable, server-derived display and search text
+// for an order from its canonical kind and item facts.
+func DescribeOrder(kind OrderKind, productKind ProductKind, quantity int64) string {
+	if kind == OrderWalletTopUp {
+		return "钱包充值"
+	}
+	if kind != OrderResourcePurchase || quantity <= 0 {
+		return ""
+	}
+	var label string
+	switch productKind {
+	case ProductStoreRenewalPeriod:
+		label = "店铺续费期"
+	case ProductAIPoint:
+		label = "AI 点数"
+	case ProductDataRow:
+		label = "数据资源"
+	default:
+		return ""
+	}
+	return fmt.Sprintf("%s × %d", label, quantity)
+}
+
 func (order Order) Validate() error {
 	if !isCanonicalIdentifier(order.OrderID) ||
 		!isCanonicalIdentifier(order.OrganizationID) ||
@@ -187,7 +226,8 @@ func (order Order) Validate() error {
 		strings.TrimSpace(order.RequestFingerprint) == "" ||
 		order.Version < 1 ||
 		order.CreatedAt.IsZero() ||
-		order.UpdatedAt.IsZero() {
+		order.UpdatedAt.IsZero() ||
+		(order.FailureCode != "" && (order.Status != OrderCancelled || (order.FailureCode != OrderFailureInsufficientFunds && order.FailureCode != OrderFailureGrantRejected))) {
 		return ErrInvalid
 	}
 	switch order.Kind {
@@ -292,6 +332,8 @@ type CreateWalletTopUpOrderRequest struct {
 	AmountMinor    int64
 	IdempotencyKey string
 }
+
+const MaxOrderPageSize = 50
 
 type OrderFilter struct {
 	Query       string

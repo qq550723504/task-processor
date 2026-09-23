@@ -11,6 +11,10 @@ This contract fixes the backend ownership required by the visible Figma
 (`1839:766`). Figma remains the UI/IA authority; it is not a source of
 prices, balances, payment outcomes, invoice facts, or resource grants.
 
+Safety boundaries: Figma example prices never seed production; the browser
+never receives a generic positive-credit API; Invoice creation is deliberately
+not authorized by this contract.
+
 ## 1. Current facts
 
 The repository already has three relevant fact families:
