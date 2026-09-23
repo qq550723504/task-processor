@@ -109,6 +109,28 @@ func TestWalletEntryRejectsUnknownKind(t *testing.T) {
 	}
 }
 
+func TestWalletEntryRequiresCanonicalSourceIdentity(t *testing.T) {
+	entry := validWalletEntry(WalletEntryPurchaseCommit)
+	entry.SourceIdentity = ""
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("wallet entry without source identity = nil, want ErrInvalid")
+	}
+
+	entry.SourceIdentity = " source-1"
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("wallet entry with non-canonical source identity = nil, want ErrInvalid")
+	}
+}
+
+func TestWalletEntryRejectsDebtAndAvailableAfterBalance(t *testing.T) {
+	entry := validWalletEntry(WalletEntryPurchaseCommit)
+	entry.AvailableAfter = 100
+	entry.DebtAfter = 50
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("wallet entry with debt and available after balance = nil, want ErrInvalid")
+	}
+}
+
 func validWalletEntry(kind WalletEntryKind) WalletEntry {
 	return WalletEntry{
 		EntryID:        "entry-1",
@@ -118,6 +140,7 @@ func validWalletEntry(kind WalletEntryKind) WalletEntry {
 		AvailableAfter: 100,
 		ReservedAfter:  0,
 		DebtAfter:      0,
+		SourceIdentity: "wallet-entry-1",
 		OccurredAt:     time.Now().UTC(),
 	}
 }

@@ -242,8 +242,8 @@ The order's durable grant proof carries the grant operation ID, canonical
 the deterministic identity for the order's organization, order, and order item
 as computed by the orgresource owner.
 Cancellation is pre-grant only: a cancelled resource order must not carry any
-grant evidence, because releasing its reservation after a successful grant
-would desynchronize wallet and resource accounting.
+grant or wallet-reservation evidence, because releasing its reservation after a
+successful commit or grant would desynchronize wallet and resource accounting.
 
 Wallet top-up orders do not use the resource-purchase lifecycle. A fulfilled
 top-up must carry an accepted provider payment reference; without that proof it
@@ -463,7 +463,7 @@ amount_delta_minor
 available_after_minor
 reserved_after_minor
 debt_after_minor
-source_identity
+source_identity (nonempty and canonical)
 commercial_order_id?
 payment_id?
 occurred_at
@@ -472,7 +472,9 @@ occurred_at
 The initial entry kinds remain bounded to top-up credit, purchase reservation,
 purchase commit/release, refund reversal, chargeback reversal, and debt
 repayment; unknown kinds and entries missing common identity/balance fields are
-invalid. Top-up and refund/chargeback reversal entries must carry `payment_id`.
+invalid. The after snapshot must preserve the debt-first invariant: a positive
+`debt_after_minor` requires zero `available_after_minor`. Top-up and
+refund/chargeback reversal entries must carry `payment_id`.
 Tenant/browser callers never receive a generic money adjustment endpoint.
 
 The durable commercial order and item identity must include the order's

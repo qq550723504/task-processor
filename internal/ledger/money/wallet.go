@@ -87,6 +87,8 @@ func (entry WalletEntry) Validate() error {
 		entry.AvailableAfter < 0 ||
 		entry.ReservedAfter < 0 ||
 		entry.DebtAfter < 0 ||
+		(entry.DebtAfter > 0 && entry.AvailableAfter > 0) ||
+		!isCanonicalWalletSourceIdentity(entry.SourceIdentity) ||
 		entry.OccurredAt.IsZero() {
 		return ErrInvalid
 	}
@@ -101,6 +103,10 @@ func (entry WalletEntry) Validate() error {
 		return ErrInvalid
 	}
 	return nil
+}
+
+func isCanonicalWalletSourceIdentity(value string) bool {
+	return value != "" && strings.TrimSpace(value) == value
 }
 
 type WalletEntryPage struct {

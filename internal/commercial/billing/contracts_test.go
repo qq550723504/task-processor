@@ -237,6 +237,17 @@ func TestCancelledResourcePurchaseRejectsGrantEvidence(t *testing.T) {
 	}
 }
 
+func TestCancelledResourcePurchaseRejectsCommittedReservation(t *testing.T) {
+	order := validResourcePurchaseOrder(time.Now().UTC())
+	order.Status = OrderCancelled
+	order.WalletReservationID = "reservation-1"
+	order.WalletReservationState = money.WalletReservationCommitted
+
+	if !errors.Is(order.Validate(), ErrInvalid) {
+		t.Fatalf("cancelled resource order with committed reservation = nil, want ErrInvalid")
+	}
+}
+
 func TestResourcePurchaseSourceIDsMustBeCanonical(t *testing.T) {
 	tests := []struct {
 		name   string
