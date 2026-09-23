@@ -97,16 +97,18 @@ resource "zitadel_machine_user" "membership_read" {
   description = "Local Compose only; organization membership reader"
   with_secret = false
 }
-resource "zitadel_org_member" "membership_read" {
-  org_id  = zitadel_org.account.id
+// The directory PAT must read role assignments in each selected customer
+// organization. Its instance role is read-only; the application still
+// authorizes the caller and constrains every directory query to that org.
+resource "zitadel_instance_member" "membership_read" {
   user_id = zitadel_machine_user.membership_read.id
-  roles   = ["ORG_OWNER_VIEWER"]
+  roles   = ["IAM_OWNER_VIEWER"]
 }
 resource "zitadel_personal_access_token" "membership_read" {
   org_id          = zitadel_org.account.id
   user_id         = zitadel_machine_user.membership_read.id
   expiration_date = "2099-01-01T00:00:00Z"
-  depends_on      = [zitadel_org_member.membership_read]
+  depends_on      = [zitadel_instance_member.membership_read]
 }
 
 resource "zitadel_machine_user" "membership_write" {

@@ -92,6 +92,12 @@ the existing source-account boundary, provider credentials and independent
 database pools before serving; a
 misconfigured module fails startup instead of appearing as an unavailable page.
 
+The separate membership directory PAT has the read-only ZITADEL instance role
+`IAM_OWNER_VIEWER`: the directory contains role assignments from multiple
+organizations, which an organization-scoped viewer cannot read. The application
+still authorizes each signed-in caller against the live grant for the selected
+organization and filters the provider query to that organization.
+
 The one-shot `acceptance-fixture` service is part of this isolated Compose
 project only. Run it explicitly with the `acceptance` profile after the normal
 stack is healthy. It uses the existing ZITADEL provisioning owner to
