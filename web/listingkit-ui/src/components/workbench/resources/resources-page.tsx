@@ -52,19 +52,22 @@ function ResourceRequest({ scope, organizationId, sequence }: { scope: string; o
 
 function MemberTokenAllocationRequest({ organizationId, sequence, canManage }: { organizationId: string; sequence: number; canManage: boolean }) {
   const response = useQuery({ queryKey: ["workbench", organizationId, "member-token-allocations", sequence], queryFn: ({ signal }) => getMemberTokenAllocations(organizationId, signal), gcTime: 0, staleTime: 0, retry: false, refetchOnWindowFocus: true, refetchOnReconnect: true });
-  if (response.isPending || response.isFetching) return <UnavailableMemberAllocation />;
+  if (response.isPending || response.isFetching) return <MemberAllocationNotice state="loading" />;
   if (response.isError || !response.data) {
     const code = response.error instanceof AccountAllocationError ? response.error.code : "DEPENDENCY_UNAVAILABLE";
-    return <UnavailableMemberAllocation conflict={code === "CONFLICT"} />;
+    if (code === "CONFLICT") return <MemberAllocationNotice state="error" message="成员分配状态已变化；刷新后重新读取。" />;
+    const labels: Record<string, string> = { PERMISSION_DENIED: "无成员额度查看权限", AUTHENTICATION_REQUIRED: "登录已失效", ORGANIZATION_ACCESS_REVOKED: "企业访问已撤销", ORGANIZATION_ACCESS_DENIED: "企业访问被拒绝", DEPENDENCY_UNAVAILABLE: "成员额度服务暂不可用", DEADLINE_EXCEEDED: "成员额度读取超时" };
+    return <MemberAllocationNotice state="error" message={`${labels[code] ?? "成员额度读取失败"}；本次未能确认成员分配数据，请刷新重试。`} />;
   }
   return <MemberTokenAllocationTable data={response.data} organizationId={organizationId} canManage={canManage} />;
 }
 
-function UnavailableMemberAllocation({ conflict = false }: { conflict?: boolean }) {
+function MemberAllocationNotice({ state, message }: { state: "loading" | "error"; message?: string }) {
+  const loading = state === "loading";
   return <Card role="region" aria-label="成员 AI Token 分配" className={styles.panel}>
-    <div className={styles.heading}><div><h2>成员资源目录</h2><p>{conflict ? "成员分配状态已变化；刷新后重新读取。" : "当前成员额度 owner 未提供可展示的成员分配行。"}</p><p>角色、店铺、续费期数、数据额度：未提供。Token 列仅使用当前成员分配 owner 返回的 token 额度。</p></div></div>
+    <div className={styles.heading}><div><h2>成员资源目录</h2><p role={loading ? "status" : "alert"}>{loading ? "正在读取成员 Token 分配" : message}</p><p>角色、店铺、续费期数、数据额度：未提供。Token 列仅使用当前成员分配 owner 返回的 token 额度。</p></div></div>
     <div className={styles.memberFilters} role="group" aria-label="成员资源筛选"><label>搜索成员<input disabled placeholder="当前 owner 未提供搜索" /></label><label>资源类型<select disabled defaultValue=""><option value="">筛选暂不可用</option></select></label><label>成员状态<select disabled defaultValue=""><option value="">筛选暂不可用</option></select></label></div>
-    <div className={styles.memberTableWrap} role="region" aria-label="成员资源表格，可横向滚动" tabIndex={0}><table className={styles.memberTable}><thead><tr><th>成员</th><th>角色</th><th>店铺</th><th>续费期数</th><th>token积分额度</th><th>数据额度</th><th>操作</th></tr></thead><tbody><tr><td colSpan={7} className={styles.emptyCell}>成员资源数据未提供 / 暂不可用</td></tr></tbody></table></div>
+    <div className={styles.memberTableWrap} role="region" aria-label="成员资源表格，可横向滚动" tabIndex={0}><table className={styles.memberTable}><thead><tr><th>成员</th><th>角色</th><th>店铺</th><th>续费期数</th><th>token积分额度</th><th>数据额度</th><th>操作</th></tr></thead><tbody><tr><td colSpan={7} className={styles.emptyCell}>{loading ? "正在读取成员 Token 分配…" : "成员额度读取失败；本次未能确认成员分配数据。"}</td></tr></tbody></table></div>
   </Card>;
 }
 

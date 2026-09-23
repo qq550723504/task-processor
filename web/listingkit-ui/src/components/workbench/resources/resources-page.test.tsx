@@ -40,17 +40,54 @@ it("projects real grants and usage while unknown resource and Store facts never 
   expect(state.read).toHaveBeenCalledWith("org-B", expect.any(AbortSignal));
 });
 
+it("keeps pending member allocation reads distinct from unavailable and empty states", async () => {
+  let resolveFetch!: (response: Response) => void;
+  let resolveRefresh!: (response: Response) => void;
+  const pendingResponse = new Promise<Response>(resolve => { resolveFetch = resolve; });
+  const pendingRefresh = new Promise<Response>(resolve => { resolveRefresh = resolve; });
+  vi.stubGlobal("fetch", vi.fn().mockReturnValueOnce(pendingResponse).mockReturnValueOnce(pendingRefresh));
+  render(tree());
+
+  await screen.findByText("企业实际合同");
+  const directory = await screen.findByRole("region", { name: "成员 AI Token 分配" });
+  expect(within(directory).getByText("正在读取成员 Token 分配")).toBeVisible();
+  expect(within(directory).queryByText("当前成员额度 owner 未提供可展示的成员分配行。")).not.toBeInTheDocument();
+  expect(within(directory).queryByText(/成员资源数据未提供/)).not.toBeInTheDocument();
+
+  const emptySnapshot = { schemaVersion: "account-member-token-allocation-v1", organizationId: "org-B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "0", unallocated: "9000", consumed: "0" }, members: [] };
+  await act(async () => resolveFetch(Response.json(emptySnapshot)));
+  expect(await screen.findByText("当前没有可展示的成员资源记录。")).toBeVisible();
+
+  await userEvent.click(screen.getByRole("button", { name: "刷新资源" }));
+  expect(await screen.findByText("正在读取成员 Token 分配")).toBeVisible();
+  expect(screen.queryByText("当前没有可展示的成员资源记录。")).not.toBeInTheDocument();
+  await act(async () => resolveRefresh(Response.json(emptySnapshot)));
+  expect(await screen.findByText("当前没有可展示的成员资源记录。")).toBeVisible();
+});
+
+it("keeps member allocation errors separate from empty results", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: { code: "DEPENDENCY_UNAVAILABLE", message: "private failure detail" } }, { status: 503 })));
+  render(tree());
+  const directory = await screen.findByRole("region", { name: "成员 AI Token 分配" });
+  expect(await within(directory).findByRole("alert")).toHaveTextContent("成员额度服务暂不可用");
+  expect(within(directory).getByRole("alert")).toHaveTextContent("本次未能确认成员分配数据");
+  expect(within(directory).queryByText("当前没有可展示的成员资源记录。")).not.toBeInTheDocument();
+  expect(within(directory).queryByText(/private failure detail/)).not.toBeInTheDocument();
+});
+
 it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED", "ORGANIZATION_ACCESS_REVOKED"])("hides stale facts on %s and preserves separate SourceAccount entry", async code => {
   state.read.mockResolvedValueOnce(commercialOverviewFixture()).mockRejectedValue({ code, message: "private token" });
   render(tree()); await screen.findByText("企业实际合同");
   await userEvent.click(screen.getByRole("button", { name: "刷新资源" }));
-  expect(await screen.findByRole("alert")).toBeVisible();
+  expect(await screen.findByText(/本次未取得数据，权益、用量与余额暂不可用/)).toBeVisible();
   const fallbackMetrics = screen.getByRole("region", { name: "企业资源权益摘要" });
   expect(within(fallbackMetrics).getAllByRole("heading", { level: 3 })).toHaveLength(3);
   expect(within(fallbackMetrics).getAllByText("资源余额未提供")).toHaveLength(2);
+  const allocationDirectory = screen.getByRole("region", { name: "成员 AI Token 分配" });
+  expect(within(allocationDirectory).getByRole("alert")).toHaveTextContent("本次未能确认成员分配数据");
   const memberTable = screen.getByRole("region", { name: "成员资源表格，可横向滚动" });
   expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "token积分额度", "数据额度", "操作"]);
-  expect(within(memberTable).getByText("成员资源数据未提供 / 暂不可用")).toBeVisible();
+  expect(within(memberTable).queryByText("当前没有可展示的成员资源记录。")).not.toBeInTheDocument();
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
   expect(screen.queryByText("无订阅")).not.toBeInTheDocument();
   expect(screen.queryByText(/private token/)).not.toBeInTheDocument();
