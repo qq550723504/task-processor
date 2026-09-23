@@ -306,6 +306,13 @@ Terminal pre-effect business rejection releases the money reservation and
 cancels the order. Any unknown resource or money commit outcome keeps durable
 state for owner reconciliation.
 
+The order lifecycle fences the reservation state: `FUNDS_RESERVED` and
+`FULFILLING` require `RESERVED`, `FULFILLED` requires `COMMITTED`, and
+`RECONCILIATION_REQUIRED` permits only `RESERVED` or `COMMITTED`. `PENDING`
+and `CANCELLED` carry no reservation evidence. Resource-binding identifiers
+(Organization, order, and order item) are canonical and at most 128 bytes,
+matching the purchased-grant owner contract.
+
 Every step is idempotent and uses a stable operation identity. The UI does not
 invent a new idempotency key after a timeout.
 
@@ -475,6 +482,11 @@ repayment; unknown kinds and entries missing common identity/balance fields are
 invalid. The after snapshot must preserve the debt-first invariant: a positive
 `debt_after_minor` requires zero `available_after_minor`. Top-up and
 refund/chargeback reversal entries must carry `payment_id`.
+Entry deltas are kind-specific: credits and reversals increase available
+balance; purchase reservation moves an equal amount from available to
+reserved; purchase commit decreases reserved; purchase release moves an equal
+amount back to available; and debt repayment decreases debt. Reversed or
+zero-direction deltas are invalid.
 Tenant/browser callers never receive a generic money adjustment endpoint.
 
 The durable commercial order and item identity must include the order's

@@ -192,7 +192,7 @@ func (order Order) Validate() error {
 	}
 	switch order.Kind {
 	case OrderResourcePurchase:
-		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || (order.Status == OrderFulfilled && (!hasResourceGrantProof(order) || order.WalletReservationState != money.WalletReservationCommitted)) || (order.Status == OrderCancelled && (hasResourceGrantEvidence(order) || hasWalletReservationEvidence(order))) {
+		if strings.TrimSpace(order.QuoteID) == "" || len(order.Items) != 1 || order.Items[0].Validate() != nil || order.Items[0].AmountMinor != order.AmountMinor || (requiresWalletReservation(order.Status) && strings.TrimSpace(order.WalletReservationID) == "") || !validWalletReservationStateForOrder(order) || (order.Status == OrderFulfilled && !hasResourceGrantProof(order)) || (order.Status == OrderCancelled && hasResourceGrantEvidence(order)) {
 			return ErrInvalid
 		}
 	case OrderWalletTopUp:
@@ -204,7 +204,7 @@ func (order Order) Validate() error {
 }
 
 func isCanonicalIdentifier(value string) bool {
-	return value != "" && strings.TrimSpace(value) == value
+	return value != "" && len(value) <= 128 && strings.TrimSpace(value) == value
 }
 
 func hasResourceGrantProof(order Order) bool {
@@ -229,6 +229,21 @@ func hasResourceGrantEvidence(order Order) bool {
 
 func hasWalletReservationEvidence(order Order) bool {
 	return strings.TrimSpace(order.WalletReservationID) != "" || order.WalletReservationState != ""
+}
+
+func validWalletReservationStateForOrder(order Order) bool {
+	switch order.Status {
+	case OrderPending, OrderCancelled:
+		return !hasWalletReservationEvidence(order)
+	case OrderFundsReserved, OrderFulfilling:
+		return order.WalletReservationState == money.WalletReservationReserved
+	case OrderFulfilled:
+		return order.WalletReservationState == money.WalletReservationCommitted
+	case OrderReconciliationRequired:
+		return order.WalletReservationState == money.WalletReservationReserved || order.WalletReservationState == money.WalletReservationCommitted
+	default:
+		return false
+	}
 }
 
 func topUpUsesResourcePurchaseLifecycle(status OrderStatus) bool {

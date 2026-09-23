@@ -2,6 +2,7 @@ package billing
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -193,6 +194,48 @@ func TestResourcePurchasePostReservationStatesRequireWalletReservation(t *testin
 	}
 }
 
+func TestResourcePurchaseLifecycleRequiresMatchingWalletReservationState(t *testing.T) {
+	tests := []struct {
+		status OrderStatus
+		state  money.WalletReservationState
+		valid  bool
+	}{
+		{status: OrderPending, state: "", valid: true},
+		{status: OrderFundsReserved, state: money.WalletReservationReserved, valid: true},
+		{status: OrderFulfilling, state: money.WalletReservationReserved, valid: true},
+		{status: OrderFulfilled, state: money.WalletReservationCommitted, valid: true},
+		{status: OrderReconciliationRequired, state: money.WalletReservationReserved, valid: true},
+		{status: OrderReconciliationRequired, state: money.WalletReservationCommitted, valid: true},
+	}
+	for _, test := range tests {
+		order := validResourcePurchaseOrder(time.Now().UTC())
+		order.Status = test.status
+		order.WalletReservationID = "reservation-1"
+		order.WalletReservationState = test.state
+		if test.status == OrderPending {
+			order.WalletReservationID = ""
+		}
+		if test.status == OrderFulfilled {
+			order.ResourceGrantOperationID = "grant-operation-1"
+			order.ResourceGrantSourceType = orgresource.SourceCommercialOrderItem
+			order.ResourceGrantSourceIdentity = orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, order.Items[0].OrderItemID)
+		}
+		if got := order.Validate(); (got == nil) != test.valid {
+			t.Fatalf("status %s state %s validation error = %v, valid = %t", test.status, test.state, got, test.valid)
+		}
+	}
+
+	for _, state := range []money.WalletReservationState{"", money.WalletReservationReleased, "UNKNOWN"} {
+		order := validResourcePurchaseOrder(time.Now().UTC())
+		order.Status = OrderFundsReserved
+		order.WalletReservationID = "reservation-1"
+		order.WalletReservationState = state
+		if !errors.Is(order.Validate(), ErrInvalid) {
+			t.Fatalf("funds-reserved order with state %q = nil, want ErrInvalid", state)
+		}
+	}
+}
+
 func TestFulfilledResourcePurchaseRequiresGrantProof(t *testing.T) {
 	order := validResourcePurchaseOrder(time.Now().UTC())
 	order.Status = OrderFulfilled
@@ -254,6 +297,7 @@ func TestResourcePurchaseSourceIDsMustBeCanonical(t *testing.T) {
 		mutate func(*Order)
 	}{
 		{name: "order id", mutate: func(order *Order) { order.OrderID = " order-1" }},
+		{name: "order id too long", mutate: func(order *Order) { order.OrderID = strings.Repeat("o", 129) }},
 		{name: "organization id", mutate: func(order *Order) { order.OrganizationID = "org-1 " }},
 		{name: "order item id", mutate: func(order *Order) { order.Items[0].OrderItemID = " item-1" }},
 	}

@@ -94,11 +94,25 @@ func (entry WalletEntry) Validate() error {
 	}
 	switch entry.Kind {
 	case WalletEntryTopUpCredit, WalletEntryRefundReversal, WalletEntryChargebackReversal:
-		if strings.TrimSpace(entry.PaymentID) == "" {
+		if strings.TrimSpace(entry.PaymentID) == "" || entry.AvailableDelta <= 0 || entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
-	case WalletEntryPurchaseReserve, WalletEntryPurchaseCommit, WalletEntryPurchaseRelease, WalletEntryDebtRepayment:
-		return nil
+	case WalletEntryPurchaseReserve:
+		if entry.AvailableDelta >= 0 || entry.ReservedDelta <= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+			return ErrInvalid
+		}
+	case WalletEntryPurchaseCommit:
+		if entry.AvailableDelta != 0 || entry.ReservedDelta >= 0 || entry.DebtDelta != 0 {
+			return ErrInvalid
+		}
+	case WalletEntryPurchaseRelease:
+		if entry.AvailableDelta <= 0 || entry.ReservedDelta >= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+			return ErrInvalid
+		}
+	case WalletEntryDebtRepayment:
+		if entry.AvailableDelta != 0 || entry.ReservedDelta != 0 || entry.DebtDelta >= 0 {
+			return ErrInvalid
+		}
 	default:
 		return ErrInvalid
 	}

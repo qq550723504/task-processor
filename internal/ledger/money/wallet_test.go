@@ -131,8 +131,30 @@ func TestWalletEntryRejectsDebtAndAvailableAfterBalance(t *testing.T) {
 	}
 }
 
+func TestWalletEntryRequiresKindSpecificDeltas(t *testing.T) {
+	entry := validWalletEntry(WalletEntryTopUpCredit)
+	entry.PaymentID = "payment-1"
+	entry.AvailableDelta = -100
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("top-up with negative available delta = nil, want ErrInvalid")
+	}
+
+	entry = validWalletEntry(WalletEntryPurchaseReserve)
+	entry.AvailableDelta = 0
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("purchase reserve with zero available delta = nil, want ErrInvalid")
+	}
+
+	entry = validWalletEntry(WalletEntryPurchaseReserve)
+	entry.AvailableDelta = 100
+	entry.ReservedDelta = -100
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("purchase reserve with reversed deltas = nil, want ErrInvalid")
+	}
+}
+
 func validWalletEntry(kind WalletEntryKind) WalletEntry {
-	return WalletEntry{
+	entry := WalletEntry{
 		EntryID:        "entry-1",
 		OrganizationID: "org-1",
 		Currency:       WalletCurrencyCNY,
@@ -143,4 +165,19 @@ func validWalletEntry(kind WalletEntryKind) WalletEntry {
 		SourceIdentity: "wallet-entry-1",
 		OccurredAt:     time.Now().UTC(),
 	}
+	switch kind {
+	case WalletEntryTopUpCredit, WalletEntryRefundReversal, WalletEntryChargebackReversal:
+		entry.AvailableDelta = 100
+	case WalletEntryPurchaseReserve:
+		entry.AvailableDelta = -100
+		entry.ReservedDelta = 100
+	case WalletEntryPurchaseCommit:
+		entry.ReservedDelta = -100
+	case WalletEntryPurchaseRelease:
+		entry.AvailableDelta = 100
+		entry.ReservedDelta = -100
+	case WalletEntryDebtRepayment:
+		entry.DebtDelta = -100
+	}
+	return entry
 }
