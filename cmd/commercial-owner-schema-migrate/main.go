@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 
+	"gorm.io/gorm"
+
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
 	moneystore "task-processor/internal/integration/persistence/money"
@@ -38,11 +40,11 @@ func run(manifestPath string) error {
 	}
 	defer platformdatabase.Close(db)
 	var canCreate bool
-	if err := db.Raw("SELECT has_schema_privilege(current_user, current_schema(), 'CREATE')").Scan(&canCreate).Error; err != nil {
+	if err := db.Raw("SELECT current_schema() = 'public' AND has_schema_privilege(current_user, 'public', 'CREATE')").Scan(&canCreate).Error; err != nil {
 		return fmt.Errorf("verify commercial schema-owner privileges: %w", err)
 	}
 	if !canCreate {
-		return fmt.Errorf("commercial schema migration role requires CREATE on the target schema")
+		return fmt.Errorf("commercial schema migration role requires CREATE on the public schema")
 	}
 	if err := moneystore.AutoMigrate(db); err != nil {
 		return fmt.Errorf("migrate money owner schema: %w", err)
@@ -53,7 +55,34 @@ func run(manifestPath string) error {
 	if err := orgresourceadapter.AutoMigrate(db); err != nil {
 		return fmt.Errorf("migrate organization resource schema: %w", err)
 	}
+	if err := grantCommercialRuntimeAccess(db); err != nil {
+		return fmt.Errorf("grant commercial runtime table access: %w", err)
+	}
 	return nil
+}
+
+func grantCommercialRuntimeAccess(db interface{ Exec(string, ...any) *gorm.DB }) error {
+	for _, grant := range commercialRuntimeGrants() {
+		if err := db.Exec(grant).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func commercialRuntimeGrants() []string {
+	return []string{
+		`GRANT USAGE ON SCHEMA public TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.ledger_organization_wallet_entries, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals TO commercial_owner_runtime`,
+		`GRANT SELECT ON TABLE public.ledger_payment_settlements TO commercial_owner_runtime`,
+		`GRANT SELECT ON TABLE public.commercial_offers TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.commercial_quotes, public.commercial_order_items TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_orders TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_organization_resource_buckets, public.saas_organization_resource_operations, public.saas_organization_resource_reservations, public.saas_organization_resource_debts TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.saas_organization_resource_source_claims, public.saas_organization_resource_events, public.saas_organization_resource_audit_logs TO commercial_owner_runtime`,
+		`GRANT USAGE, SELECT ON SEQUENCE public.saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
+	}
 }
 
 type schemaOwnerManifest struct {

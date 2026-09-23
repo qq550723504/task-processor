@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,5 +30,32 @@ func TestLoadSchemaOwnerConfigRejectsRuntimeRole(t *testing.T) {
 	}
 	if _, err := loadSchemaOwnerConfig(path); err == nil {
 		t.Fatal("runtime role must not be accepted for schema migration")
+	}
+}
+
+func TestCommercialRuntimeGrantsStayWithinOwnedTables(t *testing.T) {
+	grants := strings.Join(commercialRuntimeGrants(), "\n")
+	for _, table := range []string{
+		"ledger_organization_wallets",
+		"ledger_organization_wallet_entries",
+		"ledger_organization_wallet_reservations",
+		"commercial_offers",
+		"commercial_quotes",
+		"commercial_orders",
+		"commercial_order_items",
+		"saas_organization_resource_buckets",
+		"saas_organization_resource_operations",
+		"saas_organization_resource_source_claims",
+		"saas_organization_resource_events",
+		"saas_organization_resource_reservations",
+		"saas_organization_resource_debts",
+		"saas_organization_resource_audit_logs",
+	} {
+		if !strings.Contains(grants, "public."+table) {
+			t.Errorf("runtime grants omit required owner table %s", table)
+		}
+	}
+	if strings.Contains(grants, "ALL TABLES") || strings.Contains(grants, "GRANT ALL") {
+		t.Fatal("commercial runtime grants must not widen to all tables")
 	}
 }
