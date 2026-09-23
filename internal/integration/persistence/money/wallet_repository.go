@@ -218,13 +218,13 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 		debtRepaid := debtBefore - debt
 		availableAdded := available - availableBefore
 		if debtRepaid > 0 {
-			debtEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryDebtRepayment), DebtDelta: -debtRepaid, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID + ":debt", OccurredAt: now}
+			debtEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryDebtRepayment), AvailableAfter: availableBefore, ReservedAfter: row.ReservedMinor, DebtDelta: -debtRepaid, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID + ":debt", OccurredAt: now}
 			if err := tx.Create(&debtEntry).Error; err != nil {
 				return ledgermoney.ErrUnavailable
 			}
 		}
 		if availableAdded > 0 {
-			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: now}
+			creditEntry := organizationWalletEntryRow{EntryID: uuid.NewString(), OrganizationID: settlement.OrganizationID, Currency: settlement.Currency, Kind: string(ledgermoney.WalletEntryTopUpCredit), AvailableDelta: availableAdded, AvailableAfter: available, ReservedAfter: row.ReservedMinor, DebtAfter: debt, CommercialOrderID: settlement.CommercialOrderID, PaymentID: settlement.PaymentID, SourceIdentity: settlement.PaymentID, OccurredAt: now}
 			if err := tx.Create(&creditEntry).Error; err != nil {
 				return ledgermoney.ErrUnavailable
 			}

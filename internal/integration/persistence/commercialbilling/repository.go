@@ -307,7 +307,7 @@ func (r *Repository) ReadOrder(ctx context.Context, organizationID, orderID stri
 	var row orderRow
 	if err := r.db.WithContext(ctx).Where("organization_id = ? AND order_id = ?", organizationID, orderID).Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return billing.Order{}, billing.ErrConflict
+			return billing.Order{}, billing.ErrNotFound
 		}
 		return billing.Order{}, billing.ErrFeatureUnavailable
 	}
@@ -319,7 +319,7 @@ func (r *Repository) ReadOrder(ctx context.Context, organizationID, orderID stri
 }
 
 func (r *Repository) ListOrders(ctx context.Context, organizationID string, filter billing.OrderFilter) (billing.OrderPage, error) {
-	if r == nil || r.db == nil || strings.TrimSpace(organizationID) == "" || filter.Limit < 0 || filter.Limit > 100 {
+	if r == nil || r.db == nil || strings.TrimSpace(organizationID) == "" || filter.Limit < 0 || filter.Limit > billing.MaxOrderPageSize {
 		return billing.OrderPage{}, billing.ErrInvalid
 	}
 	limit := filter.Limit

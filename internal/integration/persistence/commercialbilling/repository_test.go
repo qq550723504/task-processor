@@ -79,6 +79,16 @@ func TestOrderIdempotencyHasDatabaseUniqueFence(t *testing.T) {
 	}
 }
 
+func TestReadMissingOrderReturnsNotFoundAndOrderPageIsBounded(t *testing.T) {
+	repository := commercialRepository(t)
+	if _, err := repository.ReadOrder(context.Background(), "org-a", "missing-order"); !errors.Is(err, billing.ErrNotFound) {
+		t.Fatalf("missing order error = %v; want not found", err)
+	}
+	if _, err := repository.ListOrders(context.Background(), "org-a", billing.OrderFilter{Limit: billing.MaxOrderPageSize + 1}); !errors.Is(err, billing.ErrInvalid) {
+		t.Fatalf("oversized order page error = %v; want invalid", err)
+	}
+}
+
 func TestQuoteFailsClosedWithoutApprovedPrice(t *testing.T) {
 	repository := commercialRepository(t)
 	offer := billing.Offer{OfferID: "offer-unpriced", ProductKind: billing.ProductDataRow, ResourceType: orgresource.ResourceDataRow, Currency: billing.CurrencyCNY, PricingVersion: "pricing-1", MinQuantity: 1, MaxQuantity: 10, Status: billing.OfferActive}

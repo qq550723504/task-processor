@@ -155,10 +155,10 @@ func (h *Handler) Orders(c *gin.Context) {
 			return
 		}
 	}
-	filter := billing.OrderFilter{Limit: 50, Query: strings.TrimSpace(c.Query("q")), Cursor: c.Query("cursor")}
+	filter := billing.OrderFilter{Limit: billing.MaxOrderPageSize, Query: strings.TrimSpace(c.Query("q")), Cursor: c.Query("cursor")}
 	if raw := c.Query("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
-		if err != nil || limit < 1 || limit > 100 {
+		if err != nil || limit < 1 || limit > billing.MaxOrderPageSize {
 			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 			return
 		}
@@ -302,7 +302,13 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 		{http.MethodGet, orderDetailPath, read, handler.Order},
 		{http.MethodPost, topUpIntentPath, topup, handler.TopUpIntent},
 	} {
-		routes = append(routes, httproute.Descriptor{Method: route.method, Path: route.path, Module: "commercial-billing", Permission: route.permission, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: true, Handler: route.handler})
+		handler := route.handler
+		rejectUnreadRequestBody := true
+		if route.method == http.MethodPost && (route.path == quotePath || route.path == orderPath) {
+			rejectUnreadRequestBody = false
+			handler = httproute.WithRequestBodyReadTimeout(10*time.Second, handler)
+		}
+		routes = append(routes, httproute.Descriptor{Method: route.method, Path: route.path, Module: "commercial-billing", Permission: route.permission, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: rejectUnreadRequestBody, Handler: handler})
 	}
 	return routes, nil
 }
@@ -428,6 +434,8 @@ func writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusConflict, "INSUFFICIENT_FUNDS")
 	case errors.Is(err, billing.ErrConflict):
 		writeError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT")
+	case errors.Is(err, billing.ErrNotFound):
+		writeError(c, http.StatusNotFound, "NOT_FOUND")
 	case errors.Is(err, billing.ErrFeatureUnavailable), errors.Is(err, billing.ErrOfferUnavailable):
 		writeError(c, http.StatusServiceUnavailable, "FEATURE_UNAVAILABLE")
 	case errors.Is(err, billing.ErrReconciliationRequired):

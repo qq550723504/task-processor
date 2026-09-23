@@ -219,4 +219,42 @@ func TestReleaseRepaysReversalDebtBeforeReturningAvailableFunds(t *testing.T) {
 	}
 }
 
+func TestTopUpEntriesPreserveReservedBalance(t *testing.T) {
+	repository, db := walletRepository(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-reserved-topup-a", PayerUserID: "user-reserved-topup", Currency: "CNY", GrossAmountMinor: 100, CommissionableAmountMinor: 100, Status: ledgermoney.PaymentSettled, SettledAt: now, ProviderReference: "provider-reserved-topup-a", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-reserved-topup-a", CommercialOrderID: "order-reserved-topup-a", OrganizationID: "org-reserved-topup", Currency: "CNY", AmountMinor: 100, SettledAt: now, ProviderReference: "provider-reserved-topup-a", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveCommercialPurchase(ctx, ledgermoney.ReserveWalletFundsInput{OperationID: "purchase-reserved-topup", OrganizationID: "org-reserved-topup", CommercialOrderID: "purchase-reserved-topup", Currency: "CNY", AmountMinor: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ApplyTopUpReversal(ctx, "", ledgermoney.OrganizationWalletReversal{ReversalID: "refund-reserved-topup", PaymentID: "pay-reserved-topup-a", CommercialOrderID: "order-reserved-topup-a", OrganizationID: "org-reserved-topup", Kind: ledgermoney.WalletReversalRefund, Currency: "CNY", AmountMinor: 100, OccurredAt: now.Add(time.Minute), ProviderReference: "provider-refund-reserved-topup"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.RecordPaymentSettlement(ctx, ledgermoney.PaymentSettlement{PaymentID: "pay-reserved-topup-b", PayerUserID: "user-reserved-topup", Currency: "CNY", GrossAmountMinor: 150, CommissionableAmountMinor: 150, Status: ledgermoney.PaymentSettled, SettledAt: now.Add(2 * time.Minute), ProviderReference: "provider-reserved-topup-b", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: "pay-reserved-topup-b", CommercialOrderID: "order-reserved-topup-b", OrganizationID: "org-reserved-topup", Currency: "CNY", AmountMinor: 150, SettledAt: now.Add(2 * time.Minute), ProviderReference: "provider-reserved-topup-b", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if reservation.State != ledgermoney.WalletReservationReserved {
+		t.Fatalf("reservation unexpectedly changed: %#v", reservation)
+	}
+	for _, kind := range []ledgermoney.WalletEntryKind{ledgermoney.WalletEntryDebtRepayment, ledgermoney.WalletEntryTopUpCredit} {
+		var row organizationWalletEntryRow
+		if err := db.Where("payment_id = ? AND entry_kind = ?", "pay-reserved-topup-b", kind).Take(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		entry := walletEntry(row)
+		if entry.ReservedAfter != 100 || entry.Validate() != nil {
+			t.Fatalf("%s entry lost reserved snapshot: %#v validation=%v", kind, entry, entry.Validate())
+		}
+	}
+}
+
 func mustWalletError(_ ledgermoney.OrganizationWalletSnapshot, err error) error { return err }

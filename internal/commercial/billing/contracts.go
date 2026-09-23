@@ -18,6 +18,7 @@ var (
 	ErrQuoteExpired           = errors.New("commercial quote is expired")
 	ErrInsufficientFunds      = errors.New("commercial wallet funds are insufficient")
 	ErrConflict               = errors.New("commercial billing operation conflict")
+	ErrNotFound               = errors.New("commercial billing resource not found")
 	ErrReconciliationRequired = errors.New("commercial billing reconciliation is required")
 	ErrFeatureUnavailable     = errors.New("commercial billing feature is unavailable")
 )
@@ -295,6 +296,8 @@ type CreateWalletTopUpOrderRequest struct {
 	AmountMinor    int64
 	IdempotencyKey string
 }
+
+const MaxOrderPageSize = 50
 
 type OrderFilter struct {
 	Query       string
