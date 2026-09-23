@@ -98,15 +98,15 @@ func (entry WalletEntry) Validate() error {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseReserve:
-		if entry.AvailableDelta >= 0 || entry.ReservedDelta <= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+		if !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta >= 0 || entry.ReservedDelta <= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseCommit:
-		if entry.AvailableDelta != 0 || entry.ReservedDelta >= 0 || entry.DebtDelta != 0 {
+		if !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta != 0 || entry.ReservedDelta >= 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseRelease:
-		if entry.AvailableDelta <= 0 || entry.ReservedDelta >= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+		if !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta <= 0 || entry.ReservedDelta >= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
 			return ErrInvalid
 		}
 	case WalletEntryDebtRepayment:
@@ -120,7 +120,11 @@ func (entry WalletEntry) Validate() error {
 }
 
 func isCanonicalWalletSourceIdentity(value string) bool {
-	return value != "" && strings.TrimSpace(value) == value
+	return isCanonicalWalletIdentifier(value)
+}
+
+func isCanonicalWalletIdentifier(value string) bool {
+	return value != "" && len(value) <= 128 && strings.TrimSpace(value) == value
 }
 
 type WalletEntryPage struct {

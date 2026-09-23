@@ -153,17 +153,34 @@ func TestWalletEntryRequiresKindSpecificDeltas(t *testing.T) {
 	}
 }
 
+func TestWalletPurchaseEntryRequiresCommercialOrderBinding(t *testing.T) {
+	for _, kind := range []WalletEntryKind{
+		WalletEntryPurchaseReserve,
+		WalletEntryPurchaseCommit,
+		WalletEntryPurchaseRelease,
+	} {
+		t.Run(string(kind), func(t *testing.T) {
+			entry := validWalletEntry(kind)
+			entry.CommercialOrderID = ""
+			if !errors.Is(entry.Validate(), ErrInvalid) {
+				t.Fatalf("purchase entry without commercial order binding = nil, want ErrInvalid")
+			}
+		})
+	}
+}
+
 func validWalletEntry(kind WalletEntryKind) WalletEntry {
 	entry := WalletEntry{
-		EntryID:        "entry-1",
-		OrganizationID: "org-1",
-		Currency:       WalletCurrencyCNY,
-		Kind:           kind,
-		AvailableAfter: 100,
-		ReservedAfter:  0,
-		DebtAfter:      0,
-		SourceIdentity: "wallet-entry-1",
-		OccurredAt:     time.Now().UTC(),
+		EntryID:           "entry-1",
+		OrganizationID:    "org-1",
+		Currency:          WalletCurrencyCNY,
+		Kind:              kind,
+		CommercialOrderID: "order-1",
+		AvailableAfter:    100,
+		ReservedAfter:     0,
+		DebtAfter:         0,
+		SourceIdentity:    "wallet-entry-1",
+		OccurredAt:        time.Now().UTC(),
 	}
 	switch kind {
 	case WalletEntryTopUpCredit, WalletEntryRefundReversal, WalletEntryChargebackReversal:

@@ -487,6 +487,8 @@ balance; purchase reservation moves an equal amount from available to
 reserved; purchase commit decreases reserved; purchase release moves an equal
 amount back to available; and debt repayment decreases debt. Reversed or
 zero-direction deltas are invalid.
+Purchase reservation, commit, and release entries must also carry the
+canonical `commercial_order_id` binding.
 Tenant/browser callers never receive a generic money adjustment endpoint.
 
 The durable commercial order and item identity must include the order's
