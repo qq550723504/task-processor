@@ -53,6 +53,7 @@ type walletReservationRow struct {
 	ReservationID     string    `gorm:"column:reservation_id;primaryKey;size:128"`
 	OperationID       string    `gorm:"column:operation_id;uniqueIndex:uq_wallet_reservation_operation,priority:1;size:128;not null"`
 	CommercialOrderID string    `gorm:"column:commercial_order_id;uniqueIndex:uq_wallet_reservation_operation,priority:2;size:128;not null"`
+	FinishOperationID *string   `gorm:"column:finish_operation_id;uniqueIndex:uq_wallet_reservation_finish_operation;size:128"`
 	Currency          string    `gorm:"column:currency;size:3;not null"`
 	AmountMinor       int64     `gorm:"column:amount_minor;not null"`
 	State             string    `gorm:"column:state;size:16;not null"`
@@ -112,6 +113,27 @@ func (r *Repository) ReadOrganizationWallet(ctx context.Context, organizationID,
 		return ledgermoney.OrganizationWalletSnapshot{}, ledgermoney.ErrUnavailable
 	}
 	return walletSnapshot(row), nil
+}
+
+func (r *Repository) ReadCommercialPurchaseReservation(ctx context.Context, organizationID, orderID, reservationID string) (ledgermoney.WalletReservation, error) {
+	if r == nil || r.db == nil {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrUnavailable
+	}
+	organizationID = strings.TrimSpace(organizationID)
+	orderID = strings.TrimSpace(orderID)
+	reservationID = strings.TrimSpace(reservationID)
+	if organizationID == "" || orderID == "" || reservationID == "" {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrInvalid
+	}
+	var row walletReservationRow
+	err := r.db.WithContext(ctx).Where("organization_id = ? AND commercial_order_id = ? AND reservation_id = ?", organizationID, orderID, reservationID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrWalletReservationConflict
+	}
+	if err != nil {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrUnavailable
+	}
+	return reservationFromRow(row), nil
 }
 
 func (r *Repository) ListOrganizationWalletEntries(ctx context.Context, organizationID, currency, cursor string, limit int) (ledgermoney.WalletEntryPage, error) {
@@ -355,19 +377,29 @@ func (r *Repository) ReserveCommercialPurchase(ctx context.Context, input ledger
 }
 
 func (r *Repository) CommitCommercialPurchase(ctx context.Context, input ledgermoney.CommitWalletReservationInput) (ledgermoney.WalletReservation, error) {
-	return r.finishReservation(ctx, input.OrganizationID, input.CommercialOrderID, input.ReservationID, ledgermoney.WalletReservationCommitted, ledgermoney.WalletEntryPurchaseCommit, "")
+	return r.finishReservation(ctx, input.OperationID, input.OrganizationID, input.CommercialOrderID, input.ReservationID, ledgermoney.WalletReservationCommitted, ledgermoney.WalletEntryPurchaseCommit, "")
 }
 
 func (r *Repository) ReleaseCommercialPurchase(ctx context.Context, input ledgermoney.ReleaseWalletReservationInput) (ledgermoney.WalletReservation, error) {
-	return r.finishReservation(ctx, input.OrganizationID, input.CommercialOrderID, input.ReservationID, ledgermoney.WalletReservationReleased, ledgermoney.WalletEntryPurchaseRelease, input.Reason)
+	return r.finishReservation(ctx, input.OperationID, input.OrganizationID, input.CommercialOrderID, input.ReservationID, ledgermoney.WalletReservationReleased, ledgermoney.WalletEntryPurchaseRelease, input.Reason)
 }
 
-func (r *Repository) finishReservation(ctx context.Context, organizationID, orderID, reservationID string, terminal ledgermoney.WalletReservationState, kind ledgermoney.WalletEntryKind, _ string) (ledgermoney.WalletReservation, error) {
-	if r == nil || r.db == nil || strings.TrimSpace(organizationID) == "" || strings.TrimSpace(orderID) == "" || strings.TrimSpace(reservationID) == "" {
+func (r *Repository) finishReservation(ctx context.Context, operationID, organizationID, orderID, reservationID string, terminal ledgermoney.WalletReservationState, kind ledgermoney.WalletEntryKind, _ string) (ledgermoney.WalletReservation, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(operationID) == "" || len(operationID) > 128 || strings.TrimSpace(organizationID) == "" || strings.TrimSpace(orderID) == "" || strings.TrimSpace(reservationID) == "" {
 		return ledgermoney.WalletReservation{}, ledgermoney.ErrInvalid
 	}
 	var out ledgermoney.WalletReservation
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var operationOwner walletReservationRow
+		if err := tx.Where("finish_operation_id = ?", operationID).Take(&operationOwner).Error; err == nil {
+			if operationOwner.ReservationID != reservationID || operationOwner.OrganizationID != organizationID || operationOwner.CommercialOrderID != orderID || operationOwner.State != string(terminal) {
+				return ledgermoney.ErrWalletReservationConflict
+			}
+			out = reservationFromRow(operationOwner)
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return ledgermoney.ErrUnavailable
+		}
 		var reservation walletReservationRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND reservation_id = ?", organizationID, reservationID).Take(&reservation).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -379,8 +411,7 @@ func (r *Repository) finishReservation(ctx context.Context, organizationID, orde
 			return ledgermoney.ErrWalletReservationConflict
 		}
 		if reservation.State == string(terminal) {
-			out = reservationFromRow(reservation)
-			return nil
+			return ledgermoney.ErrWalletReservationConflict
 		}
 		if reservation.State != string(ledgermoney.WalletReservationReserved) {
 			return ledgermoney.ErrWalletReservationConflict
@@ -413,6 +444,7 @@ func (r *Repository) finishReservation(ctx context.Context, organizationID, orde
 		wallet.Version++
 		wallet.UpdatedAt = time.Now().UTC()
 		reservation.State = string(terminal)
+		reservation.FinishOperationID = &operationID
 		reservation.UpdatedAt = wallet.UpdatedAt
 		if err := tx.Save(&wallet).Error; err != nil {
 			return ledgermoney.ErrUnavailable

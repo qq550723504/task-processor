@@ -438,7 +438,9 @@ func writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT")
 	case errors.Is(err, billing.ErrNotFound):
 		writeError(c, http.StatusNotFound, "NOT_FOUND")
-	case errors.Is(err, billing.ErrFeatureUnavailable), errors.Is(err, billing.ErrOfferUnavailable):
+	case errors.Is(err, billing.ErrOfferUnavailable):
+		writeError(c, http.StatusServiceUnavailable, "OFFER_UNAVAILABLE")
+	case errors.Is(err, billing.ErrFeatureUnavailable):
 		writeError(c, http.StatusServiceUnavailable, "FEATURE_UNAVAILABLE")
 	case errors.Is(err, billing.ErrReconciliationRequired):
 		writeError(c, http.StatusConflict, "RECONCILIATION_REQUIRED")

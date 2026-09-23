@@ -48,3 +48,22 @@ func TestNotFoundMapsToNotFoundResponse(t *testing.T) {
 		t.Fatalf("payload=%s err=%v; want NOT_FOUND", response.Body.String(), err)
 	}
 }
+
+func TestUnavailableOfferMapsToOfferUnavailableResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	ctx.Request = httptest.NewRequest(http.MethodPost, quotePath, nil)
+
+	writeServiceError(ctx, billing.ErrOfferUnavailable)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d; want %d", response.Code, http.StatusServiceUnavailable)
+	}
+	var payload struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || payload.Code != "OFFER_UNAVAILABLE" {
+		t.Fatalf("payload=%s err=%v; want OFFER_UNAVAILABLE", response.Body.String(), err)
+	}
+}

@@ -186,6 +186,28 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 	if order.Status != OrderReconciliationRequired && order.Status != OrderFundsReserved && order.Status != OrderFulfilling {
 		return order, nil
 	}
+	if order.WalletReservationID == "" || len(order.Items) != 1 {
+		return order, ErrReconciliationRequired
+	}
+	reservation, err := s.wallet.ReadCommercialPurchaseReservation(ctx, order.OrganizationID, order.OrderID, order.WalletReservationID)
+	if err != nil || reservation.OrganizationID != order.OrganizationID || reservation.CommercialOrderID != order.OrderID || reservation.ReservationID != order.WalletReservationID || reservation.AmountMinor != order.AmountMinor || reservation.Currency != order.Currency {
+		return order, ErrReconciliationRequired
+	}
+	order.WalletReservationState = reservation.State
+	if reservation.State == money.WalletReservationReleased {
+		if hasResourceGrantEvidence(order) {
+			return order, ErrReconciliationRequired
+		}
+		order.Status = OrderCancelled
+		order.FailureCode = OrderFailureGrantRejected
+		order.WalletReservationID = ""
+		order.WalletReservationState = ""
+		order.UpdatedAt = s.now().UTC()
+		if err := s.updateOrder(ctx, &order); err != nil {
+			return Order{}, ErrReconciliationRequired
+		}
+		return order, ErrResourceGrantRejected
+	}
 	if order.WalletReservationState == money.WalletReservationCommitted {
 		if !hasResourceGrantProof(order) {
 			return order, ErrReconciliationRequired
@@ -197,7 +219,7 @@ func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, or
 		}
 		return order, nil
 	}
-	if order.WalletReservationState != money.WalletReservationReserved || order.WalletReservationID == "" || len(order.Items) != 1 {
+	if order.WalletReservationState != money.WalletReservationReserved {
 		return order, ErrReconciliationRequired
 	}
 	item := order.Items[0]

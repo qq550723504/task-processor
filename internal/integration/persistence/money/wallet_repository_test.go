@@ -62,6 +62,16 @@ func TestOrganizationWalletTopUpReserveAndCommitAreIdempotent(t *testing.T) {
 	if err != nil || secondReservation.State != ledgermoney.WalletReservationReserved {
 		t.Fatalf("second reservation=%#v err=%v", secondReservation, err)
 	}
+	replayedCommit, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OperationID: "commit-1", OrganizationID: "org-a", CommercialOrderID: "order-1", ReservationID: reservation.ReservationID})
+	if err != nil || replayedCommit.State != ledgermoney.WalletReservationCommitted {
+		t.Fatalf("same commit replay=%#v err=%v", replayedCommit, err)
+	}
+	if _, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OperationID: "commit-1", OrganizationID: "org-a", CommercialOrderID: "order-2", ReservationID: secondReservation.ReservationID}); !errors.Is(err, ledgermoney.ErrWalletReservationConflict) {
+		t.Fatalf("reused commit operation error=%v; want reservation conflict", err)
+	}
+	if _, err := repository.CommitCommercialPurchase(ctx, ledgermoney.CommitWalletReservationInput{OrganizationID: "org-a", CommercialOrderID: "order-2", ReservationID: secondReservation.ReservationID}); !errors.Is(err, ledgermoney.ErrInvalid) {
+		t.Fatalf("empty commit operation error=%v; want invalid", err)
+	}
 }
 
 func TestOrganizationWalletReversalCreatesDebtAndRepaysOnNextTopUp(t *testing.T) {
