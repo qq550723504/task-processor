@@ -9,6 +9,7 @@ function postRequest(body: ReadableStream<Uint8Array>): Request {
     headers: {
       cookie: "shuomi_effective_organization=org-a",
       "X-Expected-Organization-ID": "org-a",
+      "X-Expected-User-ID": "user-a",
       "content-type": "application/json",
     },
     body,
@@ -26,7 +27,7 @@ it("cancels oversized request streams before forwarding", async () => {
     cancel() { cancelled = true; },
   }));
 
-  const response = await proxyCommercialBilling(request, "fixture-token");
+  const response = await proxyCommercialBilling(request, "fixture-token", "user-a");
   expect(response.status).toBe(413);
   expect(cancelled).toBe(true);
   expect(fetchMock).not.toHaveBeenCalled();
@@ -40,7 +41,7 @@ it("times out and cancels a stalled request stream", async () => {
   let cancelled = false;
   const request = postRequest(new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } }));
 
-  const pending = proxyCommercialBilling(request, "fixture-token");
+  const pending = proxyCommercialBilling(request, "fixture-token", "user-a");
   await vi.advanceTimersByTimeAsync(15_000);
   const response = await pending;
   expect(response.status).toBe(504);
@@ -57,15 +58,27 @@ it("aborts a stalled upstream request at the fixed deadline", async () => {
   vi.stubGlobal("fetch", fetchMock);
   const request = new Request("http://localhost/api/workbench/commercial/orders", {
     method: "POST",
-    headers: { cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "content-type": "application/json" },
+    headers: { cookie: "shuomi_effective_organization=org-a", "X-Expected-Organization-ID": "org-a", "X-Expected-User-ID": "user-a", "content-type": "application/json" },
     body: "{}",
   });
 
-  const pending = proxyCommercialBilling(request, "fixture-token");
+  const pending = proxyCommercialBilling(request, "fixture-token", "user-a");
   for (let index = 0; index < 10 && fetchMock.mock.calls.length === 0; index++) await Promise.resolve();
   expect(fetchMock).toHaveBeenCalledOnce();
   await vi.advanceTimersByTimeAsync(15_000);
   const response = await pending;
   expect(response.status).toBe(504);
   expect((fetchMock.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+});
+
+it("rejects a stale user assertion before forwarding billing requests", async () => {
+  vi.stubEnv("COMMERCIAL_API_ORIGIN", "http://localhost:8888");
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  const request = postRequest(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode("{}")); controller.close(); } }));
+
+  const response = await proxyCommercialBilling(request, "fixture-token", "user-b");
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ code: "IDENTITY_CONTEXT_CHANGED" });
+  expect(fetchMock).not.toHaveBeenCalled();
 });

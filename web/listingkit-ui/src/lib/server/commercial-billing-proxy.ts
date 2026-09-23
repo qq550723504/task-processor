@@ -5,6 +5,7 @@ import { newRequestLogId } from "./request-log";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024;
+const VALID_USER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 function configuredOrigin(): string | null {
   const raw = process.env.COMMERCIAL_API_ORIGIN;
@@ -31,10 +32,11 @@ function selectedOrganization(request: Request): string | null {
 const failure = (status: number, code: string) => workbenchProtocolError(status, code, "Commercial billing request could not be completed");
 const safeJSON = (body: unknown, status: number) => NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 
-export async function proxyCommercialBilling(request: Request, accessToken: string): Promise<Response> {
+export async function proxyCommercialBilling(request: Request, accessToken: string, sessionUserId: string): Promise<Response> {
   if (request.signal.aborted) return failure(504, "DEADLINE_EXCEEDED");
   const organization = selectedOrganization(request);
-  if (!accessToken) return failure(401, "AUTHENTICATION_REQUIRED");
+  if (!accessToken || !VALID_USER_ID.test(sessionUserId)) return failure(401, "AUTHENTICATION_REQUIRED");
+  if (request.headers.get("X-Expected-User-ID") !== sessionUserId) return failure(409, "IDENTITY_CONTEXT_CHANGED");
   if (!organization || request.headers.get("X-Expected-Organization-ID") !== organization) return failure(409, "ORGANIZATION_CONTEXT_CHANGED");
   const origin = configuredOrigin();
   if (!origin) return failure(503, "DEPENDENCY_UNAVAILABLE");
