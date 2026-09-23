@@ -19,18 +19,18 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.unstu
 describe("AccountPage read-only projection", () => {
   it("shows all three entry cards without turning links into management authority", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
-    expect(await screen.findByRole("link", { name: "查看成员与权限" })).toHaveAttribute("href", "/workbench/account/organization/members");
+    expect(await screen.findByRole("link", { name: "管理成员" })).toHaveAttribute("href", "/workbench/account/organization/members");
     expect(screen.getByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
     expect(screen.getByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
-    expect(screen.getByText("可用操作以当前企业权限为准。")).toBeVisible();
-    expect(screen.getByText("只展示已提交成功的业务事件；失败尝试及未提交的 provider 操作不纳入。")).toBeVisible();
+    expect(screen.getByText("角色与可执行操作以当前组织授权 owner 为准。")).toBeVisible();
+    expect(screen.getByText("只展示已提交成功的业务事件。")).toBeVisible();
     expect(screen.queryByRole("button", { name: /邀请|移除/ })).not.toBeInTheDocument();
   });
   it("links members with permission-qualified wording alongside delivered sibling cards", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
-    expect(await screen.findByRole("link", { name: "查看成员与权限" })).toHaveAttribute("href", "/workbench/account/organization/members");
+    expect(await screen.findByRole("link", { name: "管理成员" })).toHaveAttribute("href", "/workbench/account/organization/members");
     expect(screen.getByText("查看企业成员；获准管理员可邀请成员、调整角色和移除成员")).toBeVisible();
-    expect(screen.getByText("可用操作以当前企业权限为准。")).toBeVisible();
+    expect(screen.getByText("角色与可执行操作以当前组织授权 owner 为准。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看资源与额度" })).toBeVisible();
     expect(screen.getByRole("link", { name: "查看操作记录" })).toBeVisible();
@@ -40,25 +40,25 @@ describe("AccountPage read-only projection", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
     expect(screen.getByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
-    expect(screen.getByText("只展示已提交成功的业务事件；失败尝试及未提交的 provider 操作不纳入。")).toBeVisible();
-    expect(screen.getByText("企业额度与已记录用量进入资源与额度查看；成员 Token 分配使用当前企业 entitlement window。")).toBeVisible();
+    expect(screen.getByText("只展示已提交成功的业务事件。")).toBeVisible();
+    expect(screen.getByText("店铺实际数量、AI 点数与数据余额仅在各自 owner 返回后展示，不由套餐或用量推算。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看成员与权限" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
   it("links the delivered audit slice with its bounded scope and retains the member entry", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
-    expect(screen.getByText("查看源账号、成员额度、经营画像和成员权限的已提交成功记录")).toBeVisible();
-    expect(screen.getByText("只展示已提交成功的业务事件；失败尝试及未提交的 provider 操作不纳入。")).toBeVisible();
+    expect(screen.getByText("查看账户资料、成员、额度与源账号的已提交事件")).toBeVisible();
+    expect(screen.getByText("只展示已提交成功的业务事件。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看成员与权限" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
   it("links the available resource page without claiming balances", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
-    expect(screen.getByText("企业额度与已记录用量进入资源与额度查看；成员 Token 分配使用当前企业 entitlement window。")).toBeVisible();
+    expect(screen.getByText("店铺实际数量、AI 点数与数据余额仅在各自 owner 返回后展示，不由套餐或用量推算。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看成员与权限" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
   it("offers an account return link in the breadcrumb", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
@@ -162,10 +162,10 @@ describe("AccountPage read-only projection", () => {
     mount("profile-settings");
     const email = await screen.findByLabelText("邮箱地址");
     await user.type(email, "buyer@example.test");
-    await user.click(screen.getByRole("button", { name: "修改邮箱" }));
+    await user.click(screen.getByRole("button", { name: "更换邮箱" }));
     expect(await screen.findByText("操作结果待核实，已刷新资料；请确认当前联系方式状态后，再点击“刷新资料”重新提交。")).toBeVisible();
-    expect(screen.getByRole("button", { name: "修改邮箱" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "修改手机号" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "更换邮箱" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "更换手机号" })).toBeDisabled();
   });
   it("keeps verification controls disabled after an unknown outcome while account facts reconcile", async () => {
     const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
@@ -232,7 +232,7 @@ describe("AccountPage read-only projection", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("heading", { name: "企业乙" })).toBeVisible();
     expect(screen.getByText("归属企业（Home）：A")).toBeVisible(); expect(screen.getByText("当前有效企业：B")).toBeVisible();
-    expect(screen.getByText("viewer")).toBeVisible(); expect(screen.queryByText("8,650")).not.toBeInTheDocument();
+    expect(screen.getByText("当前组织角色：viewer")).toBeVisible(); expect(screen.queryByText("8,650")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /管理成员|管理资源|邀请/ })).not.toBeInTheDocument();
   });
   it.each(["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE", "DEADLINE_EXCEEDED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "unexpected"])("shows a safe %s state without data or raw error", async code => {

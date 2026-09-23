@@ -36,9 +36,8 @@ function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string;
   const [sequence, setSequence] = useState(0);
   return <div className={styles.page}>
     <Card className={styles.coverage}>
-      <h2>已提交操作记录</h2>
-      <p>当前展示账户资料、成员、额度与源账号的已完成操作。失败尝试及未提交的 provider 操作不纳入。</p>
-      <p>时间为业务操作时间；记录只供追溯，管理动作请前往对应资源页面。</p>
+      <h2>企业操作审计</h2>
+      <p>只读取当前企业已提交的账户资料、成员、额度与源账号事件；失败尝试及未提交的 provider 操作不纳入。</p>
     </Card>
     <div className={styles.toolbar}><span>当前企业：{organizationId}</span><Button variant="outline" onClick={() => setSequence(value => value + 1)}>刷新记录</Button></div>
     <AuditRequests key={sequence} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} />
@@ -55,9 +54,13 @@ function AuditRequests({ scope, expectedUserId, organizationId }: { scope: strin
   const data = query.data;
   const operationNames = { register: "登记源账号", enable: "启用源账号", disable: "停用源账号", set_target: "设置成员额度", revoke: "撤销成员额度", update: "更新账户资料", invite: "邀请成员", role: "更新成员角色", remove: "移除成员" };
   return <>
+    <section className={styles.metrics} aria-label="审计汇总"><article><span>近 30 天操作</span><strong>未提供</strong><small>审计 owner 未返回按时间汇总</small></article><article><span>成员变更</span><strong>未提供</strong><small>当前接口只返回逐条事件</small></article><article><span>权限变更</span><strong>未提供</strong><small>当前接口只返回逐条事件</small></article><article><span>资源与续费</span><strong>未提供</strong><small>当前接口只返回逐条事件</small></article></section>
     <form className={styles.filters} onSubmit={event => { event.preventDefault(); setCursors([undefined]); }}>
-      <label>操作人 <input value={actor} onChange={event => setActor(event.target.value)} maxLength={128} placeholder="按操作人筛选" /></label>
+      <label className={styles.search}>搜索操作内容 / 对象 <input disabled placeholder="审计接口未提供内容搜索" /></label>
+      <label>时间范围 <select disabled><option>时间筛选暂不可用</option></select></label>
       <label>操作类型 <select value={operation} onChange={event => { setOperation(event.target.value as typeof operation); setCursors([undefined]); }}><option value="">全部</option><option value="update">更新账户资料</option><option value="invite">邀请成员</option><option value="role">更新成员角色</option><option value="remove">移除成员</option><option value="register">登记源账号</option><option value="enable">启用源账号</option><option value="disable">停用源账号</option><option value="set_target">设置成员额度</option><option value="revoke">撤销成员额度</option></select></label>
+      <label>成员筛选 <select disabled><option>成员筛选暂不可用</option></select></label>
+      <label>操作人 <input value={actor} onChange={event => { setActor(event.target.value); setCursors([undefined]); }} maxLength={128} placeholder="按操作人筛选" /></label>
       <Button type="submit" variant="outline">应用筛选</Button>
     </form>
     {data.items.length === 0 ? <ConsoleState kind="empty" title="暂无操作记录">当前范围内没有已提交的操作。</ConsoleState> : <Card className={styles.panel}>

@@ -27,7 +27,9 @@ describe("audit page", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, items: [event] })));
     mount(); const table = await screen.findByRole("table", { name: "操作记录" }); expect(table).toBeVisible();
     expect(within(table).getByText("operator-B")).toBeVisible(); expect(within(table).getByText("停用源账号")).toBeVisible();
-    expect(screen.getByText("已提交操作记录")).toBeVisible(); expect(screen.queryByText("86")).not.toBeInTheDocument();
+    expect(screen.getByText("企业操作审计")).toBeVisible(); expect(screen.queryByText("86")).not.toBeInTheDocument();
+    const metrics = screen.getByRole("region", { name: "审计汇总" });
+    expect(within(metrics).getByText("近 30 天操作")).toBeVisible(); expect(within(metrics).getAllByText("未提供")).toHaveLength(4);
     expect(screen.queryByRole("button", { name: /导出|邀请|续费/ })).not.toBeInTheDocument();
   });
   it("renders profile and membership audit facts", async () => {

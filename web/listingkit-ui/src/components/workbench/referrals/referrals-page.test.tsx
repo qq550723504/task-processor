@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -32,7 +32,7 @@ describe("ReferralsPage", () => {
     const fetch = vi.fn().mockResolvedValue(Response.json(rules));
     vi.stubGlobal("fetch", fetch);
     mount("overview", "subject-1", true, "rules");
-    expect(await screen.findByText("10%，按人民币最小货币单位计算。")).toBeVisible();
+    expect(await screen.findByText("当前有效比例为 10%；最终金额以不可变收益账本投影为准。")).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-rules");
   });
@@ -44,7 +44,9 @@ describe("ReferralsPage", () => {
     mount("overview", "subject-1", true, "earnings");
     expect(await screen.findByText("¥95.00")).toBeVisible();
     expect(screen.getByText(/Projection 版本：3/)).toBeVisible();
-    expect(screen.getByText(/COMMISSION · ¥100.00 · 业务单据 payment-1/)).toBeVisible();
+    const tableRegion = screen.getByRole("region", { name: "逐笔收益记录，可横向滚动" });
+    const table = within(tableRegion).getByRole("table");
+    expect(screen.getByText("COMMISSION")).toBeVisible(); expect(within(table).getByText("¥100.00")).toBeVisible(); expect(within(table).getByText("payment-1")).toBeVisible();
     expect(screen.getByText("逐笔列表仅展示最新最多 100 条记录；汇总以完整收益 projection 为准。")).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-earnings");
@@ -52,35 +54,34 @@ describe("ReferralsPage", () => {
 
   it("shows actual relation count and leaves unsupported earnings unavailable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
-    mount();
+    mount("overview", "subject-1", true, "center");
     expect(await screen.findByText("2")).toBeVisible();
     expect(screen.getByText("CODE1234")).toBeVisible();
-    expect(screen.getByText("收益数据暂不可用")).toBeVisible();
+    expect(screen.getAllByText("未提供").length).toBeGreaterThan(0);
     expect(screen.queryByText(/¥0|￥0|0\.00/)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "打开邀请链接" })).toHaveAttribute("href", "/referrals/register?code=CODE1234");
+    expect(screen.getByRole("button", { name: "复制链接" })).toBeVisible();
+    expect(screen.getByText("二维码暂不可用")).toBeVisible();
   });
 
   it("distinguishes not-created from a real zero count and creates only on explicit click", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(Response.json({ code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } }))
-      .mockResolvedValueOnce(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }))
       .mockResolvedValueOnce(Response.json({ code: "CODE1234" }))
-      .mockResolvedValueOnce(Response.json({ code: "CODE1234", codeAvailability: "available", count: 0, generatedAt: "2026-09-13T10:01:00Z", earnings: { availability: "unavailable", amount: null } }))
-      .mockResolvedValueOnce(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }));
+      .mockResolvedValueOnce(Response.json({ code: "CODE1234", codeAvailability: "available", count: 0, generatedAt: "2026-09-13T10:01:00Z", earnings: { availability: "unavailable", amount: null } }));
     vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
-    mount();
-    expect(await screen.findByText("尚未创建推广码")).toBeVisible();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    mount("overview", "subject-1", true, "center");
+    expect(await screen.findByText("尚未创建推广码。")).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "创建推广码" }));
     expect(await screen.findByText("CODE1234")).toBeVisible();
-    expect(fetch.mock.calls[2][1].method).toBe("POST");
+    expect(fetch.mock.calls[1][1].method).toBe("POST");
   });
 
   it("does not treat an organization switch as loss of personal referral access", async () => {
     state.context.isSwitching = true;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
-    mount();
+    mount("overview", "subject-1", true, "center");
     expect(await screen.findByText("CODE1234")).toBeVisible();
     expect(screen.queryByText(/企业.*不可用|请选择当前企业/)).not.toBeInTheDocument();
   });
@@ -92,14 +93,14 @@ describe("ReferralsPage", () => {
       ? Promise.resolve(Response.json({ schemaVersion: "referral-withdrawals-v1", withdrawals: [] }))
       : Promise.resolve(Response.json({ code: "CODE1234", codeAvailability: "available", count: 1, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
     vi.stubGlobal("fetch", fetch);
-    mount();
+    mount("overview", "subject-1", true, "center");
     expect(await screen.findByText("CODE1234")).toBeVisible();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("keeps personal count readable but disables an unconfigured invitation entry", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "CODE1234", codeAvailability: "available", count: 2, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } })));
-    mount("overview", "subject-1", false);
+    mount("overview", "subject-1", false, "center");
     expect(await screen.findByText("2")).toBeVisible();
     expect(screen.queryByRole("link", { name: "打开邀请链接" })).not.toBeInTheDocument();
     expect(screen.getByText("注册入口暂不可用")).toBeVisible();
@@ -132,7 +133,7 @@ describe("ReferralsPage", () => {
     });
     vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
-    mount();
+    mount("overview", "subject-1", true, "withdrawals");
     await user.type(await screen.findByLabelText("金额（分）"), "10000");
     await user.click(screen.getByRole("button", { name: "申请提现" }));
     expect(await screen.findByRole("button", { name: "取消提现申请" })).toBeVisible();
@@ -245,7 +246,7 @@ describe("ReferralsPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(projection)));
     mount();
     expect(await screen.findByText("¥100.00")).toBeVisible();
-    expect(screen.getByText(/调整 -¥20.00/)).toBeVisible();
+    expect(screen.getByText("已结算收益扣除退款 / 拒付调整")).toBeVisible();
   });
 
   it("clears an old subject result and prevents a late response from returning", async () => {
@@ -317,7 +318,7 @@ describe("ReferralsPage", () => {
 
   it("does not claim an unknown write produced no fact", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ code: "referral_outcome_unknown" }, { status: 503 })));
-    mount();
+    mount("overview", "subject-1", true, "center");
     expect(await screen.findByText("暂时无法确认操作结果")).toBeVisible();
     expect(screen.queryByText("没有生成或推测推广事实。请稍后重试原操作。")).not.toBeInTheDocument();
   });
@@ -326,7 +327,7 @@ describe("ReferralsPage", () => {
     const projection = { code: "", codeAvailability: "not_created", count: 0, generatedAt: "2026-09-13T10:00:00Z", earnings: { availability: "unavailable", amount: null } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json(projection)).mockRejectedValueOnce(new TypeError("connection lost")));
     const user = userEvent.setup();
-    mount();
+    mount("overview", "subject-1", true, "center");
     await user.click(await screen.findByRole("button", { name: "创建推广码" }));
     expect(await screen.findByText("推广服务暂不可用")).toBeVisible();
     expect(screen.getByText("操作结果尚未确认。请先刷新相关状态核对服务端事实，再决定是否重试。")).toBeVisible();
