@@ -506,8 +506,10 @@ Entry deltas are kind-specific: top-up credits increase available balance;
 refund and chargeback reversals decrease available balance and may increase
 debt for the portion not covered by available funds; purchase reservation
 moves an equal amount from available to reserved; purchase commit decreases
-reserved; purchase release moves an equal amount back to available; and debt
-repayment decreases debt. Reversed or zero-effect deltas are invalid.
+reserved; purchase release decreases reserved and applies the released amount
+to outstanding debt first, exposing only any remainder as available; and
+debt-repayment entries decrease debt against an accepted top-up. Reversed or
+zero-effect deltas are invalid.
 Purchase reservation, commit, and release entries must also carry the
 canonical `commercial_order_id` binding.
 Each after-balance minus its corresponding delta must yield a nonnegative prior

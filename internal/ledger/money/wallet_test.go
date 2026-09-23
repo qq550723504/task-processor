@@ -237,6 +237,45 @@ func TestWalletEntryDeltasMustMatchAfterBalances(t *testing.T) {
 	}
 }
 
+func TestPurchaseReleaseRepaysDebtBeforeRestoringAvailable(t *testing.T) {
+	tests := []struct {
+		name           string
+		availableDelta int64
+		debtDelta      int64
+		availableAfter int64
+		debtAfter      int64
+	}{
+		{name: "entire release repays debt", debtDelta: -100},
+		{name: "remaining release becomes available", availableDelta: 60, debtDelta: -40, availableAfter: 60},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := validWalletEntry(WalletEntryPurchaseRelease)
+			entry.AvailableDelta = test.availableDelta
+			entry.ReservedDelta = -100
+			entry.DebtDelta = test.debtDelta
+			entry.AvailableAfter = test.availableAfter
+			entry.ReservedAfter = 0
+			entry.DebtAfter = test.debtAfter
+
+			if err := entry.Validate(); err != nil {
+				t.Fatalf("purchase release applying debt-first allocation rejected: %v", err)
+			}
+		})
+	}
+
+	entry := validWalletEntry(WalletEntryPurchaseRelease)
+	entry.AvailableDelta = 0
+	entry.ReservedDelta = -100
+	entry.DebtDelta = -110
+	entry.AvailableAfter = 0
+	entry.ReservedAfter = 0
+	entry.DebtAfter = 0
+	if !errors.Is(entry.Validate(), ErrInvalid) {
+		t.Fatalf("purchase release repaying more debt than reserved funds = nil, want ErrInvalid")
+	}
+}
+
 func TestWalletEntryRequiresKindSpecificDeltas(t *testing.T) {
 	entry := validWalletEntry(WalletEntryTopUpCredit)
 	entry.PaymentID = "payment-1"

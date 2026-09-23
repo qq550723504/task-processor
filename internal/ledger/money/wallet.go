@@ -111,7 +111,9 @@ func (entry WalletEntry) Validate() error {
 			return ErrInvalid
 		}
 	case WalletEntryPurchaseRelease:
-		if entry.PaymentID != "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta <= 0 || entry.ReservedDelta >= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+		released := -entry.ReservedDelta
+		debtRepaid := -entry.DebtDelta
+		if entry.PaymentID != "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta < 0 || entry.ReservedDelta >= 0 || entry.DebtDelta > 0 || debtRepaid > released || entry.AvailableDelta != released-debtRepaid {
 			return ErrInvalid
 		}
 	case WalletEntryDebtRepayment:
