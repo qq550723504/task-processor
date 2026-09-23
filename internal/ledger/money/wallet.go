@@ -8,6 +8,7 @@ import (
 )
 
 const WalletCurrencyCNY = "CNY"
+const MaxOrganizationWalletEntryPageSize = 50
 
 var (
 	ErrWalletInsufficientBalance = errors.New("organization wallet balance is insufficient")
@@ -271,6 +272,7 @@ func (reversal OrganizationWalletReversal) Validate() error {
 type OrganizationWalletReader interface {
 	ReadOrganizationWallet(context.Context, string, string) (OrganizationWalletSnapshot, error)
 	ListOrganizationWalletEntries(context.Context, string, string, string, int) (WalletEntryPage, error)
+	ReadCommercialPurchaseReservation(context.Context, string, string, string) (WalletReservation, error)
 }
 
 // OrganizationWalletCommander is intentionally narrow. It does not expose a
