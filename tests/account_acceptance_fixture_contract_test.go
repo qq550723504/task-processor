@@ -45,3 +45,14 @@ func TestAccountMembershipDirectoryReaderHasReadOnlyInstanceScope(t *testing.T) 
 		t.Fatal("an organization-scoped viewer cannot read member grants in other organizations")
 	}
 }
+
+func TestAccountComposeCommercialOverviewUsesCurrentApplication(t *testing.T) {
+	contents, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "account-compose", "docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(contents)
+	if !strings.Contains(text, "COMMERCIAL_API_ORIGIN: http://127.0.0.1:8085") {
+		t.Fatal("account-compose listingkit-ui must route commercial overview to the shared current-application listener")
+	}
+}

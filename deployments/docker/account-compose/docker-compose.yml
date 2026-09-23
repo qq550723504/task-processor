@@ -225,6 +225,7 @@ services:
       ZITADEL_POST_LOGOUT_REDIRECT_URI: https://localhost:${ACCOUNT_APPLICATION_PORT}
       LISTINGKIT_SERVICE_API_BASE: http://127.0.0.1:8085/api/v1
       LISTINGKIT_API_BASE: http://127.0.0.1:8085/api/v1/listing-kits
+      COMMERCIAL_API_ORIGIN: http://127.0.0.1:8085
       LISTINGKIT_PLATFORM_ADMIN_DIRECTORY_ENABLED: "false"
       LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE: /private/frontend/service-credential
       NODE_EXTRA_CA_CERTS: /private/ca/root-ca.pem
