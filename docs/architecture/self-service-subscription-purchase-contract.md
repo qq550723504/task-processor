@@ -1191,14 +1191,23 @@ Organization-wide scans to prove actor absence.
 
 The exact query result must be validated as follows:
 
-- zero matching active assignments -> authorization denied/revoked;
-- exactly one matching active assignment -> use only its live role keys and
-  apply `authz.PermissionWorkbenchCommercialPurchase`;
+- zero matching assignments -> authorization denied/revoked;
+- exactly one matching assignment with provider state `STATE_ACTIVE` -> use only
+  its live role keys and apply `authz.PermissionWorkbenchCommercialPurchase`;
+- exactly one matching assignment with known provider state `STATE_INACTIVE`
+  (or another explicitly documented deactivated/revoked terminal state) ->
+  authorization denied/revoked;
 - more than one matching assignment -> invalid/unavailable, not merged;
-- wrong Organization/project/user, inactive/unknown state, malformed roles,
+- wrong Organization/project/user, unknown/unsupported state, malformed roles,
   oversized response, timeout, non-2xx, malformed JSON, or provider failure ->
   dependency unavailable / `RECONCILIATION_REQUIRED`;
 - provider unavailability is never interpreted as revocation.
+
+A known inactive/deactivated exact authorization is authoritative revocation
+evidence. For an order with RESERVED funds and no admitted activation, that
+denial must enter the same irreversible `terminal_intent=CANCEL /
+AUTHORIZATION_REVOKED` path and release the original reservation. Restoring the
+grant later cannot revive that order.
 
 The service-side provider credential remains read-only and must not be exposed
 to billing/domain code or browser callers.
@@ -1208,8 +1217,11 @@ Required implementation evidence:
 - exact query sends `inUserIds`, `projectId`, and `organizationId` together;
 - authorized actor is admitted regardless of how many other assignments exist
   in the Organization;
-- revoked/missing exact actor is denied only from a successful exact query;
-- duplicate/malformed exact actor results fail unavailable;
+- successful exact query with no assignment or one known inactive/deactivated
+  assignment is denied/revoked;
+- deactivate-then-restore does not revive an order once revocation cancellation
+  intent was persisted;
+- duplicate/malformed/unknown-state exact actor results fail unavailable;
 - no offset-pagination fallback exists in the recovery authorizer.
 
 #### When reauthorization is required
