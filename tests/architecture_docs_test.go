@@ -1955,6 +1955,9 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"projectId     = configured project id",
 		"organizationId = order.organization_id",
 		"no offset-pagination fallback exists",
+		"Every not-yet-admitted `RESERVE` and every",
+		"a new exact provider-backed actor grant query",
+		"the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
