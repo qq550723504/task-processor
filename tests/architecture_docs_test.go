@@ -1939,9 +1939,12 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 	}
 
 	for _, required := range []string{
-		"browser submits only `offer_id` and then `quote_id`",
-		"current application must not expose runtime commands that edit plan active state",
-		"current runtime must also stop mutating the plan catalog during service construction",
+		"browser never submits a term",
+		"runtime catalog is read-only",
+		"SyncDefaultCatalog",
+		"REJECTED_INSUFFICIENT_FUNDS",
+		"SubscriptionPurchaseRecoveryAuthorizer",
+		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("%s must retain self-service hard-cut boundary %q", path, required)
