@@ -303,12 +303,97 @@ At quote creation:
 
 At activation:
 
-1. subscription owner re-reads the plan inside the activation transaction;
-2. it recomputes the fingerprint;
-3. mismatch with the quoted fingerprint returns `PLAN_CHANGED`;
-4. no subscription or entitlement mutation occurs.
+1. subscription owner acquires the Organization subscription-mutation fence;
+2. it then acquires the target plan's catalog-mutation fence;
+3. while both fences are held, it re-reads the plan and modules;
+4. it recomputes the fingerprint;
+5. mismatch with the quoted fingerprint returns `PLAN_CHANGED`;
+6. no subscription, entitlement, or money commit is allowed for that order;
+7. the plan fence remains held until the activation transaction commits.
 
-This closes the quote-to-activation TOCTOU boundary.
+The two fences below, not the fingerprint comparison by itself, close the
+quote-to-activation TOCTOU boundary.
+
+### 5.2 Per-plan catalog mutation fence
+
+A plan fingerprint is meaningful only if plan writers cannot mutate the same
+catalog snapshot between activation validation and activation commit.
+
+The subscription owner therefore owns a second transaction-only concurrency
+record, for example:
+
+```text
+saas_subscription_plan_mutation_fences
+  plan_code PRIMARY KEY
+```
+
+This row is an internal serialization primitive, not product/catalog data.
+
+Every plan catalog writer must ensure and lock the target plan fence **inside
+the same transaction that reads/modifies the plan**. This includes all current
+writer paths:
+
+```text
+UpsertPlan
+UpsertPlanModule
+DeletePlanModule
+SetPlanActive
+SyncDefaultCatalog / UpsertDefaultPlans or equivalent startup catalog writer
+```
+
+Future service/repository commands that change a plan's active flag, module set,
+module limits, or other fingerprinted semantics must participate in the same
+fence before they can be admitted.
+
+Important current-code consequences:
+
+- `SetPlanActive` may not read the full bundle outside the fence and later
+  call `UpsertPlan` with that stale bundle; its read-modify-write decision must
+  occur after acquiring the plan fence.
+- `UpsertPlanModule` and `DeletePlanModule` must re-check plan existence
+  after acquiring the fence rather than relying only on a pre-lock read.
+- default catalog synchronization is a writer and is not exempt merely because
+  it runs during application construction.
+
+Purchased activation holds the target plan fence from the final plan re-read
+through the atomic subscription/entitlement commit. A concurrent catalog edit
+therefore has only two valid serial outcomes:
+
+```text
+catalog edit commits first
+  -> activation re-read sees a new fingerprint
+  -> PLAN_CHANGED
+  -> no activation and no final charge
+
+activation commits first
+  -> entitlements match the quoted fingerprint at activation commit
+  -> catalog edit is a later authoritative catalog change
+```
+
+There is no valid interleaving where activation commits an entitlement set from
+a stale or mixed catalog snapshot.
+
+Quote creation does not need to hold this write fence until order execution,
+but `ResolvePurchasablePlan` must read a transactionally consistent plan
+snapshot (for example PostgreSQL REPEATABLE READ). A plan edit after quote
+creation is expected to be caught by the activation-time fingerprint check.
+
+Required PostgreSQL concurrency evidence:
+
+```text
+quoted plan P@fingerprint-1
+race ActivatePurchasedPlan against:
+  UpsertPlan
+  UpsertPlanModule
+  DeletePlanModule
+  SetPlanActive
+
+for every case:
+  -> either catalog mutation serializes first and activation returns PLAN_CHANGED
+  -> or activation serializes first and committed entitlements exactly match fingerprint-1
+  -> never a stale/mixed entitlement set
+  -> no WALLET commit when activation returns PLAN_CHANGED
+```
 
 ## 6. Activation port DTO
 
@@ -478,59 +563,154 @@ Before mutation, using the activation-owner clock:
 - a future-effective ACTIVE/TRIALING subscription also blocks;
 - upgrade, downgrade, renewal, and overlap are not inferred.
 
-### 8.3 Per-Organization activation decision fence
+### 8.3 Per-Organization subscription mutation fence
 
-The first-activation rule must be serialized per Organization. Source-idempotency
-alone is insufficient because two distinct commercial orders have different
-source identities and can race while the Organization has no subscription row.
+The first-activation rule and the exact entitlement-set invariant must be
+serialized against **every writer of the same Organization's subscription or
+entitlement state**. Protecting only `ActivatePurchasedPlan` is insufficient,
+because the existing platform-admin mutation paths are also authoritative
+writers.
 
-The subscription owner therefore owns a transaction-only serialization record,
-for example:
+The subscription owner owns a transaction-only serialization record:
 
 ```text
 saas_subscription_activation_fences
   organization_id PRIMARY KEY
 ```
 
-The fence is an internal concurrency primitive, not a business fact and not a
-browser-visible resource.
+The name may remain activation-oriented in persistence, but its contract is a
+general Organization subscription-mutation fence. It is not a business fact and
+is not browser-visible.
 
-Every `ActivatePurchasedPlan` transaction must:
+All current production owner commands that mutate
+`saas_tenant_subscriptions` or `saas_tenant_entitlements` must participate:
 
-1. ensure the fence row for the Organization exists using an idempotent
-   insert-on-conflict operation;
-2. lock that row for update;
-3. after acquiring the lock, re-read the source-bound activation operation;
-4. replay it if the exact source/fingerprint is already committed;
-5. re-read the current/future-effective subscription state;
-6. reject a different active/future-active subscription with
+```text
+ActivatePurchasedPlan
+ApplyPlan
+UpsertEntitlement
+UpsertEntitlementWithAudit
+any future subscription/entitlement mutation command
+```
+
+Raw repository primitives such as `UpsertTenantSubscription` and
+`UpsertEntitlement` remain persistence details; app/HTTP code must not call
+them as an unfenced alternative mutation owner.
+
+Every Organization mutation transaction must:
+
+1. ensure the fence row exists with idempotent insert-on-conflict;
+2. lock the Organization fence for update;
+3. perform every state read used for its decision **after** the lock;
+4. perform all subscription/entitlement writes for that command before
+   releasing the transaction;
+5. persist the corresponding audit in the same transaction when that command's
+   contract requires an audit.
+
+### Existing platform-admin mutations
+
+The legacy/admin owner remains authoritative, but it must join the same
+serialization protocol.
+
+`ApplyPlan` must become one atomic owner transaction under the Organization
+fence. It may not retain the current externally visible sequence of:
+
+```text
+upsert subscription
+-> independently upsert N entitlements
+-> audit later
+```
+
+When applying a plan, it also acquires the target plan fence, re-reads the plan
+under that fence, and writes the subscription + exact plan entitlement set +
+audit before either fence is released.
+
+`UpsertEntitlement` / `UpsertEntitlementWithAudit` require the Organization
+fence but no plan fence because the platform administrator is explicitly
+authoring that entitlement rather than projecting a plan snapshot.
+
+This preserves existing platform-admin capability while eliminating
+interleaving:
+
+```text
+admin ApplyPlan / entitlement mutation commits first
+  -> purchased activation subsequently re-reads Organization state
+  -> conflicting active subscription causes ACTIVE_SUBSCRIPTION_EXISTS
+  -> WALLET reservation is released; no final charge
+
+purchased activation commits first
+  -> any later admin mutation is a later explicit authoritative action
+  -> it cannot interleave inside the purchased activation snapshot
+```
+
+The self-service product does not expose these admin mutations, but their
+concurrency behavior is part of the shared subscription-owner invariant.
+
+### Distinct self-service orders
+
+Source-idempotency alone is insufficient because two distinct commercial
+orders have different source identities and can race while the Organization
+has no subscription row.
+
+Every `ActivatePurchasedPlan` transaction must, after acquiring the
+Organization fence:
+
+1. re-read the source-bound activation operation;
+2. replay it if the exact source/fingerprint is already committed;
+3. re-read current/future-effective subscription state;
+4. reject a different active/future-active subscription with
    `ACTIVE_SUBSCRIPTION_EXISTS`;
-7. re-read and fingerprint the target plan;
-8. only then commit the activation operation, subscription, exact entitlement
-   set, and audit atomically.
+5. acquire the target plan fence using the global ordering below;
+6. re-read/fingerprint the target plan;
+7. commit activation operation, subscription, exact entitlement set and audit
+   atomically.
 
-The fence must be acquired before the effective-subscription decision. Locking
-only `saas_tenant_subscriptions` is not sufficient because the first-purchase
-case has no row to lock.
+Locking only `saas_tenant_subscriptions` is not sufficient because the
+first-purchase case has no row to lock.
 
-Two distinct orders for the same Organization may temporarily reserve wallet
-funds before reaching the activation owner, but at most one may commit an
-activation. A loser that receives a proven
-`ACTIVE_SUBSCRIPTION_EXISTS` result must release its own reservation before
-becoming CANCELLED. It must never commit wallet funds.
+Two distinct WALLET orders may temporarily reserve funds before reaching the
+activation owner, but at most one may commit activation. A losing order with a
+proven `ACTIVE_SUBSCRIPTION_EXISTS` result must release its own reservation
+before becoming CANCELLED. It must never commit wallet funds.
+
+### 8.4 Cross-fence lock order
+
+Commands that need both fences must always acquire them in this order:
+
+```text
+1. Organization subscription-mutation fence
+2. Plan catalog-mutation fence
+```
+
+No subscription-owner path may acquire the plan fence and then acquire an
+Organization fence. Plan-only catalog mutations acquire only the plan fence;
+single-entitlement admin mutations acquire only the Organization fence.
+
+This ordering is part of the contract and must be asserted in implementation
+tests/review; it is not left to caller convention.
 
 Required PostgreSQL concurrency evidence:
 
 ```text
-two distinct SUBSCRIPTION_PURCHASE orders
-same Organization
-different idempotency keys / source IDs
-start concurrently
-  -> exactly one activation commits
-  -> exactly one subscription/entitlement snapshot is current
-  -> at most one wallet reservation commits
-  -> losing reservation is released
-  -> losing order is CANCELLED with ACTIVE_SUBSCRIPTION_EXISTS
+A. two distinct SUBSCRIPTION_PURCHASE orders
+   same Organization
+   different idempotency keys / source IDs
+   start concurrently
+     -> exactly one activation commits
+     -> exactly one subscription/entitlement snapshot is current
+     -> at most one wallet reservation commits
+     -> losing reservation is released
+     -> losing order is CANCELLED with ACTIVE_SUBSCRIPTION_EXISTS
+
+B. SUBSCRIPTION_PURCHASE races platform ApplyPlan for same Organization
+     -> operations serialize on Organization fence
+     -> if ApplyPlan commits first: purchase sees conflict and no final charge
+     -> if purchase commits first: purchase snapshot is atomic and admin change is later
+     -> never mixed entitlements
+
+C. SUBSCRIPTION_PURCHASE races platform UpsertEntitlement for same Organization
+     -> operations serialize on Organization fence
+     -> never interleave inside purchased subscription + exact entitlement commit
 ```
 
 ## 9. Entitlement-set fingerprint
@@ -911,6 +1091,8 @@ The implementation is ready for #478 only when it proves:
 - insufficient wallet balance cancels without activation;
 - active-subscription conflict does not charge;
 - concurrent distinct first-purchase orders for one Organization serialize so exactly one activation and at most one final charge succeeds;
+- purchase races against platform `ApplyPlan` / `UpsertEntitlement` are serialized by the same Organization fence and cannot produce mixed subscription/entitlement state;
+- plan catalog writers all honor the per-plan fence and purchase-vs-plan-edit races either return `PLAN_CHANGED` without final charge or commit entitlements matching the quoted fingerprint exactly;
 - plan changes between quote and activation fail with no mutation;
 - same idempotency key/same fingerprint replays the same order;
 - same key/different fingerprint conflicts;
