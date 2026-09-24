@@ -74,6 +74,46 @@ func TestOrganizationWalletTopUpReserveAndCommitAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestWalletReserveDecisionPersistsInsufficientFundsAndCannotReviveAfterTopUp(t *testing.T) {
+	repository, _ := walletRepository(t)
+	ctx := context.Background()
+	input := ledgermoney.ReserveWalletFundsInput{OperationID: "order-insufficient", OrganizationID: "org-insufficient", CommercialOrderID: "order-insufficient", Currency: "CNY", AmountMinor: 400}
+
+	if _, err := repository.ReserveCommercialPurchase(ctx, input); !errors.Is(err, ledgermoney.ErrWalletInsufficientBalance) {
+		t.Fatalf("first reserve error = %v", err)
+	}
+	decision, err := repository.ReadCommercialPurchaseReserveDecision(ctx, input.OrganizationID, input.OperationID, input.CommercialOrderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Outcome != ledgermoney.WalletReserveDecisionRejectedInsufficientFunds || decision.ReservationID != "" || decision.AmountMinor != input.AmountMinor || decision.Currency != input.Currency {
+		t.Fatalf("decision = %+v", decision)
+	}
+
+	settledAt := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	payment := ledgermoney.PaymentSettlement{PaymentID: "payment-insufficient", PayerUserID: "payer-insufficient", Currency: "CNY", GrossAmountMinor: 1000, CommissionableAmountMinor: 1000, Status: ledgermoney.PaymentSettled, SettledAt: settledAt, ProviderReference: "provider-insufficient", Version: 1}
+	if err := repository.RecordPaymentSettlement(ctx, payment); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CreditSettledTopUp(ctx, "", ledgermoney.OrganizationTopUpSettlement{PaymentID: payment.PaymentID, CommercialOrderID: "top-up-insufficient", OrganizationID: input.OrganizationID, Currency: "CNY", AmountMinor: 1000, SettledAt: settledAt, ProviderReference: payment.ProviderReference, Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ReserveCommercialPurchase(ctx, input); !errors.Is(err, ledgermoney.ErrWalletInsufficientBalance) {
+		t.Fatalf("replayed reserve after top-up error = %v", err)
+	}
+	replayed, err := repository.ReadCommercialPurchaseReserveDecision(ctx, input.OrganizationID, input.OperationID, input.CommercialOrderID)
+	if err != nil || replayed != decision {
+		t.Fatalf("replayed decision = %+v, err = %v, want %+v", replayed, err, decision)
+	}
+	wallet, err := repository.ReadOrganizationWallet(ctx, input.OrganizationID, input.Currency)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wallet.AvailableMinor != 1000 || wallet.ReservedMinor != 0 {
+		t.Fatalf("wallet = %+v, want top-up untouched by rejected replay", wallet)
+	}
+}
+
 func TestReservationRechecksIdempotencyAfterWalletLock(t *testing.T) {
 	repository, db := walletRepository(t)
 	ctx := context.Background()
@@ -93,8 +133,8 @@ func TestReservationRechecksIdempotencyAfterWalletLock(t *testing.T) {
 	// competing reservation committed, while the post-wallet-lock lookup sees
 	// the now-durable reservation. SQLite does not implement row-level FOR UPDATE.
 	hideInitialLookup := true
-	if err := db.Callback().Query().Before("gorm:query").Register("test:miss-initial-wallet-reservation-lookup", func(tx *gorm.DB) {
-		if hideInitialLookup && tx.Statement.Table == "ledger_organization_wallet_reservations" {
+	if err := db.Callback().Query().Before("gorm:query").Register("test:miss-initial-wallet-reserve-decision-lookup", func(tx *gorm.DB) {
+		if hideInitialLookup && tx.Statement.Table == "ledger_organization_wallet_reserve_decisions" {
 			hideInitialLookup = false
 			tx.AddError(gorm.ErrRecordNotFound)
 		}

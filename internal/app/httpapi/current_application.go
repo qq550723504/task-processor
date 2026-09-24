@@ -56,23 +56,6 @@ var currentAccountProfileApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodPut, Path: accountIdentityPasswordPath},
 }
 
-var currentPlatformSubscriptionApplicationRoutes = []currentApplicationRoute{
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions"},
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans"},
-	{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/subscription-plans"},
-	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code"},
-	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/modules/:module_code"},
-	{Method: http.MethodDelete, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/modules/:module_code"},
-	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/status"},
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/tenants"},
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code/audit-logs"},
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id"},
-	{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/audit-logs"},
-	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/plan"},
-	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code"},
-	{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/usage/:module_code/:period_key/:metric"},
-}
-
 var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet/entries"},
@@ -82,14 +65,17 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/:order_id"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/summary"},
 	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/wallet/top-up-intents"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/subscription-offers"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/subscription-quotes"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/subscription-orders"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/subscription-orders/:order_id"},
 }
 
 type currentApplicationFactories struct {
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildCommercialBilling          func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildPlatformSubscription       func(*gorm.DB, *config.Config) (kernelmodule.Module, error)
+	buildCommercialBilling          func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, *config.Config) (kernelmodule.Module, error)
 	buildAcquisition                func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
@@ -102,6 +88,7 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	runtimeContext       context.Context
 	commercialOwnerDB    *gorm.DB
 	referralDB           *gorm.DB
 	productAcquisitionDB *gorm.DB
@@ -112,8 +99,15 @@ type currentApplicationOptions struct {
 	browserCaptures      int
 }
 
+// WithRuntimeContext supplies the long-lived application context for bounded
+// background recovery. Construction itself continues to use the caller's
+// bounded startup context.
+func WithRuntimeContext(ctx context.Context) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.runtimeContext = ctx }
+}
+
 // WithCommercialOwnerDatabase supplies the independently owned commercial
-// owner pool used by platform subscription and commercial billing routes.
+// pool used by commercial billing and the canonical subscription owner.
 func WithCommercialOwnerDatabase(db *gorm.DB) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) { options.commercialOwnerDB = db }
 }
@@ -158,8 +152,7 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
-		buildCommercialBilling:    buildCommercialBillingModule,
-		buildPlatformSubscription: buildPlatformSubscriptionModule,
+		buildCommercialBilling: buildCommercialBillingModule,
 		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
 		},
@@ -275,21 +268,10 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
-	includePlatformSubscription := supplied.commercialOwnerDB != nil && factories.buildPlatformSubscription != nil
-	if includePlatformSubscription {
-		platformSubscription, platformErr := factories.buildPlatformSubscription(supplied.commercialOwnerDB, cfg)
-		if platformErr != nil {
-			return nil, fmt.Errorf("build current platform subscription module: %w", platformErr)
-		}
-		if platformSubscription == nil {
-			return nil, errors.New("current platform subscription module unavailable")
-		}
-		modules = append(modules, platformSubscription)
-	}
+	var subscriptionRecovery func(context.Context) error
 	// Billing requires both its commercial owner and the canonical money owner.
-	// Keep unrelated platform subscriptions available when referrals/money is disabled.
 	if supplied.commercialOwnerDB != nil && supplied.referralDB != nil && factories.buildCommercialBilling != nil {
-		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, supplied.referralDB, authorizer)
+		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, supplied.referralDB, authorizer, cfg)
 		if billingErr != nil {
 			return nil, fmt.Errorf("build current commercial billing module: %w", billingErr)
 		}
@@ -297,6 +279,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return nil, errors.New("current commercial billing module unavailable")
 		}
 		modules = append(modules, commercialBilling)
+		if typed, ok := commercialBilling.(commercialBillingModule); ok {
+			subscriptionRecovery = typed.reconcileSubscriptions
+		}
 	}
 	var referralMaturity func(context.Context, time.Time) error
 	includeAccountProfile := factories.buildAccountProfile != nil
@@ -396,10 +381,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithBrowserFeaturesAndPlatformSubscription(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil, includeAccountProfile, includeAccountAllocation, includePlatformSubscription); err != nil {
+	if err := validateCurrentApplicationRoutesWithBrowserFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil, includeAccountProfile, includeAccountAllocation); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
+	if subscriptionRecovery != nil {
+		runtimeContext := supplied.runtimeContext
+		if runtimeContext == nil {
+			runtimeContext = context.Background()
+		}
+		startSubscriptionPurchaseRecoveryLoop(runtimeContext, server, subscriptionRecovery, 30*time.Second, logger)
+	}
 	if referralMaturity != nil {
 		startReferralMaturityLoop(server, referralMaturity, time.Hour, logger)
 	}
@@ -421,27 +413,23 @@ func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, 
 
 func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false)
 }
 
 func validateCurrentApplicationRoutesWithAccountProfile(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false)
 }
 
 func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser)
 }
 
 func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser, includeAccountProfile, includeAllocation bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser)
 }
 
-func validateCurrentApplicationRoutesWithBrowserFeaturesAndPlatformSubscription(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser, includeAccountProfile, includeAllocation, includePlatformSubscription bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, includePlatformSubscription)
-}
-
-func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, includePlatformSubscription bool) error {
+func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAccountProfile {
 		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
@@ -480,11 +468,6 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if includeAllocation {
 		expected[currentApplicationRoute{Method: http.MethodGet, Path: "/api/v1/account/organization/resources/member-allocations"}] = struct{}{}
 		expected[currentApplicationRoute{Method: http.MethodPut, Path: "/api/v1/account/organization/resources/member-allocations/:member_id"}] = struct{}{}
-	}
-	if includePlatformSubscription {
-		for _, route := range currentPlatformSubscriptionApplicationRoutes {
-			expected[route] = struct{}{}
-		}
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {

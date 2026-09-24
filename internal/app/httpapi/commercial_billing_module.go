@@ -3,9 +3,13 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
+	zitadelruntime "task-processor/internal/authruntime/zitadel"
 	"task-processor/internal/authz"
 	billing "task-processor/internal/commercial/billing"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
@@ -15,10 +19,11 @@ import (
 	moneystore "task-processor/internal/integration/persistence/money"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/ledger/orgresource"
+	"task-processor/internal/listingsubscription"
 )
 
-func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *gorm.DB, _ *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-	if ctx == nil || commercialDB == nil || moneyDB == nil {
+func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, cfg *config.Config) (kernelmodule.Module, error) {
+	if ctx == nil || commercialDB == nil || moneyDB == nil || authorizer == nil || cfg == nil {
 		return nil, errors.New("commercial billing or canonical money database unavailable")
 	}
 	wallet, err := moneystore.New(moneyDB)
@@ -41,10 +46,26 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 	if err != nil {
 		return nil, err
 	}
-	return commercialBillingModule{handler: billinghttp.NewHandler(service)}, nil
+	module := commercialBillingModule{handler: billinghttp.NewHandler(service)}
+	zitadel := cfg.ListingKit.Zitadel
+	if strings.TrimSpace(zitadel.TenantDirectoryToken) != "" && strings.TrimSpace(zitadel.AuthorizationAPIURL) != "" && strings.TrimSpace(zitadel.ProjectID) != "" {
+		subscriptionOwner, ownerErr := listingsubscription.NewRuntimeService(listingsubscription.NewGormRepository(commercialDB))
+		if ownerErr != nil {
+			return nil, ownerErr
+		}
+		recoveryAuthorizer := subscriptionPurchaseRecoveryAuthorizer{reader: zitadelruntime.NewAuthorizationClient(zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), serviceToken: zitadel.TenantDirectoryToken, projectID: zitadel.ProjectID, authorizer: authorizer}
+		if enableErr := service.EnableSubscriptionPurchases(purchasedSubscriptionOwnerAdapter{owner: subscriptionOwner}, recoveryAuthorizer); enableErr != nil {
+			return nil, enableErr
+		}
+		module.reconcileSubscriptions = func(run context.Context) error { return service.ReconcileRecoverableSubscriptionOrders(run, 50) }
+	}
+	return module, nil
 }
 
-type commercialBillingModule struct{ handler *billinghttp.Handler }
+type commercialBillingModule struct {
+	handler                *billinghttp.Handler
+	reconcileSubscriptions func(context.Context) error
+}
 
 func (commercialBillingModule) Name() string { return "commercial-billing" }
 

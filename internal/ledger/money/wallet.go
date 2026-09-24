@@ -11,9 +11,10 @@ const WalletCurrencyCNY = "CNY"
 const MaxOrganizationWalletEntryPageSize = 50
 
 var (
-	ErrWalletInsufficientBalance = errors.New("organization wallet balance is insufficient")
-	ErrWalletReservationConflict = errors.New("organization wallet reservation conflict")
-	ErrWalletSettlementConflict  = errors.New("organization wallet settlement binding conflict")
+	ErrWalletInsufficientBalance     = errors.New("organization wallet balance is insufficient")
+	ErrWalletReservationConflict     = errors.New("organization wallet reservation conflict")
+	ErrWalletSettlementConflict      = errors.New("organization wallet settlement binding conflict")
+	ErrWalletReserveDecisionNotFound = errors.New("organization wallet reserve decision is not found")
 )
 
 type WalletReservationState string
@@ -188,6 +189,47 @@ type ReserveWalletFundsInput struct {
 	AmountMinor       int64
 }
 
+type WalletReserveDecisionOutcome string
+
+const (
+	WalletReserveDecisionReserved                  WalletReserveDecisionOutcome = "RESERVED"
+	WalletReserveDecisionRejectedInsufficientFunds WalletReserveDecisionOutcome = "REJECTED_INSUFFICIENT_FUNDS"
+)
+
+type WalletReserveDecision struct {
+	OperationID       string
+	OrganizationID    string
+	CommercialOrderID string
+	Currency          string
+	AmountMinor       int64
+	Outcome           WalletReserveDecisionOutcome
+	ReservationID     string
+	DecidedAt         time.Time
+}
+
+func (decision WalletReserveDecision) Validate() error {
+	if !isCanonicalWalletIdentifier(decision.OperationID) ||
+		!isCanonicalWalletIdentifier(decision.OrganizationID) ||
+		!isCanonicalWalletIdentifier(decision.CommercialOrderID) ||
+		decision.Currency != WalletCurrencyCNY ||
+		decision.AmountMinor <= 0 || decision.DecidedAt.IsZero() {
+		return ErrInvalid
+	}
+	switch decision.Outcome {
+	case WalletReserveDecisionReserved:
+		if !isCanonicalWalletIdentifier(decision.ReservationID) {
+			return ErrInvalid
+		}
+	case WalletReserveDecisionRejectedInsufficientFunds:
+		if decision.ReservationID != "" {
+			return ErrInvalid
+		}
+	default:
+		return ErrInvalid
+	}
+	return nil
+}
+
 type CommitWalletReservationInput struct {
 	OperationID       string
 	OrganizationID    string
@@ -273,6 +315,7 @@ type OrganizationWalletReader interface {
 	ReadOrganizationWallet(context.Context, string, string) (OrganizationWalletSnapshot, error)
 	ListOrganizationWalletEntries(context.Context, string, string, string, int) (WalletEntryPage, error)
 	ReadCommercialPurchaseReservation(context.Context, string, string, string) (WalletReservation, error)
+	ReadCommercialPurchaseReserveDecision(context.Context, string, string, string) (WalletReserveDecision, error)
 }
 
 // OrganizationWalletCommander is intentionally narrow. It does not expose a

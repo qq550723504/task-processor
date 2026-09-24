@@ -63,6 +63,21 @@ type walletReservationRow struct {
 
 func (walletReservationRow) TableName() string { return "ledger_organization_wallet_reservations" }
 
+type walletReserveDecisionRow struct {
+	OrganizationID    string    `gorm:"column:organization_id;primaryKey;size:128"`
+	OperationID       string    `gorm:"column:operation_id;primaryKey;size:128"`
+	CommercialOrderID string    `gorm:"column:commercial_order_id;primaryKey;size:128"`
+	Currency          string    `gorm:"column:currency;size:3;not null"`
+	AmountMinor       int64     `gorm:"column:amount_minor;not null"`
+	Outcome           string    `gorm:"column:outcome;size:48;not null"`
+	ReservationID     string    `gorm:"column:reservation_id;size:128"`
+	DecidedAt         time.Time `gorm:"column:decided_at;not null"`
+}
+
+func (walletReserveDecisionRow) TableName() string {
+	return "ledger_organization_wallet_reserve_decisions"
+}
+
 type walletTopUpSettlementRow struct {
 	PaymentID         string    `gorm:"column:payment_id;primaryKey;size:128"`
 	CommercialOrderID string    `gorm:"column:commercial_order_id;uniqueIndex;size:128;not null"`
@@ -93,7 +108,7 @@ func AutoMigrateWallet(db *gorm.DB) error {
 	if db == nil {
 		return ledgermoney.ErrUnavailable
 	}
-	return db.AutoMigrate(&organizationWalletRow{}, &organizationWalletEntryRow{}, &walletReservationRow{}, &walletTopUpSettlementRow{}, &walletReversalRow{})
+	return db.AutoMigrate(&organizationWalletRow{}, &organizationWalletEntryRow{}, &walletReservationRow{}, &walletReserveDecisionRow{}, &walletTopUpSettlementRow{}, &walletReversalRow{})
 }
 
 func (r *Repository) ReadOrganizationWallet(ctx context.Context, organizationID, currency string) (ledgermoney.OrganizationWalletSnapshot, error) {
@@ -134,6 +149,31 @@ func (r *Repository) ReadCommercialPurchaseReservation(ctx context.Context, orga
 		return ledgermoney.WalletReservation{}, ledgermoney.ErrUnavailable
 	}
 	return reservationFromRow(row), nil
+}
+
+func (r *Repository) ReadCommercialPurchaseReserveDecision(ctx context.Context, organizationID, operationID, orderID string) (ledgermoney.WalletReserveDecision, error) {
+	if r == nil || r.db == nil {
+		return ledgermoney.WalletReserveDecision{}, ledgermoney.ErrUnavailable
+	}
+	organizationID = strings.TrimSpace(organizationID)
+	operationID = strings.TrimSpace(operationID)
+	orderID = strings.TrimSpace(orderID)
+	if organizationID == "" || operationID == "" || orderID == "" {
+		return ledgermoney.WalletReserveDecision{}, ledgermoney.ErrInvalid
+	}
+	var row walletReserveDecisionRow
+	err := r.db.WithContext(ctx).Where("organization_id = ? AND operation_id = ? AND commercial_order_id = ?", organizationID, operationID, orderID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ledgermoney.WalletReserveDecision{}, ledgermoney.ErrWalletReserveDecisionNotFound
+	}
+	if err != nil {
+		return ledgermoney.WalletReserveDecision{}, ledgermoney.ErrUnavailable
+	}
+	decision := reserveDecisionFromRow(row)
+	if decision.Validate() != nil {
+		return ledgermoney.WalletReserveDecision{}, ledgermoney.ErrUnavailable
+	}
+	return decision, nil
 }
 
 func (r *Repository) ListOrganizationWalletEntries(ctx context.Context, organizationID, currency, cursor string, limit int) (ledgermoney.WalletEntryPage, error) {
@@ -342,16 +382,23 @@ func (r *Repository) ReserveCommercialPurchase(ctx context.Context, input ledger
 		return ledgermoney.WalletReservation{}, ledgermoney.ErrInvalid
 	}
 	var out ledgermoney.WalletReservation
+	insufficient := false
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var existing walletReservationRow
-		if err := tx.Where("organization_id = ? AND operation_id = ? AND commercial_order_id = ?", input.OrganizationID, input.OperationID, input.CommercialOrderID).Take(&existing).Error; err == nil {
-			if existing.AmountMinor != input.AmountMinor || existing.Currency != input.Currency {
-				return ledgermoney.ErrWalletReservationConflict
+		decision, found, err := readWalletReserveDecision(tx, input)
+		if err != nil {
+			return err
+		}
+		if found {
+			if decision.Outcome == ledgermoney.WalletReserveDecisionRejectedInsufficientFunds {
+				insufficient = true
+				return nil
 			}
-			out = reservationFromRow(existing)
+			reservation, err := readReservationForDecision(tx, decision)
+			if err != nil {
+				return err
+			}
+			out = reservation
 			return nil
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return ledgermoney.ErrUnavailable
 		}
 		wallet, err := lockOrCreateWallet(tx, input.OrganizationID, input.Currency)
 		if err != nil {
@@ -361,17 +408,30 @@ func (r *Repository) ReserveCommercialPurchase(ctx context.Context, input ledger
 		// transaction reserves the wallet. Re-read after acquiring the wallet
 		// lock so it replays that reservation instead of cancelling the order
 		// for insufficient balance.
-		if err := tx.Where("organization_id = ? AND operation_id = ? AND commercial_order_id = ?", input.OrganizationID, input.OperationID, input.CommercialOrderID).Take(&existing).Error; err == nil {
-			if existing.AmountMinor != input.AmountMinor || existing.Currency != input.Currency {
-				return ledgermoney.ErrWalletReservationConflict
+		decision, found, err = readWalletReserveDecision(tx, input)
+		if err != nil {
+			return err
+		}
+		if found {
+			if decision.Outcome == ledgermoney.WalletReserveDecisionRejectedInsufficientFunds {
+				insufficient = true
+				return nil
 			}
-			out = reservationFromRow(existing)
+			reservation, err := readReservationForDecision(tx, decision)
+			if err != nil {
+				return err
+			}
+			out = reservation
 			return nil
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return ledgermoney.ErrUnavailable
 		}
 		if wallet.AvailableMinor < input.AmountMinor {
-			return ledgermoney.ErrWalletInsufficientBalance
+			decidedAt := time.Now().UTC().Truncate(time.Microsecond)
+			row := walletReserveDecisionRow{OrganizationID: input.OrganizationID, OperationID: input.OperationID, CommercialOrderID: input.CommercialOrderID, Currency: input.Currency, AmountMinor: input.AmountMinor, Outcome: string(ledgermoney.WalletReserveDecisionRejectedInsufficientFunds), DecidedAt: decidedAt}
+			if err := tx.Create(&row).Error; err != nil {
+				return ledgermoney.ErrUnavailable
+			}
+			insufficient = true
+			return nil
 		}
 		if wallet.ReservedMinor > math.MaxInt64-input.AmountMinor {
 			return ledgermoney.ErrInvalid
@@ -388,12 +448,19 @@ func (r *Repository) ReserveCommercialPurchase(ctx context.Context, input ledger
 		if err := tx.Create(&reservation).Error; err != nil {
 			return ledgermoney.ErrUnavailable
 		}
+		decisionRow := walletReserveDecisionRow{OrganizationID: input.OrganizationID, OperationID: input.OperationID, CommercialOrderID: input.CommercialOrderID, Currency: input.Currency, AmountMinor: input.AmountMinor, Outcome: string(ledgermoney.WalletReserveDecisionReserved), ReservationID: reservation.ReservationID, DecidedAt: now}
+		if err := tx.Create(&decisionRow).Error; err != nil {
+			return ledgermoney.ErrUnavailable
+		}
 		if err := createWalletEntry(tx, wallet, ledgermoney.WalletEntryPurchaseReserve, -input.AmountMinor, input.AmountMinor, 0, input.CommercialOrderID, "", input.CommercialOrderID, now); err != nil {
 			return err
 		}
 		out = reservationFromRow(reservation)
 		return nil
 	})
+	if err == nil && insufficient {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrWalletInsufficientBalance
+	}
 	return out, err
 }
 
@@ -554,6 +621,40 @@ func walletEntry(row organizationWalletEntryRow) ledgermoney.WalletEntry {
 
 func reservationFromRow(row walletReservationRow) ledgermoney.WalletReservation {
 	return ledgermoney.WalletReservation{ReservationID: row.ReservationID, OperationID: row.OperationID, OrganizationID: row.OrganizationID, CommercialOrderID: row.CommercialOrderID, Currency: row.Currency, AmountMinor: row.AmountMinor, State: ledgermoney.WalletReservationState(row.State), Version: 1, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC()}
+}
+
+func reserveDecisionFromRow(row walletReserveDecisionRow) ledgermoney.WalletReserveDecision {
+	return ledgermoney.WalletReserveDecision{OperationID: row.OperationID, OrganizationID: row.OrganizationID, CommercialOrderID: row.CommercialOrderID, Currency: row.Currency, AmountMinor: row.AmountMinor, Outcome: ledgermoney.WalletReserveDecisionOutcome(row.Outcome), ReservationID: row.ReservationID, DecidedAt: row.DecidedAt.UTC()}
+}
+
+func readWalletReserveDecision(tx *gorm.DB, input ledgermoney.ReserveWalletFundsInput) (ledgermoney.WalletReserveDecision, bool, error) {
+	var row walletReserveDecisionRow
+	err := tx.Where("organization_id = ? AND operation_id = ? AND commercial_order_id = ?", input.OrganizationID, input.OperationID, input.CommercialOrderID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ledgermoney.WalletReserveDecision{}, false, nil
+	}
+	if err != nil {
+		return ledgermoney.WalletReserveDecision{}, false, ledgermoney.ErrUnavailable
+	}
+	decision := reserveDecisionFromRow(row)
+	if decision.Validate() != nil || decision.Currency != input.Currency || decision.AmountMinor != input.AmountMinor {
+		return ledgermoney.WalletReserveDecision{}, false, ledgermoney.ErrWalletReservationConflict
+	}
+	return decision, true, nil
+}
+
+func readReservationForDecision(tx *gorm.DB, decision ledgermoney.WalletReserveDecision) (ledgermoney.WalletReservation, error) {
+	if decision.Outcome != ledgermoney.WalletReserveDecisionReserved || decision.ReservationID == "" {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrWalletReservationConflict
+	}
+	var row walletReservationRow
+	if err := tx.Where("organization_id = ? AND operation_id = ? AND commercial_order_id = ? AND reservation_id = ?", decision.OrganizationID, decision.OperationID, decision.CommercialOrderID, decision.ReservationID).Take(&row).Error; err != nil {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrUnavailable
+	}
+	if row.Currency != decision.Currency || row.AmountMinor != decision.AmountMinor {
+		return ledgermoney.WalletReservation{}, ledgermoney.ErrWalletReservationConflict
+	}
+	return reservationFromRow(row), nil
 }
 
 func minInt64(a, b int64) int64 {

@@ -21,14 +21,18 @@ import (
 )
 
 const (
-	walletPath        = "/api/v1/workbench/commercial/wallet"
-	walletEntriesPath = walletPath + "/entries"
-	quotePath         = "/api/v1/workbench/commercial/quotes"
-	orderPath         = "/api/v1/workbench/commercial/orders"
-	orderSummaryPath  = orderPath + "/summary"
-	orderDetailPath   = orderPath + "/:order_id"
-	topUpIntentPath   = walletPath + "/top-up-intents"
-	maxBodyBytes      = 16 * 1024
+	walletPath                  = "/api/v1/workbench/commercial/wallet"
+	walletEntriesPath           = walletPath + "/entries"
+	quotePath                   = "/api/v1/workbench/commercial/quotes"
+	orderPath                   = "/api/v1/workbench/commercial/orders"
+	orderSummaryPath            = orderPath + "/summary"
+	orderDetailPath             = orderPath + "/:order_id"
+	topUpIntentPath             = walletPath + "/top-up-intents"
+	subscriptionOfferPath       = "/api/v1/workbench/commercial/subscription-offers"
+	subscriptionQuotePath       = "/api/v1/workbench/commercial/subscription-quotes"
+	subscriptionOrderPath       = "/api/v1/workbench/commercial/subscription-orders"
+	subscriptionOrderDetailPath = subscriptionOrderPath + "/:order_id"
+	maxBodyBytes                = 16 * 1024
 )
 
 type Handler struct{ service *billing.Service }
@@ -114,8 +118,8 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 	if !ok || h == nil || h.service == nil {
 		return
 	}
-	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
-	if idempotencyKey == "" || len(idempotencyKey) > 192 {
+	idempotencyKey, ok := singleIdempotencyKey(c)
+	if !ok {
 		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 		return
 	}
@@ -135,6 +139,98 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		status = http.StatusConflict
 	}
 	writeJSON(c, status, orderResponseFromDomain(order))
+}
+
+func (h *Handler) SubscriptionOffers(c *gin.Context) {
+	if !validReadRequest(c) || c.Request.URL.RawQuery != "" || h == nil || h.service == nil {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	organizationID, ok := effectiveOrganization(c)
+	if !ok {
+		writeError(c, http.StatusConflict, "ORGANIZATION_SELECTION_REQUIRED")
+		return
+	}
+	views, err := h.service.ListSubscriptionOffers(c.Request.Context(), organizationID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	items := make([]subscriptionOfferResponse, 0, len(views))
+	for _, view := range views {
+		offer := view.Offer
+		items = append(items, subscriptionOfferResponse{OfferID: offer.OfferID, PlanCode: offer.PlanCode, PlanName: view.PlanName, TermMonths: strconv.Itoa(offer.TermMonths), SettlementMode: string(offer.SettlementMode), Currency: offer.Currency, TotalMinor: strconv.FormatInt(offer.UnitPriceMinor, 10), PricingVersion: offer.PricingVersion, Availability: string(view.Availability)})
+	}
+	writeJSON(c, http.StatusOK, map[string]any{"organization_id": organizationID, "items": items})
+}
+
+func (h *Handler) CreateSubscriptionQuote(c *gin.Context) {
+	organizationID, ok := writeOrganization(c)
+	if !ok || h == nil || h.service == nil {
+		return
+	}
+	var request struct {
+		OfferID string `json:"offer_id"`
+	}
+	if !decodeStrict(c, &request) {
+		return
+	}
+	quote, err := h.service.CreateSubscriptionQuote(c.Request.Context(), billing.SubscriptionQuoteRequest{OrganizationID: organizationID, OfferID: strings.TrimSpace(request.OfferID)})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusCreated, subscriptionQuoteResponse{QuoteID: quote.QuoteID, OrganizationID: quote.OrganizationID, OfferID: quote.OfferID, ProductKind: string(quote.ProductKind), PlanCode: quote.PlanCode, PlanFingerprint: quote.PlanFingerprint, TermMonths: strconv.Itoa(quote.TermMonths), SettlementMode: string(quote.SettlementMode), Currency: quote.Currency, TotalMinor: strconv.FormatInt(quote.TotalMinor, 10), PricingVersion: quote.PricingVersion, ExpiresAt: quote.ExpiresAt.UTC().Format(time.RFC3339Nano), Fingerprint: quote.Fingerprint, CreatedAt: quote.CreatedAt.UTC().Format(time.RFC3339Nano)})
+}
+
+func (h *Handler) CreateSubscriptionOrder(c *gin.Context) {
+	organizationID, actorID, ok := writeOrganizationAndActor(c)
+	if !ok || h == nil || h.service == nil {
+		return
+	}
+	idempotencyKey, ok := singleIdempotencyKey(c)
+	if !ok {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	var request struct {
+		QuoteID string `json:"quote_id"`
+	}
+	if !decodeStrict(c, &request) {
+		return
+	}
+	order, err := h.service.CreateSubscriptionOrder(c.Request.Context(), billing.CreateSubscriptionOrderRequest{OrganizationID: organizationID, ActorID: actorID, QuoteID: strings.TrimSpace(request.QuoteID), IdempotencyKey: idempotencyKey})
+	if err != nil && order.OrderID == "" {
+		writeServiceError(c, err)
+		return
+	}
+	status := http.StatusCreated
+	if err != nil {
+		status = http.StatusConflict
+	}
+	writeJSON(c, status, orderResponseFromDomain(order))
+}
+
+func (h *Handler) SubscriptionOrder(c *gin.Context) {
+	if !validReadRequest(c) || c.Request.URL.RawQuery != "" || h == nil || h.service == nil {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	organizationID, ok := effectiveOrganization(c)
+	if !ok {
+		writeError(c, http.StatusConflict, "ORGANIZATION_SELECTION_REQUIRED")
+		return
+	}
+	order, err := h.service.ReadOrder(c.Request.Context(), organizationID, c.Param("order_id"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	if order.Kind != billing.OrderSubscriptionPurchase {
+		writeServiceError(c, billing.ErrNotFound)
+		return
+	}
+	writeJSON(c, http.StatusOK, orderResponseFromDomain(order))
 }
 
 func (h *Handler) Orders(c *gin.Context) {
@@ -289,7 +385,7 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 	const read = authz.PermissionWorkbenchCommercialRead
 	const purchase = authz.PermissionWorkbenchCommercialPurchase
 	const topup = authz.PermissionWorkbenchCommercialWalletTopUp
-	routes := make([]httproute.Descriptor, 0, 7)
+	routes := make([]httproute.Descriptor, 0, 12)
 	for _, route := range []struct {
 		method, path, permission string
 		handler                  gin.HandlerFunc
@@ -302,10 +398,14 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 		{http.MethodGet, orderSummaryPath, read, handler.OrderSummary},
 		{http.MethodGet, orderDetailPath, read, handler.Order},
 		{http.MethodPost, topUpIntentPath, topup, handler.TopUpIntent},
+		{http.MethodGet, subscriptionOfferPath, read, handler.SubscriptionOffers},
+		{http.MethodPost, subscriptionQuotePath, purchase, handler.CreateSubscriptionQuote},
+		{http.MethodPost, subscriptionOrderPath, purchase, handler.CreateSubscriptionOrder},
+		{http.MethodGet, subscriptionOrderDetailPath, read, handler.SubscriptionOrder},
 	} {
 		handler := route.handler
 		rejectUnreadRequestBody := true
-		if route.method == http.MethodPost && (route.path == quotePath || route.path == orderPath) {
+		if route.method == http.MethodPost && (route.path == quotePath || route.path == orderPath || route.path == subscriptionQuotePath || route.path == subscriptionOrderPath) {
 			rejectUnreadRequestBody = false
 			handler = httproute.WithRequestBodyReadTimeout(10*time.Second, handler)
 		}
@@ -354,20 +454,64 @@ type quoteResponse struct {
 	Fingerprint      string `json:"fingerprint"`
 	CreatedAt        string `json:"created_at"`
 }
+type subscriptionOfferResponse struct {
+	OfferID        string `json:"offer_id"`
+	PlanCode       string `json:"plan_code"`
+	PlanName       string `json:"plan_name"`
+	TermMonths     string `json:"term_months"`
+	SettlementMode string `json:"settlement_mode"`
+	Currency       string `json:"currency"`
+	TotalMinor     string `json:"total_minor"`
+	PricingVersion string `json:"pricing_version"`
+	Availability   string `json:"availability"`
+}
+type subscriptionQuoteResponse struct {
+	QuoteID         string `json:"quote_id"`
+	OrganizationID  string `json:"organization_id"`
+	OfferID         string `json:"offer_id"`
+	ProductKind     string `json:"product_kind"`
+	PlanCode        string `json:"plan_code"`
+	PlanFingerprint string `json:"plan_fingerprint"`
+	TermMonths      string `json:"term_months"`
+	SettlementMode  string `json:"settlement_mode"`
+	Currency        string `json:"currency"`
+	TotalMinor      string `json:"total_minor"`
+	PricingVersion  string `json:"pricing_version"`
+	ExpiresAt       string `json:"expires_at"`
+	Fingerprint     string `json:"fingerprint"`
+	CreatedAt       string `json:"created_at"`
+}
 type orderResponse struct {
-	OrderID             string              `json:"order_id"`
-	OrganizationID      string              `json:"organization_id"`
-	Kind                string              `json:"kind"`
-	Description         string              `json:"description"`
-	QuoteID             *string             `json:"quote_id,omitempty"`
-	Currency            string              `json:"currency"`
-	AmountMinor         string              `json:"total_minor"`
-	Status              string              `json:"status"`
-	FailureCode         string              `json:"failure_code,omitempty"`
-	WalletReservationID *string             `json:"wallet_reservation_id,omitempty"`
-	Items               []orderItemResponse `json:"items"`
-	CreatedAt           string              `json:"created_at"`
-	UpdatedAt           string              `json:"updated_at"`
+	OrderID             string                               `json:"order_id"`
+	OrganizationID      string                               `json:"organization_id"`
+	Kind                string                               `json:"kind"`
+	Description         string                               `json:"description"`
+	QuoteID             *string                              `json:"quote_id,omitempty"`
+	Currency            string                               `json:"currency"`
+	AmountMinor         string                               `json:"total_minor"`
+	Status              string                               `json:"status"`
+	FailureCode         string                               `json:"failure_code,omitempty"`
+	WalletReservationID *string                              `json:"wallet_reservation_id,omitempty"`
+	Items               []orderItemResponse                  `json:"items"`
+	CreatedAt           string                               `json:"created_at"`
+	UpdatedAt           string                               `json:"updated_at"`
+	ProductKind         string                               `json:"product_kind,omitempty"`
+	PlanCode            string                               `json:"plan_code,omitempty"`
+	PlanFingerprint     string                               `json:"plan_fingerprint,omitempty"`
+	TermMonths          string                               `json:"term_months,omitempty"`
+	SettlementMode      string                               `json:"settlement_mode,omitempty"`
+	ActivationProof     *subscriptionActivationProofResponse `json:"activation_proof,omitempty"`
+}
+type subscriptionActivationProofResponse struct {
+	OperationID               string  `json:"operation_id"`
+	RequestFingerprint        string  `json:"request_fingerprint"`
+	Outcome                   string  `json:"outcome"`
+	FailureCode               string  `json:"failure_code,omitempty"`
+	SubscriptionID            string  `json:"subscription_id,omitempty"`
+	StartsAt                  *string `json:"starts_at,omitempty"`
+	ExpiresAt                 *string `json:"expires_at,omitempty"`
+	EntitlementSetFingerprint string  `json:"entitlement_set_fingerprint,omitempty"`
+	DecidedAt                 string  `json:"decided_at"`
 }
 type orderItemResponse struct {
 	OrderItemID      string `json:"order_item_id"`
@@ -382,7 +526,23 @@ func orderResponseFromDomain(order billing.Order) orderResponse {
 	for _, item := range order.Items {
 		items = append(items, orderItemResponse{OrderItemID: item.OrderItemID, ProductKind: string(item.ProductKind), ResourceType: string(item.ResourceType), ResourceQuantity: strconv.FormatInt(item.ResourceQuantity, 10), AmountMinor: strconv.FormatInt(item.AmountMinor, 10)})
 	}
-	return orderResponse{OrderID: order.OrderID, OrganizationID: order.OrganizationID, Kind: string(order.Kind), Description: order.Description, QuoteID: nullable(order.QuoteID), Currency: order.Currency, AmountMinor: strconv.FormatInt(order.AmountMinor, 10), Status: string(order.Status), FailureCode: string(order.FailureCode), WalletReservationID: nullable(order.WalletReservationID), Items: items, CreatedAt: order.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: order.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+	response := orderResponse{OrderID: order.OrderID, OrganizationID: order.OrganizationID, Kind: string(order.Kind), Description: order.Description, QuoteID: nullable(order.QuoteID), Currency: order.Currency, AmountMinor: strconv.FormatInt(order.AmountMinor, 10), Status: string(order.Status), FailureCode: string(order.FailureCode), WalletReservationID: nullable(order.WalletReservationID), Items: items, CreatedAt: order.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: order.UpdatedAt.UTC().Format(time.RFC3339Nano), ProductKind: string(order.ProductKind), PlanCode: order.PlanCode, PlanFingerprint: order.PlanFingerprint, SettlementMode: string(order.SettlementMode)}
+	if order.TermMonths > 0 {
+		response.TermMonths = strconv.Itoa(order.TermMonths)
+	}
+	if order.ActivationOutcome != "" && order.ActivationDecidedAt != nil {
+		proof := &subscriptionActivationProofResponse{OperationID: order.ActivationOperationID, RequestFingerprint: order.ActivationRequestFingerprint, Outcome: string(order.ActivationOutcome), FailureCode: string(order.ActivationFailureCode), SubscriptionID: order.ActivationSubscriptionID, EntitlementSetFingerprint: order.ActivationEntitlementSetFingerprint, DecidedAt: order.ActivationDecidedAt.UTC().Format(time.RFC3339Nano)}
+		if order.ActivationStartsAt != nil {
+			value := order.ActivationStartsAt.UTC().Format(time.RFC3339Nano)
+			proof.StartsAt = &value
+		}
+		if order.ActivationExpiresAt != nil {
+			value := order.ActivationExpiresAt.UTC().Format(time.RFC3339Nano)
+			proof.ExpiresAt = &value
+		}
+		response.ActivationProof = proof
+	}
+	return response
 }
 
 func effectiveOrganization(c *gin.Context) (string, bool) {
@@ -407,6 +567,26 @@ func writeOrganization(c *gin.Context) (string, bool) {
 		return "", false
 	}
 	return organizationID, true
+}
+func writeOrganizationAndActor(c *gin.Context) (string, string, bool) {
+	organizationID, ok := writeOrganization(c)
+	if !ok {
+		return "", "", false
+	}
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+	if !ok || strings.TrimSpace(identity.UserID) == "" {
+		writeError(c, http.StatusForbidden, "FORBIDDEN")
+		return "", "", false
+	}
+	return organizationID, strings.TrimSpace(identity.UserID), true
+}
+func singleIdempotencyKey(c *gin.Context) (string, bool) {
+	values := c.Request.Header.Values("Idempotency-Key")
+	if len(values) != 1 {
+		return "", false
+	}
+	value := strings.TrimSpace(values[0])
+	return value, value != "" && len(value) <= 192
 }
 func validReadRequest(c *gin.Context) bool {
 	return c.Request.Method == http.MethodGet && c.Request.URL.RawQuery == "" || c.Request.Method == http.MethodGet
@@ -447,6 +627,14 @@ func writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusServiceUnavailable, "FEATURE_UNAVAILABLE")
 	case errors.Is(err, billing.ErrReconciliationRequired):
 		writeError(c, http.StatusConflict, "RECONCILIATION_REQUIRED")
+	case errors.Is(err, billing.ErrPaymentMethodUnavailable):
+		writeError(c, http.StatusConflict, "PAYMENT_METHOD_UNAVAILABLE")
+	case errors.Is(err, billing.ErrActiveSubscriptionExists):
+		writeError(c, http.StatusConflict, "ACTIVE_SUBSCRIPTION_EXISTS")
+	case errors.Is(err, billing.ErrPlanChanged):
+		writeError(c, http.StatusConflict, "PLAN_CHANGED")
+	case errors.Is(err, billing.ErrAuthorizationRevoked):
+		writeError(c, http.StatusForbidden, "FORBIDDEN")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		writeError(c, http.StatusGatewayTimeout, "DEADLINE_EXCEEDED")
 	default:

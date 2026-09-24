@@ -9,7 +9,7 @@ import { ConsoleState } from "../console/console-page";
 import styles from "./commercial.module.css";
 
 const entryLabels: Record<string, string> = { TOP_UP_CREDIT: "钱包充值", PURCHASE_RESERVE: "资源购买预留", PURCHASE_COMMIT: "资源购买", PURCHASE_RELEASE: "购买释放", REFUND_REVERSAL: "退款冲正", CHARGEBACK_REVERSAL: "拒付冲正", DEBT_REPAYMENT: "欠款偿还" };
-const orderKindLabels: Record<CommercialOrder["kind"], string> = { WALLET_TOP_UP: "钱包充值", RESOURCE_PURCHASE: "资源购买" };
+const orderKindLabels: Record<CommercialOrder["kind"], string> = { WALLET_TOP_UP: "钱包充值", RESOURCE_PURCHASE: "资源购买", SUBSCRIPTION_PURCHASE: "套餐购买" };
 const orderStatusLabels: Record<CommercialOrder["status"], string> = { PENDING: "待处理", FUNDS_RESERVED: "资金已预留", FULFILLING: "履约中", FULFILLED: "已完成", CANCELLED: "已取消", RECONCILIATION_REQUIRED: "待核对" };
 
 function minorAmount(minor: string, currency = "CNY") {
@@ -79,7 +79,7 @@ export function OrdersView({ summary, page, onFilter, onNext }: { summary: Comme
         <label>搜索订单<input aria-label="搜索订单" maxLength={128} value={query} onChange={event => setQuery(event.target.value)} placeholder="订单号或内容" /></label>
         <label>开始日期<input aria-label="开始日期" type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
         <label>结束日期<input aria-label="结束日期" type="date" value={until} onChange={event => setUntil(event.target.value)} /></label>
-        <label>订单类型<select aria-label="订单类型" value={kind} onChange={event => setKind(event.target.value)}><option value="">全部类型</option><option value="RESOURCE_PURCHASE">资源购买</option><option value="WALLET_TOP_UP">钱包充值</option></select></label>
+        <label>订单类型<select aria-label="订单类型" value={kind} onChange={event => setKind(event.target.value)}><option value="">全部类型</option><option value="SUBSCRIPTION_PURCHASE">套餐购买</option><option value="RESOURCE_PURCHASE">资源购买</option><option value="WALLET_TOP_UP">钱包充值</option></select></label>
         <label>订单状态<select aria-label="订单状态" value={status} onChange={event => setStatus(event.target.value)}><option value="">全部状态</option>{Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <Button type="submit">筛选</Button><Button type="button" variant="outline" onClick={() => { setQuery(""); setKind(""); setStatus(""); setFrom(""); setUntil(""); onFilter({ query: "", kind: "", status: "", from: "", until: "" }); }}>重置</Button>
       </form>

@@ -163,7 +163,7 @@ func TestOrderFiltersCursorAndSummaryUseCompleteCanonicalOrders(t *testing.T) {
 			product = billing.ProductDataRow
 			amount = 9
 		}
-		orders = append(orders, orderRow{OrderID: id, OrganizationID: "org-orders", Kind: string(billing.OrderResourcePurchase), Description: billing.DescribeOrder(billing.OrderResourcePurchase, product, 1), Currency: billing.CurrencyCNY, AmountMinor: amount, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-" + id, RequestFingerprint: "fingerprint-" + id, Version: 1, CreatedAt: created, UpdatedAt: fulfilled})
+		orders = append(orders, orderRow{OrderID: id, OrganizationID: "org-orders", Kind: string(billing.OrderResourcePurchase), ProductKind: string(product), Description: billing.DescribeOrder(billing.OrderResourcePurchase, product, 1), Currency: billing.CurrencyCNY, AmountMinor: amount, Status: string(billing.OrderFulfilled), IdempotencyKey: "idem-" + id, RequestFingerprint: "fingerprint-" + id, Version: 1, CreatedAt: created, UpdatedAt: fulfilled})
 		items = append(items, orderItemRow{OrderItemID: "item-" + id, OrderID: id, ProductKind: string(product), ResourceType: "ai_point", ResourceQuantity: 1, AmountMinor: amount})
 	}
 	if err := repository.db.Create(&orders).Error; err != nil {

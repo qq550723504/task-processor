@@ -50,6 +50,13 @@ func TestCommercialRuntimeGrantsStayWithinOwnedTables(t *testing.T) {
 		"saas_organization_resource_reservations",
 		"saas_organization_resource_debts",
 		"saas_organization_resource_audit_logs",
+		"saas_plans",
+		"saas_plan_modules",
+		"saas_tenant_subscriptions",
+		"saas_tenant_entitlements",
+		"saas_subscription_activation_fences",
+		"saas_purchased_plan_activations",
+		"saas_subscription_audit_logs",
 	} {
 		if !strings.Contains(grants, "public."+table) {
 			t.Errorf("runtime grants omit required owner table %s", table)
@@ -67,6 +74,7 @@ func TestMoneyRuntimeGrantsStayWithCanonicalMoneyOwner(t *testing.T) {
 		"ledger_organization_wallets",
 		"ledger_organization_wallet_entries",
 		"ledger_organization_wallet_reservations",
+		"ledger_organization_wallet_reserve_decisions",
 		"ledger_organization_topup_settlements",
 		"ledger_organization_wallet_reversals",
 	} {
@@ -94,6 +102,9 @@ func TestOwnerSchemaMigrationsKeepMoneyFactsAndWalletTogether(t *testing.T) {
 		{moneyDB, "ledger_payment_settlements", true},
 		{moneyDB, "ledger_organization_wallets", true},
 		{commercialDB, "commercial_orders", true},
+		{commercialDB, "saas_purchased_plan_activations", true},
+		{commercialDB, "saas_subscription_activation_fences", true},
+		{moneyDB, "ledger_organization_wallet_reserve_decisions", true},
 		{commercialDB, "ledger_payment_settlements", false},
 		{commercialDB, "ledger_organization_wallets", false},
 	} {

@@ -154,9 +154,18 @@ func TestCurrentApplicationStartsFromConfiguredPrivateManifest(t *testing.T) {
 		OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
 		OpenCommercial:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
 		OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return &gorm.DB{}, nil },
-		NewApplicationWithFeatures: func(_ context.Context, gotSource, gotCommercial *gorm.DB, _ ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+		NewApplicationWithFeatures: func(startup context.Context, gotSource, gotCommercial *gorm.DB, features ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			if gotSource != source || gotCommercial != commercial {
 				t.Fatal("application received unexpected database pools")
+			}
+			if _, ok := startup.Deadline(); !ok {
+				t.Fatal("application construction did not receive the bounded startup context")
+			}
+			if features.RuntimeContext != ctx {
+				t.Fatal("application features did not receive the long-lived runtime context")
+			}
+			if _, ok := features.RuntimeContext.Deadline(); ok {
+				t.Fatal("long-lived runtime context inherited the startup deadline")
 			}
 			startedCore = core
 			return &http.Server{}, nil
