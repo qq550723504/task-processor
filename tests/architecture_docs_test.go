@@ -1946,6 +1946,7 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"WalletReserveDecision",
 		"SubscriptionPurchaseRecoveryAuthorizer",
 		"pending_effect",
+		"terminal_intent",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
