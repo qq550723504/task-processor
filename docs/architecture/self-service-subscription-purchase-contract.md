@@ -676,6 +676,15 @@ This is a bounded commercial-billing recovery component, not a generic
 scheduler/reconciliation framework and not a `kernel/module.Registry`
 lifecycle extension.
 
+The current `internal/app/runtime/currentapplication` code passes a
+15-second `startupContext` into application assembly. The recovery runner must
+**not** inherit that startup context, or it will terminate immediately after
+startup. Implementation must explicitly bind the runner to the long-lived
+runtime parent context and start it only after application assembly succeeds.
+A minimal constructor/signature split between startup context and runtime
+context is acceptable; adding a generic kernel scheduler or global lifecycle
+framework is not.
+
 The runner contract is:
 
 ```go
