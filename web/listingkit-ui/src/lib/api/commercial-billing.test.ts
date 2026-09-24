@@ -44,6 +44,16 @@ describe("commercial billing read contracts", () => {
     await expect(getCommercialOrder("user-A", "org-A", "order-1")).resolves.toMatchObject({ product_kind: "AI_POINT" });
   });
 
+  it("reads bounded owner plan codes without treating them as ASCII identifiers", async () => {
+    const customized = { ...subscriptionOrder, plan_code: "定制 plan" };
+    expect(parseCommercialOrderPage({ ...orders, items: [customized] })?.items[0]).toMatchObject({ plan_code: "定制 plan" });
+    expect(parseCommercialOrderPage({ ...orders, items: [{ ...customized, plan_code: "界".repeat(21) }] })?.items[0]).toMatchObject({ plan_code: "界".repeat(21) });
+    expect(parseCommercialOrderPage({ ...orders, items: [{ ...customized, plan_code: " 定制 plan" }] })).toBeNull();
+    expect(parseCommercialOrderPage({ ...orders, items: [{ ...customized, plan_code: "界".repeat(22) }] })).toBeNull();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(customized)));
+    await expect(getCommercialOrder("user-A", "org-A", customized.order_id)).resolves.toMatchObject({ plan_code: "定制 plan" });
+  });
+
   it("binds every read to both the expected identity and organization", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(Response.json(wallet)).mockResolvedValueOnce(Response.json(orders)).mockResolvedValueOnce(Response.json(summary)).mockResolvedValueOnce(Response.json(walletEntries)).mockResolvedValueOnce(Response.json({ ...wallet, organization_id: "org-B" })).mockResolvedValueOnce(Response.json({ ...order, order_id: "order-other" }));
     vi.stubGlobal("fetch", fetchMock);

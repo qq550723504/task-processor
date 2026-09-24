@@ -4,6 +4,7 @@ import { parseWorkbenchErrorEnvelopePayload } from "./workbench-context";
 
 const MAX_BYTES = 64 * 1024;
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+const planCode = z.string().min(1).refine(value => value.trim() === value && new TextEncoder().encode(value).length <= 64);
 const text = z.string().min(1).max(512).refine(value => value.trim() === value && !/[\u0000-\u001f\u007f-\u009f]/.test(value));
 const int64 = z.string().max(20).regex(/^(0|-?[1-9][0-9]*)$/).refine(value => {
   try { const parsed = BigInt(value); return parsed >= BigInt("-9223372036854775808") && parsed <= BigInt("9223372036854775807"); } catch { return false; }
@@ -21,7 +22,7 @@ const activatedSubscriptionProof = z.object({ operation_id: id, request_fingerpr
 const rejectedSubscriptionProof = z.object({ operation_id: id, request_fingerprint: id, outcome: z.literal("REJECTED"), failure_code: z.enum(["ACTIVE_SUBSCRIPTION_EXISTS", "PLAN_CHANGED"]), decided_at: timestamp }).strict();
 const walletTopUpOrder = orderBase.extend({ kind: z.literal("WALLET_TOP_UP"), failure_code: z.enum(["INSUFFICIENT_FUNDS", "RESOURCE_GRANT_REJECTED"]).optional() }).strict();
 const resourcePurchaseOrder = orderBase.extend({ kind: z.literal("RESOURCE_PURCHASE"), failure_code: z.enum(["INSUFFICIENT_FUNDS", "RESOURCE_GRANT_REJECTED"]).optional(), product_kind: resourceProductKind }).strict();
-const subscriptionOrder = orderBase.extend({ kind: z.literal("SUBSCRIPTION_PURCHASE"), failure_code: z.enum(["INSUFFICIENT_FUNDS", "ACTIVE_SUBSCRIPTION_EXISTS", "PLAN_CHANGED", "AUTHORIZATION_REVOKED"]).optional(), product_kind: z.literal("SUBSCRIPTION_PLAN"), plan_code: id, plan_fingerprint: id, term_months: nonnegative.refine(value => BigInt(value) > BigInt(0)), settlement_mode: z.enum(["ZERO_PRICE", "WALLET"]), activation_proof: z.union([activatedSubscriptionProof, rejectedSubscriptionProof]).optional() }).strict().refine(value => value.items.length === 0);
+const subscriptionOrder = orderBase.extend({ kind: z.literal("SUBSCRIPTION_PURCHASE"), failure_code: z.enum(["INSUFFICIENT_FUNDS", "ACTIVE_SUBSCRIPTION_EXISTS", "PLAN_CHANGED", "AUTHORIZATION_REVOKED"]).optional(), product_kind: z.literal("SUBSCRIPTION_PLAN"), plan_code: planCode, plan_fingerprint: id, term_months: nonnegative.refine(value => BigInt(value) > BigInt(0)), settlement_mode: z.enum(["ZERO_PRICE", "WALLET"]), activation_proof: z.union([activatedSubscriptionProof, rejectedSubscriptionProof]).optional() }).strict().refine(value => value.items.length === 0);
 const order = z.union([walletTopUpOrder, resourcePurchaseOrder, subscriptionOrder]);
 const orderPage = z.object({ organization_id: id, items: z.array(order).max(50), next_cursor: z.string().max(2048) }).strict().refine(value => value.items.every(item => item.organization_id === value.organization_id));
 const orderSummary = z.object({ organization_id: id, currency: z.literal("CNY"), from: timestamp, until: timestamp, spend_minor: nonnegative, store_renewal_spend_minor: nonnegative, ai_point_spend_minor: nonnegative, data_row_spend_minor: nonnegative, other_spend_minor: nonnegative, observed_at: timestamp }).strict().refine(value => Date.parse(value.from) < Date.parse(value.until));
