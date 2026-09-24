@@ -44,7 +44,7 @@ an approved contract. Follow the explicit responsibility/supersession above.
 After identifying the applicable approved authorities above, review structural rules in this order:
 
 1. Start with `project-boundaries.md` for default package ownership,
-   dependency direction, and repository-wide placement rules.
+   dependency direction, forbidden imports, and repository-wide placement rules.
 2. Then open the most relevant specialized boundary document such as
    `httpapi-assembly-boundaries.md`, `app-assembly-boundaries.md`, or
    `platform-boundary-strategy.md`.
@@ -120,6 +120,11 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- `alipay-wallet-topup-design.md`
+  - DRAFT #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
+    fixed-channel attempts, typed checkout, isolated verification, posting/refund
+    receipts and recovery. Historical filename; one dual-channel design.
+    Not IMPLEMENTATION_READY; does not supersede approved billing/money contracts.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
