@@ -799,8 +799,9 @@ Before calling a not-yet-started external effect:
    it instead of starting a new admission;
 3. reject new RESERVE/ACTIVATE admission if `terminal_intent=CANCEL` is already
    durably present on the order;
-4. perform service-side live reauthorization for the persisted actor and exact
-   Organization;
+4. perform a fresh service-side provider-backed live reauthorization for the
+   persisted actor and exact Organization; this is required for every new
+   RESERVE or ACTIVATE admission even when both occur in one HTTP request;
 5. if denied, do not admit the effect; use the revocation path below;
 6. if allowed, atomically CAS the commercial order's expected version/state and
    persist `pending_effect` plus `pending_effect_admitted_at`; the CAS predicate
@@ -1017,7 +1018,7 @@ execution and recovery.
    - missing/mismatched/unknown: keep or move the order to
      `RECONCILIATION_REQUIRED` and retain the admitted RESERVE effect identity
      until readback/replay resolves it.
-4. After RESERVED proof is persisted, if activation is not already admitted/proven, perform a fresh live reauthorization and CAS `pending_effect=ACTIVATE`; only the CAS winner calls activation. If ACTIVATE was already admitted, replay/read back that exact activation identity without reauthorization.
+4. After RESERVED proof is persisted, if activation is not already admitted/proven, perform a **new provider-backed exact actor grant query** through the service-side live authorizer, then CAS `pending_effect=ACTIVATE`; the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check. Only the CAS winner calls activation. If ACTIVATE was already durably admitted, replay/read back that exact activation identity without a new authorization decision.
 6. Resolve ambiguous activation result through source-bound readback.
 7. A terminal pre-effect rejection is actionable only when the returned/read
    activation decision is durably `REJECTED` for this exact source and request
@@ -1140,21 +1141,30 @@ with its dedicated server-side read credential, to resolve the actor's live
 project assignment for the exact Organization. It must then apply the existing
 `authz.PermissionWorkbenchCommercialPurchase` policy.
 
-Foreground HTTP requests already pass the route contract
+Foreground HTTP routes still require
 `AuthPolicyCurrentIdentity + OrganizationAccessPolicyLiveWrite +
-workbench.commercial.purchase`. That verified live request identity may satisfy
-the authorization input for an effect admission only when:
+workbench.commercial.purchase` to create/replay the commercial order and bind
+the persisted actor/Effective Organization.
 
-- admission happens in the same request;
-- the request identity actor and Effective Organization exactly match the
-  persisted order;
-- the token is still unexpired at admission time;
-- the order-version CAS that persists `pending_effect` succeeds before the
-  external effect call.
+That request-time authorization is **not** reusable as authorization for any
+external effect admission. Every not-yet-admitted `RESERVE` and every
+not-yet-admitted `ACTIVATE`, including a second effect later in the same HTTP
+request, must call `SubscriptionPurchaseRecoveryAuthorizer` (the service-side
+live authorizer) immediately before the order-CAS admission.
 
-If any of those conditions is not true, including all background recovery, use
-the service-side authorizer below. Browser bearer tokens are never persisted
-for later use.
+Therefore the WALLET sequence deliberately performs two distinct live checks:
+
+```text
+before RESERVE admission  -> exact provider-backed actor grant query
+after RESERVED proof, before ACTIVATE admission
+                          -> a new exact provider-backed actor grant query
+```
+
+A still-open HTTP request, an unexpired browser token, the roles attached to
+the request-start identity, or a previous successful effect admission are not
+proof of current permission for the next effect.
+
+Browser bearer tokens are never persisted or replayed for effect admission.
 
 The adapter must not:
 - use roles persisted on the order as authority;
@@ -1586,7 +1596,7 @@ The implementation is ready for #478 only when it proves:
 - ZERO_PRICE creates a canonical order and no money mutation; `ACTIVATED` converges to FULFILLED while durable `REJECTED` converges to CANCELLED and can never be reported as success;
 - WALLET reserves, activates, then commits exactly once;
 - insufficient wallet balance cancels without activation only from a money-owned durable `REJECTED_INSUFFICIENT_FUNDS` reserve decision plus proof that no activation decision exists; the same order never becomes chargeable after a later top-up;
-- foreground effect admission may reuse the same-request verified LiveWrite identity only when actor/org/token still match and the order-CAS admission succeeds before the effect;
+- request-time LiveWrite authorization never substitutes for effect-time authorization; RESERVE and ACTIVATE each require their own fresh provider-backed exact actor grant check before admission, including when both occur in one HTTP request;
 - recovery reauthorizes the persisted actor against live Organization membership/grants before each not-yet-admitted reserve/activation effect;
 - only the order-version CAS winner may persist `pending_effect` and invoke that new effect;
 - revoked/downgraded actors cannot cause a new reserve or activation during recovery;
