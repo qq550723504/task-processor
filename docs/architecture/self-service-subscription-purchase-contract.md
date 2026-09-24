@@ -872,7 +872,10 @@ Reconciliation may:
 - commit the original reservation only after a matching durable `ACTIVATED`
   decision is proven and persisted on the order;
 - move the same order to FULFILLED only from a matching durable `ACTIVATED` decision;
-- move the same order to CANCELLED only from a matching durable `REJECTED` decision (plus RELEASED wallet proof for WALLET);
+- move the same order to CANCELLED from either:
+  - a matching durable `REJECTED` activation decision (plus authoritative RELEASED wallet proof for WALLET), or
+  - a proven pre-activation `INSUFFICIENT_FUNDS` result where replay of the original reserve identity proves no matching reservation exists and source-bound activation readback proves no activation decision exists;
+- once the insufficient-funds cancellation is durably persisted, that order is terminal and must never be retried merely because the wallet is topped up later;
 - otherwise remain RECONCILIATION_REQUIRED.
 
 It may not:
@@ -1208,7 +1211,7 @@ The implementation is ready for #478 only when it proves:
 - viewer/operator are denied;
 - ZERO_PRICE creates a canonical order and no money mutation; `ACTIVATED` converges to FULFILLED while durable `REJECTED` converges to CANCELLED and can never be reported as success;
 - WALLET reserves, activates, then commits exactly once;
-- insufficient wallet balance cancels without activation;
+- insufficient wallet balance cancels without activation only after authoritative same-source reserve replay proves no reservation and activation readback proves no activation decision; the cancelled order never becomes chargeable after a later top-up;
 - active-subscription conflict commits a durable rejected activation decision before wallet release and does not charge;
 - the same rejected order cannot activate after the blocking subscription expires;
 - two replicas racing the same order across an `ExpiresAt` boundary cannot produce both ACTIVATED and RELEASED outcomes;
