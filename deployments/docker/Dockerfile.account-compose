@@ -36,7 +36,7 @@ COPY --chmod=0755 deployments/docker/account-compose/bootstrap.sh /usr/local/bin
 ENTRYPOINT ["/usr/local/bin/account-bootstrap"]
 
 FROM alpine:3.22 AS schema-init
-RUN apk add --no-cache openssl postgresql17-client tzdata
+RUN apk add --no-cache jq openssl postgresql17-client tzdata
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
 COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init

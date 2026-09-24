@@ -254,7 +254,7 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, result.closer()) })
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, result.module.Register(registry))
-	billingModule, err := buildCommercialBillingModule(ctx, openCommercialFixtureReader(t, billingConfig), openCommercialFixtureReader(t, moneyConfig), authz.DefaultListingKitAuthorizer())
+	billingModule, err := buildCommercialBillingModule(ctx, openCommercialFixtureReader(t, billingConfig), openCommercialFixtureReader(t, moneyConfig), authz.DefaultListingKitAuthorizer(), appCfg)
 	require.NoError(t, err)
 	require.NoError(t, billingModule.Register(registry))
 	require.Greater(t, len(registry.Routes()), 1)

@@ -331,9 +331,8 @@ func TestBuildCurrentApplicationRejectsRouteDrift(t *testing.T) {
 	}
 }
 
-func TestCurrentApplicationAdmitsPlatformSubscriptionOwnerRoutes(t *testing.T) {
+func TestCurrentApplicationRetiresPlatformSubscriptionOwnerRoutes(t *testing.T) {
 	deps := newRouteAuthDependencies()
-	ownerRoutes := append([]currentApplicationRoute(nil), currentPlatformSubscriptionApplicationRoutes...)
 	billingBuilderCalled := false
 	factories := currentApplicationFactories{
 		buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
@@ -348,10 +347,7 @@ func TestCurrentApplicationAdmitsPlatformSubscriptionOwnerRoutes(t *testing.T) {
 		buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return nil, nil
 		},
-		buildPlatformSubscription: func(*gorm.DB, *config.Config) (kernelmodule.Module, error) {
-			return currentApplicationTestModule{name: "listing-kit-platform-admin", routes: ownerRoutes}, nil
-		},
-		buildCommercialBilling: func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+		buildCommercialBilling: func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, *config.Config) (kernelmodule.Module, error) {
 			billingBuilderCalled = true
 			return nil, errors.New("billing must not be built without its canonical money database")
 		},
@@ -370,11 +366,12 @@ func TestCurrentApplicationAdmitsPlatformSubscriptionOwnerRoutes(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/v1/listing-kits/platform/subscription-plans"},
 		{http.MethodPut, "/api/v1/listing-kits/platform/subscriptions/org-test/entitlements/listingkit"},
+		{http.MethodPut, "/api/v1/listing-kits/admin/subscription/entitlements/listingkit"},
 	} {
 		response := httptest.NewRecorder()
 		server.Handler.ServeHTTP(response, httptest.NewRequest(route.method, route.path, nil))
-		if response.Code == http.StatusNotFound {
-			t.Fatalf("owner route %s %s was not reachable", route.method, route.path)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("retired owner route %s %s status = %d, want 404", route.method, route.path, response.Code)
 		}
 	}
 }

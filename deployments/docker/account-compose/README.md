@@ -97,6 +97,10 @@ The separate membership directory PAT has the read-only ZITADEL instance role
 organizations, which an organization-scoped viewer cannot read. The application
 still authorizes each signed-in caller against the live grant for the selected
 organization and filters the provider query to that organization.
+Schema initialization also places this existing read-only PAT in the private
+current-application identity manifest as `tenantDirectoryToken`, including on
+retained-state starts, so subscription purchase recovery can check the exact
+actor grant before admitting each new effect.
 
 The one-shot `acceptance-fixture` service is part of this isolated Compose
 project only. Run it explicitly with the `acceptance` profile after the normal

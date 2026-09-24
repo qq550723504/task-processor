@@ -70,7 +70,10 @@ func execute() error {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
-			options := make([]httpapi.CurrentApplicationOption, 0, 5)
+			options := make([]httpapi.CurrentApplicationOption, 0, 6)
+			if features.RuntimeContext != nil {
+				options = append(options, httpapi.WithRuntimeContext(features.RuntimeContext))
+			}
 			if features.CommercialOwnerDB != nil {
 				options = append(options, httpapi.WithCommercialOwnerDatabase(features.CommercialOwnerDB))
 			}

@@ -1,13 +1,10 @@
 package httpapi
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
-
 	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/app/configadapter"
@@ -17,11 +14,8 @@ import (
 	imageagenthttpapi "task-processor/internal/imageagent/httpapi"
 	imageagentstore "task-processor/internal/imageagent/store"
 	s3integration "task-processor/internal/integration/s3"
-	kernelmodule "task-processor/internal/kernel/module"
-	listingkitapi "task-processor/internal/listingkit/api"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
-	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 	"task-processor/internal/sourceaccount"
 	sourceaccountbootstrap "task-processor/internal/sourceaccount/bootstrap"
@@ -40,24 +34,6 @@ type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*l
 type listingKitRepositoryBuilder func(*config.DatabaseConfig, *logrus.Logger) (listingkithttpapi.BuildServiceRepositories, func() error, error)
 
 type imageAgentModuleBuilder func(*config.Config, *logrus.Logger) (*imageagenthttpapi.BuildResult, error)
-
-func buildPlatformSubscriptionModule(db *gorm.DB, cfg *config.Config) (kernelmodule.Module, error) {
-	if db == nil || cfg == nil {
-		return nil, errors.New("platform subscription owner dependencies unavailable")
-	}
-	service, err := listingsubscription.NewService(listingsubscription.NewGormRepository(db))
-	if err != nil {
-		return nil, err
-	}
-	handler, err := listingkitapi.NewPlatformSubscriptionHandler(
-		service,
-		listingkitapi.WithPlatformSubscriptionAccess(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles),
-	)
-	if err != nil {
-		return nil, err
-	}
-	return listingkithttpapi.NewPlatformSubscriptionOwnerModule(handler), nil
-}
 
 func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 	return amazonlistinghttpapi.BuildRuntimeModule(input)

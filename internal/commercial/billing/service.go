@@ -20,20 +20,29 @@ type OrderStore interface {
 }
 
 type Service struct {
-	offers OfferCatalog
-	quotes QuoteEngine
-	orders OrderStore
-	reader OrderReader
-	wallet WalletPort
-	grants PurchasedResourceGrantPort
-	now    func() time.Time
+	offers                 OfferCatalog
+	quotes                 QuoteEngine
+	orders                 OrderStore
+	reader                 OrderReader
+	wallet                 WalletPort
+	grants                 PurchasedResourceGrantPort
+	subscriptionOffers     SubscriptionOfferCatalog
+	subscriptionQuotes     SubscriptionQuoteStore
+	subscriptionOrders     SubscriptionOrderStore
+	subscriptions          SubscriptionPurchasePort
+	subscriptionAuthorizer SubscriptionPurchaseRecoveryAuthorizer
+	now                    func() time.Time
 }
 
 func NewService(offers OfferCatalog, quotes QuoteEngine, orders OrderStore, reader OrderReader, wallet WalletPort, grants PurchasedResourceGrantPort) (*Service, error) {
 	if offers == nil || quotes == nil || orders == nil || reader == nil || wallet == nil {
 		return nil, ErrFeatureUnavailable
 	}
-	return &Service{offers: offers, quotes: quotes, orders: orders, reader: reader, wallet: wallet, grants: grants, now: func() time.Time { return time.Now().UTC() }}, nil
+	service := &Service{offers: offers, quotes: quotes, orders: orders, reader: reader, wallet: wallet, grants: grants, now: func() time.Time { return time.Now().UTC() }}
+	service.subscriptionOffers, _ = offers.(SubscriptionOfferCatalog)
+	service.subscriptionQuotes, _ = quotes.(SubscriptionQuoteStore)
+	service.subscriptionOrders, _ = orders.(SubscriptionOrderStore)
+	return service, nil
 }
 
 func (s *Service) CreateQuote(ctx context.Context, request QuoteRequest) (Quote, error) {

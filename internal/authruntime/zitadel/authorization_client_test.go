@@ -68,20 +68,69 @@ func TestAuthorizationClientUsesOfficialV2ContractAndSyntheticFixture(t *testing
 	require.NoError(t, err)
 	assert.Equal(t, []authidentity.OrganizationGrant{
 		{
-			AuthorizationID:   "synthetic-authorization-a-000001",
+			AuthorizationID:  "synthetic-authorization-a-000001",
 			OrganizationID:   "synthetic-acceptance-org-a-000001",
 			OrganizationName: "ListingKit Acceptance Organization A",
 			ProjectID:        "synthetic-project-000001",
 			Roles:            []string{"listingkit_admin"},
 		},
 		{
-			AuthorizationID:   "synthetic-authorization-b-000001",
+			AuthorizationID:  "synthetic-authorization-b-000001",
 			OrganizationID:   "synthetic-acceptance-org-b-000001",
 			OrganizationName: "ListingKit Acceptance Organization B",
 			ProjectID:        "synthetic-project-000001",
 			Roles:            []string{"listingkit_viewer"},
 		},
 	}, got)
+}
+
+func TestExactServiceProjectAuthorizationUsesAllFiltersAndPreservesInactiveState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request capturedAuthorizationListRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Equal(t, 2, request.Pagination.Limit)
+		require.Len(t, request.Filters, 3)
+		assert.JSONEq(t, `{"ids":["actor-1"]}`, string(request.Filters[0]["inUserIds"]))
+		assert.JSONEq(t, `{"id":"project-1"}`, string(request.Filters[1]["projectId"]))
+		assert.JSONEq(t, `{"id":"org-1"}`, string(request.Filters[2]["organizationId"]))
+		_, _ = w.Write([]byte(`{"pagination":{"totalResult":"1"},"authorizations":[{"id":"auth-1","project":{"id":"project-1"},"organization":{"id":"org-1","name":"Org"},"user":{"id":"actor-1"},"state":"STATE_INACTIVE","roles":[{"key":"listingkit_admin"}]}]}`))
+	}))
+	defer server.Close()
+
+	result, err := NewAuthorizationClient(server.URL, server.Client()).ReadExactServiceProjectAuthorization(context.Background(), "service-token", "actor-1", "project-1", "org-1")
+	require.NoError(t, err)
+	assert.True(t, result.Found)
+	assert.Equal(t, "STATE_INACTIVE", result.State)
+	assert.Equal(t, []string{"listingkit_admin"}, result.Roles)
+}
+
+func TestExactServiceProjectAuthorizationRejectsDuplicateAndUnknownState(t *testing.T) {
+	for name, response := range map[string]string{
+		"ambiguous rows": `{"pagination":{"totalResult":"2"},"authorizations":[{"id":"a","project":{"id":"p"},"organization":{"id":"o"},"user":{"id":"u"},"state":"STATE_ACTIVE","roles":[]},{"id":"b","project":{"id":"p"},"organization":{"id":"o"},"user":{"id":"u"},"state":"STATE_ACTIVE","roles":[]}]}`,
+		"unknown state":  `{"pagination":{"totalResult":"1"},"authorizations":[{"id":"a","project":{"id":"p"},"organization":{"id":"o"},"user":{"id":"u"},"state":"STATE_UNSPECIFIED","roles":[]}]}`,
+		"wrong scope":    `{"pagination":{"totalResult":"1"},"authorizations":[{"id":"a","project":{"id":"other"},"organization":{"id":"o"},"user":{"id":"u"},"state":"STATE_ACTIVE","roles":[]}]}`,
+		"blank role":     `{"pagination":{"totalResult":"1"},"authorizations":[{"id":"a","project":{"id":"p"},"organization":{"id":"o"},"user":{"id":"u"},"state":"STATE_ACTIVE","roles":[{"key":" "}]}]}`,
+		"duplicate role": `{"pagination":{"totalResult":"1"},"authorizations":[{"id":"a","project":{"id":"p"},"organization":{"id":"o"},"user":{"id":"u"},"state":"STATE_ACTIVE","roles":[{"key":"listingkit_admin"},{"key":"listingkit_admin"}]}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(response)) }))
+			defer server.Close()
+			_, err := NewAuthorizationClient(server.URL, server.Client()).ReadExactServiceProjectAuthorization(context.Background(), "token", "u", "p", "o")
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestExactServiceProjectAuthorizationTreatsZeroResultAsAuthoritativeAbsence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"pagination":{"totalResult":"0"},"authorizations":[]}`))
+	}))
+	defer server.Close()
+	result, err := NewAuthorizationClient(server.URL, server.Client()).ReadExactServiceProjectAuthorization(context.Background(), "token", "u", "p", "o")
+	require.NoError(t, err)
+	assert.False(t, result.Found)
+	assert.Empty(t, result.State)
+	assert.Empty(t, result.Roles)
 }
 
 func TestAuthorizationClientPaginatesWithStableOffsets(t *testing.T) {

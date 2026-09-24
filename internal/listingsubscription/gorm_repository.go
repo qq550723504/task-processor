@@ -157,6 +157,36 @@ type auditLogRow struct {
 
 func (auditLogRow) TableName() string { return "saas_subscription_audit_logs" }
 
+type purchasedPlanActivationFenceRow struct {
+	OrganizationID string `gorm:"column:organization_id;primaryKey;size:128"`
+}
+
+func (purchasedPlanActivationFenceRow) TableName() string {
+	return "saas_subscription_activation_fences"
+}
+
+type purchasedPlanActivationRow struct {
+	OperationID               string     `gorm:"column:operation_id;primaryKey;size:128"`
+	OrganizationID            string     `gorm:"column:organization_id;size:128;not null;index"`
+	SourceType                string     `gorm:"column:source_type;size:64;not null;uniqueIndex:uq_saas_purchase_activation_source,priority:1"`
+	SourceID                  string     `gorm:"column:source_id;size:128;not null;uniqueIndex:uq_saas_purchase_activation_source,priority:2"`
+	RequestFingerprint        string     `gorm:"column:request_fingerprint;size:64;not null"`
+	PlanCode                  string     `gorm:"column:plan_code;size:64;not null"`
+	PlanFingerprint           string     `gorm:"column:plan_fingerprint;size:128;not null"`
+	TermMonths                int        `gorm:"column:term_months;not null"`
+	Outcome                   string     `gorm:"column:outcome;size:16;not null"`
+	FailureCode               string     `gorm:"column:failure_code;size:64;not null;default:''"`
+	SubscriptionID            *int64     `gorm:"column:subscription_id"`
+	StartsAt                  *time.Time `gorm:"column:starts_at"`
+	ExpiresAt                 *time.Time `gorm:"column:expires_at"`
+	EntitlementSetFingerprint string     `gorm:"column:entitlement_set_fingerprint;size:64;not null;default:''"`
+	DecidedAt                 time.Time  `gorm:"column:decided_at;not null"`
+}
+
+func (purchasedPlanActivationRow) TableName() string {
+	return "saas_purchased_plan_activations"
+}
+
 type GormRepository struct {
 	db *gorm.DB
 }
@@ -181,6 +211,8 @@ func AutoMigrateRepository(db *gorm.DB) error {
 		&usageBucketRow{},
 		&usageEventOutboxRow{},
 		&auditLogRow{},
+		&purchasedPlanActivationFenceRow{},
+		&purchasedPlanActivationRow{},
 		&storeQuotaAllocationRow{},
 		&storeQuotaBucketRow{},
 	)

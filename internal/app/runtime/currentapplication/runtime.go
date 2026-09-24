@@ -41,6 +41,9 @@ type ApplicationFeatures struct {
 	ReferralDB           *gorm.DB
 	MembershipDB         *gorm.DB
 	Membership           *MembershipConfig
+	// RuntimeContext is the long-lived process context. Background recovery
+	// must not inherit the bounded startup context passed to the constructor.
+	RuntimeContext context.Context
 }
 
 type runtimeDependencies = Dependencies
@@ -204,7 +207,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
 	} else if productDB != nil {

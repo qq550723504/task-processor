@@ -26,11 +26,23 @@ read_bootstrap_user_id() {
 
 install_listingkit_authorization() {
   read_bootstrap_user_id
-  sed '/"listingKitAuthorization":/d' "$runtime/current-application.json" > "$runtime/current-application.json.base.tmp"
-  sed "/\"schemaVersion\": 1,/a\\  \"listingKitAuthorization\": {\"platformAdminUsers\": [\"$bootstrap_user_id\"], \"platformAdminRoles\": []}," "$runtime/current-application.json.base.tmp" > "$runtime/current-application.json.tmp"
+  jq --rawfile bootstrap_user_id "$runtime/bootstrap-user-id" \
+    '.listingKitAuthorization = {platformAdminUsers: [($bootstrap_user_id | sub("[\\r\\n]+$"; ""))], platformAdminRoles: []}' \
+    "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
   chmod 600 "$runtime/current-application.json.tmp"
   mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
-  rm -f "$runtime/current-application.json.base.tmp"
+}
+
+install_subscription_directory_token() {
+  if [ ! -s "$runtime/membership-read.pat" ]; then
+    echo 'subscription directory read credential is unavailable' >&2
+    exit 1
+  fi
+  jq --rawfile directory_token "$runtime/membership-read.pat" \
+    '.identity.tenantDirectoryToken = ($directory_token | sub("[\\r\\n]+$"; ""))' \
+    "$runtime/current-application.json" > "$runtime/current-application.json.tmp"
+  chmod 600 "$runtime/current-application.json.tmp"
+  mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
 }
 
 migrate_commercial_owner_schema() {
@@ -45,7 +57,6 @@ EOF
 
 umask 077
 if [ -f "$state/.init-complete" ]; then
-  install_listingkit_authorization
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   cat > "$work/source-account-schema.yaml" <<EOF
@@ -112,6 +123,8 @@ SQL
     chmod 600 "$runtime/current-application.json.tmp"
     mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
   fi
+  install_listingkit_authorization
+  install_subscription_directory_token
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
   psql "postgresql://postgres:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5435/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-grants.sql"
   migrate_commercial_owner_schema
@@ -190,6 +203,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
 EOF
 chmod 600 "$runtime/current-application.json.tmp"
 mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
+install_subscription_directory_token
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

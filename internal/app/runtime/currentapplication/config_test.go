@@ -154,9 +154,18 @@ func TestCurrentApplicationStartsFromConfiguredPrivateManifest(t *testing.T) {
 		OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
 		OpenCommercial:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
 		OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return &gorm.DB{}, nil },
-		NewApplicationWithFeatures: func(_ context.Context, gotSource, gotCommercial *gorm.DB, _ ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+		NewApplicationWithFeatures: func(startup context.Context, gotSource, gotCommercial *gorm.DB, features ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
 			if gotSource != source || gotCommercial != commercial {
 				t.Fatal("application received unexpected database pools")
+			}
+			if _, ok := startup.Deadline(); !ok {
+				t.Fatal("application construction did not receive the bounded startup context")
+			}
+			if features.RuntimeContext != ctx {
+				t.Fatal("application features did not receive the long-lived runtime context")
+			}
+			if _, ok := features.RuntimeContext.Deadline(); ok {
+				t.Fatal("long-lived runtime context inherited the startup deadline")
 			}
 			startedCore = core
 			return &http.Server{}, nil
@@ -325,6 +334,28 @@ func referralRuntimeConfig(t *testing.T) *Config {
 	}
 	cfg.Referrals = ReferralsConfig{ReferralsConfig: coreconfig.ReferralsConfig{Enabled: true, Issuer: cfg.Identity.IssuerURL, InstanceID: "fixture", SignupOrganizationID: "signup", ProviderOrigin: "https://provider.example", OfficialLoginOrigin: "https://login.example", PublicAppOrigin: "https://app.example", CredentialFile: secret("provider"), ServiceCredentialFile: secret("service"), LookupKeyFile: secret("lookup"), KeyID: "k1", ProofKeyFiles: map[string]string{"k1": secret("proof")}, EncryptionKeyFiles: map[string]string{"k1": secret("encryption")}}, Database: DatabaseConfig{Host: "127.0.0.1", Port: 15432, User: "referral_runtime", Password: "fixture-referral", Database: "referrals", MaxConnections: 2}}
 	return cfg
+}
+
+func TestSubscriptionPurchaseDirectoryCredentialFlowsThroughPrivateManifest(t *testing.T) {
+	cfg := referralRuntimeConfig(t)
+	owner := cfg.CommercialDatabase
+	owner.User = "commercial_owner_runtime"
+	cfg.CommercialOwnerDatabase = &owner
+	if err := cfg.validate(); err == nil || !strings.Contains(err.Error(), "identity.tenantDirectoryToken") {
+		t.Fatalf("missing subscription directory credential validation = %v", err)
+	}
+	cfg.Identity.TenantDirectoryToken = "synthetic-read-only-directory-pat"
+	manifest, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadConfig(writeManifest(t, string(manifest)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.CoreConfig().ListingKit.Zitadel.TenantDirectoryToken; got != cfg.Identity.TenantDirectoryToken {
+		t.Fatal("current application dropped the directory credential before billing assembly")
+	}
 }
 
 func TestReferralManifestRejectsPublicRead(t *testing.T) {

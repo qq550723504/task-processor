@@ -13,6 +13,7 @@ import (
 	orgresourceadapter "task-processor/internal/integration/orgresource"
 	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
 	moneystore "task-processor/internal/integration/persistence/money"
+	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -83,6 +84,9 @@ func migrateOwnerSchemas(moneyDB, commercialDB *gorm.DB) error {
 	if err := orgresourceadapter.AutoMigrate(commercialDB); err != nil {
 		return fmt.Errorf("migrate organization resource schema: %w", err)
 	}
+	if err := listingsubscription.AutoMigrateRepository(commercialDB); err != nil {
+		return fmt.Errorf("migrate subscription owner schema: %w", err)
+	}
 	return nil
 }
 
@@ -104,6 +108,11 @@ func commercialRuntimeGrants() []string {
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_organization_resource_buckets, public.saas_organization_resource_operations, public.saas_organization_resource_reservations, public.saas_organization_resource_debts TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.saas_organization_resource_source_claims, public.saas_organization_resource_events, public.saas_organization_resource_audit_logs TO commercial_owner_runtime`,
 		`GRANT USAGE, SELECT ON SEQUENCE public.saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
+		`GRANT SELECT ON TABLE public.saas_plans, public.saas_plan_modules TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_tenant_subscriptions, public.saas_subscription_activation_fences TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.saas_tenant_entitlements TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.saas_purchased_plan_activations, public.saas_subscription_audit_logs TO commercial_owner_runtime`,
+		`GRANT USAGE, SELECT ON SEQUENCE public.saas_tenant_subscriptions_id_seq, public.saas_tenant_entitlements_id_seq, public.saas_subscription_audit_logs_id_seq TO commercial_owner_runtime`,
 	}
 }
 
@@ -111,7 +120,7 @@ func moneyRuntimeGrants() []string {
 	return []string{
 		`GRANT USAGE ON SCHEMA public TO referral_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations TO referral_runtime`,
-		`GRANT SELECT, INSERT ON TABLE public.ledger_organization_wallet_entries, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals TO referral_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.ledger_organization_wallet_entries, public.ledger_organization_wallet_reserve_decisions, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals TO referral_runtime`,
 		`GRANT SELECT ON TABLE public.ledger_payment_settlements TO referral_runtime`,
 	}
 }
