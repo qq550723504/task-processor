@@ -120,6 +120,10 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- `alipay-wallet-topup-design.md`
+  - DRAFT #481 Alipay wallet top-up architecture using GoPay; payment attempts,
+    posting receipts, refund holds, recovery and pending product decisions.
+    Not IMPLEMENTATION_READY; does not supersede approved billing/money contracts.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
