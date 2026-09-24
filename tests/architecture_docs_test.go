@@ -1947,6 +1947,12 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"SubscriptionPurchaseRecoveryAuthorizer",
 		"pending_effect",
 		"terminal_intent",
+		"terminal_intent=CANCEL",
+		"must also require `terminal_intent` to still be empty",
+		"even if the actor later regains",
+		"page size = 100",
+		"offset >= authoritative total",
+		"authorized actor positioned beyond",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
