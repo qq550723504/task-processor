@@ -103,15 +103,17 @@ func TestAccountComposeBackfillsBootstrapUserFromCompletedOpenTofuState(t *testi
 		t.Fatal("completed OpenTofu state fast path is not terminated")
 	}
 	branch := text[marker : marker+branchEnd]
-	if !strings.Contains(branch, `if [ ! -s "$runtime/bootstrap-user-id" ]; then`) || !strings.Contains(branch, `write_output bootstrap_user_id "$runtime/bootstrap-user-id"`) {
-		t.Fatal("completed OpenTofu state must backfill a missing bootstrap identity output into the private runtime volume")
+	if !strings.Contains(branch, `if [ ! -s "$runtime/bootstrap-user-id" ]; then`) || !strings.Contains(branch, `extract_bootstrap_user_id "$state/terraform.tfstate" "$runtime/bootstrap-user-id"`) {
+		t.Fatal("completed OpenTofu state must backfill a missing bootstrap identity from its retained resource state")
 	}
-	if strings.Contains(branch, "tofu init") || strings.Contains(branch, "tofu apply") {
-		t.Fatal("bootstrap identity backfill must read retained state without reinitializing providers or applying infrastructure")
+	if strings.Contains(branch, "tofu init") || strings.Contains(branch, "tofu apply") || strings.Contains(branch, "tofu state show") || strings.Contains(branch, "tofu refresh") {
+		t.Fatal("bootstrap identity backfill must read retained local state without initializing or invoking OpenTofu providers")
 	}
-	outputReader := strings.Index(text, `tofu output -state="$state/terraform.tfstate" -raw "$1"`)
-	if outputReader < 0 || outputReader > marker {
-		t.Fatal("authoritative state output reader must be available before the completed-state fast path")
+	if !strings.Contains(text, `select(.mode == "managed" and .type == "zitadel_human_user" and .name == "operator" and ((.module // "") == ""))`) || !strings.Contains(text, `.attributes.id`) {
+		t.Fatal("bootstrap identity extraction must match only the managed root operator resource ID")
+	}
+	if !strings.Contains(text, `apk add --no-cache jq`) {
+		t.Fatal("account-compose tofu-init must provide jq for retained state extraction")
 	}
 }
 
