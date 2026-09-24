@@ -19,27 +19,36 @@ import (
 )
 
 const (
-	manifestSchemaVersion = 1
-	maximumManifestBytes  = 64 * 1024
+	manifestSchemaVersion                = 1
+	maximumManifestBytes                 = 64 * 1024
+	maximumPlatformAdminAllowlistEntries = 64
+	maximumPlatformAdminValueLength      = 256
 )
 
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
-	SchemaVersion              int               `json:"schemaVersion"`
-	Listen                     ListenConfig      `json:"listen"`
-	Identity                   IdentityConfig    `json:"identity"`
-	SourceAccountDatabase      DatabaseConfig    `json:"sourceAccountDatabase"`
-	CommercialDatabase         DatabaseConfig    `json:"commercialDatabase"`
-	CommercialOwnerDatabase    *DatabaseConfig   `json:"commercialOwnerDatabase,omitempty"`
-	ProductAcquisitionDatabase *DatabaseConfig   `json:"productAcquisitionDatabase,omitempty"`
-	Membership                 *MembershipConfig `json:"membership,omitempty"`
-	Referrals                  ReferralsConfig   `json:"referrals"`
+	SchemaVersion              int                           `json:"schemaVersion"`
+	Listen                     ListenConfig                  `json:"listen"`
+	Identity                   IdentityConfig                `json:"identity"`
+	SourceAccountDatabase      DatabaseConfig                `json:"sourceAccountDatabase"`
+	CommercialDatabase         DatabaseConfig                `json:"commercialDatabase"`
+	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
+	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
+	Membership                 *MembershipConfig             `json:"membership,omitempty"`
+	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
+	Referrals                  ReferralsConfig               `json:"referrals"`
 }
 
 type ReferralsConfig struct {
 	coreconfig.ReferralsConfig
 	Database DatabaseConfig `json:"referralDatabase"`
+}
+
+// ListingKitAuthorizationConfig carries only the platform-admin caller allowlists.
+type ListingKitAuthorizationConfig struct {
+	PlatformAdminUsers []string `json:"platformAdminUsers,omitempty"`
+	PlatformAdminRoles []string `json:"platformAdminRoles,omitempty"`
 }
 
 type ListenConfig struct {
@@ -258,6 +267,12 @@ func (cfg *Config) validate() error {
 			}
 		}
 	}
+	if err := validatePlatformAdminAllowlist("listingKitAuthorization.platformAdminUsers", cfg.ListingKitAuthorization.PlatformAdminUsers); err != nil {
+		return err
+	}
+	if err := validatePlatformAdminAllowlist("listingKitAuthorization.platformAdminRoles", cfg.ListingKitAuthorization.PlatformAdminRoles); err != nil {
+		return err
+	}
 	if cfg.Referrals.Enabled {
 		if err := cfg.Referrals.Database.validate("referrals.referralDatabase"); err != nil {
 			return err
@@ -275,6 +290,23 @@ func (cfg *Config) validate() error {
 		if cfg.Referrals.Enabled && cfg.Membership.Database.Host == cfg.Referrals.Database.Host && cfg.Membership.Database.Port == cfg.Referrals.Database.Port && cfg.Membership.Database.Database == cfg.Referrals.Database.Database {
 			return errors.New("membership requires a dedicated database")
 		}
+	}
+	return nil
+}
+
+func validatePlatformAdminAllowlist(name string, values []string) error {
+	if len(values) > maximumPlatformAdminAllowlistEntries {
+		return fmt.Errorf("%s exceeds the entry limit", name)
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if !boundedValue(value, maximumPlatformAdminValueLength) {
+			return fmt.Errorf("%s entries must be non-empty, trimmed, and bounded", name)
+		}
+		if _, exists := seen[value]; exists {
+			return fmt.Errorf("%s contains a duplicate entry", name)
+		}
+		seen[value] = struct{}{}
 	}
 	return nil
 }
@@ -333,10 +365,14 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 	return &coreconfig.Config{
 		Referrals: cfg.Referrals.ReferralsConfig,
 		Workbench: coreconfig.WorkbenchConfig{Enabled: true},
-		ListingKit: coreconfig.ListingKitConfig{Zitadel: coreconfig.ListingKitZitadelConfig{
-			IssuerURL: cfg.Identity.IssuerURL, AuthorizationAPIURL: cfg.Identity.AuthorizationAPIURL,
-			ClientID: cfg.Identity.ClientID, ClientSecret: cfg.Identity.ClientSecret, ProjectID: cfg.Identity.ProjectID,
-			AuthorizationRequired: true,
-		}},
+		ListingKit: coreconfig.ListingKitConfig{
+			PlatformAdminUsers: append([]string(nil), cfg.ListingKitAuthorization.PlatformAdminUsers...),
+			PlatformAdminRoles: append([]string(nil), cfg.ListingKitAuthorization.PlatformAdminRoles...),
+			Zitadel: coreconfig.ListingKitZitadelConfig{
+				IssuerURL: cfg.Identity.IssuerURL, AuthorizationAPIURL: cfg.Identity.AuthorizationAPIURL,
+				ClientID: cfg.Identity.ClientID, ClientSecret: cfg.Identity.ClientSecret, ProjectID: cfg.Identity.ProjectID,
+				AuthorizationRequired: true,
+			},
+		},
 	}
 }

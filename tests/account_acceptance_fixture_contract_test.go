@@ -46,6 +46,48 @@ func TestAccountMembershipDirectoryReaderHasReadOnlyInstanceScope(t *testing.T) 
 	}
 }
 
+func TestAccountComposePlatformAdminCallerUsesBootstrapUserOutput(t *testing.T) {
+	read := func(relative string) string {
+		t.Helper()
+		contents, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "account-compose", relative))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(contents)
+	}
+	terraform := read(filepath.Join("terraform", "main.tf"))
+	if !strings.Contains(terraform, `output "bootstrap_user_id" { value = zitadel_human_user.operator.id }`) {
+		t.Fatal("account-compose must source the configured caller from Terraform's authoritative bootstrap user output")
+	}
+	tofuInit := read("tofu-init.sh")
+	if !strings.Contains(tofuInit, `write_output bootstrap_user_id "$runtime/bootstrap-user-id"`) {
+		t.Fatal("account-compose must persist the Terraform bootstrap user ID in the private runtime volume")
+	}
+	initScript := read("init.sh")
+	for _, required := range []string{
+		`tr -d '\r\n' < "$runtime/bootstrap-user-id"`,
+		`"listingKitAuthorization": {"platformAdminUsers": ["${bootstrap_user_id}"], "platformAdminRoles": []}`,
+		`chmod 600 "$runtime/current-application.json.tmp"`,
+		`install_listingkit_authorization`,
+	} {
+		if !strings.Contains(initScript, required) {
+			t.Fatalf("account-compose narrow admin caller generation is missing %q", required)
+		}
+	}
+	if strings.Contains(initScript, `echo "$bootstrap_user_id"`) || strings.Contains(initScript, `printf "$bootstrap_user_id"`) {
+		t.Fatal("account-compose must not print the bootstrap user ID")
+	}
+	for _, compose := range []string{"referrals-compose", "acquisition-compose"} {
+		contents, err := os.ReadFile(filepath.Join("..", "deployments", "docker", compose, "init.sh"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(contents), "bootstrap-user-id") || strings.Contains(string(contents), "listingKitAuthorization") {
+			t.Fatalf("%s must not inherit account-compose's platform-admin caller", compose)
+		}
+	}
+}
+
 func TestAccountComposeCommercialOverviewUsesCurrentApplication(t *testing.T) {
 	contents, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "account-compose", "docker-compose.yml"))
 	if err != nil {
