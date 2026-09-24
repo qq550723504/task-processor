@@ -1948,11 +1948,13 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"pending_effect",
 		"terminal_intent",
 		"terminal_intent=CANCEL",
+		"`pending_effect` is empty; neither `RESERVE` nor `ACTIVATE` may already be",
 		"must also require `terminal_intent` to still be empty",
 		"even if the actor later regains",
-		"page size = 100",
-		"offset >= authoritative total",
-		"authorized actor positioned beyond",
+		"inUserIds     = [actor_id]",
+		"projectId     = configured project id",
+		"organizationId = order.organization_id",
+		"no offset-pagination fallback exists",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
