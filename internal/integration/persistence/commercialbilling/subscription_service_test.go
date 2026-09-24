@@ -6,10 +6,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"task-processor/internal/authidentity"
 	"task-processor/internal/commercial/billing"
+	billinghttp "task-processor/internal/commercial/billing/httpapi"
 	moneystore "task-processor/internal/integration/persistence/money"
 	"task-processor/internal/ledger/money"
 )
@@ -80,6 +86,22 @@ type subscriptionPurchaseAuthorizerStub struct {
 	calls     int
 }
 
+type competingAdmissionRepository struct {
+	*Repository
+	intercepted     bool
+	beforeAdmission func(context.Context, string, string, time.Time) error
+}
+
+func (store *competingAdmissionRepository) AdmitSubscriptionOrderEffect(ctx context.Context, organizationID, orderID string, expectedVersion int64, effect billing.PendingSubscriptionOrderEffect, admittedAt time.Time) (billing.Order, bool, error) {
+	if !store.intercepted {
+		store.intercepted = true
+		if err := store.beforeAdmission(ctx, organizationID, orderID, admittedAt); err != nil {
+			return billing.Order{}, false, err
+		}
+	}
+	return store.Repository.AdmitSubscriptionOrderEffect(ctx, organizationID, orderID, expectedVersion, effect, admittedAt)
+}
+
 type subscriptionAckLossWallet struct {
 	*moneystore.Repository
 	loseReserveResponse bool
@@ -111,6 +133,152 @@ func (stub *subscriptionPurchaseAuthorizerStub) ReauthorizeCommercialPurchase(_ 
 		allowed = stub.decisions[stub.calls-1]
 	}
 	return billing.CommercialPurchaseAuthorization{OrganizationID: organizationID, ActorID: actorID, Roles: []string{"listingkit_admin"}, Allowed: allowed, ObservedAt: time.Now().UTC()}, nil
+}
+
+func TestSubscriptionServiceLostAdmissionCannotReviveRevokedTerminalOrder(t *testing.T) {
+	for _, mode := range []billing.SettlementMode{billing.SettlementZeroPrice, billing.SettlementWallet} {
+		t.Run(string(mode), func(t *testing.T) {
+			commercial := commercialRepository(t)
+			wallet := subscriptionWalletRepository(t, commercial)
+			store := &competingAdmissionRepository{Repository: commercial}
+			store.beforeAdmission = func(ctx context.Context, organizationID, orderID string, admittedAt time.Time) error {
+				order, err := commercial.ReadOrder(ctx, organizationID, orderID)
+				if err != nil {
+					return err
+				}
+				order.TerminalIntent = billing.SubscriptionOrderTerminalIntentCancel
+				order.TerminalIntentReason = billing.OrderFailureAuthorizationRevoked
+				order.TerminalIntentAt = &admittedAt
+				order.Status = billing.OrderCancelled
+				order.FailureCode = billing.OrderFailureAuthorizationRevoked
+				order.UpdatedAt = admittedAt
+				return commercial.PersistSubscriptionOrder(ctx, order)
+			}
+			port := &subscriptionPurchasePortStub{plan: billing.SubscriptionPlanSnapshot{PlanCode: "professional", DisplayName: "Professional", Fingerprint: "plan-fingerprint"}, outcome: billing.SubscriptionActivationActivated, decisions: map[string]billing.SubscriptionActivationResult{}}
+			service, err := billing.NewService(commercial, commercial, store, store, wallet, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := service.EnableSubscriptionPurchases(port, &subscriptionPurchaseAuthorizerStub{allowed: true}); err != nil {
+				t.Fatal(err)
+			}
+			offer := billing.Offer{OfferID: "professional-race", ProductKind: billing.ProductSubscriptionPlan, PlanCode: "professional", TermMonths: 1, SettlementMode: mode, Currency: billing.CurrencyCNY, PricingVersion: "pricing-1", Status: billing.OfferActive}
+			if mode == billing.SettlementWallet {
+				offer.UnitPriceMinor = 400
+				creditSubscriptionWallet(t, wallet, "org-lost-admission", 1000)
+			}
+			if err := commercial.SaveOffer(context.Background(), offer); err != nil {
+				t.Fatal(err)
+			}
+			quote, err := service.CreateSubscriptionQuote(context.Background(), billing.SubscriptionQuoteRequest{OrganizationID: "org-lost-admission", OfferID: offer.OfferID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			order, err := service.CreateSubscriptionOrder(context.Background(), billing.CreateSubscriptionOrderRequest{OrganizationID: "org-lost-admission", ActorID: "actor-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-lost-admission"})
+			if !errors.Is(err, billing.ErrAuthorizationRevoked) || order.Status != billing.OrderCancelled || port.calls != 0 {
+				t.Fatalf("lost admission result = %+v, err = %v, activation calls = %d", order, err, port.calls)
+			}
+			stored, err := commercial.ReadOrder(context.Background(), order.OrganizationID, order.OrderID)
+			if err != nil || stored.Status != billing.OrderCancelled || stored.TerminalIntent != billing.SubscriptionOrderTerminalIntentCancel || stored.PendingEffect != billing.PendingSubscriptionOrderEffectNone {
+				t.Fatalf("durable order after lost admission = %+v, err = %v", stored, err)
+			}
+			recovered, err := service.ReconcileSubscriptionOrder(context.Background(), order.OrganizationID, order.OrderID)
+			if !errors.Is(err, billing.ErrAuthorizationRevoked) || recovered.Status != billing.OrderCancelled {
+				t.Fatalf("recovery result = %+v, err = %v", recovered, err)
+			}
+		})
+	}
+}
+
+func TestSubscriptionServiceLostAdmissionReturnsFulfilledCompetingOrder(t *testing.T) {
+	for _, mode := range []billing.SettlementMode{billing.SettlementZeroPrice, billing.SettlementWallet} {
+		t.Run(string(mode), func(t *testing.T) {
+			commercial := commercialRepository(t)
+			wallet := subscriptionWalletRepository(t, commercial)
+			port := &subscriptionPurchasePortStub{plan: billing.SubscriptionPlanSnapshot{PlanCode: "professional", DisplayName: "Professional", Fingerprint: "plan-fingerprint"}, outcome: billing.SubscriptionActivationActivated, decisions: map[string]billing.SubscriptionActivationResult{}}
+			competitor := subscriptionBillingService(t, commercial, wallet, port, &subscriptionPurchaseAuthorizerStub{allowed: true})
+			store := &competingAdmissionRepository{Repository: commercial}
+			store.beforeAdmission = func(ctx context.Context, organizationID, orderID string, _ time.Time) error {
+				completed, err := competitor.ReconcileSubscriptionOrder(ctx, organizationID, orderID)
+				if err == nil && completed.Status != billing.OrderFulfilled {
+					return errors.New("competing order did not fulfill")
+				}
+				return err
+			}
+			service, err := billing.NewService(commercial, commercial, store, store, wallet, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := service.EnableSubscriptionPurchases(port, &subscriptionPurchaseAuthorizerStub{allowed: true}); err != nil {
+				t.Fatal(err)
+			}
+			offer := billing.Offer{OfferID: "professional-competing", ProductKind: billing.ProductSubscriptionPlan, PlanCode: "professional", TermMonths: 1, SettlementMode: mode, Currency: billing.CurrencyCNY, PricingVersion: "pricing-1", Status: billing.OfferActive}
+			if mode == billing.SettlementWallet {
+				offer.UnitPriceMinor = 400
+				creditSubscriptionWallet(t, wallet, "org-competing", 1000)
+			}
+			if err := commercial.SaveOffer(context.Background(), offer); err != nil {
+				t.Fatal(err)
+			}
+			quote, err := service.CreateSubscriptionQuote(context.Background(), billing.SubscriptionQuoteRequest{OrganizationID: "org-competing", OfferID: offer.OfferID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			order, err := service.CreateSubscriptionOrder(context.Background(), billing.CreateSubscriptionOrderRequest{OrganizationID: "org-competing", ActorID: "actor-a", QuoteID: quote.QuoteID, IdempotencyKey: "idem-competing"})
+			if err != nil || order.Status != billing.OrderFulfilled || port.calls != 1 {
+				t.Fatalf("lost admission result = %+v, err = %v, activation calls = %d", order, err, port.calls)
+			}
+			stored, err := commercial.ReadOrder(context.Background(), order.OrganizationID, order.OrderID)
+			if err != nil || stored.Status != billing.OrderFulfilled || stored.Version != order.Version {
+				t.Fatalf("durable order after competing fulfillment = %+v, err = %v", stored, err)
+			}
+		})
+	}
+}
+
+func TestSubscriptionOrderPostReturnsContractErrorAfterDurableOrderCreation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, scenario := range []struct {
+		name       string
+		allowed    bool
+		outcome    billing.SubscriptionActivationOutcome
+		failure    billing.SubscriptionActivationFailureCode
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "revoked", allowed: false, outcome: billing.SubscriptionActivationActivated, wantStatus: http.StatusForbidden, wantCode: "FORBIDDEN"},
+		{name: "active subscription", allowed: true, outcome: billing.SubscriptionActivationRejected, failure: billing.SubscriptionActivationActiveSubscriptionExists, wantStatus: http.StatusConflict, wantCode: "ACTIVE_SUBSCRIPTION_EXISTS"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			commercial := commercialRepository(t)
+			wallet := subscriptionWalletRepository(t, commercial)
+			port := &subscriptionPurchasePortStub{plan: billing.SubscriptionPlanSnapshot{PlanCode: "professional", DisplayName: "Professional", Fingerprint: "plan-fingerprint"}, outcome: scenario.outcome, failure: scenario.failure, decisions: map[string]billing.SubscriptionActivationResult{}}
+			service := subscriptionBillingService(t, commercial, wallet, port, &subscriptionPurchaseAuthorizerStub{allowed: scenario.allowed})
+			offer := billing.Offer{OfferID: "professional-error", ProductKind: billing.ProductSubscriptionPlan, PlanCode: "professional", TermMonths: 1, SettlementMode: billing.SettlementZeroPrice, Currency: billing.CurrencyCNY, PricingVersion: "pricing-1", Status: billing.OfferActive}
+			if err := commercial.SaveOffer(context.Background(), offer); err != nil {
+				t.Fatal(err)
+			}
+			quote, err := service.CreateSubscriptionQuote(context.Background(), billing.SubscriptionQuoteRequest{OrganizationID: "org-http-error", OfferID: offer.OfferID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(response)
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/workbench/commercial/subscription-orders", strings.NewReader(`{"quote_id":"`+quote.QuoteID+`"}`))
+			request.Header.Set("Idempotency-Key", "idem-http-error")
+			ctx.Request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{UserID: "actor-a", TenantID: "org-http-error", EffectiveOrganizationID: "org-http-error"}))
+			billinghttp.NewHandler(service).CreateSubscriptionOrder(ctx)
+			var body struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != scenario.wantStatus || body.Code != scenario.wantCode {
+				t.Fatalf("POST status = %d, body = %s, decode err = %v", response.Code, response.Body.String(), err)
+			}
+			if order, found, err := commercial.FindSubscriptionOrderByIdempotency(context.Background(), "org-http-error", "idem-http-error"); err != nil || !found || order.OrderID == "" {
+				t.Fatalf("durable order = %+v, found = %v, err = %v", order, found, err)
+			}
+		})
+	}
 }
 
 func TestSubscriptionServiceRevocationAfterReservePersistsIntentAndCannotRevive(t *testing.T) {

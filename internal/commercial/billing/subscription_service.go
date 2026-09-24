@@ -185,6 +185,9 @@ func (s *Service) executeSubscriptionOrder(ctx context.Context, order Order) (Or
 			return resolved, err
 		}
 		order = resolved
+		if order.Status == OrderFulfilled {
+			return order, nil
+		}
 	}
 	if order.SettlementMode != SettlementZeroPrice && order.SettlementMode != SettlementWallet {
 		return order, ErrPaymentMethodUnavailable
@@ -199,6 +202,9 @@ func (s *Service) ensureSubscriptionReserve(ctx context.Context, order Order) (O
 			return admitted, err
 		}
 		order = admitted
+		if order.Status == OrderFulfilled {
+			return order, nil
+		}
 	}
 	if order.PendingEffect != PendingSubscriptionOrderEffectReserve {
 		return s.markSubscriptionReconciliation(ctx, order)
@@ -260,6 +266,9 @@ func (s *Service) ensureSubscriptionActivation(ctx context.Context, order Order)
 			return admitted, admitErr
 		}
 		order = admitted
+		if order.Status == OrderFulfilled {
+			return order, nil
+		}
 	}
 	if order.PendingEffect != PendingSubscriptionOrderEffectActivate {
 		return s.markSubscriptionReconciliation(ctx, order)
@@ -351,7 +360,16 @@ func (s *Service) admitSubscriptionEffect(ctx context.Context, order Order, effe
 		if readErr != nil {
 			return order, ErrReconciliationRequired
 		}
-		return fresh, nil
+		if fresh.Status == OrderCancelled {
+			return fresh, subscriptionCancellationError(fresh.FailureCode)
+		}
+		if fresh.Status == OrderFulfilled {
+			return fresh, nil
+		}
+		// Another writer changed the admission state. Its effect or terminal
+		// intent must be recovered from the fresh durable order, not advanced
+		// through this caller's stale phase.
+		return fresh, ErrReconciliationRequired
 	}
 	return admitted, nil
 }

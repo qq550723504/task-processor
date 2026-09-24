@@ -200,15 +200,11 @@ func (h *Handler) CreateSubscriptionOrder(c *gin.Context) {
 		return
 	}
 	order, err := h.service.CreateSubscriptionOrder(c.Request.Context(), billing.CreateSubscriptionOrderRequest{OrganizationID: organizationID, ActorID: actorID, QuoteID: strings.TrimSpace(request.QuoteID), IdempotencyKey: idempotencyKey})
-	if err != nil && order.OrderID == "" {
+	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
-	status := http.StatusCreated
-	if err != nil {
-		status = http.StatusConflict
-	}
-	writeJSON(c, status, orderResponseFromDomain(order))
+	writeJSON(c, http.StatusCreated, orderResponseFromDomain(order))
 }
 
 func (h *Handler) SubscriptionOrder(c *gin.Context) {
@@ -620,6 +616,8 @@ func writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusConflict, "INSUFFICIENT_FUNDS")
 	case errors.Is(err, billing.ErrConflict):
 		writeError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT")
+	case errors.Is(err, billing.ErrOrderCancelled):
+		writeError(c, http.StatusConflict, "CONFLICT")
 	case errors.Is(err, billing.ErrNotFound):
 		writeError(c, http.StatusNotFound, "NOT_FOUND")
 	case errors.Is(err, billing.ErrOfferUnavailable):
