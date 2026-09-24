@@ -1943,7 +1943,9 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"runtime catalog is read-only",
 		"SyncDefaultCatalog",
 		"REJECTED_INSUFFICIENT_FUNDS",
+		"WalletReserveDecision",
 		"SubscriptionPurchaseRecoveryAuthorizer",
+		"pending_effect",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
