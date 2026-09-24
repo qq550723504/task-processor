@@ -411,25 +411,51 @@ Rules:
 - `ActorID` is the authenticated actor persisted on the order;
 - no status, window, module, limit, or amount field is accepted.
 
-Billing-side result:
+Billing-side activation decision:
 
 ```go
+type SubscriptionActivationOutcome string
+
+const (
+    SubscriptionActivationActivated SubscriptionActivationOutcome = "ACTIVATED"
+    SubscriptionActivationRejected  SubscriptionActivationOutcome = "REJECTED"
+)
+
+type SubscriptionActivationFailureCode string
+
+const (
+    SubscriptionActivationActiveSubscriptionExists SubscriptionActivationFailureCode = "ACTIVE_SUBSCRIPTION_EXISTS"
+    SubscriptionActivationPlanChanged              SubscriptionActivationFailureCode = "PLAN_CHANGED"
+)
+
 type SubscriptionActivationResult struct {
-    OperationID              string
-    OrganizationID           string
-    CommercialOrderID        string
-    PlanCode                 string
-    PlanFingerprint          string
-    SubscriptionID           string
-    StartsAt                 time.Time
-    ExpiresAt                time.Time
+    OperationID               string
+    OrganizationID            string
+    CommercialOrderID         string
+    PlanCode                  string
+    PlanFingerprint           string
+    Outcome                   SubscriptionActivationOutcome
+    FailureCode               SubscriptionActivationFailureCode
+    SubscriptionID            string
+    StartsAt                  *time.Time
+    ExpiresAt                 *time.Time
     EntitlementSetFingerprint string
-    ActivatedAt              time.Time
-    Existing                 bool
+    DecidedAt                 time.Time
+    Existing                  bool
 }
 ```
 
-`Existing=true` means the exact same source-bound operation already committed. It is replay evidence, not a new activation.
+Result invariants:
+
+- `ACTIVATED`: `FailureCode == ""`; subscription ID/window and entitlement
+  fingerprint are present.
+- `REJECTED`: `FailureCode` is one of the bounded terminal business
+  rejections above; subscription ID/window/entitlement fingerprint are empty.
+- `Existing=true` means the exact same source-bound activation **decision**
+  already committed and is being replayed. A rejected decision is just as
+  durable as an activated decision.
+- dependency/timeouts/internal errors are not persisted as `REJECTED`; they
+  remain unknown/retryable with the same source identity.
 
 ## 7. Subscription-owner command
 
@@ -456,11 +482,13 @@ type PurchasedPlanActivationResult struct {
     SourceID                  string
     PlanCode                  string
     PlanFingerprint           string
+    Outcome                   PurchasedPlanActivationOutcome
+    FailureCode               PurchasedPlanActivationFailureCode
     SubscriptionID            int64
-    StartsAt                  time.Time
-    ExpiresAt                 time.Time
+    StartsAt                  *time.Time
+    ExpiresAt                 *time.Time
     EntitlementSetFingerprint string
-    ActivatedAt               time.Time
+    DecidedAt                 time.Time
     Existing                  bool
 }
 
@@ -504,11 +532,13 @@ request_fingerprint
 plan_code
 plan_fingerprint
 term_months
-subscription_id
-starts_at
-expires_at
-entitlement_set_fingerprint
-activated_at
+outcome                  # ACTIVATED | REJECTED
+failure_code             # nullable; bounded terminal code
+subscription_id          # nullable for REJECTED
+starts_at                # nullable for REJECTED
+expires_at               # nullable for REJECTED
+entitlement_set_fingerprint # empty/null for REJECTED
+decided_at
 ```
 
 Required uniqueness:
@@ -518,20 +548,44 @@ UNIQUE(source_type, source_id)
 UNIQUE(operation_id)
 ```
 
-The subscription owner must atomically commit, in one database transaction:
+The row is a durable **activation decision**, not merely a success receipt.
 
-1. the source-bound activation operation result;
+For `ACTIVATED`, the subscription owner atomically commits in one database
+transaction:
+
+1. the source-bound activation decision;
 2. the tenant subscription;
 3. the exact entitlement set for the purchased plan;
 4. canonical subscription activation audit.
 
-No partial state is accepted.
+For a deterministic terminal pre-effect rejection, the subscription owner
+atomically commits in one database transaction:
 
-Same source + same request fingerprint returns the previously committed result.
+1. the source-bound activation decision with `outcome=REJECTED`;
+2. its bounded `failure_code`;
+3. a rejection audit/result record as required by the owner contract;
+4. **no** subscription or entitlement mutation.
+
+The first-slice durable rejection codes are:
+
+```text
+ACTIVE_SUBSCRIPTION_EXISTS
+PLAN_CHANGED
+```
+
+A terminal rejection is persisted while the Organization activation fence is
+held and **before** billing may release wallet funds or cancel the order.
+
+Same source + same request fingerprint returns the previously committed
+decision, whether `ACTIVATED` or `REJECTED`.
 
 Same source + different fingerprint returns `ACTIVATION_CONFLICT`.
 
-A lost commit acknowledgement is resolved by `ReadPurchasedPlanActivation`; it never authorizes a second source identity.
+A lost decision acknowledgement is resolved by
+`ReadPurchasedPlanActivation`; it never authorizes a second source identity.
+
+Transient dependency failure, statement timeout, context cancellation, or an
+otherwise unknown outcome must not be persisted as a terminal rejection.
 
 ### 8.1 Exact entitlement set
 
@@ -545,15 +599,27 @@ Inside the same transaction:
 
 The current `ApplyPlan` loop is not the purchased-activation transaction contract and must not be called as a sequence of externally visible writes.
 
-### 8.2 Existing subscription rules
+### 8.2 Existing subscription rules and terminal decisions
 
-Before mutation, using the activation-owner clock:
+Using the activation-owner clock while holding the Organization activation
+fence:
 
-- an effective ACTIVE or TRIALING subscription from another source blocks purchase with `ACTIVE_SUBSCRIPTION_EXISTS`;
-- an already committed activation for the same source replays;
-- an expired or disabled previous subscription may be replaced;
-- a future-effective ACTIVE/TRIALING subscription also blocks;
+- if the same source already has a durable activation decision, replay that
+  decision first; no current-time policy re-evaluation may override it;
+- an effective ACTIVE or TRIALING subscription from another source produces a
+  durable `REJECTED / ACTIVE_SUBSCRIPTION_EXISTS` decision for this source;
+- a future-effective ACTIVE/TRIALING subscription produces the same durable
+  rejection;
+- a quoted plan fingerprint mismatch produces a durable
+  `REJECTED / PLAN_CHANGED` decision for this source;
+- an expired or disabled previous subscription may be replaced only when this
+  source has no prior durable rejection;
 - upgrade, downgrade, renewal, and overlap are not inferred.
+
+This means a commercial order rejected at time T remains rejected even if the
+blocking subscription expires at T+1. A later purchase must be a new canonical
+quote/order/source; the rejected order can never become an activation attempt
+again.
 
 ### 8.3 Per-Organization first-activation fence
 
@@ -575,14 +641,18 @@ Every `ActivatePurchasedPlan` transaction must:
 
 1. ensure the fence row exists using idempotent insert-on-conflict;
 2. lock the Organization fence for update;
-3. re-read the source-bound activation operation after acquiring the lock;
-4. replay it when the same source/fingerprint is already committed;
+3. re-read the source-bound activation decision after acquiring the lock;
+4. replay it when the same source/fingerprint already has `ACTIVATED` or
+   `REJECTED`;
 5. re-read current/future-effective subscription state;
-6. reject another active/future-active subscription with
-   `ACTIVE_SUBSCRIPTION_EXISTS`;
+6. if another active/future-active subscription blocks purchase, atomically
+   persist `REJECTED / ACTIVE_SUBSCRIPTION_EXISTS` for this source and return
+   that durable decision;
 7. re-read and fingerprint the immutable runtime plan snapshot;
-8. commit activation operation, subscription, exact entitlement set and audit
-   atomically.
+8. on fingerprint mismatch, atomically persist `REJECTED / PLAN_CHANGED` for
+   this source and return that durable decision;
+9. otherwise commit `ACTIVATED`, subscription, exact entitlement set and
+   audit atomically.
 
 Locking only `saas_tenant_subscriptions` is not sufficient because the first
 purchase has no row to lock.
@@ -715,13 +785,25 @@ execution and recovery.
 4. Persist reservation proof and `FUNDS_RESERVED`.
 5. Call activation.
 6. Resolve ambiguous activation result through source-bound readback.
-7. Terminal pre-effect rejection -> release reservation -> CANCELLED.
-8. Unknown -> keep reservation -> `RECONCILIATION_REQUIRED`.
-9. Activation success -> persist activation proof -> `FULFILLING`.
-10. Commit wallet reservation.
-11. Resolve ambiguous commit using the existing wallet reservation readback.
-12. Committed wallet + valid activation proof -> `FULFILLED`.
-13. Any unresolved result -> `RECONCILIATION_REQUIRED`.
+7. A terminal pre-effect rejection is actionable only when the returned/read
+   activation decision is durably `REJECTED` for this exact source and request
+   fingerprint.
+8. Persist the rejected activation-decision proof on the commercial order before
+   initiating wallet release.
+9. Release the original reservation with deterministic finish operation ID
+   `release:<order_id>`; replay the same finish operation if its acknowledgement
+   is lost.
+10. Only after authoritative RELEASED readback may the order become CANCELLED
+    with the same activation failure code.
+11. Unknown activation result -> keep reservation ->
+    `RECONCILIATION_REQUIRED`.
+12. `ACTIVATED` -> persist activation proof -> `FULFILLING`.
+13. Commit wallet reservation using deterministic finish operation ID
+    `commit:<order_id>`.
+14. Resolve ambiguous commit using the existing wallet reservation readback /
+    same finish-operation replay.
+15. Committed wallet + valid `ACTIVATED` proof -> `FULFILLED`.
+16. Any unresolved result -> `RECONCILIATION_REQUIRED`.
 
 A transport error from reserve is never proof that no reservation exists.
 Foreground execution and recovery both resolve it by replaying the same
@@ -752,9 +834,13 @@ Reconciliation may:
   order-derived reserve input;
 - recover the original reservation ID from that idempotent replay;
 - read wallet reservation state once the reservation ID is known;
-- read source-bound subscription activation;
+- read the source-bound subscription activation decision, including durable
+  `REJECTED` decisions;
 - replay the same activation operation identity;
-- commit or release the original reservation only when the authoritative state permits it;
+- release the original reservation only after a matching durable `REJECTED`
+  decision is proven and persisted on the order;
+- commit the original reservation only after a matching durable `ACTIVATED`
+  decision is proven and persisted on the order;
 - move the same order to FULFILLED, CANCELLED, or remain RECONCILIATION_REQUIRED.
 
 It may not:
@@ -862,7 +948,10 @@ owners:
   insufficient funds merely because the first transaction already moved funds
   from available to reserved;
 - subscription activation remains protected by the Organization activation
-  fence and source-bound replay contract.
+  fence and source-bound durable-decision replay contract;
+- deterministic rejection is a durable terminal decision for that order/source,
+  so a later wall-clock change (including the blocking subscription expiring)
+  cannot turn the same rejected order into an activation.
 
 Therefore multiple application replicas or a foreground request racing the
 recovery runner must be safe. An order-version conflict causes the losing
@@ -914,6 +1003,25 @@ reservation conflict / dependency unavailable / ambiguous transport error
   -> RECONCILIATION_REQUIRED
   -> retry the same reserve identity later
 ```
+
+For a WALLET order with a durable activation decision:
+
+```text
+REJECTED / ACTIVE_SUBSCRIPTION_EXISTS or PLAN_CHANGED
+  -> persist decision proof on order
+  -> release with release:<order_id>
+  -> CANCELLED only after RELEASED is authoritative
+  -> same order/source can never activate later
+
+ACTIVATED
+  -> never release
+  -> commit with commit:<order_id>
+  -> FULFILLED only after COMMITTED is authoritative
+```
+
+Two replicas processing the same order may both replay the same deterministic
+release/commit operation, but they may not choose opposite terminal money
+effects because the source-bound activation decision is already immutable.
 
 A persistent dependency outage may leave the order
 `RECONCILIATION_REQUIRED`; the automatic loop must keep using the same durable
@@ -1069,7 +1177,9 @@ The implementation is ready for #478 only when it proves:
 - ZERO_PRICE creates a canonical order and source-bound activation without money mutation;
 - WALLET reserves, activates, then commits exactly once;
 - insufficient wallet balance cancels without activation;
-- active-subscription conflict does not charge;
+- active-subscription conflict commits a durable rejected activation decision before wallet release and does not charge;
+- the same rejected order cannot activate after the blocking subscription expires;
+- two replicas racing the same order across an `ExpiresAt` boundary cannot produce both ACTIVATED and RELEASED outcomes;
 - concurrent distinct first-purchase orders for one Organization serialize so exactly one activation and at most one final charge succeeds;
 - old ListingKit platform/admin subscription mutation UI/routes are absent from the admitted current runtime;
 - current-application does not mutate the plan catalog during service construction or while serving purchase traffic;
