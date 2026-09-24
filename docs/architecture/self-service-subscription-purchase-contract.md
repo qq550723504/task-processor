@@ -1044,8 +1044,7 @@ execution and recovery.
 7. A terminal pre-effect rejection is actionable only when the returned/read
    activation decision is durably `REJECTED` for this exact source and its
    returned `ActivationRequestFingerprint` exactly equals the canonical
-   fingerprint recomputed from the immutable commercial order (including actor
-   and term).
+   fingerprint recomputed from the immutable commercial order (including actor and term).
 8. Persist the rejected activation-decision proof on the commercial order before
    initiating wallet release.
 9. Release the original reservation with deterministic finish operation ID
