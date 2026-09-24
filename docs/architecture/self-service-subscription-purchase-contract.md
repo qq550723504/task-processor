@@ -464,6 +464,20 @@ The existing subscription owner exposes a narrow purchased-activation use case; 
 Recommended owner API shape:
 
 ```go
+type PurchasedPlanActivationOutcome string
+
+const (
+    PurchasedPlanActivationActivated PurchasedPlanActivationOutcome = "ACTIVATED"
+    PurchasedPlanActivationRejected  PurchasedPlanActivationOutcome = "REJECTED"
+)
+
+type PurchasedPlanActivationFailureCode string
+
+const (
+    PurchasedPlanActivationActiveSubscriptionExists PurchasedPlanActivationFailureCode = "ACTIVE_SUBSCRIPTION_EXISTS"
+    PurchasedPlanActivationPlanChanged              PurchasedPlanActivationFailureCode = "PLAN_CHANGED"
+)
+
 type PurchasedPlanActivationInput struct {
     OperationID       string
     OrganizationID    string
