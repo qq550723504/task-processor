@@ -696,19 +696,39 @@ After activation has committed, cancellation is forbidden.
 
 ### WALLET execution
 
-1. Reserve wallet funds using the order ID.
-2. Persist reservation proof and `FUNDS_RESERVED`.
-3. Call activation.
-4. Resolve ambiguous activation result through readback.
-5. Terminal pre-effect rejection -> release reservation -> CANCELLED.
-6. Unknown -> keep reservation -> `RECONCILIATION_REQUIRED`.
-7. Activation success -> persist activation proof -> `FULFILLING`.
-8. Commit wallet reservation.
-9. Resolve ambiguous commit using the existing wallet reservation readback.
-10. Committed wallet + valid activation proof -> `FULFILLED`.
-11. Any unresolved result -> `RECONCILIATION_REQUIRED`.
+The wallet reserve identity is frozen to the durable commercial order:
 
-The order owner never creates a second order during reconciliation.
+```text
+ReserveWalletFundsInput.OperationID       = order_id
+ReserveWalletFundsInput.CommercialOrderID = order_id
+```
+
+The same identity and immutable amount/currency must be used by foreground
+execution and recovery.
+
+1. Reserve wallet funds using the durable order ID.
+2. If the reserve response is lost or ambiguous, replay
+   `ReserveCommercialPurchase` with the **same** order-derived input; do not
+   generate another reserve identity.
+3. The money owner must replay an already-committed matching reserve and return
+   its original `reservation_id`.
+4. Persist reservation proof and `FUNDS_RESERVED`.
+5. Call activation.
+6. Resolve ambiguous activation result through source-bound readback.
+7. Terminal pre-effect rejection -> release reservation -> CANCELLED.
+8. Unknown -> keep reservation -> `RECONCILIATION_REQUIRED`.
+9. Activation success -> persist activation proof -> `FULFILLING`.
+10. Commit wallet reservation.
+11. Resolve ambiguous commit using the existing wallet reservation readback.
+12. Committed wallet + valid activation proof -> `FULFILLED`.
+13. Any unresolved result -> `RECONCILIATION_REQUIRED`.
+
+A transport error from reserve is never proof that no reservation exists.
+Foreground execution and recovery both resolve it by replaying the same
+source-bound reserve operation.
+
+The order owner never creates a second order or a second wallet reserve identity
+during reconciliation.
 
 ## 12. Reconciliation ownership
 
@@ -727,19 +747,38 @@ func (s *Service) ReconcileSubscriptionOrder(
 Reconciliation may:
 
 - read the durable order;
-- read wallet reservation state;
+- for a WALLET order whose durable order does not yet contain a
+  `reservation_id`, replay `ReserveCommercialPurchase` with the original
+  order-derived reserve input;
+- recover the original reservation ID from that idempotent replay;
+- read wallet reservation state once the reservation ID is known;
 - read source-bound subscription activation;
 - replay the same activation operation identity;
-- commit or release the existing reservation only when the authoritative state permits it;
+- commit or release the original reservation only when the authoritative state permits it;
 - move the same order to FULFILLED, CANCELLED, or remain RECONCILIATION_REQUIRED.
 
 It may not:
 
 - issue a new quote;
-- generate a new idempotency key;
+- generate a new order idempotency key;
+- generate a new wallet reserve operation identity;
 - create a replacement order;
 - apply a different plan;
 - choose a new Organization.
+
+"Replay reserve" is recovery of an already-defined effect, not creation of a
+new business attempt. The immutable replay input is reconstructed only from the
+durable order:
+
+```text
+operation_id        = order_id
+commercial_order_id = order_id
+organization_id     = order.organization_id
+currency            = order.currency
+amount_minor        = order.amount_minor
+```
+
+No field is taken from the browser during recovery.
 
 ### 12.1 Automatic recovery trigger
 
@@ -802,16 +841,26 @@ Runtime behavior:
 3. cancel promptly on the parent application context;
 4. for every selected order, invoke only
    `ReconcileSubscriptionOrder(organization_id, order_id)`;
-5. never create a quote, order, idempotency key, activation source, or wallet
-   reservation identity from the runner;
-6. an unresolved attempt updates the durable order timestamp/state so the next
+5. never create a quote, order, order idempotency key, activation source, or
+   **new** wallet reservation identity from the runner;
+6. a PENDING WALLET order may replay the already-defined reserve operation using
+   the durable order ID as both reserve operation ID and commercial order ID;
+7. an unresolved attempt updates the durable order timestamp/state so the next
    bounded sweep can retry without a busy loop.
 
 The recovery loop is discovery/trigger only. Correctness remains in the durable
 owners:
 
 - commercial order updates retain version/row-lock conflict checks;
-- wallet operations remain source-bound and idempotent;
+- wallet reserve/commit/release operations remain source-bound and idempotent;
+- replaying `ReserveCommercialPurchase` with the same
+  `(organization_id, operation_id=order_id, commercial_order_id=order_id,
+  currency, amount_minor)` returns the original matching reservation rather
+  than reserving funds twice;
+- the money owner re-checks an existing reserve after acquiring the wallet lock,
+  so a concurrent same-order replay cannot incorrectly classify the order as
+  insufficient funds merely because the first transaction already moved funds
+  from available to reserved;
 - subscription activation remains protected by the Organization activation
   fence and source-bound replay contract.
 
@@ -822,14 +871,48 @@ attempt to re-read/defer; it never authorizes a duplicate charge or activation.
 Required restart evidence:
 
 ```text
-activation commits
-process stops before order activation proof is persisted
-restart current-application
-  -> startup recovery selects the original order
-  -> reads the existing activation by original source ID
-  -> completes/recovers original wallet state
-  -> converges the same order to FULFILLED
-  -> no second activation/order/charge
+A. reserve commits, reserve ACK/order proof is lost
+   order remains PENDING without reservation_id
+   restart current-application
+     -> startup recovery selects the original order
+     -> replays ReserveCommercialPurchase with operation_id = order_id
+     -> receives the original reservation_id
+     -> persists FUNDS_RESERVED and continues the same order
+     -> no second reservation / no second debit
+
+B. activation commits
+   process stops before order activation proof is persisted
+   restart current-application
+     -> startup recovery selects the original order
+     -> reads the existing activation by original source ID
+     -> completes/recovers original wallet state
+     -> converges the same order to FULFILLED
+     -> no second activation/order/charge
+```
+
+For PENDING WALLET recovery, authoritative reserve outcomes are classified as:
+
+```text
+matching RESERVED reservation
+  -> persist reservation proof and continue
+
+matching COMMITTED reservation
+  -> read activation proof
+  -> matching activation may converge the same order to FULFILLED
+  -> missing/mismatched activation remains RECONCILIATION_REQUIRED
+
+matching RELEASED reservation
+  -> if no activation exists, converge the same order to CANCELLED
+  -> if activation exists, remain RECONCILIATION_REQUIRED
+
+ErrWalletInsufficientBalance
+  -> only terminal when same-source reserve replay proves no matching
+     reservation and source-bound activation readback proves no activation
+  -> CANCELLED / INSUFFICIENT_FUNDS
+
+reservation conflict / dependency unavailable / ambiguous transport error
+  -> RECONCILIATION_REQUIRED
+  -> retry the same reserve identity later
 ```
 
 A persistent dependency outage may leave the order
@@ -994,9 +1077,10 @@ The implementation is ready for #478 only when it proves:
 - a quoted plan fingerprint mismatch still fails with `PLAN_CHANGED` and no mutation;
 - same idempotency key/same fingerprint replays the same order;
 - same key/different fingerprint conflicts;
+- lost wallet reserve acknowledgement is recovered by replaying the original order-derived reserve identity and recovering the original reservation ID;
 - lost activation acknowledgement is recovered by source-bound readback;
 - lost wallet commit acknowledgement is recovered through the existing wallet reservation readback;
-- startup and periodic automatic recovery select the original nonterminal subscription order and restart can reconcile it without creating a new order or activation;
+- startup and periodic automatic recovery select the original nonterminal subscription order and restart can reconcile it without creating a new order, new reserve identity, or new activation;
 - fulfilled order proves both activation and, for WALLET, committed money;
 - resulting commercial overview and Account resource allocation read the same canonical entitlement;
 - external-payment-required offers remain unavailable until an approved provider exists.
