@@ -99,7 +99,8 @@ commercial_order_id ↔ 一个 durable payment_attempt_id
 payment_attempt_id   → 一个持久化 out_trade_no
 provider transaction → 一个 canonical payment_id
 payment_id + order   → 一个 money top-up receipt
-refund_id            → 一个持久化 out_request_no
+REFUND + refund_id   → 一个持久化 out_request_no
+payment + kind + id  → 一个冲正回执及至多一个差额核对记录
 ```
 
 首版一个充值订单只生成一个渠道支付尝试。未决时不新增 attempt；明确结束后确有新的充值意图才创建新订单。超时、刷新、网络重试均不等于新的充值意图。
@@ -114,10 +115,27 @@ billing: UNIQUE(commercial_order_id) on top-up payment attempt
 billing: UNIQUE(provider, environment, merchant_id, out_trade_no)
 money:   UNIQUE(provider, environment, merchant_id, provider_trade_no)
 money:   UNIQUE(payment_id) and UNIQUE(commercial_order_id) on top-up binding
-money:   UNIQUE(refund_id), UNIQUE(provider, environment, merchant_id, out_request_no)
+money:   UNIQUE(refund_id) in accepted refunds; UNIQUE(chargeback_id) in accepted chargebacks
+money:   UNIQUE(provider, environment, merchant_id, out_request_no) on refund requests
+money:   UNIQUE(payment_id, reversal_kind, reversal_id) on top-up reversal receipts
+money:   UNIQUE(payment_id, reversal_kind, reversal_id) on excess reconciliation records
 ```
 
 跨 app 的同一渠道交易也不能再次领取：app_id 是必须匹配的业务字段，不通过把 app_id 加入交易唯一键来扩大可入账次数。payment_id 可由渠道交易的规范身份生成固定长度 digest，并保存独立原字段以便核验。
+
+退款和拒付的原始 ID 属于独立命名空间；`RefundID="r1"` 与 `ChargebackID="r1"` 可以是不同事实。[R3][R6] 本批次在 money 内统一使用以下逻辑键（拟新增类型，复用现有 WalletReversalKind）：
+
+```go
+type TopUpReversalKey struct {
+    PaymentID  string
+    Kind       WalletReversalKind // 仅 REFUND / CHARGEBACK
+    ReversalID string
+}
+```
+
+`Kind` 来自已验证事实类型，不能由浏览器或随意改标签产生新事实；ReversalID 分别取该类型的 canonical RefundID / ChargebackID。上述三元组用于冲正接收/去重、hold 匹配、回执、差额记录、账本 source identity 和恢复查询。保留 accepted facts 原有的每类型 ID 唯一约束：同类 ID 不能改绑另一 payment；不能通过三元组索引放宽该约束。组织、订单、商户/环境和金额仍须与原 payment 绑定校验，不作为额外去重维度扩大入账次数。
+
+钱包现有 reversal 存储主键为字符串，因此 top-up 路径拟使用 `topup-reversal:v1:` 加 SHA-256 十六进制摘要作为 storage ID；摘要输入是带版本、长度前缀的完整 typed key，原三字段分别保留并核验。不能直接使用原始 ReversalID 作为跨类型主键。回执、差额及每种实际账本效果的标识/指纹都包含完整 key；一笔冲正的不同 entry 另有固定 effect-kind 后缀，不能仅按 notify_id、裸 ID 或 `(payment_id, reversal_id)` 防重。既有非 top-up 身份不迁移、不改写。
 
 订单 fingerprint 绑定 org、initiator、kind、金额/币种、选定 merchant/app/environment、支付产品、到期时间及业务政策版本。同键重放先读取原订单的服务端冻结字段，不按当前时间或当前商户配置重新生成期限/政策；再核对客户端原始意图。前台同键同意图重放，同键异意图冲突；原支付尝试的 readback 必须从原订单重算期望 fingerprint，而非相信 adapter 回显输入。
 
@@ -165,7 +183,7 @@ known_reversal_receipt_ids, result_fingerprint
 
 纯充值原始步骤满足 `available_added_minor + debt_repaid_minor = gross_credit_minor`。已知退款的后续冲正另有 receipt，不能改写原充值 receipt。完成后余额可能继续变化，receipt 不因余额变化而改变；全额用于偿债仍是成功入账，不要求可用余额必须增加。
 
-冲正 receipt 必须分开保存 `provider_amount_minor`（完整已确认金额）、`wallet_principal_effect_minor`、`excess_provider_minor`、原 hold 身份及其 consumed/released/debt-repaid 分解、关联差额核对记录和 result fingerprint。accepted refund/chargeback 保留原金额，不能截断成 wallet effect；累计钱包作用与超本金差额按 §11.3 分配。差额核对记录属于同一 money owner 的受限事实，不是第二钱包或新的可用额度。
+冲正 receipt 必须显式保存完整 `payment_id、reversal_kind、reversal_id`，并将三者纳入 request/result fingerprint；差额记录与 receipt 的关联也使用完整 typed key，不能只关联裸字符串 ID。还须分开保存 `provider_amount_minor`（完整已确认金额）、`wallet_principal_effect_minor`、`excess_provider_minor`、原 hold 身份及其 consumed/released/debt-repaid 分解、关联差额核对记录和 result fingerprint。accepted refund/chargeback 保留原金额，不能截断成 wallet effect；累计钱包作用与超本金差额按 §11.3 分配。差额核对记录属于同一 money owner 的受限事实，不是第二钱包或新的可用额度。
 
 ### 5.3 事务划分
 
@@ -287,12 +305,14 @@ payer_binding = UNATTRIBUTED_EXTERNAL | VERIFIED_INTERNAL_USER
 | `ReadTopUpPosting` | money | org / order / payment → 原 immutable receipt；不得返回别的企业或仅返回余额 |
 | `ReconcileTopUpOrder` | billing | 原 org / order → 继续查询、原身份入账或完成订单 |
 | `PrepareTopUpRefund` / `ConfirmTopUpRefund` / `ReleaseTopUpRefundHold` | money | 原付款、退款身份、金额、授权证明 → 资金保留/确认/释放回执；确认结果分开完整渠道金额、本金作用与差额 |
-| `ReadTopUpReversal` | money | 原 org/order/payment/reversal → immutable 冲正 receipt、hold 终态及差额核对引用；不是当前余额 |
+| `ReadTopUpReversal` | money | 原 org / order + `TopUpReversalKey{PaymentID, Kind, ReversalID}` → immutable 冲正 receipt、hold 终态及差额核对引用；不是当前余额 |
 | `Refund` / `QueryRefund` | Alipay adapter port | 原付款 + 稳定 out_request_no + 金额 → 规范退款观察 |
 
 money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类型及调用者由受控装配形成；代码依赖和实际调用测试同时守住边界，不能只靠 DTO 名字。
 
 入账命令与读取结果都必须携带并核对 org、order、payment、merchant/environment、amount/currency 和 request/result fingerprint。缺失、错配、金额不等或其他订单的 receipt 一律不能完成订单。
+
+冲正命令、退款确认/释放和读回使用 §4.2 完整 typed key；退款 intent/hold 固定 Kind=REFUND。`ReadTopUpReversal` 在当前授权的 org/order 范围内按三字段精确查询并回检返回 key、原绑定和 fingerprint：缺失或未知 Kind 返回 ErrInvalid；完整 key 未找到返回 ErrNotFound，不允许省略 kind、跨类型查找或返回第一条匹配。即使该字符串 ID 只在另一类型存在也不回退；另一 org/order 的记录不返回。相同 key 异载荷的写入返回 ErrConflict，合法 REFUND/r1 与 CHARGEBACK/r1 则各自读回自己的结果。
 
 ## 11. 退款与外部冲正
 
@@ -300,7 +320,7 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 
 首版建议只提供经批准的后台/support 用例，不开放新的 tenant 自助退款 API。退款资格和审批人由 D5 明确，不能推定 `wallet_topup` 权限包含退款或实际转账授权。
 
-1. billing 持久化 refund intent，绑定原 payment/order/org、金额、批准主体、原因及稳定 out_request_no。
+1. billing 持久化 refund intent，绑定原 payment/order/org、金额、批准主体、原因及稳定 out_request_no；intent 与 money hold 都保存 `TopUpReversalKey`，Kind 固定为 REFUND，确认/释放不得只按裸 refund_id 匹配。
 2. money 在原 payment 锁下按 §11.3 检查已确认退款及拒付 + 未决退款保留 + 本次金额不超过原充值可退本金；再按 §5.3 锁顺序锁定钱包，要求 debt 为 0 且 available 足够，原子移动 available → refund-reserved 并产生 immutable hold。
 3. 只有成功取得该 hold 的原退款 intent 才可调用 GoPay `TradeRefund`。首次派发准入还须在原 payment 锁下复核 §11.3 的本金预算（本 hold 已在未决总额中，不再加一次），并持久化派发资格；预算冲突不得准入，旧 worker 的未准入派发须被版本校验拒绝。网络调用在事务外，不能把 `10000` / 受理成功一概当成已退到账。
 4. 成功或响应不明时，按原 out_request_no 查询/重放。unknown 保留资金，不重建退款单，不释放 hold。
@@ -313,7 +333,7 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 
 来自商户后台或渠道的退款可能没有本地 hold。确认真实原付款绑定后，先按 §11.3 接受完整事实，再复用 `ApplyTopUpReversal` 的 debt-first 算法对分配出的本金作用 d 扣可用余额、不足记 debt；超本金部分 e 单独记为待核对差额，不转嫁为钱包债务。之后入账与释放优先偿债。外部冲正不因为用户余额不足、被撤权或订单已完成而被丢弃。[R3][R4]
 
-同一退款由通知、查单或人工查证多次发现，必须映射同一 canonical refund identity。已有本地 hold 的退款走 hold-confirmation，不能再按无 hold 的外部冲正扣 available。部分退款、累计金额及与拒付的覆盖关系要由 accepted facts 核对，不能简单把渠道累计退款总额当成每次新增退款。
+同一退款由通知、查单或人工查证多次发现，必须映射同一 `TopUpReversalKey`。只有 REFUND 且完整 key、金额及原绑定均匹配本地 hold 时才走 hold-confirmation，不能再按无 hold 的外部冲正扣 available；CHARGEBACK 即使 ReversalID 相同也不能消费同名退款 hold。部分退款、累计金额及与拒付的覆盖关系要由 accepted facts 核对，不能简单把渠道累计退款总额当成每次新增退款。
 
 原付款和已完成充值仍保留，退款是独立事实，不将 FULFILLED 改成“从未支付的 CANCELLED”。首版不处理新提现、分账或自动赔付；无法可靠识别的退款保持受限核对，不伪造退款成功。[S6]
 
@@ -336,7 +356,7 @@ B/C 是原付款及不可变充值绑定中的本金，不是当前 available，
 
 R 按同一原付款的不同经济冲正完整累计，允许超过 B；W 是这些事实已经在钱包产生的本金扣减，不能超过 C；E 保留两者差额。退款与拒付共用 W，不能各自扣一遍本金。同一事实的 accepted settlement、wallet receipt 与通知不能重复累计。H 只含尚未确认/释放的退款保留，包括已派发但结果 unknown 的保留，不含 purchase reservation。
 
-先核对原冲正身份及 fingerprint：相同身份、相同载荷返回原 immutable receipt，即使 W 已到上限也重放成功；异载荷冲突进入受限核对。通知/查单若无法识别是重复报告还是不同经济事实，先留存可信证据，不猜测相加。对已完整验证且确为不同的渠道成功事实，即使 R + x > B 也必须记录完整事实，不能截断 x 或永久停在“待接受”。
+先核对原冲正身份及 fingerprint：身份必须是 §4.2 的 `(payment_id, reversal_kind, reversal_id)`；相同身份、相同载荷返回原 immutable receipt，即使 W 已到上限也重放成功；异载荷冲突进入受限核对。通知/查单若无法识别是重复报告还是不同经济事实，先留存可信证据，不猜测相加。对已完整验证且确为不同的渠道成功事实，即使 R + x > B 也必须记录完整事实，不能截断 x 或永久停在“待接受”。
 
 在原 payment 锁下，对新的已确认事实作如下原子分配，使用检查过的整数计算；先校验既有 `0 <= W <= C`，不能由负数/溢出绕过约束：
 
@@ -363,9 +383,9 @@ R' = W' + E'                  # 等额分支的完整事实分解
 
 外部冲正确认可能使 `R + H > B`：停止新的退款准入及尚未准入的派发，保留原身份核实已经在途的请求。unknown hold 保留；未派发且已在同一锁/CAS 下撤销派发资格，或已经证明渠道终局拒绝且不会执行，才能整笔释放。若在途请求成功，必须按上表确认，不能继续等待“不执行”证明。本地锁不宣称能阻止渠道后台的外部冲正。
 
-e>0 时，同一 money 事务建立以原 payment/reversal 为唯一身份的差额核对记录，保留完整渠道凭据引用、x/d/e、原本金和处理状态，状态为 `OPEN`；通过 `ReadTopUpReversal` 可恢复为“事实及 hold 已结清、差额待核对”。差额不是钱包债务，不产生 earning，也不授权自动赔付、冲销或向用户追偿。人工/渠道后续核实沿该原记录追加结果、证据和审计，不改写旧 receipt；其处理须按 D5 单独授权。差额未解决不阻止已经确认的 hold 结清，也不触发再次退款或重复扣钱包。
+e>0 时，同一 money 事务建立以 `(payment_id, reversal_kind, reversal_id)` 为唯一身份的差额核对记录；包括 d=0/e>0 的两种同名冲正也必须分别保留，不得因字符串 ID 相同而互相覆盖。该记录保留完整渠道凭据引用、x/d/e、原本金和处理状态，状态为 `OPEN`；通过 `ReadTopUpReversal` 可恢复为“事实及 hold 已结清、差额待核对”。差额不是钱包债务，不产生 earning，也不授权自动赔付、冲销或向用户追偿。人工/渠道后续核实沿该原记录追加结果、证据和审计，不改写旧 receipt；其处理须按 D5 单独授权。差额未解决不阻止已经确认的 hold 结清，也不触发再次退款或重复扣钱包。
 
-`RecordRefundSettlement`、`RecordChargebackSettlement` 及通知包装、`ConfirmTopUpRefund`、`ApplyTopUpReversal` 和读回必须使用同一 money 内部事实去重与本金分配规则：accepted fact 金额为 x，wallet effect 为 d，不要求两者相等。按 §5.3 原 payment → hold → wallet 锁顺序，原子写 accepted fact、hold 变化、wallet effect、差额和 receipt；不得把现有按本金硬拒绝的入口作为 top-up 的旁路。退款先于入账时，M1 同事务衔接并按相同 W/E 分解，不暴露已退本金。原非 top-up 的受控/referral 合同保持原义并直接回归；计佣 top-up 的下游不得按超本金部分多扣收益。[R4][R6]
+`RecordRefundSettlement`、`RecordChargebackSettlement` 及通知包装、`ConfirmTopUpRefund`、`ApplyTopUpReversal` 和读回必须使用同一 money 内部 typed-key 事实去重与本金分配规则：accepted fact 金额为 x，wallet effect 为 d，不要求两者相等。按 §5.3 原 payment → hold → wallet 锁顺序，原子写 accepted fact、hold 变化、wallet effect、差额和 receipt；不得把现有按本金硬拒绝的入口作为 top-up 的旁路。退款先于入账时，M1 同事务衔接并按相同 W/E 分解，不暴露已退本金。原非 top-up 的受控/referral 合同保持原义并直接回归；计佣 top-up 的下游不得按超本金部分多扣收益。[R4][R6]
 
 ## 12. 自动恢复、账单核对与资源边界
 
@@ -460,10 +480,12 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 | NC_INFLIGHT_SUCCESS_AFTER_REVERSAL | 原退款 6000 已派发并持有 H=6000；另一已确认拒付 5000 先入账，使 available=0、debt=1000；随后原退款确认成功 6000 | 完整 RefundSettlement=6000 与 chargeback=5000 均被接受；退款分配 d=5000、e=1000，消费 hold 5000、余 1000 先偿债；最终 R=11000、W=10000、E=1000，H=0、reserved=0、available=0、debt=0，hold=CONFIRMED，差额核对记录=1000 且 OPEN；不重复扣本金、不产生 earning |
 | NC_REVERSED_DELIVERY_ORDER | 同一经济事件集合，先确认原退款 6000 并消费其 hold，后接收拒付 5000；同时覆盖两者并发 | 前者 d=6000/e=0，后者 d=4000/e=1000；最终 R=11000、W=10000、E=1000 且无 hold/debt，所有成功事实均保留；单笔分配反映锁序但整体结果一致，不改写原回执 |
 | NC_PRINCIPAL_EXHAUSTED | R=W=10000、H=0；又取得不同经济事实的可信外部冲正 1 | 完整事实增加 1，d=0/e=1，W 不再增加；只有冲正 receipt 和差额，不产生零金额扣款流水或用户 debt；未验证/身份不明报告继续隔离核对 |
+| NC_CROSS_KIND_ID_COLLISION | 原付款 P 已由其他冲正耗尽本金，R=W=C=10000、H=E=0；随后不同经济事实 `RefundID="r1"` 与 `ChargebackID="r1"` 各确认 1，覆盖顺序/逆序/并发 | 两个事实均完整接受，各 d=0/e=1；按 (P, REFUND, r1) 与 (P, CHARGEBACK, r1) 保存两份不同 receipt、两条各为 1 的 OPEN 差额记录；最终 R=10002、W=10000、E=2，钱包/hold 不变且无零金额 entry。分别按类型读回、重复投递及提交响应丢失后重启仍各得原回执/差额；缺失/未知 kind、同 key 异载荷、跨 org/order、同类 ID 改绑 payment 均拒绝，不回退另一类型 |
+| NC_CROSS_KIND_WALLET_AND_HOLD | 独立 P：REFUND/r1 的 H=1000、available=9000；不同事实 CHARGEBACK/r1 确认 1000，随后 REFUND/r1 成功 1000 | 拒付先令 available=8000，不消费退款 hold；退款再确认自己的 hold。两种非零本金作用均有独立 storage/source identity 和回执，最终 R=W=2000、E=0、H=reserved=debt=0、available=8000；逐类型重放不重复扣减 |
 | NC_REFUND_BEFORE_POST | 已核实全额退款 10000 先于原付款的 M1 入账完成 | 同事务保留原付款/充值与冲正，最终无可消费净充值；重启/readback 不补出第二次可用余额 |
 | TOPUP_COMMISSION_REGRESSION | 若 D4 另批准计佣：同额充值，CommissionableAmountMinor=2000，退款 10000 | 新 top-up 的本金仍按 10000 而非 2000；收益调整按已批准 D4 合同；原非 top-up 受控/referral 测试不被机械改写 |
 
-上述成功交错还必须覆盖重复通知和事务提交响应丢失后重启：按原 payment/refund 读取完整事实、分解 receipt、CONFIRMED hold 及原差额引用，不能重新冻结、扣减、退款或新增差额记录。
+上述成功交错还必须覆盖重复通知和事务提交响应丢失后重启：按原 org/order 和 `TopUpReversalKey` 读取完整事实、分解 receipt、CONFIRMED hold 及原差额引用，不能重新冻结、扣减、退款或新增差额记录。
 
 实施阶段必须执行对应 money contract、真实 PostgreSQL、并发/重启和消费侧回归。当前 `TestAlipayWalletTopUpDesignReversalContract` 仅守护本文的关键规则及组合用例不被删除，忽略 Markdown 换行差异；它通过不是资金行为测试已通过，以上运行验收在实现前仍为 NOT_RUN。
 

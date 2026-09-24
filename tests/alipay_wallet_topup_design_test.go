@@ -21,6 +21,37 @@ func TestAlipayWalletTopUpDesignReversalContract(t *testing.T) {
 		required []string
 	}{
 		{
+			heading: "### 4.2 身份链",
+			required: []string{
+				"TopUpReversalKey", "Kind WalletReversalKind", "REFUND / CHARGEBACK",
+				"UNIQUE(payment_id, reversal_kind, reversal_id) on top-up reversal receipts",
+				"UNIQUE(payment_id, reversal_kind, reversal_id) on excess reconciliation records",
+				"同类 ID 不能改绑另一 payment", "topup-reversal:v1:",
+				"不能直接使用原始 ReversalID 作为跨类型主键",
+			},
+		},
+		{
+			heading: "### 5.2 money 侧：复用事实，补足精确结果",
+			required: []string{
+				"payment_id、reversal_kind、reversal_id", "request/result fingerprint",
+				"差额记录与 receipt 的关联也使用完整 typed key",
+			},
+		},
+		{
+			heading: "## 10. 入账结果与 readback 契约",
+			required: []string{
+				"ReadTopUpReversal", "TopUpReversalKey{PaymentID, Kind, ReversalID}",
+				"缺失或未知 Kind 返回 ErrInvalid", "完整 key 未找到返回 ErrNotFound",
+				"不允许省略 kind、跨类型查找或返回第一条匹配",
+			},
+		},
+		{
+			heading: "### 11.2 外部退款/拒付",
+			required: []string{
+				"TopUpReversalKey", "只有 REFUND", "不能消费同名退款 hold",
+			},
+		},
+		{
 			heading: "## 9. 支付事实与推广收益的接缝",
 			required: []string{
 				"NON_COMMISSIONABLE", "CommissionableAmountMinor = 0",
@@ -47,6 +78,8 @@ func TestAlipayWalletTopUpDesignReversalContract(t *testing.T) {
 				"reserved 减少 x", "只将 d 计为本次本金冲正",
 				"x - d 按释放规则先偿还既有 debt", "差额不是钱包债务",
 				"CONFIRMED", "事实及 hold 已结清、差额待核对",
+				"以 `(payment_id, reversal_kind, reversal_id)` 为唯一身份的差额核对记录", "包括 d=0/e>0",
+				"不得因字符串 ID 相同而互相覆盖",
 				"d=0 时不创建零金额 wallet entry", "不改写旧 receipt",
 				"先核对原冲正身份及 fingerprint", "原 payment 锁",
 				"不得仅因未决 hold 拒绝已发生的外部冲正",
@@ -61,6 +94,9 @@ func TestAlipayWalletTopUpDesignReversalContract(t *testing.T) {
 				"NC_FULL_REFUND", "NC_MIXED_REVERSALS", "NC_HOLD_CONFIRM_REPLAY",
 				"NC_EXTERNAL_DURING_HOLD", "NC_REFUND_BEFORE_POST", "TOPUP_COMMISSION_REGRESSION",
 				"NC_INFLIGHT_SUCCESS_AFTER_REVERSAL", "NC_REVERSED_DELIVERY_ORDER", "NC_PRINCIPAL_EXHAUSTED",
+				"NC_CROSS_KIND_ID_COLLISION", "NC_CROSS_KIND_WALLET_AND_HOLD",
+				`RefundID="r1"`, `ChargebackID="r1"`, "R=10002、W=10000、E=2",
+				"两份不同 receipt", "两条各为 1 的 OPEN 差额记录",
 				"d=5000、e=1000", "R=11000、W=10000、E=1000",
 				"H=0、reserved=0、available=0、debt=0", "CONFIRMED",
 				"完整 RefundSettlement=6000", "差额核对记录=1000",
