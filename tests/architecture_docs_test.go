@@ -1958,6 +1958,10 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"Every not-yet-admitted `RESERVE` and every",
 		"a new exact provider-backed actor grant query",
 		"the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check",
+		"### ZERO_PRICE execution",
+		"complete the live-reauth + order-CAS admission protocol for `pending_effect=ACTIVATE`",
+		"known provider state `STATE_INACTIVE`",
+		"deactivate-then-restore does not revive an order",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
