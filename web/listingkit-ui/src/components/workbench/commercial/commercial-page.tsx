@@ -7,8 +7,10 @@ import { useWorkbenchContext } from "@/components/providers/workbench-context-pr
 import { Button } from "@/components/ui/button";
 import { getCommercialOverview } from "@/lib/api/commercial";
 import { getCommercialOrder, getCommercialOrderSummary, getCommercialOrders, getCommercialWallet, getCommercialWalletEntries, type CommercialOrderFilters } from "@/lib/api/commercial-billing";
+import { getSubscriptionOffers } from "@/lib/api/subscription-purchase";
 import { ConsolePage, ConsoleState } from "../console/console-page";
-import { EntitlementsOverview, PlanOptions } from "./commercial-views";
+import { EntitlementsOverview } from "./commercial-views";
+import { SubscriptionPlanOptions } from "./subscription-plan-options";
 import { CommercialOverviewView, UsageDetailsView } from "./commercial-module-views";
 import { OrderDetailView, OrdersView, WalletView } from "./commercial-billing-views";
 import styles from "./commercial.module.css";
@@ -25,7 +27,7 @@ export function CommercialPage({ page, orderId }: { page: PageKind; orderId?: st
     <ConsoleState kind="unavailable" title="企业或登录上下文不可用">已停止读取商业数据。观察时间、周期与数值尚未取得。</ConsoleState>
   </PageFrame>;
   const scope = JSON.stringify([context.user.id, organization.id, context.roles]);
-  return <ScopedCommercial key={`${page}:${scope}:${orderId ?? ""}`} page={page} scope={scope} userId={context.user.id} organizationId={organization.id} organizationName={organization.name} orderId={orderId} />;
+  return <ScopedCommercial key={`${page}:${scope}:${orderId ?? ""}`} page={page} scope={scope} userId={context.user.id} organizationId={organization.id} organizationName={organization.name} roles={context.roles} orderId={orderId} />;
 }
 
 function PageFrame({ page, organization, actions, children }: { page: PageKind; organization: string; actions?: ReactNode; children: ReactNode }) {
@@ -34,7 +36,7 @@ function PageFrame({ page, organization, actions, children }: { page: PageKind; 
   const breadcrumbs = page === "overview" ? [{ label: title }] : page === "order-detail" ? [{ label: "套餐与权益", href: "/workbench/plans" }, { label: "账单与订单", href: "/workbench/plans/orders" }, { label: title }] : [{ label: "套餐与权益", href: "/workbench/plans" }, { label: title }];
   const descriptions: Record<PageKind, string> = {
     overview: "统一查看当前方案、企业权益、订阅用量，以及已开放的商业能力。",
-    options: "查看已批准的方案说明；实际订阅和已授予权益分别展示。",
+    options: "查看当前企业的正式可售套餐，并按服务端报价自助开通。",
     entitlements: "查看当前企业的订阅、已授予权益及已记录用量。",
     usage: "查看当前订阅用量、账期与记录状态；金额由账单 owner 单独提供。",
     "top-up": "管理企业钱包与充值；当前能力受真实资金 owner 约束。",
@@ -47,7 +49,7 @@ function PageFrame({ page, organization, actions, children }: { page: PageKind; 
   </>} actions={actions}>{children}</ConsolePage>;
 }
 
-function ScopedCommercial({ page, scope, userId, organizationId, organizationName, orderId }: { page: PageKind; scope: string; userId: string; organizationId: string; organizationName: string; orderId?: string }) {
+function ScopedCommercial({ page, scope, userId, organizationId, organizationName, roles, orderId }: { page: PageKind; scope: string; userId: string; organizationId: string; organizationName: string; roles: string[]; orderId?: string }) {
   const [sequence, setSequence] = useState(0);
   const refresh = () => setSequence(value => value + 1);
   if (page === "top-up" || page === "orders" || page === "order-detail") {
@@ -57,22 +59,28 @@ function ScopedCommercial({ page, scope, userId, organizationId, organizationNam
     {page === "overview" ? <Button asChild variant="outline"><Link prefetch={false} href="/workbench/plans/entitlements">查看我的权益</Link></Button> : <Button asChild variant="outline"><Link prefetch={false} href={page === "options" ? "/workbench/plans/entitlements" : "/workbench/plans/options"}>{page === "options" ? "查看我的权益" : "查看套餐方案"}</Link></Button>}
     <Button variant="outline" onClick={refresh}>刷新数据</Button>
   </>}>
-    <CommercialRequest key={sequence} page={page} scope={scope} organizationId={organizationId} sequence={sequence} />
+    <CommercialRequest key={sequence} page={page} scope={scope} userId={userId} organizationId={organizationId} organizationName={organizationName} roles={roles} sequence={sequence} />
   </PageFrame>;
 }
 
-function CommercialRequest({ page, scope, organizationId, sequence }: { page: PageKind; scope: string; organizationId: string; sequence: number }) {
+function CommercialRequest({ page, scope, userId, organizationId, organizationName, roles, sequence }: { page: PageKind; scope: string; userId: string; organizationId: string; organizationName: string; roles: string[]; sequence: number }) {
   const response = useQuery({
     queryKey: ["workbench", organizationId, "commercial", page, scope, sequence],
     queryFn: ({ signal }) => getCommercialOverview(organizationId, signal),
     gcTime: 0, staleTime: 0, retry: false,
     refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false,
   });
+  const offers = useQuery({ queryKey: ["workbench", organizationId, "subscription-offers", scope, sequence], queryFn: ({ signal }) => getSubscriptionOffers(userId, organizationId, signal), enabled: page === "options", gcTime: 0, staleTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false });
   if (response.isPending || response.isFetching) return <ConsoleState kind="loading" title="正在读取商业数据">正在校验当前企业权限，旧结果已隐藏。观察时间与周期尚未取得。</ConsoleState>;
   if (response.isError) return <ReadError error={response.error} />;
   if (!response.data || response.data.organization_id !== organizationId) return <ReadError error={{ code: "INVALID_UPSTREAM_RESPONSE" }} />;
   if (page === "overview") return <CommercialOverviewView data={response.data} />;
-  if (page === "options") return <PlanOptions data={response.data} />;
+  if (page === "options") {
+    if (offers.isPending || offers.isFetching) return <ConsoleState kind="loading" title="正在读取可售套餐">正在向当前企业的商业 owner 读取正式套餐。</ConsoleState>;
+    if (offers.isError) return <BillingReadError error={offers.error} />;
+    if (!offers.data || offers.data.organization_id !== organizationId) return <BillingReadError error={{ code: "INVALID_UPSTREAM_RESPONSE" }} />;
+    return <SubscriptionPlanOptions userId={userId} organizationId={organizationId} organizationName={organizationName} roles={roles} overview={response.data} offers={offers.data} />;
+  }
   if (page === "usage") return <UsageDetailsView data={response.data} />;
   return <EntitlementsOverview data={response.data} />;
 }
