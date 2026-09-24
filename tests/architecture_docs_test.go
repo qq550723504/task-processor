@@ -1909,6 +1909,45 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 }
 
 
+func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "self-service-subscription-purchase-contract.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	text := string(content)
+
+	for _, required := range []string{
+		"SUBSCRIPTION_PURCHASE",
+		"ZERO_PRICE",
+		"WALLET",
+		"Organization activation fence",
+		"RECONCILIATION_REQUIRED",
+		"ACTIVE_SUBSCRIPTION_EXISTS",
+		"PLAN_CHANGED",
+		"ReserveCommercialPurchase",
+		"release:<order_id>",
+		"commit:<order_id>",
+		"Hard-cut of the old subscription-management runtime",
+		"/api/v1/listing-kits/platform/subscriptions",
+		"/api/v1/listing-kits/platform/subscription-plans",
+		"PUT /api/v1/listing-kits/admin/subscription/entitlements/:module_code",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must lock %q", path, required)
+		}
+	}
+
+	for _, required := range []string{
+		"browser submits only `offer_id` and then `quote_id`",
+		"current application must not expose runtime commands that edit plan active state",
+		"current runtime must also stop mutating the plan catalog during service construction",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must retain self-service hard-cut boundary %q", path, required)
+		}
+	}
+}
 func TestCommercialWalletBillingContractLocksCanonicalOwners(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "commercial-wallet-billing-contract.md")
 	content, err := os.ReadFile(path)
