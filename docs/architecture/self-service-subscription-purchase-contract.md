@@ -1064,27 +1064,43 @@ func (s *Service) ReconcileSubscriptionOrder(
 Reconciliation may:
 
 - read the durable order;
-- for a WALLET order whose durable order does not yet contain a
-  `reservation_id`, replay `ReserveCommercialPurchase` with the original
-  order-derived reserve input;
-- recover the original reservation ID from that idempotent replay;
+- for WALLET reserve recovery:
+  - if `pending_effect=RESERVE`, replay/read back
+    `ReserveCommercialPurchase` with the original order-derived reserve input;
+  - if the money owner already has a durable reserve decision for the original
+    order identity, read that decision and its reservation state;
+  - if neither condition is true, reserve has **not** been admitted: recovery
+    must perform fresh provider-backed authorization and win the
+    `pending_effect=RESERVE` CAS before it may call the money owner;
+- recover the original reservation ID only from the admitted/durable reserve
+  path above;
 - read wallet reservation state once the reservation ID is known;
 - read the source-bound subscription activation decision, including durable
   `REJECTED` decisions;
-- replay the same activation operation identity;
-- release the original reservation only after a matching durable `REJECTED`
-  decision is proven and persisted on the order;
+- for activation recovery:
+  - if `pending_effect=ACTIVATE`, replay/read back the same activation source;
+  - if a durable activation decision already exists, read/reconcile it;
+  - if neither condition is true, activation has **not** been admitted:
+    recovery must perform fresh provider-backed authorization and win the
+    `pending_effect=ACTIVATE` CAS before calling activation;
+- release the original reservation when either:
+  - a matching durable `REJECTED` activation decision is proven and persisted
+    on the order; or
+  - `terminal_intent=CANCEL` with reason `AUTHORIZATION_REVOKED` is durably
+    persisted, `pending_effect` is empty, no durable `ACTIVATED` decision
+    exists, and the reservation is still RESERVED;
 - commit the original reservation only after a matching durable `ACTIVATED`
   decision is proven and persisted on the order;
 - move the same order to FULFILLED only from a matching durable `ACTIVATED` decision;
 - move the same order to CANCELLED from either:
-  - a matching durable `REJECTED` activation decision (plus authoritative RELEASED wallet proof for WALLET), or
+  - a matching durable `REJECTED` activation decision (plus authoritative RELEASED wallet proof for WALLET);
+  - a durable `terminal_intent=CANCEL / AUTHORIZATION_REVOKED` path after any
+    RESERVED wallet funds are authoritatively RELEASED; or
   - a money-owned durable `REJECTED_INSUFFICIENT_FUNDS` reserve decision for
     this exact order identity together with source-bound activation readback
     proving no activation decision exists;
-- once an insufficient-funds reserve decision exists, both reserve replay and
-  order recovery must remain terminal for that order even if the wallet is
-  topped up later;
+- once an insufficient-funds reserve decision or revocation cancellation intent
+  exists, recovery must not admit a new reserve/activation effect for that order;
 - otherwise remain RECONCILIATION_REQUIRED.
 
 It may not:
@@ -1221,6 +1237,9 @@ Required implementation evidence:
   assignment is denied/revoked;
 - deactivate-then-restore does not revive an order once revocation cancellation
   intent was persisted;
+- crash after revocation intent with RESERVED funds but before release is
+  recovered by release:<order_id> from the terminal intent without requiring an
+  activation REJECTED decision;
 - duplicate/malformed/unknown-state exact actor results fail unavailable;
 - no offset-pagination fallback exists in the recovery authorizer.
 
@@ -1348,9 +1367,14 @@ Runtime behavior:
    `ReconcileSubscriptionOrder(organization_id, order_id)`;
 5. never create a quote, order, order idempotency key, activation source, or
    **new** wallet reservation identity from the runner;
-6. a PENDING WALLET order may replay the already-defined reserve operation using
-   the durable order ID as both reserve operation ID and commercial order ID;
-7. an unresolved attempt updates the durable order timestamp/state so the next
+6. a PENDING WALLET order may replay the reserve operation **only** when
+   `pending_effect=RESERVE` is already persisted or a durable money-owned
+   reserve decision already proves that source was attempted; otherwise it must
+   run fresh authorization + reserve-admission CAS first;
+7. activation replay follows the same rule: only persisted
+   `pending_effect=ACTIVATE` or an existing durable activation decision permits
+   replay without a new authorization/admission step;
+8. an unresolved attempt updates the durable order timestamp/state so the next
    bounded sweep can retry without a busy loop.
 
 The recovery loop is discovery/trigger only. Correctness remains in the durable
@@ -1387,10 +1411,12 @@ attempt to re-read/defer; it never authorizes a duplicate charge or activation.
 Required restart evidence:
 
 ```text
-A. reserve commits, reserve ACK/order proof is lost
+A. reserve was durably admitted with pending_effect=RESERVE
+   reserve commits, reserve ACK/order proof is lost
    order remains PENDING without reservation_id
    restart current-application
      -> startup recovery selects the original order
+     -> sees admitted RESERVE
      -> replays ReserveCommercialPurchase with operation_id = order_id
      -> receives the original reservation_id
      -> persists FUNDS_RESERVED and continues the same order
