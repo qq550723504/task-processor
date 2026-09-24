@@ -1157,11 +1157,46 @@ The adapter must not:
 - accept Organization or actor from an HTTP request during recovery.
 
 For the current repository, the intended authority is the provider-backed
-membership directory used by `internal/organization/membership`. A minimal
-adapter may scan its bounded Organization/project authorization result to locate
-the persisted actor and read the current active roles. Missing, inactive,
-duplicate, malformed, revoked, wrong-project, or wrong-Organization assignment
-fails closed. Provider unavailability is not denial; it leaves the order
+membership directory used by `internal/organization/membership`.
+
+The recovery adapter must obtain a **complete actor result**, not infer
+revocation from one partial page.
+
+Preferred implementation:
+
+- use a provider-side exact actor/user authorization query when the current
+  provider API supports one for the Organization + project + user;
+- validate that the returned assignment is unique, active, belongs to the exact
+  Organization/project, and contains bounded roles.
+
+If the provider adapter cannot query by actor directly, it must exhaustively
+scan the current bounded Organization/project authorization set:
+
+```text
+page size = 100
+offset = 0, 100, 200, ...
+stop only when offset >= authoritative total
+authoritative total must remain <= 10,000
+```
+
+Every page must be validated with the same owner rules as the existing
+membership directory. A changing total, duplicate authorization, malformed
+page, page gap, timeout, provider error, or inability to reach the authoritative
+end is `DEPENDENCY_UNAVAILABLE` / `RECONCILIATION_REQUIRED`, **not** revocation.
+
+Only a complete authoritative query/scan that proves the actor has no active
+matching Organization/project assignment may return authorization denied and
+permit `terminal_intent=CANCEL / AUTHORIZATION_REVOKED`.
+
+An actor found on any page is evaluated using the live roles from that exact
+assignment and the existing `authz.PermissionWorkbenchCommercialPurchase`
+policy. Multiple matching assignments are invalid/unavailable, never merged.
+
+Required implementation evidence includes an authorized actor positioned beyond
+the first 100 results; recovery must find that actor and must not cancel the
+order. Missing, inactive, revoked, wrong-project, or wrong-Organization
+assignment after a **complete** authoritative lookup fails closed. Provider
+unavailability is not denial; it leaves the order
 `RECONCILIATION_REQUIRED`.
 
 #### When reauthorization is required
@@ -1552,6 +1587,7 @@ The implementation is ready for #478 only when it proves:
 - recovery reauthorizes the persisted actor against live Organization membership/grants before each not-yet-admitted reserve/activation effect;
 - only the order-version CAS winner may persist `pending_effect` and invoke that new effect;
 - revoked/downgraded actors cannot cause a new reserve or activation during recovery;
+- recovery authorization never treats an incomplete membership page as revocation; direct actor lookup or complete bounded pagination is required, including an authorized actor beyond the first 100 results;
 - authorization-denial cancellation first persists `terminal_intent=CANCEL`; role restoration cannot revive that order;
 - activation admission CAS requires empty terminal_intent, so release-in-progress and activation cannot both be newly admitted;
 - authorization-denial cancellation cannot race an already-admitted RESERVE/ACTIVATE effect; a losing denial CAS must reconcile the admitted effect;
