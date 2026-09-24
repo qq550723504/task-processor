@@ -699,14 +699,32 @@ func TestPlatformSubscriptionPlanTenantsAndAuditLogs(t *testing.T) {
 func TestPlatformSubscriptionCanUseConfiguredAdminUser(t *testing.T) {
 	router := platformSubscriptionTestRouterWithOptions(t, WithPlatformSubscriptionAccess([]string{"admin-user"}, nil))
 
-	req := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
-	req.Header.Set("X-User-ID", "admin-user")
-	req = withAuthenticatedIdentity(req, "admin-tenant", "admin-user")
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	request := func(userID string, roles ...string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
+		req = withAuthenticatedIdentity(req, "admin-tenant", userID, roles...)
+		resp := httptest.NewRecorder()
+		router.ServeHTTP(resp, req)
+		return resp
+	}
+	if resp := request("admin-user"); resp.Code != http.StatusOK {
+		t.Fatalf("configured user status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	for _, identity := range []struct {
+		userID string
+		role   string
+	}{
+		{userID: "viewer-user", role: "listingkit_viewer"},
+		{userID: "insufficient-user", role: "listingkit_operator"},
+	} {
+		if resp := request(identity.userID, identity.role); resp.Code != http.StatusForbidden {
+			t.Errorf("unconfigured %s status = %d, want %d; body=%s", identity.userID, resp.Code, http.StatusForbidden, resp.Body.String())
+		}
+	}
+	for _, role := range []string{"platform_admin", "admin"} {
+		if resp := request("legacy-role-user", role); resp.Code != http.StatusOK {
+			t.Errorf("existing %s fallback status = %d, want %d; body=%s", role, resp.Code, http.StatusOK, resp.Body.String())
+		}
 	}
 }
 

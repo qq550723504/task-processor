@@ -14,7 +14,20 @@ application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is require
 
 umask 077
 test -f "$bootstrap_pat"; test -f "$trusted_ca/root-ca.pem"; test -f "$tofu_inputs/operator-password"; test -f "$tofu_inputs/viewer-password"; test -f "$tofu_inputs/insufficient-password"
-if [ -f "$state/.terraform-complete" ]; then exit 0; fi
+
+write_output() {
+  tofu output -state="$state/terraform.tfstate" -raw "$1" > "$2.tmp"
+  chmod 600 "$2.tmp"
+  mv "$2.tmp" "$2"
+}
+
+if [ -f "$state/.terraform-complete" ]; then
+  mkdir -p "$runtime"
+  if [ ! -s "$runtime/bootstrap-user-id" ]; then
+    write_output bootstrap_user_id "$runtime/bootstrap-user-id"
+  fi
+  exit 0
+fi
 if [ -f "$state/.terraform-started" ]; then echo 'local OpenTofu initialization is incomplete; recreate this Compose project' >&2; exit 1; fi
 touch "$state/.terraform-started"
 chmod 600 "$state/.terraform-started"
@@ -38,11 +51,6 @@ tofu apply -input=false -auto-approve \
   -var="application_port=$application_port" \
   -state="$state/terraform.tfstate"
 
-write_output() {
-  tofu output -state="$state/terraform.tfstate" -raw "$1" > "$2.tmp"
-  chmod 600 "$2.tmp"
-  mv "$2.tmp" "$2"
-}
 write_output provider_pat "$runtime/provider-machine.pat"
 write_output membership_read_pat "$runtime/membership-read.pat"
 write_output membership_write_pat "$runtime/membership-write.pat"

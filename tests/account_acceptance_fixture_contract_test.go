@@ -88,6 +88,33 @@ func TestAccountComposePlatformAdminCallerUsesBootstrapUserOutput(t *testing.T) 
 	}
 }
 
+func TestAccountComposeBackfillsBootstrapUserFromCompletedOpenTofuState(t *testing.T) {
+	contents, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "account-compose", "tofu-init.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(contents)
+	marker := strings.Index(text, `if [ -f "$state/.terraform-complete" ]; then`)
+	if marker < 0 {
+		t.Fatal("account-compose must preserve the completed OpenTofu state fast path")
+	}
+	branchEnd := strings.Index(text[marker:], "\nif [ -f \"$state/.terraform-started\" ]; then")
+	if branchEnd < 0 {
+		t.Fatal("completed OpenTofu state fast path is not terminated")
+	}
+	branch := text[marker : marker+branchEnd]
+	if !strings.Contains(branch, `if [ ! -s "$runtime/bootstrap-user-id" ]; then`) || !strings.Contains(branch, `write_output bootstrap_user_id "$runtime/bootstrap-user-id"`) {
+		t.Fatal("completed OpenTofu state must backfill a missing bootstrap identity output into the private runtime volume")
+	}
+	if strings.Contains(branch, "tofu init") || strings.Contains(branch, "tofu apply") {
+		t.Fatal("bootstrap identity backfill must read retained state without reinitializing providers or applying infrastructure")
+	}
+	outputReader := strings.Index(text, `tofu output -state="$state/terraform.tfstate" -raw "$1"`)
+	if outputReader < 0 || outputReader > marker {
+		t.Fatal("authoritative state output reader must be available before the completed-state fast path")
+	}
+}
+
 func TestAccountComposeCommercialOverviewUsesCurrentApplication(t *testing.T) {
 	contents, err := os.ReadFile(filepath.Join("..", "deployments", "docker", "account-compose", "docker-compose.yml"))
 	if err != nil {
