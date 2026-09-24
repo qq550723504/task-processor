@@ -439,6 +439,7 @@ type SubscriptionActivationResult struct {
     CommercialOrderID         string
     PlanCode                  string
     PlanFingerprint           string
+    ActivationRequestFingerprint string
     Outcome                   SubscriptionActivationOutcome
     FailureCode               SubscriptionActivationFailureCode
     SubscriptionID            string
@@ -452,6 +453,14 @@ type SubscriptionActivationResult struct {
 
 Result invariants:
 
+- every durable decision returns `ActivationRequestFingerprint`, the canonical
+  fingerprint of the exact admitted activation request. Billing recomputes the
+  expected fingerprint from the durable order and requires an exact match before
+  treating either an `ACTIVATED` or `REJECTED` decision as authoritative.
+  The canonical request fingerprint covers at least `OperationID`,
+  `OrganizationID`, `ActorID`, `CommercialOrderID`, `PlanCode`,
+  `PlanFingerprint`, and `TermMonths`; it must use an unambiguous canonical
+  encoding/version rather than delimiter concatenation.
 - `ACTIVATED`: `FailureCode == ""`; subscription ID/window and entitlement
   fingerprint are present.
 - `REJECTED`: `FailureCode` is one of the bounded terminal business
@@ -501,6 +510,7 @@ type PurchasedPlanActivationResult struct {
     SourceID                  string
     PlanCode                  string
     PlanFingerprint           string
+    ActivationRequestFingerprint string
     Outcome                   PurchasedPlanActivationOutcome
     FailureCode               PurchasedPlanActivationFailureCode
     SubscriptionID            int64
@@ -594,6 +604,11 @@ PLAN_CHANGED
 
 A terminal rejection is persisted while the Organization activation fence is
 held and **before** billing may release wallet funds or cancel the order.
+
+The activation owner computes `request_fingerprint` from the normalized
+`PurchasedPlanActivationInput` before mutation and returns that persisted value
+as `ActivationRequestFingerprint` from both
+`ActivatePurchasedPlan` and `ReadPurchasedPlanActivation`.
 
 Same source + same request fingerprint returns the previously committed
 decision, whether `ACTIVATED` or `REJECTED`.
@@ -900,7 +915,13 @@ A later role restoration never revives an order that durably reached
    - do not write `FULFILLING` or `FULFILLED`;
    - do not create any money effect.
 5. If the durable decision is `ACTIVATED`:
-   - validate the decision matches this organization/order/plan/fingerprint;
+   - recompute the canonical activation request fingerprint from the immutable
+     order fields (`organization_id`, `actor_id`, `order_id`,
+     `plan_code`, `plan_fingerprint`, `term_months`, plus the deterministic
+     activation operation ID) and require it to equal the decision's
+     `ActivationRequestFingerprint`;
+   - validate the remaining decision identity matches this
+     organization/order/plan/fingerprint;
    - persist activated-decision proof;
    - mark `FULFILLING`;
    - then mark `FULFILLED`.
@@ -1021,8 +1042,10 @@ execution and recovery.
 4. After RESERVED proof is persisted, if activation is not already admitted/proven, perform a **new provider-backed exact actor grant query** through the service-side live authorizer, then CAS `pending_effect=ACTIVATE`; the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check. Only the CAS winner calls activation. If ACTIVATE was already durably admitted, replay/read back that exact activation identity without a new authorization decision.
 6. Resolve ambiguous activation result through source-bound readback.
 7. A terminal pre-effect rejection is actionable only when the returned/read
-   activation decision is durably `REJECTED` for this exact source and request
-   fingerprint.
+   activation decision is durably `REJECTED` for this exact source and its
+   returned `ActivationRequestFingerprint` exactly equals the canonical
+   fingerprint recomputed from the immutable commercial order (including actor
+   and term).
 8. Persist the rejected activation-decision proof on the commercial order before
    initiating wallet release.
 9. Release the original reservation with deterministic finish operation ID
@@ -1076,7 +1099,11 @@ Reconciliation may:
   path above;
 - read wallet reservation state once the reservation ID is known;
 - read the source-bound subscription activation decision, including durable
-  `REJECTED` decisions;
+  `REJECTED` decisions, and require its returned
+  `ActivationRequestFingerprint` to equal the canonical activation request
+  fingerprint recomputed from the immutable commercial order before the
+  decision may authorize fulfillment, cancellation, wallet commit, or wallet
+  release;
 - for activation recovery:
   - if `pending_effect=ACTIVATE`, replay/read back the same activation source;
   - if a durable activation decision already exists, read/reconcile it;
