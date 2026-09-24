@@ -794,6 +794,85 @@ A durable activation **decision** merely proves that the activation owner
 reached a terminal conclusion. Only `Outcome=ACTIVATED` proves fulfillment.
 `Outcome=REJECTED` is terminal cancellation evidence, never activation proof.
 
+### WALLET reserve decision
+
+The money owner must persist a source-bound reserve decision for every
+`ReserveCommercialPurchase` operation. Returning
+`ErrWalletInsufficientBalance` without a durable decision is not sufficient,
+because a later top-up could otherwise make the same order reserve funds after
+another replica already cancelled it.
+
+Logical money-owned decision:
+
+```go
+type WalletReserveDecisionOutcome string
+
+const (
+    WalletReserveDecisionReserved WalletReserveDecisionOutcome = "RESERVED"
+    WalletReserveDecisionRejectedInsufficientFunds WalletReserveDecisionOutcome = "REJECTED_INSUFFICIENT_FUNDS"
+)
+
+type WalletReserveDecision struct {
+    OperationID       string
+    OrganizationID    string
+    CommercialOrderID string
+    Currency          string
+    AmountMinor       int64
+    Outcome           WalletReserveDecisionOutcome
+    ReservationID     string // present only for RESERVED
+    DecidedAt         time.Time
+}
+```
+
+Required identity/fingerprint:
+
+```text
+organization_id
+operation_id = order_id
+commercial_order_id = order_id
+currency
+amount_minor
+```
+
+Money persistence must enforce one immutable decision for that identity.
+
+The money owner transaction must:
+
+1. check for an existing reserve decision for the exact source identity;
+2. same identity + same amount/currency replays the existing decision;
+3. same identity + different amount/currency returns reservation conflict;
+4. otherwise lock the Organization wallet;
+5. re-check the decision after the wallet lock;
+6. if funds are sufficient, atomically persist:
+   - wallet balance movement available -> reserved;
+   - wallet reservation row;
+   - `RESERVED` decision pointing to the reservation;
+   - immutable wallet entry;
+7. if funds are insufficient, atomically persist:
+   - `REJECTED_INSUFFICIENT_FUNDS` decision;
+   - no reservation;
+   - no wallet balance mutation;
+   - no purchase reserve wallet entry.
+
+A later wallet top-up does not change or delete the reserve decision. Replaying
+the same order after a durable insufficient-funds decision returns the same
+insufficient-funds result and can never create a reservation.
+
+Expose authoritative readback owned by money:
+
+```go
+ReadCommercialPurchaseReserveDecision(
+    context.Context,
+    organizationID string,
+    operationID string,
+    commercialOrderID string,
+) (WalletReserveDecision, error)
+```
+
+The existing reservation readback remains authoritative for reservation state;
+the new reserve-decision readback answers whether the original reserve operation
+ever terminally decided RESERVED or REJECTED_INSUFFICIENT_FUNDS.
+
 ### WALLET execution
 
 The wallet reserve identity is frozen to the durable commercial order:
@@ -874,8 +953,12 @@ Reconciliation may:
 - move the same order to FULFILLED only from a matching durable `ACTIVATED` decision;
 - move the same order to CANCELLED from either:
   - a matching durable `REJECTED` activation decision (plus authoritative RELEASED wallet proof for WALLET), or
-  - a proven pre-activation `INSUFFICIENT_FUNDS` result where replay of the original reserve identity proves no matching reservation exists and source-bound activation readback proves no activation decision exists;
-- once the insufficient-funds cancellation is durably persisted, that order is terminal and must never be retried merely because the wallet is topped up later;
+  - a money-owned durable `REJECTED_INSUFFICIENT_FUNDS` reserve decision for
+    this exact order identity together with source-bound activation readback
+    proving no activation decision exists;
+- once an insufficient-funds reserve decision exists, both reserve replay and
+  order recovery must remain terminal for that order even if the wallet is
+  topped up later;
 - otherwise remain RECONCILIATION_REQUIRED.
 
 It may not:
@@ -901,7 +984,111 @@ amount_minor        = order.amount_minor
 
 No field is taken from the browser during recovery.
 
-### 12.1 Automatic recovery trigger
+### 12.1 Recovery authorization before the first unreconciled effect
+
+Automatic recovery has no browser bearer and must not retain one. It therefore
+cannot reuse request-time `workbenchcontext.Resolver` by replaying old request
+credentials.
+
+Billing owns a narrow service-side authorization port:
+
+```go
+type SubscriptionPurchaseRecoveryAuthorizer interface {
+    ReauthorizeCommercialPurchase(
+        context.Context,
+        string, // organization id
+        string, // actor id
+    ) (CommercialPurchaseAuthorization, error)
+}
+
+type CommercialPurchaseAuthorization struct {
+    OrganizationID string
+    ActorID        string
+    Roles          []string
+    Allowed        bool
+    ObservedAt     time.Time
+}
+```
+
+The app-layer adapter must use the existing current membership/grant authority,
+with its dedicated server-side read credential, to resolve the actor's live
+project assignment for the exact Organization. It must then apply the existing
+`authz.PermissionWorkbenchCommercialPurchase` policy.
+
+The adapter must not:
+- use roles persisted on the order as authority;
+- synthesize `listingkit_admin` from historical state;
+- use a cached browser grant;
+- retain/replay bearer tokens;
+- accept Organization or actor from an HTTP request during recovery.
+
+For the current repository, the intended authority is the provider-backed
+membership directory used by `internal/organization/membership`. A minimal
+adapter may scan its bounded Organization/project authorization result to locate
+the persisted actor and read the current active roles. Missing, inactive,
+duplicate, malformed, revoked, wrong-project, or wrong-Organization assignment
+fails closed. Provider unavailability is not denial; it leaves the order
+`RECONCILIATION_REQUIRED`.
+
+#### When reauthorization is required
+
+Reauthorization is required immediately before recovery performs the **first
+business effect that has not already been authoritatively proven**.
+
+```text
+PENDING WALLET, no reserve decision
+  -> reauthorize before ReserveCommercialPurchase
+
+PENDING ZERO_PRICE, no activation decision
+  -> reauthorize before ActivatePurchasedPlan
+
+FUNDS_RESERVED / RESERVED decision, no activation decision
+  -> reauthorize before ActivatePurchasedPlan
+```
+
+If live authorization is denied/revoked before activation:
+
+```text
+no reserve exists
+  -> CANCELLED / AUTHORIZATION_REVOKED
+
+RESERVED wallet funds exist
+  -> do not activate
+  -> release the original reservation using release:<order_id>
+  -> CANCELLED / AUTHORIZATION_REVOKED only after authoritative RELEASED
+```
+
+The denial/cancellation is durable for that order. A later role restoration does
+not revive it; a new purchase requires a new quote/order/idempotency identity.
+
+#### When reauthorization must not block convergence
+
+Once an effect is already authoritatively committed or its outcome is unknown,
+revocation must not strand money or entitlements in a half-finished state.
+
+```text
+durable ACTIVATED decision exists
+  -> do not reauthorize to decide whether activation should have happened
+  -> WALLET must converge the original reservation to COMMITTED
+  -> ZERO_PRICE must converge the order to FULFILLED
+
+durable REJECTED activation decision exists
+  -> converge cancellation / wallet release
+
+reserve or activation outcome is UNKNOWN
+  -> continue readback/replay with the same source identities
+  -> do not create a new business effect solely because authorization changed
+
+COMMITTED wallet reservation without matching ACTIVATED decision
+  -> never invent a fresh activation
+  -> RECONCILIATION_REQUIRED / operator investigation
+```
+
+Authorization is therefore an admission check for the **next not-yet-started
+effect**, not permission to abandon reconciliation of an effect that may already
+exist.
+
+### 12.2 Automatic recovery trigger
 
 Recovery cannot depend on a user resubmitting the original POST. The
 current-application composition must start one dedicated
@@ -982,6 +1169,9 @@ owners:
   so a concurrent same-order replay cannot incorrectly classify the order as
   insufficient funds merely because the first transaction already moved funds
   from available to reserved;
+- before the first not-yet-started effect, recovery reauthorizes the persisted
+  actor against the live Organization membership/grant authority and
+  `workbench.commercial.purchase`;
 - subscription activation remains protected by the Organization activation
   fence and source-bound durable-decision replay contract;
 - deterministic rejection is a durable terminal decision for that order/source,
@@ -1030,9 +1220,13 @@ matching RELEASED reservation
   -> if activation exists, remain RECONCILIATION_REQUIRED
 
 ErrWalletInsufficientBalance
-  -> only terminal when same-source reserve replay proves no matching
-     reservation and source-bound activation readback proves no activation
-  -> CANCELLED / INSUFFICIENT_FUNDS
+  -> not terminal from the transient error alone
+  -> read the money-owned reserve decision for the original order identity
+  -> only terminal when that durable decision is
+     REJECTED_INSUFFICIENT_FUNDS and source-bound activation readback proves no
+     activation decision
+  -> persist CANCELLED / INSUFFICIENT_FUNDS
+  -> the same order can never reserve later, even after wallet top-up
 
 reservation conflict / dependency unavailable / ambiguous transport error
   -> RECONCILIATION_REQUIRED
@@ -1211,7 +1405,10 @@ The implementation is ready for #478 only when it proves:
 - viewer/operator are denied;
 - ZERO_PRICE creates a canonical order and no money mutation; `ACTIVATED` converges to FULFILLED while durable `REJECTED` converges to CANCELLED and can never be reported as success;
 - WALLET reserves, activates, then commits exactly once;
-- insufficient wallet balance cancels without activation only after authoritative same-source reserve replay proves no reservation and activation readback proves no activation decision; the cancelled order never becomes chargeable after a later top-up;
+- insufficient wallet balance cancels without activation only from a money-owned durable `REJECTED_INSUFFICIENT_FUNDS` reserve decision plus proof that no activation decision exists; the same order never becomes chargeable after a later top-up;
+- recovery reauthorizes the persisted actor against live Organization membership/grants before the first not-yet-started reserve/activation effect;
+- revoked/downgraded actors cannot cause a new reserve or activation during recovery;
+- already-proven/unknown external effects still converge safely after revocation and are not abandoned;
 - active-subscription conflict commits a durable rejected activation decision before wallet release and does not charge;
 - the same rejected order cannot activate after the blocking subscription expires;
 - two replicas racing the same order across an `ExpiresAt` boundary cannot produce both ACTIVATED and RELEASED outcomes;
@@ -1238,6 +1435,7 @@ Expected primary changes:
 internal/commercial/billing/*
 internal/commercial/billing/httpapi/*
 internal/integration/persistence/commercialbilling/*
+internal/integration/persistence/money/*             # durable reserve decision
 internal/listingsubscription/*                  # narrow purchased-activation command
 internal/app/httpapi/commercial_billing_module.go  # adapter/assembly only
 internal/app/httpapi/current_application.go          # retire old subscription-management routes
