@@ -240,6 +240,9 @@ activation_operation_id
 activation_result_fingerprint
 pending_effect              # empty | RESERVE | ACTIVATE
 pending_effect_admitted_at
+terminal_intent             # empty | CANCEL
+terminal_intent_reason      # e.g. AUTHORIZATION_REVOKED
+terminal_intent_at
 idempotency_key
 request_fingerprint
 version
@@ -794,14 +797,17 @@ Before calling a not-yet-started external effect:
 1. read all current durable owner decisions/proofs for the order;
 2. if the target effect is already proven or already admitted, reconcile/replay
    it instead of starting a new admission;
-3. perform service-side live reauthorization for the persisted actor and exact
+3. reject new RESERVE/ACTIVATE admission if `terminal_intent=CANCEL` is already
+   durably present on the order;
+4. perform service-side live reauthorization for the persisted actor and exact
    Organization;
-4. if denied, do not admit the effect; use the revocation path below;
-5. if allowed, atomically CAS the commercial order's expected version/state and
-   persist `pending_effect` plus `pending_effect_admitted_at`;
-6. only the attempt that wins this CAS may invoke that newly admitted external
+5. if denied, do not admit the effect; use the revocation path below;
+6. if allowed, atomically CAS the commercial order's expected version/state and
+   persist `pending_effect` plus `pending_effect_admitted_at`; the CAS predicate
+   must also require `terminal_intent` to still be empty;
+7. only the attempt that wins this CAS may invoke that newly admitted external
    effect;
-7. a losing attempt must re-read the order and owner decisions before doing
+8. a losing attempt must re-read the order and owner decisions before doing
    anything else.
 
 The durable `pending_effect` marker is the effect-admission boundary. Once it
@@ -822,22 +828,51 @@ or cross-owner transaction.
 
 #### Revocation before effect admission
 
-If live authorization is denied before the CAS admission marker is committed:
+Authorization revocation is itself a durable admission decision. Before any
+wallet release or terminal cancellation caused by revocation, billing must CAS
+the order to an irrevocable cancellation intent:
 
 ```text
-no reserve decision and no activation decision
-  -> CAS order to CANCELLED / AUTHORIZATION_REVOKED
-  -> no external effect
-
-RESERVED decision exists, activation not yet admitted
-  -> CAS/persist AUTHORIZATION_REVOKED as the order's terminal business reason
-  -> release original reservation with release:<order_id>
-  -> CANCELLED only after authoritative RELEASED
+terminal_intent        = CANCEL
+terminal_intent_reason = AUTHORIZATION_REVOKED
+terminal_intent_at     = now
 ```
 
-If the authorization-denial CAS loses to another replica that already admitted
-`RESERVE` or `ACTIVATE`, the denying attempt must not cancel or release. It
-must re-read and reconcile the already-admitted effect.
+The CAS predicate requires:
+
+- expected order version/state still match;
+- no `pending_effect=ACTIVATE` is already admitted;
+- no durable `ACTIVATED` decision exists;
+- `terminal_intent` is empty or already the exact same CANCEL reason.
+
+Once `terminal_intent=CANCEL` is committed:
+
+- no new RESERVE or ACTIVATE admission is legal, even if the actor later regains
+  `workbench.commercial.purchase`;
+- recovery may only finish the already-selected cancellation path;
+- a concurrent activation-admission CAS must fail because it requires
+  `terminal_intent` to be empty.
+
+Revocation handling then becomes:
+
+```text
+no reserve decision / no activation decision
+  -> CAS terminal_intent=CANCEL / AUTHORIZATION_REVOKED
+  -> CANCELLED / AUTHORIZATION_REVOKED
+
+RESERVED wallet funds, no activation decision
+  -> CAS terminal_intent=CANCEL / AUTHORIZATION_REVOKED
+  -> release original reservation using release:<order_id>
+  -> CANCELLED only after authoritative RELEASED
+
+pending_effect=ACTIVATE or durable ACTIVATED decision already exists
+  -> revocation CAS must not override it
+  -> reconcile the already-admitted/proven activation path instead
+```
+
+If the revocation-intent CAS loses to another replica that already admitted
+`ACTIVATE`, the denying attempt must re-read and reconcile; it must not release
+funds or cancel the order.
 
 A later role restoration never revives an order that durably reached
 `CANCELLED / AUTHORIZATION_REVOKED`.
@@ -1141,9 +1176,13 @@ PENDING WALLET, no reserve decision and pending_effect != RESERVE
 PENDING ZERO_PRICE, no activation decision and pending_effect != ACTIVATE
   -> reauthorize, then CAS-admit ACTIVATE, then call/replay activation
 
-FUNDS_RESERVED / RESERVED decision, no activation decision and
-pending_effect != ACTIVATE
+FUNDS_RESERVED / RESERVED decision, no activation decision,
+pending_effect != ACTIVATE, and terminal_intent is empty
   -> reauthorize, then CAS-admit ACTIVATE, then call/replay activation
+
+terminal_intent=CANCEL
+  -> never admit RESERVE/ACTIVATE again
+  -> continue only the cancellation/release path
 
 pending_effect already equals the required effect
   -> effect was already live-authorized and durably admitted
@@ -1273,6 +1312,8 @@ owners:
   persists the matching `pending_effect` before invoking it;
 - an already persisted `pending_effect` is reconciled/replayed without a new
   authorization decision and can never be changed into an opposite effect;
+- a durable `terminal_intent=CANCEL` is an irreversible admission fence for the
+  order: all later RESERVE/ACTIVATE CAS operations require it to be empty;
 - subscription activation remains protected by the Organization activation
   fence and source-bound durable-decision replay contract;
 - deterministic rejection is a durable terminal decision for that order/source,
@@ -1511,8 +1552,11 @@ The implementation is ready for #478 only when it proves:
 - recovery reauthorizes the persisted actor against live Organization membership/grants before each not-yet-admitted reserve/activation effect;
 - only the order-version CAS winner may persist `pending_effect` and invoke that new effect;
 - revoked/downgraded actors cannot cause a new reserve or activation during recovery;
+- authorization-denial cancellation first persists `terminal_intent=CANCEL`; role restoration cannot revive that order;
+- activation admission CAS requires empty terminal_intent, so release-in-progress and activation cannot both be newly admitted;
 - authorization-denial cancellation cannot race an already-admitted RESERVE/ACTIVATE effect; a losing denial CAS must reconcile the admitted effect;
 - crash after effect admission but before external call replays the same admitted source identity without creating a new attempt;
+- crash after revocation intent but before wallet release resumes the same release:<order_id> path and never reopens activation;
 - already-admitted/proven/unknown external effects still converge safely after revocation and are not abandoned;
 - active-subscription conflict commits a durable rejected activation decision before wallet release and does not charge;
 - the same rejected order cannot activate after the blocking subscription expires;
