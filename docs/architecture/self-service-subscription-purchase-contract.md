@@ -238,6 +238,8 @@ failure_code
 wallet_reservation_id/state when applicable
 activation_operation_id
 activation_result_fingerprint
+pending_effect              # empty | RESERVE | ACTIVATE
+pending_effect_admitted_at
 idempotency_key
 request_fingerprint
 version
@@ -768,9 +770,81 @@ After activation has committed, cancellation is forbidden.
 7. Read the quote and verify organization, expiry, product kind, and immutable fingerprint.
 8. Create one PENDING subscription order.
 
+### Durable admission of the next external effect
+
+Live authorization and the commercial order version must jointly gate every
+**new** reserve or activation effect. A request/recovery worker must never
+perform a fresh external effect merely because it observed permission before
+another replica changed the order.
+
+Add a billing-owned internal coordination field:
+
+```go
+type PendingSubscriptionOrderEffect string
+
+const (
+    PendingSubscriptionOrderEffectNone     PendingSubscriptionOrderEffect = ""
+    PendingSubscriptionOrderEffectReserve  PendingSubscriptionOrderEffect = "RESERVE"
+    PendingSubscriptionOrderEffectActivate PendingSubscriptionOrderEffect = "ACTIVATE"
+)
+```
+
+Before calling a not-yet-started external effect:
+
+1. read all current durable owner decisions/proofs for the order;
+2. if the target effect is already proven or already admitted, reconcile/replay
+   it instead of starting a new admission;
+3. perform service-side live reauthorization for the persisted actor and exact
+   Organization;
+4. if denied, do not admit the effect; use the revocation path below;
+5. if allowed, atomically CAS the commercial order's expected version/state and
+   persist `pending_effect` plus `pending_effect_admitted_at`;
+6. only the attempt that wins this CAS may invoke that newly admitted external
+   effect;
+7. a losing attempt must re-read the order and owner decisions before doing
+   anything else.
+
+The durable `pending_effect` marker is the effect-admission boundary. Once it
+is committed, recovery may replay that exact source-bound effect without
+reauthorizing, even if the actor is later revoked, because the effect was
+already admitted while authorization was live. Recovery may not change the
+effect kind.
+
+After the external owner returns or readback proves a durable decision, billing
+persists that proof and clears `pending_effect` in the same order update.
+
+If the process dies after admission but before sending the external call,
+recovery replays the same admitted effect identity. This does not create a new
+business attempt.
+
+This is an order-local CAS protocol, not a generic distributed lock, scheduler,
+or cross-owner transaction.
+
+#### Revocation before effect admission
+
+If live authorization is denied before the CAS admission marker is committed:
+
+```text
+no reserve decision and no activation decision
+  -> CAS order to CANCELLED / AUTHORIZATION_REVOKED
+  -> no external effect
+
+RESERVED decision exists, activation not yet admitted
+  -> CAS/persist AUTHORIZATION_REVOKED as the order's terminal business reason
+  -> release original reservation with release:<order_id>
+  -> CANCELLED only after authoritative RELEASED
+```
+
+If the authorization-denial CAS loses to another replica that already admitted
+`RESERVE` or `ACTIVATE`, the denying attempt must not cancel or release. It
+must re-read and reconcile the already-admitted effect.
+
+A later role restoration never revives an order that durably reached
+`CANCELLED / AUTHORIZATION_REVOKED`.
+
 ### ZERO_PRICE execution
 
-1. Call the source-bound activation command.
+1. If activation is not already admitted/proven, complete the live-reauth + order-CAS admission protocol for `pending_effect=ACTIVATE`; only the CAS winner calls the source-bound activation command. If ACTIVATE is already admitted, replay/read back that exact source identity without a new authorization decision.
 2. On any ambiguous error, immediately read the activation decision by
    organization + order ID.
 3. If no durable decision can be proven, mark
@@ -885,14 +959,17 @@ ReserveWalletFundsInput.CommercialOrderID = order_id
 The same identity and immutable amount/currency must be used by foreground
 execution and recovery.
 
-1. Reserve wallet funds using the durable order ID.
+1. If reserve is not already admitted/proven, complete live reauth + order CAS
+   admission for `pending_effect=RESERVE`; only the CAS winner calls
+   `ReserveCommercialPurchase` using the durable order ID. If RESERVE is
+   already admitted, replay/read back that same reserve identity.
 2. If the reserve response is lost or ambiguous, replay
    `ReserveCommercialPurchase` with the **same** order-derived input; do not
    generate another reserve identity.
 3. The money owner must replay an already-committed matching reserve and return
    its original `reservation_id`.
 4. Persist reservation proof and `FUNDS_RESERVED`.
-5. Call activation.
+5. After RESERVED proof is persisted, if activation is not already admitted/proven, perform a fresh live reauthorization and CAS `pending_effect=ACTIVATE`; only the CAS winner calls activation. If ACTIVATE was already admitted, replay/read back that exact activation identity without reauthorization.
 6. Resolve ambiguous activation result through source-bound readback.
 7. A terminal pre-effect rejection is actionable only when the returned/read
    activation decision is durably `REJECTED` for this exact source and request
@@ -1032,34 +1109,32 @@ fails closed. Provider unavailability is not denial; it leaves the order
 
 #### When reauthorization is required
 
-Reauthorization is required immediately before recovery performs the **first
-business effect that has not already been authoritatively proven**.
+Reauthorization is required immediately before billing attempts to **admit**
+a new external effect into the durable order.
 
 ```text
-PENDING WALLET, no reserve decision
-  -> reauthorize before ReserveCommercialPurchase
+PENDING WALLET, no reserve decision and pending_effect != RESERVE
+  -> reauthorize, then CAS-admit RESERVE, then call/replay reserve
 
-PENDING ZERO_PRICE, no activation decision
-  -> reauthorize before ActivatePurchasedPlan
+PENDING ZERO_PRICE, no activation decision and pending_effect != ACTIVATE
+  -> reauthorize, then CAS-admit ACTIVATE, then call/replay activation
 
-FUNDS_RESERVED / RESERVED decision, no activation decision
-  -> reauthorize before ActivatePurchasedPlan
+FUNDS_RESERVED / RESERVED decision, no activation decision and
+pending_effect != ACTIVATE
+  -> reauthorize, then CAS-admit ACTIVATE, then call/replay activation
+
+pending_effect already equals the required effect
+  -> effect was already live-authorized and durably admitted
+  -> do not reauthorize; resolve/replay that exact effect identity
 ```
 
-If live authorization is denied/revoked before activation:
+If live authorization is denied before an effect is admitted, use the
+order-CAS revocation path defined in `Durable admission of the next external
+effect`. Never release/cancel if that CAS loses to an already-admitted effect.
 
-```text
-no reserve exists
-  -> CANCELLED / AUTHORIZATION_REVOKED
-
-RESERVED wallet funds exist
-  -> do not activate
-  -> release the original reservation using release:<order_id>
-  -> CANCELLED / AUTHORIZATION_REVOKED only after authoritative RELEASED
-```
-
-The denial/cancellation is durable for that order. A later role restoration does
-not revive it; a new purchase requires a new quote/order/idempotency identity.
+The denial/cancellation is durable for that order. A later role restoration
+does not revive it; a new purchase requires a new quote/order/idempotency
+identity.
 
 #### When reauthorization must not block convergence
 
@@ -1075,9 +1150,10 @@ durable ACTIVATED decision exists
 durable REJECTED activation decision exists
   -> converge cancellation / wallet release
 
-reserve or activation outcome is UNKNOWN
+reserve or activation outcome is UNKNOWN, or pending_effect proves admission
   -> continue readback/replay with the same source identities
-  -> do not create a new business effect solely because authorization changed
+  -> do not reauthorize to reverse the already-admitted effect
+  -> do not create a different business effect solely because authorization changed
 
 COMMITTED wallet reservation without matching ACTIVATED decision
   -> never invent a fresh activation
@@ -1169,9 +1245,12 @@ owners:
   so a concurrent same-order replay cannot incorrectly classify the order as
   insufficient funds merely because the first transaction already moved funds
   from available to reserved;
-- before the first not-yet-started effect, recovery reauthorizes the persisted
-  actor against the live Organization membership/grant authority and
-  `workbench.commercial.purchase`;
+- before each not-yet-admitted reserve/activation effect, recovery reauthorizes
+  the persisted actor against the live Organization membership/grant authority
+  and `workbench.commercial.purchase`, then must win the order-version CAS that
+  persists the matching `pending_effect` before invoking it;
+- an already persisted `pending_effect` is reconciled/replayed without a new
+  authorization decision and can never be changed into an opposite effect;
 - subscription activation remains protected by the Organization activation
   fence and source-bound durable-decision replay contract;
 - deterministic rejection is a durable terminal decision for that order/source,
@@ -1406,9 +1485,12 @@ The implementation is ready for #478 only when it proves:
 - ZERO_PRICE creates a canonical order and no money mutation; `ACTIVATED` converges to FULFILLED while durable `REJECTED` converges to CANCELLED and can never be reported as success;
 - WALLET reserves, activates, then commits exactly once;
 - insufficient wallet balance cancels without activation only from a money-owned durable `REJECTED_INSUFFICIENT_FUNDS` reserve decision plus proof that no activation decision exists; the same order never becomes chargeable after a later top-up;
-- recovery reauthorizes the persisted actor against live Organization membership/grants before the first not-yet-started reserve/activation effect;
+- recovery reauthorizes the persisted actor against live Organization membership/grants before each not-yet-admitted reserve/activation effect;
+- only the order-version CAS winner may persist `pending_effect` and invoke that new effect;
 - revoked/downgraded actors cannot cause a new reserve or activation during recovery;
-- already-proven/unknown external effects still converge safely after revocation and are not abandoned;
+- authorization-denial cancellation cannot race an already-admitted RESERVE/ACTIVATE effect; a losing denial CAS must reconcile the admitted effect;
+- crash after effect admission but before external call replays the same admitted source identity without creating a new attempt;
+- already-admitted/proven/unknown external effects still converge safely after revocation and are not abandoned;
 - active-subscription conflict commits a durable rejected activation decision before wallet release and does not charge;
 - the same rejected order cannot activate after the blocking subscription expires;
 - two replicas racing the same order across an `ExpiresAt` boundary cannot produce both ACTIVATED and RELEASED outcomes;
