@@ -165,6 +165,8 @@ known_reversal_receipt_ids, result_fingerprint
 
 纯充值原始步骤满足 `available_added_minor + debt_repaid_minor = gross_credit_minor`。已知退款的后续冲正另有 receipt，不能改写原充值 receipt。完成后余额可能继续变化，receipt 不因余额变化而改变；全额用于偿债仍是成功入账，不要求可用余额必须增加。
 
+冲正 receipt 必须分开保存 `provider_amount_minor`（完整已确认金额）、`wallet_principal_effect_minor`、`excess_provider_minor`、原 hold 身份及其 consumed/released/debt-repaid 分解、关联差额核对记录和 result fingerprint。accepted refund/chargeback 保留原金额，不能截断成 wallet effect；累计钱包作用与超本金差额按 §11.3 分配。差额核对记录属于同一 money owner 的受限事实，不是第二钱包或新的可用额度。
+
 ### 5.3 事务划分
 
 | 事务 | 持久化内容 | 失败处理 |
@@ -266,7 +268,7 @@ payer_binding = UNATTRIBUTED_EXTERNAL | VERIFIED_INTERNAL_USER
 
 这是待批准的类型方案，不是当前字段。原已有受控/referral settlement 语义保持；新 top-up 必须显式标注用途和 treatment。D4 确认不计佣后，NON_COMMISSIONABLE 必须允许且要求 `CommissionableAmountMinor = 0`，下游不创建 earning；UNATTRIBUTED_EXTERNAL 不填假本系统用户。InitiatorUserID 仍保存在原充值 intent/audit。
 
-**零佣金不等于零可退本金。** 当前 `RecordRefundSettlement` 与 `RecordChargebackSettlement` 都以 `payment.CommissionableAmountMinor` 减去累计退款和拒付作为剩余额度；仅修改 payment validator 会导致零佣金充值的全部冲正被拒绝。[R6] 本批次必须同时落实 §11.3 的本金上限、已确认冲正与未决 hold 规则。佣金字段只决定收益投影，不决定 WALLET_TOP_UP 的货币冲正额度；不计佣付款的退款/拒付也不创建或扣减 earning。
+**零佣金不等于零可退本金。** 当前 `RecordRefundSettlement` 与 `RecordChargebackSettlement` 都以 `payment.CommissionableAmountMinor` 减去累计退款和拒付作为剩余额度；仅修改 payment validator 会导致零佣金充值的全部冲正被拒绝。[R6] 本批次必须同时落实 §11.3 的新退款准入预算、完整已确认事实、钱包本金作用上限与未决 hold 规则；真实已确认事实的接收不能再被新申请的预算门禁拒绝。佣金字段只决定收益投影，不决定 WALLET_TOP_UP 的货币冲正额度；不计佣付款的退款/拒付也不创建或扣减 earning。
 
 若 D4 选择计佣，先冻结真实经济主体归属和金额计算规则再开放；不把“操作人发起充值”自动视为“该操作人本人完成付款”。SDK 不决定佣金、推荐关系或用户映射。
 
@@ -284,7 +286,8 @@ payer_binding = UNATTRIBUTED_EXTERNAL | VERIFIED_INTERNAL_USER
 | `AcceptAndPostProviderTopUp` | money | 精确订单绑定 + 可信付款证据 + 明确经济政策 → immutable posting receipt |
 | `ReadTopUpPosting` | money | org / order / payment → 原 immutable receipt；不得返回别的企业或仅返回余额 |
 | `ReconcileTopUpOrder` | billing | 原 org / order → 继续查询、原身份入账或完成订单 |
-| `PrepareTopUpRefund` / `ConfirmTopUpRefund` / `ReleaseTopUpRefundHold` | money | 原付款、退款身份、金额、授权证明 → 资金保留/确认/释放回执 |
+| `PrepareTopUpRefund` / `ConfirmTopUpRefund` / `ReleaseTopUpRefundHold` | money | 原付款、退款身份、金额、授权证明 → 资金保留/确认/释放回执；确认结果分开完整渠道金额、本金作用与差额 |
+| `ReadTopUpReversal` | money | 原 org/order/payment/reversal → immutable 冲正 receipt、hold 终态及差额核对引用；不是当前余额 |
 | `Refund` / `QueryRefund` | Alipay adapter port | 原付款 + 稳定 out_request_no + 金额 → 规范退款观察 |
 
 money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类型及调用者由受控装配形成；代码依赖和实际调用测试同时守住边界，不能只靠 DTO 名字。
@@ -301,14 +304,14 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 2. money 在原 payment 锁下按 §11.3 检查已确认退款及拒付 + 未决退款保留 + 本次金额不超过原充值可退本金；再按 §5.3 锁顺序锁定钱包，要求 debt 为 0 且 available 足够，原子移动 available → refund-reserved 并产生 immutable hold。
 3. 只有成功取得该 hold 的原退款 intent 才可调用 GoPay `TradeRefund`。首次派发准入还须在原 payment 锁下复核 §11.3 的本金预算（本 hold 已在未决总额中，不再加一次），并持久化派发资格；预算冲突不得准入，旧 worker 的未准入派发须被版本校验拒绝。网络调用在事务外，不能把 `10000` / 受理成功一概当成已退到账。
 4. 成功或响应不明时，按原 out_request_no 查询/重放。unknown 保留资金，不重建退款单，不释放 hold。
-5. 退款查询的 `code=10000` 仅表明查询成功；需要核对 `refund_status=REFUND_SUCCESS` 及原交易/退款请求号/金额等证据。[S6] 权威成功后，money 同一事务记录 RefundSettlement、确认对应 hold 的 reserved 减少、写退款结果与冲正凭证。该主动退款**不能再通过普通 available 扣减重复扣一次**。
-6. 只有明确终局拒绝且可以证明原退款不会继续执行时，才释放该 hold，释放资金优先还债；超时/NOT_EXIST 单次观察不充分。
+5. 退款查询的 `code=10000` 仅表明查询成功；需要核对 `refund_status=REFUND_SUCCESS` 及原交易/退款请求号/金额等证据。[S6] 权威成功后，按 §11.3 同一事务记录完整 RefundSettlement、结清原 hold、写本金作用及超本金差额回执；不能因其间发生其他冲正而拒绝成功确认。该主动退款**不能再通过普通 available 扣减重复扣一次**；hold 中未用于本次本金作用的余款按 §11.3 先偿债，不能留成永久 unknown。
+6. 对尚未确认成功的退款，只有明确终局拒绝且可以证明原退款不会继续执行时，才整笔释放该 hold，释放资金优先还债；超时/NOT_EXIST 单次观察不充分。§11.3 成功确认中的本金余款分配不是将退款伪装成失败释放。
 
 `refund-reserved` 是现有 `reserved_minor` 中带退款 purpose 的保留子记录，不建立第四套并列余额。现有 purchase reservation 不能冒充退款保留：其 purpose、唯一身份和消费完成证明不同。新增窄退款 purpose/记录与 ledger entry kinds 归同一 money owner，复用余额算法；购买入口必须拒绝退款保留，退款入口必须拒绝购买保留。必要增量不扩为通用资金调拨框架。
 
 ### 11.2 外部退款/拒付
 
-来自商户后台或渠道的退款可能没有本地 hold。确认其真实原付款绑定后，复用 `ApplyTopUpReversal`：扣可用余额，不足记 debt，之后入账与释放优先偿债。外部冲正不因为用户余额不足、被撤权或订单已完成而被丢弃。[R3][R4]
+来自商户后台或渠道的退款可能没有本地 hold。确认真实原付款绑定后，先按 §11.3 接受完整事实，再复用 `ApplyTopUpReversal` 的 debt-first 算法对分配出的本金作用 d 扣可用余额、不足记 debt；超本金部分 e 单独记为待核对差额，不转嫁为钱包债务。之后入账与释放优先偿债。外部冲正不因为用户余额不足、被撤权或订单已完成而被丢弃。[R3][R4]
 
 同一退款由通知、查单或人工查证多次发现，必须映射同一 canonical refund identity。已有本地 hold 的退款走 hold-confirmation，不能再按无 hold 的外部冲正扣 available。部分退款、累计金额及与拒付的覆盖关系要由 accepted facts 核对，不能简单把渠道累计退款总额当成每次新增退款。
 
@@ -316,33 +319,53 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 
 ### 11.3 货币冲正上限与未决退款保留
 
-以下是 `payment_purpose = WALLET_TOP_UP` 的拟新增 money 合同，NON_COMMISSIONABLE 与 COMMISSIONABLE 都适用；不是全仓所有历史用途的静默规则替换。对本草案 D3 建议的等额充值分支，定义：
+以下是 `payment_purpose = WALLET_TOP_UP` 的拟新增 money 合同，NON_COMMISSIONABLE 与 COMMISSIONABLE 都适用；不是全仓所有历史用途的静默规则替换。对 D3 建议的等额充值分支，必须区分**新退款准入预算、已确认渠道事实与钱包本金作用**：
 
 ```text
 B = payment.GrossAmountMinor
 C = top_up.AmountMinor
-B = C                         # 本分支要求已接受付款 gross 与原充值面值精确相等
+B = C                         # 已接受付款 gross 与原充值面值精确相等
 R = confirmed_refund_minor + confirmed_chargeback_minor
 H = outstanding_refund_hold_minor
-x = 本次尚未接受的正数冲正或新退款申请金额
+W = 累计已作用于钱包的本金冲正
+E = 累计渠道超本金差额
+x = 本次尚未接受的正数渠道冲正，或新的主动退款申请金额
 ```
 
-B/C 是原付款及不可变充值绑定中的本金，不是当前 available，也不是扣手续费后的净收入。不能使用 CommissionableAmountMinor 作为货币冲正上限。若 D3 不选择等额充值，须先明确付款本金到钱包可退本金的映射，再开放不同金额分支；不得用佣金、当前余额或随意取最小值代替映射。
+B/C 是原付款及不可变充值绑定中的本金，不是当前 available，也不是扣手续费后的净收入。不能使用 CommissionableAmountMinor 作为货币冲正上限。若 D3 不选择等额充值，须先明确付款本金到钱包可退本金的映射；本节 min 只对已冻结的等额分支分配剩余本金，不代替不同金额分支的政策。
 
-R 对同一原付款的**不同经济冲正**合并计数，退款和拒付不能各有一份独立额度；同一事实在 accepted settlement 与 wallet reversal 中的投影也不能相加两次。H 只含尚未确认/释放的退款保留，包含已派发但结果 unknown 的保留，不含 purchase reservation。先核对原冲正身份及 fingerprint：相同身份、相同载荷重放原回执，即使额度已用尽也不报超额；异载荷冲突不能追加金额。不同通知/查单报告若无法证明是同一还是不同冲正，保留受限核对，不按事件 ID 或累计退款总额重复记账。
+R 按同一原付款的不同经济冲正完整累计，允许超过 B；W 是这些事实已经在钱包产生的本金扣减，不能超过 C；E 保留两者差额。退款与拒付共用 W，不能各自扣一遍本金。同一事实的 accepted settlement、wallet receipt 与通知不能重复累计。H 只含尚未确认/释放的退款保留，包括已派发但结果 unknown 的保留，不含 purchase reservation。
+
+先核对原冲正身份及 fingerprint：相同身份、相同载荷返回原 immutable receipt，即使 W 已到上限也重放成功；异载荷冲突进入受限核对。通知/查单若无法识别是重复报告还是不同经济事实，先留存可信证据，不猜测相加。对已完整验证且确为不同的渠道成功事实，即使 R + x > B 也必须记录完整事实，不能截断 x 或永久停在“待接受”。
+
+在原 payment 锁下，对新的已确认事实作如下原子分配，使用检查过的整数计算；先校验既有 `0 <= W <= C`，不能由负数/溢出绕过约束：
+
+```text
+d = min(x, C - W)              # 本次还可作用于钱包的本金
+e = x - d                     # 已确认但不能再扣钱包的渠道差额
+R' = R + x
+W' = W + d
+E' = E + e
+R' = W' + E'                  # 等额分支的完整事实分解
+0 <= W' <= C
+```
+
+不得把 R + x <= B 作为已确认事实的接收或 hold 结清门槛。该预算只控制尚未发生的新主动退款，不控制外部已经发生的事实。
 
 | 入口 | 原 payment 锁下的准入 / 原子结果 |
 | --- | --- |
-| 新主动退款 `PrepareTopUpRefund` | 要求 `R + H + x <= B`，且钱包有可保留的本金；首次派发再次要求 `R + H <= B`。实现用经检查的减法与整数溢出检查，不能让求和溢出绕过限额 |
-| 已有 hold 的退款确认 | 校验原 refund identity、payment/order/org、金额与 hold 相等；要求 `R + x <= B`，同事务 `R' = R + x`、`H' = H - x`，只消费原 refund-reserved。确认不是在保留之外再申请一次额度，不再扣 available |
-| 无对应 hold 的已发生外部退款/拒付 | 经精确身份/金额校验，只用 `R + x <= B` 判断新的货币事实；不得仅因未决 hold 拒绝已发生的外部冲正。按 §11.2 同事务记录 accepted fact、一次钱包冲正及回执；available 不足仍进入 debt |
-| 外部通知匹配本地 hold | 与主动确认收敛到同一 refund identity/hold-confirmation；不得同时再走无 hold 冲正，也不得重复消耗本金 |
+| 新主动退款 `PrepareTopUpRefund` | 要求 `R + H + x <= B`，且钱包有可保留的本金；首次派发再次要求 `R + H <= B`。用经检查的减法判定，R 已超过 B 时直接禁止新准入；不能据此拒收在途请求的成功结果 |
+| 已有 hold 的退款确认 | 校验原 refund identity、payment/order/org、渠道成功金额 x 与原 hold 相等；记录完整 x 并按上式分配 d/e；同事务 `H' = H - x`、reserved 减少 x，只将 d 计为本次本金冲正；其余 x - d 按释放规则先偿还既有 debt，再增加 available。hold 进入 CONFIRMED，不再扣 available，不再等待一个已证明成功的请求失败 |
+| 无对应 hold 的已发生外部退款/拒付 | 不得仅因未决 hold 拒绝已发生的外部冲正；记录完整 x，只有 d 按 §11.2 从 available/debt 冲正，e 写差额核对记录。不得消费其他退款或 purchase 的 hold |
+| 外部通知匹配本地 hold | 同一 refund identity 只走上述 hold-confirmation，不再走无 hold 冲正。重复通知、确认后查询与重启 readback 返回同一分解及 hold 终态 |
 
-外部冲正确认可能使 `R + H > B`，这是已发生事实与未决意图的冲突，不是删除已确认事实的理由。此时停止新的退款准入及尚未准入的派发，保留原退款身份并核实已有请求；unknown hold 保留，不能推定渠道退款失败后释放。未派发且已用同一锁/CAS 撤销派发资格的 hold，或已证明渠道终局拒绝、不会继续执行的 hold，才可释放，并优先偿还 debt。已准入/在途请求不得换号重发；本地锁不宣称能阻止渠道后台的外部冲正。
+存在 hold 时，`hold_consumed_minor=d`、`hold_released_minor=x-d`，两者之和等于原 hold 面值；释放部分沿既有 debt-first 规则记账。d=0 时不创建零金额 wallet entry，但仍记录完整渠道事实、零本金作用的冲正 receipt、差额及必要的 hold 释放/偿债流水。成功事实、hold 结清、本金作用、余款分配、差额记录和 receipt 必须同事务提交；不能先标 CONFIRMED，再留下未释放 reserved。
 
-已证实不同冲正但 `R + x > B` 时，保留可信原始证据并报警核对，不擅自扩大钱包债务或把超额报告强行改成合法金额；无法识别的覆盖/重复关系同样不得静默丢弃。正常、精确、本金范围内的零佣金退款必须可以被接受。
+外部冲正确认可能使 `R + H > B`：停止新的退款准入及尚未准入的派发，保留原身份核实已经在途的请求。unknown hold 保留；未派发且已在同一锁/CAS 下撤销派发资格，或已经证明渠道终局拒绝且不会执行，才能整笔释放。若在途请求成功，必须按上表确认，不能继续等待“不执行”证明。本地锁不宣称能阻止渠道后台的外部冲正。
 
-`RecordRefundSettlement`、`RecordChargebackSettlement` 及其通知包装、`ConfirmTopUpRefund`、`ApplyTopUpReversal` 必须复用同一 money 内部本金校验/去重逻辑；钱包侧另保证累计一次性冲正不超过 C。按 §5.3 的原 payment → hold → wallet 锁顺序，原子记录 accepted fact、hold 状态变化（若有）、wallet effect 与 receipt，不能先各自提交再补救。退款先于原充值入账时，仍沿 M1 同事务衔接原付款和冲正。禁止绕开 accepted-fact 校验只改余额。原非 top-up 的受控/referral 合同保持原义并做直接回归；新 top-up 不论是否计佣都不得继续使用佣金作为本金上限。[R4][R6]
+e>0 时，同一 money 事务建立以原 payment/reversal 为唯一身份的差额核对记录，保留完整渠道凭据引用、x/d/e、原本金和处理状态，状态为 `OPEN`；通过 `ReadTopUpReversal` 可恢复为“事实及 hold 已结清、差额待核对”。差额不是钱包债务，不产生 earning，也不授权自动赔付、冲销或向用户追偿。人工/渠道后续核实沿该原记录追加结果、证据和审计，不改写旧 receipt；其处理须按 D5 单独授权。差额未解决不阻止已经确认的 hold 结清，也不触发再次退款或重复扣钱包。
+
+`RecordRefundSettlement`、`RecordChargebackSettlement` 及通知包装、`ConfirmTopUpRefund`、`ApplyTopUpReversal` 和读回必须使用同一 money 内部事实去重与本金分配规则：accepted fact 金额为 x，wallet effect 为 d，不要求两者相等。按 §5.3 原 payment → hold → wallet 锁顺序，原子写 accepted fact、hold 变化、wallet effect、差额和 receipt；不得把现有按本金硬拒绝的入口作为 top-up 的旁路。退款先于入账时，M1 同事务衔接并按相同 W/E 分解，不暴露已退本金。原非 top-up 的受控/referral 合同保持原义并直接回归；计佣 top-up 的下游不得按超本金部分多扣收益。[R4][R6]
 
 ## 12. 自动恢复、账单核对与资源边界
 
@@ -350,7 +373,7 @@ R 对同一原付款的**不同经济冲正**合并计数，退款和拒付不�
 
 建议初始运行参数（工程默认值，可经受控配置调整，不是支付渠道保证）：应用成功组装后立即扫描；其后约每 30 秒扫描；每批最多 50 条，并发最多 4；单次渠道请求最长 10 秒，服从更短的父 deadline；退避带抖动，上限 15 分钟。
 
-选择 `next_check_at <= now` 的未终结 attempts、PAID_PENDING_CREDIT、待处理 inbox 和未决退款。按到期时间加稳定 ID 排序推进游标，不能让同一条异常永久占据前 50 条。连续失败保留记录并告警；告警阈值不是删除或宣告失败阈值。
+选择 `next_check_at <= now` 的未终结 attempts、PAID_PENDING_CREDIT、待处理 inbox 和未决退款。§11.3 的 OPEN 差额单独核对，不把已 CONFIRMED 的退款重新当作 unknown 派发；持久 receipt 用于恢复 hold 终态。按到期时间加稳定 ID 排序推进游标，不能让同一条异常永久占据前 50 条。连续失败保留记录并告警；告警阈值不是删除或宣告失败阈值。
 
 使用现有 DB claim/CAS 或窄 lease 执行；网络期间不持锁。claim 过期只能重查/重放原幂等身份，不能保证旧进程没有执行远端操作；旧 claim 的回写必须被版本/token 拒绝。原已成功的资金效果由 immutable claim/receipt 防重。
 
@@ -431,11 +454,16 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 | 用例 | 输入 / 交错 | 必须证明 |
 | --- | --- | --- |
 | NC_FULL_REFUND | 无消费、无 hold；接受原付款全额退款 10000 | accepted refund=10000、wallet reversal=10000、available=0；不产生 earning；同一退款重放不变 |
-| NC_MIXED_REVERSALS | 不同冲正身份的退款 4000 与拒付 6000 并发；再提交不同身份的 1 | 共用本金额度，前两项累计 10000；额外 1 被拒绝自动入账/冲正并保留核对证据；两项回放不重复扣减 |
+| NC_MIXED_REVERSALS | 不同冲正身份的退款 4000 与拒付 6000 并发；再申请主动退款 1 | R=W=10000、E=0；新的主动申请 1 被拒绝派发；两项回放不重复扣减。已确认的外部事实不得按新申请拒绝，见 NC_PRINCIPAL_EXHAUSTED |
 | NC_HOLD_CONFIRM_REPLAY | H=6000、available=4000；原退款响应与同一退款的通知并发确认 6000 | R 从 0 到 6000，H 从 6000 到 0，refund-reserved 仅减少一次；available 仍 4000，不再双扣 |
 | NC_EXTERNAL_DURING_HOLD | 未决 H=6000、available=4000；不同身份的外部冲正 5000 | 外部事实被接受：R=5000、H=6000、available=0、debt=1000；禁止新退款派发，unknown hold 不释放；证明原 hold 不会执行后释放，先还债再恢复 available=5000 |
+| NC_INFLIGHT_SUCCESS_AFTER_REVERSAL | 原退款 6000 已派发并持有 H=6000；另一已确认拒付 5000 先入账，使 available=0、debt=1000；随后原退款确认成功 6000 | 完整 RefundSettlement=6000 与 chargeback=5000 均被接受；退款分配 d=5000、e=1000，消费 hold 5000、余 1000 先偿债；最终 R=11000、W=10000、E=1000，H=0、reserved=0、available=0、debt=0，hold=CONFIRMED，差额核对记录=1000 且 OPEN；不重复扣本金、不产生 earning |
+| NC_REVERSED_DELIVERY_ORDER | 同一经济事件集合，先确认原退款 6000 并消费其 hold，后接收拒付 5000；同时覆盖两者并发 | 前者 d=6000/e=0，后者 d=4000/e=1000；最终 R=11000、W=10000、E=1000 且无 hold/debt，所有成功事实均保留；单笔分配反映锁序但整体结果一致，不改写原回执 |
+| NC_PRINCIPAL_EXHAUSTED | R=W=10000、H=0；又取得不同经济事实的可信外部冲正 1 | 完整事实增加 1，d=0/e=1，W 不再增加；只有冲正 receipt 和差额，不产生零金额扣款流水或用户 debt；未验证/身份不明报告继续隔离核对 |
 | NC_REFUND_BEFORE_POST | 已核实全额退款 10000 先于原付款的 M1 入账完成 | 同事务保留原付款/充值与冲正，最终无可消费净充值；重启/readback 不补出第二次可用余额 |
 | TOPUP_COMMISSION_REGRESSION | 若 D4 另批准计佣：同额充值，CommissionableAmountMinor=2000，退款 10000 | 新 top-up 的本金仍按 10000 而非 2000；收益调整按已批准 D4 合同；原非 top-up 受控/referral 测试不被机械改写 |
+
+上述成功交错还必须覆盖重复通知和事务提交响应丢失后重启：按原 payment/refund 读取完整事实、分解 receipt、CONFIRMED hold 及原差额引用，不能重新冻结、扣减、退款或新增差额记录。
 
 实施阶段必须执行对应 money contract、真实 PostgreSQL、并发/重启和消费侧回归。当前 `TestAlipayWalletTopUpDesignReversalContract` 仅守护本文的关键规则及组合用例不被删除，忽略 Markdown 换行差异；它通过不是资金行为测试已通过，以上运行验收在实现前仍为 NOT_RUN。
 
@@ -454,7 +482,7 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 本草案**保持** #457 的 money/billing/resource ownership、整数金额、debt-first、top-up 无资源 quote/items/reservation、非完成 Order 不带 PaymentID；保持 #480 的订阅资金协议和独立激活 owner。
 
-本草案**提议补充，尚未生效**：payment attempt 子状态、精确 posting receipt、money 非佣金/付款人表示、top-up 本金冲正上限与未决 hold 规则、主动退款 purpose 与 receipt、受控迟到付款纠正。获批时在同一变更中同步相关稳定合同、类型 validator、下游消费者与直接回归，不能只新增文档却让旧合同与新实现互相冲突。未获批前本文件不作为绕过现有 guard 的依据。
+本草案**提议补充，尚未生效**：payment attempt 子状态、精确 posting receipt、money 非佣金/付款人表示、top-up 完整渠道事实与受限本金作用/差额分解、未决 hold 成功结清规则、主动退款 purpose 与 receipt、受控迟到付款纠正。获批时在同一变更中同步相关稳定合同、类型 validator、下游消费者与直接回归，不能只新增文档却让旧合同与新实现互相冲突。未获批前本文件不作为绕过现有 guard 的依据。
 
 ### 16.2 当前交付边界
 
