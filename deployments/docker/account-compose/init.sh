@@ -16,6 +16,23 @@ frontend=/frontend
 identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
 application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is required}
 
+read_bootstrap_user_id() {
+  bootstrap_user_id=$(tr -d '\r\n' < "$runtime/bootstrap-user-id")
+  case "$bootstrap_user_id" in
+    ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) echo 'invalid local bootstrap identity output' >&2; exit 1 ;;
+  esac
+  if [ "${#bootstrap_user_id}" -gt 256 ]; then echo 'invalid local bootstrap identity output' >&2; exit 1; fi
+}
+
+install_listingkit_authorization() {
+  read_bootstrap_user_id
+  sed '/"listingKitAuthorization":/d' "$runtime/current-application.json" > "$runtime/current-application.json.base.tmp"
+  sed "/\"schemaVersion\": 1,/a\\  \"listingKitAuthorization\": {\"platformAdminUsers\": [\"$bootstrap_user_id\"], \"platformAdminRoles\": []}," "$runtime/current-application.json.base.tmp" > "$runtime/current-application.json.tmp"
+  chmod 600 "$runtime/current-application.json.tmp"
+  mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
+  rm -f "$runtime/current-application.json.base.tmp"
+}
+
 migrate_commercial_owner_schema() {
   cat > "$work/commercial-owner-schema.json" <<EOF
 {"host":"127.0.0.1","port":5434,"user":"postgres","password":"$(tr -d '\r\n' < "$commercial_db_owner_secret/commercial-db-password")","database":"commercial","maxConnections":2,"maxIdleConnections":1}
@@ -28,6 +45,7 @@ EOF
 
 umask 077
 if [ -f "$state/.init-complete" ]; then
+  install_listingkit_authorization
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   cat > "$work/source-account-schema.yaml" <<EOF
@@ -127,11 +145,13 @@ cp "$runtime/service-credential" "$frontend/service-credential.tmp"
 chmod 600 "$frontend/service-credential.tmp"
 mv "$frontend/service-credential.tmp" "$frontend/service-credential"
 
+read_bootstrap_user_id
 issuer="https://localhost:${identity_port}"
 public_app="https://localhost:${application_port}"
 cat > "$runtime/current-application.json.tmp" <<EOF
 {
   "schemaVersion": 1,
+  "listingKitAuthorization": {"platformAdminUsers": ["${bootstrap_user_id}"], "platformAdminRoles": []},
   "listen": {"host": "127.0.0.1", "port": 8085},
   "identity": {
     "issuerURL": "${issuer}",

@@ -14,12 +14,68 @@ application_port=${ACCOUNT_APPLICATION_PORT:?ACCOUNT_APPLICATION_PORT is require
 
 umask 077
 test -f "$bootstrap_pat"; test -f "$trusted_ca/root-ca.pem"; test -f "$tofu_inputs/operator-password"; test -f "$tofu_inputs/viewer-password"; test -f "$tofu_inputs/insufficient-password"
-if [ -f "$state/.terraform-complete" ]; then exit 0; fi
+
+write_output() {
+  tofu output -state="$state/terraform.tfstate" -raw "$1" > "$2.tmp"
+  chmod 600 "$2.tmp"
+  mv "$2.tmp" "$2"
+}
+
+ensure_jq() {
+  if command -v jq >/dev/null 2>&1; then return; fi
+  if ! apk add --no-cache jq >/dev/null 2>&1; then
+    echo 'could not prepare retained OpenTofu state reader' >&2
+    return 1
+  fi
+}
+
+extract_bootstrap_user_id() {
+  ensure_jq || return 1
+  if ! jq -er '
+    [ .resources[]?
+      | select(.mode == "managed" and .type == "zitadel_human_user" and .name == "operator" and ((.module // "") == ""))
+      | .instances[]?
+      | select((.index_key? == null) and (.deposed_key? == null))
+      | .attributes.id
+    ] as $ids
+    | if ($ids | length) != 1 then
+        error("expected exactly one valid bootstrap operator ID")
+      else
+        $ids[0] as $id
+        | if ($id | type) != "string" then
+            error("expected exactly one valid bootstrap operator ID")
+          elif ($id | length) < 1 or ($id | length) > 256 then
+            error("expected exactly one valid bootstrap operator ID")
+          elif ($id | test("^[A-Za-z0-9][A-Za-z0-9._:-]*$")) then
+            $id
+          else
+            error("expected exactly one valid bootstrap operator ID")
+          end
+      end
+  ' "$1" > "$2.tmp" 2>/dev/null; then
+    rm -f "$2.tmp"
+    echo 'could not recover bootstrap user identity from retained state' >&2
+    return 1
+  fi
+  if ! chmod 600 "$2.tmp" || ! mv "$2.tmp" "$2"; then
+    rm -f "$2.tmp"
+    echo 'could not materialize recovered bootstrap user identity' >&2
+    return 1
+  fi
+}
+
+if [ -f "$state/.terraform-complete" ]; then
+  mkdir -p "$runtime"
+  if [ ! -s "$runtime/bootstrap-user-id" ]; then
+    extract_bootstrap_user_id "$state/terraform.tfstate" "$runtime/bootstrap-user-id"
+  fi
+  exit 0
+fi
 if [ -f "$state/.terraform-started" ]; then echo 'local OpenTofu initialization is incomplete; recreate this Compose project' >&2; exit 1; fi
 touch "$state/.terraform-started"
 chmod 600 "$state/.terraform-started"
 
-apk add --no-cache ca-certificates curl
+apk add --no-cache ca-certificates curl jq
 export SSL_CERT_FILE="$trusted_ca/root-ca.pem"
 mkdir -p "$state/config" "$runtime" "$frontend"
 cp -R "$terraform_source/." "$state/config/"
@@ -38,11 +94,6 @@ tofu apply -input=false -auto-approve \
   -var="application_port=$application_port" \
   -state="$state/terraform.tfstate"
 
-write_output() {
-  tofu output -state="$state/terraform.tfstate" -raw "$1" > "$2.tmp"
-  chmod 600 "$2.tmp"
-  mv "$2.tmp" "$2"
-}
 write_output provider_pat "$runtime/provider-machine.pat"
 write_output membership_read_pat "$runtime/membership-read.pat"
 write_output membership_write_pat "$runtime/membership-write.pat"

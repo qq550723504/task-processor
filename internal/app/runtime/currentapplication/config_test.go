@@ -6,15 +6,20 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"task-processor/internal/authz"
 	coreconfig "task-processor/internal/core/config"
 )
 
@@ -98,6 +103,128 @@ func TestLoadConfigAcceptsBoundedPrivateManifest(t *testing.T) {
 	if core == nil || !core.Workbench.Enabled || core.ListingKit.Zitadel.ProjectID != "listingkit-project" {
 		t.Fatalf("CoreConfig() = %#v", core)
 	}
+	if len(core.ListingKit.PlatformAdminUsers) != 0 || len(core.ListingKit.PlatformAdminRoles) != 0 {
+		t.Fatalf("legacy manifest must retain empty platform-admin allowlists: %#v", core.ListingKit)
+	}
+}
+
+func TestListingKitAuthorizationManifestMapsOnlyPlatformAdminAllowlist(t *testing.T) {
+	manifest := strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": ["subject-a", "subject-b"], "platformAdminRoles": ["support-role"]},`, 1)
+	cfg, err := LoadConfig(writeManifest(t, manifest))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	core := cfg.CoreConfig()
+	if got := strings.Join(core.ListingKit.PlatformAdminUsers, ","); got != "subject-a,subject-b" {
+		t.Fatalf("PlatformAdminUsers = %q", got)
+	}
+	if got := strings.Join(core.ListingKit.PlatformAdminRoles, ","); got != "support-role" {
+		t.Fatalf("PlatformAdminRoles = %q", got)
+	}
+	if core.ListingKit.Zitadel.ProjectID != "listingkit-project" || !core.ListingKit.Zitadel.AuthorizationRequired {
+		t.Fatalf("identity mapping changed: %#v", core.ListingKit.Zitadel)
+	}
+	authorizer, err := authz.NewListingKitAuthorizer(core.ListingKit.PlatformAdminUsers, core.ListingKit.PlatformAdminRoles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !authorizer.Authorize("subject-a", nil, authz.PermissionListingKitPlatformAdm) {
+		t.Fatal("configured bootstrap subject was not admitted by the existing platform-admin policy")
+	}
+	for _, user := range []string{"viewer-user", "insufficient-user"} {
+		if authorizer.Authorize(user, nil, authz.PermissionListingKitPlatformAdm) {
+			t.Fatalf("unconfigured acceptance identity %q was admitted", user)
+		}
+	}
+}
+
+func TestCurrentApplicationStartsFromConfiguredPrivateManifest(t *testing.T) {
+	manifest := strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": ["synthetic-bootstrap"], "platformAdminRoles": []},`, 1)
+	cfg, err := LoadConfig(writeManifest(t, manifest))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	source, commercial := &gorm.DB{}, &gorm.DB{}
+	started := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var startedCore *coreconfig.Config
+	dependencies := Dependencies{
+		IdentityPreflight:   func(context.Context, IdentityConfig) error { return nil },
+		OpenSourceAccount:   func(context.Context, DatabaseConfig) (*gorm.DB, error) { return source, nil },
+		OpenCommercial:      func(context.Context, DatabaseConfig) (*gorm.DB, error) { return commercial, nil },
+		OpenCommercialOwner: func(context.Context, DatabaseConfig) (*gorm.DB, error) { return &gorm.DB{}, nil },
+		NewApplicationWithFeatures: func(_ context.Context, gotSource, gotCommercial *gorm.DB, _ ApplicationFeatures, core *coreconfig.Config, _ *logrus.Logger) (*http.Server, error) {
+			if gotSource != source || gotCommercial != commercial {
+				t.Fatal("application received unexpected database pools")
+			}
+			startedCore = core
+			return &http.Server{}, nil
+		},
+		Listen: func(string, string) (net.Listener, error) {
+			listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
+			if listenErr == nil {
+				close(started)
+			}
+			return listener, listenErr
+		},
+		CloseDatabase: func(*gorm.DB) error { return nil },
+	}
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, cfg, logrus.New(), dependencies) }()
+	select {
+	case <-started:
+	case err := <-done:
+		t.Fatalf("Run() failed before listening: %v", err)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if startedCore == nil || len(startedCore.ListingKit.PlatformAdminUsers) != 1 || startedCore.ListingKit.PlatformAdminUsers[0] != "synthetic-bootstrap" || len(startedCore.ListingKit.PlatformAdminRoles) != 0 {
+		t.Fatalf("started current application with wrong platform-admin allowlist: %#v", startedCore)
+	}
+}
+
+func TestLoadConfigRejectsInvalidListingKitAuthorizationBeforeRuntimeSideEffects(t *testing.T) {
+	tests := map[string]string{
+		"unknown_nested":         strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": [], "platformAdminRoles": [], "zitadel": {}},`, 1),
+		"duplicate_value":        strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": ["subject-a", "subject-a"]},`, 1),
+		"blank":                  strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": [" "]},`, 1),
+		"crlf":                   strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminRoles": ["role\radmin"]},`, 1),
+		"nul":                    strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminRoles": ["role\u0000admin"]},`, 1),
+		"oversized_value":        strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": ["`+strings.Repeat("u", 257)+`"]},`, 1),
+		"too_many_values":        strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": [`+quotedSubjects(65)+`]},`, 1),
+		"duplicate_nested_field": strings.Replace(validManifest(), `"schemaVersion": 1,`, `"schemaVersion": 1, "listingKitAuthorization": {"platformAdminUsers": [], "platformAdminUsers": []},`, 1),
+	}
+	for name, manifest := range tests {
+		t.Run(name, func(t *testing.T) {
+			preflights, opens, listens := 0, 0, 0
+			cfg, err := LoadConfig(writeManifest(t, manifest))
+			if err == nil {
+				err = Run(context.Background(), cfg, logrus.New(), Dependencies{
+					IdentityPreflight: func(context.Context, IdentityConfig) error { preflights++; return nil },
+					OpenSourceAccount: func(context.Context, DatabaseConfig) (*gorm.DB, error) { opens++; return &gorm.DB{}, nil },
+					OpenCommercial:    func(context.Context, DatabaseConfig) (*gorm.DB, error) { opens++; return &gorm.DB{}, nil },
+					Listen:            func(string, string) (net.Listener, error) { listens++; return nil, errors.New("unexpected listener") },
+				})
+			}
+			if err == nil {
+				t.Fatal("invalid authorization manifest was accepted")
+			}
+			if preflights != 0 || opens != 0 || listens != 0 {
+				t.Fatalf("invalid manifest caused runtime side effects: preflight=%d opens=%d listens=%d", preflights, opens, listens)
+			}
+		})
+	}
+}
+
+func quotedSubjects(count int) string {
+	values := make([]string, count)
+	for i := range values {
+		values[i] = `"subject-` + strconv.Itoa(i) + `"`
+	}
+	return strings.Join(values, ",")
 }
 
 func TestLoadConfigAcceptsHTTPSLoopbackIdentityOrigin(t *testing.T) {
