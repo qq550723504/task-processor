@@ -1909,6 +1909,80 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 }
 
 
+func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "self-service-subscription-purchase-contract.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	text := string(content)
+
+	for _, required := range []string{
+		"SUBSCRIPTION_PURCHASE",
+		"ZERO_PRICE",
+		"WALLET",
+		"Organization activation fence",
+		"RECONCILIATION_REQUIRED",
+		"ACTIVE_SUBSCRIPTION_EXISTS",
+		"PLAN_CHANGED",
+		"ReserveCommercialPurchase",
+		"release:<order_id>",
+		"commit:<order_id>",
+		"Hard-cut of the old subscription-management runtime",
+		"/api/v1/listing-kits/platform/subscriptions",
+		"/api/v1/listing-kits/platform/subscription-plans",
+		"PUT /api/v1/listing-kits/admin/subscription/entitlements/:module_code",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must lock %q", path, required)
+		}
+	}
+
+	for _, required := range []string{
+		"browser never submits a term",
+		"runtime catalog is read-only",
+		"SyncDefaultCatalog",
+		"REJECTED_INSUFFICIENT_FUNDS",
+		"WalletReserveDecision",
+		"SubscriptionPurchaseRecoveryAuthorizer",
+		"pending_effect",
+		"terminal_intent",
+		"terminal_intent=CANCEL",
+		"`pending_effect` is empty; neither `RESERVE` nor `ACTIVATE` may already be",
+		"must also require `terminal_intent` to still be empty",
+		"even if the actor later regains",
+		"inUserIds     = [actor_id]",
+		"projectId     = configured project id",
+		"organizationId = order.organization_id",
+		"no offset-pagination fallback exists",
+		"Every not-yet-admitted `RESERVE` and every",
+		"a new exact provider-backed actor grant query",
+		"the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check",
+		"### ZERO_PRICE execution",
+		"complete the live-reauth + order-CAS admission protocol for `pending_effect=ACTIVATE`",
+		"zero matching assignments -> authorization denied/revoked",
+		"provider state `STATE_ACTIVE`",
+		"known provider state `STATE_INACTIVE`",
+		"more than one matching assignment -> invalid/unavailable",
+		"wrong Organization/project/user, unknown/unsupported state, malformed roles",
+		"deactivate-then-restore does not revive an order",
+		"pending_effect=RESERVE",
+		"pending_effect=ACTIVATE",
+		"terminal_intent=CANCEL / AUTHORIZATION_REVOKED",
+		"ActivationRequestFingerprint",
+		"canonical activation request fingerprint",
+		"including actor",
+		"including actor and term",
+		"run one recovery sweep immediately after successful application assembly",
+		"repeat a bounded sweep every",
+		"long-lived",
+		"workbench.commercial.purchase",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must retain self-service hard-cut boundary %q", path, required)
+		}
+	}
+}
 func TestCommercialWalletBillingContractLocksCanonicalOwners(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "commercial-wallet-billing-contract.md")
 	content, err := os.ReadFile(path)
