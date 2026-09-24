@@ -841,7 +841,8 @@ terminal_intent_at     = now
 The CAS predicate requires:
 
 - expected order version/state still match;
-- no `pending_effect=ACTIVATE` is already admitted;
+- `pending_effect` is empty; neither `RESERVE` nor `ACTIVATE` may already be
+  admitted;
 - no durable `ACTIVATED` decision exists;
 - `terminal_intent` is empty or already the exact same CANCEL reason.
 
@@ -864,6 +865,12 @@ RESERVED wallet funds, no activation decision
   -> CAS terminal_intent=CANCEL / AUTHORIZATION_REVOKED
   -> release original reservation using release:<order_id>
   -> CANCELLED only after authoritative RELEASED
+
+pending_effect=RESERVE
+  -> revocation CAS must not override it
+  -> reconcile the already-admitted reserve effect first
+  -> only after reserve resolves may a later revocation decision choose release
+     versus no-reserve cancellation
 
 pending_effect=ACTIVATE or durable ACTIVATED decision already exists
   -> revocation CAS must not override it
@@ -1157,47 +1164,43 @@ The adapter must not:
 - accept Organization or actor from an HTTP request during recovery.
 
 For the current repository, the intended authority is the provider-backed
-membership directory used by `internal/organization/membership`.
+membership/grant source used by the current ZITADEL integration.
 
-The recovery adapter must obtain a **complete actor result**, not infer
-revocation from one partial page.
-
-Preferred implementation:
-
-- use a provider-side exact actor/user authorization query when the current
-  provider API supports one for the Organization + project + user;
-- validate that the returned assignment is unique, active, belongs to the exact
-  Organization/project, and contains bounded roles.
-
-If the provider adapter cannot query by actor directly, it must exhaustively
-scan the current bounded Organization/project authorization set:
+Recovery authorization MUST use the provider-side exact actor query supported
+by `ListAuthorizations` with all three filters:
 
 ```text
-page size = 100
-offset = 0, 100, 200, ...
-stop only when offset >= authoritative total
-authoritative total must remain <= 10,000
+inUserIds     = [actor_id]
+projectId     = configured project id
+organizationId = order.organization_id
 ```
 
-Every page must be validated with the same owner rules as the existing
-membership directory. A changing total, duplicate authorization, malformed
-page, page gap, timeout, provider error, or inability to reach the authoritative
-end is `DEPENDENCY_UNAVAILABLE` / `RECONCILIATION_REQUIRED`, **not** revocation.
+The repository already uses this query shape in current ZITADEL authorization
+code and acceptance utilities. Recovery must not fall back to offset-based
+Organization-wide scans to prove actor absence.
 
-Only a complete authoritative query/scan that proves the actor has no active
-matching Organization/project assignment may return authorization denied and
-permit `terminal_intent=CANCEL / AUTHORIZATION_REVOKED`.
+The exact query result must be validated as follows:
 
-An actor found on any page is evaluated using the live roles from that exact
-assignment and the existing `authz.PermissionWorkbenchCommercialPurchase`
-policy. Multiple matching assignments are invalid/unavailable, never merged.
+- zero matching active assignments -> authorization denied/revoked;
+- exactly one matching active assignment -> use only its live role keys and
+  apply `authz.PermissionWorkbenchCommercialPurchase`;
+- more than one matching assignment -> invalid/unavailable, not merged;
+- wrong Organization/project/user, inactive/unknown state, malformed roles,
+  oversized response, timeout, non-2xx, malformed JSON, or provider failure ->
+  dependency unavailable / `RECONCILIATION_REQUIRED`;
+- provider unavailability is never interpreted as revocation.
 
-Required implementation evidence includes an authorized actor positioned beyond
-the first 100 results; recovery must find that actor and must not cancel the
-order. Missing, inactive, revoked, wrong-project, or wrong-Organization
-assignment after a **complete** authoritative lookup fails closed. Provider
-unavailability is not denial; it leaves the order
-`RECONCILIATION_REQUIRED`.
+The service-side provider credential remains read-only and must not be exposed
+to billing/domain code or browser callers.
+
+Required implementation evidence:
+
+- exact query sends `inUserIds`, `projectId`, and `organizationId` together;
+- authorized actor is admitted regardless of how many other assignments exist
+  in the Organization;
+- revoked/missing exact actor is denied only from a successful exact query;
+- duplicate/malformed exact actor results fail unavailable;
+- no offset-pagination fallback exists in the recovery authorizer.
 
 #### When reauthorization is required
 
@@ -1587,8 +1590,9 @@ The implementation is ready for #478 only when it proves:
 - recovery reauthorizes the persisted actor against live Organization membership/grants before each not-yet-admitted reserve/activation effect;
 - only the order-version CAS winner may persist `pending_effect` and invoke that new effect;
 - revoked/downgraded actors cannot cause a new reserve or activation during recovery;
-- recovery authorization never treats an incomplete membership page as revocation; direct actor lookup or complete bounded pagination is required, including an authorized actor beyond the first 100 results;
+- recovery authorization uses provider-side exact actor query (`inUserIds + projectId + organizationId`) and never uses offset-pagination absence as revocation evidence;
 - authorization-denial cancellation first persists `terminal_intent=CANCEL`; role restoration cannot revive that order;
+- revocation cancellation CAS requires `pending_effect` to be completely empty, so it cannot abandon an admitted RESERVE or ACTIVATE effect;
 - activation admission CAS requires empty terminal_intent, so release-in-progress and activation cannot both be newly admitted;
 - authorization-denial cancellation cannot race an already-admitted RESERVE/ACTIVATE effect; a losing denial CAS must reconcile the admitted effect;
 - crash after effect admission but before external call replays the same admitted source identity without creating a new attempt;
