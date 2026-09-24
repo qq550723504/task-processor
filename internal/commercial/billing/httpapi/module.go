@@ -263,7 +263,7 @@ func (h *Handler) Orders(c *gin.Context) {
 	}
 	if raw := c.Query("kind"); raw != "" {
 		kind := billing.OrderKind(raw)
-		if kind != billing.OrderWalletTopUp && kind != billing.OrderResourcePurchase {
+		if kind != billing.OrderWalletTopUp && kind != billing.OrderResourcePurchase && kind != billing.OrderSubscriptionPurchase {
 			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 			return
 		}
@@ -271,7 +271,8 @@ func (h *Handler) Orders(c *gin.Context) {
 	}
 	if raw := c.Query("product_kind"); raw != "" {
 		product := billing.ProductKind(raw)
-		if _, ok := billing.ResourceTypeForProduct(product); !ok {
+		_, resourceProduct := billing.ResourceTypeForProduct(product)
+		if !resourceProduct && product != billing.ProductSubscriptionPlan {
 			writeError(c, http.StatusBadRequest, "INVALID_REQUEST")
 			return
 		}

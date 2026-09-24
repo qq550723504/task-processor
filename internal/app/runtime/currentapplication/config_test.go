@@ -336,6 +336,28 @@ func referralRuntimeConfig(t *testing.T) *Config {
 	return cfg
 }
 
+func TestSubscriptionPurchaseDirectoryCredentialFlowsThroughPrivateManifest(t *testing.T) {
+	cfg := referralRuntimeConfig(t)
+	owner := cfg.CommercialDatabase
+	owner.User = "commercial_owner_runtime"
+	cfg.CommercialOwnerDatabase = &owner
+	if err := cfg.validate(); err == nil || !strings.Contains(err.Error(), "identity.tenantDirectoryToken") {
+		t.Fatalf("missing subscription directory credential validation = %v", err)
+	}
+	cfg.Identity.TenantDirectoryToken = "synthetic-read-only-directory-pat"
+	manifest, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadConfig(writeManifest(t, string(manifest)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.CoreConfig().ListingKit.Zitadel.TenantDirectoryToken; got != cfg.Identity.TenantDirectoryToken {
+		t.Fatal("current application dropped the directory credential before billing assembly")
+	}
+}
+
 func TestReferralManifestRejectsPublicRead(t *testing.T) {
 	cfg := referralRuntimeConfig(t)
 	data, err := json.Marshal(cfg)

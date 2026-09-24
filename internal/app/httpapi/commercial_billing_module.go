@@ -48,17 +48,18 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 	}
 	module := commercialBillingModule{handler: billinghttp.NewHandler(service)}
 	zitadel := cfg.ListingKit.Zitadel
-	if strings.TrimSpace(zitadel.TenantDirectoryToken) != "" && strings.TrimSpace(zitadel.AuthorizationAPIURL) != "" && strings.TrimSpace(zitadel.ProjectID) != "" {
-		subscriptionOwner, ownerErr := listingsubscription.NewRuntimeService(listingsubscription.NewGormRepository(commercialDB))
-		if ownerErr != nil {
-			return nil, ownerErr
-		}
-		recoveryAuthorizer := subscriptionPurchaseRecoveryAuthorizer{reader: zitadelruntime.NewAuthorizationClient(zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), serviceToken: zitadel.TenantDirectoryToken, projectID: zitadel.ProjectID, authorizer: authorizer}
-		if enableErr := service.EnableSubscriptionPurchases(purchasedSubscriptionOwnerAdapter{owner: subscriptionOwner}, recoveryAuthorizer); enableErr != nil {
-			return nil, enableErr
-		}
-		module.reconcileSubscriptions = func(run context.Context) error { return service.ReconcileRecoverableSubscriptionOrders(run, 50) }
+	if strings.TrimSpace(zitadel.TenantDirectoryToken) == "" || strings.TrimSpace(zitadel.AuthorizationAPIURL) == "" || strings.TrimSpace(zitadel.ProjectID) == "" {
+		return nil, errors.New("subscription purchase directory authorization configuration unavailable")
 	}
+	subscriptionOwner, ownerErr := listingsubscription.NewRuntimeService(listingsubscription.NewGormRepository(commercialDB))
+	if ownerErr != nil {
+		return nil, ownerErr
+	}
+	recoveryAuthorizer := subscriptionPurchaseRecoveryAuthorizer{reader: zitadelruntime.NewAuthorizationClient(zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}), serviceToken: zitadel.TenantDirectoryToken, projectID: zitadel.ProjectID, authorizer: authorizer}
+	if enableErr := service.EnableSubscriptionPurchases(purchasedSubscriptionOwnerAdapter{owner: subscriptionOwner}, recoveryAuthorizer); enableErr != nil {
+		return nil, enableErr
+	}
+	module.reconcileSubscriptions = func(run context.Context) error { return service.ReconcileRecoverableSubscriptionOrders(run, 50) }
 	return module, nil
 }
 

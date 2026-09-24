@@ -105,6 +105,23 @@ func TestSubscriptionOrderRequiresExactlyOneIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestOrdersAcceptsSubscriptionKindAndProductFilters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, query := range []string{"kind=SUBSCRIPTION_PURCHASE", "product_kind=SUBSCRIPTION_PLAN"} {
+		t.Run(query, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(response)
+			request := httptest.NewRequest(http.MethodGet, orderPath+"?"+query, nil)
+			request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), authidentity.AuthenticatedIdentity{UserID: "actor-1", TenantID: "org-1", EffectiveOrganizationID: "org-1"}))
+			ctx.Request = request
+			NewHandler(&billing.Service{}).Orders(ctx)
+			if response.Code != http.StatusServiceUnavailable {
+				t.Fatalf("subscription filter was rejected before order read: status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestNotFoundMapsToNotFoundResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	response := httptest.NewRecorder()

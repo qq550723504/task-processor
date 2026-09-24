@@ -57,11 +57,12 @@ type ListenConfig struct {
 }
 
 type IdentityConfig struct {
-	IssuerURL           string `json:"issuerURL"`
-	AuthorizationAPIURL string `json:"authorizationAPIURL"`
-	ClientID            string `json:"clientID"`
-	ClientSecret        string `json:"clientSecret"`
-	ProjectID           string `json:"projectID"`
+	IssuerURL            string `json:"issuerURL"`
+	AuthorizationAPIURL  string `json:"authorizationAPIURL"`
+	ClientID             string `json:"clientID"`
+	ClientSecret         string `json:"clientSecret"`
+	ProjectID            string `json:"projectID"`
+	TenantDirectoryToken string `json:"tenantDirectoryToken,omitempty"`
 }
 
 type DatabaseConfig struct {
@@ -219,6 +220,12 @@ func (cfg *Config) validate() error {
 			return fmt.Errorf("%s is required and must be bounded", name)
 		}
 	}
+	if cfg.Identity.TenantDirectoryToken != "" && !boundedValue(cfg.Identity.TenantDirectoryToken, 4096) {
+		return errors.New("identity.tenantDirectoryToken must be trimmed and bounded")
+	}
+	if cfg.CommercialOwnerDatabase != nil && cfg.Referrals.Enabled && cfg.Identity.TenantDirectoryToken == "" {
+		return errors.New("identity.tenantDirectoryToken is required for subscription purchase recovery")
+	}
 	if err := cfg.SourceAccountDatabase.validate("sourceAccountDatabase"); err != nil {
 		return err
 	}
@@ -371,6 +378,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 			Zitadel: coreconfig.ListingKitZitadelConfig{
 				IssuerURL: cfg.Identity.IssuerURL, AuthorizationAPIURL: cfg.Identity.AuthorizationAPIURL,
 				ClientID: cfg.Identity.ClientID, ClientSecret: cfg.Identity.ClientSecret, ProjectID: cfg.Identity.ProjectID,
+				TenantDirectoryToken:  cfg.Identity.TenantDirectoryToken,
 				AuthorizationRequired: true,
 			},
 		},
