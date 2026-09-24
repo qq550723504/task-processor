@@ -1960,8 +1960,18 @@ func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testi
 		"the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check",
 		"### ZERO_PRICE execution",
 		"complete the live-reauth + order-CAS admission protocol for `pending_effect=ACTIVATE`",
+		"zero matching assignments -> authorization denied/revoked",
+		"provider state `STATE_ACTIVE`",
 		"known provider state `STATE_INACTIVE`",
+		"more than one matching assignment -> invalid/unavailable",
+		"wrong Organization/project/user, unknown/unsupported state, malformed roles",
 		"deactivate-then-restore does not revive an order",
+		"pending_effect=RESERVE",
+		"pending_effect=ACTIVATE",
+		"terminal_intent=CANCEL / AUTHORIZATION_REVOKED",
+		"run one recovery sweep immediately after successful application assembly",
+		"repeat a bounded sweep every",
+		"long-lived",
 		"workbench.commercial.purchase",
 	} {
 		if !strings.Contains(text, required) {
