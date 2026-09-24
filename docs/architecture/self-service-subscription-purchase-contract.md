@@ -478,6 +478,61 @@ Before mutation, using the activation-owner clock:
 - a future-effective ACTIVE/TRIALING subscription also blocks;
 - upgrade, downgrade, renewal, and overlap are not inferred.
 
+### 8.3 Per-Organization activation decision fence
+
+The first-activation rule must be serialized per Organization. Source-idempotency
+alone is insufficient because two distinct commercial orders have different
+source identities and can race while the Organization has no subscription row.
+
+The subscription owner therefore owns a transaction-only serialization record,
+for example:
+
+```text
+saas_subscription_activation_fences
+  organization_id PRIMARY KEY
+```
+
+The fence is an internal concurrency primitive, not a business fact and not a
+browser-visible resource.
+
+Every `ActivatePurchasedPlan` transaction must:
+
+1. ensure the fence row for the Organization exists using an idempotent
+   insert-on-conflict operation;
+2. lock that row for update;
+3. after acquiring the lock, re-read the source-bound activation operation;
+4. replay it if the exact source/fingerprint is already committed;
+5. re-read the current/future-effective subscription state;
+6. reject a different active/future-active subscription with
+   `ACTIVE_SUBSCRIPTION_EXISTS`;
+7. re-read and fingerprint the target plan;
+8. only then commit the activation operation, subscription, exact entitlement
+   set, and audit atomically.
+
+The fence must be acquired before the effective-subscription decision. Locking
+only `saas_tenant_subscriptions` is not sufficient because the first-purchase
+case has no row to lock.
+
+Two distinct orders for the same Organization may temporarily reserve wallet
+funds before reaching the activation owner, but at most one may commit an
+activation. A loser that receives a proven
+`ACTIVE_SUBSCRIPTION_EXISTS` result must release its own reservation before
+becoming CANCELLED. It must never commit wallet funds.
+
+Required PostgreSQL concurrency evidence:
+
+```text
+two distinct SUBSCRIPTION_PURCHASE orders
+same Organization
+different idempotency keys / source IDs
+start concurrently
+  -> exactly one activation commits
+  -> exactly one subscription/entitlement snapshot is current
+  -> at most one wallet reservation commits
+  -> losing reservation is released
+  -> losing order is CANCELLED with ACTIVE_SUBSCRIPTION_EXISTS
+```
+
 ## 9. Entitlement-set fingerprint
 
 The activation result includes a canonical fingerprint over the resulting current subscription projection:
@@ -609,6 +664,92 @@ It may not:
 - apply a different plan;
 - choose a new Organization.
 
+### 12.1 Automatic recovery trigger
+
+Recovery cannot depend on a user resubmitting the original POST. The
+current-application composition must start one dedicated
+subscription-order recovery loop after the application has assembled
+successfully and all required commercial, money, and subscription dependencies
+are available.
+
+This is a bounded commercial-billing recovery component, not a generic
+scheduler/reconciliation framework and not a `kernel/module.Registry`
+lifecycle extension.
+
+The runner contract is:
+
+```go
+type SubscriptionOrderRecoveryStore interface {
+    ListRecoverableSubscriptionOrders(
+        context.Context,
+        int, // limit
+    ) ([]Order, error)
+}
+
+type SubscriptionOrderRecoveryRunner interface {
+    Run(context.Context)
+}
+```
+
+Persistence selection is restricted to:
+
+```text
+kind = SUBSCRIPTION_PURCHASE
+status IN (
+  PENDING,
+  FUNDS_RESERVED,
+  FULFILLING,
+  RECONCILIATION_REQUIRED
+)
+```
+
+The query is bounded to at most 50 orders per sweep and ordered by
+`updated_at, order_id`. Terminal `FULFILLED` and `CANCELLED` orders are
+never selected.
+
+Runtime behavior:
+
+1. run one recovery sweep immediately after successful application assembly,
+   before relying on user traffic for recovery;
+2. while the application context remains alive, repeat a bounded sweep every
+   30 seconds;
+3. cancel promptly on the parent application context;
+4. for every selected order, invoke only
+   `ReconcileSubscriptionOrder(organization_id, order_id)`;
+5. never create a quote, order, idempotency key, activation source, or wallet
+   reservation identity from the runner;
+6. an unresolved attempt updates the durable order timestamp/state so the next
+   bounded sweep can retry without a busy loop.
+
+The recovery loop is discovery/trigger only. Correctness remains in the durable
+owners:
+
+- commercial order updates retain version/row-lock conflict checks;
+- wallet operations remain source-bound and idempotent;
+- subscription activation remains protected by the Organization activation
+  fence and source-bound replay contract.
+
+Therefore multiple application replicas or a foreground request racing the
+recovery runner must be safe. An order-version conflict causes the losing
+attempt to re-read/defer; it never authorizes a duplicate charge or activation.
+
+Required restart evidence:
+
+```text
+activation commits
+process stops before order activation proof is persisted
+restart current-application
+  -> startup recovery selects the original order
+  -> reads the existing activation by original source ID
+  -> completes/recovers original wallet state
+  -> converges the same order to FULFILLED
+  -> no second activation/order/charge
+```
+
+A persistent dependency outage may leave the order
+`RECONCILIATION_REQUIRED`; the automatic loop must keep using the same durable
+identities after the dependency recovers.
+
 ## 13. Public Workbench HTTP contract
 
 Use dedicated self-service routes for the first slice so resource-purchase request schemas do not become ambiguous.
@@ -634,7 +775,7 @@ Response item contains at least:
   "plan_code": "professional",
   "plan_name": "专业版",
   "term_months": "1",
-  "settlement_mode": "WALLET",
+  "settlement_mode": "ZERO_PRICE",
   "currency": "CNY",
   "total_minor": "0",
   "pricing_version": "pricing-v1",
@@ -760,12 +901,13 @@ The implementation is ready for #478 only when it proves:
 - WALLET reserves, activates, then commits exactly once;
 - insufficient wallet balance cancels without activation;
 - active-subscription conflict does not charge;
+- concurrent distinct first-purchase orders for one Organization serialize so exactly one activation and at most one final charge succeeds;
 - plan changes between quote and activation fail with no mutation;
 - same idempotency key/same fingerprint replays the same order;
 - same key/different fingerprint conflicts;
 - lost activation acknowledgement is recovered by source-bound readback;
 - lost wallet commit acknowledgement is recovered through the existing wallet reservation readback;
-- restart can reconcile the same order without creating a new order or activation;
+- startup and periodic automatic recovery select the original nonterminal subscription order and restart can reconcile it without creating a new order or activation;
 - fulfilled order proves both activation and, for WALLET, committed money;
 - resulting commercial overview and Account resource allocation read the same canonical entitlement;
 - external-payment-required offers remain unavailable until an approved provider exists.
