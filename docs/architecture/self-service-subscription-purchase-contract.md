@@ -245,7 +245,7 @@ created_at
 updated_at
 ```
 
-A fulfilled subscription order must retain activation proof. A WALLET order must also retain committed wallet proof.
+A fulfilled subscription order must retain an `ACTIVATED` decision proof. A durable `REJECTED` decision can only back a CANCELLED order and must never satisfy fulfillment validation. A WALLET fulfilled order must also retain committed wallet proof.
 
 ## 5. Plan semantic snapshot
 
@@ -771,12 +771,28 @@ After activation has committed, cancellation is forbidden.
 ### ZERO_PRICE execution
 
 1. Call the source-bound activation command.
-2. On any ambiguous error, immediately read activation by organization + order ID.
-3. If matching activation exists, persist activation proof and continue.
-4. If terminal pre-effect error is proven and no activation exists, cancel.
-5. If outcome remains unknown, mark `RECONCILIATION_REQUIRED`.
-6. Persist activation proof and `FULFILLING`.
-7. Mark `FULFILLED`.
+2. On any ambiguous error, immediately read the activation decision by
+   organization + order ID.
+3. If no durable decision can be proven, mark
+   `RECONCILIATION_REQUIRED`; do not infer success or failure from transport
+   outcome alone.
+4. If the durable decision is `REJECTED`:
+   - persist the rejected-decision proof on the commercial order;
+   - copy the bounded activation failure code to the order failure reason;
+   - mark the same order `CANCELLED`;
+   - do not write `FULFILLING` or `FULFILLED`;
+   - do not create any money effect.
+5. If the durable decision is `ACTIVATED`:
+   - validate the decision matches this organization/order/plan/fingerprint;
+   - persist activated-decision proof;
+   - mark `FULFILLING`;
+   - then mark `FULFILLED`.
+6. Any mismatched, malformed, or otherwise unclassifiable decision remains
+   `RECONCILIATION_REQUIRED`.
+
+A durable activation **decision** merely proves that the activation owner
+reached a terminal conclusion. Only `Outcome=ACTIVATED` proves fulfillment.
+`Outcome=REJECTED` is terminal cancellation evidence, never activation proof.
 
 ### WALLET execution
 
@@ -855,7 +871,9 @@ Reconciliation may:
   decision is proven and persisted on the order;
 - commit the original reservation only after a matching durable `ACTIVATED`
   decision is proven and persisted on the order;
-- move the same order to FULFILLED, CANCELLED, or remain RECONCILIATION_REQUIRED.
+- move the same order to FULFILLED only from a matching durable `ACTIVATED` decision;
+- move the same order to CANCELLED only from a matching durable `REJECTED` decision (plus RELEASED wallet proof for WALLET);
+- otherwise remain RECONCILIATION_REQUIRED.
 
 It may not:
 
@@ -1188,7 +1206,7 @@ The implementation is ready for #478 only when it proves:
 - browser cannot submit price, plan internals, window, limits, actor, or organization;
 - `listingkit_admin` can purchase only the current Effective Organization;
 - viewer/operator are denied;
-- ZERO_PRICE creates a canonical order and source-bound activation without money mutation;
+- ZERO_PRICE creates a canonical order and no money mutation; `ACTIVATED` converges to FULFILLED while durable `REJECTED` converges to CANCELLED and can never be reported as success;
 - WALLET reserves, activates, then commits exactly once;
 - insufficient wallet balance cancels without activation;
 - active-subscription conflict commits a durable rejected activation decision before wallet release and does not charge;
