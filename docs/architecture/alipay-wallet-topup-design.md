@@ -1,46 +1,51 @@
-# 支付宝企业钱包充值架构设计
+# 微信支付与支付宝企业钱包充值架构设计
 
 **状态：DRAFT / 待架构评审；不是 IMPLEMENTATION_READY。**  
 **关联：#481；复用 #457；订阅消费沿 #479 / #480。**  
 **设计日期：2026-09-24。代码核对基线：`c5deccbe7d42e211ab1e2c80987b1e7e67b671f2`。**
 
+本文件沿用原 `alipay-wallet-topup-design.md` 路径以保留评审链接，正文是本批次唯一的双渠道设计，不另维护单支付宝版本。
+
 本文件是本批次的设计草案，不覆盖已批准的钱包、资源购买和订阅合同。本轮只交付文档；不安装 SDK、不改运行代码、数据库或配置、不执行真实付款或退款。独立评审、产品待决事项、实现和生产开放分别记录，不以文档存在代替准入。
 
 ## 1. 设计决定与用户结果
 
-**使用 GoPay 的主要原因是复用支付宝的 Go 接口封装，避免自行维护支付协议；不是为了提前建设多渠道聚合平台。** SDK 技术方向采用 `github.com/go-pay/gopay`；支付宝是本设计的首发渠道。微信、Stripe、通用渠道路由不进入首版。
+**2026-09-24 用户决定：首版同时支持微信支付和支付宝。** 此决定替代此前仅做支付宝、微信后置的范围限制。统一采用 `github.com/go-pay/gopay`，明确两个渠道枚举 `WECHAT_PAY` / `ALIPAY`；不再评估是否需要微信，也不把单渠道完成当作本批次完成。使用 GoPay 的初衷仍是复用支付宝的 Go 接口封装，现在同一依赖也用于微信 APIv3；不建设通用聚合收单平台。
 
 目标用户是当前已验证 Effective Organization 内有 `workbench.commercial.wallet_topup` 权限的企业管理员。目标链路：
 
 ```text
-充值中心 → 创建充值订单 → 支付宝付款
-        → 服务端核实付款 → 企业钱包入账或优先偿债
-        → 订单 / 余额 / 流水可回读
+充值中心 → 选择微信支付或支付宝 → 创建绑定所选渠道的充值订单
+        → 微信扫码 / 支付宝收银台 → 服务端核实付款
+        → 同一企业钱包入账或优先偿债 → 订单 / 余额 / 流水可回读
         → 用户另行选择使用钱包购买套餐或资源
 ```
 
 充值成功不自动购买、激活权益或重新执行失败的消费。套餐 `EXTERNAL_PAYMENT` 直付仍未开放，#479 的 ZERO_PRICE / WALLET 实现不以本批次为前置。
 
-首版限定 CNY、单渠道、单个收款商户配置、用户主动单次充值。不做自动续费、自动充值、跨企业转账、提现新业务、分账、发票、多币种、旧账务迁移或完整自助退款工作台。必要原路退款和外部冲正安全包含在设计中。
+首版限定 CNY、微信与支付宝两个渠道、每渠道一套直连收款商户配置、用户主动单次充值。只收取本产品费用，不为客户代收或接入服务商子商户。不做 Stripe、自动渠道路由/故障转付、自动续费、自动充值、跨企业转账、提现新业务、分账、发票、多币种、旧账务迁移或完整自助退款工作台。必要原路退款和外部冲正安全包含在设计中。
 
 ### 1.1 首发交互方案
 
-建议先使用**电脑网站支付 `alipay.trade.page.pay`**：适配当前 Web Console，服务端生成渠道付款跳转，浏览器前往支付宝收银台。GoPay 对应 `TradePagePay`；生成付款参数或 URL 不是已经创建远端交易，更不是付款成功。[S1][S2]
+| 渠道 | 本文建议的 Web 接入产品 | 付款入口与语义 |
+| --- | --- | --- |
+| ALIPAY | 电脑网站支付 `alipay.trade.page.pay` | GoPay `TradePagePay` 生成付款跳转；浏览器前往支付宝收银台。生成 URL 不等于远端交易已创建或已付款 [S1][S2] |
+| WECHAT_PAY | 微信 APIv3 直连商户 Native 支付 | GoPay `V3TransactionNative` 请求渠道下单，取得 `code_url` 后在 Console 渲染二维码，用户使用微信扫码；下单成功/二维码生成不等于付款成功 [S8][S11] |
 
-这是**待产品及商户产品权限确认的接入建议**，不是宣称已经签约。若商户只具备当面付等其他产品权限，应先调整本节与 checkout 适配契约，再实现该单一产品；不得运行时盲目降级到另一支付产品。首版不同时开发 Page Pay、WAP、APP 和扫码直连。
+**两个渠道都属于首版；具体产品形态仍是待商户产品权限确认的技术方案。** 不凭 SDK 可调用推定已经签约。若实际只能使用其他产品，先替换对应渠道的产品契约，不删除另一渠道或运行时盲目降级。首版不同时开发微信 JSAPI/H5/小程序/APP 或支付宝 WAP/APP/扫码直连；Native 不是手机网页内直接拉起支付的承诺，窄屏应准确提示扫码使用方式。
 
 ### 1.2 尚待确认但不阻塞文档设计的事项
 
 | 编号 | 待确认项 | 建议 / 未确认时的行为 | 阻塞层级 |
 | --- | --- | --- | --- |
-| D1 | 收款主体、商户 PID、应用及企业充值业务是否获准 | 由用户/商户负责人确认，SDK 能调用不代表业务获准 | 渠道联调、真实开放 |
-| D2 | 首发支付产品 | 建议电脑网站支付；按实际产品权限核实 | 渠道特定实现准入 |
-| D3 | 充值档位或自定义额度、限额、手续费与优惠处理 | 不设默认生产金额；应付和钱包面值建议相等，渠道手续费单独处理 | 创建真实支付 |
-| D4 | 充值的推广佣金及业务付款人归属 | 建议首版充值不计佣；不得为适配旧 validator 伪造正佣金或付款人 | money 合同变更准入、真实开放 |
-| D5 | 迟到付款与主动退款政策、操作权限 | 建议有效迟到付款按原订单入账；主动退款经单独授权并先保留资金 | 取消/退款实现准入、真实开放 |
-| D6 | 沙箱账户、凭据安全交付、回调域名与运行配置 | 沙箱和生产隔离，真实小额付款也需授权 | 对应环境联调/开放 |
+| D1 | 两渠道收款主体、支付宝 PID/app、微信 mchid/appid 及企业充值业务资格 | 由用户/商户负责人分别确认，SDK 能调用不代表业务获准 | 对应渠道联调、真实开放 |
+| D2 | 两渠道具体支付产品 | 支付宝 Page Pay + 微信 APIv3 Native；双渠道范围已确定，核实的是产品权限 | 对应渠道特定实现准入 |
+| D3 | 充值档位或自定义额度、限额、手续费与优惠处理 | 不设默认生产金额；应付和钱包面值建议相等，费用单独处理；两渠道均核对 | 创建真实支付 |
+| D4 | 充值推广佣金及业务付款人归属 | 建议首版充值不计佣；不伪造正佣金或付款人 | money 合同变更准入、真实开放 |
+| D5 | 迟到付款与主动退款政策、操作权限 | 建议有效迟到付款按原订单入账；退款回原渠道并先保留资金 | 取消/退款实现准入、真实开放 |
+| D6 | 两渠道获准测试条件、凭据、回调与配置 | 支付宝使用获准沙箱；微信 APIv3 不假设沙箱，受控替身与获准真实测试分列；小额付款也需授权 | 对应环境联调/开放 |
 
-D3–D5 是产品政策，不由 SDK、Figma 示例或 Reviewer 代替用户决定。未确认时相关写 capability 保持关闭；读回与已发生资金事实的处理不能被新付款开关关闭。
+D3–D5 是产品政策，不由 SDK、Figma 示例或 Reviewer 代替用户决定。未配置或未获准的渠道显示 unavailable；不能为了满足双渠道演示而伪造成功。配置一方不自动开放另一方，关闭新付款能力不能关闭已发生资金事实的读取与恢复。
 
 ## 2. 已有能力与实际缺口
 
@@ -62,25 +67,28 @@ D3–D5 是产品政策，不由 SDK、Figma 示例或 Reviewer 代替用户决�
 
 | Owner | 唯一责任 | 禁止承担 |
 | --- | --- | --- |
-| `internal/commercial/billing` | 充值订单、支付尝试、checkout admission、已核实证据引用、订单完成、唯一充值/退款恢复协调 | 钱包余额算法、渠道签名、订阅激活 |
-| `internal/ledger/money` | 接受付款/退款/拒付事实，交易 claim，企业绑定，资金保留、入账/冲正、不可变 receipt | 商品定价、页面付款流程、商业订单编排 |
-| `internal/integration/payments/alipay`（拟新增） | GoPay 调用、响应与通知验签、金额转换、渠道状态及错误映射 | 写订单/钱包表、自行安排业务重试、产生权益 |
-| billing 自有 HTTP + app 装配 | 验证用户入口；将固定 callback route 接至可信 adapter；显式启动/停止恢复循环 | 在 handler 中直接加余额；新的总支付 Service |
-| 现有 BFF / Console | 当前企业范围传输、付款入口、真实状态、订单/余额读取 | 用浏览器回跳、缓存或按钮点击宣告到账 |
+| `internal/commercial/billing` | 同一套充值订单、支付尝试、checkout admission、证据引用、完成与恢复；订单固定渠道 | 钱包余额算法、渠道签名、订阅激活 |
+| `internal/ledger/money` | 接受付款/退款/拒付事实，交易 claim、企业绑定、保留/入账/冲正、不可变 receipt | 商品定价、渠道 checkout、商业订单编排 |
+| `internal/integration/payments/alipay`（拟新增） | GoPay 支付宝调用、form 通知验签、元字符串和状态映射 | 写订单/钱包表、自行安排业务重试 |
+| `internal/integration/payments/wechat`（拟新增） | GoPay 微信 APIv3 调用、Native 下单、原报文验签/解密、分金额和状态映射 | 第二套订单/钱包/恢复状态机、权益写入 |
+| billing 自有 HTTP + app 装配 | 验证用户入口，固定渠道通知路由，显式构造两个 adapter 并启动/停止恢复循环 | 在 handler 中直接加余额；动态插件/通用支付平台 |
+| 现有 BFF / Console | 支付方式选择、跳转/二维码展示、当前企业订单和余额投影 | 浏览器回跳、扫码动画或按钮宣告到账 |
 
 ```text
-Console → BFF → billing 领域用例 → 本地窄 port → Alipay adapter → GoPay → 支付宝
+Console → BFF → billing 领域用例 → 本地窄支付 port
+                    ↓                   ├─ Alipay adapter → GoPay/alipay → 支付宝
+              money 领域用例            └─ WeChat adapter → GoPay/wechat/v3 → 微信支付
                     ↓
-              money 领域用例 → money persistence
+              money persistence
 
-支付宝通知 → 固定 ingress → adapter 验签/映射 → billing 接收证据
-                                                    ↓
-                                    同一充值 reconciliation 路径
+两个固定通知 ingress → 各自 adapter 校验 → billing durable 收证 → 同一恢复/入账路径
 ```
 
-仅 adapter 依赖 `github.com/go-pay/gopay/alipay` 和 `gopay.BodyMap`。领域请求/结果不含 SDK 类型、`*http.Request`、任意 URL 或自由透传参数。app 只装配，billing 可以消费已有 money 合同；不创建第二账本、通用支付微服务、Saga 平台或调度框架。
+仅对应 adapter 依赖 `github.com/go-pay/gopay/alipay`、`github.com/go-pay/gopay/wechat/v3` 与 `gopay.BodyMap`。领域不接 SDK DTO、`*http.Request`、任意 URL 或自由透传参数。app 静态装配两个明确实现；billing 按持久订单的 provider 选择，不做渠道轮询、自动切换、动态注册、微服务拆分或复制账本。
 
-持久化落在现有 `internal/integration/persistence/commercialbilling` 与 `.../money`；拟新增 adapter 路径不是已存在代码。共享 billing / money / app 文件与 #479 串行交接，本轮文档不占其源码。
+窄 port 使用 `CreateOrReadCheckout`，显式承认微信分支可能创建远端交易，不命名为纯本地查询。结果是带 discriminator 的 `CheckoutAction`：`REDIRECT` 只含受控支付宝跳转，`QR_CODE` 只含微信二维码载荷，两者互斥；并带原 order/attempt/channel、到期时间和输入指纹。付款成功只能由 verified payment observation 表达。两渠道共享用例与金额模型，不强制把不同协议伪装成相同 HTTP 行为。
+
+持久化复用 `internal/integration/persistence/commercialbilling` 与 `.../money`。共享 billing/money/app 文件与 #479 串行交接；本轮只改设计文档和文档检查，不占用运行源码。
 
 ## 4. 业务身份、金额与幂等
 
@@ -88,7 +96,7 @@ Console → BFF → billing 领域用例 → 本地窄 port → Alipay adapter �
 
 - **InitiatorUserID**：创建订单时的本系统已认证用户，写入 immutable intent 与 audit。
 - **BeneficiaryOrganizationID**：创建时的 verified Effective Organization，此后不随成员关系变化。
-- **Provider buyer identity**：支付宝付款人标识，仅为渠道事实；不等于 InitiatorUserID，也不授予本系统权限。可以由别人付款，是否允许由 D4 明确；不得把支付宝 UID 填进本系统用户 ID 字段。
+- **Provider buyer identity**：支付宝买家标识或微信 OpenID（带渠道/app 作用域），仅为渠道事实；不等于 InitiatorUserID，也不授予本系统权限。可以由别人付款，是否允许由 D4 明确；不得把支付宝 UID 或微信 OpenID 填进本系统用户 ID 字段，也不把同名外部标识跨渠道合并。
 
 回调按持久化 attempt 查找原企业，不使用当前登录用户、当前 membership、客户端 `attach/passback_params` 或回调任意 org 字段推断归属。支付记录仍属于原企业；撤权只限制新的操作和读权限，不抹去已收到的资金。
 
@@ -99,13 +107,13 @@ commercial_order_id ↔ 一个 durable payment_attempt_id
 payment_attempt_id   → 一个持久化 out_trade_no
 provider transaction → 一个 canonical payment_id
 payment_id + order   → 一个 money top-up receipt
-REFUND + refund_id   → 一个持久化 out_request_no
+REFUND + refund_id   → 一个持久化 provider_refund_request_no（支付宝 out_request_no / 微信 out_refund_no）
 payment + kind + id  → 一个冲正回执及至多一个差额核对记录
 ```
 
 首版一个充值订单只生成一个渠道支付尝试。未决时不新增 attempt；明确结束后确有新的充值意图才创建新订单。超时、刷新、网络重试均不等于新的充值意图。
 
-`out_trade_no` 建议使用固定前缀加随机 UUID 的无连字符形式，生成后持久化且永不改变；不拼接企业/用户长标识。业务 fingerprint 使用带版本的确定性编码与 SHA-256，不用歧义分隔符拼接。SDK Request-Id 只作跟踪，不承担幂等。
+`out_trade_no` 与主动退款请求号建议使用 32 位小写十六进制随机标识，在两个 adapter 分别验证所选产品限制，生成后持久化且永不改变；不拼接企业/用户长标识。业务 fingerprint 使用带版本的确定性编码与 SHA-256，不用歧义分隔符拼接。SDK Request-Id 只作跟踪，不承担幂等。
 
 至少需要以下唯一约束；实际索引命名在实现确定：
 
@@ -116,7 +124,8 @@ billing: UNIQUE(provider, environment, merchant_id, out_trade_no)
 money:   UNIQUE(provider, environment, merchant_id, provider_trade_no)
 money:   UNIQUE(payment_id) and UNIQUE(commercial_order_id) on top-up binding
 money:   UNIQUE(refund_id) in accepted refunds; UNIQUE(chargeback_id) in accepted chargebacks
-money:   UNIQUE(provider, environment, merchant_id, out_request_no) on refund requests
+money:   UNIQUE(provider, environment, merchant_id, provider_refund_request_no) on refund requests
+billing: UNIQUE(provider, environment, merchant_id, event_type, provider_event_id) on notification inbox
 money:   UNIQUE(payment_id, reversal_kind, reversal_id) on top-up reversal receipts
 money:   UNIQUE(payment_id, reversal_kind, reversal_id) on excess reconciliation records
 ```
@@ -137,15 +146,27 @@ type TopUpReversalKey struct {
 
 钱包现有 reversal 存储主键为字符串，因此 top-up 路径拟使用 `topup-reversal:v1:` 加 SHA-256 十六进制摘要作为 storage ID；摘要输入是带版本、长度前缀的完整 typed key，原三字段分别保留并核验。不能直接使用原始 ReversalID 作为跨类型主键。回执、差额及每种实际账本效果的标识/指纹都包含完整 key；一笔冲正的不同 entry 另有固定 effect-kind 后缀，不能仅按 notify_id、裸 ID 或 `(payment_id, reversal_id)` 防重。既有非 top-up 身份不迁移、不改写。
 
-订单 fingerprint 绑定 org、initiator、kind、金额/币种、选定 merchant/app/environment、支付产品、到期时间及业务政策版本。同键重放先读取原订单的服务端冻结字段，不按当前时间或当前商户配置重新生成期限/政策；再核对客户端原始意图。前台同键同意图重放，同键异意图冲突；原支付尝试的 readback 必须从原订单重算期望 fingerprint，而非相信 adapter 回显输入。
+渠道原始交易/退款/事件号不得直接作为全局 ID。canonical payment/refund/chargeback ID 按各自类型，由版本化编码的 provider/environment/merchant 与原生稳定身份生成，保存原字段及校验映射。微信 out_refund_no/refund_id 与支付宝 out_request_no/渠道退款凭证必须关联到同一原退款，不能把通知 ID 当另一笔退款；身份不足只保留证据核对。typed key 中的 PaymentID 已包含渠道隔离，不能通过切渠道把同一事实重绑定。
+
+订单 fingerprint 绑定 org、initiator、kind、provider、金额/币种、选定 merchant/app/environment、支付产品、到期时间及业务政策版本。同键重放先读取原订单的服务端冻结字段，不按当前时间或当前商户配置重新生成期限/政策；再核对客户端原始意图。前台同键同意图重放，同键异意图冲突；原支付尝试的 readback 必须从原订单重算期望 fingerprint，而非相信 adapter 回显输入。
 
 ### 4.3 金额规则
 
 内部 `int64` 分，HTTP 金额为十进制字符串。充值输入只是用户意图，由服务端按 D3 的规则核准后冻结。渠道使用元字符串时，以整数运算转换，例如 `12345 分 ↔ "123.45"`；禁止 float、隐式舍入、科学计数法、负数和溢出。
 
-以该产品的订单 `total_amount` 核对订单面值，不用 `buyer_pay_amount`、`receipt_amount` 或渠道手续费净额冒充同一个金额。优惠/手续费如何影响钱包面值必须由 D3 决定。未获准的金额差异进入核对，不篡改原订单或丢弃付款证据。
+支付宝以订单 `total_amount` 核对订单面值，不用 `buyer_pay_amount`、`receipt_amount` 或渠道手续费净额冒充同一个金额。优惠/手续费如何影响钱包面值必须由 D3 决定。未获准的金额差异进入核对，不篡改原订单或丢弃付款证据。
+
+微信 Native 的 `amount.total` 是整数分，核对 `amount.currency=CNY`，不能乘除 100 后再作为分入账；`payer_total` 不替代订单总金额。支付宝才使用元十进制字符串转换，D3 未批准的优惠差异不能隐式抹平。[S8][S9]
 
 国内 Page Pay 的 CNY 是选定支付产品与受控配置的约束；某响应没有 currency 字段时，记录“由固定国内 CNY 产品确定”，不假称回调明确返回了币种。实际返回其他币种或来源产品不明则拒绝自动入账。[S2][S3]
+
+### 4.4 双渠道绑定与切换
+
+浏览器在创建 intent 前选择 `ALIPAY` 或 `WECHAT_PAY`，服务端验证该渠道 capability 后冻结 provider；商户/app/密钥由服务端固定配置决定。**同一幂等键换渠道必须冲突**：不把 provider 加入创建幂等键的唯一约束来生成第二张订单。一个订单始终一个 attempt、一个渠道，不允许同时出现微信二维码和支付宝可付款链接。
+
+订单创建后不提供修改 provider 的 API。用户需要换方式时，先完成原订单安全关闭；旧链接/二维码、在途 Native 下单或关单结果仍不确定时，拒绝自动切换渠道并核对原订单。只有确认原尝试不可再支付，才由用户显式创建另一渠道的新订单，不重用旧幂等键。一次 NOT_EXIST、前端倒计时结束或换 tab 都不是关闭证明；不得自动故障转付。
+
+退款、查单、关单、对账及重启恢复固定使用原渠道和原 merchant profile，不使用用户当前选择或系统默认渠道。原渠道不可用时保持可追踪 pending/unknown，不能用另一渠道退款或生成第二笔付款。不同真实充值意图在不同订单分别付款时，应各自入账；不能只因金额/字符串交易号相同误去重。错误渠道对原订单的真实来款进入受限异常核对，不丢证据、不直接多记余额。
 
 ## 5. 持久化模型与事务边界
 
@@ -159,16 +180,17 @@ provider, environment, merchant_profile_id/version, merchant_id, app_id
 payment_product, out_trade_no, currency, amount_minor
 request_fingerprint, policy_version, expires_at
 phase, close_requested_at, admitted_at
+checkout_action_kind, checkout_payload_secret_ref, checkout_created_at
 verified_payment_evidence_id, money_receipt_id, completion_fingerprint
 next_check_at, retry_count, last_safe_error
 version, claim_owner, claim_token, claim_until, created_at, updated_at
 ```
 
-merchant profile 绑定逻辑商户与环境；密钥不是快照字段，只保存安全配置引用。密钥轮换不能改变原 attempt 的 merchant/app/environment。checkout URL 不作为永久凭证；需要保存时私密、短期、no-store，不出现在普通日志。
+merchant profile 绑定逻辑商户与环境；密钥不是快照字段，只保存安全配置引用。密钥轮换不能改变原 attempt 的 merchant/app/environment。checkout URL/code_url 不作为到账凭证；以任务私密存储保存有效期内的必要重放载荷，不出现在普通日志。微信 code_url 成功响应必须按原 admission token 和请求指纹持久化后才可返回；过期后不再交付付款能力，支付身份和完成证据仍保留。
 
-可信通知的 durable inbox 同属 billing 的支付子记录，保存渠道事件 ID、语义 digest、attempt 关联、最小规范化证据、验签配置版本及处理进度。验签后的未知订单可留为受限异常记录，不伪造 Organization。
+可信通知的 durable inbox 同属 billing 的支付子记录，保存 provider/environment/merchant/event_type 范围内的渠道事件 ID、语义 digest、attempt 关联、最小规范化证据、验签配置版本及处理进度。验签后的未知订单可留为受限异常记录，不伪造 Organization。
 
-事件去重与资金去重分开：native `notify_id` 只用来识别通知；不同 notify_id、通知与查单仍可能指向同一付款。相同事件身份、不同关键业务字段须报警核对，签名/投递时间差异不作为第二次入账依据。
+事件去重与资金去重分开：支付宝 `notify_id`、微信通知 `id` 只用来识别本渠道通知；不同 notify_id、通知与查单仍可能指向同一付款。相同事件身份、不同关键业务字段须报警核对，签名/投递时间差异不作为第二次入账依据。
 
 ### 5.2 money 侧：复用事实，补足精确结果
 
@@ -195,7 +217,7 @@ known_reversal_receipt_ids, result_fingerprint
 | M1：money 接受并入账 | 唯一渠道 claim、accepted payment、top-up binding、钱包/流水、原入账 receipt；合并已知冲正 | 同 owner 的有界事务；失败整体回滚，未知按原身份读回 |
 | B4：billing 完成 | 校验 M1 的精确 receipt，原订单 PENDING → FULFILLED，同时写 PaymentID 与 receipt 引用 | 失败只重放 B4，不再次加余额 |
 
-M1 是建议新增的 money 用例 `AcceptAndPostProviderTopUp`，不是直接串行调用若干公共方法后假称原子。实现应复用现有事务内部算法和表；不得嵌套多个各自提交的公共方法。没有跨 billing / money / 支付宝的数据库事务，也不在持有 DB 锁时进行网络请求。
+M1 是建议新增的 money 用例 `AcceptAndPostProviderTopUp`，不是直接串行调用若干公共方法后假称原子。实现应复用现有事务内部算法和表；不得嵌套多个各自提交的公共方法。没有跨 billing / money / 支付渠道的数据库事务，也不在持有 DB 锁时进行网络请求。
 
 money 锁顺序固定为原 payment/source claim → 原退款资金保留记录（若有）→ 企业钱包；所有本批次写入口使用同一顺序。唯一约束冲突或提交不确定，使用新事务按原身份核验，不能把 DB 错误当作业务拒绝。
 
@@ -224,41 +246,46 @@ unknown phase 不删除已获知的付款、入账或退款证据。若 M1 已�
 
 ### 7.1 创建与 checkout
 
-1. 浏览器提交充值意图；Go 入口验证 live permission、verified Organization、请求大小、金额规则和 Idempotency-Key。
-2. B1 原子创建/重放订单与唯一 attempt，不返回可以自选商户、任意回跳或任意金额的接口。
-3. 用户请求 checkout 时重新验证本企业权限。首版仅原 initiator 重新获取其付款入口；其他获准企业管理员可按 read policy 查看订单，但不改变原 actor。
-4. B2 以版本 CAS 固定 admission，拒绝已关闭、过期、有付款证据或已发出关闭请求的 attempt。
-5. adapter 使用冻结的业务参数调用 GoPay 生成付款跳转；同一 attempt 只能使用相同 out_trade_no、金额、商户和**绝对到期时间**。不能重放时延长支付窗口。
-6. 返回结果丢失时仍保留“入口可能发出”的事实。恢复进程只查单/关单/入账，不自动替撤权用户生成新的付款入口。
-7. return_url 只指向本系统固定页面。回来后重新读取订单；URL 中的状态和金额都不是到账依据。
+1. 浏览器提交金额意图、所选渠道；入口验证 live permission、verified Organization、capability、金额规则和 Idempotency-Key。
+2. B1 原子创建/重放订单与唯一 attempt，绑定 provider 和固定 merchant profile，不允许客户端指定商户、期限或通知 URL。
+3. 获取 checkout 时重新验证本企业权限，首版仅原 initiator 获取付款能力；其他有 read 权限的企业管理员可查看原订单，但不改变 actor/provider。
+4. B2 以版本 CAS 持久化 admission，拒绝已关闭、过期、有付款证据或已发出关闭请求的 attempt。保存原请求指纹与派发资格后，才能生成/派发渠道请求。
+5. 支付宝分支生成 `REDIRECT`；微信分支在事务外以原 out_trade_no 调用 Native 下单，验签成功响应后持久化 `QR_CODE` 载荷。两者均使用原金额、商户和**绝对到期时间**，不能在重放时延长支付窗口。
+6. 相同 attempt 的重复 checkout 返回仍有效的原结果。若首次请求可能发出但结果未持久化，先查原单；有付款证据即转入账，无充分证据保持 RECONCILIATION_REQUIRED，不换渠道/身份。仅在锁定产品契约已证明原单同参数安全重放、且原 dispatch admission 仍有效时，允许取回原下单结果；该行为必须有对应渠道测试，不能只依赖 GoPay 返回 error 的分类。
+7. 已付/已关/过期后不再返回可付款载荷；旧 claim 结果不能覆盖新终态。恢复循环只核实原效果，不替已撤权用户生成新的付款能力。浏览器轮询读取原订单，不每次轮询调用 Native 下单。
 
-Page Pay 的签名 URL 可能在浏览器打开后才在渠道产生交易。`TRADE_NOT_EXIST` 因此不证明此前从未发出付款能力；也不能单凭此结果取消并重建订单。有效期和关单策略必须覆盖这种情况。[S1][S2]
+Page Pay 的签名 URL 可能在浏览器打开后才产生远端交易；微信 Native 下单本身是远端写请求，响应丢失可能已创建交易。两者都不能用一次 NOT_EXIST 判定从未发出能力。[S1][S2][S8][S11] 本轮不承诺可从查询接口取回丢失的 code_url；无法安全恢复时保留原身份核对/关闭，不生成替代付款。
+
+支付宝 return_url 只指向固定同源页面；返回后重新读取订单。微信 Native 不依赖浏览器 return_url，扫码后的到账同样只看服务端事实。二维码展示、扫描或收银台返回都不是入账证明。
 
 ### 7.2 通知验签与接收
 
-固定支付宝 callback endpoint 使用部署配置的商户/环境，不依赖浏览器会话或客户自报凭据。sandbox 和 production 使用分离的入口、密钥配置与数据空间；不因为请求自报 `environment=production` 就切换信任域。
+两个固定 callback endpoint 分别绑定渠道及获准环境/merchant profile，不从 body/query 或尝试另一套密钥来选择渠道。支付宝沙箱与生产隔离；微信受控测试组合与实际渠道组合隔离，不能自报环境切换信任域。错误渠道的有效签名也不能为原订单入账。
 
-建议上限：请求体 64 KiB、有限字段数和每字段长度；超过限制在解析前拒绝。form-urlencoded 仅解码一次，不将 URL query 与 POST body 合并，重复关键参数直接拒绝；保留全部待验签参数，验签后才转成领域允许字段。
+**支付宝：** 建议 body 上限 64 KiB，并限制字段数/单字段长度；form-urlencoded 只解码一次，不合并 URL query 与 POST body，重复关键参数拒绝。保留完整待验签参数，使用 GoPay `VerifySign` / `VerifySignWithCert` 并检查 boolean/error；随后核对 app_id、seller_id、out_trade_no、trade_no、total_amount、状态与原 attempt。ParseNotify 不等于验签。[S1][S4]
 
-在 adapter 内使用 GoPay 的 `VerifySign` / `VerifySignWithCert`；必须同时检查 boolean 与 error。ParseNotify 只负责解析。验签成功后核对 app_id、seller_id、out_trade_no、trade_no、total_amount、交易状态和相应产品约束，再从原 attempt 取得 org/actor。[S1][S4]
+**微信：** 建议外层 body 上限 2 MiB、解密后 JSON 上限 1 MiB，并限制结构深度/字段规模；这是本项目接收边界，不声称 SDK 默认值。保留原始 body，按 `Wechatpay-Serial` 对应的受信平台公钥/证书验证 `Wechatpay-Timestamp`、`Wechatpay-Nonce`、签名和原始字节，不能先重排 JSON 再验签。未知序列号、重复安全关键头/字段、签名失败均 fail closed；密钥加载来自受控配置，不接受回调提供的下载地址。[S9]
 
-不套用微信 V3 的通知解密流程到支付宝；是否存在加密字段依所选支付宝接口定义处理。不自写 RSA/证书验签，不信任通知提供的任意证书下载地址。
+微信验签通过后，使用该配置的 APIv3 密钥与 GoPay 的解密能力处理 `AEAD_AES_256_GCM` resource，异常 nonce、算法、密文或字段安全拒绝。只分派批准的支付/退款事件类型，再核对 mchid/appid（接口实际返回时）、out_trade_no、transaction_id、金额/币种及原绑定；接口未返回的字段必须由受信调用上下文与已存原交易证明，不伪造返回字段。成功解密不代替签名或业务绑定。支付宝不套用这套 JSON/GCM 流程。[S8][S9][S10]
 
-B3 可靠接收后才能返回支付宝协议的纯文本 `success`；这只是通知接收确认，不表示订单已完成。签名/格式失败或 DB 接收失败不能返回假成功。已可靠记录的未知订单或业务冲突可以确认接收并进入受限异常队列，由查单/人工核对处理，不能直接入账。[S1][S4]
+两者均**先可靠落盘再 ACK**：B3 提交已验证的规范证据/接收结果后，支付宝返回纯文本 `success`；微信返回 `HTTP 204`、空 body。微信官方接受 200/204，此设计固定使用 204，不复用支付宝文本回执。微信应答预算应满足官方 5 秒要求，B3 不等待 M1 入账或外部查单；失败返回相应非成功响应，不先成功应答再只放内存队列。[S4][S9][S10]
+
+ACK 表示可靠接收，不表示 FULFILLED。未知订单/业务冲突若已作为受限异常可靠保存，可以确认接收并由同一恢复路径核查，不能猜 org 加余额。支付和退款事件的去重使用渠道命名空间；不同 notify_id/id 仍可能是同一资金效果。
 
 ### 7.3 主动查单与状态映射
 
-查单必须通过固定 merchant profile 和原 out_trade_no；验证同步响应签名、业务成功码、返回订单/交易身份和金额。通知、主动查单、账单差异核实最终都进入同一个 `RecordVerifiedPaymentObservation` → `ReconcileTopUpOrder` 路径。
+查询、关单按原 provider/merchant profile/out_trade_no，验证响应签名、接口结果、交易身份/金额。两个 adapter 将渠道观察规范化，再进入同一个 `RecordVerifiedPaymentObservation` → `ReconcileTopUpOrder`，保留原状态供审计，不让渠道枚举直接驱动 wallet。
 
-| 支付宝观察 | 本系统处理 |
+| 渠道观察 | 本系统处理 |
 | --- | --- |
-| WAIT_BUYER_PAY | 继续待付；不得入账 |
-| TRADE_SUCCESS / TRADE_FINISHED | 经完整绑定校验后接受为付款成功候选；两者不是两笔资金 |
-| TRADE_CLOSED | 可能是未支付关闭，也可能是支付后全额退款；不得直接推断未付款 |
-| TRADE_NOT_EXIST | 保存一次有时间和查询上下文的观察，不当成强终态 |
-| 网络错误、业务结果无法分类、验签失败 | unknown / 安全失败；不换身份再付 |
+| 支付宝 WAIT_BUYER_PAY；微信 NOTPAY / USERPAYING | 继续待付/处理中；不得入账 |
+| 支付宝 TRADE_SUCCESS / TRADE_FINISHED；微信 SUCCESS | 完整绑定后形成付款成功候选；多个成功通知不是多笔资金 |
+| 支付宝 TRADE_CLOSED | 可能是未付款关闭或付款后全额退款；结合原付款/退款证据分类 |
+| 微信 CLOSED / REVOKED / PAYERROR | 按该产品的明确终态及原请求核实；不能覆盖已知付款事实，不把订单关闭当成退款到账 |
+| 微信 REFUND | 转退款核对，不能把这一状态本身当作新的成功充值或精确退款金额 |
+| 查询不存在、网络错误、无法分类、验签失败 | 单次观察/unknown/安全失败；不换渠道或订单再次付款 |
 
-`TRADE_CLOSED` 必须结合原付款事实、支付时间、退款查询及必要账单证据分类。证据不足继续核对；不能因为未收到成功通知而假定从未付款。[S3][S5]
+支付宝 TRADE_CLOSED 与微信支付订单状态、微信退款 CLOSED 分别处理。证据不足继续核对，不能因缺少成功通知就认定从未付款。可信的支付/退款事实保留，旧待付观察不回退已确认状态。[S3][S5][S9][S10]
 
 ## 8. 取消、到期与迟到付款
 
@@ -269,6 +296,8 @@ B3 可靠接收后才能返回支付宝协议的纯文本 `success`；这只是�
 **建议的迟到付款政策（D5 待确认）**：只要付款真实、精确匹配原 intent 且未重复入账，就按原企业入账，不自动发起额外消费或退款。若先前误分类为 CANCELLED，允许一个专门的 late-payment correction：保留取消审计，在原订单上完成核实和精确入账后修正为 FULFILLED，标明纠正原因。不是开放通用“重放即可复活取消订单”，更不能复活被取消的套餐购买。
 
 一旦出现任何可信付款证据，普通未付款取消路径停止。相矛盾的已关闭/已付款证据不覆盖彼此，进入异常核对。已知退款须按原付款冲正；不能将已退回的款重新作为净充值。
+
+微信必须同时核实原 Native 下单是否仍在途与原渠道关单结果；code_url 不再显示不是远端不可支付的证明。换渠道遵守 §4.4，不用本地取消来绕过未知远端效果。
 
 D5 尚未确认时不开放实际付款/取消写入口。实现评审必须明确上述例外转换，而不是隐藏在通用 `UpdateOrder` 里。
 
@@ -298,7 +327,7 @@ payer_binding = UNATTRIBUTED_EXTERNAL | VERIFIED_INTERNAL_USER
 
 | 接口 | Owner | 输入与结果要点 |
 | --- | --- | --- |
-| `BuildCheckout` | billing port / Alipay adapter | 原 attempt 的固定商户/环境/订单/金额/期限 → 有界跳转描述；不宣告已支付 |
+| `CreateOrReadCheckout` | billing port / 两渠道 adapter | 原 attempt 的 provider/商户/环境/订单/金额/期限 → REDIRECT 或 QR_CODE；显式远端效果与 unknown，不宣告已支付 |
 | `QueryPayment` / `ClosePayment` | 同上 | 原渠道身份 → 已验证规范观察 / 关单结果；unknown 单独表达 |
 | `RecordVerifiedPaymentObservation` | billing | 只供可信运行装配调用的已验证证据 → durable 接收回执 |
 | `AcceptAndPostProviderTopUp` | money | 精确订单绑定 + 可信付款证据 + 明确经济政策 → immutable posting receipt |
@@ -306,11 +335,11 @@ payer_binding = UNATTRIBUTED_EXTERNAL | VERIFIED_INTERNAL_USER
 | `ReconcileTopUpOrder` | billing | 原 org / order → 继续查询、原身份入账或完成订单 |
 | `PrepareTopUpRefund` / `ConfirmTopUpRefund` / `ReleaseTopUpRefundHold` | money | 原付款、退款身份、金额、授权证明 → 资金保留/确认/释放回执；确认结果分开完整渠道金额、本金作用与差额 |
 | `ReadTopUpReversal` | money | 原 org / order + `TopUpReversalKey{PaymentID, Kind, ReversalID}` → immutable 冲正 receipt、hold 终态及差额核对引用；不是当前余额 |
-| `Refund` / `QueryRefund` | Alipay adapter port | 原付款 + 稳定 out_request_no + 金额 → 规范退款观察 |
+| `Refund` / `QueryRefund` | 两渠道 adapter port | 原付款 provider/商户 + 稳定 provider_refund_request_no + 金额 → 规范退款观察；不得跨渠道退款 |
 
 money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类型及调用者由受控装配形成；代码依赖和实际调用测试同时守住边界，不能只靠 DTO 名字。
 
-入账命令与读取结果都必须携带并核对 org、order、payment、merchant/environment、amount/currency 和 request/result fingerprint。缺失、错配、金额不等或其他订单的 receipt 一律不能完成订单。
+入账命令与读取结果都必须携带并核对 org、order、payment、provider、merchant/environment、amount/currency 和 request/result fingerprint。缺失、错配、金额不等或其他订单的 receipt 一律不能完成订单。
 
 冲正命令、退款确认/释放和读回使用 §4.2 完整 typed key；退款 intent/hold 固定 Kind=REFUND。`ReadTopUpReversal` 在当前授权的 org/order 范围内按三字段精确查询并回检返回 key、原绑定和 fingerprint：缺失或未知 Kind 返回 ErrInvalid；完整 key 未找到返回 ErrNotFound，不允许省略 kind、跨类型查找或返回第一条匹配。即使该字符串 ID 只在另一类型存在也不回退；另一 org/order 的记录不返回。相同 key 异载荷的写入返回 ErrConflict，合法 REFUND/r1 与 CHARGEBACK/r1 则各自读回自己的结果。
 
@@ -320,11 +349,11 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 
 首版建议只提供经批准的后台/support 用例，不开放新的 tenant 自助退款 API。退款资格和审批人由 D5 明确，不能推定 `wallet_topup` 权限包含退款或实际转账授权。
 
-1. billing 持久化 refund intent，绑定原 payment/order/org、金额、批准主体、原因及稳定 out_request_no；intent 与 money hold 都保存 `TopUpReversalKey`，Kind 固定为 REFUND，确认/释放不得只按裸 refund_id 匹配。
+1. billing 持久化 refund intent，绑定原 payment/order/org、金额、批准主体、原因及稳定 provider_refund_request_no（支付宝 out_request_no，微信 out_refund_no）；intent 与 money hold 都保存 `TopUpReversalKey`，Kind 固定为 REFUND，确认/释放不得只按裸 refund_id 匹配。
 2. money 在原 payment 锁下按 §11.3 检查已确认退款及拒付 + 未决退款保留 + 本次金额不超过原充值可退本金；再按 §5.3 锁顺序锁定钱包，要求 debt 为 0 且 available 足够，原子移动 available → refund-reserved 并产生 immutable hold。
-3. 只有成功取得该 hold 的原退款 intent 才可调用 GoPay `TradeRefund`。首次派发准入还须在原 payment 锁下复核 §11.3 的本金预算（本 hold 已在未决总额中，不再加一次），并持久化派发资格；预算冲突不得准入，旧 worker 的未准入派发须被版本校验拒绝。网络调用在事务外，不能把 `10000` / 受理成功一概当成已退到账。
-4. 成功或响应不明时，按原 out_request_no 查询/重放。unknown 保留资金，不重建退款单，不释放 hold。
-5. 退款查询的 `code=10000` 仅表明查询成功；需要核对 `refund_status=REFUND_SUCCESS` 及原交易/退款请求号/金额等证据。[S6] 权威成功后，按 §11.3 同一事务记录完整 RefundSettlement、结清原 hold、写本金作用及超本金差额回执；不能因其间发生其他冲正而拒绝成功确认。该主动退款**不能再通过普通 available 扣减重复扣一次**；hold 中未用于本次本金作用的余款按 §11.3 先偿债，不能留成永久 unknown。
+3. 只有成功取得该 hold 的原退款 intent 才可调用原渠道 GoPay 退款接口（支付宝 `TradeRefund`、微信 `V3Refund`）。首次派发准入还须在原 payment 锁下复核 §11.3 的本金预算（本 hold 已在未决总额中，不再加一次），并持久化派发资格；预算冲突不得准入，旧 worker 的未准入派发须被版本校验拒绝。网络调用在事务外，不能把 `10000` / 受理成功一概当成已退到账。
+4. 成功或响应不明时，按原渠道的 provider_refund_request_no 查询/重放。unknown 保留资金，不重建退款单，不释放 hold。
+5. 支付宝退款查询的 `code=10000` 仅表明查询成功，需核对 `refund_status=REFUND_SUCCESS`；微信退款需核对查询 `status=SUCCESS` 或已验证通知的相应成功状态。两者均核对原交易/退款请求号/金额，细节见 §11.4。[S6][S10] 权威成功后，按 §11.3 同一事务记录完整 RefundSettlement、结清原 hold、写本金作用及超本金差额回执；不能因其间发生其他冲正而拒绝成功确认。该主动退款**不能再通过普通 available 扣减重复扣一次**；hold 中未用于本次本金作用的余款按 §11.3 先偿债，不能留成永久 unknown。
 6. 对尚未确认成功的退款，只有明确终局拒绝且可以证明原退款不会继续执行时，才整笔释放该 hold，释放资金优先还债；超时/NOT_EXIST 单次观察不充分。§11.3 成功确认中的本金余款分配不是将退款伪装成失败释放。
 
 `refund-reserved` 是现有 `reserved_minor` 中带退款 purpose 的保留子记录，不建立第四套并列余额。现有 purchase reservation 不能冒充退款保留：其 purpose、唯一身份和消费完成证明不同。新增窄退款 purpose/记录与 ledger entry kinds 归同一 money owner，复用余额算法；购买入口必须拒绝退款保留，退款入口必须拒绝购买保留。必要增量不扩为通用资金调拨框架。
@@ -387,19 +416,33 @@ e>0 时，同一 money 事务建立以 `(payment_id, reversal_kind, reversal_id)
 
 `RecordRefundSettlement`、`RecordChargebackSettlement` 及通知包装、`ConfirmTopUpRefund`、`ApplyTopUpReversal` 和读回必须使用同一 money 内部 typed-key 事实去重与本金分配规则：accepted fact 金额为 x，wallet effect 为 d，不要求两者相等。按 §5.3 原 payment → hold → wallet 锁顺序，原子写 accepted fact、hold 变化、wallet effect、差额和 receipt；不得把现有按本金硬拒绝的入口作为 top-up 的旁路。退款先于入账时，M1 同事务衔接并按相同 W/E 分解，不暴露已退本金。原非 top-up 的受控/referral 合同保持原义并直接回归；计佣 top-up 的下游不得按超本金部分多扣收益。[R4][R6]
 
+### 11.4 双渠道退款映射
+
+退款固定使用原支付的 provider、merchant/app/environment 及原交易绑定。统一 `provider_refund_request_no` 在支付宝映射为 `out_request_no`，在微信映射为 `out_refund_no`；持久化原映射，微信响应/通知 `refund_id` 与该原请求关联，不能新造另一 canonical refund identity。
+
+| 渠道 / 结果 | money/billing 处理 |
+| --- | --- |
+| 支付宝退款查询 REFUND_SUCCESS | 完整验证原请求和金额后，按 §11.3 确认 hold；不凭 code=10000 判断到账 |
+| 微信退款查询 SUCCESS / 已验证退款成功通知 | 核对 out_refund_no/refund_id、transaction_id/out_trade_no、amount.refund/total/currency，按相同契约确认 |
+| 微信 PROCESSING / 超时 / 未知 | 不释放 hold，按原请求查询，不改号退款 |
+| 微信 ABNORMAL | 不释放 hold，保留原退款与受限处理状态；异常资金仍需渠道核实，不自动另路退款 |
+| 微信退款 CLOSED | 在验证当前原退款的终局不执行事实、且无已知成功/冲突之后，才按既有释放规则收敛；不是支付订单 CLOSED，不自动创建新退款 |
+
+微信退款受理不等于用户已收到款。异常退款的换卡、商户后台处置等需要 D5 单独授权，不在本轮扩成自动转账。支付宝仅依实际签约接口获取退款证据，不假设它具有微信相同的退款事件/字段。[S6][S10]
+
 ## 12. 自动恢复、账单核对与资源边界
 
-唯一业务协调者是 billing 的充值恢复用例；不用 SDK 自动重试另建第二业务恢复 owner。
+两渠道唯一业务协调者是 billing 的充值恢复用例；不用 SDK 自动重试另建第二业务恢复 owner。
 
 建议初始运行参数（工程默认值，可经受控配置调整，不是支付渠道保证）：应用成功组装后立即扫描；其后约每 30 秒扫描；每批最多 50 条，并发最多 4；单次渠道请求最长 10 秒，服从更短的父 deadline；退避带抖动，上限 15 分钟。
 
-选择 `next_check_at <= now` 的未终结 attempts、PAID_PENDING_CREDIT、待处理 inbox 和未决退款。§11.3 的 OPEN 差额单独核对，不把已 CONFIRMED 的退款重新当作 unknown 派发；持久 receipt 用于恢复 hold 终态。按到期时间加稳定 ID 排序推进游标，不能让同一条异常永久占据前 50 条。连续失败保留记录并告警；告警阈值不是删除或宣告失败阈值。
+选择 `next_check_at <= now` 的未终结 attempts、PAID_PENDING_CREDIT、待处理 inbox 和未决退款。§11.3 的 OPEN 差额单独核对，不把已 CONFIRMED 的退款重新当作 unknown 派发；持久 receipt 用于恢复 hold 终态。按到期时间加稳定 ID 排序推进游标，不能让同一条异常永久占据前 50 条。按渠道隔离请求并发/退避，避免一方持续失败饿死另一方；只复用这个有界循环，不建立新 scheduler。连续失败保留记录并告警；告警阈值不是删除或宣告失败阈值。
 
 使用现有 DB claim/CAS 或窄 lease 执行；网络期间不持锁。claim 过期只能重查/重放原幂等身份，不能保证旧进程没有执行远端操作；旧 claim 的回写必须被版本/token 拒绝。原已成功的资金效果由 immutable claim/receipt 防重。
 
 恢复循环绑定长生命周期 runtime context，在 app 停止时取消并有界等待；不得误用短期 startup context。既有账户/订阅恢复机制可复用调度叶能力，但本领域的候选选择与结果分类仍只归 billing。
 
-日账单核对是资金运营的第二证据入口：首次可由受控作业取得所选商户和环境的账单，核对交易号、订单、金额与退款；差异先触发同一查单/接收路径，不直接改余额。不能在失败时从任意下载 URL 拉取内容；固定渠道来源、大小/解压上限与下载超时。不为此先建 BI 或完整对账平台。[S1]
+日账单核对是资金运营的第二证据入口：首次可由受控作业取得所选商户和环境的账单，核对交易号、订单、金额与退款；差异先触发同一查单/接收路径，不直接改余额。不能在失败时从任意下载 URL 拉取内容；固定各自渠道来源、大小/解压上限与下载超时。支付宝账单和微信交易/资金账单分别按原 provider 匹配，不能仅按同名交易号或金额串账。不为此先建 BI 或完整对账平台。[S1]
 
 生产开放前必须具备未入账付款、未决退款、身份/金额冲突的可追踪处理入口。精确恢复身份、资金 receipt 和必要审计不使用短期缓存代替，也不因通知重试结束而删除。
 
@@ -408,6 +451,7 @@ e>0 时，同一 money 事务建立以 `(payment_id, reversal_kind, reversal_id)
 复用现有 Workbench commercial API 和权限，不另建一个支付工作台。下列新 route 是设计提案，实施时核对现有路由与 BFF：
 
 ```http
+GET  /api/v1/workbench/commercial/wallet/top-up-options
 POST /api/v1/workbench/commercial/wallet/top-up-intents
 POST /api/v1/workbench/commercial/wallet/top-up-intents/:order_id/checkout
 POST /api/v1/workbench/commercial/wallet/top-up-intents/:order_id/cancel
@@ -415,35 +459,41 @@ GET  /api/v1/workbench/commercial/orders/:order_id
 GET  /api/v1/workbench/commercial/wallet
 GET  /api/v1/workbench/commercial/wallet/entries
 POST /api/v1/payment-notifications/alipay
+POST /api/v1/payment-notifications/wechat
 ```
 
-所有用户写入口使用当前 same-origin/CSRF、live grants、Idempotency-Key 与 expected version；Organization 来自 verified context，不来自 body。充值 intent 可以提交期望金额字符串，服务端核准后才成为 authority；不接收 PaymentID、商户密钥、回调 URL 或可任意改写的 SDK BodyMap。
+所有用户写入口使用当前 same-origin/CSRF、live grants、Idempotency-Key 与 expected version；Organization 来自 verified context，不来自 body。充值 options 返回两个渠道各自的 product、available、受限 reason 与获准金额规则，不暴露密钥。充值 intent 提交期望金额字符串和闭合枚举 provider，服务端核准后冻结；相同 key 改 provider 返回冲突；不接收 PaymentID、商户密钥、回调 URL 或可任意改写的 SDK BodyMap。
 
 外部 notify 是独立的渠道认证入口，不套用户 cookie/CSRF，也不向它开放普通 admin 能力。必须保留其签名验证、请求限制、可信装配和 durable acceptance。
 
 UI 展示至少区分“待支付”“正在核实付款”“已付款、入账处理中”“充值完成”“已关闭”“需要人工核对”；退款另列。列表与详情由 billing 的同一 attempt/order 投影生成，不让浏览器维护第二状态机。订单仍 PENDING 时可以显示正在核对，不谎称未付款。
 
-付款跳转只允许本配置对应的支付宝 HTTPS 网关，不接受浏览器自定义链接/HTML；回跳固定同源。BFF no-store、固定 upstream、受限 JSON、取消/隔离旧响应；企业切换或撤权后旧订单不能污染新企业视图。原企业资金处理继续，不等于原用户仍可读取。
+付款操作以 §3 的 discriminated union 返回：支付宝 REDIRECT 只允许本配置对应的 HTTPS 网关，回跳固定同源；微信 QR_CODE 只作为获准 Native 二维码载荷在本地渲染，不作为浏览器跳转或服务端抓取 URL，不交第三方二维码服务。不得接受浏览器自定义链接/HTML，也不能用仅允许 HTTPS 的跳转校验器误拒合法微信二维码载荷。BFF no-store、固定 upstream、受限 JSON、取消/隔离旧响应；企业切换或撤权后旧订单不能污染新企业视图。原企业资金处理继续，不等于原用户仍可读取。
+
+两种支付方式在同一个充值中心可见、可选且显示各自真实 capability；未开放项说明原因。订单列表/详情显示不可变渠道和其付款动作，不因为用户切换选择器改写旧订单。
 
 SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、资金结果未知分别投影；unknown 返回稳定 order reference，并引导核对原订单，不提示盲目“再付一次”。
 
 ## 14. GoPay 接入约束
 
-本设计核对 `v1.5.123` 作为固定评估基线；未来实际安装前重新核查 tag、依赖图和安全情况。不得使用浮动 main/@latest 代替可追踪版本，也不为了这个文档改 go.mod。SDK 文档中的示例签名可能与实际函数参数演进不同，代码实现以锁定 tag 源码和编译为准。[S1][S7]
+继续以 `v1.5.123` 为固定设计核对基线，实际安装前核查精确 tag、依赖图、安全与编译；不使用浮动 main/@latest，不为文档改 go.mod。两渠道均使用 GoPay，但 SDK 并不统一它们的协议语义。[S1][S7][S8]
 
-第一版建议使用 `alipay` 的现有 Page Pay / query / close / refund 组合；不无理由同时使用 OpenAPI V2 与 V3 两套协议。同一 attempt 的协议版本及验证配置固定；若改用 V3，先核对应产品与通知语义再调整 adapter，不让协议差异进入 money。
-
-| 能力 | GoPay 入口（需在实施时绑定精确源码签名） | 本项目额外责任 |
+| 能力 | 支付宝 adapter | 微信 APIv3 adapter |
 | --- | --- | --- |
-| 网站付款 | TradePagePay | 持久 attempt、准入、绝对期限、合法跳转 |
-| 查单 / 关单 | TradeQuery / TradeClose | 原身份、可信状态、unknown 与取消竞争 |
-| 通知 | ParseNotifyByURLValues + VerifySign / VerifySignWithCert | 有界单次解析、签名配置、商户/app/订单/金额校验、durable ACK |
-| 退款 | TradeRefund / TradeFastPayRefundQuery | 资金保留、原请求号、累计限额、确认/释放 |
-| 账单 | DataDataServiceBillDownloadUrlQuery | 下载边界、受控核对、差错归原 owner |
+| 首发付款 | TradePagePay → REDIRECT | V3TransactionNative → QR_CODE/code_url |
+| 查询 / 关闭 | TradeQuery / TradeClose | V3TransactionQueryOrder / V3TransactionCloseOrder |
+| 通知 | ParseNotifyByURLValues + VerifySign / VerifySignWithCert | V3ParseNotify + 受信公钥/证书验签 + APIv3 resource 解密 |
+| 退款 / 查询 | TradeRefund / TradeFastPayRefundQuery | V3Refund / V3RefundQuery |
+| 账单 | DataDataServiceBillDownloadUrlQuery | V3BillTradeBill / V3BillFundFlowBill / V3BillDownLoadBill |
+| 金额 | 元十进制字符串 ↔ 内部整数分 | amount.total/refund 整数分；不做二次换算 |
 
-公钥模式与证书模式按已批准商户配置二选一，不在未知证书错误时降级为“不验签”。同步查单/退款等响应必须验签；GoPay 文档的证书自动验签需要显式配置，公钥模式应使用其相应同步验签能力。Page Pay 返回付款描述与支付结果通知分开，不能虚构不存在的支付成功同步响应。[S1]
+上表只定位 SDK 能力；函数签名、返回字段和异常以锁定源码/编译为准。支付宝选择既有 Page Pay 协议组合，不同时再接一套支付宝 V3；微信固定 APIv3，不因错误回退 V2/免验签。SDK 示例与当前渠道规范冲突时，以渠道规范为准，例如微信 ACK 使用 §7.2 的 204 空响应，不机械照搬示例 JSON。[S8][S9]
 
-始终启用 TLS 证书验证，生产关闭敏感 Debug；限制请求/响应大小和出站超时。配置包含秘密引用，不把私钥、完整通知、买家账号、签名 checkout URL 或认证头写入 Issue、Git、日志与浏览器持久存储。轮换公钥/证书时保留未决交易所需验证能力，不跨环境回退。
+两个商户配置分别保存 provider、合法 environment、merchant/app、固定通知地址、秘密引用及验证材料。支付宝选择公钥或证书模式并显式开启/调用同步验签；微信使用商户 API 私钥/序列号、APIv3 密钥及受信微信支付公钥 ID/平台证书，显式配置响应验签（如 AutoVerifySignByPublicKey）并校验错误。通知验签另按 §7.2，不能以响应已验签替代。未配置渠道正常 unavailable；显式启用但材料无效应在产生付款能力前拒绝，不回退另一套配置。已存在未决交易需要保留对应验证/查询配置，不能删除后声称已恢复完成。[S1][S8]
+
+始终启用 TLS 校验、生产关闭敏感 Debug，限制 body 和超时。两渠道不能共用或混选秘密；轮换保留未决交易所需验证能力。不把私钥、完整通知、买家账号/OpenID、付款 URL/code_url 或认证头写入 Git/Issue/普通日志/浏览器持久存储。
+
+**微信 APIv3 不虚构沙箱开关。** GoPay 该版本文档说明微信 v3 不支持沙箱；本地 fixture 只能验证受控协议边界，微信实际付款/退款须另获授权。支付宝使用其获准沙箱产品。不能把支付宝沙箱 PASS 写成微信已验收，也不因示例建议小额测试而自动收付款。[S1][S8]
 
 ## 15. 风险匹配的验收矩阵
 
@@ -465,9 +515,11 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 | 用户切企业、退出/撤权、角色不足 | 禁止新越权操作；已发生款项仍归原 org，旧响应不污染新页面 |
 | claim 超时、旧 worker 迟到、关闭新支付开关、重启 | 原身份恢复；旧 token 不覆盖新状态；已发生支付/退款继续可核实 |
 
-本地 fixture 只证明本地边界，不证明支付宝真实协议。沙箱须使用被批准的实际支付宝测试产品；没有商户/凭据时标 NOT_RUN。真实小额、生产收款、退款、正式上线分别授权，CI/代码评审不能代替用户验收。
+本地 fixture 只证明本地边界，不证明微信或支付宝真实协议。支付宝沙箱须使用被批准的实际产品，微信实际渠道验证单列；没有商户/凭据时标 NOT_RUN。真实小额、生产收款、退款、正式上线分别授权，CI/代码评审不能代替用户验收。
 
 ### 15.1 非佣金充值与冲正的组合用例
+
+本节是两个 adapter 共用的 money 契约用例；REFUND/CHARGEBACK 组合使用受控事实，不宣称两个渠道均提供同名拒付 API，投诉也不是拒付。已有资金规则不因新增微信而删减。
 
 以下为受控 fixture，全部金额单位为分，不是生产充值档位。除最后一项外均为 `NON_COMMISSIONABLE, CommissionableAmountMinor=0`，原付款/充值 `B=C=10000`，使用各自独立付款。每个用例均须核对 accepted facts 与 wallet entries/receipt；不计佣用例还须证明零 earning，不能仅证明 payment validator 接受 0。
 
@@ -489,14 +541,32 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 实施阶段必须执行对应 money contract、真实 PostgreSQL、并发/重启和消费侧回归。当前 `TestAlipayWalletTopUpDesignReversalContract` 仅守护本文的关键规则及组合用例不被删除，忽略 Markdown 换行差异；它通过不是资金行为测试已通过，以上运行验收在实现前仍为 NOT_RUN。
 
+### 15.2 双渠道验收
+
+两渠道各自完成原订单→付款→正确企业钱包/流水→查询→原路退款的链路，并各自标注受控替身、渠道测试和生产状态；未验证一方不能标为双渠道完成。一个 SDK、两个按钮或一方沙箱成功均不满足完整验收。
+
+| 用例 | 必须证明 |
+| --- | --- |
+| DUAL_HAPPY_PATH | ALIPAY 与 WECHAT_PAY 分别走真实应用/持久化，共用订单和钱包 owner；付款入口分别为 REDIRECT/QR_CODE，receipt 回读正确 |
+| DUAL_SAME_KEY_DIFFERENT_CHANNEL | 同 org/kind/key 的两个渠道请求并发只能一个原订单，另一冲突；不各建一张，不修改 provider |
+| DUAL_CALLBACK_CONFUSION | 支付宝通知送微信入口/反向、错误商户/app/环境、同名 notify_id/交易号不会串信任域或错误入账 |
+| DUAL_ID_NAMESPACE | 不同渠道/商户的相同原生付款/退款 ID 不碰撞；同一原交易的多次事件及退款别名仍合并为一个经济事实；typed reversal 的旧负例保留 |
+| DUAL_NATIVE_RESPONSE_LOSS | Native 已下单但响应丢失/持久化前重启，以原单查询或经证明安全的同参数重放，不另造 out_trade_no、续期或自动切支付宝；无法取回二维码不伪造可付结果 |
+| DUAL_NOTIFY_CRYPTO | 支付宝重复 form 参数；微信原 body 被改、错误签名/序列号/nonce/GCM/重复 JSON 字段均拒绝；B3 失败不得 ACK 成功，成功 ACK 分别符合各自协议 |
+| DUAL_REFUND_ORIGIN | 微信订单不能调用支付宝退款，反向亦然；PROCESSING/ABNORMAL 不释放 hold，成功/明确关闭、并发重复与重启正确 |
+| DUAL_CAPABILITY_RECOVERY | 一方缺配置/停新付不伪造可用、不自动转付；原渠道已发生支付退款继续恢复，另一方不被饿死；切换企业不污染旧订单 |
+| DUAL_AMOUNT_AND_EXPIRY | 支付宝元字符串、微信分金额分别正确，优惠字段不冒充本金；重放保留绝对期限，两种付款能力都遵守安全关闭再换方式 |
+
+新增 TestWalletTopUpDesignDualChannelContract 只验证文档要求存在；实现阶段必须分别运行上述协议/持久化测试，不以字符串断言当作渠道功能完成。
+
 ## 16. 实施顺序与评审收敛
 
 同一 #481 Delivery Batch，一个主要分支/PR。当前只交付本草案、索引和针对评审缺口的文档契约检查，不开多个平行实现任务。
 
-1. **M0 文档与高风险边界评审**：核对 D1–D6 的阻塞层级，重点审查身份/经济事实、M1 原子入账、取消/迟到状态、退款保留。当前状态 DRAFT；未给独立 Reviewer 的判断冒名签字。
-2. **M1 最小收款链**：已确认产品后实现 intent/checkout、GoPay adapter、通知/查单和 source-bound posting，先形成单渠道用户结果。
+1. **M0 文档与高风险边界评审**：核对 D1–D6 的阻塞层级，重点审查新增双渠道身份/验签/Native 外部效果，以及既有 M1 原子入账、退款保留；双渠道范围已由用户确定，D1–D6 的商户/政策条件仍未批准。当前状态 DRAFT；未给独立 Reviewer 的判断冒名签字。
+2. **M1 双渠道收款链**：在同一 PR 内连续实现公共 intent/checkout、支付宝与微信两个 GoPay adapter、各自通知/查单和共享 source-bound posting。可分提交验证，但不能交一方后将另一方自动降为 Later。
 3. **M2 同 PR 收敛恢复与退款**：实现原 receipt 恢复、必要退款/冲正、上述直接相关负例。不另造 scheduler 或故障注入平台。
-4. **M3 充值中心交付**：消费真实状态和原 wallet/order API，跑“充值 → 钱包另行购买”链；订阅消费沿 #479，不接管其实现。
+4. **M3 充值中心交付**：同页两种方式、分别真实 capability、状态和原 wallet/order API；两渠道分别跑“充值 → 钱包另行购买”链；订阅消费沿 #479，不接管其实现。
 
 按 AGENTS 的新增高风险检查与最终交付检查推进；正常架构评审最多两轮。修复只复核相关增量，真正的新 BLOCKER 才重开相应设计，不把文档不断加长当作交付。
 
@@ -504,7 +574,7 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 本草案**保持** #457 的 money/billing/resource ownership、整数金额、debt-first、top-up 无资源 quote/items/reservation、非完成 Order 不带 PaymentID；保持 #480 的订阅资金协议和独立激活 owner。
 
-本草案**提议补充，尚未生效**：payment attempt 子状态、精确 posting receipt、money 非佣金/付款人表示、top-up 完整渠道事实与受限本金作用/差额分解、未决 hold 成功结清规则、主动退款 purpose 与 receipt、受控迟到付款纠正。获批时在同一变更中同步相关稳定合同、类型 validator、下游消费者与直接回归，不能只新增文档却让旧合同与新实现互相冲突。未获批前本文件不作为绕过现有 guard 的依据。
+本草案按用户新决定将首版扩为双渠道，保留旧评审修复。以下技术方案仍为**提议补充，尚未生效**：双渠道 adapter/信任域/固定 provider 与 typed checkout、payment attempt 子状态、精确 posting receipt、money 非佣金/付款人表示、top-up 完整渠道事实与受限本金作用/差额分解、未决 hold 成功结清规则、主动退款 purpose 与 receipt、受控迟到付款纠正。获批时在同一变更中同步相关稳定合同、类型 validator、下游消费者与直接回归，不能只新增文档却让旧合同与新实现互相冲突。未获批前本文件不作为绕过现有 guard 的依据。
 
 ### 16.2 当前交付边界
 
@@ -512,7 +582,7 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 ## 17. 依据与核查范围
 
-仓库依据使用固定代码基线；外部依据为 GoPay 固定 tag 与支付宝官方文档。支付宝文档站部分页面依赖客户端渲染，本轮部分规则来自官方索引摘录及官方 Easy SDK 的公开 API 文档；实施前必须核对所选产品当前完整文档，不能把索引摘录当完整接口测试。
+仓库依据使用固定代码基线；外部依据为 GoPay 固定 tag、支付宝与微信支付官方文档。新增微信通知/退款规则按本轮官方页面核对；Native 接入能力同时参考腾讯云官方集成说明。支付宝文档站部分页面依赖客户端渲染，本轮部分规则来自官方索引摘录及官方 Easy SDK 的公开 API 文档；实施前必须核对所选产品当前完整文档，不能把索引摘录当完整接口测试。
 
 - [R1] [现有订单类型及 validator](https://github.com/qq550723504/task-processor/blob/c5deccbe7d42e211ab1e2c80987b1e7e67b671f2/internal/commercial/billing/contracts.go)。
 - [R2] [现有 billing service；充值入口仍 unavailable](https://github.com/qq550723504/task-processor/blob/c5deccbe7d42e211ab1e2c80987b1e7e67b671f2/internal/commercial/billing/service.go)。
@@ -527,3 +597,8 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 - [S5] [支付宝交易状态说明](https://opendocs.alipay.com/support/01raw9)；[订单已关闭的原因](https://opendocs.alipay.com/support/01rfti)。
 - [S6] [支付宝退款查询及 REFUND_SUCCESS 语义](https://opendocs.alipay.com/open/8c776df6_alipay.trade.fastpay.refund.query)；[官方 Easy SDK 的退款与退款查询合同](https://github.com/alipay/alipay-easysdk/blob/master/APIDoc.md)。
 - [S7] [GoPay v1.5.123 发布](https://github.com/go-pay/gopay/releases/tag/v1.5.123)。
+
+- [S8] [GoPay v1.5.123 微信 APIv3 文档](https://github.com/go-pay/gopay/blob/v1.5.123/doc/wechat_v3.md)。
+- [S9] [微信支付普通支付成功通知、签名/解密与应答](https://pay.wechatpay.cn/doc/v3/merchant/4012791861)。
+- [S10] [微信订单退款开发指引](https://pay.wechatpay.cn/doc/v3/merchant/4013071031)；[退款回调通知](https://pay.wechatpay.cn/doc/v3/merchant/4012085921)。
+- [S11] [腾讯云开发微信 Native 支付集成](https://tcb.cloud.tencent.com/integration-center/detail?id=7eeea64669a97a40004bd447324975af)；具体 Native 产品权限/参数在实施前按商户当前官方产品文档冻结。

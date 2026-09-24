@@ -128,3 +128,51 @@ func TestAlipayWalletTopUpDesignReversalContract(t *testing.T) {
 		})
 	}
 }
+
+// Both channels are first-release requirements; this is a document guard only.
+func TestWalletTopUpDesignDualChannelContract(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "alipay-wallet-topup-design.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ReplaceAll(string(content), "\r\n", "\n")
+	checks := []struct {
+		heading string
+		terms   []string
+	}{
+		{"## 1. 设计决定与用户结果", []string{"首版同时支持微信支付和支付宝", "WECHAT_PAY", "ALIPAY"}},
+		{"## 3. 责任与代码依赖", []string{"internal/integration/payments/wechat", "internal/integration/payments/alipay", "CreateOrReadCheckout", "REDIRECT", "QR_CODE"}},
+		{"### 4.4 双渠道绑定与切换", []string{"同一幂等键换渠道必须冲突", "不把 provider 加入创建幂等键", "拒绝自动切换渠道", "原渠道", "新订单"}},
+		{"### 7.2 通知验签与接收", []string{"Wechatpay-Serial", "原始 body", "AEAD_AES_256_GCM", "HTTP 204", "success", "先可靠落盘再 ACK", "错误渠道"}},
+		{"### 11.4 双渠道退款映射", []string{"原支付的 provider", "out_request_no", "out_refund_no", "PROCESSING", "ABNORMAL", "不释放 hold", "CLOSED"}},
+		{"## 14. GoPay 接入约束", []string{"V3TransactionNative", "V3TransactionQueryOrder", "V3RefundQuery", "TradePagePay", "微信 APIv3 不虚构沙箱开关"}},
+		{"### 15.2 双渠道验收", []string{"DUAL_HAPPY_PATH", "DUAL_SAME_KEY_DIFFERENT_CHANNEL", "DUAL_CALLBACK_CONFUSION", "DUAL_REFUND_ORIGIN", "DUAL_NATIVE_RESPONSE_LOSS", "未验证一方不能标为双渠道完成"}},
+	}
+	for _, check := range checks {
+		t.Run(check.heading, func(t *testing.T) {
+			start := strings.Index(text, check.heading+"\n")
+			if start < 0 {
+				t.Fatalf("missing section %q", check.heading)
+			}
+			section := text[start+len(check.heading)+1:]
+			if end := strings.Index(section, "\n#"); end >= 0 {
+				section = section[:end]
+			}
+			section = strings.Join(strings.Fields(section), " ")
+			for _, term := range check.terms {
+				if !strings.Contains(section, term) {
+					t.Errorf("section %q must retain %q", check.heading, term)
+				}
+			}
+		})
+	}
+	for _, superseded := range []string{
+		"支付宝是本设计的首发渠道。微信、Stripe、通用渠道路由不进入首版",
+		"首版限定 CNY、单渠道、单个收款商户配置",
+	} {
+		if strings.Contains(text, superseded) {
+			t.Errorf("superseded single-channel restriction remains: %q", superseded)
+		}
+	}
+}
