@@ -2,11 +2,15 @@ package productlistingschemamigrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
+	"time"
 
 	"gorm.io/gorm"
 
 	"task-processor/internal/app/configadapter"
+	"task-processor/internal/app/runtime/currentapplication"
 	"task-processor/internal/app/schema/productlisting"
 	"task-processor/internal/core/config"
 	imagestore "task-processor/internal/imageagent/store"
@@ -14,21 +18,57 @@ import (
 )
 
 type Dependencies struct {
-	LoadConfig     func(string) (*config.Config, error)
-	OpenDB         func(*config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB        func(*gorm.DB) error
-	MigrateAll     func(context.Context, *gorm.DB) error
-	OperationLabel string
+	LoadConfig func(string) (*config.Config, error)
+	OpenDB     func(*config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB    func(*gorm.DB) error
+	MigrateAll func(context.Context, *gorm.DB) error
 }
 
 func Run(ctx context.Context, configPath string) error {
 	return runWithDependencies(ctx, configPath, Dependencies{})
 }
 
-// GrantImageAgentRuntime is an explicit owner-DB maintenance action. It does
-// not migrate schema or run during API/worker startup.
-func GrantImageAgentRuntime(ctx context.Context, configPath string) error {
-	return runWithDependencies(ctx, configPath, Dependencies{MigrateAll: imagestore.GrantOrganizationRuntimePermissions, OperationLabel: "grant image agent runtime permissions"})
+// GrantImageAgentRuntime requires both an explicit owner credential and the
+// current application's validated ImageAgent owner identity. It does not use
+// the schema-migrator's legacy default config or migrate during this action.
+func GrantImageAgentRuntime(ctx context.Context, ownerConfigPath, currentManifestPath string) error {
+	if ctx == nil || !filepath.IsAbs(ownerConfigPath) || !filepath.IsAbs(currentManifestPath) || ownerConfigPath == currentManifestPath {
+		return errors.New("explicit owner config and current application manifest are required")
+	}
+	owner, err := config.LoadConfigFromFileWithoutValidation(ownerConfigPath)
+	if err != nil {
+		return fmt.Errorf("load explicit owner config: %w", err)
+	}
+	current, err := currentapplication.LoadConfig(currentManifestPath)
+	if err != nil {
+		return fmt.Errorf("load current application manifest: %w", err)
+	}
+	if err := validateImageAgentGrantTarget(owner, current); err != nil {
+		return err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	db, err := platformdatabase.OpenExistingWritableContext(bounded, configadapter.Database(owner.Database))
+	if err != nil {
+		return fmt.Errorf("connect explicit image agent owner database: %w", err)
+	}
+	defer func() { _ = closeDB(db) }()
+	if err := imagestore.GrantOrganizationRuntimePermissions(bounded, db); err != nil {
+		return fmt.Errorf("grant image agent runtime permissions: %w", err)
+	}
+	return nil
+}
+
+func validateImageAgentGrantTarget(owner *config.Config, current *currentapplication.Config) error {
+	if owner == nil || owner.Database == nil || current == nil || current.ImageAgent == nil {
+		return errors.New("current image agent owner database is not configured")
+	}
+	actual, intended := owner.Database, current.ImageAgent.Database
+	if actual.Host == "" || actual.Port < 1 || actual.Database == "" || actual.User == "" || actual.User == imagestore.OrganizationRuntimeRole ||
+		actual.Host != intended.Host || actual.Port != intended.Port || actual.Database != intended.Database {
+		return errors.New("explicit owner database does not match current image agent owner")
+	}
+	return nil
 }
 
 func runWithDependencies(ctx context.Context, configPath string, deps Dependencies) error {
@@ -46,9 +86,6 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 	if deps.MigrateAll == nil {
 		deps.MigrateAll = productlisting.Migrate
 	}
-	if deps.OperationLabel == "" {
-		deps.OperationLabel = "migrate product listing API schema"
-	}
 	cfg, err := deps.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -65,7 +102,7 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 	}
 	defer func() { _ = deps.CloseDB(db) }()
 	if err := deps.MigrateAll(ctx, db); err != nil {
-		return fmt.Errorf("%s: %w", deps.OperationLabel, err)
+		return fmt.Errorf("migrate product listing API schema: %w", err)
 	}
 	return nil
 }

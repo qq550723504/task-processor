@@ -12,10 +12,11 @@ import (
 func main() {
 	configPath := flag.String("config", "config/config-dev.yaml", "config file path")
 	grantImageAgentRuntime := flag.Bool("grant-image-agent-runtime", false, "grant only the pre-provisioned image_agent_runtime role on the existing ImageAgent owner database; no schema migration")
+	currentManifest := flag.String("current-application-manifest", "", "absolute private current-application manifest required with -grant-image-agent-runtime")
 	flag.Parse()
 
 	if *grantImageAgentRuntime {
-		if err := productlistingschemamigrate.GrantImageAgentRuntime(context.Background(), *configPath); err != nil {
+		if err := productlistingschemamigrate.GrantImageAgentRuntime(context.Background(), *configPath, *currentManifest); err != nil {
 			exitf("grant image agent runtime permissions: %v", err)
 		}
 		fmt.Printf("image agent runtime permissions granted using %s\n", *configPath)

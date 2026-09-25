@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 
 	"gorm.io/gorm"
@@ -11,6 +12,7 @@ import (
 const OrganizationRuntimeRole = "image_agent_runtime"
 
 var errOrganizationRuntimePermissions = errors.New("organization image agent runtime permissions unavailable")
+var organizationRuntimeRoleName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
 // Only the current application's Start/Get/Approve path uses this role.
 // The worker owns all later projection, effect and approved-asset writes.
@@ -67,14 +69,18 @@ const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) 
 // already-owned ImageAgent database. It never creates a login, migrates schema,
 // grants Product/Catalog access, or runs during normal current-app startup.
 func GrantOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB) error {
-	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" {
+	return grantOrganizationRuntimePermissions(ctx, db, OrganizationRuntimeRole)
+}
+
+func grantOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB, role string) error {
+	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" || !organizationRuntimeRoleName.MatchString(role) {
 		return errOrganizationRuntimePermissions
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var roleSafe bool
 		if err := tx.Raw(`SELECT EXISTS(SELECT 1 FROM pg_roles r WHERE r.rolname=? AND r.rolcanlogin
  AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolbypassrls
- AND NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid))`, OrganizationRuntimeRole).Scan(&roleSafe).Error; err != nil || !roleSafe {
+			AND NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid))`, role).Scan(&roleSafe).Error; err != nil || !roleSafe {
 			return errOrganizationRuntimePermissions
 		}
 		var database string
@@ -82,14 +88,15 @@ func GrantOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB) error
 			return errOrganizationRuntimePermissions
 		}
 		quoted := `"` + strings.ReplaceAll(database, `"`, `""`) + `"`
+		quotedRole := `"` + role + `"`
 		statements := []string{
-			"REVOKE ALL PRIVILEGES ON DATABASE " + quoted + " FROM image_agent_runtime",
-			"GRANT CONNECT ON DATABASE " + quoted + " TO image_agent_runtime",
-			"REVOKE ALL PRIVILEGES ON SCHEMA public FROM image_agent_runtime",
-			"GRANT USAGE ON SCHEMA public TO image_agent_runtime",
+			"REVOKE ALL PRIVILEGES ON DATABASE " + quoted + " FROM " + quotedRole,
+			"GRANT CONNECT ON DATABASE " + quoted + " TO " + quotedRole,
+			"REVOKE ALL PRIVILEGES ON SCHEMA public FROM " + quotedRole,
+			"GRANT USAGE ON SCHEMA public TO " + quotedRole,
 		}
 		for _, table := range organizationRuntimeTables {
-			statements = append(statements, "REVOKE ALL PRIVILEGES ON TABLE public."+table.name+" FROM image_agent_runtime", "GRANT "+table.privileges+" ON TABLE public."+table.name+" TO image_agent_runtime")
+			statements = append(statements, "REVOKE ALL PRIVILEGES ON TABLE public."+table.name+" FROM "+quotedRole, "GRANT "+table.privileges+" ON TABLE public."+table.name+" TO "+quotedRole)
 		}
 		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {
@@ -104,7 +111,11 @@ func GrantOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB) error
 // unexpected column/table/schema grant fails closed even when required grants
 // are present; the current app never repairs role permissions by itself.
 func VerifyOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB) error {
-	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" {
+	return verifyOrganizationRuntimePermissions(ctx, db, OrganizationRuntimeRole)
+}
+
+func verifyOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB, role string) error {
+	if ctx == nil || db == nil || db.Dialector.Name() != "postgres" || !organizationRuntimeRoleName.MatchString(role) {
 		return errOrganizationRuntimePermissions
 	}
 	pool, err := db.DB()
@@ -117,7 +128,7 @@ func VerifyOrganizationRuntimePermissions(ctx context.Context, db *gorm.DB) erro
 	}
 	var user string
 	var required, forbidden bool
-	if err := pool.QueryRowContext(ctx, organizationRuntimePermissionQuery).Scan(&user, &required, &forbidden); err != nil || user != OrganizationRuntimeRole || !required || forbidden {
+	if err := pool.QueryRowContext(ctx, organizationRuntimePermissionQuery).Scan(&user, &required, &forbidden); err != nil || user != role || !required || forbidden {
 		return errOrganizationRuntimePermissions
 	}
 	return nil

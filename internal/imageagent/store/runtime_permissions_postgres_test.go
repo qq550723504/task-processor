@@ -29,6 +29,7 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	rootPool, err := root.DB()
 	require.NoError(t, err)
 	name := "issue487_image_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	role := "image_agent_runtime_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
 	require.NoError(t, root.Exec("CREATE DATABASE "+name).Error)
 	owner, err := gorm.Open(postgres.Open(dsn+" dbname="+name), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
@@ -37,23 +38,24 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, ownerPool.Close())
 		require.NoError(t, root.Exec("DROP DATABASE "+name+" WITH (FORCE)").Error)
+		require.NoError(t, root.Exec("DROP ROLE "+role).Error)
 		require.NoError(t, rootPool.Close())
 	})
 	require.NoError(t, AutoMigrateOrganizationScope(owner))
 	require.NoError(t, owner.Exec(`CREATE TABLE unrelated_secret(value text)`).Error)
-	require.NoError(t, owner.Exec(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='image_agent_runtime') THEN CREATE ROLE image_agent_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; END IF; END $$`).Error)
+	require.NoError(t, owner.Exec("CREATE ROLE "+role+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
 	sum := sha256.Sum256([]byte(dsn))
 	password := hex.EncodeToString(sum[:])
-	require.NoError(t, owner.Exec("ALTER ROLE image_agent_runtime PASSWORD '"+password+"'").Error)
-	require.NoError(t, GrantOrganizationRuntimePermissions(ctx, owner))
-	runtimeDB, err := gorm.Open(postgres.Open(dsn+" dbname="+name+" user=image_agent_runtime password="+password), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, owner.Exec("ALTER ROLE "+role+" PASSWORD '"+password+"'").Error)
+	require.NoError(t, grantOrganizationRuntimePermissions(ctx, owner, role))
+	runtimeDB, err := gorm.Open(postgres.Open(dsn+" dbname="+name+" user="+role+" password="+password), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	pool, err := runtimeDB.DB()
 	require.NoError(t, err)
 	pool.SetMaxOpenConns(8)
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
-	require.NoError(t, VerifyOrganizationRuntimePermissions(ctx, runtimeDB))
-	require.Error(t, VerifyOrganizationRuntimePermissions(ctx, owner))
+	require.NoError(t, verifyOrganizationRuntimePermissions(ctx, runtimeDB, role))
+	require.Error(t, verifyOrganizationRuntimePermissions(ctx, owner, role))
 	run := manualRun("runtime-start", "org-runtime")
 	run.ScopeProtocol = imageagent.OrganizationScopeProtocol
 	run.MemberID = "member-runtime"
@@ -78,17 +80,16 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	_, err = repository.GetProjection(ctx, scope)
 	require.NoError(t, err, "current API GET/Approve must read its projection")
 	for _, tc := range []struct{ name, grant, revoke string }{
-		{"delete_run", "GRANT DELETE ON image_agent_v2_runs TO image_agent_runtime", "REVOKE DELETE ON image_agent_v2_runs FROM image_agent_runtime"},
-		{"write_attempt", "GRANT INSERT ON image_agent_v2_attempts TO image_agent_runtime", "REVOKE INSERT ON image_agent_v2_attempts FROM image_agent_runtime"},
-		{"other_table", "GRANT SELECT ON unrelated_secret TO image_agent_runtime", "REVOKE SELECT ON unrelated_secret FROM image_agent_runtime"},
-		{"missing_commit_insert", "REVOKE INSERT ON image_agent_v2_projection_commits FROM image_agent_runtime", "GRANT INSERT ON image_agent_v2_projection_commits TO image_agent_runtime"},
+		{"delete_run", "GRANT DELETE ON image_agent_v2_runs TO " + role, "REVOKE DELETE ON image_agent_v2_runs FROM " + role},
+		{"write_attempt", "GRANT INSERT ON image_agent_v2_attempts TO " + role, "REVOKE INSERT ON image_agent_v2_attempts FROM " + role},
+		{"other_table", "GRANT SELECT ON unrelated_secret TO " + role, "REVOKE SELECT ON unrelated_secret FROM " + role},
+		{"missing_commit_insert", "REVOKE INSERT ON image_agent_v2_projection_commits FROM " + role, "GRANT INSERT ON image_agent_v2_projection_commits TO " + role},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, owner.Exec(tc.grant).Error)
-			t.Cleanup(func() { require.NoError(t, owner.Exec(tc.revoke).Error) })
-			require.Error(t, VerifyOrganizationRuntimePermissions(ctx, runtimeDB))
+			require.Error(t, verifyOrganizationRuntimePermissions(ctx, runtimeDB, role))
 			require.NoError(t, owner.Exec(tc.revoke).Error)
-			require.NoError(t, VerifyOrganizationRuntimePermissions(ctx, runtimeDB))
+			require.NoError(t, verifyOrganizationRuntimePermissions(ctx, runtimeDB, role))
 		})
 	}
 	require.Error(t, runtimeDB.Exec("DELETE FROM image_agent_v2_runs").Error)
