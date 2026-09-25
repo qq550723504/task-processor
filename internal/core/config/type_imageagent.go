@@ -14,10 +14,11 @@ type ImageAgentAdmissionConfig struct {
 }
 
 type ImageAgentArtifactStoreConfig struct {
-	Enabled    bool                            `mapstructure:"enabled" yaml:"enabled"`
-	Provider   string                          `mapstructure:"provider" yaml:"provider"`
-	PublicBase string                          `mapstructure:"publicBase" yaml:"publicBase"`
-	S3         ImageAgentArtifactStoreS3Config `mapstructure:"s3" yaml:"s3"`
+	Enabled                    bool                            `mapstructure:"enabled" yaml:"enabled"`
+	Provider                   string                          `mapstructure:"provider" yaml:"provider"`
+	PublicBase                 string                          `mapstructure:"publicBase" yaml:"publicBase"`
+	IsolatedTrialGeneratedURLs bool                            `mapstructure:"isolatedTrialGeneratedURLs" yaml:"isolatedTrialGeneratedURLs"`
+	S3                         ImageAgentArtifactStoreS3Config `mapstructure:"s3" yaml:"s3"`
 }
 
 type ImageAgentArtifactStoreS3Config struct {

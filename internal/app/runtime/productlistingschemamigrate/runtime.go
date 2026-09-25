@@ -59,12 +59,43 @@ func GrantImageAgentRuntime(ctx context.Context, ownerConfigPath, currentManifes
 	return nil
 }
 
+// GrantImageAgentWorkerRuntime grants only the pre-created organization-v1
+// worker role on the exact current ImageAgent owner DB. The API role is not
+// widened, and ordinary worker startup performs verification only.
+func GrantImageAgentWorkerRuntime(ctx context.Context, ownerConfigPath, currentManifestPath string) error {
+	if ctx == nil || !filepath.IsAbs(ownerConfigPath) || !filepath.IsAbs(currentManifestPath) || ownerConfigPath == currentManifestPath {
+		return errors.New("explicit owner config and current application manifest are required")
+	}
+	owner, err := config.LoadConfigFromFileWithoutValidation(ownerConfigPath)
+	if err != nil {
+		return fmt.Errorf("load explicit image agent worker owner config: %w", err)
+	}
+	current, err := currentapplication.LoadConfig(currentManifestPath)
+	if err != nil {
+		return fmt.Errorf("load current application manifest: %w", err)
+	}
+	if err := validateImageAgentGrantTarget(owner, current); err != nil {
+		return err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	db, err := platformdatabase.OpenExistingWritableContext(bounded, configadapter.Database(owner.Database))
+	if err != nil {
+		return fmt.Errorf("connect explicit image agent worker owner database: %w", err)
+	}
+	defer func() { _ = closeDB(db) }()
+	if err := imagestore.GrantOrganizationWorkerRuntimePermissions(bounded, db); err != nil {
+		return fmt.Errorf("grant image agent worker runtime permissions: %w", err)
+	}
+	return nil
+}
+
 func validateImageAgentGrantTarget(owner *config.Config, current *currentapplication.Config) error {
 	if owner == nil || owner.Database == nil || current == nil || current.ImageAgent == nil {
 		return errors.New("current image agent owner database is not configured")
 	}
 	actual, intended := owner.Database, current.ImageAgent.Database
-	if actual.Host == "" || actual.Port < 1 || actual.Database == "" || actual.User == "" || actual.User == imagestore.OrganizationRuntimeRole ||
+	if actual.Host == "" || actual.Port < 1 || actual.Database == "" || actual.User == "" || actual.User == imagestore.OrganizationRuntimeRole || actual.User == imagestore.OrganizationWorkerRuntimeRole ||
 		actual.Host != intended.Host || actual.Port != intended.Port || actual.Database != intended.Database {
 		return errors.New("explicit owner database does not match current image agent owner")
 	}

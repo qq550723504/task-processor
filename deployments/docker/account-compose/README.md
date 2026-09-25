@@ -1,5 +1,64 @@
 # Local account center Compose
 
+## Opt-in #487 image trial overlay (backend validation only)
+
+`docker-compose.image-agent.yml` is a separate, isolated local trial overlay;
+the default account-center Compose does not enable ImageAgent, expose MinIO, or
+change its database roles. Use a **new** Compose project and unused loopback
+identity/application/mail ports. The commercial database name must contain
+`trial` or `isolated`. On the first initialization only, set
+`ACCOUNT_ISOLATED_TRIAL_CATALOG=ISOLATED_TRIAL_ONLY`; unset it on restarts. The
+base schema initializer refuses to re-provision that catalog, while the image
+initializer has its own one-shot marker and never re-runs migrations on restart.
+
+From this directory, after setting `COMPOSE_PROJECT_NAME`,
+`ACCOUNT_IDENTITY_PORT`, `ACCOUNT_APPLICATION_PORT`, `ACCOUNT_MAIL_PORT`, and
+`ACCOUNT_COMMERCIAL_DATABASE` to unique trial values:
+
+```powershell
+$env:ACCOUNT_ISOLATED_TRIAL_CATALOG = 'ISOLATED_TRIAL_ONLY'
+docker compose -f docker-compose.yml -f docker-compose.image-agent.yml up -d --build image-trial-worker current-application
+Remove-Item Env:ACCOUNT_ISOLATED_TRIAL_CATALOG
+docker compose -f docker-compose.yml -f docker-compose.image-agent.yml ps --all
+```
+
+The backend-only command does not start `listingkit-ui`, and the #487 main-image
+UI remains pending its exact Figma node. Do not call this a product/browser or
+image-quality acceptance. The local Python OpenAI-protocol stub returns a
+deterministic white 2×2 PNG and observed Review usage solely to check workflow,
+approval and canonical accounting; it is not a visual QA provider. The
+`paid_pilot` isolated catalog is only a purchasable local trial offer; a real
+subscription activation and canonical member token allocation are still
+required before provider dispatch. No paid or external AI key is installed.
+
+The current API connects to the dedicated ImageAgent owner database as
+`image_agent_runtime`, with only Start/Get/Approve permissions. The
+organization-v1 worker connects to the same database as
+`image_agent_worker_runtime`, with exactly its 16 current tables' required
+read/insert/update privileges; startup verifies and refuses extra privileges.
+It separately uses the existing `commercial_runtime` role for canonical member
+reservation/settlement, not `commercial_owner_runtime` or the schema owner.
+Only the worker-secret volume carries MinIO credentials; the API cannot read
+it. All new PostgreSQL, Temporal and MinIO volumes are project-named and
+persist across stop/restart. `image-trial-init` grants roles only after owner
+schema installation; ordinary app/worker start verifies permissions and never
+grants or migrates.
+
+The only anonymous storage route is HTTPS localhost GET/HEAD for the immutable
+`image-agent/public/` prefix, using the existing local CA. MinIO grants only
+GetObject on that prefix; staging/recovery objects, listing and writes are not
+public. Source/1688 URLs and arbitrary provider downloads keep the original
+public-URL SSRF checks. An exact generated-image URL is accepted only when
+derived from a verified durable manifest/key. This trial does not make output
+URLs generally public-network-safe or authorize production deployment.
+
+To restart without deleting the volumes, leave the catalog flag unset and run
+the same `docker compose -f ... -f ... up -d` command. The independent image
+initializer verifies the stored manifest and MinIO policy; an interrupted first
+initialization fails closed instead of auto-repairing a partially created DB.
+Use `stop`, not `down -v`, to retain trial data. Destruction or cleanup of a
+retained project is a separate decision.
+
 This is a fresh, isolated local instance for the confirmed “我的账户” scope.
 It reuses the existing current-application, ZITADEL Login V2, Auth.js/BFF,
 source-account, commercial, referral and membership modules. It does not reuse

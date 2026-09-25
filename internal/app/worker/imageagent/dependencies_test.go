@@ -98,6 +98,40 @@ func TestResolveOrganizationWorkerComposesGovernedSingleMainSlotAndLiveAuthorize
 	require.NoError(t, closeFn())
 }
 
+func TestTrialOrganizationWorkerVerifiesDedicatedRoleBeforeProviderConstruction(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-trial-role?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	cfg := &config.Config{Database: &config.DatabaseConfig{User: "image_agent_worker_runtime"}, CommercialDatabase: &config.DatabaseConfig{User: "commercial_runtime"}}
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
+	cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs = true
+	cfg.ImageAgent.ArtifactStore.PublicBase = "https://localhost:24544/image-agent-assets/image-agent-trial"
+	cfg.ImageAgent.ArtifactStore.S3.Bucket = "image-agent-trial"
+	cfg.ImageAgent.ArtifactStore.S3.Endpoint = "http://127.0.0.1:9000"
+	verified, providerBuilt := 0, 0
+	resolver := imageAgentWorkerDependencyResolver{
+		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB:    func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
+			return stubWorkerArtifactStore{}, nil
+		},
+		VerifyOrganizationWorkerRuntime: func(context.Context, *gorm.DB) error { verified++; return errors.New("role refused") },
+		BuildAI: func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+			providerBuilt++
+			return nil, nil, nil, nil
+		},
+	}
+	_, _, err = resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeOrganization, resolver)
+	require.ErrorContains(t, err, "role refused")
+	require.Equal(t, 1, verified)
+	require.Zero(t, providerBuilt)
+	cfg.Database.User = "image_agent_runtime"
+	verified = 0
+	_, _, err = resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", nil, imageagenttemporal.WorkerWireModeOrganization, resolver)
+	require.ErrorContains(t, err, "dedicated worker")
+	require.Zero(t, verified)
+}
+
 type acceptingOrganizationExecutionAuthorizer struct{}
 
 func (acceptingOrganizationExecutionAuthorizer) AuthorizeExecution(context.Context, imageagent.ExecutionIdentity) error {
@@ -239,6 +273,16 @@ func TestArtifactStorageCapabilitiesFromConfigFailsClosed(t *testing.T) {
 	}{
 		{name: "aws", want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}},
 		{name: "cos", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { *cfg = validCOS }, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeCOS, COSImmutableNonVersionedBucketPolicy: true}},
+		{name: "isolated trial", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) {
+			cfg.IsolatedTrialGeneratedURLs = true
+			cfg.PublicBase = "https://localhost:19444/image-agent-assets/image-assets"
+			cfg.S3.Endpoint = "http://127.0.0.1:9000"
+		}, want: s3integration.ArtifactStorageCapabilities{Mode: s3integration.ArtifactStorageModeAWS}},
+		{name: "trial fake public host", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.IsolatedTrialGeneratedURLs = true }, wantErr: "isolated trial"},
+		{name: "trial external S3 endpoint", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) {
+			cfg.IsolatedTrialGeneratedURLs = true
+			cfg.PublicBase = "https://localhost:19444/image-agent-assets/image-assets"
+		}, wantErr: "loopback"},
 		{name: "disabled", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.Enabled = false }, wantErr: "disabled"},
 		{name: "wrong provider", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.Provider = "local" }, wantErr: "provider must be s3"},
 		{name: "missing bucket", mutate: func(cfg *config.ImageAgentArtifactStoreConfig) { cfg.S3.Bucket = "" }, wantErr: "bucket"},

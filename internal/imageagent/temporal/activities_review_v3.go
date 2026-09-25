@@ -243,7 +243,7 @@ func stagedOutputFromManifest(input ExecuteSlotV3ActivityInput, manifest imageag
 			return imageagent.SlotGeneratedOutput{}, err
 		}
 		output.Assets = append(output.Assets, imageagent.GeneratedAsset{
-			URL: url, ContentType: staged.ContentType, SourceURL: sourceURL,
+			URL: url, StagedRef: &staged, ContentType: staged.ContentType, SourceURL: sourceURL,
 			Operations: append([]string(nil), staged.Operations...), Width: staged.Width, Height: staged.Height,
 			ProviderReceiptID: staged.ProviderReceiptID,
 		})

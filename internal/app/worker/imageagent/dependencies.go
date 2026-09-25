@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,15 +42,16 @@ type imageCapabilityRuntime struct {
 }
 
 type imageAgentWorkerDependencyResolver struct {
-	LoadConfig                    func(string) (*config.Config, error)
-	OpenDB                        func(*config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB                       func(*config.DatabaseConfig, *gorm.DB) error
-	BuildAI                       func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
-	BuildCapabilities             func(imageCapabilityRuntime) (ImageCapabilities, error)
-	BuildOrganizationCapabilities func(imageCapabilityRuntime, *gorm.DB) (ImageCapabilities, error)
-	BuildOrganizationAuthorizer   func(*config.Config) (domainimageagent.ExecutionAuthorizer, error)
-	BuildArtifactStore            func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
-	ArtifactTiming                imageAgentArtifactTiming
+	LoadConfig                      func(string) (*config.Config, error)
+	OpenDB                          func(*config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB                         func(*config.DatabaseConfig, *gorm.DB) error
+	BuildAI                         func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
+	BuildCapabilities               func(imageCapabilityRuntime) (ImageCapabilities, error)
+	BuildOrganizationCapabilities   func(imageCapabilityRuntime, *gorm.DB) (ImageCapabilities, error)
+	BuildOrganizationAuthorizer     func(*config.Config) (domainimageagent.ExecutionAuthorizer, error)
+	BuildArtifactStore              func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
+	VerifyOrganizationWorkerRuntime func(context.Context, *gorm.DB) error
+	ArtifactTiming                  imageAgentArtifactTiming
 }
 
 type imageAgentArtifactTiming struct {
@@ -115,10 +118,11 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
 		},
 		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: buildProductionImageCapabilities,
-		BuildOrganizationCapabilities: buildOrganizationWorkerCapabilities,
-		BuildOrganizationAuthorizer:   buildOrganizationWorkerAuthorizer,
-		BuildArtifactStore:            buildImageAgentDurableArtifactStore,
-		ArtifactTiming:                defaultImageAgentArtifactTiming,
+		BuildOrganizationCapabilities:   buildOrganizationWorkerCapabilities,
+		BuildOrganizationAuthorizer:     buildOrganizationWorkerAuthorizer,
+		BuildArtifactStore:              buildImageAgentDurableArtifactStore,
+		VerifyOrganizationWorkerRuntime: imageagentstore.VerifyOrganizationWorkerRuntimePermissions,
+		ArtifactTiming:                  defaultImageAgentArtifactTiming,
 	}
 }
 
@@ -154,6 +158,12 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	}
 	if cfg == nil || cfg.Database == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent worker database configuration is required")
+	}
+	if cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs && mode != imageagenttemporal.WorkerWireModeOrganization {
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("isolated trial generated URLs require the organization worker")
+	}
+	if cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs && cfg.Database.User != imageagentstore.OrganizationWorkerRuntimeRole {
+		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("isolated trial requires the dedicated worker database role")
 	}
 	timing := resolver.ArtifactTiming
 	if timing == (imageAgentArtifactTiming{}) {
@@ -201,6 +211,16 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialDatabase, commercialDB))
 		return closeErr
 	}
+	if cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs {
+		verify := resolver.VerifyOrganizationWorkerRuntime
+		if verify == nil {
+			verify = imageagentstore.VerifyOrganizationWorkerRuntimePermissions
+		}
+		if err := verify(context.Background(), db); err != nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("verify organization image agent worker role: %w", err)
+		}
+	}
 	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db, commercialDB, logger)
 	if err != nil {
 		_ = closeDB()
@@ -233,6 +253,14 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capabilities are incomplete")
 	}
+	var trialURLs *domainimageagent.IsolatedTrialGeneratedURLPolicy
+	if cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs {
+		trialURLs, err = domainimageagent.NewIsolatedTrialGeneratedURLPolicy(cfg.ImageAgent.ArtifactStore.PublicBase, cfg.ImageAgent.ArtifactStore.S3.Bucket)
+		if err != nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate isolated trial generated URLs: %w", err)
+		}
+	}
 	repository := imageagentstore.NewGormRepository(db)
 	if mode == imageagenttemporal.WorkerWireModeOrganization {
 		repository = imageagentstore.NewOrganizationRepository(db)
@@ -250,7 +278,8 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	executorDependencies := imageagenttools.Dependencies{
 		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
 		SceneRenderer: capabilities.SceneRenderer, Reviewer: capabilities.Reviewer, UsageQuoter: capabilities.UsageQuoter,
-		ProfileResolver: capabilities.ProfileResolver,
+		ProfileResolver:   capabilities.ProfileResolver,
+		GeneratedURLTrial: trialURLs,
 	}
 	if artifactStore != nil {
 		executorDependencies.LegacyAssetMaterializer = legacyV2AssetMaterializer{store: artifactStore}
@@ -261,7 +290,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	if mode == imageagenttemporal.WorkerWireModeV2 {
 		return dependencies, closeDB, nil
 	}
-	publisherV3, err := assetpublication.NewPublisher(repository, assetRepository, artifactStore)
+	publisherV3, err := assetpublication.NewPublisher(repository, assetRepository, artifactStore, trialURLs)
 	if err != nil {
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v3 asset publisher: %w", err)
@@ -328,6 +357,19 @@ func artifactStorageCapabilitiesFromConfig(store config.ImageAgentArtifactStoreC
 	}
 	if strings.TrimSpace(store.PublicBase) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact public base URL is required")
+	}
+	if store.IsolatedTrialGeneratedURLs {
+		if _, err := domainimageagent.NewIsolatedTrialGeneratedURLPolicy(store.PublicBase, store.S3.Bucket); err != nil {
+			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact isolated trial public base is invalid: %w", err)
+		}
+		endpoint, err := url.Parse(store.S3.Endpoint)
+		if err != nil || endpoint == nil || endpoint.Scheme != "http" || endpoint.Hostname() != "127.0.0.1" || endpoint.Port() == "" || endpoint.User != nil || endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.String() != store.S3.Endpoint {
+			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact isolated trial S3 endpoint must be explicit loopback")
+		}
+		port, err := strconv.Atoi(endpoint.Port())
+		if err != nil || port < 1 || port > 65535 || strconv.Itoa(port) != endpoint.Port() || store.S3.ArtifactMode != string(s3integration.ArtifactStorageModeAWS) {
+			return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact isolated trial requires loopback S3 in aws compatibility mode")
+		}
 	}
 	if strings.TrimSpace(store.S3.AccessKeyID) == "" || strings.TrimSpace(store.S3.SecretAccessKey) == "" {
 		return s3integration.ArtifactStorageCapabilities{}, fmt.Errorf("durable image artifact access key ID and secret access key are both required")

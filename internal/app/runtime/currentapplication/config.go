@@ -52,12 +52,13 @@ type ReferralsConfig struct {
 // database is the same owner database used by the Organization ImageAgent
 // worker, opened with a bounded API runtime role, never the SRC role.
 type ImageAgentConfig struct {
-	Database               DatabaseConfig `json:"database"`
-	TemporalAddress        string         `json:"temporalAddress"`
-	TemporalNamespace      string         `json:"temporalNamespace"`
-	AllowedOrganizationIDs []string       `json:"allowedOrganizationIds"`
-	PublicBase             string         `json:"publicBase"`
-	Bucket                 string         `json:"bucket"`
+	Database                   DatabaseConfig `json:"database"`
+	TemporalAddress            string         `json:"temporalAddress"`
+	TemporalNamespace          string         `json:"temporalNamespace"`
+	AllowedOrganizationIDs     []string       `json:"allowedOrganizationIds"`
+	PublicBase                 string         `json:"publicBase"`
+	Bucket                     string         `json:"bucket"`
+	IsolatedTrialGeneratedURLs bool           `json:"isolatedTrialGeneratedURLs,omitempty"`
 }
 
 // ListingKitAuthorizationConfig carries only the platform-admin caller allowlists.
@@ -328,7 +329,11 @@ func (cfg *Config) validate() error {
 			}
 			seen[id] = struct{}{}
 		}
-		if _, err := imageagent.ValidateSafeImageURL(image.PublicBase); err != nil {
+		if image.IsolatedTrialGeneratedURLs {
+			if _, err := imageagent.NewIsolatedTrialGeneratedURLPolicy(image.PublicBase, image.Bucket); err != nil {
+				return errors.New("image agent isolated trial generated URL base is invalid")
+			}
+		} else if _, err := imageagent.ValidateSafeImageURL(image.PublicBase); err != nil {
 			return errors.New("image agent public base must be a safe public URL")
 		}
 	}
@@ -443,7 +448,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 	}
 	if image := cfg.ImageAgent; image != nil {
 		core.ImageAgent.Admission = coreconfig.ImageAgentAdmissionConfig{Enabled: true, AllowedTenantIDs: append([]string(nil), image.AllowedOrganizationIDs...)}
-		core.ImageAgent.ArtifactStore = coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: image.PublicBase, S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: image.Bucket}}
+		core.ImageAgent.ArtifactStore = coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: image.PublicBase, IsolatedTrialGeneratedURLs: image.IsolatedTrialGeneratedURLs, S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: image.Bucket}}
 	}
 	return core
 }

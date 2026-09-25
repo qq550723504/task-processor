@@ -23,6 +23,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	sdkclient "go.temporal.io/sdk/client"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"task-processor/internal/accountallocation"
 	"task-processor/internal/aicapability"
@@ -41,15 +42,18 @@ import (
 
 func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *testing.T) {
 	address := os.Getenv("ISSUE487_TEMPORAL_ADDRESS")
-	if address == "" {
-		t.Skip("requires isolated Temporal ISSUE487_TEMPORAL_ADDRESS")
+	if address == "" || os.Getenv("ISSUE487_EXCLUSIVE_POSTGRES") != "ISOLATED_TRIAL_ONLY" {
+		t.Skip("requires isolated Temporal and exclusive PostgreSQL")
 	}
-	db := admissionPostgres(t, "org-1", "member-1", 10000)
+	db := approvalWorkerPostgres(t, "org-1", "member-1", 10000)
 	require.NoError(t, db.Exec(`UPDATE saas_tenant_entitlements SET limits = ? WHERE tenant_id = ?`, `{"ai_tokens":1000000}`, "org-1").Error)
 	require.NoError(t, imagestore.AutoMigrateOrganizationScope(db))
 	require.NoError(t, assetpersistence.AutoMigrate(db))
 	require.NoError(t, db.AutoMigrate(&openai.AIClientCredential{}))
 	require.NoError(t, store.AutoMigrateInvocationLedger(db))
+	require.NoError(t, imagestore.GrantOrganizationWorkerRuntimePermissions(context.Background(), db))
+	workerDB := approvalWorkerRuntimeDB(t, db)
+	require.NoError(t, imagestore.VerifyOrganizationWorkerRuntimePermissions(context.Background(), workerDB))
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	img.Set(0, 0, color.RGBA{R: 255, G: 255, B: 255, A: 255})
 	var pngBody bytes.Buffer
@@ -81,14 +85,19 @@ func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *te
 	defaultConfig.ImageReferenceHTTPClient, imageConfig.ImageReferenceHTTPClient = reference, reference
 	manager, err := openai.NewManager(&openai.ManagerConfig{Clients: map[string]*openai.ClientConfig{"default": defaultConfig, "image_gpt_image_2": imageConfig}, DefaultClient: "default"})
 	require.NoError(t, err)
-	recorder := store.NewGormInvocationRecorder(db)
+	recorder := store.NewGormInvocationRecorder(workerDB)
 	recorder.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(db)})
-	cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{}}
+	cfg := &config.Config{Database: &config.DatabaseConfig{User: imagestore.OrganizationWorkerRuntimeRole}, CommercialDatabase: &config.DatabaseConfig{User: "commercial_runtime"}}
 	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
-		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
-		CloseDB:    func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+		OpenDB: func(target *config.DatabaseConfig) (*gorm.DB, error) {
+			if target == cfg.Database {
+				return workerDB, nil
+			}
+			return db, nil
+		},
+		CloseDB: func(*config.DatabaseConfig, *gorm.DB) error { return nil },
 		BuildAI: func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openai.Manager, openai.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return manager, nil, recorder, nil
 		},
@@ -112,7 +121,7 @@ func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *te
 	require.NoError(t, err)
 	scope := imageagent.ScopeForRun(run)
 	repository := dependencies.Repository
-	_, err = repository.InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: scope, Run: run, Plan: plan, Catalog: catalog, Snapshot: imageagent.RunProjection{Run: run, Plan: plan}, CommitID: "start:" + run.IdempotencyKey, EventType: "run.initialized", EventPayload: []byte(`{}`)})
+	_, err = imagestore.NewOrganizationRepository(db).InitializeRun(context.Background(), imageagent.ProjectionInitialization{Scope: scope, Run: run, Plan: plan, Catalog: catalog, Snapshot: imageagent.RunProjection{Run: run, Plan: plan}, CommitID: "start:" + run.IdempotencyKey, EventType: "run.initialized", EventPayload: []byte(`{}`)})
 	require.NoError(t, err)
 	activities, err := imagetemporal.NewActivities(imagetemporal.ActivityDependencies{Repository: repository, SlotExecutor: dependencies.SlotExecutor, Publisher: dependencies.Publisher, PublisherV3: dependencies.PublisherV3, StagedSlotExecutor: dependencies.StagedSlotExecutor, ArtifactStore: dependencies.ArtifactStore, ExecutionAuthorizer: dependencies.ExecutionAuthorizer})
 	require.NoError(t, err)
@@ -211,6 +220,52 @@ func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *te
 	require.Equal(t, candidate.SourceAssetID, commit.Assets[0].SourceAssetID)
 	require.Equal(t, candidate.Width, commit.Assets[0].Width)
 	require.Equal(t, candidate.Height, commit.Assets[0].Height)
+}
+
+func approvalWorkerPostgres(t *testing.T, orgID, memberID string, allocation int64) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("ISSUE487_TEST_DSN")
+	require.Contains(t, dsn, "host=127.0.0.1")
+	require.Contains(t, dsn, "user=issue487_owner")
+	root, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	rootPool, err := root.DB()
+	require.NoError(t, err)
+	role := imagestore.OrganizationWorkerRuntimeRole
+	require.NoError(t, root.Exec("CREATE ROLE "+role+" LOGIN PASSWORD 'local-worker-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
+	t.Cleanup(func() {
+		require.NoError(t, root.Exec("DROP ROLE "+role).Error)
+		require.NoError(t, rootPool.Close())
+	})
+	name := "issue487_approval_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	require.NoError(t, root.Exec("CREATE DATABASE "+name).Error)
+	t.Cleanup(func() { require.NoError(t, root.Exec("DROP DATABASE "+name+" WITH (FORCE)").Error) })
+	db, err := gorm.Open(postgres.Open(dsn+" dbname="+name), &gorm.Config{})
+	require.NoError(t, err)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	require.NoError(t, listingsubscription.AutoMigrateRepository(db))
+	require.NoError(t, db.Exec(`CREATE TABLE account_member_token_locks (organization_id text PRIMARY KEY, updated_at timestamptz NOT NULL)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE account_member_token_allocations (organization_id text NOT NULL, member_id text NOT NULL, metric text NOT NULL, allocated bigint NOT NULL, version bigint NOT NULL, active boolean NOT NULL, window_start timestamptz NOT NULL, window_end timestamptz NOT NULL, updated_at timestamptz NOT NULL, PRIMARY KEY (organization_id,member_id,metric))`).Error)
+	start, end := time.Now().UTC().Add(-time.Hour), time.Now().UTC().Add(time.Hour)
+	require.NoError(t, db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, orgID, listingsubscription.ModuleListingKit, listingsubscription.StatusActive, start, end, `{"ai_tokens":1000}`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO account_member_token_allocations (organization_id,member_id,metric,allocated,version,active,window_start,window_end,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, orgID, memberID, "token", allocation, 1, true, start, end, start).Error)
+	return db
+}
+
+func approvalWorkerRuntimeDB(t *testing.T, owner *gorm.DB) *gorm.DB {
+	t.Helper()
+	var name string
+	require.NoError(t, owner.Raw("SELECT current_database()").Scan(&name).Error)
+	dsn := os.Getenv("ISSUE487_TEST_DSN") + " dbname=" + name + " user=" + imagestore.OrganizationWorkerRuntimeRole + " password=local-worker-test-only"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	pool.SetMaxOpenConns(4)
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	return db
 }
 
 type controlledApprovalArtifactStore struct{ stubWorkerArtifactStore }

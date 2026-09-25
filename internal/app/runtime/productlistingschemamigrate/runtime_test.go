@@ -72,6 +72,30 @@ func TestImageAgentGrantRequiresExplicitMatchingOwnerDatabase(t *testing.T) {
 	}
 }
 
+func TestImageAgentWorkerGrantRequiresExplicitMatchingOwnerDatabase(t *testing.T) {
+	if err := GrantImageAgentWorkerRuntime(context.Background(), "config/config-dev.yaml", ""); err == nil {
+		t.Fatal("worker grant accepted an implicit legacy database config")
+	}
+	owner := &config.Config{Database: &config.DatabaseConfig{Host: "127.0.0.1", Port: 5437, User: "postgres", Database: "image_agent"}}
+	current := &currentapplication.Config{ImageAgent: &currentapplication.ImageAgentConfig{Database: currentapplication.DatabaseConfig{Host: "127.0.0.1", Port: 5437, User: "image_agent_runtime", Database: "image_agent"}}}
+	if err := validateImageAgentGrantTarget(owner, current); err != nil {
+		t.Fatalf("matching worker owner rejected: %v", err)
+	}
+	owner.Database.Database = "legacy_product"
+	if err := validateImageAgentGrantTarget(owner, current); err == nil {
+		t.Fatal("worker grant accepted wrong owner database")
+	}
+}
+
+func TestImageAgentOrganizationInitRequiresExplicitManifestAndOwner(t *testing.T) {
+	if err := InitializeOrganizationImageAgent(context.Background(), "config/config-dev.yaml", ""); err == nil {
+		t.Fatal("organization image agent init accepted legacy default config")
+	}
+	if err := InitializeOrganizationImageAgent(context.Background(), "C:/missing-owner.yaml", ""); err == nil {
+		t.Fatal("organization image agent init accepted missing current owner manifest")
+	}
+}
+
 type migrationContextKey struct{}
 
 func writeDatabaseOnlyConfig(t *testing.T) string {

@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -84,6 +85,35 @@ func TestExecutorReviewRetryPinsAndAuthorizesTheReviewRoute(t *testing.T) {
 	require.NotNil(t, reviewer.request.Authorization)
 	require.Equal(t, "review-route", reviewer.request.Authorization.RouteReference)
 	require.Equal(t, "review-model", reviewer.request.Authorization.Model)
+}
+
+func TestTrialStagedReviewRequiresExactRecoveredIdentityBeforeProvider(t *testing.T) {
+	base := "https://localhost:19444/image-agent-assets/issue487-images"
+	policy, err := imageagent.NewIsolatedTrialGeneratedURLPolicy(base, "issue487-images")
+	require.NoError(t, err)
+	reviewer := &recordingProductReviewer{review: productimage.Review{Score: 1}}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		Reviewer: reviewer, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()}, GeneratedURLTrial: policy,
+	})
+	input := testProductImageExecutionInput()
+	owner, err := imageagent.ArtifactOwnerKey(input.UserID)
+	require.NoError(t, err)
+	hash := strings.Repeat("a", 64)
+	ref := imageagent.StagedAssetRef{ObjectKey: "image-agent/staging/" + input.TenantID + "/" + owner + "/" + input.RunID + "/1/scene-1/1/0-" + hash + ".png", SHA256: hash, SizeBytes: 8, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1", Operations: []string{"render_scene_model"}}
+	staged := imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: "source-1", Assets: []imageagent.GeneratedAsset{{URL: base + "/" + ref.ObjectKey, ContentType: ref.ContentType, SourceURL: "https://source.example/item.png", Width: 1, Height: 1, Operations: ref.Operations, StagedRef: &ref}}}
+	quote, err := executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	_, err = executor.ReviewStagedSlotQuoted(context.Background(), input, staged, quote)
+	require.NoError(t, err)
+	require.NotEmpty(t, reviewer.request.Candidates)
+
+	staged.Assets[0].StagedRef = nil
+	_, err = executor.ReviewStagedSlotQuoted(context.Background(), input, staged, quote)
+	require.Error(t, err)
+	staged.Assets[0].StagedRef = &ref
+	staged.Assets[0].SourceURL = "https://localhost:19444/private-source.png"
+	_, err = executor.ReviewStagedSlotQuoted(context.Background(), input, staged, quote)
+	require.Error(t, err)
 }
 
 func TestStagedReviewOnlyReleasesBudgetForConfirmedNoDispatch(t *testing.T) {

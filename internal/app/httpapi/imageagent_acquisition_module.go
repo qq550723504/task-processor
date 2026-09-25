@@ -55,6 +55,14 @@ func buildAcquisitionImageModule(ctx context.Context, productDB, imageDB *gorm.D
 	if publicURLs == nil {
 		return nil, imageagent.ErrIdentityRequired
 	}
+	var trialURLs *imageagent.IsolatedTrialGeneratedURLPolicy
+	if cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs {
+		var trialErr error
+		trialURLs, trialErr = imageagent.NewIsolatedTrialGeneratedURLPolicy(cfg.ImageAgent.ArtifactStore.PublicBase, cfg.ImageAgent.ArtifactStore.S3.Bucket)
+		if trialErr != nil {
+			return nil, trialErr
+		}
+	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
 	receipts, err := productsourcing.NewPublicAcquisition(ctx, productDB, live, authorizer, a1688.New())
 	if err != nil {
@@ -77,7 +85,7 @@ func buildAcquisitionImageModule(ctx context.Context, productDB, imageDB *gorm.D
 		return nil, err
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	return acquisitionImageModule{routes: acquisitionImageRoutes(service, catalog, approvalReader, binder.Bind, publicURLs)}, nil
+	return acquisitionImageModule{routes: acquisitionImageRoutes(service, catalog, approvalReader, binder.Bind, publicURLs, trialURLs)}, nil
 }
 
 func (acquisitionImageModule) Name() string                { return "acquisition-main-image" }
@@ -87,7 +95,7 @@ func (m acquisitionImageModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
-func acquisitionImageRoutes(service acquisitionImageService, catalog acquisitionImageCandidateReader, approvalReader productasset.ApprovalCommitReader, bind func(context.Context, string) (context.Context, error), publicURLs imageagent.DurableAssetPublicURLResolver) []httproute.Descriptor {
+func acquisitionImageRoutes(service acquisitionImageService, catalog acquisitionImageCandidateReader, approvalReader productasset.ApprovalCommitReader, bind func(context.Context, string) (context.Context, error), publicURLs imageagent.DurableAssetPublicURLResolver, trial ...*imageagent.IsolatedTrialGeneratedURLPolicy) []httproute.Descriptor {
 	specs := []struct{ method, path, permission, action string }{
 		{http.MethodGet, acquisitionImageBase + "/candidates", authz.PermissionImageAgentRead, "candidates"},
 		{http.MethodPost, acquisitionImageBase, authz.PermissionImageAgentWrite, "start"},
@@ -180,7 +188,7 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						if !emptyAcquisitionImageBody(c) {
 							return
 						}
-						response, err := acquisitionImageResult(projection, publicURLs)
+						response, err := acquisitionImageResult(projection, publicURLs, trial...)
 						if err != nil {
 							writeAcquisitionImageError(c, err)
 							return
@@ -202,7 +210,7 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						return
 					}
 					if projection.Run.Status == imageagent.RunStatusCompleted {
-						if err := verifyCompletedAcquisitionImageApproval(ctx, approvalReader, projection, body.ActionID, publicURLs); err != nil {
+						if err := verifyCompletedAcquisitionImageApproval(ctx, approvalReader, projection, body.ActionID, publicURLs, trial...); err != nil {
 							writeAcquisitionImageError(c, err)
 							return
 						}
@@ -221,7 +229,7 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 	return routes
 }
 
-func verifyCompletedAcquisitionImageApproval(ctx context.Context, reader productasset.ApprovalCommitReader, projection imageagent.RunProjection, actionID string, publicURLs imageagent.DurableAssetPublicURLResolver) error {
+func verifyCompletedAcquisitionImageApproval(ctx context.Context, reader productasset.ApprovalCommitReader, projection imageagent.RunProjection, actionID string, publicURLs imageagent.DurableAssetPublicURLResolver, trial ...*imageagent.IsolatedTrialGeneratedURLPolicy) error {
 	if reader == nil || projection.Run.Status != imageagent.RunStatusCompleted || projection.Plan.Revision <= 0 || len(projection.Plan.Slots) != 1 || len(projection.Slots) != 1 ||
 		projection.Plan.Slots[0].Role != imageagent.SlotRoleMain || len(projection.Slots[0].Candidates) != 1 || projection.AssetCatalog.ProductContext.ProductID == "" || projection.AssetCatalog.ProductContext.SourceSnapshotVersion == 0 {
 		return imageagent.ErrCommandBlocked
@@ -238,16 +246,15 @@ func verifyCompletedAcquisitionImageApproval(ctx context.Context, reader product
 	candidate := projection.Slots[0].Candidates[0]
 	candidateURL := candidate.URL
 	if candidateURL == "" {
-		if publicURLs == nil {
-			return imageagent.ErrCommandBlocked
+		var policy *imageagent.IsolatedTrialGeneratedURLPolicy
+		if len(trial) == 1 {
+			policy = trial[0]
 		}
-		asset, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
+		candidateURL, err = imageagent.ResolvePublishedAssetURL(imageagent.SlotExecutionInput{RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID, PlanRevision: projection.Plan.Revision, Slot: projection.Plan.Slots[0], Attempt: projection.Slots[0].Attempt}, candidate.DurableAsset, 0, publicURLs, policy)
 		if err != nil {
 			return imageagent.ErrCommandBlocked
 		}
-		candidateURL = publicURLs.PublicURL(asset.ObjectKey)
-	}
-	if _, err := imageagent.ValidateSafeImageURL(candidateURL); err != nil {
+	} else if _, err := imageagent.ValidateSafeImageURL(candidateURL); err != nil {
 		return imageagent.ErrCommandBlocked
 	}
 	if commit.TenantID != projection.Run.TenantID || commit.ProductKey != projection.AssetCatalog.ProductContext.ProductID ||
@@ -288,7 +295,7 @@ func readAcquisitionImageJSON(request *http.Request, target any) error {
 	return nil
 }
 
-func acquisitionImageResult(projection imageagent.RunProjection, publicURLs imageagent.DurableAssetPublicURLResolver) (gin.H, error) {
+func acquisitionImageResult(projection imageagent.RunProjection, publicURLs imageagent.DurableAssetPublicURLResolver, trial ...*imageagent.IsolatedTrialGeneratedURLPolicy) (gin.H, error) {
 	response := gin.H{
 		"runId": projection.Run.ID, "status": projection.Run.Status,
 		"planRevision": projection.Plan.Revision, "resultDigest": projection.ResultDigest,
@@ -301,14 +308,20 @@ func acquisitionImageResult(projection imageagent.RunProjection, publicURLs imag
 		if slot.Slot.ID != "main" {
 			continue
 		}
-		for _, candidate := range slot.Candidates {
+		for index, candidate := range slot.Candidates {
 			url := candidate.URL
 			if url == "" {
-				asset, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
+				var policy *imageagent.IsolatedTrialGeneratedURLPolicy
+				if len(trial) == 1 {
+					policy = trial[0]
+				}
+				var err error
+				url, err = imageagent.ResolvePublishedAssetURL(imageagent.SlotExecutionInput{RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID, PlanRevision: projection.Plan.Revision, Slot: slot.Slot, Attempt: slot.Attempt}, candidate.DurableAsset, index, publicURLs, policy)
 				if err != nil {
 					return nil, err
 				}
-				url = publicURLs.PublicURL(asset.ObjectKey)
+				response["imageUrl"] = url
+				return response, nil
 			}
 			safe, err := imageagent.ValidateSafeImageURL(url)
 			if err != nil {

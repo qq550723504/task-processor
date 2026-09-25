@@ -72,4 +72,20 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 	require.True(t, workflowClosed)
 }
 
+func TestCurrentImageAgentTrialGeneratedBaseIsExplicitAndFixed(t *testing.T) {
+	cfg := acquisitionRuntimeConfig()
+	cfg.ImageAgent = &ImageAgentConfig{
+		Database:        DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "image_agent_runtime", Password: "fixture-password", Database: "image_agent", MaxConnections: 4},
+		TemporalAddress: "127.0.0.1:7233", TemporalNamespace: "default", AllowedOrganizationIDs: []string{"org-a"},
+		PublicBase: "https://localhost:19444/image-agent-assets/issue487-images", Bucket: "issue487-images", IsolatedTrialGeneratedURLs: true,
+	}
+	require.NoError(t, cfg.validate())
+	require.True(t, cfg.CoreConfig().ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs)
+	cfg.ImageAgent.PublicBase = "https://localhost:19444/image-agent-assets/other"
+	require.Error(t, cfg.validate())
+	cfg.ImageAgent.PublicBase = "https://localhost:19444/image-agent-assets/issue487-images"
+	cfg.ImageAgent.IsolatedTrialGeneratedURLs = false
+	require.Error(t, cfg.validate(), "loopback URL must fail without the isolated-trial flag")
+}
+
 type fakeImageWorkflowClient struct{ imageagent.WorkflowClient }

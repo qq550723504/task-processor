@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"task-processor/internal/imageagent"
@@ -28,6 +29,7 @@ type Dependencies struct {
 	UsageQuoter             productimage.UsageQuoter
 	ProfileResolver         ProfileResolver
 	LegacyAssetMaterializer LegacyAssetMaterializer
+	GeneratedURLTrial       *imageagent.IsolatedTrialGeneratedURLPolicy
 }
 
 // LegacyAssetMaterializer bridges byte-producing providers to the frozen v2
@@ -237,7 +239,7 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlot(ctx context.Context, input i
 	if err != nil {
 		return err
 	}
-	candidates, err := e.reviewCandidates(resolved, input.Attempt, staged)
+	candidates, err := e.reviewCandidates(input, resolved, staged)
 	if err != nil {
 		return err
 	}
@@ -294,7 +296,7 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlotQuoted(ctx context.Context, i
 		}
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
 	}
-	candidates, err := e.reviewCandidates(resolved, input.Attempt, staged)
+	candidates, err := e.reviewCandidates(input, resolved, staged)
 	if err != nil {
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
 	}
@@ -348,8 +350,8 @@ func reviewQuoteFromCapability(input imageagent.SlotExecutionInput, profile imag
 	return quote, nil
 }
 
-func (e *ProductImageSlotExecutor) reviewCandidates(input resolvedSlotInput, expectedAttempt int, staged imageagent.SlotGeneratedOutput) ([]productimage.Candidate, error) {
-	if staged.SlotID != input.slot.ID || staged.Attempt != expectedAttempt || staged.SourceAssetID != input.sourceAssetID || len(staged.Assets) == 0 {
+func (e *ProductImageSlotExecutor) reviewCandidates(execution imageagent.SlotExecutionInput, input resolvedSlotInput, staged imageagent.SlotGeneratedOutput) ([]productimage.Candidate, error) {
+	if staged.SlotID != input.slot.ID || staged.Attempt != execution.Attempt || staged.SourceAssetID != input.sourceAssetID || len(staged.Assets) == 0 {
 		return nil, imageagent.ErrRevisionConflict
 	}
 	candidates := make([]productimage.Candidate, len(staged.Assets))
@@ -358,7 +360,14 @@ func (e *ProductImageSlotExecutor) reviewCandidates(input resolvedSlotInput, exp
 		if url == "" || generated.Width <= 0 || generated.Height <= 0 || generated.SourceURL == "" || len(generated.Operations) == 0 {
 			return nil, imageagent.ErrValidation
 		}
-		if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
+		if e.dependencies.GeneratedURLTrial != nil {
+			if generated.StagedRef == nil || generated.URL != url || generated.StagedRef.SourceAssetID != input.sourceAssetID || generated.StagedRef.ContentType != generated.ContentType || generated.StagedRef.Width != generated.Width || generated.StagedRef.Height != generated.Height || !slices.Equal(generated.StagedRef.Operations, generated.Operations) {
+				return nil, imageagent.ErrValidation
+			}
+			if err := e.dependencies.GeneratedURLTrial.ValidateStaged(execution, *generated.StagedRef, index, url); err != nil {
+				return nil, err
+			}
+		} else if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
 			return nil, err
 		}
 		if _, err := imageagent.ValidateSafeImageURL(generated.SourceURL); err != nil {

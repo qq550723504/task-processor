@@ -17,7 +17,17 @@ membership_runtime_secret=/membership-runtime-secret
 zitadel_api_secrets=/zitadel-api-secrets
 tofu_inputs=/tofu-inputs
 frontend_secrets=/frontend-secrets
+image_db_owner_secret=/image-db-owner-secret
+image_runtime_secret=/image-runtime-secret
+image_worker_secret=/image-worker-secret
+acquisition_db_owner_secret=/acquisition-db-owner-secret
+acquisition_runtime_secret=/acquisition-runtime-secret
+image_minio_secret=/image-minio-secret
 marker="$state/.bootstrap-complete"
+case "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" in
+  ''|ISOLATED_TRIAL_ONLY) ;;
+  *) echo 'invalid image trial confirmation' >&2; exit 1 ;;
+esac
 
 if [ -f "$marker" ]; then
   for path in \
@@ -31,6 +41,11 @@ if [ -f "$marker" ]; then
     "$tofu_inputs/insufficient-password" "$frontend_secrets/auth-secret"; do
     test -f "$path"
   done
+  if [ "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
+    for path in "$image_db_owner_secret/image-db-password" "$image_runtime_secret/image-runtime-password" "$image_worker_secret/image-worker-password" \
+      "$acquisition_db_owner_secret/acquisition-db-password" "$acquisition_runtime_secret/acquisition-runtime-password" \
+      "$image_minio_secret/minio-root-password"; do test -f "$path"; done
+  fi
   exit 0
 fi
 
@@ -56,6 +71,15 @@ write_random 24 "$referral_runtime_secret/referral-runtime-password"
 write_random 24 "$membership_db_owner_secret/membership-db-password"
 write_random 24 "$membership_runtime_secret/membership-runtime-password"
 write_random 32 "$frontend_secrets/auth-secret"
+if [ "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then
+  mkdir -p "$image_db_owner_secret" "$image_runtime_secret" "$image_worker_secret" "$acquisition_db_owner_secret" "$acquisition_runtime_secret" "$image_minio_secret"
+  write_random 24 "$image_db_owner_secret/image-db-password"
+  write_random 24 "$image_runtime_secret/image-runtime-password"
+  write_random 24 "$image_worker_secret/image-worker-password"
+  write_random 24 "$acquisition_db_owner_secret/acquisition-db-password"
+  write_random 24 "$acquisition_runtime_secret/acquisition-runtime-password"
+  write_random 24 "$image_minio_secret/minio-root-password"
+fi
 { printf 'Local!'; openssl rand -hex 18; } > "$tofu_inputs/operator-password.tmp"
 chmod 600 "$tofu_inputs/operator-password.tmp"
 mv "$tofu_inputs/operator-password.tmp" "$tofu_inputs/operator-password"

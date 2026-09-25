@@ -129,6 +129,29 @@ func (acquisitionImagePublicURLs) PublicURL(string) string {
 	return "https://images.example.test/generated.png"
 }
 
+type trialAcquisitionImagePublicURLs struct{ base string }
+
+func (r trialAcquisitionImagePublicURLs) PublicURL(key string) string { return r.base + "/" + key }
+
+func TestAcquisitionImageTrialResultDerivesOnlyExactPublishedAssetURL(t *testing.T) {
+	const base = "https://localhost:19444/image-agent-assets/issue487-images"
+	policy, err := imageagent.NewIsolatedTrialGeneratedURLPolicy(base, "issue487-images")
+	require.NoError(t, err)
+	owner, err := imageagent.ArtifactOwnerKey("actor-a")
+	require.NoError(t, err)
+	hash := strings.Repeat("a", 64)
+	asset := imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/" + owner + "/run-a/1/main/1/0-" + hash + ".png", SHA256: hash}
+	projection := imageagent.RunProjection{Run: imageagent.Run{ID: "run-a", TenantID: "org-a", UserID: "actor-a", Status: imageagent.RunStatusAwaitingFinalApproval}, Plan: imageagent.Plan{Revision: 1, Slots: []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain}}}, Slots: []imageagent.SlotProjection{{Slot: imageagent.Slot{ID: "main", Role: imageagent.SlotRoleMain}, Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "asset-a", DurableAsset: asset}}}}}
+	result, err := acquisitionImageResult(projection, trialAcquisitionImagePublicURLs{base}, policy)
+	require.NoError(t, err)
+	require.Equal(t, base+"/"+asset.ObjectKey, result["imageUrl"])
+	_, err = acquisitionImageResult(projection, trialAcquisitionImagePublicURLs{"https://localhost:19445/image-agent-assets/issue487-images"}, policy)
+	require.Error(t, err)
+	projection.Slots[0].Candidates[0].DurableAsset.ObjectKey = strings.Replace(asset.ObjectKey, "/org-a/", "/org-b/", 1)
+	_, err = acquisitionImageResult(projection, trialAcquisitionImagePublicURLs{base}, policy)
+	require.Error(t, err)
+}
+
 func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(t *testing.T) {
 	const operationID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
 	const requestID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
@@ -187,7 +210,9 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	require.Equal(t, 1, service.approvals)
 	service.projection.Run.Status = imageagent.RunStatusCompleted
 	service.projection.Slots[0].Candidates[0].URL = ""
-	service.projection.Slots[0].Candidates[0].DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/main.png", SHA256: strings.Repeat("a", 64)}
+	ownerKey, err := imageagent.ArtifactOwnerKey(identity.UserID)
+	require.NoError(t, err)
+	service.projection.Slots[0].Candidates[0].DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/" + ownerKey + "/" + input.RunID + "/1/main/1/0-" + strings.Repeat("a", 64) + ".png", SHA256: strings.Repeat("a", 64)}
 	approvalReader.commit = productasset.ApprovalCommit{TenantID: identity.TenantID, ProductKey: "product-a", TargetPlatform: "product", SourceSnapshotVersion: 1, ActionID: imagetemporal.ApprovalActionPublicationKey(requestID, input.RunID, 1), Assets: []productasset.ApprovedAsset{{ID: "generated-1", RunID: input.RunID, PlanRevision: 1, SlotID: input.Plan.Slots[0].ID, Attempt: 1, Role: productasset.RoleMain, URL: "https://images.example.test/generated.png"}}}
 	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
 	require.Equal(t, http.StatusAccepted, response.Code, "completed action must verify immutable Product Asset fact without updating closed Temporal")
