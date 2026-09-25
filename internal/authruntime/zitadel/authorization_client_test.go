@@ -100,6 +100,7 @@ func TestExactServiceProjectAuthorizationUsesAllFiltersAndPreservesInactiveState
 	result, err := NewAuthorizationClient(server.URL, server.Client()).ReadExactServiceProjectAuthorization(context.Background(), "service-token", "actor-1", "project-1", "org-1")
 	require.NoError(t, err)
 	assert.True(t, result.Found)
+	assert.Equal(t, "auth-1", result.AuthorizationID)
 	assert.Equal(t, "STATE_INACTIVE", result.State)
 	assert.Equal(t, []string{"listingkit_admin"}, result.Roles)
 }
