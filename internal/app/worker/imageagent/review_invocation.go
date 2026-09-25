@@ -91,6 +91,15 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 			}
 			return productimage.Review{}, productimage.ErrOutputValidation
 		}
+		if found && existing.Outcome == aicapability.InvocationFailed && existing.ErrorCode == "review_preflight_failed" {
+			replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			replayErr := settings.Recorder.RecordInvocation(replayCtx, existing)
+			cancel()
+			if replayErr != nil {
+				return productimage.Review{}, fmt.Errorf("image review preflight release failed: %w", replayErr)
+			}
+			return productimage.Review{}, productimage.ErrReviewConfirmedNotDispatched
+		}
 		if found {
 			return productimage.Review{}, fmt.Errorf("image review invocation is already durably dispatched and cannot be replayed safely: %w", productimage.ErrExternalCapabilityUnavailable)
 		}
@@ -139,6 +148,17 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 			return productimage.Review{}, fmt.Errorf("image review adapter failure recording failed: %w", failureErr)
 		}
 		return productimage.Review{}, err
+	}
+	if err := adapter.PreflightReview(request); err != nil {
+		record.FinishedAt = time.Now().UTC()
+		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(err), "review_preflight_failed"
+		failureCtx, failureCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		failureErr := settings.Recorder.RecordInvocation(failureCtx, record)
+		failureCancel()
+		if failureErr != nil {
+			return productimage.Review{}, fmt.Errorf("image review preflight recording or release failed: %w", failureErr)
+		}
+		return productimage.Review{}, productimage.ErrReviewConfirmedNotDispatched
 	}
 	result, providerErr := adapter.Review(ctx, request)
 	if providerErr == nil {

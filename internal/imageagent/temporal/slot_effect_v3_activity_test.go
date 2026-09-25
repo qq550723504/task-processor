@@ -373,6 +373,34 @@ func TestReviewStagedSlotV3ReusesCandidatesWithoutRegeneration(t *testing.T) {
 	require.Equal(t, imageagent.SlotEffectV3PublicationComplete, stored.Phase)
 }
 
+func TestReviewStagedSlotV3ReleasesOnlyConfirmedPreDispatchBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		state imageagent.ProviderDispatchState
+		want  imageagent.SlotBudgetStatus
+	}{
+		{"confirmed_rejection", imageagent.ProviderRejectedBeforeEffect, imageagent.SlotBudgetReleased},
+		{"unknown_transport", imageagent.ProviderDispatchedUnknown, imageagent.SlotBudgetCommitted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repository, input, policy := initializedBudgetedV3Activity(t, "run-review-budget-"+tc.name, 3)
+			input.BudgetAuthorization, input.BudgetPolicy, input.ReviewActionID = true, policy, "retry-review"
+			input.AssetCatalog.Assets = append(input.AssetCatalog.Assets, imageagent.AuthorizedAsset{ID: "source-1", Type: imageagent.AuthorizedAssetSource, SourceURL: "https://source.example/original.png"})
+			effects := repository.(imageagent.SlotExternalEffectV3Repository)
+			seedV3StagingPrepared(t, effects, input, v3StagingManifest(input, tinyPNGBytes(t)))
+			executor := &budgetedReviewFailureExecutor{budgetedRecordingExecutor: &budgetedRecordingExecutor{recordingStagedExecutor: &recordingStagedExecutor{}, quote: budgetActivityQuote("review-budget-" + tc.name)}, state: tc.state}
+			activities := newBudgetV3Activities(t, repository, executor, &recordingArtifactStore{})
+			_, err := activities.ReviewStagedSlotV3(context.Background(), input)
+			require.Error(t, err)
+			effect, getErr := effects.GetSlotExternalEffectV3(context.Background(), v3Reservation(input).Identity)
+			require.NoError(t, getErr)
+			require.Len(t, effect.ReviewUsage, 1)
+			require.Equal(t, tc.want, effect.ReviewUsage[0].BudgetStatus)
+			require.Zero(t, executor.GenerateCalls(), "staged review never regenerates")
+		})
+	}
+}
+
 func TestReviewStagedSlotV3ReplaysPersistedHumanReviewBlock(t *testing.T) {
 	repository, input, policy := initializedBudgetedV3Activity(t, "run-v3-review-human-replay", 2)
 	input.BudgetAuthorization, input.BudgetPolicy, input.ReviewActionID = true, policy, "review-action"
@@ -1260,6 +1288,23 @@ func requireV3ApplicationErrorType(t *testing.T, err error, want string) {
 	require.ErrorAs(t, err, &applicationError)
 	require.Equal(t, want, applicationError.Type())
 	require.True(t, applicationError.NonRetryable())
+}
+
+type budgetedReviewFailureExecutor struct {
+	*budgetedRecordingExecutor
+	state imageagent.ProviderDispatchState
+}
+
+func (e *budgetedReviewFailureExecutor) QuoteStagedReview(context.Context, imageagent.SlotExecutionInput, imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
+	return e.quote, nil
+}
+
+func (e *budgetedReviewFailureExecutor) ReviewStagedSlotQuoted(context.Context, imageagent.SlotExecutionInput, imageagent.SlotGeneratedOutput, imageagent.SlotUsageQuote) (imageagent.SlotUsageReceipt, error) {
+	receipt := imageagent.SlotUsageReceipt{Actual: e.quote.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
+	if e.state == imageagent.ProviderRejectedBeforeEffect {
+		receipt = imageagent.SlotUsageReceipt{}
+	}
+	return receipt, &imageagent.ProviderDispatchError{State: e.state, Err: errors.New("controlled review failure")}
 }
 
 type recordingStagedExecutor struct {

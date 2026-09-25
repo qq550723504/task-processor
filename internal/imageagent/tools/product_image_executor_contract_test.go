@@ -86,6 +86,51 @@ func TestExecutorReviewRetryPinsAndAuthorizesTheReviewRoute(t *testing.T) {
 	require.Equal(t, "review-model", reviewer.request.Authorization.Model)
 }
 
+func TestStagedReviewOnlyReleasesBudgetForConfirmedNoDispatch(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		reviewErr error
+		want      imageagent.ProviderDispatchState
+	}{
+		{"confirmed_preflight", productimage.ErrReviewConfirmedNotDispatched, imageagent.ProviderRejectedBeforeEffect},
+		{"unknown_transport", productimage.ErrExternalCapabilityUnavailable, imageagent.ProviderDispatchedUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			executor := NewProductImageSlotExecutor(Dependencies{
+				Reviewer: &failingProductReviewer{err: tc.reviewErr}, UsageQuoter: testProductUsageQuoter{},
+				ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+			})
+			input := testProductImageExecutionInput()
+			quote, err := executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+			require.NoError(t, err)
+			receipt, err := executor.ReviewStagedSlotQuoted(context.Background(), input, imageagent.SlotGeneratedOutput{
+				SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: "source-1",
+				Assets: []imageagent.GeneratedAsset{{URL: "https://staging.example/review.png", SourceURL: "https://source.example/item.png", Width: 1, Height: 1, Operations: []string{"render_scene_model"}}},
+			}, quote)
+			require.Equal(t, tc.want, imageagent.ProviderDispatchStateOf(err))
+			if tc.want == imageagent.ProviderRejectedBeforeEffect {
+				require.Equal(t, imageagent.SlotUsageReceipt{}, receipt)
+			} else {
+				require.Equal(t, quote.Maximum, receipt.Actual)
+			}
+		})
+	}
+}
+
+func TestGenerateQuotedSlotPreservesPriorImageEffectWhenReviewNotDispatched(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
+		Reviewer: &failingProductReviewer{err: productimage.ErrReviewConfirmedNotDispatched}, UsageQuoter: testProductUsageQuoter{},
+		ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+	})
+	input := testProductImageExecutionInput()
+	input.Slot.Role = imageagent.SlotRoleMain
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.Equal(t, imageagent.ProviderDispatchedUnknown, imageagent.ProviderDispatchStateOf(err), "image generation has already crossed its provider effect")
+}
+
 func TestExecutorClassifiesReviewerTransportFailureSeparately(t *testing.T) {
 	reviewer := &failingProductReviewer{err: context.DeadlineExceeded}
 	executor := NewProductImageSlotExecutor(Dependencies{

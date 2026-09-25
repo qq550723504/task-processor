@@ -301,6 +301,9 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlotQuoted(ctx context.Context, i
 	review, err := e.dependencies.Reviewer.Review(ctx, productimage.ReviewRequest{Product: resolved.product, Sources: []productimage.Asset{resolved.source}, Candidates: candidates, Authorization: &capability})
 	receipt := imageagent.SlotUsageReceipt{Actual: expected.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
 	if err != nil {
+		if err == productimage.ErrReviewConfirmedNotDispatched {
+			return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderRejectedBeforeEffect, err)
+		}
 		return receipt, dispatchedCapabilityError("review image", err, true)
 	}
 	threshold := resolved.profile.Thresholds.MainReview

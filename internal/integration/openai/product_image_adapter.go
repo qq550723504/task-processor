@@ -177,7 +177,7 @@ func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productim
 }
 
 func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.ReviewRequest) (productimage.Review, error) {
-	if err := a.authorize(request.Authorization, "review", 1); err != nil {
+	if err := a.PreflightReview(request); err != nil {
 		return productimage.Review{}, err
 	}
 	summary, err := json.Marshal(struct {
@@ -230,6 +230,12 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 		return productimage.Review{}, productimage.ErrOutputValidation
 	}
 	return productimage.Review{Score: payload.Score, NeedsHumanReview: payload.NeedsHumanReview, Reasons: payload.Reasons}, nil
+}
+
+// PreflightReview checks the same immutable adapter configuration used by
+// Review. It must run after durable admission and before its provider request.
+func (a *ProductImageAdapter) PreflightReview(request productimage.ReviewRequest) error {
+	return a.authorize(request.Authorization, "review", 1)
 }
 
 const reviewHashWriteChunkBytes = 8 << 10

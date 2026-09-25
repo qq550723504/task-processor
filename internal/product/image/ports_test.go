@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -28,6 +29,26 @@ type reviewerFunc func(context.Context, ReviewRequest) (Review, error)
 
 func (f reviewerFunc) Review(ctx context.Context, request ReviewRequest) (Review, error) {
 	return f(ctx, request)
+}
+
+func TestReviewCapabilityOnlyPreservesExactConfirmedNoDispatch(t *testing.T) {
+	request := ReviewRequest{Product: validProductContext(), Sources: []Asset{validSourceAsset()}, Candidates: []Candidate{{Asset: validInlineGeneratedAsset(RoleWhiteBackground, "render_white_background", []byte("white"))}}}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"exact", ErrReviewConfirmedNotDispatched, ErrReviewConfirmedNotDispatched},
+		{"wrapped", fmt.Errorf("backend: %w", ErrReviewConfirmedNotDispatched), ErrExternalCapabilityUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			capability, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) { return Review{}, tc.err }))
+			require.NoError(t, err)
+			_, err = capability.Review(context.Background(), request)
+			require.ErrorIs(t, err, tc.want)
+			require.Equal(t, tc.want, err)
+		})
+	}
 }
 
 type whiteBackgroundRendererFunc func(context.Context, RenderRequest) (Candidate, error)
