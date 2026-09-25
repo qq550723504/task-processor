@@ -14,10 +14,19 @@ http:
       tls: {}
     image-agent-public:
       entryPoints: [application]
-      rule: Host(`localhost`) && PathPrefix(`/image-agent-assets/image-agent-trial/image-agent/public/`) && (Method(`GET`) || Method(`HEAD`))
+      # Match the durable public object-key grammar, not a directory prefix.
+      # Directory/listing and non-object paths must never reach MinIO.
+      rule: Host(`localhost`) && PathRegexp(`^/image-agent-assets/image-agent-trial/image-agent/public/[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[a-f0-9]{64}/[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[1-9][0-9]*/[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[1-9][0-9]*/(0|[1-9][0-9]*)-[a-f0-9]{64}[.](png|jpg|webp)$`) && (Method(`GET`) || Method(`HEAD`))
       priority: 200
       middlewares: [image-agent-public-prefix]
       service: image-agent-public
+      tls: {}
+    image-agent-public-directory:
+      entryPoints: [application]
+      rule: Host(`localhost`) && PathRegexp(`^/image-agent-assets/image-agent-trial/image-agent/public/([^/]+/)*$`) && (Method(`GET`) || Method(`HEAD`))
+      priority: 210
+      middlewares: [image-agent-public-directory-deny]
+      service: listingkit-ui
       tls: {}
     listingkit-ui:
       entryPoints: [application]
@@ -29,6 +38,9 @@ http:
     image-agent-public-prefix:
       stripPrefix:
         prefixes: [/image-agent-assets]
+    image-agent-public-directory-deny:
+      replacePath:
+        path: /__image-agent-public-directory-denied__
   services:
     zitadel-api:
       loadBalancer:
