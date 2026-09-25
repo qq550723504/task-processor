@@ -126,19 +126,34 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 	}
 	var result UsageEvent
 	err := runUsageLedgerTransaction(ctx, r.db, func(tx *gorm.DB) error {
-		entitlement, err := loadEffectiveUsageEntitlement(tx, tenantID, ModuleListingKit)
-		if err != nil {
-			return err
-		}
-		periodKey, err := entitlementWindowPeriodKey(entitlement)
-		if err != nil {
+		if err := ensureOrganizationUsageLock(tx, tenantID); err != nil {
 			return err
 		}
 		var existing usageEventRow
 		lookup := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ?", tenantID, usageMetricAITokens, "ai_invocation", invocationID).Take(&existing)
 		if lookup.Error == nil {
-			if existing.Quantity != totalTokens || existing.MemberID != memberID || existing.PeriodKey != periodKey {
+			if existing.Quantity != totalTokens || existing.MemberID != memberID {
 				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: existing.IdempotencyKey}
+			}
+			prior, found, err := findAIInvocationReservation(tx, tenantID, invocationID)
+			if err != nil {
+				return err
+			}
+			if found && prior.PeriodKey != existing.PeriodKey {
+				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: existing.IdempotencyKey}
+			}
+			if !found {
+				entitlement, err := loadEffectiveUsageEntitlement(tx, tenantID, ModuleListingKit)
+				if err != nil {
+					return err
+				}
+				periodKey, err := entitlementWindowPeriodKey(entitlement)
+				if err != nil {
+					return err
+				}
+				if existing.PeriodKey != periodKey {
+					return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: existing.IdempotencyKey}
+				}
 			}
 			if existing.Status == string(UsageEventCommitted) {
 				if err := releaseAIInvocationReservation(ctx, tx, tenantID, invocationID); err != nil {
@@ -160,27 +175,27 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 		}
 		var reservation usageEventRow
 		reservationErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ? AND status = ?", tenantID, usageMetricAITokens, "ai_invocation_reservation", invocationID, string(UsageEventReserved)).Take(&reservation).Error
-		if reservationErr == nil && totalTokens > reservation.Quantity {
-			return ErrUsageQuotaExceeded
-		} else if reservationErr != nil && !errors.Is(reservationErr, gorm.ErrRecordNotFound) {
+		if reservationErr == nil {
+			var settleErr error
+			result, settleErr = settleReservedAIInvocationUsage(ctx, tx, reservation, memberID, totalTokens)
+			return settleErr
+		}
+		if !errors.Is(reservationErr, gorm.ErrRecordNotFound) {
 			return reservationErr
 		}
-		// A provider reservation occupies the bucket's remaining capacity. Free
-		// it before committing the exact observed quantity; rollback restores it
-		// if any later step fails.
-		if err := releaseAIInvocationReservation(ctx, tx, tenantID, invocationID); err != nil {
+		// The no-reservation path is retained for existing callers. It checks
+		// the current entitlement and allocation exactly as before.
+		entitlement, err := loadEffectiveUsageEntitlement(tx, tenantID, ModuleListingKit)
+		if err != nil {
+			return err
+		}
+		periodKey, err := entitlementWindowPeriodKey(entitlement)
+		if err != nil {
 			return err
 		}
 		// Serialize member allocation changes and member-scoped usage on the
 		// commercial owner. Membership facts remain in the membership owner;
 		// this row is only the commercial reservation entitlement.
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&organizationAllocationLockRow{OrganizationID: tenantID, UpdatedAt: time.Now().UTC()}).Error; err != nil {
-			return err
-		}
-		var lock organizationAllocationLockRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ?", tenantID).Take(&lock).Error; err != nil {
-			return err
-		}
 		var allocation memberAllocationRow
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("organization_id = ? AND member_id = ? AND metric = ?", tenantID, memberID, "token").Take(&allocation).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrUsageQuotaExceeded
@@ -213,30 +228,116 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 	return result, err
 }
 
+// settleReservedAIInvocationUsage consumes capacity already atomically held by
+// the commercial owner. A long-running provider call may finish after an
+// entitlement rollover; its observed tokens belong to the original window,
+// not the current one. The original reservation occurrence remains the usage
+// event timestamp so member/window projections retain the correct period.
+func settleReservedAIInvocationUsage(ctx context.Context, tx *gorm.DB, reservation usageEventRow, memberID string, totalTokens int64) (UsageEvent, error) {
+	if reservation.MemberID != memberID {
+		return UsageEvent{}, &UsageDuplicateIdentityError{TenantID: reservation.TenantID, IdempotencyKey: reservation.IdempotencyKey}
+	}
+	if totalTokens > reservation.Quantity {
+		return UsageEvent{}, ErrUsageQuotaExceeded
+	}
+	if reservation.ModuleCode != ModuleListingKit || reservation.Metric != usageMetricAITokens || reservation.PeriodKey == "" || reservation.OccurredAt.IsZero() {
+		return UsageEvent{}, ErrUsageInvalidInput
+	}
+	ledger := &gormUsageLedger{repo: &GormRepository{db: tx}}
+	if _, err := ledger.Release(ctx, reservation.EventID, "ai_invocation_settled_or_provider_failed"); err != nil {
+		return UsageEvent{}, err
+	}
+	bucket, err := loadUsageBucket(tx, reservation.TenantID, ModuleListingKit, reservation.PeriodKey, usageMetricAITokens)
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	committed, ok := addUsage(bucket.Committed, totalTokens)
+	if !ok {
+		return UsageEvent{}, &UsageValidationError{Field: "quantity"}
+	}
+	if err := validateUsageBucketTotals(usageMetricAITokens, committed, bucket.Reserved); err != nil {
+		return UsageEvent{}, err
+	}
+	if err := tx.Model(&usageBucketRow{}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", reservation.TenantID, ModuleListingKit, usageBucketPeriodKey(usageMetricAITokens, reservation.PeriodKey), usageMetricAITokens).Updates(map[string]any{"committed": committed, "updated_at": time.Now().UTC()}).Error; err != nil {
+		return UsageEvent{}, err
+	}
+	row := usageEventRow{
+		EventID: uuid.NewString(), TenantID: reservation.TenantID, ModuleCode: ModuleListingKit,
+		Metric: usageMetricAITokens, Quantity: totalTokens, PeriodKey: reservation.PeriodKey,
+		SourceType: "ai_invocation", SourceID: reservation.SourceID, MemberID: memberID,
+		IdempotencyKey: fmt.Sprintf("ai_invocation:%s:%s", reservation.PeriodKey, reservation.SourceID),
+		Status:         string(UsageEventCommitted), OccurredAt: reservation.OccurredAt, Metadata: "null",
+	}
+	if err := tx.Create(&row).Error; err != nil {
+		return UsageEvent{}, err
+	}
+	if err := tx.Create(&usageEventOutboxRow{EventID: row.EventID, Status: "pending"}).Error; err != nil {
+		return UsageEvent{}, err
+	}
+	return usageEventFromRow(row), nil
+}
+
 func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, maximumTokens int64, occurredAt time.Time) error {
 	tenantID, memberID, invocationID = strings.TrimSpace(tenantID), strings.TrimSpace(memberID), strings.TrimSpace(invocationID)
 	if r == nil || r.db == nil || tenantID == "" || memberID == "" || invocationID == "" || maximumTokens <= 0 || occurredAt.IsZero() {
 		return ErrUsageInvalidInput
 	}
 	return runUsageLedgerTransaction(ctx, r.db, func(tx *gorm.DB) error {
+		if err := ensureOrganizationUsageLock(tx, tenantID); err != nil {
+			return err
+		}
+		var actual usageEventRow
+		if err := tx.Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ?", tenantID, usageMetricAITokens, "ai_invocation", invocationID).Take(&actual).Error; err == nil {
+			if actual.MemberID != memberID {
+				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: actual.IdempotencyKey}
+			}
+			prior, found, err := findAIInvocationReservation(tx, tenantID, invocationID)
+			if err != nil {
+				return err
+			}
+			if found {
+				if prior.MemberID != memberID || prior.PeriodKey != actual.PeriodKey || prior.Quantity != maximumTokens {
+					return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: actual.IdempotencyKey}
+				}
+			} else {
+				entitlement, err := loadEffectiveUsageEntitlement(tx, tenantID, ModuleListingKit)
+				if err != nil {
+					return err
+				}
+				periodKey, err := entitlementWindowPeriodKey(entitlement)
+				if err != nil {
+					return err
+				}
+				if actual.PeriodKey != periodKey {
+					return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: actual.IdempotencyKey}
+				}
+			}
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		historical, found, err := findAIInvocationReservation(tx, tenantID, invocationID)
+		if err != nil {
+			return err
+		}
+		if found && (historical.MemberID != memberID || historical.Quantity != maximumTokens) {
+			return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: historical.IdempotencyKey}
+		}
+		var prior usageEventRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ? AND status = ?", tenantID, usageMetricAITokens, "ai_invocation_reservation", invocationID, string(UsageEventReserved)).Take(&prior).Error; err == nil {
+			if prior.MemberID != memberID || prior.Quantity != maximumTokens {
+				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: prior.IdempotencyKey}
+			}
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		entitlement, err := loadEffectiveUsageEntitlement(tx, tenantID, ModuleListingKit)
 		if err != nil {
 			return err
 		}
 		periodKey, err := entitlementWindowPeriodKey(entitlement)
 		if err != nil {
-			return err
-		}
-		var actual usageEventRow
-		if err := tx.Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ?", tenantID, usageMetricAITokens, "ai_invocation", invocationID).Take(&actual).Error; err == nil {
-			if actual.MemberID != memberID || actual.PeriodKey != periodKey {
-				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: actual.IdempotencyKey}
-			}
-			return nil
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		if err := ensureOrganizationUsageLock(tx, tenantID); err != nil {
 			return err
 		}
 		var allocation memberAllocationRow
@@ -251,7 +352,7 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 		var reservation usageEventRow
 		reservationKey := fmt.Sprintf("ai_invocation_reservation:%s:%s", periodKey, invocationID)
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND idempotency_key = ?", tenantID, reservationKey).Take(&reservation).Error; err == nil {
-			if reservation.MemberID != memberID || reservation.PeriodKey != periodKey || reservation.SourceID != invocationID {
+			if reservation.MemberID != memberID || reservation.PeriodKey != periodKey || reservation.SourceID != invocationID || reservation.Quantity != maximumTokens {
 				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: reservationKey}
 			}
 			if reservation.Status == string(UsageEventReserved) {
@@ -283,6 +384,15 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 		_, err = ledger.Reserve(ctx, ReserveUsageInput{TenantID: tenantID, ModuleCode: ModuleListingKit, Metric: usageMetricAITokens, Quantity: maximumTokens, PeriodKey: periodKey, SourceType: "ai_invocation_reservation", SourceID: invocationID, MemberID: memberID, IdempotencyKey: reservationKey, OccurredAt: occurredAt.UTC()})
 		return err
 	})
+}
+
+func findAIInvocationReservation(tx *gorm.DB, tenantID, invocationID string) (usageEventRow, bool, error) {
+	var row usageEventRow
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ?", tenantID, usageMetricAITokens, "ai_invocation_reservation", invocationID).Order("created_at ASC, event_id ASC").Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return usageEventRow{}, false, nil
+	}
+	return row, err == nil, err
 }
 
 func (r *GormRepository) ReleaseAIInvocationUsage(ctx context.Context, tenantID, invocationID string) error {
