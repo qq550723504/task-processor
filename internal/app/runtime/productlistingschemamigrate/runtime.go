@@ -9,18 +9,26 @@ import (
 	"task-processor/internal/app/configadapter"
 	"task-processor/internal/app/schema/productlisting"
 	"task-processor/internal/core/config"
+	imagestore "task-processor/internal/imageagent/store"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
 type Dependencies struct {
-	LoadConfig func(string) (*config.Config, error)
-	OpenDB     func(*config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB    func(*gorm.DB) error
-	MigrateAll func(context.Context, *gorm.DB) error
+	LoadConfig     func(string) (*config.Config, error)
+	OpenDB         func(*config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB        func(*gorm.DB) error
+	MigrateAll     func(context.Context, *gorm.DB) error
+	OperationLabel string
 }
 
 func Run(ctx context.Context, configPath string) error {
 	return runWithDependencies(ctx, configPath, Dependencies{})
+}
+
+// GrantImageAgentRuntime is an explicit owner-DB maintenance action. It does
+// not migrate schema or run during API/worker startup.
+func GrantImageAgentRuntime(ctx context.Context, configPath string) error {
+	return runWithDependencies(ctx, configPath, Dependencies{MigrateAll: imagestore.GrantOrganizationRuntimePermissions, OperationLabel: "grant image agent runtime permissions"})
 }
 
 func runWithDependencies(ctx context.Context, configPath string, deps Dependencies) error {
@@ -38,6 +46,9 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 	if deps.MigrateAll == nil {
 		deps.MigrateAll = productlisting.Migrate
 	}
+	if deps.OperationLabel == "" {
+		deps.OperationLabel = "migrate product listing API schema"
+	}
 	cfg, err := deps.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -54,7 +65,7 @@ func runWithDependencies(ctx context.Context, configPath string, deps Dependenci
 	}
 	defer func() { _ = deps.CloseDB(db) }()
 	if err := deps.MigrateAll(ctx, db); err != nil {
-		return fmt.Errorf("migrate product listing API schema: %w", err)
+		return fmt.Errorf("%s: %w", deps.OperationLabel, err)
 	}
 	return nil
 }

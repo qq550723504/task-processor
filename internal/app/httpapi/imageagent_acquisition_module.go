@@ -45,6 +45,9 @@ func buildAcquisitionImageModule(ctx context.Context, productDB, imageDB *gorm.D
 		!cfg.ImageAgent.Admission.Enabled || len(cfg.ImageAgent.Admission.AllowedTenantIDs) == 0 {
 		return nil, imageagent.ErrIdentityRequired
 	}
+	if err := imagestore.VerifyOrganizationRuntimePermissions(ctx, imageDB); err != nil {
+		return nil, err
+	}
 	publicURLs := imageAgentDurableAssetPublicURLResolver(cfg)
 	if publicURLs == nil {
 		return nil, imageagent.ErrIdentityRequired
