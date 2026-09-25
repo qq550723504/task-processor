@@ -8,7 +8,7 @@
 
 ## 1. 已批准的用户结果
 
-用户从已有 `/workbench/supply/acquisition/operation/{operation_id}` 采集详情中，选择已入库的一张 1688 来源图片，生成一张通用白底商品主图，查看结果并显式人工批准。[D1][D2]
+用户从已有 `/workbench/supply/acquisition/operation/{operation_id}` 采集详情中，选择已入库的一张 1688 来源图片，生成一张通用白底商品主图，查看结果并显式人工批准。[D1]、[D2]
 
 输入不要求选择目标平台或品类。内部策略为 `product/zz/default/general`；`zz` 只是无目标国家的哨兵，不能显示成真实国家。白底 QA 门槛为 0.70；不通过不能批准，通过仍不等于人工批准。现有 schema 必需时才沿用 `main_review=0.65` / `white_canvas_penalty=0.10`，二者不替代白底门槛。[D2]
 
@@ -128,7 +128,7 @@ controlled provider 只能进入明确的隔离 acceptance profile，必须走�
 | 最终 current runtime 的独立浏览器验收 | 采集详情操作、可见结果、人工批准、Account/Audit、刷新与重启 | 全部渠道/生产验收 |
 | 适用最终 HEAD CI / 独立 diff 检查 | 实际候选的相关回归、依赖和接线 | 用户验收与生产签收 |
 
-原开发报告中“三次本地 provider / Review 7 tokens”等仅是该次受控 fixture 的观察，不是生产固定消耗或全链验收。两段局部集成不拼接成一条已实跑浏览器证据。[D5]
+原开发报告中“三次本地 provider / Review 7 tokens”等仅是该次受控 fixture 的观察，不是生产固定消耗或全链验收。[E1] 两段局部集成不拼接成一条已实跑浏览器证据。[D5]
 
 回报复用原 PR：Must → 代码符号/测试 → exact HEAD/环境 → PASS/FAIL/SKIP/NOT_RUN → 限制。#473 记录最终完整调用与额度链，#438 汇总产品验收；不新建平行状态文件或重复审计账本。历史有效证据注明原 SHA 和未变化范围，不倒签为当前 SHA 实跑。
 
@@ -144,3 +144,4 @@ controlled provider 只能进入明确的隔离 acceptance profile，必须走�
 [D4]: https://github.com/qq550723504/task-processor/issues/487#issuecomment-5827608666
 [D5]: https://github.com/qq550723504/task-processor/issues/487#issuecomment-5829021759
 [D6]: https://github.com/qq550723504/task-processor/issues/487#issuecomment-5829308707
+[E1]: https://github.com/qq550723504/task-processor/issues/487#issuecomment-5828964386
