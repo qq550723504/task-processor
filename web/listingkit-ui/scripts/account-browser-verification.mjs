@@ -6,13 +6,18 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { captureReferralCompletion } from "./referral-completion-evidence.mjs";
 
 const fixture = JSON.parse(await readFile(process.argv[2], "utf8"));
 const output = resolve(process.argv[3] ?? "../../docs/engineering/evidence/issue348/browser");
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const results = [], screenshots = [];
+const completionCaptures = [];
+const contextCaptures = new WeakMap();
 const report = { sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), dependencyFixtureHead: fixture.sourceHead, externalBoundary: fixture.externalBoundary, results, screenshots };
+report.referralCompletionEvidence = [];
+report.referralCompletionOrigin = new URL(fixture.origin).origin;
 const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "src", "public/console/account"], { encoding: "utf8" }).trim().split(/\r?\n/);
 const sourceHash = createHash("sha256");
 for (const file of [...new Set(files)].sort()) sourceHash.update(`${file}\0`).update((await readFile(file, "utf8")).replaceAll("\r\n", "\n"));
@@ -22,8 +27,19 @@ async function open(user, path, width = 1440, theme = "light", selection = true)
   await context.addCookies(fixture.sessions[user].filter(cookie => selection || cookie.name !== "shuomi_effective_organization"));
   await context.addInitScript(theme => localStorage.setItem("listingkit-theme", theme), theme);
   const page = await context.newPage();
+  const evidenceFile = `referral-completion-${completionCaptures.length + 1}.jsonl`;
+  try {
+    const finishCapture = await captureReferralCompletion(page, { origin: fixture.origin, file: join(output, evidenceFile) });
+    completionCaptures.push(finishCapture);
+    contextCaptures.set(context, finishCapture);
+    report.referralCompletionEvidence.push({ file: evidenceFile, status: "NOT_RUN", attemptCount: 0 });
+  } catch (error) { await closeContext(context); throw error; }
   await page.goto(`${fixture.origin}/workbench/account/${path}`);
   return { context, page };
+}
+async function closeContext(context) {
+  try { await contextCaptures.get(context)?.(); }
+  finally { await context.close(); }
 }
 async function snapshot(page, name) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -43,7 +59,7 @@ try {
       await page.getByRole("navigation", { name: "面包屑" }).getByRole("link", { name: "我的账户", exact: true }).click();
       await expect(page).toHaveURL(`${fixture.origin}/workbench/account/profile`);
       await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible();
-    } finally { await context.close(); }
+    } finally { await closeContext(context); }
   });
   for (const pageKind of ["profile", "organization"]) for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
     await check(`${pageKind} ${theme} ${width}: actual client/BFF/Go, no overflow, axe, keyboard`, async () => {
@@ -72,7 +88,7 @@ try {
         await page.keyboard.press("Shift+Tab"); await expect(page.locator(".console-user").getByRole("link", { name: "账户资料", exact: true })).toBeFocused();
         await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Enter");
         await snapshot(page, `${pageKind}-${theme}-${width}`);
-      } finally { await context.close(); }
+      } finally { await closeContext(context); }
     });
   }
   for (const [user, selection] of [["no-org", false], ["u1", false], ["grant-down", false]]) await check(`profile independent of enterprise: ${user}, selection=${selection}`, async () => {
@@ -83,11 +99,11 @@ try {
       await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toBeVisible();
       await expect(page.getByText("正在读取资料", { exact: true })).toHaveCount(0);
       expect(page.url()).toContain("/account/profile"); await snapshot(page, `profile-${user}-no-selection`);
-    } finally { await context.close(); }
+    } finally { await closeContext(context); }
   });
   for (const [user, text] of [["down", "资料服务暂不可用"], ["mismatch", "资料响应无效"], ["expired", "登录状态已失效，请重新登录"]]) await check(`actual provider error: ${user}`, async () => {
     const { page, context } = await open(user, "profile");
-    try { await expect(page.getByRole("alert").filter({ hasText: text })).toBeVisible(); await expect(page.getByText(/provider-private|@PHONE.INVALID/)).toHaveCount(0); } finally { await context.close(); }
+    try { await expect(page.getByRole("alert").filter({ hasText: text })).toBeVisible(); await expect(page.getByText(/provider-private|@PHONE.INVALID/)).toHaveCount(0); } finally { await closeContext(context); }
   });
   for (const user of ["invalid-user", "invalid-home"]) for (const pageKind of ["profile", "organization"]) await check(`invalid upstream identity fails closed: ${user} ${pageKind}`, async () => {
     const { page, context } = await open(user, pageKind);
@@ -95,19 +111,19 @@ try {
       await expect(page.getByRole("main").getByRole("alert")).toContainText(pageKind === "profile" ? "资料响应无效" : "工作台访问状态无法确认");
       await expect(page.getByRole("heading", { name: `Fixture ${user}`, exact: true })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0);
-    } finally { await context.close(); }
+    } finally { await closeContext(context); }
   });
   await check("actual enterprise switch clears B and reads C", async () => {
     const { page, context } = await open("u1", "organization");
-    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("combobox", { name: "当前企业" }).selectOption("C"); await expect(page.getByRole("heading", { name: "Enterprise C", exact: true })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); await snapshot(page, "organization-switched-C"); } finally { await context.close(); }
+    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("combobox", { name: "当前企业" }).selectOption("C"); await expect(page.getByRole("heading", { name: "Enterprise C", exact: true })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); await snapshot(page, "organization-switched-C"); } finally { await closeContext(context); }
   });
   await check("actual identity changes reauthorize and clear old profile", async () => {
     const { page, context } = await open("u1", "organization");
-    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("navigation", { name: "工作台导航" }).getByRole("link", { name: "账户资料", exact: true }).click(); await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible(); await context.addCookies(fixture.sessions.u2); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "登录身份已变化" })).toBeVisible(); await expect(page.getByText("Fixture u1", { exact: true })).toHaveCount(0); } finally { await context.close(); }
+    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await page.getByRole("navigation", { name: "工作台导航" }).getByRole("link", { name: "账户资料", exact: true }).click(); await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible(); await context.addCookies(fixture.sessions.u2); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "登录身份已变化" })).toBeVisible(); await expect(page.getByText("Fixture u1", { exact: true })).toHaveCount(0); } finally { await closeContext(context); }
   });
   await check("actual slow request is cancelled when leaving profile", async () => {
     const { page, context } = await open("slow", "profile");
-    try { await expect(page.getByText("正在读取资料", { exact: true })).toBeVisible(); await page.getByRole("navigation", { name: "工作台导航" }).getByRole("link", { name: "企业空间", exact: true }).click(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await expect(page.getByText("资料读取超时", { exact: true })).toHaveCount(0); } finally { await context.close(); }
+    try { await expect(page.getByText("正在读取资料", { exact: true })).toBeVisible(); await page.getByRole("navigation", { name: "工作台导航" }).getByRole("link", { name: "企业空间", exact: true }).click(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await expect(page.getByText("资料读取超时", { exact: true })).toHaveCount(0); } finally { await closeContext(context); }
   });
   await check("actual pending profile logout aborts the request and clears the Auth.js session", async () => {
     const { page, context } = await open("slow", "profile");
@@ -118,7 +134,7 @@ try {
       await failed;
       await expect.poll(async () => (await context.cookies()).filter(cookie => cookie.name === "authjs.session-token").length).toBe(0);
       await expect(page.getByText("资料读取超时", { exact: true })).toHaveCount(0);
-    } finally { await context.close(); }
+    } finally { await closeContext(context); }
   });
   await check("supplemental synthetic long-name layout at 390; account response stub only", async () => {
     const { page, context } = await open("u1", "organization", 390);
@@ -131,11 +147,11 @@ try {
       });
       await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("heading", { name: longName, exact: true })).toBeVisible();
       await snapshot(page, "supplemental-synthetic-long-name-390");
-    } finally { await context.close(); }
+    } finally { await closeContext(context); }
   });
   await check("actual grant revoke after supported cache expiry clears enterprise data", async () => {
     const { page, context } = await open("u1", "organization");
-    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await fetch(`${fixture.controlOrigin}/revoke`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "企业访问已撤销" })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await context.close(); }
+    try { await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toBeVisible(); await fetch(`${fixture.controlOrigin}/revoke`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await page.getByRole("button", { name: "刷新资料" }).click(); await expect(page.getByRole("alert").filter({ hasText: "企业访问已撤销" })).toBeVisible(); await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0); } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await closeContext(context); }
   });
   await check("actual failed live enterprise switch clears old data and Shell metadata", async () => {
     const { page, context } = await open("u1", "organization");
@@ -146,7 +162,7 @@ try {
       await expect(page.getByRole("alert").filter({ hasText: /企业/ })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Enterprise B", exact: true })).toHaveCount(0);
       await expect(page.getByRole("combobox", { name: "当前企业" })).toHaveCount(0);
-    } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await context.close(); }
+    } finally { await fetch(`${fixture.controlOrigin}/restore`, { method: "POST" }); await fetch(`${fixture.controlOrigin}/expire`, { method: "POST" }); await closeContext(context); }
   });
   await check("supplemental synthetic role-context transition through actual provider and profile client", async () => {
     const { page, context } = await open("u1", "profile"); let release;
@@ -164,18 +180,32 @@ try {
       await page.clock.fastForward(31000); await expect.poll(() => reading).toBe(true);
       await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toHaveCount(0);
       release(); await expect(page.getByRole("heading", { name: "Fixture u1", exact: true })).toBeVisible();
-    } finally { release?.(); await context.close(); }
+    } finally { release?.(); await closeContext(context); }
   });
   await check("unauthenticated real proxy redirects to login before account HTML", async () => {
     const context = await browser.newContext();
     // Login issuance is outside this fixture: inspect the real proxy redirect before following OIDC.
-    try { const response = await context.request.get(`${fixture.origin}/workbench/account/profile`, { maxRedirects: 0 }); expect([302, 307]).toContain(response.status()); const target = new URL(response.headers().location, fixture.origin); expect(target.pathname).toBe("/login"); expect(target.searchParams.get("returnTo")).toBe("/workbench/account/profile"); } finally { await context.close(); }
+    try { const response = await context.request.get(`${fixture.origin}/workbench/account/profile`, { maxRedirects: 0 }); expect([302, 307]).toContain(response.status()); const target = new URL(response.headers().location, fixture.origin); expect(target.pathname).toBe("/login"); expect(target.searchParams.get("returnTo")).toBe("/workbench/account/profile"); } finally { await closeContext(context); }
   });
   for (const path of ["account/organization", "ai/tasks", "stores", "plans/options"]) await check(`actual no-membership enterprise gate: ${path}`, async () => {
     const context = await browser.newContext(); await context.addCookies(fixture.sessions["no-org"].filter(cookie => cookie.name === "authjs.session-token"));
     const page = await context.newPage();
-    try { await page.goto(`${fixture.origin}/workbench/${path}`); await expect(page).toHaveURL(/\/workbench\/no-organization$/); } finally { await context.close(); }
+    try { await page.goto(`${fixture.origin}/workbench/${path}`); await expect(page).toHaveURL(/\/workbench\/no-organization$/); } finally { await closeContext(context); }
   });
   report.status = "PASS";
 } catch (error) { report.status = "FAIL"; report.failure = error.message; throw error; }
-finally { await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2)); await browser.close(); }
+finally {
+  try {
+    const captured = await Promise.allSettled(completionCaptures.map(close => close()));
+    captured.forEach((result, index) => {
+      Object.assign(report.referralCompletionEvidence[index], result.status === "fulfilled"
+        ? result.value : { status: "CAPTURE_FAILED", attemptCount: null });
+    });
+    if (captured.some(result => result.status === "rejected")) {
+      report.status = "FAIL";
+      report.failure = "referral_evidence_write_failed";
+    }
+    await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2));
+    if (report.failure === "referral_evidence_write_failed") throw new Error(report.failure);
+  } finally { await browser.close(); }
+}
