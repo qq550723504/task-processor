@@ -42,7 +42,15 @@ const membershipEvent = z.object({
   operation: membershipOperation, result: z.literal("succeeded"),
   relation: z.object({ type: z.literal("organization_membership_operation"), reference: z.string().uuid(), version }).strict(),
 }).strict();
-const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent]);
+const usageEvent = z.object({
+  eventType: z.literal("account_ai_tokens.committed"), actor: z.literal(""),
+  time: z.string().max(40).datetime({ precision: null }),
+  objectType: z.literal("ai_invocation"), objectReference: resourceReference,
+  operation: z.literal("consume"), result: z.literal("succeeded"),
+  relation: z.object({ type: z.literal("saas_usage_event"), reference: resourceReference, version: z.literal("") }).strict(),
+  usage: z.object({ memberId: resourceReference, quantity: z.number().int().positive(), metric: z.literal("ai_tokens") }).strict(),
+}).strict();
+const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent, usageEvent]);
 const cursor = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/);
 const source = z.enum([
   "source_account_committed_operations",
@@ -53,6 +61,14 @@ const source = z.enum([
   "source_account_committed_operations+account_member_token_audit+organization_member_audit",
   "source_account_committed_operations+account_business_profile_audit+organization_member_audit",
   "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit",
+  "source_account_committed_operations+saas_ai_usage_events",
+  "source_account_committed_operations+account_member_token_audit+saas_ai_usage_events",
+  "source_account_committed_operations+account_business_profile_audit+saas_ai_usage_events",
+  "source_account_committed_operations+organization_member_audit+saas_ai_usage_events",
+  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+saas_ai_usage_events",
+  "source_account_committed_operations+account_member_token_audit+organization_member_audit+saas_ai_usage_events",
+  "source_account_committed_operations+account_business_profile_audit+organization_member_audit+saas_ai_usage_events",
+  "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit+saas_ai_usage_events",
 ]);
 const page = z.object({
   schemaVersion: z.literal("account-audit-v1"), userId: identity, effectiveOrganizationId: identity,

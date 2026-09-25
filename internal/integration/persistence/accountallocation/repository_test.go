@@ -3,6 +3,7 @@ package accountallocation
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,6 +11,46 @@ import (
 	"gorm.io/gorm"
 	domain "task-processor/internal/accountallocation"
 )
+
+func TestCommittedAIUsageAuditReadSurvivesRepositoryReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "commercial.db")
+	first, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(first); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	row := commercialUsageEventRow{EventID: "event-reopen", TenantID: "org-1", ModuleCode: "listingkit", MemberID: "member-1", Metric: "ai_tokens", Quantity: 7, PeriodKey: "2026-09", SourceType: "ai_invocation", SourceID: "inv-1", IdempotencyKey: "event-reopen", Status: "committed", OccurredAt: now}
+	if err := first.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	connection, err := first.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopenedConnection, err := reopened.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopenedConnection.Close() })
+	repo, err := New(reopened)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := repo.ListCommittedAIUsageAudit(context.Background(), "org-1", 20, nil)
+	if err != nil || len(page.Items) != 1 || page.Items[0].Quantity != 7 || page.Items[0].MemberID != "member-1" || page.Items[0].SourceID != "inv-1" {
+		t.Fatalf("reopened page=%+v err=%v", page, err)
+	}
+}
 
 func newTestRepository(t *testing.T) *Repository {
 	t.Helper()
@@ -35,6 +76,43 @@ func testQuota() domain.Quota {
 }
 func setInput(member, key string, target, version int64) domain.SetTargetInput {
 	return domain.SetTargetInput{OrganizationID: "org-1", MemberID: member, Target: target, ExpectedVersion: version, IdempotencyKey: key, ActorID: "admin-1"}
+}
+
+func TestCommittedAIUsageAuditReadPaginatesAndScopesCanonicalEvents(t *testing.T) {
+	repo := newTestRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 25, 1, 0, 0, 0, time.UTC)
+	for _, row := range []commercialUsageEventRow{
+		{EventID: "event-a", TenantID: "org-1", MemberID: "member-1", Metric: "ai_tokens", Quantity: 7, SourceType: "ai_invocation", SourceID: "inv-a", Status: "committed", OccurredAt: now},
+		{EventID: "event-b", TenantID: "org-1", MemberID: "member-2", Metric: "ai_tokens", Quantity: 8, SourceType: "ai_invocation", SourceID: "inv-b", Status: "committed", OccurredAt: now},
+		{EventID: "event-c", TenantID: "org-1", MemberID: "member-3", Metric: "ai_tokens", Quantity: 9, SourceType: "ai_invocation", SourceID: "inv-c", Status: "committed", OccurredAt: now.Add(-time.Second)},
+		{EventID: "foreign", TenantID: "org-2", MemberID: "member-x", Metric: "ai_tokens", Quantity: 10, SourceType: "ai_invocation", SourceID: "inv-x", Status: "committed", OccurredAt: now.Add(time.Second)},
+		{EventID: "pending", TenantID: "org-1", MemberID: "member-1", Metric: "ai_tokens", Quantity: 11, SourceType: "ai_invocation", SourceID: "inv-p", Status: "reserved", OccurredAt: now.Add(time.Second)},
+		{EventID: "other", TenantID: "org-1", MemberID: "member-1", Metric: "ai_tokens", Quantity: 12, SourceType: "manual", SourceID: "inv-m", Status: "committed", OccurredAt: now.Add(time.Second)},
+	} {
+		row.ModuleCode = "listingkit"
+		row.PeriodKey = "2026-09"
+		row.IdempotencyKey = row.EventID
+		if err := repo.db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := repo.ListCommittedAIUsageAudit(ctx, "org-1", 2, nil)
+	if err != nil || len(first.Items) != 2 || first.Items[0].EventID != "event-b" || first.Items[1].EventID != "event-a" || first.Next == nil {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	restarted, err := New(repo.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := restarted.ListCommittedAIUsageAudit(ctx, "org-1", 2, first.Next)
+	if err != nil || len(second.Items) != 1 || second.Items[0].EventID != "event-c" || second.Next != nil {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+	foreign, err := restarted.ListCommittedAIUsageAudit(ctx, "org-2", 2, nil)
+	if err != nil || len(foreign.Items) != 1 || foreign.Items[0].EventID != "foreign" {
+		t.Fatalf("foreign=%+v err=%v", foreign, err)
+	}
 }
 
 func TestSetTargetIsVersionedIdempotentAndAudited(t *testing.T) {

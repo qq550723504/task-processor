@@ -35,6 +35,29 @@ var accountAuditLimit = regexp.MustCompile(`^[1-9][0-9]{0,2}$`)
 
 type accountAuditModule struct{ query *accountaudit.Query }
 
+type aiUsageAuditReader struct {
+	repository *accountallocationstore.Repository
+}
+
+func (r aiUsageAuditReader) ListCommittedAIUsageAudit(ctx context.Context, organizationID string, limit int, after *accountaudit.AuditPosition) (accountaudit.UsageAuditPage, error) {
+	var position *accountallocationstore.UsageAuditPosition
+	if after != nil {
+		position = &accountallocationstore.UsageAuditPosition{OccurredAt: after.CreatedAt, EventID: after.Key}
+	}
+	ledgerPage, err := r.repository.ListCommittedAIUsageAudit(ctx, organizationID, limit, position)
+	if err != nil {
+		return accountaudit.UsageAuditPage{}, err
+	}
+	page := accountaudit.UsageAuditPage{Items: make([]accountaudit.UsageAuditEvent, 0, len(ledgerPage.Items))}
+	for _, item := range ledgerPage.Items {
+		page.Items = append(page.Items, accountaudit.UsageAuditEvent{OrganizationID: item.TenantID, EventID: item.EventID, MemberID: item.MemberID, InvocationID: item.SourceID, Quantity: item.Quantity, Time: item.OccurredAt})
+	}
+	if ledgerPage.Next != nil {
+		page.Next = &accountaudit.AuditPosition{CreatedAt: ledgerPage.Next.OccurredAt, Key: ledgerPage.Next.EventID}
+	}
+	return page, nil
+}
+
 type profileAuditReader struct {
 	repository *accountprofilestore.Repository
 }
@@ -241,7 +264,7 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, member
 		}
 		membershipHistory = membershipAuditReader{repository: membershipRepository}
 	}
-	query, err := accountaudit.NewWithAuditSources(history, allocationRepository, profileHistory, membershipHistory)
+	query, err := accountaudit.NewWithUsageAuditSources(history, allocationRepository, profileHistory, membershipHistory, aiUsageAuditReader{repository: allocationRepository})
 	if err != nil {
 		return nil, err
 	}

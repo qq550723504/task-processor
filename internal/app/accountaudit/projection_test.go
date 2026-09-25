@@ -23,6 +23,126 @@ type historyStub struct {
 type allocationHistoryStub struct{ page allocation.AuditPage }
 
 type additionalHistoryStub struct{ page AdditionalAuditPage }
+type usageHistoryStub struct {
+	events []UsageAuditEvent
+	calls  int
+}
+type pagingSourceHistory struct{ events []registry.CommittedOperation }
+
+func (s pagingSourceHistory) List(_ context.Context, request registry.HistoryRequest) (registry.HistoryPage, error) {
+	page := registry.HistoryPage{Items: []registry.CommittedOperation{}}
+	for _, item := range s.events {
+		if request.After != nil && (item.OccurredAt.After(request.After.OccurredAt) || item.OccurredAt.Equal(request.After.OccurredAt) && item.AccountID >= request.After.AccountID) {
+			continue
+		}
+		if len(page.Items) == request.Limit {
+			p := page.Items[len(page.Items)-1].Position()
+			page.Next = &p
+			break
+		}
+		page.Items = append(page.Items, item)
+	}
+	return page, nil
+}
+
+func TestProjectionInterleavesSourceAndUsageAcrossCursorsWithoutLoss(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	source := pagingSourceHistory{events: []registry.CommittedOperation{
+		{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000004", ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now},
+		{OrganizationID: "B", AccountID: "0198d4f0-0000-7000-8000-000000000002", ActorSubject: "actor", Kind: registry.OperationDisable, Version: 2, OccurredAt: now.Add(-2 * time.Second)},
+	}}
+	usage := &usageHistoryStub{events: []UsageAuditEvent{
+		{OrganizationID: "B", EventID: "e-3", MemberID: "m", InvocationID: "inv-3", Quantity: 7, Time: now.Add(-time.Second)},
+		{OrganizationID: "B", EventID: "e-1", MemberID: "m", InvocationID: "inv-1", Quantity: 8, Time: now.Add(-3 * time.Second)},
+	}}
+	query, _ := NewWithUsageAuditSources(source, nil, nil, nil, usage)
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	cursor, seen := "", []string{}
+	for i := 0; i < 4; i++ {
+		page, err := query.Read(ctx, 1, cursor)
+		if err != nil || len(page.Items) != 1 {
+			t.Fatalf("page %d = %+v err=%v", i, page, err)
+		}
+		seen = append(seen, page.Items[0].Relation.Reference)
+		if i < 3 {
+			if page.NextCursor == nil {
+				t.Fatalf("missing cursor at %d", i)
+			}
+			cursor = *page.NextCursor
+		} else if page.NextCursor != nil {
+			t.Fatalf("extra cursor: %s", *page.NextCursor)
+		}
+	}
+	want := "0198d4f0-0000-7000-8000-000000000004,e-3,0198d4f0-0000-7000-8000-000000000002,e-1"
+	if strings.Join(seen, ",") != want {
+		t.Fatalf("seen %v, want %s", seen, want)
+	}
+}
+
+func (s *usageHistoryStub) ListCommittedAIUsageAudit(_ context.Context, org string, limit int, after *AuditPosition) (UsageAuditPage, error) {
+	s.calls++
+	page := UsageAuditPage{Items: []UsageAuditEvent{}}
+	for _, item := range s.events {
+		if item.OrganizationID != org {
+			continue
+		}
+		if after != nil && (item.Time.After(after.CreatedAt) || item.Time.Equal(after.CreatedAt) && item.EventID >= after.Key) {
+			continue
+		}
+		if len(page.Items) == limit {
+			p := AuditPosition{CreatedAt: page.Items[len(page.Items)-1].Time, Key: page.Items[len(page.Items)-1].EventID}
+			page.Next = &p
+			break
+		}
+		page.Items = append(page.Items, item)
+	}
+	return page, nil
+}
+
+func TestProjectionPagesCommittedAIUsageWithoutActorImpersonation(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	usage := &usageHistoryStub{events: []UsageAuditEvent{
+		{OrganizationID: "B", EventID: "e-3", MemberID: "m-1", InvocationID: "inv-3", Quantity: 7, Time: now},
+		{OrganizationID: "B", EventID: "e-2", MemberID: "m-1", InvocationID: "inv-2", Quantity: 8, Time: now},
+		{OrganizationID: "B", EventID: "e-1", MemberID: "m-2", InvocationID: "inv-1", Quantity: 9, Time: now.Add(-time.Second)},
+	}}
+	query, _ := New(&historyStub{})
+	query.usage = usage
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "B", EffectiveOrganizationID: "B", TokenExpiresAt: now.Add(time.Hour)})
+	seen := []string{}
+	cursor := ""
+	for i := 0; i < 3; i++ {
+		page, err := query.Read(ctx, 1, cursor)
+		if err != nil || len(page.Items) != 1 {
+			t.Fatalf("page %d: %+v %v", i, page, err)
+		}
+		item := page.Items[0]
+		if item.Actor != "" || item.Usage == nil || item.Usage.Quantity != int64(7+i) || item.EventType != "account_ai_tokens.committed" {
+			t.Fatalf("item=%+v", item)
+		}
+		seen = append(seen, item.Relation.Reference)
+		if i < 2 {
+			if page.NextCursor == nil {
+				t.Fatal("missing cursor")
+			}
+			cursor = *page.NextCursor
+		} else if page.NextCursor != nil {
+			t.Fatalf("unexpected cursor %s", *page.NextCursor)
+		}
+	}
+	if strings.Join(seen, ",") != "e-3,e-2,e-1" {
+		t.Fatal(seen)
+	}
+	filtered, err := query.ReadFiltered(ctx, 1, "", Filter{ActorSubject: "actor"})
+	if err != nil || len(filtered.Items) != 0 || usage.calls != 3 {
+		t.Fatalf("actor filter page=%+v err=%v calls=%d", filtered, err, usage.calls)
+	}
+	page, _ := query.Read(ctx, 1, "")
+	other := authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{UserID: "u1", TenantID: "A", EffectiveOrganizationID: "A", TokenExpiresAt: now.Add(time.Hour)})
+	if _, err := query.Read(other, 1, *page.NextCursor); !errors.Is(err, registry.ErrInvalid) {
+		t.Fatalf("foreign cursor: %v", err)
+	}
+}
 
 type pagingAdditionalHistoryStub struct {
 	pages []AdditionalAuditPage

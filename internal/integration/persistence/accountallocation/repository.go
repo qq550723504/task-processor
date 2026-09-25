@@ -78,6 +78,8 @@ type auditRow struct {
 func (auditRow) TableName() string { return auditTable }
 
 type commercialUsageEventRow struct {
+	EventID        string    `gorm:"column:event_id"`
+	ModuleCode     string    `gorm:"column:module_code"`
 	IdempotencyKey string    `gorm:"column:idempotency_key"`
 	TenantID       string    `gorm:"column:tenant_id"`
 	MemberID       string    `gorm:"column:member_id"`
@@ -91,6 +93,49 @@ type commercialUsageEventRow struct {
 }
 
 func (commercialUsageEventRow) TableName() string { return "saas_usage_events" }
+
+type UsageAuditPosition struct {
+	OccurredAt time.Time
+	EventID    string
+}
+type UsageAuditEvent struct {
+	EventID, TenantID, MemberID, SourceID string
+	Quantity                              int64
+	OccurredAt                            time.Time
+}
+type UsageAuditPage struct {
+	Items []UsageAuditEvent
+	Next  *UsageAuditPosition
+}
+
+// ListCommittedAIUsageAudit is a read-only projection of the commercial owner's
+// canonical committed usage facts. No allocation audit row is synthesized.
+func (r *Repository) ListCommittedAIUsageAudit(ctx context.Context, organizationID string, limit int, after *UsageAuditPosition) (UsageAuditPage, error) {
+	if r == nil || r.db == nil || organizationID == "" || limit < 1 || limit > 100 {
+		return UsageAuditPage{}, domain.ErrInvalidRequest
+	}
+	query := r.db.WithContext(ctx).Model(&commercialUsageEventRow{}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND status = ?", organizationID, listingsubscription.UsageMetricAITokens, "ai_invocation", string(listingsubscription.UsageEventCommitted))
+	if after != nil {
+		if after.OccurredAt.IsZero() || after.EventID == "" {
+			return UsageAuditPage{}, domain.ErrInvalidRequest
+		}
+		query = query.Where("(occurred_at < ?) OR (occurred_at = ? AND event_id < ?)", after.OccurredAt, after.OccurredAt, after.EventID)
+	}
+	var rows []commercialUsageEventRow
+	if err := query.Order("occurred_at DESC, event_id DESC").Limit(limit + 1).Find(&rows).Error; err != nil {
+		return UsageAuditPage{}, mapError(err)
+	}
+	page := UsageAuditPage{Items: make([]UsageAuditEvent, 0, limit)}
+	for i, row := range rows {
+		if i == limit {
+			last := page.Items[len(page.Items)-1]
+			page.Next = &UsageAuditPosition{OccurredAt: last.OccurredAt, EventID: last.EventID}
+			break
+		}
+		page.Items = append(page.Items, UsageAuditEvent{EventID: row.EventID, TenantID: row.TenantID, MemberID: row.MemberID, SourceID: row.SourceID, Quantity: row.Quantity, OccurredAt: row.OccurredAt.UTC().Truncate(time.Microsecond)})
+	}
+	return page, nil
+}
 
 type Repository struct {
 	db         *gorm.DB
