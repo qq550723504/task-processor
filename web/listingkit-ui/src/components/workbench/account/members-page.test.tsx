@@ -14,8 +14,48 @@ const state = vi.hoisted(() => ({ switching: false, org: "org" }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => ({ user: { id: "actor" }, effectiveOrganization: { id: state.org, name: "当前企业" }, roles: ["listingkit_admin"], isSwitching: state.switching, isLoading: false, selectionRequired: false, error: null, blockingError: null }) }));
 const result = { schemaVersion: "membership-v1", userId: "actor", organizationId: "org", canManage: false, assignableRoles: [], total: 1, items: [{ id: "grant", userId: "member", projectId: "project", organizationId: "org", displayName: "成员甲", loginName: "a@example.com", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false }] };
 const clients: QueryClient[] = [];
-afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.switching = false; state.org = "org"; sessionStorage.clear(); });
+afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); vi.restoreAllMocks(); state.switching = false; state.org = "org"; sessionStorage.clear(); });
 function page(client = new QueryClient()) { clients.push(client); return <QueryClientProvider client={client}><MembersPage expectedUserId="actor" /></QueryClientProvider>; }
+it("recovers durable pending in a new tab and keeps unrelated invitation available", async () => {
+  const id = "ea0390e6-6fd0-4834-8e9c-277caf59c122";
+  const receipt = {schemaVersion:"membership-operation-v1",userId:"actor",organizationId:"org",id,kind:"invite",step:"create_user",status:"unknown",targetUserId:"original-target",authorizationId:"",userEvidence:"",userAcknowledgment:null,acknowledgment:null,observation:"unavailable",observed:null};
+  const calls = vi.fn().mockImplementation((url) => Promise.resolve(Response.json(String(url).endsWith(id) ? receipt : String(url).includes("member-operations") ? {schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[receipt],next:""} : {...result,canManage:true,assignableRoles:["listingkit_viewer"]})));
+  vi.stubGlobal("fetch", calls);
+  render(page());
+  expect((await screen.findAllByText(id))[0]).toBeVisible();
+  expect(screen.getByRole("button",{name:"邀请成员"})).toBeEnabled();
+  expect(calls.mock.calls.every(([,init])=>init.method === "GET")).toBe(true);
+});
+it("retains an advanced GET receipt across selection and stale pending refetches, closing only its own record",async()=>{
+  const first="4841d296-ef14-4c16-8d25-a7667e534feb", second="ea0390e6-6fd0-4834-8e9c-277caf59c122";
+  sessionStorage.setItem('membership.pending:["actor","org"]',JSON.stringify({key:first,kind:"role",target:"grant",input:{role:"listingkit_operator",expectedVersion:"a".repeat(64)}}));
+  const receipt={schemaVersion:"membership-operation-v1",userId:"actor",organizationId:"org",id:first,kind:"role",step:"update_authorization",status:"unknown",targetUserId:"member",authorizationId:"grant",userEvidence:"",userAcknowledgment:null,acknowledgment:null,observation:"unavailable",observed:null};
+  const other={...receipt,id:second,targetUserId:"other",authorizationId:"other-grant"};
+  let reads=0;
+  const calls=vi.fn().mockImplementation(url=>Promise.resolve(Response.json(String(url).endsWith(second) ? {...other,status:++reads===1 ? "rejected" : "unknown"} : String(url).endsWith(first) ? receipt : String(url).includes("member-operations") ? {schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[receipt,other],next:""} : {...result,canManage:true,assignableRoles:["listingkit_viewer"]})));
+  vi.stubGlobal("fetch",calls);render(page());const user=userEvent.setup();
+  await user.click(await screen.findByRole("button",{name:new RegExp(second)}));
+  expect(await screen.findByRole("button",{name:"关闭回执"})).toBeEnabled();
+  await user.click(screen.getByRole("button",{name:new RegExp(first)}));
+  await user.click(screen.getByRole("button",{name:new RegExp(second)}));
+  await waitFor(()=>expect(reads).toBe(2));
+  expect(screen.getByRole("button",{name:"关闭回执"})).toBeEnabled();
+  await user.click(screen.getByRole("button",{name:"关闭回执"}));
+  await user.click(screen.getByRole("button",{name:"刷新待处理操作"}));
+  await waitFor(()=>expect(screen.queryByRole("button",{name:new RegExp(second)})).not.toBeInTheDocument());
+  expect(sessionStorage.getItem('membership.pending:["actor","org"]')).toContain(first);
+  expect(screen.getByRole("button",{name:"继续原操作"})).toBeEnabled();
+});
+it("does not send a new invitation when its local recovery record cannot be saved",async()=>{
+  const calls=vi.fn().mockImplementation(url=>Promise.resolve(Response.json(String(url).includes("member-operations") ? {schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[],next:""} : {...result,canManage:true,assignableRoles:["listingkit_viewer"]})));
+  vi.stubGlobal("fetch",calls);render(page());const user=userEvent.setup();
+  await user.click(await screen.findByRole("button",{name:"邀请成员"}));
+  await user.type(screen.getByRole("textbox",{name:"邮箱"}),"new@example.com");await user.type(screen.getByRole("textbox",{name:"名字"}),"New");await user.type(screen.getByRole("textbox",{name:"姓氏"}),"Member");
+  vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new Error("storage unavailable");});
+  await user.click(screen.getByRole("button",{name:"确认邀请"}));
+  expect(calls.mock.calls.every(([,init])=>init.method === "GET")).toBe(true);
+  expect(screen.queryByRole("button",{name:"继续原操作"})).not.toBeInTheDocument();
+});
 it("uses backend capability instead of context role names", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(result))));
   render(page()); expect(await screen.findByText("成员甲")).toBeVisible();
@@ -110,7 +150,7 @@ it("keeps a missing receipt pending until the original key yields a durable reje
   vi.stubGlobal("fetch",calls); render(page());
   await waitFor(()=>expect(screen.getByRole("button",{name:"核实原操作"})).toBeEnabled());
   expect(screen.queryByRole("button",{name:"关闭回执"})).not.toBeInTheDocument();
-  expect(screen.getByRole("button",{name:"邀请成员"})).toBeDisabled();
+  expect(screen.getByRole("button",{name:"邀请成员"})).toBeEnabled();
   await userEvent.setup().click(screen.getByRole("button",{name:"核实原操作"}));
   await userEvent.setup().click(await screen.findByRole("button",{name:"关闭回执"}));
   await waitFor(()=>expect(screen.getByRole("button",{name:"邀请成员"})).toBeEnabled());

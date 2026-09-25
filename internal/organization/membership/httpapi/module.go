@@ -29,6 +29,7 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 		reg.AddRoutes(httproute.Descriptor{Method: "GET", Path: item.path, Module: ModuleName, Permission: authz.PermissionWorkbenchOrganizationMemberRead, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: ResolveOrganizationTarget, RejectUnreadRequestBody: true, RequestTimeout: 15 * time.Second, Handler: item.handler})
 	}
 	if m.handler.commands != nil {
+		reg.AddRoutes(httproute.Descriptor{Method: "GET", Path: "/api/v1/account/member-operations", Module: ModuleName, Permission: authz.PermissionWorkbenchOrganizationMemberManage, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: ResolveOrganizationTarget, RejectUnreadRequestBody: true, RequestTimeout: 15 * time.Second, Handler: m.handler.ListPending})
 		for _, item := range []struct {
 			method, path string
 			handler      gin.HandlerFunc

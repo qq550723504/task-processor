@@ -33,13 +33,21 @@ const operationSchema = z.object({
 
 export type Members = z.infer<typeof listSchema>;
 export type MemberOperation = z.infer<typeof operationSchema>;
+const operationsSchema = z.object({
+  schemaVersion: z.literal("membership-operations-v1"), userId: memberId, organizationId: memberId,
+  items: z.array(operationSchema).max(100), next: z.union([z.string().uuid(), z.literal("")]),
+}).strict().refine(value => value.items.every((item, index) => item.userId === value.userId && item.organizationId === value.organizationId &&
+  ["pending", "unknown"].includes(item.status) && (index === 0 || item.id > value.items[index - 1].id)) &&
+  (value.next === "" || (value.items.length > 0 && value.next === value.items.at(-1)!.id)));
+export type MemberOperations = z.infer<typeof operationsSchema>;
+export function parseMemberOperations(value: unknown): MemberOperations { const parsed = operationsSchema.safeParse(value); if (!parsed.success) throw new MemberError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data; }
 export type MemberRole = z.infer<typeof role>;
 export type MemberScope = { expectedUserId: string; expectedOrganizationId: string; signal?: AbortSignal };
 export class MemberError extends Error {
   constructor(readonly status: number, readonly code: string) { super(`Member request failed (${code})`); this.name = "MemberError"; }
 }
 export function parseMembers(value: unknown): Members { const parsed = listSchema.safeParse(value); if (!parsed.success) throw new MemberError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data; }
-export function parseMemberOperation(value: unknown): MemberOperation { const parsed = operationSchema.safeParse(value); if (!parsed.success) throw new MemberError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data; }
+export function parseMemberOperation(value: unknown, expectedId?: string): MemberOperation { const parsed = operationSchema.safeParse(value); if (!parsed.success || (expectedId !== undefined && parsed.data.id !== expectedId)) throw new MemberError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data; }
 export function memberErrorCode(status: number, value: unknown): string {
   const extra = z.object({ code: z.enum(["MEMBER_NOT_FOUND", "MEMBER_OPERATION_CONFLICT"]), message: z.string(), requestId: z.string(), fieldErrors: z.array(z.unknown()).max(0) }).strict().safeParse(value);
   if (extra.success && ((status === 404 && extra.data.code === "MEMBER_NOT_FOUND") || (status === 409 && extra.data.code === "MEMBER_OPERATION_CONFLICT"))) return extra.data.code;
@@ -53,11 +61,17 @@ export const removeInput = z.object({ expectedVersion: version }).strict();
 
 export function getMembers(scope: MemberScope, offset = 0): Promise<Members> { return requestMembers(`/members?limit=20&offset=${offset}`, scope, "GET", parseMembers); }
 export function getMember(scope: MemberScope, id: string): Promise<Members> { return requestMembers(`/members/${memberId.parse(id)}`, scope, "GET", parseMembers); }
-export function getMemberOperation(scope: MemberScope, id: string): Promise<MemberOperation> { return requestMembers(`/member-operations/${z.string().uuid().parse(id)}`, scope, "GET", parseMemberOperation); }
-export function verifyMemberOperation(scope: MemberScope, id: string): Promise<MemberOperation> { return requestMembers(`/member-operations/${z.string().uuid().parse(id)}/verify`, scope, "POST", parseMemberOperation); }
-export function inviteMember(scope: MemberScope, key: string, input: z.infer<typeof invitationInput>): Promise<MemberOperation> { return requestMembers("/members/invitations", scope, "POST", parseMemberOperation, key, invitationInput.parse(input)); }
-export function changeMemberRole(scope: MemberScope, key: string, id: string, input: z.infer<typeof roleInput>): Promise<MemberOperation> { return requestMembers(`/members/${memberId.parse(id)}/role`, scope, "POST", parseMemberOperation, key, roleInput.parse(input)); }
-export function removeMember(scope: MemberScope, key: string, id: string, input: z.infer<typeof removeInput>): Promise<MemberOperation> { return requestMembers(`/members/${memberId.parse(id)}/remove`, scope, "POST", parseMemberOperation, key, removeInput.parse(input)); }
+export function getMemberOperation(scope: MemberScope, id: string): Promise<MemberOperation> { return requestMembers(`/member-operations/${z.string().uuid().parse(id)}`, scope, "GET", value => parseMemberOperation(value, id)); }
+export async function getMemberOperations(scope: MemberScope, after = ""): Promise<MemberOperations> {
+  const cursor = after ? `&after=${z.string().uuid().parse(after)}` : "";
+  const result = await requestMembers(`/member-operations?limit=20${cursor}`, scope, "GET", parseMemberOperations);
+  if (result.items.length > 20 || (result.next !== "" && result.items.length !== 20) || result.items.some(item => item.id <= after)) throw new MemberError(502, "INVALID_UPSTREAM_RESPONSE");
+  return result;
+}
+export function verifyMemberOperation(scope: MemberScope, id: string): Promise<MemberOperation> { return requestMembers(`/member-operations/${z.string().uuid().parse(id)}/verify`, scope, "POST", value => parseMemberOperation(value, id)); }
+export function inviteMember(scope: MemberScope, key: string, input: z.infer<typeof invitationInput>): Promise<MemberOperation> { return requestMembers("/members/invitations", scope, "POST", value => parseMemberOperation(value, key), key, invitationInput.parse(input)); }
+export function changeMemberRole(scope: MemberScope, key: string, id: string, input: z.infer<typeof roleInput>): Promise<MemberOperation> { return requestMembers(`/members/${memberId.parse(id)}/role`, scope, "POST", value => parseMemberOperation(value, key), key, roleInput.parse(input)); }
+export function removeMember(scope: MemberScope, key: string, id: string, input: z.infer<typeof removeInput>): Promise<MemberOperation> { return requestMembers(`/members/${memberId.parse(id)}/remove`, scope, "POST", value => parseMemberOperation(value, key), key, removeInput.parse(input)); }
 
 async function requestMembers<T>(path: string, scope: MemberScope, method: "GET" | "POST", parse: (value: unknown) => T, key?: string, body?: unknown): Promise<T> {
   if (!memberId.safeParse(scope.expectedUserId).success) throw new MemberError(409, "IDENTITY_CONTEXT_CHANGED");

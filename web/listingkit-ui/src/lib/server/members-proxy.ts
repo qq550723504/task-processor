@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MemberError, invitationInput, memberErrorCode, memberId, parseMemberOperation, parseMembers, removeInput, roleInput } from "@/lib/api/members";
+import { MemberError, invitationInput, memberErrorCode, memberId, parseMemberOperation, parseMemberOperations, parseMembers, removeInput, roleInput } from "@/lib/api/members";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 import { hasTrustedSameOriginWrite } from "./same-origin-write";
@@ -13,6 +13,16 @@ function serviceOrigin(): string | null {
 function endpoint(url: URL, method: string) {
   const base = "/api/account/"; if (!url.pathname.startsWith(base)) return null;
   const path = url.pathname.slice(base.length); const parts = path.split("/");
+  if (method === "GET" && path === "member-operations") {
+    if (url.search.length > 128) return null;
+    for (const [key, value] of url.searchParams) {
+      if (url.searchParams.getAll(key).length !== 1) return null;
+      if (key === "limit") { if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 100) return null; }
+      else if (key === "after") { if (!z.string().uuid().safeParse(value).success || value !== value.toLowerCase() || value === "00000000-0000-0000-0000-000000000000") return null; }
+      else return null;
+    }
+    return { path, operation: false, operations: true, schema: null };
+  }
   if (method === "GET" && parts[0] === "members" && parts.length === 1) {
     if (url.search.length > 128) return null;
     for (const [key, value] of url.searchParams) {
@@ -70,7 +80,11 @@ export async function proxyMembers(request: Request, token: string, sessionUserI
     try { payload = await readBoundedStrictJSON(response, 1024 * 1024, controller.signal); } catch { throw new MemberError(502, "INVALID_UPSTREAM_RESPONSE"); }
     controller.signal.throwIfAborted();
     if (response.status !== 200) return membersFailure(response.status, memberErrorCode(response.status, payload));
-    const result = route.operation ? parseMemberOperation(payload) : parseMembers(payload);
+    const result = route.operations ? parseMemberOperations(payload) : route.operation ? parseMemberOperation(payload, route.schema ? headers.get("Idempotency-Key")! : route.path.split("/")[1]) : parseMembers(payload);
+    if (route.operations && "items" in result && "next" in result) {
+      const limit = Number(url.searchParams.get("limit") ?? "20"), after = url.searchParams.get("after") ?? "";
+      if (result.items.length > limit || (result.next !== "" && result.items.length !== limit) || result.items.some(item => !("id" in item) || item.id <= after)) return membersFailure(502, "INVALID_UPSTREAM_RESPONSE");
+    }
     if (result.userId !== sessionUserId) return membersFailure(409, "IDENTITY_CONTEXT_CHANGED");
     if (result.organizationId !== organization) return membersFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
     return Response.json(result, { headers: responseHeaders });

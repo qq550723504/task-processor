@@ -4,6 +4,28 @@ import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 const headers = { "X-Expected-User-ID": "actor", "X-Expected-Organization-ID": "org", cookie: `${WORKBENCH_COOKIE_NAME}=org`, Origin: "http://localhost:3000" };
+it("bounds pending queries before upstream",async()=>{
+  vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");
+  const fetch=vi.fn().mockResolvedValue(Response.json({schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[],next:""}));vi.stubGlobal("fetch",fetch);
+  for(const query of ["?actor=other","?limit=101","?limit=20&limit=1","?after=invalid"]){
+    expect((await proxyMembers(new Request(`http://localhost:3000/api/account/member-operations${query}`,{headers}),"server-secret","actor")).status).toBe(400);
+  }
+  expect(fetch).not.toHaveBeenCalled();
+  expect((await proxyMembers(new Request("http://localhost:3000/api/account/member-operations?limit=20",{headers}),"server-secret","actor")).status).toBe(200);
+  expect(fetch.mock.calls[0][1].method).toBe("GET");
+  expect(fetch.mock.calls[0][0]).toBe("http://127.0.0.1:9000/api/v1/account/member-operations?limit=20");
+});
+it("rejects foreign pending items and a receipt for a different operation",async()=>{
+  vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");
+  const item={schemaVersion:"membership-operation-v1",userId:"actor",organizationId:"org",id:"ea0390e6-6fd0-4834-8e9c-277caf59c122",kind:"invite",step:"create_user",status:"unknown",targetUserId:"target",authorizationId:"",userEvidence:"",userAcknowledgment:null,acknowledgment:null,observation:"unavailable",observed:null};
+  const fetch=vi.fn();vi.stubGlobal("fetch",fetch);
+  for(const fields of [{userId:"other"},{organizationId:"other"}]){
+    fetch.mockResolvedValueOnce(Response.json({schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[{...item,...fields}],next:""}));
+    expect((await proxyMembers(new Request("http://localhost:3000/api/account/member-operations?limit=20",{headers}),"server-secret","actor")).status).toBe(502);
+  }
+  fetch.mockResolvedValueOnce(Response.json(item));
+  expect((await proxyMembers(new Request("http://localhost:3000/api/account/member-operations/4841d296-ef14-4c16-8d25-a7667e534feb",{headers}),"server-secret","actor")).status).toBe(502);
+});
 it("uses the configured public origin across Next URL normalization", async () => {
   vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:9000/api/v1");
   vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://127.0.0.1:3000");
