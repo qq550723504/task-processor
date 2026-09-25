@@ -47,6 +47,10 @@ func TestOrganizationImageCatalogUsesActorScopedReceiptAndExactSnapshot(t *testi
 	require.Len(t, result.Assets, 1)
 	require.Equal(t, "catalog-image-3", result.Assets[0].ID)
 	require.NotEmpty(t, result.Manifest.Hash)
+	candidates, err := resolver.Candidates(ctx, imageagent.AssetCatalogScope{TenantID: organizationID, OwnerUserID: actorID, BusinessTaskID: operationID})
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	require.Equal(t, []string{"catalog-image-1", "catalog-image-3"}, []string{candidates[0].ID, candidates[1].ID})
 	_, err = resolver.Resolve(ctx, imageagent.AssetCatalogScope{TenantID: organizationID, OwnerUserID: actorID, BusinessTaskID: operationID})
 	require.ErrorIs(t, err, imageagent.ErrValidation)
 
@@ -55,5 +59,5 @@ func TestOrganizationImageCatalogUsesActorScopedReceiptAndExactSnapshot(t *testi
 	other := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{TenantID: organizationID, EffectiveOrganizationID: organizationID, UserID: "user-b"})
 	_, err = resolver.Resolve(other, imageagent.AssetCatalogScope{TenantID: organizationID, OwnerUserID: actorID, BusinessTaskID: operationID})
 	require.ErrorIs(t, err, imageagent.ErrIdentityRequired)
-	require.Equal(t, 2, spy.calls)
+	require.Equal(t, 3, spy.calls)
 }
