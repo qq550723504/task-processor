@@ -78,7 +78,9 @@ END
 $$;
 ALTER ROLE commercial_reader LOGIN PASSWORD :'commercial_password';
 ALTER ROLE commercial_runtime LOGIN PASSWORD :'commercial_password';
-GRANT CONNECT ON DATABASE commercial TO commercial_reader, commercial_runtime;
+DO $$ BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO commercial_reader, commercial_runtime', current_database());
+END $$;
 GRANT USAGE ON SCHEMA public TO commercial_reader, commercial_runtime;
 GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets TO commercial_reader;
 ALTER ROLE commercial_reader SET default_transaction_read_only=on;

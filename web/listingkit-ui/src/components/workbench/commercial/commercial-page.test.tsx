@@ -5,16 +5,18 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { commercialOverviewFixture } from "@/test/fixtures/commercial-overview";
 import { CommercialPage } from "./commercial-page";
 
-const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn() }));
+const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), offers: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 vi.mock("@/lib/api/commercial", async (original) => ({ ...await original<typeof import("@/lib/api/commercial")>(), getCommercialOverview: state.read }));
 vi.mock("@/lib/api/commercial-billing", async (original) => ({ ...await original<typeof import("@/lib/api/commercial-billing")>(), getCommercialWallet: state.wallet, getCommercialWalletEntries: state.entries, getCommercialOrders: state.orders, getCommercialOrderSummary: state.summary, getCommercialOrder: state.detail }));
+vi.mock("@/lib/api/subscription-purchase", async (original) => ({ ...await original<typeof import("@/lib/api/subscription-purchase")>(), getSubscriptionOffers: state.offers }));
 let client: QueryClient;
 const tree = (page: "options" | "entitlements" | "top-up" | "orders" | "order-detail" = "entitlements", orderId?: string) => <QueryClientProvider client={client}><CommercialPage page={page} orderId={orderId} /></QueryClientProvider>;
 function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: unknown) => void; const promise = new Promise<T>((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
 beforeEach(() => {
   state.context = { user: { id: "reader" }, effectiveOrganization: { id: "org-B", name: "企业乙", roles: ["listingkit_admin"] }, roles: ["listingkit_admin"], retry: vi.fn() };
   state.read.mockReset().mockResolvedValue(commercialOverviewFixture());
+  state.offers.mockReset().mockResolvedValue({ organization_id: "org-B", items: [] });
   state.wallet.mockReset().mockResolvedValue({ organization_id: "org-B", currency: "CNY", available_minor: "12000", reserved_minor: "0", debt_minor: "0", lifetime_topup_minor: "12000", lifetime_spend_minor: "0", version: "1", observed_at: "2026-09-23T10:00:00Z" });
   state.entries.mockReset().mockResolvedValue({ organization_id: "org-B", items: [], next_cursor: "" });
   state.summary.mockReset().mockResolvedValue({ organization_id: "org-B", currency: "CNY", from: "2026-08-24T10:00:00Z", until: "2026-09-23T10:00:00Z", spend_minor: "0", store_renewal_spend_minor: "0", ai_point_spend_minor: "0", data_row_spend_minor: "0", other_spend_minor: "0", observed_at: "2026-09-23T10:00:00Z" });
@@ -41,6 +43,17 @@ it("loads organization-scoped order summaries and detail deep links", async () =
   render(tree("order-detail", "order-1"));
   expect(await screen.findByText("AI 点数 × 1")).toBeVisible();
   expect(state.detail).toHaveBeenCalledWith("reader", "org-B", "order-1", expect.any(AbortSignal));
+});
+
+it("shows a subscription order's plan and activation proof separately from a resource item", async () => {
+  state.detail.mockResolvedValue({ order_id: "subscription-order-1", organization_id: "org-B", kind: "SUBSCRIPTION_PURCHASE", description: "professional", quote_id: "quote-1", currency: "CNY", total_minor: "12000", status: "FULFILLED", items: [], product_kind: "SUBSCRIPTION_PLAN", plan_code: "professional", plan_fingerprint: "a".repeat(64), term_months: "1", settlement_mode: "WALLET", activation_proof: { operation_id: "subscription-activate:subscription-order-1", request_fingerprint: "b".repeat(64), outcome: "ACTIVATED", subscription_id: "42", starts_at: "2026-09-25T00:00:00Z", expires_at: "2026-10-25T00:00:00Z", entitlement_set_fingerprint: "c".repeat(64), decided_at: "2026-09-25T00:00:00Z" }, created_at: "2026-09-25T00:00:00Z", updated_at: "2026-09-25T00:00:00Z" });
+  render(tree("order-detail", "subscription-order-1"));
+  const facts = await screen.findByRole("region", { name: "套餐购买详情" });
+  expect(within(facts).getByText("professional")).toBeVisible();
+  expect(within(facts).getByText("1 个月")).toBeVisible();
+  expect(within(facts).getByText("企业钱包")).toBeVisible();
+  expect(within(facts).getByText(/订阅 owner 已激活/)).toBeVisible();
+  expect(screen.queryByText("该订单没有返回项目明细。")).not.toBeInTheDocument();
 });
 afterEach(() => { cleanup(); client.clear(); });
 
@@ -69,15 +82,32 @@ it.each([[1, "作业次"], [4, "字节"]] as const)("keeps the known unit visibl
   expect(screen.getAllByText(`未知（${unit}）`).length).toBeGreaterThanOrEqual(2);
 });
 
-it("keeps approved plan descriptions separate from subscription and never invents a selling price", async () => {
+it("loads server-owned subscription offers on the plan page instead of approved read-only descriptions", async () => {
   render(tree("options"));
-  expect(await screen.findByText("基础方案 · 按需使用")).toBeVisible();
-  expect(screen.getByText("方案描述 · 暂不销售")).toBeVisible();
-  expect(screen.getByText("价格未提供 · 币种未提供")).toBeVisible();
+  expect(await screen.findByText("暂无正式可售套餐")).toBeVisible();
+  expect(state.offers).toHaveBeenCalledWith("reader", "org-B", expect.any(AbortSignal));
+  expect(screen.queryByText("基础方案 · 按需使用")).not.toBeInTheDocument();
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看我的权益" })).toHaveAttribute("href", "/workbench/plans/entitlements");
   expect(screen.queryByRole("button", { name: /购买|充值|续费|退款|提现/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: /钱包|充值|账单|用量明细/ })).not.toBeInTheDocument();
+});
+
+it("drops a late offer response after the Effective Organization changes", async () => {
+  const late = deferred<{ organization_id: string; items: { offer_id: string; plan_code: string; plan_name: string; term_months: string; settlement_mode: "ZERO_PRICE"; currency: "CNY"; total_minor: string; pricing_version: string; availability: "available" }[] }>();
+  state.offers.mockReturnValueOnce(late.promise);
+  const view = render(tree("options"));
+  await waitFor(() => expect(state.offers).toHaveBeenCalledTimes(1));
+  const oldSignal = state.offers.mock.calls[0][2] as AbortSignal;
+  state.context.effectiveOrganization = { id: "org-C", name: "企业丙" };
+  state.read.mockResolvedValue(commercialOverviewFixture("org-C"));
+  state.offers.mockResolvedValue({ organization_id: "org-C", items: [] });
+  view.rerender(tree("options"));
+  expect(await screen.findByText("暂无正式可售套餐")).toBeVisible();
+  expect(oldSignal.aborted).toBe(true);
+  await act(async () => late.resolve({ organization_id: "org-B", items: [{ offer_id: "old-offer", plan_code: "old", plan_name: "旧企业套餐", term_months: "1", settlement_mode: "ZERO_PRICE", currency: "CNY", total_minor: "0", pricing_version: "v1", availability: "available" }] }));
+  expect(screen.queryByText("旧企业套餐")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "立即开通" })).not.toBeInTheDocument();
 });
 
 it("renders safe custom plan text without HTML and distinguishes no subscription from no grants", async () => {

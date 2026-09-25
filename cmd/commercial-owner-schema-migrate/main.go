@@ -20,7 +20,26 @@ import (
 func main() {
 	manifest := flag.String("config", "", "absolute path to the private commercial schema-owner database JSON config")
 	moneyManifest := flag.String("money-config", "", "absolute path to the private canonical money schema-owner database JSON config")
+	isolatedTrialCatalog := flag.Bool("isolated-trial-catalog", false, "explicit one-time trial catalog provisioning mode; never a runtime seed")
+	expectedDatabase := flag.String("expected-database", "", "exact isolated trial database name")
+	confirm := flag.String("confirm", "", "must be ISOLATED_TRIAL_ONLY for trial catalog mode")
 	flag.Parse()
+	if *isolatedTrialCatalog {
+		if *manifest == "" || *moneyManifest != "" || *expectedDatabase == "" || *confirm != "ISOLATED_TRIAL_ONLY" {
+			fmt.Fprintln(os.Stderr, "trial catalog mode requires -config, -expected-database and -confirm ISOLATED_TRIAL_ONLY; omit -money-config")
+			os.Exit(2)
+		}
+		if err := runIsolatedTrial(*manifest, *expectedDatabase); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("isolated subscription catalog provisioned; start the application only after reviewing this database")
+		return
+	}
+	if *expectedDatabase != "" || *confirm != "" {
+		fmt.Fprintln(os.Stderr, "-expected-database and -confirm require -isolated-trial-catalog")
+		os.Exit(2)
+	}
 	if *manifest == "" || *moneyManifest == "" {
 		fmt.Fprintln(os.Stderr, "-config and -money-config are required")
 		os.Exit(2)

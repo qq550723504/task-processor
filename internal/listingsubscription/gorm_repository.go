@@ -308,6 +308,59 @@ func (r *GormRepository) UpsertDefaultPlans(ctx context.Context, plans []PlanBun
 	})
 }
 
+// CreateCatalogPlan is an insert-only, offline catalog provision operation.
+// The caller must finish catalog provisioning before purchase traffic starts.
+func (r *GormRepository) CreateCatalogPlan(ctx context.Context, modules []Module, bundle PlanBundle) error {
+	if r == nil || r.db == nil || strings.TrimSpace(bundle.Plan.Code) == "" || !bundle.Plan.Active || len(modules) == 0 || len(bundle.Modules) == 0 {
+		return ErrPurchasablePlanUnavailable
+	}
+	known := make(map[string]bool, len(modules))
+	for _, module := range modules {
+		if strings.TrimSpace(module.Code) == "" || strings.TrimSpace(module.Name) == "" || known[module.Code] || !module.Active {
+			return ErrPurchasablePlanUnavailable
+		}
+		known[module.Code] = true
+	}
+	if strings.TrimSpace(bundle.Plan.Name) == "" {
+		return ErrPurchasablePlanUnavailable
+	}
+	seen := make(map[string]bool, len(bundle.Modules))
+	for _, module := range bundle.Modules {
+		if module.PlanCode != bundle.Plan.Code || !known[module.ModuleCode] || seen[module.ModuleCode] {
+			return ErrPurchasablePlanUnavailable
+		}
+		seen[module.ModuleCode] = true
+		for _, limit := range module.Limits {
+			if limit < 0 {
+				return ErrPurchasablePlanUnavailable
+			}
+		}
+	}
+	return r.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		for _, module := range modules {
+			row := subscriptionModuleRow{Code: module.Code, Name: module.Name, Description: module.Description, SortOrder: module.SortOrder, Active: module.Active}
+			if err := db.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		plan := subscriptionPlanRow{Code: bundle.Plan.Code, Name: bundle.Plan.Name, Description: bundle.Plan.Description, SortOrder: bundle.Plan.SortOrder, Active: true}
+		if err := db.Create(&plan).Error; err != nil {
+			return err
+		}
+		for _, module := range bundle.Modules {
+			limits, err := marshalLimits(module.Limits)
+			if err != nil {
+				return err
+			}
+			row := subscriptionPlanModuleRow{PlanCode: module.PlanCode, ModuleCode: module.ModuleCode, LimitsJSON: limits, SortOrder: module.SortOrder}
+			if err := db.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func upsertDefaultPlans(db *gorm.DB, plans []PlanBundle) error {
 	for _, bundle := range plans {
 		planRow := subscriptionPlanRow{
