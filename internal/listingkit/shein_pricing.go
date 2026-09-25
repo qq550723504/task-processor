@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	sheinpolicy "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -73,10 +74,17 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 		review.Ready = false
 		return review
 	}
+	costRule := sheinpolicy.CostPriceRule{
+		ExchangeRate:     rule.ExchangeRate,
+		MarkupMultiplier: rule.MarkupMultiplier,
+		MinimumPrice:     rule.MinimumPrice,
+		RoundTo:          rule.RoundTo,
+		PriceEnding:      rule.PriceEnding,
+	}
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
-			price := calculateSheinPrice(cost, rule)
+			price := sheinpolicy.CalculateCostPrice(cost, costRule)
 			finalPrice := price
 			manual := false
 			if value, ok := overrides[sku.SupplierSKU]; ok && value > 0 {
@@ -114,12 +122,19 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 		review.Ready = false
 		return review
 	}
+	costRule := sheinpolicy.CostPriceRule{
+		ExchangeRate:     rule.ExchangeRate,
+		MarkupMultiplier: rule.MarkupMultiplier,
+		MinimumPrice:     rule.MinimumPrice,
+		RoundTo:          rule.RoundTo,
+		PriceEnding:      rule.PriceEnding,
+	}
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
 			price := existingSheinDraftPrice(sku)
 			if price <= 0 {
-				price = calculateSheinPrice(cost, rule)
+				price = sheinpolicy.CalculateCostPrice(cost, costRule)
 			}
 			finalPrice := price
 			manual := false
@@ -213,28 +228,6 @@ func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[st
 			sku.CostInfo.Currency = targetCurrency
 		}
 	}
-}
-
-func calculateSheinPrice(costCNY float64, rule sheinpub.PricingRule) float64 {
-	if costCNY <= 0 || rule.ExchangeRate <= 0 {
-		return 0
-	}
-	price := costCNY / rule.ExchangeRate * rule.MarkupMultiplier
-	if price < rule.MinimumPrice {
-		price = rule.MinimumPrice
-	}
-	if rule.PriceEnding > 0 && rule.PriceEnding < 1 {
-		base := math.Floor(price)
-		candidate := base + rule.PriceEnding
-		if candidate < price {
-			candidate = base + 1 + rule.PriceEnding
-		}
-		price = candidate
-	}
-	if rule.RoundTo > 0 {
-		price = math.Ceil(price/rule.RoundTo) * rule.RoundTo
-	}
-	return math.Round(price*100) / 100
 }
 
 func parseMoney(value string) float64 {

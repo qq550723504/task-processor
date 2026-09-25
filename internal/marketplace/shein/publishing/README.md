@@ -29,7 +29,23 @@ Current stable ownership includes:
 - recovery remote-lookup confirmation policy selection for publish/save-draft responses.
 - confirm-remote decision, SPU precedence, and update-message policy for root remote-status orchestration.
 
+## Cost-conversion calculation
+
+`CalculateCostPrice` / `CostPriceRule` own the numeric calculation used by the
+ordinary price review and the missing-price branch of draft-backed review.
+The existing consumers map their rule snapshot into these numeric inputs;
+the policy does not import their DTOs. The former root ListingKit
+`calculateSheinPrice` function is removed, not retained as a forwarding wrapper.
+
+Operation order stays cost conversion/multiplier, minimum, price ending,
+increment ceiling, then two-decimal rounding. Configuration defaults, draft-price
+precedence, manual overrides and review/persistence remain with their existing
+callers. This is distinct from `PricingPolicy.Apply` (shipping, fixed markup and
+commission); the formulas must not be substituted for each other.
+No external calls, new persistence, readiness decision or publish permission
+are added. This extraction does not retire the remaining ListingKit workflow.
+
 Boundary rule:
 
 - this package must not depend on `internal/listingkit` or root runtime wiring packages.
-- legacy `internal/publishing/shein` may remain as a compatibility/model package until submission flows are migrated deliberately.
+- remaining legacy `internal/publishing/shein` models/callers are a drain area under `EXTRACT | RETIRE`, not a new compatibility destination. Current policy consumers must not depend on that legacy owner.
