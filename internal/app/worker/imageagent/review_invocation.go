@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/imageagent"
 	openai "task-processor/internal/integration/openai"
 	productimage "task-processor/internal/product/image"
 	"task-processor/internal/shared/aiidentity"
@@ -57,7 +59,10 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	if quote.MaximumTokens <= 0 {
 		return productimage.Review{}, productimage.ErrCapabilityUnsupported
 	}
-	invocationID, inputHash := stableReviewInvocationIdentity(identity, request, quote.Fingerprint)
+	invocationID, inputHash, err := reviewInvocationIdentity(ctx, identity, request, quote.Fingerprint)
+	if err != nil {
+		return productimage.Review{}, err
+	}
 	reservation, ok := settings.Recorder.(aicapability.InvocationUsageReservation)
 	if !ok {
 		return productimage.Review{}, productimage.ErrExternalCapabilityUnavailable
@@ -182,12 +187,14 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 }
 
 func stableReviewInvocationIdentity(identity aiidentity.Identity, request productimage.ReviewRequest, quoteFingerprint string) (string, string) {
-	parts := []string{identity.TenantID, identity.AgentRunID, identity.BusinessTaskID, quoteFingerprint, request.Product.ProductKey}
+	product, _ := json.Marshal(request.Product)
+	parts := []string{identity.TenantID, identity.AgentRunID, identity.BusinessTaskID, quoteFingerprint, string(product)}
 	for _, asset := range request.Sources {
-		parts = append(parts, "source", asset.SourceAssetID, asset.URL)
+		parts = append(parts, "source", reviewAssetFingerprint(asset))
 	}
 	for _, candidate := range request.Candidates {
-		parts = append(parts, "candidate", candidate.Asset.SourceAssetID, candidate.Asset.URL)
+		metadata, _ := json.Marshal(candidate.Metadata)
+		parts = append(parts, "candidate", reviewAssetFingerprint(candidate.Asset), string(metadata))
 	}
 	payload := strings.Join(parts, "\x00")
 	digest := sha256.Sum256([]byte(payload))
@@ -195,6 +202,29 @@ func stableReviewInvocationIdentity(identity aiidentity.Identity, request produc
 	// uuid.NewSHA1 gives the existing invocation schema a stable UUID while
 	// retaining a deterministic identity across Temporal activity retries.
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("account-center-review:"+hash)).String(), hash
+}
+
+func reviewAssetFingerprint(asset productimage.Asset) string {
+	bytesHash := sha256.Sum256(asset.Bytes)
+	encoded, _ := json.Marshal(struct {
+		URL, MediaType, SourceURL, SourceAssetID, Role, BytesHash string
+		Width, Height                                             int
+		Operations                                                []string
+	}{asset.URL, asset.MediaType, asset.SourceURL, asset.SourceAssetID, string(asset.Role), hex.EncodeToString(bytesHash[:]), asset.Width, asset.Height, asset.Operations})
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:])
+}
+
+func reviewInvocationIdentity(ctx context.Context, identity aiidentity.Identity, request productimage.ReviewRequest, quoteFingerprint string) (string, string, error) {
+	legacyID, inputHash := stableReviewInvocationIdentity(identity, request, quoteFingerprint)
+	preReserved := preReservedReviewFromContext(ctx)
+	if preReserved.InvocationID == "" && preReserved.QuoteFingerprint == "" {
+		return legacyID, inputHash, nil
+	}
+	if preReserved.InvocationID == "" || preReserved.QuoteFingerprint != quoteFingerprint {
+		return "", "", imageagent.ErrRevisionConflict
+	}
+	return preReserved.InvocationID, inputHash, nil
 }
 
 func reviewProviderErrorCategory(err error) aicapability.ErrorCategory {

@@ -93,6 +93,11 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 		if quoteErr != nil {
 			return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("image agent review usage quote is unavailable", imageagent.BudgetQuoteUnavailableCode, quoteErr)
 		}
+		if a.executionAuthorizer != nil && input.Slot.Role == imageagent.SlotRoleMain {
+			if err := validateOriginalOrganizationReviewQuote(effect.Quote, quote); err != nil {
+				return imageagent.SlotEffectV3PublishedResult{}, sdktemporal.NewNonRetryableApplicationError("organization review quote changed after image generation", imageagent.BudgetQuoteUnavailableCode, err)
+			}
+		}
 		reviewReservation = imageagent.SlotReviewUsageReservation{
 			Identity: reservation.Identity, ActionID: input.ReviewActionID,
 			InputFingerprint: imageagent.SlotExecutionFingerprint(executionInput), Policy: effect.Policy, Quote: quote,
@@ -189,6 +194,26 @@ func (a *Activities) ReviewStagedSlotV3(ctx context.Context, input ExecuteSlotV3
 		}
 	}
 	return a.ExecuteSlotV3(ctx, input)
+}
+
+func validateOriginalOrganizationReviewQuote(generation, review imageagent.SlotUsageQuote) error {
+	find := func(quote imageagent.SlotUsageQuote) string {
+		fingerprint := ""
+		for _, operation := range quote.Operations {
+			if operation.Name == "review" {
+				if fingerprint != "" {
+					return ""
+				}
+				fingerprint = operation.Fingerprint
+			}
+		}
+		return fingerprint
+	}
+	fromGeneration, fromReview := find(generation), find(review)
+	if fromGeneration == "" || fromReview == "" || fromGeneration != fromReview {
+		return imageagent.ErrRevisionConflict
+	}
+	return nil
 }
 
 func hasPersistedHumanReviewOutcome(effect imageagent.SlotEffectV3Attempt, actionID, inputFingerprint string) bool {
