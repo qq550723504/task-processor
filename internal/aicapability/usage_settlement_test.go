@@ -39,3 +39,23 @@ func TestSettleSuccessfulInvocationIgnoresFailedOrUnknownUsage(t *testing.T) {
 		t.Fatal("failed invocation was settled")
 	}
 }
+
+func TestObservedFailedReviewSettlesActualTokensWithoutChangingOrdinaryFailure(t *testing.T) {
+	settler := &recordingUsageSettler{}
+	when := time.Now().UTC()
+	record := InvocationRecord{InvocationID: "review-1", TenantID: "org-1", UserID: "actor-1", MemberID: "member-1", Operation: OperationProductImageReview, PromptTokens: 7, CompletionTokens: 5, TotalTokens: 12, UsageKnown: true, Outcome: InvocationUsageObservedFailed, FinishedAt: when}
+	if err := SettleSuccessfulInvocation(context.Background(), record, settler); err != nil {
+		t.Fatal(err)
+	}
+	if settler.invocation != "review-1" || settler.total != 12 {
+		t.Fatalf("observed failed review was not settled: %+v", settler)
+	}
+	settler.invocation = ""
+	record.Operation = OperationProductImageSceneGenerate
+	if err := SettleSuccessfulInvocation(context.Background(), record, settler); err == nil {
+		t.Fatal("non-review observed-failed outcome must be rejected")
+	}
+	if settler.invocation != "" {
+		t.Fatal("non-review observed-failed outcome was settled")
+	}
+}

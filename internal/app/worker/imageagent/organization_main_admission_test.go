@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	productimage "task-processor/internal/product/image"
@@ -85,6 +86,14 @@ func TestPreReservedReviewIdentityKeepsInvocationStableAndPayloadConflicts(t *te
 	_, secondInlineHash, err := reviewInvocationIdentity(ctx, identity, secondInline, "quote-review-1")
 	require.NoError(t, err)
 	require.NotEqual(t, firstInlineHash, secondInlineHash, "inline candidate bytes must bind the invocation without persistence")
+}
+
+func TestReviewOutcomeDistinguishesUnknownFromObservedInvalidOutput(t *testing.T) {
+	require.Equal(t, aicapability.InvocationDispatched, reviewInvocationTerminalOutcome(errors.New("timeout"), false))
+	require.Equal(t, aicapability.InvocationDispatched, reviewInvocationTerminalOutcome(errors.New("timeout"), true), "observer may have been called with a response but a transport error remains unknown")
+	require.Equal(t, aicapability.InvocationDispatched, reviewInvocationTerminalOutcome(nil, false), "missing usage cannot be successful settlement")
+	require.Equal(t, aicapability.InvocationUsageObservedFailed, reviewInvocationTerminalOutcome(productimage.ErrOutputValidation, true))
+	require.Equal(t, aicapability.InvocationSucceeded, reviewInvocationTerminalOutcome(nil, true))
 }
 
 func mainAdmissionContext() context.Context {

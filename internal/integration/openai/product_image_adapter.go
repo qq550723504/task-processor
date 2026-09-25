@@ -410,9 +410,10 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	fingerprintPayload := struct {
 		Operation, InputFingerprint, Provider, Model, RouteReference, CredentialReference, ConfigurationVersion, PricingVersion string
 		MaximumOutputs, MaximumTokens, MaximumCost                                                                              int64
+		CostUpperBoundKnown                                                                                                     bool
 	}{
 		request.Operation, request.InputFingerprint, provider, model, routeReference,
-		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumTokens, maximumCost,
+		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumTokens, maximumCost, a.config.CostUpperBoundKnown,
 	}
 	encoded, err := json.Marshal(fingerprintPayload)
 	if err != nil {

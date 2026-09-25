@@ -188,6 +188,23 @@ func TestProductImageAdapterQuotesExactTypedOperation(t *testing.T) {
 	require.ErrorIs(t, err, productimage.ErrCapabilityUnsupported)
 }
 
+func TestProductImageQuoteFingerprintBindsCostUpperBoundKnown(t *testing.T) {
+	config := validProductImageAdapterConfig(&productImageGeneratorStub{}, &productImageChatStub{})
+	config.ReviewCostMicros = 0
+	known, err := NewProductImageAdapter(config)
+	require.NoError(t, err)
+	knownQuote, err := known.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{Operation: "review", InputFingerprint: "input-a", MaximumOutputs: 1})
+	require.NoError(t, err)
+	config.CostUpperBoundKnown = false
+	unknown, err := NewProductImageAdapter(config)
+	require.NoError(t, err)
+	unknownQuote, err := unknown.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{Operation: "review", InputFingerprint: "input-a", MaximumOutputs: 1})
+	require.NoError(t, err)
+	require.Equal(t, knownQuote.MaximumCostMicros, unknownQuote.MaximumCostMicros)
+	require.NotEqual(t, knownQuote.CostUpperBoundKnown, unknownQuote.CostUpperBoundKnown)
+	require.NotEqual(t, knownQuote.Fingerprint, unknownQuote.Fingerprint)
+}
+
 func TestProductImageAdapterRejectsExecutionOutsideQuotedRouteBeforeDispatch(t *testing.T) {
 	images := &productImageGeneratorStub{}
 	adapter, err := NewProductImageAdapter(validProductImageAdapterConfig(images, &productImageChatStub{}))
