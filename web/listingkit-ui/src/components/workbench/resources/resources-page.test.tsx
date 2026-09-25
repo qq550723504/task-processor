@@ -96,7 +96,8 @@ it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED
 
 it("shows unavailable owner fields without deriving them and keeps the real token allocation editable", async () => {
   state.context.roles = ["admin"];
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-member-token-allocation-v1", organizationId: "org-B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "user-1", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] })));
+  const fetcher = vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-member-token-allocation-v1", organizationId: "org-B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "user-1", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] }));
+  vi.stubGlobal("fetch", fetcher);
   render(tree());
   expect(await screen.findByText("member@example.test")).toBeVisible();
   await screen.findByRole("region", { name: "成员 AI Token 分配" });
@@ -108,6 +109,9 @@ it("shows unavailable owner fields without deriving them and keeps the real toke
   expect(within(row).getByText("4500")).toBeVisible();
   expect(within(row).getByText("已消费 1200 · 剩余 3300")).toBeVisible();
   expect(within(row).getByRole("button", { name: "保存目标" })).toBeVisible();
+  expect(fetcher).toHaveBeenCalledWith("/api/account/member-allocations", expect.objectContaining({ headers: expect.objectContaining({ "X-Expected-User-ID": "actor", "X-Expected-Organization-ID": "org-B" }) }));
+  await userEvent.click(within(directory).getByRole("button", { name: "刷新分配" }));
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it.each(["organization", "actor", "roles", "switching", "logout", "revoke"])("clears facts immediately on %s", async kind => {

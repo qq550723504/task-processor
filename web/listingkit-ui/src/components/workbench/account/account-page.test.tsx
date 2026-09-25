@@ -324,6 +324,7 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByText("9000")).toBeVisible();
     expect(screen.getAllByText("1200")).toHaveLength(2);
     expect(screen.getByText("3300")).toBeVisible();
+    expect(fetcher).toHaveBeenCalledWith("/api/account/member-allocations", expect.objectContaining({ headers: expect.objectContaining({ "X-Expected-User-ID": "u1", "X-Expected-Organization-ID": "B" }) }));
     expect(screen.getByText("账号标识")).toBeVisible();
     expect(screen.queryByText("成员 / 角色")).not.toBeInTheDocument();
     expect(screen.getByText("operator-B")).toBeVisible();
