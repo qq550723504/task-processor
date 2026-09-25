@@ -59,6 +59,65 @@ func TestResolveImageAgentTemporalDependenciesComposesRealRepositoryExecutorPubl
 	require.Equal(t, 2, closed)
 }
 
+func TestResolveOrganizationWorkerComposesGovernedSingleMainSlotAndLiveAuthorizer(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-org?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{}}
+	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
+	governance := &testOrganizationInvocationRecorder{}
+	var builtOrganization bool
+	resolver := imageAgentWorkerDependencyResolver{
+		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
+		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB:    func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+		BuildAI: func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error) {
+			return nil, nil, governance, nil
+		},
+		BuildCapabilities: func(imageCapabilityRuntime) (ImageCapabilities, error) {
+			t.Fatal("v3 capability builder must not serve organization worker")
+			return ImageCapabilities{}, nil
+		},
+		BuildOrganizationCapabilities: func(imageCapabilityRuntime, *gorm.DB) (ImageCapabilities, error) {
+			builtOrganization = true
+			return completeWorkerImageCapabilities(), nil
+		},
+		BuildOrganizationAuthorizer: func(*config.Config) (imageagent.ExecutionAuthorizer, error) {
+			return acceptingOrganizationExecutionAuthorizer{}, nil
+		},
+		BuildArtifactStore: func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error) {
+			return stubWorkerArtifactStore{}, nil
+		},
+	}
+	dependencies, closeFn, err := resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", logrus.New(), imageagenttemporal.WorkerWireModeOrganization, resolver)
+	require.NoError(t, err)
+	require.True(t, builtOrganization)
+	require.NotNil(t, dependencies.ExecutionAuthorizer)
+	require.IsType(t, organizationMainSlotExecutor{}, dependencies.StagedSlotExecutor)
+	require.NotNil(t, dependencies.ArtifactStore)
+	require.NotNil(t, dependencies.PublisherV3)
+	require.NoError(t, closeFn())
+}
+
+type acceptingOrganizationExecutionAuthorizer struct{}
+
+func (acceptingOrganizationExecutionAuthorizer) AuthorizeExecution(context.Context, imageagent.ExecutionIdentity) error {
+	return nil
+}
+
+type testOrganizationInvocationRecorder struct{}
+
+func (*testOrganizationInvocationRecorder) RecordInvocation(context.Context, aicapability.InvocationRecord) error {
+	return nil
+}
+
+func (*testOrganizationInvocationRecorder) ReserveAIInvocationUsage(context.Context, string, string, string, int64, time.Time) error {
+	return nil
+}
+
+func (*testOrganizationInvocationRecorder) ReleaseAIInvocationUsage(context.Context, string, string) error {
+	return nil
+}
+
 func TestResolveImageAgentTemporalDependenciesForV2BuildsCompatibilityArtifactStore(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:image-agent-worker-v2-runtime?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)

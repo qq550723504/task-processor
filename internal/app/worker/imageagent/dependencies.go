@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	aicapabilitystore "task-processor/internal/aicapability/store"
 	"task-processor/internal/app/configadapter"
 	appruntime "task-processor/internal/app/runtime"
+	"task-processor/internal/authruntime/zitadel"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	domainimageagent "task-processor/internal/imageagent"
 	"task-processor/internal/imageagent/assetpublication"
@@ -37,13 +40,15 @@ type imageCapabilityRuntime struct {
 }
 
 type imageAgentWorkerDependencyResolver struct {
-	LoadConfig         func(string) (*config.Config, error)
-	OpenDB             func(*config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB            func(*config.DatabaseConfig, *gorm.DB) error
-	BuildAI            func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
-	BuildCapabilities  func(imageCapabilityRuntime) (ImageCapabilities, error)
-	BuildArtifactStore func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
-	ArtifactTiming     imageAgentArtifactTiming
+	LoadConfig                    func(string) (*config.Config, error)
+	OpenDB                        func(*config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB                       func(*config.DatabaseConfig, *gorm.DB) error
+	BuildAI                       func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openaiclient.Manager, openaiclient.ClientConfigResolver, aicapability.InvocationRecorder, error)
+	BuildCapabilities             func(imageCapabilityRuntime) (ImageCapabilities, error)
+	BuildOrganizationCapabilities func(imageCapabilityRuntime, *gorm.DB) (ImageCapabilities, error)
+	BuildOrganizationAuthorizer   func(*config.Config) (domainimageagent.ExecutionAuthorizer, error)
+	BuildArtifactStore            func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
+	ArtifactTiming                imageAgentArtifactTiming
 }
 
 type imageAgentArtifactTiming struct {
@@ -110,8 +115,10 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
 		},
 		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: buildProductionImageCapabilities,
-		BuildArtifactStore: buildImageAgentDurableArtifactStore,
-		ArtifactTiming:     defaultImageAgentArtifactTiming,
+		BuildOrganizationCapabilities: buildOrganizationWorkerCapabilities,
+		BuildOrganizationAuthorizer:   buildOrganizationWorkerAuthorizer,
+		BuildArtifactStore:            buildImageAgentDurableArtifactStore,
+		ArtifactTiming:                defaultImageAgentArtifactTiming,
 	}
 }
 
@@ -162,7 +169,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v2 compatibility artifact store: %w", err)
 		}
 	}
-	if mode == imageagenttemporal.WorkerWireModeV3 {
+	if mode == imageagenttemporal.WorkerWireModeV3 || mode == imageagenttemporal.WorkerWireModeOrganization {
 		if err := timing.validate(); err != nil {
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("validate image agent durable artifact timing: %w", err)
 		}
@@ -199,13 +206,23 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent provider runtime: %w", err)
 	}
-	if resolver.BuildCapabilities == nil {
-		_ = closeDB()
-		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capability builder is required")
-	}
-	capabilities, err := resolver.BuildCapabilities(imageCapabilityRuntime{
+	runtime := imageCapabilityRuntime{
 		OpenAIManager: manager, CredentialResolver: credentialResolver, InvocationRecorder: recorder, Logger: logger,
-	})
+	}
+	var capabilities ImageCapabilities
+	if mode == imageagenttemporal.WorkerWireModeOrganization {
+		if resolver.BuildOrganizationCapabilities == nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("organization image agent capability builder is required")
+		}
+		capabilities, err = resolver.BuildOrganizationCapabilities(runtime, db)
+	} else {
+		if resolver.BuildCapabilities == nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capability builder is required")
+		}
+		capabilities, err = resolver.BuildCapabilities(runtime)
+	}
 	if err != nil {
 		_ = closeDB()
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent capabilities: %w", err)
@@ -217,6 +234,9 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent capabilities are incomplete")
 	}
 	repository := imageagentstore.NewGormRepository(db)
+	if mode == imageagenttemporal.WorkerWireModeOrganization {
+		repository = imageagentstore.NewOrganizationRepository(db)
+	}
 	assetRepository, err := productassetpersistence.NewRepository(db)
 	if err != nil {
 		_ = closeDB()
@@ -247,10 +267,50 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build image agent v3 asset publisher: %w", err)
 	}
 	dependencies.StagedSlotExecutor = v3Executor
+	if mode == imageagenttemporal.WorkerWireModeOrganization {
+		reservation, ok := recorder.(aicapability.InvocationUsageReservation)
+		if !ok || resolver.BuildOrganizationAuthorizer == nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("organization image agent commercial reservation and live authorizer are required")
+		}
+		authorizer, authErr := resolver.BuildOrganizationAuthorizer(cfg)
+		if authErr != nil || authorizer == nil {
+			_ = closeDB()
+			if authErr == nil {
+				authErr = domainimageagent.ErrIdentityRequired
+			}
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization image agent execution authorizer: %w", authErr)
+		}
+		dependencies.ExecutionAuthorizer = authorizer
+		dependencies.StagedSlotExecutor = organizationMainSlotExecutor{delegate: v3Executor, quoter: capabilities.UsageQuoter, reservation: reservation}
+	}
 	dependencies.ArtifactStore = artifactStore
 	dependencies.PublisherV3 = publisherV3
 	dependencies.PublicationLeaseDuration = timing.PublicationLeaseDuration
 	return dependencies, closeDB, nil
+}
+
+func buildOrganizationWorkerCapabilities(runtime imageCapabilityRuntime, db *gorm.DB) (ImageCapabilities, error) {
+	if runtime.Logger == nil || nilDependency(runtime.InvocationRecorder) {
+		return ImageCapabilities{}, fmt.Errorf("organization image agent invocation recorder and logger are required")
+	}
+	return BuildOrganizationImageCapabilities(runtime.OpenAIManager, db, OrganizationReviewOptions{Recorder: runtime.InvocationRecorder, Logger: runtime.Logger})
+}
+
+func buildOrganizationWorkerAuthorizer(cfg *config.Config) (domainimageagent.ExecutionAuthorizer, error) {
+	if cfg == nil || strings.TrimSpace(cfg.ListingKit.Zitadel.AuthorizationAPIURL) == "" || strings.TrimSpace(cfg.ListingKit.Zitadel.ProjectID) == "" || strings.TrimSpace(cfg.ListingKit.Zitadel.TenantDirectoryToken) == "" {
+		return nil, domainimageagent.ErrIdentityRequired
+	}
+	authorizer, err := authz.NewListingKitAuthorizer(cfg.ListingKit.PlatformAdminUsers, cfg.ListingKit.PlatformAdminRoles)
+	if err != nil {
+		return nil, err
+	}
+	serviceToken := cfg.ListingKit.Zitadel.TenantDirectoryToken
+	return OrganizationExecutionAuthorizer{
+		Client:       zitadel.NewAuthorizationClient(cfg.ListingKit.Zitadel.AuthorizationAPIURL, &http.Client{Timeout: 5 * time.Second}),
+		ServiceToken: func(context.Context) (string, error) { return serviceToken, nil },
+		ProjectID:    cfg.ListingKit.Zitadel.ProjectID, Authorizer: authorizer,
+	}, nil
 }
 
 func artifactStorageCapabilitiesFromConfig(store config.ImageAgentArtifactStoreConfig) (s3integration.ArtifactStorageCapabilities, error) {
