@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	listingkitstore "task-processor/internal/listingkit/store"
+	sheinpolicy "task-processor/internal/marketplace/shein/publishing"
 	"task-processor/internal/product/catalog"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -35,6 +36,12 @@ func TestPublishWorkflowWithConcreteActivitiesPersistsStateAndBuildsPreview(t *t
 		Shein: listingkit.ServiceSheinDependencies{
 			SheinStoreCatalog:    temporalAllowingSheinStoreCatalog{},
 			StoreAccessValidator: temporalAllowingStoreAccessValidator{},
+			SheinCostPriceCalculator: func(costCNY, exchangeRate, markupMultiplier, minimumPrice, roundTo, priceEnding float64) float64 {
+				return sheinpolicy.CalculateCostPrice(costCNY, sheinpolicy.CostPriceRule{
+					ExchangeRate: exchangeRate, MarkupMultiplier: markupMultiplier,
+					MinimumPrice: minimumPrice, RoundTo: roundTo, PriceEnding: priceEnding,
+				})
+			},
 			SheinProductAPIBuilder: temporalStubSheinProductAPIBuilder{
 				api: temporalStubSheinProductAPI{
 					publishHook: func(product *sheinproduct.Product) {

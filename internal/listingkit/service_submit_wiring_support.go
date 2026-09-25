@@ -22,6 +22,7 @@ type taskSubmissionSupportWiring struct {
 	sheinTranslateAPIBuilder sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
+	costPriceCalculator      SheinCostPriceCalculator
 	rememberSheinSubmitted   func(*Task, string)
 }
 
@@ -212,6 +213,7 @@ func buildTaskSubmissionSupportWiringWithDependencies(
 		sheinTranslateAPIBuilder: resolveSubmissionTranslateAPIBuilder(s),
 		sheinContentOptimizer:    resolveSubmissionContentOptimizer(s),
 		currentSheinPricingRule:  s.currentSheinPricingRule,
+		costPriceCalculator:      s.sheinRuntimeDeps.costPriceCalculator,
 		rememberSheinSubmitted:   s.rememberSheinSubmittedResolution,
 	}
 	if resolver != nil {

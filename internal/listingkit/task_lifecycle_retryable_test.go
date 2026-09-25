@@ -156,6 +156,7 @@ func TestProcessFlowMarksOpenAICreditFailureAsBlockedRetryable(t *testing.T) {
 
 	repo := newRetryableLifecycleTestRepo()
 	svc, err := NewService(&ServiceConfig{
+		Shein: ServiceSheinDependencies{SheinCostPriceCalculator: testSheinCostPrice},
 		Core: ServiceCoreDependencies{
 			Repository:            repo,
 			ProductSnapshotReader: retryableLifecycleTestProductSnapshotReader{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
@@ -213,6 +214,7 @@ func TestProcessFlowReturnsPersistenceErrorWhenFailureStateCannotBeStored(t *tes
 	repo := newRetryableLifecycleTestRepo()
 	repo.blockedErr = errors.New("persist blocked state failed")
 	svc, err := NewService(&ServiceConfig{
+		Shein: ServiceSheinDependencies{SheinCostPriceCalculator: testSheinCostPrice},
 		Core: ServiceCoreDependencies{
 			Repository:            repo,
 			ProductSnapshotReader: retryableLifecycleTestProductSnapshotReader{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
@@ -250,6 +252,7 @@ func TestProcessFlowReturnsPartialResultSaveErrorWhenFailureResultCannotBeStored
 	repo := newRetryableLifecycleTestRepo()
 	repo.saveResultErr = errors.New("persist partial result failed")
 	svc, err := NewService(&ServiceConfig{
+		Shein: ServiceSheinDependencies{SheinCostPriceCalculator: testSheinCostPrice},
 		Core: ServiceCoreDependencies{
 			Repository:            repo,
 			ProductSnapshotReader: retryableLifecycleTestProductSnapshotReader{processErr: errors.New("OpenAI API error: insufficient credits in account balance")},
