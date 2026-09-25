@@ -106,6 +106,17 @@ func DialImageAgentTemporalWorkflowClient(logger *logrus.Logger) (imageagent.Wor
 	return imageagenttemporal.NewClient(client), closeFn, nil
 }
 
+// DialOrganizationImageAgentTemporalWorkflowClient is the explicit current
+// acquisition control plane connection. It cannot silently select the legacy
+// v3 queue or be disabled by the older ambient feature flag.
+func DialOrganizationImageAgentTemporalWorkflowClient(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
+	client, closeFn, err := dialImageAgentTemporal(ctx, address, namespace)
+	if err != nil {
+		return nil, nil, err
+	}
+	return imageagenttemporal.NewOrganizationClient(client), closeFn, nil
+}
+
 func RunImageAgentTemporalWorker(ctx context.Context, dependencies ImageAgentTemporalDependencies, logger *logrus.Logger) error {
 	return RunImageAgentTemporalWorkerWithOptions(ctx, dependencies, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, logger)
 }

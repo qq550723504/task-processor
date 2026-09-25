@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	coreconfig "task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
 )
 
 type Dependencies struct {
@@ -20,6 +21,8 @@ type Dependencies struct {
 	OpenCommercial                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenCommercialOwner                       func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition                    func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenImageAgent                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	DialImageAgentWorkflow                    func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
 	OpenReferrals                             func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenMembership                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	NewApplicationWithFeatures                func(context.Context, *gorm.DB, *gorm.DB, ApplicationFeatures, *coreconfig.Config, *logrus.Logger) (*http.Server, error)
@@ -38,6 +41,8 @@ type Dependencies struct {
 type ApplicationFeatures struct {
 	CommercialOwnerDB    *gorm.DB
 	ProductAcquisitionDB *gorm.DB
+	ImageAgentDB         *gorm.DB
+	ImageAgentWorkflow   imageagent.WorkflowClient
 	ReferralDB           *gorm.DB
 	MembershipDB         *gorm.DB
 	Membership           *MembershipConfig
@@ -87,6 +92,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.ProductAcquisitionDatabase != nil && dependencies.OpenProductAcquisition == nil {
 		return errors.New("current product acquisition lifecycle unavailable")
+	}
+	if cfg.ImageAgent != nil && (dependencies.OpenImageAgent == nil || dependencies.DialImageAgentWorkflow == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("current image agent owner and organization workflow lifecycle unavailable")
 	}
 	if cfg.CommercialOwnerDatabase != nil && dependencies.OpenCommercialOwner == nil {
 		return errors.New("current commercial owner lifecycle unavailable")
@@ -171,6 +179,27 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 			return fmt.Errorf("current application startup canceled: %w", err)
 		}
 	}
+	var imageDB *gorm.DB
+	var imageWorkflow imageagent.WorkflowClient
+	if cfg.ImageAgent != nil {
+		imageDB, err = dependencies.OpenImageAgent(startupContext, cfg.ImageAgent.Database)
+		if err != nil {
+			return fmt.Errorf("open existing image agent owner database: %w", err)
+		}
+		if imageDB == nil || imageDB == sourceAccountDB || imageDB == commercialDB || imageDB == commercialOwnerDB || imageDB == productDB {
+			return errors.New("current image agent owner database unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(imageDB)) }()
+		var closeWorkflow func() error
+		imageWorkflow, closeWorkflow, err = dependencies.DialImageAgentWorkflow(startupContext, cfg.ImageAgent.TemporalAddress, cfg.ImageAgent.TemporalNamespace)
+		if err != nil {
+			return fmt.Errorf("connect organization image agent workflow: %w", err)
+		}
+		if imageWorkflow == nil || closeWorkflow == nil {
+			return errors.New("organization image agent workflow unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, closeWorkflow()) }()
+	}
 	var referralDB *gorm.DB
 	if cfg.Referrals.Enabled {
 		referralDB, err = dependencies.OpenReferrals(startupContext, cfg.Referrals.Database)
@@ -207,7 +236,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
 	} else if productDB != nil {

@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	coreconfig "task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
 )
 
 const (
@@ -35,6 +37,7 @@ type Config struct {
 	CommercialDatabase         DatabaseConfig                `json:"commercialDatabase"`
 	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
 	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
+	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
 	Membership                 *MembershipConfig             `json:"membership,omitempty"`
 	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
 	Referrals                  ReferralsConfig               `json:"referrals"`
@@ -43,6 +46,18 @@ type Config struct {
 type ReferralsConfig struct {
 	coreconfig.ReferralsConfig
 	Database DatabaseConfig `json:"referralDatabase"`
+}
+
+// ImageAgentConfig enables only the current acquisition main-image path. Its
+// database is the same owner database used by the Organization ImageAgent
+// worker, opened with a bounded API runtime role, never the SRC role.
+type ImageAgentConfig struct {
+	Database               DatabaseConfig `json:"database"`
+	TemporalAddress        string         `json:"temporalAddress"`
+	TemporalNamespace      string         `json:"temporalNamespace"`
+	AllowedOrganizationIDs []string       `json:"allowedOrganizationIds"`
+	PublicBase             string         `json:"publicBase"`
+	Bucket                 string         `json:"bucket"`
 }
 
 // ListingKitAuthorizationConfig carries only the platform-admin caller allowlists.
@@ -274,6 +289,49 @@ func (cfg *Config) validate() error {
 			}
 		}
 	}
+	if image := cfg.ImageAgent; image != nil {
+		if cfg.ProductAcquisitionDatabase == nil {
+			return errors.New("image agent requires current product acquisition")
+		}
+		if err := image.Database.validate("imageAgent.database"); err != nil {
+			return err
+		}
+		if image.Database.User != "image_agent_runtime" || image.Database.MaxConnections > 8 {
+			return errors.New("image agent requires image_agent_runtime and at most 8 connections")
+		}
+		for _, other := range []*DatabaseConfig{&cfg.SourceAccountDatabase, &cfg.CommercialDatabase, cfg.CommercialOwnerDatabase, cfg.ProductAcquisitionDatabase, &cfg.Referrals.Database} {
+			if other != nil && image.Database.Host == other.Host && image.Database.Port == other.Port && image.Database.Database == other.Database {
+				return errors.New("image agent requires a dedicated owner database")
+			}
+		}
+		if cfg.Membership != nil && image.Database.Host == cfg.Membership.Database.Host && image.Database.Port == cfg.Membership.Database.Port && image.Database.Database == cfg.Membership.Database.Database {
+			return errors.New("image agent requires a dedicated owner database")
+		}
+		host, port, err := net.SplitHostPort(image.TemporalAddress)
+		if err != nil || host != "127.0.0.1" {
+			return errors.New("image agent Temporal address must use explicit IPv4 loopback")
+		}
+		value, err := strconv.Atoi(port)
+		if err != nil || value < 1 || value > 65535 || !boundedValue(image.TemporalNamespace, 128) {
+			return errors.New("image agent Temporal endpoint and namespace must be bounded")
+		}
+		if len(image.AllowedOrganizationIDs) == 0 || len(image.AllowedOrganizationIDs) > 64 || !boundedValue(image.Bucket, 128) {
+			return errors.New("image agent organization allowlist and bucket are required")
+		}
+		seen := make(map[string]struct{}, len(image.AllowedOrganizationIDs))
+		for _, id := range image.AllowedOrganizationIDs {
+			if !boundedValue(id, 256) {
+				return errors.New("image agent organization allowlist is invalid")
+			}
+			if _, duplicate := seen[id]; duplicate {
+				return errors.New("image agent organization allowlist contains a duplicate")
+			}
+			seen[id] = struct{}{}
+		}
+		if _, err := imageagent.ValidateSafeImageURL(image.PublicBase); err != nil {
+			return errors.New("image agent public base must be a safe public URL")
+		}
+	}
 	if err := validatePlatformAdminAllowlist("listingKitAuthorization.platformAdminUsers", cfg.ListingKitAuthorization.PlatformAdminUsers); err != nil {
 		return err
 	}
@@ -369,7 +427,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 	if cfg == nil {
 		return nil
 	}
-	return &coreconfig.Config{
+	core := &coreconfig.Config{
 		Referrals: cfg.Referrals.ReferralsConfig,
 		Workbench: coreconfig.WorkbenchConfig{Enabled: true},
 		ListingKit: coreconfig.ListingKitConfig{
@@ -383,4 +441,9 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 			},
 		},
 	}
+	if image := cfg.ImageAgent; image != nil {
+		core.ImageAgent.Admission = coreconfig.ImageAgentAdmissionConfig{Enabled: true, AllowedTenantIDs: append([]string(nil), image.AllowedOrganizationIDs...)}
+		core.ImageAgent.ArtifactStore = coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: image.PublicBase, S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: image.Bucket}}
+	}
+	return core
 }
