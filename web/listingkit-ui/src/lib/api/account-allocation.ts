@@ -12,20 +12,21 @@ const snapshot = z.object({ schemaVersion: z.literal("account-member-token-alloc
 const mutation = z.object({ metric: z.literal("token"), windowStart: timestamp, windowEnd: timestamp, allocated: integer, consumed: integer, remaining: integer, version: integer, active: z.boolean() }).strict();
 export type MemberTokenAllocationSnapshot = z.infer<typeof snapshot>;
 export type MemberTokenAllocation = z.infer<typeof allocation>;
+export type MemberTokenAllocationScope = { expectedUserId: string; expectedOrganizationId: string };
 export class AccountAllocationError extends Error { constructor(public readonly status: number, public readonly code: string) { super("Account resource allocation request could not be completed"); } }
 function parseFailure(payload: unknown, status: number) { const parsed = parseWorkbenchErrorEnvelopePayload(payload); return parsed.success ? parsed.data.code : status === 409 ? "CONFLICT" : "DEPENDENCY_UNAVAILABLE"; }
-async function request(expectedOrganizationId: string, init: RequestInit, path = "/api/account/member-allocations"): Promise<unknown> {
-  if (!id.safeParse(expectedOrganizationId).success) throw new AccountAllocationError(400, "INVALID_REQUEST");
-  const response = await fetch(path, { ...init, headers: { Accept: "application/json", "X-Expected-Organization-ID": expectedOrganizationId, ...(init.headers ?? {}) }, cache: "no-store" });
+async function request(scope: MemberTokenAllocationScope, init: RequestInit, path = "/api/account/member-allocations"): Promise<unknown> {
+  if (!id.safeParse(scope.expectedUserId).success || !id.safeParse(scope.expectedOrganizationId).success) throw new AccountAllocationError(400, "INVALID_REQUEST");
+  const response = await fetch(path, { ...init, headers: { Accept: "application/json", "X-Expected-User-ID": scope.expectedUserId, "X-Expected-Organization-ID": scope.expectedOrganizationId, ...(init.headers ?? {}) }, cache: "no-store" });
   const payload = await readBoundedStrictJSON(response, response.status === 200 ? 128 * 1024 : 8192);
   if (response.status !== 200) throw new AccountAllocationError(response.status, parseFailure(payload, response.status));
   return payload;
 }
-export async function getMemberTokenAllocations(expectedOrganizationId: string, signal?: AbortSignal): Promise<MemberTokenAllocationSnapshot> {
-  const payload = await request(expectedOrganizationId, { method: "GET", signal }); const parsed = snapshot.safeParse(payload); if (!parsed.success || parsed.data.organizationId !== expectedOrganizationId) throw new AccountAllocationError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
+export async function getMemberTokenAllocations(scope: MemberTokenAllocationScope, signal?: AbortSignal): Promise<MemberTokenAllocationSnapshot> {
+  const payload = await request(scope, { method: "GET", signal }); const parsed = snapshot.safeParse(payload); if (!parsed.success || parsed.data.organizationId !== scope.expectedOrganizationId) throw new AccountAllocationError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
 }
-export async function setMemberTokenAllocation(expectedOrganizationId: string, memberId: string, target: string, expectedVersion: string, idempotencyKey = crypto.randomUUID(), signal?: AbortSignal): Promise<MemberTokenAllocation> {
+export async function setMemberTokenAllocation(scope: MemberTokenAllocationScope, memberId: string, target: string, expectedVersion: string, idempotencyKey = crypto.randomUUID(), signal?: AbortSignal): Promise<MemberTokenAllocation> {
   if (!id.safeParse(memberId).success || !integer.safeParse(target).success || !integer.safeParse(expectedVersion).success) throw new AccountAllocationError(400, "INVALID_REQUEST");
-  const payload = await request(expectedOrganizationId, { method: "PUT", signal, headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ target, expectedVersion }) }, `/api/account/member-allocations/${memberId}`);
+  const payload = await request(scope, { method: "PUT", signal, headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ target, expectedVersion }) }, `/api/account/member-allocations/${memberId}`);
   const parsed = mutation.safeParse(payload); if (!parsed.success) throw new AccountAllocationError(502, "INVALID_UPSTREAM_RESPONSE"); return parsed.data;
 }

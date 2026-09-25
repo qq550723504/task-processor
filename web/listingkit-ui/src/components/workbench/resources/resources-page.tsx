@@ -20,17 +20,17 @@ export function ResourcesPage() {
   const valid = context.user && org && !context.selectionRequired && !context.error && !context.blockingError;
   return <AccountShell pathname="/workbench/account/organization/resources" title="资源与额度" description="查看当前企业资源、已授予权益与可选资源管理。">
     {context.isLoading || context.isSwitching ? <ConsoleState kind="loading" title="正在确认当前企业">旧资源信息已清除。</ConsoleState>
-      : !valid ? <ConsoleState kind="error" title="企业或登录上下文不可用">请确认登录状态并重新选择企业。<Button variant="outline" onClick={() => void context.retry()}>重新确认上下文</Button></ConsoleState>
-      : <ScopedResources key={scope} scope={scope} organizationId={org.id} organizationName={org.name} canManage={context.roles.some(role => ["listingkit_admin", "platform_admin", "admin"].includes(role))} />}
+      : !valid || !context.user ? <ConsoleState kind="error" title="企业或登录上下文不可用">请确认登录状态并重新选择企业。<Button variant="outline" onClick={() => void context.retry()}>重新确认上下文</Button></ConsoleState>
+      : <ScopedResources key={scope} scope={scope} userId={context.user.id} organizationId={org.id} organizationName={org.name} canManage={context.roles.some(role => ["listingkit_admin", "platform_admin", "admin"].includes(role))} />}
   </AccountShell>;
 }
 
-function ScopedResources({ scope, organizationId, organizationName, canManage }: { scope: string; organizationId: string; organizationName: string; canManage: boolean }) {
+function ScopedResources({ scope, userId, organizationId, organizationName, canManage }: { scope: string; userId: string; organizationId: string; organizationName: string; canManage: boolean }) {
   const [sequence, setSequence] = useState(0);
   return <div className={styles.stack}>
     <div className={styles.heading}><p>当前有效企业：{organizationName || "未提供名称"}（{organizationId}）</p><Button variant="outline" onClick={() => setSequence(v => v + 1)}>刷新资源</Button></div>
     <section aria-label="企业资源权益摘要"><ResourceCards /></section>
-    <MemberTokenAllocationRequest organizationId={organizationId} sequence={sequence} canManage={canManage} />
+    <MemberTokenAllocationRequest userId={userId} organizationId={organizationId} sequence={sequence} canManage={canManage} />
     <div className={styles.grid}>
       <Card role="region" aria-label="源账号资源" className={styles.panel}><h2>源账号</h2><p>可选企业资源，可登记和管理来源账号；匿名公开商品采集无需先登记或连接源账号。</p><Button asChild variant="outline"><Link href="/workbench/account/organization/resources/source-accounts" prefetch={false}>管理源账号</Link></Button></Card>
       <Card role="region" aria-label="店铺资源" className={styles.panel}><h2>店铺资源</h2><p>实际店铺数量未提供，店铺服务及平台连接状态未接入。</p><p>店铺数量限制是已授予权益，不代表已绑定或服务中的店铺数量。</p></Card>
@@ -50,8 +50,8 @@ function ResourceRequest({ scope, organizationId, sequence }: { scope: string; o
   return <EntitlementsOverview data={response.data} showResourceSummary={false} showResourceCards={false} />;
 }
 
-function MemberTokenAllocationRequest({ organizationId, sequence, canManage }: { organizationId: string; sequence: number; canManage: boolean }) {
-  const response = useQuery({ queryKey: ["workbench", organizationId, "member-token-allocations", sequence], queryFn: ({ signal }) => getMemberTokenAllocations(organizationId, signal), gcTime: 0, staleTime: 0, retry: false, refetchOnWindowFocus: true, refetchOnReconnect: true });
+function MemberTokenAllocationRequest({ userId, organizationId, sequence, canManage }: { userId: string; organizationId: string; sequence: number; canManage: boolean }) {
+  const response = useQuery({ queryKey: ["workbench", userId, organizationId, "member-token-allocations", sequence], queryFn: ({ signal }) => getMemberTokenAllocations({ expectedUserId: userId, expectedOrganizationId: organizationId }, signal), gcTime: 0, staleTime: 0, retry: false, refetchOnWindowFocus: true, refetchOnReconnect: true });
   if (response.isPending || response.isFetching) return <MemberAllocationNotice state="loading" />;
   if (response.isError || !response.data) {
     const code = response.error instanceof AccountAllocationError ? response.error.code : "DEPENDENCY_UNAVAILABLE";
@@ -59,7 +59,7 @@ function MemberTokenAllocationRequest({ organizationId, sequence, canManage }: {
     const labels: Record<string, string> = { PERMISSION_DENIED: "无成员额度查看权限", AUTHENTICATION_REQUIRED: "登录已失效", ORGANIZATION_ACCESS_REVOKED: "企业访问已撤销", ORGANIZATION_ACCESS_DENIED: "企业访问被拒绝", DEPENDENCY_UNAVAILABLE: "成员额度服务暂不可用", DEADLINE_EXCEEDED: "成员额度读取超时" };
     return <MemberAllocationNotice state="error" message={`${labels[code] ?? "成员额度读取失败"}；本次未能确认成员分配数据，请刷新重试。`} />;
   }
-  return <MemberTokenAllocationTable data={response.data} organizationId={organizationId} canManage={canManage} />;
+  return <MemberTokenAllocationTable data={response.data} userId={userId} organizationId={organizationId} canManage={canManage} />;
 }
 
 function MemberAllocationNotice({ state, message }: { state: "loading" | "error"; message?: string }) {
@@ -71,14 +71,14 @@ function MemberAllocationNotice({ state, message }: { state: "loading" | "error"
   </Card>;
 }
 
-function MemberTokenAllocationTable({ data, organizationId, canManage }: { data: MemberTokenAllocationSnapshot; organizationId: string; canManage: boolean }) {
+function MemberTokenAllocationTable({ data, userId, organizationId, canManage }: { data: MemberTokenAllocationSnapshot; userId: string; organizationId: string; canManage: boolean }) {
   const client = useQueryClient();
   const [targets, setTargets] = useState<Record<string, string>>(() => Object.fromEntries(data.members.map(member => [member.memberId, member.allocation.allocated])));
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const mutation = useMutation({ mutationFn: async ({ memberId, target, version }: { memberId: string; target: string; version: string }) => setMemberTokenAllocation(organizationId, memberId, target, version), onMutate: ({ memberId }) => { setSaving(memberId); setError(null); }, onSuccess: () => { void client.invalidateQueries({ queryKey: ["workbench", organizationId, "member-token-allocations"] }); }, onError: error => setError(error instanceof AccountAllocationError && error.code === "CONFLICT" ? "版本已过期，请刷新后重试。" : "分配未保存，企业额度事实未改变。"), onSettled: () => setSaving(null) });
+  const mutation = useMutation({ mutationFn: async ({ memberId, target, version }: { memberId: string; target: string; version: string }) => setMemberTokenAllocation({ expectedUserId: userId, expectedOrganizationId: organizationId }, memberId, target, version), onMutate: ({ memberId }) => { setSaving(memberId); setError(null); }, onSuccess: () => { void client.invalidateQueries({ queryKey: ["workbench", userId, organizationId, "member-token-allocations"] }); }, onError: error => setError(error instanceof AccountAllocationError && error.code === "CONFLICT" ? "版本已过期，请刷新后重试。" : "分配未保存，企业额度事实未改变。"), onSettled: () => setSaving(null) });
   return <Card role="region" aria-label="成员 AI Token 分配" className={styles.panel}>
-    <div className={styles.heading}><div><h2>成员资源目录</h2><p>token积分额度原样显示当前成员分配 owner 的可读额度；已消费、剩余额度和可写目标仍由同一 owner 提供。</p></div><Button variant="outline" onClick={() => void client.invalidateQueries({ queryKey: ["workbench", organizationId, "member-token-allocations"] })}>刷新分配</Button></div>
+    <div className={styles.heading}><div><h2>成员资源目录</h2><p>token积分额度原样显示当前成员分配 owner 的可读额度；已消费、剩余额度和可写目标仍由同一 owner 提供。</p></div><Button variant="outline" onClick={() => void client.invalidateQueries({ queryKey: ["workbench", userId, organizationId, "member-token-allocations"] })}>刷新分配</Button></div>
     <dl className={styles.quotaFacts}><div><dt>企业总额度</dt><dd>{data.enterprise.total}</dd></div><div><dt>已分配</dt><dd>{data.enterprise.allocated}</dd></div><div><dt>未分配</dt><dd>{data.enterprise.unallocated}</dd></div><div><dt>企业已消费</dt><dd>{data.enterprise.consumed}</dd></div></dl>
     {error ? <p role="alert">{error}</p> : null}
     <div className={styles.memberFilters} role="group" aria-label="成员资源筛选"><label>搜索成员<input disabled placeholder="当前 owner 未提供搜索" /></label><label>资源类型<select disabled defaultValue="token"><option value="token">AI Token</option></select></label><label>成员状态<select disabled defaultValue=""><option value="">筛选暂不可用</option></select></label></div>
