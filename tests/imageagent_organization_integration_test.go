@@ -345,7 +345,7 @@ func TestOrganizationScopeHTTPPersistenceAndActivity(t *testing.T) {
 	f.verifyRecoveryCommand(t)
 }
 
-func TestOrganizationRealTemporalWorkerDeniesQuotaBeforeFirstProvider(t *testing.T) {
+func TestOrganizationRealTemporalImageBudgetDeniesBeforeFirstProvider(t *testing.T) {
 	address := os.Getenv("ISSUE487_TEMPORAL_ADDRESS")
 	if address == "" {
 		t.Skip("requires isolated Temporal ISSUE487_TEMPORAL_ADDRESS")
@@ -390,6 +390,9 @@ func TestOrganizationRealTemporalWorkerDeniesQuotaBeforeFirstProvider(t *testing
 	input := f.temporal.input(t)
 	_, err = client.ExecuteWorkflow(ctx, f.temporal.options, "ImageAgentOrganizationWorkflowV1", input)
 	require.NoError(t, err)
+	defer func() {
+		_ = client.TerminateWorkflow(context.Background(), f.temporal.options.ID, "", "controlled isolated test cleanup")
+	}()
 	scope := imageagent.RunScope{TenantID: "B", OwnerUserID: "actor", RunID: input.RunID}
 	for {
 		projection, getErr := repository.GetProjection(ctx, scope)
