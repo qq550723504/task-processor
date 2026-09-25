@@ -160,7 +160,9 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						writeAcquisitionImageError(c, err)
 						return
 					}
-					if projection.Run.BusinessTaskID != operationID || projection.Run.TargetPlatform != "product" || projection.Run.ImagePolicyContext != (imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}) {
+					if projection.Run.ScopeProtocol != imageagent.OrganizationScopeProtocol || projection.Run.ID != runID ||
+						projection.Run.TenantID != identity.TenantID || projection.Run.UserID != identity.UserID || projection.Run.MemberID != identity.EffectiveMemberID ||
+						projection.Run.BusinessTaskID != operationID || projection.Run.TargetPlatform != "product" || projection.Run.ImagePolicyContext != (imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}) {
 						writeAcquisitionImageError(c, imageagent.ErrRunNotFound)
 						return
 					}
@@ -275,7 +277,7 @@ func writeAcquisitionImageError(c *gin.Context, err error) {
 	case errors.Is(err, imageagent.ErrCommandBlocked):
 		status, code = http.StatusConflict, "IMAGE_BLOCKED"
 	}
-	c.JSON(status, gin.H{"error": code})
+	c.JSON(status, gin.H{"code": code})
 }
 
 // acquisitionMainRunInput is the server-owned single-result plan for the
@@ -299,7 +301,9 @@ func acquisitionMainRunInput(identity authidentity.AuthenticatedIdentity, operat
 		RunID: runID, BusinessTaskID: operationID, TargetPlatform: "product",
 		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"},
 		Mode:               imageagent.RunModeManual, IdempotencyKey: runID + "-request", Plan: plan,
-		Budget: imageagent.Budget{MaxImages: 1, EnabledLimits: imageagent.BudgetLimitImages}, MaxConcurrentSlots: 1,
+		// The v3 main quote counts Extract, RenderWhiteBackground and Review
+		// separately. The plan still permits only one finished main image.
+		Budget: imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}, MaxConcurrentSlots: 1,
 	}, nil
 }
 
