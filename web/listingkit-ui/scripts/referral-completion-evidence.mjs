@@ -135,6 +135,7 @@ export async function captureReferralCompletion(page, { origin, file }) {
     closing = (async () => {
       try { await queue; } finally { await handle.close(); }
       if (failed) throw new Error("evidence_write_failed");
+      return { attemptCount: sequence, status: sequence > 0 ? "OBSERVED" : "NOT_RUN" };
     })();
     return closing;
   };

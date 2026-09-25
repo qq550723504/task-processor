@@ -28,7 +28,7 @@ test("retains one attempt before a response and records pending with contract pr
   const f = await setup(t), req = request();
   f.page.emit("request", req);
   f.page.emit("response", response(req, 409, { code: "referral_verification_pending", message: "private-sentinel" }));
-  await f.close();
+  assert.deepEqual(await f.close(), { attemptCount: 1, status: "OBSERVED" });
   const rows = await f.rows();
   assert.equal(rows.length, 2);
   assert.equal(rows[0].httpStatus, null);
@@ -89,7 +89,8 @@ test("ignores other endpoints, origins, query strings and unattached historical 
     const req = request(url); f.page.emit("request", req); f.page.emit("response", response(req, 200, {}));
   }
   f.page.emit("response", response(request(), 200, {}));
-  await f.close(); assert.deepEqual(await f.rows(), []);
+  assert.deepEqual(await f.close(), { attemptCount: 0, status: "NOT_RUN" });
+  assert.deepEqual(await f.rows(), []);
 });
 
 test("does not overwrite earlier evidence and reports open failures safely", async t => {

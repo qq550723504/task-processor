@@ -138,7 +138,11 @@ await finishEvidence();
 
 The existing `account-browser-verification.mjs` installs the same observer for
 its account pages and lists the files in `report.json`. Its default scenarios
-do not click complete; empty files mean no completion observed, **NOT_RUN**.
+do not click complete; each file has an `attemptCount` and independent
+`NOT_RUN` / `OBSERVED` / `CAPTURE_FAILED` status. The report's overall `PASS`
+still refers only to the account checks. `OBSERVED` means a request was captured,
+not that completion passed; empty files mean no completion observed, **NOT_RUN**.
+The script finishes capture before closing each context.
 Use a fresh output directory; existing evidence files are never overwritten.
 Keep the output under the private handoff directory and its Windows ACL above.
 Retain the existing report's source/runtime SHA and exact origin with the file;
