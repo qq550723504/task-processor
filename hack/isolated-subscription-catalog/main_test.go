@@ -54,7 +54,7 @@ func TestProvisionIsolatedTrialCatalogCreatesOnlyChosenPlanAndOffer(t *testing.T
 		listingsubscription.ModuleStoreManagement: `{"store_count":1}`,
 		listingsubscription.ModuleRules:           `{}`,
 		listingsubscription.ModuleListingKit:      `{"listingkit_generations_succeeded":5,"product_image_jobs_succeeded":5,"shein_drafts_succeeded":5,"ai_tokens":50000}`,
-		listingsubscription.ModuleOSSStorage:      `{"storage_bytes_current":104857600}`,
+		listingsubscription.ModuleOSSStorage:      `{"storage_bytes_current":104857600,"storage_bytes":104857600}`,
 	} {
 		var limits string
 		require.NoError(t, db.Table("saas_plan_modules").Select("limits").Where("plan_code = ? AND module_code = ?", "paid_pilot", module).Scan(&limits).Error)

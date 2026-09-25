@@ -27,7 +27,7 @@ trial choices, not approved production quotas:
 | `store_management` | `store_count=1` |
 | `rules` | no numeric limit; capability only |
 | `listingkit` | `listingkit_generations_succeeded=5`, `product_image_jobs_succeeded=5`, `shein_drafts_succeeded=5`, `ai_tokens=50000` |
-| `oss_storage` | `storage_bytes_current=104857600` (100 MiB) |
+| `oss_storage` | `storage_bytes_current=104857600` and `storage_bytes=104857600` (both 100 MiB) |
 
 There is no `task_import` or `shein_publish` module/entitlement in this plan;
 the old import-task routes are not part of this self-service trial. The older
@@ -38,6 +38,11 @@ creation quota or to implement that older metric contract. The current
 `listingkit_generations_succeeded` metric is the one enforced on the active
 ListingKit generation path. A limit value of `0` means unlimited in the
 current owner, so this trial does not use zero to disable a capability.
+The upload endpoint still authorizes the `storage_bytes` key, whereas the
+canonical retained-storage ledger reads `storage_bytes_current`. Both keys
+receive the same conservative trial cap so neither path silently treats the
+missing key as unlimited. This does not redefine their different accounting
+semantics or assert that upload bytes equal currently retained bytes.
 
 Use the same private commercial schema-owner JSON config shape as
 `commercial-owner-schema-migrate` (`host`, `port`, `user`, `password`,
@@ -47,7 +52,7 @@ isolated, empty database before invoking; its name must contain `isolated` or
 `trial` as an additional accidental-target guard:
 
 ```powershell
-go run ./cmd/isolated-subscription-catalog -config <private-config-absolute-path> -expected-database <isolated-database-name> -confirm ISOLATED_TRIAL_ONLY
+go run ./hack/isolated-subscription-catalog -config <private-config-absolute-path> -expected-database <isolated-database-name> -confirm ISOLATED_TRIAL_ONLY
 ```
 
 The catalog is read-only while the application serves traffic, as required by

@@ -134,7 +134,7 @@ func trialPlan() listingsubscription.PlanBundle {
 			{PlanCode: trialPlanCode, ModuleCode: listingsubscription.ModuleStoreManagement, Limits: map[string]int{"store_count": 1}, SortOrder: 10},
 			{PlanCode: trialPlanCode, ModuleCode: listingsubscription.ModuleRules, SortOrder: 20},
 			{PlanCode: trialPlanCode, ModuleCode: listingsubscription.ModuleListingKit, Limits: map[string]int{"listingkit_generations_succeeded": 5, "product_image_jobs_succeeded": 5, "shein_drafts_succeeded": 5, "ai_tokens": 50000}, SortOrder: 30},
-			{PlanCode: trialPlanCode, ModuleCode: listingsubscription.ModuleOSSStorage, Limits: map[string]int{"storage_bytes_current": 100 * 1024 * 1024}, SortOrder: 40},
+			{PlanCode: trialPlanCode, ModuleCode: listingsubscription.ModuleOSSStorage, Limits: map[string]int{"storage_bytes_current": 100 * 1024 * 1024, "storage_bytes": 100 * 1024 * 1024}, SortOrder: 40},
 		},
 	}
 }
