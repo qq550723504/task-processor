@@ -48,10 +48,10 @@ func newTestServiceConfig(repo Repository, opts ...testServiceConfigOption) *Ser
 	return cfg
 }
 
-func testSheinCostPrice(costCNY float64, input SheinCostPriceInput) float64 {
+func testSheinCostPrice(costCNY, exchangeRate, markupMultiplier, minimumPrice, roundTo, priceEnding float64) float64 {
 	return sheinpolicy.CalculateCostPrice(costCNY, sheinpolicy.CostPriceRule{
-		ExchangeRate: input.ExchangeRate, MarkupMultiplier: input.MarkupMultiplier,
-		MinimumPrice: input.MinimumPrice, RoundTo: input.RoundTo, PriceEnding: input.PriceEnding,
+		ExchangeRate: exchangeRate, MarkupMultiplier: markupMultiplier,
+		MinimumPrice: minimumPrice, RoundTo: roundTo, PriceEnding: priceEnding,
 	})
 }
 

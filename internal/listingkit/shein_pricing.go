@@ -60,20 +60,9 @@ func normalizeSheinPricingRule(input sheinpub.PricingRule, fallback sheinpub.Pri
 	return rule
 }
 
-// SheinCostPriceInput carries only the numeric values needed by the Marketplace calculation.
-// The application composition supplies the implementation.
-type SheinCostPriceInput struct {
-	ExchangeRate, MarkupMultiplier, MinimumPrice, RoundTo, PriceEnding float64
-}
-
-type SheinCostPriceCalculator func(float64, SheinCostPriceInput) float64
-
-func sheinCostPriceInput(rule sheinpub.PricingRule) SheinCostPriceInput {
-	return SheinCostPriceInput{
-		ExchangeRate: rule.ExchangeRate, MarkupMultiplier: rule.MarkupMultiplier,
-		MinimumPrice: rule.MinimumPrice, RoundTo: rule.RoundTo, PriceEnding: rule.PriceEnding,
-	}
-}
+// SheinCostPriceCalculator accepts only numeric inputs. Application composition
+// supplies the Marketplace calculation without a ListingKit-to-Marketplace import.
+type SheinCostPriceCalculator func(costCNY, exchangeRate, markupMultiplier, minimumPrice, roundTo, priceEnding float64) float64
 
 func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64, calculate SheinCostPriceCalculator) *sheinpub.PricingReview {
 	review := &sheinpub.PricingReview{
@@ -88,11 +77,10 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 		review.Ready = false
 		return review
 	}
-	costRule := sheinCostPriceInput(rule)
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
-			price := calculate(cost, costRule)
+			price := calculate(cost, rule.ExchangeRate, rule.MarkupMultiplier, rule.MinimumPrice, rule.RoundTo, rule.PriceEnding)
 			finalPrice := price
 			manual := false
 			if value, ok := overrides[sku.SupplierSKU]; ok && value > 0 {
@@ -130,13 +118,12 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 		review.Ready = false
 		return review
 	}
-	costRule := sheinCostPriceInput(rule)
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
 			price := existingSheinDraftPrice(sku)
 			if price <= 0 {
-				price = calculate(cost, costRule)
+				price = calculate(cost, rule.ExchangeRate, rule.MarkupMultiplier, rule.MinimumPrice, rule.RoundTo, rule.PriceEnding)
 			}
 			finalPrice := price
 			manual := false

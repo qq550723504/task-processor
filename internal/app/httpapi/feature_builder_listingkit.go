@@ -4,7 +4,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
-	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	sheinpolicy "task-processor/internal/marketplace/shein/publishing"
 )
@@ -67,9 +66,9 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 	}, nil
 }
 
-func marketplaceSheinCostPrice(costCNY float64, input listingkit.SheinCostPriceInput) float64 {
+func marketplaceSheinCostPrice(costCNY, exchangeRate, markupMultiplier, minimumPrice, roundTo, priceEnding float64) float64 {
 	return sheinpolicy.CalculateCostPrice(costCNY, sheinpolicy.CostPriceRule{
-		ExchangeRate: input.ExchangeRate, MarkupMultiplier: input.MarkupMultiplier,
-		MinimumPrice: input.MinimumPrice, RoundTo: input.RoundTo, PriceEnding: input.PriceEnding,
+		ExchangeRate: exchangeRate, MarkupMultiplier: markupMultiplier,
+		MinimumPrice: minimumPrice, RoundTo: roundTo, PriceEnding: priceEnding,
 	})
 }
