@@ -38,7 +38,7 @@ func TestBuildSheinDraftBackedPricingReviewPreservesExistingDraftPrice(t *testin
 		MarkupMultiplier: 2,
 		MinimumPrice:     9.99,
 		RoundTo:          0.01,
-	}, nil)
+	}, nil, testSheinCostPrice)
 	if review == nil || !review.Ready {
 		t.Fatalf("review = %+v, want ready review", review)
 	}
@@ -85,7 +85,7 @@ func TestBuildSheinDraftBackedPricingReviewNormalizesLegacyCNYDraftCurrency(t *t
 		MarkupMultiplier: 2,
 		MinimumPrice:     9.99,
 		RoundTo:          0.01,
-	}, nil)
+	}, nil, testSheinCostPrice)
 	if review == nil || !review.Ready {
 		t.Fatalf("review = %+v, want ready review", review)
 	}

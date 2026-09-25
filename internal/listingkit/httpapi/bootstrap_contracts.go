@@ -133,6 +133,7 @@ type BuildServiceHooks struct {
 }
 
 type BuildServiceInput struct {
+	SheinCostPriceCalculator  listingkit.SheinCostPriceCalculator
 	Config                    *config.Config
 	Logger                    *logrus.Logger
 	ProductSnapshotReader     listingkit.ProductSnapshotReader

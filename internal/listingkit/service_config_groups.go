@@ -85,6 +85,7 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 		saleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
 		sizeHeaderResolver:    config.Shein.SheinSizeHeaderResolver,
 		pricingPolicy:         config.Shein.SheinPricingPolicy,
+		costPriceCalculator:   config.Shein.SheinCostPriceCalculator,
 	}
 	dependencies.freshAttributeResolver, _ = config.Shein.SheinAttributeResolver.(sheinpub.FreshAttributeResolver)
 	return dependencies

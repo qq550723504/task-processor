@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	sheinpolicy "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -61,7 +60,22 @@ func normalizeSheinPricingRule(input sheinpub.PricingRule, fallback sheinpub.Pri
 	return rule
 }
 
-func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64) *sheinpub.PricingReview {
+// SheinCostPriceInput carries only the numeric values needed by the Marketplace calculation.
+// The application composition supplies the implementation.
+type SheinCostPriceInput struct {
+	ExchangeRate, MarkupMultiplier, MinimumPrice, RoundTo, PriceEnding float64
+}
+
+type SheinCostPriceCalculator func(float64, SheinCostPriceInput) float64
+
+func sheinCostPriceInput(rule sheinpub.PricingRule) SheinCostPriceInput {
+	return SheinCostPriceInput{
+		ExchangeRate: rule.ExchangeRate, MarkupMultiplier: rule.MarkupMultiplier,
+		MinimumPrice: rule.MinimumPrice, RoundTo: rule.RoundTo, PriceEnding: rule.PriceEnding,
+	}
+}
+
+func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64, calculate SheinCostPriceCalculator) *sheinpub.PricingReview {
 	review := &sheinpub.PricingReview{
 		RuleSnapshot:    &rule,
 		ManualOverrides: clonePriceOverrides(overrides),
@@ -74,17 +88,11 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 		review.Ready = false
 		return review
 	}
-	costRule := sheinpolicy.CostPriceRule{
-		ExchangeRate:     rule.ExchangeRate,
-		MarkupMultiplier: rule.MarkupMultiplier,
-		MinimumPrice:     rule.MinimumPrice,
-		RoundTo:          rule.RoundTo,
-		PriceEnding:      rule.PriceEnding,
-	}
+	costRule := sheinCostPriceInput(rule)
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
-			price := sheinpolicy.CalculateCostPrice(cost, costRule)
+			price := calculate(cost, costRule)
 			finalPrice := price
 			manual := false
 			if value, ok := overrides[sku.SupplierSKU]; ok && value > 0 {
@@ -109,7 +117,7 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 	return review
 }
 
-func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64) *sheinpub.PricingReview {
+func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64, calculate SheinCostPriceCalculator) *sheinpub.PricingReview {
 	review := &sheinpub.PricingReview{
 		RuleSnapshot:    &rule,
 		ManualOverrides: clonePriceOverrides(overrides),
@@ -122,19 +130,13 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 		review.Ready = false
 		return review
 	}
-	costRule := sheinpolicy.CostPriceRule{
-		ExchangeRate:     rule.ExchangeRate,
-		MarkupMultiplier: rule.MarkupMultiplier,
-		MinimumPrice:     rule.MinimumPrice,
-		RoundTo:          rule.RoundTo,
-		PriceEnding:      rule.PriceEnding,
-	}
+	costRule := sheinCostPriceInput(rule)
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
 			price := existingSheinDraftPrice(sku)
 			if price <= 0 {
-				price = sheinpolicy.CalculateCostPrice(cost, costRule)
+				price = calculate(cost, costRule)
 			}
 			finalPrice := price
 			manual := false

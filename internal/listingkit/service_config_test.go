@@ -2,13 +2,24 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	sheinpolicy "task-processor/internal/marketplace/shein/publishing"
 	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
+
+func TestNewServiceRequiresSheinCostPriceCalculator(t *testing.T) {
+	cfg := newTestServiceConfig(&stubSubmitRepo{})
+	cfg.Shein.SheinCostPriceCalculator = nil
+	_, err := NewService(cfg)
+	if err == nil || !strings.Contains(err.Error(), "shein cost-price calculator cannot be nil") {
+		t.Fatalf("NewService without cost-price calculator error = %v", err)
+	}
+}
 
 type testServiceConfigOption func(*ServiceConfig)
 
@@ -28,12 +39,20 @@ func newTestServiceConfig(repo Repository, opts ...testServiceConfigOption) *Ser
 	}
 	cfg.Shein.SheinStoreCatalog = testSheinStoreCatalog{}
 	cfg.Shein.StoreAccessValidator = &storeAccessValidatorStub{}
+	cfg.Shein.SheinCostPriceCalculator = testSheinCostPrice
 	for _, opt := range opts {
 		if opt != nil {
 			opt(cfg)
 		}
 	}
 	return cfg
+}
+
+func testSheinCostPrice(costCNY float64, input SheinCostPriceInput) float64 {
+	return sheinpolicy.CalculateCostPrice(costCNY, sheinpolicy.CostPriceRule{
+		ExchangeRate: input.ExchangeRate, MarkupMultiplier: input.MarkupMultiplier,
+		MinimumPrice: input.MinimumPrice, RoundTo: input.RoundTo, PriceEnding: input.PriceEnding,
+	})
 }
 
 type testSheinStoreCatalog struct{}

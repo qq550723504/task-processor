@@ -17,7 +17,7 @@ func TestSheinPricingReviewsPreserveCostAndOverridePrecedence(t *testing.T) {
 	}
 	builders := []struct {
 		name  string
-		build func(*sheinpub.Package, sheinpub.PricingRule, map[string]float64) *sheinpub.PricingReview
+		build func(*sheinpub.Package, sheinpub.PricingRule, map[string]float64, SheinCostPriceCalculator) *sheinpub.PricingReview
 		draft bool
 	}{
 		{name: "calculated review", build: buildSheinPricingReview},
@@ -55,7 +55,7 @@ func TestSheinPricingReviewsPreserveCostAndOverridePrecedence(t *testing.T) {
 						SKCList: []sheinpub.SKCRequestDraft{{SupplierCode: "skc-1", SKUList: []sheinpub.SKUDraft{sku}}},
 					}}
 					overrides := map[string]float64{"sku-1": tt.override}
-					review := builder.build(pkg, rule, overrides)
+					review := builder.build(pkg, rule, overrides, testSheinCostPrice)
 					if review == nil || len(review.SKUPrices) != 1 {
 						t.Fatalf("expected one SKU price, got %+v", review)
 					}

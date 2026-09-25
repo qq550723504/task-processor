@@ -4,7 +4,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appruntime "task-processor/internal/app/runtime"
+	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	sheinpolicy "task-processor/internal/marketplace/shein/publishing"
 )
 
 type listingKitFeatureBuilder struct {
@@ -53,6 +55,7 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 	return listingkithttpapi.RuntimeBuildInput{
 		Logger: logger,
 		Runtime: listingkithttpapi.RuntimeDependencies{
+			SheinCostPriceCalculator:           marketplaceSheinCostPrice,
 			Config:                             deps.shared.cfg,
 			ProductSnapshotReader:              deps.features.productSnapshotReader,
 			AIClientCredentialStore:            adaptListingKitAICredentialStore(deps.shared.aiCredentialStore),
@@ -62,4 +65,11 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 			ShouldStartTemporalWorkerInProcess: appruntime.ShouldStartListingKitSheinPublishTemporalWorkerInProcess(),
 		},
 	}, nil
+}
+
+func marketplaceSheinCostPrice(costCNY float64, input listingkit.SheinCostPriceInput) float64 {
+	return sheinpolicy.CalculateCostPrice(costCNY, sheinpolicy.CostPriceRule{
+		ExchangeRate: input.ExchangeRate, MarkupMultiplier: input.MarkupMultiplier,
+		MinimumPrice: input.MinimumPrice, RoundTo: input.RoundTo, PriceEnding: input.PriceEnding,
+	})
 }

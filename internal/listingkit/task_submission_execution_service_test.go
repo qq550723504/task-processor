@@ -287,6 +287,7 @@ func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmed
 
 	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
 		currentSheinPricingRule: func() sheinpub.PricingRule { return sheinpub.PricingRule{} },
+		costPriceCalculator:     testSheinCostPrice,
 	})
 	task := makeReadySheinTask()
 	pkg := task.Result.Shein
@@ -315,7 +316,7 @@ func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmed
 func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageDefaultsPricingRuleWhenCallbackMissing(t *testing.T) {
 	t.Parallel()
 
-	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{costPriceCalculator: testSheinCostPrice})
 	task := makeReadySheinTask()
 	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	pkg.Pricing = nil
@@ -337,6 +338,7 @@ func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageRebuildsPricin
 				TargetCurrency: "USD",
 			}
 		},
+		costPriceCalculator: testSheinCostPrice,
 	})
 	task := makeReadySheinTask()
 	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
