@@ -135,12 +135,18 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 			if existing.Quantity != totalTokens || existing.MemberID != memberID {
 				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: existing.IdempotencyKey}
 			}
-			prior, found, err := findAIInvocationReservation(tx, tenantID, invocationID)
+			prior, found, err := findAIInvocationReservation(tx, tenantID, invocationID, "")
 			if err != nil {
 				return err
 			}
-			if found && prior.PeriodKey != existing.PeriodKey {
-				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: existing.IdempotencyKey}
+			if found {
+				prior, found, err = findAIInvocationReservation(tx, tenantID, invocationID, existing.PeriodKey)
+				if err != nil {
+					return err
+				}
+				if !found || prior.MemberID != memberID {
+					return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: existing.IdempotencyKey}
+				}
 			}
 			if !found {
 				entitlement, err := loadEffectiveUsageEntitlement(tx, tenantID, ModuleListingKit)
@@ -182,6 +188,11 @@ func (r *GormRepository) SettleAIInvocationUsage(ctx context.Context, tenantID, 
 		}
 		if !errors.Is(reservationErr, gorm.ErrRecordNotFound) {
 			return reservationErr
+		}
+		if historical, found, err := findAIInvocationReservation(tx, tenantID, invocationID, ""); err != nil {
+			return err
+		} else if found {
+			return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: historical.IdempotencyKey}
 		}
 		// The no-reservation path is retained for existing callers. It checks
 		// the current entitlement and allocation exactly as before.
@@ -291,12 +302,16 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 			if actual.MemberID != memberID {
 				return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: actual.IdempotencyKey}
 			}
-			prior, found, err := findAIInvocationReservation(tx, tenantID, invocationID)
+			prior, found, err := findAIInvocationReservation(tx, tenantID, invocationID, "")
 			if err != nil {
 				return err
 			}
 			if found {
-				if prior.MemberID != memberID || prior.PeriodKey != actual.PeriodKey || prior.Quantity != maximumTokens {
+				prior, found, err = findAIInvocationReservation(tx, tenantID, invocationID, actual.PeriodKey)
+				if err != nil {
+					return err
+				}
+				if !found || prior.MemberID != memberID || prior.Quantity != maximumTokens {
 					return &UsageDuplicateIdentityError{TenantID: tenantID, IdempotencyKey: actual.IdempotencyKey}
 				}
 			} else {
@@ -316,7 +331,7 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		historical, found, err := findAIInvocationReservation(tx, tenantID, invocationID)
+		historical, found, err := findAIInvocationReservation(tx, tenantID, invocationID, "")
 		if err != nil {
 			return err
 		}
@@ -386,9 +401,13 @@ func (r *GormRepository) ReserveAIInvocationUsage(ctx context.Context, tenantID,
 	})
 }
 
-func findAIInvocationReservation(tx *gorm.DB, tenantID, invocationID string) (usageEventRow, bool, error) {
+func findAIInvocationReservation(tx *gorm.DB, tenantID, invocationID, periodKey string) (usageEventRow, bool, error) {
 	var row usageEventRow
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ?", tenantID, usageMetricAITokens, "ai_invocation_reservation", invocationID).Order("created_at ASC, event_id ASC").Take(&row).Error
+	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND metric = ? AND source_type = ? AND source_id = ?", tenantID, usageMetricAITokens, "ai_invocation_reservation", invocationID)
+	if periodKey != "" {
+		query = query.Where("period_key = ?", periodKey)
+	}
+	err := query.Order("created_at DESC, event_id DESC").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return usageEventRow{}, false, nil
 	}

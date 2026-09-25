@@ -217,6 +217,69 @@ func TestAIInvocationSettlementFailureKeepsOriginalReservation(t *testing.T) {
 	}
 }
 
+func TestReleasedAIReservationNeverFallsBackToUnreservedSettlement(t *testing.T) {
+	db, repo, start, end := newAIUsageTestRepository(t)
+	ctx := context.Background()
+	if err := repo.ReserveAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 30, start.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReleaseAIInvocationUsage(ctx, "org-1", "inv-1"); err != nil {
+		t.Fatal(err)
+	}
+	nextStart, nextEnd := start.Add(12*time.Hour), end.Add(12*time.Hour)
+	if err := db.Exec("UPDATE saas_tenant_entitlements SET starts_at = ?, expires_at = ? WHERE tenant_id = ? AND module_code = ?", nextStart, nextEnd, "org-1", ModuleListingKit).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("UPDATE account_member_token_allocations SET window_start = ?, window_end = ? WHERE organization_id = ? AND member_id = ?", nextStart, nextEnd, "org-1", "member-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.SettleAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 12, end.Add(time.Hour)); !errors.Is(err, ErrUsageDuplicateIdentity) {
+		t.Fatalf("settle after definitive release=%v, want identity conflict", err)
+	}
+	var committed int64
+	if err := db.Model(&usageEventRow{}).Where("source_type = ? AND source_id = ?", "ai_invocation", "inv-1").Count(&committed).Error; err != nil {
+		t.Fatal(err)
+	}
+	if committed != 0 {
+		t.Fatalf("committed events after definitive release=%d", committed)
+	}
+}
+
+func TestReleasedAIReservationRetryAcrossWindowReplaysLatestSettlement(t *testing.T) {
+	db, repo, start, end := newAIUsageTestRepository(t)
+	ctx := context.Background()
+	if err := repo.ReserveAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 30, start.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReleaseAIInvocationUsage(ctx, "org-1", "inv-1"); err != nil {
+		t.Fatal(err)
+	}
+	nextStart, nextEnd := start.Add(12*time.Hour), end.Add(12*time.Hour)
+	if err := db.Exec("UPDATE saas_tenant_entitlements SET starts_at = ?, expires_at = ? WHERE tenant_id = ? AND module_code = ?", nextStart, nextEnd, "org-1", ModuleListingKit).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("UPDATE account_member_token_allocations SET window_start = ?, window_end = ? WHERE organization_id = ? AND member_id = ?", nextStart, nextEnd, "org-1", "member-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReserveAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 30, nextStart.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.SettleAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 12, nextStart.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repo.SettleAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 12, nextStart.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.EventID != second.EventID || second.PeriodKey != UsagePeriodKeyForWindow(nextStart, nextEnd) {
+		t.Fatalf("latest settlement first=%+v second=%+v", first, second)
+	}
+	if err := repo.ReserveAIInvocationUsage(ctx, "org-1", "member-1", "inv-1", 30, nextStart.Add(time.Hour)); err != nil {
+		t.Fatalf("latest settled reservation replay: %v", err)
+	}
+}
+
 func newAIUsageTestRepository(t *testing.T) (*gorm.DB, *GormRepository, time.Time, time.Time) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:ai-owner-"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
