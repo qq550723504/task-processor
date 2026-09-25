@@ -143,6 +143,16 @@ func (r *Repository) SaveOffer(ctx context.Context, offer billing.Offer) error {
 	return r.db.WithContext(ctx).Save(&row).Error
 }
 
+// CreateOffer inserts a controlled catalog offer without replacing an existing
+// commercial fact. Serving purchase traffic only reads these offers.
+func (r *Repository) CreateOffer(ctx context.Context, offer billing.Offer) error {
+	if r == nil || r.db == nil || offer.Validate() != nil || (offer.ProductKind != billing.ProductSubscriptionPlan && offer.UnitPriceMinor <= 0) {
+		return billing.ErrInvalid
+	}
+	row := offerToRow(offer)
+	return r.db.WithContext(ctx).Create(&row).Error
+}
+
 func (r *Repository) ReadOffer(ctx context.Context, offerID string) (billing.Offer, error) {
 	if r == nil || r.db == nil || strings.TrimSpace(offerID) == "" {
 		return billing.Offer{}, billing.ErrInvalid
