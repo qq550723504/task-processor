@@ -147,9 +147,62 @@ func TestAcquisitionImageTrialResultDerivesOnlyExactPublishedAssetURL(t *testing
 	require.Equal(t, base+"/"+asset.ObjectKey, result["imageUrl"])
 	_, err = acquisitionImageResult(projection, trialAcquisitionImagePublicURLs{"https://localhost:19445/image-agent-assets/issue487-images"}, policy)
 	require.Error(t, err)
+	projection.Slots[0].Candidates[0].URL = base + "/" + asset.ObjectKey
+	_, err = acquisitionImageResult(projection, trialAcquisitionImagePublicURLs{base}, policy)
+	require.ErrorIs(t, err, imageagent.ErrCommandBlocked, "even an exact-looking stored URL cannot replace durable identity resolution")
+	projection.Slots[0].Candidates[0].URL = ""
 	projection.Slots[0].Candidates[0].DurableAsset.ObjectKey = strings.Replace(asset.ObjectKey, "/org-a/", "/org-b/", 1)
 	_, err = acquisitionImageResult(projection, trialAcquisitionImagePublicURLs{base}, policy)
 	require.Error(t, err)
+}
+
+func TestAcquisitionImageRoutesRejectForgedURLCandidateOnReadAndCompletedReplay(t *testing.T) {
+	const operationID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	const runID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
+	const actionID = "d05f2a61-c5cc-48ed-9dfe-3746522d4f8d"
+	const forgedURL = "https://images.example.test/forged.png"
+	identity := authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", EffectiveMemberID: "member-a"}
+	slot := imageagent.Slot{ID: "main", Role: imageagent.SlotRoleMain, SourceAssetIDs: []string{"catalog-image-1"}, IdempotencyKey: "slot-1", Status: imageagent.SlotStatusPending}
+	service := &acquisitionImageServiceSpy{projection: imageagent.RunProjection{
+		Run:  imageagent.Run{ScopeProtocol: imageagent.OrganizationScopeProtocol, ID: runID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, BusinessTaskID: operationID, TargetPlatform: "product", ImagePolicyContext: imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}, Status: imageagent.RunStatusCompleted, ActivePlanRevision: 1},
+		Plan: imageagent.Plan{Revision: 1, IdempotencyKey: "plan-1", SourceAssetIDs: []string{"catalog-image-1"}, Slots: []imageagent.Slot{slot}}, ResultDigest: "digest-1",
+		AssetCatalog: imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product-a", SourceSnapshotVersion: 1}},
+		Slots:        []imageagent.SlotProjection{{Slot: slot, Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "generated-1", URL: forgedURL}}}},
+	}}
+	require.NoError(t, imageagent.ValidateProjectionSnapshot(imageagent.ScopeForRun(service.projection.Run), service.projection), "URL-only representation must be readable by the current projection store")
+	approvalReader := &acquisitionImageApprovalReaderSpy{commit: productasset.ApprovalCommit{
+		TenantID: identity.TenantID, ProductKey: "product-a", TargetPlatform: "product", SourceSnapshotVersion: 1,
+		ActionID: imagetemporal.ApprovalActionPublicationKey(actionID, runID, 1),
+		Assets:   []productasset.ApprovedAsset{{ID: "generated-1", RunID: runID, PlanRevision: 1, SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: forgedURL}},
+	}}
+	router := gin.New()
+	for _, route := range acquisitionImageRoutes(service, &acquisitionImageCandidatesSpy{}, approvalReader, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{}) {
+		router.Handle(route.Method, route.Path, route.Handler)
+	}
+	base := "/api/v1/workbench/sourcing/1688/acquisitions/" + operationID + "/main-image/runs/" + runID
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), identity))
+		request.Header.Set("Authorization", "Bearer fixture")
+		if method == http.MethodPost {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+	t.Run("read", func(t *testing.T) {
+		response := call(http.MethodGet, base, "")
+		require.Equal(t, http.StatusConflict, response.Code, "current organization read must not project a persisted arbitrary URL")
+		require.NotContains(t, response.Body.String(), forgedURL)
+	})
+	t.Run("completed_replay", func(t *testing.T) {
+		response := call(http.MethodPost, base+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+actionID+`"}`)
+		require.Equal(t, http.StatusConflict, response.Code, "completed replay must not bless a URL-only projection")
+		require.Zero(t, service.approvals)
+		require.Zero(t, approvalReader.calls, "forged current projection should be rejected before the immutable owner read")
+	})
 }
 
 func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(t *testing.T) {
@@ -191,7 +244,10 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
 	require.Len(t, service.starts, 1)
 	input := service.starts[0]
-	service.projection = imageagent.RunProjection{Run: imageagent.Run{ScopeProtocol: imageagent.OrganizationScopeProtocol, ID: input.RunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, BusinessTaskID: operationID, TargetPlatform: "product", ImagePolicyContext: input.ImagePolicyContext, Status: imageagent.RunStatusAwaitingFinalApproval}, Plan: input.Plan, ResultDigest: "digest-1", AssetCatalog: imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product-a", SourceSnapshotVersion: 1}}, Slots: []imageagent.SlotProjection{{Slot: input.Plan.Slots[0], Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "generated-1", URL: "https://images.example.test/generated.png"}}}}}
+	ownerKey, err := imageagent.ArtifactOwnerKey(identity.UserID)
+	require.NoError(t, err)
+	asset := imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/" + ownerKey + "/" + input.RunID + "/1/main/1/0-" + strings.Repeat("a", 64) + ".png", SHA256: strings.Repeat("a", 64)}
+	service.projection = imageagent.RunProjection{Run: imageagent.Run{ScopeProtocol: imageagent.OrganizationScopeProtocol, ID: input.RunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, BusinessTaskID: operationID, TargetPlatform: "product", ImagePolicyContext: input.ImagePolicyContext, Status: imageagent.RunStatusAwaitingFinalApproval}, Plan: input.Plan, ResultDigest: "digest-1", AssetCatalog: imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product-a", SourceSnapshotVersion: 1}}, Slots: []imageagent.SlotProjection{{Slot: input.Plan.Slots[0], Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "generated-1", DurableAsset: asset}}}}}
 	identity.EffectiveMemberID = "replaced-member"
 	response = call(http.MethodGet, base+"/runs/"+input.RunID, "")
 	require.Equal(t, http.StatusNotFound, response.Code, "a replacement grant must not read the old member's image or digest")
@@ -209,10 +265,6 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
 	require.Equal(t, 1, service.approvals)
 	service.projection.Run.Status = imageagent.RunStatusCompleted
-	service.projection.Slots[0].Candidates[0].URL = ""
-	ownerKey, err := imageagent.ArtifactOwnerKey(identity.UserID)
-	require.NoError(t, err)
-	service.projection.Slots[0].Candidates[0].DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/" + ownerKey + "/" + input.RunID + "/1/main/1/0-" + strings.Repeat("a", 64) + ".png", SHA256: strings.Repeat("a", 64)}
 	approvalReader.commit = productasset.ApprovalCommit{TenantID: identity.TenantID, ProductKey: "product-a", TargetPlatform: "product", SourceSnapshotVersion: 1, ActionID: imagetemporal.ApprovalActionPublicationKey(requestID, input.RunID, 1), Assets: []productasset.ApprovedAsset{{ID: "generated-1", RunID: input.RunID, PlanRevision: 1, SlotID: input.Plan.Slots[0].ID, Attempt: 1, Role: productasset.RoleMain, URL: "https://images.example.test/generated.png"}}}
 	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
 	require.Equal(t, http.StatusAccepted, response.Code, "completed action must verify immutable Product Asset fact without updating closed Temporal")
