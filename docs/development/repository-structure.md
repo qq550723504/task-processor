@@ -6,6 +6,8 @@
 
 ## How To Use This Document
 
+先从下面的[当前入口地图](#current-entrypoint-map)判断运行路径，再从[新代码落点](#current-owner-landing)进入已有 owner；无需先遍历历史计划。目录/命令完整清单只维护在本文件，领域合同与完整退休规则仍分别属于 [Project Boundaries](../architecture/project-boundaries.md)、[Module Target Mapping](../refactoring/module-target-mapping.md) 和 [Legacy Register](../refactoring/legacy-register.md)。本地图是导航，不新建架构权威或依赖准入。
+
 当变更涉及以下问题时，应从 `docs/architecture/README.md` 进入后再落到这里：
 
 1. 顶层目录里该放什么，不该放什么。
@@ -17,10 +19,53 @@
 `docs/architecture/project-boundaries.md` 和对应专项边界文档；只有当问题落到
 目录职责、仓库布局或本地产物放置时，再以这份文档作为直接规则来源。
 
+<a id="current-entrypoint-map"></a>
+
+## 当前入口地图
+
+本节及命令清单静态核对于 `main @ eb9e019686564b976c1a1a9828eeddb454adabac`（2026-09-25）。只确认源码路径、装配关系和命令分类，不声称执行过当前基线测试、已部署或通过产品/生产验收。[Current Refactoring Status](../refactoring/current-refactoring-status.md) 中较早基线的成熟度记录不能代替本节的入口核对；本节也不重签那些历史验收。
+
+| 要做什么 | 从哪里进入 | 当前边界 |
+| --- | --- | --- |
+| 当前账户、组织、来源账号及按配置开放的业务模块 | [`cmd/current-application/main.go`](../../cmd/current-application/main.go) → [`internal/app/runtime/currentapplication`](../../internal/app/runtime/currentapplication) → [`current_application.go`](../../internal/app/httpapi/current_application.go) | 独立应用装配；`NewCurrentApplicationWithOptions` 不调用旧默认 feature composition。采集、Browser capture、成员、推广和商业模块的启用取决于配置、显式 options 和依赖，不能把路由声明当作全部默认开放。 |
+| 排查保留的 ListingKit API / 旧来源 handoff | [`cmd/product-listing-api/main.go`](../../cmd/product-listing-api/main.go)、[`internal/pkg/httpapicmd`](../../internal/pkg/httpapicmd)、[`composition_builder.go`](../../internal/app/httpapi/composition_builder.go) | 旧装配仍建立 ListingKit，并在对应条件下接入 `sourceaccount` 和 `compatibility/listingkit/sourcehandoff/a1688`；这条路径尚未退休，不是新业务的默认落点。 |
+| 平台执行、control-plane 或图片 worker | 本文件下方的受维护命令及其运行装配归属 | 保留已有单一执行/重试 owner；不是多个独立新产品，也不代表平台成熟度相同。 |
+| 修改当前 Console / BFF | [`web/listingkit-ui`](../../web/listingkit-ui) | 复用当前页面、Shell 与身份边界；目录仍叫 ListingKit 不等于其中所有页面都应退休。最终导航服从 UI Authority，不由后端目录名决定。 |
+| 初始化、预检或恢复 | 本文件下方的运维入口和明确维护脚本 | 命令存在不是执行许可。当前空库初始化与历史 migration/preflight 必须区分；不得为新系统引入历史迁移前置。 |
+
+当前入口示例（仅说明正常命令形态，不授权连接真实依赖）：
+
+```text
+go run ./cmd/current-application -config /absolute/private/current-application.json
+```
+
+`-config` 是必需的私有 JSON manifest；当前应用并不使用旧 API 的默认 YAML 配置。该命令不会替代显式 schema 初始化，也不是无依赖 demo。不要通过启动旧入口、回退旧表或增加 wrapper 来填补当前模块尚未开放的能力。实际参数和可选模块以该入口及其 runtime 配置为准。
+
+<a id="current-owner-landing"></a>
+
+## 新代码落点
+
+以下是现有归属的阅读入口，不是新的全仓迁移计划；使用具体 API 前仍须满足现有合同与精确依赖 guard。完整 file/package 退休归属只维护在 [Mapping](../refactoring/module-target-mapping.md) / [Register](../refactoring/legacy-register.md)。
+
+| 变更内容 | 当前阅读入口 | 不应做什么 |
+| --- | --- | --- |
+| 应用配置、依赖组装、生命周期 | `internal/app/runtime/currentapplication`、`internal/app/httpapi` | 不把业务规则写入 app；不把旧默认装配接入当前应用。 |
+| 来源证据、标准商品、资产、增强 | `internal/product/sourcing`、`catalog`、`asset`、`enrichment`；采集协调见 `internal/app/productsourcing` | 不把商品事实放回 root ListingKit，不恢复 ProductEnrich/ProductImage 旧 task 系统。 |
+| 平台中立上架与平台规则 | `internal/listing/*`、`internal/marketplace/*` | 不再向历史 `listingkit` / `publishing` / `workspace` 壳层新增长期职责，不复制提交状态机。 |
+| 当前身份、组织与来源账号 | 既有 `authidentity` / `authruntime` / `workbenchcontext`、`internal/organization`、`internal/sourceaccountregistry` | 不新建 IAM，不把来源账号当组织成员，不新增 `sourceaccount` / `tenantbridge` 旧消费者。 |
+| 商业订单、资金、组织资源 | `internal/commercial/billing`、`internal/ledger/money`、`internal/ledger/orgresource` | 保持报价/订单、资金事实、资源余额各自归属；模块存在不代表微信/支付宝渠道已实现或可用。 |
+| AI 模型治理与受控工具 | `internal/aicapability`、`internal/commercetool`、具体领域的 Tool adapter | 不把 provider SDK 或数据库访问直接放进 Agent/Tool 合同，不另建业务重试 owner。 |
+| 基础运行机制与外部适配 | `internal/platform/*`、`internal/integration/*` | 不仅凭名字向 `core` / `kernel` / `infra` / `pkg` 增加宽泛职责；按已有精确能力复用，不为统一名称搬目录。 |
+
+### 旧路径如何退出
+
+沿当前用户交付路径执行已有的 **EXTRACT → 切换当前调用方 → RETIRE**：先明确仍需保留的行为及当前 owner，再用适用测试确认当前消费者不依赖旧 owner，最后按该任务范围移除旧调用/实现。新路径已存在，不代表旧路径已删除；改目录名也不能证明依赖已断开。
+
+Marketplace/Listing 归 #29，来源闭环与旧 1688 handoff 归 #30，数字租户依赖归 #301，现有自动边界归 #300。退出条件和剩余消费者记录在对应 Issue / Register，不在这里复制实时数量。保持有效的业务、安全、权限、幂等测试；不新增 compatibility/fallback/双读双写，不执行旧数据迁移，不把全仓清理变成当前业务交付前置。本地图本身不授权代码删除或环境操作。
+
 ## 顶层目录约定
 
-CURRENT STATE：原 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814f14781962bb1`；
-#398 候选变更新增已准入的 `product-acquisition-init` 运维入口，尚不表示已合并或部署。
+CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828eeddb454adabac`，
 与 `TestCmdContainsOnlyOfficialEntrypoints` 及实际受维护路径一致。README 和 Code Guide
 只引用这里；受维护不等于已部署或通过生产验收。
 
@@ -33,7 +78,7 @@ CURRENT STATE：原 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前候选清单二十个运维入口为：
+  - 当前二十个运维入口为：
     - `account-acceptance-fixture`
     - `1688-batch-import`
     - `1688-local-agent`
@@ -61,7 +106,7 @@ CURRENT STATE：原 command 清单核对于 `main @ cae67730c5c0e645d708cb2f6814
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
   - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次，只有显式选择 `constraints` 且 Phase D 重验通过才会执行 PostgreSQL staged constraints。
   - 不再新增临时调试可执行程序。
-  - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，属于 #301 Source Account 迁移的只读运维预检；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。
+  - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，是历史 Source Account 迁移的只读运维预检，不是 #301 当前新系统开发前置；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。保留历史运维工具不恢复已取消的迁移授权。
   - `source-account-registry-schema-init` 由 `scripts/source-account-registry-local-acceptance.ps1` 维护，只初始化 #368 当前 Source Account registry 的空库 schema；不读取、迁移或兼容旧 Source Account 数据。
   - `organization-membership-schema-init` 由 `deployments/docker/account-compose` 维护，只初始化本账户中心实例的组织成员回执 schema；不读取、迁移或兼容旧成员数据。
   - `commercial-owner-schema-migrate` 由 `scripts/commercial-owner-schema-migrate.ps1` 维护；分别针对私有 schema-owner manifests 初始化 canonical money 数据库的钱包/结算 schema，以及 commercial-owner 数据库的订单与 orgresource schema，不自动切换数据库或操作生产数据。
