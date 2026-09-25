@@ -49,6 +49,14 @@ func TestReviewCapabilityOnlyPreservesExactConfirmedNoDispatch(t *testing.T) {
 			require.Equal(t, tc.want, err)
 		})
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	capability, err := NewReviewCapability(reviewerFunc(func(context.Context, ReviewRequest) (Review, error) {
+		cancel()
+		return Review{}, ErrReviewConfirmedNotDispatched
+	}))
+	require.NoError(t, err)
+	_, err = capability.Review(ctx, request)
+	require.Equal(t, ErrReviewConfirmedNotDispatched, err, "durable release fact survives later caller cancellation")
 }
 
 type whiteBackgroundRendererFunc func(context.Context, RenderRequest) (Candidate, error)

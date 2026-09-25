@@ -91,7 +91,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 			}
 			return productimage.Review{}, productimage.ErrOutputValidation
 		}
-		if found && existing.Outcome == aicapability.InvocationFailed && existing.ErrorCode == "review_preflight_failed" {
+		if found && existing.Outcome == aicapability.InvocationFailed && (existing.ErrorCode == "review_preflight_failed" || existing.ErrorCode == "review_adapter_failed") {
 			replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 			replayErr := settings.Recorder.RecordInvocation(replayCtx, existing)
 			cancel()
@@ -147,7 +147,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		if failureErr != nil {
 			return productimage.Review{}, fmt.Errorf("image review adapter failure recording failed: %w", failureErr)
 		}
-		return productimage.Review{}, err
+		return productimage.Review{}, productimage.ErrReviewConfirmedNotDispatched
 	}
 	if err := adapter.PreflightReview(request); err != nil {
 		record.FinishedAt = time.Now().UTC()

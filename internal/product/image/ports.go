@@ -177,13 +177,13 @@ func (c *reviewCapability) Review(ctx context.Context, request ReviewRequest) (R
 		return Review{}, err
 	}
 	review, err := c.backend.Review(ctx, cloned)
+	if err == ErrReviewConfirmedNotDispatched {
+		return Review{}, ErrReviewConfirmedNotDispatched
+	}
 	if contextErr := contextError(ctx); contextErr != nil {
 		return Review{}, contextErr
 	}
 	if err != nil {
-		if err == ErrReviewConfirmedNotDispatched {
-			return Review{}, ErrReviewConfirmedNotDispatched
-		}
 		return Review{}, capabilityError(err)
 	}
 	return ValidateReview(review)

@@ -80,38 +80,48 @@ func (s *failFirstReviewRelease) ReleaseAIInvocationUsage(ctx context.Context, t
 	return s.AIInvocationUsageAdapter.ReleaseAIInvocationUsage(ctx, tenantID, invocationID)
 }
 
-func TestOrganizationReviewPreflightReleaseFailureReplaysWithoutProvider(t *testing.T) {
-	f, recorder := review334Fixture(t)
-	settler := &failFirstReviewRelease{AIInvocationUsageAdapter: listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.db)}}
-	settler.fail.Store(true)
-	recorder.SetUsageSettler(settler)
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
-	defer server.Close()
-	logger := logrus.New()
-	manager := review334Manager(t, f.db, server.URL, logger)
-	caps, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db, imageworker.OrganizationReviewOptions{Recorder: recorder, Logger: logger})
-	require.NoError(t, err)
-	ctx, request := review334Context("B"), review334Request()
-	quote, err := caps.UsageQuoter.QuoteUsage(ctx, image.UsageQuoteRequest{Operation: "review", InputFingerprint: "preflight", MaximumOutputs: 1})
-	require.NoError(t, err)
-	quote.PricingVersion = "stale"
-	request.Authorization = &quote
-	_, err = caps.Reviewer.Review(ctx, request)
-	require.Error(t, err)
-	require.NotErrorIs(t, err, image.ErrReviewConfirmedNotDispatched, "release failure cannot authorize a budget release")
-	var row struct{ Outcome, ErrorCode, InvocationID string }
-	require.NoError(t, f.db.Table("ai_invocations").Take(&row).Error)
-	require.Equal(t, "failed", row.Outcome)
-	require.Equal(t, "review_preflight_failed", row.ErrorCode)
-	var reservation struct{ Status string }
-	require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row.InvocationID).Take(&reservation).Error)
-	require.Equal(t, "reserved", reservation.Status)
-	_, err = caps.Reviewer.Review(ctx, request)
-	require.ErrorIs(t, err, image.ErrReviewConfirmedNotDispatched)
-	require.Zero(t, calls.Load())
-	require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row.InvocationID).Take(&reservation).Error)
-	require.Equal(t, "released", reservation.Status)
+func TestOrganizationReviewProvenNoDispatchReleaseFailureReplaysWithoutProvider(t *testing.T) {
+	for _, mode := range []string{"preflight", "adapter"} {
+		t.Run(mode, func(t *testing.T) {
+			f, recorder := review334Fixture(t)
+			settler := &failFirstReviewRelease{AIInvocationUsageAdapter: listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.db)}}
+			settler.fail.Store(true)
+			recorder.SetUsageSettler(settler)
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
+			defer server.Close()
+			logger := logrus.New()
+			manager := review334Manager(t, f.db, server.URL, logger)
+			caps, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db, imageworker.OrganizationReviewOptions{Recorder: recorder, Logger: logger})
+			require.NoError(t, err)
+			ctx, request := review334Context("B"), review334Request()
+			quote, err := caps.UsageQuoter.QuoteUsage(ctx, image.UsageQuoteRequest{Operation: "review", InputFingerprint: "preflight", MaximumOutputs: 1})
+			require.NoError(t, err)
+			expectedCode := "review_preflight_failed"
+			if mode == "adapter" {
+				quote.ConfigurationVersion = "stale"
+				expectedCode = "review_adapter_failed"
+			} else {
+				quote.PricingVersion = "stale"
+			}
+			request.Authorization = &quote
+			_, err = caps.Reviewer.Review(ctx, request)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, image.ErrReviewConfirmedNotDispatched, "release failure cannot authorize a budget release")
+			var row struct{ Outcome, ErrorCode, InvocationID string }
+			require.NoError(t, f.db.Table("ai_invocations").Take(&row).Error)
+			require.Equal(t, "failed", row.Outcome)
+			require.Equal(t, expectedCode, row.ErrorCode)
+			var reservation struct{ Status string }
+			require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row.InvocationID).Take(&reservation).Error)
+			require.Equal(t, "reserved", reservation.Status)
+			_, err = caps.Reviewer.Review(ctx, request)
+			require.ErrorIs(t, err, image.ErrReviewConfirmedNotDispatched)
+			require.Zero(t, calls.Load())
+			require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row.InvocationID).Take(&reservation).Error)
+			require.Equal(t, "released", reservation.Status)
+		})
+	}
 }
 func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 	for _, name := range []string{"success", "missing_usage", "semantic_score", "semantic_reasons", "provider_503", "provider_400", "provider_401", "provider_429", "deadline", "inbound_cancel", "record_failure", "record_db_failure", "both_fail", "response_cancel", "nil_authorization", "stale_config", "stale_route", "stale_price", "forged_cost", "known_quote", "config_drift", "missing_scope", "missing_run"} {
@@ -239,6 +249,9 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				require.NotContains(t, err.Error(), "SENSITIVE-")
+				if name == "stale_config" || name == "stale_route" || name == "stale_price" || name == "config_drift" || name == "response_cancel" {
+					require.ErrorIs(t, err, image.ErrReviewConfirmedNotDispatched, "proven adapter/preflight rejection must release staged review budget")
+				}
 			}
 			before := name == "inbound_cancel" || name == "nil_authorization" || strings.HasPrefix(name, "stale_") || name == "forged_cost" || name == "config_drift" || name == "missing_scope" || name == "missing_run" || name == "record_failure" || name == "record_db_failure" || name == "both_fail" || name == "response_cancel"
 			expectedCalls := int32(1)
