@@ -25,6 +25,8 @@ var organizationRuntimeTables = []struct{ name, privileges string }{
 	{"image_agent_v2_asset_catalog_manifests", "INSERT"},
 	{"image_agent_v2_projection_snapshots", "SELECT,INSERT"},
 	{"image_agent_v2_projection_commits", "SELECT,INSERT"},
+	{"product_approval_receipts", "SELECT"},
+	{"product_approved_assets", "SELECT"},
 }
 
 const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) AS (VALUES
@@ -35,7 +37,8 @@ const organizationRuntimePermissionQuery = `WITH admitted(table_name,privilege) 
  ('image_agent_v2_asset_catalog','INSERT'),
  ('image_agent_v2_asset_catalog_manifests','INSERT'),
  ('image_agent_v2_projection_snapshots','SELECT'),('image_agent_v2_projection_snapshots','INSERT'),
- ('image_agent_v2_projection_commits','SELECT'),('image_agent_v2_projection_commits','INSERT'))
+ ('image_agent_v2_projection_commits','SELECT'),('image_agent_v2_projection_commits','INSERT'),
+ ('product_approval_receipts','SELECT'),('product_approved_assets','SELECT'))
  SELECT current_user::text AS role_name,
  session_user=current_user
  AND current_schemas(false)=ARRAY['public']::name[]

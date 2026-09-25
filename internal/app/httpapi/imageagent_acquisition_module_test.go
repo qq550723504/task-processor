@@ -16,7 +16,9 @@ import (
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
+	imagetemporal "task-processor/internal/imageagent/temporal"
 	imageagenttools "task-processor/internal/imageagent/tools"
+	productasset "task-processor/internal/product/asset"
 )
 
 func TestAcquisitionMainRunInputOwnsSingleSourcePolicyAndStableIdempotency(t *testing.T) {
@@ -56,7 +58,7 @@ func TestCurrentApplicationAdmitsOnlyLiveAuthorizedAcquisitionImageRoutes(t *tes
 	for _, route := range currentWorkbenchApplicationRoutes {
 		routes = append(routes, httproute.Descriptor{Method: route.Method, Path: route.Path})
 	}
-	imageRoutes := acquisitionImageRoutes(&acquisitionImageServiceSpy{}, &acquisitionImageCandidatesSpy{}, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{})
+	imageRoutes := acquisitionImageRoutes(&acquisitionImageServiceSpy{}, &acquisitionImageCandidatesSpy{}, &acquisitionImageApprovalReaderSpy{}, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{})
 	routes = append(routes, imageRoutes...)
 	require.Error(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false), "disabled image module cannot leak routes")
 	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, true))
@@ -98,6 +100,23 @@ type acquisitionImageCandidatesSpy struct {
 	scope imageagent.AssetCatalogScope
 }
 
+type acquisitionImageApprovalReaderSpy struct {
+	commit productasset.ApprovalCommit
+	calls  int
+	err    error
+}
+
+func (spy *acquisitionImageApprovalReaderSpy) ReadApprovalCommit(_ context.Context, tenantID, actionID string) (productasset.ApprovalCommit, error) {
+	spy.calls++
+	if spy.err != nil {
+		return productasset.ApprovalCommit{}, spy.err
+	}
+	if spy.commit.TenantID != tenantID || spy.commit.ActionID != actionID {
+		return productasset.ApprovalCommit{}, productasset.ErrApprovedAssetsNotReady
+	}
+	return spy.commit, nil
+}
+
 func (spy *acquisitionImageCandidatesSpy) Candidates(_ context.Context, scope imageagent.AssetCatalogScope) ([]imageagent.AuthorizedAsset, error) {
 	spy.calls++
 	spy.scope = scope
@@ -116,8 +135,9 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	identity := authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", EffectiveMemberID: "member-a"}
 	service := &acquisitionImageServiceSpy{}
 	catalog := &acquisitionImageCandidatesSpy{}
+	approvalReader := &acquisitionImageApprovalReaderSpy{}
 	router := gin.New()
-	for _, route := range acquisitionImageRoutes(service, catalog, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{}) {
+	for _, route := range acquisitionImageRoutes(service, catalog, approvalReader, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{}) {
 		router.Handle(route.Method, route.Path, route.Handler)
 	}
 	call := func(method, path, body string) *httptest.ResponseRecorder {
@@ -148,7 +168,7 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
 	require.Len(t, service.starts, 1)
 	input := service.starts[0]
-	service.projection = imageagent.RunProjection{Run: imageagent.Run{ScopeProtocol: imageagent.OrganizationScopeProtocol, ID: input.RunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, BusinessTaskID: operationID, TargetPlatform: "product", ImagePolicyContext: input.ImagePolicyContext, Status: imageagent.RunStatusAwaitingFinalApproval}, Plan: input.Plan, ResultDigest: "digest-1"}
+	service.projection = imageagent.RunProjection{Run: imageagent.Run{ScopeProtocol: imageagent.OrganizationScopeProtocol, ID: input.RunID, TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, BusinessTaskID: operationID, TargetPlatform: "product", ImagePolicyContext: input.ImagePolicyContext, Status: imageagent.RunStatusAwaitingFinalApproval}, Plan: input.Plan, ResultDigest: "digest-1", AssetCatalog: imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product-a", SourceSnapshotVersion: 1}}, Slots: []imageagent.SlotProjection{{Slot: input.Plan.Slots[0], Attempt: 1, Candidates: []imageagent.AssetCandidate{{AssetID: "generated-1", URL: "https://images.example.test/generated.png"}}}}}
 	identity.EffectiveMemberID = "replaced-member"
 	response = call(http.MethodGet, base+"/runs/"+input.RunID, "")
 	require.Equal(t, http.StatusNotFound, response.Code, "a replacement grant must not read the old member's image or digest")
@@ -166,9 +186,29 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
 	require.Equal(t, 1, service.approvals)
 	service.projection.Run.Status = imageagent.RunStatusCompleted
+	service.projection.Slots[0].Candidates[0].URL = ""
+	service.projection.Slots[0].Candidates[0].DurableAsset = imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/main.png", SHA256: strings.Repeat("a", 64)}
+	approvalReader.commit = productasset.ApprovalCommit{TenantID: identity.TenantID, ProductKey: "product-a", TargetPlatform: "product", SourceSnapshotVersion: 1, ActionID: imagetemporal.ApprovalActionPublicationKey(requestID, input.RunID, 1), Assets: []productasset.ApprovedAsset{{ID: "generated-1", RunID: input.RunID, PlanRevision: 1, SlotID: input.Plan.Slots[0].ID, Attempt: 1, Role: productasset.RoleMain, URL: "https://images.example.test/generated.png"}}}
 	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
-	require.Equal(t, http.StatusAccepted, response.Code, "lost approval response must reach the workflow's idempotent action owner")
-	require.Equal(t, 2, service.approvals)
+	require.Equal(t, http.StatusAccepted, response.Code, "completed action must verify immutable Product Asset fact without updating closed Temporal")
+	require.Equal(t, 1, approvalReader.calls)
+	require.Equal(t, 1, service.approvals)
+	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"d05f2a61-c5cc-48ed-9dfe-3746522d4f8d"}`)
+	require.Equal(t, http.StatusConflict, response.Code, "new action ID cannot inherit a completed approval")
+	require.Equal(t, 1, service.approvals)
+	identity.EffectiveMemberID = "replaced-member"
+	reads := approvalReader.calls
+	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
+	require.Equal(t, http.StatusNotFound, response.Code, "a replacement grant cannot replay an old member's completed approval")
+	require.Equal(t, reads, approvalReader.calls)
+	identity.EffectiveMemberID = "member-a"
+	approvalReader.err = productasset.ErrRepositoryUnavailable
+	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, "owner read failure must never be treated as successful replay")
+	approvalReader.err = nil
+	approvalReader.commit.Assets[0].URL = "https://images.example.test/different.png"
+	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
+	require.Equal(t, http.StatusConflict, response.Code, "same action with different approved payload cannot replay")
 }
 
 func TestAcquisitionMainImageBudgetAdmitsRealMainQuoteBeforeProvider(t *testing.T) {

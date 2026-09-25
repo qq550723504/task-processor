@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"task-processor/internal/imageagent"
+	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 )
 
 func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
@@ -42,6 +43,7 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 		require.NoError(t, rootPool.Close())
 	})
 	require.NoError(t, AutoMigrateOrganizationScope(owner))
+	require.NoError(t, assetpersistence.AutoMigrate(owner))
 	require.NoError(t, owner.Exec(`CREATE TABLE unrelated_secret(value text)`).Error)
 	require.NoError(t, owner.Exec("CREATE ROLE "+role+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS").Error)
 	sum := sha256.Sum256([]byte(dsn))
@@ -84,6 +86,8 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 		{"write_attempt", "GRANT INSERT ON image_agent_v2_attempts TO " + role, "REVOKE INSERT ON image_agent_v2_attempts FROM " + role},
 		{"other_table", "GRANT SELECT ON unrelated_secret TO " + role, "REVOKE SELECT ON unrelated_secret FROM " + role},
 		{"missing_commit_insert", "REVOKE INSERT ON image_agent_v2_projection_commits FROM " + role, "GRANT INSERT ON image_agent_v2_projection_commits TO " + role},
+		{"missing_approval_read", "REVOKE SELECT ON product_approval_receipts FROM " + role, "GRANT SELECT ON product_approval_receipts TO " + role},
+		{"approval_write", "GRANT INSERT ON product_approved_assets TO " + role, "REVOKE INSERT ON product_approved_assets FROM " + role},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, owner.Exec(tc.grant).Error)
@@ -96,4 +100,5 @@ func TestOrganizationImageRuntimeRoleHasOnlyCurrentAPIGrants(t *testing.T) {
 	require.Error(t, runtimeDB.Exec("SELECT value FROM unrelated_secret").Error)
 	require.Error(t, runtimeDB.Exec("SELECT id FROM image_agent_v2_asset_catalog").Error)
 	require.Error(t, runtimeDB.Exec("UPDATE image_agent_v2_runs SET status='failed'").Error)
+	require.Error(t, runtimeDB.Exec("INSERT INTO product_approval_receipts(tenant_id,action_id,payload_hash,asset_ids_json) VALUES('x','y','z','[]')").Error)
 }

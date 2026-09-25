@@ -21,8 +21,11 @@ import (
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
+	imagetemporal "task-processor/internal/imageagent/temporal"
 	a1688 "task-processor/internal/integration/acquisition/a1688"
+	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	kernelmodule "task-processor/internal/kernel/module"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -69,8 +72,12 @@ func buildAcquisitionImageModule(ctx context.Context, productDB, imageDB *gorm.D
 	if err != nil {
 		return nil, err
 	}
+	approvalReader, err := assetpersistence.NewBoundedApprovalCommitReader(imageDB, 2<<20)
+	if err != nil {
+		return nil, err
+	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	return acquisitionImageModule{routes: acquisitionImageRoutes(service, catalog, binder.Bind, publicURLs)}, nil
+	return acquisitionImageModule{routes: acquisitionImageRoutes(service, catalog, approvalReader, binder.Bind, publicURLs)}, nil
 }
 
 func (acquisitionImageModule) Name() string                { return "acquisition-main-image" }
@@ -80,7 +87,7 @@ func (m acquisitionImageModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
-func acquisitionImageRoutes(service acquisitionImageService, catalog acquisitionImageCandidateReader, bind func(context.Context, string) (context.Context, error), publicURLs imageagent.DurableAssetPublicURLResolver) []httproute.Descriptor {
+func acquisitionImageRoutes(service acquisitionImageService, catalog acquisitionImageCandidateReader, approvalReader productasset.ApprovalCommitReader, bind func(context.Context, string) (context.Context, error), publicURLs imageagent.DurableAssetPublicURLResolver) []httproute.Descriptor {
 	specs := []struct{ method, path, permission, action string }{
 		{http.MethodGet, acquisitionImageBase + "/candidates", authz.PermissionImageAgentRead, "candidates"},
 		{http.MethodPost, acquisitionImageBase, authz.PermissionImageAgentWrite, "start"},
@@ -94,7 +101,7 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 			Method: spec.method, Path: spec.path, Module: "acquisition-main-image", Permission: spec.permission,
 			AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite,
 			RequestTimeout: 30 * time.Second, Handler: func(c *gin.Context) {
-				if service == nil || catalog == nil || bind == nil || publicURLs == nil {
+				if service == nil || catalog == nil || approvalReader == nil || bind == nil || publicURLs == nil {
 					writeAcquisitionImageError(c, imageagent.ErrCommandBlocked)
 					return
 				}
@@ -194,6 +201,14 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						writeAcquisitionImageError(c, imageagent.ErrCommandBlocked)
 						return
 					}
+					if projection.Run.Status == imageagent.RunStatusCompleted {
+						if err := verifyCompletedAcquisitionImageApproval(ctx, approvalReader, projection, body.ActionID, publicURLs); err != nil {
+							writeAcquisitionImageError(c, err)
+							return
+						}
+						c.JSON(http.StatusAccepted, gin.H{"runId": runID, "status": "accepted"})
+						return
+					}
 					if err := service.ApproveResults(ctx, runID, body.PlanRevision, body.ResultDigest, body.ActionID); err != nil {
 						writeAcquisitionImageError(c, err)
 						return
@@ -204,6 +219,46 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 		})
 	}
 	return routes
+}
+
+func verifyCompletedAcquisitionImageApproval(ctx context.Context, reader productasset.ApprovalCommitReader, projection imageagent.RunProjection, actionID string, publicURLs imageagent.DurableAssetPublicURLResolver) error {
+	if reader == nil || projection.Run.Status != imageagent.RunStatusCompleted || projection.Plan.Revision <= 0 || len(projection.Plan.Slots) != 1 || len(projection.Slots) != 1 ||
+		projection.Plan.Slots[0].Role != imageagent.SlotRoleMain || len(projection.Slots[0].Candidates) != 1 || projection.AssetCatalog.ProductContext.ProductID == "" || projection.AssetCatalog.ProductContext.SourceSnapshotVersion == 0 {
+		return imageagent.ErrCommandBlocked
+	}
+	key := imagetemporal.ApprovalActionPublicationKey(actionID, projection.Run.ID, projection.Plan.Revision)
+	commit, err := reader.ReadApprovalCommit(ctx, projection.Run.TenantID, key)
+	if err != nil {
+		if errors.Is(err, productasset.ErrApprovedAssetsNotReady) || errors.Is(err, productasset.ErrApprovalConflict) {
+			return imageagent.ErrCommandBlocked
+		}
+		return err
+	}
+	approved := commit.Assets
+	candidate := projection.Slots[0].Candidates[0]
+	candidateURL := candidate.URL
+	if candidateURL == "" {
+		if publicURLs == nil {
+			return imageagent.ErrCommandBlocked
+		}
+		asset, err := imageagent.NormalizeDurableAssetIdentity(candidate.DurableAsset)
+		if err != nil {
+			return imageagent.ErrCommandBlocked
+		}
+		candidateURL = publicURLs.PublicURL(asset.ObjectKey)
+	}
+	if _, err := imageagent.ValidateSafeImageURL(candidateURL); err != nil {
+		return imageagent.ErrCommandBlocked
+	}
+	if commit.TenantID != projection.Run.TenantID || commit.ProductKey != projection.AssetCatalog.ProductContext.ProductID ||
+		commit.TargetPlatform != projection.Run.TargetPlatform || commit.SourceSnapshotVersion != projection.AssetCatalog.ProductContext.SourceSnapshotVersion ||
+		commit.ActionID != key || len(approved) != 1 || approved[0].ID != candidate.AssetID || approved[0].RunID != projection.Run.ID ||
+		approved[0].PlanRevision != projection.Plan.Revision || approved[0].SlotID != projection.Plan.Slots[0].ID ||
+		approved[0].Attempt != projection.Slots[0].Attempt || approved[0].Role != productasset.RoleMain || approved[0].URL != candidateURL ||
+		approved[0].SourceAssetID != candidate.SourceAssetID || approved[0].Width != candidate.Width || approved[0].Height != candidate.Height {
+		return imageagent.ErrCommandBlocked
+	}
+	return nil
 }
 
 func emptyAcquisitionImageBody(c *gin.Context) bool {
