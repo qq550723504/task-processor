@@ -6,13 +6,17 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { captureReferralCompletion } from "./referral-completion-evidence.mjs";
 
 const fixture = JSON.parse(await readFile(process.argv[2], "utf8"));
 const output = resolve(process.argv[3] ?? "../../docs/engineering/evidence/issue348/browser");
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const results = [], screenshots = [];
+const completionCaptures = [];
 const report = { sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), dependencyFixtureHead: fixture.sourceHead, externalBoundary: fixture.externalBoundary, results, screenshots };
+report.referralCompletionEvidence = [];
+report.referralCompletionOrigin = new URL(fixture.origin).origin;
 const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "src", "public/console/account"], { encoding: "utf8" }).trim().split(/\r?\n/);
 const sourceHash = createHash("sha256");
 for (const file of [...new Set(files)].sort()) sourceHash.update(`${file}\0`).update((await readFile(file, "utf8")).replaceAll("\r\n", "\n"));
@@ -22,6 +26,11 @@ async function open(user, path, width = 1440, theme = "light", selection = true)
   await context.addCookies(fixture.sessions[user].filter(cookie => selection || cookie.name !== "shuomi_effective_organization"));
   await context.addInitScript(theme => localStorage.setItem("listingkit-theme", theme), theme);
   const page = await context.newPage();
+  const evidenceFile = `referral-completion-${completionCaptures.length + 1}.jsonl`;
+  try {
+    completionCaptures.push(await captureReferralCompletion(page, { origin: fixture.origin, file: join(output, evidenceFile) }));
+    report.referralCompletionEvidence.push(evidenceFile);
+  } catch (error) { await context.close(); throw error; }
   await page.goto(`${fixture.origin}/workbench/account/${path}`);
   return { context, page };
 }
@@ -178,4 +187,14 @@ try {
   });
   report.status = "PASS";
 } catch (error) { report.status = "FAIL"; report.failure = error.message; throw error; }
-finally { await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2)); await browser.close(); }
+finally {
+  try {
+    const captured = await Promise.allSettled(completionCaptures.map(close => close()));
+    if (captured.some(result => result.status === "rejected")) {
+      report.status = "FAIL";
+      report.failure = "referral_evidence_write_failed";
+    }
+    await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2));
+    if (report.failure === "referral_evidence_write_failed") throw new Error(report.failure);
+  } finally { await browser.close(); }
+}
