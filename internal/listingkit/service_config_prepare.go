@@ -9,6 +9,9 @@ func validateServiceConfig(config *ServiceConfig) error {
 	if config.Core.Repository == nil {
 		return fmt.Errorf("repository cannot be nil")
 	}
+	if config.Shein.SheinCostPriceCalculator == nil {
+		return fmt.Errorf("shein cost-price calculator cannot be nil")
+	}
 	return nil
 }
 
