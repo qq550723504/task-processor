@@ -66,6 +66,16 @@ overwrite it or create a second free offer in the same database. Retire the
 isolated instance under the trial's own data-retention procedure, never by
 running this command against another environment.
 
+For a **new** local `account-compose` project, the existing schema-init service
+can run that same command after its commercial migrations and before the
+application starts. Set `ACCOUNT_COMMERCIAL_DATABASE=commercial_isolated_trial`
+and `ACCOUNT_ISOLATED_TRIAL_CATALOG=ISOLATED_TRIAL_ONLY` only for this one fresh
+project, alongside its unique Compose project name and unused local ports.
+The default database remains `commercial` and does not receive an offer. The
+isolated flag is refused when schema-init sees an already initialized project;
+do not add it to a retained or shared instance. Run `schema-init` and the
+existing `acceptance-fixture` first, then start the application and Console.
+
 After provisioning, start the isolated current application and Console, log in
 as `listingkit_admin` for a verified Effective Organization with no active
 subscription, then use 套餐与权益 → 套餐方案. Confirm the server quote, submit the
