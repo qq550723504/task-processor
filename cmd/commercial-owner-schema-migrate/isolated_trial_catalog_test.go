@@ -99,13 +99,13 @@ func TestProvisionIsolatedTrialCatalogRollsBackPlanWhenOfferInsertFails(t *testi
 	}
 }
 
-func TestLoadDatabaseConfigRequiresAbsolutePrivatePath(t *testing.T) {
-	_, err := loadDatabaseConfig("relative-private-db.json")
+func TestRunIsolatedTrialRequiresAbsolutePrivatePath(t *testing.T) {
+	err := runIsolatedTrial("relative-private-db.json", "subscription_trial")
 	require.ErrorContains(t, err, "absolute")
 }
 
 func TestRunRejectsProductionNamedDatabaseBeforeConnecting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "private-db.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"host":"127.0.0.1","port":5432,"user":"schema_owner","password":"test-only","database":"production","maxConnections":1,"maxIdleConnections":0}`), 0600))
-	require.ErrorContains(t, run(path, "production"), "isolated or trial")
+	require.ErrorContains(t, runIsolatedTrial(path, "production"), "isolated or trial")
 }

@@ -7,6 +7,9 @@ commercial-owner PostgreSQL database after the existing schema migration and
 before any application replica serves purchase traffic. The command rejects a
 database containing plans, offers, quotes, orders, subscriptions or
 entitlements; it never writes an entitlement directly.
+The matching application/identity runtime must also use synthetic trial
+Organizations and grants only. This offer has no per-Organization allowlist;
+do not point an environment with real customer identities at this catalog.
 
 The authorized trial offer is:
 
@@ -52,7 +55,7 @@ isolated, empty database before invoking; its name must contain `isolated` or
 `trial` as an additional accidental-target guard:
 
 ```powershell
-go run ./hack/isolated-subscription-catalog -config <private-config-absolute-path> -expected-database <isolated-database-name> -confirm ISOLATED_TRIAL_ONLY
+go run ./cmd/commercial-owner-schema-migrate -isolated-trial-catalog -config <private-config-absolute-path> -expected-database <isolated-database-name> -confirm ISOLATED_TRIAL_ONLY
 ```
 
 The catalog is read-only while the application serves traffic, as required by

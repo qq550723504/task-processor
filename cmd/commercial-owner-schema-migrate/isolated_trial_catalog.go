@@ -1,17 +1,10 @@
-// Command isolated-subscription-catalog provisions one explicit trial catalog
-// into an empty, migrated commercial owner database before application startup.
-// It is not a runtime seed or a production pricing command.
 package main
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -29,24 +22,13 @@ const (
 	trialOfferID  = "paid-pilot-isolated-trial-v1"
 )
 
-func main() {
-	configPath := flag.String("config", "", "absolute path to private commercial schema-owner database JSON config")
-	expectedDatabase := flag.String("expected-database", "", "exact isolated database name")
-	confirm := flag.String("confirm", "", "must be ISOLATED_TRIAL_ONLY")
-	flag.Parse()
-	if *configPath == "" || *expectedDatabase == "" || *confirm != "ISOLATED_TRIAL_ONLY" {
-		fmt.Fprintln(os.Stderr, "-config, -expected-database and -confirm ISOLATED_TRIAL_ONLY are required")
-		os.Exit(2)
+// runIsolatedTrial is an explicit offline mode of the existing schema-owner
+// command. It never runs as part of application startup or normal migration.
+func runIsolatedTrial(configPath, expectedDatabase string) error {
+	if !filepath.IsAbs(configPath) {
+		return errors.New("private database config path must be absolute")
 	}
-	if err := run(*configPath, *expectedDatabase); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	fmt.Println("isolated subscription catalog provisioned; start the application only after reviewing this database")
-}
-
-func run(configPath, expectedDatabase string) error {
-	config, err := loadDatabaseConfig(configPath)
+	config, err := loadSchemaOwnerConfig(configPath)
 	if err != nil {
 		return err
 	}
@@ -147,38 +129,4 @@ func trialOffer(now time.Time) billing.Offer {
 		Currency: billing.CurrencyCNY, UnitPriceMinor: 0, PricingVersion: "isolated-trial-v1",
 		Status: billing.OfferActive, StartsAt: &starts, ExpiresAt: &expires,
 	}
-}
-
-type databaseManifest struct {
-	Host               string `json:"host"`
-	Port               int    `json:"port"`
-	User               string `json:"user"`
-	Password           string `json:"password"`
-	Database           string `json:"database"`
-	MaxConnections     int    `json:"maxConnections"`
-	MaxIdleConnections int    `json:"maxIdleConnections"`
-}
-
-func loadDatabaseConfig(path string) (*platformdatabase.Config, error) {
-	if !filepath.IsAbs(path) {
-		return nil, errors.New("private database config path must be absolute")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open private database config: %w", err)
-	}
-	defer file.Close()
-	decoder := json.NewDecoder(io.LimitReader(file, 8192))
-	decoder.DisallowUnknownFields()
-	var manifest databaseManifest
-	if err := decoder.Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("decode private database config: %w", err)
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		return nil, errors.New("private database config must contain one JSON object")
-	}
-	if manifest.Host == "" || manifest.Port < 1 || manifest.Port > 65535 || manifest.User == "" || manifest.Password == "" || manifest.Database == "" || manifest.MaxConnections < 1 || manifest.MaxIdleConnections < 0 || manifest.MaxIdleConnections > manifest.MaxConnections || manifest.User == "commercial_runtime" || manifest.User == "commercial_owner_runtime" {
-		return nil, errors.New("private database config requires valid schema-owner settings")
-	}
-	return &platformdatabase.Config{Host: manifest.Host, Port: manifest.Port, User: manifest.User, Password: manifest.Password, Database: manifest.Database, MaxConnections: manifest.MaxConnections, MaxIdleConnections: manifest.MaxIdleConnections}, nil
 }
