@@ -293,6 +293,20 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 				} else {
 					require.Equal(t, "released", reservation.Status, "known terminal releases reservation")
 				}
+				var observed []struct {
+					Quantity int64
+					MemberID string
+					Status   string
+				}
+				require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation", row["invocation_id"]).Find(&observed).Error)
+				if knownUsage {
+					require.Len(t, observed, 1, "observed Review usage is the sole commercial fact for Account/Audit projections")
+					require.EqualValues(t, 7, observed[0].Quantity)
+					require.Equal(t, "grant-B", observed[0].MemberID)
+					require.Equal(t, "committed", observed[0].Status)
+				} else {
+					require.Empty(t, observed, "unknown or rejected Review has no fabricated token usage")
+				}
 			}
 			require.NotContains(t, logs.String(), "image_review_record_degraded", "pre-dispatch recorder failure does not pretend a provider call occurred")
 			data, err := json.Marshal(rows)

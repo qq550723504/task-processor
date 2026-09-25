@@ -42,6 +42,7 @@ import (
 	imagetools "task-processor/internal/imageagent/tools"
 	openai "task-processor/internal/integration/openai"
 	catalogstore "task-processor/internal/integration/persistence/product/catalog"
+	platformtemporal "task-processor/internal/platform/temporal"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/workbenchcontext"
 )
@@ -342,6 +343,68 @@ func TestOrganizationScopeHTTPPersistenceAndActivity(t *testing.T) {
 	scope339AssertEffectMode(t, legacy, repo, oldProjection)
 	f.verifyActivity(t, restored)
 	f.verifyRecoveryCommand(t)
+}
+
+func TestOrganizationRealTemporalWorkerDeniesQuotaBeforeFirstProvider(t *testing.T) {
+	address := os.Getenv("ISSUE487_TEMPORAL_ADDRESS")
+	if address == "" {
+		t.Skip("requires isolated Temporal ISSUE487_TEMPORAL_ADDRESS")
+	}
+	f, recorder := review334Fixture(t)
+	var providerCalls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { providerCalls.Add(1) }))
+	defer provider.Close()
+	logger := logrus.New()
+	manager := review334Manager(t, f.db, provider.URL, logger)
+	capabilities, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db, imageworker.OrganizationReviewOptions{Recorder: recorder, Logger: logger})
+	require.NoError(t, err)
+	executor := imagetools.NewProductImageSlotExecutor(imagetools.Dependencies{
+		SubjectExtractor: capabilities.SubjectExtractor, WhiteBackgroundRenderer: capabilities.WhiteBackgroundRenderer,
+		SceneRenderer: capabilities.SceneRenderer, Reviewer: capabilities.Reviewer,
+		UsageQuoter: capabilities.UsageQuoter, ProfileResolver: capabilities.ProfileResolver,
+	})
+	repository := imagestore.NewOrganizationRepository(f.db)
+	authorizer := imageworker.OrganizationExecutionAuthorizer{Client: f.authClient, ServiceToken: func(context.Context) (string, error) { return "service339", nil }, ProjectID: "project", Authorizer: f.auth}
+	activities, err := imagetemporal.NewActivities(imagetemporal.ActivityDependencies{
+		Repository: repository, SlotExecutor: executor, StagedSlotExecutor: executor,
+		Publisher: scope339NoPublication{}, PublisherV3: scope339NoPublication{}, ArtifactStore: &scope339Artifacts{},
+		ExecutionAuthorizer: authorizer,
+	})
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	client, closeClient, err := platformtemporal.Dial(ctx, platformtemporal.Config{Address: address, Namespace: "default"})
+	require.NoError(t, err)
+	defer closeClient()
+	worker, err := imagetemporal.NewWorker(imagetemporal.WorkerConfig{Client: client, Activities: activities, WireMode: imagetemporal.WorkerWireModeOrganization})
+	require.NoError(t, err)
+	require.NoError(t, worker.Start())
+	defer worker.Stop()
+	server := f.server(t)
+	body := strings.Replace(scope339Body, `"max_images":12`, `"max_images":1`, 1)
+	body = strings.ReplaceAll(body, "run339", "run487-"+uuid.NewString()[:8])
+	body = strings.Replace(body, `"target_platform":"shein"`, `"target_platform":"product"`, 1)
+	body = strings.Replace(body, `"country":"us"`, `"country":"zz"`, 1)
+	body = strings.Replace(body, `"scene_category":"shoes"`, `"scene_category":"general"`, 1)
+	require.Equal(t, 202, scope339Request(t, server, "POST", scope339Path, "actor", "B", body))
+	input := f.temporal.input(t)
+	_, err = client.ExecuteWorkflow(ctx, f.temporal.options, "ImageAgentOrganizationWorkflowV1", input)
+	require.NoError(t, err)
+	scope := imageagent.RunScope{TenantID: "B", OwnerUserID: "actor", RunID: input.RunID}
+	for {
+		projection, getErr := repository.GetProjection(ctx, scope)
+		require.NoError(t, getErr)
+		if projection.Run.Status == imageagent.RunStatusBlocked || projection.Run.Status == imageagent.RunStatusFailed {
+			require.Zero(t, providerCalls.Load(), "quota must deny before first Extract provider dispatch")
+			require.Equal(t, imageagent.RunStatusBlocked, projection.Run.Status)
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("real Temporal worker did not persist a quota block before deadline")
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func scope339AssertEffectMode(t *testing.T, owner, other imageagent.Repository, projection imageagent.RunProjection) {
