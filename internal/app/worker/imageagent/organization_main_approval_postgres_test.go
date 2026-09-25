@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	sdkclient "go.temporal.io/sdk/client"
 	"gorm.io/gorm"
+	"task-processor/internal/accountallocation"
 	"task-processor/internal/aicapability"
 	"task-processor/internal/aicapability/store"
 	"task-processor/internal/core/config"
@@ -32,6 +33,7 @@ import (
 	imagestore "task-processor/internal/imageagent/store"
 	imagetemporal "task-processor/internal/imageagent/temporal"
 	openai "task-processor/internal/integration/openai"
+	accountallocationstore "task-processor/internal/integration/persistence/accountallocation"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/listingsubscription"
 	platformtemporal "task-processor/internal/platform/temporal"
@@ -161,6 +163,17 @@ func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *te
 	require.EqualValues(t, 7, usage[0].Quantity)
 	require.Equal(t, "member-1", usage[0].MemberID)
 	require.Equal(t, "committed", usage[0].Status)
+	allocationReader, err := accountallocationstore.New(db)
+	require.NoError(t, err)
+	var window struct{ WindowStart, WindowEnd time.Time }
+	require.NoError(t, db.Table("account_member_token_allocations").Where("organization_id = ? AND member_id = ?", run.TenantID, run.MemberID).Select("window_start, window_end").Take(&window).Error)
+	accountView, err := allocationReader.Snapshot(ctx, accountallocation.Quota{OrganizationID: run.TenantID, Metric: accountallocation.MetricToken, Total: 1000000, WindowStart: window.WindowStart, WindowEnd: window.WindowEnd})
+	require.NoError(t, err)
+	require.EqualValues(t, 7, accountView.Enterprise.Consumed)
+	require.Len(t, accountView.Allocations, 1)
+	require.Equal(t, run.MemberID, accountView.Allocations[0].MemberID)
+	require.EqualValues(t, 7, accountView.Allocations[0].Consumed)
+	require.EqualValues(t, 9993, accountView.Allocations[0].Remaining)
 	approval := imagetemporal.NewOrganizationClient(client)
 	require.NoError(t, approval.ApproveResults(ctx, imageagent.ApproveResultsCommand{RunID: run.ID, PlanRevision: 1, ResultDigest: projection.ResultDigest, ActorID: run.UserID, ActionID: "human-approval-1", Identity: identity}))
 	for {
