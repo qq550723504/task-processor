@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -106,6 +107,14 @@ func (r *GormInvocationRecorder) ResolveDispatchedInvocation(ctx context.Context
 	if existing.Outcome == aicapability.InvocationDispatched {
 		// Preserve the original dispatch identity and metadata while applying
 		// only the terminal, operator-observed result.
+		if record.Outcome == aicapability.InvocationUsageObservedFailed {
+			resolved := existing
+			resolved.Outcome, resolved.FinishedAt = record.Outcome, record.FinishedAt
+			resolved.UsageKnown = record.UsageKnown
+			resolved.PromptTokens, resolved.CompletionTokens, resolved.TotalTokens = record.PromptTokens, record.CompletionTokens, record.TotalTokens
+			resolved.ErrorCategory, resolved.ErrorCode = record.ErrorCategory, record.ErrorCode
+			return r.RecordInvocation(ctx, resolved)
+		}
 		record.AgentRunID = existing.AgentRunID
 		record.UserID = existing.UserID
 		record.BusinessTaskID = existing.BusinessTaskID
@@ -149,6 +158,9 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 	var existing invocationRow
 	lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		if record.Outcome == aicapability.InvocationUsageObservedFailed {
+			return fmt.Errorf("observed-failed image review requires a durable dispatched invocation")
+		}
 		if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}
@@ -158,14 +170,26 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		if existing.TenantID != strings.TrimSpace(record.TenantID) || existing.UserID != strings.TrimSpace(record.UserID) || existing.MemberID != strings.TrimSpace(record.MemberID) || existing.InputHash != strings.TrimSpace(record.InputHash) {
 			return fmt.Errorf("ai invocation identity conflict")
 		}
+		if record.Outcome == aicapability.InvocationUsageObservedFailed && existing.Operation != row.Operation {
+			return fmt.Errorf("ai invocation identity conflict")
+		}
 		if existing.Outcome == string(aicapability.InvocationSucceeded) && record.Outcome == aicapability.InvocationDispatched {
 			return nil
 		}
 		if existing.Outcome != string(aicapability.InvocationDispatched) && existing.Outcome != strings.TrimSpace(string(record.Outcome)) {
 			return fmt.Errorf("ai invocation outcome conflict")
 		}
-		if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
-			return err
+		if existing.Outcome != string(aicapability.InvocationDispatched) {
+			if !sameImmutableInvocationFact(existing, row) {
+				return fmt.Errorf("ai invocation identity conflict")
+			}
+			// The already persisted terminal fact is authoritative. A replay may
+			// retry commercial settlement, but may never overwrite observed usage.
+			record = invocationRecordFromRow(existing)
+		} else {
+			if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
+				return err
+			}
 		}
 	}
 	if r.usageSettler != nil {
@@ -182,6 +206,15 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 		}
 	}
 	return nil
+}
+
+func sameImmutableInvocationFact(existing, replay invocationRow) bool {
+	normalize := func(row invocationRow) invocationRow {
+		row.StartedAt = row.StartedAt.UTC().Truncate(time.Microsecond)
+		row.FinishedAt = row.FinishedAt.UTC().Truncate(time.Microsecond)
+		return row
+	}
+	return reflect.DeepEqual(normalize(existing), normalize(replay))
 }
 
 func validateUsage(record aicapability.InvocationRecord) error {

@@ -170,10 +170,19 @@ func TestGormInvocationRecorderObservedFailedReviewSettlesAndReplaysWithoutRelea
 	require.NoError(t, recorder.RecordInvocation(context.Background(), terminal))
 	require.Equal(t, 2, settler.settleCalls, "commercial owner makes same-fact settlement idempotent")
 	require.Zero(t, settler.releaseCalls)
+	changedUsage := terminal
+	changedUsage.PromptTokens, changedUsage.TotalTokens = 8, 13
+	require.ErrorContains(t, recorder.RecordInvocation(context.Background(), changedUsage), "identity conflict")
+	changedMetadata := terminal
+	changedMetadata.ErrorCode = "different_review_failure"
+	require.ErrorContains(t, recorder.RecordInvocation(context.Background(), changedMetadata), "identity conflict")
 	found, ok, err := recorder.FindInvocation(context.Background(), "tenant-1", "member-1", "review-observed-failed", "input-3")
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, aicapability.InvocationUsageObservedFailed, found.Outcome)
+	require.Equal(t, 12, found.TotalTokens)
+	require.Empty(t, found.ErrorCode)
+	require.Equal(t, 2, settler.settleCalls, "conflicting replay must not reach commercial owner")
 	terminal.Outcome = aicapability.InvocationSucceeded
 	require.ErrorContains(t, recorder.RecordInvocation(context.Background(), terminal), "outcome conflict")
 }
@@ -221,6 +230,55 @@ func TestObservedFailedReviewSettlementFailureKeepsDurableTerminalForRetry(t *te
 	require.NoError(t, recorder.RecordInvocation(context.Background(), found))
 	require.Equal(t, 2, settler.settleCalls)
 	require.Zero(t, settler.releaseCalls)
+}
+
+func TestObservedFailedReviewRequiresExistingDispatchedReview(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	settler := &recordingInvocationUsageSettler{}
+	recorder := NewGormInvocationRecorder(db)
+	recorder.SetUsageSettler(settler)
+	terminal := aicapability.InvocationRecord{InvocationID: "unreserved-invalid-review", TenantID: "tenant-1", UserID: "user-1", MemberID: "member-1", Operation: aicapability.OperationProductImageReview, InputHash: "input-6", Outcome: aicapability.InvocationUsageObservedFailed, FinishedAt: time.Now().UTC(), UsageKnown: true, PromptTokens: 7, CompletionTokens: 5, TotalTokens: 12}
+	require.ErrorContains(t, recorder.RecordInvocation(context.Background(), terminal), "durable dispatched")
+	require.Zero(t, settler.settleCalls)
+	var count int64
+	require.NoError(t, db.Model(&invocationRow{}).Where("invocation_id = ?", terminal.InvocationID).Count(&count).Error)
+	require.Zero(t, count)
+	terminal.Outcome = aicapability.InvocationDispatched
+	terminal.Operation = aicapability.OperationProductImageSceneGenerate
+	terminal.FinishedAt = time.Time{}
+	terminal.UsageKnown = false
+	terminal.PromptTokens, terminal.CompletionTokens, terminal.TotalTokens = 0, 0, 0
+	require.NoError(t, recorder.RecordInvocation(context.Background(), terminal))
+	terminal.Outcome = aicapability.InvocationUsageObservedFailed
+	terminal.FinishedAt = time.Now().UTC()
+	terminal.UsageKnown = true
+	terminal.PromptTokens, terminal.CompletionTokens, terminal.TotalTokens = 7, 5, 12
+	terminal.Operation = aicapability.OperationProductImageReview
+	require.ErrorContains(t, recorder.RecordInvocation(context.Background(), terminal), "identity conflict")
+	require.Zero(t, settler.settleCalls)
+}
+
+func TestObservedFailedReviewRecoveryPreservesDispatchedProvenance(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	recorder := NewGormInvocationRecorder(db)
+	started := time.Date(2026, 9, 21, 8, 0, 0, 0, time.UTC)
+	base := aicapability.InvocationRecord{
+		InvocationID: "review-preserve-provenance", TenantID: "tenant-1", UserID: "user-1", MemberID: "member-1", InputHash: "input-7", Operation: aicapability.OperationProductImageReview,
+		AgentRunID: "run-1", BusinessTaskID: "receipt-1", StartedAt: started, Outcome: aicapability.InvocationDispatched,
+		ProviderID: "provider-a", ModelID: "review-model-a", RoutingKey: "route-a", CredentialReference: "credential-ref-a", ConfigurationVersion: "config-a", PromptKey: "product-image-review", RouteOutcome: aicapability.RouteOutcomeActive,
+	}
+	require.NoError(t, recorder.RecordInvocation(context.Background(), base))
+	terminal := aicapability.InvocationRecord{InvocationID: base.InvocationID, TenantID: base.TenantID, MemberID: base.MemberID, InputHash: base.InputHash, FinishedAt: started.Add(time.Minute), Outcome: aicapability.InvocationUsageObservedFailed, UsageKnown: true, PromptTokens: 7, CompletionTokens: 5, TotalTokens: 12, ErrorCode: "invalid_review_output"}
+	require.NoError(t, recorder.ResolveDispatchedInvocation(context.Background(), terminal))
+	found, ok, err := recorder.FindInvocation(context.Background(), base.TenantID, base.MemberID, base.InvocationID, base.InputHash)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, base.RoutingKey, found.RoutingKey)
+	require.Equal(t, base.CredentialReference, found.CredentialReference)
+	require.Equal(t, base.ConfigurationVersion, found.ConfigurationVersion)
+	require.Equal(t, base.PromptKey, found.PromptKey)
+	require.Equal(t, base.RouteOutcome, found.RouteOutcome)
+	require.Equal(t, "invalid_review_output", found.ErrorCode)
 }
 
 type recordingInvocationUsageSettler struct {
