@@ -45,12 +45,15 @@ func TestMembershipBrowserFixture(t *testing.T) {
 			f.revoked = false
 			f.permissionDenied = false
 			f.loseUpdate = false
+			f.loseCreate = false
 		case "revoked":
 			f.revoked = true
 		case "permission-denied":
 			f.permissionDenied = true
 		case "unknown-update":
 			f.loseUpdate = true
+		case "unknown-create":
+			f.loseCreate = true
 		default:
 			w.WriteHeader(400)
 			return

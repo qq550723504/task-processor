@@ -31,6 +31,9 @@
 .panel h2 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
 .panel code { display: block; font-size: 12px; overflow-wrap: anywhere; margin: 12px 0; }
 .actions { margin-top: 18px; }
+.pendingList { display: grid; gap: 8px; padding: 0; list-style: none; }
+.pendingList button { height: auto; min-height: 44px; max-width: 100%; flex-wrap: wrap; white-space: normal; justify-content: flex-start; }
+.pendingList code { margin: 0; overflow-wrap: anywhere; text-align: left; }
 .formGrid, .facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 18px 0; }
 .panel label { display: grid; gap: 8px; font-size: 13px; }
 .select { width: 100%; min-height: 40px; padding: 8px 12px; color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; }
