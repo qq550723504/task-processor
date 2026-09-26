@@ -241,6 +241,22 @@ func (r *Repository) ByID(ctx context.Context, scope sourcing.PublicationScope, 
 	return read(r.db.WithContext(ctx), scope, "operation_id", id, false)
 }
 
+// CapacityAdmitted reports whether the organization is below both the retained
+// and active operation ceilings. It is a read-only preflight so callers can
+// reject before expensive external work; Start/StartPrepared remain the atomic
+// correctness gate. The count is the same lifetime count used by those gates
+// (terminal rows keep counting, by design).
+func (r *Repository) CapacityAdmitted(ctx context.Context, scope sourcing.PublicationScope) (bool, error) {
+	if r == nil || r.db == nil || scope.OrganizationID == "" {
+		return false, sourcing.ErrAcquisitionUnavailable
+	}
+	var count struct{ Total, Active int64 }
+	if e := r.db.WithContext(ctx).Raw("SELECT count(*) AS total,count(*) FILTER(WHERE state IN ('acquiring','prepared','publishing')) AS active FROM "+table+" WHERE organization_id=?", scope.OrganizationID).Scan(&count).Error; e != nil {
+		return false, sourcing.ErrAcquisitionUnavailable
+	}
+	return count.Total < sourcing.MaxAcquisitionOperations && count.Active < sourcing.MaxActiveAcquisitionOperations, nil
+}
+
 func (r *Repository) Prepare(ctx context.Context, requested sourcing.AcquisitionOperation, cmd sourcing.PublicationCommand) (op sourcing.AcquisitionOperation, err error) {
 	if !validCommand(requested, cmd) {
 		return op, sourcing.ErrInvalidAcquisition
@@ -455,3 +471,4 @@ func validFailure(code string) bool {
 
 var _ sourcing.AcquisitionOperationStore = (*Repository)(nil)
 var _ sourcing.PreparedAcquisitionOperationStore = (*Repository)(nil)
+var _ sourcing.CapacityReadOperationStore = (*Repository)(nil)

@@ -72,6 +72,16 @@ type AcquisitionOperationStore interface {
 	Finish(context.Context, AcquisitionOperation, string, string) error
 }
 
+// CapacityReadOperationStore optionally reports whether an organization still
+// has acquisition capacity, so a caller can reject before doing expensive
+// external work. It is an optimization, not a correctness gate: the atomic
+// capacity check inside Start/StartPrepared remains authoritative.
+type CapacityReadOperationStore interface {
+	// CapacityAdmitted reports whether the organization is below both the
+	// retained-operation and active-operation ceilings.
+	CapacityAdmitted(context.Context, PublicationScope) (bool, error)
+}
+
 // PreparedAcquisitionOperationStore atomically admits an operation with its
 // durable publication command. Browser capture uses this contract because its
 // receiver can recover the command after a process or response failure.
