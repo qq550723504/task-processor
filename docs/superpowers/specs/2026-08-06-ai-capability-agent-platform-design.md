@@ -2,6 +2,11 @@
 
 ## 1. 状态与决策
 
+当前 #131/#132 的具体运行合同和接入缺口见
+[Product Agent 最小运行合同](../../architecture/product-agent-runtime-contract.md)。
+历史实现描述不是当前能力完成证据；新消费者遵循全新系统/Legacy Hard-Cut 基线。
+合同准备不代表 Agent 已实现或允许真实模型调用。
+
 - 日期：2026-08-06
 - 校准基线：`062b824f`
 - 状态：方向已确认；Phase 1 已落地；Phase 2 ProductImage 场景生成治理与启用前身份上下文切片已实现，默认关闭，待独立发布与启用决策
@@ -348,10 +353,10 @@ load_snapshot
 
 禁止同一阶段同时由 Temporal 和 Agent Runtime 各自做重试。默认规则：
 
-- Agent 内部只重试模型可恢复或工具瞬时失败；
-- Agent run 级失败是否重跑由 Temporal/调用方决定；
+- 当前首个 Product Agent 不自动重试工具或模型；有界 repair 是确定性校验拒绝后的新 step，不是丢失响应后的重发；
+- Agent run 级调度由 Temporal/调用方拥有；模型已 dispatch 或结果未知时不得重放整个运行；
 - 所有有副作用的工具必须幂等，并由业务层分配 idempotency key；
-- 首个 Agent PoC 没有副作用工具。
+- 首个 Agent PoC 没有业务写入工具，但模型调用仍有费用/外部效果，受 AI Capability 的预算、调用记录和未知结果门禁约束。
 
 ## 10. 错误与降级
 
