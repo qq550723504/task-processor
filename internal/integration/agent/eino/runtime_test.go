@@ -142,9 +142,12 @@ func (s *fakeStore) Claim(_ context.Context, input agent.Record, expected uint64
 	s.record.State.Phase = agent.Running
 	return copyRecord(s.record), true, nil
 }
-func (s *fakeStore) Commit(_ context.Context, input agent.Record, expected uint64) (agent.Record, error) {
+func (s *fakeStore) Commit(ctx context.Context, input agent.Record, expected uint64) (agent.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return agent.Record{}, err
+	}
 	if s.failCommit {
 		return agent.Record{}, agent.ErrUnavailable
 	}
@@ -285,6 +288,11 @@ func TestEveryBudgetStopsWithoutAnExtraCall(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r, req, m, tools, _, _, _ := fixture(t, test.action)
 			test.change(&req, m)
+			if test.stop == agent.StopRuntime {
+				// Let the durable deadline elapse even on clocks whose resolution
+				// is coarser than the one-nanosecond budget.
+				r.config.Store = afterClaimStore{Store: r.config.Store, afterClaim: func() { time.Sleep(time.Millisecond) }}
+			}
 			out, err := r.Start(context.Background(), req)
 			if err != nil || out.State.StopReason != test.stop || m.calls != test.calls || tools.calls != test.tools {
 				t.Fatalf("out=%+v calls=%d tools=%d err=%v", out.State, m.calls, tools.calls, err)
@@ -379,5 +387,54 @@ func TestCancellationDuringModelDoesNotRepeatDispatch(t *testing.T) {
 	out := <-result
 	if m.calls != 1 || out.State.StopReason != agent.StopModelUnknown {
 		t.Fatalf("cancel lost invocation: %+v", out.State)
+	}
+}
+
+type afterClaimStore struct {
+	agent.Store
+	afterClaim func()
+}
+
+func (s afterClaimStore) Claim(ctx context.Context, record agent.Record, expected uint64) (agent.Record, bool, error) {
+	out, acquired, err := s.Store.Claim(ctx, record, expected)
+	if err == nil && acquired {
+		s.afterClaim()
+	}
+	return out, acquired, err
+}
+
+type checkingCommitStore struct {
+	agent.Store
+	check func(context.Context)
+}
+
+func (s checkingCommitStore) Commit(ctx context.Context, record agent.Record, expected uint64) (agent.Record, error) {
+	s.check(ctx)
+	return s.Store.Commit(ctx, record, expected)
+}
+
+func TestCancelledRunCommitIsBoundedAndDoesNotAcknowledgeFailure(t *testing.T) {
+	r, req, _, _, _, _, store := fixture(t)
+	store.failCommit = true
+	type contextKey struct{}
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), contextKey{}, "trace-value"))
+	defer cancel()
+	checked := false
+	r.config.Store = afterClaimStore{Store: checkingCommitStore{Store: store, check: func(commitCtx context.Context) {
+		checked = true
+		if commitCtx.Err() != nil || commitCtx.Value(contextKey{}) != "trace-value" {
+			t.Fatal("final commit must preserve values without inheriting cancellation")
+		}
+		deadline, ok := commitCtx.Deadline()
+		if remaining := time.Until(deadline); !ok || remaining <= 0 || remaining > 2*time.Second {
+			t.Fatal("final commit must have its own short deadline")
+		}
+	}}, afterClaim: cancel}
+	out, err := r.Start(ctx, req)
+	if !checked || !errors.Is(err, agent.ErrUnavailable) || out.State.RunID != "" {
+		t.Fatalf("failed final commit acknowledged: %+v %v", out, err)
+	}
+	if store.record.State.Phase != agent.Running || store.record.State.Revision != 1 {
+		t.Fatal("failed commit changed durable state")
 	}
 }

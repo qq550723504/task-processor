@@ -170,9 +170,11 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 	if !fits(final, agent.MaxStateBytes) {
 		return agent.Record{}, fmt.Errorf("%w: invalid or oversized final state", agent.ErrInvalid)
 	}
-	// A canceled request is not permission to acknowledge a checkpoint or result
-	// that the store could not commit. No background write/replay is introduced.
-	return r.config.Store.Commit(ctx, final, record.State.Revision)
+	// Persist the computed outcome even when execution was canceled. This single
+	// synchronous CAS has its own short deadline; an unconfirmed write still fails.
+	commitCtx, commitCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer commitCancel()
+	return r.config.Store.Commit(commitCtx, final, record.State.Revision)
 }
 
 func digest(value any) (string, error) {

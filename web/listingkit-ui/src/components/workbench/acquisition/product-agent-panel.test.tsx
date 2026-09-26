@@ -38,9 +38,23 @@ it("only admits a validated candidate to existing human review", async () => {
     fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));
     await screen.findByText("title：建议标题");
+    expect(screen.getByText("状态：候选已通过校验，等待人工审核")).toBeInTheDocument();
     expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
     fixture.request.mockResolvedValue({ proposalId: op });
     fireEvent.click(screen.getByText("提交人工审核"));
     expect(await screen.findByRole("link", { name: "打开标题审核" })).toHaveAttribute("href", `/workbench/ai/tasks/pending?proposal_id=${op}`);
     expect(fixture.request.mock.calls[1][0]).toBe("review");
+});
+
+it("shows an invalid repair-limit candidate without claiming validation or offering review", async () => {
+    fixture.request.mockResolvedValue({ runId: op, requestKey: op, operationId: op, productKey: "product", catalogVersion: "1", targetPlatform: "shein", phase: "human_review_required", revision: "2", stopReason: "repair_limit", canSubmitReview: false, candidate: { Changes: [{ Field: "title", Value: "无效标题", EvidenceIDs: ["evidence"] }] }, confidence: [], unresolved: ["标题证据不足"], steps: [], tokens: 30, estimatedCostMicros: 20, currency: "CNY", usageStatus: "observed" });
+    render(<ProductAgentPanel {...props}/>);
+    fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
+    fireEvent.click(screen.getByText("生成标题建议"));
+    await screen.findByText("title：无效标题");
+    expect(screen.getByText("状态：候选未通过校验，不能提交人工审核")).toBeInTheDocument();
+    expect(screen.getByText("两次修复后仍未通过校验")).toBeInTheDocument();
+    expect(screen.queryByText("状态：候选已通过校验，等待人工审核")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交人工审核" })).not.toBeInTheDocument();
+    expect(fixture.request).toHaveBeenCalledTimes(1);
 });
