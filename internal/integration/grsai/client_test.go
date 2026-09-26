@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,111 @@ import (
 
 	openaiclient "task-processor/internal/ai"
 )
+
+func TestSourceEditDisablesGRSAISubmitReplay(t *testing.T) {
+	for _, mode := range []string{"server_error", "lost_response", "partial_response", "307", "308", "query_error"} {
+		for _, async := range []bool{false, true} {
+			if async && mode == "query_error" {
+				continue
+			}
+			t.Run(fmt.Sprintf("%s/async=%t", mode, async), func(t *testing.T) {
+				var submits, queries, redirects atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/v1/api/result" {
+						queries.Add(1)
+						if r.URL.Query().Get("id") != "original-job" {
+							t.Error("query changed task identity")
+						}
+						http.Error(w, "internal error", 500)
+						return
+					}
+					submits.Add(1)
+					switch mode {
+					case "lost_response":
+						conn, _, err := w.(http.Hijacker).Hijack()
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						_ = conn.Close()
+					case "partial_response":
+						w.Header().Set("Content-Length", "100")
+						_, _ = w.Write([]byte("{"))
+					case "307", "308":
+						if r.URL.Path == "/redirected" {
+							http.Error(w, "internal error", 500)
+							return
+						}
+						status := http.StatusTemporaryRedirect
+						if mode == "308" {
+							status = http.StatusPermanentRedirect
+						}
+						http.Redirect(w, r, "/redirected", status)
+					case "query_error":
+						_, _ = w.Write([]byte(`{"id":"original-job","status":"running"}`))
+					default:
+						http.Error(w, "internal error", 500)
+					}
+				}))
+				defer server.Close()
+				httpClient := server.Client()
+				httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { redirects.Add(1); return nil }
+				client := NewClient(Config{Model: "nano-banana-fast", SubmitURL: server.URL, MaxAttempts: 3, PollInterval: time.Millisecond, HTTPClient: httpClient})
+				pinned, err := newPinnedProductImageClient(client, "nano-banana-fast", "test-credential", "test-config")
+				if err != nil {
+					t.Fatal(err)
+				}
+				route := openaiclient.ImageRouteSelection{CredentialReference: "test-credential", ConfigurationVersion: "test-config"}
+				zero := 0
+				req := &openaiclient.ImageEditRequest{Model: "nano-banana-fast", Prompt: "white background", Image: []byte("source"), ImageContentType: "image/png", MaxRetries: &zero}
+				if async {
+					_, err = client.SubmitImageEdit(context.Background(), req)
+				} else {
+					_, err = pinned.EditImageWithRoute(context.Background(), req, route)
+				}
+				if err == nil {
+					t.Fatal("ambiguous provider outcome must return error")
+				}
+				if got := submits.Load(); got != 1 {
+					t.Errorf("submit count=%d, want 1", got)
+				}
+				if mode == "query_error" && queries.Load() != 1 {
+					t.Errorf("query count=%d, want 1", queries.Load())
+				}
+				if redirects.Load() != 0 {
+					t.Errorf("source edit followed %d redirects", redirects.Load())
+				}
+				// The request-local override must not alter the shared client's defaults.
+				submits.Store(0)
+				queries.Store(0)
+				redirects.Store(0)
+				req.MaxRetries = nil
+				if async {
+					_, _ = client.SubmitImageEdit(context.Background(), req)
+				} else {
+					_, _ = pinned.EditImageWithRoute(context.Background(), req, route)
+				}
+				want := int32(3)
+				if async {
+					want = 1
+				}
+				if mode == "307" || mode == "308" {
+					want *= 2
+				}
+				// A plain EOF is not retryable by the existing GRSAI policy.
+				if mode == "lost_response" {
+					want = 1
+				}
+				if got := submits.Load(); got != want {
+					t.Errorf("ordinary edit submits=%d, want unchanged %d", got, want)
+				}
+				if (mode == "307" || mode == "308") && redirects.Load() == 0 {
+					t.Error("shared redirect policy was overwritten")
+				}
+			})
+		}
+	}
+}
 
 func TestReferenceMaterializationBudgetCapsConcurrentReferences(t *testing.T) {
 	budget := newReferenceMaterializationBudget(maxMaterializedReferenceBytes, 1)

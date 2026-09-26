@@ -48,6 +48,27 @@ func imageReferenceClient(server *httptest.Server) *http.Client {
 	return &http.Client{Transport: rewriteImageReferenceTransport{base: server.Client().Transport, target: target}}
 }
 
+func TestClientRejectsUnsupportedEditRetryOverrideBeforeDispatch(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"aW1hZ2U="}}]}}]}`))
+	}))
+	defer server.Close()
+	client := NewClient(Config{Model: "gemini-image", BaseURL: server.URL, HTTPClient: server.Client()})
+	zero := 0
+	req := &openaiclient.ImageEditRequest{Prompt: "white background", Image: []byte("source"), ImageContentType: "image/png", MaxRetries: &zero}
+	_, err := client.EditImage(context.Background(), req)
+	if err == nil || calls != 0 {
+		t.Fatalf("unsupported no-replay contract: err=%v dispatch=%d", err, calls)
+	}
+	req.MaxRetries = nil
+	_, err = client.EditImage(context.Background(), req)
+	if err != nil || calls != 1 {
+		t.Fatalf("ordinary edit changed: err=%v dispatch=%d", err, calls)
+	}
+}
+
 func TestClientGenerateImageUsesGeminiGenerateContentEndpoint(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1beta/models/gemini-2.5-flash-image:generateContent" {
