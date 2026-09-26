@@ -81,7 +81,7 @@ func TestImagePointsReserveBothLimitsAndSettleOriginalMonth(t *testing.T) {
 	auth.err = orgresource.ErrForbidden
 	_, err = r.ReserveImageGeneration(ctx, fact.Intent.Identity)
 	require.ErrorIs(t, err, orgresource.ErrForbidden)
-	owner.fact, err = owner.fact.RecordSuccess(imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64)})
+	owner.fact, err = owner.fact.RecordSuccess(imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), ResultUnavailable: "invalid_result"})
 	require.NoError(t, err)
 	settled, err := r.FinalizeImageGeneration(ctx, fact.Intent.Identity)
 	require.NoError(t, err)

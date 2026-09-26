@@ -170,7 +170,7 @@ func TestGenerationRecoveryConsumesExistingProofWithoutReserveOrDispatch(t *test
 	require.NoError(t, err)
 	require.EqualValues(t, 12, read.Reserved)
 	require.Zero(t, read.Consumed)
-	_, err = owner.RecordGenerationSuccess(ctx, intent, imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64)})
+	_, err = owner.RecordGenerationSuccess(ctx, intent, imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), ResultUnavailable: "invalid_result"})
 	require.NoError(t, err)
 	state, err = recovery.ReconcileExistingGeneration(ctx, intent.Identity)
 	require.NoError(t, err)

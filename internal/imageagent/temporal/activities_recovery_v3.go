@@ -29,7 +29,8 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return EffectRecoveryResult{}, err
 	}
 	executionInput := imageagent.SlotExecutionInput{
-		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		OrganizationIdentity: input.Identity,
+		RunID:                input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
@@ -61,6 +62,10 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		if err != nil {
 			return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
 		}
+	}
+	effect, err = a.recoverSucceededGenerationOutput(ctx, executionInput, reservation, effect)
+	if err != nil {
+		return EffectRecoveryResult{}, err
 	}
 	switch effect.Phase {
 	case imageagent.SlotEffectV3PublicationComplete:

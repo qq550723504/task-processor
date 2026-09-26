@@ -67,7 +67,7 @@ func TestGenerationFactGormFencePreservesKnownSuccess(t *testing.T) {
 	require.Error(t, err)
 	_, err = repository.MarkGenerationUnknown(context.Background(), intent)
 	require.NoError(t, err)
-	proof := imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64)}
+	proof := imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), ResultUnavailable: "invalid_result"}
 	_, err = repository.RecordGenerationSuccess(context.Background(), intent, proof)
 	require.NoError(t, err)
 	_, err = repository.MarkGenerationUnknown(context.Background(), intent)

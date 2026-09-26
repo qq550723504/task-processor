@@ -16,6 +16,32 @@ func generationTestReceipt(f GenerationFact) GenerationReservationReceipt {
 	return GenerationReservationReceipt{IntentID: f.IntentID, Fingerprint: f.Fingerprint, OrganizationID: f.Intent.Identity.TenantID, MemberID: f.Intent.MemberID, OperationID: "image-reserve:" + f.IntentID, ReservationID: "reservation-1", ResourceType: "ai_point", Points: f.Intent.Points, PriceVersion: f.Intent.PriceVersion, LimitVersion: f.Intent.LimitVersion, MonthStart: f.Intent.MonthStart}
 }
 
+func TestGenerationSuccessLocatorIsImmutableAndUnsafeOutputStillSucceeded(t *testing.T) {
+	f, err := NewGenerationFact(generationTestIntent())
+	require.NoError(t, err)
+	f, err = f.BindReservation(generationTestReceipt(f))
+	require.NoError(t, err)
+	f, _, err = f.BeginDispatch()
+	require.NoError(t, err)
+	proof := GenerationSuccess{ResponseID: "result", ResultDigest: strings.Repeat("c", 64)}
+	_, err = f.RecordSuccess(proof)
+	require.ErrorIs(t, err, ErrValidation, "success must explicitly retain locator or unavailable reason")
+	for _, raw := range []string{"", "https://127.0.0.1/image", "https://u:password@example.com/image", "https://example.com/#fragment", strings.Repeat("x", 4097)} {
+		got, err := f.RecordSuccess(proof.WithResultLocator(raw, ""))
+		require.NoError(t, err)
+		require.Equal(t, GenerationSucceeded, got.State)
+		require.Empty(t, got.Success.ResultURL)
+		require.Equal(t, "invalid_result", got.Success.ResultUnavailable)
+	}
+	proof = proof.WithResultLocator("https://example.com/output.png?signature=private", "")
+	succeeded, err := f.RecordSuccess(proof)
+	require.NoError(t, err)
+	require.Equal(t, proof.ResultURL, succeeded.Success.ResultURL)
+	changed := proof.WithResultLocator("https://example.com/other.png", "")
+	_, err = succeeded.RecordSuccess(changed)
+	require.ErrorIs(t, err, ErrRevisionConflict)
+}
+
 func TestGenerationFactFenceAndImmutableProviderProof(t *testing.T) {
 	f, err := NewGenerationFact(generationTestIntent())
 	require.NoError(t, err)
@@ -39,7 +65,7 @@ func TestGenerationFactFenceAndImmutableProviderProof(t *testing.T) {
 	_, won, err = unknown.BeginDispatch()
 	require.NoError(t, err)
 	require.False(t, won)
-	proof := GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64)}
+	proof := GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), ResultUnavailable: "invalid_result"}
 	succeeded, err := unknown.RecordSuccess(proof)
 	require.NoError(t, err)
 	replayed, err := succeeded.RecordSuccess(proof)
@@ -97,7 +123,7 @@ func TestGenerationSuccessNeverInventsUnknownUsage(t *testing.T) {
 	require.NoError(t, err)
 	f, _, err = f.BeginDispatch()
 	require.NoError(t, err)
-	proof := GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), UsageKnown: true, InputTokens: 1, OutputTokens: 5, TotalTokens: 6}
+	proof := GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), ResultUnavailable: "invalid_result", UsageKnown: true, InputTokens: 1, OutputTokens: 5, TotalTokens: 6}
 	_, err = f.RecordSuccess(proof)
 	require.NoError(t, err)
 	proof.UsageKnown = false

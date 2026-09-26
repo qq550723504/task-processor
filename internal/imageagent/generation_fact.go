@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -49,10 +50,13 @@ type GenerationSuccess struct {
 	ResponseID   string
 	RequestID    string
 	ResultDigest string
-	UsageKnown   bool
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
+	// Worker-only locator. Never expose GenerationSuccess in a public DTO.
+	ResultURL         string
+	ResultUnavailable string
+	UsageKnown        bool
+	InputTokens       int64
+	OutputTokens      int64
+	TotalTokens       int64
 }
 
 type GenerationState string
@@ -264,6 +268,13 @@ func (f GenerationFact) matchesReceipt(r GenerationReservationReceipt) bool {
 }
 
 func validGenerationSuccess(s GenerationSuccess) bool {
+	if s.ResultURL != "" {
+		if s.ResultUnavailable != "" || !validGenerationResultURL(s.ResultURL) {
+			return false
+		}
+	} else if s.ResultUnavailable != "invalid_result" {
+		return false
+	}
 	if s.ResponseID == "" || strings.TrimSpace(s.ResponseID) != s.ResponseID || len(s.ResponseID) > 192 || len(s.RequestID) > 192 || strings.TrimSpace(s.RequestID) != s.RequestID || !generationDigest(s.ResultDigest) {
 		return false
 	}
@@ -271,6 +282,28 @@ func validGenerationSuccess(s GenerationSuccess) bool {
 		return s.InputTokens == 0 && s.OutputTokens == 0 && s.TotalTokens == 0
 	}
 	return s.InputTokens >= 0 && s.OutputTokens >= 0 && s.TotalTokens > 0 && s.InputTokens <= s.TotalTokens && s.OutputTokens == s.TotalTokens-s.InputTokens
+}
+
+// Bound the original signed URL without rewriting its query. All actual GETs
+// additionally use the public-image DNS/dial and download/decoding limits.
+func validGenerationResultURL(raw string) bool {
+	if len(raw) == 0 || len(raw) > 4096 || strings.ContainsAny(raw, "\r\n\x00") {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil || u.Fragment != "" || u.Scheme != "https" {
+		return false
+	}
+	validated, err := ValidateSafeImageURL(raw)
+	return err == nil && validated == raw
+}
+
+func (s GenerationSuccess) WithResultLocator(raw, unavailable string) GenerationSuccess {
+	s.ResultURL, s.ResultUnavailable = "", "invalid_result"
+	if unavailable == "" && validGenerationResultURL(raw) {
+		s.ResultURL, s.ResultUnavailable = raw, ""
+	}
+	return s
 }
 
 func generationDigest(value string) bool {

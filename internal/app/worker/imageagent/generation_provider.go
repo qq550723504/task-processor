@@ -48,7 +48,8 @@ func (f generationProviderFactory) prepare(ctx context.Context, observe func(con
 			return openai.NewProductImageAdapter(openai.ProductImageAdapterConfig{ImageClient: bound, Provider: "grsai", ImageModel: cfg.Model, RouteReference: metadata.RouteReference, CredentialReference: metadata.CredentialReference, ConfigurationVersion: metadata.ConfigurationVersion, Prompts: openai.DefaultProductImagePrompts(), PricingVersion: metadata.PriceVersion, MaximumSceneOutputs: 1, GeneratedImageFetcher: f.generatedFetcher})
 		},
 	}, func(ctx context.Context, observation grsai.GenerationObservation) error {
-		return observe(ctx, imageagent.GenerationSuccess{ResponseID: observation.ResponseID, RequestID: observation.RequestID, ResultDigest: observation.ResultDigest, UsageKnown: observation.UsageKnown, InputTokens: int64(observation.Usage.PromptTokens), OutputTokens: int64(observation.Usage.CompletionTokens), TotalTokens: int64(observation.Usage.TotalTokens)})
+		proof := imageagent.GenerationSuccess{ResponseID: observation.ResponseID, RequestID: observation.RequestID, ResultDigest: observation.ResultDigest, UsageKnown: observation.UsageKnown, InputTokens: int64(observation.Usage.PromptTokens), OutputTokens: int64(observation.Usage.CompletionTokens), TotalTokens: int64(observation.Usage.TotalTokens)}
+		return observe(ctx, proof.WithResultLocator(observation.ResultURL, observation.ResultUnavailable))
 	})
 	if err != nil {
 		return imageagent.PreparedGenerationProvider{}, imageagent.ErrBudgetQuoteUnavailable

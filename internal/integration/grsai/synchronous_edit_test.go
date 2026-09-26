@@ -123,6 +123,14 @@ func TestSynchronousProductEditUsesExactGRSAIWireBeforeDownloads(t *testing.T) {
 			if downloads.Load() != 0 {
 				t.Fatal("output must be fetched only by the existing safe product-image consumer")
 			}
+			if wantObserved == 1 {
+				encoded, _ := json.Marshal(observed)
+				var fact map[string]any
+				_ = json.Unmarshal(encoded, &fact)
+				if fact["ResultURL"] != server.URL+"/image" {
+					t.Fatal("durable observer lost original result locator before download")
+				}
+			}
 			if mode == "success" && (response.UsageKnown || len(response.Data) != 1 || response.Data[0].URL != server.URL+"/image") {
 				t.Fatalf("unexpected response: %+v", response)
 			}

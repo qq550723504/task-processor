@@ -13,13 +13,16 @@ import (
 )
 
 // GenerationObservation is a provider effect fact, not an image-validity or
-// approval decision. It deliberately carries no provider URL or raw response.
+// approval decision. The private result locator is consumed only by the
+// durable effect observer, never by logs, audit projections or HTTP DTOs.
 type GenerationObservation struct {
-	ResponseID   string
-	RequestID    string
-	ResultDigest string
-	UsageKnown   bool
-	Usage        ai.Usage
+	ResponseID        string
+	RequestID         string
+	ResultDigest      string
+	ResultURL         string
+	ResultUnavailable string
+	UsageKnown        bool
+	Usage             ai.Usage
 }
 
 type GenerationObserver func(context.Context, GenerationObservation) error
@@ -98,6 +101,11 @@ func (c *Client) EditImageOnce(ctx context.Context, req *ai.ImageEditRequest, ob
 	}
 	digest := sha256.Sum256(encoded)
 	observation := GenerationObservation{ResponseID: payload.ID, RequestID: payload.RequestID, ResultDigest: hex.EncodeToString(digest[:])}
+	observation.ResultUnavailable = "invalid_result"
+	if len(payload.Results) == 1 && len(payload.Results[0].URL) > 0 && len(payload.Results[0].URL) <= 4096 {
+		observation.ResultURL = payload.Results[0].URL
+		observation.ResultUnavailable = ""
+	}
 	// The generation may be complete even if the caller's request was cancelled
 	// just after the response. Keep only this bounded finalization alive.
 	finalization, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)

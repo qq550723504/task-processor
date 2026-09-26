@@ -355,6 +355,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization generation admission: %w", generationErr)
 		}
 		dependencies.GenerationRecovery = recovery
+		dependencies.GenerationOutputRecovery = generationOutputRecovery(nil)
 		dependencies.StagedSlotExecutor = organizationMainSlotExecutor{delegate: v3Executor, generation: generation}
 	}
 	dependencies.ArtifactStore = artifactStore

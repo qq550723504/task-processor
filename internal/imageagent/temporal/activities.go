@@ -19,6 +19,7 @@ type RecoveryWorkflowStarter func(context.Context, EffectRecoveryWorkflowInput) 
 
 type ActivityDependencies struct {
 	GenerationRecovery       imageagent.GenerationRecovery
+	GenerationOutputRecovery imageagent.GenerationOutputRecovery
 	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
 	Repository               imageagent.Repository
 	SlotEffects              imageagent.SlotExternalEffectRepository
@@ -35,6 +36,7 @@ type ActivityDependencies struct {
 
 type Activities struct {
 	generationRecovery       imageagent.GenerationRecovery
+	generationOutputRecovery imageagent.GenerationOutputRecovery
 	executionAuthorizer      imageagent.ExecutionAuthorizer
 	repository               imageagent.Repository
 	slotEffects              imageagent.SlotExternalEffectRepository
@@ -50,7 +52,7 @@ type Activities struct {
 }
 
 func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
-	if dependencies.GenerationRecovery != nil && dependencies.ExecutionAuthorizer == nil {
+	if (dependencies.GenerationRecovery != nil || dependencies.GenerationOutputRecovery != nil) && dependencies.ExecutionAuthorizer == nil {
 		return nil, fmt.Errorf("generation recovery requires organization execution assembly")
 	}
 	if dependencies.Repository == nil {
@@ -97,9 +99,10 @@ func NewActivities(dependencies ActivityDependencies) (*Activities, error) {
 		}
 	}
 	return &Activities{
-		generationRecovery:  dependencies.GenerationRecovery,
-		executionAuthorizer: dependencies.ExecutionAuthorizer,
-		repository:          dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,
+		generationRecovery:       dependencies.GenerationRecovery,
+		generationOutputRecovery: dependencies.GenerationOutputRecovery,
+		executionAuthorizer:      dependencies.ExecutionAuthorizer,
+		repository:               dependencies.Repository, slotEffects: dependencies.SlotEffects, slotExecutor: dependencies.SlotExecutor, publisher: dependencies.Publisher, publisherV3: dependencies.PublisherV3,
 		slotEffectsV3: dependencies.SlotEffectsV3, stagedSlotExecutor: dependencies.StagedSlotExecutor, artifactStore: dependencies.ArtifactStore,
 		publicationOwner: dependencies.PublicationOwner, publicationLeaseDuration: dependencies.PublicationLeaseDuration,
 		recoveryWorkflowStarter: dependencies.RecoveryWorkflowStarter,

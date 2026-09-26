@@ -122,6 +122,7 @@ func TestResolveOrganizationWorkerComposesGovernedSingleMainSlotAndLiveAuthorize
 	require.True(t, builtOrganization)
 	require.NotNil(t, dependencies.ExecutionAuthorizer)
 	require.NotNil(t, dependencies.GenerationRecovery, "removing current price must not disable old immutable-proof settlement")
+	require.NotNil(t, dependencies.GenerationOutputRecovery, "removing price must not disable live-authorized original output GET")
 	require.IsType(t, organizationMainSlotExecutor{}, dependencies.StagedSlotExecutor)
 	require.Nil(t, dependencies.StagedSlotExecutor.(organizationMainSlotExecutor).generation)
 	require.NotNil(t, dependencies.ArtifactStore)

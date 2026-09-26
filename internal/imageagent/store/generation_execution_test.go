@@ -70,7 +70,7 @@ func (p *generationExecutionProvider) GenerateQuotedSlot(ctx context.Context, in
 	if p.unknown {
 		return imageagent.SlotGeneratedOutput{}, errors.New("response lost")
 	}
-	if err := p.observer(ctx, imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64)}); err != nil {
+	if err := p.observer(ctx, imageagent.GenerationSuccess{ResponseID: "response-1", ResultDigest: strings.Repeat("c", 64), ResultUnavailable: "invalid_result"}); err != nil {
 		return imageagent.SlotGeneratedOutput{}, err
 	}
 	return imageagent.SlotGeneratedOutput{}, errors.New("generated output download failed")
