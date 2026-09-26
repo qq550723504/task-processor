@@ -83,7 +83,8 @@ describe("ReferralsPage", () => {
     expect(within(rulesRegion).getByText("10%")).toBeVisible();
     expect(within(rulesRegion).getByText("14 天")).toBeVisible();
     expect(within(rulesRegion).getByText("¥100.00")).toBeVisible();
-    expect(within(rulesRegion).getByText(/当前提现申请采用人工审核/)).toBeVisible();
+    expect(within(rulesRegion).getByText("最低申请金额为 ¥100.00；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。")).toBeVisible();
+    expect(within(rulesRegion).queryByText("可用收益达到最低申请金额后可发起提现；当前提现申请采用人工审核。")).not.toBeInTheDocument();
     expect(within(rulesRegion).getByText("未提供")).toBeVisible();
     expect(within(rulesRegion).getByText("当前规则接口尚未提供违规推广处理政策；本页面不补充或推测处罚规则。")).toBeVisible();
 
