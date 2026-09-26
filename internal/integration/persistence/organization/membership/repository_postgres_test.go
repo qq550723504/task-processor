@@ -142,6 +142,55 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if _, err := rebuilt.Apply(ctx, persisted.Scope, persisted.Key, persisted.Revision, domain.OperationChange{Event: domain.EventDispatch, DispatchID: uuid.NewString()}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("redispatch=%v", err)
 	}
+	// Different targets coexist while the original dispatch stays occupied.
+	second := original
+	second.Scope = winner.Scope
+	second.Key = uuid.NewString()
+	second.TargetUserID = "independent-target"
+	if _, err := rebuilt.Begin(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	firstPage, err := rebuilt.ListPending(ctx, winner.Scope, domain.PendingPageRequest{Limit: 1})
+	if err != nil || len(firstPage.Items) != 1 || firstPage.Next == "" {
+		t.Fatalf("first pending page: %+v %v", firstPage, err)
+	}
+	secondPage, err := rebuilt.ListPending(ctx, winner.Scope, domain.PendingPageRequest{Limit: 1, After: firstPage.Next})
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Next != "" || secondPage.Items[0].Key <= firstPage.Items[0].Key {
+		t.Fatalf("next pending page: %+v %v", secondPage, err)
+	}
+	for _, field := range []string{"actor", "org", "project"} {
+		scope := winner.Scope
+		switch field {
+		case "actor":
+			scope.ActorID = "foreign"
+		case "org":
+			scope.OrganizationID = "foreign"
+		case "project":
+			scope.ProjectID = "foreign"
+		}
+		page, err := rebuilt.ListPending(ctx, scope, domain.PendingPageRequest{Limit: 20})
+		if len(page.Items) != 0 || (field != "project" && err != nil) {
+			t.Fatalf("scope leaked: %s %v", field, err)
+		}
+	}
+	before, err := rebuilt.Read(ctx, winner.Scope, winner.Key)
+	if err != nil || before.Revision != persisted.Revision || before.Phase != domain.PhaseDispatched {
+		t.Fatal("list mutated original receipt")
+	}
+	t.Run("pending list validates durable payload against row", func(t *testing.T) {
+		if _, err := sqlDB.ExecContext(ctx, `UPDATE `+table+` SET revision=revision+1 WHERE operation_key=$1 AND actor_id=$2`, winner.Key, winner.Scope.ActorID); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if _, err := sqlDB.ExecContext(ctx, `UPDATE `+table+` SET revision=revision-1 WHERE operation_key=$1 AND actor_id=$2`, winner.Key, winner.Scope.ActorID); err != nil {
+				t.Error(err)
+			}
+		}()
+		page, err := rebuilt.ListPending(ctx, winner.Scope, domain.PendingPageRequest{Limit: 20})
+		if err == nil || len(page.Items) != 0 {
+			t.Fatal("corrupt receipt was projected")
+		}
+	})
 	alias := original
 	alias.Key = uuid.NewString()
 	alias.AuthorizationID = "new-visible-grant"
@@ -160,6 +209,10 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	audit, next, err := rebuilt.ListRecentAudit(ctx, "org", 20, "", "role", nil)
 	if err != nil || next != nil || len(audit) != 1 || audit[0].TargetUserID != "target" || audit[0].Operation != "role" {
 		t.Fatalf("membership audit=%+v next=%v err=%v", audit, next, err)
+	}
+	remaining, err := rebuilt.ListPending(ctx, winner.Scope, domain.PendingPageRequest{Limit: 20})
+	if err != nil || len(remaining.Items) != 1 || remaining.Items[0].Key != second.Key {
+		t.Fatalf("terminal receipt remained pending: %+v %v", remaining, err)
 	}
 	sharedKey := winner
 	sharedKey.Scope.ActorID = winner.Scope.ActorID + "-second"

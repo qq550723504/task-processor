@@ -15,6 +15,7 @@ var currentMembershipRoutes = []currentApplicationRoute{
 	{Method: "POST", Path: "/api/v1/account/members/:member_id/role"},
 	{Method: "POST", Path: "/api/v1/account/members/:member_id/remove"},
 	{Method: "GET", Path: "/api/v1/account/member-operations/:operation_id"},
+	{Method: "GET", Path: "/api/v1/account/member-operations"},
 	{Method: "POST", Path: "/api/v1/account/member-operations/:operation_id/verify"},
 }
 

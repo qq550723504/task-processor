@@ -14,6 +14,7 @@ type taskSubmissionExecutionServiceConfig struct {
 	sheinTranslateAPIBuilder sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
+	costPriceCalculator      SheinCostPriceCalculator
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
 	resolveSheinStoreInfo    func(context.Context, *Task) (*SheinStoreInfo, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings
@@ -25,6 +26,7 @@ type taskSubmissionExecutionService struct {
 	sheinTranslateAPIBuilder sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
+	costPriceCalculator      SheinCostPriceCalculator
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
 	resolveSheinStoreInfo    func(context.Context, *Task) (*SheinStoreInfo, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings
@@ -37,6 +39,7 @@ func newTaskSubmissionExecutionService(config taskSubmissionExecutionServiceConf
 		sheinTranslateAPIBuilder: config.sheinTranslateAPIBuilder,
 		sheinContentOptimizer:    config.sheinContentOptimizer,
 		currentSheinPricingRule:  config.currentSheinPricingRule,
+		costPriceCalculator:      config.costPriceCalculator,
 		resolveSheinStoreID:      config.resolveSheinStoreID,
 		resolveSheinStoreInfo:    config.resolveSheinStoreInfo,
 		resolveSubmitSettings:    config.resolveSubmitSettings,

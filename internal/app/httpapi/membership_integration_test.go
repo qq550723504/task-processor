@@ -27,13 +27,13 @@ import (
 )
 
 type membershipFixture struct {
-	mu                                    sync.Mutex
-	provider, application                 *httptest.Server
-	roles                                 map[string]string
-	users                                 map[string]map[string]any
-	changed                               int
-	revoked, permissionDenied, loseUpdate bool
-	sends                                 int
+	mu                                                sync.Mutex
+	provider, application                             *httptest.Server
+	roles                                             map[string]string
+	users                                             map[string]map[string]any
+	changed                                           int
+	revoked, permissionDenied, loseUpdate, loseCreate bool
+	sends                                             int
 }
 
 func newMembershipFixture(t *testing.T) *membershipFixture {
@@ -135,7 +135,7 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 	if r.URL.Path == "/zitadel.authorization.v2.AuthorizationService/ListAuthorizations" {
 		rows := []any{}
 		if token != "directory-read-sentinel" {
-			role := map[string]string{"viewer": "listingkit_viewer", "operator": "listingkit_operator", "admin": "listingkit_admin"}[token]
+			role := map[string]string{"viewer": "listingkit_viewer", "operator": "listingkit_operator", "admin": "listingkit_admin", "other-admin": "listingkit_admin"}[token]
 			if !f.revoked && role != "" {
 				for _, org := range []string{"B", "C"} {
 					rows = append(rows, map[string]any{"id": "actor-grant-" + org, "project": map[string]string{"id": "project"}, "organization": map[string]string{"id": org, "name": "Enterprise " + org}, "user": map[string]string{"id": token}, "state": "STATE_ACTIVE", "roles": []any{map[string]string{"key": role}}})
@@ -183,6 +183,10 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 	at := time.Now().UTC().Format(time.RFC3339Nano)
 	switch r.URL.Path {
 	case "/v2/users/new":
+		if f.loseCreate {
+			w.WriteHeader(502)
+			return
+		}
 		id := field("userId")
 		var human map[string]any
 		_ = json.Unmarshal(payload["human"], &human)
@@ -220,6 +224,57 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 	default:
 		w.WriteHeader(404)
 	}
+}
+
+func TestMembershipPendingRecoveryKeepsUnknownAndAllowsOtherTargets(t *testing.T) {
+	f := newMembershipFixture(t)
+	f.mu.Lock()
+	f.loseCreate = true
+	f.mu.Unlock()
+	key := uuid.NewString()
+	input := map[string]any{"email": "pending@example.test", "firstName": "Private", "lastName": "Invitation", "role": "listingkit_viewer"}
+	status, original := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", key, input)
+	require.Equal(t, 200, status, original)
+	require.Equal(t, "unknown", original["status"])
+	status, listing := f.request(t, "GET", "/api/v1/account/member-operations?limit=1", "admin", "B", "", nil)
+	require.Equal(t, 200, status, listing)
+	require.Equal(t, "membership-operations-v1", listing["schemaVersion"])
+	items := listing["items"].([]any)
+	require.Len(t, items, 1)
+	require.Equal(t, key, items[0].(map[string]any)["id"])
+	raw, err := json.Marshal(listing)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "pending@example.test")
+	require.NotContains(t, string(raw), "Private")
+	for _, scope := range [][2]string{{"other-admin", "B"}, {"admin", "C"}} {
+		status, listing = f.request(t, "GET", "/api/v1/account/member-operations", scope[0], scope[1], "", nil)
+		require.Equal(t, 200, status, listing)
+		require.Empty(t, listing["items"])
+	}
+	status, _ = f.request(t, "GET", "/api/v1/account/member-operations", "viewer", "B", "", nil)
+	require.Equal(t, 403, status)
+	status, _ = f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", uuid.NewString(), input)
+	require.Equal(t, 409, status)
+	f.mu.Lock()
+	require.Equal(t, 1, f.sends)
+	f.loseCreate = false
+	f.mu.Unlock()
+	input["email"] = "different@example.test"
+	status, completed := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", uuid.NewString(), input)
+	require.Equal(t, 200, status, completed)
+	require.Equal(t, "acknowledged", completed["status"])
+	status, listing = f.request(t, "GET", "/api/v1/account/member-operations", "admin", "B", "", nil)
+	require.Equal(t, 200, status, listing)
+	require.Len(t, listing["items"], 1)
+	status, reread := f.request(t, "GET", "/api/v1/account/member-operations/"+key, "admin", "B", "", nil)
+	require.Equal(t, 200, status, reread)
+	require.Equal(t, original, reread)
+	f.mu.Lock()
+	require.Equal(t, 3, f.sends)
+	f.revoked = true
+	f.mu.Unlock()
+	status, _ = f.request(t, "GET", "/api/v1/account/member-operations", "admin", "B", "", nil)
+	require.Equal(t, 403, status)
 }
 
 func (f *membershipFixture) request(t *testing.T, method, path, actor, org, key string, payload any) (int, map[string]any) {

@@ -60,6 +60,7 @@ func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) list
 		SheinSaleAttributeResolver: in.submit.shein.saleAttributeResolver,
 		SheinSizeHeaderResolver:    in.submit.shein.sizeHeaderResolver,
 		SheinPricingPolicy:         in.submit.shein.pricingPolicy,
+		SheinCostPriceCalculator:   in.input.SheinCostPriceCalculator,
 		SheinProductAPIBuilder:     in.submit.shein.productAPIBuilder,
 		SheinImageAPIBuilder:       in.submit.shein.imageAPIBuilder,
 		SheinTranslateAPIBuilder:   in.submit.shein.translateAPIBuilder,

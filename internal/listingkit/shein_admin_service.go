@@ -18,6 +18,7 @@ type sheinAdminServiceConfig struct {
 	repo                    Repository
 	recovery                *taskSubmissionRecoveryService
 	currentPricingRule      func() sheinpub.PricingRule
+	costPriceCalculator     SheinCostPriceCalculator
 	newSheinAPIClient       func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
 	buildTaskPreview        func(context.Context, *Task, string) (*ListingKitPreview, error)
 	categoryResolver        sheinpub.CategoryResolver
@@ -31,6 +32,7 @@ type sheinAdminService struct {
 	repo                    Repository
 	recovery                *taskSubmissionRecoveryService
 	currentPricingRule      func() sheinpub.PricingRule
+	costPriceCalculator     SheinCostPriceCalculator
 	newSheinAPIClient       func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
 	buildTaskPreview        func(context.Context, *Task, string) (*ListingKitPreview, error)
 	categoryResolver        sheinpub.CategoryResolver
@@ -45,6 +47,7 @@ func newSheinAdminService(config sheinAdminServiceConfig) *sheinAdminService {
 		repo:                    config.repo,
 		recovery:                config.recovery,
 		currentPricingRule:      config.currentPricingRule,
+		costPriceCalculator:     config.costPriceCalculator,
 		newSheinAPIClient:       config.newSheinAPIClient,
 		buildTaskPreview:        config.buildTaskPreview,
 		categoryResolver:        config.categoryResolver,
@@ -79,7 +82,7 @@ func (s *sheinAdminService) PreviewSheinPrice(ctx context.Context, taskID string
 		}
 		applyToTask = req.ApplyToTask
 	}
-	review := buildSheinPricingReview(pkg, rule, overrides)
+	review := buildSheinPricingReview(pkg, rule, overrides, s.costPriceCalculator)
 	if applyToTask {
 		if _, err := s.mutateAdminTask(ctx, taskID, func(task *Task) error {
 			return applySheinAdminPricingReview(task, review)
@@ -257,7 +260,7 @@ func (s *sheinAdminService) applySheinFinalDraftUpdate(task *Task, req *SheinFin
 	if pkg.Pricing != nil && pkg.Pricing.RuleSnapshot != nil {
 		rule = *pkg.Pricing.RuleSnapshot
 	}
-	review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalSubmissionDraft.ManualPriceOverrides)
+	review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalSubmissionDraft.ManualPriceOverrides, s.costPriceCalculator)
 	applySheinPricingReview(pkg, review)
 	sheinpub.ApplyFinalImageDraft(pkg)
 	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)

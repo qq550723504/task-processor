@@ -80,6 +80,23 @@ describe("authenticated account referrals BFF", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("forwards complete evidence only after checking the current Auth.js subject", async () => {
+    // #475's passive observer can infer the binding from these owner replies,
+    // but must not infer it from a BFF identity rejection or transport failure.
+    const fetch = vi.fn().mockResolvedValue(Response.json({ error: "referral_verification_pending" }, { status: 409 }));
+    vi.stubGlobal("fetch", fetch);
+    const pending = await complete(request("referrals/complete", "POST"));
+    expect(pending.status).toBe(409);
+    expect(await pending.json()).toMatchObject({ code: "referral_verification_pending" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    state.user = "different-subject";
+    const stale = await complete(request("referrals/complete", "POST"));
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: "IDENTITY_CONTEXT_CHANGED" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards payout-method creation through the authenticated BFF", async () => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ schemaVersion: "payout-method-v1", methodId: "method-1", type: "ALIPAY", displayName: "支付宝", maskedDestination: "***1234", version: "1" }, { status: 201 })));
     vi.stubGlobal("fetch", fetch);

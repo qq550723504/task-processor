@@ -18,16 +18,17 @@
 .registrationCard h1 { margin: .35rem 0 .6rem; font-size: clamp(1.75rem, 5vw, 2.5rem); }
 .eyebrow { margin: 0; color: #4f46e5; font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .lead { margin: 0 0 1.5rem; color: var(--muted-foreground); line-height: 1.7; }
-.form { display: grid; gap: 1rem; }
-.form label { display: grid; gap: .45rem; font-size: .9rem; font-weight: 650; }
-.form input { min-height: 2.75rem; width: 100%; border: 1px solid var(--input); border-radius: .55rem; background: var(--background); color: var(--foreground); padding: .65rem .75rem; }
-.form input:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 45%, transparent); outline-offset: 1px; }
+.form { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1rem; }
+.form label { display: grid; min-width: 0; gap: .45rem; font-size: .9rem; font-weight: 650; }
+.form input, .form select { box-sizing: border-box; min-width: 0; min-height: 2.75rem; width: 100%; border: 1px solid var(--input); border-radius: .55rem; background: var(--background); color: var(--foreground); padding: .65rem .75rem; }
+.form input:focus-visible, .form select:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 45%, transparent); outline-offset: 1px; }
+.form input:disabled, .form select:disabled { cursor: not-allowed; opacity: .65; }
 .form input[readonly] { color: var(--foreground); }
 .nameGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.notice, .recovery, .error, .codeCard, .metric { border: 1px solid var(--border); border-radius: .8rem; background: var(--card); padding: 1rem; }
+.notice, .recovery, .error, .codeCard, .withdrawalCard, .metric { border: 1px solid var(--border); border-radius: .8rem; background: var(--card); padding: 1rem; }
 .notice, .recovery { display: grid; gap: .8rem; margin-top: 1rem; }
-.notice h2, .recovery h2, .codeCard h2 { margin: 0; font-size: 1.05rem; }
-.notice p, .recovery p, .error p, .codeCard p { margin: 0; color: var(--muted-foreground); line-height: 1.6; }
+.notice h2, .recovery h2, .codeCard h2, .withdrawalCard h2 { margin: 0; font-size: 1.05rem; }
+.notice p, .recovery p, .error p, .codeCard p, .withdrawalCard p { margin: 0; color: var(--muted-foreground); line-height: 1.6; }
 .recovery { margin: 0 0 1rem; background: color-mix(in srgb, var(--warning) 25%, var(--card)); }
 .error { border-color: color-mix(in srgb, var(--destructive) 35%, var(--border)); background: color-mix(in srgb, var(--destructive) 5%, var(--card)); }
 .pageBody { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1rem; }
@@ -42,6 +43,8 @@
 .codeCard code { display: inline-block; margin: .7rem 0; font-size: 1.25rem; font-weight: 750; letter-spacing: .08em; overflow-wrap: anywhere; }
 .codeCard label { display: grid; gap: .3rem; margin-top: .8rem; color: var(--muted-foreground); font-size: .8rem; }
 .codeCard label code { width: fit-content; max-width: 100%; margin: 0; font-size: .9rem; font-weight: 550; letter-spacing: 0; }
+.withdrawalCard { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; min-width: 0; }
+.withdrawalCard > .form { width: 100%; max-width: 40rem; }
 .overviewSections { display: grid; gap: 1rem; }
 .entryGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
 .activityGrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }

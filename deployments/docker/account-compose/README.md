@@ -168,6 +168,74 @@ create/read back Organization A/B and the three user authorizations, then
 writes the sanitized manifest to the project-owned `acceptance-state` volume.
 It does not add a production route or insert business facts into PostgreSQL.
 
+## Referral completion evidence for a separately authorized acceptance
+
+Issue #475's original completion remains `UNKNOWN / NOT_CLASSIFIED`: its
+Auth.js subject and HTTP status/error were not retained. The candidate user ID
+from the official verification URL, a `CREATED` Intent and no receipt do not
+bind that candidate to the original POST. Do not replay it or start dependent
+payment/refund/withdrawal checks to fill this gap. This section grants no new
+runtime or identity operations.
+
+For a **future, separately authorized** attempt, reuse the passive observer in
+`web/listingkit-ui/scripts/referral-completion-evidence.mjs` on the existing
+Playwright page, before the operator's approved action. It sends no requests,
+does not log in, and does not retry completion. Do not start another runner or
+enable HAR, tracing, raw headers, session dumps or provider payload logging.
+
+```javascript
+// From the existing UI acceptance script/session. Use a new private file.
+const { captureReferralCompletion } = await import("./scripts/referral-completion-evidence.mjs");
+const finishEvidence = await captureReferralCompletion(page, {
+  origin: "https://localhost:<authorized-application-port>",
+  file: "<absolute-private-output-directory>/completion.jsonl",
+});
+// Existing authorized browser steps run here; this helper performs none.
+// In the existing session's finally block, before closing the browser:
+await finishEvidence();
+```
+
+The existing `account-browser-verification.mjs` installs the same observer for
+its account pages and lists the files in `report.json`. Its default scenarios
+do not click complete; each file has an `attemptCount` and independent
+`NOT_RUN` / `OBSERVED` / `CAPTURE_FAILED` status. The report's overall `PASS`
+still refers only to the account checks. `OBSERVED` means a request was captured,
+not that completion passed; empty files mean no completion observed, **NOT_RUN**.
+The script finishes capture before closing each context.
+Use a fresh output directory; existing evidence files are never overwritten.
+Keep the output under the private handoff directory and its Windows ACL above.
+Retain the existing report's source/runtime SHA and exact origin with the file;
+a control fixture is not real Auth.js/provider acceptance.
+
+Each matching POST gets a flushed `REQUEST` row before its result and a row
+with the same attempt number when the response/failure is observed. Only the
+exact loopback origin/path is observed; query-bearing URLs are ignored. Output
+contains HTTP status, allowlisted error code, opaque expected/authenticated
+subject and Intent when available, nullable verification/receipt facts and
+their source. It excludes bodies, email, cookies, credentials and proof.
+
+- `expectedSubject` is only the public `X-Expected-User-ID` assertion.
+  `authenticatedSubject` is populated **by contract inference** only when a
+  recognized owner reply proves the BFF passed its Auth.js equality check;
+  its source is `BFF_VALIDATED_EXPECTATION`, not a directly read session.
+  BFF rejection, timeout, malformed response or missing assertion cannot
+  establish that binding.
+- `referral_verification_pending` / 409 gives `verifiedReadback=false` with
+  source `OWNER_PENDING_CONTRACT`. A valid completion receipt gives
+  `receiptPresent=true` and its opaque Intent. Receipt replay does **not**
+  imply a fresh provider read or `verifiedReadback=true`.
+- All other unobserved verification/receipt/Intent fields stay `null` /
+  `NOT_OBSERVED`, never false or a candidate ID. An UNKNOWN response, failed
+  transport or missing response is not safe failure and never authorizes a
+  retry. This helper does not classify missing/conflict/expired errors.
+
+If independent provider verified/match booleans or receipt absence are still
+required, obtain them only through the already authorized current owner /
+repository diagnostic boundary for that exact bound subject. Record source
+and observation time separately; do not dump SQL, decrypt payloads, invoke
+Complete/Resume as a read, or add a production debug route. Missing evidence
+remains a limitation. This future capture cannot reconstruct the old POST.
+
 ## Scope limits
 
 Provider-owned identity fields remain read-only; the account-center-owned

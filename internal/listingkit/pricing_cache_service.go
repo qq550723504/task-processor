@@ -19,7 +19,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	req := buildSheinPublishRequest(task.Request)
 	review := sheinpub.NormalizePublishedPricingReview(task.Result.Shein)
 	if review == nil {
-		review = buildSheinDraftBackedPricingReview(task.Result.Shein, s.currentSheinPricingRule(), nil)
+		review = buildSheinDraftBackedPricingReview(task.Result.Shein, s.currentSheinPricingRule(), nil, s.sheinRuntimeDeps.costPriceCalculator)
 		review = sheinpub.NormalizePublishedPricingReview(&sheinpub.Package{
 			DraftPayload: task.Result.Shein.DraftPayload,
 			Pricing:      review,

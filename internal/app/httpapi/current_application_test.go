@@ -50,7 +50,7 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 				}
 				if includeMembership {
 					routes = append(routes, members.Routes()...)
-					want += 7
+					want += 8
 				}
 				if len(routes) != want {
 					t.Fatalf("route count got %d want %d", len(routes), want)

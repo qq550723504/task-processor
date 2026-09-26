@@ -190,6 +190,10 @@ func read(ctx context.Context, db rowReader, scope domain.OperationScope, key st
 	if err != nil {
 		return domain.Operation{}, domain.ErrUnavailable
 	}
+	return decodeOperation(scope, key, payload, revision, target, fingerprint, active, email)
+}
+
+func decodeOperation(scope domain.OperationScope, key string, payload []byte, revision int64, target, fingerprint string, active bool, email sql.NullString) (domain.Operation, error) {
 	var op domain.Operation
 	if len(payload) > 16384 || json.Unmarshal(payload, &op) != nil || op.Scope != scope || op.Key != key || op.Revision != revision {
 		return domain.Operation{}, domain.ErrUnavailable

@@ -37,6 +37,27 @@ This is one bounded implementation mapping, not a replacement IAM design.
 
 ## Read and public projection
 
+Issue #492 current product decision (2026-09-25) admits
+`GET /api/v1/account/member-operations`: a pure durable pending-receipt read
+within the current project/Effective Organization/original actor. It requires
+the existing live membership-manage permission, also rechecked after the read.
+Default limit is 20, maximum 100; a canonical UUID cursor pages forward by
+operation key. It exposes the existing safe receipt fields, no invitation
+payload, credentials, dispatch identifier, member-provider observation or writes.
+The existing target/email reservations and all UNKNOWN/no-resend rules below
+remain unchanged. Empty or partial pages are not evidence of terminal outcomes.
+
+The members page can retain several operation IDs and rediscover durable pending
+receipts in a new tab. An unresolved operation does not prohibit unrelated target
+operations. The existing active single local command is preserved when joining
+the bounded local collection; saving a new command must succeed before its POST.
+The durable receipt remains the fact owner; browser storage only retains
+pre-admission recovery inputs. Each operation is explicitly selected/continued;
+there is no automatic verify/resend. Only its terminal receipt allows closing a
+local recovery item. Context changes and late responses cannot replace another
+scope/key or downgrade a known terminal receipt. Original invitation acceptance
+in #438 C remains UNKNOWN and is not satisfied by this independent-target flow.
+
 The existing bounded directory adapter returns assignment ID, user ID, display
 name, login identifier, roles, assignment state and provider timestamps. Exact
 project/Organization is checked in both adapter and service. Missing, malformed,
