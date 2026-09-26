@@ -172,6 +172,23 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 	return &result, true, nil
 }
 
+// Verify checks the original request intent and never prepares, claims, or
+// writes. It delegates to the shared read/resolve contract.
+func (s *BrowserAcquisitionService) Verify(ctx context.Context, key, source string) (sourcing.AcquisitionResult, error) {
+	return s.core.Verify(ctx, key, source)
+}
+
+// Read returns a bounded projection of the current actor's operation.
+func (s *BrowserAcquisitionService) Read(ctx context.Context, operationID string) (sourcing.AcquisitionResult, error) {
+	return s.core.Read(ctx, operationID)
+}
+
+// ReadPublished returns the exact Catalog version recorded by a published
+// operation after Read has bound the current actor and organization to it.
+func (s *BrowserAcquisitionService) ReadPublished(ctx context.Context, operationID string) (sourcing.PublishedAcquisition, error) {
+	return s.core.ReadPublished(ctx, operationID)
+}
+
 // capacityAdmitted performs a bounded preflight when the store supports it.
 func (s *BrowserAcquisitionService) capacityAdmitted(ctx context.Context, scope sourcing.PublicationScope) error {
 	reader, ok := s.core.operations.(sourcing.CapacityReadOperationStore)
