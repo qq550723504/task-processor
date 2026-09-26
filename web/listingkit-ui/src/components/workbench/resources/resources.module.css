@@ -26,7 +26,7 @@
 .memberTable td:last-child { border-right: 1px solid var(--border); border-radius: 0 8px 8px 0; }
 .memberTable small { display: block; color: var(--muted-foreground); margin-top: 4px; overflow-wrap: anywhere; }
 .emptyCell { padding: 24px !important; color: var(--muted-foreground); text-align: center; }
-.allocationEdit { display: flex; align-items: end; gap: 8px; }
+.allocationEdit { position: relative; display: flex; align-items: end; gap: 8px; }
 .allocationEdit label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .allocationEdit input { width: 110px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--background); color: var(--foreground); }
 .readOnly { color: var(--muted-foreground); font-size: 13px; }
