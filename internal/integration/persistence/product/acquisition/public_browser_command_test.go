@@ -35,11 +35,11 @@ func publicBrowserStagingOperation(t *testing.T, channel string) (sourcing.Acqui
 	amount, currency, sourceID, title := "12.50", "CNY", "sku-1", "Browser fixture bottle"
 	evidence := sourcing.AcquisitionEvidence{
 		SchemaVersion: 1, OfferID: source.OfferID, SourceURL: source.URL,
-		Title:        &title,
-		Attributes:   []sourcing.AcquisitionAttribute{{Name: "material", Value: "steel"}},
-		Variants:     []sourcing.AcquisitionVariant{{SourceID: &sourceID, Price: &sourcing.AcquisitionPrice{Amount: amount, Currency: &currency}}},
-		Images:       []sourcing.AcquisitionImage{{URL: "https://cbu01.alicdn.com/fixture-bottle.jpg", Role: "primary"}},
-		CapturedAt:   time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC),
+		Title:         &title,
+		Attributes:    []sourcing.AcquisitionAttribute{{Name: "material", Value: "steel"}},
+		Variants:      []sourcing.AcquisitionVariant{{SourceID: &sourceID, Price: &sourcing.AcquisitionPrice{Amount: amount, Currency: &currency}}},
+		Images:        []sourcing.AcquisitionImage{{URL: "https://cbu01.alicdn.com/fixture-bottle.jpg", Role: "primary"}},
+		CapturedAt:    time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC),
 		ContentSHA256: strings.Repeat("b", 64), ParserVersion: "1688-browser-dom/v1",
 	}
 	envelope, err := sourcing.MapAcquisitionEvidence(op.Source, evidence, channel, op.ID)
