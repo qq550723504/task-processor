@@ -6,6 +6,26 @@ The parser accepts only the explicitly supported static `window.context` JSON
 shape. The checked-in HTML is a synthetic fixture, not evidence that the current
 1688 site is available. Real 1688 network acceptance is NOT_RUN.
 
+> **Provider extension approved in design, not yet implemented (2026-09-26)**:
+> [`PD-1688-SERVER-PUBLIC-BROWSER-2026-09-26`](../product/pd-1688-server-public-browser-2026-09-26.md)
+> and `src2b-public-browser-v1`
+> ([design](../architecture/2026-09-26-1688-server-public-browser-acquisition-design.md),
+> Issue #514) admit a **second provider** for the same anonymous public contract:
+> a server-side browser acquisition with automatic challenge handling, run in a
+> **separate, credential-free collector process** (no database access, no login
+> state). The clauses below that are **specific to the static-HTML provider** —
+> the `window.context`-only parser, the 8-second GET / 20-second operation
+> deadline, and the single-provider wording — are **suspended for the browser
+> provider only** and replaced by: new channel `public_browser` (with matching
+> persistence allow-list in `validCommand`), provider-scoped budget inside an
+> outer provider+publication service budget, `ByKey` replay before acquisition,
+> and server-generated-evidence failures reported as `SOURCE_UNAVAILABLE` rather
+> than `INVALID_ACQUISITION`. Everything else here — identity, evidence
+> semantics, SourceEnvelope/SRC-1/Catalog ownership, idempotency, replay,
+> COMMIT-unknown, authorization, limits and the "no login, no SourceAccount"
+> premise — **remains in force for both providers**. Implementation has not
+> started; the design is not yet `IMPLEMENTATION_READY`.
+
 ## Ownership and lifecycle
 
 - `internal/integration/acquisition/a1688` fetches bounded anonymous public HTML

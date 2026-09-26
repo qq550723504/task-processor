@@ -76,7 +76,8 @@ consumer   productsourcing.AcquisitionService.Acquire
 1. 授权 + `Canonical1688Source` + 规范化 key 成功后，先 `ByKey(scope, key)`。
 2. 命中且可确定（`prepared/publishing/published/failed`）⇒ 直接走既有 resolve/read 逻辑返回，**不启浏览器**。
 3. 仅在 **confirmed not found** 时才进入抓取 + `StartPrepared`。
-4. 覆盖：响应丢失后的同 key 重试、并发同 key 重试。
+4. **同 key 准入协调（Codex finding #10）**：`ByKey` 只能挡住“已有行”的情况。两个**首次并发**的同 key POST 会**同时**看到 not found 并各启一次浏览器，`StartPrepared` 只在两次出网抓取都发生后才仲裁。⇒ 需在 acquisition 之前对同 key 做**最小准入协调**（例如按 `(scope, key)` 的 singleflight/互斥，且多副本下仍以 `StartPrepared` 的原子性作为正确性依据）——协调只为**省掉重复的昂贵出网**，不作为幂等正确性的唯一依赖。
+5. 覆盖：响应丢失后的同 key 重试、**并发首次同 key**。
 
 **失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §11）。
 
@@ -92,11 +93,12 @@ consumer   productsourcing.AcquisitionService.Acquire
 | --- | --- | --- |
 | `WithRequestBodyReadTimeout`（**只管阻塞 body 读**） | 20s | **保持短值**（不放大）。它只用于中断卡住的 body 读取，不应承担整个操作预算 |
 | route `RequestTimeout`（从请求进入就开始计时） | 20s | 总量 = body 读预算 + 浏览器预算 + 发布预算（含余量） |
-| `AcquisitionService.Acquire` 的 `context.WithTimeout` | 20s | 按 provider 类型选择：HTTP 20s，浏览器 `BrowserAcquisitionTimeout` |
-| provider 内部（浏览器导航/验证码/提取） | 8s GET | 独立有界，且严格小于其上层 deadline，保证能及时如实失败 |
-| 发布阶段（`Prepare`/`Claim`/`Publish`） | 受各自既有边界 | 不被浏览器预算放大，单独计预算 |
+| `AcquisitionService.Acquire` 的 `context.WithTimeout` | 20s（**包住整个方法**） | 改为：**外层服务预算 = provider 预算 + 发布阶段预算**；浏览器预算只施加于 provider **子 context**，**不得**让整个 `Acquire` 共用同一个到期即死的 child context（见下） |
+| provider 内部（浏览器导航/验证码/提取） | 8s GET | 独立有界子 context，严格小于其上层 deadline，保证能及时如实失败 |
+| 发布阶段（`Prepare`/`Claim`/`Publish`/exact read） | 受各自既有边界 | 不被浏览器预算放大；由外层服务预算单独保证 |
 
 - **不可把 `WithRequestBodyReadTimeout` 扩成整个操作预算**（Codex finding #8）：那会削弱现有 slow-body 资源护栏；同时 route deadline 在 body 读之前就开始计时，若不把 body 读计入总量，合法 body 也可能在采集开始前就被取消。
+- **发布必须在外层预算内（Codex finding #9）**：实测 `internal/app/productsourcing/acquisition.go:31` 的 `Acquire` 用**一个** child context 包住整个方法，而 `resolve`（`Claim`/`Publish`/exact read）用的就是它。若直接把 provider 预算设成 90s，导航+验证码就会吃掉全部预算，**采集成功但发布阶段拿到已到期的 context**；调大 route deadline 也救不了已取消的 child context。⇒ 必须**重构为「外层 = provider+发布 预算」+「provider 子 context = 浏览器预算」**两层。已核实：采集路由的 route 精确白名单只断言 method+path（`current_application.go:487-492`），**不含 `RequestTimeout`**（只有 `acquisition-main-image` 路由断言 30s），因此调整采集路由超时不会碰 guard。
 - 该预算必须**有界**，并与 HTTP 请求体读取超时、`MaxAcquisitionCommandBytes`、`MaxAcquisitionOperations` 的关系在实现中显式核对。
 - 若评审认为不应按 provider 分叉 deadline，替代方案是在 provider 内做浏览器复用/预热把首次耗时压到 20s 内；但实测数据不支持该假设，故默认采纳独立预算。
 - **不得**仅改 service deadline 而不改路由描述符；否则当前设计的主路径（提交链接→拿到已发布商品）在冷启动/验证码场景下无法完成。
@@ -146,6 +148,10 @@ consumer   productsourcing.AcquisitionService.Acquire
 - **出网副作用**：新增服务端真实浏览器出网；其 host/子资源/重定向约束由 D12 强制，不是口头约定。
 - 并发：浏览器采集为稀有操作，需显式上限（建议单进程并发 ≤2，超出排队或 `ACQUISITION_CAPACITY`），避免把服务端资源打满；在 D13 形态下该上限落在**采集容器**（可独立调），不与 API 进程共享。
 - 响应/命令大小沿用 `MaxAcquisitionCommandBytes`（2 MiB）；提取字段数量沿用既有 `AcquisitionEvidence` 上限校验。
+- **在物化之前就要限长（Codex finding #13）**：恶意或变形页面可在 `variants`/`images`/`attributes` 子树送出超大数据，而 `page.Evaluate`（CDP）与内部 RPC 都会**先把它反序列化进内存**，之后 `MapAcquisitionEvidence`/`MaxAcquisitionCommandBytes` 才拒绝——那时已经晚了。⇒ 必须：
+  - **页内取数时就限量**：在页面上下文里对每个集合施加条目数上限与累计字节上限（只截取有界子集，不整棵搬运），并把超限作为 `source_too_large` 类失败而非静默截断；
+  - **RPC 侧在解码前限长**：用 `io.LimitReader`（复用 `httproute.WithRequestBodyReadTimeout` 思路）对响应体做硬上限，超限直接断开/报错，**不先 `json.Unmarshal` 整包**；
+  - 验收：构造超大 variants/images/attributes 的 fixture，证明页内与 RPC 两道上限各自生效。
 - 临时 profile 目录与浏览器产物在结束/失败时清理；不写入仓库目录。
 - **出口 IP 风控**是已接受风险（PD 文档第 3 条），因此实现必须支持「被风控时快速、如实失败」，不得通过无限重试放大对 IP 的伤害。
 
@@ -199,26 +205,32 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 ⇒ 边界必须落在**实际连接点**，而非请求回调：
 
-1. **连接层强制**（唯一可信执行点）：由**采集容器的出网白名单**落实（D13）——该容器只允许出站到已校验的公开 1688/CDN 地址，拒绝回环、链路本地、私网、保留与云元数据地址；访问不到内网 DB。**或**用 Chromium `--host-resolver-rules` 将允许 host 显式 pin 到已校验 IP、其余 `~NOTFOUND`，从根上消除 rebinding。二者**至少其一为强制**；路由拦截仅作为**额外的**纵深防御。因为浏览器与 DB 不同进程/不同网络命名空间，同进程 SSRF 通道被结构性切断。
+1. **连接层强制**（唯一可信执行点）：由**采集进程的出网白名单**落实（D13）——该进程**不持有任何数据库凭据、且网络命名空间不放行内网 DB**，只需允许出站到已校验的公开 1688/CDN 地址；未列出的目的地（回环、链路本地、私网、保留、云元数据）在网络层不可达。**或**用 Chromium `--host-resolver-rules` 将允许 host 显式 pin 到已校验 IP、其余 `~NOTFOUND`，从根上消除 rebinding。二者**至少其一为强制**；路由拦截仅作为**额外的**纵深防御。因为浏览器与 DB 既不同进程也不同网络命名空间，同进程 SSRF 通道被结构性切断。
 2. **纵深防御（仍需要，但不能单独依赖）**：`BrowserContext.Route`/`Page.Route` 按 **host/URL 字符串**拦截导航与子资源，只允许本任务明确的公开 1688/CDN origin（建议 `detail.1688.com`、`m.1688.com`、商品页必需的 `*.alicdn.com`），其余 abort；重定向逐跳重校验，fail-closed。
 3. **覆盖面**：必须同时覆盖 service worker、WebSocket 及 `fetch`/`xhr` 等非文档请求，以及浏览器预加载/预连接；不得只拦主文档导航。
-4. **运行时环境**：浏览器在**采集容器**（D13 独立网络命名空间）内运行；出网仅白名单，且进程不得访问内网与管理面。
-5. **部署门禁**：上述未在目标部署形态落地前，**不得**把该 provider 接到生产路由；部署形态（容器/compose/裸机）必须在实现前确定，因为网络层强制方式依赖它。
+4. **运行时环境**：浏览器在**采集进程**（D13 独立网络命名空间）内运行；出站仅白名单，且**无内网 DB 可达性、无 DB 凭据**。
+5. **部署门禁**：上述未在目标部署形态落地前，**不得**把该 provider 接到生产路由；必须同时验证「采集进程无法连到任何内网 DB」这一可观测事实。
 
 ### D13. 部署形态：独立采集进程（用户决定 2026-09-26）
 
 **用户决定（“按建议”）**：采纳**独立部署采集进程**、**同步被调**；不引入队列/调度器/第二事实源。
 
-依据与代价（已向用户说明并获采纳）：
+**关键修正（Codex finding #12，成立）**：首版写“复用同一个 `product_acquisition` 库”是**错的**，且与 D12 自相矛盾——若采集进程持有库凭据，其网络命名空间就必须放行到数据库，于是同容器的 Chromium **继承该可达性**，D12「浏览器不得访问内网 DB」就不成立；而 URL 层 Playwright 拦截按 D12 已被降为**不可单独依赖**的控制，无法补洞。
 
-- **为什么分开**：浏览器采集与 API 进程不共性。`current-application` 同进程持有 product/source/commercial/membership 四个库凭据且能访问内网；同进程跑 Chromium 会让 D12 的出网边界难以真正落地，且 35s 级长任务与数百 MB 内存会拖垮认证/下单路径。这也是旧 `internal/crawler/alibaba1688` 历史上就是独立进程（`APIService` 独立端口 + worker pool）的教训。
-- **采纳的最小形态（避免建成平台）**：
-  - 复用**同一个二进制**与**同一个 `product_acquisition` 库**；不新增表、不新增状态机、不新增第二事实源。
-  - 采集以**独立进程/服务**运行，**同步被调**（保持 `acquiring → prepared → publishing → published` 既有同步语义），不引入队列、调度器、TTL 或 key GC。
-  - 采集服务**只暴露内部 RPC，不进公网路由**；`current-application` 在 `provider` 位置改为调用该内部 RPC。
-  - 幂等/重放/恢复完全沿用既有操作行（同 key 同载荷 replay、COMMIT unknown 走 Verify/Read），不新语义。
-- **代价（已知并接受）**：新增一个部署面（compose 服务、镜像、限额、升级/回滚）。`AGENTS.md` 禁止的是“预建平台/调度器”，本形态两者都不是；真实开新部署面仍需在实现 Issue 中明确，并单独授权部署。
-- **D8 并发上限**落到采集容器（可独立调），不再与 API 进程共享；**D12 连接层强制**落到采集容器出站白名单。
+⇒ 采集进程必须是**无凭据的 evidence 生产者（RPC-only）**：
+
+| 位置 | 拥有 | 不拥有 |
+| --- | --- | --- |
+| `current-application` | 全部库（product/source/commercial/membership）、操作行、SRC-1/Catalog 发布、授权与租户校验 | 不启动浏览器 |
+| 采集进程 | Chromium、页面取数、`AcquisitionEvidence` 构造 | **无任何数据库凭据与数据库网络可达性**；不写操作行；不做授权判断；不持有租户身份 |
+
+- 这使 D12 **结构性成立**：采集进程的网络只需放行 1688/CDN 白名单出站，不需要放行内网 DB。
+- RPC 契约最小化：入参仅 canonical source URL / offer ID（**不携带** org/actor/roles/token），出参为有界的 `AcquisitionEvidence`（含本路径的 `channel`/`parserVersion`/`contentSHA256`）。身份与授权仍在 `current-application` 内完成。
+- 幂等/重放/恢复、`ByKey` 快速路径、`StartPrepared`、发布全部在 `current-application` 侧（既有操作行），**不因拆进程而改变任何状态机或事实 owner**。
+- 同步被调，保持既有 `acquiring → prepared → publishing → published` 语义；不引入队列、调度器、TTL 或 key GC。
+- 复用**同一个二进制**（不同启动参数/子命令），但**不共享数据库句柄与凭据**。
+- 代价（已知并接受）：新增一个部署面（compose 服务、镜像、限额、升级/回滚）。`AGENTS.md` 禁止的是“预建平台/调度器”，本形态两者都不是；真实开新部署面仍需在实现 Issue 中明确，并单独授权部署。
+- **D8 并发上限**落到采集进程/容器（可独立调）；**D12 连接层强制**即“采集进程出站白名单 + 无 DB 可达”。
 
 ## 6. 状态与持久化边界
 
@@ -240,6 +252,9 @@ consumer   productsourcing.AcquisitionService.Acquire
 - **重放优先**：同 key POST 在响应丢失后重试、并发同 key 重试，**均不得启动浏览器**，直接由 `ByKey` 返回可恢复结果（finding #5）。
 - **失败归因**：页面形状变化/提取器漏字段导致服务端证据被拒时，投影为 502 `SOURCE_UNAVAILABLE` 而非 400；仅调用方请求非法才 400（finding #6）。
 - **出网边界（finding #4）**：证明连接层强制真实生效——本地构造指向回环/链路本地/私网/元数据地址的被允许 host，浏览器**必须无法建连**；并覆盖重定向、service worker、WebSocket、`fetch`/xhr、预连接；未落地则不得接生产路由。
+- **凭据与可达性（finding #12）**：在部署形态中可观测地证明**采集进程无法连到任何内网 DB**，且不持有任何 DB 凭据（凭据/环境变量检查 + 网络探测）。
+- **发布阶段预算（finding #9）**：构造 provider 用满自身预算但仍成功的场景，证明 `Claim`/`Publish`/exact read 仍在外层预算内完成，不因同一个 child context 提前到期。
+- **物化前限长（finding #13）**：超大 `variants`/`images`/`attributes` fixture 证明页内上限与 RPC 解码前上限各自生效，且不先整包反序列化。
 - **deadline（finding #8）**：slow-body 请求被短 body 读超时中断（不得因放大而失去护栏）；合法 body 在 route 总预算内完成采集与发布。
 - 真实链：current app → browser provider → `MapAcquisitionEvidence(public_browser)` → SRC-1 → Catalog → exact read-back，Product 不直接 seed。
 - 幂等：同 key 重放、异载荷冲突、并发、响应丢失、SRC-1 commit unknown、cancel/deadline。
@@ -294,6 +309,16 @@ Cutover/deletion condition:
 | 7 | PD 已标 ACTIVE，但被推翻的批量设计原文仍无 supersession 标记，可被发现并重新适用 | **BACKLOG（成立，已修）** | 仓库权威维护项。已在批量设计头部与 §1.2/§1.3 对应条款就地加 `SUPERSEDED` 标记并链接本 PD，保留历史文本；明确**其余设计继续有效** |
 | 8 | `WithRequestBodyReadTimeout` 是阻塞 body 读护栏，扩成整个操作预算会削弱 slow-body 护栏；且 route deadline 在 body 读前开始计时 | **IMPLEMENTATION_TEST（成立，已修）** | 影响 Must「提交链接→拿到已发布商品」与资源边界。已改 D2：body 读超时保持短值，route 总预算 = body 读 + 浏览器 + 发布 |
 
+### 10.2 第三/四轮增量复核（commits `040975c89`、`54acd01ec`）
+
+| # | Finding | 分类 | 处置 |
+| --- | --- | --- | --- |
+| 9 | `Acquire` 用**一个** child context 包住整个方法；若直接给 provider 90s，导航+验证码吃满预算后**发布阶段拿到已到期 context**，调大 route deadline 也救不了；主路径在预算边界无法完成 | **BLOCKER（成立，已修）** | 命中「核心 happy path 无法完成」。已改 D2 为**两层预算**：外层 = provider + 发布，浏览器预算只施加于 provider **子 context**；并记明已核实采集路由白名单只断言 method+path、改超时不会碰 guard |
+| 10 | `ByKey` 只能拦“已有行”；两个**首次并发**同 key POST 会同时看到 not found 并各启一次浏览器，`StartPrepared` 只在两次出网后才仲裁 | **IMPLEMENTATION_TEST（成立，已修）** | 影响 Must「幂等重放」与已接受的共享 IP 风险。已在 D1 增加**同 key 准入协调**（singleflight/互斥），并明确协调只为省掉重复出网，正确性仍依赖 `StartPrepared` 原子性；验收新增“并发首次同 key” |
+| 11 | PD 承诺架构阶段修订，但 `docs/engineering/src2b-public-acquisition.md` 未更新，仍写死 `window.context`-only parser 与 20s/8s 预算 | **BACKLOG（成立，已修）** | 仓库权威维护。已在该文件头部加**定向暂停说明**：仅对浏览器 provider 暂停静态 HTML 专用条款（parser 形态、8s GET/20s operation deadline、单一 provider 措辞），列出替换项；**identity/证据语义/SRC-1/Catalog/幂等/重放/COMMIT-unknown/授权/上限/不登录前提均继续对两个 provider 生效** |
+| 12 | D13 让采集进程持库 → 网络命名空间必须放行 DB → 同容器 Chromium 继承可达性 → **与 D12 自相矛盾**；URL 层拦截已被降为不可单独依赖，无法补洞 | **BLOCKER（成立，已修）** | 命中「新的跳系统安全边界」。已重写 D13：采集进程改为**无凭据 evidence 生产者（RPC-only）**——无任何 DB 凭据/无 DB 网络可达、不写操作行、不做授权；`current-application` 保留全部库、授权与发布。D12 由此**结构性成立**；并新增可观测门禁「采集进程无法连到任何内网 DB」 |
+| 13 | 恶意页面可在页内造超大数据，CDP `page.Evaluate` 与 RPC 都会**先反序列化进内存**，之后才被 `MaxAcquisitionCommandBytes` 拒绝 | **IMPLEMENTATION_TEST（成立，已修）** | 影响采集可用性与资源边界。已在 D8 增加**物化前限长**：页内取数即对集合施加条目/字节上限（超限作 source_too_large 类失败）、RPC 侧 `io.LimitReader` 在解码前硬限长；§8 增加超大 fixture 验收 |
+
 ## 11. 未决 / 需评审确认
 
 1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
@@ -306,4 +331,5 @@ Cutover/deletion condition:
 8. **D12 的连接层强制方式与部署形态**：**已定（D13 独立采集容器 + 出站白名单）**；具体白名单 CIDR/域名与采集容器网络策略仍需在实现前定稿。
 9. **D12 的允许 origin 集**：需产品/安全确认具体的 1688/CDN 允许列表。
 10. **真实 1688 网络验收**：需用户单独授权；未授权保持 `NOT_RUN`。
-11. **D13 的内部 RPC 契约与部署面**：采集服务只进内部网络，需定义最小 RPC（请求/响应/错误/超时）；新增 compose 服务/镜像/限额属新部署面，需在实现 Issue 明确并单独授权部署。
+11. **D13 的内部 RPC 契约与部署面**：采集服务只进内部网络、无 DB 凭据（finding #12 已定），需定义最小 RPC（请求/响应/错误/超时/**解码前限长**）；新增 compose 服务/镜像/限额属新部署面，需在实现 Issue 明确并单独授权部署。
+12. **D2 的具体预算数值**：外层服务预算 = provider + 发布，建议值待定（需一次真实冷启动+挑战的实测来定，不能只靠夹具）。
