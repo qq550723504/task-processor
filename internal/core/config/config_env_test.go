@@ -92,6 +92,22 @@ func TestBuildConfigLoadsCommercialDatabaseForWorkerUsageSettlement(t *testing.T
 	assert.Equal(t, 4, cfg.CommercialDatabase.MaxConnections)
 }
 
+func TestBuildConfigLoadsExplicitCommercialResourceOwner(t *testing.T) {
+	v := newViper()
+	v.Set("commercialOwnerDatabase.host", "commercial-db")
+	v.Set("commercialOwnerDatabase.port", 5434)
+	v.Set("commercialOwnerDatabase.user", "commercial_owner_runtime")
+	v.Set("commercialOwnerDatabase.database", "commercial")
+	v.Set("commercialOwnerDatabase.max_connections", 4)
+	cfg := BuildConfig(v)
+	require.NotNil(t, cfg.CommercialOwnerDatabase)
+	assert.Equal(t, "commercial_owner_runtime", cfg.CommercialOwnerDatabase.User)
+	assert.Equal(t, "commercial-db", cfg.CommercialOwnerDatabase.Host)
+	assert.Equal(t, 5434, cfg.CommercialOwnerDatabase.Port)
+	assert.Equal(t, "commercial", cfg.CommercialOwnerDatabase.Database)
+	assert.Nil(t, cfg.CommercialDatabase, "no implicit Token-pool alias")
+}
+
 func TestTracingConfigDefaultsToDisabledTaskProcessorService(t *testing.T) {
 	tracingType := reflect.TypeOf(TracingConfig{})
 	assert.Equal(t, 4, tracingType.NumField(), "tracing config must remain the four approved transport values")

@@ -8,6 +8,7 @@ import { ResourcesPage } from "./resources-page";
 const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 vi.mock("@/lib/api/commercial", async original => ({ ...await original<typeof import("@/lib/api/commercial")>(), getCommercialOverview: state.read }));
+vi.mock("@/lib/api/member-ai-point-limits", async original => ({ ...await original<typeof import("@/lib/api/member-ai-point-limits")>(), getMemberAIPointLimits: async (scope: { expectedOrganizationId: string }) => ({ schemaVersion: "member-ai-point-monthly-limit-v1", organizationId: scope.expectedOrganizationId, resourceType: "ai_point", timezone: "UTC", members: [] }) }));
 let client: QueryClient;
 const tree = () => <QueryClientProvider client={client}><ResourcesPage /></QueryClientProvider>;
 beforeEach(() => {
@@ -21,6 +22,7 @@ it("projects real grants and usage while unknown resource and Store facts never 
   render(tree());
   expect(await screen.findByText("企业实际合同")).toBeVisible();
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("资源与额度");
+  expect(screen.getByRole("region", { name: "成员 AI 点数月度上限" })).toBeVisible();
   expect(screen.getByText("0 家")).toBeVisible(); // actual explicit store grant, not store count
   expect(screen.getByText("9007199254740993 字节")).toBeVisible();
   expect(screen.getAllByText(/未知（作业次）/).length).toBeGreaterThan(0);

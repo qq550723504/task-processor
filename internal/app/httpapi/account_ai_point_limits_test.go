@@ -73,7 +73,7 @@ func TestMemberPointLimitHTTPPersistsLimitWithoutCreatingBalance(t *testing.T) {
 	require.NoError(t, err)
 	authorizer, err := authz.NewListingKitAuthorizer(nil, nil)
 	require.NoError(t, err)
-	directory := &pointLimitDirectory{member: membership.Member{ID: "member-1", UserID: "user-1", OrganizationID: "org-1", ProjectID: "project-1", State: "active"}}
+	directory := &pointLimitDirectory{member: membership.Member{ID: "member-1", UserID: "user-1", DisplayName: "Member One", LoginName: "member@example.test", Roles: []string{"listingkit_operator"}, OrganizationID: "org-1", ProjectID: "project-1", State: "active"}}
 	gate := memberPointLimitAuthorizer{authorizer: authorizer, directory: directory, projectID: "project-1"}
 	service, err := orgresource.NewMemberLimitService(repository, gate)
 	require.NoError(t, err)
@@ -100,6 +100,8 @@ func TestMemberPointLimitHTTPPersistsLimitWithoutCreatingBalance(t *testing.T) {
 	before := request(http.MethodGet, memberPointLimitBase, "", "")
 	require.Equal(t, http.StatusOK, before.Code)
 	require.Contains(t, before.Body.String(), `"configured":false`)
+	require.Contains(t, before.Body.String(), `"displayName":"Member One"`)
+	require.Contains(t, before.Body.String(), `"roles":["listingkit_operator"]`)
 	set := request(http.MethodPut, memberPointLimitBase+"/member-1", `{"target":"25","expectedVersion":"0"}`, "set-1")
 	require.Equal(t, http.StatusOK, set.Code, set.Body.String())
 	require.Contains(t, set.Body.String(), `"monthlyLimit":"25"`)

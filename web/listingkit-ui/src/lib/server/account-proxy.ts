@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AccountReadError, accountErrorCode, parseAccountPayload } from "@/lib/api/account";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
+import { MemberPointLimitError, memberPointErrorCode, parseMemberAIPointLimit, parseMemberAIPointLimits } from "@/lib/api/member-ai-point-limits";
 import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 
 const validID = (value: string | null | undefined): value is string => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
@@ -14,17 +15,19 @@ function serviceOrigin(): string | null {
   } catch { return null; }
 }
 
-export async function proxyAccount(request: Request, token: string, sessionUserId: string, kind: "profile" | "organization" | "business-profile" | "member-allocations"): Promise<Response> {
-  if (!["business-profile", "member-allocations"].includes(kind) && request.method !== "GET" || ["business-profile", "member-allocations"].includes(kind) && !["GET", "PUT"].includes(request.method)) return accountFailure(405, "INVALID_REQUEST");
+export async function proxyAccount(request: Request, token: string, sessionUserId: string, kind: "profile" | "organization" | "business-profile" | "member-allocations" | "member-ai-point-limits"): Promise<Response> {
+  const memberResource = kind === "member-allocations" || kind === "member-ai-point-limits";
+  const mutable = kind === "business-profile" || memberResource;
+  if (!mutable && request.method !== "GET" || mutable && !["GET", "PUT"].includes(request.method)) return accountFailure(405, "INVALID_REQUEST");
   if (!token || !validID(sessionUserId)) return accountFailure(401, "AUTHENTICATION_REQUIRED");
   if (request.headers.get("X-Expected-User-ID") !== sessionUserId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
   const url = new URL(request.url);
-  const memberPath = kind === "member-allocations" && url.pathname.startsWith("/api/account/member-allocations/") ? url.pathname.slice("/api/account/member-allocations/".length) : "";
-  if ((kind !== "member-allocations" ? url.pathname !== `/api/account/${kind}` : request.method === "GET" ? url.pathname !== "/api/account/member-allocations" : !validID(memberPath)) || url.search || request.url.endsWith("?") || (!["business-profile", "member-allocations"].includes(kind) || request.method !== "PUT") && (request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding"))) {
+  const memberPath = memberResource && url.pathname.startsWith(`/api/account/${kind}/`) ? url.pathname.slice(`/api/account/${kind}/`.length) : "";
+  if ((!memberResource ? url.pathname !== `/api/account/${kind}` : request.method === "GET" ? url.pathname !== `/api/account/${kind}` : !validID(memberPath)) || url.search || request.url.endsWith("?") || (!mutable || request.method !== "PUT") && (request.body || (request.headers.has("content-length") && request.headers.get("content-length") !== "0") || request.headers.has("transfer-encoding"))) {
     void request.body?.cancel().catch(() => undefined); return accountFailure(400, "INVALID_REQUEST");
   }
   let organization: string | undefined;
-  if (kind === "organization" || kind === "member-allocations" || kind === "business-profile") {
+  if (kind === "organization" || memberResource || kind === "business-profile") {
     const selections = (request.headers.get("cookie") ?? "").split(";").map(v => v.trim()).filter(v => v.startsWith(`${WORKBENCH_COOKIE_NAME}=`));
     if (selections.length === 0) return accountFailure(409, "ORGANIZATION_SELECTION_REQUIRED");
     if (selections.length !== 1) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
@@ -35,22 +38,25 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
   const controller = new AbortController(); const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true }); if (request.signal.aborted) abort();
   const timer = setTimeout(abort, 15000);
+  let forwardedPointWrite = false;
   try {
     controller.signal.throwIfAborted();
     const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });
     let body: string | undefined;
-    if ((kind === "business-profile" || kind === "member-allocations") && request.method === "PUT") {
+    if (mutable && request.method === "PUT") {
       if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return accountFailure(400, "INVALID_REQUEST");
       try { body = await readAccountRequestBody(request, 16 * 1024, controller.signal); } catch { return accountFailure(400, "INVALID_REQUEST"); }
       headers.set("Content-Type", "application/json");
-      if (kind === "member-allocations") {
+      if (memberResource) {
         const idempotency = request.headers.get("Idempotency-Key");
         if (!idempotency || idempotency.length > 128) return accountFailure(400, "INVALID_REQUEST");
         headers.set("Idempotency-Key", idempotency);
       }
     }
     if (organization) headers.set("X-Requested-Organization-ID", organization);
-    const servicePath = kind === "member-allocations" ? `organization/resources/member-allocations${memberPath ? `/${memberPath}` : ""}` : kind;
+    const servicePath = memberResource ? `organization/resources/${kind}${memberPath ? `/${memberPath}` : ""}` : kind;
+    controller.signal.throwIfAborted();
+    forwardedPointWrite = kind === "member-ai-point-limits" && request.method === "PUT";
     const response = await fetch(`${origin}/api/v1/account/${servicePath}`, { method: request.method, headers, ...(body === undefined ? {} : { body }), cache: "no-store", redirect: "manual", signal: controller.signal });
     controller.signal.throwIfAborted();
     if (response.status === 404) {
@@ -58,20 +64,26 @@ export async function proxyAccount(request: Request, token: string, sessionUserI
       return accountFailure(503, "ACCOUNT_NOT_CONFIGURED");
     }
     let payload: unknown;
-    try { payload = await readBoundedStrictJSON(response, 16 * 1024, controller.signal); }
+    try { payload = await readBoundedStrictJSON(response, kind === "member-ai-point-limits" && response.status === 200 ? 128 * 1024 : 16 * 1024, controller.signal); }
     catch { throw new AccountReadError(502, "INVALID_UPSTREAM_RESPONSE"); }
     controller.signal.throwIfAborted();
-    if (response.status !== 200) return accountFailure(response.status, accountErrorCode(response.status, payload));
-    if (kind === "member-allocations" && request.method === "GET") {
+    if (response.status !== 200) {
+      if (forwardedPointWrite && response.status >= 500) return accountFailure(response.status, "RESULT_UNVERIFIED", "unknown");
+      return accountFailure(response.status, kind === "member-ai-point-limits" ? memberPointErrorCode(response.status, payload) : accountErrorCode(response.status, payload));
+    }
+    if (memberResource && request.method === "GET") {
       if (!payload || typeof payload !== "object" || !("organizationId" in payload) || payload.organizationId !== organization) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
     }
     if (kind === "member-allocations") return json(payload, 200);
+    if (kind === "member-ai-point-limits") return json(request.method === "GET" ? parseMemberAIPointLimits(payload, organization!) : parseMemberAIPointLimit(payload, organization!, memberPath), 200);
     const result = parseAccountPayload(kind, payload);
     if (result.userId !== sessionUserId) return accountFailure(409, "IDENTITY_CONTEXT_CHANGED");
     if ("effectiveOrganizationId" in result && result.effectiveOrganizationId !== organization) return accountFailure(409, "ORGANIZATION_CONTEXT_CHANGED");
     return json(result, 200);
   } catch (error) {
+    if (forwardedPointWrite) return accountFailure(controller.signal.aborted ? 504 : 502, "RESULT_UNVERIFIED", "unknown");
     if (controller.signal.aborted) return accountFailure(504, "DEADLINE_EXCEEDED");
+    if (error instanceof MemberPointLimitError) return accountFailure(error.status, error.code);
     return error instanceof AccountReadError ? accountFailure(error.status, error.code) : accountFailure(502, "DEPENDENCY_UNAVAILABLE");
   } finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); }
 }

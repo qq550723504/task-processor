@@ -33,6 +33,9 @@ func buildMemberPointLimitModule(ctx context.Context, cfg *config.Config, commer
 	if ctx == nil || cfg == nil || commercialOwnerDB == nil || authorizer == nil {
 		return nil, orgresource.ErrInvalidInput
 	}
+	if err := resourceadapter.VerifyRuntimePermissions(ctx, commercialOwnerDB); err != nil {
+		return nil, err
+	}
 	directory, err := zitadelmembership.NewClient(deps.ProviderOrigin, deps.ReadToken, cfg.ListingKit.Zitadel.ProjectID, nil)
 	if err != nil {
 		return nil, err
@@ -88,7 +91,7 @@ func (m memberPointLimitModule) list(c *gin.Context) {
 		writePointLimitError(c, orgresource.ErrMemberLimitUnavailable)
 		return
 	}
-	items := make([]memberPointLimitView, 0, len(page.Items))
+	items := make([]memberPointLimitDirectoryView, 0, len(page.Items))
 	seen := map[string]bool{}
 	for _, member := range page.Items {
 		if member.State != "active" {
@@ -108,7 +111,8 @@ func (m memberPointLimitModule) list(c *gin.Context) {
 			writePointLimitError(c, err)
 			return
 		}
-		items = append(items, pointLimitView(value, configured))
+		roles := append([]string{}, member.Roles...)
+		items = append(items, memberPointLimitDirectoryView{memberPointLimitView: pointLimitView(value, configured), DisplayName: member.DisplayName, LoginName: member.LoginName, Roles: roles})
 	}
 	writePointLimitJSON(c, http.StatusOK, gin.H{"schemaVersion": "member-ai-point-monthly-limit-v1", "organizationId": identity.EffectiveOrganizationID, "resourceType": "ai_point", "timezone": "UTC", "members": items})
 }
@@ -142,7 +146,7 @@ func (m memberPointLimitModule) set(c *gin.Context) {
 func (m memberPointLimitModule) identity(c *gin.Context, write bool) (authidentity.AuthenticatedIdentity, bool) {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
 	if !ok || identity.EffectiveMemberID == "" {
-		writePointLimitJSON(c, http.StatusUnauthorized, gin.H{"code": "AUTHENTICATION_REQUIRED"})
+		writePointLimitJSON(c, http.StatusUnauthorized, gin.H{"code": "AUTHENTICATION_REQUIRED", "message": "Current identity required", "requestId": "", "fieldErrors": []any{}})
 		return identity, false
 	}
 	resolve := memberhttp.ResolveOrganizationTarget
@@ -203,19 +207,27 @@ func decodePointLimitCommand(r *http.Request) (orgresource.SetMemberLimitExecuti
 }
 
 type memberPointLimitView struct {
-	MemberID     string `json:"memberId"`
-	Configured   bool   `json:"configured"`
-	MonthlyLimit string `json:"monthlyLimit"`
-	Reserved     string `json:"reserved"`
-	Consumed     string `json:"consumed"`
-	Remaining    string `json:"remaining"`
-	Version      string `json:"version"`
-	MonthStart   string `json:"monthStart"`
-	MonthEnd     string `json:"monthEnd"`
+	OrganizationID string `json:"organizationId"`
+	MemberID       string `json:"memberId"`
+	Configured     bool   `json:"configured"`
+	MonthlyLimit   string `json:"monthlyLimit"`
+	Reserved       string `json:"reserved"`
+	Consumed       string `json:"consumed"`
+	Remaining      string `json:"remaining"`
+	Version        string `json:"version"`
+	MonthStart     string `json:"monthStart"`
+	MonthEnd       string `json:"monthEnd"`
+}
+
+type memberPointLimitDirectoryView struct {
+	memberPointLimitView
+	DisplayName string   `json:"displayName"`
+	LoginName   string   `json:"loginName"`
+	Roles       []string `json:"roles"`
 }
 
 func pointLimitView(v orgresource.MemberLimitSnapshot, configured bool) memberPointLimitView {
-	return memberPointLimitView{MemberID: v.MemberID, Configured: configured, MonthlyLimit: strconv.FormatInt(v.MonthlyLimit, 10), Reserved: strconv.FormatInt(v.Reserved, 10), Consumed: strconv.FormatInt(v.Consumed, 10), Remaining: strconv.FormatInt(v.MonthlyLimit-v.Reserved-v.Consumed, 10), Version: strconv.FormatInt(v.Version, 10), MonthStart: v.MonthStart.UTC().Format(time.RFC3339), MonthEnd: v.MonthStart.UTC().AddDate(0, 1, 0).Format(time.RFC3339)}
+	return memberPointLimitView{OrganizationID: v.OrganizationID, MemberID: v.MemberID, Configured: configured, MonthlyLimit: strconv.FormatInt(v.MonthlyLimit, 10), Reserved: strconv.FormatInt(v.Reserved, 10), Consumed: strconv.FormatInt(v.Consumed, 10), Remaining: strconv.FormatInt(v.MonthlyLimit-v.Reserved-v.Consumed, 10), Version: strconv.FormatInt(v.Version, 10), MonthStart: v.MonthStart.UTC().Format(time.RFC3339), MonthEnd: v.MonthStart.UTC().AddDate(0, 1, 0).Format(time.RFC3339)}
 }
 func writePointLimitJSON(c *gin.Context, status int, value any) {
 	c.Header("Cache-Control", "private, no-store")
