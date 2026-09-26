@@ -29,6 +29,7 @@ import {
 import { newRequestLogId } from "@/lib/server/request-log";
 import { hasTrustedSameOriginRecovery, hasTrustedSameOriginWrite } from "@/lib/server/same-origin-write";
 import { ACQUISITION_BODY_MAX_BYTES, ACQUISITION_RESPONSE_MAX_BYTES, acquisitionRequestSchema, acquisitionProductSchema, acquisitionResultSchema, acquisitionErrorStatuses, isAcquisitionUUID } from "@/lib/contracts/product-acquisition";
+import { mainImageAcceptedSchema, mainImageApprovalRequestSchema, mainImageCandidatesSchema, mainImageResultSchema, mainImageStartRequestSchema } from "@/lib/contracts/acquisition-main-image";
 
 export const WORKBENCH_COOKIE_NAME = "shuomi_effective_organization";
 const EXPECTED_ORGANIZATION_ID_HEADER = "X-Expected-Organization-ID";
@@ -41,10 +42,14 @@ const REQUEST_BODY_READ_TIMEOUT_MS = 15_000;
 const UPSTREAM_RESPONSE_MAX_BYTES = 1024 * 1024;
 const STORE_QUERY_MAX_BYTES = 2 * 1024;
 const REQUEST_ID_MAX_BYTES = 128;
+const imageErrorStatuses: Readonly<Record<string, number>> = { INVALID_IMAGE_REQUEST: 400, FORBIDDEN: 403, IMAGE_NOT_FOUND: 404, IMAGE_CONFLICT: 409, IMAGE_BLOCKED: 409, IMAGE_UNAVAILABLE: 503 };
 
 export type WorkbenchResponseContract =
   | "product-acquisition"
   | "product-acquisition-product"
+  | "acquisition-image-candidates"
+  | "acquisition-image-accepted"
+  | "acquisition-image-result"
   | "context"
   | "context-switch"
   | "store-list"
@@ -66,6 +71,10 @@ type WorkbenchRequestContract =
   | "product-acquisition-verify"
   | "product-acquisition-read"
   | "product-acquisition-product"
+  | "acquisition-image-candidates"
+  | "acquisition-image-start"
+  | "acquisition-image-read"
+  | "acquisition-image-approve"
   | "context-get"
   | "context-switch"
   | "store-list"
@@ -321,6 +330,14 @@ const workbenchRouteAllowlist = [
     path.length === 4 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) ? `sourcing/1688/acquisitions/${path[3]}` : null),
   routeDefinition("GET", "product-acquisition-product", "product-acquisition-product", (path) =>
     path.length === 5 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) && path[4] === "product" ? `sourcing/1688/acquisitions/${path[3]}/product` : null),
+  routeDefinition("GET", "acquisition-image-candidates", "acquisition-image-candidates", (path) =>
+    path.length === 6 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) && path[4] === "main-image" && path[5] === "candidates" ? `sourcing/1688/acquisitions/${path[3]}/main-image/candidates` : null),
+  routeDefinition("POST", "acquisition-image-start", "acquisition-image-accepted", (path) =>
+    path.length === 5 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) && path[4] === "main-image" ? `sourcing/1688/acquisitions/${path[3]}/main-image` : null),
+  routeDefinition("GET", "acquisition-image-read", "acquisition-image-result", (path) =>
+    path.length === 7 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) && path[4] === "main-image" && path[5] === "runs" && isAcquisitionUUID(path[6]!) ? `sourcing/1688/acquisitions/${path[3]}/main-image/runs/${path[6]}` : null),
+  routeDefinition("POST", "acquisition-image-approve", "acquisition-image-accepted", (path) =>
+    path.length === 8 && path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" && isAcquisitionUUID(path[3]!) && path[4] === "main-image" && path[5] === "runs" && isAcquisitionUUID(path[6]!) && path[7] === "approve" ? `sourcing/1688/acquisitions/${path[3]}/main-image/runs/${path[6]}/approve` : null),
   routeDefinition("GET", "context-get", "context", (path) =>
     exactPath(path, "context") ? "context" : null,
   ),
@@ -408,7 +425,7 @@ export async function buildWorkbenchUpstreamRequest(
   if (
     (route.requestContract.startsWith("store-") ||
       route.requestContract.startsWith("source-account-") ||
-      (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-"))) &&
+      (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-"))) &&
     new URL(request.url).pathname !==
       `/api/workbench/${route.upstreamPath}`
   ) {
@@ -439,13 +456,13 @@ export async function buildWorkbenchUpstreamRequest(
     headers.set("Content-Type", "application/json");
     headers.set("X-Requested-Organization-ID", organizationId);
   } else {
-    const selectedOrganization = (route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-")))
+    const selectedOrganization = (route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-")))
       ? readSourceSelectedOrganization(request)
       : readSelectedOrganization(request);
     if (selectedOrganization instanceof Response) return selectedOrganization;
     if (
       route.requestContract.startsWith("store-") ||
-      route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-"))
+      route.requestContract.startsWith("source-account-") || (route.requestContract.startsWith("product-acquisition-") || route.requestContract.startsWith("browser-capture-") || route.requestContract.startsWith("acquisition-image-"))
     ) {
       const expectedOrganization = readExpectedOrganizationAssertion(
         request.headers,
@@ -505,6 +522,40 @@ export async function buildWorkbenchUpstreamRequest(
         if (!parsed || !validated.success) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
         body = browser ? parsed.text : JSON.stringify(validated.data);
         headers.set("Content-Type", "application/json"); headers.set("Idempotency-Key", key);
+        break;
+      }
+      case "acquisition-image-candidates":
+      case "acquisition-image-start":
+      case "acquisition-image-read":
+      case "acquisition-image-approve": {
+        if (!hasExactNoQuery(request)) return protocolError(400, "INVALID_REQUEST", "Query is not allowed");
+        const assertedActor = request.headers.get(EXPECTED_USER_ID_HEADER);
+        if (!assertedActor || !isSafeOrganizationId(assertedActor) || assertedActor !== authenticatedActorSubject) {
+          return protocolError(409, "IDENTITY_CONTEXT_CHANGED", "Identity context changed");
+        }
+        if (route.requestContract === "acquisition-image-candidates" || route.requestContract === "acquisition-image-read") {
+          if (!(await requestHasNoBody(request))) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+          break;
+        }
+        const assertion = validateSourceMutationBoundary(request, authenticatedActorSubject);
+        if (assertion) return assertion;
+        if (request.headers.get("content-type") !== "application/json" || request.headers.has("content-encoding")) {
+          return protocolError(400, "INVALID_REQUEST", "Content-Type or encoding is invalid");
+        }
+        const raw = await readRequestBody(request, ACQUISITION_BODY_MAX_BYTES, "INPUT_TOO_LARGE");
+        if (raw instanceof Response) return raw;
+        const parsed = parseJSONBody(raw);
+        if (!parsed) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+        const schema = route.requestContract === "acquisition-image-start" ? mainImageStartRequestSchema : mainImageApprovalRequestSchema;
+        const validated = schema.safeParse(parsed.payload);
+        if (!validated.success || parsed.root.children?.length !== Object.keys(validated.data).length) return protocolError(400, "INVALID_REQUEST", "Request body is invalid");
+        if (route.requestContract === "acquisition-image-start") {
+          const key = request.headers.get("Idempotency-Key") ?? "";
+          if (!isAcquisitionUUID(key)) return protocolError(400, "INVALID_REQUEST", "Idempotency-Key is invalid");
+          headers.set("Idempotency-Key", key);
+        }
+        body = JSON.stringify(validated.data);
+        headers.set("Content-Type", "application/json");
         break;
       }
       case "context-get":
@@ -707,6 +758,8 @@ export async function buildWorkbenchUpstreamRequest(
     },
     responseContract: route.responseContract,
     expectedStoreId:
+      (route.requestContract === "acquisition-image-candidates") ? path[3] :
+      (route.requestContract === "acquisition-image-read" || route.requestContract === "acquisition-image-approve") ? path[6] :
       (route.requestContract === "product-acquisition-read" || route.requestContract === "product-acquisition-product" || route.requestContract === "browser-capture-read") ? path[3] :
       route.responseContract === "store-item" ||
       route.responseContract === "store-delete" ||
@@ -722,6 +775,8 @@ export async function buildWorkbenchUpstreamRequest(
       route.requestContract === "browser-capture-by-key" ||
       route.requestContract === "product-acquisition-create" ||
       route.requestContract === "product-acquisition-verify" ||
+      route.requestContract === "acquisition-image-start" ||
+      route.requestContract === "acquisition-image-approve" ||
       route.requestContract === "source-account-create" ||
       route.requestContract === "source-account-enable" ||
       route.requestContract === "source-account-disable",
@@ -739,6 +794,7 @@ export async function buildWorkbenchBrowserResponse(
   } = {},
 ) {
   const acquisitionContract = contract === "product-acquisition" || contract === "product-acquisition-product";
+  const imageContract = contract.startsWith("acquisition-image-");
   const sourceContract = contract.startsWith("source-account-") || acquisitionContract;
   const invalidSource = () =>
     acquisitionContract
@@ -747,7 +803,7 @@ export async function buildWorkbenchBrowserResponse(
   let body: Uint8Array;
   try {
     if (
-      sourceContract &&
+      (sourceContract || imageContract) &&
       !/^application\/json(?:\s*;|$)/i.test(
         upstream.headers.get("content-type") ?? "",
       )
@@ -755,7 +811,7 @@ export async function buildWorkbenchBrowserResponse(
       void upstream.body?.cancel().catch(() => undefined);
       throw new InvalidUpstreamBodyError();
     }
-    const responseLimit = acquisitionContract ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
+    const responseLimit = (acquisitionContract || imageContract) ? ACQUISITION_RESPONSE_MAX_BYTES : sourceContract
       ? SOURCE_ACCOUNT_RESPONSE_MAX_BYTES
       : UPSTREAM_RESPONSE_MAX_BYTES;
     const contentLength = readContentLength(upstream.headers);
@@ -771,6 +827,7 @@ export async function buildWorkbenchBrowserResponse(
     );
   } catch {
     if (sourceContract) return invalidSource();
+    if (imageContract) return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Image response is unavailable", options.requestId ?? "");
     return protocolError(
       502,
       "DEPENDENCY_UNAVAILABLE",
@@ -792,6 +849,28 @@ export async function buildWorkbenchBrowserResponse(
     const code = nested.success ? nested.data.error.code : standard.success ? standard.data.code : "";
     if (!code || acquisitionErrorStatuses[code] !== upstream.status) return invalidSource();
     const response = protocolError(upstream.status, code, "Product acquisition request could not be completed", options.requestId ?? "");
+    if (code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED") clearSelectionCookie(response);
+    return response;
+  }
+  if (imageContract) {
+    if (!parsedBody || !payload) return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Image response is unavailable", options.requestId ?? "");
+    if (upstream.ok) {
+      const schema = contract === "acquisition-image-candidates" ? mainImageCandidatesSchema : contract === "acquisition-image-result" ? mainImageResultSchema : mainImageAcceptedSchema;
+      const checked = schema.safeParse(payload);
+      const expectedStatus = contract === "acquisition-image-accepted" ? 202 : 200;
+      if (upstream.status !== expectedStatus || !checked.success ||
+        (expectedStoreId !== undefined && (("operationId" in checked.data && checked.data.operationId !== expectedStoreId) || ("runId" in checked.data && checked.data.runId !== expectedStoreId)))) {
+        return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Image response is invalid", options.requestId ?? "");
+      }
+      return new NextResponse(JSON.stringify(checked.data), { status: upstream.status, headers: safeJSONHeaders() });
+    }
+    const backend = z.object({code: z.string()}).strict().safeParse(payload);
+    const standard = parseWorkbenchErrorEnvelopePayload(payload);
+    const code = backend.success ? backend.data.code : standard.success ? standard.data.code : "";
+    if (!(imageErrorStatuses[code] === upstream.status || acquisitionErrorStatuses[code] === upstream.status)) {
+      return protocolError(options.sourceMutation ? 503 : 502, options.sourceMutation ? "OUTCOME_UNKNOWN" : "DEPENDENCY_UNAVAILABLE", "Image response is invalid", options.requestId ?? "");
+    }
+    const response = protocolError(upstream.status, code, "Image request could not be completed", options.requestId ?? "");
     if (code === "ORGANIZATION_ACCESS_REVOKED" || code === "ORGANIZATION_ACCESS_DENIED") clearSelectionCookie(response);
     return response;
   }
