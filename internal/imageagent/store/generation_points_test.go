@@ -49,7 +49,7 @@ func (h *heldGenerationRead) ReadGenerationFact(ctx context.Context, id imageage
 	return fact, err
 }
 
-func generationPointDatabases(t *testing.T) (*gormRepository, *gorm.DB, *resourceadapter.GormMemberLimitRepository, imageagent.GenerationIntent) {
+func generationPointDatabases(t *testing.T, unprepared ...bool) (*gormRepository, *gorm.DB, *resourceadapter.GormMemberLimitRepository, imageagent.GenerationIntent) {
 	t.Helper()
 	ctx := context.Background()
 	imageDB := generationTestDatabase(t)
@@ -63,8 +63,10 @@ func generationPointDatabases(t *testing.T) (*gormRepository, *gorm.DB, *resourc
 	catalog, err := owner.GetAssetCatalog(ctx, reservation.Identity.RunScope)
 	require.NoError(t, err)
 	intent := imageagent.GenerationIntent{Identity: reservation.Identity, MemberID: "grant-1", CatalogHash: catalog.Manifest.Hash, SourceDigest: strings.Repeat("b", 64), PromptVersion: "prompt-1", RouteReference: "route-1", CredentialReference: "credential-1", ConfigurationVersion: "config-1", Provider: "grsai", Model: "gpt-image-2.5", Protocol: "grsai-json-sync-v1", Resolution: "1024x1024", Quality: "auto", PriceVersion: "price-1", Points: 12, LimitVersion: 1, MonthStart: orgresource.AIPointMonthStart(time.Now())}
-	_, err = owner.PrepareGenerationIntent(ctx, intent)
-	require.NoError(t, err)
+	if len(unprepared) == 0 || !unprepared[0] {
+		_, err = owner.PrepareGenerationIntent(ctx, intent)
+		require.NoError(t, err)
+	}
 	// A genuinely separate database, not two connections to the same owner DB.
 	commercial, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "commercial.db")+"?_busy_timeout=5000&_journal_mode=WAL"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
