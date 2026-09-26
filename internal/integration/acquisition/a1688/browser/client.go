@@ -85,6 +85,9 @@ func (o Options) budget() time.Duration {
 // Client is a PublicAcquirer backed by a controlled browser.
 type Client struct{ opts Options }
 
+// The browser provider must satisfy the current owner's acquisition contract.
+var _ sourcing.PublicAcquirer = (*Client)(nil)
+
 // New builds a browser-backed public acquirer. It performs no IO at
 // construction; the browser starts per acquisition.
 func New(opts Options) *Client { return &Client{opts: opts} }
