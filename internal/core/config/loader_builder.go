@@ -154,6 +154,10 @@ func BuildConfig(v *viper.Viper) *Config {
 			},
 		},
 		ImageAgent: ImageAgentConfig{
+			Generation: ImageAgentGenerationConfig{
+				PriceVersion:   v.GetString("imageagent.generation.priceVersion"),
+				PointsPerImage: v.GetInt64("imageagent.generation.pointsPerImage"),
+			},
 			Admission: ImageAgentAdmissionConfig{
 				Enabled:          v.GetBool("imageagent.admission.enabled"),
 				AllowedTenantIDs: getStringSlice(v, "imageagent.admission.allowedTenantIDs"),

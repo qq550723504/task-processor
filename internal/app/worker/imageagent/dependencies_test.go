@@ -92,9 +92,17 @@ func TestResolveOrganizationWorkerComposesGovernedSingleMainSlotAndLiveAuthorize
 	require.NoError(t, err)
 	require.True(t, builtOrganization)
 	require.NotNil(t, dependencies.ExecutionAuthorizer)
+	require.NotNil(t, dependencies.GenerationRecovery, "removing current price must not disable old immutable-proof settlement")
 	require.IsType(t, organizationMainSlotExecutor{}, dependencies.StagedSlotExecutor)
+	require.Nil(t, dependencies.StagedSlotExecutor.(organizationMainSlotExecutor).generation)
 	require.NotNil(t, dependencies.ArtifactStore)
 	require.NotNil(t, dependencies.PublisherV3)
+	require.NoError(t, closeFn())
+	cfg.ImageAgent.Generation = config.ImageAgentGenerationConfig{PriceVersion: "test-only-v1", PointsPerImage: 17}
+	dependencies, closeFn, err = resolveImageAgentTemporalDependenciesForMode("config/worker.yaml", logrus.New(), imageagenttemporal.WorkerWireModeOrganization, resolver)
+	require.NoError(t, err)
+	require.NotNil(t, dependencies.GenerationRecovery)
+	require.NotNil(t, dependencies.StagedSlotExecutor.(organizationMainSlotExecutor).generation)
 	require.NoError(t, closeFn())
 }
 
