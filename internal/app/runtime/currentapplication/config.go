@@ -38,6 +38,7 @@ type Config struct {
 	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
 	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
 	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
+	ProductAgent               *ProductAgentConfig           `json:"productAgent,omitempty"`
 	Membership                 *MembershipConfig             `json:"membership,omitempty"`
 	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
 	Referrals                  ReferralsConfig               `json:"referrals"`
@@ -339,6 +340,11 @@ func (cfg *Config) validate() error {
 			}
 		} else if _, err := imageagent.ValidateSafeImageURL(image.PublicBase); err != nil {
 			return errors.New("image agent public base must be a safe public URL")
+		}
+	}
+	if cfg.ProductAgent != nil {
+		if err := cfg.ProductAgent.validate(cfg); err != nil {
+			return err
 		}
 	}
 	if err := validatePlatformAdminAllowlist("listingKitAuthorization.platformAdminUsers", cfg.ListingKitAuthorization.PlatformAdminUsers); err != nil {

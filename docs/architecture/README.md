@@ -64,6 +64,9 @@ Use these as the main source of truth for structural work:
 - `project-boundaries.md`
   - default package ownership, dependency direction, forbidden imports, and
     placement rules for new code
+- `product-agent-runtime-contract.md`
+  - #131 bounded Product Agent execution contract and #132 consumer gaps;
+    contract/fake execution does not imply real model or product availability
 - `commercial-wallet-billing-contract.md`
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `self-service-subscription-purchase-contract.md`

@@ -196,6 +196,11 @@ HTTP route, worker, queue, or second IAM implementation.
 
 ### 3.6 Agent / AI Capability
 
+The current Product Agent contract and concrete consumer gaps are specified in
+[Product Agent runtime contract](product-agent-runtime-contract.md) for #131/#132.
+That document distinguishes contract preparation from executable/runtime delivery;
+its presence does not mean a user-accessible Agent has been implemented.
+
 Agent runtime owns bounded Agent execution semantics such as AgentRun/AgentStep, budgets, tool allowlists, checkpoints/interrupts and stop reasons.
 
 AI Capability owns provider-neutral model capability/routing/policy/ledger/cost/fallback control-plane behavior.
