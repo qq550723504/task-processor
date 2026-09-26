@@ -467,11 +467,16 @@ func (a *ProductImageAdapter) editOne(ctx context.Context, input, source product
 	if err != nil {
 		return productimage.Candidate{}, err
 	}
-	response, err := a.editImage(ctx, &ai.ImageEditRequest{
+	request := &ai.ImageEditRequest{
 		Model: a.config.ImageModel, Prompt: prompt, Image: append([]byte(nil), input.Bytes...),
 		ImageURL: input.URL, ImageContentType: input.MediaType,
 		ResponseFormat: "b64_json", N: 1, Size: "auto",
-	})
+	}
+	if operation == productimage.SourceWhiteBackgroundOperation {
+		zero := 0
+		request.MaxRetries = &zero
+	}
+	response, err := a.editImage(ctx, request)
 	if err != nil {
 		return productimage.Candidate{}, err
 	}
