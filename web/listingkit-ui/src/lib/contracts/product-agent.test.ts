@@ -11,4 +11,11 @@ it("accepts backend-admitted candidate collections within the aggregate response
   };
   expect(new TextEncoder().encode(JSON.stringify(response)).length).toBeLessThan(64*1024);
   expect(agentResultSchema.safeParse(response).success).toBe(true);
+  // Runtime synthesizes unknown confidence from rejected candidate fields;
+  // even an invalid field must remain readable after the repair limit stops it.
+  const rejectedField = "x".repeat(129);
+  const stopped = {...response, phase:"stopped", canSubmitReview:false, stopReason:"repair_limit",
+    candidate:{...response.candidate,Changes:[{Field:rejectedField,Value:"invalid",EvidenceIDs:[]}]},
+    confidence:[{Field:rejectedField,Value:0,Known:false}]};
+  expect(agentResultSchema.safeParse(stopped).success).toBe(true);
 });

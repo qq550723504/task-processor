@@ -17,7 +17,7 @@ export const agentResultSchema = z.strictObject({
     runId: id, requestKey: id, operationId: id, productKey: z.string().min(1).max(128), catalogVersion: version, publicationId: z.string().min(1).max(128), targetPlatform: agentTargetPlatformSchema,
     phase: z.enum(["running", "interrupted", "human_review_required", "stopped"]), revision: version, stopReason: z.string().max(128).optional(), humanReviewRequired: z.literal(true),
     candidate: z.strictObject({ Changes: z.array(change).nullable(), Warnings: z.array(diagnostic).nullable(), Rejections: z.array(diagnostic).nullable() }),
-    confidence: z.array(z.strictObject({ Field: z.string().max(128), Value: z.number().min(0).max(1), Known: z.boolean() })).nullable(),
+    confidence: z.array(z.strictObject({ Field: text, Value: z.number().min(0).max(1), Known: z.boolean() })).nullable(),
     unresolved: z.array(text).nullable(),
     steps: z.array(z.strictObject({ step: z.number().int().min(0).max(16), tool: z.string().max(128).optional(), callId: z.string().max(128).optional(), invocationId: z.string().max(128).optional(), auditStatus: z.string().max(64).optional() })).max(24),
     tokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), estimatedCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), currency: z.string().regex(/^[A-Z]{3}$/), usageStatus: z.enum(["observed", "unknown_reserved"]), canSubmitReview: z.boolean(),
