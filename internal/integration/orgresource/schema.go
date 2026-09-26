@@ -88,6 +88,10 @@ func (organizationResourceEventRow) TableName() string {
 }
 
 type organizationResourceReservationRow struct {
+	MemberID              string                         `gorm:"column:member_id;size:128"`
+	MemberMonthStart      *time.Time                     `gorm:"column:member_month_start"`
+	MemberLimitVersion    int64                          `gorm:"column:member_limit_version"`
+	PriceVersion          string                         `gorm:"column:price_version;size:192"`
 	OrganizationID        string                         `gorm:"column:organization_id;primaryKey;size:128;not null;uniqueIndex:uq_org_resource_reservation_scope,priority:1;uniqueIndex:uq_org_resource_reservation_owner,priority:1"`
 	ReservationID         string                         `gorm:"column:reservation_id;primaryKey;size:128;not null;uniqueIndex:uq_org_resource_reservation_scope,priority:2"`
 	OperationID           string                         `gorm:"column:operation_id;size:128;not null;index"`
@@ -136,6 +140,27 @@ func (organizationResourceAuditLogRow) TableName() string {
 	return "saas_organization_resource_audit_logs"
 }
 
+type memberAIPointLimitRow struct {
+	OrganizationID string    `gorm:"column:organization_id;primaryKey;size:128;not null"`
+	MemberID       string    `gorm:"column:member_id;primaryKey;size:128;not null"`
+	MonthlyLimit   int64     `gorm:"column:monthly_limit;not null;check:chk_member_ai_point_limit_nonnegative,monthly_limit >= 0"`
+	Version        int64     `gorm:"column:version;not null;check:chk_member_ai_point_limit_version,version >= 0"`
+	UpdatedBy      string    `gorm:"column:updated_by;size:128;not null"`
+	UpdatedAt      time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (memberAIPointLimitRow) TableName() string { return "saas_member_ai_point_limits" }
+
+type memberAIPointMonthRow struct {
+	OrganizationID string    `gorm:"column:organization_id;primaryKey;size:128;not null"`
+	MemberID       string    `gorm:"column:member_id;primaryKey;size:128;not null"`
+	MonthStart     time.Time `gorm:"column:month_start;primaryKey;not null"`
+	Reserved       int64     `gorm:"column:reserved;not null;check:chk_member_ai_point_month_reserved,reserved >= 0"`
+	Consumed       int64     `gorm:"column:consumed;not null;check:chk_member_ai_point_month_consumed,consumed >= 0"`
+}
+
+func (memberAIPointMonthRow) TableName() string { return "saas_member_ai_point_months" }
+
 func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("organization resource database is required")
@@ -148,5 +173,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&organizationResourceReservationRow{},
 		&organizationResourceEventRow{},
 		&organizationResourceAuditLogRow{},
+		&memberAIPointLimitRow{},
+		&memberAIPointMonthRow{},
 	)
 }
