@@ -256,7 +256,11 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if err := writer.Close(); err != nil {
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
-	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType())
+	maxRetries := bc.config.MaxRetries
+	if req.MaxRetries != nil {
+		maxRetries = max(0, *req.MaxRetries)
+	}
+	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType(), maxRetries, req.MaxRetries != nil && maxRetries == 0)
 }
 
 func (bc *BaseClient) downloadImageEditReference(ctx context.Context, imageURL string) ([]byte, string, error) {
@@ -396,10 +400,18 @@ func (bc *BaseClient) doJSONImageRequest(ctx context.Context, method string, api
 	return nil, fmt.Errorf("调用 OpenAI image API 失败，已重试%d次: %w", bc.config.MaxRetries, lastErr)
 }
 
-func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath string, body *bytes.Buffer, contentType string) (*ImageResponse, error) {
+func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath string, body *bytes.Buffer, contentType string, maxRetries int, noReplay bool) (*ImageResponse, error) {
 	var lastErr error
 	var lastResp *ImageResponse
-	for attempt := 0; attempt <= bc.config.MaxRetries; attempt++ {
+	client := http.DefaultClient
+	if noReplay {
+		// Redirects can replay the POST outside the explicit retry loop. Keep
+		// this request's no-replay policy local; other consumers are unchanged.
+		local := *client
+		local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &local
+	}
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			delay := bc.config.RetryDelay * time.Duration(1<<uint(attempt-1))
 			select {
@@ -419,7 +431,10 @@ func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath strin
 			if bc.config.APIKey != "" {
 				request.Header.Set("Authorization", "Bearer "+bc.config.APIKey)
 			}
-			resp, err := http.DefaultClient.Do(request)
+			if noReplay {
+				request.GetBody = nil
+			}
+			resp, err := client.Do(request)
 			if err != nil {
 				return err
 			}
@@ -451,7 +466,7 @@ func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath strin
 			break
 		}
 	}
-	return nil, fmt.Errorf("调用 OpenAI image edit API 失败，已重试%d次: %w", bc.config.MaxRetries, lastErr)
+	return nil, fmt.Errorf("调用 OpenAI image edit API 失败，已重试%d次: %w", maxRetries, lastErr)
 }
 
 func buildAPIURL(baseURL string, apiPath string) string {

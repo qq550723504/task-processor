@@ -38,6 +38,7 @@ type Config struct {
 }
 
 type Client struct {
+	disableSubmitReplay      bool
 	cfg                      Config
 	logger                   Logger
 	httpClient               *http.Client
@@ -238,6 +239,7 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
+	c = c.withEditRetryPolicy(req)
 	images, releaseReferences, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {
 		return nil, err
@@ -362,6 +364,7 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
+	c = c.withEditRetryPolicy(req)
 	images, releaseReferences, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {
 		return nil, err
@@ -374,6 +377,21 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 		Images:         images,
 		ResponseFormat: "url",
 	})
+}
+
+// withEditRetryPolicy isolates the source-only effect's no-replay policy from
+// other consumers sharing this client. A query failure must never resubmit it.
+func (c *Client) withEditRetryPolicy(req *openaiclient.ImageEditRequest) *Client {
+	if req.MaxRetries == nil {
+		return c
+	}
+	local := *c
+	retries := max(0, *req.MaxRetries)
+	local.cfg.MaxAttempts = retries + 1
+	if retries == 0 {
+		local.disableSubmitReplay = true
+	}
+	return &local
 }
 
 func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.ImageEditRequest) (materialized []string, release func(), err error) {
@@ -592,10 +610,17 @@ func (c *Client) submitGenerationRequestNoPoll(ctx context.Context, submitURL st
 		return nil, fmt.Errorf("build image generation request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	client := c.httpClient
+	if c.disableSubmitReplay {
+		httpReq.GetBody = nil
+		local := *client
+		local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &local
+	}
 	if strings.TrimSpace(c.cfg.APIKey) != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	}
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("submit image generation request: %w", err)
 	}

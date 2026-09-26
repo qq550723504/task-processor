@@ -208,6 +208,9 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
+	if req.MaxRetries != nil {
+		return nil, fmt.Errorf("gemini image edit does not support a request-scoped retry policy")
+	}
 	model := firstNonEmpty(req.Model, c.cfg.Model)
 	if strings.TrimSpace(model) == "" {
 		return nil, fmt.Errorf("gemini image model cannot be empty")

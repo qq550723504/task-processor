@@ -89,6 +89,12 @@ func TestGenericMainGeneratesOneSourceEditWithoutReviewerOrExtractor(t *testing.
 	require.Equal(t, 1, white.calls, "changed flow quote must not dispatch again")
 	_, err = executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
 	require.Error(t, err, "this flow must not quote a hidden Review on recovery")
+	white.err = errors.New("image edit response or redirect outcome unknown")
+	output, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.Error(t, err)
+	require.Equal(t, imageagent.ProviderDispatchedUnknown, imageagent.ProviderDispatchStateOf(err), "transport refusal after a POST is not proof of no effect")
+	require.Empty(t, output.Assets)
+	require.Equal(t, 2, white.calls, "the executor does not retry the failed edit internally")
 }
 
 func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
@@ -458,12 +464,13 @@ type recordingProductWhiteRenderer struct {
 	calls     int
 	candidate productimage.Candidate
 	request   productimage.RenderRequest
+	err       error
 }
 
 func (r *recordingProductWhiteRenderer) RenderWhiteBackground(_ context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
 	r.calls++
 	r.request = request
-	return r.candidate, nil
+	return r.candidate, r.err
 }
 
 type testProductWhiteRenderer struct{}
