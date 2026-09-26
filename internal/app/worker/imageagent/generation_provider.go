@@ -76,7 +76,7 @@ func (f generationProviderFactory) resolve(ctx context.Context) (*openai.ClientC
 	invalid := func() (*openai.ClientConfig, imageagent.GenerationProviderMetadata, error) {
 		return nil, imageagent.GenerationProviderMetadata{}, imageagent.ErrBudgetQuoteUnavailable
 	}
-	if f.resolver == nil || f.price.PointsPerImage <= 0 || f.price.PriceVersion == "" || strings.TrimSpace(f.price.PriceVersion) != f.price.PriceVersion || len(f.price.PriceVersion) > 192 {
+	if f.resolver == nil || !f.price.Configured() {
 		return invalid()
 	}
 	// No process-wide key/model fallback: the organization credential owner

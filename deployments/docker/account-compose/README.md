@@ -24,9 +24,10 @@ docker compose -f docker-compose.yml -f docker-compose.image-agent.yml ps --all
 
 This command prepares isolated infrastructure, health checks and persistent
 storage only; it does not enable a usable image-generation workflow. Current
-main-image candidates and Start return `503 IMAGE_UNAVAILABLE`, and the
-organization worker refuses generation until executable generation admission
-and metering are approved. The overlay therefore cannot validate new generation,
+main-image candidates and Start return `503 IMAGE_UNAVAILABLE` with the overlay's
+absent image price. The approved implementation uses enterprise AI points and
+an administrator-configured member UTC monthly limit, not token allocation.
+The overlay therefore cannot validate new generation,
 the complete generation-to-human-approval flow, or canonical generation accounting.
 Existing saved-run reads and exact approval-receipt recovery remain available
 under their original authorization checks; they do not reopen new generation.
@@ -38,18 +39,29 @@ deterministic white 2×2 PNG is not image-quality evidence. Its seven-token Revi
 usage belongs only to historical Review tests, not the current one-edit,
 zero-Extract, zero-model-Review flow or its generation metering. The `paid_pilot`
 isolated catalog is only a purchasable local trial offer; subscription activation
-or member token allocation does not supply the missing generation contract or
+or member token allocation does not supply an image price/member point limit or
 unlock dispatch. No paid or external AI key is installed.
+
+For a separately authorized configured runtime, the current manifest's
+`imageAgent.generation.priceVersion` and `pointsPerImage` must match the worker's
+`imageagent.generation` configuration. Neither has a default. An incomplete
+price or a missing verified commercial owner pool fails closed. This admits
+the HTTP operation, not proof of worker health or provider readiness: the worker
+still resolves the exact scoped GRSAI `gpt-image-2.5` credential/route and atomically
+reserves member-limit and enterprise points before its unique dispatch. Do not
+enable this overlay by adding a sample price or treating its old stub as that route.
 
 The current API connects to the dedicated ImageAgent owner database as
 `image_agent_runtime`, with the existing Start/Get/Approve database privileges;
-these privileges do not enable the closed HTTP Start route. The
+these privileges alone do not enable the unpriced HTTP Start route. The
 organization-v1 worker connects to the same database as
 `image_agent_worker_runtime`, with exactly its 16 current tables' required
 read/insert/update privileges; startup verifies and refuses extra privileges.
-Its commercial connection uses the existing `commercial_runtime` role, not
-`commercial_owner_runtime` or the schema owner. This role wiring does not imply
-that the current generation path reserves or settles canonical member usage.
+Its existing token/review connection remains `commercial_runtime`. The explicit
+`commercialOwnerDatabase` pool uses `commercial_owner_runtime` for image AI point
+reservations, original-month counters and settlement; neither uses a schema-owner
+role. Startup verifies the existing resource owner's exact required rights,
+including its two member-limit tables, without granting or migrating them.
 Only the worker-secret volume carries MinIO credentials; the API cannot read
 it. All new PostgreSQL, Temporal and MinIO volumes are project-named and
 persist across stop/restart. `image-trial-init` grants roles only after owner

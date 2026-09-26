@@ -269,7 +269,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			if err != nil {
 				return nil, err
 			}
-			return buildAcquisitionImageModule(ctx, receipts, imageDB, workflows, cfg)
+			return buildAcquisitionImageModule(ctx, receipts, imageDB, supplied.commercialOwnerDB, workflows, cfg)
 		}
 	}
 	if supplied.membership != nil {

@@ -21,6 +21,7 @@ import (
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
 	imagetemporal "task-processor/internal/imageagent/temporal"
+	resourceadapter "task-processor/internal/integration/orgresource"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	kernelmodule "task-processor/internal/kernel/module"
 	productasset "task-processor/internal/product/asset"
@@ -41,13 +42,22 @@ type acquisitionImageCandidateReader interface {
 
 type acquisitionImageModule struct{ routes []httproute.Descriptor }
 
-func buildAcquisitionImageModule(ctx context.Context, receipts sourcing.PublishedAcquisitionReader, imageDB *gorm.DB, workflows imageagent.WorkflowClient, cfg *config.Config) (kernelmodule.Module, error) {
+func buildAcquisitionImageModule(ctx context.Context, receipts sourcing.PublishedAcquisitionReader, imageDB, resourceDB *gorm.DB, workflows imageagent.WorkflowClient, cfg *config.Config) (kernelmodule.Module, error) {
 	if receipts == nil || imageDB == nil || workflows == nil || cfg == nil ||
 		!cfg.ImageAgent.Admission.Enabled || len(cfg.ImageAgent.Admission.AllowedTenantIDs) == 0 {
 		return nil, imageagent.ErrIdentityRequired
 	}
 	if err := imagestore.VerifyOrganizationRuntimePermissions(ctx, imageDB); err != nil {
 		return nil, err
+	}
+	price := cfg.ImageAgent.Generation
+	if price != (config.ImageAgentGenerationConfig{}) {
+		if !price.Configured() || resourceDB == nil {
+			return nil, imageagent.ErrBudgetQuoteUnavailable
+		}
+		if err := resourceadapter.VerifyRuntimePermissions(ctx, resourceDB); err != nil {
+			return nil, err
+		}
 	}
 	publicURLs := imageAgentDurableAssetPublicURLResolver(cfg)
 	if publicURLs == nil {
@@ -78,7 +88,7 @@ func buildAcquisitionImageModule(ctx context.Context, receipts sourcing.Publishe
 		return nil, err
 	}
 	binder := productReviewCapabilityBinder{now: time.Now}
-	return acquisitionImageModule{routes: acquisitionImageRoutes(service, catalog, approvalReader, binder.Bind, publicURLs, trialURLs)}, nil
+	return acquisitionImageModule{routes: acquisitionImageRoutes(service, catalog, approvalReader, binder.Bind, publicURLs, acquisitionImageRouteOptions{Price: price, Trial: trialURLs})}, nil
 }
 
 func (acquisitionImageModule) Name() string                { return "acquisition-main-image" }
@@ -88,7 +98,18 @@ func (m acquisitionImageModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
-func acquisitionImageRoutes(service acquisitionImageService, catalog acquisitionImageCandidateReader, approvalReader productasset.ApprovalCommitReader, bind func(context.Context, string) (context.Context, error), publicURLs imageagent.DurableAssetPublicURLResolver, trial ...*imageagent.IsolatedTrialGeneratedURLPolicy) []httproute.Descriptor {
+type acquisitionImageRouteOptions struct {
+	Price config.ImageAgentGenerationConfig
+	Trial *imageagent.IsolatedTrialGeneratedURLPolicy
+}
+
+func acquisitionImageRoutes(service acquisitionImageService, catalog acquisitionImageCandidateReader, approvalReader productasset.ApprovalCommitReader, bind func(context.Context, string) (context.Context, error), publicURLs imageagent.DurableAssetPublicURLResolver, options ...acquisitionImageRouteOptions) []httproute.Descriptor {
+	var price config.ImageAgentGenerationConfig
+	var trial []*imageagent.IsolatedTrialGeneratedURLPolicy
+	if len(options) == 1 {
+		price = options[0].Price
+		trial = []*imageagent.IsolatedTrialGeneratedURLPolicy{options[0].Trial}
+	}
 	specs := []struct{ method, path, permission, action string }{
 		{http.MethodGet, acquisitionImageBase + "/candidates", authz.PermissionImageAgentRead, "candidates"},
 		{http.MethodPost, acquisitionImageBase, authz.PermissionImageAgentWrite, "start"},
@@ -126,9 +147,20 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 					if !emptyAcquisitionImageBody(c) {
 						return
 					}
-					// This discovery endpoint serves new generation only. Keep it
-					// closed with Start until real generation admission is approved.
-					writeAcquisitionImageError(c, imageagent.ErrBudgetQuoteUnavailable)
+					if !price.Configured() {
+						writeAcquisitionImageError(c, imageagent.ErrBudgetQuoteUnavailable)
+						return
+					}
+					assets, err := catalog.Candidates(ctx, imageagent.AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: operationID})
+					if err != nil {
+						writeAcquisitionImageError(c, err)
+						return
+					}
+					candidates := make([]gin.H, 0, len(assets))
+					for _, asset := range assets {
+						candidates = append(candidates, gin.H{"id": asset.ID, "displayUrl": asset.DisplayURL})
+					}
+					c.JSON(http.StatusOK, gin.H{"operationId": operationID, "candidates": candidates})
 				case "start":
 					requestIDs := c.Request.Header.Values("Idempotency-Key")
 					if len(requestIDs) != 1 {
@@ -143,16 +175,23 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						writeAcquisitionImageError(c, err)
 						return
 					}
-					_, err := acquisitionMainRunInput(identity, operationID, requestID, body.SourceImageID)
+					input, err := acquisitionMainRunInput(identity, operationID, requestID, body.SourceImageID)
 					if err != nil {
 						writeAcquisitionImageError(c, err)
 						return
 					}
-					// The single-edit product has no approved executable commercial
-					// admission contract yet. Do not create a run that can only block
-					// in the worker, even when the actor has available token quota.
-					// Existing run reads and approval receipts remain independent.
-					writeAcquisitionImageError(c, imageagent.ErrBudgetQuoteUnavailable)
+					if !price.Configured() {
+						writeAcquisitionImageError(c, imageagent.ErrBudgetQuoteUnavailable)
+						return
+					}
+					// Start persists the exact receipt-backed catalog. The worker
+					// independently locks the real route/price and reserves both
+					// member limit and enterprise points before the unique dispatch.
+					if err := service.Start(ctx, input); err != nil {
+						writeAcquisitionImageMutationError(c, err)
+						return
+					}
+					c.JSON(http.StatusAccepted, gin.H{"runId": input.RunID, "status": "accepted"})
 				case "read", "approve":
 					runID := c.Param("run_id")
 					if !acquisitionHTTPUUID(runID) {
@@ -204,7 +243,7 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						return
 					}
 					if err := service.ApproveResults(ctx, runID, body.PlanRevision, body.ResultDigest, body.ActionID); err != nil {
-						writeAcquisitionImageError(c, err)
+						writeAcquisitionImageMutationError(c, err)
 						return
 					}
 					c.JSON(http.StatusAccepted, gin.H{"runId": runID, "status": "accepted"})
@@ -306,6 +345,18 @@ func acquisitionImagePublishedURL(projection imageagent.RunProjection, slot imag
 		policy = trial[0]
 	}
 	return imageagent.ResolvePublishedAssetURL(imageagent.SlotExecutionInput{RunID: projection.Run.ID, TenantID: projection.Run.TenantID, UserID: projection.Run.UserID, PlanRevision: projection.Plan.Revision, Slot: slot, Attempt: attempt}, candidate.DurableAsset, index, publicURLs, policy)
+}
+
+// Unknown command errors may follow a committed run or Temporal update. The
+// caller must retain its original key/action, not infer an unstarted request.
+func writeAcquisitionImageMutationError(c *gin.Context, err error) {
+	for _, known := range []error{imageagent.ErrIdentityRequired, imageagent.ErrValidation, imageagent.ErrRunNotFound, imageagent.ErrRevisionConflict, imageagent.ErrCommandBlocked, sourcing.ErrPublicationForbidden, sourcing.ErrInvalidAcquisition, sourcing.ErrAcquisitionNotFound, sourcing.ErrAcquisitionConflict} {
+		if errors.Is(err, known) {
+			writeAcquisitionImageError(c, err)
+			return
+		}
+	}
+	c.JSON(http.StatusServiceUnavailable, gin.H{"code": "OUTCOME_UNKNOWN"})
 }
 
 func writeAcquisitionImageError(c *gin.Context, err error) {

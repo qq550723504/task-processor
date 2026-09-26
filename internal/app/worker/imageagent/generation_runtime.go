@@ -52,7 +52,7 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 	if cfg == (config.ImageAgentGenerationConfig{}) {
 		return nil, recovery, nil
 	}
-	if cfg.PointsPerImage <= 0 || cfg.PriceVersion == "" {
+	if !cfg.Configured() {
 		return nil, nil, imageagent.ErrBudgetQuoteUnavailable
 	}
 	limits, err := resourceadapter.NewGormMemberLimitRepository(commercial, resourceadapter.TransactionConfig{})

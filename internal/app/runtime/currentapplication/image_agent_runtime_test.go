@@ -38,6 +38,20 @@ func TestCurrentImageAgentRequiresExplicitOwnedRuntimeAndNeverFallsBack(t *testi
 	require.True(t, core.ImageAgent.Admission.Enabled)
 	require.Equal(t, []string{"org-a"}, core.ImageAgent.Admission.AllowedTenantIDs)
 	require.Equal(t, "https://images.example.test", core.ImageAgent.ArtifactStore.PublicBase)
+	require.Equal(t, coreconfig.ImageAgentGenerationConfig{}, core.ImageAgent.Generation, "no default price opens generation")
+	cfg.ImageAgent.Generation = coreconfig.ImageAgentGenerationConfig{PriceVersion: "price-2026-09", PointsPerImage: 12}
+	require.Error(t, cfg.validate(), "price without the explicit resource owner must not open generation")
+	cfg.CommercialOwnerDatabase = &DatabaseConfig{Host: "127.0.0.1", Port: 5434, User: "commercial_owner_runtime", Password: "fixture-password", Database: "commercial_owner", MaxConnections: 4}
+	require.NoError(t, cfg.validate())
+	require.Equal(t, cfg.ImageAgent.Generation, cfg.CoreConfig().ImageAgent.Generation)
+	for _, price := range []coreconfig.ImageAgentGenerationConfig{{PriceVersion: "version"}, {PointsPerImage: 12}, {PriceVersion: " version ", PointsPerImage: 12}, {PriceVersion: "bad\nversion", PointsPerImage: 12}} {
+		cfg.ImageAgent.Generation = price
+		require.Error(t, cfg.validate())
+	}
+	// Restore the original pool-less fixture below: this test's Run lifecycle
+	// does not construct the additional resource owner pool.
+	cfg.ImageAgent.Generation = coreconfig.ImageAgentGenerationConfig{}
+	cfg.CommercialOwnerDatabase = nil
 
 	source, commercial, product, imageDB := &gorm.DB{}, &gorm.DB{}, &gorm.DB{}, &gorm.DB{}
 	var closed []*gorm.DB

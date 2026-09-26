@@ -145,11 +145,11 @@ image-only decoder 同时接 JSON generation 和 multipart edit，明确解析 i
 
 下一次最小持久边界设计复用 internal/ledger/orgresource 与 internal/integration/orgresource 的 reservation/settlement及TransactionalReservationOwnerStore。同事务要求须先解决实际DB部署：当前V3 effect在ImageAgent DB，资源在commercial owner DB，不能直接传不同DB的gorm handle冒充共享事务。图像token观察随该次调用的权威effect事实一并保存，不重复建立独立账本或先铺一套观察字段。必须保持 canonical org/member/run/slot/attempt/route/config/request fingerprint、服务端价格版本/quantity不可变、同键异量冲突、幂等、UNKNOWN held与现V3 bundle恢复；不得复活product_image_jobs_succeeded的legacy mirror。
 
-现GormInvocationRecorder的Succeeded立即settle、Failed释放、UsageObservedFailed仅Review，不能通过借名调用达成新图片规则。现ReserveSlotProviderV3创建即provider_claimed，但资源owner的NotStarted只能表示尚未派发，不能仅凭该phase重新预留/派发。必须在同份最小设计明确独占dispatch证明、reserve后submit前崩溃、late ACK、终局effect单调保存与settle ACK恢复；恢复只补原事实，未知不重发。该新增持久边界已按§9.5取得IMPLEMENTATION_READY，正在同一PR实现；HTTP/worker gate保持关闭。
+现GormInvocationRecorder的Succeeded立即settle、Failed释放、UsageObservedFailed仅Review，不能通过借名调用达成新图片规则。现ReserveSlotProviderV3创建即provider_claimed，但资源owner的NotStarted只能表示尚未派发，不能仅凭该phase重新预留/派发。§9.5已取得IMPLEMENTATION_READY并实现独占dispatch证明、reserve后submit前崩溃、late ACK、终局effect单调保存与settle ACK恢复；恢复只补原事实，未知不重发。HTTP/worker没有默认图片价格：current manifest显式generation价格与资源owner权限齐备才接现Start；实际组织凭据、成员限额/余额和唯一dispatch仍由worker权威核验。未配置试用实例仍关闭，代码接线不等于已部署/可普遍使用。
 
 ### 9.4 当前可交付与停止线
 
-已确定且可独立验证的是image-only token decoder及现provider no-replay。§9.5F统一json/base64 adapter及exact source bytes的tools/port链已实现并有受控httptest证据；正式worker/资源及恢复装配尚未完成，不直接传可变来源URL、不live/付费探测。无已实现task恢复合同的派发不明沿原UNKNOWN，不建设异步任务状态/查询平台。
+image-only token decoder、provider no-replay、§9.5F统一json/base64 adapter及exact source bytes的tools/port链已有受控证据。现worker/资源/恢复、成员月限API/BFF与账户扣点只读投影已接线，完整PG/Temporal/浏览器组合仍待执行，不以局部fixture声称产品验收。没有直接传可变来源URL或live/付费探测。同步派发不明沿原UNKNOWN，不建设异步任务状态/查询平台。
 
 后续按张AI点数与token审计统一设计至少验证：配置缺失不派发；按固定价格原子拒超额；成功只commit原预留一次；不采用不退款；confirmed-no-generation才release；response loss/DB ACK loss/取消/restart/同身份重放均不重发或重计；异org/member/fingerprint/价格版本冲突；可信usage在下载/校验失败前可保全但不扣ai_tokens。范围沿现owner与已有测试，不另建验收工具。未执行真实provider/PG/Temporal/browser的项仍NOT_RUN。
 

@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 // ImageAgentConfig owns the durable runtime settings consumed by ImageAgent.
 type ImageAgentConfig struct {
 	Generation    ImageAgentGenerationConfig    `mapstructure:"generation" yaml:"generation"`
@@ -10,8 +12,12 @@ type ImageAgentConfig struct {
 // ImageAgentGenerationConfig is a server-owned price, never a sample balance
 // or provider token conversion. Absent configuration keeps generation closed.
 type ImageAgentGenerationConfig struct {
-	PriceVersion   string `mapstructure:"priceVersion" yaml:"priceVersion"`
-	PointsPerImage int64  `mapstructure:"pointsPerImage" yaml:"pointsPerImage"`
+	PriceVersion   string `mapstructure:"priceVersion" yaml:"priceVersion" json:"priceVersion"`
+	PointsPerImage int64  `mapstructure:"pointsPerImage" yaml:"pointsPerImage" json:"pointsPerImage"`
+}
+
+func (c ImageAgentGenerationConfig) Configured() bool {
+	return c.PointsPerImage > 0 && c.PriceVersion != "" && len(c.PriceVersion) <= 192 && strings.TrimSpace(c.PriceVersion) == c.PriceVersion && !strings.ContainsAny(c.PriceVersion, "\r\n\x00")
 }
 
 // ImageAgentAdmissionConfig is the explicit tenant boundary for provider work.
