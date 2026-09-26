@@ -23,6 +23,10 @@ const (
 	InvocationDispatched InvocationOutcome = "dispatched"
 	InvocationSucceeded  InvocationOutcome = "succeeded"
 	InvocationFailed     InvocationOutcome = "failed"
+	// InvocationUsageObservedFailed is limited to image Review output failures
+	// with trustworthy provider-observed tokens. It bills consumption without
+	// claiming that QA succeeded or that an image may be approved.
+	InvocationUsageObservedFailed InvocationOutcome = "usage_observed_failed"
 )
 
 type InvocationRecord struct {

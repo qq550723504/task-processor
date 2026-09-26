@@ -62,7 +62,8 @@ async function proxyWorkbenchRequest(
   dispatchState.requestId = upstreamRequest.requestId;
   dispatchState.acquisitionRequest =
     upstreamRequest.responseContract === "product-acquisition" ||
-    upstreamRequest.responseContract === "product-acquisition-product";
+    upstreamRequest.responseContract === "product-acquisition-product" ||
+    upstreamRequest.responseContract.startsWith("acquisition-image-");
   dispatchState.sourceRequest = dispatchState.acquisitionRequest || upstreamRequest.responseContract.startsWith("source-account-");
   dispatchState.sourceMutation = upstreamRequest.sourceMutation;
   if (request.signal.aborted) return deadlineFailure(dispatchState);
@@ -172,7 +173,9 @@ function isSourceMutation(method: string, path: string[]) {
   return (
     method.toUpperCase() === "POST" &&
     ((path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" &&
-      (path.length === 3 || (path.length === 4 && path[3] === "verify"))) ||
+      (path.length === 3 || (path.length === 4 && path[3] === "verify") ||
+        (path.length === 5 && path[4] === "main-image") ||
+        (path.length === 8 && path[4] === "main-image" && path[5] === "runs" && path[7] === "approve"))) ||
     (path[0] === "source-accounts" &&
     (path.length === 1 ||
       (path.length === 3 && ["enable", "disable"].includes(path[2] ?? "")))))
@@ -184,10 +187,13 @@ function isAcquisitionRequestURL(method: string, rawURL: string) {
 
   const path = new URL(rawURL).pathname;
   const base = "/api/workbench/sourcing/1688/acquisitions";
-  if (method === "POST") return path === base || path === `${base}/verify`;
-  if (method !== "GET" || !path.startsWith(`${base}/`)) return false;
+  if (method === "POST" && (path === base || path === `${base}/verify`)) return true;
+  if (method !== "GET" && method !== "POST") return false;
+  if (!path.startsWith(`${base}/`)) return false;
   const suffix = path.slice(base.length + 1);
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/product)?$/.test(suffix);
+  const id = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+  if (method === "POST") return new RegExp(`^${id}\\/main-image(?:\\/runs\\/${id}\\/approve)?$`).test(suffix);
+  return new RegExp(`^${id}(?:\\/product|\\/main-image\\/candidates|\\/main-image\\/runs\\/${id})?$`).test(suffix);
 }
 
 function isSourceRequestURL(rawURL: string) {
@@ -230,7 +236,7 @@ function unknownMutationFailure(requestId: string, acquisition = false) {
   return workbenchProtocolError(
     503,
     "OUTCOME_UNKNOWN",
-    acquisition ? "Product acquisition outcome is unknown" : "Source Account mutation outcome is unknown",
+    acquisition ? "Acquisition or main-image action outcome is unknown" : "Source Account mutation outcome is unknown",
     requestId,
   );
 }

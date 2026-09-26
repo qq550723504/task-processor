@@ -21,6 +21,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	a1688 "task-processor/internal/integration/acquisition/a1688"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/sourcing"
@@ -68,7 +69,17 @@ type productAcquisitionService interface {
 	Acquire(context.Context, string, string) (sourcing.AcquisitionResult, error)
 	Verify(context.Context, string, string) (sourcing.AcquisitionResult, error)
 	Read(context.Context, string) (sourcing.AcquisitionResult, error)
-	ReadPublished(context.Context, string) (productsourcing.PublishedAcquisition, error)
+	ReadPublished(context.Context, string) (sourcing.PublishedAcquisition, error)
+}
+
+// The admitted acquisition composition owner constructs the producer. Current
+// image consumers receive only its domain-owned, actor-scoped exact-read port.
+func buildPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+	if db == nil || dependencies.organizationResolver == nil || authorizer == nil {
+		return nil, sourcing.ErrAcquisitionUnavailable
+	}
+	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
+	return productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, a1688.New())
 }
 
 func productAcquisitionRoutes(service productAcquisitionService, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
@@ -263,7 +274,7 @@ func writeAcquisitionResult(c *gin.Context, result sourcing.AcquisitionResult) {
 	c.Data(http.StatusOK, "application/json; charset=utf-8", raw)
 }
 
-func writeAcquisitionProduct(c *gin.Context, published productsourcing.PublishedAcquisition) {
+func writeAcquisitionProduct(c *gin.Context, published sourcing.PublishedAcquisition) {
 	result := published.Result
 	if result.Operation.State != sourcing.AcquisitionPublished || result.Publication == nil || !acquisitionHTTPUUID(result.Operation.ID) {
 		writeAcquisitionError(c, sourcing.ErrAcquisitionUnknown)

@@ -1,5 +1,13 @@
 schema: product-image-policy/v1
 policies:
+  # "product/zz" is an internal, provider-neutral acquisition policy key.
+  # zz means no target country; it is not a country shown to users.
+  - marketplace: product
+    country: zz
+    family: default
+    scene_category: general
+    thresholds: {main_review: 0.65, white_background_review: 0.70, white_canvas_penalty: 0.10}
+    scene_defaults: {scene_category: general, scene_style: studio, background_tone: neutral, composition: centered, props_level: none, audience_hint: general}
   - marketplace: amazon
     country: us
     family: default

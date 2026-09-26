@@ -17,6 +17,15 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("shows the exact committed usage quantity, canonical member and invocation without an invented actor", async () => {
+    const usage = { eventType: "account_ai_tokens.committed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "consume", result: "succeeded", relation: { type: "saas_usage_event", reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "ai_tokens" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+saas_ai_usage_events", items: [usage] })));
+    mount();
+    const table = await screen.findByRole("table", { name: "操作记录" });
+    expect(within(table).getByText("未记录操作人")).toBeVisible();
+    expect(within(table).getByText("AI token 已结算：7")).toBeVisible();
+    expect(within(table).getByText("成员 grant-1 · 调用 inv-1")).toBeVisible();
+  });
   it("keeps audit row keys unique across relation types and actors", () => {
     const base = { eventType: "event", relation: { type: "relation", reference: "same", version: "1" } };
     expect(auditRowKey({ ...base, actor: "actor-a", eventType: "profile" })).not.toBe(auditRowKey({ ...base, actor: "actor-a", eventType: "resource" }));

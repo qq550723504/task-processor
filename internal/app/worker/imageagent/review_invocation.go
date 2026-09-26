@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -77,6 +78,24 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 			}
 			return productimage.Review{Score: existing.ReviewScore, NeedsHumanReview: existing.ReviewNeedsHumanReview, Reasons: append([]string(nil), existing.ReviewReasons...)}, nil
 		}
+		if found && existing.Outcome == aicapability.InvocationUsageObservedFailed {
+			replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			replayErr := settings.Recorder.RecordInvocation(replayCtx, existing)
+			cancel()
+			if replayErr != nil {
+				return productimage.Review{}, fmt.Errorf("image review observed usage settlement failed: %w", replayErr)
+			}
+			return productimage.Review{}, productimage.ErrOutputValidation
+		}
+		if found && existing.Outcome == aicapability.InvocationFailed && (existing.ErrorCode == "review_preflight_failed" || existing.ErrorCode == "review_adapter_failed") {
+			replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			replayErr := settings.Recorder.RecordInvocation(replayCtx, existing)
+			cancel()
+			if replayErr != nil {
+				return productimage.Review{}, fmt.Errorf("image review preflight release failed: %w", replayErr)
+			}
+			return productimage.Review{}, productimage.ErrReviewConfirmedNotDispatched
+		}
 		if found {
 			return productimage.Review{}, fmt.Errorf("image review invocation is already durably dispatched and cannot be replayed safely: %w", productimage.ErrExternalCapabilityUnavailable)
 		}
@@ -124,70 +143,83 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 		if failureErr != nil {
 			return productimage.Review{}, fmt.Errorf("image review adapter failure recording failed: %w", failureErr)
 		}
-		return productimage.Review{}, err
+		return productimage.Review{}, productimage.ErrReviewConfirmedNotDispatched
+	}
+	if err := adapter.PreflightReview(request); err != nil {
+		record.FinishedAt = time.Now().UTC()
+		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(err), "review_preflight_failed"
+		failureCtx, failureCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		failureErr := settings.Recorder.RecordInvocation(failureCtx, record)
+		failureCancel()
+		if failureErr != nil {
+			return productimage.Review{}, fmt.Errorf("image review preflight recording or release failed: %w", failureErr)
+		}
+		return productimage.Review{}, productimage.ErrReviewConfirmedNotDispatched
 	}
 	result, providerErr := adapter.Review(ctx, request)
 	if providerErr == nil {
 		result, providerErr = productimage.ValidateReview(result)
 	}
-	if !observed {
-		if providerErr == nil {
-			return result, fmt.Errorf("image review provider result was not observed: %w", productimage.ErrExternalCapabilityUnavailable)
-		}
-		record.FinishedAt = time.Now().UTC()
-		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(providerErr), "review_provider_failed"
-		failureCtx, failureCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-		failureErr := settings.Recorder.RecordInvocation(failureCtx, record)
-		failureCancel()
-		if failureErr != nil {
-			return result, fmt.Errorf("image review provider failure recording failed: %w", failureErr)
-		}
-		return result, providerErr
-	}
 	finished := time.Now().UTC()
-	record.FinishedAt, record.Outcome = finished, aicapability.InvocationSucceeded
-	record.PromptVersion, record.PromptHash = observation.PromptVersion, observation.PromptHash
-	record.ProviderRequestID = safeReviewReference(observation.ProviderRequestID)
-	record.ReviewScore, record.ReviewNeedsHumanReview, record.ReviewReasons = result.Score, result.NeedsHumanReview, append([]string(nil), result.Reasons...)
 	usage := observation.Usage
 	// The current wire contract has no presence bit. Zero/missing usage stays unknown.
-	if usage.PromptTokens >= 0 && usage.CompletionTokens >= 0 && usage.TotalTokens > 0 && usage.PromptTokens+usage.CompletionTokens == usage.TotalTokens {
+	if observed && usage.PromptTokens >= 0 && usage.CompletionTokens >= 0 && usage.TotalTokens > 0 && usage.PromptTokens+usage.CompletionTokens == usage.TotalTokens {
 		record.UsageKnown = true
 		record.PromptTokens, record.CompletionTokens, record.TotalTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens
 	}
+	record.Outcome = reviewInvocationTerminalOutcome(providerErr, record.UsageKnown)
+	if record.Outcome == aicapability.InvocationDispatched {
+		if providerErr != nil {
+			return productimage.Review{}, providerErr
+		}
+		return productimage.Review{}, fmt.Errorf("image review provider usage was not observed: %w", productimage.ErrExternalCapabilityUnavailable)
+	}
+	record.FinishedAt = finished
+	record.PromptVersion, record.PromptHash = observation.PromptVersion, observation.PromptHash
+	record.ProviderRequestID = safeReviewReference(observation.ProviderRequestID)
+	if record.Outcome == aicapability.InvocationSucceeded {
+		record.ReviewScore, record.ReviewNeedsHumanReview, record.ReviewReasons = result.Score, result.NeedsHumanReview, append([]string(nil), result.Reasons...)
+	}
 	if providerErr != nil {
-		record.Outcome, record.ErrorCategory, record.ErrorCode = aicapability.InvocationFailed, reviewProviderErrorCategory(providerErr), "review_provider_failed"
-		if errors.Is(providerErr, context.Canceled) {
-			record.ErrorCode = "canceled"
-		}
-		if errors.Is(providerErr, context.DeadlineExceeded) {
-			record.ErrorCategory, record.ErrorCode = aicapability.ErrorProviderTimeout, "deadline_exceeded"
-		}
-		if errors.Is(providerErr, productimage.ErrOutputValidation) {
-			record.ErrorCategory, record.ErrorCode = aicapability.ErrorInvalidProviderResponse, "invalid_review_output"
-		}
+		record.ErrorCategory, record.ErrorCode = aicapability.ErrorInvalidProviderResponse, "invalid_review_output"
 	}
 	// No retry and no provider re-execution: cancellation cannot erase a completed call fact.
 	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	if err := settings.Recorder.RecordInvocation(recordCtx, record); err != nil {
 		settings.Logger.WithFields(logrus.Fields{"event": "image_review_record_degraded", "invocation_id": record.InvocationID, "outcome": record.Outcome, "record_status": "failed"}).Error("image review invocation recording failed")
-		if providerErr == nil {
-			return productimage.Review{}, fmt.Errorf("image review usage settlement failed: %w", err)
-		}
+		return productimage.Review{}, fmt.Errorf("image review usage settlement failed: %w", err)
 	} else {
 		reservationHeld = false
 	}
-	return result, providerErr
+	if providerErr != nil {
+		return productimage.Review{}, providerErr
+	}
+	return result, nil
+}
+
+func reviewInvocationTerminalOutcome(providerErr error, usageKnown bool) aicapability.InvocationOutcome {
+	if !usageKnown {
+		return aicapability.InvocationDispatched
+	}
+	if providerErr == nil {
+		return aicapability.InvocationSucceeded
+	}
+	if errors.Is(providerErr, productimage.ErrOutputValidation) {
+		return aicapability.InvocationUsageObservedFailed
+	}
+	return aicapability.InvocationDispatched
 }
 
 func stableReviewInvocationIdentity(identity aiidentity.Identity, request productimage.ReviewRequest, quoteFingerprint string) (string, string) {
-	parts := []string{identity.TenantID, identity.AgentRunID, identity.BusinessTaskID, quoteFingerprint, request.Product.ProductKey}
+	product, _ := json.Marshal(request.Product)
+	parts := []string{identity.TenantID, identity.AgentRunID, identity.BusinessTaskID, quoteFingerprint, string(product)}
 	for _, asset := range request.Sources {
-		parts = append(parts, "source", asset.SourceAssetID, asset.URL)
+		parts = append(parts, "source", reviewAssetFingerprint(asset))
 	}
 	for _, candidate := range request.Candidates {
-		parts = append(parts, "candidate", candidate.Asset.SourceAssetID, candidate.Asset.URL)
+		metadata, _ := json.Marshal(candidate.Metadata)
+		parts = append(parts, "candidate", reviewAssetFingerprint(candidate.Asset), string(metadata))
 	}
 	payload := strings.Join(parts, "\x00")
 	digest := sha256.Sum256([]byte(payload))
@@ -195,6 +227,17 @@ func stableReviewInvocationIdentity(identity aiidentity.Identity, request produc
 	// uuid.NewSHA1 gives the existing invocation schema a stable UUID while
 	// retaining a deterministic identity across Temporal activity retries.
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("account-center-review:"+hash)).String(), hash
+}
+
+func reviewAssetFingerprint(asset productimage.Asset) string {
+	bytesHash := sha256.Sum256(asset.Bytes)
+	encoded, _ := json.Marshal(struct {
+		URL, MediaType, SourceURL, SourceAssetID, Role, BytesHash string
+		Width, Height                                             int
+		Operations                                                []string
+	}{asset.URL, asset.MediaType, asset.SourceURL, asset.SourceAssetID, string(asset.Role), hex.EncodeToString(bytesHash[:]), asset.Width, asset.Height, asset.Operations})
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:])
 }
 
 func reviewProviderErrorCategory(err error) aicapability.ErrorCategory {

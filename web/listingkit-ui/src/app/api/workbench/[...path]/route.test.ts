@@ -125,6 +125,10 @@ describe("/api/workbench BFF", () => {
     { method: "POST", suffix: `acquisitions/${operationKey}`, budget: 15_000 },
     { method: "POST", suffix: "acquisitions/verify", budget: 22_000 },
     { method: "GET", suffix: `acquisitions/${operationKey}`, budget: 22_000 },
+    { method: "GET", suffix: `acquisitions/${operationKey}/main-image/candidates`, budget: 22_000 },
+    { method: "GET", suffix: `acquisitions/${operationKey}/main-image/runs/${storeId}`, budget: 22_000 },
+    { method: "POST", suffix: `acquisitions/${operationKey}/main-image`, budget: 22_000 },
+    { method: "POST", suffix: `acquisitions/${operationKey}/main-image/runs/${storeId}/approve`, budget: 22_000 },
   ])("uses exact route budget before blocked auth: $method $suffix", async ({ method, suffix, budget }) => {
     vi.useFakeTimers();
     let releaseAuth = () => {};
@@ -194,6 +198,35 @@ describe("/api/workbench BFF", () => {
     if (status === 200) await expect(response.json()).resolves.toMatchObject({ outcome: "published", catalogVersion: "1" });
     else await expect(response.json()).resolves.toMatchObject({ code: "OUTCOME_UNKNOWN" });
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(status !== 200);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["start", "approve"])("keeps dispatched main-image %s timeout unknown without retry", async (action) => {
+    vi.useFakeTimers();
+    authState.session = { accessToken: "private-token" };
+    authState.token = "private-token";
+    authState.identity = { userId: "user-a" };
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL", "http://localhost");
+    const fetchMock = vi.fn<typeof fetch>((_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const path = ["sourcing", "1688", "acquisitions", operationKey, "main-image", ...(action === "approve" ? ["runs", storeId, "approve"] : [])];
+    const pending = call(POST, new NextRequest(`http://localhost/api/workbench/${path.join("/")}`, {
+      method: "POST",
+      headers: {
+        cookie: "shuomi_effective_organization=org-b", Origin: "http://localhost",
+        "Content-Type": "application/json", "Idempotency-Key": operationKey,
+        "X-Expected-Organization-ID": "org-b", "X-Expected-User-ID": "user-a",
+      },
+      body: JSON.stringify(action === "approve" ? { planRevision: 1, resultDigest: "digest", actionId: operationKey } : { sourceImageId: "catalog-image-1" }),
+    }), path);
+    await vi.advanceTimersByTimeAsync(22_000);
+    const response = await pending;
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe("OUTCOME_UNKNOWN");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 

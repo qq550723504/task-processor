@@ -81,6 +81,38 @@ func TestProductImageAdapterRendersWhiteBackgroundFromInlineSubjectWithOriginalP
 	require.Equal(t, source.SourceAssetID, result.Asset.SourceAssetID)
 }
 
+func TestProductImageSourceWhiteBackgroundIsOneEditAndRejectsBadOutput(t *testing.T) {
+	for _, valid := range []bool{true, false} {
+		t.Run(map[bool]string{true: "valid", false: "bad_image"}[valid], func(t *testing.T) {
+			content := []byte("not an image")
+			if valid {
+				content = productImagePNG(t, 3, 4)
+			}
+			images := &productImageGeneratorStub{response: &ai.ImageResponse{Data: []ai.ImageData{{B64JSON: base64.StdEncoding.EncodeToString(content)}}}}
+			chat := &productImageChatStub{}
+			adapter, err := NewProductImageAdapter(validProductImageAdapterConfig(images, chat))
+			require.NoError(t, err)
+			white, err := productimage.NewWhiteBackgroundCapability(adapter)
+			require.NoError(t, err)
+			source := productImageSource("source-1", "https://source.example/item.png")
+			result, err := white.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, Product: productImageContext()})
+			require.Equal(t, 1, images.editCalls)
+			require.Nil(t, chat.lastRequest, "no model Review")
+			require.Equal(t, source.URL, images.lastEdit.ImageURL)
+			require.Empty(t, images.lastEdit.Image, "no extracted intermediate input")
+			if !valid {
+				require.ErrorIs(t, err, productimage.ErrOutputValidation)
+				require.Empty(t, result.Asset.Bytes)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, []string{productimage.SourceWhiteBackgroundOperation}, result.Asset.Operations)
+			require.Equal(t, source.SourceAssetID, result.Asset.SourceAssetID)
+			require.Contains(t, images.lastEdit.Prompt, "preserve shape, proportions, colors, materials, patterns, text and accessory count")
+		})
+	}
+}
+
 func TestProductImageAdapterSceneUsesOnlyExplicitOptionsAndAuthorizedStyleReferences(t *testing.T) {
 	t.Parallel()
 
@@ -188,6 +220,23 @@ func TestProductImageAdapterQuotesExactTypedOperation(t *testing.T) {
 	require.ErrorIs(t, err, productimage.ErrCapabilityUnsupported)
 }
 
+func TestProductImageQuoteFingerprintBindsCostUpperBoundKnown(t *testing.T) {
+	config := validProductImageAdapterConfig(&productImageGeneratorStub{}, &productImageChatStub{})
+	config.ReviewCostMicros = 0
+	known, err := NewProductImageAdapter(config)
+	require.NoError(t, err)
+	knownQuote, err := known.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{Operation: "review", InputFingerprint: "input-a", MaximumOutputs: 1})
+	require.NoError(t, err)
+	config.CostUpperBoundKnown = false
+	unknown, err := NewProductImageAdapter(config)
+	require.NoError(t, err)
+	unknownQuote, err := unknown.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{Operation: "review", InputFingerprint: "input-a", MaximumOutputs: 1})
+	require.NoError(t, err)
+	require.Equal(t, knownQuote.MaximumCostMicros, unknownQuote.MaximumCostMicros)
+	require.NotEqual(t, knownQuote.CostUpperBoundKnown, unknownQuote.CostUpperBoundKnown)
+	require.NotEqual(t, knownQuote.Fingerprint, unknownQuote.Fingerprint)
+}
+
 func TestProductImageAdapterRejectsExecutionOutsideQuotedRouteBeforeDispatch(t *testing.T) {
 	images := &productImageGeneratorStub{}
 	adapter, err := NewProductImageAdapter(validProductImageAdapterConfig(images, &productImageChatStub{}))
@@ -223,6 +272,20 @@ func TestNewProductImageAdapterRejectsIncompleteRuntime(t *testing.T) {
 	config = validProductImageAdapterConfig(&Client{}, &productImageChatStub{})
 	_, err = NewProductImageAdapter(config)
 	require.ErrorContains(t, err, "route pinning")
+}
+
+func TestSourceImageAdapterDoesNotRequireReviewClientOrConfiguration(t *testing.T) {
+	images := &productImageGeneratorStub{response: &ai.ImageResponse{Data: []ai.ImageData{{B64JSON: base64.StdEncoding.EncodeToString(productImagePNG(t, 2, 2))}}}}
+	config := validProductImageAdapterConfig(images, nil)
+	config.ReviewModel, config.Prompts.Review = "", ""
+	config.ReviewMaxTokens, config.ReviewTokenUpperBound = 0, 0
+	adapter, err := NewProductImageAdapter(config)
+	require.NoError(t, err)
+	_, err = adapter.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: productImageSource("source-1", "https://source.example/item.png"), SourceOnly: true, Product: productImageContext()})
+	require.NoError(t, err)
+	require.Equal(t, 1, images.editCalls)
+	_, err = adapter.Review(context.Background(), productimage.ReviewRequest{})
+	require.ErrorIs(t, err, productimage.ErrCapabilityUnsupported)
 }
 
 func TestProductImageAdapterBoundsAggregateInlineOutputBeforeCapabilityReturn(t *testing.T) {
@@ -268,6 +331,7 @@ func productImagePNG(t *testing.T, width, height int) []byte {
 }
 
 type productImageGeneratorStub struct {
+	editCalls int
 	response  *ai.ImageResponse
 	err       error
 	lastEdit  *ai.ImageEditRequest
@@ -278,6 +342,7 @@ func (s *productImageGeneratorStub) GenerateImage(context.Context, *ai.ImageGene
 	return s.response, s.err
 }
 func (s *productImageGeneratorStub) EditImage(_ context.Context, request *ai.ImageEditRequest) (*ai.ImageResponse, error) {
+	s.editCalls++
 	cloned := *request
 	cloned.Image = append([]byte(nil), request.Image...)
 	cloned.ImageURLs = append([]string(nil), request.ImageURLs...)

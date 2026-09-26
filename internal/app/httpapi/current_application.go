@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -16,6 +17,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	"task-processor/internal/imageagent"
 	a1688 "task-processor/internal/integration/acquisition/a1688"
 	moneystore "task-processor/internal/integration/persistence/money"
 	referralstore "task-processor/internal/integration/persistence/referral"
@@ -77,6 +79,7 @@ type currentApplicationFactories struct {
 	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercialBilling          func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer, *config.Config) (kernelmodule.Module, error)
 	buildAcquisition                func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildAcquisitionImage           func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
@@ -92,9 +95,12 @@ type currentApplicationOptions struct {
 	commercialOwnerDB    *gorm.DB
 	referralDB           *gorm.DB
 	productAcquisitionDB *gorm.DB
+	imageAgentDB         *gorm.DB
+	imageAgentWorkflows  imageagent.WorkflowClient
 	membership           *MembershipDependencies
 	referrals            int
 	productAcquisitions  int
+	imageAgents          int
 	memberships          int
 	browserCaptures      int
 }
@@ -128,6 +134,16 @@ func WithProductAcquisition(db *gorm.DB) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) {
 		options.productAcquisitions++
 		options.productAcquisitionDB = db
+	}
+}
+
+// WithAcquisitionImageAgent enables only the receipt-backed, single-main-image
+// current Product entry. The caller owns the ImageAgent pool and Temporal client.
+func WithAcquisitionImageAgent(db *gorm.DB, workflows imageagent.WorkflowClient) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) {
+		options.imageAgents++
+		options.imageAgentDB = db
+		options.imageAgentWorkflows = workflows
 	}
 }
 
@@ -199,7 +215,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		option(&supplied)
 	}
-	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.memberships > 1 {
+	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.commercialOwnerDB != nil && (supplied.commercialOwnerDB == sourceAccountDB || supplied.commercialOwnerDB == commercialDB) {
@@ -207,6 +223,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB || supplied.productAcquisitionDB == commercialDB) {
 		return nil, errors.New("product acquisition requires an independent pool")
+	}
+	if supplied.imageAgents > 0 && (supplied.imageAgentDB == nil || supplied.imageAgentWorkflows == nil || supplied.productAcquisitionDB == nil || supplied.imageAgentDB == sourceAccountDB || supplied.imageAgentDB == commercialDB || supplied.imageAgentDB == supplied.productAcquisitionDB || supplied.imageAgentDB == supplied.commercialOwnerDB || supplied.imageAgentDB == supplied.referralDB) {
+		return nil, errors.New("acquisition image agent requires its owner pool, organization workflow, and product acquisition pool")
 	}
 	if supplied.referralDB != nil && (supplied.referralDB == sourceAccountDB || supplied.referralDB == commercialDB || supplied.referralDB == supplied.productAcquisitionDB) {
 		return nil, errors.New("referrals requires an independent pool")
@@ -236,6 +255,19 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
+		}
+	}
+	if supplied.imageAgents > 0 {
+		if factories.buildAcquisitionImage != nil {
+			return nil, errors.New("acquisition image agent factory and option cannot both be supplied")
+		}
+		productDB, imageDB, workflows := supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.imageAgentWorkflows
+		factories.buildAcquisitionImage = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
+			receipts, err := buildPublishedAcquisitionReader(ctx, productDB, dependencies, authorizer)
+			if err != nil {
+				return nil, err
+			}
+			return buildAcquisitionImageModule(ctx, receipts, imageDB, workflows, cfg)
 		}
 	}
 	if supplied.membership != nil {
@@ -315,6 +347,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, acquisition)
 	}
+	if factories.buildAcquisitionImage != nil {
+		image, imageErr := factories.buildAcquisitionImage(authorizer, *workbench.authDependencies)
+		if imageErr != nil {
+			return nil, fmt.Errorf("build current acquisition image module: %w", imageErr)
+		}
+		if image == nil {
+			return nil, errors.New("current acquisition image module unavailable")
+		}
+		modules = append(modules, image)
+	}
 	if factories.buildBrowserCapture != nil {
 		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
 		if err != nil {
@@ -381,7 +423,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesWithBrowserFeatures(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, factories.buildBrowserCapture != nil, includeAccountProfile, includeAccountAllocation); err != nil {
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -429,7 +471,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser)
 }
 
-func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool) error {
+func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, includeImage ...bool) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAccountProfile {
 		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
@@ -449,6 +491,16 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/by-key/:key"},
 			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/:operation_id"},
 		)
+	}
+	if len(includeImage) > 0 && includeImage[0] {
+		for _, route := range []currentApplicationRoute{
+			{Method: http.MethodGet, Path: acquisitionImageBase + "/candidates"},
+			{Method: http.MethodPost, Path: acquisitionImageBase},
+			{Method: http.MethodGet, Path: acquisitionImageBase + "/runs/:run_id"},
+			{Method: http.MethodPost, Path: acquisitionImageBase + "/runs/:run_id/approve"},
+		} {
+			admitted = append(admitted, route)
+		}
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
 	for _, route := range admitted {
@@ -471,6 +523,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, acquisitionImageBase) && (descriptor.Module != "acquisition-main-image" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.RequestTimeout != 30*time.Second || descriptor.Permission != map[bool]string{true: authz.PermissionImageAgentRead, false: authz.PermissionImageAgentWrite}[descriptor.Method == http.MethodGet]) {
+			return errors.New("current acquisition image route loses live permission boundary")
+		}
 		for _, candidate := range currentCommercialBillingApplicationRoutes {
 			if descriptor.Method == candidate.Method && descriptor.Path == candidate.Path {
 				includeCommercialBilling = true

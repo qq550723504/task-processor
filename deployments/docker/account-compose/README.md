@@ -1,5 +1,76 @@
 # Local account center Compose
 
+## Opt-in #487 image trial overlay (infrastructure preparation only)
+
+`docker-compose.image-agent.yml` is a separate, isolated local trial overlay;
+the default account-center Compose does not enable ImageAgent, expose MinIO, or
+change its database roles. Use a **new** Compose project and unused loopback
+identity/application/mail ports. The commercial database name must contain
+`trial` or `isolated`. On the first initialization only, set
+`ACCOUNT_ISOLATED_TRIAL_CATALOG=ISOLATED_TRIAL_ONLY`; unset it on restarts. The
+base schema initializer refuses to re-provision that catalog, while the image
+initializer has its own one-shot marker and never re-runs migrations on restart.
+
+From this directory, after setting `COMPOSE_PROJECT_NAME`,
+`ACCOUNT_IDENTITY_PORT`, `ACCOUNT_APPLICATION_PORT`, `ACCOUNT_MAIL_PORT`, and
+`ACCOUNT_COMMERCIAL_DATABASE` to unique trial values:
+
+```powershell
+$env:ACCOUNT_ISOLATED_TRIAL_CATALOG = 'ISOLATED_TRIAL_ONLY'
+docker compose -f docker-compose.yml -f docker-compose.image-agent.yml up -d --build image-trial-worker current-application
+Remove-Item Env:ACCOUNT_ISOLATED_TRIAL_CATALOG
+docker compose -f docker-compose.yml -f docker-compose.image-agent.yml ps --all
+```
+
+This command prepares isolated infrastructure, health checks and persistent
+storage only; it does not enable a usable image-generation workflow. Current
+main-image candidates and Start return `503 IMAGE_UNAVAILABLE`, and the
+organization worker refuses generation until executable generation admission
+and metering are approved. The overlay therefore cannot validate new generation,
+the complete generation-to-human-approval flow, or canonical generation accounting.
+Existing saved-run reads and exact approval-receipt recovery remain available
+under their original authorization checks; they do not reopen new generation.
+
+The backend-only command does not start `listingkit-ui`, and the #487 main-image
+UI remains pending its exact Figma node. Product/browser and image-quality
+acceptance remain unavailable. The local Python OpenAI-protocol stub's
+deterministic white 2×2 PNG is not image-quality evidence. Its seven-token Review
+usage belongs only to historical Review tests, not the current one-edit,
+zero-Extract, zero-model-Review flow or its generation metering. The `paid_pilot`
+isolated catalog is only a purchasable local trial offer; subscription activation
+or member token allocation does not supply the missing generation contract or
+unlock dispatch. No paid or external AI key is installed.
+
+The current API connects to the dedicated ImageAgent owner database as
+`image_agent_runtime`, with the existing Start/Get/Approve database privileges;
+these privileges do not enable the closed HTTP Start route. The
+organization-v1 worker connects to the same database as
+`image_agent_worker_runtime`, with exactly its 16 current tables' required
+read/insert/update privileges; startup verifies and refuses extra privileges.
+Its commercial connection uses the existing `commercial_runtime` role, not
+`commercial_owner_runtime` or the schema owner. This role wiring does not imply
+that the current generation path reserves or settles canonical member usage.
+Only the worker-secret volume carries MinIO credentials; the API cannot read
+it. All new PostgreSQL, Temporal and MinIO volumes are project-named and
+persist across stop/restart. `image-trial-init` grants roles only after owner
+schema installation; ordinary app/worker start verifies permissions and never
+grants or migrates.
+
+The only anonymous storage route is HTTPS localhost GET/HEAD for the immutable
+`image-agent/public/` prefix, using the existing local CA. MinIO grants only
+GetObject on that prefix; staging/recovery objects, listing and writes are not
+public. Source/1688 URLs and arbitrary provider downloads keep the original
+public-URL SSRF checks. An exact generated-image URL is accepted only when
+derived from a verified durable manifest/key. This trial does not make output
+URLs generally public-network-safe or authorize production deployment.
+
+To restart without deleting the volumes, leave the catalog flag unset and run
+the same `docker compose -f ... -f ... up -d` command. The independent image
+initializer verifies the stored manifest and MinIO policy; an interrupted first
+initialization fails closed instead of auto-repairing a partially created DB.
+Use `stop`, not `down -v`, to retain trial data. Destruction or cleanup of a
+retained project is a separate decision.
+
 This is a fresh, isolated local instance for the confirmed “我的账户” scope.
 It reuses the existing current-application, ZITADEL Login V2, Auth.js/BFF,
 source-account, commercial, referral and membership modules. It does not reuse

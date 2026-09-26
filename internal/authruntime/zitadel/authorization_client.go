@@ -103,9 +103,10 @@ type organizationGrantAccumulator struct {
 // durable effect admission. Found=false is an authoritative zero-result read;
 // State is retained so inactive grants are not silently filtered away.
 type ExactServiceProjectAuthorization struct {
-	Found bool
-	State string
-	Roles []string
+	Found           bool
+	AuthorizationID string
+	State           string
+	Roles           []string
 }
 
 func (c *AuthorizationClient) ReadExactServiceProjectAuthorization(ctx context.Context, serviceToken, subject, projectID, organizationID string) (ExactServiceProjectAuthorization, error) {
@@ -152,7 +153,7 @@ func (c *AuthorizationClient) ReadExactServiceProjectAuthorization(ctx context.C
 		roles = append(roles, key)
 	}
 	sort.Strings(roles)
-	return ExactServiceProjectAuthorization{Found: true, State: row.State, Roles: roles}, nil
+	return ExactServiceProjectAuthorization{Found: true, AuthorizationID: row.ID, State: row.State, Roles: roles}, nil
 }
 
 // ListOwnProjectAuthorizations returns only active role assignments belonging

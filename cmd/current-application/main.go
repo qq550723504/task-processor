@@ -14,8 +14,10 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/app/httpapi"
+	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/app/runtime/currentapplication"
 	coreconfig "task-processor/internal/core/config"
+	"task-processor/internal/imageagent"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -63,6 +65,12 @@ func execute() error {
 		OpenProductAcquisition: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenImageAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
+		DialImageAgentWorkflow: func(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
+			return appruntime.DialOrganizationImageAgentTemporalWorkflowClient(ctx, address, namespace)
+		},
 		OpenReferrals: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -80,6 +88,9 @@ func execute() error {
 			if features.ProductAcquisitionDB != nil {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
 				options = append(options, httpapi.WithBrowserCapture())
+			}
+			if features.ImageAgentDB != nil {
+				options = append(options, httpapi.WithAcquisitionImageAgent(features.ImageAgentDB, features.ImageAgentWorkflow))
 			}
 			if features.ReferralDB != nil {
 				options = append(options, httpapi.WithReferrals(features.ReferralDB))
