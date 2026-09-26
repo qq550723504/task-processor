@@ -40,6 +40,8 @@ Must：真实调用上下文、fresh 授权、精确商品版本、有限执行/
 | [Commerce Tool](../../internal/commercetool/invocation_contracts.go) / [Registry](../../internal/commercetool/registry.go) | AgentDefinition、精确 ToolRef、allowlist、审计、trace、错误分类 | 真实 AgentRun/step 调用者与注入；不重建 Registry |
 | [canonicalinspect](../../internal/product/catalog/tools/canonicalinspect/definition.go)、[sourceevidenceinspect](../../internal/product/sourcing/tools/sourceevidenceinspect/definition.go)、[assetinspect](../../internal/product/asset/tools/assetinspect/definition.go)、[readinessinspect](../../internal/listing/readiness/tools/readinessinspect/definition.go) | 精确版本下事实、来源、安全素材投影与输入诊断；已有 fresh org 组合 | 没有生产 Agent 调用方；source-evidence 不返回原始文本/任意 URL；不能当模型已获得完整来源正文 |
 | [AI Capability](../../internal/aicapability/invocation.go) / [路由](../../internal/aicapability/routing.go) | 当前组织策略、路由、调用记录与 usage/cost unknown 语义 | 文本决策/提案调用尚无经本批确认的受治理执行入口；ImageAgent Review 证据不能代替文本链 |
+| [文本传输](../../internal/integration/openai/text_completion.go) | 当前 Manager 配置精确绑定、GRSAI/OpenAI-compatible SDK 单次调用、完整 usage 存在性、deadline/大小限制 | 内部传输接口，不是 GovernedModel；真实 token/cost 上界、额度/dispatch ledger 与 Agent 调用方仍须组合 |
+| [Agent PostgreSQL Store](../../internal/integration/persistence/agent/store.go) | 同一行原子保存 run/control/checkpoint；唯一运行身份、revision CAS 和重启后禁止 Running 自动重放 | 显式空安装 schema 接口；HTTP/worker composition 尚未挂载，不能绕过 fresh 授权 |
 | [ProductEnrichmentAdapter](../../internal/integration/openai/product_enrichment_adapter.go) | 有界 prompt/严格候选 JSON，调用窄 TextInvoker | TextInvoker 仅返回字符串/错误，没有单次调用的账本引用、可信 usage/cost 与 dispatch 状态；不能直接充当 Agent 模型门禁 |
 | [Enrichment Proposer](../../internal/product/enrichment/proposer.go) | 当前 Candidate、字段/证据/策略校验；ValidateCandidate 可对现成候选纯校验，原 Propose 复用同一路径 | Agent 组合仍需读取授权后的 exact base/source 与冻结策略；不能用模型提供的快照、质量或历史报告代替 |
 | [Readiness Executor](../../internal/listing/readiness/tools/readinessinspect/executor.go) | 已保存 Product 版本与 ApprovedAsset 的输入检查 | 不接收 proposed patch；不能用原版本 ready 证明补丁有效，且 marketplace rules 仍 not_evaluated |
@@ -268,8 +270,9 @@ fake model 返回的候选可用于完整运行合同验证，不代表 #134 pro
 go test -race ./internal/agent ./internal/integration/agent/eino -count=1
 ```
 
-测试内的模型、工具、纯校验与原子 Store 均明确为 fake；实际 Eino 图与 checkpoint
-编解码参与执行。它不是 PostgreSQL 重启/真实授权/模型/产品验收，未提供用户访问 URL。
+原有单元测试内的模型、工具、纯校验与原子 Store 均明确为 fake；实际 Eino 图与
+checkpoint 编解码参与执行。另有 §8.2 的真实 PostgreSQL 组合验证；其模型和授权仍为
+受控替身，不是实际 IAM/provider 或产品验收，未提供用户访问 URL。
 后续 #132 从本合同接入真实 owner，不复制测试替身为运行配置。
 
 ### 8.1 当前领域消费者接口
@@ -288,3 +291,45 @@ valid 标记，不调用 Proposer，不自动 accept/Apply。这是内部 Go 接
 使用现有 `ISSUE382_TEST_DSN` 的隔离 PostgreSQL fixture，可以执行
 `go test -race ./internal/app/httpapi -run '^TestProductAgentReview|^TestProductReview' -count=1`。
 前者不证明真实数据库，后者须提供任务专用数据库且不得把缺 DSN 的 SKIP 报为 PASS。
+
+### 8.2 单一持久运行 owner
+
+`agentpersistence.InstallSchema(db)` 是显式空安装入口，创建 `product_agent_runs`；
+`New(db)` 不执行自动 schema 变更。控制字段与包含 opaque checkpoint 的完整 Record
+作为一行提交，数据库与编码层均限制 2 MiB，不引入第二个 checkpoint 数据源。
+
+Start 用 `(org, actor, context kind/ID, key)` 唯一约束只授予一个执行者；相同请求读取已有
+运行，不同 fingerprint/Request 冲突。Resume 仅接受 INTERRUPTED 的准确 revision，
+持有行锁并 CAS 切换为 Running，保留原预算、deadline 和 checkpoint；Commit 同样 CAS
+保存完整结果并递增 revision。RUNNING、终态、提交失败或响应丢失均不自动再执行模型。
+Store 不是授权来源，调用方仍须先执行运行合同中的 fresh 授权。
+
+使用任务专用 `ISSUE382_TEST_DSN`：
+
+```text
+go test -race ./internal/integration/persistence/agent -count=1
+go test -race ./internal/integration/agent/eino -run '^TestPostgresRuntime' -count=1
+```
+
+验证包括并发 Start/Resume 单一执行权、错误绑定/过期 revision、取消/超大 checkpoint
+不产生部分写入，以及新 Store/数据库连接下实际 Eino checkpoint 恢复和未决模型不重发。
+这证明持久适配与运行合同组合，不声称实际进程崩溃演练或真实 provider 恢复验收。
+
+### 8.3 GRSAI 文本传输与开放前义务
+
+用户已选择文本也使用 GRSAI。复用当前 Manager、Organization 凭据解析器及已存在的
+`sashabaranov/go-openai` SDK，使用 [GRSAI 的 chat/completions 合同](https://qmy27nhsd9.apifox.cn/452418916e0)。
+`ResolveTextRoute` 返回非敏感 route；`CompleteText` 在入队前和发送前重查全部配置身份，
+不接受历史 resolver version 别名、模型覆盖或自动 fallback。显式 `grsai` API style 与
+GRSAI 官方两个 endpoint 的既有 OpenAI-compatible 配置均正确归属 GRSAI。
+
+该路径单次 SDK 调用，拒绝重定向，禁用 HTTP/2、连接复用及 GetBody 重放，沿用现有
+pool 的并发与限速。配置 timeout 包含排队，调用方更短的 deadline 同样生效。输入上限
+128 KiB、响应 envelope 上限 256 KiB；Agent Action 仍按 §4.2 的 64 KiB 另行校验。
+只返回安全错误分类，不将 provider 错误正文写入日志。`UsageKnown` 要求三个 provider
+计数字段全部存在、非负且总数一致；缺失/null 不等于已观察零值。
+
+这仍是内部 transport seam，不能直接注册为 GovernedModel。官方返回样例证明事后
+usage 格式，不证明调用前 token 上界、max_tokens 的实际强约束或冻结价格。正式接线
+必须补齐 §4.2 所需依据、当前组织额度预留/持久 dispatch/结果计量；未知费用保持 unknown。
+不得套用图像上限、发明价格，或将真实密钥存在当作付费执行/产品验收授权。
