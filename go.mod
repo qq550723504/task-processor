@@ -4,6 +4,9 @@ go 1.26.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alibabacloud-go/cloudauth-20190307/v4 v4.14.0
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
+	github.com/alibabacloud-go/tea v1.5.2
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/credentials v1.12.20
@@ -62,14 +65,21 @@ require (
 )
 
 require (
+	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
+	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/tea-utils/v2 v2.0.9 // indirect
+	github.com/aliyun/credentials-go v1.4.5 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
+	github.com/clbanning/mxj/v2 v2.7.0 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/goph/emperror v0.17.2 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/nikolalohinski/gonja v1.5.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
+	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect

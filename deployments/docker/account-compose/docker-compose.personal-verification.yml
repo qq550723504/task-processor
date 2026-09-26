@@ -1,0 +1,10 @@
+# Optional Aliyun personal verification. Use only for an authorized trial.
+services:
+  current-application:
+    environment:
+      ALIYUN_PERSONAL_VERIFICATION_CONFIG_FILE: /private/verification/aliyun-personal.json
+    volumes:
+      - type: bind
+        source: ${ALIYUN_PERSONAL_VERIFICATION_CONFIG_HOST_FILE:?absolute private Aliyun configuration file required}
+        target: /private/verification/aliyun-personal.json
+        read_only: true
