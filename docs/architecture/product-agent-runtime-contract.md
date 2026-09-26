@@ -7,7 +7,8 @@
 [目标架构](project-target-architecture.md) 与
 [全新系统基线](../product/greenfield-no-legacy-migration.md)。
 
-状态：合同候选，待独立边界检查。本文不是运行时实现、产品验收或上线批准。
+状态：IMPLEMENTATION_READY（第一轮独立边界检查）；具体实现义务见下文。
+本文不是运行时实现、产品验收或上线批准。
 用户在 2026-09-26 批准先收敛 #131 与实际接入依赖，再交付 #132。
 Issue/主要 PR 记录当前进度、准确代码版本、检查结果与批准；本文件只维护合同。
 
@@ -55,7 +56,7 @@ Must：真实调用上下文、fresh 授权、精确商品版本、有限执行/
 
 - 固定的 `AgentDefinition{ID, Version, AllowedTools}`，复用 Commerce Tool 定义；
 - `RunID`、trace、调用方真实 context reference（kind、ID），由应用生成/解析；
-- 精确 `ProductKey + CatalogVersion + CatalogPublicationID`；版本是非零十进制字符串；
+- 精确 `ProductKey + CatalogVersion + CatalogPublicationID + TargetPlatform`；版本是非零十进制字符串；
 - 当前策略/prompt/工具版本、hard limits 与 feature flag/组织 allowlist；
 - 来源/素材仅通过工具拿到授权投影，模型不能提交完整快照作为事实输入。
 
@@ -70,6 +71,10 @@ Must：真实调用上下文、fresh 授权、精确商品版本、有限执行/
 审核状态。组织身份沿当前 authidentity/workbenchcontext 传递；模型 session 内的
 字符串不是认证依据。每个工具调用、模型 dispatch、resume 和结果读取重新授权。
 重放/缓存不绕过授权；组织、操作者或绑定变化不能继承旧运行结果。
+目标平台由当前调用方显式选择并经服务端校验，进入 fingerprint/resume 比较；采集回执
+不提供平台选择，缺失时不得默认 neutral、聚合平台或让模型补填。
+canonical Invoker 的真实组合须注入现有 FreshWorkbenchPrincipalResolver；仅每次解析
+principal 或历史 CachedRead 集成证据不能证明 fresh grant，需验证 warm cache 后撤权。
 
 ### 3.2 执行适配层
 
@@ -143,7 +148,7 @@ CPU/存储边界属实现测试；fake tests 使用低限额，不引入真实�
 ### 4.3 幂等、失败与唯一恢复责任
 
 运行身份为 `(org, actor, context kind/ID, idempotency key)`，fingerprint 包含精确商品/来源
-绑定、agent/tool/policy/prompt 版本及 limits。同键不同 fingerprint 冲突；同键同请求
+绑定、target platform、agent/tool/policy/prompt 版本及 limits。同键不同 fingerprint 冲突；同键同请求
 返回既有状态，不能再次开始执行。call ID 由 run + step 固定生成，与 invocation ID 关联。
 repair 是得到确定性拒绝后的新 step，不是重试丢失响应的同一次模型调用。
 
@@ -232,3 +237,32 @@ Legacy decision: RETIRE（设计约束，不在本文件中删除代码）。
 Reusable behavior: 当前 Catalog/Source/Asset/enrichment/review 与 #133 的合格合同。
 Current owner: 各原领域 owner；Agent 仅推理运行状态。
 Cutover/deletion condition: 新消费者从开始即不依赖旧 Task/tenantbridge；无双协议或旧数据迁移。
+
+## 8. 当前最小接口与复现
+
+[internal/agent](../../internal/agent/contracts.go) 提供运行输入、费用/预算、工具调用、
+纯校验和单 owner Store 的窄合同；[Eino adapter](../../internal/integration/agent/eino/runtime.go)
+固定 Eino v0.9.21（Apache-2.0），复用 compose.Graph 的分支、循环和 checkpoint。
+没有自建通用图引擎，也没有引入 Provider SDK 或运行服务。
+
+消费者通过 `einoruntime.New(Config)` 注入现有 AgentDefinition、精确工具定义、
+Authorizer、GovernedModel、ToolGateway、Validator 和 Store，再调用 `Start`。
+显式恢复使用相同 Request、checkpoint revision 与至多 8 KiB 的用户补充文本调用
+`Resume`；文本是不可信输入，不改变冻结商品/平台/策略，也不代表人工批准。
+TraceID 从当前 OTel 上下文关联，工具/模型引用固定到 run/step；没有 trace 时不伪造。
+
+Store 必须原子 claim/CAS 保存控制字段与 checkpoint，GovernedModel 必须提供可信
+上界/usage 并阻止重复 dispatch；本包不提供可误用作生产持久化的内存实现，也不自动
+提供模型客户端。当前 gateway 只接纳 unmetered read/compute 工具；AI propose 工具
+缺少逐调用计量桥接时拒绝注册，不能把只有 AIInvocationID 的 Result 当费用事实。
+fake model 返回的候选可用于完整运行合同验证，不代表 #134 propose 工具已完成。
+
+运行必要的本地合同验证：
+
+```text
+go test -race ./internal/agent ./internal/integration/agent/eino -count=1
+```
+
+测试内的模型、工具、纯校验与原子 Store 均明确为 fake；实际 Eino 图与 checkpoint
+编解码参与执行。它不是 PostgreSQL 重启/真实授权/模型/产品验收，未提供用户访问 URL。
+后续 #132 从本合同接入真实 owner，不复制测试替身为运行配置。
