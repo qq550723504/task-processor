@@ -143,6 +143,9 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 		flow.last.State.Phase = agent.Interrupted
 	} else if graphErr != nil {
 		flow.last.stop(agent.StopDependency)
+		if checkpoint.tooLarge {
+			flow.last.stop(agent.StopTooLarge)
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			flow.last.stop(agent.StopRuntime)
 		}
@@ -157,6 +160,15 @@ func (r *Runtime) run(ctx context.Context, request agent.Request, expected uint6
 	final.State.Revision = record.State.Revision
 	if final.State.Phase == agent.Interrupted {
 		final.Checkpoint = checkpoint.data
+	}
+	// The SDK blob can be larger than the state it encodes. Reject an oversized
+	// checkpoint without discarding call evidence or exposing a resumable run.
+	if !fits(final, agent.MaxStateBytes) && len(final.Checkpoint) > 0 {
+		flow.last.stop(agent.StopTooLarge)
+		final = agent.Record{State: flow.last.State}
+	}
+	if !fits(final, agent.MaxStateBytes) {
+		return agent.Record{}, fmt.Errorf("%w: invalid or oversized final state", agent.ErrInvalid)
 	}
 	// A canceled request is not permission to acknowledge a checkpoint or result
 	// that the store could not commit. No background write/replay is introduced.
@@ -199,15 +211,10 @@ func (e *execution) graph(ctx context.Context) (compose.Runnable[*flowState, *fl
 	for name, action := range nodes {
 		if err := g.AddLambdaNode(name, compose.InvokableLambda(func(ctx context.Context, s *flowState) (*flowState, error) {
 			e.last = s
-			if e.guard(ctx, s) {
-				action(ctx, s)
-			}
-			raw, err := json.Marshal(s)
-			if err != nil || len(raw) > agent.MaxStateBytes {
+			if !fits(s, agent.MaxStateBytes-stateHeadroom) {
 				s.stop(agent.StopTooLarge)
-				s.State.History = nil
-				s.State.Candidate = agent.Action{}.Candidate
-				s.Action = agent.Action{}
+			} else if e.guard(ctx, s) {
+				action(ctx, s)
 			}
 			return s, nil
 		})); err != nil {
@@ -253,16 +260,19 @@ func (e *execution) guard(ctx context.Context, s *flowState) bool {
 }
 
 func (e *execution) resume(_ context.Context, s *flowState) {
-	s.State.Phase = agent.Running
-	s.State.UserFeedback = e.feedback
-	s.Action = agent.Action{}
-	s.Next = "model"
+	next := *s
+	next.State.Phase = agent.Running
+	next.State.UserFeedback = e.feedback
+	next.Action = agent.Action{}
+	next.Next = "model"
+	s.accept(next, "feedback", "", []byte(e.feedback))
 }
 
 type checkpointBuffer struct {
-	key   string
-	data  []byte
-	saved bool
+	key      string
+	data     []byte
+	saved    bool
+	tooLarge bool
 }
 
 func (b *checkpointBuffer) Get(_ context.Context, key string) ([]byte, bool, error) {
@@ -275,7 +285,11 @@ func (b *checkpointBuffer) Set(ctx context.Context, key string, data []byte) err
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if key != b.key || len(data) > agent.MaxStateBytes {
+	if key != b.key {
+		return agent.ErrInvalid
+	}
+	if len(data) > agent.MaxStateBytes {
+		b.tooLarge = true
 		return agent.ErrInvalid
 	}
 	b.data = append([]byte(nil), data...)

@@ -155,9 +155,16 @@ type Observation struct {
 	Step                 int
 	Tool                 commercetool.ToolRef
 	CallID, InvocationID string
-	Output               json.RawMessage
+	Output               json.RawMessage `json:",omitempty"`
 	AuditStatus          commercetool.AuditStatus
 	ObservedUsage        *ObservedUsage
+}
+
+// RejectedPayload identifies content that was not admitted to the run. Earlier
+// evidence is retained; the payload itself is never silently truncated.
+type RejectedPayload struct {
+	Kind, CallID, Reason, SHA256 string
+	Bytes                        int
 }
 type State struct {
 	RunID                 string
@@ -178,6 +185,7 @@ type State struct {
 	Confidence            []FieldConfidence
 	UserFeedback, TraceID string
 	PendingInvocationID   string
+	RejectedPayload       *RejectedPayload
 }
 type Record struct {
 	State      State

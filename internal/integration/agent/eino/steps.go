@@ -40,12 +40,18 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 	s.State.History = append(s.State.History, agent.Observation{Step: s.State.Usage.Steps, CallID: in.InvocationID, InvocationID: in.InvocationID})
 	s.State.PendingInvocationID = in.InvocationID
 	result, err := e.runtime.config.Model.Decide(ctx, clone(in))
-	s.State.History[len(s.State.History)-1].ObservedUsage = &result.Usage
 	if err != nil || result.InvocationID != in.InvocationID {
 		s.stop(agent.StopModelUnknown)
 		return
 	}
 	s.State.PendingInvocationID = ""
+	usageRaw, _ := json.Marshal(result.Usage)
+	if len(usageRaw) > maxCallMetadataBytes {
+		s.rejectPayload("model_usage", in.InvocationID, usageRaw, "metadata_limit")
+		s.stop(agent.StopUsageUnknown)
+		return
+	}
+	s.State.History[len(s.State.History)-1].ObservedUsage = &result.Usage
 	if stop := s.State.Usage.Settle(quote, result.Usage); stop != "" {
 		s.stop(stop)
 		return
@@ -58,26 +64,29 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 		s.stop(agent.StopInvalidOutput)
 		return
 	}
-	s.Action = clone(result.Action)
-	s.State.Unresolved = append([]string(nil), result.Action.Unresolved...)
+	next := *s
+	next.Action = clone(result.Action)
+	next.State.Unresolved = append([]string(nil), result.Action.Unresolved...)
 	switch result.Action.Kind {
 	case "tool":
-		s.Next = "tool"
+		next.Next = "tool"
 	case "propose":
-		s.State.Candidate = clone(result.Action.Candidate)
 		confidence, ok := fieldConfidence(result.Action)
 		if !ok {
 			s.stop(agent.StopInvalidOutput)
 			return
 		}
-		s.State.Confidence = confidence
-		s.State.Validation = nil
-		s.Next = "validate"
+		next.State.Candidate = clone(result.Action.Candidate)
+		next.State.Confidence = confidence
+		next.State.Validation = nil
+		next.Next = "validate"
 	case "interrupt":
-		s.Next = "resume"
+		next.Next = "resume"
 	default:
 		s.stop(agent.StopInvalidOutput)
+		return
 	}
+	s.accept(next, "model", in.InvocationID, raw)
 }
 
 func (e *execution) tool(ctx context.Context, s *flowState) {
@@ -93,14 +102,37 @@ func (e *execution) tool(ctx context.Context, s *flowState) {
 	ctx, cancel := context.WithTimeout(ctx, def.Timeout.Duration)
 	defer cancel()
 	meta := commercetool.CallMetadata{CallID: callID(s), AgentID: e.runtime.config.Definition.ID, AgentVersion: e.runtime.config.Definition.Version, AgentRunID: s.State.RunID, BusinessTaskID: s.State.Request.Binding.ContextID, TraceID: s.State.TraceID}
+	s.State.History = append(s.State.History, agent.Observation{Step: s.State.Usage.Steps, Tool: def.Ref, CallID: meta.CallID})
 	result, err := e.runtime.config.Gateway.Invoke(ctx, def.Ref, meta, s.State.Request.Binding)
-	s.State.History = append(s.State.History, agent.Observation{Step: s.State.Usage.Steps, Tool: def.Ref, CallID: meta.CallID, InvocationID: result.AIInvocationID, Output: append(json.RawMessage(nil), result.Output...), AuditStatus: result.AuditStatus})
+	observation := &s.State.History[len(s.State.History)-1]
+	metadata, _ := json.Marshal(struct{ InvocationID, AuditStatus string }{result.AIInvocationID, string(result.AuditStatus)})
+	if len(metadata) > maxCallMetadataBytes {
+		s.rejectPayload("tool_metadata", meta.CallID, metadata, "metadata_limit")
+		s.stop(agent.StopTool)
+		return
+	}
+	observation.InvocationID, observation.AuditStatus = result.AIInvocationID, result.AuditStatus
+	// Keep malformed RawMessage out of state, even when the source error is an
+	// audit failure. Encoding failure must not replace the original stop reason.
+	if !json.Valid(result.Output) {
+		s.rejectPayload("tool", meta.CallID, result.Output, "invalid_json")
+	} else {
+		observation.Output = append(json.RawMessage(nil), result.Output...)
+		if !fits(s, agent.MaxStateBytes-stateHeadroom) {
+			observation.Output = nil
+			s.rejectPayload("tool", meta.CallID, result.Output, "state_limit")
+		}
+	}
 	if result.AuditStatus != commercetool.AuditStatusRecorded {
 		s.stop(agent.StopAudit)
 		return
 	}
 	if err != nil || ctx.Err() != nil || result.AIInvocationID != "" || !json.Valid(result.Output) {
 		s.stop(agent.StopTool)
+		return
+	}
+	if s.State.RejectedPayload != nil {
+		s.stop(agent.StopTooLarge)
 		return
 	}
 	s.Action = agent.Action{}
@@ -130,6 +162,16 @@ func (e *execution) validate(ctx context.Context, s *flowState) {
 		return
 	}
 	result.CandidateHash = hash
+	raw, err := json.Marshal(result)
+	if err != nil {
+		s.stop(agent.StopInvalidOutput)
+		return
+	}
+	next := *s
+	next.State.Validation = &result
+	if !s.accept(next, "validation", callID(s), raw) {
+		return
+	}
 	result = clone(result)
 	s.State.Validation = &result
 	if result.Valid || s.State.Repairs >= 2 {

@@ -143,6 +143,11 @@ Review 的 token ceiling 或新造价格换算。数值随实际模型策略配�
 请求取消向下传播，返回后再次检查；不允许另起失联 goroutine 绕过 deadline。
 输入/单次输出保留现有工具限额；run 聚合 transcript/checkpoint 上限为 2 MiB，单模型
 输出沿现有文本 adapter 的 64 KiB，超限即停止，不静默截断关键证据或清零计数。
+实现对新 payload 先检查可容纳性，并为调用引用、停止原因及恢复输入预留 64 KiB；
+拒收内容记录类型、call ID、字节数、SHA-256 和原因，不清空既有 History/候选/校验。
+非法工具 JSON 不进入状态，并保留原 tool/audit 失败类别；超大校验报告不能标记候选有效。
+最终序列化 Record（包含 checkpoint）仍须满足 2 MiB；框架 blob 过大时停止并保留调用
+证据，不返回可恢复状态，不提交超限 Record。
 CPU/存储边界属实现测试；fake tests 使用低限额，不引入真实模型费用。
 
 ### 4.3 幂等、失败与唯一恢复责任

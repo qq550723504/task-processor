@@ -68,6 +68,7 @@ type fakeTools struct {
 	calls     int
 	auditFail bool
 	last      agent.Binding
+	output    json.RawMessage
 }
 
 func (f *fakeTools) Invoke(_ context.Context, _ commercetool.ToolRef, meta commercetool.CallMetadata, binding agent.Binding) (commercetool.Result, error) {
@@ -80,15 +81,26 @@ func (f *fakeTools) Invoke(_ context.Context, _ commercetool.ToolRef, meta comme
 	if f.auditFail {
 		status = commercetool.AuditStatusRecordFailed
 	}
-	return commercetool.Result{Output: json.RawMessage(`{"title":"stored fact"}`), AuditStatus: status}, nil
+	output := f.output
+	if output == nil {
+		output = json.RawMessage(`{"title":"stored fact"}`)
+	}
+	return commercetool.Result{Output: output, AuditStatus: status}, nil
 }
 
-type fakeValidator struct{ calls int }
+type fakeValidator struct {
+	calls      int
+	unresolved []string
+}
 
 func (v *fakeValidator) Validate(_ context.Context, _ agent.Binding, policy string, c enrichment.Candidate) (agent.Validation, error) {
 	v.calls++
 	valid := len(c.Changes) == 1 && c.Changes[0].Value == "supported title"
-	return agent.Validation{Valid: valid, PolicyVersion: policy, Unresolved: []string{"image approval not evaluated"}}, nil
+	unresolved := v.unresolved
+	if unresolved == nil {
+		unresolved = []string{"image approval not evaluated"}
+	}
+	return agent.Validation{Valid: valid, PolicyVersion: policy, Unresolved: unresolved}, nil
 }
 
 // A test-only atomic store. This is not a production persistence/recovery claim.
