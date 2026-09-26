@@ -83,6 +83,7 @@ type currentApplicationFactories struct {
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
+	buildMemberPointLimits          func(context.Context, *config.Config, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAudit               func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
@@ -180,6 +181,7 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 			return accountIdentityModule{client: zitadelruntime.NewSelfServiceClient(cfg.ListingKit.Zitadel.IssuerURL, &http.Client{Timeout: 5 * time.Second})}, nil
 		},
 		buildAccountAllocation: buildAccountResourceAllocationModule,
+		buildMemberPointLimits: buildMemberPointLimitModule,
 	}
 }
 
@@ -419,11 +421,22 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, allocation)
 	}
+	includeMemberPoints := factories.buildMemberPointLimits != nil && supplied.membership != nil && supplied.commercialOwnerDB != nil
+	if includeMemberPoints {
+		points, err := factories.buildMemberPointLimits(ctx, cfg, supplied.commercialOwnerDB, *supplied.membership, authorizer)
+		if err != nil {
+			return nil, fmt.Errorf("build member AI point limits: %w", err)
+		}
+		if points == nil {
+			return nil, errors.New("member AI point limits unavailable")
+		}
+		modules = append(modules, points)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil); err != nil {
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, includeMemberPoints); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -503,6 +516,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
+	if len(includeImage) > 1 && includeImage[1] {
+		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
+	}
 	for _, route := range admitted {
 		expected[route] = struct{}{}
 	}
@@ -554,6 +570,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, memberPointLimitBase) {
+			permission := authz.PermissionWorkbenchOrganizationMemberRead
+			if descriptor.Method == http.MethodPut {
+				permission = authz.PermissionWorkbenchOrganizationMemberManage
+			}
+			if descriptor.Module != memberPointLimitModuleName || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 15*time.Second || descriptor.Permission != permission || descriptor.Handler == nil {
+				return errors.New("member AI point limit route loses live permission boundary")
+			}
+		}
 		if descriptor.Path == accountAuditPath && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")
 		}
