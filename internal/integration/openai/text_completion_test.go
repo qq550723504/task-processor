@@ -121,7 +121,7 @@ func TestTextCompletionConfiguredTimeoutIncludesQueue(t *testing.T) {
 	defer cancel()
 	started := time.Now()
 	_, err = m.CompleteText(ctx, "text", route, textTestRequest())
-	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > 700*time.Millisecond {
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, ErrTextNotDispatched) || time.Since(started) > 700*time.Millisecond {
 		t.Fatalf("err=%v duration=%v", err, time.Since(started))
 	}
 }
@@ -143,7 +143,7 @@ func TestTextCompletionRejectsStaleRouteBeforeDispatch(t *testing.T) {
 	} {
 		stale := route
 		mutate(&stale)
-		if _, err := m.CompleteText(context.Background(), "text", stale, textTestRequest()); !errors.Is(err, ErrClientConfigurationChanged) {
+		if _, err := m.CompleteText(context.Background(), "text", stale, textTestRequest()); !errors.Is(err, ErrClientConfigurationChanged) || !errors.Is(err, ErrTextNotDispatched) {
 			t.Fatalf("got %v", err)
 		}
 	}
@@ -168,7 +168,7 @@ func TestTextCompletionDoesNotRetryOrFollowRedirects(t *testing.T) {
 			m := textTestManager(t, srv.URL)
 			route, _ := m.ResolveTextRoute(context.Background(), "text")
 			_, err := m.CompleteText(context.Background(), "text", route, textTestRequest())
-			if !errors.Is(err, ErrTextOutcomeUnknown) || calls.Load() != 1 || redirected.Load() != 0 || strings.Contains(err.Error(), "sensitive-provider-body") {
+			if !errors.Is(err, ErrTextOutcomeUnknown) || errors.Is(err, ErrTextNotDispatched) || calls.Load() != 1 || redirected.Load() != 0 || strings.Contains(err.Error(), "sensitive-provider-body") {
 				t.Fatalf("calls=%d redirects=%d err=%v", calls.Load(), redirected.Load(), err)
 			}
 		})

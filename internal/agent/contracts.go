@@ -121,6 +121,13 @@ type ModelResult struct {
 	InvocationID string
 	Usage        ObservedUsage
 }
+
+// ErrModelNotDispatched is returned only by the governed adapter after it has
+// confirmed no provider send and resolved any reservation owned by this call.
+// The matching result must carry known zero usage. Unconfirmed claims or
+// terminal writes/releases must not return this error.
+var ErrModelNotDispatched = errors.New("model was not dispatched; reservation resolved")
+
 type ModelInput struct {
 	Binding                                    Binding
 	PolicyVersion, PromptVersion, InvocationID string
@@ -150,9 +157,11 @@ type Validation struct {
 }
 
 // Validator uses current domain rules, without invoking a model or saving facts.
-// The runtime supplies exact binding and hashes the candidate itself.
+// The runtime supplies exact binding and a cloned durable observation history,
+// and hashes the candidate itself. Validators must bind cited evidence to
+// successful tool observations actually disclosed to the model.
 type Validator interface {
-	Validate(context.Context, Binding, string, enrichment.Candidate) (Validation, error)
+	Validate(context.Context, Binding, string, enrichment.Candidate, []Observation) (Validation, error)
 }
 type Observation struct {
 	Step                 int

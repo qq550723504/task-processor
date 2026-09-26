@@ -21,7 +21,9 @@ type titleEvidenceView struct {
 	OmittedFields  []string                   `json:"omitted_fields"`
 }
 
-func evidenceForPrompt(raw json.RawMessage) (json.RawMessage, error) {
+// EvidenceForPrompt is shared with deterministic validation so fields omitted
+// from model input cannot later be treated as evidence the model observed.
+func EvidenceForPrompt(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return raw, nil
 	}

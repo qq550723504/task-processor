@@ -178,8 +178,14 @@ func TestAgentTextModelFailuresNeverRedispatchOrInventUsage(t *testing.T) {
 			in.UpperBound = q
 			in.InvocationID = "run:step:1"
 			result, err := m.Decide(ctx, in)
-			if err == nil || result.Usage.Known {
+			if err == nil || (mode != "reserve" && result.Usage.Known) {
 				t.Fatalf("failure invented known consumption: %+v %v", result, err)
+			}
+			if mode == "reserve" && (!result.Usage.Known || result.Usage.Tokens != 0 || result.Usage.CostMicros != 0) {
+				t.Fatalf("confirmed unexecuted reservation failure must report zero usage: %+v", result)
+			}
+			if errors.Is(err, agent.ErrModelNotDispatched) != (mode == "reserve") {
+				t.Fatalf("unconfirmed claim/terminal or provider outcome was labeled unexecuted: %s %v", mode, err)
 			}
 			_, _ = m.Decide(ctx, in)
 			if calls.Load() > 1 || ((mode == "claim" || mode == "reserve") && calls.Load() != 0) {
@@ -206,9 +212,12 @@ func TestAgentTextModelRechecksMemberAtDispatch(t *testing.T) {
 		}
 		return identity, nil
 	}
-	_, err = m.Decide(ctx, in)
+	result, err := m.Decide(ctx, in)
 	if err == nil || checks != 2 || calls.Load() != 0 || ledger.claims != 1 || ledger.reserves != 1 {
 		t.Fatalf("dispatch accepted changed grant: checks=%d calls=%d err=%v", checks, calls.Load(), err)
+	}
+	if ledger.terminals != 1 || ledger.rows[in.InvocationID].Outcome != aicapability.InvocationFailed || !result.Usage.Known || result.Usage.Tokens != 0 {
+		t.Fatalf("unexecuted call retained reservation: %+v result=%+v", ledger.rows[in.InvocationID], result)
 	}
 }
 

@@ -33,6 +33,7 @@ type fakeModel struct {
 	lastFeedback       string
 	panicAfterDispatch bool
 	waitStarted        chan struct{}
+	notDispatchedAt    int
 }
 
 func (m *fakeModel) Quote(context.Context, agent.ModelInput) (agent.Quote, error) {
@@ -40,6 +41,9 @@ func (m *fakeModel) Quote(context.Context, agent.ModelInput) (agent.Quote, error
 }
 func (m *fakeModel) Decide(ctx context.Context, in agent.ModelInput) (agent.ModelResult, error) {
 	m.calls++
+	if m.calls == m.notDispatchedAt {
+		return agent.ModelResult{InvocationID: in.InvocationID, Usage: agent.ObservedUsage{Known: true, Currency: in.UpperBound.Currency}}, agent.ErrModelNotDispatched
+	}
 	if m.panicAfterDispatch {
 		panic("provider adapter failed after dispatch")
 	}
@@ -91,10 +95,12 @@ func (f *fakeTools) Invoke(_ context.Context, _ commercetool.ToolRef, meta comme
 type fakeValidator struct {
 	calls      int
 	unresolved []string
+	history    []agent.Observation
 }
 
-func (v *fakeValidator) Validate(_ context.Context, _ agent.Binding, policy string, c enrichment.Candidate) (agent.Validation, error) {
+func (v *fakeValidator) Validate(_ context.Context, _ agent.Binding, policy string, c enrichment.Candidate, history []agent.Observation) (agent.Validation, error) {
 	v.calls++
+	v.history = history
 	valid := len(c.Changes) == 1 && c.Changes[0].Value == "supported title"
 	unresolved := v.unresolved
 	if unresolved == nil {
@@ -436,5 +442,25 @@ func TestCancelledRunCommitIsBoundedAndDoesNotAcknowledgeFailure(t *testing.T) {
 	}
 	if store.record.State.Phase != agent.Running || store.record.State.Revision != 1 {
 		t.Fatal("failed commit changed durable state")
+	}
+}
+
+func TestNotDispatchedDecisionReleasesOnlyCurrentQuote(t *testing.T) {
+	r, req, model, _, _, _, _ := fixture(t, agent.Action{Kind: "tool", Tool: canonicalinspect.Definition().Ref})
+	model.notDispatchedAt = 2
+	out, err := r.Start(context.Background(), req)
+	if err != nil || out.State.StopReason != agent.StopDependency || out.State.PendingInvocationID != "" {
+		t.Fatalf("known unexecuted call remained pending: %+v %v", out.State, err)
+	}
+	if out.State.Usage.Tokens != 2 || out.State.Usage.CostMicros != 1 || model.calls != 2 {
+		t.Fatalf("changed prior consumption or retried: %+v calls=%d", out.State.Usage, model.calls)
+	}
+	last := out.State.History[len(out.State.History)-1]
+	if last.InvocationID == "" || last.ObservedUsage == nil || !last.ObservedUsage.Known || last.ObservedUsage.Tokens != 0 {
+		t.Fatal("lost known no-dispatch evidence")
+	}
+	_, err = r.Start(context.Background(), req)
+	if err != nil || model.calls != 2 {
+		t.Fatal("terminal no-dispatch replayed", err)
 	}
 }

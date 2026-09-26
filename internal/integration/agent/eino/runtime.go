@@ -192,6 +192,16 @@ type flowState struct {
 	Next   string
 }
 
+// Eino's reflection codec cannot round-trip nested RawMessage tool outputs.
+// Use the standard JSON codec for this concrete payload while retaining Eino's
+// checkpoint envelope and the existing Store size/CAS constraints.
+type flowStateJSON flowState
+
+func (s flowState) MarshalJSON() ([]byte, error) { return json.Marshal(flowStateJSON(s)) }
+func (s *flowState) UnmarshalJSON(raw []byte) error {
+	return json.Unmarshal(raw, (*flowStateJSON)(s))
+}
+
 func init() { schema.RegisterName[*flowState]("task_processor_product_agent_flow_v1") }
 func (s *flowState) stop(reason agent.StopReason) {
 	s.State.Phase = agent.Stopped

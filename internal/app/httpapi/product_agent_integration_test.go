@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"task-processor/internal/agent"
+	"task-processor/internal/aicapability"
 	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -40,7 +42,34 @@ func (g agentFixtureGrants) Load(ctx context.Context, source workbenchcontext.Gr
 }
 func (g agentFixtureGrants) Invalidate(actor, project string) { g.base.Invalidate(actor, project) }
 
+type agentReserveHook struct {
+	grsaitext.AgentInvocationLedger
+	afterReserve func()
+}
+
+func (l agentReserveHook) ReserveAIInvocationUsage(ctx context.Context, org, member, invocation string, tokens int64, at time.Time) error {
+	err := l.AgentInvocationLedger.ReserveAIInvocationUsage(ctx, org, member, invocation, tokens, at)
+	if err == nil {
+		l.afterReserve()
+	}
+	return err
+}
+
+type agentReleaseFailure struct {
+	listingsubscription.AIInvocationUsageAdapter
+}
+
+func (agentReleaseFailure) ReleaseAIInvocationUsage(context.Context, string, string) error {
+	return errors.New("isolated unconfirmed release")
+}
+
 func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
+	for _, mode := range []string{"observed canonical", "guessed without tool", "asset only", "no quota", "revoked before dispatch", "release failed"} {
+		t.Run(mode, func(t *testing.T) { testProductAgentOwners(t, mode) })
+	}
+}
+
+func testProductAgentOwners(t *testing.T, mode string) {
 	f := newAcquisitionHTTPFixture(t)
 	acquisitionServer := f.server(t)
 	op := acquisitionHTTPCall(t, acquisitionServer, "POST", productAcquisitionBase, "operator", "B", uuid.NewString(), `{"source":"https://detail.1688.com/offer/981645030344.html"}`, 200)
@@ -61,17 +90,24 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	end := now.Add(time.Hour)
 	require.NoError(t, f.owner.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, "B", listingsubscription.ModuleListingKit, listingsubscription.StatusActive, start, end, `{"ai_tokens":10000000}`).Error)
 	require.NoError(t, f.owner.Exec(`INSERT INTO account_member_token_allocations (organization_id,member_id,metric,allocated,version,active,window_start,window_end,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, "B", "member-B-operator", "token", 10000000, 1, true, start, end, now).Error)
+	if mode == "no quota" {
+		require.NoError(t, f.owner.Exec(`UPDATE account_member_token_allocations SET allocated = 1 WHERE organization_id = 'B'`).Error)
+	}
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		step := calls.Add(1)
 		var content string
-		switch step {
-		case 1:
+		switch {
+		case mode == "guessed without tool":
+			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Guessed title","EvidenceIDs":["981645030344"]}]}}`
+		case step == 1:
 			content = `{"Kind":"tool","Tool":{"ID":"product.asset.inspect","Version":"v1.0.0"}}`
-		case 2:
+		case step == 2 && mode == "observed canonical":
 			wire, readErr := io.ReadAll(r.Body)
 			require.NoError(t, readErr)
 			require.Contains(t, string(wire), "approved-shein-main", "model must see the selected platform's real inventory")
+			content = `{"Kind":"tool","Tool":{"ID":"product.canonical.inspect","Version":"v2.0.0"}}`
+		case step == 3 && mode == "observed canonical":
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["invented"]}]}}`
 		default:
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["981645030344"]}]},"Confidence":[{"Field":"title","Value":0.8,"Known":true}]}`
@@ -91,6 +127,9 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	require.NoError(t, err)
 	ledger := aistore.NewGormInvocationRecorder(f.owner)
 	ledger.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.owner)})
+	if mode == "release failed" {
+		ledger.SetUsageSettler(agentReleaseFailure{listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.owner)}})
+	}
 	deps := newRouteAuthDependencies()
 	deps.workbenchVerifier = titleVerifier{}
 	deps.organizationResolver = workbenchcontext.NewResolver(agentFixtureGrants{f.grants}, "project", "v1", nil)
@@ -98,6 +137,9 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	require.NoError(t, err)
 	deps.authorizer = auth
 	settings := ProductAgentDependencies{Enabled: true, AllowedOrganizationIDs: []string{"B"}, RunDB: f.owner, AssetDB: f.owner, ReviewDB: f.owner, Manager: m, Ledger: ledger, TextPolicy: grsaitext.AgentTextPolicy{ClientName: "default", PolicyVersion: "title-review-v1", PricingVersion: "fixture-v1", BoundEvidence: "fixture-metering-v1", Currency: "CNY", InputMicrosPerMillion: 300000, OutputMicrosPerMillion: 2000000, AdmittedRoute: route}, Limits: agent.Limits{Steps: 12, ModelCalls: 6, Tokens: 5000000, CostMicros: 5000000, Currency: "CNY", Runtime: time.Minute}}
+	if mode == "revoked before dispatch" || mode == "release failed" {
+		settings.Ledger = agentReserveHook{AgentInvocationLedger: ledger, afterReserve: func() { f.grants.revoked.Store(true) }}
+	}
 	module, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings)
 	require.NoError(t, err)
 	app := buildIsolatedApplicationHTTPServer(module.(productAgentModule).routes, deps, 2*time.Minute)
@@ -116,20 +158,68 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	require.Equal(t, 200, code, string(raw))
 	var result productAgentResultDTO
 	require.NoError(t, json.Unmarshal(raw, &result))
+	if mode == "release failed" {
+		require.Equal(t, agent.StopModelUnknown, result.StopReason)
+		require.Positive(t, result.Tokens)
+		require.Equal(t, "unknown_reserved", result.UsageStatus)
+		require.Zero(t, calls.Load())
+		var remaining int64
+		require.NoError(t, f.owner.Table("saas_usage_events").Where("status = ?", "reserved").Count(&remaining).Error)
+		require.EqualValues(t, 1, remaining, "failed release must not be acknowledged as zero usage")
+		var terminal struct{ Outcome string }
+		require.NoError(t, f.owner.Table("ai_invocations").Select("outcome").Take(&terminal).Error)
+		require.Equal(t, string(aicapability.InvocationFailed), terminal.Outcome, "terminal fact alone does not confirm release")
+		f.grants.revoked.Store(false)
+		code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{"targetPlatform":"shein"}`)
+		require.NoError(t, err)
+		require.Equal(t, 200, code, string(raw))
+		require.Zero(t, calls.Load())
+		return
+	}
+	if mode == "no quota" || mode == "revoked before dispatch" {
+		require.Equal(t, agent.Stopped, result.Phase, string(raw))
+		require.Equal(t, agent.StopDependency, result.StopReason)
+		require.Zero(t, result.Tokens)
+		require.Zero(t, result.EstimatedCostMicros)
+		require.Equal(t, "observed", result.UsageStatus)
+		require.Zero(t, calls.Load())
+		var remaining int64
+		require.NoError(t, f.owner.Table("saas_usage_events").Where("status = ?", "reserved").Count(&remaining).Error)
+		require.Zero(t, remaining, "no provider call must not occupy quota")
+		var terminal struct{ Outcome string }
+		require.NoError(t, f.owner.Table("ai_invocations").Select("outcome").Take(&terminal).Error)
+		require.Equal(t, string(aicapability.InvocationFailed), terminal.Outcome)
+		if mode == "revoked before dispatch" {
+			require.NoError(t, f.owner.Table("saas_usage_events").Where("status = ?", "released").Count(&remaining).Error)
+			require.EqualValues(t, 1, remaining)
+		}
+		return
+	}
+	if mode == "guessed without tool" || mode == "asset only" {
+		require.False(t, result.CanSubmitReview, string(raw))
+		require.Equal(t, agent.StopRepairLimit, result.StopReason)
+		require.Equal(t, agent.HumanReviewRequired, result.Phase)
+		before := calls.Load()
+		code, raw, err = acquisitionHTTPRequest(server, "POST", path+"/"+key+"/review", "operator", "B", "", `{}`)
+		require.NoError(t, err)
+		require.Equal(t, 409, code, string(raw))
+		require.Equal(t, before, calls.Load())
+		return
+	}
 	require.Equal(t, agent.HumanReviewRequired, result.Phase, string(raw))
 	require.True(t, result.CanSubmitReview)
-	require.EqualValues(t, 90, result.Tokens)
-	require.EqualValues(t, 3, calls.Load())
+	require.EqualValues(t, 120, result.Tokens)
+	require.EqualValues(t, 4, calls.Load())
 	// Replaying Start and reading after reconstructing its HTTP handler never
-	// cause a fourth model call. The same candidate enters existing Review.
+	// cause an extra model call. The same candidate enters existing Review.
 	code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{"targetPlatform":"shein"}`)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
-	require.EqualValues(t, 3, calls.Load())
+	require.EqualValues(t, 4, calls.Load())
 	code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{"targetPlatform":"temu"}`)
 	require.NoError(t, err)
 	require.Equal(t, 409, code, string(raw))
-	require.EqualValues(t, 3, calls.Load())
+	require.EqualValues(t, 4, calls.Load())
 	code, raw, err = acquisitionHTTPRequest(server, "GET", path+"/"+key, "operator", "B", "", "")
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
@@ -140,7 +230,7 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	code, raw, err = acquisitionHTTPRequest(server, "GET", path+"/"+key, "operator", "A", "", "")
 	require.NoError(t, err)
 	require.NotEqual(t, 200, code, string(raw))
-	require.EqualValues(t, 3, calls.Load())
+	require.EqualValues(t, 4, calls.Load())
 	code, raw, err = acquisitionHTTPRequest(server, "POST", path+"/"+key+"/review", "operator", "B", "", `{}`)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
@@ -153,10 +243,10 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	require.Equal(t, "Reviewed bottle title", view.Title)
 	var callsCount int64
 	require.NoError(t, f.owner.Table("product_agent_tool_calls").Count(&callsCount).Error)
-	require.EqualValues(t, 1, callsCount)
+	require.EqualValues(t, 2, callsCount)
 	var usage struct{ Quantity int64 }
 	require.NoError(t, f.owner.Table("saas_usage_events").Select("SUM(quantity) AS quantity").Where("source_type = ?", "ai_invocation").Scan(&usage).Error)
-	require.EqualValues(t, 90, usage.Quantity)
+	require.EqualValues(t, 120, usage.Quantity)
 	// The human, using the original Review endpoint, decides and applies.
 	accepted := titleCall(t, server, "POST", titleBasePath+"/"+view.ID+"/decisions", "admin", "B", uuid.NewString(), `{"action":"accept","expected_revision":1}`, 200)
 	_ = accepted

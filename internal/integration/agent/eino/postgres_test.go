@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 	"task-processor/internal/agent"
 	agentstore "task-processor/internal/integration/persistence/agent"
+	"task-processor/internal/product/catalog/tools/canonicalinspect"
 )
 
 func postgresRuntimeStore(t *testing.T) func() agent.Store {
@@ -50,7 +51,7 @@ func postgresRuntimeStore(t *testing.T) func() agent.Store {
 
 func TestPostgresRuntimeCheckpointAcrossNewConnections(t *testing.T) {
 	newStore := postgresRuntimeStore(t)
-	r, req, model, _, _, _, _ := fixture(t, agent.Action{Kind: "interrupt"}, proposal("supported title"))
+	r, req, model, _, validator, _, _ := fixture(t, agent.Action{Kind: "tool", Tool: canonicalinspect.Definition().Ref}, agent.Action{Kind: "interrupt"}, proposal("supported title"))
 	r.config.Store = newStore()
 	before, err := r.Start(context.Background(), req)
 	require.NoError(t, err)
@@ -62,18 +63,19 @@ func TestPostgresRuntimeCheckpointAcrossNewConnections(t *testing.T) {
 	require.NoError(t, err)
 	after, err := restarted.Resume(context.Background(), req, before.State.Revision, "confirmed source wording")
 	require.NoError(t, err)
-	require.Equal(t, agent.HumanReviewRequired, after.State.Phase)
+	require.Equal(t, agent.HumanReviewRequired, after.State.Phase, "stop=%s calls=%d", after.State.StopReason, model.calls)
 	require.True(t, after.State.Validation.Valid)
 	require.Equal(t, before.State.RunID, after.State.RunID)
 	require.Equal(t, before.State.Deadline, after.State.Deadline)
 	require.Equal(t, before.State.Request, after.State.Request)
 	require.Equal(t, before.State.Usage.ModelCalls+1, after.State.Usage.ModelCalls)
-	require.Equal(t, 2, model.calls)
+	require.Equal(t, 3, model.calls)
+	require.Equal(t, before.State.History[1], validator.history[1], "resume validation must use the original durable tool observation")
 	require.Equal(t, "confirmed source wording", model.lastFeedback)
 	replay, err := restarted.Start(context.Background(), req)
 	require.NoError(t, err)
 	require.Equal(t, after, replay)
-	require.Equal(t, 2, model.calls)
+	require.Equal(t, 3, model.calls)
 }
 
 func TestPostgresRuntimeLostModelResponseCannotBeResumed(t *testing.T) {

@@ -170,6 +170,20 @@ repair 是得到确定性拒绝后的新 step，不是重试丢失响应的同�
 | 重启/取消后发现 in-flight 调用 | 由 AI Capability 的既有 invocation 事实判定；未决则停止，不能从旧 checkpoint 重发 |
 | 输出交付/提案保存响应丢失 | 用原 run/result hash/review key 查询同一 owner；不重新生成或 Apply |
 
+现有合同的实现约束：文本 transport 以进入 `http.Client.Do` 为保守发送边界；排队、配置
+重读、BeforeDispatch 或 SDK/wire 构造拒绝可返回确定未发送标记。Governed adapter 只有
+确认本次唯一 Claim、未发送且现有 `RecordInvocation(Failed)` 的终结与 Commercial 释放
+整体成功，才向 runtime 返回 `ErrModelNotDispatched` 和零用量；Claim 未确认/已被占用、
+终结或释放未确认时继续保留 UNKNOWN。runtime 只结清当前 step 的预留，保留历史消耗、
+调用引用并停止，不自动重发。未取得唯一 Claim 前的错误不作为清除已有调用事实的依据。
+
+确定性 Validator 接收 runtime 克隆的本 run History。当前标题策略只接受准确 canonical
+工具版本、CallID、成功审计、精确商品/版本/publication 的工具输出中实际披露的 raw evidence
+字段，并继续执行原 Review/enrichment 规则。证据门槛使用与模型相同的有界 prompt 投影；
+被省略字段、source identity、ProductKey、资产或 readiness 不能替代 raw evidence。读取结果
+和提交 Review 共用该门槛。暂停恢复保留相同 History；具体 flow payload 使用 Go 标准 JSON
+编解码，避免框架反射序列化破坏嵌套 RawMessage，仍由 Eino 保存 checkpoint、Store 执行原 CAS。
+
 Temporal/调用方拥有 run 级调度，首版不得设置会重放完整有费用循环的自动 retry。
 框架的 failover/重试必须关闭或由 AI Capability 的单一策略控制；不得叠加 SDK 默认重试。
 当前 ImageAgent 的 Review 专用 replay envelope 不能直接用于文本模型结果恢复。

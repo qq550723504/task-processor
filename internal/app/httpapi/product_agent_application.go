@@ -236,13 +236,16 @@ func agentReviewInput(b agent.Binding, policy string, candidate enrichment.Candi
 	return review.CandidateInput{Base: review.CreateInput{ProductKey: b.ProductKey, BaseVersion: version}, PublicationID: b.PublicationID, PolicyVersion: policy, Candidate: candidate}
 }
 
-func (a *productAgentApplication) Validate(ctx context.Context, b agent.Binding, policy string, candidate enrichment.Candidate) (agent.Validation, error) {
+func (a *productAgentApplication) Validate(ctx context.Context, b agent.Binding, policy string, candidate enrichment.Candidate, history []agent.Observation) (agent.Validation, error) {
 	if _, err := a.Authorize(ctx, b); err != nil {
 		return agent.Validation{}, err
 	}
 	i, err := a.freshIdentity(ctx)
 	if err != nil {
 		return agent.Validation{}, err
+	}
+	if !agentCandidateEvidenceObserved(b, candidate, history) {
+		return agent.Validation{PolicyVersion: policy, Unresolved: []string{"candidate_evidence_not_observed: read canonical source evidence before proposing"}}, nil
 	}
 	proposal, err := a.reviews.ValidateCandidate(authidentity.WithAuthenticatedIdentity(ctx, i), agentReviewInput(b, policy, candidate))
 	if err != nil {

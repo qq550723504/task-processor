@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"task-processor/internal/agent"
@@ -100,7 +101,7 @@ func (m *AgentTextModel) prepare(ctx context.Context, in agent.ModelInput) (prep
 	in.UpperBound = agent.Quote{}
 	in.History = append([]agent.Observation(nil), in.History...)
 	for n := range in.History {
-		in.History[n].Output, err = evidenceForPrompt(in.History[n].Output)
+		in.History[n].Output, err = EvidenceForPrompt(in.History[n].Output)
 		if err != nil {
 			return p, err
 		}
@@ -158,11 +159,7 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	if err = m.ledger.ReserveAIInvocationUsage(p.ctx, record.TenantID, record.MemberID, record.InvocationID, p.quote.Tokens, now); err != nil {
 		// This owner knows no provider request was sent. An ambiguous reservation
 		// can safely be released by recording that fact; never retry the model.
-		record.Outcome = aicapability.InvocationFailed
-		record.FinishedAt = time.Now().UTC()
-		record.ErrorCode = "reservation_failed_before_dispatch"
-		_ = m.record(ctx, record)
-		return result, agent.ErrUnavailable
+		return m.notDispatched(ctx, record, "reservation_failed_before_dispatch")
 	}
 	p.request.BeforeDispatch = func() error {
 		fresh, resolveErr := m.prepare(ctx, in)
@@ -172,6 +169,9 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 		return nil
 	}
 	response, err := m.manager.CompleteText(p.ctx, m.policy.ClientName, p.route, p.request)
+	if errors.Is(err, openai.ErrTextNotDispatched) {
+		return m.notDispatched(ctx, record, "rejected_before_dispatch")
+	}
 	if err != nil || response == nil || !response.UsageKnown || response.Usage.PromptTokens > int(agentInputWindow) || response.Usage.CompletionTokens > int(agentOutputWindow) {
 		return result, openai.ErrTextOutcomeUnknown
 	}
@@ -205,6 +205,21 @@ func (m *AgentTextModel) Decide(ctx context.Context, in agent.ModelInput) (agent
 	result.Action = action
 	result.Usage = agent.ObservedUsage{Tokens: int64(record.TotalTokens), CostMicros: record.EstimatedCostMicros, Currency: record.Currency, Known: true}
 	return result, nil
+}
+
+func (m *AgentTextModel) notDispatched(ctx context.Context, record aicapability.InvocationRecord, code string) (agent.ModelResult, error) {
+	result := agent.ModelResult{InvocationID: record.InvocationID}
+	record.Outcome = aicapability.InvocationFailed
+	record.FinishedAt = time.Now().UTC()
+	record.ErrorCode = code
+	record.UsageKnown, record.EstimatedCostKnown = true, true
+	// RecordInvocation owns both the terminal fact and Commercial release. A
+	// saved fact alone does not confirm that the reservation has been released.
+	if err := m.record(ctx, record); err != nil {
+		return result, openai.ErrTextOutcomeUnknown
+	}
+	result.Usage = agent.ObservedUsage{Known: true, Currency: record.Currency}
+	return result, agent.ErrModelNotDispatched
 }
 
 func (m *AgentTextModel) record(ctx context.Context, record aicapability.InvocationRecord) error {

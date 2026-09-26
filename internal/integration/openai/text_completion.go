@@ -20,6 +20,7 @@ const MaxTextResponseBytes = 256 << 10
 
 var ErrTextInput = errors.New("invalid bounded text request")
 var ErrTextOutcomeUnknown = errors.New("text provider outcome is unknown; do not redispatch")
+var ErrTextNotDispatched = errors.New("text provider request was not dispatched")
 
 // TextCompletionRequest contains text only. Routing, credentials and model are
 // chosen by the current manager configuration, never by model-produced content.
@@ -86,7 +87,13 @@ func (m *Manager) resolveTextConfiguration(ctx context.Context, name string) (ef
 // CompleteText re-resolves the current credential and compares the full quoted
 // route. No legacy resolver-version alias, provider fallback, model override or
 // automatic retry is accepted. Missing usage remains missing for the caller.
-func (m *Manager) CompleteText(ctx context.Context, name string, expected EffectiveClientRoute, input TextCompletionRequest) (*TextCompletionResult, error) {
+func (m *Manager) CompleteText(ctx context.Context, name string, expected EffectiveClientRoute, input TextCompletionRequest) (result *TextCompletionResult, resultErr error) {
+	handedToTransport := false
+	defer func() {
+		if resultErr != nil && !handedToTransport {
+			resultErr = errors.Join(ErrTextNotDispatched, resultErr)
+		}
+	}()
 	if input.System == "" || input.Prompt == "" || input.MaximumOutputTokens <= 0 || input.MaximumOutputTokens > 65536 {
 		return nil, ErrTextInput
 	}
@@ -132,6 +139,7 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 			return nil, err
 		}
 	}
+	handedToTransport = true
 	return completeTextOnce(ctx, current.config, input)
 }
 
@@ -155,8 +163,8 @@ func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompl
 	if err != nil {
 		// Raw provider error bodies/URLs can include sensitive input. Only a safe
 		// classification leaves this seam; dispatch/usage ownership stays upstream.
-		if errors.Is(err, ErrTextInput) {
-			return nil, ErrTextInput
+		if !capture.dispatched {
+			return nil, errors.Join(ErrTextNotDispatched, ErrTextInput)
 		}
 		return nil, ErrTextOutcomeUnknown
 	}
@@ -166,6 +174,7 @@ func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompl
 type boundedTextHTTPClient struct {
 	client     *http.Client
 	usageKnown bool
+	dispatched bool
 }
 
 func (c *boundedTextHTTPClient) Do(request *http.Request) (*http.Response, error) {
@@ -189,6 +198,8 @@ func (c *boundedTextHTTPClient) Do(request *http.Request) (*http.Response, error
 	request.Body = io.NopCloser(bytes.NewReader(wire))
 	request.ContentLength = int64(len(wire))
 	request.GetBody = nil
+	// Once handed to net/http, even a network error is conservatively unknown.
+	c.dispatched = true
 	response, err := c.client.Do(request)
 	if err != nil {
 		return nil, ErrTextOutcomeUnknown

@@ -3,6 +3,7 @@ package einoruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 
 	"github.com/cloudwego/eino/compose"
@@ -40,6 +41,19 @@ func (e *execution) model(ctx context.Context, s *flowState) {
 	s.State.History = append(s.State.History, agent.Observation{Step: s.State.Usage.Steps, CallID: in.InvocationID, InvocationID: in.InvocationID})
 	s.State.PendingInvocationID = in.InvocationID
 	result, err := e.runtime.config.Model.Decide(ctx, clone(in))
+	if errors.Is(err, agent.ErrModelNotDispatched) && result.InvocationID == in.InvocationID &&
+		result.Usage.Known && result.Usage.Tokens == 0 && result.Usage.CostMicros == 0 && result.Usage.Currency == quote.Currency {
+		// Only an authoritative no-send AND resolved-reservation result can undo
+		// this call's pre-reservation. Previous observations and budgets remain.
+		if stop := s.State.Usage.Settle(quote, result.Usage); stop != "" {
+			s.stop(stop)
+			return
+		}
+		s.State.History[len(s.State.History)-1].ObservedUsage = &result.Usage
+		s.State.PendingInvocationID = ""
+		s.stop(agent.StopDependency)
+		return
+	}
 	if err != nil || result.InvocationID != in.InvocationID {
 		s.stop(agent.StopModelUnknown)
 		return
@@ -149,7 +163,7 @@ func (e *execution) validate(ctx context.Context, s *flowState) {
 		s.stop(agent.StopInvalidOutput)
 		return
 	}
-	result, err := e.runtime.config.Validator.Validate(ctx, s.State.Request.Binding, s.State.Request.PolicyVersion, clone(s.State.Candidate))
+	result, err := e.runtime.config.Validator.Validate(ctx, s.State.Request.Binding, s.State.Request.PolicyVersion, clone(s.State.Candidate), clone(s.State.History))
 	if err != nil {
 		s.stop(agent.StopDependency)
 		return

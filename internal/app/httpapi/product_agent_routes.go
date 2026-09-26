@@ -217,7 +217,7 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 }
 
 func agentRunReviewable(s agent.State) bool {
-	return s.Phase == agent.HumanReviewRequired && s.Validation != nil && s.Validation.Valid && len(s.Candidate.Changes) == 1 && s.StopReason == ""
+	return s.Phase == agent.HumanReviewRequired && s.Validation != nil && s.Validation.Valid && len(s.Candidate.Changes) == 1 && s.StopReason == "" && agentCandidateEvidenceObserved(s.Request.Binding, s.Candidate, s.History)
 }
 
 func writeProductAgentError(c *gin.Context, err error) {
