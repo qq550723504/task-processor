@@ -3,11 +3,6 @@ services:
   bootstrap:
     environment: { ACCOUNT_IMAGE_AGENT_TRIAL: ISOLATED_TRIAL_ONLY }
     volumes:
-      - image-db-owner-secret:/image-db-owner-secret
-      - image-runtime-secret:/image-runtime-secret
-      - image-worker-secret:/image-worker-secret
-      - acquisition-db-owner-secret:/acquisition-db-owner-secret
-      - acquisition-runtime-secret:/acquisition-runtime-secret
       - image-minio-secret:/image-minio-secret
 
   traefik:
@@ -26,24 +21,6 @@ services:
       - runtime-secrets:/runtime:ro
       - zitadel-iac-pat:/zitadel/iac:ro
     depends_on: { schema-init: { condition: service_completed_successfully } }
-
-  image-db:
-    image: postgres:17.2-alpine
-    network_mode: service:runtime-network
-    command: [postgres, -p, "5437", -c, listen_addresses=127.0.0.1]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: image_agent, POSTGRES_PASSWORD_FILE: /private/image-db-password }
-    volumes: [image-db-owner-secret:/private:ro, image-db:/var/lib/postgresql/data]
-    depends_on: { bootstrap: { condition: service_completed_successfully } }
-    healthcheck: { test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -p 5437 -U postgres -d image_agent"], interval: 3s, timeout: 5s, retries: 40 }
-
-  acquisition-db:
-    image: postgres:17.2-alpine
-    network_mode: service:runtime-network
-    command: [postgres, -p, "5438", -c, listen_addresses=127.0.0.1]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: product_acquisition, POSTGRES_PASSWORD_FILE: /private/acquisition-db-password }
-    volumes: [acquisition-db-owner-secret:/private:ro, acquisition-db:/var/lib/postgresql/data]
-    depends_on: { bootstrap: { condition: service_completed_successfully } }
-    healthcheck: { test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -p 5438 -U postgres -d product_acquisition"], interval: 3s, timeout: 5s, retries: 40 }
 
   image-minio:
     image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
@@ -99,8 +76,7 @@ services:
     depends_on:
       schema-init: { condition: service_completed_successfully }
       image-trial-fixture: { condition: service_completed_successfully }
-      image-db: { condition: service_healthy }
-      acquisition-db: { condition: service_healthy }
+      business-db: { condition: service_healthy }
       image-minio: { condition: service_healthy }
       image-temporal: { condition: service_healthy }
       image-controlled-provider: { condition: service_healthy }
@@ -121,15 +97,8 @@ services:
     depends_on: { image-trial-init: { condition: service_completed_successfully } }
 
 volumes:
-  image-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-image-db-owner-secret" }
-  image-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-image-runtime-secret" }
-  image-worker-secret: { name: "${COMPOSE_PROJECT_NAME}-image-worker-secret" }
-  acquisition-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db-owner-secret" }
-  acquisition-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-runtime-secret" }
   image-minio-secret: { name: "${COMPOSE_PROJECT_NAME}-image-minio-secret" }
   image-trial-worker-secrets: { name: "${COMPOSE_PROJECT_NAME}-image-trial-worker-secrets" }
   image-trial-state: { name: "${COMPOSE_PROJECT_NAME}-image-trial-state" }
-  image-db: { name: "${COMPOSE_PROJECT_NAME}-image-db" }
-  acquisition-db: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db" }
   image-minio: { name: "${COMPOSE_PROJECT_NAME}-image-minio" }
   image-temporal: { name: "${COMPOSE_PROJECT_NAME}-image-temporal" }

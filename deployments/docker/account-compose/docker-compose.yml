@@ -13,6 +13,12 @@ services:
     build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: bootstrap }
     volumes:
       - bootstrap-state:/state
+      - business-db-admin-secret:/business-db-admin-secret
+      - image-db-owner-secret:/image-db-owner-secret
+      - image-runtime-secret:/image-runtime-secret
+      - image-worker-secret:/image-worker-secret
+      - acquisition-db-owner-secret:/acquisition-db-owner-secret
+      - acquisition-runtime-secret:/acquisition-runtime-secret
       - trusted-ca:/trusted-ca
       - traefik-tls:/traefik-tls
       - identity-db-secret:/identity-db-secret
@@ -32,46 +38,45 @@ services:
     image: postgres:17.2-alpine
     network_mode: service:runtime-network
     command: ["postgres", "-p", "5432", "-c", "listen_addresses=127.0.0.1"]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: zitadel, POSTGRES_PASSWORD_FILE: /private/identity-db-password }
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: zitadel, POSTGRES_PASSWORD_FILE: /private/identity-db-password, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 }
     volumes: [identity-db-secret:/private:ro, identity-db:/var/lib/postgresql/data]
     depends_on: { bootstrap: { condition: service_completed_successfully } }
     healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres -d zitadel"], interval: 3s, timeout: 5s, retries: 40 }
 
-  source-db:
+  business-db:
     image: postgres:17.2-alpine
     network_mode: service:runtime-network
-    command: ["postgres", "-p", "5433", "-c", "listen_addresses=127.0.0.1"]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: source_accounts, POSTGRES_PASSWORD_FILE: /private/source-db-password }
-    volumes: [source-db-owner-secret:/private:ro, source-db:/var/lib/postgresql/data]
+    command: [postgres, -p, "5433", -c, listen_addresses=127.0.0.1]
+    environment:
+      POSTGRES_USER: business_cluster_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /private/admin-password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      PGPORT: "5433"
+      ACCOUNT_COMMERCIAL_DATABASE: "${ACCOUNT_COMMERCIAL_DATABASE:-commercial}"
+    volumes:
+      - business-db-admin-secret:/private:ro
+      - business-db:/var/lib/postgresql/data
+      - ./business-db-init.sh:/docker-entrypoint-initdb.d/10-business-databases.sh:ro
+      - source-db-owner-secret:/secrets/source-owner:ro
+      - source-runtime-secret:/secrets/source-runtime:ro
+      - commercial-db-owner-secret:/secrets/commercial-owner:ro
+      - commercial-runtime-secret:/secrets/commercial-runtime:ro
+      - referral-db-owner-secret:/secrets/referral-owner:ro
+      - referral-runtime-secret:/secrets/referral-runtime:ro
+      - membership-db-owner-secret:/secrets/membership-owner:ro
+      - membership-runtime-secret:/secrets/membership-runtime:ro
+      - acquisition-db-owner-secret:/secrets/acquisition-owner:ro
+      - acquisition-runtime-secret:/secrets/acquisition-runtime:ro
+      - image-db-owner-secret:/secrets/image-owner:ro
+      - image-runtime-secret:/secrets/image-runtime:ro
+      - image-worker-secret:/secrets/image-worker:ro
     depends_on: { bootstrap: { condition: service_completed_successfully } }
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5433 -U postgres -d source_accounts"], interval: 3s, timeout: 5s, retries: 40 }
-
-  commercial-db:
-    image: postgres:17.2-alpine
-    network_mode: service:runtime-network
-    command: ["postgres", "-p", "5434", "-c", "listen_addresses=127.0.0.1"]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: "${ACCOUNT_COMMERCIAL_DATABASE:-commercial}", POSTGRES_PASSWORD_FILE: /private/commercial-db-password }
-    volumes: [commercial-db-owner-secret:/private:ro, commercial-db:/var/lib/postgresql/data]
-    depends_on: { bootstrap: { condition: service_completed_successfully } }
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5434 -U postgres -d \"$${POSTGRES_DB}\""], interval: 3s, timeout: 5s, retries: 40 }
-
-  referral-db:
-    image: postgres:17.2-alpine
-    network_mode: service:runtime-network
-    command: ["postgres", "-p", "5435", "-c", "listen_addresses=127.0.0.1"]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: referrals, POSTGRES_PASSWORD_FILE: /private/referral-db-password }
-    volumes: [referral-db-owner-secret:/private:ro, referral-db:/var/lib/postgresql/data]
-    depends_on: { bootstrap: { condition: service_completed_successfully } }
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5435 -U postgres -d referrals"], interval: 3s, timeout: 5s, retries: 40 }
-
-  membership-db:
-    image: postgres:17.2-alpine
-    network_mode: service:runtime-network
-    command: ["postgres", "-p", "5436", "-c", "listen_addresses=127.0.0.1"]
-    environment: { POSTGRES_USER: postgres, POSTGRES_DB: membership, POSTGRES_PASSWORD_FILE: /private/membership-db-password }
-    volumes: [membership-db-owner-secret:/private:ro, membership-db:/var/lib/postgresql/data]
-    depends_on: { bootstrap: { condition: service_completed_successfully } }
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5436 -U postgres -d membership"], interval: 3s, timeout: 5s, retries: 40 }
+    healthcheck:
+      test: [CMD-SHELL, 'test "$$(cat /var/lib/postgresql/data/.business-db-ready)" = "$$ACCOUNT_COMMERCIAL_DATABASE" && pg_isready -h 127.0.0.1 -p 5433 -U business_cluster_admin -d postgres']
+      interval: 3s
+      timeout: 5s
+      retries: 40
 
   mailpit:
     image: axllent/mailpit:v1.31.1
@@ -178,10 +183,7 @@ services:
       - ../referrals-compose/terraform:/terraform-source:ro
     depends_on:
       tofu-init: { condition: service_completed_successfully }
-      source-db: { condition: service_healthy }
-      commercial-db: { condition: service_healthy }
-      referral-db: { condition: service_healthy }
-      membership-db: { condition: service_healthy }
+      business-db: { condition: service_healthy }
 
   acceptance-fixture:
     build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: acceptance }
@@ -264,8 +266,11 @@ volumes:
   frontend-secrets: { name: "${COMPOSE_PROJECT_NAME}-frontend-secrets" }
   acceptance-state: { name: "${COMPOSE_PROJECT_NAME}-acceptance-state" }
   identity-db: { name: "${COMPOSE_PROJECT_NAME}-identity-db" }
-  source-db: { name: "${COMPOSE_PROJECT_NAME}-source-db" }
-  commercial-db: { name: "${COMPOSE_PROJECT_NAME}-commercial-db" }
-  referral-db: { name: "${COMPOSE_PROJECT_NAME}-referral-db" }
-  membership-db: { name: "${COMPOSE_PROJECT_NAME}-membership-db" }
   mailpit: { name: "${COMPOSE_PROJECT_NAME}-mailpit" }
+  business-db: { name: "${COMPOSE_PROJECT_NAME}-business-db" }
+  business-db-admin-secret: { name: "${COMPOSE_PROJECT_NAME}-business-db-admin-secret" }
+  image-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-image-db-owner-secret" }
+  image-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-image-runtime-secret" }
+  image-worker-secret: { name: "${COMPOSE_PROJECT_NAME}-image-worker-secret" }
+  acquisition-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db-owner-secret" }
+  acquisition-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-runtime-secret" }
