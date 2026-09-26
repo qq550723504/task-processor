@@ -18,6 +18,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	if a.slotEffectsV3 == nil || a.stagedSlotExecutor == nil || a.artifactStore == nil || a.publicationOwner == nil {
 		return EffectRecoveryResult{}, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
+	if err := a.reconcileGenerationBeforeExecution(ctx, input.RunID, input.Identity, input.PlanRevision, input.Slot.ID, input.Attempt); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return EffectRecoveryResult{}, err
