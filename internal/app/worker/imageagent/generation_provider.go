@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/ai"
 	"task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
@@ -25,6 +27,7 @@ type generationProviderFactory struct {
 	resolver openai.ClientConfigResolver
 	price    config.ImageAgentGenerationConfig
 	profile  ProfileResolver
+	logger   *logrus.Entry
 	// Explicit in-process test transports only; production leaves these nil.
 	providerHTTPClient *http.Client
 	generatedFetcher   func(context.Context, string) ([]byte, error)
@@ -38,7 +41,7 @@ func (f generationProviderFactory) prepare(ctx context.Context, observe func(con
 	if err != nil {
 		return imageagent.PreparedGenerationProvider{}, err
 	}
-	client := grsai.NewClient(grsai.Config{APIKey: cfg.APIKey, Model: cfg.Model, SubmitURL: cfg.BaseURL, Timeout: cfg.Timeout, HTTPClient: f.providerHTTPClient, MaxAttempts: 1})
+	client := grsai.NewClient(grsai.Config{APIKey: cfg.APIKey, Model: cfg.Model, SubmitURL: cfg.BaseURL, Timeout: cfg.Timeout, HTTPClient: f.providerHTTPClient, MaxAttempts: 1, Logger: grsai.AdaptLogrus(f.logger)})
 	provider, err := grsai.NewSynchronousProductImageAdapter(grsai.ProductImageAdapterConfig{
 		Client: client, ImageModel: cfg.Model, RouteReference: metadata.RouteReference, CredentialReference: metadata.CredentialReference, ConfigurationVersion: metadata.ConfigurationVersion,
 		Build: func(bound ai.RouteBoundImageGenerator) (grsai.ProductImageProvider, error) {

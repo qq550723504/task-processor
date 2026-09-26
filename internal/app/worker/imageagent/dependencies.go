@@ -310,7 +310,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization image agent execution authorizer: %w", authErr)
 		}
 		dependencies.ExecutionAuthorizer = authorizer
-		generation, recovery, generationErr := buildOrganizationGeneration(cfg.ImageAgent.Generation, db, commercialDB, repository, authorizer)
+		generation, recovery, generationErr := buildOrganizationGeneration(cfg.ImageAgent.Generation, db, commercialDB, repository, authorizer, logger)
 		if generationErr != nil {
 			_ = closeDB()
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization generation admission: %w", generationErr)

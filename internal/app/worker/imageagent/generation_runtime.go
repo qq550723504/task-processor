@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	"task-processor/internal/core/config"
@@ -33,7 +34,7 @@ func (a generationResourceAuthorizer) AuthorizeImageGeneration(ctx context.Conte
 	return a.authorizer.AuthorizeExecution(ctx, imageagent.ExecutionIdentity{ScopeProtocol: run.ScopeProtocol, RunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, MemberID: run.MemberID, BusinessTaskID: run.BusinessTaskID})
 }
 
-func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, commercial *gorm.DB, repository imageagent.Repository, authorizer imageagent.ExecutionAuthorizer) (*imageagent.GenerationExecution, imageagent.GenerationRecovery, error) {
+func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, commercial *gorm.DB, repository imageagent.Repository, authorizer imageagent.ExecutionAuthorizer, logger *logrus.Logger) (*imageagent.GenerationExecution, imageagent.GenerationRecovery, error) {
 	facts, ok := repository.(imageagent.GenerationFactRepository)
 	if !ok || db == nil || commercial == nil || authorizer == nil {
 		return nil, nil, imageagent.ErrValidation
@@ -62,7 +63,11 @@ func buildOrganizationGeneration(cfg config.ImageAgentGenerationConfig, db, comm
 	if err != nil {
 		return nil, nil, err
 	}
-	factory := generationProviderFactory{resolver: organizationCredentialAdmission{resolver: openai.NewOrganizationCredentialResolver(db)}, price: cfg, profile: profile}
+	var componentLogger *logrus.Entry
+	if logger != nil {
+		componentLogger = logrus.NewEntry(logger).WithField("component", "image-agent-grsai")
+	}
+	factory := generationProviderFactory{resolver: organizationCredentialAdmission{resolver: openai.NewOrganizationCredentialResolver(db)}, price: cfg, profile: profile, logger: componentLogger}
 	executor, err := imageagent.NewGenerationExecution(imageagent.GenerationExecutionDependencies{Facts: facts, Resources: resources, Authorizer: authorizer, MaxSourceBytes: productimage.MaxInlineArtifactBytes,
 		PrepareProvider: factory.prepare, RevalidateProvider: factory.revalidate,
 		ReadMemberLimit: func(ctx context.Context, org, member string) (imageagent.GenerationMemberLimit, error) {
