@@ -192,6 +192,27 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 替代方案（评审可要求）：把 `shared/browser` 提升为当前共享基础设施并更新全部调用方——范围远大于本切片，默认不做。
 
+#### D10.1 用户旧实现作为参考的端口清单（2026-09-26 用户确认）
+
+用户明确：**其旧指纹浏览器实现可作为新 provider 的参考**。实现时按下表 EXTRACT **行为**（逐字节移植其 `page.Evaluate` 取数与验证码逻辑），但新代码**不 import 旧包**、不沿用 `model.Product1688`（该模型仅被 legacy/compatibility 消费）。
+
+| 旧文件（参考） | 端口到新 owner | 说明 |
+| --- | --- | --- |
+| `shared/browser/launcher.go`、`launcher_context.go` | 启动参数 + 反检测 init script | 仅取匿名 public 所需部分；**不取**持久化 profile、不取代理池 |
+| `shared/browser/fingerprint.go`、`random_config.go` | 指纹参数生成 | 匿名 public 路径按实测**未调用** `SetFingerprint`（见 batch 设计 §1.4），故只保留最小指纹参数，不引入完整随机配置平台 |
+| `alibaba1688/browser_manager.go` | `NewPublicBrowserManager` 的**干净非持久**意图 | 不移植账号 profile / `ProcessWithAccountProfile` / sourceaccount 依赖 |
+| `alibaba1688/extractor/basic_info_extractor.go` | title / offerId | **已在活页 `page.Evaluate` 读 `window.context.result.data`**，与 D9 一致 |
+| `alibaba1688/extractor/attribute_extractor.go` | attributes（`featureAttributes`） | 同上；**额外优势**：已带 `window.__INIT_DATA` 回退（定制商品） |
+| `alibaba1688/extractor/image_extractor.go` | images（`gallery.fields.offerImgList`） | 同上；已带 `__INIT_DATA` 回退 |
+| `alibaba1688/extractor/variant_extractor.go` + `variant_values_extractor.go` | variants / SKU | 已在活页读 `skuModel.skuProps`/`skuInfoMap`（含 `&gt;` 解析） |
+| `alibaba1688/extractor/price_extractor.go` | price facts | 已在活页读 `finalPriceModel.tradeWithoutPromotion.offerPriceRanges` |
+| `alibaba1688/captcha_*.go` | 验证码检测 + 自动滑动 | 允许自动处理（D4）；新增**有界预算**与失败如实上报 |
+| `alibaba1688/page_operator.go` | 导航 / 就绪 / 滚动 | 不移植人工介入（服务端无人工） |
+
+**意外优势（冻结设计未预期）**：旧提取器**已经在用 `page.Evaluate` 读 `window.context`**，且每个提取器都带 `window.__INIT_DATA` 回退。因此 D9 担心的“IIFE 定位 / 裸数字键 / 脚本体积”三个缺陷在新路径上**天然规避**，且对定制商品（`m.1688.com` H5 形状）天然有覆盖。
+
+**不移植**：`Service`/worker/API/`AccountProfile`/`tenantbridge`/ListingKit handoff/`CrawlerTask`/`CrawlerResult`/旧 Redis 结果 store（均 `RETIRE`）。
+
 ### D11. `public_browser` channel 契约变更必须覆盖持久化校验（Codex finding #2）
 
 **评审确认（成立）**：`public_http` 在非测试代码里恰好有 3 个消费点，只改 `MapAcquisitionEvidence` 会让浏览器 command 在发布前被拒：
