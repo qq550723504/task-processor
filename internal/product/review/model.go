@@ -26,6 +26,14 @@ type CreateInput struct {
 	ProductKey  string `json:"product_key"`
 	BaseVersion uint64 `json:"base_version"`
 }
+
+// CandidateInput is an internal caller contract, not an HTTP request body.
+// The owner re-reads the exact source and revalidates every proposed field.
+type CandidateInput struct {
+	Base                         CreateInput
+	PublicationID, PolicyVersion string
+	Candidate                    enrichment.Candidate
+}
 type DecisionInput struct {
 	Action           string `json:"action"`
 	ExpectedRevision uint64 `json:"expected_revision"`

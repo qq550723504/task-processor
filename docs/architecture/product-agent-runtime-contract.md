@@ -41,9 +41,9 @@ Must：真实调用上下文、fresh 授权、精确商品版本、有限执行/
 | [canonicalinspect](../../internal/product/catalog/tools/canonicalinspect/definition.go)、[sourceevidenceinspect](../../internal/product/sourcing/tools/sourceevidenceinspect/definition.go)、[assetinspect](../../internal/product/asset/tools/assetinspect/definition.go)、[readinessinspect](../../internal/listing/readiness/tools/readinessinspect/definition.go) | 精确版本下事实、来源、安全素材投影与输入诊断；已有 fresh org 组合 | 没有生产 Agent 调用方；source-evidence 不返回原始文本/任意 URL；不能当模型已获得完整来源正文 |
 | [AI Capability](../../internal/aicapability/invocation.go) / [路由](../../internal/aicapability/routing.go) | 当前组织策略、路由、调用记录与 usage/cost unknown 语义 | 文本决策/提案调用尚无经本批确认的受治理执行入口；ImageAgent Review 证据不能代替文本链 |
 | [ProductEnrichmentAdapter](../../internal/integration/openai/product_enrichment_adapter.go) | 有界 prompt/严格候选 JSON，调用窄 TextInvoker | TextInvoker 仅返回字符串/错误，没有单次调用的账本引用、可信 usage/cost 与 dispatch 状态；不能直接充当 Agent 模型门禁 |
-| [Enrichment Proposer](../../internal/product/enrichment/proposer.go) | 当前 Candidate、字段/证据/策略校验 | Propose 将生成和校验放在同一入口；需要抽取现有纯校验供修复后重验，不能为验证而再调模型 |
+| [Enrichment Proposer](../../internal/product/enrichment/proposer.go) | 当前 Candidate、字段/证据/策略校验；ValidateCandidate 可对现成候选纯校验，原 Propose 复用同一路径 | Agent 组合仍需读取授权后的 exact base/source 与冻结策略；不能用模型提供的快照、质量或历史报告代替 |
 | [Readiness Executor](../../internal/listing/readiness/tools/readinessinspect/executor.go) | 已保存 Product 版本与 ApprovedAsset 的输入检查 | 不接收 proposed patch；不能用原版本 ready 证明补丁有效，且 marketplace rules 仍 not_evaluated |
-| [Product Review](../../internal/product/review/service.go)、[现有 UI](../engineering/product-title-review-ui.md) | 标题 pending/accept/edit/reject、精确版本、显式 Apply、原子 Catalog 发布/receipt | Create 会调用自己的 Proposer，尚无接收既有 Agent 提案的入口；默认 currentapplication 也未挂载该独立应用 |
+| [Product Review](../../internal/product/review/service.go)、[现有 UI](../engineering/product-title-review-ui.md) | 标题 pending/accept/edit/reject、精确版本、显式 Apply、原子 Catalog 发布/receipt；内部 CreateFromCandidate 可接收现成候选并按同一规则重验 | Agent 组合尚未调用该内部入口；默认 currentapplication 也未挂载该独立应用。原 Create 仍服务现有固定生成流程 |
 | [采集入口](../engineering/src2b-public-acquisition.md) / [当前 ImageAgent 绑定](../../internal/app/httpapi/imageagent_acquisition_catalog.go) | 真实 acquisition operation 与 Catalog 发布回执绑定，可作为首个 UI 消费场景 | 新诊断操作必须读取授权后的已发布 operation，不接入旧 ListingTask 或伪造 BusinessTask |
 
 这些是接线前必须补齐的接口，不是为理论场景扩建通用平台的依据。
@@ -271,3 +271,20 @@ go test -race ./internal/agent ./internal/integration/agent/eino -count=1
 测试内的模型、工具、纯校验与原子 Store 均明确为 fake；实际 Eino 图与 checkpoint
 编解码参与执行。它不是 PostgreSQL 重启/真实授权/模型/产品验收，未提供用户访问 URL。
 后续 #132 从本合同接入真实 owner，不复制测试替身为运行配置。
+
+### 8.1 当前领域消费者接口
+
+`enrichment.ValidateCandidate(ctx, authorizedRequest, candidate)` 复用原提案规则，
+重新检查字段、来源证据与当前冻结策略，返回 Proposal/Validation；无 generator、写入或
+模型调用。原 `Propose` 也调用同一入口，避免建立第二份规则。
+
+`review.Service.CreateFromCandidate(ctx, idempotencyKey, CandidateInput)` 接收 exact
+Product key/version、publication、`title-review-v1` 与候选。它重新读取当前授权范围内的
+Catalog/SRC-1 并纯校验，再使用既有 Review UoW 保存 pending。完整候选进入幂等
+fingerprint，同键不同候选冲突；来源绑定、policy 或 evidence 不符不写入。不接受上游
+valid 标记，不调用 Proposer，不自动 accept/Apply。这是内部 Go 接口，尚无新 HTTP 路由。
+
+必要的领域回归为 `go test -race ./internal/product/enrichment ./internal/product/review -count=1`。
+使用现有 `ISSUE382_TEST_DSN` 的隔离 PostgreSQL fixture，可以执行
+`go test -race ./internal/app/httpapi -run '^TestProductAgentReview|^TestProductReview' -count=1`。
+前者不证明真实数据库，后者须提供任务专用数据库且不得把缺 DSN 的 SKIP 报为 PASS。

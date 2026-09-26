@@ -57,6 +57,30 @@ func operation(a Scope, key, kind, id string, input any) (Operation, error) {
 	return Operation{a, key, hex.EncodeToString(sum[:])}, nil
 }
 func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View, error) {
+	return s.create(ctx, key, in, nil)
+}
+
+// CreateFromCandidate admits an already-generated candidate into the existing
+// pending review state. It cannot regenerate, approve, Apply or publish it.
+func (s *Service) CreateFromCandidate(ctx context.Context, key string, in CandidateInput) (View, error) {
+	if ctx == nil || !ValidKey(in.PublicationID) || in.PolicyVersion != "title-review-v1" {
+		return View{}, ErrInvalid
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return View{}, ErrInvalid
+	}
+	if len(raw) > MaxRecordBytes {
+		return View{}, ErrTooLarge
+	}
+	var isolated CandidateInput
+	if err := json.Unmarshal(raw, &isolated); err != nil {
+		return View{}, ErrInvalid
+	}
+	return s.create(ctx, key, isolated.Base, &isolated)
+}
+
+func (s *Service) create(ctx context.Context, key string, in CreateInput, supplied *CandidateInput) (View, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	a, err := s.authorize(ctx, true, false)
@@ -66,7 +90,11 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	if !ValidKey(in.ProductKey) || in.BaseVersion == 0 || in.BaseVersion > 1<<63-1 {
 		return View{}, ErrInvalid
 	}
-	op, err := operation(a, key, "create", "", in)
+	kind, payload := "create", any(in)
+	if supplied != nil {
+		kind, payload = "create_candidate", supplied
+	}
+	op, err := operation(a, key, kind, "", payload)
 	if err != nil {
 		return View{}, err
 	}
@@ -77,8 +105,17 @@ func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View,
 	if err != nil {
 		return View{}, err
 	}
+	if supplied != nil && supplied.PublicationID != base.PublicationID {
+		return View{}, ErrConflict
+	}
 	policy := enrichment.PolicySnapshot{Version: "title-review-v1", AllowedFields: []string{"title"}, RequiredFields: []string{"title"}}
-	proposal, err := s.proposer.Propose(ctx, enrichment.Request{Snapshot: base.Snapshot, Source: source, Policy: policy})
+	request := enrichment.Request{Snapshot: base.Snapshot, Source: source, Policy: policy}
+	var proposal enrichment.Proposal
+	if supplied != nil {
+		proposal, err = enrichment.ValidateCandidate(ctx, request, supplied.Candidate)
+	} else {
+		proposal, err = s.proposer.Propose(ctx, request)
+	}
 	if err != nil {
 		return View{}, err
 	}
