@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"go.opentelemetry.io/otel"
-	"gorm.io/gorm"
 	"task-processor/internal/agent"
 	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
@@ -31,6 +29,9 @@ import (
 	"task-processor/internal/product/sourcing"
 	"task-processor/internal/product/sourcing/tools/sourceevidenceinspect"
 	"task-processor/internal/workbenchcontext"
+
+	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
 // ProductAgentDependencies are supplied by the current application owner. Pools
@@ -164,7 +165,16 @@ func (a *productAgentApplication) freshIdentity(ctx context.Context) (authidenti
 	return identity, nil
 }
 
-func (a *productAgentApplication) binding(ctx context.Context, operationID string) (agent.Binding, error) {
+func validAgentTargetPlatform(platform string) bool {
+	// These keys select existing exact Asset inventories, not marketplace
+	// publishing capability or a promise that marketplace rules were evaluated.
+	return platform == "shein" || platform == "temu" || platform == "amazon"
+}
+
+func (a *productAgentApplication) binding(ctx context.Context, operationID, targetPlatform string) (agent.Binding, error) {
+	if !validAgentTargetPlatform(targetPlatform) {
+		return agent.Binding{}, agent.ErrInvalid
+	}
 	i, err := a.freshIdentity(ctx)
 	if err != nil {
 		return agent.Binding{}, err
@@ -181,11 +191,11 @@ func (a *productAgentApplication) binding(ctx context.Context, operationID strin
 	if r.OrganizationID != i.TenantID || r.ActorID != i.UserID || r.ProductKey != p.Snapshot.Identity.ProductKey || p.Snapshot.Identity.TenantID != i.TenantID || r.CatalogVersion != p.Snapshot.Version || r.CatalogPublicationID != p.Snapshot.PublicationID || !reflect.DeepEqual(p.Result.Publication.Snapshot, p.Snapshot.Snapshot) {
 		return agent.Binding{}, agent.ErrConflict
 	}
-	return agent.Binding{ContextKind: "acquisition", ContextID: operationID, ProductKey: r.ProductKey, CatalogVersion: strconv.FormatUint(r.CatalogVersion, 10), PublicationID: r.CatalogPublicationID, TargetPlatform: "product"}, nil
+	return agent.Binding{ContextKind: "acquisition", ContextID: operationID, ProductKey: r.ProductKey, CatalogVersion: strconv.FormatUint(r.CatalogVersion, 10), PublicationID: r.CatalogPublicationID, TargetPlatform: targetPlatform}, nil
 }
 
 func (a *productAgentApplication) Authorize(ctx context.Context, binding agent.Binding) (agent.Scope, error) {
-	exact, err := a.binding(ctx, binding.ContextID)
+	exact, err := a.binding(ctx, binding.ContextID, binding.TargetPlatform)
 	if err != nil {
 		return agent.Scope{}, err
 	}

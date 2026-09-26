@@ -1,5 +1,5 @@
 import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts/browser-capture";
-import {agentEmptyRequestSchema,agentResumeRequestSchema,agentResultSchema,agentReviewLinkSchema,agentPath} from "@/lib/contracts/product-agent";
+import {agentEmptyRequestSchema,agentStartRequestSchema,agentResumeRequestSchema,agentResultSchema,agentReviewLinkSchema,agentPath} from "@/lib/contracts/product-agent";
 import { NextResponse } from "next/server";
 import {
   findNodeAtLocation,
@@ -507,7 +507,7 @@ export async function buildWorkbenchUpstreamRequest(
         if(request.headers.get("content-type")!=="application/json" || request.headers.has("content-encoding"))return protocolError(400,"INVALID_REQUEST","Invalid content type");
         const raw=await readRequestBody(request,16384,"INPUT_TOO_LARGE");if(raw instanceof Response)return raw;
         const parsed=parseJSONBody(raw);
-        const valid=(route.requestContract==="product-agent-resume"?agentResumeRequestSchema:agentEmptyRequestSchema).safeParse(parsed?.payload);
+        const valid=(route.requestContract==="product-agent-start"?agentStartRequestSchema:route.requestContract==="product-agent-resume"?agentResumeRequestSchema:agentEmptyRequestSchema).safeParse(parsed?.payload);
         if(!parsed || !valid.success)return protocolError(400,"INVALID_REQUEST","Invalid Agent request");
         if(route.requestContract==="product-agent-start") {const key=request.headers.get("Idempotency-Key")??"";if(!isAcquisitionUUID(key))return protocolError(400,"INVALID_REQUEST","Invalid request key");headers.set("Idempotency-Key",key);}
         body=JSON.stringify(valid.data);headers.set("Content-Type","application/json");break;

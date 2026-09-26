@@ -39,13 +39,14 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
     const [result, setResult] = useState<ProductAgentResult | null>(null);
     const [proposal, setProposal] = useState("");
     const [feedback, setFeedback] = useState("");
+    const [platform, setPlatform] = useState("");
     const [busy, setBusy] = useState(false);
     const [failure, setFailure] = useState("");
     const active = useRef(true), inFlight = useRef(false), abort = useRef<AbortController | null>(null);
     useEffect(() => { active.current = true; return () => { active.current = false; abort.current?.abort(); }; }, []);
     useEffect(() => context.registerOrganizationSwitchGuard(() => !inFlight.current), [context]);
     async function execute(action: "start" | "read" | "resume" | "review") {
-        if (inFlight.current || !active.current)
+        if (inFlight.current || !active.current || action === "start" && !platform)
             return;
         const requestKey = key || crypto.randomUUID();
         if (!key) {
@@ -60,15 +61,16 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
         setBusy(true);
         setFailure("");
         try {
-            const next = await requestProductAgent(action, operationId, requestKey, { userId, organizationId }, controller.signal, result?.revision, feedback);
+            const next = await requestProductAgent(action, operationId, requestKey, { userId, organizationId }, controller.signal, result?.revision, feedback, platform);
             if (!active.current)
                 return;
             if ("proposalId" in next) {
                 setProposal(next.proposalId);
                 return;
             }
-            if (next.productKey !== productKey || next.catalogVersion !== catalogVersion)
+            if (next.productKey !== productKey || next.catalogVersion !== catalogVersion || platform && next.targetPlatform !== platform)
                 throw new ProductAgentError("AGENT_CONFLICT");
+            setPlatform(next.targetPlatform);
             setResult(next);
         }
         catch (error) {
@@ -88,10 +90,10 @@ function ScopedAgentPanel({ userId, organizationId, operationId, productKey, cat
     }
     return <Card className="space-y-3 p-5"><h2 className="text-lg font-semibold">标题诊断与补全</h2>
   <p>从当前已保存版本读取证据，生成标题建议。最多修复两次；提交后仍需人工审核，不会自动修改商品。</p>
-  {!key ? <Button disabled={busy} onClick={() => void execute("start")}>生成标题建议</Button> : <><p className="break-all text-sm">本次编号：{key}</p><Button variant="outline" disabled={busy} onClick={() => void execute("read")}>读取当前结果</Button></>}
+  {!key ? <><label htmlFor="agent-platform">素材查询平台</label><select id="agent-platform" className="block rounded-lg border p-2" value={platform} onChange={event => setPlatform(event.target.value)} disabled={busy}><option value="">请选择平台</option><option value="shein">SHEIN</option><option value="temu">Temu</option><option value="amazon">Amazon</option></select><p className="text-sm">用于读取该平台已批准的素材；本次诊断不评估平台发布规则。</p><Button disabled={busy || !platform} onClick={() => void execute("start")}>生成标题建议</Button></> : <><p className="break-all text-sm">本次编号：{key}</p><Button variant="outline" disabled={busy} onClick={() => void execute("read")}>读取当前结果</Button></>}
   {busy && <p role="status">正在处理，请保留当前页面。停止等待不会撤销已经发送的模型请求。</p>}
   {failure && <p role="alert">{errors[failure] ?? "请求未完成，请核对当前身份和企业。"}</p>}
-  {result && <div className="space-y-2"><p>状态：{result.phase === "human_review_required" ? "候选已通过校验，等待人工审核" : result.phase === "interrupted" ? "需要补充说明" : result.phase === "running" ? "运行记录尚未完成，不能重复发送" : "已停止"}</p>
+  {result && <div className="space-y-2"><p>素材查询平台：{{ shein: "SHEIN", temu: "Temu", amazon: "Amazon" }[result.targetPlatform]}</p><p>状态：{result.phase === "human_review_required" ? "候选已通过校验，等待人工审核" : result.phase === "interrupted" ? "需要补充说明" : result.phase === "running" ? "运行记录尚未完成，不能重复发送" : "已停止"}</p>
    {result.stopReason && <p>{reasons[result.stopReason] ?? "本次运行已停止"}</p>}
    {result.candidate.Changes?.map((change, index) => <div key={index}><p>{change.Field}：{change.Value}</p><p className="text-sm">证据：{change.EvidenceIDs?.join("、") || "未提供"}</p></div>)}
    {result.confidence?.map(value => <p key={value.Field}>模型自报置信度（供参考）：{value.Field} {value.Known ? `${Math.round(value.Value * 100)}%` : "未知"}</p>)}

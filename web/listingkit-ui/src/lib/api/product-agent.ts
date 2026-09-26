@@ -1,12 +1,12 @@
-import { agentResultSchema, agentReviewLinkSchema } from "../contracts/product-agent";
+import { agentResultSchema, agentReviewLinkSchema, agentTargetPlatformSchema } from "../contracts/product-agent";
 import { isAcquisitionUUID } from "../contracts/product-acquisition";
 import type { AcquisitionContext } from "./product-acquisition";
 import { readBoundedStrictJSON } from "./strict-json-response";
 export class ProductAgentError extends Error {
     constructor(public code: string) { super(code); }
 }
-export async function requestProductAgent(action: "start" | "read" | "resume" | "review", operationId: string, key: string, scope: AcquisitionContext, signal: AbortSignal, revision?: string, feedback?: string) {
-    if (!isAcquisitionUUID(operationId) || !isAcquisitionUUID(key))
+export async function requestProductAgent(action: "start" | "read" | "resume" | "review", operationId: string, key: string, scope: AcquisitionContext, signal: AbortSignal, revision?: string, feedback?: string, targetPlatform?: string) {
+    if (!isAcquisitionUUID(operationId) || !isAcquisitionUUID(key) || action === "start" && !agentTargetPlatformSchema.safeParse(targetPlatform).success)
         throw new ProductAgentError("INVALID_AGENT_REQUEST");
     const base = `/api/workbench/sourcing/1688/acquisitions/${operationId}/product-agent/runs`;
     const path = action === "start" ? base : `${base}/${key}${action === "read" ? "" : `/${action}`}`;
@@ -23,7 +23,7 @@ export async function requestProductAgent(action: "start" | "read" | "resume" | 
             if (action === "start")
                 headers.set("Idempotency-Key", key);
         }
-        const response = await fetch(path, { method: action === "read" ? "GET" : "POST", headers, body: action === "read" ? undefined : JSON.stringify(action === "resume" ? { revision, feedback } : {}), credentials: "same-origin", redirect: "error", cache: "no-store", signal: controller.signal });
+        const response = await fetch(path, { method: action === "read" ? "GET" : "POST", headers, body: action === "read" ? undefined : JSON.stringify(action === "start" ? { targetPlatform } : action === "resume" ? { revision, feedback } : {}), credentials: "same-origin", redirect: "error", cache: "no-store", signal: controller.signal });
         const payload = await readBoundedStrictJSON(response, 128 * 1024, controller.signal);
         if (!response.ok) {
             const code = payload && typeof payload === "object" && "code" in payload && typeof payload.code === "string" ? payload.code : "OUTCOME_UNKNOWN";
@@ -31,6 +31,8 @@ export async function requestProductAgent(action: "start" | "read" | "resume" | 
         }
         const result = (action === "review" ? agentReviewLinkSchema : agentResultSchema).safeParse(payload);
         if (response.status !== 200 || !result.success || result.data.operationId !== operationId || result.data.requestKey !== key)
+            throw new ProductAgentError("OUTCOME_UNKNOWN");
+        if (action === "start" && "targetPlatform" in result.data && result.data.targetPlatform !== targetPlatform)
             throw new ProductAgentError("OUTCOME_UNKNOWN");
         return result.data;
     }

@@ -3,14 +3,14 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"task-processor/internal/agent"
 	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/authidentity"
@@ -22,7 +22,11 @@ import (
 	assetstore "task-processor/internal/integration/persistence/product/asset"
 	reviewstore "task-processor/internal/integration/persistence/product/review"
 	"task-processor/internal/listingsubscription"
+	productasset "task-processor/internal/product/asset"
 	"task-processor/internal/workbenchcontext"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 type agentFixtureGrants struct{ base *titleGrants }
@@ -43,6 +47,12 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	require.NoError(t, reviewstore.InstallSchema(f.owner))
 	require.NoError(t, agentstore.InstallSchema(f.owner))
 	require.NoError(t, assetstore.AutoMigrate(f.owner))
+	assets, err := assetstore.NewRepository(f.owner)
+	require.NoError(t, err)
+	version, err := strconv.ParseUint(op.CatalogVersion, 10, 64)
+	require.NoError(t, err)
+	_, err = assets.CommitApproval(context.Background(), productasset.ApprovalCommit{TenantID: "B", ProductKey: op.ProductKey, TargetPlatform: "shein", SourceSnapshotVersion: version, ActionID: "approved-for-shein", Assets: []productasset.ApprovedAsset{{ID: "approved-shein-main", RunID: "image-run", PlanRevision: 1, SlotID: "main", Attempt: 1, Role: productasset.RoleMain, URL: "https://cdn.example.test/shein.png"}}})
+	require.NoError(t, err)
 	require.NoError(t, aistore.AutoMigrateInvocationLedger(f.owner))
 	require.NoError(t, f.owner.AutoMigrate(&openai.AIClientCredential{}))
 	require.NoError(t, allocationstore.AutoMigrate(f.owner))
@@ -57,8 +67,11 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 		var content string
 		switch step {
 		case 1:
-			content = `{"Kind":"tool","Tool":{"ID":"product.canonical.inspect","Version":"v2.0.0"}}`
+			content = `{"Kind":"tool","Tool":{"ID":"product.asset.inspect","Version":"v1.0.0"}}`
 		case 2:
+			wire, readErr := io.ReadAll(r.Body)
+			require.NoError(t, readErr)
+			require.Contains(t, string(wire), "approved-shein-main", "model must see the selected platform's real inventory")
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["invented"]}]}}`
 		default:
 			content = `{"Kind":"propose","Candidate":{"Changes":[{"Field":"title","Value":"Reviewed bottle title","EvidenceIDs":["981645030344"]}]},"Confidence":[{"Field":"title","Value":0.8,"Known":true}]}`
@@ -92,7 +105,13 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	defer server.Close()
 	key := uuid.NewString()
 	path := productAcquisitionBase + "/" + op.OperationID + "/product-agent/runs"
-	code, raw, err := acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{}`)
+	for _, body := range []string{`{}`, `{"targetPlatform":"product"}`, `{"targetPlatform":""}`} {
+		code, raw, err := acquisitionHTTPRequest(server, "POST", path, "operator", "B", uuid.NewString(), body)
+		require.NoError(t, err)
+		require.Equal(t, 400, code, string(raw))
+		require.Zero(t, calls.Load())
+	}
+	code, raw, err := acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{"targetPlatform":"shein"}`)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	var result productAgentResultDTO
@@ -103,10 +122,21 @@ func TestProductAgentAcquisitionToReviewUsesRealOwners(t *testing.T) {
 	require.EqualValues(t, 3, calls.Load())
 	// Replaying Start and reading after reconstructing its HTTP handler never
 	// cause a fourth model call. The same candidate enters existing Review.
-	code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{}`)
+	code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{"targetPlatform":"shein"}`)
 	require.NoError(t, err)
 	require.Equal(t, 200, code, string(raw))
 	require.EqualValues(t, 3, calls.Load())
+	code, raw, err = acquisitionHTTPRequest(server, "POST", path, "operator", "B", key, `{"targetPlatform":"temu"}`)
+	require.NoError(t, err)
+	require.Equal(t, 409, code, string(raw))
+	require.EqualValues(t, 3, calls.Load())
+	code, raw, err = acquisitionHTTPRequest(server, "GET", path+"/"+key, "operator", "B", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 200, code, string(raw))
+	require.Contains(t, string(raw), `"targetPlatform":"shein"`)
+	code, raw, err = acquisitionHTTPRequest(server, "POST", path+"/"+key+"/resume", "operator", "B", "", `{"revision":"2","feedback":"continue","targetPlatform":"temu"}`)
+	require.NoError(t, err)
+	require.Equal(t, 400, code, string(raw))
 	code, raw, err = acquisitionHTTPRequest(server, "GET", path+"/"+key, "operator", "A", "", "")
 	require.NoError(t, err)
 	require.NotEqual(t, 200, code, string(raw))

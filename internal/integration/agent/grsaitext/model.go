@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"time"
 
-	sigjson "sigs.k8s.io/json"
 	"task-processor/internal/agent"
 	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/commercetool"
 	"task-processor/internal/integration/openai"
+
+	sigjson "sigs.k8s.io/json"
 )
 
 // AgentTextPolicy is trusted deployment configuration, never model/browser input.

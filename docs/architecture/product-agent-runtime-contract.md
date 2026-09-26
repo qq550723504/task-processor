@@ -45,7 +45,7 @@ Must：真实调用上下文、fresh 授权、精确商品版本、有限执行/
 | [ProductEnrichmentAdapter](../../internal/integration/openai/product_enrichment_adapter.go) | 有界 prompt/严格候选 JSON，调用窄 TextInvoker | TextInvoker 仅返回字符串/错误，没有单次调用的账本引用、可信 usage/cost 与 dispatch 状态；不能直接充当 Agent 模型门禁 |
 | [Enrichment Proposer](../../internal/product/enrichment/proposer.go) | 当前 Candidate、字段/证据/策略校验；ValidateCandidate 可对现成候选纯校验，原 Propose 复用同一路径 | Agent 组合仍需读取授权后的 exact base/source 与冻结策略；不能用模型提供的快照、质量或历史报告代替 |
 | [Readiness Executor](../../internal/listing/readiness/tools/readinessinspect/executor.go) | 已保存 Product 版本与 ApprovedAsset 的输入检查 | 不接收 proposed patch；不能用原版本 ready 证明补丁有效，且 marketplace rules 仍 not_evaluated |
-| [Product Review](../../internal/product/review/service.go)、[现有 UI](../engineering/product-title-review-ui.md) | 标题 pending/accept/edit/reject、精确版本、显式 Apply、原子 Catalog 发布/receipt；内部 CreateFromCandidate 可接收现成候选并按同一规则重验 | Agent 组合尚未调用该内部入口；默认 currentapplication 也未挂载该独立应用。原 Create 仍服务现有固定生成流程 |
+| [Product Review](../../internal/product/review/service.go)、[现有 UI](../engineering/product-title-review-ui.md) | 标题 pending/accept/edit/reject、精确版本、显式 Apply、原子 Catalog 发布/receipt；内部 CreateFromCandidate 可接收现成候选并按同一规则重验 | 当前 Agent 可选组合已接入该内部入口和原审核端点；关闭时不挂载。原 Create 仍服务现有固定生成流程 |
 | [采集入口](../engineering/src2b-public-acquisition.md) / [当前 ImageAgent 绑定](../../internal/app/httpapi/imageagent_acquisition_catalog.go) | 真实 acquisition operation 与 Catalog 发布回执绑定，可作为首个 UI 消费场景 | 新诊断操作必须读取授权后的已发布 operation，不接入旧 ListingTask 或伪造 BusinessTask |
 
 这些是接线前必须补齐的接口，不是为理论场景扩建通用平台的依据。
@@ -370,7 +370,10 @@ GRSAI 接口及积分/人民币参考价格见其官方合同与
 已发布 1688 采集详情的四个端点为 `POST .../{operation}/product-agent/runs`、
 `GET .../{operation}/product-agent/runs/{requestKey}`、`POST .../{requestKey}/resume`、
 `POST .../{requestKey}/review`。前缀为 `/api/v1/workbench/sourcing/1688/acquisitions`。
-请求只接受空 body 或准确 revision/feedback，产品版本、来源发布、工具参数、预算、
+Start body 必须显式选择 `targetPlatform`（`shein`、`temu` 或 `amazon`），仅用于当前
+精确素材库存范围，不声明平台发布规则已评估。缺失或未知平台拒绝；同 key 改平台冲突。
+GET/Resume/Review 从持久运行恢复原平台，不允许在续跑时覆盖。其它请求只接受空 body
+或准确 revision/feedback，产品版本、来源发布、工具参数、预算、
 模型和组织身份均从服务器的当前 owner 取得。每次访问、步骤与实际模型发送前重新确认
 当前成员权限；浏览器和模型不能设置这些边界。
 

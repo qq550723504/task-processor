@@ -18,9 +18,12 @@ it("keeps a closed capability explicit and never dispatches on mount", () => {
 it("retains one request key after lost response and only reads on recovery", async () => {
     fixture.request.mockRejectedValue(new ProductAgentError("OUTCOME_UNKNOWN"));
     render(<ProductAgentPanel {...props}/>);
+    expect(screen.getByText("生成标题建议")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));
     await screen.findByRole("alert");
     expect(fixture.request).toHaveBeenCalledTimes(1);
+    expect(fixture.request.mock.calls[0][7]).toBe("shein");
     const key = fixture.request.mock.calls[0][2];
     expect(new URL(window.location.href).searchParams.get("agent_key")).toBe(key);
     fireEvent.click(screen.getByText("读取当前结果"));
@@ -29,8 +32,10 @@ it("retains one request key after lost response and only reads on recovery", asy
     expect(screen.queryByText("生成标题建议")).not.toBeInTheDocument();
 });
 it("only admits a validated candidate to existing human review", async () => {
-    fixture.request.mockResolvedValue({ runId: op, requestKey: op, operationId: op, productKey: "product", catalogVersion: "1", phase: "human_review_required", revision: "2", canSubmitReview: true, candidate: { Changes: [{ Field: "title", Value: "建议标题", EvidenceIDs: ["evidence"] }] }, confidence: [], unresolved: [], steps: [], tokens: 30, estimatedCostMicros: 20, currency: "CNY", usageStatus: "observed" });
+    fixture.request.mockResolvedValue({ runId: op, requestKey: op, operationId: op, productKey: "product", catalogVersion: "1", targetPlatform: "shein", phase: "human_review_required", revision: "2", canSubmitReview: true, candidate: { Changes: [{ Field: "title", Value: "建议标题", EvidenceIDs: ["evidence"] }] }, confidence: [], unresolved: [], steps: [], tokens: 30, estimatedCostMicros: 20, currency: "CNY", usageStatus: "observed" });
     render(<ProductAgentPanel {...props}/>);
+    expect(screen.getByText("生成标题建议")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("素材查询平台"), { target: { value: "shein" } });
     fireEvent.click(screen.getByText("生成标题建议"));
     await screen.findByText("title：建议标题");
     expect(screen.queryByText("自动应用")).not.toBeInTheDocument();

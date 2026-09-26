@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"task-processor/internal/agent"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
@@ -19,6 +17,9 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/enrichment"
 	"task-processor/internal/product/review"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const productAgentBase = productAcquisitionBase + "/:operation_id/product-agent/runs"
@@ -85,6 +86,7 @@ type productAgentResultDTO struct {
 	ProductKey          string                  `json:"productKey"`
 	CatalogVersion      string                  `json:"catalogVersion"`
 	PublicationID       string                  `json:"publicationId"`
+	TargetPlatform      string                  `json:"targetPlatform"`
 	Phase               agent.Phase             `json:"phase"`
 	Revision            string                  `json:"revision"`
 	StopReason          agent.StopReason        `json:"stopReason,omitempty"`
@@ -135,14 +137,10 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				return
 			}
 			ctx = authidentity.WithAuthenticatedIdentity(ctx, i)
-			binding, err := a.binding(ctx, operationID)
-			if err != nil {
-				writeProductAgentError(c, err)
-				return
-			}
 			var body struct {
-				Revision string `json:"revision,omitempty"`
-				Feedback string `json:"feedback,omitempty"`
+				Revision       string `json:"revision,omitempty"`
+				Feedback       string `json:"feedback,omitempty"`
+				TargetPlatform string `json:"targetPlatform,omitempty"`
 			}
 			if spec.action == "read" {
 				if err = readProductReviewGETBody(c); err != nil {
@@ -150,17 +148,24 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 					return
 				}
 			} else {
-				if err = readAcquisitionImageJSON(c.Request, &body); err != nil || (spec.action != "resume" && (body.Revision != "" || body.Feedback != "")) {
+				if err = readAcquisitionImageJSON(c.Request, &body); err != nil || (spec.action != "resume" && (body.Revision != "" || body.Feedback != "")) || (spec.action != "start" && body.TargetPlatform != "") {
 					writeProductAgentError(c, agent.ErrInvalid)
 					return
 				}
 			}
-			request := agent.Request{Key: key, Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
 			var record agent.Record
+			var binding agent.Binding
 			if spec.action == "start" {
-				record, err = a.runtime.Start(ctx, request)
+				binding, err = a.binding(ctx, operationID, body.TargetPlatform)
+				if err == nil {
+					request := agent.Request{Key: key, Binding: binding, PolicyVersion: "title-review-v1", PromptVersion: "product-title-agent-v1", Limits: a.config.Limits}
+					record, err = a.runtime.Start(ctx, request)
+				}
 			} else {
 				record, err = a.store.Read(ctx, agent.Scope{OrganizationID: i.TenantID, ActorID: i.UserID}, operationID, key)
+				if err == nil {
+					binding, err = a.binding(ctx, operationID, record.State.Request.Binding.TargetPlatform)
+				}
 				if err == nil && record.State.Request.Binding != binding {
 					err = agent.ErrConflict
 				}
@@ -192,7 +197,7 @@ func productAgentRoutes(a *productAgentApplication) []httproute.Descriptor {
 				return
 			}
 			state := record.State
-			result := productAgentResultDTO{RunID: state.RunID, RequestKey: key, OperationID: operationID, ProductKey: binding.ProductKey, CatalogVersion: binding.CatalogVersion, PublicationID: binding.PublicationID, Phase: state.Phase, Revision: strconv.FormatUint(state.Revision, 10), StopReason: state.StopReason, HumanReviewRequired: true, Candidate: state.Candidate, Confidence: state.Confidence, Unresolved: state.Unresolved, Steps: []productAgentStepDTO{}, Tokens: state.Usage.Tokens, EstimatedCostMicros: state.Usage.CostMicros, Currency: state.Request.Limits.Currency, UsageStatus: "observed", CanSubmitReview: agentRunReviewable(state)}
+			result := productAgentResultDTO{RunID: state.RunID, RequestKey: key, OperationID: operationID, ProductKey: binding.ProductKey, CatalogVersion: binding.CatalogVersion, PublicationID: binding.PublicationID, TargetPlatform: binding.TargetPlatform, Phase: state.Phase, Revision: strconv.FormatUint(state.Revision, 10), StopReason: state.StopReason, HumanReviewRequired: true, Candidate: state.Candidate, Confidence: state.Confidence, Unresolved: state.Unresolved, Steps: []productAgentStepDTO{}, Tokens: state.Usage.Tokens, EstimatedCostMicros: state.Usage.CostMicros, Currency: state.Request.Limits.Currency, UsageStatus: "observed", CanSubmitReview: agentRunReviewable(state)}
 			if state.PendingInvocationID != "" || state.StopReason == agent.StopUsageUnknown || state.StopReason == agent.StopModelUnknown || state.Phase == agent.Running {
 				result.UsageStatus = "unknown_reserved"
 			}

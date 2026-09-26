@@ -6,10 +6,12 @@ const text = z.string().max(4096);
 const diagnostic = z.strictObject({ Code: text, Field: text, Message: text, Metadata: z.record(z.string(), z.string()).nullable() });
 const change = z.strictObject({ Field: z.string().max(128), Value: text, EvidenceIDs: z.array(z.string().max(128)).max(32).nullable() });
 export const agentEmptyRequestSchema = z.strictObject({});
+export const agentTargetPlatformSchema = z.enum(["shein", "temu", "amazon"]);
+export const agentStartRequestSchema = z.strictObject({ targetPlatform: agentTargetPlatformSchema });
 export const agentResumeRequestSchema = z.strictObject({ revision: version, feedback: z.string().refine(v => new TextEncoder().encode(v).length <= 8192) });
 export const agentReviewLinkSchema = z.strictObject({ proposalId: id, requestKey: id, operationId: id });
 export const agentResultSchema = z.strictObject({
-    runId: id, requestKey: id, operationId: id, productKey: z.string().min(1).max(128), catalogVersion: version, publicationId: z.string().min(1).max(128),
+    runId: id, requestKey: id, operationId: id, productKey: z.string().min(1).max(128), catalogVersion: version, publicationId: z.string().min(1).max(128), targetPlatform: agentTargetPlatformSchema,
     phase: z.enum(["running", "interrupted", "human_review_required", "stopped"]), revision: version, stopReason: z.string().max(128).optional(), humanReviewRequired: z.literal(true),
     candidate: z.strictObject({ Changes: z.array(change).max(32).nullable(), Warnings: z.array(diagnostic).max(32).nullable(), Rejections: z.array(diagnostic).max(32).nullable() }),
     confidence: z.array(z.strictObject({ Field: z.string().max(128), Value: z.number().min(0).max(1), Known: z.boolean() })).max(32).nullable(),
