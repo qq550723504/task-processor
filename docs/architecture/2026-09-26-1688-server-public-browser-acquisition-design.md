@@ -23,7 +23,7 @@
 - 不使用、不持久化用户 1688 登录态、Cookie、密码、profile、session token；仍是匿名路径，不引入 SourceAccount/Connection。
 - **不把租户身份传入采集进程**：采集 RPC 不携带 org/actor/roles/租户 token（见 D13），因此 D7 的授权与 `product_sourcing.write` 判定**全部留在 `current-application`**，不因拆分而改变。
 - 不做多账号池、代理池、账号轮换、定时/周期重采、后台调度器。
-- **不新建队列/调度器/Saga/Admission Control 平台、不建第二事实源**；采集以独立进程同步被调（见 D13），复用同一个二进制与同一个 `product_acquisition` 库；不改 SRC-1/Catalog 事实规则。
+- **不新建队列/调度器/Saga/Admission Control 平台、不建第二事实源**；采集以**独立进程**（无凭据、RPC-only evidence 生产者，见 D13）同步被调，复用同一个二进制；**所有数据库（含 `product_acquisition`）仍只由 `current-application` 持有，采集进程不持任何库凭据/无库网络可达**；不改 SRC-1/Catalog 事实规则。
 - 不改浏览器插件 / Browser Capture / 本地执行器路线（#399 与批量设计继续有效）。
 - 不做 UI/IA 变更（复用现有采集页与详情页）。
 
@@ -52,6 +52,7 @@ implementation
            internal/integration/acquisition/a1688/browser.Client   ← 新增（EXTRACT 自 legacy）
            复用 internal/crawler/shared/browser 的启动参数/反检测/验证码/提取器能力
            ── 采集在独立进程/服务（D13）内运行，current-application 通过内部 RPC 同步调用
+           ── 采集进程**无任何数据库凭据/无库网络可达**；所有库与操作行只在 current-application
 injection  internal/app/httpapi/product_acquisition_application.go
            newCrawler1688HTTPModule 之外的 PublicAcquirer 构造点（当前 a1688.New()）
            → 改为指向采集服务内部 RPC 客户端
@@ -78,7 +79,10 @@ consumer   productsourcing.AcquisitionService.Acquire
 2. 命中时**必须先执行 `sameAcquisition(request, op)`**（Codex finding #16）：它比对 `Fingerprint` 与 `Source`，不同商品**必须**返回 `ErrAcquisitionConflict`，不得直接把旧 offer 的已发布结果返回给新请求。只有比较通过才继续。
 3. 命中且可确定（`prepared/publishing/published/failed`）⇒ 直接走既有 resolve/read 逻辑返回，**不启浏览器**。
 4. **同 key 准入协调（Codex finding #10）**：`ByKey` 只能挡住“已有行”的情况。两个**首次并发**的同 key POST 会**同时**看到 not found 并各启一次浏览器，`StartPrepared` 只在两次出网抓取都发生后才仲裁。⇒ 需在 acquisition 之前对同 key 做**最小准入协调**（例如按 `(scope, key)` 的 singleflight/互斥，且多副本下仍以 `StartPrepared` 的原子性作为正确性依据）——协调只为**省掉重复的昂贵出网**，不作为幂等正确性的唯一依赖。
-5. **抓取前的容量预检（Codex finding #15）**：容量检查目前只在 `StartPrepared` 内（`repository.go` 的 `count.Total >= MaxAcquisitionOperations || count.Active >= MaxActiveAcquisitionOperations`），而 `ByKey` 对新 key 总是 not found ⇒ 组织已触顶时，每个新 key 都会**先启一次浏览器**、耗掉共享的浏览器/IP 预算，然后才拿到 `ACQUISITION_CAPACITY`；唯一 key 可以无限重复这一点。⇒ 需在抓取前做**有界的容量预检/准入**（并对预检与抓取之间的竞态保持 `StartPrepared` 作为原子正确性栅栏），避免在被拒绝的请求上浪费出网与 IP 风险。
+5. **抓取前的容量预检/准入（Codex finding #15 / #19）**：容量检查目前只在 `StartPrepared` 内（`repository.go` 的 `count.Total >= MaxAcquisitionOperations || count.Active >= MaxActiveAcquisitionOperations`），而 `ByKey` 对新 key 总是 not found ⇒ 组织已触顶时，每个新 key 都会**先启一次浏览器**、耗掉共享的浏览器/IP 预算，然后才拿到 `ACQUISITION_CAPACITY`；唯一 key 可以无限重复这一点。但它当前**没有可实现的合同路径**：唯一的容量计数是 `Repository.StartPrepared` 内的私有查询。⇒ 需在抓取前做**有界的容量预检/准入**（并对预检与抓取之间的竞态保持 `StartPrepared` 作为原子正确性栅栏），
+   - **最小只读容量合同**：在 `AcquisitionOperationStore` 上新增**一个只读**方法（如 `CapacityAdmitted(ctx, scope) (bool, error)`，返回该 scope 是否还有 `MaxAcquisitionOperations` / `MaxActiveAcquisitionOperations` 额度），application 在抓取前调用；已触顶则直接返回既有 429 `ACQUISITION_CAPACITY`，**不启浏览器**。
+   - 该预检是**优化与风控保护**，**不是**正确性来源：预检与抓取之间的竞态（以及多副本）仍由 `StartPrepared` 的原子容量检查兜住。
+   - 这是 §7 中唯一的接口例外（只新增一个只读方法，不改现有方法语义）。
 6. 覆盖：响应丢失后的同 key 重试、**并发首次同 key**、**同 key 异 offer**、**已触顶组织的新 key**。
 
 **失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §11）。
@@ -249,7 +253,7 @@ consumer   productsourcing.AcquisitionService.Acquire
 ## 7. 明确不改变
 
 - 不改变状态机 `acquiring/prepared/publishing/published/failed` 的语义与迁移。
-- 不改变 `AcquisitionOperationStore` / `InternalProducer` / Catalog 接口。
+- 不改变 `AcquisitionOperationStore` 的**既有方法语义**与 `InternalProducer` / Catalog 接口。**唯一例外**：为 D1 的抓取前容量预检（finding #15/#19）新增**一个只读容量查询方法**（见 D1 第 5 条与本节下方说明），不改变 `Start`/`ByKey`/`Prepare`/`Claim`/`Finish`/`StartPrepared` 的任何现有语义。
 - 不改变既有 `public_http` 与 `browser_capture` channel 行为。
 - 不改变幂等、重放、COMMIT unknown、恢复协议。
 - 不改变授权、租户隔离与路由白名单。
@@ -257,7 +261,7 @@ consumer   productsourcing.AcquisitionService.Acquire
 ## 8. 验证与验收方法
 
 - provider 单测：挑战页 fixture、字段缺失 fixture、超预算 fixture、非预期 content-type、超大响应、驱动不可用。
-- **重放优先**：同 key POST 在响应丢失后重试、并发同 key 重试，**均不得启动浏览器**，直接由 `ByKey` 返回可恢复结果（finding #5/#10）；**同 key 换 offer 必须返回 `ErrAcquisitionConflict`**（finding #16）；**已触顶组织的新 key 不得先启浏览器**（finding #15）。
+- **重放优先**：同 key POST 在响应丢失后重试、并发同 key 重试，**均不得启动浏览器**，直接由 `ByKey` 返回可恢复结果（finding #5/#10）；**同 key 换 offer 必须返回 `ErrAcquisitionConflict`**（finding #16）；**已触顶组织的新 key 不得先启浏览器**（finding #15/#19，依赖 §7 的只读容量合同已实现）。
 - **失败归因**：页面形状变化/提取器漏字段导致服务端证据被拒时，投影为 502 `SOURCE_UNAVAILABLE` 而非 400；仅调用方请求非法才 400（finding #6）。
 - **出网边界（finding #4）**：证明连接层强制真实生效——本地构造指向回环/链路本地/私网/元数据地址的被允许 host，浏览器**必须无法建连**；并覆盖重定向、service worker、WebSocket、`fetch`/xhr、预连接；未落地则不得接生产路由。
 - **调用方准入（finding #14）**：在部署形态中可观测地证明**只有 `current-application` 能调用采集 RPC**（未授权来源被拒），且该控制不引入租户身份/用户凭据。
@@ -337,6 +341,13 @@ Cutover/deletion condition:
 | 16 | `ByKey` 快速路径直接从 resolve/read，**未做 `sameAcquisition`** ⇒ 同 key 换 offer 会拿到旧 offer 的已发布结果，而不是 `ErrAcquisitionConflict` | **IMPLEMENTATION_TEST（成立，已修）** | 命中同 key/异载荷幂等 Must。已核实 `sameAcquisition` 比对 `Fingerprint` 与 `Source`（`acquisition.go`）。已在 D1 要求**命中后先比较**再 resolve，并新增“同 key 异 offer”验收 |
 | 17 | 被允许的 origin 返回超大文档/子资源时，Chromium 在页内证据上限生效**之前**就物化；`MaxAcquisitionCommandBytes` 只管后续 command | **IMPLEMENTATION_TEST（成立，已修）** | 命中采集可用性与资源边界。已核实 `src2b-acquisition-v1` 已有“压缩/展开各 2 MiB”上限。已在 D8 要求把该上限**带到浏览器路径**，并在浏览器/代理边界定义**单响应与累计下载上限**（超限中止采集，不静默继续）；§8 增加超大响应 fixture 验收 |
 
+### 10.4 第六轮增量复核（commit `4f72b0752`）
+
+| # | Finding | 分类 | 处置 |
+| --- | --- | --- | --- |
+| 18 | §1 范围声明仍写着采集进程“复用同一个 \`product_acquisition\` 库” ⇒ 实施者照做就会把库凭据与 Chromium 放进同一网络命名空间，**直接推翻 D12/D13**（即 #12 的旧病灶） | **BLOCKER（成立，已修）** | 命中「新的跳系统安全边界」。已把 §1 范围声明对齐 D13：**所有数据库仅由 \`current-application\` 持有，采集进程无任何库凭据/无库网络可达**；§4 调用链同步 |
+| 19 | D1 要求的抓取前容量预检**没有可实现的合同路径**：唯一的容量计数是 \`Repository.StartPrepared\` 内的**私有**查询，而 §7 又声明 store 接口不变 | **IMPLEMENTATION_TEST（成立，已修）** | 命中资源上限 Must。已在 D1 定义**最小只读容量合同**（\`AcquisitionOperationStore\` 新增一个只读容量查询），并把 §7 改为“既有方法语义不变 + **唯一例外**是新增该只读方法”；预检明确为优化/风控而非正确性来源，原子栅栏仍是 \`StartPrepared\` |
+
 ## 11. 未决 / 需评审确认
 
 1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
@@ -353,3 +364,4 @@ Cutover/deletion condition:
 12. **D2 的具体预算数值**：外层服务预算 = provider + 发布，建议值待定（需一次真实冷启动+挑战的实测来定，不能只靠夹具）。
 13. **D13 的调用方准入方式（finding #14）**：网络准入 vs 服务身份（mTLS/服务凭据）二选一，依赖部署形态；**未落实即不得接生产路由**。
 14. **D8 的浏览器响应/累计下载上限数值**：需与 `src2b-acquisition-v1` 的 2 MiB 语义对齐后定稿。
+15. **§7 例外的接口形状（finding #19）**：只读容量方法的最终签名（建议 `CapacityAdmitted(ctx, scope) (bool, error)`）需在实现前定稿，并确认其不引入第二个容量事实源。
