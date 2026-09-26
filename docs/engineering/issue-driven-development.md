@@ -8,7 +8,7 @@
 
 本规则只增加派工和交付流程，不另建架构或安全规则。TDD、架构敏感准入、finding 分类及最多两轮正常架构评审沿用 [AGENTS.md](../../AGENTS.md)；Legacy 处理沿用 [Hard-Cut Policy](../refactoring/legacy-hard-cut-policy.md) 与 [Legacy Register](../refactoring/legacy-register.md)，只有 `EXTRACT | RETIRE`，没有 Compatibility 类别。发现批准依据与适用 guard 冲突时，报告具体冲突及最小处理范围，不降低验收、不自行扩大修改范围。
 
-入口：[执行 Issue 模板](../../.github/ISSUE_TEMPLATE/execution-task.md) · [PR 模板](../../.github/pull_request_template.md)。普通有界任务可填 N/A，不强迫补写 PRD、Threat Model 或 Accepted Risk。
+入口：[执行 Issue 模板](../../.github/ISSUE_TEMPLATE/execution-task.md) · [PR 模板](../../.github/pull_request_template.md)。所有正式开发 Issue 必须填写 Design Basis；简单任务可按 AGENTS.md 规则填写 N/A，不强迫补写重型 PRD、Threat Model 或 Accepted Risk。
 
 ## 1. 信息和决策归属
 
@@ -21,12 +21,28 @@
 
 ## 2. Issue 粒度与分工
 
-- 父 Issue 跟踪大目标和依赖；执行 Issue 有独立可验证结果。普通有界任务不额外要求 PRD／架构设计。
+- 父 Issue 跟踪大目标和依赖；执行 Issue 有独立可验证结果。每个正式开发 Issue 必须具备 Design Basis；是否需要独立架构文档按 AGENTS.md 的 Architecture First 分级决定，普通任务不要求重型 PRD。
 - 通常一个主要 PR；确需先合同后实现等多个小 PR 时，注明每个切片覆盖的验收，父 Issue 不能被部分交付误关。
 - 当前范围的 review finding、CI 失败、漏测和缺陷在原 PR 修；独立 owner/验收/前置问题才另建 Issue。
 - 用户决定产品与真实操作权限；协调方拆任务、排依赖和作验收决策；Codex 实现；独立 Reviewer 不同时向实现分支写代码；合并由单一指定执行者操作。
 
-## 3. 开工、并行和恢复
+## 3. Architecture First、开工、并行和恢复
+
+### 3.1 派工前设计准入
+
+协调方在派 Writer 前必须核对 Issue 的 `Design Basis / Architecture Admission`：
+
+- `Independent Architecture`：已有独立架构文档、适用独立评审已完成、`Admission Status = IMPLEMENTATION_READY`；
+- `Reuse Existing Architecture`：Issue 已引用当前 Architecture / Contract、owner、主要调用路径、不变量及本次不改变的边界；
+- `N/A`：已写明为什么不改变产品/领域/状态/权限/持久化/外部副作用语义。
+
+不满足时状态保持 `Backlog` 或 `Blocked`，项目经理不得把生产代码任务派给 Writer，也不得用“先做起来再补设计”作为临时例外。
+
+未达到准入前，可以安排只读调查、现状映射、证据收集和明确的 Spike / POC；这些工作不得进入正式业务路径，也不能被后续调用方当作已批准实现。
+
+实现中一旦发现需要改变 Design Basis 声明为“不变”的状态机、权限、事实 owner、持久化或恢复协议，Writer 立即停止该部分正式编码并回报；协调方将任务升级到 Independent Architecture 或更新已批准设计后再继续。
+
+### 3.2 开工、并行和恢复
 
 - 开工先核对目标/依据/依赖/实际代码、是否已有任务 PR 或其他实现会话；在 Issue 留一条接单记录：会话标识、分支/worktree、起始 SHA、阻塞。
 - 授权任务内的实现、隔离测试、提交、推送、维护 PR 可连续执行，不逐步申请。
@@ -39,7 +55,7 @@
 
 使用单一状态来源表达 `Backlog → Ready → In Progress → In Review → Done`，需要时 `Blocked`；采用已有看板字段或少量既有标签，不为派工配置额外系统。
 
-- Ready 表示具备开工条件，不代表自动启动或真实操作授权。
+- Ready 表示产品范围、Design Basis 和依赖均已具备开工条件；需要 Independent Architecture 的任务还必须已经达到 `IMPLEMENTATION_READY`。Ready 不代表自动启动或真实操作授权。
 - In Review 有可评审交付和明确证据/限制；Done 满足该 Issue 全部验收，代码类通常还需相应 PR 已合并。
 - 取消的工作记录取消原因，不能当 completed。
 - Blocked 必须写缺失条件、负责 owner、解除条件，及影响开工/某个切片/合并/上线中的哪一层。
@@ -91,7 +107,7 @@
 
 Codex 启动指令示例：
 
-> 执行 Issue #<编号>；读取完整正文、引用依据和适用 AGENTS.md，检查既有接单与关联 PR，使用独立工作区；进度写 Issue，验证与评审证据写 PR；不自行合并、关闭 Issue、部署或操作真实数据。
+> 执行 Issue #<编号>；读取完整正文、引用依据和适用 AGENTS.md，先核对 Design Basis / Architecture Admission 是否满足（Independent Architecture 必须为 IMPLEMENTATION_READY），再检查既有接单与关联 PR并使用独立工作区；未满足准入时只做获准的只读调查/Spike，不修改正式生产业务路径；进度写 Issue，验证与评审证据写 PR；不自行合并、关闭 Issue、部署或操作真实数据。
 
 Ready 和 Issue 创建都不会自动启动 Agent；用户将编号交给执行会话后接单。协调方维护当前范围和决策，实现者交付并报告缺失条件。
 
