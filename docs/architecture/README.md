@@ -133,6 +133,12 @@ documents unless they say so explicitly:
     fixed-channel attempts, typed checkout, isolated verification, posting/refund
     receipts and recovery. Historical filename; one dual-channel design.
     Not IMPLEMENTATION_READY; does not supersede approved billing/money contracts.
+- `2026-09-26-1688-server-public-browser-acquisition-design.md`
+  - DRAFT #514 `src2b-public-browser-v1`: server-side anonymous 1688 browser
+    acquisition with automatic challenge handling, reusing the existing
+    `AcquisitionEvidence` → SourceEnvelope → SRC-1 → Catalog chain.
+    Not IMPLEMENTATION_READY; does not supersede approved sourcing contracts and
+    does not by itself authorize production wiring, deployment or real-page runs.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
