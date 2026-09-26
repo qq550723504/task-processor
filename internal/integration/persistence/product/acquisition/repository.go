@@ -410,7 +410,11 @@ func validCommand(op sourcing.AcquisitionOperation, cmd sourcing.PublicationComm
 		if metadata["capture_sha256"] != op.CaptureSHA256 || metadata["channel"] != "browser_capture" || metadata["parser_version"] != sourcing.BrowserCaptureParserVersion || metadata["contract_version"] != sourcing.AcquisitionContractVersion {
 			return false
 		}
-	} else if metadata["channel"] != "public_http" || metadata["capture_sha256"] != "" {
+	} else if (metadata["channel"] != sourcing.AcquisitionChannelPublicHTTP && metadata["channel"] != sourcing.AcquisitionChannelPublicBrowser) || metadata["capture_sha256"] != "" {
+		// Empty CaptureSHA256 is the anonymous public family: public_http and
+		// public_browser. Both keep the content-independent fingerprint and must
+		// not carry a capture digest, which would route them into the
+		// browser_acquisition branch above.
 		return false
 	}
 	if !validIdentity(op) || cmd.ExpectedBaseVersion == nil || *cmd.ExpectedBaseVersion > math.MaxInt64 || cmd.Producer != producer {
