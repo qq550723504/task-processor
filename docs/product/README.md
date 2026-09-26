@@ -34,6 +34,7 @@ ListingKit 是需要退休的旧产品投影与混合架构，不是硕米的长
 以下文档虽然文件名仍带 ListingKit，但其**当前业务/运行职责尚未完成 cutover**，不能仅因 ListingKit 产品退休而整体历史化：
 
 - [付费试点产品目录与用量政策](./listingkit-paid-pilot-product-catalog.md) — `paid_pilot`、capability / entitlement、metering 与 `shein_publish` 默认关闭等仍是当前商业政策依据；产品投影部分服从 Figma。
+- [付费商业试点上线执行计划](./listingkit-paid-pilot-execution-plan.md) — 外部准入、收费前置、PAY-041～044 / PAY-070～073、Go/No-Go 与回滚等商业 rollout 门禁在新 owner 承接前继续有效；不再作为 ListingKit 产品路线图或通用开发队列。
 - [错误恢复 SOP](./ops/listingkit-error-recovery-sop.md) — 对仍存活的旧 ListingKit / SHEIN 商业路径继续提供操作员恢复与升级指导；不拥有产品/IA 权威。
 - [真实接口验收报告模板](./validation/listingkit-real-api-validation-report-template.md) — 在现有真实集成/回归流程完成 cutover 前，继续作为该运行路径的验收记录模板；不拥有产品/IA 权威。
 
@@ -48,7 +49,6 @@ ListingKit 是需要退休的旧产品投影与混合架构，不是硕米的长
 - [ListingKit 操作指南](./listingkit-operating-guide.md)
 - [ListingKit 产品路线图](./listingkit-product-roadmap.md)
 - [ListingKit 下一阶段执行计划](./listingkit-next-execution-plan.md)
-- [ListingKit 付费商业试点上线执行计划](./listingkit-paid-pilot-execution-plan.md)
 - [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
 
 读取这些历史文档时，只抽取仍被当前 owner 明确承接的业务、安全、幂等、恢复或平台规则。出现与 Figma Authority、全新系统基线、Legacy Register、当前领域合同或具体 Issue 冲突的内容时，以后者为准。
