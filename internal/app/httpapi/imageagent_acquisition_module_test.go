@@ -205,7 +205,42 @@ func TestAcquisitionImageRoutesRejectForgedURLCandidateOnReadAndCompletedReplay(
 	})
 }
 
-func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(t *testing.T) {
+func TestAcquisitionImageNewGenerationUnavailableBeforeServiceStart(t *testing.T) {
+	const operationID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	const requestID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
+	for _, tc := range []struct {
+		name     string
+		identity authidentity.AuthenticatedIdentity
+		bindErr  error
+		status   int
+		code     string
+	}{
+		{"authorized", authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", EffectiveMemberID: "member-a"}, nil, http.StatusServiceUnavailable, "IMAGE_UNAVAILABLE"},
+		{"missing_identity", authidentity.AuthenticatedIdentity{}, nil, http.StatusForbidden, "FORBIDDEN"},
+		{"cross_org", authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-b", UserID: "actor-a", EffectiveMemberID: "member-a"}, nil, http.StatusForbidden, "FORBIDDEN"},
+		{"live_authorization_rejected", authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", EffectiveMemberID: "member-a"}, imageagent.ErrIdentityRequired, http.StatusForbidden, "FORBIDDEN"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := &acquisitionImageServiceSpy{}
+			router := gin.New()
+			for _, route := range acquisitionImageRoutes(service, &acquisitionImageCandidatesSpy{}, &acquisitionImageApprovalReaderSpy{}, func(ctx context.Context, _ string) (context.Context, error) { return ctx, tc.bindErr }, acquisitionImagePublicURLs{}) {
+				router.Handle(route.Method, route.Path, route.Handler)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/workbench/sourcing/1688/acquisitions/"+operationID+"/main-image", strings.NewReader(`{"sourceImageId":"catalog-image-3"}`))
+			request = request.WithContext(authidentity.WithAuthenticatedIdentity(request.Context(), tc.identity))
+			request.Header.Set("Authorization", "Bearer fixture")
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Idempotency-Key", requestID)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			require.Equal(t, tc.status, response.Code, response.Body.String())
+			require.JSONEq(t, `{"code":"`+tc.code+`"}`, response.Body.String())
+			require.Empty(t, service.starts, "no run initialization or downstream workflow start, regardless of available member quota")
+		})
+	}
+}
+
+func TestAcquisitionImageRoutesCloseNewGenerationAndPreserveHumanApproval(t *testing.T) {
 	const operationID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
 	const requestID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
 	identity := authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", EffectiveMemberID: "member-a"}
@@ -231,9 +266,9 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	}
 	base := "/api/v1/workbench/sourcing/1688/acquisitions/" + operationID + "/main-image"
 	response := call(http.MethodGet, base+"/candidates", "")
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	require.JSONEq(t, `{"operationId":"`+operationID+`","candidates":[{"id":"catalog-image-3","displayUrl":"https://images.example.test/3.png"}]}`, response.Body.String())
-	require.Equal(t, operationID, catalog.scope.BusinessTaskID)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+	require.JSONEq(t, `{"code":"IMAGE_UNAVAILABLE"}`, response.Body.String())
+	require.Zero(t, catalog.calls, "new-generation discovery is closed, not a second receipt reader")
 	response = call(http.MethodPost, base, `{"sourceImageId":"catalog-image-3","targetPlatform":"shein"}`)
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Empty(t, service.starts)
@@ -241,9 +276,12 @@ func TestAcquisitionImageRoutesAcceptOnlyNarrowServerOwnedStartAndHumanApproval(
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Empty(t, service.starts)
 	response = call(http.MethodPost, base, `{"sourceImageId":"catalog-image-3"}`)
-	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
-	require.Len(t, service.starts, 1)
-	input := service.starts[0]
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+	require.JSONEq(t, `{"code":"IMAGE_UNAVAILABLE"}`, response.Body.String())
+	require.Empty(t, service.starts, "even a service ready to accept must not initialize a run or dispatch a workflow")
+	// Existing durable runs remain readable and approvable independently of new-generation readiness.
+	input, err := acquisitionMainRunInput(identity, operationID, requestID, "catalog-image-3")
+	require.NoError(t, err)
 	ownerKey, err := imageagent.ArtifactOwnerKey(identity.UserID)
 	require.NoError(t, err)
 	asset := imageagent.DurableAssetIdentity{ObjectKey: "image-agent/public/org-a/" + ownerKey + "/" + input.RunID + "/1/main/1/0-" + strings.Repeat("a", 64) + ".png", SHA256: strings.Repeat("a", 64)}

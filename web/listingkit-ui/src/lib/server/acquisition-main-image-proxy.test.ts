@@ -81,3 +81,9 @@ it.each(["ORGANIZATION_ACCESS_REVOKED", "ORGANIZATION_ACCESS_DENIED"])("clears s
   expect((await response.json()).code).toBe(code);
   expect(response.headers.get("set-cookie")).toContain("shuomi_effective_organization=;");
 });
+
+it.each(["acquisition-image-candidates", "acquisition-image-accepted"] as const)("preserves closed generation for %s without success or unknown", async (contract) => {
+  const response = await buildWorkbenchBrowserResponse(Response.json({ code: "IMAGE_UNAVAILABLE" }, { status: 503 }), contract, undefined, { sourceMutation: contract === "acquisition-image-accepted" });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ code: "IMAGE_UNAVAILABLE" });
+});

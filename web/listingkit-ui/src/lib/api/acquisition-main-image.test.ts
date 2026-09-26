@@ -39,6 +39,7 @@ it.each([
   ["ORGANIZATION_ACCESS_REVOKED", 403],
   ["ORGANIZATION_ACCESS_DENIED", 403],
   ["DEADLINE_EXCEEDED", 504],
+  ["IMAGE_UNAVAILABLE", 503],
 ] as const)("preserves a confirmed %s rejection without retry", async (code, status) => {
   const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ code }, { status }));
   await expect(startMainImage(operation, "catalog-image-2", key, scope)).rejects.toMatchObject({ code, status });

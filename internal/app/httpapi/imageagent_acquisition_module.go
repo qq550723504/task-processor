@@ -126,16 +126,9 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 					if !emptyAcquisitionImageBody(c) {
 						return
 					}
-					assets, err := catalog.Candidates(ctx, imageagent.AssetCatalogScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, BusinessTaskID: operationID})
-					if err != nil {
-						writeAcquisitionImageError(c, err)
-						return
-					}
-					candidates := make([]gin.H, 0, len(assets))
-					for _, asset := range assets {
-						candidates = append(candidates, gin.H{"id": asset.ID, "displayUrl": asset.DisplayURL})
-					}
-					c.JSON(http.StatusOK, gin.H{"operationId": operationID, "candidates": candidates})
+					// This discovery endpoint serves new generation only. Keep it
+					// closed with Start until real generation admission is approved.
+					writeAcquisitionImageError(c, imageagent.ErrBudgetQuoteUnavailable)
 				case "start":
 					requestIDs := c.Request.Header.Values("Idempotency-Key")
 					if len(requestIDs) != 1 {
@@ -150,16 +143,16 @@ func acquisitionImageRoutes(service acquisitionImageService, catalog acquisition
 						writeAcquisitionImageError(c, err)
 						return
 					}
-					input, err := acquisitionMainRunInput(identity, operationID, requestID, body.SourceImageID)
+					_, err := acquisitionMainRunInput(identity, operationID, requestID, body.SourceImageID)
 					if err != nil {
 						writeAcquisitionImageError(c, err)
 						return
 					}
-					if err := service.Start(ctx, input); err != nil {
-						writeAcquisitionImageError(c, err)
-						return
-					}
-					c.JSON(http.StatusAccepted, gin.H{"runId": input.RunID, "status": "accepted"})
+					// The single-edit product has no approved executable commercial
+					// admission contract yet. Do not create a run that can only block
+					// in the worker, even when the actor has available token quota.
+					// Existing run reads and approval receipts remain independent.
+					writeAcquisitionImageError(c, imageagent.ErrBudgetQuoteUnavailable)
 				case "read", "approve":
 					runID := c.Param("run_id")
 					if !acquisitionHTTPUUID(runID) {
