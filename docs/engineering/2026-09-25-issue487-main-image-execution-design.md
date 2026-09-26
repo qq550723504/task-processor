@@ -4,7 +4,7 @@
 
 **性质：批准决定与执行边界的有界交接，不是新全局架构、IMPLEMENTATION_READY 签发或验收报告。当前产品路径为一次生成、程序校验、人工确认；运行实现尚由原 Writer 完成。**
 
-原核对基线为 main `b47d6302b99c5229ba89825d48ea9b2823e400af`；文档交接分支基于 `ce39b52b1e458fe0657ddea91ab48ef2cde9edf8`。修订沿同一文件、同一文档分支交原 Writer 归并进主要 PR #498，不向业务分支直接写入、不新增实现者或额外文档合并前置。本地草稿、原事实与历史测试保留；实时 HEAD/CI/进度只在原 Issue/PR 维护。
+原核对基线为 main `b47d6302b99c5229ba89825d48ea9b2823e400af`；文档交接分支基于 `ce39b52b1e458fe0657ddea91ab48ef2cde9edf8`，已随 #498 纳入。#498 已合并，仅作准备/安全修复的历史基线，不再接收后续交付；修订沿同一文件，由原 Writer 纳入后续一个主要 PR（Refs #487），不新增实现者或额外文档合并前置。本地草稿、原事实与历史测试保留；实时 HEAD/CI/进度只在当前 Issue/PR 维护。
 
 ## 1. 当前批准的用户结果
 
@@ -53,7 +53,7 @@ Figma精确动作节点仍只阻视觉定稿；非视觉接线与本次有界调
 | Account/Audit | 当前权威事实投影 | 调用、用量、程序有效、人工采用、结算状态分开 |
 | 装配与生命周期 | app/httpapi、app/worker/imageagent、currentapplication | 显式注入；app不拥有新计费/质量规则 |
 
-沿#498已有“合同定义包→实现包→注入点→消费者→guard”表修改实际变化。核对source-based输入、adapter、organizationMainSlotExecutor/tools.ProductImageSlotExecutor、worker和批准条件；不把原图塞成已Extract的Subject，不保留本片Reviewer强依赖后注入fake结果。
+以已合并#498的“合同定义包→实现包→注入点→消费者→guard”表为历史参考，在后续主要PR维护实际变化。核对source-based输入、adapter、organizationMainSlotExecutor/tools.ProductImageSlotExecutor、worker和批准条件；不把原图塞成已Extract的Subject，不保留本片Reviewer强依赖后注入fake结果。
 
 移除本片未执行的extract/review操作列表、quote、预算、usage/effect成功记录和模型评分必需项；同步现有fingerprint/版本/必要状态与测试。不得将旧运行回执重新解释为新步骤成功。保留其他合法消费者的Extract/Review，不全仓删除能力、不新增双路fallback或策略插件，不扩allowlist。
 
@@ -67,7 +67,7 @@ Figma精确动作节点仍只阻视觉定稿；非视觉接线与本次有界调
 
 ## 5. 计量必须来自真实生成调用
 
-**当前接缝：原候选把canonical ai_tokens主要接在recordedReview。取消模型审图不能只是删除调用后留下无预算的图像生成，也不能继续为不存在的Review扣额度。** 原Writer在#498内做最小必要解耦，不重建结算系统。[D8]
+**当前接缝：原候选把canonical ai_tokens主要接在recordedReview。取消模型审图不能只是删除调用后留下无预算的图像生成，也不能继续为不存在的Review扣额度。** #498已移除旧预留并关闭未就绪的新生成入口；原Writer在后续主要PR继续实际生成的最小必要接线，不重建结算系统。[D8]
 
 先明确所选生成provider实际返回的usage字段、现有图像预算覆盖的单位、商业owner支持的单位，以及相应报价/预留/结算入口。复用已有合同；确有新经济政策才报告具体决定，不预设每张价格、tokens换算或套餐规则。
 
@@ -101,7 +101,7 @@ Figma精确动作节点仍只阻视觉定稿；非视觉接线与本次有界调
 
 [D6]/[E2]的本机HTTPS输出只适用已验证durable生成对象、固定origin/路径及读取范围。禁止全局放宽ValidateSafeImageURL，来源图片/任意外部URL仍拦私网；不伪公网域名绕过SSRF，不把本机URL声称为永久公网资产。API/worker最小权限、staging/目录/写入口隔离和保留卷重启证据按变化复验。
 
-继续原Writer和#498，先消费最新决定、归并本文，再成批调整单次source输入、Reviewer依赖、真实生成计量和直接测试。仅新增/变化的授权、计量或恢复边界作增量高风险复核；正常独立代码评审不因取消产品模型Review而取消。未变设计/代码不重复全局审核。
+继续原Writer，以已合并#498为基线，在后续一个主要PR消费当前Issue决定，推进尚缺的真实生成计量、安全接线和直接测试；不重做已完成且未变化的单次source输入和本片Reviewer解耦。仅新增/变化的授权、计量或恢复边界作增量高风险复核；正常独立代码评审不因取消产品模型Review而取消。未变设计/代码不重复全局审核。
 
 保留既有本地草稿和其他任务资源。用户指定来源、合成身份、CA、实例/卷权限沿原批准；stop/restart不等于destroy。真实来源质量样例和付费provider没有额外授权，不自行扩展。Figma只阻视觉定稿，不阻已批准的非视觉调整。
 
@@ -115,7 +115,7 @@ Figma精确动作节点仍只阻视觉定稿；非视觉接线与本次有界调
 
 旧“三次provider/Review7tokens”及“两次provider”只属于原流程。[E1] 未变化的授权/资产等证据可复用，但不能证明新次数、新计量或新用户链。受控2×2PNG不证明商品质量，不承诺成本/延迟减半。少量获准真实样例只核对当前保真与白底目标，不新建基准平台。
 
-交付留原PR：实际代码/测试与环境、结果及限制、正常启动/页面/保存/启停、剩余阻塞。无新增业务Issue或文档合并前置；未授权合并、关闭Issue、部署、真实/共享数据或付费provider操作。
+接续交付留后续主要PR（Refs #487）：实际代码/测试与环境、结果及限制、正常启动/页面/保存/启停、剩余阻塞。#498不再接收提交。无新增业务Issue或文档合并前置；未授权后续PR合并、关闭Issue、部署、真实/共享数据或付费provider操作。
 
 ## 来源
 
