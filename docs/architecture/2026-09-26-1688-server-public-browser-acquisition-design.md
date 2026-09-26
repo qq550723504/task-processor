@@ -67,16 +67,26 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 ⇒ 浏览器路径按 Browser Capture 的既有模式：先取 evidence 并 validate，再 `StartPrepared` 一次性原子写入 command。只有可确定性恢复的操作才有 durable 行；这与 `src2b-acquisition-v1` 的「没有 background scheduler / 租约续期 / TTL / key GC」零冲突。
 
-**失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §10）。
+**失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §11）。
 
-### D2. 独立 provider 时间预算（**这是本设计最需要评审确认的一条**）
+### D2. 独立 provider 时间预算与三层 deadline（**这是本设计最需要评审确认的一条**）
 
 `sourcing.AcquisitionTimeout = 20s` 由 `AcquisitionService` 对**整条 Acquire**施加，实测浏览器路径 19.6s 已贴线，冷启动会直接超时并返回 `DEADLINE_EXCEEDED`。
 
-⇒ 为浏览器 provider引入独立预算，`Acquire` 的 deadline 按 provider 类型选择：HTTP 路径保持 20s，浏览器路径使用 `BrowserAcquisitionTimeout`（建议 90s：覆盖浏览器冷启动 + 导航 + 最多一轮挑战处理 + 提取）。发布阶段（SRC-1/Catalog）仍受各自超时与幂等协议保护，不因该预算放大。
+**评审已确认的补充（Codex finding #1，成立）**：仅按 provider 分叉 service deadline **不够**——HTTP 路由描述符本身也带 20s 上限：`productAcquisitionRoutes` 的每个 descriptor 设 `RequestTimeout: sourcing.AcquisitionTimeout` 并用 `WithRequestBodyReadTimeout(sourcing.AcquisitionTimeout, ...)` 包裹 handler。路由层的 parent context 会在 20s 取消整个请求，使任何更长的 provider 预算失效。
+
+⇒ 必须显式定义**三层 deadline**，且在实现前分配各阶段预算：
+
+| 层 | 当前值 | 浏览器路径要求 |
+| --- | --- | --- |
+| route `RequestTimeout` + `WithRequestBodyReadTimeout` | 20s | 按该路由实际最坏预算设置；不得小于 provider 预算 + 发布阶段预算 |
+| `AcquisitionService.Acquire` 的 `context.WithTimeout` | 20s | 按 provider 类型选择：HTTP 20s，浏览器 `BrowserAcquisitionTimeout` |
+| provider 内部（浏览器导航/验证码/提取） | 8s GET | 独立有界，且严格小于其上层 deadline，保证能及时如实失败 |
+| 发布阶段（`Prepare`/`Claim`/`Publish`） | 受各自既有边界 | 不被浏览器预算放大，单独计预算 |
 
 - 该预算必须**有界**，并与 HTTP 请求体读取超时、`MaxAcquisitionCommandBytes`、`MaxAcquisitionOperations` 的关系在实现中显式核对。
 - 若评审认为不应按 provider 分叉 deadline，替代方案是在 provider 内做浏览器复用/预热把首次耗时压到 20s 内；但实测数据不支持该假设，故默认采纳独立预算。
+- **不得**仅改 D2 而不改路由描述符；否则当前设计的主路径（提交链接→拿到已发布商品）在冷启动/验证码场景下无法完成。
 
 ### D3. 匿名、非持久化、零凭据的浏览器上下文
 
@@ -111,6 +121,20 @@ consumer   productsourcing.AcquisitionService.Acquire
 - 同 key 同载荷重放；异载荷冲突。浏览器重抓**不**换 publication ID；确认提交结果未知时只 Verify/Read。
 - 新 channel `public_browser` 进入 `MapAcquisitionEvidence` 的允许集合，并进入 `RawReference.Metadata["channel"]`；publication identity 计算方式不变。
 
+### D7. 权限与租户边界
+
+- 每次 acquire/verify/read 都按当前 verified identity + Effective Organization + live `product_sourcing.write` 重新授权（既有 `ContextAuthorizer` + `OrganizationAccessPolicyLive`）。
+- 不新增权限常量、不新增路由、不新增认证路径。
+- 浏览器进程本身不持有身份；Provider 不做授权判断，授权仍由 application 层在 provider 前后各一次执行（既有 `authorizeScope`）。
+
+### D8. 资源与副作用边界
+
+- **出网副作用**：新增服务端真实浏览器出网；其 host/子资源/重定向约束由 D12 强制，不是口头约定。
+- 并发：浏览器采集为稀有操作，需显式上限（建议单进程并发 ≤2，超出排队或 `ACQUISITION_CAPACITY`），避免把服务端资源打满。
+- 响应/命令大小沿用 `MaxAcquisitionCommandBytes`（2 MiB）；提取字段数量沿用既有 `AcquisitionEvidence` 上限校验。
+- 临时 profile 目录与浏览器产物在结束/失败时清理；不写入仓库目录。
+- **出口 IP 风控**是已接受风险（PD 文档第 3 条），因此实现必须支持「被风控时快速、如实失败」，不得通过无限重试放大对 IP 的伤害。
+
 ### D9. 真实页面形状与解析策略（依据 #399 实测，避免重复已知缺陷）
 
 `docs/superpowers/specs/2026-09-20-issue399-1688-context-locator-design.md` 已实测真实 1688 页面：
@@ -139,19 +163,31 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 替代方案（评审可要求）：把 `shared/browser` 提升为当前共享基础设施并更新全部调用方——范围远大于本切片，默认不做。
 
-### D7. 权限与租户边界
+### D11. `public_browser` channel 契约变更必须覆盖持久化校验（Codex finding #2）
 
-- 每次 acquire/verify/read 都按当前 verified identity + Effective Organization + live `product_sourcing.write` 重新授权（既有 `ContextAuthorizer` + `OrganizationAccessPolicyLive`）。
-- 不新增权限常量、不新增路由、不新增认证路径。
-- 浏览器进程本身不持有身份；Provider 不做授权判断，授权仍由 application 层在 provider 前后各一次执行（既有 `authorizeScope`）。
+**评审确认（成立）**：`public_http` 在非测试代码里恰好有 3 个消费点，只改 `MapAcquisitionEvidence` 会让浏览器 command 在发布前被拒：
 
-### D8. 资源与副作用边界
+| # | 位置 | 当前 | 变更 |
+| --- | --- | --- | --- |
+| 1 | `internal/product/sourcing/acquisition.go` `MapAcquisitionEvidence` | `channel != "public_http" && channel != "browser_capture"` → 拒绝 | 允许 `public_browser` |
+| 2 | `internal/integration/persistence/product/acquisition/repository.go` `validCommand` | 空 `CaptureSHA256` 分支要求 `metadata["channel"] == "public_http" && metadata["capture_sha256"] == ""` | 允许 `public_browser` 且仍要求 `capture_sha256 == ""` |
+| 3 | `internal/app/productsourcing/acquisition.go` 公共抓取调用 | 传入 `"public_http"` | 浏览器路径传入 `"public_browser"` |
 
-- **出网副作用**：新增服务端对 `detail.1688.com`（及同域跳转）的真实浏览器出网；必须只访问当前任务明确的 1688 公开商品资源。
-- 并发：浏览器采集为稀有操作，需显式上限（建议单进程并发 ≤2，超出排队或 `ACQUISITION_CAPACITY`），避免把服务端资源打满。
-- 响应/命令大小沿用 `MaxAcquisitionCommandBytes`（2 MiB）；提取字段数量沿用既有 `AcquisitionEvidence` 上限校验。
-- 临时 profile 目录与浏览器产物在结束/失败时清理；不写入仓库目录。
-- **出口 IP 风控**是已接受风险（PD 文档第 3 条），因此实现必须支持「被风控时快速、如实失败」，不得通过无限重试放大对 IP 的伤害。
+- `public_browser` 操作的 `CaptureSHA256` **保持为空**（内容无关指纹，见 D1），因此 `validCommand` 必须走空-`CaptureSHA256` 分支，不得把它当作 browser-capture 处理。
+- 持久化 command 是 durable 事实；恢复/回读路径必须能验证 `public_browser`，否则重启后无法读回（`validCommand` 是 `StartPrepared` 的校验，且 command 会被持久化并在恢复时重校验）。
+- producer 仍为 `public_acquisition/v1`，**不新增 producer kind**。
+
+### D12. 出网安全边界（SSRF）（Codex finding #3）
+
+**评审确认（成立）**：HTTP provider 对每个重定向都重新校验，且 `httpimage.NewPublicImageHTTPClient` 在 dial 层拒绝私有/回环地址；而候选抽取的 legacy 浏览器代码**没有任何请求拦截**（全仓 `internal/crawler`、`shenlog` 无 `Route`/`webRequest` 拦截）。
+
+⇒ 只写“只能访问 1688”不构成强制。浏览器 provider 必须实现**请求拦截**，与 HTTP 路径提供等价的出网约束：
+
+- 使用 Playwright `BrowserContext.Route`/`Page.Route` 拦截并校验**每一次导航与子资源请求**；未被明确允许的目的地一律 abort。
+- **只允许**本任务明确需要的公开 1688/CDN origin（建议：`detail.1688.com`、`m.1688.com`、以及商品页必需的 `*.alicdn.com` 图片域），其余拒绝。具体允许列表在实现时由产品/安全确认。
+- 解析目标主机 IP，**拒绝**回环、链路本地、私网、保留及云元数据地址（复用/对齐 `httpimage.IsPrivateIP` 语义），防止 DNS rebinding：校验必须在实际连接解析结果上生效，而非仅看字符串 host。
+- **重定向必须逐跳重校验**：不得默认跟随到未批准 host；只有重校验通过且落在允许集内才继续，否则 fail-closed。
+- 该边界是新的跳系统安全边界；未实现拦截前不得接线到生产路由。
 
 ## 6. 状态与持久化边界
 
@@ -203,7 +239,17 @@ Cutover/deletion condition:
 - `tenantbridge` 相关消费与 ListingKit handoff 边。
 - 旧 task/DTO/结果 Redis store 与 `CrawlerTask`/`CrawlerResult` 路径。
 
-## 10. 未决 / 需评审确认
+## 10. 评审 finding 记录（Codex Review，commit `2dfbc83059`）
+
+| # | Finding | 分类 | 处置 |
+| --- | --- | --- | --- |
+| 1 | 只分叉 provider deadline 不够：路由 `RequestTimeout`/`WithRequestBodyReadTimeout` 仍 20s，parent context 会在 20s 取消，冷启动/验证码场景主路径无法完成 | **BLOCKER（成立，已修）** | 命中「核心 happy path 按当前设计无法完成」。已重写 D2：定义 route/service/provider 三层 deadline 与发布阶段预算 |
+| 2 | 只把 `public_browser` 加进 `MapAcquisitionEvidence` 会让持久化 `validCommand` 以 `ErrInvalidAcquisition` 拒绝每个浏览器 command，且恢复路径无法校验 | **BLOCKER（成立，已修）** | 命中「核心 happy path 无法完成」。已新增 D11，枚举 3 个消费点并明确 `CaptureSHA256` 保持为空、不新增 producer |
+| 3 | 浏览器默认跟随重定向/子资源，legacy 代码无请求拦截，可能请求回环/私网/元数据地址（SSRF） | **BLOCKER（成立，已修）** | 命中「新的跳系统安全边界」。已新增 D12：路由拦截 + 允许 origin 集 + 解析地址拒绝私网 + 逐跳重校验 + fail-closed |
+
+三条均为**真实设计缺陷**，不需要新 Broad 产品决定；已直接修正设计。修正只改变设计文本，未修改生产代码。
+
+## 11. 未决 / 需评审确认
 
 1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
 2. **D8 的并发上限**：建议 ≤2；需确认是否与部署形态（单进程/多副本）一致。
