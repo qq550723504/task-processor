@@ -1,7 +1,7 @@
-> **状态：HISTORICAL / LEGACY EVIDENCE（2026-09-26）**  
-> 本文保留旧 ListingKit 产品阶段的需求、行为、验收或运维证据，不再是当前产品定义、页面设计、路线图或派工依据。当前 UI / IA / 页面命名与交互以 [最终 Figma UI / IA Authority](./final-ui-ia-authority.md) 为准；ListingKit 按 [Legacy Register](../refactoring/legacy-register.md) 执行 EXTRACT → RETIRE。  
-> 本文中的“当前”“下一阶段”“工作台”“Task”“ListingKit 继续拥有”等表述只描述其原历史基线。若与当前 Figma Authority、全新系统基线、领域合同、#137 或具体执行 Issue 冲突，以当前权威为准。不得据此恢复旧 Workspace、Task-first 产品模型、永久 facade、fallback、双读双写或第二事实源。  
-> 历史正文不批量改写，以便保留可追溯证据；其中仍有效的业务、安全、幂等、恢复和平台规则必须由当前 owner 明确承接后才能继续使用。
+> **状态：CURRENT COMMERCIAL ROLLOUT GATES + HISTORICAL LISTINGKIT PROJECTION（2026-09-26 校准）**  
+> 本文中与 `paid_pilot` 外部准入、收费、发布 entitlement、PAY-041～PAY-044、PAY-070～PAY-073、Go/No-Go、回滚与生产放行有关的门禁仍是当前商业 rollout 依据；在这些门禁被明确迁入新的 Commercial / Subscription / Operations owner 前，不得把它们视为历史失效，也不得绕过它们提前收费或邀请外部客户。  
+> **只有 ListingKit 作为产品、Workspace、Task-first 页面和长期执行 owner 的表述被降级为历史。** 当前 UI / IA / 页面命名与交互以 [最终 Figma UI / IA Authority](./final-ui-ia-authority.md) 为准；旧 ListingKit 架构按 [Legacy Register](../refactoring/legacy-register.md) EXTRACT → RETIRE。  
+> 本文不再作为通用近期开发队列；当前工程排序由 #137 和具体执行 Issue / PR 决定。若当前 Commercial / Subscription 合同与本文历史实现细节冲突，以当前合同为准；但现行收费/准入门禁必须先由新的明确 owner 承接后才能退休。
 
 # ListingKit 付费商业试点上线执行计划
 
