@@ -68,7 +68,7 @@ Agent 通过受控 Tool Contract 使用领域服务，负责确有价值的理�
 
 已有 SHEIN、1688、POD、图片和其他平台代码中的有效行为，按当前产品需要复用或抽取；代码存在不自动批准扩展某个平台、开放新功能或继续旧任务流程。未开放能力应真实表达 unavailable，不用原型示例、模拟成功或旧路径兜底。
 
-新业务遵循 [全新系统产品基线](./docs/product/greenfield-no-legacy-migration.md)：全新安装、空业务数据、当前模型。Sourcing 使用当前来源证据、Catalog 快照和资产 owner，详见 [Sourcing 指南](./docs/product/product-sourcing-handoff.md)；旧任务、旧 profile、旧 ID 迁移及历史 cutover gate 不是新系统的验收前置。
+新业务遵循 [全新系统产品基线（PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08）](./docs/product/greenfield-no-legacy-migration.md)：按全新安装、空业务数据和当前模型交付，不新增旧数据迁移、旧 ID 映射或旧 Service 包装。Sourcing 使用当前来源证据、Catalog 快照和资产 owner，详见 [Sourcing 指南](./docs/product/product-sourcing-handoff.md)。历史 profile 和 cutover gate 不是当前验收前置。
 
 ## ListingKit 退休边界
 
