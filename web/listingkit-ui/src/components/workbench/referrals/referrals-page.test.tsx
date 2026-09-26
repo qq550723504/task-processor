@@ -76,7 +76,7 @@ describe("ReferralsPage", () => {
     mount("overview", "subject-1", true, "rules");
 
     expect(await screen.findByRole("heading", { name: "当前规则以平台实际生效版本为准" })).toBeVisible();
-    expect(screen.getByText("以下内容来自平台当前生效的推广收益规则。具体佣金比例、结算周期、最低提现金额和审核方式以本页实时读取结果为准。")).toBeVisible();
+    expect(screen.getByText("以下内容来自平台当前生效的推广收益规则。具体佣金比例、结算周期、最低提现金额和审核方式以本页当前读取结果为准。")).toBeVisible();
 
     const rulesRegion = screen.getByRole("region", { name: "规则说明" });
     expect(within(rulesRegion).getAllByRole("article")).toHaveLength(6);
