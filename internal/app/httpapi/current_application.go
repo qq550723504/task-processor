@@ -84,8 +84,8 @@ type currentApplicationFactories struct {
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMemberPointLimits          func(context.Context, *config.Config, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAccountAudit               func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAudit               func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
 	buildAccountIdentity            func(*config.Config) (kernelmodule.Module, error)
 }
@@ -170,11 +170,11 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
 		buildCommercialBilling: buildCommercialBillingModule,
-		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
+		buildAccountAudit: func(sourceDB, commercialDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, resourceDB, authorizer, projectID)
 		},
-		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer, projectID)
+		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, resourceDB, authorizer, projectID)
 		},
 		buildAccountProfile: func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
 		buildAccountIdentity: func(cfg *config.Config) (kernelmodule.Module, error) {
@@ -388,9 +388,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		var audit kernelmodule.Module
 		var auditErr error
 		if supplied.membership != nil && factories.buildAccountAuditWithMembership != nil {
-			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, authorizer)
+			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, supplied.commercialOwnerDB, authorizer)
 		} else {
-			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, authorizer)
+			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, supplied.commercialOwnerDB, authorizer)
 		}
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)

@@ -8,6 +8,15 @@ const reference = "0198d4f0-0000-7000-8000-000000000001";
 const committed = { eventType: "source_account.operation_committed", actor: "actor-2", time: "2026-09-12T00:00:00Z", objectType: "source_account", objectReference: reference, operation: "disable", result: "succeeded", relation: { type: "source_account_version", reference, version: "2" } };
 afterEach(() => vi.unstubAllGlobals());
 describe("account audit query boundary", () => {
+  it("preserves image point debits as exact strings and does not infer token usage", async () => {
+    const debit = { eventType: "account_ai_points.committed", actor: "actor-1", time: "2026-09-26T01:00:00Z", objectType: "image_generation", objectReference: "run-1", operation: "consume", result: "succeeded", relation: { type: "organization_resource_event", reference, version: "" }, points: { memberId: "grant-1", quantity: "9007199254740993", priceVersion: "price-1", intentId: "intent-1" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+image_ai_point_debits", items: [debit] })));
+    expect((await getAccountAudit(options)).items).toEqual([debit]);
+    for (const points of [{ ...debit.points, quantity: 12 }, { ...debit.points, quantity: "invalid" }, { ...debit.points, quantity: "0" }, { ...debit.points, quantity: "9223372036854775808" }]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, items: [{ ...debit, points }] })));
+      await expect(getAccountAudit(options)).rejects.toMatchObject({ code: "INVALID_UPSTREAM_RESPONSE" });
+    }
+  });
   it("accepts only the canonical committed AI usage projection without inventing an actor", async () => {
     const usage = { eventType: "account_ai_tokens.committed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "consume", result: "succeeded", relation: { type: "saas_usage_event", reference: reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "ai_tokens" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+saas_ai_usage_events", items: [usage] })));

@@ -17,6 +17,16 @@ function mount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); state.context = { user: { id: "u1" }, effectiveOrganization: { id: "B" }, roles: ["listingkit_viewer"], isLoading: false, isSwitching: false, selectionRequired: false, error: null, blockingError: null }; });
 describe("audit page", () => {
+  it("shows image AI points separately from token consumption in the existing table", async () => {
+    const debit = { eventType: "account_ai_points.committed", actor: "operator-B", time: "2026-09-26T01:00:00Z", objectType: "image_generation", objectReference: "run-1", operation: "consume", result: "succeeded", relation: { type: "organization_resource_event", reference, version: "" }, points: { memberId: "grant-1", quantity: "12", priceVersion: "price-1", intentId: "intent-1" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+image_ai_point_debits", items: [debit] })));
+    mount();
+    const table = await screen.findByRole("table", { name: "操作记录" });
+    expect(within(table).getByText("图片 AI 点数已扣：12")).toBeVisible();
+    expect(within(table).getByText("成员 grant-1 · 生成 run-1")).toBeVisible();
+    expect(within(table).getByText("operator-B")).toBeVisible();
+    expect(within(table).queryByText(/AI token 已结算/)).not.toBeInTheDocument();
+  });
   it("shows the exact committed usage quantity, canonical member and invocation without an invented actor", async () => {
     const usage = { eventType: "account_ai_tokens.committed", actor: "", time: "2026-09-25T01:00:00Z", objectType: "ai_invocation", objectReference: "inv-1", operation: "consume", result: "succeeded", relation: { type: "saas_usage_event", reference, version: "" }, usage: { memberId: "grant-1", quantity: 7, metric: "ai_tokens" } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...empty, source: "source_account_committed_operations+saas_ai_usage_events", items: [usage] })));

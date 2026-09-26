@@ -13,6 +13,7 @@ import (
 
 	allocation "task-processor/internal/accountallocation"
 	"task-processor/internal/authidentity"
+	"task-processor/internal/ledger/orgresource"
 	registry "task-processor/internal/sourceaccountregistry"
 )
 
@@ -62,6 +63,10 @@ type Query struct {
 	profile    AdditionalHistory
 	membership AdditionalHistory
 	usage      UsageHistory
+	points     ImagePointHistory
+}
+type ImagePointHistory interface {
+	ListImagePointDebits(context.Context, string, string, int, *orgresource.ImagePointAuditPosition) (orgresource.ImagePointAuditPage, error)
 }
 type Filter struct {
 	ActorSubject        string
@@ -92,6 +97,10 @@ func NewWithAuditSources(history History, allocationHistory AllocationHistory, p
 }
 
 func NewWithUsageAuditSources(history History, allocationHistory AllocationHistory, profile AdditionalHistory, membership AdditionalHistory, usage UsageHistory) (*Query, error) {
+	return NewWithImagePointAuditSources(history, allocationHistory, profile, membership, usage, nil)
+}
+
+func NewWithImagePointAuditSources(history History, allocationHistory AllocationHistory, profile AdditionalHistory, membership AdditionalHistory, usage UsageHistory, points ImagePointHistory) (*Query, error) {
 	query, err := NewWithAllocation(history, allocationHistory)
 	if err != nil {
 		return nil, err
@@ -99,6 +108,7 @@ func NewWithUsageAuditSources(history History, allocationHistory AllocationHisto
 	query.profile = profile
 	query.membership = membership
 	query.usage = usage
+	query.points = points
 	return query, nil
 }
 
@@ -117,6 +127,13 @@ type Event struct {
 	Result          string       `json:"result"`
 	Relation        Relation     `json:"relation"`
 	Usage           *UsageDetail `json:"usage,omitempty"`
+	Points          *PointDetail `json:"points,omitempty"`
+}
+type PointDetail struct {
+	MemberID     string `json:"memberId"`
+	Quantity     string `json:"quantity"`
+	PriceVersion string `json:"priceVersion"`
+	IntentID     string `json:"intentId"`
 }
 type UsageDetail struct {
 	MemberID string `json:"memberId"`
@@ -143,6 +160,7 @@ type positionWire struct {
 	Profile             *auditCursor      `json:"profile,omitempty"`
 	Membership          *auditCursor      `json:"membership,omitempty"`
 	Usage               *auditCursor      `json:"usage,omitempty"`
+	Points              *auditCursor      `json:"points,omitempty"`
 }
 
 type sourcePosition struct {
@@ -166,6 +184,7 @@ type cursorState struct {
 	profile    *AuditPosition
 	membership *AuditPosition
 	usage      *AuditPosition
+	points     *orgresource.ImagePointAuditPosition
 }
 
 func (q *Query) Read(ctx context.Context, limit int, cursor string) (Page, error) {
@@ -215,6 +234,13 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 			return Page{}, err
 		}
 	}
+	pointPage := orgresource.ImagePointAuditPage{}
+	if q.points != nil && filter.Kind == "" && filter.ResourceOperation == "" && filter.ProfileOperation == "" && filter.MembershipOperation == "" {
+		pointPage, err = q.points.ListImagePointDebits(ctx, identity.EffectiveOrganizationID, filter.ActorSubject, limit, state.points)
+		if err != nil {
+			return Page{}, err
+		}
+	}
 	history := registry.HistoryPage{}
 	if filter.ResourceOperation == "" && filter.ProfileOperation == "" && filter.MembershipOperation == "" {
 		request := registry.HistoryRequest{Limit: limit, After: state.source, ActorSubject: filter.ActorSubject, Kind: filter.Kind}
@@ -233,7 +259,7 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if !time.Now().Before(identity.TokenExpiresAt) {
 		return Page{}, registry.ErrAuthenticationRequired
 	}
-	if len(history.Items) > limit || len(allocationPage.Items) > limit || len(profilePage.Items) > limit || len(membershipPage.Items) > limit || len(usagePage.Items) > limit {
+	if len(history.Items) > limit || len(allocationPage.Items) > limit || len(profilePage.Items) > limit || len(membershipPage.Items) > limit || len(usagePage.Items) > limit || len(pointPage.Items) > limit {
 		return Page{}, registry.ErrUnavailable
 	}
 	type mergedEvent struct {
@@ -243,6 +269,7 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		profile    *AuditPosition
 		membership *AuditPosition
 		usage      *AuditPosition
+		points     *orgresource.ImagePointAuditPosition
 		kind       string
 		key        string
 	}
@@ -295,6 +322,13 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		p := AuditPosition{CreatedAt: item.Time.UTC().Truncate(time.Microsecond), Key: item.EventID}
 		merged = append(merged, mergedEvent{event: Event{EventType: "account_ai_tokens.committed", Time: item.Time.UTC(), ObjectType: "ai_invocation", ObjectReference: item.InvocationID, Operation: "consume", Result: "succeeded", Relation: Relation{Type: "saas_usage_event", Reference: item.EventID}, Usage: &UsageDetail{MemberID: item.MemberID, Quantity: item.Quantity, Metric: "ai_tokens"}}, usage: &p, kind: "usage", key: item.EventID})
 	}
+	for _, item := range pointPage.Items {
+		if item.OrganizationID != identity.EffectiveOrganizationID || item.EventID == "" || item.ActorID == "" || filter.ActorSubject != "" && item.ActorID != filter.ActorSubject || item.MemberID == "" || item.RunID == "" || item.IntentID == "" || item.PriceVersion == "" || item.Points <= 0 || item.CreatedAt.IsZero() {
+			return Page{}, registry.ErrUnavailable
+		}
+		p := orgresource.ImagePointAuditPosition{CreatedAt: item.CreatedAt.UTC().Truncate(time.Microsecond), EventID: item.EventID}
+		merged = append(merged, mergedEvent{event: Event{EventType: "account_ai_points.committed", Actor: item.ActorID, Time: item.CreatedAt.UTC(), ObjectType: "image_generation", ObjectReference: item.RunID, Operation: "consume", Result: "succeeded", Relation: Relation{Type: "organization_resource_event", Reference: item.EventID}, Points: &PointDetail{MemberID: item.MemberID, Quantity: strconv.FormatInt(item.Points, 10), PriceVersion: item.PriceVersion, IntentID: item.IntentID}}, points: &p, kind: "points", key: item.EventID})
+	}
 	sort.SliceStable(merged, func(i, j int) bool {
 		if !merged[i].event.Time.Equal(merged[j].event.Time) {
 			return merged[i].event.Time.After(merged[j].event.Time)
@@ -327,6 +361,9 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		if item.usage != nil {
 			nextState.usage = item.usage
 		}
+		if item.points != nil {
+			nextState.points = item.points
+		}
 	}
 	if len(allocationPage.Items) > 0 {
 		result.Source = "source_account_committed_operations+account_member_token_audit"
@@ -340,11 +377,14 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 	if len(usagePage.Items) > 0 {
 		result.Source += "+saas_ai_usage_events"
 	}
+	if len(pointPage.Items) > 0 {
+		result.Source += "+image_ai_point_debits"
+	}
 	// Each source is fetched independently. The merged page can therefore be
 	// truncated even when neither source returned its own page cursor; the
 	// cursor still needs to carry the last emitted position from both streams
 	// so the events beyond the merge boundary remain reachable.
-	if mergedTruncated || history.Next != nil || allocationPage.Next != nil || profilePage.Next != nil || membershipPage.Next != nil || usagePage.Next != nil {
+	if mergedTruncated || history.Next != nil || allocationPage.Next != nil || profilePage.Next != nil || membershipPage.Next != nil || usagePage.Next != nil || pointPage.Next != nil {
 		wire := positionWire{Organization: identity.EffectiveOrganizationID, Actor: filter.ActorSubject, Kind: string(filter.Kind), ResourceOperation: filter.ResourceOperation, ProfileOperation: filter.ProfileOperation, MembershipOperation: filter.MembershipOperation}
 		if nextState.source != nil {
 			wire.Source = &sourcePosition{Time: nextState.source.OccurredAt.UTC(), Account: nextState.source.AccountID, Version: strconv.FormatInt(nextState.source.Version, 10)}
@@ -360,6 +400,9 @@ func (q *Query) ReadFiltered(ctx context.Context, limit int, cursor string, filt
 		}
 		if nextState.usage != nil {
 			wire.Usage = &auditCursor{Time: nextState.usage.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.usage.Key}
+		}
+		if nextState.points != nil {
+			wire.Points = &auditCursor{Time: nextState.points.CreatedAt.UTC().Format(time.RFC3339Nano), Key: nextState.points.EventID}
 		}
 		data, err := json.Marshal(wire)
 		if err != nil {
@@ -382,7 +425,7 @@ func parseCursor(value, organization string, filter Filter) (cursorState, error)
 		return cursorState{}, registry.ErrInvalid
 	}
 	var wire positionWire
-	if json.Unmarshal(data, &wire) != nil || wire.Organization != organization || wire.Actor != filter.ActorSubject || wire.Kind != string(filter.Kind) || wire.ResourceOperation != filter.ResourceOperation || wire.ProfileOperation != filter.ProfileOperation || wire.MembershipOperation != filter.MembershipOperation || wire.Source == nil && wire.Allocation == nil && wire.Profile == nil && wire.Membership == nil && wire.Usage == nil {
+	if json.Unmarshal(data, &wire) != nil || wire.Organization != organization || wire.Actor != filter.ActorSubject || wire.Kind != string(filter.Kind) || wire.ResourceOperation != filter.ResourceOperation || wire.ProfileOperation != filter.ProfileOperation || wire.MembershipOperation != filter.MembershipOperation || wire.Source == nil && wire.Allocation == nil && wire.Profile == nil && wire.Membership == nil && wire.Usage == nil && wire.Points == nil {
 		return cursorState{}, registry.ErrInvalid
 	}
 	state := cursorState{}
@@ -428,6 +471,13 @@ func parseCursor(value, organization string, filter Filter) (cursorState, error)
 			return cursorState{}, registry.ErrInvalid
 		}
 		state.usage = &AuditPosition{CreatedAt: createdAt, Key: wire.Usage.Key}
+	}
+	if wire.Points != nil {
+		createdAt, err := time.Parse(time.RFC3339Nano, wire.Points.Time)
+		if err != nil || createdAt.IsZero() || wire.Points.Key == "" || len(wire.Points.Key) > 128 {
+			return cursorState{}, registry.ErrInvalid
+		}
+		state.points = &orgresource.ImagePointAuditPosition{CreatedAt: createdAt, EventID: wire.Points.Key}
 	}
 	// A canonical re-encoding rejects unknown/duplicate fields, alternate JSON
 	// spellings, trailing data and noncanonical encodings without retaining input.

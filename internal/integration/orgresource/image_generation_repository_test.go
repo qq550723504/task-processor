@@ -89,6 +89,28 @@ func TestImagePointsReserveBothLimitsAndSettleOriginalMonth(t *testing.T) {
 	again, err := r.FinalizeImageGeneration(ctx, fact.Intent.Identity)
 	require.NoError(t, err)
 	require.Equal(t, settled, again)
+	// Audit reads the one canonical debit, not the reserve or a reconstructed
+	// workflow outcome. Rebuilding the reader must preserve the same fact.
+	auditReader, err := NewGormRepository(db, TransactionConfig{})
+	require.NoError(t, err)
+	auditPage, err := auditReader.ListImagePointDebits(ctx, "org-1", "actor-1", 1, nil)
+	require.NoError(t, err)
+	require.Len(t, auditPage.Items, 1)
+	require.Equal(t, "member-1", auditPage.Items[0].MemberID)
+	require.Equal(t, "run-1", auditPage.Items[0].RunID)
+	require.Equal(t, "price-1", auditPage.Items[0].PriceVersion)
+	require.EqualValues(t, 12, auditPage.Items[0].Points)
+	require.Equal(t, fact.IntentID, auditPage.Items[0].IntentID)
+	require.Nil(t, auditPage.Next)
+	for _, scope := range [][2]string{{"org-2", "actor-1"}, {"org-1", "other-actor"}} {
+		empty, readErr := auditReader.ListImagePointDebits(ctx, scope[0], scope[1], 1, nil)
+		require.NoError(t, readErr)
+		require.Empty(t, empty.Items)
+	}
+	position := orgresource.ImagePointAuditPosition{CreatedAt: auditPage.Items[0].CreatedAt, EventID: auditPage.Items[0].EventID}
+	nextAudit, err := auditReader.ListImagePointDebits(ctx, "org-1", "actor-1", 1, &position)
+	require.NoError(t, err)
+	require.Empty(t, nextAudit.Items)
 	var old memberAIPointMonthRow
 	require.NoError(t, db.Where("organization_id = ? AND member_id = ? AND month_start = ?", "org-1", "member-1", fact.Intent.MonthStart).Take(&old).Error)
 	require.Zero(t, old.Reserved)
