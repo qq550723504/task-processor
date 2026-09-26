@@ -88,6 +88,9 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 	if a.slotEffectsV3 == nil || a.stagedSlotExecutor == nil || a.artifactStore == nil || a.publicationOwner == nil {
 		return v3Result, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
+	if err := a.reconcileGenerationBeforeExecution(ctx, input.RunID, input.Identity, input.PlanRevision, input.Slot.ID, input.Attempt); err != nil {
+		return v3Result, err
+	}
 	ctx, err = a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return v3Result, err
@@ -117,6 +120,10 @@ func (a *Activities) ExecuteSlotV3(ctx context.Context, input ExecuteSlotV3Activ
 		}
 		reservation.Policy = persisted.Policy
 		reservation.Quote = persisted.Quote
+		persisted, err = a.recoverSucceededGenerationOutput(ctx, executionInput, reservation, persisted)
+		if err != nil {
+			return v3Result, err
+		}
 	}
 	providerDispatchPossible := !hasPersistedEffect || persisted.Phase == imageagent.SlotEffectV3ProviderNotDispatched || (persisted.Phase == imageagent.SlotEffectV3ProviderClaimed && persisted.BudgetStatus == imageagent.SlotBudgetReleased)
 	if input.BudgetAuthorization && providerDispatchPossible {

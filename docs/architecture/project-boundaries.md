@@ -302,6 +302,29 @@ or RMB payment flows.
   `succeeded_terminal` commits reserved value to consumed, while
   `failed_terminal` or `cancelled_terminal` releases it. Non-terminal and
   `outcome_unknown` attempts remain reserved for owner-specific recovery.
+- The fixed `image_generation_v1` owner has an explicit cross-database exception
+  to that shared-transaction protocol (Issue #487 execution design §9.5). V3's
+  immutable generation intent and effect proof remain in the ImageAgent DB;
+  the resource adapter reads and verifies that exact fact before entering its
+  resource transaction. A stable resource Operation fence owns the immutable
+  reserve/terminal receipt, including a closed no-generation operation when a
+  late reserve has not yet arrived. Only a successfully acknowledged V3
+  prepared-to-dispatch CAS after receipt binding permits one provider POST;
+  readback never grants dispatch. Finalization derives commit/release only
+  from that owner's immutable provider effect, never workflow completion,
+  cancellation after dispatch, image download/validation, or human adoption.
+  UNKNOWN holds the original reservation; recovery cannot re-submit. This is
+  not a generic remote owner registration contract and does not relax the
+  shared-transaction requirement for other owners.
+- Image consumption uses the existing `ai_point` enterprise bucket. A separate
+  persistent member monthly limit constrains consumption, not a second balance
+  or token allocation. UTC calendar-month reserved/consumed counters and the
+  enterprise reserve/commit/release share the commercial transaction. Every
+  reservation retains its original member, month and immutable price/limit
+  version; rollover, limit edits or revocation never erase an older UNKNOWN
+  hold. Setting a limit does not mint resources. Runtime admission remains
+  closed until live member authorization, versioned price configuration and
+  this owner protocol are explicitly wired and verified.
 - Every positive available-balance flow uses the same bucket-then-debt lock
   order and debt-first allocator. Welcome credits and reservation releases both
   record gross credit, debt repaid, and net credit in the immutable Event; only

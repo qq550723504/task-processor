@@ -103,6 +103,13 @@ commercialDatabase:
   password: "$(tr -d '\r\n' < /secrets/commercial-runtime/commercial-reader-password)"
   database: ${commercial_database}
   max_connections: 4
+commercialOwnerDatabase:
+  host: 127.0.0.1
+  port: 5434
+  user: commercial_owner_runtime
+  password: "$(tr -d '\r\n' < /secrets/commercial-runtime/commercial-reader-password)"
+  database: ${commercial_database}
+  max_connections: 4
 openai:
   apiKey: controlled-local-only
   model: controlled-review

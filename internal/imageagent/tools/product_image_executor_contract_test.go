@@ -3,6 +3,8 @@ package tools
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"image"
 	"image/color"
@@ -61,6 +63,9 @@ func TestGenericMainQuotesOnlyOneSourceEditWithoutExtractOrReview(t *testing.T) 
 
 func TestGenericMainGeneratesOneSourceEditWithoutReviewerOrExtractor(t *testing.T) {
 	input := testProductImageExecutionInput()
+	input.SourceBytes = testTinyPNG(t)
+	digest := sha256.Sum256(input.SourceBytes)
+	input.SourceDigest = hex.EncodeToString(digest[:])
 	input.TargetPlatform = "product"
 	input.ImagePolicyContext = &imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
 	input.Slot.Role = imageagent.SlotRoleMain
@@ -75,6 +80,8 @@ func TestGenericMainGeneratesOneSourceEditWithoutReviewerOrExtractor(t *testing.
 	output, err := executor.GenerateQuotedSlot(context.Background(), input, quote)
 	require.NoError(t, err)
 	require.True(t, white.request.SourceOnly)
+	require.Equal(t, input.SourceBytes, white.request.SourceBytes)
+	require.Empty(t, white.request.Source.Bytes)
 	require.Equal(t, productimage.Candidate{}, white.request.Subject)
 	require.Equal(t, "source-1", white.request.Source.SourceAssetID)
 	require.Len(t, output.Assets, 1)
@@ -82,6 +89,13 @@ func TestGenericMainGeneratesOneSourceEditWithoutReviewerOrExtractor(t *testing.
 	require.EqualValues(t, 1, output.UsageReceipt.Actual.Images)
 	require.EqualValues(t, 1, output.UsageReceipt.Actual.ModelCalls)
 	require.Equal(t, 1, white.calls)
+	mutated := input
+	mutated.SourceBytes = append([]byte(nil), input.SourceBytes...)
+	mutated.SourceBytes[0] ^= 1
+	_, err = executor.GenerateQuotedSlot(context.Background(), mutated, quote)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	require.Equal(t, imageagent.ProviderRejectedBeforeEffect, imageagent.ProviderDispatchStateOf(err))
+	require.Equal(t, 1, white.calls, "changed source bytes must not dispatch under the old intent digest")
 	oldQuote := quote
 	oldQuote.Fingerprint = "prior-extract-render-review-quote"
 	_, err = executor.GenerateQuotedSlot(context.Background(), input, oldQuote)

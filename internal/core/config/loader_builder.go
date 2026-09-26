@@ -154,6 +154,10 @@ func BuildConfig(v *viper.Viper) *Config {
 			},
 		},
 		ImageAgent: ImageAgentConfig{
+			Generation: ImageAgentGenerationConfig{
+				PriceVersion:   v.GetString("imageagent.generation.priceVersion"),
+				PointsPerImage: v.GetInt64("imageagent.generation.pointsPerImage"),
+			},
 			Admission: ImageAgentAdmissionConfig{
 				Enabled:          v.GetBool("imageagent.admission.enabled"),
 				AllowedTenantIDs: getStringSlice(v, "imageagent.admission.allowedTenantIDs"),
@@ -248,6 +252,7 @@ func BuildConfig(v *viper.Viper) *Config {
 
 	cfg.Database = databaseConfigFromViper(v, "database")
 	cfg.CommercialDatabase = databaseConfigFromViper(v, "commercialDatabase")
+	cfg.CommercialOwnerDatabase = databaseConfigFromViper(v, "commercialOwnerDatabase")
 
 	if v.GetString("redis.host") != "" {
 		port := v.GetInt("redis.port")

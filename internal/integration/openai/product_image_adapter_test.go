@@ -127,15 +127,16 @@ func TestProductImageSourceOnlyDoesNotRetryAmbiguousTransport(t *testing.T) {
 			adapter, err := NewProductImageAdapter(config)
 			require.NoError(t, err)
 			source := productImageSource("source-1", "https://source.example/item.png")
-			source.Bytes, source.MediaType = productImagePNG(t, 2, 2), "image/png"
-			_, err = adapter.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, Product: productImageContext()})
+			sourceBytes := productImagePNG(t, 2, 2)
+			source.MediaType = "image/png"
+			_, err = adapter.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, SourceBytes: sourceBytes, Product: productImageContext()})
 			require.Error(t, err)
 			require.EqualValues(t, 1, calls.Load(), "an ambiguous image edit must never be automatically resubmitted")
 			require.Zero(t, redirects.Load(), "source-only requests must not inherit a redirect-allowing policy")
 			require.Same(t, &configuredClient, http.DefaultClient)
 			// A source-only override must not mutate this client's configured policy.
 			calls.Store(0)
-			_, err = images.EditImage(context.Background(), &ai.ImageEditRequest{Prompt: "ordinary edit", Image: source.Bytes, ImageContentType: "image/png"})
+			_, err = images.EditImage(context.Background(), &ai.ImageEditRequest{Prompt: "ordinary edit", Image: sourceBytes, ImageContentType: "image/png"})
 			require.Error(t, err)
 			expected := int32(4)
 			if strings.HasPrefix(outcome, "redirect") {
@@ -161,11 +162,12 @@ func TestProductImageSourceWhiteBackgroundIsOneEditAndRejectsBadOutput(t *testin
 			white, err := productimage.NewWhiteBackgroundCapability(adapter)
 			require.NoError(t, err)
 			source := productImageSource("source-1", "https://source.example/item.png")
-			result, err := white.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, Product: productImageContext()})
+			sourceBytes := productImagePNG(t, 2, 2)
+			result, err := white.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, SourceBytes: sourceBytes, Product: productImageContext()})
 			require.Equal(t, 1, images.editCalls)
 			require.Nil(t, chat.lastRequest, "no model Review")
-			require.Equal(t, source.URL, images.lastEdit.ImageURL)
-			require.Empty(t, images.lastEdit.Image, "no extracted intermediate input")
+			require.Empty(t, images.lastEdit.ImageURL)
+			require.Equal(t, sourceBytes, images.lastEdit.Image, "exact source bytes, no extracted intermediate input")
 			if !valid {
 				require.ErrorIs(t, err, productimage.ErrOutputValidation)
 				require.Empty(t, result.Asset.Bytes)
@@ -347,7 +349,8 @@ func TestSourceImageAdapterDoesNotRequireReviewClientOrConfiguration(t *testing.
 	config.ReviewMaxTokens, config.ReviewTokenUpperBound = 0, 0
 	adapter, err := NewProductImageAdapter(config)
 	require.NoError(t, err)
-	_, err = adapter.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: productImageSource("source-1", "https://source.example/item.png"), SourceOnly: true, Product: productImageContext()})
+	source := productImageSource("source-1", "https://source.example/item.png")
+	_, err = adapter.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, SourceBytes: productImagePNG(t, 2, 2), Product: productImageContext()})
 	require.NoError(t, err)
 	require.Equal(t, 1, images.editCalls)
 	_, err = adapter.Review(context.Background(), productimage.ReviewRequest{})

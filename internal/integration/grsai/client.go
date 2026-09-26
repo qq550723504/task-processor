@@ -112,6 +112,10 @@ type submitRequest struct {
 	Images         []string `json:"images,omitempty"`
 	Size           string   `json:"size,omitempty"`
 	ResponseFormat string   `json:"response_format,omitempty"`
+	AspectRatio    string   `json:"aspectRatio,omitempty"`
+	Quality        string   `json:"quality,omitempty"`
+	ReplyType      string   `json:"replyType,omitempty"`
+	UnifiedSync    bool     `json:"-"`
 }
 
 type submitResponse struct {
@@ -629,11 +633,26 @@ func (c *Client) submitGenerationRequestNoPoll(ctx context.Context, submitURL st
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("submit image generation request returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
-	body, err := io.ReadAll(resp.Body)
+	var reader io.Reader = resp.Body
+	const unifiedResponseLimit = 1 << 20
+	if req.UnifiedSync {
+		reader = io.LimitReader(resp.Body, unifiedResponseLimit+1)
+	}
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("read image generation response: %w", err)
 	}
+	if req.UnifiedSync && len(body) > unifiedResponseLimit {
+		return nil, errors.New("image generation response exceeds limit")
+	}
 	requestID := strings.TrimSpace(resp.Header.Get("X-Request-Id"))
+	if req.UnifiedSync {
+		var result submitResponse
+		if err := json.Unmarshal(body, &result); err != nil || result.Status != "succeeded" || result.ID == "" || result.Error != "" {
+			return nil, errors.New("synchronous image generation outcome unknown")
+		}
+		return &resultPayload{ID: result.ID, Status: result.Status, Results: result.Results, RequestID: requestID}, nil
+	}
 	var providerStatus submitResponse
 	if err := json.Unmarshal(body, &providerStatus); err == nil {
 		status := strings.ToLower(strings.TrimSpace(providerStatus.Status))

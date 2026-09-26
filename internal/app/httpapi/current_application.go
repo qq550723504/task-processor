@@ -83,8 +83,9 @@ type currentApplicationFactories struct {
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAudit               func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildMemberPointLimits          func(context.Context, *config.Config, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAudit               func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
 	buildAccountIdentity            func(*config.Config) (kernelmodule.Module, error)
 }
@@ -169,17 +170,18 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
 		buildCommercialBilling: buildCommercialBillingModule,
-		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
+		buildAccountAudit: func(sourceDB, commercialDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, resourceDB, authorizer, projectID)
 		},
-		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer, projectID)
+		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, resourceDB, authorizer, projectID)
 		},
 		buildAccountProfile: func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
 		buildAccountIdentity: func(cfg *config.Config) (kernelmodule.Module, error) {
 			return accountIdentityModule{client: zitadelruntime.NewSelfServiceClient(cfg.ListingKit.Zitadel.IssuerURL, &http.Client{Timeout: 5 * time.Second})}, nil
 		},
 		buildAccountAllocation: buildAccountResourceAllocationModule,
+		buildMemberPointLimits: buildMemberPointLimitModule,
 	}
 }
 
@@ -267,7 +269,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			if err != nil {
 				return nil, err
 			}
-			return buildAcquisitionImageModule(ctx, receipts, imageDB, workflows, cfg)
+			return buildAcquisitionImageModule(ctx, receipts, imageDB, supplied.commercialOwnerDB, workflows, cfg)
 		}
 	}
 	if supplied.membership != nil {
@@ -386,9 +388,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		var audit kernelmodule.Module
 		var auditErr error
 		if supplied.membership != nil && factories.buildAccountAuditWithMembership != nil {
-			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, authorizer)
+			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, supplied.commercialOwnerDB, authorizer)
 		} else {
-			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, authorizer)
+			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, supplied.commercialOwnerDB, authorizer)
 		}
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)
@@ -419,11 +421,22 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, allocation)
 	}
+	includeMemberPoints := factories.buildMemberPointLimits != nil && supplied.membership != nil && supplied.commercialOwnerDB != nil
+	if includeMemberPoints {
+		points, err := factories.buildMemberPointLimits(ctx, cfg, supplied.commercialOwnerDB, *supplied.membership, authorizer)
+		if err != nil {
+			return nil, fmt.Errorf("build member AI point limits: %w", err)
+		}
+		if points == nil {
+			return nil, errors.New("member AI point limits unavailable")
+		}
+		modules = append(modules, points)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil); err != nil {
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, includeMemberPoints); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -503,6 +516,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
+	if len(includeImage) > 1 && includeImage[1] {
+		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
+	}
 	for _, route := range admitted {
 		expected[route] = struct{}{}
 	}
@@ -554,6 +570,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, memberPointLimitBase) {
+			permission := authz.PermissionWorkbenchOrganizationMemberRead
+			if descriptor.Method == http.MethodPut {
+				permission = authz.PermissionWorkbenchOrganizationMemberManage
+			}
+			if descriptor.Module != memberPointLimitModuleName || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 15*time.Second || descriptor.Permission != permission || descriptor.Handler == nil {
+				return errors.New("member AI point limit route loses live permission boundary")
+			}
+		}
 		if descriptor.Path == accountAuditPath && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")
 		}

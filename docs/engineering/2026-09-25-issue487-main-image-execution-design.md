@@ -67,6 +67,8 @@ Figma精确动作节点仍只阻视觉定稿；非视觉接线与本次有界调
 
 ## 5. 计量必须来自真实生成调用
 
+**最新用户决定优先：按 Figma，图片按张配置消耗统一 AI 点数，唯一余额 owner 为 orgresource.ai_point，替代独立图片余额。调用前预留配置所需点数、生成成功扣除（不采用仍扣），确认未生成释放，UNKNOWN保留；不扣现有AI Token，真实token只审计。服务端价格缺失即 unavailable，不设1图=1点或月度默认额度，见§9.3。下述原token-owner调查仅保留历史依据，不再要求图像消费ai_tokens或token上界作为本片准入；撤回不写成PASS。**
+
 **当前接缝：原候选把canonical ai_tokens主要接在recordedReview。取消模型审图不能只是删除调用后留下无预算的图像生成，也不能继续为不存在的Review扣额度。** #498已移除旧预留并关闭未就绪的新生成入口；原Writer在后续主要PR继续实际生成的最小必要接线，不重建结算系统。[D8]
 
 先明确所选生成provider实际返回的usage字段、现有图像预算覆盖的单位、商业owner支持的单位，以及相应报价/预留/结算入口。复用已有合同；确有新经济政策才报告具体决定，不预设每张价格、tokens换算或套餐规则。
@@ -116,6 +118,121 @@ Figma精确动作节点仍只阻视觉定稿；非视觉接线与本次有界调
 旧“三次provider/Review7tokens”及“两次provider”只属于原流程。[E1] 未变化的授权/资产等证据可复用，但不能证明新次数、新计量或新用户链。受控2×2PNG不证明商品质量，不承诺成本/延迟减半。少量获准真实样例只核对当前保真与白底目标，不新建基准平台。
 
 接续交付留后续主要PR（Refs #487）：实际代码/测试与环境、结果及限制、正常启动/页面/保存/启停、剩余阻塞。#498不再接收提交。无新增业务Issue或文档合并前置；未授权后续PR合并、关闭Issue、部署、真实/共享数据或付费provider操作。
+
+## 9. GRSAI gpt-image 与统一 AI 点数增量（边界已独立 IMPLEMENTATION_READY，实施中）
+
+### 9.1 当前决定与已撤回草稿
+
+用户最终明确 **GRSAI / gpt-image-2.5 标准 1K / 复用已有密钥**。原本节 NanoBanana async-task 草稿尚未准入、没有实现，现在撤回，不作为待办或后续前置；不新增 accepted-task phase/job JSON/轮询恢复。历史调查仍可查 Issue，但不能覆盖新选择。#500 已合并，仅作历史基线；后续唯一主要 Draft PR #503、原唯一 Writer，三份视觉草稿保全。
+
+官方 [images/edits schema](https://qmy27nhsd9.apifox.cn/512807352e0.md)列出 gpt-image-2.5、quality=auto、multipart image 字符串示例、成功 usage 的 input_tokens/output_tokens/total_tokens。该文档不是实测，URL 示例不能证明文件上传不支持，也不能证明当前 image[] 文件字段兼容。此项作为parser适用协议的历史证据；当前选定§9.5F官方统一json/base64接口，不将未验证multipart格式列为唯一前置。**不直接把可变来源 URL 传 provider 替代已授权 exact source bytes**，不新增公网输入上传平台、协议 fallback 或本机 SSRF 例外；未经授权不付费探测。
+
+请求 schema 无 max_tokens/max_output_tokens 或总 token 上限，示例3569不构成上限；最新§9.3决定按张配置扣统一 AI 点数，token上限不再是该准入前置，也不按该样例收费。HTTP/worker gate继续因服务端图像价格、正式准入与恢复接线尚缺而关闭，不自定配置值。
+
+### 9.2 已准入的局部解析与最短现有路径
+
+复用现有 source-only ProductImageAdapter → route-bound multipart client 的零重试、禁 redirect POST replay 与 V3 UNKNOWN/bundle 恢复。同步响应没有可查询 task ID，不强加异步状态；响应丢失仍 UNKNOWN，无自动重发或换键重试。
+
+image-only decoder 同时接 JSON generation 和 multipart edit，明确解析 input/output/total，做存在性、非负、正 total、自洽与整数溢出检查，映射到现有规范化 Usage，并显式设置 ImageResponse.UsageKnown。缺失/无效不是零消耗，Known=false 且不暴露伪规范化 counters，图像响应仍可返回；不修改 chat 的 prompt/completion JSON，不猜第二 schema fallback。供应商声明/样例只用于受控 fixture，不冒充真实调用。
+
+后续观察接缝必须位于收到 typed response 之后、下载/解码/候选校验之前；否则真实用量会随坏图或下载错误丢失。观察随下节的次数事实统一设计，不单独铺持久字段；不能把目前内存解码通过写成durable/settled PASS。
+
+### 9.3 用户最新统一 AI 点数决定与待设计边界
+
+用户进一步明确：**按 Figma，图片按张计量、按服务端版本化价格扣统一 AI 点数；orgresource.ai_point 是唯一余额 owner，不扣现有 ai_tokens；真实图像 token 仅审计。** 此决定替代此前独立图片余额提案，不新增 image resource、月度默认额度或1图=1点换算。调用前预留本张图片配置所需点数，provider确认生成成功扣除；后续下载/校验失败、用户不采用仍扣。确认未生成才释放；UNKNOWN保留，不换键重新生成。没有query句柄不能虚构恢复。配置缺失明确 unavailable，配置数值不阻合同与合成测试，不以旧自然月/job mirror合同代替。
+
+因此原“为图像generation接ai_tokens结算/单独invocation observation字段/独立图片余额”的提案撤回，未实施。真实token解码仍有价值，但不能写成扣除AI Token或当前计量已完成。provider生成成功、程序有效、人工采用、AI点数提交与token审计是不同事实；不能把整个workflow失败/取消或坏图当作provider未生成的proof。
+
+下一次最小持久边界设计复用 internal/ledger/orgresource 与 internal/integration/orgresource 的 reservation/settlement及TransactionalReservationOwnerStore。同事务要求须先解决实际DB部署：当前V3 effect在ImageAgent DB，资源在commercial owner DB，不能直接传不同DB的gorm handle冒充共享事务。图像token观察随该次调用的权威effect事实一并保存，不重复建立独立账本或先铺一套观察字段。必须保持 canonical org/member/run/slot/attempt/route/config/request fingerprint、服务端价格版本/quantity不可变、同键异量冲突、幂等、UNKNOWN held与现V3 bundle恢复；不得复活product_image_jobs_succeeded的legacy mirror。
+
+现GormInvocationRecorder的Succeeded立即settle、Failed释放、UsageObservedFailed仅Review，不能通过借名调用达成新图片规则。现ReserveSlotProviderV3创建即provider_claimed，但资源owner的NotStarted只能表示尚未派发，不能仅凭该phase重新预留/派发。§9.5已取得IMPLEMENTATION_READY并实现独占dispatch证明、reserve后submit前崩溃、late ACK、终局effect单调保存与settle ACK恢复；恢复只补原事实，未知不重发。HTTP/worker没有默认图片价格：current manifest显式generation价格与资源owner权限齐备才接现Start；实际组织凭据、成员限额/余额和唯一dispatch仍由worker权威核验。未配置试用实例仍关闭，代码接线不等于已部署/可普遍使用。
+
+### 9.4 当前可交付与停止线
+
+image-only token decoder、provider no-replay、§9.5F统一json/base64 adapter及exact source bytes的tools/port链已有受控证据。现worker/资源/恢复、成员月限API/BFF与账户扣点只读投影已接线，完整PG/Temporal/浏览器组合仍待执行，不以局部fixture声称产品验收。没有直接传可变来源URL或live/付费探测。同步派发不明沿原UNKNOWN，不建设异步任务状态/查询平台。
+
+后续按张AI点数与token审计统一设计至少验证：配置缺失不派发；按固定价格原子拒超额；成功只commit原预留一次；不采用不退款；confirmed-no-generation才release；response loss/DB ACK loss/取消/restart/同身份重放均不重发或重计；异org/member/fingerprint/价格版本冲突；可信usage在下载/校验失败前可保全但不扣ai_tokens。范围沿现owner与已有测试，不另建验收工具。未执行真实provider/PG/Temporal/browser的项仍NOT_RUN。
+
+## 9.5 本次具体方案：固定 image owner 的跨库不可变回执（IMPLEMENTATION_READY）
+
+本节为已准入待完成实现的方案，不是已有能力/PASS。A–D/F高风险检查及E月限额增量检查均已给出IMPLEMENTATION_READY；[原检查记录](https://github.com/qq550723504/task-processor/pull/503#issuecomment-5844151392)保留原阶段范围，E后续检查由同Reviewer确认，不冒称产品验收。当前 `image-db:5437/image_agent` 与 commercial DB 是不同容器数据库，`worker/dependencies.go` 分别建连接。`orgresource.TransactionalReservationOwnerStore` 的同事务锁 owner/Bind/terminal-proof 不能直接满足；现生产也没有 ReservationAuthorizer 或已注册的 reservation owner。最小改动采用下述**仅 image_generation_v1** 的显式 receipt-based 入口，保留其他 owner 原共享事务合同。不迁库，不复制 V3 row，不新余额表、Saga、runner 或定时扫描服务。
+
+### A. 唯一事实与固定身份
+
+- ImageAgent V3 attempt 是生成意图、dispatch fence、provider效果和真实token审计的唯一 owner。现 effect row 增加一个受限 generation JSON fact（schema version；immutable intent；reservation binding；dispatch state；immutable outcome；settlement receipt reference），不新建通用 invocation owner。原 staging/publication phase 独立，不能用它覆盖生成效果。
+- `intent_id` 固定来自 org/run/planRevision/slot/attempt（不得把变化的 quote hash 放入该主键逃避冲突）。fingerprint 包含 actor/canonical member、exact Catalog version/publication/hash、source bytes digest、prompt/policy version、route/provider/model/credential config identity（不含secret）、统一协议/1K/quality、服务端 price version 与正整数 AI point quantity、resource=ai_point。价格相同但版本不同仍冲突；原attempt不在重放时重新报价。
+- 配置 owner 是现运行配置装配的版本化 image price 小合同：明确 provider/model/resolution/operation 与 points；没有配置或不匹配就是 unavailable。配置值不来自浏览器/Figma样例；本片不新增价格管理UI、月度额度、图片资源或token换算。
+- 资源 owner 仍只使用现 `saas_organization_resource_operations/reservations/buckets/events/audit_logs`。资源 operation 的不可变请求摘要、receipt/evidence hash 是其扣占依据，不是第二份可变 V3 状态。generation fact 只保存资源receipt身份/摘要，不复制余额作为authority。
+
+### B. 窄入口与现合同的精确替代
+
+在 `internal/integration/orgresource` 显式构造 `ImageGenerationReservationExecutor`，仅注册常量 image_generation_v1 + ai_point；继续消费 ledger 的正quantity、fingerprint、余额/负债规则。它接一个**内部 owner reader**，只按身份读取 V3 已持久化 intent/不可逆 terminal proof；API不收proof/outcome，不能靠caller拼 succeeded。reader通过ImageAgent owner方法读取，其跨模块桥在 integration/app装配，不把商业gorm tx传ImageAgent DB。
+
+窄入口为 `ReserveImageGeneration` / `ReadImageGenerationReservation` / `FinalizeImageGeneration`。普通 `ExecuteReservation`、`ExecuteSettlement` 和 TransactionalReservationOwnerStore 不放松。资源写事务内沿原 bucket/debt顺序、原event/audit/immutable result持久化；提取现账务计算/写入helper复用，禁止第二套balance算法。
+
+所有三个写/封闭动作使用固定 org+resourceOperationID 的**现 operation row**作资源侧串行 fence：在事务内 insert-on-conflict 后 FOR UPDATE，校验固定请求fingerprint；不要跨网络/数据库持有该锁。读取不可变owner证明在锁外完成，入事务后校验proof身份和digest。可变“目前未开始”的远端快照不足以授权释放；只有已CAS成不可逆 no_generation/succeeded 的proof可终结。
+
+`FinalizeImageGeneration` 在尚无 reservation 时同样必须封闭该 operation：只接受 owner 的不可逆 no_generation proof，写现 operation 的 terminal rejected/closed immutable receipt（不改变余额、不伪造零quantity事件）。随后晚到的 Reserve 必须返回相同closed结果而不能预留。若Reserve先提交，则Finalize释放其原reservation。这不是新恢复owner，而是关闭“cancel读到不存在后并发reserve晚提交”的孤立扣占窗口。窄reader理解本owner的closed receipt；普通 reservation replay 语义不变。
+
+`docs/architecture/project-boundaries.md §3.10` 必须与该实现同批更新：默认同tx规则保留，仅此固定image owner以不可变intent/terminal proof + 双方各自CAS + 资源operation fence替代；禁止其他owner自动采用。现 `SettlementService` 的caller不能选择outcome原则保留；no_generation映射release，provider_succeeded映射commit，未知不能结算。此固定owner合同例外已通过本次独立IMPLEMENTATION_READY，随实现同步§3.10，不适用于其他owner。
+
+### C. 唯一派发顺序
+
+1. 当前 actor/org/canonical member live授权、exact source读取/bytes digest、资源消费授权、route与版本化价格核实全部成功；缺依赖在provider前拒绝。V3原slot预算仍独立，不把AI点数当images/tokens单位。
+2. V3独占claim后 `PrepareGenerationIntent` 在本库CAS保存完整intent，dispatch=`prepared`。这是尚未派发的证明，**不是**原phase=provider_claimed的推断。只有该新generation fact合同的当前单main-slot使用此路径；旧记录不做兼容迁移/自动放行。
+3. 调用资源 Reserve：owner reader核intent，资源事务得到不可变receipt。ACK丢失以原operation/intent查询或原键Reserve重放；不得换operationID。回读校验org/ownerAttempt/resource/quantity/fingerprint/state=reserved后，V3 CAS绑定reservation ID及receipt hash。绑定失败不调provider，重试只补原binding。
+4. 再次live授权和route/config核验；若已取消/失权/配置漂移，V3 `prepared → no_generation` CAS不可逆，Finalize原资源operation，不能重发。否则 `BeginGenerationDispatch` 将prepared+exact binding CAS为`dispatch_started`，**只有CAS获胜且成功ACK的调用栈**可做一次POST。CAS ACK不明，即使回读是dispatch_started也不授权发送；保留UNKNOWN。不会发放可被新activity重复消费的持久“许可”。
+5. adapter持有同intent observer，在收到typed成功payload后、任何下载/解码前，`RecordGenerationOutcome` CAS写provider_succeeded、provider request id（有则存）、结果引用摘要、单张原结果locator（HTTPS、公网URL校验、最多4096字节、无userinfo/fragment；非法/空/超限则明确invalid_result且仍为生成成功）和可信token（有则Known=true，无则明确unknown）。locator仅在worker私有V3事实中，保留原签名query、不进入HTTP/Account Audit/日志/Temporal DTO。本次官方wire没有usage合同，不填0。成功fact持久化后可以先Finalize commit点数，再继续下载/原bundle/staging；任何后处理失败不释放。ExecuteSlotV3的claimed重放与RecoverEffectV3的unknown提前返回前，在live授权和exact Catalog核验后优先恢复原bundle，缺失才对原locator使用现安全Fetcher/解码限额GET→现Prepare/Preserve；同V3事务核验原success/身份/quote/manifest并单调进入staging_prepared，绝不回到claimed或重新POST。此路径不解析当前价格/凭据、不重新取来源；撤权后财务finalizer仍只补原结算、不能GET。原locator过期/坏图只使结果不可恢复，不反转成功扣点、不重新生成。
+6. 已证明provider未调用的前置失败可写no_generation；普通HTTP错误、timeout、EOF、取消、JSON错误、running状态均不凭推测释放。当前没有已核“失败响应一定无生成”的可信映射时保守UNKNOWN。dispatch_started之后只能同一次observer的可信结果推进；late成功可由UNKNOWN单调到succeeded，但不能由no_generation翻转。对已dispatch路径不会由恢复线程制造no_generation。
+7. Finalize只读不可逆proof、按原资源identity原子commit/release，V3保存其receipt引用。同键同proof幂等、异proof/quantity/quote冲突。资源ACK丢失只回读/补Finalize，不回provider。经济终局和Asset批准完全分开。
+
+### D. Execute/Recovery/取消并发的消费规则
+
+现 `ExecuteSlotV3` 的“claimed但非首次→只查bundle”，以及 `RecoverEffectV3` 的“providerUnknown直接block”，均在当前固定image owner分支先消费上述generation fact，不只加列。
+
+| 持久状态/故障点 | 原attempt恢复动作；禁止项 |
+| --- | --- |
+| intent未提交 | 无资源预留、无provider；原请求可按现幂等合同重进 |
+| prepared，Reserve/Bind响应丢失 | 原资源operation回读/重放并补绑定；自动恢复不派发。若取消/恢复选择终止，先CAS no_generation，再Finalize封闭operation，即使原Reserve晚到也不能留下扣占 |
+| 原执行仍活跃 vs 恢复终止prepared | BeginDispatch与no_generation竞争同一V3 CAS；只允许一个获胜。失去CAS者绝不POST |
+| dispatch_started或其ACK不明，无terminal fact | UNKNOWN、保留原预留；无新POST、无虚构query、无定时释放 |
+| 成功响应已收到但V3 outcome写失败 | 同调用栈在bounded detached finalization内重试同payload；若仍失败/进程丢失则UNKNOWN held，不能据内存成功无持久proof收费/释放；不重生成 |
+| provider_succeeded，settle/下载/bundle失败 | 先按原proof补原结算，再恢复现bundle/已有结果的安全下载；坏URL/坏文件仍不批准。不得让MarkBudgetUnknown或phase迁移清除success/token事实 |
+| no_generation，资源尚不存在/ACK丢失 | Finalize封闭原operation或释放已存在reservation，回读确认；不得把“未读到reservation”当已安全结束 |
+| 已terminal，workflow取消/用户不采用 | 只恢复对应commit/release回执，不改变provider效果，不重复生成 |
+
+恢复继续由现 Temporal effect recovery workflow/activity负责，有界重试/原身份人工redrive沿现入口，不新scanner。为经济finalization提供只接受已存在V3 identity的内部窄恢复分支：撤权不能触发新reserve+dispatch/读图，但不应阻止既有terminal proof的后台结算/释放；调用者为显式装配的原effect owner，不是租户HTTP可自选outcome。外部GET/Approve仍实时权限。prepared终止仅作资源operation封闭，不需重新给撤权actor分配权限或资金。
+
+### E. 已批准成员月度消费上限：增量设计 IMPLEMENTATION_READY
+
+生产已有 `OrganizationExecutionAuthorizer` 使用 exact active grant、AuthorizationID==MemberID、组织未停用及 image_agent.write；复用它，不新IAM/permission。该permission授予operator/admin，但仍不能省略成员被管理员分配资源的约束。`accountallocation.MetricToken` 是成员token额度，不是AI点数分配；商业purchase/topup权限是购买，不偷换模型消费。Figma 1636:371/431:4158要求管理员分配给成员，统一企业余额并未批准全员无分配共享消耗。
+
+用户已批准“补齐成员月度消费上限，按 Figma”，数值由管理员设置，企业余额不清零。该limit是使用企业AI点数的约束，不是成员钱包/余额。现 `accountallocation.QuotaReader.ReadTokenQuota`、`Service.SetTarget/Snapshot/Consume`强制权益window，DTO同时带MetricToken和WindowStart/End；抽取其中仍有效的成员校验/版本/幂等交互，但不wrap Token Service、不换label/metric、不迁移旧表或使用saas_usage计点。
+
+**事实拆分与月份。** 在 `orgresource` owner 增加成员限额配置 row（org/member主键，monthly_limit、version、active、updated_by/at）及月计数 row（org/member/month_start主键，reserved、consumed）。配置不作为credit，不累加到bucket，不要求所有成员limit之和等于企业余额；每次调用同时满足个人remaining与企业available。未配置或limit=0即不能新消费，不填100等样例。时区复用仓库已核UTC自然月约定（`usage_ledger.go:canonicalUsagePeriodKey`的UTC YYYY-MM及商业read的UTC月[start,end)），只复用时间约定、不接其Token ledger。服务端在V3 intent首次持久化时固定month_start/end和当时配置version，进入fingerprint与原资源reservation；浏览器不能传月，跨月同key回放不改月/价格/member。
+
+**配置命令与下限。** 现account边界新增明确AI点数 `ReadMemberAIPointLimits` / `SetMemberAIPointMonthlyLimit`，复用现管理员权限、live active canonical成员、ExpectedVersion+IdempotencyKey；服务端决定current UTC月，管理操作identity绑定首次月份，原key跨月返回原immutable结果而不再次修改。Target允许0，但不得低于current month consumed+reserved；旧月UNKNOWN的reserved不释放、不抹计数，旧月不因新配置迁移。配置持续用于后续月份，新月计数从无记录开始0（不是赠送余额）；当前月提高/降低受下限约束。成员撤权立即阻新派发，不删除配置/原月counter/reservation；恢复结算原消费仍有效。存储错误/串org/member fail closed。
+
+**原子扣占与锁序。** 新reserve在commercial同tx：image operation fence → member config行 → 原月counter行 → enterprise bucket → 必要debt；创建counter insert-on-conflict后锁行。核intent配置version等于当前version，current month等于intent月且未过期、active、limit-(consumed+reserved)>=price、企业available>=price，才同时增加成员reserved与企业reserved并写原资源reservation/event/audit。配置version变更或月已过不对原prepared intent重报价/切月，返回明确不可派发，由原no_generation关闭；另发用户新操作才用新值。相同已提交reservation的回读不再以新version拒绝。
+
+Finalize复用operation fence → reservation → 原月counter → bucket → debt；配置更新不锁reservation，因此无反向环。commit成员reserved-=quantity/consumed+=quantity；release仅reserved-=quantity；企业balance沿原算法同tx变动。month/member/quantity取原reservation，不取当前配置/当前月。member counter不足/事实冲突整tx失败，UNKNOWN在原月持续reserved；不能靠次月分配释放。资源receipt需包含member、原月、price/config version与intent fingerprint，V3绑定逐项核对；原terminal proof决定结果，caller不能提交charge outcome。
+
+**持久化/范围。** 约2张commercial owner表（limit配置、月counter）及原resource reservation新增member/月/config绑定字段，限额修改复用现operation/audit不可变幂等记录；没有第二余额表。约6–9个后端文件+4–6个定向测试，成员分配页面/现BFF按Figma接真实AI点数月上限约3–5文件，总约13–20新增范围文件。加A–D/F预计总28–45文件，超过30提示线，仍是本次单图生成一个结果/主要PR，明确新增商业事务与成员限额高风险边界，不机械拆PR。实现若实际规模进一步超过生产行数阈值再报告。
+
+**UI与验证。** 实施UI前Writer自己加载Figma skill并读取1636:371/431:4158，不以转述当验收；只当前AI点数月度栏与必要设置，明确UTC月界，原Token不冒名、店铺/数据预算不扩。生产准入须已有live image_agent.write、exact member、月limit与企业余额全满足；current HTTP gate待该链完整才开放。针对性TDD含未配置/成员不足/企业不足0provider，reserve与降limit并发，跨月原key和UNKNOWN，撤权后不新消费而原proof可结算，反向org/member篡改、版本/幂等冲突；用原PG/Temporal设施不建runner。Figma2061:362/3395:389仍非单图生成对照全链，不扩八图菜单。
+
+### F. 当前选定的正式wire与代码落点
+
+已核官方 [gpt-image统一接口](https://qmy27nhsd9.apifox.cn/452409160e0)：POST /v1/api/generate 支持 gpt-image-2.5、images base64、aspectRatio=1024x1024、quality=auto、replyType=json。因此选定复用现grsai exact-byte materialization与no-replay，**不走未验证image[]或双协议fallback**。仅此route显式构造这些字段，不能混用nano的imageSize或现size/response_format；返回running仅UNKNOWN，本片不加accepted-task/query状态。既有其他合法消费者默认poll/retry语义不变。成功payload要在 `downloadGeneratedImages` 前交observer，失败不能丢typed事实；provider输出下载继续原public URL SSRF限制。
+
+- `internal/imageagent/slot_effect_v3.go`、`store/records.go`、`store/slot_effect_v3_{gorm,memory}.go`：generation fact校验、intent/binding/dispatch/outcome/receipt CAS，原row安装与权限只增必要字段，无新表owner。
+- `internal/imageagent/temporal/activities_execution_v3.go`、`activities_recovery_v3.go`：消费同attempt状态、禁止replay派发、bounded finalization/原recovery接入。
+- `internal/ledger/orgresource` 与 `internal/integration/orgresource`：仅固定image owner receipt合同、现operation fence/closed receipt、复用原reserve/settle账务事务；不改变其他owner的同tx接口。
+- `internal/integration/grsai/client.go`、现ProductImage adapter/port：正式json字段、exact bytes、no-poll单次路径、后处理前typed outcome observer；observer错误仍UNKNOWN，不重POST。
+- `internal/app/worker/imageagent/dependencies.go`、现current配置：显式price/授权/owner reader装配及fail-closed；runtime grant按实际SQL最小修改，普通启动只Verify，不操作当前保留实例。
+- `docs/architecture/project-boundaries.md §3.10`：随准入后的实现更新固定owner例外；本节之外不另开设计链。
+
+预计涉及上述5个既有子系统、两个DB和外部副作用，属架构敏感增量；A–D/F加已批准E预计28–45个范围文件（含定向测试），超30文件风险已报告并在本次高风险检查覆盖，不机械拆PR。必要TDD：价格缺失0dispatch；相同attempt/异quote冲突；两个DB真实独立的Reserve ACK/bind失败、取消vs晚Reserve、dispatch CAS并发/ACK丢失；success后坏图仍commit；UNKNOWN held；Finalize ACK丢失/restart同键不重复余额变化；失权及跨org/member拒绝；与其他owner同tx/普通provider语义回归。复用现PG/Temporal/httptest测试，不新增验收工具；无live调用/部署授权。
 
 ## 来源
 

@@ -159,6 +159,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			cfg := currentApplicationTestConfig()
 			sourceDB, commercialDB := &gorm.DB{}, &gorm.DB{}
+			resourceDB := &gorm.DB{}
 			factories := currentApplicationFactories{
 				buildWorkbench: func(*config.Config, *logrus.Logger) (workbenchContextBuildResult, error) {
 					dependencies := newRouteAuthDependencies()
@@ -170,9 +171,9 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 				buildCommercial: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 				},
-				buildAccountAudit: func(got, _ *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-					if got != sourceDB || authorizer == nil {
-						t.Fatal("audit did not reuse source pool/authorizer")
+				buildAccountAudit: func(got, gotCommercial, gotResource *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+					if got != sourceDB || gotCommercial != commercialDB || gotResource != resourceDB || authorizer == nil {
+						t.Fatal("audit did not reuse its distinct owner pools/authorizer")
 					}
 					if mode == "error" {
 						return nil, errors.New("audit construction failed")
@@ -184,7 +185,7 @@ func TestCurrentApplicationAuditFactoryAdmission(t *testing.T) {
 					return currentAuditTestModule{inner: accountAuditModule{query: query}, mode: mode}, nil
 				},
 			}
-			server, err := buildCurrentApplication(context.Background(), sourceDB, commercialDB, cfg, logrus.New(), factories)
+			server, err := buildCurrentApplication(context.Background(), sourceDB, commercialDB, cfg, logrus.New(), factories, WithCommercialOwnerDatabase(resourceDB))
 			if mode == "enabled" {
 				if err != nil || server == nil {
 					t.Fatalf("audit assembly: %v", err)

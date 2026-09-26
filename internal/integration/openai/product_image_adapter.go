@@ -148,7 +148,9 @@ func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request
 		if err := a.authorize(request.Authorization, productimage.SourceWhiteBackgroundOperation, 1); err != nil {
 			return productimage.Candidate{}, err
 		}
-		candidate, err := a.editOne(ctx, request.Source, request.Source, request.Product, productimage.RoleWhiteBackground, productimage.SourceWhiteBackgroundOperation, sourceWhiteBackgroundPrompt)
+		input := request.Source
+		input.Bytes = append([]byte(nil), request.SourceBytes...)
+		candidate, err := a.editOne(ctx, input, request.Source, request.Product, productimage.RoleWhiteBackground, productimage.SourceWhiteBackgroundOperation, sourceWhiteBackgroundPrompt)
 		if err == nil {
 			candidate.Metadata.PromptVersion = sourceWhiteBackgroundPromptVersion
 		}
@@ -473,6 +475,13 @@ func (a *ProductImageAdapter) editOne(ctx context.Context, input, source product
 		ResponseFormat: "b64_json", N: 1, Size: "auto",
 	}
 	if operation == productimage.SourceWhiteBackgroundOperation {
+		if len(request.Image) == 0 {
+			return productimage.Candidate{}, productimage.ErrInputInvalid
+		}
+		// The current source-only operation consumes the authorized exact bytes.
+		// Keep source URL provenance on the candidate, never send it as an
+		// alternate mutable provider input.
+		request.ImageURL = ""
 		zero := 0
 		request.MaxRetries = &zero
 	}

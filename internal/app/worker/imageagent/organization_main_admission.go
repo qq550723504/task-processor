@@ -9,19 +9,26 @@ import (
 // organizationMainSlotExecutor is the current #487 generation admission seam.
 // The cancelled Extract/Render/Review flow has no production consumer. In
 // particular, this executor must never reserve tokens for a future Review.
-// Generation remains closed until its own metering contract is available.
+// Only explicit point-priced source generation can replace the closed seam.
 type organizationMainSlotExecutor struct {
-	delegate imageagent.BudgetedStagedSlotExecutor
+	delegate   imageagent.BudgetedStagedSlotExecutor
+	generation *imageagent.GenerationExecution
 }
 
 func (e organizationMainSlotExecutor) QuoteSlot(ctx context.Context, input imageagent.SlotExecutionInput, policy imageagent.BudgetPolicy) (imageagent.SlotUsageQuote, error) {
+	if e.generation != nil {
+		return e.generation.QuoteSlot(ctx, input, policy)
+	}
 	if e.delegate == nil {
 		return imageagent.SlotUsageQuote{}, imageagent.ErrValidation
 	}
 	return e.delegate.QuoteSlot(ctx, input, policy)
 }
 
-func (organizationMainSlotExecutor) GenerateQuotedSlot(context.Context, imageagent.SlotExecutionInput, imageagent.SlotUsageQuote) (imageagent.SlotGeneratedOutput, error) {
+func (e organizationMainSlotExecutor) GenerateQuotedSlot(ctx context.Context, input imageagent.SlotExecutionInput, quote imageagent.SlotUsageQuote) (imageagent.SlotGeneratedOutput, error) {
+	if e.generation != nil {
+		return e.generation.GenerateQuotedSlot(ctx, input, quote)
+	}
 	return imageagent.SlotGeneratedOutput{}, &imageagent.ProviderDispatchError{State: imageagent.ProviderNotDispatched, Err: imageagent.ErrBudgetQuoteUnavailable}
 }
 

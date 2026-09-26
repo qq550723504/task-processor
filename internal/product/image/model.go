@@ -59,6 +59,7 @@ type RenderRequest struct {
 	// SourceOnly requests one edit of Source, not an extracted-subject render.
 	// Subject must be absent in this mode.
 	SourceOnly    bool
+	SourceBytes   []byte `json:"-"`
 	Product       ProductContext
 	Authorization *UsageQuote
 }

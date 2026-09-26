@@ -55,7 +55,8 @@ func persistedSlotEffectV3RepositoryError(err error) error {
 
 func slotExecutionInputV3(input ExecuteSlotV3ActivityInput) imageagent.SlotExecutionInput {
 	return imageagent.SlotExecutionInput{
-		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		OrganizationIdentity: input.Identity,
+		RunID:                input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: input.IdempotencyKey, AssetCatalog: input.AssetCatalog, ProductContext: input.AssetCatalog.ProductContext,

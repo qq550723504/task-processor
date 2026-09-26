@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 )
 
 func TestProductionRepositoryCompositionHasNoMemoryOrGenericFallbackCalls(t *testing.T) {
@@ -38,7 +40,7 @@ func TestProductionRepositoryCompositionHasNoMemoryOrGenericFallbackCalls(t *tes
 						return true
 					}
 					name := calledFunctionName(call.Fun)
-					if name == "buildRepositoryWithFallback" || strings.HasPrefix(name, "NewMem") {
+					if forbiddenRepositoryConstructor(name) {
 						violations = append(violations, filepath.Base(filename)+":"+name)
 					}
 					return true
@@ -48,6 +50,34 @@ func TestProductionRepositoryCompositionHasNoMemoryOrGenericFallbackCalls(t *tes
 	}
 	if len(violations) > 0 {
 		t.Fatalf("production repository composition calls forbidden fallbacks: %v", violations)
+	}
+}
+
+func forbiddenRepositoryConstructor(name string) bool {
+	if name == "buildRepositoryWithFallback" || strings.HasPrefix(name, "NewMemory") || name == "NewMem" {
+		return true
+	}
+	if !strings.HasPrefix(name, "NewMem") {
+		return false
+	}
+	// Mem is an abbreviation only at a word boundary, not in Member.
+	next, _ := utf8.DecodeRuneInString(strings.TrimPrefix(name, "NewMem"))
+	return unicode.IsUpper(next) || unicode.IsDigit(next) || next == '_'
+}
+
+func TestRepositoryConstructorGuardRespectsWordBoundary(t *testing.T) {
+	for name, want := range map[string]bool{
+		"NewMemory": true, "NewMemoryRepository": true, "NewMem": true,
+		"NewMemRepository": true, "NewMemStore": true,
+		"buildRepositoryWithFallback": true,
+		"NewMemberLimitService":       false, "NewMembershipService": false,
+		"NewGormRepository": false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := forbiddenRepositoryConstructor(name); got != want {
+				t.Fatalf("forbidden(%q) = %v, want %v", name, got, want)
+			}
+		})
 	}
 }
 

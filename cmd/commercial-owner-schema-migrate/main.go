@@ -125,6 +125,7 @@ func commercialRuntimeGrants() []string {
 		`GRANT SELECT, INSERT ON TABLE public.commercial_quotes, public.commercial_order_items TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_orders TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_organization_resource_buckets, public.saas_organization_resource_operations, public.saas_organization_resource_reservations, public.saas_organization_resource_debts TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_member_ai_point_limits, public.saas_member_ai_point_months TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.saas_organization_resource_source_claims, public.saas_organization_resource_events, public.saas_organization_resource_audit_logs TO commercial_owner_runtime`,
 		`GRANT USAGE, SELECT ON SEQUENCE public.saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
 		`GRANT SELECT ON TABLE public.saas_plans, public.saas_plan_modules TO commercial_owner_runtime`,
