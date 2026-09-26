@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AccountReadError } from "./account";
 import { readBoundedStrictJSON } from "./strict-json-response";
 
-export function safeVerificationURL(value: string): boolean {
+function safeVerificationURL(value: string): boolean {
   try { const u = new URL(value); return value.length <= 8192 && u.protocol === "https:" && !u.username && !u.password && !u.port && !u.hash && ["qian.tencent.cn", "qian.tencent.com", "ess.tencent.cn", "essurl.cn"].some(h => u.hostname === h || u.hostname.endsWith(`.${h}`)); } catch { return false; }
 }
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
