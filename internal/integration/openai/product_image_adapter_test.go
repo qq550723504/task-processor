@@ -10,8 +10,12 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"task-processor/internal/ai"
 	productimage "task-processor/internal/product/image"
@@ -79,6 +83,68 @@ func TestProductImageAdapterRendersWhiteBackgroundFromInlineSubjectWithOriginalP
 	require.Equal(t, "image/png", images.lastEdit.ImageContentType)
 	require.Equal(t, source.URL, result.Asset.SourceURL)
 	require.Equal(t, source.SourceAssetID, result.Asset.SourceAssetID)
+}
+
+type sourceEditTransportClient struct{ *Client }
+
+func (c sourceEditTransportClient) EditImageWithRoute(ctx context.Context, request *ai.ImageEditRequest, _ ImageRouteSelection) (*ai.ImageResponse, error) {
+	return c.EditImage(ctx, request)
+}
+
+func TestProductImageSourceOnlyDoesNotRetryAmbiguousTransport(t *testing.T) {
+	for _, outcome := range []string{"server_error", "response_lost", "redirect307", "redirect308"} {
+		t.Run(outcome, func(t *testing.T) {
+			var calls atomic.Int32
+			var redirects atomic.Int32
+			originalClient := http.DefaultClient
+			configuredClient := *originalClient
+			configuredClient.CheckRedirect = func(*http.Request, []*http.Request) error { redirects.Add(1); return nil }
+			http.DefaultClient = &configuredClient
+			t.Cleanup(func() { http.DefaultClient = originalClient })
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if strings.HasPrefix(outcome, "redirect") && r.URL.Path != "/redirected-edit" {
+					status := http.StatusTemporaryRedirect
+					if outcome == "redirect308" {
+						status = http.StatusPermanentRedirect
+					}
+					http.Redirect(w, r, "/redirected-edit", status)
+					return
+				}
+				if outcome == "response_lost" {
+					connection, _, err := w.(http.Hijacker).Hijack()
+					if err == nil {
+						_ = connection.Close()
+					}
+					return
+				}
+				http.Error(w, "upstream result unknown", http.StatusInternalServerError)
+			}))
+			defer server.Close()
+			images := sourceEditTransportClient{NewClient(&ClientConfig{BaseURL: server.URL, Model: "fixture-image", Timeout: time.Second, MaxRetries: 3, RetryDelay: time.Millisecond})}
+			config := validProductImageAdapterConfig(nil, &productImageChatStub{})
+			config.ImageClient = images
+			adapter, err := NewProductImageAdapter(config)
+			require.NoError(t, err)
+			source := productImageSource("source-1", "https://source.example/item.png")
+			source.Bytes, source.MediaType = productImagePNG(t, 2, 2), "image/png"
+			_, err = adapter.RenderWhiteBackground(context.Background(), productimage.RenderRequest{Source: source, SourceOnly: true, Product: productImageContext()})
+			require.Error(t, err)
+			require.EqualValues(t, 1, calls.Load(), "an ambiguous image edit must never be automatically resubmitted")
+			require.Zero(t, redirects.Load(), "source-only requests must not inherit a redirect-allowing policy")
+			require.Same(t, &configuredClient, http.DefaultClient)
+			// A source-only override must not mutate this client's configured policy.
+			calls.Store(0)
+			_, err = images.EditImage(context.Background(), &ai.ImageEditRequest{Prompt: "ordinary edit", Image: source.Bytes, ImageContentType: "image/png"})
+			require.Error(t, err)
+			expected := int32(4)
+			if strings.HasPrefix(outcome, "redirect") {
+				expected = 8
+				require.EqualValues(t, 4, redirects.Load(), "the original custom redirect policy must remain intact")
+			}
+			require.Equal(t, expected, calls.Load(), "other callers retain configured retries/redirect semantics")
+		})
+	}
 }
 
 func TestProductImageSourceWhiteBackgroundIsOneEditAndRejectsBadOutput(t *testing.T) {

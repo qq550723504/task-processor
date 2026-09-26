@@ -79,6 +79,10 @@ type ImageGenerateRequest struct {
 }
 
 type ImageEditRequest struct {
+	// MaxRetries overrides retries for the OpenAI-compatible multipart transport.
+	// Explicit zero also forbids redirects that could replay the edit POST.
+	// Other image provider implementations do not yet enforce this override.
+	MaxRetries       *int `json:"-"`
 	Model            string
 	Prompt           string
 	Image            []byte
