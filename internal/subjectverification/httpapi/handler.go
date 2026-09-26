@@ -39,11 +39,28 @@ func (h Handler) Routes(target httproute.OrganizationTargetResolver) []httproute
 		path, handler := BasePath, h.read
 		if method == http.MethodPost {
 			path += "/applications"
-			handler = h.start
+			handler = withBodyDeadline(15*time.Second, h.start)
 		}
 		routes = append(routes, httproute.Descriptor{Method: method, Path: path, Module: "subject-verification", AuthPolicy: httproute.AuthPolicyCurrentIdentity, Permission: authz.PermissionWorkbenchOrganizationMemberManage, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: target, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: method == http.MethodGet, Handler: handler})
 	}
-	return append(routes, httproute.Descriptor{Method: http.MethodPost, Path: CallbackPath, Module: "subject-verification", AuthPolicy: httproute.AuthPolicyPublic, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 8 * time.Second, Handler: h.observe})
+	return append(routes, httproute.Descriptor{Method: http.MethodPost, Path: CallbackPath, Module: "subject-verification", AuthPolicy: httproute.AuthPolicyPublic, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 8 * time.Second, Handler: withBodyDeadline(8*time.Second, h.observe)})
+}
+
+func withBodyDeadline(timeout time.Duration, handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		deadline := time.Now().Add(timeout)
+		if inherited, ok := c.Request.Context().Deadline(); ok && inherited.Before(deadline) {
+			deadline = inherited
+		}
+		// A context cancellation alone cannot interrupt a blocked socket Read.
+		// Use the same ResponseController boundary as the existing referral ingress.
+		err := http.NewResponseController(c.Writer).SetReadDeadline(deadline)
+		if err != nil && c.Request.Context().Value(http.ServerContextKey) != nil {
+			fail(c, 503, "VERIFICATION_UNAVAILABLE")
+			return
+		}
+		handler(c)
+	}
 }
 func respond(c *gin.Context, status int, value any) {
 	c.Header("Cache-Control", "private, no-store")

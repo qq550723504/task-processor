@@ -1,15 +1,66 @@
 package httpapi
 
 import (
+	"bufio"
 	"context"
+	"fmt"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"task-processor/internal/authidentity"
 	domain "task-processor/internal/subjectverification"
 )
+
+type callbackStub struct{}
+
+func (callbackStub) Parse([]byte, string) (domain.Event, bool, error) {
+	return domain.Event{}, false, nil
+}
+func TestPostRoutesInterruptSlowRequestBodies(t *testing.T) {
+	for _, path := range []string{BasePath + "/applications", CallbackPath} {
+		t.Run(path, func(t *testing.T) {
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Millisecond)
+				defer cancel()
+				c.Request = c.Request.WithContext(ctx)
+				c.Next()
+			})
+			h := Handler{Service: &serviceSpy{}, Callback: callbackStub{}}
+			for _, route := range h.Routes(nil) {
+				router.Handle(route.Method, route.Path, func(c *gin.Context) {
+					c.Request = c.Request.WithContext(authidentity.WithAuthenticatedIdentity(c.Request.Context(), authidentity.AuthenticatedIdentity{UserID: "user", EffectiveOrganizationID: "org"}))
+					route.Handler(c)
+				})
+			}
+			server := httptest.NewServer(router)
+			defer server.Close()
+			conn, err := net.DialTimeout("tcp", server.Listener.Addr().String(), time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			_, err = fmt.Fprintf(conn, "POST %s HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			if err != nil {
+				t.Fatalf("slow body was not interrupted: %v", err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != 400 && response.StatusCode != 408 {
+				t.Fatalf("unexpected timeout status %d", response.StatusCode)
+			}
+		})
+	}
+}
 
 type profileStub struct{ profile authidentity.SelfProfile }
 
