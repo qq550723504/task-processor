@@ -1,8 +1,8 @@
 # AI Commerce Agent Platform 产品战略
 
-> 状态：Active strategic direction  
-> 日期：2026-08-12  
-> 校准基线：`master@beb6e81638e1400e7cb1266c825e65aee23713c5`  
+> 状态：Active strategic direction；产品 UI / IA 以最终 Figma Authority 为准  
+> 原战略日期：2026-08-12；ListingKit 退休与产品投影校准：2026-09-26  
+> 历史成熟度基线：`master@beb6e81638e1400e7cb1266c825e65aee23713c5`（不是当前代码/验收状态）  
 > 适用对象：产品、研发、运营、QA、商业化与架构负责人
 
 ## 1. 战略决策
@@ -11,37 +11,35 @@
 
 > **构建 AI 驱动的新一代跨境电商智能体平台，让用户从“操作软件功能”逐步转向“给 AI 一个电商目标，由 Agent 调用受控电商能力完成工作”。**
 
-这不是一次推倒重建，也不是把现有确定性工作流改写成大模型工作流。
+面向用户的产品为硕米智能引擎。其导航、页面命名、交互语义和能力投影以 [最终 Figma UI / IA Authority](final-ui-ia-authority.md) 中当前可见、非归档终稿为准；本文的技术能力分解不能成为另一套产品菜单。
 
-当前已经落地的 ListingKit、Product Sourcing、Product Enrich、Product Image、SHEIN/TEMU/Amazon 平台能力、Temporal/RabbitMQ、ZITADEL、多租户与 AI Capability 基础设施，继续作为平台资产演进。
+这不是一次推倒重建，也不是把现有确定性工作流改写成大模型工作流。当前有效的 Product Sourcing、Product Enrichment、Product Image、Marketplace、Temporal/RabbitMQ、ZITADEL 与 AI Capability 能力继续按各自 owner 复用；旧 ListingKit / Task-first 的混合职责和产品投影必须按 EXTRACT → RETIRE 收口，不能整体保留为子产品或长期执行引擎。有效行为不等于旧 owner，详见 §9。
 
-新的战略关系是：
+支撑 Figma 产品的能力关系是（不是导航或已开放清单）：
 
 ```text
-AI Commerce Agent Platform
-  ├─ Agent Workspace
-  ├─ Commerce Agents
-  ├─ Commerce Tools
-  ├─ Product Intelligence
-  ├─ Product Sourcing
-  ├─ ListingKit
-  ├─ Image / Content Studio
-  ├─ Marketplace Connectors
-  └─ AI Control Plane
+硕米智能引擎 / Figma 产品页面
+  ├─ BusinessTask / 业务任务投影
+  ├─ Commerce Agents / Commerce Tools
+  ├─ Product Sourcing / Catalog / Asset
+  ├─ Product Enrichment / Image / Content
+  ├─ Listing / Marketplace / Store
+  ├─ Identity / Organization / Commercial / Resource
+  └─ AI Control Plane / 受控执行基础设施
 ```
 
 其中：
 
-- **AI Commerce Agent Platform** 是长期产品与架构北极星；
-- **ListingKit** 是当前最成熟的商品资料生产、审核和平台上架执行面；
+- **AI Commerce Agent Platform** 描述长期产品方向；最终 UI / IA 由 Figma 决定；
+- **ListingKit** 是待退休旧架构，原有独立有效行为转到当前领域，不成为新功能默认落点；
 - **AI Capability & Agent Platform** 是模型治理和 Agent Runtime 的底层技术边界；
-- 现有 SHEIN 稳定化、Product Sourcing 闭环和付费试点仍是近期交付重点。
+- 工程先后、具体范围和可用状态由 #137、当前执行 Issue 及其准确代码/验收证据确定，不从历史路线图自动派工。
 
 ## 2. 为什么调整方向
 
 ### 2.1 当前项目已经超出“任务处理器”范畴
 
-仓库已经具备：
+原战略基线记录了以下能力资产；这是方向依据，不是今天的全量验收清单：
 
 - 多来源商品接入与中立化；
 - canonical product / catalog / asset facts；
@@ -161,7 +159,7 @@ Agent 只是受控调用方。
 
 - 商品事实：商品领域拥有；
 - 平台 Listing 草稿：平台/Listing 领域拥有；
-- 业务生命周期：现有任务模型与 Temporal/RabbitMQ 路径拥有；
+- 用户业务任务：当前 BusinessTask 产品合同；内部执行/恢复由相应领域与 Temporal/RabbitMQ 路径负责，不由旧 ListingKit Task 充当产品事实；
 - Agent 单次推理状态：Agent Runtime 拥有；
 - 模型调用与成本：AI Invocation Ledger 拥有；
 - 身份、租户与授权：ZITADEL 和现有授权边界拥有。
@@ -199,11 +197,11 @@ External Side-effect Tool
 
 Agent 不允许无限自循环。
 
-### 4.6 可回退优先于一次性替换
+### 4.6 受控开放，不以旧架构兜底
 
-新 Agent 能力通过 feature flag、tenant allowlist 和评测门禁逐步启用。
+新 Agent 能力通过 feature flag、tenant allowlist 和评测门禁逐步启用；不可用时停止相应能力，不自动回接旧 ListingKit / Task-first 路径。
 
-固定流程在 Agent 证明收益前始终保留。
+当前领域中仍有效的确定性流程按合同保留。这不是保留旧 Service、旧工作台或双写/fallback 的许可；Legacy 只有 EXTRACT / RETIRE。
 
 ## 5. 目标用户
 
@@ -236,11 +234,11 @@ Agent 不允许无限自循环。
 
 ## 6. 用户交互模型
 
-长期交互不应只存在 Chat 页面，而应形成三种入口。
+长期交互不应只存在 Chat 页面；下列三种交互方式必须投影到 Figma 已批准的页面，不另建平行菜单或恢复旧工作台。
 
 ### 6.1 Goal-based Agent Workspace
 
-用户直接表达目标：
+在 Figma「AI工作台」及其业务任务页面中，用户直接表达目标：
 
 ```text
 “分析这款 1688 商品，生成 SHEIN 美国站资料，
@@ -259,7 +257,7 @@ Agent 返回：
 
 ### 6.2 Embedded Copilot
 
-Agent 能力嵌入已有 ListingKit 页面。
+Agent 能力嵌入 Figma 对应的供应、店铺商品或其他已批准业务页面，复用当前 Console 与领域 owner；不以已有 ListingKit 页面为产品模板，不保留旧 Listing Workspace。
 
 例如在属性区：
 
@@ -276,8 +274,10 @@ Agent 能力嵌入已有 ListingKit 页面。
 诊断图片问题
 推荐处理方式
 生成候选场景图
-质量审核
+按当前产品合同进行程序校验与用户确认
 ```
+
+具体图像步骤以当前批准流程为准；能力示例不要求每次额外调用模型质量评分，也不恢复已取消的 Extract / Review 步骤。
 
 ### 6.3 Batch Agent Jobs
 
@@ -295,10 +295,12 @@ Agent 能力嵌入已有 ListingKit 页面。
 
 ## 7. 目标产品架构
 
+下图为能力分层，不是导航；产品入口仍由 Figma Authority 决定。
+
 ```text
 ┌─────────────────────────────────────────────┐
 │              Commerce Experience            │
-│ Agent Workspace / Copilot / Batch Console   │
+│ Figma AI工作台 / 供应与店铺业务页面 / 账户等   │
 └──────────────────────┬──────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────┐
@@ -320,8 +322,8 @@ Agent 能力嵌入已有 ListingKit 页面。
                        │
 ┌──────────────────────▼──────────────────────┐
 │                Domain Capabilities          │
-│ Product / Asset / Listing / SHEIN / TEMU /  │
-│ Amazon / SDS / ProductEnrich / ProductImage │
+│ Product / Asset / Listing / Marketplace /  │
+│ Store / Sourcing / Enrichment / Image       │
 └──────────────────────┬──────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────┐
@@ -354,11 +356,13 @@ Agent 能力嵌入已有 ListingKit 页面。
 
 Agent 是业务角色和能力组合，不是新的事实源。
 
-第一阶段建议只建立三个有明确边界的 Agent：
+原战略列出的三个能力方向为：
 
 1. Product Agent；
 2. Listing Agent；
 3. Sourcing Agent。
+
+这不是同时开工三个 Agent 的授权；先交付哪个有界用户结果，由当前 Issue 和 Roadmap 决定。
 
 ### 7.4 Commerce Tools
 
@@ -456,7 +460,7 @@ load product
 
 **SHEIN。**
 
-原因不是战略只支持 SHEIN，而是 SHEIN 当前拥有最完整的真实生产路径，可以用最小新增成本验证 Agent 是否真正提高效率。
+原战略基线以其已有平台能力验证 Agent 收益；这不是保留旧 ListingKit 工作台的依据，也不是所有当前路径均已通过生产验收的声明。
 
 TEMU、Amazon 后续复制已经验证的 Agent + Tool 契约，而不是各自再建一套 Agent Runtime。
 
@@ -481,26 +485,21 @@ Goal
 
 Sourcing Agent 不直接承担平台发布。
 
-## 9. ListingKit 的新定位
+## 9. ListingKit 退休与有效能力承接
 
-ListingKit 不废弃。
+**ListingKit 需要退休，不作为硕米产品中的长期子产品、默认工作台或核心执行引擎。** 本节替代旧战略中保留 ListingKit 执行面的决定，和最终 Figma Authority、Legacy Policy、#29 的 EXTRACT → RETIRE 保持一致。
 
-它从“整个产品的最终名字”逐步变成 AI Commerce Agent Platform 中的核心执行面：
+| 原有有效行为 | 当前承接方向 |
+| --- | --- |
+| 商品事实、来源证据、资产、内容/图片候选 | `internal/product/*` 及现有 AI capability，保持各自事实 owner。 |
+| 平台规则、字段映射、定价与平台约束 | `internal/marketplace/*`，不由 root ListingKit 再持有。 |
+| Listing 草稿、readiness、提交与恢复 | `internal/listing/*` 及既有执行 owner，保持唯一状态机。 |
+| 外部客户端、持久化和运行依赖 | `internal/integration/*` 与 `internal/app/*`；应用层只装配。 |
+| 用户界面与业务任务 | Figma「AI工作台 / 供应市场 / 店铺中心」等当前产品页面及 BusinessTask 合同，不恢复独立 Listing Workspace。 |
 
-> **ListingKit = 标准商品到平台 Listing 的准备、审核、修复、草稿与发布执行能力。**
+旧 root `internal/listingkit`、`internal/compatibility/listingkit`、Task-first 产品投影不是新代码落点。先抽取独立有效行为，切换当前调用方，再删除或停用原实现；不保留永久 facade、旧 Task 双模型、fallback 或双写。具体实现以当前 Legacy Register 和责任 Issue 为准，不在本战略中宣称退休已完成。
 
-它继续拥有：
-
-- listing workspace；
-- 平台字段与资料包；
-- readiness；
-- blocker；
-- 人工修复；
-- draft/publish；
-- submission/recovery；
-- 平台状态语义。
-
-Agent 可以调用 ListingKit 暴露出的稳定工具，但不能绕过 ListingKit 直接拼远端 payload 或写提交状态。
+Agent 通过受控 Commerce Tools 调用当前领域 owner，不借旧 ListingKit facade 间接调用，也不直接拼远端 payload 或写提交状态。`web/listingkit-ui` 内合格 Console / BFF / 组件按实际职责复用；历史路径名本身不要求保留旧产品，也不是删除全部前端的依据。
 
 ## 10. 与现有运行时的职责关系
 
@@ -611,15 +610,15 @@ Agent 是否上线不能只看“看起来更聪明”。
 
 ## 13. 路线图
 
-路线图按“先治理与单 Agent 证明价值，再逐步扩大 Agent 权限和业务范围”推进。
+下面保留原战略的阶段关系，不是第二份实时执行队列。当前顺序、具体开工和完成状态只看 #137 与执行 Issue；Figma 页面归属和 §9 退休决定不因历史 Phase 编号后置。
 
 ### Phase 0：战略切换与边界固化
 
 目标：让仓库后续需求和架构决策以 AI Commerce Agent Platform 为长期方向。
 
 - 建立本战略文档；
-- README 明确新长期定位；
-- 保留现有 ListingKit 近期执行计划；
+- README 明确 Figma 定义的硕米产品定位；
+- 有效能力归当前领域 owner，旧 ListingKit 产品与混合架构按 EXTRACT → RETIRE 退出；
 - 新功能评审增加“是否应作为 Commerce Tool / Agent capability”判断；
 - 禁止因为战略调整立即做全仓重命名或微服务拆分。
 
@@ -652,7 +651,7 @@ Agent 是否上线不能只看“看起来更聪明”。
 - AgentDefinition allowlist 绑定。
 
 第一批只接入 Product Agent 所需的 source evidence、canonical product、
-catalog/asset facts、ProductEnrich proposal、ProductImage analysis proposal、
+catalog/asset facts、当前 Product Enrichment proposal、Product Image analysis proposal、
 marketplace rule lookup 和 deterministic validator。不得开放 write 或 publish，
 不得让 Agent 直接访问 repository、provider SDK 或 marketplace client。
 
@@ -701,7 +700,7 @@ blocker 有解释；
 
 ### Phase 6：Agent Workspace
 
-形成统一用户入口：
+形成 Figma「AI工作台」中的统一交互，不新建名为 Agent Workspace 的平行一级产品入口：
 
 - 对话/目标任务；
 - Plan；
@@ -727,11 +726,13 @@ Sourcing Agent
 
 首版不建设通用 multi-agent swarm，不让 Agent 之间自由聊天形成业务状态。
 
-## 14. 当前 Now / Next / Later
+## 14. 原战略 Now / Next / Later（历史基线，不作当前派工依据）
+
+本节保留原战略基线时的排序，不能因为标题中的 Now / Next 或 Issue 仍开放而重新启动已完成、暂停或撤回的工作。今天的状态从 #137 与具体 Issue / PR 获取。
 
 ### Now
 
-当前代码和交付重点仍然是：
+原战略时点的代码和交付重点是：
 
 1. 保持 SHEIN 生产主链路稳定；
 2. 完成当前基线验证；
@@ -791,36 +792,32 @@ Sourcing Agent
 7. 是否涉及外部副作用？
 8. 谁拥有最终业务状态？
 9. 如何 eval？
-10. 如何回退？
+10. 如何安全停用未获准或不可用的能力，而不回接退休路径？
 
 只有确实需要动态工具选择、有限自修复或人工 interrupt 的场景才进入 Agent Runtime。
 
 ## 17. 文档权威关系
 
-长期方向建议按以下顺序理解：
+按职责读取，而不是由历史战略覆盖当前 Figma 或退休决定：
 
-1. **`docs/product/ai-commerce-agent-platform-strategy.md`**：长期产品战略、产品边界和 Agent 路线图；
-2. **`docs/refactoring/current-refactoring-status.md`**：当前代码现实、Now / Next / Later 和重构门禁；
-3. **GitHub issue #137**：把长期战略和当前门禁映射为可执行 backlog；
-4. **`docs/superpowers/specs/2026-08-06-ai-capability-agent-platform-design.md`**：AI Control Plane 与 Agent Runtime 的详细技术设计；
-5. **`docs/product/listingkit-project-goals.md`**：ListingKit 子产品的使命与范围；
-6. **`docs/product/listingkit-next-execution-plan.md`**：近期 ListingKit 产品执行；
-7. Product Sourcing、SHEIN、付费试点等专项文档：各自领域内的执行 source of truth。
+1. **[最终 Figma UI / IA Authority](final-ui-ia-authority.md)**：硕米产品导航、页面命名、交互语义与领域能力的产品投影；ListingKit 不属于目标子产品。
+2. **本文与当前领域 Architecture Specs**：长期方向、事实 owner、确定性业务、安全、权限与 Tool/Agent 合同；技术能力图不能反向创造菜单。
+3. **[Legacy Policy](../refactoring/legacy-hard-cut-policy.md)、[Register](../refactoring/legacy-register.md) 与 [全新系统基线](greenfield-no-legacy-migration.md)**：EXTRACT / RETIRE、新代码落点与无旧数据迁移/兼容前置。
+4. **GitHub Issue #137 与具体执行 Issue / PR**：当前排序、范围、准确 HEAD、实际证据和操作权限；历史状态文档按注明的基线阅读。
+5. **`docs/superpowers/specs/2026-08-06-ai-capability-agent-platform-design.md`**：AI Control Plane 与 Agent Runtime 技术设计，受以上边界约束。
 
-已经完成的 implementation plan 只保留为历史执行证据，不能覆盖当前状态文档或 GitHub issue #137 的执行顺序。
+`docs/product/listingkit-project-goals.md`、`docs/product/listingkit-next-execution-plan.md` 是旧产品材料，**不再是当前子产品使命或近期执行权威**。其中有效规则只能由当前领域合同明确承接，不能恢复旧 Workspace、Task-first、永久 facade 或“ListingKit 不退休”的结论。
 
-当长期战略与当前成熟度发生表面冲突时：
+已经完成的 implementation plan 只保留为历史执行证据；Product Sourcing、Marketplace 等专项合同按当前有效决定使用，不能因为文档写着 Active 就覆盖新的批准。
 
-> **战略文档决定“最终往哪里去”，当前状态文档决定“现在允许做什么”。**
-
-不能使用长期 Agent 目标绕过当前稳定性、验证和发布门禁。
+最终 Figma 目标不等于当前 release capability；战略方向不能绕过真实事实、安全、验证和发布门禁，也不授权一次性开发 Figma 全部功能。
 
 ## 18. 一句话产品定义
 
-对外可逐步收敛为：
+对外产品定位：
 
-> **AI Commerce Agent Platform — 给 AI 一个跨境电商目标，让它调用受控商品、内容、图片和平台能力完成工作。**
+> **硕米智能引擎 — 以 AI 工作台和专业智能体为核心的 AI 电商经营平台。给 AI 一个业务目标，让它调用受控商品、内容、图片和平台能力完成工作。**
 
 对内工程定义：
 
-> **Agent 是现有可靠电商领域能力之上的动态决策与交互层，不是新的业务事实源。**
+> **Agent 是当前可靠电商领域能力之上的动态决策与交互层，不是新的业务事实源；ListingKit 的有效行为归当前 owner，旧产品与混合架构退出。**
