@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AcquisitionTimeout             = 20 * time.Second
-	AcquisitionLease               = 30 * time.Second
+	AcquisitionTimeout = 20 * time.Second
+	AcquisitionLease   = 30 * time.Second
 	// MaxAcquisitionOperations bounds every operation row an organization may create over
 	// its lifetime. Rows are never deleted (no key GC) and terminal rows keep counting, so
 	// this is a hard ceiling, not a soft threshold.
