@@ -1,3 +1,8 @@
+> **状态：HISTORICAL / LEGACY EVIDENCE（2026-09-26）**  
+> 本文保留旧 ListingKit 产品阶段的需求、行为、验收或运维证据，不再是当前产品定义、页面设计、路线图或派工依据。当前 UI / IA / 页面命名与交互以 [最终 Figma UI / IA Authority](./final-ui-ia-authority.md) 为准；ListingKit 按 [Legacy Register](../refactoring/legacy-register.md) 执行 EXTRACT → RETIRE。  
+> 本文中的“当前”“下一阶段”“工作台”“Task”“ListingKit 继续拥有”等表述只描述其原历史基线。若与当前 Figma Authority、全新系统基线、领域合同、#137 或具体执行 Issue 冲突，以当前权威为准。不得据此恢复旧 Workspace、Task-first 产品模型、永久 facade、fallback、双读双写或第二事实源。  
+> 历史正文不批量改写，以便保留可追溯证据；其中仍有效的业务、安全、幂等、恢复和平台规则必须由当前 owner 明确承接后才能继续使用。
+
 # ListingKit 产品总览
 
 ## 产品定位
