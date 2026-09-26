@@ -1,3 +1,8 @@
+> **状态：CURRENT OPERATIONS FOR LIVE LEGACY PATH / NOT PRODUCT AUTHORITY（2026-09-26 校准）**  
+> 在仍未完成页面/调用方切换的现有 ListingKit / SHEIN 商业运行路径上，本文继续作为操作员故障恢复、重试边界和工程升级信息的当前运行 SOP；在替代页面及其当前 owner 提供等价 runbook 前，不得提前撤销这些恢复指导。  
+> 本文**不再拥有产品 UI / IA / 页面命名或长期架构权威**：这些由 [最终 Figma UI / IA Authority](../final-ui-ia-authority.md)、当前领域合同和 [Legacy Register](../../refactoring/legacy-register.md) 决定。旧 Workspace / Task-first / ListingKit facade 仍按 EXTRACT → RETIRE；保留本 SOP 只服务仍存活的旧运行路径，不授权新增消费者或扩展旧产品。  
+> 当具体页面/调用方完成 cutover 后，对应恢复规则应由当前 owner/runbook 承接，再逐项退休本文的旧路径说明。
+
 # ListingKit 错误恢复 SOP
 
 ## 目的

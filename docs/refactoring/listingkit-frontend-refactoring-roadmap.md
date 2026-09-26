@@ -1,8 +1,13 @@
+> **状态：HISTORICAL REFACTORING BASELINE（2026-09-26 校准）**  
+> 本文记录旧 ListingKit 重构阶段的代码观察和阶段性方案，不再决定当前产品、目标架构或近期执行顺序。当前产品投影以 [最终 Figma UI / IA Authority](../product/final-ui-ia-authority.md) 为准；旧 ListingKit / Task-first / compatibility 处理以 [Legacy Register](./legacy-register.md) 的 EXTRACT → RETIRE 为准。  
+> 文中的“Active”“stable and expected to remain”“下一阶段”等只能按原注明 SHA / 日期理解，不能覆盖当前 Repository Structure、领域 owner、#137 或具体执行 Issue。历史目录名和已存在代码不构成保留旧产品或永久 facade 的理由。  
+> 历史正文保留作证据，不从本文件派生新的迁移、兼容或产品工作。
+
 # ListingKit 前端重构路线图
 
 ## 文档状态
 
-- 状态：Active
+- 状态：Historical / superseded for current authority
 - 更新日期：2026-06-22
 - 参考基线：`master@67f158d70b642a154d5c5e987447c8bf3cb543c5`
 - 适用范围：`web/listingkit-ui`

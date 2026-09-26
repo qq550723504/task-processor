@@ -1,10 +1,14 @@
 # ListingKit UI
 
-Desktop-first internal UI for ListingKit review and generation operations.
+> **Legacy-path engineering README / not product authority.** This directory name is current code reality, not a decision to keep ListingKit as a long-term product. Product UI / IA / navigation / page naming follow [硕米最终 UI / IA Authority](../../docs/product/final-ui-ia-authority.md); current code entrypoints and retirement rules follow [Repository Structure](../../docs/development/repository-structure.md#current-entrypoint-map) and [Legacy Register](../../docs/refactoring/legacy-register.md). Existing pages may remain operational until their approved replacements cut over, but this README must not create new ListingKit product requirements.
 
-产品文档：
-- [ListingKit 产品总览](../../docs/product/listingkit-product-overview.md)
-- [ListingKit 操作指南](../../docs/product/listingkit-operating-guide.md)
+当前文档入口：
+- [硕米最终 UI / IA Authority](../../docs/product/final-ui-ia-authority.md)
+- [产品文档索引](../../docs/product/README.md)
+- [Repository Structure / Current Entrypoint Map](../../docs/development/repository-structure.md#current-entrypoint-map)
+- [Legacy Register](../../docs/refactoring/legacy-register.md)
+
+下面的 routes、commands 和运行说明用于维护**当前仍存在的旧路径/工程实现**。它们不是目标产品导航，也不表示所有列出的页面仍应长期保留。
 
 Current scope:
 - review workspace: `preview`, `generation-review-session`, `generation-review-preview`, `dispatch`, `action`

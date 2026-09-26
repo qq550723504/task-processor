@@ -1,3 +1,8 @@
+> **状态：CURRENT COMMERCIAL POLICY + HISTORICAL LISTINGKIT PROJECTION（2026-09-26 校准）**  
+> 本文中的 `paid_pilot` 套餐、现行 capability / entitlement 门禁、用量指标和默认关闭的 `shein_publish` 政策仍是当前商业读取/准入链的有效政策依据，继续由现有 subscription / entitlement / metering owner 消费；在这些规则被明确迁入新的当前商业政策 owner 前，不得把它们视为历史失效。参见 [#347 Commercial read contract](../engineering/issue347-commercial-read-contract.md)。  
+> **只有 ListingKit 作为产品、工作台、Task-first 投影和长期执行 owner 的表述被降级为历史。** 当前 UI / IA / 页面命名与交互以 [最终 Figma UI / IA Authority](./final-ui-ia-authority.md) 为准；旧 ListingKit 架构按 [Legacy Register](../refactoring/legacy-register.md) EXTRACT → RETIRE。  
+> 若本文的商业政策与后续明确批准的 Commercial / Subscription / Resource 合同冲突，以后者为准；但不得仅因 ListingKit 退休而取消现有 `paid_pilot`、计量或发布 entitlement 语义。
+
 # ListingKit 付费试点产品目录与用量政策
 
 ## 套餐与准入

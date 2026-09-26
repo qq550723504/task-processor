@@ -1,3 +1,8 @@
+> **状态：CURRENT COMMERCIAL ROLLOUT GATES + HISTORICAL LISTINGKIT PROJECTION（2026-09-26 校准）**  
+> 本文中与 `paid_pilot` 外部准入、收费、发布 entitlement、PAY-041～PAY-044、PAY-070～PAY-073、Go/No-Go、回滚与生产放行有关的门禁仍是当前商业 rollout 依据；在这些门禁被明确迁入新的 Commercial / Subscription / Operations owner 前，不得把它们视为历史失效，也不得绕过它们提前收费或邀请外部客户。  
+> **只有 ListingKit 作为产品、Workspace、Task-first 页面和长期执行 owner 的表述被降级为历史。** 当前 UI / IA / 页面命名与交互以 [最终 Figma UI / IA Authority](./final-ui-ia-authority.md) 为准；旧 ListingKit 架构按 [Legacy Register](../refactoring/legacy-register.md) EXTRACT → RETIRE。  
+> 本文不再作为通用近期开发队列；当前工程排序由 #137 和具体执行 Issue / PR 决定。若当前 Commercial / Subscription 合同与本文历史实现细节冲突，以当前合同为准；但现行收费/准入门禁必须先由新的明确 owner 承接后才能退休。
+
 # ListingKit 付费商业试点上线执行计划
 
 > Status: active commercial-readiness execution plan.
