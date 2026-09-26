@@ -43,6 +43,54 @@ func TestExecutorResolvesOnlyExplicitRunPolicyKeyAndCarriesDefaults(t *testing.T
 	require.Equal(t, "image/png", generated.Assets[0].ContentType)
 }
 
+func TestGenericMainQuotesOnlyOneSourceEditWithoutExtractOrReview(t *testing.T) {
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = "product"
+	input.ImagePolicyContext = &imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
+	input.Slot.Role = imageagent.SlotRoleMain
+	profile := testImageProfile()
+	profile.Key = imagepolicy.PolicyKey{Marketplace: "product", Country: "zz", Family: "default", SceneCategory: "general"}
+	executor := NewProductImageSlotExecutor(Dependencies{UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: profile}})
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	require.Len(t, quote.Operations, 1)
+	require.Equal(t, "render_source_white_background", quote.Operations[0].Name)
+	require.EqualValues(t, 1, quote.Maximum.Images)
+	require.EqualValues(t, 1, quote.Maximum.ModelCalls)
+}
+
+func TestGenericMainGeneratesOneSourceEditWithoutReviewerOrExtractor(t *testing.T) {
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = "product"
+	input.ImagePolicyContext = &imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
+	input.Slot.Role = imageagent.SlotRoleMain
+	profile := testImageProfile()
+	profile.Key = imagepolicy.PolicyKey{Marketplace: "product", Country: "zz", Family: "default", SceneCategory: "general"}
+	profile.Thresholds.WhiteBackgroundReview = 1
+	white := &recordingProductWhiteRenderer{candidate: testWhiteCandidate(t, "https://source.example/item.png")}
+	white.candidate.Asset.Operations = []string{productimage.SourceWhiteBackgroundOperation}
+	executor := NewProductImageSlotExecutor(Dependencies{WhiteBackgroundRenderer: white, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: profile}})
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	output, err := executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.NoError(t, err)
+	require.True(t, white.request.SourceOnly)
+	require.Equal(t, productimage.Candidate{}, white.request.Subject)
+	require.Equal(t, "source-1", white.request.Source.SourceAssetID)
+	require.Len(t, output.Assets, 1)
+	require.Equal(t, []string{productimage.SourceWhiteBackgroundOperation}, output.Assets[0].Operations)
+	require.EqualValues(t, 1, output.UsageReceipt.Actual.Images)
+	require.EqualValues(t, 1, output.UsageReceipt.Actual.ModelCalls)
+	require.Equal(t, 1, white.calls)
+	oldQuote := quote
+	oldQuote.Fingerprint = "prior-extract-render-review-quote"
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, oldQuote)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	require.Equal(t, 1, white.calls, "changed flow quote must not dispatch again")
+	_, err = executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+	require.Error(t, err, "this flow must not quote a hidden Review on recovery")
+}
+
 func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
 	profile := testImageProfile()
 	profile.Thresholds.MainReview = 0.80
@@ -407,11 +455,13 @@ func (testProductSubjectExtractor) Extract(context.Context, productimage.Extract
 }
 
 type recordingProductWhiteRenderer struct {
+	calls     int
 	candidate productimage.Candidate
 	request   productimage.RenderRequest
 }
 
 func (r *recordingProductWhiteRenderer) RenderWhiteBackground(_ context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
+	r.calls++
 	r.request = request
 	return r.candidate, nil
 }

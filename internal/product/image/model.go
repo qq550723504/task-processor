@@ -54,11 +54,16 @@ type ExtractRequest struct {
 }
 
 type RenderRequest struct {
-	Source        Asset
-	Subject       Candidate
+	Source  Asset
+	Subject Candidate
+	// SourceOnly requests one edit of Source, not an extracted-subject render.
+	// Subject must be absent in this mode.
+	SourceOnly    bool
 	Product       ProductContext
 	Authorization *UsageQuote
 }
+
+const SourceWhiteBackgroundOperation = "render_source_white_background"
 
 type SceneRequest struct {
 	Source          Asset

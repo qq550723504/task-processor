@@ -90,6 +90,13 @@ func (e organizationMainSlotExecutor) ReviewStagedSlot(context.Context, imageage
 }
 
 func (e organizationMainSlotExecutor) reviewAdmission(ctx context.Context, input imageagent.SlotExecutionInput, expected imageagent.SlotUsageQuote) (productimage.UsageQuote, string, string, error) {
+	if input.TargetPlatform == "product" && input.ImagePolicyContext != nil &&
+		*input.ImagePolicyContext == (imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}) {
+		// This product flow no longer runs Review. Its image provider currently
+		// has no approved token bound/settlement contract; do not borrow the
+		// retired Review quote to admit generation or silently count it as zero.
+		return productimage.UsageQuote{}, "", "", imageagent.ErrBudgetQuoteUnavailable
+	}
 	if e.delegate == nil || e.quoter == nil || e.reservation == nil || input.Slot.Role != imageagent.SlotRoleMain || input.PlanRevision <= 0 || input.Attempt <= 0 {
 		return productimage.UsageQuote{}, "", "", imageagent.ErrValidation
 	}

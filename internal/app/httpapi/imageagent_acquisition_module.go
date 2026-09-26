@@ -353,9 +353,8 @@ func acquisitionMainRunInput(identity authidentity.AuthenticatedIdentity, operat
 		RunID: runID, BusinessTaskID: operationID, TargetPlatform: "product",
 		ImagePolicyContext: imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"},
 		Mode:               imageagent.RunModeManual, IdempotencyKey: runID + "-request", Plan: plan,
-		// The v3 main quote counts Extract, RenderWhiteBackground and Review
-		// separately. The plan still permits only one finished main image.
-		Budget: imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}, MaxConcurrentSlots: 1,
+		// The current generic main flow has one source edit and no model Review.
+		Budget: imageagent.Budget{MaxImages: 1, EnabledLimits: imageagent.BudgetLimitImages}, MaxConcurrentSlots: 1,
 	}, nil
 }
 

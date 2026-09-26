@@ -89,6 +89,24 @@ func TestWhiteBackgroundCapabilityChainsValidatedInlineSubjectToOriginalSource(t
 
 var canonicalURLSink string
 
+func TestSourceWhiteBackgroundRejectsSubjectAndMalformedSourceBeforeProvider(t *testing.T) {
+	calls := 0
+	capability, err := NewWhiteBackgroundCapability(whiteBackgroundRendererFunc(func(context.Context, RenderRequest) (Candidate, error) {
+		calls++
+		return Candidate{}, nil
+	}))
+	require.NoError(t, err)
+	request := RenderRequest{Source: validSourceAsset(), SourceOnly: true, Product: validProductContext()}
+	request.Subject = Candidate{Asset: validInlineGeneratedAsset(RoleSubject, "extract_subject", []byte("subject"))}
+	_, err = capability.RenderWhiteBackground(context.Background(), request)
+	require.ErrorIs(t, err, ErrInputInvalid)
+	request.Subject = Candidate{}
+	request.Source.URL = "file:///private.png"
+	_, err = capability.RenderWhiteBackground(context.Background(), request)
+	require.ErrorIs(t, err, ErrInputInvalid)
+	require.Zero(t, calls)
+}
+
 var (
 	productContextSink ProductContext
 	stringSliceSink    []string

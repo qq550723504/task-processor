@@ -29,6 +29,20 @@ func TestOrganizationMainAdmissionReservesBeforeFirstProviderDispatch(t *testing
 	require.Equal(t, "member-1", reservation.memberID)
 }
 
+func TestGenericMainAdmissionCannotBorrowRetiredReviewTokenQuote(t *testing.T) {
+	reservation := &recordingMainReservation{}
+	delegate := &recordingMainExecutor{}
+	executor := organizationMainSlotExecutor{delegate: delegate, quoter: fixedMainReviewQuoter{quote: mainReviewQuote()}, reservation: reservation}
+	input := mainAdmissionInput()
+	input.TargetPlatform = "product"
+	input.ImagePolicyContext = &imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
+	_, err := executor.GenerateQuotedSlot(mainAdmissionContext(), input, mainGenerationQuote())
+	require.ErrorIs(t, err, imageagent.ErrBudgetQuoteUnavailable)
+	require.Zero(t, reservation.reserveCalls)
+	require.Zero(t, delegate.generateCalls)
+	require.Equal(t, imageagent.ProviderNotDispatched, imageagent.ProviderDispatchStateOf(err))
+}
+
 func TestOrganizationMainAdmissionUsesStableReviewIdentityAndRetainsUnknown(t *testing.T) {
 	reservation := &recordingMainReservation{}
 	delegate := &recordingMainExecutor{generateErr: &imageagent.ProviderDispatchError{State: imageagent.ProviderDispatchedUnknown, Err: errors.New("unknown")}}

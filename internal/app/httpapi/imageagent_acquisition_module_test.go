@@ -32,7 +32,7 @@ func TestAcquisitionMainRunInputOwnsSingleSourcePolicyAndStableIdempotency(t *te
 	require.Equal(t, imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}, input.ImagePolicyContext)
 	require.Equal(t, imageagent.RunModeManual, input.Mode)
 	require.Equal(t, 1, input.MaxConcurrentSlots)
-	require.Equal(t, imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}, input.Budget)
+	require.Equal(t, imageagent.Budget{MaxImages: 1, EnabledLimits: imageagent.BudgetLimitImages}, input.Budget)
 	require.Equal(t, []string{"catalog-image-3"}, input.Plan.SourceAssetIDs)
 	require.Len(t, input.Plan.Slots, 1)
 	require.Equal(t, imageagent.SlotRoleMain, input.Plan.Slots[0].Role)
@@ -312,7 +312,7 @@ func TestAcquisitionMainImageBudgetAdmitsRealMainQuoteBeforeProvider(t *testing.
 	execution := imageagent.SlotExecutionInput{RunID: input.RunID, TenantID: identity.TenantID, UserID: identity.UserID, TargetPlatform: input.TargetPlatform, ImagePolicyContext: &input.ImagePolicyContext, PlanRevision: 1, Slot: plan.Slots[0], Attempt: 1, IdempotencyKey: plan.Slots[0].IdempotencyKey + ":plan:1:attempt:1", AssetCatalog: catalog, ProductContext: catalog.ProductContext}
 	quote, err := executor.QuoteSlot(context.Background(), execution, policy)
 	require.NoError(t, err)
-	require.EqualValues(t, 3, quote.Maximum.Images, "Extract, RenderWhiteBackground, and Review each consume one quoted image unit")
+	require.EqualValues(t, 1, quote.Maximum.Images, "only the single source-based white-background edit consumes an image unit")
 	reservation := imageagent.SlotEffectV3Reservation{Identity: imageagent.SlotExternalEffectIdentity{RunScope: scope, PlanRevision: 1, SlotID: "main", Attempt: 1}, IdempotencyKey: execution.IdempotencyKey, InputFingerprint: imageagent.SlotExecutionFingerprint(execution), Policy: policy, Quote: quote}
 	attempt, claimed, err := repository.(imageagent.SlotExternalEffectV3Repository).ReserveSlotProviderV3(context.Background(), reservation)
 	require.NoError(t, err, "the server-owned main-image budget must admit the real pre-provider quote")
