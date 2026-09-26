@@ -17,6 +17,24 @@ type personalSpy struct {
 	err   error
 }
 
+type unavailablePersonalProfile struct{}
+
+func (unavailablePersonalProfile) ReadSelf(context.Context, string, string) (authidentity.SelfProfile, error) {
+	return authidentity.SelfProfile{}, domain.ErrUnavailable
+}
+func TestPersonalReadPropagatesProfileOutage(t *testing.T) {
+	h := PersonalHandler{Service: &personalSpy{}, Profile: unavailablePersonalProfile{}}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	r := httptest.NewRequest("GET", PersonalBasePath, nil)
+	r.Header.Set("Authorization", "Bearer token")
+	c.Request = r.WithContext(authidentity.WithAuthenticatedIdentity(r.Context(), authidentity.AuthenticatedIdentity{UserID: "user"}))
+	h.read(c)
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "VERIFICATION_UNAVAILABLE") {
+		t.Fatalf("profile outage became missing phone: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func (s *personalSpy) Start(_ context.Context, a domain.Actor, _ domain.PersonalInput) error {
 	s.actor = a
 	s.calls++

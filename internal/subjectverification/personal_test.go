@@ -153,3 +153,24 @@ func TestPersonalLifetimeLimitSurvivesDayReset(t *testing.T) {
 		t.Fatal("cross-day cooldown missing")
 	}
 }
+
+func TestPersonalRetryConsentShowsCurrentPhone(t *testing.T) {
+	for _, state := range []string{Rejected, "EXPIRED"} {
+		t.Run(state, func(t *testing.T) {
+			s, r, _, actor, in := personalFixture()
+			if err := s.Start(context.Background(), actor, in); err != nil {
+				t.Fatal(err)
+			}
+			if state == Rejected {
+				r.a.State = Rejected
+			} else {
+				r.now = r.a.ExpiresAt.Add(time.Second)
+			}
+			actor.VerifiedPhone = "+8613900000002"
+			v, err := s.Read(context.Background(), actor)
+			if err != nil || !v.CanStart || v.MaskedPhone != "139****0002" || v.CanRefresh || v.VerificationURL != "" {
+				t.Fatalf("incorrect retry consent projection: %+v %v", v, err)
+			}
+		})
+	}
+}

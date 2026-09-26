@@ -3,7 +3,7 @@ import { AccountReadError } from "./account";
 import { readBoundedStrictJSON } from "./strict-json-response";
 import { verificationErrorCode } from "./subject-verification";
 
-export function safePersonalURL(value:string):boolean {try{const u=new URL(value);return value.length<=8192&&u.protocol==="https:"&&!!u.hostname&&!u.username&&!u.password&&!u.port&&!u.hash;}catch{return false;}}
+function safePersonalURL(value:string):boolean {try{const u=new URL(value);return value.length<=8192&&u.protocol==="https:"&&!!u.hostname&&!u.username&&!u.password&&!u.port&&!u.hash;}catch{return false;}}
 const quota=z.object({totalLimit:z.number().int().min(1).max(100),totalUsed:z.number().int().nonnegative(),totalRemaining:z.number().int().nonnegative(),dailyLimit:z.number().int().min(1).max(100),dailyUsed:z.number().int().nonnegative(),dailyRemaining:z.number().int().nonnegative(),serverTime:z.string().datetime(),resetAt:z.string().datetime(),nextAllowedAt:z.string().datetime()}).strict().refine(q=>q.totalRemaining===Math.max(0,q.totalLimit-q.totalUsed)&&q.dailyRemaining===Math.max(0,q.dailyLimit-q.dailyUsed)&&q.dailyUsed<=q.totalUsed&&q.dailyLimit<=q.totalLimit);
 const schema=z.object({userId:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),state:z.enum(["NOT_STARTED","PENDING","OUTCOME_UNKNOWN","REJECTED","EXPIRED","VERIFIED"]),applicationId:z.string().uuid().optional(),maskedPhone:z.string().regex(/^(?:1[3-9][0-9]\*{4}[0-9]{4})?$/),canStart:z.boolean(),canRefresh:z.boolean(),phoneReady:z.boolean(),verificationUrl:z.string().refine(safePersonalURL).optional(),expiresAt:z.string().datetime().optional(),verifiedAt:z.string().datetime().optional(),quota}).strict().refine(v=>
  (v.state==="NOT_STARTED"?!v.applicationId:!!v.applicationId)&&

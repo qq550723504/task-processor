@@ -50,7 +50,7 @@ func (h PersonalHandler) actor(c *gin.Context, requirePhone bool) (domain.Actor,
 		return a, false
 	}
 	phone, err := (Handler{Profile: h.Profile}).phone(c, a)
-	if err != nil && requirePhone {
+	if err != nil && (requirePhone || !errors.Is(err, domain.ErrInvalid)) {
 		if errors.Is(err, domain.ErrInvalid) {
 			fail(c, 409, "VERIFIED_PHONE_REQUIRED")
 		} else {

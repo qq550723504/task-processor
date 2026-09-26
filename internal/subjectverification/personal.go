@@ -217,11 +217,14 @@ func (s *PersonalService) Read(ctx context.Context, actor Actor) (PersonalView, 
 	}
 	v.ApplicationID = a.ID
 	v.State = a.State
-	v.MaskedPhone = a.MaskedPhone
 	v.ExpiresAt = &a.ExpiresAt
 	samePhone := phone != "" && s.Protection.Digest("personal-phone", phone) == a.PhoneDigest
 	if (a.State == Pending || a.State == Unknown) && !a.ExpiresAt.After(q.ServerTime) {
 		v.State = "EXPIRED"
+	}
+	// Retry consent describes the current verified phone used by the next Start.
+	if v.State != Rejected && v.State != "EXPIRED" {
+		v.MaskedPhone = a.MaskedPhone
 	}
 	v.CanRefresh = a.State == Pending && samePhone && a.ProviderCertifyID != ""
 	if a.State == Verified {
