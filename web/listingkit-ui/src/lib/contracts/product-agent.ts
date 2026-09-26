@@ -2,9 +2,12 @@ import { z } from "zod";
 import { isAcquisitionUUID } from "./product-acquisition";
 const id = z.string().refine(isAcquisitionUUID);
 const version = z.string().max(19).regex(/^[1-9][0-9]*$/).refine(v => BigInt(v) <= BigInt("9223372036854775807"));
-const text = z.string().max(4096);
+// Candidate Action is bounded to 64 KiB by the runtime. HTTP and both BFF/client
+// readers independently enforce the 128 KiB aggregate response bound. Do not
+// reject valid backend arrays/strings with a smaller unrelated presentation cap.
+const text = z.string();
 const diagnostic = z.strictObject({ Code: text, Field: text, Message: text, Metadata: z.record(z.string(), z.string()).nullable() });
-const change = z.strictObject({ Field: z.string().max(128), Value: text, EvidenceIDs: z.array(z.string().max(128)).max(32).nullable() });
+const change = z.strictObject({ Field: text, Value: text, EvidenceIDs: z.array(text).nullable() });
 export const agentEmptyRequestSchema = z.strictObject({});
 export const agentTargetPlatformSchema = z.enum(["shein", "temu", "amazon"]);
 export const agentStartRequestSchema = z.strictObject({ targetPlatform: agentTargetPlatformSchema });
@@ -13,9 +16,9 @@ export const agentReviewLinkSchema = z.strictObject({ proposalId: id, requestKey
 export const agentResultSchema = z.strictObject({
     runId: id, requestKey: id, operationId: id, productKey: z.string().min(1).max(128), catalogVersion: version, publicationId: z.string().min(1).max(128), targetPlatform: agentTargetPlatformSchema,
     phase: z.enum(["running", "interrupted", "human_review_required", "stopped"]), revision: version, stopReason: z.string().max(128).optional(), humanReviewRequired: z.literal(true),
-    candidate: z.strictObject({ Changes: z.array(change).max(32).nullable(), Warnings: z.array(diagnostic).max(32).nullable(), Rejections: z.array(diagnostic).max(32).nullable() }),
-    confidence: z.array(z.strictObject({ Field: z.string().max(128), Value: z.number().min(0).max(1), Known: z.boolean() })).max(32).nullable(),
-    unresolved: z.array(text).max(64).nullable(),
+    candidate: z.strictObject({ Changes: z.array(change).nullable(), Warnings: z.array(diagnostic).nullable(), Rejections: z.array(diagnostic).nullable() }),
+    confidence: z.array(z.strictObject({ Field: z.string().max(128), Value: z.number().min(0).max(1), Known: z.boolean() })).nullable(),
+    unresolved: z.array(text).nullable(),
     steps: z.array(z.strictObject({ step: z.number().int().min(0).max(16), tool: z.string().max(128).optional(), callId: z.string().max(128).optional(), invocationId: z.string().max(128).optional(), auditStatus: z.string().max(64).optional() })).max(24),
     tokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), estimatedCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), currency: z.string().regex(/^[A-Z]{3}$/), usageStatus: z.enum(["observed", "unknown_reserved"]), canSubmitReview: z.boolean(),
 }).refine(v => !v.canSubmitReview || (v.phase === "human_review_required" && !v.stopReason && v.candidate.Changes?.length === 1 && v.candidate.Changes[0]?.Field === "title"));

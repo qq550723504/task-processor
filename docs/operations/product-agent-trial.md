@@ -81,6 +81,10 @@ Console 的现有 `LISTINGKIT_API_BASE` 指向上述当前 application；
 未知结果不会自动重发模型。保留该 URL/编号供运维查询，不反复创建新运行。
 关闭页面/停止等待不能取消已经发出的模型请求。后端未开放或配置缺失时页面明确显示不可用。
 
+大份证据会使用明确标出省略字段的标题诊断视图，原始工具结果仍保存在运行记录中。
+被省略的事实保持未知，模型不能据此判断“没有素材”或“发布就绪”；证据不足时需中断。
+工具读取范围和当前 Product/Asset 事实不会因此变化。
+
 运行控制/checkpoint 存在 `product_agent_runs`，安全工具摘要在 `product_agent_tool_calls`；
 模型调用及用量继续由现有 AI invocation/Commercial ledger 保存。Product 和 Review
 保持各自事实 owner。正常停止/重启保留数据库；不把 destroy 或删数据作为停止命令。

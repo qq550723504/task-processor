@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -224,6 +225,42 @@ func TestAgentTextModelConcurrentSameInvocationSendsOnce(t *testing.T) {
 	done.Wait()
 	if calls.Load() != 1 || ledger.reserves != 1 || ledger.terminals != 1 {
 		t.Fatalf("duplicate dispatch/settlement: calls=%d reserves=%d terminals=%d", calls.Load(), ledger.reserves, ledger.terminals)
+	}
+}
+
+func TestAgentPromptBoundsLargeEvidenceWithoutChangingStoredFacts(t *testing.T) {
+	m, ctx, in, _, calls, _ := agentModelFixture(t, `{"Kind":"interrupt"}`, `{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}`)
+	raw, err := json.Marshal(map[string]any{"product_key": "product", "catalog_version": "1", "snapshot": map[string]any{"title": "Exact saved title", "brand": "Real brand", "sources": []any{map[string]any{"detail": "source-evidence"}}, "variants": []any{map[string]any{"sku": strings.Repeat("<large-variant>", 6000)}}}})
+	requireNoErrorText(t, err)
+	// The maximum current run can observe eight tools; hostile escaping in
+	// feedback must still leave room for bounded evidence and the SDK envelope.
+	for n := 0; n < 8; n++ {
+		in.History = append(in.History, agent.Observation{Step: n + 1, Tool: commercetool.ToolRef{ID: "product.canonical.inspect", Version: "v2.0.0"}, CallID: "call", Output: append(json.RawMessage(nil), raw...)})
+	}
+	in.UserFeedback = strings.Repeat("<", 8192)
+	p, err := m.prepare(ctx, in)
+	requireNoErrorText(t, err)
+	if calls.Load() != 0 || string(in.History[0].Output) != string(raw) {
+		t.Fatal("projection dispatched or mutated stored evidence")
+	}
+	for _, fact := range []string{"Exact saved title", "Real brand", "source-evidence", "omitted_fields", "snapshot.variants", agentTextHash(raw)} {
+		if !strings.Contains(p.request.Prompt, fact) {
+			t.Fatalf("missing fact/disclosure %s", fact)
+		}
+	}
+	if strings.Contains(p.request.Prompt, "large-variant") {
+		t.Fatal("oversized variants entered prompt")
+	}
+	wire, err := json.Marshal(p.request)
+	requireNoErrorText(t, err)
+	if len(wire) > openai.MaxTextPromptBytes-4096 {
+		t.Fatal("prompt exceeded wire budget")
+	}
+	in.History[0].Output = json.RawMessage(strings.Replace(string(raw), "large-variant", "other-variant", 1))
+	changed, err := m.prepare(ctx, in)
+	requireNoErrorText(t, err)
+	if changed.quote.Reference == p.quote.Reference {
+		t.Fatal("omitted evidence change did not bind quote")
 	}
 }
 
