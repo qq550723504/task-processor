@@ -1,3 +1,8 @@
+> **状态：HISTORICAL ARCHITECTURE SNAPSHOT（2026-09-26 校准）**  
+> 本文是旧 ListingKit 重构阶段的边界快照，不再是当前目标架构。当前产品投影以 [最终 Figma UI / IA Authority](../product/final-ui-ia-authority.md) 为准；旧 ListingKit / compatibility 的处理以 [Legacy Register](../refactoring/legacy-register.md) 和当前领域 owner 为准。  
+> 文中的“stable and expected to remain”“acceptable facade”等历史判断不能作为保留 root ListingKit、永久 facade、compatibility shell 或 Task-first 产品模型的依据。有效行为应 EXTRACT 到当前 Product / Listing / Marketplace / Integration / App owner，调用方切换后 RETIRE 原路径。  
+> 历史正文保留用于追溯当时的代码状态；今天的入口、实现和执行顺序以 Repository Structure、#137、具体 Issue / PR 和准确 HEAD 证据为准。
+
 # ListingKit Refactor Status
 
 ## Goal
