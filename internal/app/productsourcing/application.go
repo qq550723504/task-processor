@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -57,6 +58,36 @@ func NewPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOr
 		return nil, err
 	}
 	return NewAcquisitionService(operations, provider, producer, reader, authorizer)
+}
+
+// NewBrowserPublicAcquisition admits the server-side browser provider under the
+// same anonymous public producer, store, and authorization as NewPublicAcquisition.
+// providerBudget bounds only the provider call; publication keeps its own bound.
+func NewBrowserPublicAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, providerBudget time.Duration) (*BrowserAcquisitionService, error) {
+	if ctx == nil || provider == nil {
+		return nil, sourcing.ErrAcquisitionUnavailable
+	}
+	operations, err := acquisitionpersistence.NewRepository(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	if err != nil {
+		return nil, err
+	}
+	authorizer, err := sourcing.NewContextAuthorizer(live, permissions)
+	if err != nil {
+		return nil, err
+	}
+	producer, err := sourcing.NewInternalProducer(authorizer, store, sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"})
+	if err != nil {
+		return nil, err
+	}
+	reader, err := catalogpersistence.NewBoundedSnapshotReader(db, sourcing.MaxEncodedSnapshotBytes)
+	if err != nil {
+		return nil, err
+	}
+	return NewBrowserAcquisitionService(operations, provider, producer, reader, authorizer, providerBudget)
 }
 
 // InstallAcquisitionSchema explicitly initializes recovery and current fact owners.

@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AcquisitionTimeout             = 20 * time.Second
-	AcquisitionLease               = 30 * time.Second
+	AcquisitionTimeout = 20 * time.Second
+	AcquisitionLease   = 30 * time.Second
 	// MaxAcquisitionOperations bounds every operation row an organization may create over
 	// its lifetime. Rows are never deleted (no key GC) and terminal rows keep counting, so
 	// this is a hard ceiling, not a soft threshold.
@@ -70,6 +70,16 @@ type AcquisitionOperationStore interface {
 	Prepare(context.Context, AcquisitionOperation, PublicationCommand) (AcquisitionOperation, error)
 	Claim(context.Context, AcquisitionOperation) (AcquisitionOperation, bool, error)
 	Finish(context.Context, AcquisitionOperation, string, string) error
+}
+
+// CapacityReadOperationStore optionally reports whether an organization still
+// has acquisition capacity, so a caller can reject before doing expensive
+// external work. It is an optimization, not a correctness gate: the atomic
+// capacity check inside Start/StartPrepared remains authoritative.
+type CapacityReadOperationStore interface {
+	// CapacityAdmitted reports whether the organization is below both the
+	// retained-operation and active-operation ceilings.
+	CapacityAdmitted(context.Context, PublicationScope) (bool, error)
 }
 
 // PreparedAcquisitionOperationStore atomically admits an operation with its
