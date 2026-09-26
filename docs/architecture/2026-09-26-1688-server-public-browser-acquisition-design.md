@@ -1,7 +1,7 @@
 # 服务端匿名浏览器采集（1688 public browser acquisition）架构设计
 
 - Contract/Design ID: `src2b-public-browser-v1`
-- Status: **DRAFT for Independent Architecture Review**
+- Status: **FROZEN BASELINE / `IMPLEMENTATION_READY`（用户决定 2026-09-26）**
 - Product Decision: `PD-1688-SERVER-PUBLIC-BROWSER-2026-09-26`
 - Related: Issue #398（`src2b-acquisition-v1`）、#399（`browser_acquisition` producer）、#30
 - Baseline: main `4e9a20081`
@@ -356,20 +356,54 @@ Cutover/deletion condition:
 | --- | --- | --- | --- |
 | 20 | D1 快速路径把 \`prepared\` 与 \`publishing/published/failed\` 一视同仁地丢给 resolve，但 \`AcquisitionService.resolve\` **只接受 \`publishing\`/\`published\`** ⇒ \`StartPrepared\` 已提交而响应/进程丢失时，每次同 key 重试都返回 \`OUTCOME_UNKNOWN\`，且**没有调度器**会去推进那条已持久化的 command | **IMPLEMENTATION_TEST（成立，已修）** | 命中响应丢失恢复幂等 Must。已核实现有 HTTP \`Acquire\` 在 \`op.State == prepared\` 时先 \`Claim\` 再 \`resolve\`。已在 D1 改为**按状态分支**：\`prepared\` 必须先 \`operations.Claim\` 再 resolve；§8 增加“停在 \`prepared\` 的恢复”验收 |
 
-## 11. 未决 / 需评审确认
+## 11. 设计冻结声明（用户决定 2026-09-26）
 
-1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
-2. **D8 的并发上限**：建议 ≤2；在 D13 形态下落于采集容器（可独立调），需确认是否与部署形态（单副本/多副本）一致。
-3. **验证码自动处理的失败语义**：确认「自动处理失败即如实 `SOURCE_UNAVAILABLE`，不做二次人工介入」。
-4. **`public_browser` channel 命名**：需确认与 `src2b-acquisition-v1` 的 channel 语义扩展方式（`MapAcquisitionEvidence` 允许集合）。
-5. **D1 的失败行差异**：确认浏览器路径「预 admission 失败不建行、同 key 可重试」相对 HTTP 路径「失败建行、同 key 永久失败」的差异是否接受。
-6. **D10 的依赖边界**：确认新 owner 自持最小浏览器实现（不 import `internal/crawler/*`），而不是把 `shared/browser` 提升为当前共享基础设施。
-7. **D9 的 `ContentSHA256` 定义**：确认为「映射字段子树规范化 JSON 摘要」，而非整页字节。
-8. **D12 的连接层强制方式与部署形态**：**已定（D13 独立采集容器 + 出站白名单）**；具体白名单 CIDR/域名与采集容器网络策略仍需在实现前定稿。
-9. **D12 的允许 origin 集**：需产品/安全确认具体的 1688/CDN 允许列表。
-10. **真实 1688 网络验收**：需用户单独授权；未授权保持 `NOT_RUN`。
-11. **D13 的内部 RPC 契约与部署面**：采集服务只进内部网络、无 DB 凭据（finding #12 已定），需定义最小 RPC（请求/响应/错误/超时/**解码前限长**）；新增 compose 服务/镜像/限额属新部署面，需在实现 Issue 明确并单独授权部署。
-12. **D2 的具体预算数值**：外层服务预算 = provider + 发布，建议值待定（需一次真实冷启动+挑战的实测来定，不能只靠夹具）。
-13. **D13 的调用方准入方式（finding #14）**：网络准入 vs 服务身份（mTLS/服务凭据）二选一，依赖部署形态；**未落实即不得接生产路由**。
-14. **D8 的浏览器响应/累计下载上限数值**：需与 `src2b-acquisition-v1` 的 2 MiB 语义对齐后定稿。
-15. **§7 例外的接口形状（finding #19）**：只读容量方法的最终签名（建议 `CapacityAdmitted(ctx, scope) (bool, error)`）需在实现前定稿，并确认其不引入第二个容量事实源。
+用户决定：**冻结本设计为基线，不再继续追 Codex 评审 finding，直接进入实现**。
+
+依据 `AGENTS.md` 停止规则：架构敏感修改**默认最多两轮**正常评审；第二轮之后的非 Blocker finding 转为 `IMPLEMENTATION_TEST`/`BACKLOG`，**不得**再创建新一串设计文档。本设计实际经历了 **7 轮、20 条** finding，已远超该上限。
+
+冻结的实际含义（不得误读为“已验证”）：
+
+- 7 轮共 20 条 finding 已**逐条核实、分类并写入本文**（§10.1–§10.5）：其中 **6 条 BLOCKER**（#1 路由 deadline、#2 持久化 channel、#4 连接层出网、#9 发布阶段预算、#12/#18 凭据与数据库隔离、#14 调用方认证）与 **14 条** `IMPLEMENTATION_TEST`/`BACKLOG`。
+- 20 条中 **19 条是本设计自身书写不一致**（改动引出的漏改/“引用了真实代码却断言它并不提供的能力”），**不是外部约束变化**。这意味着继续以文档为对象反复评审会进入自反馈循环，**边际收益递减**，而不是收敛。
+- ⇒ **本设计未在真实 1688 页面上成功采集过一次**。所有采集可行性证据来自：#399 浏览器插件在真实页面的端到端 PASS（`published`，`catalogVersion 1`），以及本机 fingerprint-chromium 旧实现的实测（19.6s、标题/价格/9 图/16 变体/供应商）。**真实网络的 PASS/FAIL/NOT_RUN 仍需用户单独授权**（见 §12-A5）。
+
+**冻结后的变更规则**：
+
+1. 只有出现新的 **BLOCKER**（命中 `AGENTS.md` 的 BLOCKER 条件）才能重开设计并重新评审。
+2. §10.1–§10.5 中标为 `IMPLEMENTATION_TEST` / `BACKLOG` 的条目**一律在实现与验证层收敛**，不再回到本文讨论。
+3. §12 中标为“实现细节/实现期定稿”的项**不阻塞开工**，在实现时按本文已定原则落定。
+4. 标为“**需用户/产品/安全决定**”的项**仍阻塞**对应切片的合并，不得由实现者自行决定。
+
+## 12. 未决项（按是否阻塞开工分类）
+
+### A. 需用户 / 产品 / 安全决定（**阻塞对应切片合并**，实现者不得自行决定）
+
+| # | 项 | 阻塞层级 | 说明 |
+| --- | --- | --- | --- |
+| A1 | **D13 的调用方准入方式**（finding #14）：网络准入（RPC 只对 `current-application` 命名空间/主机开放）**或** 服务身份（mTLS / 独立服务凭据） | **接生产路由** | 仓库无可复用的服务身份机制；未定前不得接生产路由 |
+| A2 | **D12 的允许 origin 集** | **接生产路由** | 需产品/安全确认具体 1688/CDN 允许列表 |
+| A3 | **D1 的失败行差异**：浏览器路径「预 admission 失败不建行、同 key 可重试」相对 HTTP 路径「失败建行、同 key 永久失败」的差异**是否接受** | 合并 | 属对外可见的失败语义变更 |
+| A4 | **验证码自动处理的失败语义**：确认「自动处理失败即如实 `SOURCE_UNAVAILABLE`，不做二次人工介入」 | 合并 | 边界语义确认 |
+| A5 | **真实 1688 网络验收授权** | 真实网络验收 | 未授权则保持 `NOT_RUN`，**不得**用 fixture 冒称真实平台 acceptance |
+| A6 | **新增部署面授权**（D13：compose 服务 / 镜像 / 限额 / 升级回滚） | 部署 | 新部署面需单独授权 |
+
+### B. 实现细节 / 实现期定稿（**不阻塞开工**；按本文已定原则在实现中落定）
+
+| # | 项 | 本文已定的原则 / 建议落法 |
+| --- | --- | --- |
+| B1 | D2 的时间预算数值（finding #1/#9） | 原则已定：**外层 = provider + 发布；浏览器预算只施加于 provider 子 context**。具体数值实现期定，且应取自一次真实冷启动+挑战实测，不得只靠夹具 |
+| B2 | D8 的并发上限 | 原则已定：上限落在**采集进程/容器**、可独立调、不与 API 进程共享。初始值建议 ≤2，实现期按实测调 |
+| B3 | D8 的浏览器单响应 / 累计下载上限数值（finding #17） | 原则已定：与 `src2b-acquisition-v1` 的 2 MiB 语义对齐，在浏览器/代理边界生效，超限中止采集 |
+| B4 | §7 例外接口的最终签名（finding #19） | 原则已定：**只新增一个只读**容量查询，不改既有方法语义；建议 `CapacityAdmitted(ctx, scope) (bool, error)`；须确认不引入第二个容量事实源 |
+| B5 | D13 最小 RPC 契约（请求/响应/错误/超时/解码前限长） | 原则已定：入参仅 canonical source/offerID，**不带 org/actor/roles/token**；出参有界 `AcquisitionEvidence` |
+| B6 | D12 连接层强制的具体白名单 CIDR/域名 | 原则已定：连接层为强制点；`--host-resolver-rules` pin 为备选；Route 拦截仅纵深防御 |
+| B7 | `public_browser` channel 的实现落法（finding #2） | 原则已定：加入 `MapAcquisitionEvidence` 允许集合 **且** 同步 `validCommand` 的空-`CaptureSHA256` 分支；`CaptureSHA256` 保持为空；**不新增 producer kind** |
+| B8 | D9 `ContentSHA256` 定义 | 原则已定：被映射字段子树的规范化 JSON 摘要（非整页字节） |
+| B9 | D10 依赖边界 | 原则已定：新 owner 自持最小浏览器实现，**不 import `internal/crawler/*`** |
+| B10 | D1 同 key 协调与容量预检的具体机制（finding #10/#15） | 原则已定：协调只为省掉重复出网，正确性仍依赖 `StartPrepared` 原子性；预检为优化/风控，非正确性来源 |
+
+### C. 已在本轮冻结中定论（无需再决）
+
+- **D12 的连接层强制方式与部署形态**：已定 = D13 独立采集进程 + 出网白名单（见 A1/A2 只剩名单与方式待定）。
+- **D1 的 `prepared` 恢复**（finding #20）：已定 = 命中 `prepared` 必须先 `Claim` 再 resolve。
