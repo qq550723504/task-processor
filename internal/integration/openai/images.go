@@ -378,15 +378,14 @@ func (bc *BaseClient) doJSONImageRequest(ctx context.Context, method string, api
 			if err != nil {
 				return err
 			}
-			var parsed ImageResponse
-			if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
+			parsed, err := decodeImageResponse(bodyBytes)
+			if err != nil {
 				return err
 			}
 			parsed.RequestID = extractImageRequestID(resp.Header)
 			parsed.RawResponse = strings.TrimSpace(string(bodyBytes))
 			lastErr = nil
-			payloadResp := parsed
-			lastResp = &payloadResp
+			lastResp = parsed
 			return nil
 		}()
 		if err == nil {
@@ -447,15 +446,14 @@ func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath strin
 			if err != nil {
 				return err
 			}
-			var parsed ImageResponse
-			if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
+			parsed, err := decodeImageResponse(bodyBytes)
+			if err != nil {
 				return err
 			}
 			parsed.RequestID = extractImageRequestID(resp.Header)
 			parsed.RawResponse = strings.TrimSpace(string(bodyBytes))
 			lastErr = nil
-			payloadResp := parsed
-			lastResp = &payloadResp
+			lastResp = parsed
 			return nil
 		}()
 		if err == nil {
@@ -467,6 +465,37 @@ func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath strin
 		}
 	}
 	return nil, fmt.Errorf("调用 OpenAI image edit API 失败，已重试%d次: %w", maxRetries, lastErr)
+}
+
+// decodeImageResponse consumes only the image usage schema. Invalid or absent
+// counters leave usage explicitly unknown without discarding the image result.
+// Chat's prompt/completion wire fields are intentionally not a fallback.
+func decodeImageResponse(body []byte) (*ImageResponse, error) {
+	type imageResponseFields ImageResponse
+	response := &ImageResponse{}
+	wire := struct {
+		*imageResponseFields
+		Usage json.RawMessage `json:"usage"`
+	}{imageResponseFields: (*imageResponseFields)(response)}
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return nil, err
+	}
+	var counters struct {
+		Input  *int `json:"input_tokens"`
+		Output *int `json:"output_tokens"`
+		Total  *int `json:"total_tokens"`
+	}
+	if err := json.Unmarshal(wire.Usage, &counters); err != nil || counters.Input == nil || counters.Output == nil || counters.Total == nil {
+		return response, nil
+	}
+	input, output, total := *counters.Input, *counters.Output, *counters.Total
+	// Subtraction after nonnegative/range checks avoids overflow in input+output.
+	if input < 0 || output < 0 || total <= 0 || input > total || output != total-input {
+		return response, nil
+	}
+	response.Usage = Usage{PromptTokens: input, CompletionTokens: output, TotalTokens: total}
+	response.UsageKnown = true
+	return response, nil
 }
 
 func buildAPIURL(baseURL string, apiPath string) string {
