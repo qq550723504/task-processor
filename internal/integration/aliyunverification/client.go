@@ -77,8 +77,16 @@ func (c *Client) CreateFace(ctx context.Context, id string, scene int64, in doma
 	if err != nil {
 		return domain.PersonalLink{}, domain.ErrUnavailable
 	}
-	r, err := client.InitFaceVerifyWithOptions(&sdk.InitFaceVerifyRequest{SceneId: dara.Int64(scene), OuterOrderNo: dara.String(strings.ReplaceAll(id, "-", "")), ProductCode: dara.String("ID_PRO"), Model: dara.String("LIVENESS"), CertType: dara.String("IDENTITY_CARD"), CertName: dara.String(in.Name), CertNo: dara.String(in.IDNumber), ReturnUrl: dara.String(c.returnURL), MetaInfo: dara.String(meta), RarelyCharacters: dara.String("N"), ProcedurePriority: dara.String("url"), VideoEvidence: dara.String("false")}, runtime())
-	if err != nil || r == nil || r.Body == nil || dara.StringValue(r.Body.Code) != "200" || r.Body.ResultObject == nil {
+	request := &sdk.InitFaceVerifyRequest{SceneId: dara.Int64(scene), OuterOrderNo: dara.String(strings.ReplaceAll(id, "-", "")), ProductCode: dara.String("ID_PRO"), Model: dara.String("LIVENESS"), CertType: dara.String("IDENTITY_CARD"), CertName: dara.String(in.Name), CertNo: dara.String(in.IDNumber), ReturnUrl: dara.String(c.returnURL), MetaInfo: dara.String(meta), RarelyCharacters: dara.String("N"), ProcedurePriority: dara.String("url"), VideoEvidence: dara.String("false")}
+	// The generated convenience method puts CertName/CertNo/MetaInfo in Query.
+	// Use the official OpenAPI pipeline with POST form parameters instead, before
+	// it signs the request. Never rewrite a signed request in the transport.
+	raw, err := client.CallApi(&openapi.Params{Action: dara.String("InitFaceVerify"), Version: dara.String("2019-03-07"), Protocol: dara.String("HTTPS"), Pathname: dara.String("/"), Method: dara.String("POST"), AuthType: dara.String("AK"), Style: dara.String("RPC"), ReqBodyType: dara.String("formData"), BodyType: dara.String("json")}, &openapi.OpenApiRequest{Body: openapi.ParseToMap(request)}, runtime())
+	if err != nil {
+		return domain.PersonalLink{}, domain.ErrUnavailable
+	}
+	r := &sdk.InitFaceVerifyResponse{}
+	if dara.Convert(raw, r) != nil || r.Body == nil || dara.StringValue(r.Body.Code) != "200" || r.Body.ResultObject == nil {
 		return domain.PersonalLink{}, domain.ErrUnavailable
 	}
 	return domain.PersonalLink{CertifyID: dara.StringValue(r.Body.ResultObject.CertifyId), URL: dara.StringValue(r.Body.ResultObject.CertifyUrl)}, nil

@@ -22,6 +22,11 @@ func TestSDKFixedIdentityAndNoAutomaticRetry(t *testing.T) {
 	n := 0
 	c.http = &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		n++
+		for _, field := range []string{"CertName", "CertNo", "MetaInfo", "Mobile", "UserName", "IdentifyNum"} {
+			if r.URL.Query().Has(field) {
+				t.Fatalf("sensitive field %s entered request URL", field)
+			}
+		}
 		var raw []byte
 		if r.Body != nil {
 			raw, _ = io.ReadAll(r.Body)
@@ -83,6 +88,13 @@ func TestSDKFixedIdentityAndNoAutomaticRetry(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatal("SDK retried paid call", n)
+	}
+	n = 0
+	if _, err = c.CreateFace(context.Background(), "f3915ce3-c613-46cf-a2f5-121f90c4d693", 123, identity, `{"deviceType":"pc"}`); err == nil {
+		t.Fatal("failed initialization accepted")
+	}
+	if n != 1 {
+		t.Fatal("SDK retried initialization", n)
 	}
 }
 func TestSDKContextCancelsTransport(t *testing.T) {
