@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS public.account_member_token_operations (
 CREATE TABLE IF NOT EXISTS public.account_member_token_audit_events (
  id bigserial PRIMARY KEY, organization_id varchar(128) NOT NULL, actor_id varchar(128) NOT NULL, member_id varchar(128) NOT NULL, operation varchar(32) NOT NULL,
  target bigint NOT NULL, allocated bigint NOT NULL, consumed bigint NOT NULL, version bigint NOT NULL, idempotency_key varchar(128) NOT NULL UNIQUE, created_at timestamptz NOT NULL);
+\if :{?runtime_roles_ready}
+\else
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'commercial_reader') THEN
@@ -84,8 +86,16 @@ END $$;
 GRANT USAGE ON SCHEMA public TO commercial_reader, commercial_runtime;
 GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets TO commercial_reader;
 ALTER ROLE commercial_reader SET default_transaction_read_only=on;
+\endif
+GRANT USAGE ON SCHEMA public TO commercial_runtime;
+DO $$ BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO commercial_runtime', current_database());
+END $$;
 GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements TO commercial_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_member_token_locks, public.account_member_token_allocations, public.account_member_token_operations, public.account_member_token_audit_events TO commercial_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO commercial_runtime;
+\if :{?runtime_roles_ready}
+\else
 ALTER ROLE commercial_runtime SET statement_timeout='10s';
+\endif

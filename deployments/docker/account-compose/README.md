@@ -1,5 +1,93 @@
 # Local account center Compose
 
+## PostgreSQL layout (new local projects)
+
+The standard local stack has **one application PostgreSQL instance**
+(`business-db`, private `127.0.0.1:5433`) and **one independent ZITADEL instance**
+(`identity-db`, private `127.0.0.1:5432`). The six application databases remain
+separate databases, not schemas in one database. The base stack initializes the
+first four; the existing image overlay initializes Product acquisition and
+ImageAgent in the other two. Creating those two empty databases does not enable
+their application features.
+
+| Module / fact owner | Tables (all in `public`) | Logical database | Runtime role | Separate application pool / maximum connections | Instance |
+| --- | --- | --- | --- | --- | --- |
+| Source Account Registry; Account business profile | `source_account_resources`, `source_account_operations`; `account_business_profiles`, `account_business_profile_audit_events` | `source_accounts` | `source_account_runtime` | `sourceAccountDatabase` / 4 | `business-db:5433` |
+| Commercial reads, usage reservation/settlement, member allocation | `saas_plans`, `saas_tenant_subscriptions`, `saas_tenant_entitlements`; `saas_usage_buckets`, `saas_usage_events`, `saas_usage_event_outbox`, `saas_subscription_audit_logs`; `account_member_token_locks`, `account_member_token_allocations`, `account_member_token_operations`, `account_member_token_audit_events` | `commercial` (or `ACCOUNT_COMMERCIAL_DATABASE`) | `commercial_runtime` | `commercialDatabase` / 4; image worker has its own commercial pool / 4 | `business-db:5433` |
+| Subscription/catalog owner; commercial orders; organization resources | `saas_modules`, `saas_plans`, `saas_plan_modules`, `saas_tenant_subscriptions`, `saas_tenant_entitlements`, `saas_usage_counters`, `saas_usage_counter_adjustments`, `saas_subscription_audit_logs`, `saas_subscription_activation_fences`, `saas_purchased_plan_activations`; `commercial_offers`, `commercial_quotes`, `commercial_orders`, `commercial_order_items`; `saas_organization_resource_buckets`, `saas_organization_resource_operations`, `saas_organization_resource_source_claims`, `saas_organization_resource_events`, `saas_organization_resource_reservations`, `saas_organization_resource_debts`, `saas_organization_resource_audit_logs` | same commercial database | `commercial_owner_runtime` (separate password) | `commercialOwnerDatabase` / 2 | `business-db:5433` |
+| Referral registration/economics; canonical Money owner | `referral_codes`, `registration_intents`, `referral_relations`, `referral_receipts`, `registration_admission_buckets`, `referral_earning_claims`, `referral_earnings_ledger`, `referral_refund_operations`, `referral_chargeback_operations`, `referral_earnings_projection`, `referral_withdrawals`, `referral_withdrawal_operations`, `referral_earnings_audit_events`; `ledger_payment_settlements`, `ledger_refund_settlements`, `ledger_chargeback_settlements`, `ledger_payout_methods`, `ledger_payout_method_operations`, `ledger_organization_wallets`, `ledger_organization_wallet_entries`, `ledger_organization_wallet_reservations`, `ledger_organization_wallet_reserve_decisions`, `ledger_organization_topup_settlements`, `ledger_organization_wallet_reversals` | `referrals` | `referral_runtime` | `referrals.referralDatabase` / 4 | `business-db:5433` |
+| Organization membership operation receipts/audit (identity remains ZITADEL-owned) | `organization_member_operations`, `organization_member_audit_events` | `membership` | `organization_membership_runtime` | `membership.database` / 4 | `business-db:5433` |
+| Acquisition; SRC publication and Product Catalog | `product_acquisition_operations`, `product_source_publications`, `product_source_publication_receipts`, `product_snapshot_versions`, `product_snapshot_heads` | `product_acquisition` | `source_acquisition_runtime` | `productAcquisitionDatabase` / 4 | `business-db:5433` |
+| Organization ImageAgent; approved Product assets; AI invocation records | `image_agent_v2_runs`, `image_agent_v2_plans`, `image_agent_v2_slots`, `image_agent_v2_attempts`, `image_agent_v2_events`, `image_agent_v2_asset_catalog`, `image_agent_v2_asset_catalog_manifests`, `image_agent_v2_projection_snapshots`, `image_agent_v2_projection_commits`, `image_agent_v2_slot_external_effects`, `image_agent_v3_slot_external_effects`; `product_approved_assets`, `product_approval_receipts`, `product_approved_inventory_heads`, `product_approved_inventory_version_heads`; `ai_client_credentials`, `ai_invocations` | `image_agent` | `image_agent_runtime` (API), `image_agent_worker_runtime` (worker) | `imageAgent.database` / 4; worker `database` / 4 | `business-db:5433` |
+| ZITADEL / official Login V2 | ZITADEL-managed identity schema | `zitadel` | existing ZITADEL provisioning configuration, unchanged | ZITADEL-managed pools, separate from application | `identity-db:5432` |
+
+The table lists describe ownership, **not blanket table permissions**. The
+commercial read role cannot write plans/entitlements or read owner-only money
+and order tables; the ImageAgent API and worker keep their different exact
+allowlists, and the old v2 slot-effect table is not granted to either current
+role. Existing startup permission checks remain authoritative. Installed metadata
+tables are `goose_source_account_registry_version` and
+`goose_account_profile_version` in source_accounts, and
+`goose_account_member_token_allocation_version` in commercial; these are
+schema-owner-only. The existing subscription installer also creates
+`saas_store_quota_allocations` and `saas_store_quota_buckets` in commercial;
+this local composition grants neither commercial runtime role access to them.
+Their presence does not open an additional store-quota product flow.
+
+The seven current-application pools total at most 26 connections when the image
+overlay is enabled (18 without it); the worker adds two independent pools of 4.
+The server retains PostgreSQL's existing 100-connection limit. No shared pool,
+cross-database transaction, FDW, or dblink is introduced. In particular, Money
+remains in `referrals` and orders/resources in commercial: existing owner calls,
+idempotency receipts and recovery retain their original transaction boundaries.
+
+`business-db-init.sh` uses the official PostgreSQL empty-PGDATA initialization
+hook to create the six databases and roles and revoke PUBLIC CONNECT/TEMP.
+Both PostgreSQL instances explicitly use SCRAM on TCP, including loopback;
+the shared network namespace must never turn `127.0.0.1` into passwordless trust.
+Only this cluster bootstrap uses `business_cluster_admin`; its credential is
+not mounted into schema installers, application or worker. Schema installers
+connect as `source_account_owner`, `commercial_schema_owner`, `referral_owner`,
+`membership_owner`, `acquisition_owner`, and `image_agent_owner`, respectively.
+These logins have no superuser, CREATEDB, CREATEROLE, replication, BYPASSRLS or
+role-membership privileges; each owns only its database. Runtime roles receive
+CONNECT only to their own initialized database and retain existing table grants.
+An incomplete cluster init never passes its health check; incomplete schema
+initialization retains its existing fail-closed marker behavior.
+Application database credential files remain mode 0600, owned by UID/GID 70
+used by the pinned `postgres:17.2-alpine` image's initialization hook. The
+root schema-install containers can read them, but serving containers receive
+only their existing private runtime manifests. An unreadable or malformed
+credential aborts initialization before a passwordless role can be created.
+
+Use a **new project name and empty volumes** for this layout. It is not an
+upgrade/migration command for retained multi-instance projects. Their containers,
+volumes and original checkout remain in place; operate them with that checkout.
+The new bootstrap refuses their old state instead of rewriting connections.
+
+All six application databases persist in `${COMPOSE_PROJECT_NAME}-business-db`;
+ZITADEL persists in `${COMPOSE_PROJECT_NAME}-identity-db`. Stop/restart commands
+below retain both plus all project-specific credentials. The application
+databases now share PostgreSQL restart, resource, WAL and physical backup/recovery
+scope; logical database separation does not provide independent instance failure
+domains. Keep the entire project volume set for local retention; no automatic
+backup/migration platform or recovery of an old project's data is added.
+See PostgreSQL's [database hierarchy](https://www.postgresql.org/docs/17/manage-ag-overview.html)
+and [database privileges](https://www.postgresql.org/docs/17/ddl-priv.html).
+
+For a new project with all six schemas initialized by the overlay, the narrow
+PostgreSQL permission regression uses actual TCP connections and rolled-back
+DDL probes. It checks all 14 schema/runtime roles, wrong passwords, cross-database
+CONNECT, role escalation, and commercial reader/owner separation:
+
+```powershell
+docker compose --env-file .env cp ../../../scripts/tests/account-compose-postgres-permissions.sh business-db:/tmp/permissions.sh
+docker compose --env-file .env exec -T business-db sh /tmp/permissions.sh
+```
+
+The four-database base mode does not satisfy this six-schema test's prerequisites.
+It is not a test of external identity, payment or image-generation acceptance.
+
 ## Opt-in #487 image trial overlay (infrastructure preparation only)
 
 `docker-compose.image-agent.yml` is a separate, isolated local trial overlay;
@@ -103,7 +191,7 @@ $mailPort = 19425
 "COMPOSE_PROJECT_NAME=$project`nACCOUNT_IDENTITY_PORT=$identityPort`nACCOUNT_APPLICATION_PORT=$applicationPort`nACCOUNT_MAIL_PORT=$mailPort" | Set-Content -LiteralPath .env -Encoding ascii
 $publicPorts = @($identityPort, $applicationPort, $mailPort)
 if (($publicPorts | Sort-Object -Unique).Count -ne $publicPorts.Count) { throw "Public ports must be distinct" }
-$fixedInternalPorts = @(1025, 3000, 3001, 5432, 5433, 5434, 5435, 5436, 8025, 8080, 8085)
+$fixedInternalPorts = @(1025, 3000, 3001, 5432, 5433, 7233, 8025, 8080, 8085, 9000, 18080)
 $internalConflicts = @($identityPort, $applicationPort) | Where-Object { $fixedInternalPorts -contains $_ }
 if ($internalConflicts.Count -gt 0) { throw "Identity/application port collides with a fixed Compose-internal port" }
 foreach ($port in $publicPorts) { if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw "Host port is already in use: $port" } }

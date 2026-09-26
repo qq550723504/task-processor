@@ -12,4 +12,7 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_payout_methods TO referral_r
 GRANT SELECT, INSERT ON TABLE public.ledger_payout_method_operations TO referral_runtime;
 GRANT UPDATE (state, ciphertext, lease_until) ON TABLE public.registration_intents TO referral_runtime;
 GRANT UPDATE, DELETE ON TABLE public.registration_admission_buckets TO referral_runtime;
+\if :{?runtime_roles_ready}
+\else
 ALTER ROLE referral_runtime SET statement_timeout='10s';
+\endif
