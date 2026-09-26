@@ -49,7 +49,7 @@ export function ReferralsPage({ mode, view = mode, expectedUserId, registrationA
   }, []);
   const pathname = referralPaths[view];
   const title = referralTitles[view];
-  const description = view === "complete" ? "用当前登录身份确认这次新注册，并完成不可变推广关系。" : view === "center" ? "查看推广码、推广关系与邀请入口。" : view === "earnings" ? "查看来自权威支付事实的收益汇总。" : view === "withdrawals" ? "登记收款方式并管理人工提现申请。" : view === "rules" ? "查看收益结算、退款调整与提现规则。" : "查看你的推广码、真实关系数量与当前可用汇总。";
+  const description = view === "complete" ? "用当前登录身份确认这次新注册，并完成不可变推广关系。" : view === "center" ? "查看推广码、推广关系与邀请入口。" : view === "earnings" ? "查看来自权威支付事实的收益汇总。" : view === "withdrawals" ? "登记收款方式并管理人工提现申请。" : view === "rules" ? "当前有效的推广、收益、结算与提现规则统一在本页说明。" : "查看你的推广码、真实关系数量与当前可用汇总。";
   const authError = [context.error, context.blockingError].some((error) => error?.code === "AUTHENTICATION_REQUIRED");
   const identityChanged = Boolean(context.user && context.user.id !== expectedUserId);
   let content: React.ReactNode;
@@ -215,7 +215,7 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
   });
 
   if (view === "rules") {
-    if (rules.isPending || rules.isFetching) return <ConsoleState kind="loading" title="正在读取推广规则">正在核对当前收益合同。</ConsoleState>;
+    if (rules.isPending || rules.isFetching) return <ConsoleState kind="loading" title="正在读取推广规则">正在读取当前生效的推广规则。</ConsoleState>;
     if (rules.isError && isIdentityError(rules.error)) return <IdentityError returnTo={referralPaths.rules} />;
     if (rules.isError || !rules.data) return <ReferralError error={rules.error} />;
     return <ReferralRulesView data={rules.data} />;
@@ -276,15 +276,18 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
 
 function ReferralRulesView({ data }: { data: ReferralRules }) {
   return <div className={styles.pageBody}>
-    <section className={styles.ruleNotice}><strong>当前规则以平台实际生效版本为准</strong><p>规则由当前推广 owner 返回。页面不自行计算或累计收益；汇总以服务端不可变账本投影为准。</p></section>
-    <div className={styles.ruleGrid}>
-      <article className={styles.ruleCard}><h2>推广关系如何建立</h2><p>用户通过推广链接或推广码完成注册并通过官方验证后，关系以系统最终记录为准。</p></article>
-      <article className={styles.ruleCard}><h2>哪些订单产生收益</h2><p>收益只消费 canonical settled payment、refund 和 chargeback 事实；本页面不会创建支付事实。</p></article>
-      <article className={styles.ruleCard}><h2>收益如何计算</h2><p>当前有效比例为 {data.commissionRateBps / 100}%；最终金额以不可变收益账本投影为准。</p></article>
-      <article className={styles.ruleCard}><h2>结算与退款处理</h2><p>结算周期为 {data.settlementPeriodDays} 日。退款与拒付通过 owner 记录的调整进入收益投影。</p></article>
-      <article className={styles.ruleCard}><h2>提现规则</h2><p>最低申请金额 {formatMinor(data.minimumWithdrawalMinor)}；申请经人工审核，外部打款渠道由平台处理。</p></article>
-      <article className={styles.ruleCard}><h2>违规推广处理</h2><p>当前推广规则 owner 未返回违规推广处理政策。未提供。</p></article>
-    </div>
+    <section className={styles.ruleNotice} aria-labelledby="referral-rules-current-title">
+      <h2 id="referral-rules-current-title">当前规则以平台实际生效版本为准</h2>
+      <p>以下内容来自平台当前生效的推广收益规则。具体佣金比例、结算周期、最低提现金额和审核方式以本页当前读取结果为准。</p>
+    </section>
+    <section className={styles.ruleGrid} aria-label="规则说明">
+      <article className={styles.ruleCard}><h2>推广关系如何建立</h2><p>用户通过推广链接或推广码完成注册并通过官方验证后，推广关系以系统最终记录为准。</p></article>
+      <article className={styles.ruleCard}><h2>哪些订单产生收益</h2><p>只有平台已确认结算的支付会进入收益计算；后续发生退款或拒付时，相关收益会按实际结果调整。</p></article>
+      <article className={styles.ruleCard}><h2>收益如何计算</h2><strong className={styles.ruleValue}>{formatCommissionRate(data.commissionRateBps)}</strong><p>当前推广收益按该佣金比例计算；实际收益金额以服务端记录的结算结果为准。</p></article>
+      <article className={styles.ruleCard}><h2>结算与退款处理</h2><strong className={styles.ruleValue}>{data.settlementPeriodDays} 天</strong><p>当前结算周期为 {data.settlementPeriodDays} 天；退款或拒付发生后，相关收益会按实际结果调整。</p></article>
+      <article className={styles.ruleCard}><h2>提现规则</h2><strong className={styles.ruleValue}>{formatMinor(data.minimumWithdrawalMinor)}</strong><p>最低申请金额为 {formatMinor(data.minimumWithdrawalMinor)}；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。</p></article>
+      <article className={styles.ruleCard}><h2>违规推广处理</h2><strong className={styles.ruleUnavailable}>未提供</strong><p>当前规则接口尚未提供违规推广处理政策；本页面不补充或推测处罚规则。</p></article>
+    </section>
   </div>;
 }
 
@@ -350,6 +353,9 @@ function formatMinor(value: string) {
   const digits = negative ? value.slice(1) : value;
   const padded = digits.padStart(3, "0");
   return `${negative ? "-" : ""}¥${padded.slice(0, -2)}.${padded.slice(-2)}`;
+}
+function formatCommissionRate(value: number) {
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value / 100)}%`;
 }
 
 function addMinor(left: string, right: string) {
