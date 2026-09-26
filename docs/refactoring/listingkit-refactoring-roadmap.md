@@ -4,7 +4,7 @@
 >
 > Original active baseline: 2026-06-24, `master` commit `4829df08677a8b21960bfef59c702c3dc5027a2e`.
 >
-> Current authority: use `docs/refactoring/current-refactoring-status.md` for Now / Next / Later, `docs/refactoring/listingkit-boundary-checkpoint.md` for current ListingKit stop lines, and `docs/refactoring/next-phase-plan.md` for the next execution queue.
+> Current authority: product projection follows `docs/product/final-ui-ia-authority.md`; legacy handling follows `docs/refactoring/legacy-register.md`; current code entrypoints follow `docs/development/repository-structure.md`; execution order and scope come from #137 plus the concrete Issue / PR. `current-refactoring-status.md`, `listingkit-boundary-checkpoint.md`, and `next-phase-plan.md` are historical evidence where their own headers say so, not a current execution queue.
 
 ## 1. Why this document still exists
 

@@ -1,3 +1,8 @@
+> **状态：CURRENT VALIDATION TEMPLATE FOR LIVE PATH / NOT PRODUCT AUTHORITY（2026-09-26 校准）**  
+> 在 `docs/product/validation/runs/` 仍要求复制本模板记录真实集成与回归证据期间，本文继续作为该**现有运行路径**的当前验收记录模板；不能在未提供并切换到替代模板前把它降级为仅历史材料。  
+> 本文不决定产品 UI / IA、页面命名、长期架构或近期派工。产品投影以 [最终 Figma UI / IA Authority](../final-ui-ia-authority.md) 为准，旧 ListingKit / Task-first 架构按 [Legacy Register](../../refactoring/legacy-register.md) EXTRACT → RETIRE。  
+> 模板中的旧 Task / Workspace 字段只用于准确记录仍存活路径的事实；当对应运行路径完成 cutover，validation run 指引必须先切换到当前 owner 的等价模板，再退休这些旧字段。
+
 # ListingKit 真实接口验收报告模板
 
 > 用途：每轮真实接口联调都复制本模板生成一份 run 记录。建议文件名：`YYYY-MM-DD-<platform>-<task_id>.md`。
