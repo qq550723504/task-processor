@@ -63,9 +63,9 @@ export function EntitlementsOverview({ data, showResourceSummary = true, showRes
           {grant.uninterpreted_limit_count > 0 ? <p className={styles.subtle}>另有 {grant.uninterpreted_limit_count} 项限制尚未解释。</p> : null}
         </article>)}</div>}
       </Panel>
-      <Panel title="资源分配在哪里？"><p className={styles.subtle}>本页只读展示企业信息。成员资源分配尚未开放。</p>
-        <p className={styles.subtle}>现金余额：尚未提供。现金、AI 点数与数据额度均不从订阅用量推算。</p>
-        <p className={styles.subtle}>钱包、充值与用量明细暂未开放。</p>
+      <Panel title="资源与余额说明"><p className={styles.subtle}>成员 AI Token 分配请查看“我的账户 → 企业空间 → 资源与额度”；可用状态和操作权限以该页实际读取结果为准。</p>
+        <p className={styles.subtle}>此处不展示现金余额；现金、AI 点数与数据额度均不从订阅用量推算。</p>
+        <p className={styles.subtle}>钱包余额与用量明细可在“套餐与权益”中查看；充值暂未开放。</p>
       </Panel>
     </div>
     <Panel title="实际订阅">{data.subscription ? <><h3>{data.subscription.plan_name ?? "套餐名称未提供"}</h3><p className={styles.subtle}>实际套餐代码：{data.subscription.plan_code}</p><Validity row={data.subscription} /></> : <p>无订阅</p>}</Panel>
