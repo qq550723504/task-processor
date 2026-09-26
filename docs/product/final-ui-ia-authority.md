@@ -1,7 +1,7 @@
 # 硕米最终 UI / IA Authority
 
 > 状态：Active product authority  
-> 校准日期：2026-09-05  
+> 校准日期：2026-09-05；ListingKit 退休定位澄清：2026-09-26（不代表全部节点或功能状态重新验收）  
 > Figma Authority：页面 `31:463`「硕米官网」  
 > 适用范围：最终产品信息架构、导航层级、页面归属、用户可见命名、交互语义与产品投影
 
@@ -26,6 +26,14 @@
 - Agent 是否可以绕过 deterministic validator 或人工授权。
 
 因此，**最终原型 ≠ 当前 release capability**。
+
+### 1.1 ListingKit 不是目标产品组成（2026-09-26）
+
+用户重申：ListingKit 需要退休，当前产品以 Figma 设计为准。**旧 ListingKit 产品投影、Task-first 工作台及 root 混合架构不能作为长期子产品、默认入口或永久执行引擎保留。** 这不只是“不让它决定导航”，也不能在能力图中换成“内部引擎”继续保留同一旧 owner。
+
+有效行为按 [Legacy Policy](../refactoring/legacy-hard-cut-policy.md)、[Register](../refactoring/legacy-register.md) 归当前 Product / Listing / Marketplace / Integration / App 等 owner，调用方切换后退休原路径；不增加 wrapper、fallback 或双事实源。Listing 领域事实继续存在，不等于保留 ListingKit。
+
+`web/listingkit-ui` 中已经符合 Figma 和当前领域合同的 Console / BFF / 共享组件继续复用；旧 Task-first 页面逐项退出。真实目录、命令或配置名称尚未修改只表示工程现状，不是产品保留决定，也不授权仅凭名称删除合格实现。本文不宣称物理退休已完成，不授权业务迁移、部署或操作真实数据。
 
 ## 2. 当前最终一级信息架构
 
@@ -153,11 +161,11 @@ Figma「智能市场 / 智能体市场」明确表达了最终多专业智能体
 1. **Figma `31:463` 当前可见、非归档终稿 + 本文档**  
    决定最终 UI / IA / 页面命名 / 用户交互语义 / Product Projection。
 2. **产品战略与 Architecture Specs**  
-   决定业务规则、canonical facts、领域 ownership、安全边界、Tool/Agent contract、权限、幂等与审计。
+   决定业务规则、canonical facts、领域 ownership、安全边界、Tool/Agent contract、权限、幂等与审计；不能恢复 §1.1 已明确退休的旧产品或架构。
 3. **`docs/refactoring/current-refactoring-status.md`**  
-   决定当前 repository implementation reality、Now / Next / Later 与已验证证据。
-4. **GitHub Roadmap Authority（#137）**  
-   决定当前工程执行顺序与 backlog 映射。
+   提供注明基线的 implementation / 成熟度记录；今天的代码、接线和验收以准确 HEAD 的 Issue / PR / runtime 证据为准，不把历史状态当实时状态。
+4. **GitHub Roadmap Authority（#137）与具体执行 Issue**  
+   决定当前工程执行顺序、任务范围、依赖与操作权限。
 
 冲突处理规则：
 
@@ -165,7 +173,8 @@ Figma「智能市场 / 智能体市场」明确表达了最终多专业智能体
 - canonical facts、状态机、安全、权限与副作用控制：优先遵循领域/架构 contract；
 - Figma 中的「已开放」「可用」等产品状态不得覆盖 production capability gate；
 - repository implemented 不等于 production-ready；
-- 旧归档 Frame、旧 Listing Workspace/Task-first 文档不得覆盖当前最终 IA。
+- 旧归档 Frame、旧 Listing Workspace/Task-first 文档不得覆盖当前最终 IA；
+- 历史 ListingKit 战略或执行计划不得以“内部执行引擎”为理由覆盖既有 EXTRACT / RETIRE 决定。
 
 ## 8. 产品定位
 
@@ -173,4 +182,4 @@ Figma「智能市场 / 智能体市场」明确表达了最终多专业智能体
 
 > **以 AI 工作台和专业智能体为核心，以供应链、店铺、数据、工具和生态能力为上下文的 AI 电商经营平台。**
 
-ListingKit、Product、Image、SHEIN/TEMU/Amazon、Store Center、Resource Ledger 等是该产品下的领域能力与执行引擎，不应反向决定最终导航结构。
+Product、Asset、Listing、Marketplace、Store、Resource 等是支撑该产品的当前领域能力；它们不反向决定最终导航结构。**ListingKit 不再列为目标架构中的领域能力或长期执行引擎**：其有效行为由当前 owner 承接，旧产品投影和混合装配按 EXTRACT → RETIRE 收口。
