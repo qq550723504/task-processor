@@ -77,13 +77,15 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 1. 授权 + `Canonical1688Source` + 规范化 key 成功后，先 `ByKey(scope, key)`。
 2. 命中时**必须先执行 `sameAcquisition(request, op)`**（Codex finding #16）：它比对 `Fingerprint` 与 `Source`，不同商品**必须**返回 `ErrAcquisitionConflict`，不得直接把旧 offer 的已发布结果返回给新请求。只有比较通过才继续。
-3. 命中且可确定（`prepared/publishing/published/failed`）⇒ 直接走既有 resolve/read 逻辑返回，**不启浏览器**。
+3. 命中后按状态处理（Codex finding #20）：
+   - `publishing` / `published` / `failed` ⇒ 直接走既有 resolve/read，**不启浏览器**。
+   - **`prepared` ⇒ 必须先 `operations.Claim` 再 resolve**。已核实 `AcquisitionService.resolve` 只接受 `publishing`/`published`，遇到 `prepared` 一律返回 `ErrAcquisitionUnknown`（`acquisition.go`）；且契约明文**没有后台调度器**。因此若把 `prepared` 直接丢给 resolve，每次同 key 重试都会返回 `OUTCOME_UNKNOWN`，**那条已持久化的 command 永远不会被推进**。这与既有 HTTP 路径一致：`Acquire` 在 `op.State == prepared` 时先 `Claim` 再 `resolve`。
 4. **同 key 准入协调（Codex finding #10）**：`ByKey` 只能挡住“已有行”的情况。两个**首次并发**的同 key POST 会**同时**看到 not found 并各启一次浏览器，`StartPrepared` 只在两次出网抓取都发生后才仲裁。⇒ 需在 acquisition 之前对同 key 做**最小准入协调**（例如按 `(scope, key)` 的 singleflight/互斥，且多副本下仍以 `StartPrepared` 的原子性作为正确性依据）——协调只为**省掉重复的昂贵出网**，不作为幂等正确性的唯一依赖。
 5. **抓取前的容量预检/准入（Codex finding #15 / #19）**：容量检查目前只在 `StartPrepared` 内（`repository.go` 的 `count.Total >= MaxAcquisitionOperations || count.Active >= MaxActiveAcquisitionOperations`），而 `ByKey` 对新 key 总是 not found ⇒ 组织已触顶时，每个新 key 都会**先启一次浏览器**、耗掉共享的浏览器/IP 预算，然后才拿到 `ACQUISITION_CAPACITY`；唯一 key 可以无限重复这一点。但它当前**没有可实现的合同路径**：唯一的容量计数是 `Repository.StartPrepared` 内的私有查询。⇒ 需在抓取前做**有界的容量预检/准入**（并对预检与抓取之间的竞态保持 `StartPrepared` 作为原子正确性栅栏），
    - **最小只读容量合同**：在 `AcquisitionOperationStore` 上新增**一个只读**方法（如 `CapacityAdmitted(ctx, scope) (bool, error)`，返回该 scope 是否还有 `MaxAcquisitionOperations` / `MaxActiveAcquisitionOperations` 额度），application 在抓取前调用；已触顶则直接返回既有 429 `ACQUISITION_CAPACITY`，**不启浏览器**。
    - 该预检是**优化与风控保护**，**不是**正确性来源：预检与抓取之间的竞态（以及多副本）仍由 `StartPrepared` 的原子容量检查兜住。
    - 这是 §7 中唯一的接口例外（只新增一个只读方法，不改现有方法语义）。
-6. 覆盖：响应丢失后的同 key 重试、**并发首次同 key**、**同 key 异 offer**、**已触顶组织的新 key**。
+6. 覆盖：响应丢失后的同 key 重试、**并发首次同 key**、**同 key 异 offer**、**已触顶组织的新 key**、**`StartPrepared` 已提交但响应/进程丢失后停在 `prepared` 的恢复**。
 
 **失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §11）。
 
@@ -261,7 +263,7 @@ consumer   productsourcing.AcquisitionService.Acquire
 ## 8. 验证与验收方法
 
 - provider 单测：挑战页 fixture、字段缺失 fixture、超预算 fixture、非预期 content-type、超大响应、驱动不可用。
-- **重放优先**：同 key POST 在响应丢失后重试、并发同 key 重试，**均不得启动浏览器**，直接由 `ByKey` 返回可恢复结果（finding #5/#10）；**同 key 换 offer 必须返回 `ErrAcquisitionConflict`**（finding #16）；**已触顶组织的新 key 不得先启浏览器**（finding #15/#19，依赖 §7 的只读容量合同已实现）。
+- **重放优先**：同 key POST 在响应丢失后重试、并发同 key 重试，**均不得启动浏览器**，直接由 `ByKey` 返回可恢复结果（finding #5/#10）；**同 key 换 offer 必须返回 `ErrAcquisitionConflict`**（finding #16）；**已触顶组织的新 key 不得先启浏览器**（finding #15/#19，依赖 §7 的只读容量合同已实现）；**停在 `prepared` 的操作必须被 `Claim` 推进而不是长期 `OUTCOME_UNKNOWN`**（finding #20）。
 - **失败归因**：页面形状变化/提取器漏字段导致服务端证据被拒时，投影为 502 `SOURCE_UNAVAILABLE` 而非 400；仅调用方请求非法才 400（finding #6）。
 - **出网边界（finding #4）**：证明连接层强制真实生效——本地构造指向回环/链路本地/私网/元数据地址的被允许 host，浏览器**必须无法建连**；并覆盖重定向、service worker、WebSocket、`fetch`/xhr、预连接；未落地则不得接生产路由。
 - **调用方准入（finding #14）**：在部署形态中可观测地证明**只有 `current-application` 能调用采集 RPC**（未授权来源被拒），且该控制不引入租户身份/用户凭据。
@@ -347,6 +349,12 @@ Cutover/deletion condition:
 | --- | --- | --- | --- |
 | 18 | §1 范围声明仍写着采集进程“复用同一个 \`product_acquisition\` 库” ⇒ 实施者照做就会把库凭据与 Chromium 放进同一网络命名空间，**直接推翻 D12/D13**（即 #12 的旧病灶） | **BLOCKER（成立，已修）** | 命中「新的跳系统安全边界」。已把 §1 范围声明对齐 D13：**所有数据库仅由 \`current-application\` 持有，采集进程无任何库凭据/无库网络可达**；§4 调用链同步 |
 | 19 | D1 要求的抓取前容量预检**没有可实现的合同路径**：唯一的容量计数是 \`Repository.StartPrepared\` 内的**私有**查询，而 §7 又声明 store 接口不变 | **IMPLEMENTATION_TEST（成立，已修）** | 命中资源上限 Must。已在 D1 定义**最小只读容量合同**（\`AcquisitionOperationStore\` 新增一个只读容量查询），并把 §7 改为“既有方法语义不变 + **唯一例外**是新增该只读方法”；预检明确为优化/风控而非正确性来源，原子栅栏仍是 \`StartPrepared\` |
+
+### 10.5 第七轮增量复核（commit `e17865e79`）
+
+| # | Finding | 分类 | 处置 |
+| --- | --- | --- | --- |
+| 20 | D1 快速路径把 \`prepared\` 与 \`publishing/published/failed\` 一视同仁地丢给 resolve，但 \`AcquisitionService.resolve\` **只接受 \`publishing\`/\`published\`** ⇒ \`StartPrepared\` 已提交而响应/进程丢失时，每次同 key 重试都返回 \`OUTCOME_UNKNOWN\`，且**没有调度器**会去推进那条已持久化的 command | **IMPLEMENTATION_TEST（成立，已修）** | 命中响应丢失恢复幂等 Must。已核实现有 HTTP \`Acquire\` 在 \`op.State == prepared\` 时先 \`Claim\` 再 \`resolve\`。已在 D1 改为**按状态分支**：\`prepared\` 必须先 \`operations.Claim\` 再 resolve；§8 增加“停在 \`prepared\` 的恢复”验收 |
 
 ## 11. 未决 / 需评审确认
 
