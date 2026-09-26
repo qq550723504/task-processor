@@ -12,6 +12,9 @@ type authenticatedIdentityContextKey struct{}
 
 // OrganizationGrant preserves roles within the Organization and project that grant them.
 type OrganizationGrant struct {
+	// AuthorizationID is the identity-provider authorization/grant id. It is
+	// the canonical membership id used by commercial member-scoped facts.
+	AuthorizationID  string
 	OrganizationID   string
 	OrganizationName string
 	ProjectID        string
@@ -27,6 +30,7 @@ type AuthenticatedIdentity struct {
 	Roles                   []string
 	HomeOrganizationID      string
 	EffectiveOrganizationID string
+	EffectiveMemberID       string
 	OrganizationGrants      []OrganizationGrant
 	TokenExpiresAt          time.Time
 }
@@ -62,6 +66,7 @@ func normalizeIdentity(identity AuthenticatedIdentity) AuthenticatedIdentity {
 	identity.Roles = append([]string(nil), identity.Roles...)
 	identity.HomeOrganizationID = strings.TrimSpace(identity.HomeOrganizationID)
 	identity.EffectiveOrganizationID = strings.TrimSpace(identity.EffectiveOrganizationID)
+	identity.EffectiveMemberID = strings.TrimSpace(identity.EffectiveMemberID)
 	identity.OrganizationGrants = cloneOrganizationGrants(identity.OrganizationGrants)
 	if !identity.TokenExpiresAt.IsZero() {
 		identity.TokenExpiresAt = identity.TokenExpiresAt.Round(0).UTC()
@@ -75,6 +80,7 @@ func cloneOrganizationGrants(grants []OrganizationGrant) []OrganizationGrant {
 	}
 	cloned := make([]OrganizationGrant, len(grants))
 	for index, grant := range grants {
+		grant.AuthorizationID = strings.TrimSpace(grant.AuthorizationID)
 		grant.OrganizationID = strings.TrimSpace(grant.OrganizationID)
 		grant.OrganizationName = strings.TrimSpace(grant.OrganizationName)
 		grant.ProjectID = strings.TrimSpace(grant.ProjectID)

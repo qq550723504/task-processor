@@ -511,6 +511,29 @@ func TestWorkbenchOrganizationResolverNilFailsClosed(t *testing.T) {
 	require.Contains(t, response.Body.String(), "DEPENDENCY_UNAVAILABLE")
 }
 
+func TestWorkbenchCurrentIdentityPreservesBearerTokenForUserScopedHandlers(t *testing.T) {
+	router := gin.New()
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method:     http.MethodGet,
+		Path:       "/account/identity/profile",
+		AuthPolicy: httproute.AuthPolicyCurrentIdentity,
+		Handler: func(c *gin.Context) {
+			require.Equal(t, "current-request-token", zitadelruntime.BearerTokenFromContext(c.Request.Context()))
+			c.Status(http.StatusNoContent)
+		},
+	}}, routeAuthDependencies{
+		workbenchVerifier: mountedVerifierStub{identity: mountedVerifiedIdentity()},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/account/identity/profile", nil)
+	request.Header.Set("Authorization", "Bearer current-request-token")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+}
+
 func assertOrganizationPolicySkipsResolver(t *testing.T, policy httproute.OrganizationAccessPolicy) {
 	t.Helper()
 	events := []string{}
@@ -686,6 +709,34 @@ func TestWorkbenchOrganizationContextReadClearsLegacyBusinessScopeWhenSelectionI
 	router.ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+}
+
+func TestCurrentIdentityWithVerifiedRolesPreservesGlobalAdminRole(t *testing.T) {
+	router := gin.New()
+	handled := false
+	mountRoutesWithAuthDependencies(router, []httproute.Descriptor{{
+		Method: http.MethodPost, Path: "/api/v1/account/referrals/withdrawals/id/review",
+		AuthPolicy: httproute.AuthPolicyCurrentIdentityWithVerifiedRoles,
+		Permission: authz.PermissionListingKitAdminWrite,
+		Handler: func(c *gin.Context) {
+			identity, ok := authidentity.AuthenticatedIdentityFromContext(c.Request.Context())
+			require.True(t, ok)
+			require.Equal(t, []string{"platform_admin"}, identity.Roles)
+			require.Empty(t, identity.OrganizationGrants)
+			require.Empty(t, identity.EffectiveOrganizationID)
+			handled = true
+			c.Status(http.StatusNoContent)
+		},
+	}}, routeAuthDependencies{
+		workbenchVerifier: mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "admin-1", Roles: []string{"platform_admin"}, TokenExpiresAt: time.Now().Add(time.Minute)}},
+		authorizer:        appHTTPTestRouteAuthorization.authorizer,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/account/referrals/withdrawals/id/review", nil)
+	request.Header.Set("Authorization", "Bearer current-request-token")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	require.True(t, handled)
 }
 
 func TestWorkbenchOrganizationAuthenticationFailureUsesStableProtocol(t *testing.T) {

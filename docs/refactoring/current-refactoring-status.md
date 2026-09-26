@@ -1,9 +1,17 @@
 # Current Refactoring Status
 
-> Status: active current-state document.  
+> Status: baseline-bound maturity and gate record; current entrypoint navigation is maintained in Repository Structure.  
 > Last reviewed: 2026-09-05.  
 > Calibrated against: `main` at `cae67730c5c0e645d708cb2f6814f14781962bb1`.
 > Scope: current product/repository reality, production-validation gates, Product/Marketplace/Console boundaries, Commerce Tool readiness, and the active Now / Next / Later direction for Task Processor / ListingKit / AI Commerce Agent Platform.
+
+## Reading this baseline
+
+The implementation observations, maturity table and Now / Next / Later below retain the stated historical baseline; this document has not been fully revalidated at a newer commit. Current assignment and user-approved scope remain with #137, the execution Issue and AGENTS.md, not an older phase label.
+
+For current entrypoints, command ownership and code landing zones, start at the [Repository Structure map](../development/repository-structure.md#current-entrypoint-map), statically checked against `main @ eb9e019686564b976c1a1a9828eeddb454adabac` on 2026-09-25. That bounded scan distinguishes the independent current application from the retained ListingKit composition and describes optional acquisition/commercial wiring. Consequently, the older “new HTTP prepared-only” and “resource acquisition deferred” observations below are not a current route inventory or proof that those modules remain unimplemented.
+
+This navigation correction neither removes existing safety/ownership contracts nor claims that all modules are enabled, external payment channels exist, legacy callers are retired, or a newer candidate passed CI/runtime/production acceptance. Historical evidence and unverified release gates remain distinct; the entrypoint map does not restart deferred work or authorize migration, deployment or real operations.
 
 ## 1. Current position
 
@@ -191,7 +199,7 @@ Store lifecycle code may be implemented before production authority handoff. Mig
 
 - Agent/Tool code inherits the same tenant/user/Organization identity authority as existing application code.
 - No parallel Agent RBAC system.
-- Every Commerce Tool adapter rechecks the domain authorization boundary; trusted Tool metadata alone is not enough.
+- Every Commerce Tool adapter rechecks the domain authorization boundary; trusted Tool metadata alone are not enough.
 
 ### 3.4 Side effects
 
@@ -434,7 +442,8 @@ Authority is divided by responsibility, not chronology:
 | Canonical facts, state, permissions, idempotency, safety and side effects | Current approved Product/Identity/Store/Resource/Tool/Agent contracts; old UI sections cannot override final IA |
 | Legacy disposition | [Hard-Cut Policy](legacy-hard-cut-policy.md), [Register](legacy-register.md), [Mapping](module-target-mapping.md): EXTRACT / RETIRE only |
 | #30 fresh-install data boundary | [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md); no historical mapping/replay, profile reuse, cutover or real-operation authorization |
-| Repository reality and evidence vocabulary | This baseline-bound CURRENT STATE document; not a replacement for current CI/runtime evidence |
+| Entrypoints, command ownership and code navigation | [Repository Structure](../development/repository-structure.md#current-entrypoint-map), at its stated static scan baseline |
+| Historical maturity and evidence vocabulary | This baseline-bound document; not a replacement for current CI/runtime evidence |
 | Engineering order and assignment | [#137](https://github.com/qq550723504/task-processor/issues/137) and current execution Issue |
 | Release capability | #33 and exact-candidate CI/runtime/staging/production evidence |
 | Historical execution | Completed plans and dated validation, including [next-phase-plan.md](next-phase-plan.md); not new feature destinations |

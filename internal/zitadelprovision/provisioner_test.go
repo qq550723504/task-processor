@@ -650,9 +650,10 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 	spec := MultiOrganizationAcceptanceSpec{
 		UserID: " user-1 ",
 		Organizations: []AcceptanceOrganizationSpec{
-			{Name: " Acceptance Organization A ", RoleKeys: []string{" listingkit_admin ", "listingkit_admin", ""}},
+			{Name: " Acceptance Organization A ", RoleKeys: []string{" listingkit_admin ", "listingkit_admin", ""}, ProjectRoleKeys: []string{"listingkit_admin", "listingkit_viewer"}},
 			{Name: " Acceptance Organization B ", RoleKeys: []string{" listingkit_viewer ", "listingkit_viewer"}},
 		},
+		AdditionalAuthorizations: []AcceptanceAuthorizationSpec{{UserID: " user-2 ", OrganizationName: " Acceptance Organization A ", RoleKeys: []string{" listingkit_viewer "}}},
 	}
 	result, err := ProvisionLocalMultiOrganizationAcceptance(context.Background(), Config{
 		IssuerURL: server.URL, ManagementToken: "token", ProjectID: " project-1 ", AcceptanceOrganizationIDs: []string{"org-1", "org-2"},
@@ -667,18 +668,23 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 			{OrganizationID: "provider-org-1", OrganizationName: "Acceptance Organization A", RoleKeys: []string{"listingkit_admin"}},
 			{OrganizationID: "provider-org-2", OrganizationName: "Acceptance Organization B", RoleKeys: []string{"listingkit_viewer"}},
 		},
+		AdditionalAuthorizations: []AcceptanceAuthorizationResult{{UserID: "user-2", OrganizationID: "provider-org-1", OrganizationName: "Acceptance Organization A", RoleKeys: []string{"listingkit_viewer"}}},
 	}
 	if !reflect.DeepEqual(result, want) {
 		t.Fatalf("result = %#v, want %#v", result, want)
 	}
-	if len(projectGrants) != 2 || len(authorizations) != 2 {
-		t.Fatalf("created project grants/authorizations = %d/%d, want 2/2", len(projectGrants), len(authorizations))
+	if len(projectGrants) != 2 || len(authorizations) != 3 {
+		t.Fatalf("created project grants/authorizations = %d/%d, want 2/3", len(projectGrants), len(authorizations))
 	}
 	for index := range want.Organizations {
 		if projectGrants[index].ProjectID != "project-1" || projectGrants[index].GrantedOrganizationID != want.Organizations[index].OrganizationID {
 			t.Fatalf("project grant %d = %#v", index, projectGrants[index])
 		}
-		if !reflect.DeepEqual(projectGrants[index].GrantedRoleKeys, want.Organizations[index].RoleKeys) {
+		projectRoles := want.Organizations[index].RoleKeys
+		if index == 0 {
+			projectRoles = []string{"listingkit_admin", "listingkit_viewer"}
+		}
+		if !reflect.DeepEqual(projectGrants[index].GrantedRoleKeys, projectRoles) {
 			t.Fatalf("project grant roles %d = %#v", index, projectGrants[index].GrantedRoleKeys)
 		}
 		if authorizations[index].UserID != "user-1" || authorizations[index].ProjectID != "project-1" || authorizations[index].Organization != want.Organizations[index].OrganizationID {
@@ -687,6 +693,9 @@ func TestProvisionLocalMultiOrganizationAcceptanceNormalizesAndCreatesOfficialMo
 		if !reflect.DeepEqual(authorizations[index].RoleKeys, want.Organizations[index].RoleKeys) {
 			t.Fatalf("authorization roles %d = %#v", index, authorizations[index].RoleKeys)
 		}
+	}
+	if authorizations[2].UserID != "user-2" || authorizations[2].Organization != "provider-org-1" || !reflect.DeepEqual(authorizations[2].RoleKeys, []string{"listingkit_viewer"}) {
+		t.Fatalf("additional authorization = %#v, want user-2 viewer in provider-org-1", authorizations[2])
 	}
 
 	beforeOrganizations := len(organizations)

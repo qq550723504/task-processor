@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	sdkactivity "go.temporal.io/sdk/activity"
 	sdkclient "go.temporal.io/sdk/client"
 
 	"task-processor/internal/imageagent"
@@ -26,6 +27,60 @@ func TestImageAgentTemporalRuntimeDisabledDoesNotDial(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, closeFn)
 	require.False(t, dialed)
+}
+
+type runtimeOrganizationAuthorizer struct{}
+
+func (runtimeOrganizationAuthorizer) AuthorizeExecution(context.Context, imageagent.ExecutionIdentity) error {
+	return nil
+}
+
+type runtimeActivityRegistrar struct{}
+
+func (runtimeActivityRegistrar) RegisterActivityWithOptions(interface{}, sdkactivity.RegisterOptions) {
+}
+
+func TestImageAgentOrganizationWorkerRequiresLiveExecutionAuthorizerBeforeDial(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	dialed := false
+	_, err := startImageAgentTemporalWorkerWithOptionsAndDependencies(ImageAgentTemporalDependencies{
+		Repository: store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
+		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
+	}, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeOrganization, TaskQueue: imageagenttemporal.OrganizationTaskQueue}, imageAgentTemporalRuntimeDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			dialed = true
+			return nil, func() error { return nil }, nil
+		},
+		NewWorker: func(imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
+			return &recordingImageAgentWorker{}, nil
+		},
+	})
+	require.ErrorContains(t, err, "execution authorizer")
+	require.False(t, dialed)
+}
+
+func TestImageAgentOrganizationWorkerRegistersAuthorizedActivities(t *testing.T) {
+	t.Setenv(envImageAgentTemporalEnabled, "true")
+	registered := false
+	closeFn, err := startImageAgentTemporalWorkerWithOptionsAndDependencies(ImageAgentTemporalDependencies{
+		ExecutionAuthorizer: runtimeOrganizationAuthorizer{},
+		Repository:          store.NewMemoryRepository(), SlotExecutor: runtimeSlotExecutor{}, Publisher: runtimePublisher{}, PublisherV3: runtimePublisher{},
+		StagedSlotExecutor: runtimeSlotExecutor{}, ArtifactStore: runtimeArtifactStore{},
+	}, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeOrganization, TaskQueue: imageagenttemporal.OrganizationTaskQueue}, imageAgentTemporalRuntimeDependencies{
+		Dial: func(context.Context, string, string) (sdkclient.Client, func() error, error) {
+			return nil, func() error { return nil }, nil
+		},
+		NewWorker: func(config imageagenttemporal.WorkerConfig) (imageAgentWorker, error) {
+			if err := imageagenttemporal.RegisterActivitiesForMode(runtimeActivityRegistrar{}, config.Activities, config.WireMode); err != nil {
+				return nil, err
+			}
+			registered = true
+			return &recordingImageAgentWorker{}, nil
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, registered)
+	require.NoError(t, closeFn())
 }
 
 func TestImageAgentTemporalRuntimeComposesAndClosesWorker(t *testing.T) {

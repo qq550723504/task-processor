@@ -1,4 +1,21 @@
-import { buildListingKitProxyUrl } from "@/app/api/listing-kits/proxy-url";
+import {
+  buildListingKitProxyUrl,
+  getListingKitUpstreamBase,
+} from "@/app/api/listing-kits/proxy-url";
+
+describe("getListingKitUpstreamBase", () => {
+  it("uses the account-compose ListingKit owner upstream", () => {
+    vi.stubEnv(
+      "LISTINGKIT_API_BASE",
+      "http://127.0.0.1:8085/api/v1/listing-kits",
+    );
+    vi.stubEnv("NEXT_PUBLIC_LISTINGKIT_API_BASE", "http://wrong.example.test");
+
+    expect(getListingKitUpstreamBase()).toBe(
+      "http://127.0.0.1:8085/api/v1/listing-kits",
+    );
+  });
+});
 
 describe("buildListingKitProxyUrl", () => {
   it("joins the upstream base with a nested path and query string", () => {

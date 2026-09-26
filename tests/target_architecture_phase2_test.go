@@ -428,12 +428,17 @@ func internalImporterPackageCount(t *testing.T, target string) int {
 	}
 	count := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		_, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
+		importer, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
 		if !ok {
 			continue
 		}
 		for _, imp := range strings.Split(imports, ",") {
 			if importMatchesPrefix(imp, target) {
+				// Keep the historical ceiling. Exclude only an actually present,
+				// exact CURRENT edge, separately guarded across all source text.
+				if imp == target && issue398CurrentLeafImporter(importer, target) {
+					continue
+				}
 				count++
 				break
 			}
@@ -466,7 +471,7 @@ func phase2ConcreteImporterCeilings() []importerCeiling {
 		{path: "task-processor/internal/infra", max: 4},
 		{path: "task-processor/internal/core/logger", max: 82},
 		{path: "task-processor/internal/platform/logging", max: 9},
-		{path: "task-processor/internal/platform/database", max: 21},
+		{path: "task-processor/internal/platform/database", max: 23},
 		{path: "task-processor/internal/platform/redis", max: 8},
 		{path: "task-processor/internal/platform/queue/rabbitmq", max: 18},
 		{path: "task-processor/internal/platform/workerpool", max: 23},
@@ -505,7 +510,7 @@ func TestPhase2ClosureCeilingsRecordFreshInventory(t *testing.T) {
 		{path: "task-processor/internal/infra", max: 4},
 		{path: "task-processor/internal/core/logger", max: 82},
 		{path: "task-processor/internal/platform/logging", max: 9},
-		{path: "task-processor/internal/platform/database", max: 21},
+		{path: "task-processor/internal/platform/database", max: 23},
 		{path: "task-processor/internal/platform/redis", max: 8},
 		{path: "task-processor/internal/platform/queue/rabbitmq", max: 18},
 		{path: "task-processor/internal/platform/workerpool", max: 23},

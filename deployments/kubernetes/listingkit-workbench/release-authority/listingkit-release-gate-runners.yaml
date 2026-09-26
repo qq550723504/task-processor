@@ -44,6 +44,21 @@ spec:
             - name: TASK_PROCESSOR_DATABASE_NAME
               valueFrom:
                 secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_DATABASE_NAME}
+            - name: TASK_PROCESSOR_COMMERCIAL_DATABASE_HOST
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_COMMERCIAL_DATABASE_HOST}
+            - name: TASK_PROCESSOR_COMMERCIAL_DATABASE_PORT
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_COMMERCIAL_DATABASE_PORT}
+            - name: TASK_PROCESSOR_COMMERCIAL_DATABASE_USER
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_COMMERCIAL_DATABASE_USER}
+            - name: TASK_PROCESSOR_COMMERCIAL_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_COMMERCIAL_DATABASE_PASSWORD}
+            - name: TASK_PROCESSOR_COMMERCIAL_DATABASE_NAME
+              valueFrom:
+                secretKeyRef: {name: listingkit-workbench-secret, key: TASK_PROCESSOR_COMMERCIAL_DATABASE_NAME}
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 500m, memory: 512Mi}

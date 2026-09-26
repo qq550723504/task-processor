@@ -84,6 +84,7 @@ type Run struct {
 	ImagePolicyContext ImagePolicyContext
 	TenantID           string
 	UserID             string
+	MemberID           string
 	Mode               RunMode
 	IdempotencyKey     string
 	Status             RunStatus

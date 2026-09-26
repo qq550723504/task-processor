@@ -18,7 +18,7 @@ func (s *service) applyDefaultSheinPricing(req *GenerateRequest, pkg *sheinpub.P
 	if pkg.FinalSubmissionDraft != nil {
 		overrides = pkg.FinalSubmissionDraft.ManualPriceOverrides
 	}
-	review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), overrides)
+	review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), overrides, s.sheinRuntimeDeps.costPriceCalculator)
 	applySheinPricingReview(pkg, review)
 	logPricingCacheEvent("miss", buildSheinPublishRequest(req), pkg, review.Cache, nil)
 }

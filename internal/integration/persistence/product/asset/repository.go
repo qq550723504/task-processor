@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -33,6 +34,15 @@ func NewRepository(db *gorm.DB) (productasset.Repository, error) {
 func NewBoundedApprovedInventoryReader(db *gorm.DB, maxBytes int) (productasset.ApprovedInventoryReader, error) {
 	if db == nil || maxBytes <= 0 {
 		return nil, repositoryUnavailable("construct bounded inventory reader", errors.New("database and positive byte limit are required"))
+	}
+	return &repository{db: db, maxApprovedInventoryBytes: maxBytes}, nil
+}
+
+// NewBoundedApprovalCommitReader reads the immutable receipt and its exact
+// approved payload without following a current-inventory head.
+func NewBoundedApprovalCommitReader(db *gorm.DB, maxBytes int) (productasset.ApprovalCommitReader, error) {
+	if db == nil || maxBytes <= 0 {
+		return nil, repositoryUnavailable("construct bounded approval reader", errors.New("database and positive byte limit are required"))
 	}
 	return &repository{db: db, maxApprovedInventoryBytes: maxBytes}, nil
 }
@@ -146,6 +156,77 @@ func loadExistingReceipt(tx *gorm.DB, commit productasset.ApprovalCommit, payloa
 	}
 	*receipt = productasset.ApprovalReceipt{ActionID: existing.ActionID, AssetIDs: assetIDs}
 	return nil
+}
+
+func (r *repository) ReadApprovalCommit(ctx context.Context, tenantID, actionID string) (productasset.ApprovalCommit, error) {
+	if err := ctx.Err(); err != nil {
+		return productasset.ApprovalCommit{}, err
+	}
+	if tenantID == "" || actionID == "" || strings.TrimSpace(tenantID) != tenantID || strings.TrimSpace(actionID) != actionID || len(tenantID) > productasset.MaxIdentityLength || len(actionID) > productasset.MaxIdentityLength {
+		return productasset.ApprovalCommit{}, productasset.ErrInvalidApproval
+	}
+	var commit productasset.ApprovalCommit
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if r.maxApprovedInventoryBytes > 0 {
+			var size struct{ ReceiptBytes, AssetBytes int64 }
+			if err := tx.Raw(`SELECT
+				COALESCE((SELECT octet_length(CAST(asset_ids_json AS text)) FROM product_approval_receipts WHERE tenant_id = ? AND action_id = ?), 0) AS receipt_bytes,
+				COALESCE((SELECT SUM(octet_length(CAST(payload_json AS text))) FROM product_approved_assets WHERE tenant_id = ? AND action_id = ?), 0) AS asset_bytes`, tenantID, actionID, tenantID, actionID).Scan(&size).Error; err != nil {
+				return mapRepositoryError("measure exact approval", err)
+			}
+			if size.ReceiptBytes > int64(r.maxApprovedInventoryBytes) || size.AssetBytes > int64(r.maxApprovedInventoryBytes)-size.ReceiptBytes {
+				return productasset.ErrInventoryTooLarge
+			}
+		}
+		var receipt ApprovalReceiptRecord
+		if err := tx.Where("tenant_id = ? AND action_id = ?", tenantID, actionID).Take(&receipt).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return productasset.ErrApprovedAssetsNotReady
+			}
+			return mapRepositoryError("read exact approval receipt", err)
+		}
+		var assetIDs []string
+		if err := json.Unmarshal(receipt.AssetIDsJSON, &assetIDs); err != nil || len(assetIDs) == 0 {
+			return repositoryStateInvalid("decode exact approval receipt", errors.New("receipt asset IDs are invalid"))
+		}
+		var rows []ApprovedAssetRecord
+		if err := tx.Where("tenant_id = ? AND action_id = ?", tenantID, actionID).Find(&rows).Error; err != nil {
+			return mapRepositoryError("read exact approved assets", err)
+		}
+		if len(rows) != len(assetIDs) {
+			return repositoryStateInvalid("read exact approved assets", errors.New("receipt asset count differs from rows"))
+		}
+		byID := make(map[string]ApprovedAssetRecord, len(rows))
+		for _, row := range rows {
+			byID[row.AssetID] = row
+		}
+		first := rows[0]
+		commit = productasset.ApprovalCommit{TenantID: tenantID, ProductKey: first.ProductKey, TargetPlatform: first.TargetPlatform, ActionID: actionID, SourceSnapshotVersion: first.SourceSnapshotVersion, Assets: make([]productasset.ApprovedAsset, len(assetIDs))}
+		for index, assetID := range assetIDs {
+			row, ok := byID[assetID]
+			if !ok || row.ProductKey != commit.ProductKey || row.TargetPlatform != commit.TargetPlatform || row.SourceSnapshotVersion != commit.SourceSnapshotVersion {
+				return repositoryStateInvalid("read exact approved assets", errors.New("receipt asset identity differs from rows"))
+			}
+			if err := json.Unmarshal(row.PayloadJSON, &commit.Assets[index]); err != nil {
+				return repositoryStateInvalid("decode exact approved asset", err)
+			}
+			if err := validatePersistedAsset(row, commit.Assets[index]); err != nil {
+				return repositoryStateInvalid("validate exact approved asset", err)
+			}
+		}
+		if err := productasset.ValidateApprovalCommit(commit); err != nil {
+			return repositoryStateInvalid("validate exact approval", err)
+		}
+		hash, err := approvalPayloadHash(commit)
+		if err != nil || hash != receipt.PayloadHash {
+			return repositoryStateInvalid("validate exact approval receipt", errors.New("receipt payload hash differs from approved assets"))
+		}
+		return nil
+	})
+	if err != nil {
+		return productasset.ApprovalCommit{}, mapRepositoryError("read exact approval", err)
+	}
+	return productasset.CloneApprovalCommit(commit), nil
 }
 
 func (r *repository) GetApprovedInventory(ctx context.Context, scope productasset.InventoryScope) (productasset.ApprovedAssetInventory, error) {

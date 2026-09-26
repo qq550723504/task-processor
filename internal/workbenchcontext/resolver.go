@@ -147,6 +147,7 @@ func (resolver *Resolver) Resolve(
 	identity := input.Identity
 	identity.TenantID = selected.OrganizationID
 	identity.EffectiveOrganizationID = selected.OrganizationID
+	identity.EffectiveMemberID = selected.AuthorizationID
 	identity.Roles = append([]string(nil), selected.Roles...)
 	identity.OrganizationGrants = grants
 	identity, _ = authidentity.AuthenticatedIdentityFromContext(authidentity.WithAuthenticatedIdentity(ctx, identity))

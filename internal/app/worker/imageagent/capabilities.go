@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"task-processor/internal/ai"
 	openaiclient "task-processor/internal/integration/openai"
 	imagepolicy "task-processor/internal/marketplace/imagepolicy"
 	productimage "task-processor/internal/product/image"
@@ -103,7 +104,11 @@ func (p *routedOpenAIProductImageProvider) Extract(ctx context.Context, request 
 }
 
 func (p *routedOpenAIProductImageProvider) RenderWhiteBackground(ctx context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
-	adapter, err := p.adapter(ctx, "render_white_background", request.Authorization)
+	operation := "render_white_background"
+	if request.SourceOnly {
+		operation = productimage.SourceWhiteBackgroundOperation
+	}
+	adapter, err := p.adapter(ctx, operation, request.Authorization)
 	if err != nil {
 		return productimage.Candidate{}, err
 	}
@@ -145,9 +150,12 @@ func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operatio
 	if err != nil {
 		return nil, fmt.Errorf("resolve image agent provider route: %w", err)
 	}
-	reviewRoute, err := p.manager.ResolveEffectiveClientRoute(ctx, imageAgentReviewOpenAIClientName)
-	if err != nil {
-		return nil, fmt.Errorf("resolve image agent review route: %w", err)
+	var reviewRoute openaiclient.EffectiveClientRoute
+	if operation != productimage.SourceWhiteBackgroundOperation {
+		reviewRoute, err = p.manager.ResolveEffectiveClientRoute(ctx, imageAgentReviewOpenAIClientName)
+		if err != nil {
+			return nil, fmt.Errorf("resolve image agent review route: %w", err)
+		}
 	}
 	selectedRoute := imageRoute
 	if operation == "review" {
@@ -171,13 +179,17 @@ func (p *routedOpenAIProductImageProvider) adapter(ctx context.Context, operatio
 	reviewSelection := openaiclient.ImageRouteSelection{
 		CredentialReference: reviewRoute.CredentialReference, ConfigurationVersion: reviewRoute.ConfigurationVersion,
 	}
-	reviewer, err := p.manager.GetClientWithRoute(ctx, imageAgentReviewOpenAIClientName, reviewSelection)
-	if err != nil {
-		return nil, fmt.Errorf("resolve image agent review client: %w", err)
+	var reviewer ai.ChatCompleter
+	if operation != productimage.SourceWhiteBackgroundOperation {
+		reviewer, err = p.manager.GetClientWithRoute(ctx, imageAgentReviewOpenAIClientName, reviewSelection)
+		if err != nil {
+			return nil, fmt.Errorf("resolve image agent review client: %w", err)
+		}
 	}
 	config := openaiclient.ProductImageAdapterConfig{
 		ImageClient: images, ReviewClient: reviewer, Prompts: openaiclient.DefaultProductImagePrompts(),
 		Provider: imageRoute.ProviderID, ImageModel: imageRoute.ModelID, ReviewModel: reviewRoute.ModelID,
+		ReviewMaxTokens: 1024, ReviewTokenUpperBound: 8192,
 		RouteReference: imageAgentRouteReference(imageRoute), CredentialReference: imageRoute.CredentialReference,
 		ConfigurationVersion: imageRoute.ConfigurationVersion,
 		ReviewProvider:       reviewRoute.ProviderID, ReviewRouteReference: imageAgentRouteReference(reviewRoute),
@@ -222,6 +234,7 @@ func buildImageCapabilities(deps providerDependencies, resolver ProfileResolver)
 		return ImageCapabilities{}, fmt.Errorf("build image agent review capability: %w", err)
 	}
 	quoter := &imageUsageQuoter{byOperation: map[string]productimage.UsageQuoter{
+		productimage.SourceWhiteBackgroundOperation: deps.WhiteBackground,
 		"extract_subject":         deps.Subject,
 		"render_white_background": deps.WhiteBackground,
 		"render_scene":            deps.Scene,

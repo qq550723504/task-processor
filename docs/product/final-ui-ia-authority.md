@@ -60,6 +60,22 @@
 
 若后续 Figma 明确更新为新的可见、非归档终稿，应同步更新本 Authority 文档与 GitHub Roadmap，而不是继续引用旧归档 Frame。
 
+### 3.1 账户中心 v1 阶段边界（历史记录，2026-09-19，已被当前 Issue 范围取代）
+
+该阶段继续使用 Figma `31:463` 约束“我的账户”的导航命名、页面层级、布局和交互语义，交付范围曾限定为真实本人资料、当前企业与导航、成员及源账号操作记录、个人推广码/链接和关系统计。该范围已由本 Issue 的 Account Center — Figma Parity Delivery Batch 取代，仅保留作历史证据。
+
+当时未开放的组件不得据此推断当前范围；本批次应以 3.2 及 Issue #408 最新产品决定为准，仍然不得通过示例数字或前端假保存伪造事实。现有账户页面继续显式表达 loading、error、empty、denied、unavailable 和只读状态，且不得删除已确认的源账号操作记录。
+
+相关设计组件分类以 `docs/engineering/issue348-account-ui.md` 的 Profile `432:534`、Enterprise `432:4483`、Management `1631:490`/`1631:497`/`1631:504`、Resources `1634:359`/`1636:371` 映射为当前 v1 的视觉与语义约束；成员、操作记录和个人推广组件按上述 v1/未来边界记录在 Issue #408。若无 Figma 编辑权限，不通过其他渠道修改原型，仅在 Issue 中保留待标注项。
+
+### 3.2 Account Center — Figma Parity Delivery Batch（2026-09-20）
+
+Issue #408 的最新产品范围取代 3.1 的缩减版 v1 阶段边界。本批次以 Figma `31:463` 当前可见、非归档账户中心为完成目标，连续交付账户总览、账户设置/经营画像/认证信息、成员与角色权限、资源/套餐/额度与成员资源分配、企业通用审计、推广收益与提现。Figma 仍只决定 UI/IA、命名、布局和交互语义；真实事实、权限、幂等、账本和提现状态必须由当前 owner/API/persistence 提供，不得用原型示例数字替代。
+
+本批次按 M1–M5 推进，一个主要分支和一个主要 PR；M3 使用 Token set-target allocation、企业 entitlement window 和 version/idempotency；M5 使用个人 referral、10% minor-unit immutable ledger、14 日结算、退款 adjustment、¥100 人工提现和 version/idempotency 状态机。支付事实仍以 commercial/payment owner 的真实 settled cash payment、refund 和 chargeback 为唯一来源，不得由 referral 或前端推造。当前已接入的 M1 经营画像由账户中心持久化；身份认证状态仍以 ZITADEL 与当前组织授权事实为准。
+
+M5 提现申请还必须消费现有 canonical payout-method owner 的有效收款方式事实；渠道枚举本身不构成收款方式。当前仓库尚无该 owner，因此申请提现接口在 owner 接入前 fail closed，不能把任意 `ALIPAY` / `BANK_TRANSFER` 值当作已验证收款方式。
+
 ## 4. AI工作台的产品对象
 
 AI工作台当前产品结构至少包括：

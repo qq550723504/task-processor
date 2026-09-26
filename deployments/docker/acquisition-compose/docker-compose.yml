@@ -1,0 +1,149 @@
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}
+services:
+  runtime-network:
+    image: alpine:3.22
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    ports: ["127.0.0.1:18443:18443", "127.0.0.1:443:443"]
+  bootstrap:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.acquisition-compose, target: bootstrap }
+    volumes:
+      - bootstrap-state:/state
+      - trusted-ca:/trusted-ca
+      - traefik-tls:/traefik-tls
+      - identity-db-secret:/identity-db-secret
+      - source-db-owner-secret:/source-db-owner-secret
+      - source-runtime-secret:/source-runtime-secret
+      - commercial-db-owner-secret:/commercial-db-owner-secret
+      - commercial-runtime-secret:/commercial-runtime-secret
+      - product-db-owner-secret:/product-db-owner-secret
+      - product-runtime-secret:/product-runtime-secret
+      - zitadel-api-secrets:/zitadel-api-secrets
+      - tofu-inputs:/tofu-inputs
+      - frontend-secrets:/frontend-secrets
+  identity-db:
+    image: postgres:17.2-alpine
+    network_mode: service:runtime-network
+    command: ["postgres", "-p", "5432", "-c", "listen_addresses=127.0.0.1"]
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: zitadel, POSTGRES_PASSWORD_FILE: /private/identity-db-password }
+    volumes: [identity-db-secret:/private:ro, identity-db:/var/lib/postgresql/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres -d zitadel"], interval: 3s, timeout: 5s, retries: 40 }
+  source-db:
+    image: postgres:17.2-alpine
+    network_mode: service:runtime-network
+    command: ["postgres", "-p", "5433", "-c", "listen_addresses=127.0.0.1"]
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: source_accounts, POSTGRES_PASSWORD_FILE: /private/source-db-password }
+    volumes: [source-db-owner-secret:/private:ro, source-db:/var/lib/postgresql/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5433 -U postgres -d source_accounts"], interval: 3s, timeout: 5s, retries: 40 }
+  commercial-db:
+    image: postgres:17.2-alpine
+    network_mode: service:runtime-network
+    command: ["postgres", "-p", "5434", "-c", "listen_addresses=127.0.0.1"]
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: commercial, POSTGRES_PASSWORD_FILE: /private/commercial-db-password }
+    volumes: [commercial-db-owner-secret:/private:ro, commercial-db:/var/lib/postgresql/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5434 -U postgres -d commercial"], interval: 3s, timeout: 5s, retries: 40 }
+  product-db:
+    image: postgres:17.2-alpine
+    network_mode: service:runtime-network
+    command: ["postgres", "-p", "5435", "-c", "listen_addresses=127.0.0.1"]
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: product_acquisition, POSTGRES_PASSWORD_FILE: /private/product-db-password }
+    volumes: [product-db-owner-secret:/private:ro, product-db:/var/lib/postgresql/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5435 -U postgres -d product_acquisition"], interval: 3s, timeout: 5s, retries: 40 }
+  zitadel-api:
+    image: ghcr.io/zitadel/zitadel:v4.17.1
+    user: "0"
+    network_mode: service:runtime-network
+    command: [start-from-init, --config, /zitadel-secrets/runtime-config.yaml, --masterkeyFile, /zitadel-secrets/zitadel-masterkey]
+    environment:
+      ZITADEL_PORT: 8080
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: 18443
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_FIRSTINSTANCE_INSTANCENAME: local-acquisition-compose
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: Local Acquisition Bootstrap
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel/iac/iam-owner.pat
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: local-acquisition-iac
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Local acquisition IaC only
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/login/login-client.pat
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: local-acquisition-login
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Local Login V2 client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://localhost:18443/ui/v2/login/
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: https://localhost:18443/ui/v2/login/login?authRequest=
+      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://localhost:18443/ui/v2/login/logout?post_logout_redirect=
+      ZITADEL_LOG_LEVEL: warn
+      ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: "false"
+      ZITADEL_TELEMETRY_ENABLED: "false"
+      ZITADEL_INSTRUMENTATION_TRACE_EXPORTER_TYPE: none
+    volumes: [zitadel-api-secrets:/zitadel-secrets:ro, zitadel-iac-pat:/zitadel/iac, zitadel-login-pat:/zitadel/login]
+    depends_on: { identity-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "/app/zitadel", "ready"], interval: 5s, timeout: 10s, retries: 30 }
+  zitadel-login:
+    image: ghcr.io/zitadel/zitadel-login:v4.17.1
+    user: "0"
+    network_mode: service:runtime-network
+    environment: { ZITADEL_API_URL: http://127.0.0.1:8080, NEXT_PUBLIC_BASE_PATH: /ui/v2/login, ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/login/login-client.pat, CUSTOM_REQUEST_HEADERS: "Host:localhost:18443,X-Forwarded-Proto:https", OTEL_SDK_DISABLED: "true" }
+    volumes: [zitadel-login-pat:/zitadel/login:ro]
+    depends_on: { zitadel-api: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "node", "/app/healthcheck.mjs", "http://127.0.0.1:3000/ui/v2/login/healthy"], interval: 5s, timeout: 10s, retries: 30 }
+  traefik:
+    image: traefik:v3.6.8
+    network_mode: service:runtime-network
+    command: [--entrypoints.identity.address=:18443, --entrypoints.application.address=:18444, --entrypoints.application-secure.address=:443, --providers.file.directory=/etc/traefik/dynamic, --providers.file.watch=false, --api.dashboard=false, --accesslog=false, --log.level=WARN]
+    volumes: [../referrals-compose/traefik-dynamic.yml:/etc/traefik/dynamic/10-base.yml:ro, ./traefik-public-origin.yml:/etc/traefik/dynamic/20-public-origin.yml:ro, traefik-tls:/private/tls:ro]
+    depends_on: { bootstrap: { condition: service_completed_successfully }, zitadel-api: { condition: service_healthy }, zitadel-login: { condition: service_healthy } }
+  tofu-init:
+    image: ghcr.io/opentofu/opentofu:1.12.6
+    entrypoint: ["/bin/sh", "/usr/local/bin/acquisition-tofu-init"]
+    network_mode: service:runtime-network
+    environment: { BOOTSTRAP_PAT_FILE: /zitadel/iac/iam-owner.pat }
+    volumes: [tofu-state:/state, trusted-ca:/private/ca:ro, tofu-inputs:/tofu-inputs:ro, zitadel-iac-pat:/zitadel/iac:ro, runtime-secrets:/runtime, frontend-secrets:/frontend, ./terraform:/terraform-source:ro, ./tofu-init.sh:/usr/local/bin/acquisition-tofu-init:ro]
+    depends_on: { traefik: { condition: service_started } }
+  schema-init:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.acquisition-compose, target: schema-init }
+    network_mode: service:runtime-network
+    volumes: [schema-state:/schema-state, source-db-owner-secret:/secrets/source-owner:ro, source-runtime-secret:/secrets/source-runtime:ro, commercial-db-owner-secret:/secrets/commercial-owner:ro, commercial-runtime-secret:/secrets/commercial-runtime:ro, product-db-owner-secret:/secrets/product-owner:ro, product-runtime-secret:/secrets/product-runtime:ro, runtime-secrets:/runtime, frontend-secrets:/frontend, ../referrals-compose/terraform/commercial-schema.sql:/schemas/commercial-schema.sql:ro]
+    depends_on: { tofu-init: { condition: service_completed_successfully }, source-db: { condition: service_healthy }, commercial-db: { condition: service_healthy }, product-db: { condition: service_healthy } }
+  current-application:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.acquisition-compose, target: runtime }
+    network_mode: service:runtime-network
+    command: ["-config", "/private/runtime/current-application.json"]
+    environment: { SSL_CERT_FILE: /private/ca/root-ca.pem }
+    volumes: [runtime-secrets:/private/runtime:ro, trusted-ca:/private/ca:ro]
+    depends_on: { schema-init: { condition: service_completed_successfully } }
+  listingkit-ui:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.listingkit-ui }
+    network_mode: service:runtime-network
+    command: [/bin/sh, -ec, 'export AUTH_SECRET="$$(cat /private/frontend/auth-secret)"; export ZITADEL_CLIENT_ID="$$(cat /private/frontend/oidc-client-id)"; export ZITADEL_CLIENT_SECRET="$$(cat /private/frontend/oidc-client-secret)"; export ZITADEL_SCOPES="openid profile email offline_access urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud urn:zitadel:iam:org:project:id:$$(cat /private/frontend/project-id):aud urn:zitadel:iam:org:project:$$(cat /private/frontend/project-id):roles"; exec node server.js']
+    environment: { NODE_ENV: production, AUTH_URL: https://acquisition.home.arpa, AUTH_TRUST_HOST: "true", HOSTNAME: 127.0.0.1, LISTINGKIT_PUBLIC_BASE_URL: https://acquisition.home.arpa, ZITADEL_ISSUER_URL: https://localhost:18443, ZITADEL_REDIRECT_URI: https://acquisition.home.arpa/api/auth/callback/zitadel, ZITADEL_POST_LOGOUT_REDIRECT_URI: https://acquisition.home.arpa, LISTINGKIT_SERVICE_API_BASE: http://127.0.0.1:8085/api/v1, LISTINGKIT_PRODUCT_ACQUISITION_ENABLED: "true", NODE_EXTRA_CA_CERTS: /private/ca/root-ca.pem, PORT: "3001" }
+    volumes: [frontend-secrets:/private/frontend:ro, trusted-ca:/private/ca:ro]
+    depends_on: { current-application: { condition: service_started } }
+volumes:
+  bootstrap-state: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-bootstrap-state" }
+  trusted-ca: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-trusted-ca" }
+  traefik-tls: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-traefik-tls" }
+  identity-db-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-identity-db-secret" }
+  source-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-source-db-owner-secret" }
+  source-runtime-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-source-runtime-secret" }
+  commercial-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-commercial-db-owner-secret" }
+  commercial-runtime-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-commercial-runtime-secret" }
+  product-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-product-db-owner-secret" }
+  product-runtime-secret: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-product-runtime-secret" }
+  zitadel-api-secrets: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-zitadel-api-secrets" }
+  tofu-inputs: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-tofu-inputs" }
+  zitadel-iac-pat: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-zitadel-iac-pat" }
+  zitadel-login-pat: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-zitadel-login-pat" }
+  tofu-state: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-tofu-state" }
+  schema-state: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-schema-state" }
+  runtime-secrets: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-runtime-secrets" }
+  frontend-secrets: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-frontend-secrets" }
+  identity-db: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-identity-db" }
+  source-db: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-source-db" }
+  commercial-db: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-commercial-db" }
+  product-db: { name: "${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME must name a new isolated local acquisition project}-product-db" }

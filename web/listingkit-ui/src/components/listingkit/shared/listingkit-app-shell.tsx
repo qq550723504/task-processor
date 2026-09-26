@@ -296,20 +296,6 @@ const ADMIN_NAV_ITEMS = [
         icon: PackageCheck,
         match: "prefix",
       },
-      {
-        label: "租户订阅管理",
-        href: "/listing-kits/platform/subscriptions",
-        icon: UserCog,
-        match: "prefix",
-        requiredRoles: MENU_ROLES.platformAdmin,
-      },
-      {
-        label: "套餐管理",
-        href: "/listing-kits/platform/subscription-plans",
-        icon: PanelTop,
-        match: "prefix",
-        requiredRoles: MENU_ROLES.platformAdmin,
-      },
       ...(ZITADEL_CONSOLE_URL
         ? [{
             label: "用户管理",

@@ -106,7 +106,11 @@ const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string
 const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function PlatformSubscriptionPage() {
+export function PlatformSubscriptionPage({
+  tenantDirectoryEnabled = true,
+}: {
+  tenantDirectoryEnabled?: boolean;
+}) {
   const tenantContextOperationRef = useRef<"invitation" | "onboarding" | null>(
     null,
   );
@@ -161,6 +165,7 @@ export function PlatformSubscriptionPage() {
   const tenantDirectoryQuery = useQuery({
     queryKey: ["listingkit-platform-tenant-directory"],
     queryFn: getPlatformTenantDirectory,
+    enabled: tenantDirectoryEnabled,
   });
   const planQuery = useQuery({
     queryKey: ["listingkit-platform-subscription-plans"],
@@ -201,7 +206,7 @@ export function PlatformSubscriptionPage() {
     (tenantListQuery.error
       ? formatSubscriptionApiError(tenantListQuery.error)
       : "") ||
-    (tenantDirectoryQuery.error
+    (tenantDirectoryEnabled && tenantDirectoryQuery.error
       ? formatSubscriptionApiError(tenantDirectoryQuery.error)
       : "") ||
     (planQuery.error ? formatSubscriptionApiError(planQuery.error) : "") ||
@@ -353,7 +358,9 @@ export function PlatformSubscriptionPage() {
       setNewTenantExpiresAt("");
       setShowTenantOnboarding(false);
       await tenantListQuery.refetch();
-      await tenantDirectoryQuery.refetch();
+      if (tenantDirectoryEnabled) {
+        await tenantDirectoryQuery.refetch();
+      }
       await query.refetch();
       await auditQuery.refetch();
     } catch (err) {
@@ -388,7 +395,9 @@ export function PlatformSubscriptionPage() {
         expires_at: planExpiresAt ? new Date(planExpiresAt).toISOString() : undefined,
       });
       await tenantListQuery.refetch();
-      await tenantDirectoryQuery.refetch();
+      if (tenantDirectoryEnabled) {
+        await tenantDirectoryQuery.refetch();
+      }
       await query.refetch();
       await auditQuery.refetch();
     } catch (err) {
@@ -655,6 +664,7 @@ export function PlatformSubscriptionPage() {
       </Card>
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        {tenantDirectoryEnabled && (
         <Card className="overflow-hidden p-0">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -783,9 +793,10 @@ export function PlatformSubscriptionPage() {
           </Table>
           </div>
         </Card>
+        )}
 
         <div className="space-y-4">
-          {normalizedTenantId ? (
+          {tenantDirectoryEnabled && normalizedTenantId ? (
             <Card>
               <CardHeader className="p-4 pb-0">
                 <div className="flex items-center justify-between gap-3">

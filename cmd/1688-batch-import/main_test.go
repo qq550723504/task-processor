@@ -1,0 +1,392 @@
+package main
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"task-processor/internal/batchcapture"
+)
+
+func validConfig(t *testing.T) config {
+	t.Helper()
+	return config{
+		QueuePath:     filepath.Join(t.TempDir(), "queue.json"),
+		SourceURL:     "https://detail.1688.com/offer/981645030344.html",
+		BatchID:       "test-batch",
+		ActorID:       "actor-a",
+		Organization:  "org-a",
+		BrowserPath:   "chrome.exe",
+		ExtensionDist: "dist",
+		ProfileDir:    "profile",
+	}
+}
+
+func (c config) args() []string {
+	return []string{
+		"--queue", c.QueuePath,
+		"--url", c.SourceURL,
+		"--batch-id", c.BatchID,
+		"--actor", c.ActorID,
+		"--organization", c.Organization,
+		"--browser", c.BrowserPath,
+		"--extension", c.ExtensionDist,
+		"--profile", c.ProfileDir,
+	}
+}
+
+func TestValidateRequiresEveryFlag(t *testing.T) {
+	cfg := validConfig(t)
+	for _, drop := range []string{"queue", "url", "actor", "organization", "browser", "extension", "profile"} {
+		broken := cfg
+		switch drop {
+		case "queue":
+			broken.QueuePath = ""
+		case "url":
+			broken.SourceURL = ""
+		case "actor":
+			broken.ActorID = ""
+		case "organization":
+			broken.Organization = ""
+		case "browser":
+			broken.BrowserPath = ""
+		case "extension":
+			broken.ExtensionDist = ""
+		case "profile":
+			broken.ProfileDir = ""
+		}
+		if err := broken.validate(); err == nil {
+			t.Fatalf("validate accepted a config with no %s", drop)
+		}
+	}
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("valid config rejected: %v", err)
+	}
+}
+
+// TestValidateAcceptsOnlyOfferPages pins that the command's admission rule stays
+// inside what the executor can actually read. It is deliberately stricter than the
+// extension's own pageSource rule, which also accepts http:// because it inspects a
+// page the person already opened: this command NAVIGATES to the URL through a
+// browser whose extension holds an https-only host grant, so an http:// link that
+// does not redirect would be queued, navigated, and then fail at executeScript.
+func TestValidateAcceptsOnlyOfferPages(t *testing.T) {
+	accepted := []string{
+		"https://detail.1688.com/offer/981645030344.html",
+		"https://detail.1688.com:443/offer/981645030344.html?spm=1",
+		"https://detail.1688.com/offer/981645030344.html#detail",
+	}
+	for _, url := range accepted {
+		cfg := validConfig(t)
+		cfg.SourceURL = url
+		if err := cfg.validate(); err != nil {
+			t.Fatalf("%s rejected: %v", url, err)
+		}
+	}
+	rejected := []string{
+		"",
+		// An http:// link is refused rather than upgraded: the executor navigates
+		// through an https-only host grant, and silently rewriting the operator's
+		// URL would hide that the link they pasted is not the one being read.
+		"http://detail.1688.com/offer/981645030344.html",
+		"http://detail.1688.com:80/offer/981645030344.html",
+		"https://detail.1688.com:8443/offer/981645030344.html",
+		"https://example.com/offer/981645030344.html",
+		"https://detail.1688.com/offer/0.html",
+		"https://detail.1688.com/offer/.html",
+		"https://detail.1688.com/offer/981645030344.htm",
+		"https://evil.example/detail.1688.com/offer/981645030344.html",
+		"https://detail.1688.com/offer/981645030344.html.evil",
+	}
+	for _, url := range rejected {
+		cfg := validConfig(t)
+		cfg.SourceURL = url
+		if err := cfg.validate(); err == nil {
+			t.Fatalf("%q was accepted", url)
+		}
+	}
+}
+
+// TestEnsureQueueCreatesAnUnapprovedQueue pins the F5-1 behaviour: a queue a run
+// creates on its own carries no confirmed scope, because the flags are the operator's
+// expectation and not consent (design section 4 D1.4). The approval is written later,
+// from the identity the application reports and a person confirms.
+func TestEnsureQueueCreatesAnUnapprovedQueue(t *testing.T) {
+	cfg := validConfig(t)
+	path, err := ensureQueue(cfg)
+	if err != nil {
+		t.Fatalf("ensure queue: %v", err)
+	}
+	if path != cfg.QueuePath {
+		t.Fatalf("path %q, want %q", path, cfg.QueuePath)
+	}
+	queue, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if queue.ScopeApproved {
+		t.Fatalf("a fresh queue was marked as scope-approved from flags alone: %+v", queue)
+	}
+	if queue.ApprovedActorID != "" || queue.ApprovedOrganizationID != "" {
+		t.Fatalf("a fresh queue recorded an unverified scope: %q/%q", queue.ApprovedActorID, queue.ApprovedOrganizationID)
+	}
+	if queue.ScopeMatches(cfg.ActorID, cfg.Organization) {
+		t.Fatalf("an unapproved queue matched a scope")
+	}
+	if len(queue.Items) != 1 || queue.Items[0].URL != cfg.SourceURL {
+		t.Fatalf("unexpected items: %+v", queue.Items)
+	}
+	if queue.Items[0].State != batchcapture.ItemQueued {
+		t.Fatalf("new item state %q, want queued", queue.Items[0].State)
+	}
+}
+
+// TestEnsureQueueIsIdempotentForTheSameURL is what keeps a re-run from turning into
+// a second submission of the same product.
+func TestEnsureQueueIsIdempotentForTheSameURL(t *testing.T) {
+	cfg := validConfig(t)
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("third: %v", err)
+	}
+	queue, err := batchcapture.Load(cfg.QueuePath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(queue.Items) != 1 {
+		t.Fatalf("the same URL produced %d items", len(queue.Items))
+	}
+}
+
+func TestEnsureQueueAppendsNewURLsWithIncreasingSeq(t *testing.T) {
+	cfg := validConfig(t)
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	second := cfg
+	second.SourceURL = "https://detail.1688.com/offer/123456789012.html"
+	if _, err := ensureQueue(second); err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	queue, err := batchcapture.Load(cfg.QueuePath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(queue.Items) != 2 {
+		t.Fatalf("items %d, want 2", len(queue.Items))
+	}
+	if queue.Items[1].Seq <= queue.Items[0].Seq {
+		t.Fatalf("sequence did not increase: %+v", queue.Items)
+	}
+}
+
+// TestEnsureQueueRefusesADifferentScope proves a second run cannot silently
+// re-attribute an already-approved batch to another identity. It only applies once a
+// scope has been confirmed: an unapproved queue has nothing to contradict yet.
+func TestEnsureQueueRefusesADifferentScope(t *testing.T) {
+	cfg := validConfig(t)
+	path, err := ensureQueue(cfg)
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	// Stand in for the confirmed-scope step, which needs a browser and a person.
+	queue, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := queue.ApproveScope(cfg.ActorID, cfg.Organization); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if err := queue.Save(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	other := cfg
+	other.Organization = "org-b"
+	_, err = ensureQueue(other)
+	if !errors.Is(err, batchcapture.ErrScopeMismatch) && !strings.Contains(err.Error(), "approved for") {
+		t.Fatalf("err=%v, want a scope refusal", err)
+	}
+	stored, loadErr := batchcapture.Load(cfg.QueuePath)
+	if loadErr != nil {
+		t.Fatalf("load: %v", loadErr)
+	}
+	if stored.ApprovedOrganizationID != cfg.Organization {
+		t.Fatalf("the stored approval was rewritten to %q", stored.ApprovedOrganizationID)
+	}
+}
+
+// TestEnsureQueueAcceptsAnUnapprovedQueueUnderAnyScope is the other half of the same
+// rule: before anyone has confirmed anything there is no approved scope for a run to
+// disagree with, so the run proceeds and obtains the confirmation itself.
+func TestEnsureQueueAcceptsAnUnapprovedQueueUnderAnyScope(t *testing.T) {
+	cfg := validConfig(t)
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	other := cfg
+	other.ActorID = "actor-b"
+	other.Organization = "org-b"
+	if _, err := ensureQueue(other); err != nil {
+		t.Fatalf("an unapproved queue refused a run: %v", err)
+	}
+}
+
+// TestRunRejectsHeadlessMode keeps the CLI from offering a mode in which the design's
+// human steps are impossible: section 4 D1.3 needs a visible window to clear a login
+// wall or captcha in, and section 4 D1.4 needs a person to confirm the batch scope.
+// A headless run would keep the gate loop alive while pointing the operator at a window
+// that does not exist. The refusal happens before any browser or queue work.
+func TestRunRejectsHeadlessMode(t *testing.T) {
+	cfg := validConfig(t)
+	args := append(cfg.args(), "--headless")
+
+	err := run(args)
+	if err == nil {
+		t.Fatal("run accepted --headless")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("the refusal does not explain itself: %v", err)
+	}
+	if !strings.Contains(err.Error(), "visible window") {
+		t.Fatalf("the refusal does not name the missing window: %v", err)
+	}
+	// Nothing may have been created: the check precedes the queue and the browser.
+	if _, statErr := os.Stat(cfg.QueuePath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("a rejected run touched the queue file: %v", statErr)
+	}
+}
+
+// TestOperationalWrapperKeepsCallerRelativePaths is the same finding's portable half.
+// The behavioral test (wrapper_paths_test.go) needs Windows and a real PowerShell, so
+// this pins the structural property the fix relies on: every location-valued argument
+// is resolved against the caller's directory BEFORE the wrapper changes directory, and
+// none of them is passed through afterwards. A value like -url or -actor is not a
+// location and must not be rewritten.
+func TestOperationalWrapperKeepsCallerRelativePaths(t *testing.T) {
+	const path = "../../scripts/1688-batch-import.ps1"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	script := string(raw)
+	changeDir := strings.Index(script, "\nPush-Location")
+	if changeDir < 0 {
+		t.Fatalf("%s no longer changes into the repository root", path)
+	}
+	for _, location := range []string{"$Queue", "$Browser", "$Extension", "$Profile"} {
+		line := location + " = [System.IO.Path]::GetFullPath(" + location + ")"
+		at := strings.Index(script, line)
+		if at < 0 {
+			t.Fatalf("%s no longer resolves %s against the caller's location: a relative value would be re-based onto the repository", path, location)
+		}
+		if at > changeDir {
+			t.Fatalf("%s resolves %s after Push-Location, so the resolution no longer sees the caller's directory", path, location)
+		}
+	}
+	if strings.Contains(script, "GetFullPath($Url)") {
+		t.Fatalf("%s treats the product URL as a filesystem location", path)
+	}
+}
+
+// TestOperationalWrapperPreservesTheExitCode is the seventh review round's first
+// finding. The wrapper is the owner an operator actually runs, and the exit code is
+// its whole product: 3 means "stop and verify, the item may already have reached the
+// application". `go`'s run subcommand reports any non-zero program status as 1
+// (verified: a program exiting 3 under `go run .` yields shell status 1), so a wrapper
+// that launches the program that way silently downgrades the one signal that forbids
+// a retry. Building the binary and running it directly is the only way the code
+// survives, and the property is only observable by running the wrapper on Windows,
+// which a unit test cannot do — so the script's own text is the contract asserted here.
+func TestOperationalWrapperPreservesTheExitCode(t *testing.T) {
+	const path = "../../scripts/1688-batch-import.ps1"
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	script := string(raw)
+	if strings.Contains(script, "go run") {
+		t.Fatalf("%s launches the program through `go run`, which collapses exit 3 to 1", path)
+	}
+	for _, want := range []string{"go build -o", "$LASTEXITCODE", "exit $result", "Remove-Item"} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("%s no longer builds and runs the binary directly (%q is missing)", path, want)
+		}
+	}
+}
+
+// TestOfferURLKeepsOnlyTheFormTheExecutorWillNavigate pins that the queue holds the
+// one URL shape the executor will navigate: https, no port, and the query and
+// fragment dropped, which is the canonical source the extension's pageSource
+// records. Dropping them also keeps one offer from being queued under two spellings
+// and so submitted twice.
+func TestOfferURLKeepsOnlyTheFormTheExecutorWillNavigate(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://detail.1688.com/offer/981645030344.html", "https://detail.1688.com/offer/981645030344.html"},
+		{"https://detail.1688.com:443/offer/981645030344.html?spm=1", "https://detail.1688.com/offer/981645030344.html"},
+		{"https://detail.1688.com/offer/981645030344.html#detail", "https://detail.1688.com/offer/981645030344.html"},
+	}
+	for _, tc := range cases {
+		got, ok := offerURL(tc.in)
+		if !ok {
+			t.Fatalf("offerURL(%s) refused an accepted page", tc.in)
+		}
+		if got != tc.want {
+			t.Fatalf("offerURL(%s) = %s, want %s", tc.in, got, tc.want)
+		}
+	}
+	for _, raw := range []string{
+		"",
+		"http://detail.1688.com/offer/981645030344.html",
+		"http://detail.1688.com:80/offer/981645030344.html",
+		"https://example.com/offer/981645030344.html",
+		"https://detail.1688.com/offer/0.html",
+	} {
+		if got, ok := offerURL(raw); ok {
+			t.Fatalf("offerURL(%s) = %q, want refusal", raw, got)
+		}
+	}
+}
+
+// TestMainQueuesTheURLTheExecutorWillNavigate is the writer half of the rule above:
+// what the queue stores is the canonical https form with no port, so the run
+// navigates a host the extension is allowed to read, and two spellings of one offer
+// stay one item.
+func TestMainQueuesTheURLTheExecutorWillNavigate(t *testing.T) {
+	cfg := validConfig(t)
+	cfg.SourceURL = "https://detail.1688.com:443/offer/981645030344.html"
+	path, err := ensureQueue(cfg)
+	if err != nil {
+		t.Fatalf("ensure queue: %v", err)
+	}
+	queue, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(queue.Items) != 1 {
+		t.Fatalf("unexpected items: %+v", queue.Items)
+	}
+	if queue.Items[0].URL != "https://detail.1688.com/offer/981645030344.html" {
+		t.Fatalf("queued URL %q is not the canonical https URL", queue.Items[0].URL)
+	}
+	// The same offer spelled with a tracking parameter is the same item, not a second
+	// delivery of it.
+	cfg.SourceURL = "https://detail.1688.com/offer/981645030344.html?spm=a.b.c"
+	if _, err := ensureQueue(cfg); err != nil {
+		t.Fatalf("ensure queue again: %v", err)
+	}
+	again, err := batchcapture.Load(path)
+	if err != nil {
+		t.Fatalf("load again: %v", err)
+	}
+	if len(again.Items) != 1 {
+		t.Fatalf("one offer was queued twice: %+v", again.Items)
+	}
+}

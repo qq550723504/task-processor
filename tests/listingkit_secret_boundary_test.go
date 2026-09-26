@@ -78,7 +78,7 @@ func TestListingKitWorkloadsUseLeastPrivilegeSharedSecretKeys(t *testing.T) {
 			"AWS_SECRET_ACCESS_KEY": "TASK_PROCESSOR_LISTINGKIT_IMAGE_UPLOAD_S3_SECRET_ACCESS_KEY",
 		},
 		"jobs/product-listing-api-schema-migrate-job.yaml": databaseSecretKeys(),
-		"jobs/listingkit-schema-migrate-job.yaml":          databaseSecretKeys(),
+		"jobs/listingkit-schema-migrate-job.yaml":          listingKitSchemaMigrationSecretKeys(),
 	}
 
 	for relativePath, expected := range want {
@@ -205,6 +205,20 @@ func databaseSecretKeys() map[string]string {
 		"TASK_PROCESSOR_DATABASE_PASSWORD": "TASK_PROCESSOR_DATABASE_PASSWORD",
 		"TASK_PROCESSOR_DATABASE_NAME":     "TASK_PROCESSOR_DATABASE_NAME",
 	}
+}
+
+func listingKitSchemaMigrationSecretKeys() map[string]string {
+	keys := databaseSecretKeys()
+	for _, name := range []string{
+		"TASK_PROCESSOR_COMMERCIAL_DATABASE_HOST",
+		"TASK_PROCESSOR_COMMERCIAL_DATABASE_PORT",
+		"TASK_PROCESSOR_COMMERCIAL_DATABASE_USER",
+		"TASK_PROCESSOR_COMMERCIAL_DATABASE_PASSWORD",
+		"TASK_PROCESSOR_COMMERCIAL_DATABASE_NAME",
+	} {
+		keys[name] = name
+	}
+	return keys
 }
 
 func loadOnlyContainer(t *testing.T, relativePath string) workloadContainer {

@@ -60,7 +60,11 @@ func normalizeSheinPricingRule(input sheinpub.PricingRule, fallback sheinpub.Pri
 	return rule
 }
 
-func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64) *sheinpub.PricingReview {
+// SheinCostPriceCalculator accepts only numeric inputs. Application composition
+// supplies the Marketplace calculation without a ListingKit-to-Marketplace import.
+type SheinCostPriceCalculator func(costCNY, exchangeRate, markupMultiplier, minimumPrice, roundTo, priceEnding float64) float64
+
+func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64, calculate SheinCostPriceCalculator) *sheinpub.PricingReview {
 	review := &sheinpub.PricingReview{
 		RuleSnapshot:    &rule,
 		ManualOverrides: clonePriceOverrides(overrides),
@@ -76,7 +80,7 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
 			cost := parseMoney(sku.CostPrice)
-			price := calculateSheinPrice(cost, rule)
+			price := calculate(cost, rule.ExchangeRate, rule.MarkupMultiplier, rule.MinimumPrice, rule.RoundTo, rule.PriceEnding)
 			finalPrice := price
 			manual := false
 			if value, ok := overrides[sku.SupplierSKU]; ok && value > 0 {
@@ -101,7 +105,7 @@ func buildSheinPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, o
 	return review
 }
 
-func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64) *sheinpub.PricingReview {
+func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.PricingRule, overrides map[string]float64, calculate SheinCostPriceCalculator) *sheinpub.PricingReview {
 	review := &sheinpub.PricingReview{
 		RuleSnapshot:    &rule,
 		ManualOverrides: clonePriceOverrides(overrides),
@@ -119,7 +123,7 @@ func buildSheinDraftBackedPricingReview(pkg *sheinpub.Package, rule sheinpub.Pri
 			cost := parseMoney(sku.CostPrice)
 			price := existingSheinDraftPrice(sku)
 			if price <= 0 {
-				price = calculateSheinPrice(cost, rule)
+				price = calculate(cost, rule.ExchangeRate, rule.MarkupMultiplier, rule.MinimumPrice, rule.RoundTo, rule.PriceEnding)
 			}
 			finalPrice := price
 			manual := false
@@ -213,28 +217,6 @@ func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[st
 			sku.CostInfo.Currency = targetCurrency
 		}
 	}
-}
-
-func calculateSheinPrice(costCNY float64, rule sheinpub.PricingRule) float64 {
-	if costCNY <= 0 || rule.ExchangeRate <= 0 {
-		return 0
-	}
-	price := costCNY / rule.ExchangeRate * rule.MarkupMultiplier
-	if price < rule.MinimumPrice {
-		price = rule.MinimumPrice
-	}
-	if rule.PriceEnding > 0 && rule.PriceEnding < 1 {
-		base := math.Floor(price)
-		candidate := base + rule.PriceEnding
-		if candidate < price {
-			candidate = base + 1 + rule.PriceEnding
-		}
-		price = candidate
-	}
-	if rule.RoundTo > 0 {
-		price = math.Ceil(price/rule.RoundTo) * rule.RoundTo
-	}
-	return math.Round(price*100) / 100
 }
 
 func parseMoney(value string) float64 {

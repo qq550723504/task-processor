@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.26-alpine AS go-builder
+
+WORKDIR /src
+RUN apk add --no-cache git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd/current-application ./cmd/current-application
+COPY cmd/referral-schema-init ./cmd/referral-schema-init
+COPY cmd/organization-membership-schema-init ./cmd/organization-membership-schema-init
+COPY cmd/source-account-registry-schema-init ./cmd/source-account-registry-schema-init
+COPY cmd/listingkit-schema-migrate ./cmd/listingkit-schema-migrate
+COPY cmd/commercial-owner-schema-migrate ./cmd/commercial-owner-schema-migrate
+COPY cmd/account-acceptance-fixture ./cmd/account-acceptance-fixture
+COPY cmd/product-acquisition-init ./cmd/product-acquisition-init
+COPY cmd/product-listing-api-schema-migrate ./cmd/product-listing-api-schema-migrate
+COPY cmd/image-agent-temporal-worker ./cmd/image-agent-temporal-worker
+COPY internal ./internal
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-application ./cmd/current-application && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/referral-schema-init ./cmd/referral-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/organization-membership-schema-init ./cmd/organization-membership-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/source-account-registry-schema-init ./cmd/source-account-registry-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-schema-migrate ./cmd/listingkit-schema-migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/commercial-owner-schema-migrate ./cmd/commercial-owner-schema-migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/account-acceptance-fixture ./cmd/account-acceptance-fixture && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-acquisition-init ./cmd/product-acquisition-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api-schema-migrate ./cmd/product-listing-api-schema-migrate && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/image-agent-temporal-worker ./cmd/image-agent-temporal-worker
+
+FROM alpine:3.22 AS runtime
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=go-builder /out/current-application /usr/local/bin/current-application
+ENTRYPOINT ["/usr/local/bin/current-application"]
+
+FROM alpine:3.22 AS bootstrap
+RUN apk add --no-cache openssl
+COPY --chmod=0755 deployments/docker/account-compose/bootstrap.sh /usr/local/bin/account-bootstrap
+ENTRYPOINT ["/usr/local/bin/account-bootstrap"]
+
+FROM alpine:3.22 AS schema-init
+RUN apk add --no-cache jq openssl postgresql17-client tzdata
+COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
+COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
+COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init
+COPY --from=go-builder /out/listingkit-schema-migrate /usr/local/bin/listingkit-schema-migrate
+COPY --from=go-builder /out/commercial-owner-schema-migrate /usr/local/bin/commercial-owner-schema-migrate
+COPY --chmod=0755 deployments/docker/account-compose/init.sh /usr/local/bin/account-schema-init
+ENTRYPOINT ["/usr/local/bin/account-schema-init"]
+
+FROM alpine:3.22 AS acceptance
+RUN apk add --no-cache ca-certificates
+COPY --from=go-builder /out/account-acceptance-fixture /usr/local/bin/account-acceptance-fixture
+ENTRYPOINT ["/usr/local/bin/account-acceptance-fixture"]
+
+FROM schema-init AS image-trial-init
+COPY --from=go-builder /out/product-acquisition-init /usr/local/bin/product-acquisition-init
+COPY --from=go-builder /out/product-listing-api-schema-migrate /usr/local/bin/product-listing-api-schema-migrate
+COPY --from=quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727 /usr/bin/mc /usr/local/bin/mc
+COPY --chmod=0755 deployments/docker/account-compose/image-trial-init.sh /usr/local/bin/image-trial-init
+COPY deployments/docker/account-compose/image-trial-public-policy.json /etc/image-trial-public-policy.json
+ENTRYPOINT ["/usr/local/bin/image-trial-init"]
+
+FROM alpine:3.22 AS image-trial-worker
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=go-builder /out/image-agent-temporal-worker /usr/local/bin/image-agent-temporal-worker
+ENTRYPOINT ["/usr/local/bin/image-agent-temporal-worker"]

@@ -31,7 +31,7 @@ func (a *Activities) restoreExecutionIdentity(ctx context.Context, runID string,
 		return nil, err
 	}
 	run := projection.Run
-	if run.ScopeProtocol != identity.ScopeProtocol || run.TenantID != identity.TenantID || run.UserID != identity.UserID || run.ID != runID || run.BusinessTaskID != identity.BusinessTaskID {
+	if run.ScopeProtocol != identity.ScopeProtocol || run.TenantID != identity.TenantID || run.UserID != identity.UserID || run.MemberID != identity.MemberID || run.ID != runID || run.BusinessTaskID != identity.BusinessTaskID {
 		return nil, imageagent.ErrIdentityRequired
 	}
 	if err := a.executionAuthorizer.AuthorizeExecution(ctx, identity); err != nil {
@@ -40,7 +40,7 @@ func (a *Activities) restoreExecutionIdentity(ctx context.Context, runID string,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: run.TenantID, EffectiveOrganizationID: run.TenantID, UserID: run.UserID})
+	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: run.TenantID, EffectiveOrganizationID: run.TenantID, EffectiveMemberID: run.MemberID, UserID: run.UserID})
 	return aiidentity.WithIdentity(ctx, aiidentity.Identity{AgentRunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, BusinessTaskID: run.BusinessTaskID, TraceID: identity.TraceID}), nil
 }
 

@@ -1,0 +1,135 @@
+# Opt-in isolated #487 trial only. Always combine with docker-compose.yml in a new project.
+services:
+  bootstrap:
+    environment: { ACCOUNT_IMAGE_AGENT_TRIAL: ISOLATED_TRIAL_ONLY }
+    volumes:
+      - image-db-owner-secret:/image-db-owner-secret
+      - image-runtime-secret:/image-runtime-secret
+      - image-worker-secret:/image-worker-secret
+      - acquisition-db-owner-secret:/acquisition-db-owner-secret
+      - acquisition-runtime-secret:/acquisition-runtime-secret
+      - image-minio-secret:/image-minio-secret
+
+  traefik:
+    volumes:
+      - ./traefik-image-trial.yml:/etc/traefik/dynamic.yml:ro
+
+  image-trial-fixture:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: acceptance }
+    network_mode: service:runtime-network
+    environment:
+      ACCOUNT_IDENTITY_PORT: "${ACCOUNT_IDENTITY_PORT}"
+      SSL_CERT_FILE: /private/ca/root-ca.pem
+    volumes:
+      - acceptance-state:/state
+      - trusted-ca:/private/ca:ro
+      - runtime-secrets:/runtime:ro
+      - zitadel-iac-pat:/zitadel/iac:ro
+    depends_on: { schema-init: { condition: service_completed_successfully } }
+
+  image-db:
+    image: postgres:17.2-alpine
+    network_mode: service:runtime-network
+    command: [postgres, -p, "5437", -c, listen_addresses=127.0.0.1]
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: image_agent, POSTGRES_PASSWORD_FILE: /private/image-db-password }
+    volumes: [image-db-owner-secret:/private:ro, image-db:/var/lib/postgresql/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -p 5437 -U postgres -d image_agent"], interval: 3s, timeout: 5s, retries: 40 }
+
+  acquisition-db:
+    image: postgres:17.2-alpine
+    network_mode: service:runtime-network
+    command: [postgres, -p, "5438", -c, listen_addresses=127.0.0.1]
+    environment: { POSTGRES_USER: postgres, POSTGRES_DB: product_acquisition, POSTGRES_PASSWORD_FILE: /private/acquisition-db-password }
+    volumes: [acquisition-db-owner-secret:/private:ro, acquisition-db:/var/lib/postgresql/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -p 5438 -U postgres -d product_acquisition"], interval: 3s, timeout: 5s, retries: 40 }
+
+  image-minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    network_mode: service:runtime-network
+    entrypoint: [/bin/sh, -ec]
+    command: ['export MINIO_ROOT_USER=issue487_local; export MINIO_ROOT_PASSWORD="$$(cat /private/minio-root-password)"; exec minio server /data --address 127.0.0.1:9000']
+    volumes: [image-minio-secret:/private:ro, image-minio:/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: [CMD, curl, -fsS, http://127.0.0.1:9000/minio/health/live], interval: 3s, timeout: 5s, retries: 40 }
+
+  image-temporal-volume-init:
+    image: alpine:3.22
+    command: [chown, "1000:1000", /data]
+    volumes: [image-temporal:/data]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+
+  image-temporal:
+    image: temporalio/temporal@sha256:cf86707827fac99e4d1c4a47dc11b105382d796199c7bd41fb3213fb0471628e
+    network_mode: service:runtime-network
+    command: [server, start-dev, --headless, --ip, 127.0.0.1, --db-filename, /data/temporal.db]
+    volumes: [image-temporal:/data]
+    depends_on: { image-temporal-volume-init: { condition: service_completed_successfully } }
+    healthcheck: { test: [CMD, temporal, operator, cluster, health], interval: 5s, timeout: 5s, retries: 30 }
+
+  image-controlled-provider:
+    image: python:3.13-alpine
+    network_mode: service:runtime-network
+    command: [python, /provider/controlled.py]
+    volumes: [./image-trial-controlled-provider.py:/provider/controlled.py:ro]
+    depends_on: { bootstrap: { condition: service_completed_successfully } }
+    healthcheck: { test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/healthz', timeout=2).close()"], interval: 3s, timeout: 5s, retries: 40 }
+
+  image-trial-init:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: image-trial-init }
+    network_mode: service:runtime-network
+    environment:
+      ACCOUNT_IMAGE_AGENT_TRIAL: ISOLATED_TRIAL_ONLY
+      ACCOUNT_IDENTITY_PORT: "${ACCOUNT_IDENTITY_PORT}"
+      ACCOUNT_APPLICATION_PORT: "${ACCOUNT_APPLICATION_PORT}"
+      ACCOUNT_COMMERCIAL_DATABASE: "${ACCOUNT_COMMERCIAL_DATABASE:-commercial}"
+    volumes:
+      - image-trial-state:/image-trial-state
+      - image-trial-worker-secrets:/worker-secrets
+      - runtime-secrets:/runtime
+      - acceptance-state:/acceptance:ro
+      - image-db-owner-secret:/secrets/image-owner:ro
+      - image-runtime-secret:/secrets/image-runtime:ro
+      - image-worker-secret:/secrets/image-worker:ro
+      - acquisition-db-owner-secret:/secrets/acquisition-owner:ro
+      - acquisition-runtime-secret:/secrets/acquisition-runtime:ro
+      - image-minio-secret:/secrets/minio:ro
+      - commercial-runtime-secret:/secrets/commercial-runtime:ro
+    depends_on:
+      schema-init: { condition: service_completed_successfully }
+      image-trial-fixture: { condition: service_completed_successfully }
+      image-db: { condition: service_healthy }
+      acquisition-db: { condition: service_healthy }
+      image-minio: { condition: service_healthy }
+      image-temporal: { condition: service_healthy }
+      image-controlled-provider: { condition: service_healthy }
+
+  image-trial-worker:
+    build: { context: ../../.., dockerfile: deployments/docker/Dockerfile.account-compose, target: image-trial-worker }
+    network_mode: service:runtime-network
+    command: [-config, /private/worker/config.yaml, -wire-mode, organization-v1, -task-queue, image-agent-organization-v1]
+    environment:
+      IMAGE_AGENT_TEMPORAL_ENABLED: "true"
+      IMAGE_AGENT_TEMPORAL_ADDRESS: 127.0.0.1:7233
+      IMAGE_AGENT_TEMPORAL_NAMESPACE: default
+      SSL_CERT_FILE: /private/ca/root-ca.pem
+    volumes: [image-trial-worker-secrets:/private/worker:ro, trusted-ca:/private/ca:ro]
+    depends_on: { image-trial-init: { condition: service_completed_successfully } }
+
+  current-application:
+    depends_on: { image-trial-init: { condition: service_completed_successfully } }
+
+volumes:
+  image-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-image-db-owner-secret" }
+  image-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-image-runtime-secret" }
+  image-worker-secret: { name: "${COMPOSE_PROJECT_NAME}-image-worker-secret" }
+  acquisition-db-owner-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db-owner-secret" }
+  acquisition-runtime-secret: { name: "${COMPOSE_PROJECT_NAME}-acquisition-runtime-secret" }
+  image-minio-secret: { name: "${COMPOSE_PROJECT_NAME}-image-minio-secret" }
+  image-trial-worker-secrets: { name: "${COMPOSE_PROJECT_NAME}-image-trial-worker-secrets" }
+  image-trial-state: { name: "${COMPOSE_PROJECT_NAME}-image-trial-state" }
+  image-db: { name: "${COMPOSE_PROJECT_NAME}-image-db" }
+  acquisition-db: { name: "${COMPOSE_PROJECT_NAME}-acquisition-db" }
+  image-minio: { name: "${COMPOSE_PROJECT_NAME}-image-minio" }
+  image-temporal: { name: "${COMPOSE_PROJECT_NAME}-image-temporal" }

@@ -21,6 +21,10 @@ const (
 	AuthPolicyVerifiedIdentity AuthPolicy = "verified_identity"
 	// AuthPolicyCurrentIdentity uses current authentication without legacy allowlists.
 	AuthPolicyCurrentIdentity AuthPolicy = "current_identity"
+	// AuthPolicyCurrentIdentityWithVerifiedRoles keeps roles from the verified
+	// identity for global, non-organization permissions while clearing tenant
+	// and organization-grant scope.
+	AuthPolicyCurrentIdentityWithVerifiedRoles AuthPolicy = "current_identity_with_verified_roles"
 )
 
 const (

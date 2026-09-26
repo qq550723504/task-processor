@@ -417,7 +417,9 @@ func runSlotEffectV3PublicationConformance(t *testing.T, fixture v3ReviewFixture
 	require.NoError(t, err)
 	require.False(t, postAcquired)
 	require.Equal(t, completed, postComplete)
-	require.Equal(t, successor, postClaim)
+	require.Equal(t, renewed.Owner, postClaim.Owner)
+	require.Equal(t, renewed.Fence, postClaim.Fence)
+	require.Equal(t, renewed.LeaseExpiresAt, postClaim.LeaseExpiresAt)
 
 	return publicationConformanceTrace{
 		FirstPhase: firstAttempt.Phase, FirstOwner: first.Owner, FirstFence: first.Fence, FirstAcquired: firstAcquired,

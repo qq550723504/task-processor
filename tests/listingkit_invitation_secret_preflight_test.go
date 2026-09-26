@@ -142,10 +142,24 @@ func writePythonPreflightFake(t *testing.T, path, content string) {
 
 func writeExecutablePreflightFake(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".preflight-fake-*")
+	if err != nil {
+		t.Fatalf("create fake %s: %v", filepath.Base(path), err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.WriteString(content); err != nil {
+		_ = tmp.Close()
 		t.Fatalf("write fake %s: %v", filepath.Base(path), err)
 	}
-	if err := os.Chmod(path, 0o700); err != nil {
+	if err := tmp.Chmod(0o700); err != nil {
+		_ = tmp.Close()
 		t.Fatalf("chmod fake %s: %v", filepath.Base(path), err)
+	}
+	if err := tmp.Close(); err != nil {
+		t.Fatalf("close fake %s: %v", filepath.Base(path), err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		t.Fatalf("publish fake %s: %v", filepath.Base(path), err)
 	}
 }

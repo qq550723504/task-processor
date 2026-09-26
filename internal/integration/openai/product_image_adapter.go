@@ -19,6 +19,9 @@ import (
 
 const maxProductImagePromptBytes = 64 << 10
 
+const sourceWhiteBackgroundPromptVersion = "source-white-background-v1"
+const sourceWhiteBackgroundPrompt = "Edit only the background of the supplied source image to clean white; preserve shape, proportions, colors, materials, patterns, text and accessory count. Do not add decorations or crop the product."
+
 type ProductImagePrompts struct {
 	Subject         string
 	WhiteBackground string
@@ -40,9 +43,13 @@ func DefaultProductImagePrompts() ProductImagePrompts {
 type ProductImageAdapterConfig struct {
 	ReviewMaxRetries *int
 	ReviewObserver   func(ProductImageReviewObservation)
-	ImageClient      ai.ImageGenerator
-	ReviewClient     ai.ChatCompleter
-	Prompts          ProductImagePrompts
+	ReviewMaxTokens  int
+	// ReviewTokenUpperBound is the conservative total-token reservation bound
+	// enforced before dispatch; ReviewMaxTokens caps completion tokens.
+	ReviewTokenUpperBound int64
+	ImageClient           ai.ImageGenerator
+	ReviewClient          ai.ChatCompleter
+	Prompts               ProductImagePrompts
 
 	Provider                   string
 	ImageModel                 string
@@ -91,32 +98,34 @@ func NewProductImageAdapter(config ProductImageAdapterConfig) (*ProductImageAdap
 	if config.ReviewConfigurationVersion == "" {
 		config.ReviewConfigurationVersion = config.ConfigurationVersion
 	}
-	if nilInterface(config.ImageClient) || nilInterface(config.ReviewClient) {
+	if nilInterface(config.ImageClient) {
 		return nil, fmt.Errorf("openai product image clients are required")
 	}
 	if _, ok := config.ImageClient.(routeBoundProductImageGenerator); !ok {
 		return nil, fmt.Errorf("openai product image client must support exact route pinning")
 	}
 	for name, value := range map[string]string{
-		"provider": config.Provider, "image model": config.ImageModel, "review model": config.ReviewModel,
+		"provider": config.Provider, "image model": config.ImageModel,
 		"route reference": config.RouteReference, "credential reference": config.CredentialReference,
 		"configuration version": config.ConfigurationVersion, "pricing version": config.PricingVersion,
 		"subject prompt": config.Prompts.Subject, "white background prompt": config.Prompts.WhiteBackground,
-		"scene prompt": config.Prompts.Scene, "review prompt": config.Prompts.Review, "prompt version": config.Prompts.Version,
+		"scene prompt": config.Prompts.Scene, "prompt version": config.Prompts.Version,
 	} {
 		if !canonicalProductImageString(value) {
 			return nil, fmt.Errorf("openai product image %s is required and must be canonical", name)
 		}
 	}
 	for name, value := range map[string]string{
+		"review model": config.ReviewModel, "review prompt": config.Prompts.Review,
 		"review provider": config.ReviewProvider, "review route reference": config.ReviewRouteReference,
 		"review credential reference": config.ReviewCredentialReference, "review configuration version": config.ReviewConfigurationVersion,
 	} {
-		if !canonicalProductImageString(value) {
+		if !nilInterface(config.ReviewClient) && !canonicalProductImageString(value) {
 			return nil, fmt.Errorf("openai product image %s is required and must be canonical", name)
 		}
 	}
-	if config.MaximumSceneOutputs < 1 || config.MaximumSceneOutputs > 16 || config.ImageCostMicrosPerOutput < 0 || config.ReviewCostMicros < 0 {
+	if config.MaximumSceneOutputs < 1 || config.MaximumSceneOutputs > 16 || config.ImageCostMicrosPerOutput < 0 || config.ReviewCostMicros < 0 ||
+		!nilInterface(config.ReviewClient) && (config.ReviewMaxTokens < 1 || config.ReviewTokenUpperBound < int64(config.ReviewMaxTokens)) {
 		return nil, fmt.Errorf("openai product image limits are invalid")
 	}
 	if config.GeneratedImageFetcher == nil {
@@ -135,6 +144,16 @@ func (a *ProductImageAdapter) Extract(ctx context.Context, request productimage.
 }
 
 func (a *ProductImageAdapter) RenderWhiteBackground(ctx context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
+	if request.SourceOnly {
+		if err := a.authorize(request.Authorization, productimage.SourceWhiteBackgroundOperation, 1); err != nil {
+			return productimage.Candidate{}, err
+		}
+		candidate, err := a.editOne(ctx, request.Source, request.Source, request.Product, productimage.RoleWhiteBackground, productimage.SourceWhiteBackgroundOperation, sourceWhiteBackgroundPrompt)
+		if err == nil {
+			candidate.Metadata.PromptVersion = sourceWhiteBackgroundPromptVersion
+		}
+		return candidate, err
+	}
 	if err := a.authorize(request.Authorization, "render_white_background", 1); err != nil {
 		return productimage.Candidate{}, err
 	}
@@ -173,7 +192,7 @@ func (a *ProductImageAdapter) RenderScene(ctx context.Context, request productim
 }
 
 func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.ReviewRequest) (productimage.Review, error) {
-	if err := a.authorize(request.Authorization, "review", 1); err != nil {
+	if err := a.PreflightReview(request); err != nil {
 		return productimage.Review{}, err
 	}
 	summary, err := json.Marshal(struct {
@@ -192,9 +211,10 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 		parts = append(parts, imageContentPart(candidate.Asset))
 	}
 	temperature := float32(0)
+	maxTokens := a.config.ReviewMaxTokens
 	response, err := a.config.ReviewClient.CreateChatCompletion(ctx, &ai.ChatCompletionRequest{
-		MaxRetries: a.config.ReviewMaxRetries,
-		Model:      a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
+		MaxTokens: &maxTokens, MaxRetries: a.config.ReviewMaxRetries,
+		Model: a.config.ReviewModel, Temperature: &temperature, ResponseFormat: "json_object",
 		Messages: []ai.ChatCompletionMessage{{Role: "user", MultiContent: parts}},
 	})
 	if a.config.ReviewObserver != nil {
@@ -225,6 +245,15 @@ func (a *ProductImageAdapter) Review(ctx context.Context, request productimage.R
 		return productimage.Review{}, productimage.ErrOutputValidation
 	}
 	return productimage.Review{Score: payload.Score, NeedsHumanReview: payload.NeedsHumanReview, Reasons: payload.Reasons}, nil
+}
+
+// PreflightReview checks the same immutable adapter configuration used by
+// Review. It must run after durable admission and before its provider request.
+func (a *ProductImageAdapter) PreflightReview(request productimage.ReviewRequest) error {
+	if a == nil || nilInterface(a.config.ReviewClient) {
+		return productimage.ErrCapabilityUnsupported
+	}
+	return a.authorize(request.Authorization, "review", 1)
 }
 
 const reviewHashWriteChunkBytes = 8 << 10
@@ -365,6 +394,9 @@ func (a *ProductImageAdapter) authorize(authorization *productimage.UsageQuote, 
 		quote.PricingVersion != a.config.PricingVersion {
 		return productimage.ErrCapabilityUnsupported
 	}
+	if operation == "review" && quote.MaximumTokens != a.config.ReviewTokenUpperBound {
+		return productimage.ErrCapabilityUnsupported
+	}
 	return nil
 }
 
@@ -375,17 +407,22 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	maximumOutputs := request.MaximumOutputs
 	model := a.config.ImageModel
 	costPerOutput := a.config.ImageCostMicrosPerOutput
+	var maximumTokens int64
 	switch request.Operation {
-	case "extract_subject", "render_white_background":
+	case "extract_subject", "render_white_background", productimage.SourceWhiteBackgroundOperation:
 		maximumOutputs = 1
 	case "render_scene":
 		if maximumOutputs < 1 || maximumOutputs > int64(a.config.MaximumSceneOutputs) {
 			return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
 		}
 	case "review":
+		if nilInterface(a.config.ReviewClient) {
+			return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
+		}
 		maximumOutputs = 1
 		model = a.config.ReviewModel
 		costPerOutput = a.config.ReviewCostMicros
+		maximumTokens = a.config.ReviewTokenUpperBound
 	default:
 		return productimage.UsageQuote{}, productimage.ErrCapabilityUnsupported
 	}
@@ -399,10 +436,15 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 	}
 	fingerprintPayload := struct {
 		Operation, InputFingerprint, Provider, Model, RouteReference, CredentialReference, ConfigurationVersion, PricingVersion string
-		MaximumOutputs, MaximumCost                                                                                             int64
+		MaximumOutputs, MaximumTokens, MaximumCost                                                                              int64
+		CostUpperBoundKnown                                                                                                     bool
+		SourcePromptVersion                                                                                                     string `json:",omitempty"`
 	}{
 		request.Operation, request.InputFingerprint, provider, model, routeReference,
-		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumCost,
+		credentialReference, configurationVersion, a.config.PricingVersion, maximumOutputs, maximumTokens, maximumCost, a.config.CostUpperBoundKnown, "",
+	}
+	if request.Operation == productimage.SourceWhiteBackgroundOperation {
+		fingerprintPayload.SourcePromptVersion = sourceWhiteBackgroundPromptVersion
 	}
 	encoded, err := json.Marshal(fingerprintPayload)
 	if err != nil {
@@ -413,7 +455,7 @@ func (a *ProductImageAdapter) QuoteUsage(_ context.Context, request productimage
 		Operation: request.Operation, Provider: provider, RouteReference: routeReference, Model: model,
 		CredentialReference: credentialReference, ConfigurationVersion: configurationVersion,
 		PricingVersion: a.config.PricingVersion, Fingerprint: hex.EncodeToString(digest[:]),
-		MaximumOutputs: maximumOutputs, MaximumModelCalls: 1, MaximumCostMicros: maximumCost,
+		MaximumOutputs: maximumOutputs, MaximumModelCalls: 1, MaximumTokens: maximumTokens, MaximumCostMicros: maximumCost,
 		CostUpperBoundKnown: a.config.CostUpperBoundKnown,
 	}, nil
 }
