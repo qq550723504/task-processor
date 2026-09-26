@@ -37,7 +37,7 @@ function ScopedAudit({ scope, expectedUserId, organizationId }: { scope: string;
   return <div className={styles.page}>
     <Card className={styles.coverage}>
       <h2>企业操作审计</h2>
-      <p>只读取当前企业已提交的账户资料、成员、额度、AI token 消耗与源账号事件；失败尝试及未提交的 provider 操作不纳入。AI 消耗账本不记录操作人，按操作人筛选时不显示。</p>
+      <p>只读取当前企业已提交的账户资料、成员、额度、AI token 消耗、图片 AI 点数扣款与源账号事件。图片生成成功即扣点，后续未采用或图片处理失败不退还；未确认生成的预留不列为扣款。Token 消耗账本不记录操作人，按操作人筛选时不显示。</p>
     </Card>
     <div className={styles.toolbar}><span>当前企业：{organizationId}</span><Button variant="outline" onClick={() => setSequence(value => value + 1)}>刷新记录</Button></div>
     <AuditRequests key={sequence} scope={`${scope}:${sequence}`} expectedUserId={expectedUserId} organizationId={organizationId} />
@@ -69,7 +69,7 @@ function AuditRequests({ scope, expectedUserId, organizationId }: { scope: strin
           <tbody>{data.items.length === 0 ? <tr><td colSpan={5} className={styles.emptyCell}>当前范围内没有已提交的操作。</td></tr> : data.items.map(item => <tr key={auditRowKey(item)}>
             <td><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false })}<small>UTC+8</small></time></td>
             <td><span>{item.actor || "未记录操作人"}</span></td>
-            <td>{item.eventType === "account_ai_tokens.committed" ? <><strong>AI token 已结算：{item.usage.quantity}</strong><small>成员 {item.usage.memberId} · 调用 {item.objectReference}</small><small>账本事件 {item.relation.reference}</small></> : <><strong>{operationNames[item.operation as keyof typeof operationNames] ?? item.operation}</strong><small>{item.objectType === "source_account" ? "源账号" : item.objectType === "account_business_profile" ? "账户资料" : item.objectType === "organization_member" ? "成员" : "额度"} {item.objectReference}</small><small>操作版本 {item.relation.version}</small></>}</td>
+            <td>{item.eventType === "account_ai_points.committed" ? <><strong>图片 AI 点数已扣：{item.points.quantity}</strong><small>成员 {item.points.memberId} · 生成 {item.objectReference}</small><small>价格版本 {item.points.priceVersion} · 账本事件 {item.relation.reference}</small></> : item.eventType === "account_ai_tokens.committed" ? <><strong>AI token 已结算：{item.usage.quantity}</strong><small>成员 {item.usage.memberId} · 调用 {item.objectReference}</small><small>账本事件 {item.relation.reference}</small></> : <><strong>{operationNames[item.operation as keyof typeof operationNames] ?? item.operation}</strong><small>{item.objectType === "source_account" ? "源账号" : item.objectType === "account_business_profile" ? "账户资料" : item.objectType === "organization_member" ? "成员" : "额度"} {item.objectReference}</small><small>操作版本 {item.relation.version}</small></>}</td>
             <td><span className={styles.module}>{item.objectType === "source_account" ? "源账号" : item.objectType === "account_business_profile" ? "账户" : item.objectType === "organization_member" ? "成员与权限" : "资源与额度"}</span></td>
             <td><span className={styles.success}>已完成</span></td>
           </tr>)}</tbody>

@@ -5,12 +5,14 @@ package orgresourceadapter
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -293,4 +295,52 @@ func init() {
 	if runtime.GOOS == "windows" && os.Getenv("DOCKER_HOST") == "" {
 		_ = os.Setenv("DOCKER_HOST", "npipe:////./pipe/dockerDesktopLinuxEngine")
 	}
+}
+
+func TestPostgresResourceRuntimeMonthlyLimitPermissions(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	container, err := tcpostgres.Run(ctx, "postgres:16-alpine", tcpostgres.WithDatabase("orgresource"), tcpostgres.WithUsername("orgresource"), tcpostgres.WithPassword("orgresource"), tcpostgres.BasicWaitStrategies())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+	owner, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	pool, err := owner.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pool.Close() })
+	require.NoError(t, AutoMigrate(owner))
+	// This role exists only in this test's dedicated, disposable cluster.
+	require.NoError(t, owner.Exec(`CREATE ROLE commercial_owner_runtime LOGIN PASSWORD 'controlled-test-only'`).Error)
+	for _, statement := range []string{
+		`REVOKE CREATE ON SCHEMA public FROM PUBLIC`,
+		`GRANT USAGE ON SCHEMA public TO commercial_owner_runtime`,
+		`GRANT SELECT,INSERT,UPDATE ON saas_organization_resource_buckets,saas_organization_resource_operations,saas_organization_resource_reservations,saas_organization_resource_debts,saas_member_ai_point_limits,saas_member_ai_point_months TO commercial_owner_runtime`,
+		`GRANT SELECT,INSERT ON saas_organization_resource_source_claims,saas_organization_resource_events,saas_organization_resource_audit_logs TO commercial_owner_runtime`,
+		`GRANT USAGE,SELECT ON SEQUENCE saas_organization_resource_audit_logs_id_seq TO commercial_owner_runtime`,
+	} {
+		require.NoError(t, owner.Exec(statement).Error)
+	}
+	u, err := url.Parse(dsn)
+	require.NoError(t, err)
+	u.User = url.UserPassword(RuntimeRole, "controlled-test-only")
+	runtimeDB, err := gorm.Open(postgres.Open(u.String()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	runtimePool, err := runtimeDB.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = runtimePool.Close() })
+	require.NoError(t, VerifyRuntimePermissions(ctx, runtimeDB))
+	require.Error(t, VerifyRuntimePermissions(ctx, owner), "schema owner cannot run the application")
+	require.NoError(t, owner.Exec(`REVOKE UPDATE ON saas_member_ai_point_months FROM commercial_owner_runtime`).Error)
+	require.Error(t, VerifyRuntimePermissions(ctx, runtimeDB))
+	require.NoError(t, owner.Exec(`GRANT UPDATE ON saas_member_ai_point_months TO commercial_owner_runtime`).Error)
+	require.NoError(t, owner.Exec(`GRANT DELETE ON saas_member_ai_point_limits TO commercial_owner_runtime`).Error)
+	require.Error(t, VerifyRuntimePermissions(ctx, runtimeDB))
+	require.NoError(t, owner.Exec(`REVOKE DELETE ON saas_member_ai_point_limits FROM commercial_owner_runtime`).Error)
+	require.NoError(t, VerifyRuntimePermissions(ctx, runtimeDB))
+	require.NoError(t, runtimeDB.Exec(`INSERT INTO saas_member_ai_point_limits (organization_id,member_id,monthly_limit,version,updated_by,updated_at) VALUES ('org-1','member-1',25,1,'admin-1',now())`).Error)
+	require.NoError(t, runtimeDB.Exec(`UPDATE saas_member_ai_point_limits SET monthly_limit=30 WHERE organization_id='org-1' AND member_id='member-1'`).Error)
+	require.Error(t, runtimeDB.Exec(`DELETE FROM saas_member_ai_point_limits WHERE organization_id='org-1' AND member_id='member-1'`).Error)
+	require.Error(t, runtimeDB.Exec(`CREATE TABLE forbidden_ddl(id integer)`).Error)
 }

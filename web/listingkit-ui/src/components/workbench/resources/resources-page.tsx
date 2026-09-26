@@ -11,6 +11,7 @@ import { AccountAllocationError, getMemberTokenAllocations, setMemberTokenAlloca
 import { ConsoleState } from "../console/console-page";
 import { EntitlementsOverview, ResourceCards } from "../commercial/commercial-views";
 import { AccountShell } from "../account/account-shell";
+import { MemberPointLimits } from "./member-point-limits";
 import styles from "./resources.module.css";
 
 export function ResourcesPage() {
@@ -31,6 +32,7 @@ function ScopedResources({ scope, userId, organizationId, organizationName, canM
     <div className={styles.heading}><p>当前有效企业：{organizationName || "未提供名称"}（{organizationId}）</p><Button variant="outline" onClick={() => setSequence(v => v + 1)}>刷新资源</Button></div>
     <section aria-label="企业资源权益摘要"><ResourceCards /></section>
     <MemberTokenAllocationRequest userId={userId} organizationId={organizationId} sequence={sequence} canManage={canManage} />
+    <MemberPointLimits userId={userId} organizationId={organizationId} sequence={sequence} canManage={canManage} />
     <div className={styles.grid}>
       <Card role="region" aria-label="源账号资源" className={styles.panel}><h2>源账号</h2><p>可选企业资源，可登记和管理来源账号；匿名公开商品采集无需先登记或连接源账号。</p><Button asChild variant="outline"><Link href="/workbench/account/organization/resources/source-accounts" prefetch={false}>管理源账号</Link></Button></Card>
       <Card role="region" aria-label="店铺资源" className={styles.panel}><h2>店铺资源</h2><p>实际店铺数量未提供，店铺服务及平台连接状态未接入。</p><p>店铺数量限制是已授予权益，不代表已绑定或服务中的店铺数量。</p></Card>

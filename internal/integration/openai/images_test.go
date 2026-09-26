@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,75 @@ import (
 	"testing"
 	"time"
 )
+
+func TestImageResponseDecodesExplicitTokenUsage(t *testing.T) {
+	var chat ChatCompletionResponse
+	if err := json.Unmarshal([]byte(`{"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`), &chat); err != nil || chat.Usage != (Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3}) {
+		t.Fatalf("chat usage schema changed: %+v, %v", chat.Usage, err)
+	}
+	for _, test := range []struct {
+		name, usage string
+		known       bool
+	}{
+		{"valid", `{"input_tokens":1,"output_tokens":3568,"total_tokens":3569}`, true},
+		{"zero_input", `{"input_tokens":0,"output_tokens":3569,"total_tokens":3569}`, true},
+		{"missing", "", false},
+		{"null", "null", false},
+		{"partial", `{"total_tokens":3569}`, false},
+		{"null_counter", `{"input_tokens":null,"output_tokens":3569,"total_tokens":3569}`, false},
+		{"negative", `{"input_tokens":-1,"output_tokens":3570,"total_tokens":3569}`, false},
+		{"mismatch", `{"input_tokens":1,"output_tokens":2,"total_tokens":3569}`, false},
+		{"zero_total", `{"input_tokens":0,"output_tokens":0,"total_tokens":0}`, false},
+		{"overflow", `{"input_tokens":9223372036854775807,"output_tokens":1,"total_tokens":9223372036854775807}`, false},
+		{"out_of_range", `{"input_tokens":9223372036854775808,"output_tokens":1,"total_tokens":9223372036854775809}`, false},
+		{"fractional", `{"input_tokens":0.5,"output_tokens":3568.5,"total_tokens":3569}`, false},
+		{"chat_schema", `{"prompt_tokens":1,"completion_tokens":3568,"total_tokens":3569}`, false},
+	} {
+		for _, edit := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/edit=%t", test.name, edit), func(t *testing.T) {
+				calls := 0
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					calls++
+					body := `{"created":1,"data":[{"b64_json":"aW1hZ2U="}]`
+					if test.usage != "" {
+						body += `,"usage":` + test.usage
+					}
+					_, _ = w.Write([]byte(body + `}`))
+				}))
+				defer server.Close()
+				client := NewClient(&ClientConfig{BaseURL: server.URL, Model: "gpt-image-2.5", Timeout: time.Second, MaxRetries: 0})
+				var response *ImageResponse
+				var err error
+				if edit {
+					zero := 0
+					response, err = client.EditImage(context.Background(), &ImageEditRequest{Prompt: "white background", Image: []byte("source"), MaxRetries: &zero})
+				} else {
+					response, err = client.GenerateImage(context.Background(), &ImageGenerateRequest{Prompt: "white background"})
+				}
+				if err != nil || response == nil {
+					t.Fatalf("image response lost: %v", err)
+				}
+				if response.UsageKnown != test.known {
+					t.Errorf("UsageKnown=%t, want %t", response.UsageKnown, test.known)
+				}
+				if test.known {
+					wantInput := 1
+					if test.name == "zero_input" {
+						wantInput = 0
+					}
+					if response.Usage != (Usage{PromptTokens: wantInput, CompletionTokens: 3569 - wantInput, TotalTokens: 3569}) {
+						t.Errorf("image counters not mapped: %+v", response.Usage)
+					}
+				} else if response.Usage != (Usage{}) {
+					t.Errorf("untrusted counters exposed as normalized usage: %+v", response.Usage)
+				}
+				if calls != 1 || len(response.Data) != 1 {
+					t.Fatalf("calls=%d, image count=%d", calls, len(response.Data))
+				}
+			})
+		}
+	}
+}
 
 func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,9 +97,9 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 			t.Fatalf("model = %q", req.Model)
 		}
 		w.Header().Set("X-Request-Id", "req-openai-1")
-		_ = json.NewEncoder(w).Encode(ImageResponse{
-			Usage: Usage{TotalTokens: 321},
-			Data:  []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("pngdata"))}},
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"usage": map[string]int{"input_tokens": 1, "output_tokens": 320, "total_tokens": 321},
+			"data":  []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("pngdata"))}},
 		})
 	}))
 	defer server.Close()
@@ -54,7 +124,7 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	if resp.RequestID != "req-openai-1" {
 		t.Fatalf("request id = %q, want req-openai-1", resp.RequestID)
 	}
-	if resp.Usage.TotalTokens != 321 {
+	if !resp.UsageKnown || resp.Usage.TotalTokens != 321 {
 		t.Fatalf("usage = %+v, want total_tokens=321", resp.Usage)
 	}
 	if !strings.Contains(resp.RawResponse, "\"b64_json\"") {

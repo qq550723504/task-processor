@@ -2,12 +2,14 @@ package currentapplication
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	coreconfig "task-processor/internal/core/config"
 
@@ -51,6 +53,28 @@ func TestProductAgentConfigRejectsUnboundedOrSplitProductOwner(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProductAgentAndImageGenerationShareManifestWithoutLosingAdmission(t *testing.T) {
+	cfg := agentRuntimeConfig()
+	cfg.ImageAgent = &ImageAgentConfig{
+		Database:        DatabaseConfig{Host: "127.0.0.1", Port: 5432, User: "image_agent_runtime", Password: "fixture-password", Database: "image_agent", MaxConnections: 4},
+		TemporalAddress: "127.0.0.1:7233", TemporalNamespace: "default", AllowedOrganizationIDs: []string{"org"},
+		PublicBase: "https://images.example.test", Bucket: "image-agent-assets",
+		Generation: coreconfig.ImageAgentGenerationConfig{PriceVersion: "price-2026-09", PointsPerImage: 12},
+	}
+	manifest, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	var loaded Config
+	require.NoError(t, json.Unmarshal(manifest, &loaded))
+	require.NoError(t, loaded.validate())
+	require.Equal(t, cfg.ProductAgent, loaded.ProductAgent)
+	require.Equal(t, cfg.ImageAgent.Generation, loaded.CoreConfig().ImageAgent.Generation)
+	loaded.ProductAgent.AllowedOrganizationIDs = nil
+	require.Error(t, loaded.validate(), "image admission must not replace Product Agent admission")
+	loaded.ProductAgent.AllowedOrganizationIDs = []string{"org"}
+	loaded.ImageAgent.Generation.PriceVersion = ""
+	require.Error(t, loaded.validate(), "Product Agent must not bypass explicit image pricing")
 }
 
 func TestProductAgentPoolsCloseOnPartialStartupAndStayClosedWhenDisabled(t *testing.T) {

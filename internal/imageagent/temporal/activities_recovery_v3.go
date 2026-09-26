@@ -18,6 +18,9 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 	if a.slotEffectsV3 == nil || a.stagedSlotExecutor == nil || a.artifactStore == nil || a.publicationOwner == nil {
 		return EffectRecoveryResult{}, fmt.Errorf("image agent v3 activity dependencies are incomplete")
 	}
+	if err := a.reconcileGenerationBeforeExecution(ctx, input.RunID, input.Identity, input.PlanRevision, input.Slot.ID, input.Attempt); err != nil {
+		return EffectRecoveryResult{}, err
+	}
 	ctx, err := a.restoreExecutionIdentity(ctx, input.RunID, input.Identity)
 	if err != nil {
 		return EffectRecoveryResult{}, err
@@ -26,7 +29,8 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		return EffectRecoveryResult{}, err
 	}
 	executionInput := imageagent.SlotExecutionInput{
-		RunID: input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
+		OrganizationIdentity: input.Identity,
+		RunID:                input.RunID, TenantID: input.Identity.TenantID, UserID: input.Identity.UserID,
 		TargetPlatform: input.TargetPlatform, ImagePolicyContext: clonePolicyContext(input.ImagePolicyContext),
 		PlanRevision: input.PlanRevision, Slot: input.Slot, Attempt: input.Attempt,
 		IdempotencyKey: slotAttemptKey(input.PlanRevision, input.Slot, input.Attempt),
@@ -58,6 +62,10 @@ func (a *Activities) RecoverEffectV3(ctx context.Context, input EffectRecoveryWo
 		if err != nil {
 			return EffectRecoveryResult{}, persistedSlotEffectV3RepositoryError(err)
 		}
+	}
+	effect, err = a.recoverSucceededGenerationOutput(ctx, executionInput, reservation, effect)
+	if err != nil {
+		return EffectRecoveryResult{}, err
 	}
 	switch effect.Phase {
 	case imageagent.SlotEffectV3PublicationComplete:

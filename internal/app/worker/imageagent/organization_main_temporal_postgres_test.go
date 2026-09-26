@@ -51,12 +51,15 @@ func TestOrganizationWorkerRealTemporalUnpricedGenerationDoesNotReserveOrDispatc
 	recorder := aistore.NewGormInvocationRecorder(db)
 	recorder.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(db)})
 	tracked := &trackedCommercialReservation{GormInvocationRecorder: recorder}
-	cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{}}
+	cfg := &config.Config{Database: &config.DatabaseConfig{}, CommercialDatabase: &config.DatabaseConfig{Host: "isolated-fixture", Port: 5432, Database: "commercial", User: "commercial_runtime"}, CommercialOwnerDatabase: &config.DatabaseConfig{Host: "isolated-fixture", Port: 5432, Database: "commercial", User: "commercial_owner_runtime"}}
 	cfg.ImageAgent.ArtifactStore = durableArtifactStoreConfig("aws", true)
 	resolver := imageAgentWorkerDependencyResolver{
 		LoadConfig: func(string) (*config.Config, error) { return cfg, nil },
-		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
-		CloseDB:    func(*config.DatabaseConfig, *gorm.DB) error { return nil },
+		// This unpriced-generation fixture injects pools; runtime-role SQL is
+		// covered separately and is not claimed by this Temporal test.
+		VerifyResourceRuntime: func(context.Context, *gorm.DB) error { return nil },
+		OpenDB:                func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB:               func(*config.DatabaseConfig, *gorm.DB) error { return nil },
 		BuildAI: func(*config.Config, *gorm.DB, *gorm.DB, *logrus.Logger) (*openai.Manager, openai.ClientConfigResolver, aicapability.InvocationRecorder, error) {
 			return manager, nil, tracked, nil
 		},

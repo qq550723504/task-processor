@@ -5,6 +5,7 @@ vi.mock("@/auth", () => ({ serverAuth: (handler: (r: NextRequest) => Promise<Res
 import { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } from "@/app/api/account/profile/route";
 import { GET as businessProfileGET, PUT as businessProfilePUT } from "@/app/api/account/business-profile/route";
 import { GET as organizationGET } from "@/app/api/account/organization/route";
+import { PUT as memberPointPUT } from "@/app/api/account/member-ai-point-limits/[member_id]/route";
 import { GET as identityProfileGET, PUT as identityEmailPUT } from "@/app/api/account/identity/[...path]/route";
 
 const profile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "Alice", email: null, emailVerified: null, phoneNumber: null, phoneNumberVerified: null, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
@@ -16,6 +17,12 @@ function readIdentityProfile(headers: Record<string, string> = {}) { return new 
 beforeEach(() => { state.user = "u1"; state.token = "fixture-token"; state.blocked = false; vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:8085/api/v1"); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 describe("exported account routes", () => {
+ it("keeps a member point command UNKNOWN when its outer deadline loses the response", async () => {
+  vi.useFakeTimers(); const fetch = vi.fn(() => new Promise<Response>(() => {})); vi.stubGlobal("fetch", fetch);
+  const request = new NextRequest("http://localhost/api/account/member-ai-point-limits/member-1", { method: "PUT", headers: { "X-Expected-User-ID": "u1", "X-Expected-Organization-ID": "B", cookie: "shuomi_effective_organization=B", "Content-Type": "application/json", "Idempotency-Key": "original-key" }, body: JSON.stringify({ target: "25", expectedVersion: "0" }) });
+  const pending = memberPointPUT(request); await vi.advanceTimersByTimeAsync(15001);
+  const response = await pending; expect(response.status).toBe(504); expect(await response.json()).toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" }); expect(fetch).toHaveBeenCalledTimes(1);
+ });
  it("uses only server credentials and ignores every organization input for self", async () => {
   const fetch = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetch);
   const response = await GET(request("profile", { cookie: "shuomi_effective_organization=bad; secret=private", Authorization: "Bearer attacker", "X-Requested-Organization-ID": "bad", "X-Expected-Organization-ID": "bad" }));

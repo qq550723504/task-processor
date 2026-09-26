@@ -92,6 +92,11 @@ type SlotExecutionInput struct {
 	IdempotencyKey     string
 	AssetCatalog       AssetCatalog
 	ProductContext     ProductContextRef
+	// Populated only in-process after the organization generation intent binds
+	// these exact bytes. Never transport source bytes in workflow history.
+	SourceBytes          []byte            `json:"-"`
+	SourceDigest         string            `json:"-"`
+	OrganizationIdentity ExecutionIdentity `json:"-"`
 }
 
 type SlotExecutionResult struct {

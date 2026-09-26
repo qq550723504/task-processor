@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/authz"
 	accountprofilestore "task-processor/internal/integration/persistence/accountprofile"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
 	registry "task-processor/internal/sourceaccountregistry"
 	"task-processor/internal/workbenchcontext"
 )
@@ -23,6 +24,57 @@ import (
 type auditHTTPHistory struct {
 	calls       int
 	unavailable bool
+}
+
+type imagePointAuditHTTPHistory struct{ calls int }
+
+func (h *imagePointAuditHTTPHistory) ListImagePointDebits(_ context.Context, org, actor string, _ int, _ *orgresource.ImagePointAuditPosition) (orgresource.ImagePointAuditPage, error) {
+	h.calls++
+	if org != "B" {
+		return orgresource.ImagePointAuditPage{}, registry.ErrForbidden
+	}
+	if actor != "" && actor != "safe-actor" {
+		return orgresource.ImagePointAuditPage{}, nil
+	}
+	return orgresource.ImagePointAuditPage{Items: []orgresource.ImagePointDebit{{OrganizationID: org, EventID: "event-1", ActorID: "safe-actor", MemberID: "grant-1", RunID: "run-1", IntentID: "intent-1", PriceVersion: "price-1", Points: 12, CreatedAt: time.Now().UTC().Truncate(time.Microsecond)}}}, nil
+}
+
+func TestAccountAuditHTTPProjectsImagePointsUnderLiveOrgPermission(t *testing.T) {
+	points := &imagePointAuditHTTPHistory{}
+	query, err := accountaudit.NewWithImagePointAuditSources(&auditHTTPHistory{}, nil, nil, nil, nil, points)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules := kernelmodule.NewRegistry()
+	if err := (accountAuditModule{query: query}).Register(modules); err != nil {
+		t.Fatal(err)
+	}
+	grants := &auditHTTPGrants{role: "listingkit_viewer"}
+	authorizer, _ := authz.NewListingKitAuthorizer(nil, nil)
+	server := buildIsolatedApplicationHTTPServer(modules.Routes(), routeAuthDependencies{workbenchVerifier: applicationVerifier{}, organizationResolver: workbenchcontext.NewResolver(grants, "project", "v1", nil), authorizer: authorizer}, registry.Timeout)
+	get := func(org string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", accountAuditPath+"?actor=safe-actor", nil)
+		r.Header.Set("X-Requested-Organization-ID", org)
+		r.Header.Set("Authorization", "Bearer fixture")
+		w := httptest.NewRecorder()
+		server.Handler.ServeHTTP(w, r)
+		return w
+	}
+	w := get("B")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"points":{"memberId":"grant-1","quantity":"12","priceVersion":"price-1","intentId":"intent-1"}`) {
+		t.Fatalf("point read %d %s", w.Code, w.Body.String())
+	}
+	before := points.calls
+	if w = get("A"); w.Code != 403 {
+		t.Fatalf("cross org %d", w.Code)
+	}
+	grants.revoked = true
+	if w = get("B"); w.Code != 403 {
+		t.Fatalf("revoked %d", w.Code)
+	}
+	if points.calls != before {
+		t.Fatal("denied read reached point owner")
+	}
 }
 
 func (h *auditHTTPHistory) List(ctx context.Context, _ registry.HistoryRequest) (registry.HistoryPage, error) {

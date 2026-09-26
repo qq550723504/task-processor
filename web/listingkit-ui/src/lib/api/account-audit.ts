@@ -50,9 +50,17 @@ const usageEvent = z.object({
   relation: z.object({ type: z.literal("saas_usage_event"), reference: resourceReference, version: z.literal("") }).strict(),
   usage: z.object({ memberId: resourceReference, quantity: z.number().int().positive(), metric: z.literal("ai_tokens") }).strict(),
 }).strict();
-const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent, usageEvent]);
+const pointEvent = z.object({
+  eventType: z.literal("account_ai_points.committed"), actor: z.string().min(1).max(192).regex(/^[^\x00-\x1f\x7f]+$/),
+  time: z.string().max(40).datetime({ precision: null }),
+  objectType: z.literal("image_generation"), objectReference: resourceReference,
+  operation: z.literal("consume"), result: z.literal("succeeded"),
+  relation: z.object({ type: z.literal("organization_resource_event"), reference: resourceReference, version: z.literal("") }).strict(),
+  points: z.object({ memberId: resourceReference, quantity: z.string().refine(value => /^[1-9][0-9]{0,18}$/.test(value) && BigInt(value) <= BigInt("9223372036854775807")), priceVersion: z.string().min(1).max(192).regex(/^[^\x00-\x1f\x7f]+$/).refine(value => value.trim() === value), intentId: resourceReference }).strict(),
+}).strict();
+const event = z.union([sourceEvent, resourceEvent, profileEvent, membershipEvent, usageEvent, pointEvent]);
 const cursor = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/);
-const source = z.enum([
+const priorSource = z.enum([
   "source_account_committed_operations",
   "source_account_committed_operations+account_member_token_audit",
   "source_account_committed_operations+account_business_profile_audit",
@@ -70,6 +78,7 @@ const source = z.enum([
   "source_account_committed_operations+account_business_profile_audit+organization_member_audit+saas_ai_usage_events",
   "source_account_committed_operations+account_member_token_audit+account_business_profile_audit+organization_member_audit+saas_ai_usage_events",
 ]);
+const source = z.string().refine(value => priorSource.safeParse(value).success || value.endsWith("+image_ai_point_debits") && priorSource.safeParse(value.slice(0, -"+image_ai_point_debits".length)).success);
 const page = z.object({
   schemaVersion: z.literal("account-audit-v1"), userId: identity, effectiveOrganizationId: identity,
   source, items: z.array(event).max(100), nextCursor: cursor.nullable(),

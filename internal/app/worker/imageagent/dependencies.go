@@ -28,6 +28,7 @@ import (
 	imageagenttools "task-processor/internal/imageagent/tools"
 	"task-processor/internal/integration/httpimage"
 	openaiclient "task-processor/internal/integration/openai"
+	resourceadapter "task-processor/internal/integration/orgresource"
 	productassetpersistence "task-processor/internal/integration/persistence/product/asset"
 	s3integration "task-processor/internal/integration/s3"
 	"task-processor/internal/listingsubscription"
@@ -51,6 +52,7 @@ type imageAgentWorkerDependencyResolver struct {
 	BuildOrganizationAuthorizer     func(*config.Config) (domainimageagent.ExecutionAuthorizer, error)
 	BuildArtifactStore              func(*config.Config, imageAgentArtifactTiming, *logrus.Logger) (imageagenttemporal.DurableArtifactStore, error)
 	VerifyOrganizationWorkerRuntime func(context.Context, *gorm.DB) error
+	VerifyResourceRuntime           func(context.Context, *gorm.DB) error
 	ArtifactTiming                  imageAgentArtifactTiming
 }
 
@@ -112,9 +114,17 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 	return imageAgentWorkerDependencyResolver{
 		LoadConfig: config.LoadConfigFromFile,
 		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			if cfg != nil && cfg.User == resourceadapter.RuntimeRole {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				return platformdatabase.OpenExistingWritableContext(ctx, configadapter.Database(cfg))
+			}
 			return platformdatabase.OpenShared(configadapter.Database(cfg))
 		},
 		CloseDB: func(cfg *config.DatabaseConfig, db *gorm.DB) error {
+			if cfg != nil && cfg.User == resourceadapter.RuntimeRole {
+				return platformdatabase.Close(db)
+			}
 			return platformdatabase.CloseShared(configadapter.Database(cfg), db)
 		},
 		BuildAI: buildImageAgentWorkerAI, BuildCapabilities: buildProductionImageCapabilities,
@@ -122,6 +132,7 @@ func defaultImageAgentWorkerDependencyResolver() imageAgentWorkerDependencyResol
 		BuildOrganizationAuthorizer:     buildOrganizationWorkerAuthorizer,
 		BuildArtifactStore:              buildImageAgentDurableArtifactStore,
 		VerifyOrganizationWorkerRuntime: imageagentstore.VerifyOrganizationWorkerRuntimePermissions,
+		VerifyResourceRuntime:           resourceadapter.VerifyRuntimePermissions,
 		ArtifactTiming:                  defaultImageAgentArtifactTiming,
 	}
 }
@@ -197,6 +208,12 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	if cfg.CommercialDatabase == nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("image agent commercial database configuration is required for token accounting")
 	}
+	if mode == imageagenttemporal.WorkerWireModeOrganization {
+		owner, usage := cfg.CommercialOwnerDatabase, cfg.CommercialDatabase
+		if owner == nil || owner.User != resourceadapter.RuntimeRole || owner.Host == "" || owner.Port <= 0 || owner.Database == "" || owner.Host != usage.Host || owner.Port != usage.Port || owner.Database != usage.Database {
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("organization image agent requires the explicit same-database commercial resource owner runtime")
+		}
+	}
 	db, err := resolver.OpenDB(cfg.Database)
 	if err != nil {
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open image agent worker database: %w", err)
@@ -206,9 +223,13 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		_ = resolver.CloseDB(cfg.Database, db)
 		return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open commercial usage database: %w", err)
 	}
+	var resourceDB *gorm.DB
 	closeDB := func() error {
 		closeErr := resolver.CloseDB(cfg.Database, db)
 		closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialDatabase, commercialDB))
+		if resourceDB != nil {
+			closeErr = errors.Join(closeErr, resolver.CloseDB(cfg.CommercialOwnerDatabase, resourceDB))
+		}
 		return closeErr
 	}
 	if cfg.ImageAgent.ArtifactStore.IsolatedTrialGeneratedURLs {
@@ -219,6 +240,24 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 		if err := verify(context.Background(), db); err != nil {
 			_ = closeDB()
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("verify organization image agent worker role: %w", err)
+		}
+	}
+	if mode == imageagenttemporal.WorkerWireModeOrganization {
+		resourceDB, err = resolver.OpenDB(cfg.CommercialOwnerDatabase)
+		if err != nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("open commercial resource owner database: %w", err)
+		}
+		verify := resolver.VerifyResourceRuntime
+		if verify == nil {
+			verify = resourceadapter.VerifyRuntimePermissions
+		}
+		verification, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err = verify(verification, resourceDB)
+		cancel()
+		if err != nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("verify commercial resource owner runtime: %w", err)
 		}
 	}
 	manager, credentialResolver, recorder, err := resolver.BuildAI(cfg, db, commercialDB, logger)
@@ -310,7 +349,14 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization image agent execution authorizer: %w", authErr)
 		}
 		dependencies.ExecutionAuthorizer = authorizer
-		dependencies.StagedSlotExecutor = organizationMainSlotExecutor{delegate: v3Executor}
+		generation, recovery, generationErr := buildOrganizationGeneration(cfg.ImageAgent.Generation, db, resourceDB, repository, authorizer, logger)
+		if generationErr != nil {
+			_ = closeDB()
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization generation admission: %w", generationErr)
+		}
+		dependencies.GenerationRecovery = recovery
+		dependencies.GenerationOutputRecovery = generationOutputRecovery(nil)
+		dependencies.StagedSlotExecutor = organizationMainSlotExecutor{delegate: v3Executor, generation: generation}
 	}
 	dependencies.ArtifactStore = artifactStore
 	dependencies.PublisherV3 = publisherV3

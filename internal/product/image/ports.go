@@ -226,14 +226,17 @@ func cloneRenderRequest(request RenderRequest) (RenderRequest, error) {
 		return RenderRequest{}, err
 	}
 	if request.SourceOnly {
-		if !reflect.DeepEqual(request.Subject, Candidate{}) {
+		if !reflect.DeepEqual(request.Subject, Candidate{}) || len(request.SourceBytes) == 0 || len(request.SourceBytes) > MaxInlineArtifactBytes {
 			return RenderRequest{}, ErrInputInvalid
 		}
 		authorization, err := cloneUsageAuthorization(request.Authorization, SourceWhiteBackgroundOperation)
 		if err != nil {
 			return RenderRequest{}, err
 		}
-		return RenderRequest{Source: source, SourceOnly: true, Product: product, Authorization: authorization}, nil
+		return RenderRequest{Source: source, SourceOnly: true, SourceBytes: append([]byte(nil), request.SourceBytes...), Product: product, Authorization: authorization}, nil
+	}
+	if request.SourceBytes != nil {
+		return RenderRequest{}, ErrInputInvalid
 	}
 	subject, err := validateCandidate(
 		request.Subject, source, RoleSubject, "extract_subject", forbiddenArtifactURLs(source),

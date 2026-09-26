@@ -35,6 +35,8 @@ func TestWorkbenchAutoMigrateCreatesOwnedTablesAndIsRepeatable(t *testing.T) {
 
 	wantTables := []string{
 		"listing_store",
+		"saas_member_ai_point_limits",
+		"saas_member_ai_point_months",
 		"saas_organization_resource_audit_logs",
 		"saas_organization_resource_buckets",
 		"saas_organization_resource_debts",

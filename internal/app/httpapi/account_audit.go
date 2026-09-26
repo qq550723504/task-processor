@@ -18,6 +18,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	resourceadapter "task-processor/internal/integration/orgresource"
 	accountallocationstore "task-processor/internal/integration/persistence/accountallocation"
 	accountprofilestore "task-processor/internal/integration/persistence/accountprofile"
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
@@ -234,7 +235,7 @@ func writeAccountAuditError(c *gin.Context, err error) {
 	}
 	writeWorkbenchProtocolError(c, status, code, "Operation history request could not be completed")
 }
-func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, membershipProjectID string) (kernelmodule.Module, error) {
+func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, membershipDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer, membershipProjectID string) (kernelmodule.Module, error) {
 	repository, err := store.NewRepository(ctx, sourceDB)
 	if err != nil {
 		return nil, err
@@ -264,7 +265,17 @@ func buildAccountAuditModule(ctx context.Context, sourceDB, commercialDB, member
 		}
 		membershipHistory = membershipAuditReader{repository: membershipRepository}
 	}
-	query, err := accountaudit.NewWithUsageAuditSources(history, allocationRepository, profileHistory, membershipHistory, aiUsageAuditReader{repository: allocationRepository})
+	var pointHistory accountaudit.ImagePointHistory
+	if resourceDB != nil {
+		if err := resourceadapter.VerifyRuntimePermissions(ctx, resourceDB); err != nil {
+			return nil, err
+		}
+		pointHistory, err = resourceadapter.NewGormRepository(resourceDB, resourceadapter.TransactionConfig{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	query, err := accountaudit.NewWithImagePointAuditSources(history, allocationRepository, profileHistory, membershipHistory, aiUsageAuditReader{repository: allocationRepository}, pointHistory)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +288,7 @@ func NewAccountAuditApplication(ctx context.Context, db *gorm.DB, verifier zitad
 	if ctx == nil || db == nil || verifier == nil || resolver == nil || authorizer == nil {
 		return nil, registry.ErrUnavailable
 	}
-	module, err := buildAccountAuditModule(ctx, db, db, nil, authorizer, "")
+	module, err := buildAccountAuditModule(ctx, db, db, nil, nil, authorizer, "")
 	if err != nil {
 		return nil, err
 	}

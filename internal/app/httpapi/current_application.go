@@ -83,8 +83,9 @@ type currentApplicationFactories struct {
 	buildBrowserCapture             func(*authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
-	buildAccountAudit               func(*gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
-	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildMemberPointLimits          func(context.Context, *config.Config, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAudit               func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
 	buildAccountIdentity            func(*config.Config) (kernelmodule.Module, error)
 }
@@ -171,17 +172,18 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
 		buildCommercialBilling: buildCommercialBillingModule,
-		buildAccountAudit: func(sourceDB, commercialDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, authorizer, projectID)
+		buildAccountAudit: func(sourceDB, commercialDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, resourceDB, authorizer, projectID)
 		},
-		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
-			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, authorizer, projectID)
+		buildAccountAuditWithMembership: func(sourceDB, commercialDB, membershipDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, resourceDB, authorizer, projectID)
 		},
 		buildAccountProfile: func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
 		buildAccountIdentity: func(cfg *config.Config) (kernelmodule.Module, error) {
 			return accountIdentityModule{client: zitadelruntime.NewSelfServiceClient(cfg.ListingKit.Zitadel.IssuerURL, &http.Client{Timeout: 5 * time.Second})}, nil
 		},
 		buildAccountAllocation: buildAccountResourceAllocationModule,
+		buildMemberPointLimits: buildMemberPointLimitModule,
 	}
 }
 
@@ -272,7 +274,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			if err != nil {
 				return nil, err
 			}
-			return buildAcquisitionImageModule(ctx, receipts, imageDB, workflows, cfg)
+			return buildAcquisitionImageModule(ctx, receipts, imageDB, supplied.commercialOwnerDB, workflows, cfg)
 		}
 	}
 	if supplied.membership != nil {
@@ -398,9 +400,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		var audit kernelmodule.Module
 		var auditErr error
 		if supplied.membership != nil && factories.buildAccountAuditWithMembership != nil {
-			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, authorizer)
+			audit, auditErr = factories.buildAccountAuditWithMembership(sourceAccountDB, commercialDB, supplied.membership.ReceiptDB, supplied.commercialOwnerDB, authorizer)
 		} else {
-			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, authorizer)
+			audit, auditErr = factories.buildAccountAudit(sourceAccountDB, commercialDB, supplied.commercialOwnerDB, authorizer)
 		}
 		if auditErr != nil {
 			return nil, fmt.Errorf("build current account audit module: %w", auditErr)
@@ -431,11 +433,27 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, allocation)
 	}
+	includeMemberPoints := factories.buildMemberPointLimits != nil && supplied.membership != nil && supplied.commercialOwnerDB != nil
+	if includeMemberPoints {
+		points, err := factories.buildMemberPointLimits(ctx, cfg, supplied.commercialOwnerDB, *supplied.membership, authorizer)
+		if err != nil {
+			return nil, fmt.Errorf("build member AI point limits: %w", err)
+		}
+		if points == nil {
+			return nil, errors.New("member AI point limits unavailable")
+		}
+		modules = append(modules, points)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, supplied.productAgent != nil); err != nil {
+	routeFeatures := currentApplicationOptionalRoutes{
+		AcquisitionImage: factories.buildAcquisitionImage != nil,
+		ProductAgent:     supplied.productAgent != nil,
+		MemberPoints:     includeMemberPoints,
+	}
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, routeFeatures); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -467,23 +485,29 @@ func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, 
 
 func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false, currentApplicationOptionalRoutes{})
 }
 
 func validateCurrentApplicationRoutesWithAccountProfile(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false, currentApplicationOptionalRoutes{})
 }
 
 func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser, currentApplicationOptionalRoutes{})
 }
 
 func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser, includeAccountProfile, includeAllocation bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, currentApplicationOptionalRoutes{})
 }
 
-func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, includeImage ...bool) error {
+type currentApplicationOptionalRoutes struct {
+	AcquisitionImage bool
+	ProductAgent     bool
+	MemberPoints     bool
+}
+
+func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAccountProfile {
 		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
@@ -504,7 +528,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/:operation_id"},
 		)
 	}
-	if len(includeImage) > 0 && includeImage[0] {
+	if optional.AcquisitionImage {
 		for _, route := range []currentApplicationRoute{
 			{Method: http.MethodGet, Path: acquisitionImageBase + "/candidates"},
 			{Method: http.MethodPost, Path: acquisitionImageBase},
@@ -514,7 +538,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			admitted = append(admitted, route)
 		}
 	}
-	if len(includeImage) > 1 && includeImage[1] {
+	if optional.ProductAgent {
 		for _, r := range productAgentRoutes(nil) {
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
@@ -524,6 +548,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			}
 			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
 		}
+	}
+	if optional.MemberPoints {
+		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
 	for _, route := range admitted {
@@ -579,6 +606,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	for _, descriptor := range routes {
 		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionListingKitAdminWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
+		}
+		if strings.HasPrefix(descriptor.Path, memberPointLimitBase) {
+			permission := authz.PermissionWorkbenchOrganizationMemberRead
+			if descriptor.Method == http.MethodPut {
+				permission = authz.PermissionWorkbenchOrganizationMemberManage
+			}
+			if descriptor.Module != memberPointLimitModuleName || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 15*time.Second || descriptor.Permission != permission || descriptor.Handler == nil {
+				return errors.New("member AI point limit route loses live permission boundary")
+			}
 		}
 		if descriptor.Path == accountAuditPath && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")

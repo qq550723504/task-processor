@@ -41,13 +41,16 @@ type Config struct {
 	Database      *DatabaseConfig     `yaml:"database"`
 	// CommercialDatabase is optional for workers that settle observed AI
 	// usage into the commercial owner.
-	CommercialDatabase  *DatabaseConfig           `yaml:"commercialDatabase"`
-	Redis               *RedisConfig              `yaml:"redis"`
-	Prompts             PromptsConfig             `yaml:"prompts"`
-	Debug               DebugConfig               `yaml:"debug"`
-	ListingKit          ListingKitConfig          `yaml:"listingkit"`
-	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
-	Workbench           WorkbenchConfig           `yaml:"workbench"`
+	CommercialDatabase *DatabaseConfig `yaml:"commercialDatabase"`
+	// CommercialOwnerDatabase is the explicit resource-balance owner pool;
+	// it must not borrow the Token usage runtime role.
+	CommercialOwnerDatabase *DatabaseConfig           `yaml:"commercialOwnerDatabase"`
+	Redis                   *RedisConfig              `yaml:"redis"`
+	Prompts                 PromptsConfig             `yaml:"prompts"`
+	Debug                   DebugConfig               `yaml:"debug"`
+	ListingKit              ListingKitConfig          `yaml:"listingkit"`
+	ListingControlPlane     ListingControlPlaneConfig `yaml:"listingControlPlane"`
+	Workbench               WorkbenchConfig           `yaml:"workbench"`
 }
 
 type FeatureFlagsConfig struct {

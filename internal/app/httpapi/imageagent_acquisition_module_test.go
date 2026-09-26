@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	imageagentpolicy "task-processor/internal/app/imageagentpolicy"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
+	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
@@ -60,8 +62,8 @@ func TestCurrentApplicationAdmitsOnlyLiveAuthorizedAcquisitionImageRoutes(t *tes
 	}
 	imageRoutes := acquisitionImageRoutes(&acquisitionImageServiceSpy{}, &acquisitionImageCandidatesSpy{}, &acquisitionImageApprovalReaderSpy{}, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{})
 	routes = append(routes, imageRoutes...)
-	require.Error(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false), "disabled image module cannot leak routes")
-	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, true))
+	require.Error(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{}), "disabled image module cannot leak routes")
+	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{AcquisitionImage: true}))
 	for i := range imageRoutes {
 		for _, mutate := range []func(*httproute.Descriptor){
 			func(route *httproute.Descriptor) { route.Module = "other" },
@@ -72,27 +74,28 @@ func TestCurrentApplicationAdmitsOnlyLiveAuthorizedAcquisitionImageRoutes(t *tes
 		} {
 			changed := append([]httproute.Descriptor(nil), routes...)
 			mutate(&changed[len(currentWorkbenchApplicationRoutes)+i])
-			require.Error(t, validateCurrentApplicationRoutesInternal(changed, false, false, false, false, false, false, false, true))
+			require.Error(t, validateCurrentApplicationRoutesInternal(changed, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{AcquisitionImage: true}))
 		}
 	}
 }
 
 type acquisitionImageServiceSpy struct {
-	starts     []imageagent.StartRunInput
-	projection imageagent.RunProjection
-	approvals  int
+	starts      []imageagent.StartRunInput
+	projection  imageagent.RunProjection
+	approvals   int
+	mutationErr error
 }
 
 func (spy *acquisitionImageServiceSpy) Start(_ context.Context, input imageagent.StartRunInput) error {
 	spy.starts = append(spy.starts, input)
-	return nil
+	return spy.mutationErr
 }
 func (spy *acquisitionImageServiceSpy) Get(context.Context, string) (imageagent.RunProjection, error) {
 	return spy.projection, nil
 }
 func (spy *acquisitionImageServiceSpy) ApproveResults(context.Context, string, int64, string, string) error {
 	spy.approvals++
-	return nil
+	return spy.mutationErr
 }
 
 type acquisitionImageCandidatesSpy struct {
@@ -240,6 +243,44 @@ func TestAcquisitionImageNewGenerationUnavailableBeforeServiceStart(t *testing.T
 	}
 }
 
+func TestAcquisitionImageConfiguredGenerationUsesExactCatalogAndStableStart(t *testing.T) {
+	const operationID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
+	const requestID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
+	identity := authidentity.AuthenticatedIdentity{TenantID: "org-a", EffectiveOrganizationID: "org-a", UserID: "actor-a", EffectiveMemberID: "member-a"}
+	service, catalog := &acquisitionImageServiceSpy{}, &acquisitionImageCandidatesSpy{}
+	router := gin.New()
+	for _, route := range acquisitionImageRoutes(service, catalog, &acquisitionImageApprovalReaderSpy{}, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{}, acquisitionImageRouteOptions{Price: config.ImageAgentGenerationConfig{PriceVersion: "price-1", PointsPerImage: 12}}) {
+		router.Handle(route.Method, route.Path, route.Handler)
+	}
+	base := "/api/v1/workbench/sourcing/1688/acquisitions/" + operationID + "/main-image"
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r = r.WithContext(authidentity.WithAuthenticatedIdentity(r.Context(), identity))
+		r.Header.Set("Authorization", "Bearer fixture")
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Idempotency-Key", requestID)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	w := call(http.MethodGet, base+"/candidates", "")
+	require.Equal(t, 200, w.Code, w.Body.String())
+	require.JSONEq(t, `{"operationId":"`+operationID+`","candidates":[{"id":"catalog-image-3","displayUrl":"https://images.example.test/3.png"}]}`, w.Body.String())
+	require.Equal(t, imageagent.AssetCatalogScope{TenantID: "org-a", OwnerUserID: "actor-a", BusinessTaskID: operationID}, catalog.scope)
+	for i := 0; i < 2; i++ {
+		w = call(http.MethodPost, base, `{"sourceImageId":"catalog-image-3"}`)
+		require.Equal(t, 202, w.Code, w.Body.String())
+	}
+	require.Len(t, service.starts, 2)
+	require.Equal(t, service.starts[0], service.starts[1], "replay retains one stable run identity")
+	require.Equal(t, []string{"catalog-image-3"}, service.starts[0].Plan.SourceAssetIDs)
+	service.mutationErr = errors.New("workflow start acknowledgement lost; internal detail")
+	w = call(http.MethodPost, base, `{"sourceImageId":"catalog-image-3"}`)
+	require.Equal(t, 503, w.Code)
+	require.JSONEq(t, `{"code":"OUTCOME_UNKNOWN"}`, w.Body.String())
+	require.Equal(t, service.starts[0], service.starts[2])
+}
+
 func TestAcquisitionImageRoutesCloseNewGenerationAndPreserveHumanApproval(t *testing.T) {
 	const operationID = "d1abe8da-b381-4924-8d15-d79bdbfacf70"
 	const requestID = "30d26689-30b6-4358-b0f5-c310d7ab2e58"
@@ -324,6 +365,11 @@ func TestAcquisitionImageRoutesCloseNewGenerationAndPreserveHumanApproval(t *tes
 	approvalReader.commit.Assets[0].URL = "https://images.example.test/different.png"
 	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
 	require.Equal(t, http.StatusConflict, response.Code, "same action with different approved payload cannot replay")
+	service.projection.Run.Status = imageagent.RunStatusAwaitingFinalApproval
+	service.mutationErr = errors.New("Temporal update acknowledgement lost")
+	response = call(http.MethodPost, base+"/runs/"+input.RunID+"/approve", `{"planRevision":1,"resultDigest":"digest-1","actionId":"`+requestID+`"}`)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.JSONEq(t, `{"code":"OUTCOME_UNKNOWN"}`, response.Body.String())
 }
 
 func TestAcquisitionMainImageBudgetAdmitsRealMainQuoteBeforeProvider(t *testing.T) {

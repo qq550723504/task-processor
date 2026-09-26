@@ -96,7 +96,7 @@ func TestSourceWhiteBackgroundRejectsSubjectAndMalformedSourceBeforeProvider(t *
 		return Candidate{}, nil
 	}))
 	require.NoError(t, err)
-	request := RenderRequest{Source: validSourceAsset(), SourceOnly: true, Product: validProductContext()}
+	request := RenderRequest{Source: validSourceAsset(), SourceOnly: true, SourceBytes: []byte("source"), Product: validProductContext()}
 	request.Subject = Candidate{Asset: validInlineGeneratedAsset(RoleSubject, "extract_subject", []byte("subject"))}
 	_, err = capability.RenderWhiteBackground(context.Background(), request)
 	require.ErrorIs(t, err, ErrInputInvalid)
@@ -105,6 +105,25 @@ func TestSourceWhiteBackgroundRejectsSubjectAndMalformedSourceBeforeProvider(t *
 	_, err = capability.RenderWhiteBackground(context.Background(), request)
 	require.ErrorIs(t, err, ErrInputInvalid)
 	require.Zero(t, calls)
+}
+
+func TestSourceBytesAreBoundedCopiedAndExclusiveToSourceOnly(t *testing.T) {
+	request := RenderRequest{Source: validSourceAsset(), SourceOnly: true, SourceBytes: []byte("source"), Product: validProductContext()}
+	cloned, err := cloneRenderRequest(request)
+	require.NoError(t, err)
+	request.SourceBytes[0] = 'X'
+	require.Equal(t, []byte("source"), cloned.SourceBytes)
+	require.Empty(t, cloned.Source.Bytes, "source provenance remains URL-only")
+	for _, raw := range [][]byte{nil, {}, make([]byte, MaxInlineArtifactBytes+1)} {
+		request.SourceBytes = raw
+		_, err = cloneRenderRequest(request)
+		require.ErrorIs(t, err, ErrInputInvalid)
+	}
+	request.SourceOnly = false
+	request.SourceBytes = []byte("source")
+	request.Subject = Candidate{Asset: validInlineGeneratedAsset(RoleSubject, "extract_subject", []byte("subject"))}
+	_, err = cloneRenderRequest(request)
+	require.ErrorIs(t, err, ErrInputInvalid)
 }
 
 var (

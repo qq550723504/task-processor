@@ -53,13 +53,14 @@ type ReferralsConfig struct {
 // database is the same owner database used by the Organization ImageAgent
 // worker, opened with a bounded API runtime role, never the SRC role.
 type ImageAgentConfig struct {
-	Database                   DatabaseConfig `json:"database"`
-	TemporalAddress            string         `json:"temporalAddress"`
-	TemporalNamespace          string         `json:"temporalNamespace"`
-	AllowedOrganizationIDs     []string       `json:"allowedOrganizationIds"`
-	PublicBase                 string         `json:"publicBase"`
-	Bucket                     string         `json:"bucket"`
-	IsolatedTrialGeneratedURLs bool           `json:"isolatedTrialGeneratedURLs,omitempty"`
+	Generation                 coreconfig.ImageAgentGenerationConfig `json:"generation,omitempty"`
+	Database                   DatabaseConfig                        `json:"database"`
+	TemporalAddress            string                                `json:"temporalAddress"`
+	TemporalNamespace          string                                `json:"temporalNamespace"`
+	AllowedOrganizationIDs     []string                              `json:"allowedOrganizationIds"`
+	PublicBase                 string                                `json:"publicBase"`
+	Bucket                     string                                `json:"bucket"`
+	IsolatedTrialGeneratedURLs bool                                  `json:"isolatedTrialGeneratedURLs,omitempty"`
 }
 
 // ListingKitAuthorizationConfig carries only the platform-admin caller allowlists.
@@ -292,6 +293,9 @@ func (cfg *Config) validate() error {
 		}
 	}
 	if image := cfg.ImageAgent; image != nil {
+		if image.Generation != (coreconfig.ImageAgentGenerationConfig{}) && (!image.Generation.Configured() || cfg.CommercialOwnerDatabase == nil) {
+			return errors.New("image generation requires an explicit versioned points price and commercial owner database")
+		}
 		if cfg.ProductAcquisitionDatabase == nil {
 			return errors.New("image agent requires current product acquisition")
 		}
@@ -453,6 +457,7 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		},
 	}
 	if image := cfg.ImageAgent; image != nil {
+		core.ImageAgent.Generation = image.Generation
 		core.ImageAgent.Admission = coreconfig.ImageAgentAdmissionConfig{Enabled: true, AllowedTenantIDs: append([]string(nil), image.AllowedOrganizationIDs...)}
 		core.ImageAgent.ArtifactStore = coreconfig.ImageAgentArtifactStoreConfig{Enabled: true, Provider: "s3", PublicBase: image.PublicBase, IsolatedTrialGeneratedURLs: image.IsolatedTrialGeneratedURLs, S3: coreconfig.ImageAgentArtifactStoreS3Config{Bucket: image.Bucket}}
 	}

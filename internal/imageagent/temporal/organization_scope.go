@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"go.temporal.io/sdk/workflow"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/shared/aiidentity"
+
+	"go.temporal.io/sdk/workflow"
 )
 
 const (
@@ -15,6 +16,26 @@ const (
 	OrganizationTaskQueue                     = "image-agent-organization-v1"
 	organizationWorkflowName                  = "ImageAgentOrganizationWorkflowV1"
 )
+
+func (a *Activities) reconcileGenerationBeforeExecution(ctx context.Context, runID string, identity imageagent.ExecutionIdentity, revision int64, slotID string, attempt int) error {
+	if a.generationRecovery == nil {
+		return nil
+	}
+	if err := imageagent.ValidateOrganizationExecution(identity, runID); err != nil {
+		return err
+	}
+	if identity.MemberID == "" || revision <= 0 || slotID == "" || attempt <= 0 {
+		return imageagent.ErrIdentityRequired
+	}
+	// Only the fixed fact owner is consulted here. This internal seam has no
+	// reserve, provider, artifact download or approval capability. Revocation
+	// cannot erase already incurred consumption; ordinary execution below
+	// still requires the complete live authorization and catalog boundary.
+	finalization, cancel := providerFinalizationContext(ctx)
+	defer cancel()
+	_, err := a.generationRecovery.ReconcileExistingGeneration(finalization, imageagent.SlotExternalEffectIdentity{RunScope: imageagent.RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: runID}, PlanRevision: revision, SlotID: slotID, Attempt: attempt})
+	return err
+}
 
 func (a *Activities) restoreExecutionIdentity(ctx context.Context, runID string, identity imageagent.ExecutionIdentity) (context.Context, error) {
 	if a.executionAuthorizer == nil {
