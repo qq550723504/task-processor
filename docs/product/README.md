@@ -29,9 +29,19 @@ ListingKit 是需要退休的旧产品投影与混合架构，不是硕米的长
 - 未开放能力应真实表达 unavailable，不用旧路径兜底、原型示例或模拟成功替代。
 - Agent / Tool 不直接访问数据库绕过领域规则，也不建立第二套权限、商品事实或业务状态机。
 
+## 仍服务当前运行链路的专项文档
+
+以下文档虽然文件名仍带 ListingKit，但其**当前业务/运行职责尚未完成 cutover**，不能仅因 ListingKit 产品退休而整体历史化：
+
+- [付费试点产品目录与用量政策](./listingkit-paid-pilot-product-catalog.md) — `paid_pilot`、capability / entitlement、metering 与 `shein_publish` 默认关闭等仍是当前商业政策依据；产品投影部分服从 Figma。
+- [错误恢复 SOP](./ops/listingkit-error-recovery-sop.md) — 对仍存活的旧 ListingKit / SHEIN 商业路径继续提供操作员恢复与升级指导；不拥有产品/IA 权威。
+- [真实接口验收报告模板](./validation/listingkit-real-api-validation-report-template.md) — 在现有真实集成/回归流程完成 cutover 前，继续作为该运行路径的验收记录模板；不拥有产品/IA 权威。
+
+这些文档的“当前”仅限各自商业政策、运维或验收职责。它们不能据此恢复旧 Workspace、Task-first 产品模型、永久 ListingKit facade 或新的 legacy consumer；当对应当前 owner/runbook/template 接管后，再单独退休其旧路径部分。
+
 ## 历史 ListingKit 文档
 
-以下文档保留用于追溯旧需求、旧行为、旧验收和退休时需要保留的有效约束。它们均不再拥有当前产品或近期派工权威：
+以下文档保留用于追溯旧需求、旧行为、旧产品计划和退休时需要保留的有效约束。它们均不再拥有当前产品或近期派工权威：
 
 - [ListingKit 项目目标与范围](./listingkit-project-goals.md)
 - [ListingKit 产品总览](./listingkit-product-overview.md)
@@ -39,10 +49,7 @@ ListingKit 是需要退休的旧产品投影与混合架构，不是硕米的长
 - [ListingKit 产品路线图](./listingkit-product-roadmap.md)
 - [ListingKit 下一阶段执行计划](./listingkit-next-execution-plan.md)
 - [ListingKit 付费商业试点上线执行计划](./listingkit-paid-pilot-execution-plan.md)
-- [ListingKit 付费试点产品目录与用量政策](./listingkit-paid-pilot-product-catalog.md)
 - [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
-- [ListingKit 错误恢复 SOP](./ops/listingkit-error-recovery-sop.md)
-- [ListingKit 真实接口验收报告模板](./validation/listingkit-real-api-validation-report-template.md)
 
 读取这些历史文档时，只抽取仍被当前 owner 明确承接的业务、安全、幂等、恢复或平台规则。出现与 Figma Authority、全新系统基线、Legacy Register、当前领域合同或具体 Issue 冲突的内容时，以后者为准。
 
@@ -60,7 +67,7 @@ AI Control Plane 与 Agent Runtime 的技术设计见：
 - 前后端工程师：按当前 owner、Repository Structure 与具体合同修改实现。
 - AI / Agent 工程：判断需求应使用确定性能力、AI capability、Commerce Tool 还是 Agent Runtime。
 - QA / 交付：按真实用户路径和当前验收条件验证，不用历史报告替代当前证据。
-- 商务 / 运维 / 安全：以当前商业合同、运行文档和明确环境授权为准，不从旧 paid-pilot 文档推导生产政策。
+- 商务 / 运维 / 安全：以当前商业合同、仍有效的专项商业政策、运行文档和明确环境授权为准；不要从已经标记 historical 的旧产品计划推导生产政策。
 
 ## 文档边界
 
