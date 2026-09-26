@@ -87,3 +87,17 @@ func TestProductAgentReviewIntakeRevalidatesExactBindingAndEvidence(t *testing.T
 		})
 	}
 }
+
+func TestProductAgentValidationUsesSameReviewRulesWithoutSaving(t *testing.T) {
+	f, service, ctx, in := agentReviewFixture(t)
+	proposal, err := service.ValidateCandidate(ctx, in)
+	require.NoError(t, err)
+	require.True(t, proposal.Validation.Valid)
+	in.Candidate.Changes[0].EvidenceIDs = []string{"invented"}
+	_, err = service.ValidateCandidate(ctx, in)
+	require.Error(t, err)
+	var count int64
+	require.NoError(t, f.db.Table("product_title_proposals").Count(&count).Error)
+	require.Zero(t, count)
+	require.Zero(t, f.g.calls.Load())
+}

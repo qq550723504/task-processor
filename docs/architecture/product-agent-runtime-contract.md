@@ -285,7 +285,7 @@ checkpoint 编解码参与执行。另有 §8.2 的真实 PostgreSQL 组合验�
 Product key/version、publication、`title-review-v1` 与候选。它重新读取当前授权范围内的
 Catalog/SRC-1 并纯校验，再使用既有 Review UoW 保存 pending。完整候选进入幂等
 fingerprint，同键不同候选冲突；来源绑定、policy 或 evidence 不符不写入。不接受上游
-valid 标记，不调用 Proposer，不自动 accept/Apply。这是内部 Go 接口，尚无新 HTTP 路由。
+valid 标记，不调用 Proposer，不自动 accept/Apply。HTTP 消费者见 §8.5。
 
 必要的领域回归为 `go test -race ./internal/product/enrichment ./internal/product/review -count=1`。
 使用现有 `ISSUE382_TEST_DSN` 的隔离 PostgreSQL fixture，可以执行
@@ -294,7 +294,7 @@ valid 标记，不调用 Proposer，不自动 accept/Apply。这是内部 Go 接
 
 ### 8.2 单一持久运行 owner
 
-`agentpersistence.InstallSchema(db)` 是显式空安装入口，创建 `product_agent_runs`；
+`agentpersistence.InstallSchema(db)` 是显式空安装入口，创建 `product_agent_runs` 和仅存安全调用摘要的 `product_agent_tool_calls`；
 `New(db)` 不执行自动 schema 变更。控制字段与包含 opaque checkpoint 的完整 Record
 作为一行提交，数据库与编码层均限制 2 MiB，不引入第二个 checkpoint 数据源。
 
@@ -331,7 +331,54 @@ pool 的并发与限速。配置 timeout 包含排队，调用方更短的 deadl
 只返回安全错误分类，不将 provider 错误正文写入日志。`UsageKnown` 要求三个 provider
 计数字段全部存在、非负且总数一致；缺失/null 不等于已观察零值。
 
-这仍是内部 transport seam，不能直接注册为 GovernedModel。官方返回样例证明事后
+该 transport seam 本身不能直接注册为 GovernedModel。官方返回样例证明事后
 usage 格式，不证明调用前 token 上界、max_tokens 的实际强约束或冻结价格。正式接线
 必须补齐 §4.2 所需依据、当前组织额度预留/持久 dispatch/结果计量；未知费用保持 unknown。
 不得套用图像上限、发明价格，或将真实密钥存在当作付费执行/产品验收授权。
+
+### 8.4 首个文本调用组合边界
+
+首片限定当前 GRSAI `gemini-2.5-flash`，不建设通用 model catalog 或 fallback。可信
+quote 使用服务端冻结的模型输入/输出窗口上界（保守预留整个窗口，不冒充精确 tokenizer）
+及明确版本的每百万 token 估价。模型窗口依据为
+[Gemini 2.5 Flash 模型说明](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash)，
+GRSAI 接口及积分/人民币参考价格见其官方合同与
+[模型页](https://grsai.ai/zh/dashboard/models)。上游窗口不冒充 GRSAI 实测结果；实际开放前
+仍须核对对应 route 的配置与行为。价格是预算估算策略，不是充值套餐的真实账单金额。
+模型/配置、完整输入、组织/成员、价格/策略版本共同进入 quote 引用，Decide 前重新匹配；
+缺失或变化即拒绝 dispatch。前置全窗口预留可能高于实际短提示用量，不能绕过当前成员额度。
+
+现有 AI invocation ledger 增加单次原子 dispatch claim：只有唯一插入成功者可继续，
+事务/响应未知不授予执行权。随后从现有 Commercial owner 预留额度，成功后才发送一次
+文本请求。预留失败记录明确未发送的终态；终态记录失败保持未决，禁止重试 provider。
+调用成功/结构化输出错误均只按完整 provider usage 交给既有结算 owner；输出错误使用
+现有 usage_observed_failed 的 Product Agent 专用 operation 白名单，不扩展其它失败计费。
+未知 usage/结果/账本错误保留原预留并停止；不创建重试器、补偿平台或第二账本。
+
+该组合复用当前 Organization credential resolver 和运行前/每步 fresh 授权，报价不接受
+浏览器或模型提交的组织、route、价格或预算。Agent 结果只进入现有 CreateFromCandidate
+重新读取/校验并保存 pending，人工 accept/edit/Apply 仍由原 Review owner 控制。
+
+### 8.5 采集详情到人工审核的运行入口
+
+当前 application 的 `WithProductAgent` 选项消费上述 owner，默认关闭；必须有服务端
+组织 allowlist、已有 Organization AI 凭据、额度/成员分配与冻结文本策略。没有这些条件
+时返回不可用，不使用全局密钥兜底，也不创建试用额度。`AgentTextPolicy.AdmittedRoute`
+与当前 route 全字段匹配，`BoundEvidence` 必须指向对应 GRSAI route 的可信计量/上界依据；
+非空说明本身不构成验收证据。
+
+已发布 1688 采集详情的四个端点为 `POST .../{operation}/product-agent/runs`、
+`GET .../{operation}/product-agent/runs/{requestKey}`、`POST .../{requestKey}/resume`、
+`POST .../{requestKey}/review`。前缀为 `/api/v1/workbench/sourcing/1688/acquisitions`。
+请求只接受空 body 或准确 revision/feedback，产品版本、来源发布、工具参数、预算、
+模型和组织身份均从服务器的当前 owner 取得。每次访问、步骤与实际模型发送前重新确认
+当前成员权限；浏览器和模型不能设置这些边界。
+
+Review 提交再次确定性校验，并返回既有 proposal ID。原 Review GET、人工 decision 和
+Apply 端点复用原 owner/权限；没有配置固定 generator 时不挂载原生成 POST。页面在
+采集详情内显示建议、证据、置信度、未解决项和调用摘要，通过原人工审核页面继续。
+请求编号保留在 URL；刷新后明确读取原运行，未知结果不自动重新调用模型。
+
+运行池、HTTP/BFF 有界等待、启停和用户操作见
+[Product Agent 试用交接](../operations/product-agent-trial.md)。隔离组合测试使用真实
+PostgreSQL owner、真实 Eino/SDK 和隔离模型响应，不能替代真实 GRSAI 或 #47 对照评测。

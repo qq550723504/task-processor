@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"task-processor/internal/agent"
+	"task-processor/internal/commercetool"
 )
 
 func storeFixture(t *testing.T) (*gorm.DB, *Store) {
@@ -46,6 +47,27 @@ func initialRecord() agent.Record {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return agent.Record{State: agent.State{RunID: uuid.NewString(), Scope: agent.Scope{OrganizationID: "org-1", ActorID: "user-1"}, Fingerprint: strings.Repeat("a", 64), Phase: agent.Running, StartedAt: now, Deadline: now.Add(time.Minute), HumanReviewRequired: true,
 		Request: agent.Request{Key: "request-1", Binding: agent.Binding{ContextKind: "acquisition", ContextID: "operation-1", ProductKey: "product-1", CatalogVersion: "1", PublicationID: "publication-1", TargetPlatform: "shein"}, PolicyVersion: "title-review-v1", PromptVersion: "prompt-v1", Limits: agent.Limits{Steps: 8, ModelCalls: 3, Tokens: 100, CostMicros: 100, Currency: "CNY", Runtime: time.Minute}}}}
+}
+
+func TestAgentStoreScopedReadAndDurableToolAudit(t *testing.T) {
+	_, s := storeFixture(t)
+	ctx := context.Background()
+	initial := initialRecord()
+	run, _, err := s.Claim(ctx, initial, 0)
+	require.NoError(t, err)
+	got, err := s.Read(ctx, run.State.Scope, run.State.Request.Binding.ContextID, run.State.Request.Key)
+	require.NoError(t, err)
+	require.Equal(t, run, got)
+	_, err = s.Read(ctx, agent.Scope{OrganizationID: "other", ActorID: run.State.Scope.ActorID}, run.State.Request.Binding.ContextID, run.State.Request.Key)
+	require.Error(t, err)
+	audit := commercetool.AuditRecord{CallID: "call", AgentRunID: run.State.RunID, TenantID: run.State.Scope.OrganizationID, UserID: run.State.Scope.ActorID, BusinessTaskID: run.State.Request.Binding.ContextID, ToolID: "product.canonical.inspect", ToolVersion: "v1.0.0", StartedAt: time.Now().UTC(), FinishedAt: time.Now().UTC(), Outcome: commercetool.AuditOutcomeSucceeded}
+	require.NoError(t, s.RecordToolCall(ctx, audit))
+	require.NoError(t, s.RecordToolCall(ctx, audit))
+	audit.Outcome = commercetool.AuditOutcomeFailed
+	require.Error(t, s.RecordToolCall(ctx, audit))
+	audit.CallID = "other"
+	audit.TenantID = "other"
+	require.Error(t, s.RecordToolCall(ctx, audit))
 }
 
 func TestAgentStoreConcurrentStartAndResume(t *testing.T) {

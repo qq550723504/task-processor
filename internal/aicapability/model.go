@@ -16,6 +16,7 @@ const (
 type Operation string
 
 const (
+	OperationProductAgentDecision            Operation = "product_agent_decision"
 	OperationProductImageSceneGenerate       Operation = "productimage_scene_generate"
 	OperationProductImageSubjectExtract      Operation = "productimage_subject_extract"
 	OperationProductImageWhiteBackground     Operation = "productimage_white_background"

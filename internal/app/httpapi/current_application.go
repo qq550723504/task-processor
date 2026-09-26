@@ -103,6 +103,8 @@ type currentApplicationOptions struct {
 	imageAgents          int
 	memberships          int
 	browserCaptures      int
+	productAgent         *ProductAgentDependencies
+	productAgents        int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -215,11 +217,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		option(&supplied)
 	}
-	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 {
+	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.commercialOwnerDB != nil && (supplied.commercialOwnerDB == sourceAccountDB || supplied.commercialOwnerDB == commercialDB) {
 		return nil, errors.New("commercial owner requires an independent pool")
+	}
+	if supplied.productAgent != nil && supplied.productAcquisitionDB == nil {
+		return nil, errors.New("product agent requires current acquisition owner")
 	}
 	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB || supplied.productAcquisitionDB == commercialDB) {
 		return nil, errors.New("product acquisition requires an independent pool")
@@ -357,6 +362,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, image)
 	}
+	if supplied.productAgent != nil {
+		agentModule, agentErr := buildProductAgentModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, *supplied.productAgent)
+		if agentErr != nil {
+			return nil, fmt.Errorf("build current product agent: %w", agentErr)
+		}
+		modules = append(modules, agentModule)
+	}
 	if factories.buildBrowserCapture != nil {
 		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
 		if err != nil {
@@ -423,7 +435,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil); err != nil {
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, supplied.productAgent != nil); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -502,6 +514,17 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			admitted = append(admitted, route)
 		}
 	}
+	if len(includeImage) > 1 && includeImage[1] {
+		for _, r := range productAgentRoutes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+		for _, r := range productReviewRoutes(nil, nil) {
+			if r.Method == http.MethodPost && r.Path == "/api/product/text-proposals" {
+				continue
+			}
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
 	for _, route := range admitted {
 		expected[route] = struct{}{}
@@ -554,6 +577,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionListingKitAdminWrite || descriptor.RequestTimeout != 2*time.Minute) {
+			return errors.New("product agent loses fresh permission boundary")
+		}
 		if descriptor.Path == accountAuditPath && (descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionWorkbenchSourceAccountRead || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 10*time.Second) {
 			return errors.New("current account audit descriptor does not preserve fresh read authorization")
 		}
@@ -640,6 +666,14 @@ func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependenci
 	server.IdleTimeout = 60 * time.Second
 	inner := server.Handler
 	server.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if isProductAgentHTTPPath(request.URL.Path) {
+			// Only this bounded synchronous model path needs a longer response.
+			// Header/body read timeouts and all other route deadlines stay intact.
+			if err := http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(125 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				http.Error(writer, "response deadline unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
 		writer.Header().Set("Cache-Control", "no-store")
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		inner.ServeHTTP(writer, request)

@@ -11,3 +11,10 @@ CREATE TABLE IF NOT EXISTS product_agent_runs (
     payload bytea NOT NULL CHECK (octet_length(payload) <= 2097152),
     UNIQUE (org, actor, context_kind, context_id, request_key)
 );
+
+CREATE TABLE IF NOT EXISTS product_agent_tool_calls (
+    run_id varchar(128) NOT NULL REFERENCES product_agent_runs(run_id),
+    call_id varchar(128) NOT NULL,
+    payload bytea NOT NULL CHECK (octet_length(payload) <= 8192),
+    PRIMARY KEY (run_id, call_id)
+);

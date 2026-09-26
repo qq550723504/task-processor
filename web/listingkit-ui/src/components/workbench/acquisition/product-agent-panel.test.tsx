@@ -1,0 +1,41 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ProductAgentPanel } from "./product-agent-panel";
+import { ProductAgentError } from "@/lib/api/product-agent";
+const fixture = vi.hoisted(() => ({ request: vi.fn(), params: new URLSearchParams(), context: { user: { id: "actor" }, effectiveOrganization: { id: "org" }, isLoading: false, isSwitching: false, error: null, blockingError: null, selectionRequired: false, registerOrganizationSwitchGuard: vi.fn(() => () => { }) } }));
+vi.mock("@/lib/api/product-agent", async (importOriginal) => ({ ...await importOriginal<typeof import("@/lib/api/product-agent")>(), requestProductAgent: fixture.request }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => fixture.params }));
+vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => fixture.context }));
+beforeEach(() => { fixture.request.mockReset(); fixture.params = new URLSearchParams(); window.history.replaceState(null, "", "/"); });
+afterEach(cleanup);
+const op = "11111111-1111-4111-8111-111111111111";
+const props = { enabled: true, operationId: op, productKey: "product", catalogVersion: "1" };
+it("keeps a closed capability explicit and never dispatches on mount", () => {
+    render(<ProductAgentPanel {...props} enabled={false}/>);
+    expect(screen.getByText("当前环境尚未开放 Product Agent。")).toBeInTheDocument();
+    expect(fixture.request).not.toHaveBeenCalled();
+});
+it("retains one request key after lost response and only reads on recovery", async () => {
+    fixture.request.mockRejectedValue(new ProductAgentError("OUTCOME_UNKNOWN"));
+    render(<ProductAgentPanel {...props}/>);
+    fireEvent.click(screen.getByText("生成标题建议"));
+    await screen.findByRole("alert");
+    expect(fixture.request).toHaveBeenCalledTimes(1);
+    const key = fixture.request.mock.calls[0][2];
+    expect(new URL(window.location.href).searchParams.get("agent_key")).toBe(key);
+    fireEvent.click(screen.getByText("读取当前结果"));
+    await waitFor(() => expect(fixture.request).toHaveBeenCalledTimes(2));
+    expect(fixture.request.mock.calls[1].slice(0, 3)).toEqual(["read", op, key]);
+    expect(screen.queryByText("生成标题建议")).not.toBeInTheDocument();
+});
+it("only admits a validated candidate to existing human review", async () => {
+    fixture.request.mockResolvedValue({ runId: op, requestKey: op, operationId: op, productKey: "product", catalogVersion: "1", phase: "human_review_required", revision: "2", canSubmitReview: true, candidate: { Changes: [{ Field: "title", Value: "建议标题", EvidenceIDs: ["evidence"] }] }, confidence: [], unresolved: [], steps: [], tokens: 30, estimatedCostMicros: 20, currency: "CNY", usageStatus: "observed" });
+    render(<ProductAgentPanel {...props}/>);
+    fireEvent.click(screen.getByText("生成标题建议"));
+    await screen.findByText("title：建议标题");
+    expect(screen.queryByText("自动应用")).not.toBeInTheDocument();
+    fixture.request.mockResolvedValue({ proposalId: op });
+    fireEvent.click(screen.getByText("提交人工审核"));
+    expect(await screen.findByRole("link", { name: "打开标题审核" })).toHaveAttribute("href", `/workbench/ai/tasks/pending?proposal_id=${op}`);
+    expect(fixture.request.mock.calls[1][0]).toBe("review");
+});

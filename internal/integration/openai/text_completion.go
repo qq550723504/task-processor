@@ -28,6 +28,9 @@ var ErrTextOutcomeUnknown = errors.New("text provider outcome is unknown; do not
 type TextCompletionRequest struct {
 	System, Prompt      string
 	MaximumOutputTokens int
+	// BeforeDispatch rechecks the consumer's live authorization after queueing.
+	// It is an in-process callback, never serialized into provider input.
+	BeforeDispatch func() error `json:"-"`
 }
 
 // UsageKnown requires each provider counter to be present and consistent. SDK
@@ -35,6 +38,18 @@ type TextCompletionRequest struct {
 type TextCompletionResult struct {
 	ChatCompletionResponse
 	UsageKnown bool
+}
+
+// UsesOrganizationCredentials reports whether absent organization credentials
+// fail closed instead of falling back to the registered global configuration.
+func (m *Manager) UsesOrganizationCredentials() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	resolver, ok := m.configResolver.(*GormCredentialResolver)
+	return ok && resolver != nil && resolver.organizationScope
 }
 
 func (m *Manager) ResolveTextRoute(ctx context.Context, name string) (EffectiveClientRoute, error) {
@@ -111,6 +126,11 @@ func (m *Manager) CompleteText(ctx context.Context, name string, expected Effect
 	}
 	if current.route != expected {
 		return nil, ErrClientConfigurationChanged
+	}
+	if input.BeforeDispatch != nil {
+		if err := input.BeforeDispatch(); err != nil {
+			return nil, err
+		}
 	}
 	return completeTextOnce(ctx, current.config, input)
 }

@@ -29,6 +29,15 @@ func NewService(reader catalog.VersionedSnapshotReader, sourceReader SourcePubli
 	}
 	return &Service{reader: reader, sourceReader: sourceReader, store: store, proposer: proposer, auth: auth}, nil
 }
+
+// NewCandidateService composes existing candidate intake and human review when
+// no fixed generator is configured. Create explicitly remains unavailable.
+func NewCandidateService(reader catalog.VersionedSnapshotReader, sourceReader SourcePublicationGateway, store Store, auth Authorizer) (*Service, error) {
+	if reader == nil || sourceReader == nil || store == nil || auth == nil {
+		return nil, ErrUnavailable
+	}
+	return &Service{reader: reader, sourceReader: sourceReader, store: store, auth: auth}, nil
+}
 func (s *Service) authorize(ctx context.Context, write, admin bool) (Scope, error) {
 	if err := ctx.Err(); err != nil {
 		return Scope{}, err
@@ -57,6 +66,9 @@ func operation(a Scope, key, kind, id string, input any) (Operation, error) {
 	return Operation{a, key, hex.EncodeToString(sum[:])}, nil
 }
 func (s *Service) Create(ctx context.Context, key string, in CreateInput) (View, error) {
+	if s == nil || s.proposer == nil {
+		return View{}, ErrUnavailable
+	}
 	return s.create(ctx, key, in, nil)
 }
 
@@ -78,6 +90,38 @@ func (s *Service) CreateFromCandidate(ctx context.Context, key string, in Candid
 		return View{}, ErrInvalid
 	}
 	return s.create(ctx, key, isolated.Base, &isolated)
+}
+
+// ValidateCandidate uses the same exact source and title policy as intake,
+// without generating or saving a proposal. Intake always repeats this check.
+func (s *Service) ValidateCandidate(ctx context.Context, in CandidateInput) (enrichment.Proposal, error) {
+	if ctx == nil || in.PolicyVersion != "title-review-v1" || !ValidKey(in.PublicationID) {
+		return enrichment.Proposal{}, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	scope, err := s.authorize(ctx, true, false)
+	if err != nil {
+		return enrichment.Proposal{}, err
+	}
+	base, source, err := s.source(ctx, s.reader, s.sourceReader, scope.Org, in.Base)
+	if err != nil {
+		return enrichment.Proposal{}, err
+	}
+	if base.PublicationID != in.PublicationID {
+		return enrichment.Proposal{}, ErrConflict
+	}
+	proposal, err := enrichment.ValidateCandidate(ctx, enrichment.Request{Snapshot: base.Snapshot, Source: source, Policy: enrichment.PolicySnapshot{Version: in.PolicyVersion, AllowedFields: []string{"title"}, RequiredFields: []string{"title"}}}, in.Candidate)
+	if err != nil {
+		return proposal, err
+	}
+	if len(proposal.Changes) != 1 || proposal.Changes[0].Field != "title" || !proposal.Validation.Valid {
+		return proposal, ErrInvalid
+	}
+	if err = ValidateTitle(proposal.Changes[0].Value); err != nil {
+		return proposal, err
+	}
+	return proposal, nil
 }
 
 func (s *Service) create(ctx context.Context, key string, in CreateInput, supplied *CandidateInput) (View, error) {

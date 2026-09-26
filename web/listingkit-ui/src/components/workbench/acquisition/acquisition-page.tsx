@@ -11,10 +11,11 @@ import { AcquisitionAPIError, acquire1688, readAcquisition, readAcquisitionProdu
 import { canonical1688Source, isAcquisitionUUID, type AcquisitionProduct, type AcquisitionResult } from "@/lib/contracts/product-acquisition";
 import { findConsoleRoute } from "@/lib/workbench/console-navigation";
 import { ConsolePage, ConsoleState } from "../console/console-page";
+import {ProductAgentPanel} from "./product-agent-panel";
 
 type PendingIntent = AcquisitionOperation;
 
-export function AcquisitionPage({ operationId }: { operationId?: string }) {
+export function AcquisitionPage({ operationId,agentEnabled=false }: { operationId?: string;agentEnabled?:boolean }) {
   const context = useWorkbenchContext();
   const scope = useMemo<AcquisitionContext | null>(() => {
     const userId = context.user?.id;
@@ -29,10 +30,10 @@ export function AcquisitionPage({ operationId }: { operationId?: string }) {
   const sameIntentScope = submittedIntent?.userId === scope.userId && submittedIntent.organizationId === scope.organizationId;
   // The shell preserves a submitted key through workbench navigation, but an
   // intent is rendered or replayed only after its verified scope is restored.
-  return <ScopedAcquisitionPage key={`${scope.userId}:${scope.organizationId}:${operationId ?? ""}`} operationId={operationId} scope={scope} initialIntent={sameIntentScope ? submittedIntent : null} foreignIntent={!!submittedIntent && !sameIntentScope} onIntentChange={context.setPendingAcquisitionIntent} />;
+  return <ScopedAcquisitionPage key={`${scope.userId}:${scope.organizationId}:${operationId ?? ""}`} operationId={operationId} agentEnabled={agentEnabled} scope={scope} initialIntent={sameIntentScope ? submittedIntent : null} foreignIntent={!!submittedIntent && !sameIntentScope} onIntentChange={context.setPendingAcquisitionIntent} />;
 }
 
-function ScopedAcquisitionPage({ operationId, scope, initialIntent, foreignIntent, onIntentChange }: { operationId?: string; scope: AcquisitionContext; initialIntent: PendingIntent | null; foreignIntent: boolean; onIntentChange: (intent: PendingIntent | null) => void }) {
+function ScopedAcquisitionPage({ operationId,agentEnabled, scope, initialIntent, foreignIntent, onIntentChange }: { operationId?: string;agentEnabled:boolean; scope: AcquisitionContext; initialIntent: PendingIntent | null; foreignIntent: boolean; onIntentChange: (intent: PendingIntent | null) => void }) {
   const router = useRouter();
   const context = useWorkbenchContext();
   const [source, setSource] = useState(initialIntent?.source ?? "");
@@ -64,7 +65,7 @@ function ScopedAcquisitionPage({ operationId, scope, initialIntent, foreignInten
     return () => { active = false; controller.abort(); };
   }, [operationId, scope]);
 
-  if (operationId) return <ProductDetail operationId={operationId} product={product} busy={busy} error={error} />;
+  if (operationId) return <ProductDetail operationId={operationId} agentEnabled={agentEnabled} product={product} busy={busy} error={error} />;
 
   async function submit(verify = false) {
     if (!active.current || inFlight.current || foreignIntent) return;
@@ -122,9 +123,10 @@ function ScopedAcquisitionPage({ operationId, scope, initialIntent, foreignInten
   </ConsolePage>;
 }
 
-function ProductDetail({ operationId, product, busy, error }: { operationId: string; product: AcquisitionProduct | null; busy: boolean; error: string | null }) {
+function ProductDetail({ operationId,agentEnabled, product, busy, error }: { operationId: string;agentEnabled:boolean; product: AcquisitionProduct | null; busy: boolean; error: string | null }) {
   return <ConsolePage title="采集商品" breadcrumbs={findConsoleRoute(`/workbench/supply/acquisition/operation/${operationId}`)?.trail} actions={<Button asChild variant="outline"><Link href="/workbench/supply/acquisition">继续采集</Link></Button>} description="此页按操作回执锁定的 Catalog version 显示，不提供通用商品搜索或编辑。">
     {busy ? <ConsoleState kind="loading" title="正在读取已发布的商品">正在确认操作、授权和精确 Catalog version。</ConsoleState> : error ? <Failure code={error} /> : product ? <CatalogFacts product={product} /> : <ConsoleState kind="unavailable" title="没有可读取的采集商品">该操作尚未产生已发布的 Catalog 快照。</ConsoleState>}
+    {!busy&&!error&&product&&<ProductAgentPanel enabled={agentEnabled} operationId={operationId} productKey={product.productKey} catalogVersion={product.catalogVersion}/>}
   </ConsolePage>;
 }
 

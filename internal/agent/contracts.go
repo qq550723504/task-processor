@@ -91,6 +91,9 @@ type Quote struct {
 	Tokens, CostMicros int64
 	Currency           string
 	Known              bool
+	// Reference binds trusted route, scope, input and pricing; the runtime
+	// carries it unchanged. It contains no credentials or prompt content.
+	Reference string
 }
 type ObservedUsage struct {
 	Tokens, CostMicros int64
