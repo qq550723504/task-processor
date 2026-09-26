@@ -22,7 +22,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	sdkclient "go.temporal.io/sdk/client"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"task-processor/internal/accountallocation"
@@ -112,8 +111,6 @@ func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *te
 	defer closeDependencies()
 	runID := "run487-" + uuid.NewString()[:8]
 	budget := imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}
-	policy, err := budget.Policy()
-	require.NoError(t, err)
 	policyContext := imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
 	run := imageagent.Run{ID: runID, ScopeProtocol: imageagent.OrganizationScopeProtocol, BusinessTaskID: "catalog-receipt-1", TenantID: "org-1", UserID: "actor-1", MemberID: "member-1", Mode: imageagent.RunModeManual, TargetPlatform: "product", ImagePolicyContext: policyContext, IdempotencyKey: "start-" + runID, Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1, Budget: budget, MaxConcurrentSlots: 1, StartedAt: time.Now().UTC()}
 	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-" + runID, SourceAssetIDs: []string{"catalog-image-1"}, CreatedBy: run.UserID, Slots: []imageagent.Slot{{ID: "main", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusPending, SourceAssetIDs: []string{"catalog-image-1"}, IdempotencyKey: "slot-" + runID}}}
@@ -136,7 +133,7 @@ func TestOrganizationWorkerRealTemporalControlledMainRequiresHumanApproval(t *te
 	defer worker.Stop()
 	identity := imageagent.ExecutionIdentity{ScopeProtocol: run.ScopeProtocol, RunID: run.ID, TenantID: run.TenantID, UserID: run.UserID, MemberID: run.MemberID, BusinessTaskID: run.BusinessTaskID}
 	workflowID := "organization-v1:" + base64.RawURLEncoding.EncodeToString([]byte(run.TenantID)) + ":" + base64.RawURLEncoding.EncodeToString([]byte(run.UserID)) + ":" + base64.RawURLEncoding.EncodeToString([]byte(run.ID))
-	_, err = client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{ID: workflowID, TaskQueue: imagetemporal.OrganizationTaskQueue}, "ImageAgentOrganizationWorkflowV1", imagetemporal.WorkflowInput{RunID: run.ID, Identity: identity, Mode: run.Mode, TargetPlatform: run.TargetPlatform, ImagePolicyContext: &policyContext, Plan: plan, MaxConcurrentSlots: 1, WaitForCommands: true, AssetCatalog: catalog, BudgetPolicy: policy, StartedAt: run.StartedAt})
+	err = imagetemporal.NewOrganizationClient(client).StartManual(ctx, imageagent.WorkflowStart{Run: run, Identity: identity, Plan: plan, AssetCatalog: catalog})
 	require.NoError(t, err)
 	defer func() {
 		_ = client.TerminateWorkflow(context.Background(), workflowID, "", "controlled isolated test cleanup")

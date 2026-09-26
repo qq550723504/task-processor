@@ -16,9 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	sdkclient "go.temporal.io/sdk/client"
-	sdkworker "go.temporal.io/sdk/worker"
-	sdkworkflow "go.temporal.io/sdk/workflow"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -26,6 +23,7 @@ import (
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
 	imagetemporal "task-processor/internal/imageagent/temporal"
+	"task-processor/internal/imageagent/temporal/temporaltest"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	"task-processor/internal/platform/temporal"
 	productasset "task-processor/internal/product/asset"
@@ -62,14 +60,7 @@ func TestAcquisitionCompletedApprovalHTTPReplaysFromExactOwnerFact(t *testing.T)
 	operationID, runID, actionID := uuid.NewString(), uuid.NewString(), uuid.NewString()
 	actorID, tenantID, memberID := "actor-1", "org-1", "member-1"
 	workflowID := "organization-v1:" + base64.RawURLEncoding.EncodeToString([]byte(tenantID)) + ":" + base64.RawURLEncoding.EncodeToString([]byte(actorID)) + ":" + base64.RawURLEncoding.EncodeToString([]byte(runID))
-	queue := "issue487-closed-" + uuid.NewString()
-	w := sdkworker.New(client, queue, sdkworker.Options{})
-	w.RegisterWorkflowWithOptions(func(sdkworkflow.Context) error { return nil }, sdkworkflow.RegisterOptions{Name: "Issue487CompletedReplayWorkflow"})
-	require.NoError(t, w.Start())
-	closed, err := client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{ID: workflowID, TaskQueue: queue}, "Issue487CompletedReplayWorkflow")
-	require.NoError(t, err)
-	require.NoError(t, closed.Get(ctx, nil))
-	w.Stop()
+	temporaltest.CompleteEmptyExecution(t, ctx, client, workflowID)
 	identity := imageagent.ExecutionIdentity{ScopeProtocol: imageagent.OrganizationScopeProtocol, TenantID: tenantID, UserID: actorID, MemberID: memberID, BusinessTaskID: operationID, RunID: runID}
 	workflowClient := imagetemporal.NewOrganizationClient(client)
 	const digest = "completed-digest"

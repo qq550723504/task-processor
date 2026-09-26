@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/product/catalog"
@@ -13,11 +12,11 @@ import (
 )
 
 type acquisitionImageReceiptSpy struct {
-	published productsourcing.PublishedAcquisition
+	published sourcing.PublishedAcquisition
 	calls     int
 }
 
-func (s *acquisitionImageReceiptSpy) ReadPublished(context.Context, string) (productsourcing.PublishedAcquisition, error) {
+func (s *acquisitionImageReceiptSpy) ReadPublished(context.Context, string) (sourcing.PublishedAcquisition, error) {
 	s.calls++
 	return s.published, nil
 }
@@ -26,7 +25,7 @@ func TestOrganizationImageCatalogUsesActorScopedReceiptAndExactSnapshot(t *testi
 	const operationID = "66f51fae-0b0e-4206-b4c2-2a589f68ca03"
 	const organizationID = "org-a"
 	const actorID = "user-a"
-	spy := &acquisitionImageReceiptSpy{published: productsourcing.PublishedAcquisition{
+	spy := &acquisitionImageReceiptSpy{published: sourcing.PublishedAcquisition{
 		Result: sourcing.AcquisitionResult{
 			Operation:   sourcing.AcquisitionOperation{ID: operationID, Scope: sourcing.PublicationScope{OrganizationID: organizationID, ActorID: actorID}, State: sourcing.AcquisitionPublished},
 			Publication: &sourcing.PersistedPublication{Receipt: sourcing.PublicationReceipt{OrganizationID: organizationID, ActorID: actorID, ProductKey: "crawler:1688:123", CatalogVersion: 4, CatalogPublicationID: "source-run:acquisition:" + operationID}},

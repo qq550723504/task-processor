@@ -14,7 +14,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
@@ -26,7 +25,7 @@ import (
 type acquisitionHTTPSpy struct {
 	acquire, verify, read int
 	result                sourcing.AcquisitionResult
-	published             productsourcing.PublishedAcquisition
+	published             sourcing.PublishedAcquisition
 	err                   error
 }
 
@@ -42,7 +41,7 @@ func (s *acquisitionHTTPSpy) Read(context.Context, string) (sourcing.Acquisition
 	s.read++
 	return s.result, s.err
 }
-func (s *acquisitionHTTPSpy) ReadPublished(context.Context, string) (productsourcing.PublishedAcquisition, error) {
+func (s *acquisitionHTTPSpy) ReadPublished(context.Context, string) (sourcing.PublishedAcquisition, error) {
 	s.read++
 	return s.published, s.err
 }
@@ -114,7 +113,7 @@ func TestProductAcquisitionHTTPStrictInputAndBoundedProjection(t *testing.T) {
 	response = request("GET", productAcquisitionBase+"/"+operationID, "", "")
 	require.Equal(t, 200, response.Code)
 	require.Equal(t, 1, spy.read)
-	spy.published = productsourcing.PublishedAcquisition{Result: sourcing.AcquisitionResult{Operation: sourcing.AcquisitionOperation{ID: operationID, State: sourcing.AcquisitionPublished}, Publication: &sourcing.PersistedPublication{Receipt: sourcing.PublicationReceipt{OrganizationID: "B", PublicationID: pubID, ProductKey: "crawler:1688:981645030344", CatalogVersion: 1}, Envelope: sourcing.SourceEnvelope{MissingFacts: []sourcing.MissingFact{{Field: "sku", Reason: "not captured"}}}}}, Snapshot: catalog.PublishedSnapshot{Identity: catalog.SnapshotIdentity{TenantID: "B", ProductKey: "crawler:1688:981645030344"}, PublicationID: pubID, Version: 1, Snapshot: catalog.ProductSnapshot{Title: "Captured bottle", Images: []catalog.Image{{URL: "https://img.test/1.jpg", Role: "candidate"}}, Attributes: []catalog.Attribute{{Name: "material", Value: "glass"}}, Sources: []catalog.SourceRecord{{Platform: "1688", URL: "https://detail.1688.com/offer/981645030344.html"}}}}}
+	spy.published = sourcing.PublishedAcquisition{Result: sourcing.AcquisitionResult{Operation: sourcing.AcquisitionOperation{ID: operationID, State: sourcing.AcquisitionPublished}, Publication: &sourcing.PersistedPublication{Receipt: sourcing.PublicationReceipt{OrganizationID: "B", PublicationID: pubID, ProductKey: "crawler:1688:981645030344", CatalogVersion: 1}, Envelope: sourcing.SourceEnvelope{MissingFacts: []sourcing.MissingFact{{Field: "sku", Reason: "not captured"}}}}}, Snapshot: catalog.PublishedSnapshot{Identity: catalog.SnapshotIdentity{TenantID: "B", ProductKey: "crawler:1688:981645030344"}, PublicationID: pubID, Version: 1, Snapshot: catalog.ProductSnapshot{Title: "Captured bottle", Images: []catalog.Image{{URL: "https://img.test/1.jpg", Role: "candidate"}}, Attributes: []catalog.Attribute{{Name: "material", Value: "glass"}}, Sources: []catalog.SourceRecord{{Platform: "1688", URL: "https://detail.1688.com/offer/981645030344.html"}}}}}
 	response = request("GET", productAcquisitionBase+"/"+operationID+"/product", "", "")
 	require.Equal(t, 200, response.Code, response.Body.String())
 	require.Contains(t, response.Body.String(), "Captured bottle")

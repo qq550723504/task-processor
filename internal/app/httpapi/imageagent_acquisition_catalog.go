@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/imageagent"
 	"task-processor/internal/product/sourcing"
@@ -14,9 +13,7 @@ import (
 // acquisition receipt for the current actor and organization. The operation ID
 // occupies ImageAgent's existing context transport field; it is not a Task.
 type organizationImageCatalog struct {
-	receipts interface {
-		ReadPublished(context.Context, string) (productsourcing.PublishedAcquisition, error)
-	}
+	receipts sourcing.PublishedAcquisitionReader
 }
 
 func (c organizationImageCatalog) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
@@ -67,13 +64,13 @@ func (c organizationImageCatalog) Candidates(ctx context.Context, scope imageage
 	return sources, nil
 }
 
-func (c organizationImageCatalog) readPublished(ctx context.Context, scope imageagent.AssetCatalogScope) (productsourcing.PublishedAcquisition, error) {
+func (c organizationImageCatalog) readPublished(ctx context.Context, scope imageagent.AssetCatalogScope) (sourcing.PublishedAcquisition, error) {
 	if err := c.validateIdentity(ctx, scope); err != nil {
-		return productsourcing.PublishedAcquisition{}, err
+		return sourcing.PublishedAcquisition{}, err
 	}
 	published, err := c.receipts.ReadPublished(ctx, scope.BusinessTaskID)
 	if err != nil {
-		return productsourcing.PublishedAcquisition{}, err
+		return sourcing.PublishedAcquisition{}, err
 	}
 	receipt := published.Result.Publication
 	if published.Result.Operation.ID != scope.BusinessTaskID || published.Result.Operation.State != sourcing.AcquisitionPublished ||
@@ -81,7 +78,7 @@ func (c organizationImageCatalog) readPublished(ctx context.Context, scope image
 		receipt == nil || receipt.Receipt.OrganizationID != scope.TenantID || receipt.Receipt.ActorID != scope.OwnerUserID ||
 		published.Snapshot.Identity.TenantID != scope.TenantID || published.Snapshot.Identity.ProductKey != receipt.Receipt.ProductKey ||
 		published.Snapshot.Version != receipt.Receipt.CatalogVersion || published.Snapshot.PublicationID != receipt.Receipt.CatalogPublicationID {
-		return productsourcing.PublishedAcquisition{}, imageagent.ErrIdentityRequired
+		return sourcing.PublishedAcquisition{}, imageagent.ErrIdentityRequired
 	}
 	return published, nil
 }

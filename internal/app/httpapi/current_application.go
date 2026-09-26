@@ -263,7 +263,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		productDB, imageDB, workflows := supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.imageAgentWorkflows
 		factories.buildAcquisitionImage = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildAcquisitionImageModule(ctx, productDB, imageDB, workflows, dependencies, authorizer, cfg)
+			receipts, err := buildPublishedAcquisitionReader(ctx, productDB, dependencies, authorizer)
+			if err != nil {
+				return nil, err
+			}
+			return buildAcquisitionImageModule(ctx, receipts, imageDB, workflows, cfg)
 		}
 	}
 	if supplied.membership != nil {

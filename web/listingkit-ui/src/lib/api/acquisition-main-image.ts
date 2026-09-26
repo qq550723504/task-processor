@@ -1,6 +1,6 @@
 import { AcquisitionAPIError, type AcquisitionContext } from "./product-acquisition";
 import { acquisitionErrorStatuses, isAcquisitionUUID } from "../contracts/product-acquisition";
-import { mainImageAcceptedSchema, mainImageApprovalRequestSchema, mainImageCandidatesSchema, mainImageResultSchema, mainImageStartRequestSchema } from "../contracts/acquisition-main-image";
+import { mainImageAcceptedSchema, mainImageApprovalRequestSchema, mainImageCandidatesSchema, mainImageResultSchema, mainImageStartRequestSchema, type MainImageCandidate, type MainImageResult } from "../contracts/acquisition-main-image";
 
 const safeContextID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const errorStatuses: Readonly<Record<string, number>> = {
@@ -16,7 +16,7 @@ function base(operationId: string) {
   return `/api/workbench/sourcing/1688/acquisitions/${operationId}/main-image`;
 }
 
-export function readMainImageCandidates(operationId: string, context: AcquisitionContext, signal?: AbortSignal) {
+export function readMainImageCandidates(operationId: string, context: AcquisitionContext, signal?: AbortSignal): Promise<{ operationId: string; candidates: MainImageCandidate[] }> {
   return send(`${base(operationId)}/candidates`, "GET", context, undefined, undefined, mainImageCandidatesSchema, operationId, signal);
 }
 export function startMainImage(operationId: string, sourceImageId: string, key: string, context: AcquisitionContext, signal?: AbortSignal) {
@@ -24,7 +24,7 @@ export function startMainImage(operationId: string, sourceImageId: string, key: 
   if (!input.success || !isAcquisitionUUID(key)) throw new AcquisitionAPIError("INVALID_IMAGE_REQUEST", 400);
   return send(base(operationId), "POST", context, input.data, key, mainImageAcceptedSchema, undefined, signal);
 }
-export function readMainImage(operationId: string, runId: string, context: AcquisitionContext, signal?: AbortSignal) {
+export function readMainImage(operationId: string, runId: string, context: AcquisitionContext, signal?: AbortSignal): Promise<MainImageResult> {
   if (!isAcquisitionUUID(runId)) throw new AcquisitionAPIError("INVALID_IMAGE_REQUEST", 400);
   return send(`${base(operationId)}/runs/${runId}`, "GET", context, undefined, undefined, mainImageResultSchema, runId, signal);
 }

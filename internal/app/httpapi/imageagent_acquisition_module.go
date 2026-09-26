@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	sigjson "sigs.k8s.io/json"
-	"task-processor/internal/app/productsourcing"
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -22,7 +21,6 @@ import (
 	"task-processor/internal/imageagent"
 	imagestore "task-processor/internal/imageagent/store"
 	imagetemporal "task-processor/internal/imageagent/temporal"
-	a1688 "task-processor/internal/integration/acquisition/a1688"
 	assetpersistence "task-processor/internal/integration/persistence/product/asset"
 	kernelmodule "task-processor/internal/kernel/module"
 	productasset "task-processor/internal/product/asset"
@@ -43,8 +41,8 @@ type acquisitionImageCandidateReader interface {
 
 type acquisitionImageModule struct{ routes []httproute.Descriptor }
 
-func buildAcquisitionImageModule(ctx context.Context, productDB, imageDB *gorm.DB, workflows imageagent.WorkflowClient, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, cfg *config.Config) (kernelmodule.Module, error) {
-	if productDB == nil || imageDB == nil || workflows == nil || dependencies.organizationResolver == nil || authorizer == nil || cfg == nil ||
+func buildAcquisitionImageModule(ctx context.Context, receipts sourcing.PublishedAcquisitionReader, imageDB *gorm.DB, workflows imageagent.WorkflowClient, cfg *config.Config) (kernelmodule.Module, error) {
+	if receipts == nil || imageDB == nil || workflows == nil || cfg == nil ||
 		!cfg.ImageAgent.Admission.Enabled || len(cfg.ImageAgent.Admission.AllowedTenantIDs) == 0 {
 		return nil, imageagent.ErrIdentityRequired
 	}
@@ -62,11 +60,6 @@ func buildAcquisitionImageModule(ctx context.Context, productDB, imageDB *gorm.D
 		if trialErr != nil {
 			return nil, trialErr
 		}
-	}
-	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	receipts, err := productsourcing.NewPublicAcquisition(ctx, productDB, live, authorizer, a1688.New())
-	if err != nil {
-		return nil, err
 	}
 	catalog := organizationImageCatalog{receipts: receipts}
 	availability, err := loadImageAgentPolicyAvailability()
