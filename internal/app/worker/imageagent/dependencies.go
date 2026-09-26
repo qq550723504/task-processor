@@ -297,10 +297,9 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 	}
 	dependencies.StagedSlotExecutor = v3Executor
 	if mode == imageagenttemporal.WorkerWireModeOrganization {
-		reservation, ok := recorder.(aicapability.InvocationUsageReservation)
-		if !ok || resolver.BuildOrganizationAuthorizer == nil {
+		if resolver.BuildOrganizationAuthorizer == nil {
 			_ = closeDB()
-			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("organization image agent commercial reservation and live authorizer are required")
+			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("organization image agent live authorizer is required")
 		}
 		authorizer, authErr := resolver.BuildOrganizationAuthorizer(cfg)
 		if authErr != nil || authorizer == nil {
@@ -311,7 +310,7 @@ func resolveImageAgentTemporalDependenciesForMode(configPath string, logger *log
 			return appruntime.ImageAgentTemporalDependencies{}, nil, fmt.Errorf("build organization image agent execution authorizer: %w", authErr)
 		}
 		dependencies.ExecutionAuthorizer = authorizer
-		dependencies.StagedSlotExecutor = organizationMainSlotExecutor{delegate: v3Executor, quoter: capabilities.UsageQuoter, reservation: reservation}
+		dependencies.StagedSlotExecutor = organizationMainSlotExecutor{delegate: v3Executor}
 	}
 	dependencies.ArtifactStore = artifactStore
 	dependencies.PublisherV3 = publisherV3

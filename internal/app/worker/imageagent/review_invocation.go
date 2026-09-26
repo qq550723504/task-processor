@@ -17,7 +17,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"task-processor/internal/aicapability"
 	"task-processor/internal/authidentity"
-	"task-processor/internal/imageagent"
 	openai "task-processor/internal/integration/openai"
 	productimage "task-processor/internal/product/image"
 	"task-processor/internal/shared/aiidentity"
@@ -59,10 +58,7 @@ func (p *routedOpenAIProductImageProvider) recordedReview(ctx context.Context, r
 	if quote.MaximumTokens <= 0 {
 		return productimage.Review{}, productimage.ErrCapabilityUnsupported
 	}
-	invocationID, inputHash, err := reviewInvocationIdentity(ctx, identity, request, quote.Fingerprint)
-	if err != nil {
-		return productimage.Review{}, err
-	}
+	invocationID, inputHash := stableReviewInvocationIdentity(identity, request, quote.Fingerprint)
 	reservation, ok := settings.Recorder.(aicapability.InvocationUsageReservation)
 	if !ok {
 		return productimage.Review{}, productimage.ErrExternalCapabilityUnavailable
@@ -242,18 +238,6 @@ func reviewAssetFingerprint(asset productimage.Asset) string {
 	}{asset.URL, asset.MediaType, asset.SourceURL, asset.SourceAssetID, string(asset.Role), hex.EncodeToString(bytesHash[:]), asset.Width, asset.Height, asset.Operations})
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:])
-}
-
-func reviewInvocationIdentity(ctx context.Context, identity aiidentity.Identity, request productimage.ReviewRequest, quoteFingerprint string) (string, string, error) {
-	legacyID, inputHash := stableReviewInvocationIdentity(identity, request, quoteFingerprint)
-	preReserved := preReservedReviewFromContext(ctx)
-	if preReserved.InvocationID == "" && preReserved.QuoteFingerprint == "" {
-		return legacyID, inputHash, nil
-	}
-	if preReserved.InvocationID == "" || preReserved.QuoteFingerprint != quoteFingerprint {
-		return "", "", imageagent.ErrRevisionConflict
-	}
-	return preReserved.InvocationID, inputHash, nil
 }
 
 func reviewProviderErrorCategory(err error) aicapability.ErrorCategory {

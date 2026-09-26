@@ -15,15 +15,14 @@ import (
 	"task-processor/internal/listingsubscription"
 )
 
-func TestOrganizationMainAdmissionRealCommercialQuotaDeniesBeforeAnyProvider(t *testing.T) {
+func TestOrganizationMainUnpricedGenerationCreatesNoCommercialReservation(t *testing.T) {
 	db := admissionPostgres(t, "org-1", "member-1", 1)
 	delegate := &recordingMainExecutor{}
-	reservation := listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(db)}
-	executor := organizationMainSlotExecutor{delegate: delegate, quoter: fixedMainReviewQuoter{quote: mainReviewQuote()}, reservation: reservation}
+	executor := organizationMainSlotExecutor{delegate: delegate}
 	_, err := executor.GenerateQuotedSlot(mainAdmissionContext(), mainAdmissionInput(), mainGenerationQuote())
-	require.Error(t, err)
+	require.ErrorIs(t, err, imageagent.ErrBudgetQuoteUnavailable)
 	require.Equal(t, imageagent.ProviderNotDispatched, imageagent.ProviderDispatchStateOf(err))
-	require.Zero(t, delegate.generateCalls, "commercial member admission precedes Extract, Render and Review")
+	require.Zero(t, delegate.generateCalls, "generation stays closed without its own approved admission contract")
 	var reservations int64
 	require.NoError(t, db.Table("saas_usage_events").Where("source_type = ?", "ai_invocation_reservation").Count(&reservations).Error)
 	require.Zero(t, reservations, "denied admission cannot create a held reservation")

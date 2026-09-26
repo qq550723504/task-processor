@@ -3,7 +3,6 @@ package imageagentworker
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -28,12 +27,12 @@ import (
 	platformtemporal "task-processor/internal/platform/temporal"
 )
 
-func TestOrganizationWorkerRealTemporalCommercialQuotaDeniesBeforeExtract(t *testing.T) {
+func TestOrganizationWorkerRealTemporalUnpricedGenerationDoesNotReserveOrDispatch(t *testing.T) {
 	address := os.Getenv("ISSUE487_TEMPORAL_ADDRESS")
 	if address == "" {
 		t.Skip("requires isolated Temporal ISSUE487_TEMPORAL_ADDRESS")
 	}
-	db := admissionPostgres(t, "org-1", "member-1", 1)
+	db := admissionPostgres(t, "org-1", "member-1", 1000)
 	require.NoError(t, imagestore.AutoMigrateOrganizationScope(db))
 	require.NoError(t, db.AutoMigrate(&openai.AIClientCredential{}))
 	require.NoError(t, aistore.AutoMigrateInvocationLedger(db))
@@ -76,7 +75,7 @@ func TestOrganizationWorkerRealTemporalCommercialQuotaDeniesBeforeExtract(t *tes
 	repository := dependencies.Repository
 	runID := "run487-" + uuid.NewString()[:8]
 	policyContext := imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
-	budget := imageagent.Budget{MaxImages: 3, EnabledLimits: imageagent.BudgetLimitImages}
+	budget := imageagent.Budget{MaxImages: 1, EnabledLimits: imageagent.BudgetLimitImages}
 	run := imageagent.Run{ID: runID, ScopeProtocol: imageagent.OrganizationScopeProtocol, BusinessTaskID: "catalog-receipt-1", TenantID: "org-1", UserID: "actor-1", MemberID: "member-1", Mode: imageagent.RunModeManual, TargetPlatform: "product", ImagePolicyContext: policyContext, IdempotencyKey: "start-" + runID, Status: imageagent.RunStatusExecuting, ActivePlanRevision: 1, Version: 1, Budget: budget, MaxConcurrentSlots: 1, StartedAt: time.Now().UTC()}
 	plan := imageagent.Plan{Revision: 1, IdempotencyKey: "plan-" + runID, SourceAssetIDs: []string{"catalog-image-1"}, CreatedBy: run.UserID, Slots: []imageagent.Slot{{ID: "main-1", Role: imageagent.SlotRoleMain, Status: imageagent.SlotStatusPending, SourceAssetIDs: []string{"catalog-image-1"}, IdempotencyKey: "slot-" + runID}}}
 	catalog, err := imageagent.NormalizeAssetCatalog(imageagent.AssetCatalog{ProductContext: imageagent.ProductContextRef{ProductID: "product-1", Title: "Controlled product", SourceSnapshotVersion: 1}, Assets: []imageagent.AuthorizedAsset{{ID: "catalog-image-1", Type: imageagent.AuthorizedAssetSource, URL: "https://source.example/product.png", Width: 1200, Height: 1200}}})
@@ -110,16 +109,13 @@ func TestOrganizationWorkerRealTemporalCommercialQuotaDeniesBeforeExtract(t *tes
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("organization worker did not persist quota refusal: effect=%v err=%v", effect.Phase, effectErr)
+			t.Fatalf("organization worker did not persist missing-admission refusal: effect=%v err=%v", effect.Phase, effectErr)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	require.Zero(t, providerCalls.Load(), "commercial refusal precedes Extract, Render and Review HTTP")
+	require.Zero(t, providerCalls.Load(), "no generation or retired Review dispatch without generation admission")
 	tracked.mu.Lock()
-	require.Greater(t, tracked.reserveCalls, 0, "production wrapper must reach canonical commercial reserve")
-	require.Equal(t, "member-1", tracked.memberID)
-	require.Greater(t, tracked.maximumTokens, int64(1))
-	require.True(t, errors.Is(tracked.lastErr, listingsubscription.ErrUsageQuotaExceeded), "refusal must be member token quota, got %v", tracked.lastErr)
+	require.Zero(t, tracked.reserveCalls, "retired future-Review reservation must not be called")
 	tracked.mu.Unlock()
 	var reservations int64
 	require.NoError(t, db.Table("saas_usage_events").Where("source_type = ?", "ai_invocation_reservation").Count(&reservations).Error)
@@ -128,18 +124,14 @@ func TestOrganizationWorkerRealTemporalCommercialQuotaDeniesBeforeExtract(t *tes
 
 type trackedCommercialReservation struct {
 	*aistore.GormInvocationRecorder
-	mu            sync.Mutex
-	reserveCalls  int
-	memberID      string
-	maximumTokens int64
-	lastErr       error
+	mu           sync.Mutex
+	reserveCalls int
 }
 
 func (r *trackedCommercialReservation) ReserveAIInvocationUsage(ctx context.Context, tenantID, memberID, invocationID string, maximumTokens int64, occurredAt time.Time) error {
 	err := r.GormInvocationRecorder.ReserveAIInvocationUsage(ctx, tenantID, memberID, invocationID, maximumTokens, occurredAt)
 	r.mu.Lock()
 	r.reserveCalls++
-	r.memberID, r.maximumTokens, r.lastErr = memberID, maximumTokens, err
 	r.mu.Unlock()
 	return err
 }
