@@ -130,7 +130,7 @@ Cutover/deletion condition:
 
 缺少设计准入时保持 `Backlog` 或 `Blocked`，不能进入 `In Progress`。
 
-在 `IMPLEMENTATION_READY` 之前允许只读代码调查、现状映射、接口/运行证据收集以及明确标为非正式实现的有界 Spike / POC；**不得修改正式生产业务路径、建立正式 schema / state machine，或提交会被当作正式实现消费的业务代码。**
+在**所选 Design Basis 准入路径满足之前**，只允许只读代码调查、现状映射、接口/运行证据收集以及明确标为非正式实现的有界 Spike / POC；**不得修改正式生产业务路径、建立正式 schema / state machine，或提交会被当作正式实现消费的业务代码。** 对 `Independent Architecture`，这意味着必须先达到 `IMPLEMENTATION_READY`；`Reuse Existing Architecture` 与 `N/A` 在各自要求满足并进入 Ready 后不受该限制。
 
 Architecture Review 的目的不是生成更多文档。复用已有架构时不重复全局评审；简单 N/A 任务不为形式创建设计文档、Reviewer 或治理系统。
 
