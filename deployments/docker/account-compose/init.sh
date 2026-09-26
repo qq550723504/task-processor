@@ -95,6 +95,7 @@ EOF
 GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, public.subject_verification_messages TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
 GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
 SQL
@@ -225,6 +226,7 @@ GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, public.subject_verification_messages TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
 GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
 SQL

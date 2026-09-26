@@ -1,5 +1,66 @@
 # Local account center Compose
 
+## Enterprise verification (optional, #510)
+
+The account page `/workbench/account/profile/verification` supports the first
+enterprise authentication request through Tencent eSign's enterprise self-built
+application. Only a current organization administrator can create an application
+or read its result; the hosted link is returned only to its original applicant.
+The applicant must have a verified `+86` phone in ZITADEL. Personal verification,
+repeat enterprise applications and changing the applicant remain unavailable.
+Authentication never grants platform permissions.
+
+This feature is **disabled by default**. To prepare an authorized isolated trial:
+
+1. Run the existing schema-init step with the `source_account_owner` role. It
+   installs `subject_verification_applications` and `subject_verification_messages`
+   in `source_accounts`; `init.sh` grants only SELECT/INSERT/UPDATE to the existing
+   runtime role. Runtime startup does no DDL. Existing business data must not be
+   deleted to enable this feature.
+2. Create a private, absolute-path JSON file outside the checkout with string
+   fields `Scope`, `SecretID`, `SecretKey`, `OperatorID`, `CallbackSigningKey`,
+   `CallbackEncryptionKey`, `DataEncryptionKey`. `Scope` is an immutable bounded
+   identifier for this Tencent account/application/environment. `OperatorID` is
+   the configured Tencent operator, never the logged-in platform user. Signing
+   key is at least 16 bytes; callback encryption key is Tencent's raw 32-byte AES
+   key; data key is a separate random 32-byte key encoded in standard Base64.
+   Use distinct keys, private file permissions (0600 on Linux; restricted ACL
+   on Windows), and back up the data key with the database. Never commit or log
+   the file. Changing scope or data key requires explicit operational review;
+   this version does not rotate, recover or rebind existing applications.
+3. For a directly launched API, set `TENCENT_ESIGN_VERIFICATION_CONFIG_FILE` to
+   that file, then use the normal `go run ./cmd/current-application -config
+   <private-runtime-manifest>` command. For Compose, set
+   `TENCENT_ESIGN_VERIFICATION_CONFIG_HOST_FILE` and add the optional
+   `docker-compose.verification.yml` overlay to the existing Compose command.
+   No credentials belong in the UI or its environment.
+4. Configure Tencent's encrypted, signed callback to the API's HTTPS endpoint
+   `/api/v1/callbacks/tencent-esign/verification`. The current local Compose
+   stack's UI proxy does not publish this API endpoint: the authorized trial
+   must separately provide a reachable HTTPS callback ingress. Do not point it
+   at Next.js `/api/account/verification`, which requires a browser session.
+5. Log in as the current enterprise administrator, open the page above, enter
+   the registered name and 18-character credit code, review consent, and submit.
+   Continue in Tencent, then return and use **刷新认证状态**. Refresh only reads
+   the platform's saved result; a browser return never marks authentication as
+   successful. After completion, check the result after restarting the API.
+
+State and message receipts are stored together in PostgreSQL. Links are encrypted
+and removed on verification; raw callback bodies, full phone numbers, identity
+documents, authorization letters and face images are not retained locally. The
+minimal company and provider reference facts remain stored. Expired links are
+hidden. A create timeout or lost response remains **申请结果待核实** and never
+automatically creates another vendor request; an authentic late callback can
+still complete the original request. This first version has no manual-success
+override or resubmission/recovery button.
+
+Development tests use synthetic callbacks and an isolated PostgreSQL container.
+Real Tencent authorization, callback reachability, supplier sample validation
+and user acceptance are **NOT_RUN**; these are trial/opening conditions, not
+claims established by local tests. Keep the optional configuration unset until
+the authorized trial is ready. Design and frozen boundary:
+[subject-verification design §13](../../../docs/architecture/subject-verification-tencent-esign-design.md#13-本轮企业首次引导认证合同).
+
 ## PostgreSQL layout (new local projects)
 
 The standard local stack has **one application PostgreSQL instance**
