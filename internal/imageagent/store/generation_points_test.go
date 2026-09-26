@@ -52,7 +52,7 @@ func (h *heldGenerationRead) ReadGenerationFact(ctx context.Context, id imageage
 func generationPointDatabases(t *testing.T) (*gormRepository, *gorm.DB, *resourceadapter.GormMemberLimitRepository, imageagent.GenerationIntent) {
 	t.Helper()
 	ctx := context.Background()
-	imageDB := newConcurrentSQLite(t)
+	imageDB := generationTestDatabase(t)
 	initializeSlotEffectRun(t, NewGormRepository(imageDB), "run-slot-effect-v3-points")
 	require.NoError(t, imageDB.Model(&runRecord{}).Where("id = ?", "run-slot-effect-v3-points").Updates(map[string]any{"scope_protocol": imageagent.OrganizationScopeProtocol, "member_id": "grant-1"}).Error)
 	owner := NewOrganizationRepository(imageDB).(*gormRepository)

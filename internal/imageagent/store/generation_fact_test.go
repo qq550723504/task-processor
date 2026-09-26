@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,10 +12,13 @@ import (
 	"task-processor/internal/imageagent"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestGenerationFactGormFencePreservesKnownSuccess(t *testing.T) {
-	db := newConcurrentSQLite(t)
+	db := generationTestDatabase(t)
 	base := NewGormRepository(db)
 	initializeSlotEffectRun(t, base, "run-slot-effect-v3-generation")
 	require.NoError(t, db.Model(&runRecord{}).Where("id = ?", "run-slot-effect-v3-generation").Updates(map[string]any{"scope_protocol": imageagent.OrganizationScopeProtocol, "member_id": "grant-1"}).Error)
@@ -81,4 +85,15 @@ func TestGenerationFactGormFencePreservesKnownSuccess(t *testing.T) {
 	_, won, err = reopened.BeginGenerationDispatch(context.Background(), intent)
 	require.NoError(t, err)
 	require.False(t, won)
+}
+
+func generationTestDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "image-agent.db")+"?_busy_timeout=5000&_journal_mode=WAL"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, AutoMigrate(db))
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	return db
 }
