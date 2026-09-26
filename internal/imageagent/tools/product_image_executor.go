@@ -64,6 +64,8 @@ type resolvedSlotInput struct {
 	sourceAssetID   string
 	styleReferences []string
 	legacyPolicy    bool
+	sourceBytes     []byte
+	sourceDigest    string
 }
 
 type quotedSlotOperation struct {
@@ -399,11 +401,18 @@ func (e *ProductImageSlotExecutor) reviewCandidates(execution imageagent.SlotExe
 
 func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resolvedSlotInput, quoted *quotedSlotExecution) ([]productimage.Candidate, imageagent.SlotUsageReceipt, error) {
 	if e.sourceOnlyMain(input) {
+		if len(input.sourceBytes) == 0 || len(input.sourceBytes) > productimage.MaxInlineArtifactBytes {
+			return nil, imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderRejectedBeforeEffect, imageagent.ErrValidation)
+		}
+		digest := sha256.Sum256(input.sourceBytes)
+		if hex.EncodeToString(digest[:]) != input.sourceDigest {
+			return nil, imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderRejectedBeforeEffect, imageagent.ErrRevisionConflict)
+		}
 		if e.dependencies.WhiteBackgroundRenderer == nil {
 			return nil, imageagent.SlotUsageReceipt{}, imageagent.ErrValidation
 		}
 		white, err := e.dependencies.WhiteBackgroundRenderer.RenderWhiteBackground(ctx, productimage.RenderRequest{
-			Source: input.source, SourceOnly: true, Product: input.product,
+			Source: input.source, SourceOnly: true, SourceBytes: append([]byte(nil), input.sourceBytes...), Product: input.product,
 			Authorization: capabilityAuthorization(quoted, productimage.SourceWhiteBackgroundOperation),
 		})
 		if err != nil {
@@ -604,6 +613,9 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 		}
 		styleIDs[index] = id
 	}
+	if len(input.SourceBytes) > productimage.MaxInlineArtifactBytes {
+		return resolvedSlotInput{}, imageagent.ErrValidation
+	}
 	product := productimage.ProductContext{
 		ProductKey: strings.TrimSpace(input.ProductContext.ProductID), Title: strings.TrimSpace(input.ProductContext.Title),
 		ProductType: strings.TrimSpace(input.ProductContext.ProductType), Attributes: cloneStringMap(input.ProductContext.Attributes),
@@ -614,6 +626,7 @@ func (e *ProductImageSlotExecutor) resolveInput(input imageagent.SlotExecutionIn
 	return resolvedSlotInput{
 		slot: slot, source: source, styles: styles, product: product, profile: profile,
 		sourceAssetID: sourceID, styleReferences: styleIDs, legacyPolicy: legacyPolicy,
+		sourceBytes: append([]byte(nil), input.SourceBytes...), sourceDigest: input.SourceDigest,
 	}, nil
 }
 
