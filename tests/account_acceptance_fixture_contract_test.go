@@ -138,14 +138,19 @@ func TestAccountComposeMigratesCommercialOwnerSchemaBeforeApplicationStartup(t *
 		t.Fatal("account-compose must run the commercial owner migrator in both fresh and repeated initialization")
 	}
 	for _, required := range []string{
-		`"user":"postgres"`,
+		`"port":5433,"user":"commercial_schema_owner"`,
+		`"port":5433,"user":"referral_owner"`,
 		`"maxConnections":2`,
-		`"port":5435`,
 		`"database":"referrals"`,
 		`commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json" -money-config "$work/canonical-money-schema.json"`,
 	} {
 		if !strings.Contains(initText, required) {
 			t.Fatalf("account-compose commercial owner migration is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{`"user":"postgres"`, `business_cluster_admin`} {
+		if strings.Contains(initText, forbidden) {
+			t.Fatalf("account-compose schema migration must not use a cluster administrator: %q", forbidden)
 		}
 	}
 	if strings.Count(initText, `-money-config "$work/canonical-money-schema.json"`) != 1 || strings.Count(initText, "migrate_commercial_owner_schema\n") != 2 {

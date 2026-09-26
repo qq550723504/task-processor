@@ -28,7 +28,7 @@ org_id=$(jq -er '.organizations[0].id' "$fixture")
 case "$project_id:$operator_id:$org_id" in *[!0-9:]*|'') echo 'invalid isolated trial identity' >&2; exit 1;; esac
 jq -e --arg issuer "https://localhost:${identity_port}" --arg project "$project_id" --arg operator "$operator_id" \
   '.schemaVersion == 1 and .status == "ready" and .issuerUrl == $issuer and .projectId == $project and .operatorUserId == $operator and (.organizations | length) == 2' "$fixture" >/dev/null
-commercial_dsn="postgresql://commercial_runtime:$(tr -d '\r\n' < /secrets/commercial-runtime/commercial-reader-password)@127.0.0.1:5434/${commercial_database}?sslmode=disable"
+commercial_dsn="postgresql://commercial_runtime:$(tr -d '\r\n' < /secrets/commercial-runtime/commercial-reader-password)@127.0.0.1:5433/${commercial_database}?sslmode=disable"
 test "$(psql "$commercial_dsn" -At -v ON_ERROR_STOP=1 -c "SELECT EXISTS(SELECT 1 FROM saas_plans WHERE code='paid_pilot') AND has_table_privilege(current_user,'saas_usage_events','SELECT,INSERT,UPDATE') AND has_table_privilege(current_user,'account_member_token_allocations','SELECT,INSERT,UPDATE')")" = t || { echo 'isolated trial plan or commercial runtime rights unavailable' >&2; exit 1; }
 trial_base="https://localhost:${application_port}/image-agent-assets/image-agent-trial"
 mc alias set local http://127.0.0.1:9000 issue487_local "$(tr -d '\r\n' < "$minio_password")" >/dev/null
@@ -48,31 +48,19 @@ touch "$state/.init-started"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-image_dsn="postgresql://postgres:$(tr -d '\r\n' < "$image_owner")@127.0.0.1:5437/image_agent?sslmode=disable"
-acquisition_dsn="postgresql://postgres:$(tr -d '\r\n' < "$acquisition_owner")@127.0.0.1:5438/product_acquisition?sslmode=disable"
+image_dsn="postgresql://image_agent_owner:$(tr -d '\r\n' < "$image_owner")@127.0.0.1:5433/image_agent?sslmode=disable"
+acquisition_dsn="postgresql://acquisition_owner:$(tr -d '\r\n' < "$acquisition_owner")@127.0.0.1:5433/product_acquisition?sslmode=disable"
 image_runtime_password=$(tr -d '\r\n' < "$image_runtime")
 image_worker_password=$(tr -d '\r\n' < "$image_worker")
 acquisition_runtime_password=$(tr -d '\r\n' < "$acquisition_runtime")
-psql "$image_dsn" -v ON_ERROR_STOP=1 -v "runtime_password=$image_runtime_password" <<'SQL'
-CREATE ROLE image_agent_runtime LOGIN PASSWORD :'runtime_password';
-ALTER ROLE image_agent_runtime SET statement_timeout='10s';
-SQL
-psql "$image_dsn" -v ON_ERROR_STOP=1 -v "runtime_password=$image_worker_password" <<'SQL'
-CREATE ROLE image_agent_worker_runtime LOGIN PASSWORD :'runtime_password';
-ALTER ROLE image_agent_worker_runtime SET statement_timeout='10s';
-SQL
-psql "$acquisition_dsn" -v ON_ERROR_STOP=1 -v "runtime_password=$acquisition_runtime_password" <<'SQL'
-CREATE ROLE source_acquisition_runtime LOGIN PASSWORD :'runtime_password';
-ALTER ROLE source_acquisition_runtime SET statement_timeout='10s';
-SQL
 
 cat > "$work/acquisition-owner.json" <<EOF
-{"schemaVersion":1,"database":{"host":"127.0.0.1","port":5438,"user":"postgres","password":"$(tr -d '\r\n' < "$acquisition_owner")","database":"product_acquisition"}}
+{"schemaVersion":1,"database":{"host":"127.0.0.1","port":5433,"user":"acquisition_owner","password":"$(tr -d '\r\n' < "$acquisition_owner")","database":"product_acquisition"}}
 EOF
 product-acquisition-init -config "$work/acquisition-owner.json" -confirm-empty-database product_acquisition
 
 jq --arg password "$image_runtime_password" --arg org "$org_id" --arg base "$trial_base" \
-  '.productAcquisitionDatabase = {host:"127.0.0.1",port:5438,user:"source_acquisition_runtime",password:"__ACQUISITION_PASSWORD__",database:"product_acquisition",maxConnections:4} | .imageAgent = {database:{host:"127.0.0.1",port:5437,user:"image_agent_runtime",password:$password,database:"image_agent",maxConnections:4},temporalAddress:"127.0.0.1:7233",temporalNamespace:"default",allowedOrganizationIds:[$org],publicBase:$base,bucket:"image-agent-trial",isolatedTrialGeneratedUrls:true}' \
+  '.productAcquisitionDatabase = {host:"127.0.0.1",port:5433,user:"source_acquisition_runtime",password:"__ACQUISITION_PASSWORD__",database:"product_acquisition",maxConnections:4} | .imageAgent = {database:{host:"127.0.0.1",port:5433,user:"image_agent_runtime",password:$password,database:"image_agent",maxConnections:4},temporalAddress:"127.0.0.1:7233",temporalNamespace:"default",allowedOrganizationIds:[$org],publicBase:$base,bucket:"image-agent-trial",isolatedTrialGeneratedUrls:true}' \
   "$runtime/current-application.json" > "$work/current.json"
 jq --arg password "$acquisition_runtime_password" '.productAcquisitionDatabase.password = $password' "$work/current.json" > "$runtime/current-application.json.tmp"
 chmod 600 "$runtime/current-application.json.tmp"
@@ -80,8 +68,8 @@ mv "$runtime/current-application.json.tmp" "$runtime/current-application.json"
 cat > "$work/image-owner.yaml" <<EOF
 database:
   host: 127.0.0.1
-  port: 5437
-  user: postgres
+  port: 5433
+  user: image_agent_owner
   password: "$(tr -d '\r\n' < "$image_owner")"
   database: image_agent
   max_connections: 2
@@ -103,14 +91,14 @@ mc anonymous set-json /etc/image-trial-public-policy.json local/image-agent-tria
 cat > "$worker_secrets/config.yaml.tmp" <<EOF
 database:
   host: 127.0.0.1
-  port: 5437
+  port: 5433
   user: image_agent_worker_runtime
   password: "$(tr -d '\r\n' < "$image_worker")"
   database: image_agent
   max_connections: 4
 commercialDatabase:
   host: 127.0.0.1
-  port: 5434
+  port: 5433
   user: commercial_runtime
   password: "$(tr -d '\r\n' < /secrets/commercial-runtime/commercial-reader-password)"
   database: ${commercial_database}
