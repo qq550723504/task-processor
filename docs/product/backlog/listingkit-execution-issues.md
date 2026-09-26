@@ -1,3 +1,7 @@
+> **状态：HISTORICAL BACKLOG（2026-09-26）**  
+> 本清单是旧 ListingKit 产品阶段的候选任务拆分，不是当前 GitHub Roadmap、派工池或可直接复制的新 Issue 来源。当前执行顺序和范围由 #137 与具体 Issue 决定，产品页面由 [最终 Figma UI / IA Authority](../final-ui-ia-authority.md) 决定，ListingKit 按 [Legacy Register](../../refactoring/legacy-register.md) EXTRACT → RETIRE。  
+> 历史条目只有在当前 owner / 当前产品仍明确需要其行为时，才可重新表述为新的有界任务；不得直接恢复旧 Workspace、Task-first、ListingKit facade 或旧验收平台。
+
 # ListingKit 执行 Backlog
 
 > 这份文档用于把下一阶段计划拆成 GitHub Issues。真正建 issue 时，可以按下面标题和验收标准复制。
