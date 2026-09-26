@@ -556,8 +556,16 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 	}
 	if optional.SubjectVerification {
+		for _, route := range (verificationhttp.PersonalHandler{}).Routes() {
+			admitted = append(admitted, currentApplicationRoute{Method: route.Method, Path: route.Path})
+		}
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: verificationhttp.BasePath}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.BasePath + "/applications"}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.CallbackPath})
 		for _, route := range routes {
+			if route.Path == verificationhttp.PersonalBasePath || strings.HasPrefix(route.Path, verificationhttp.PersonalBasePath+"/") {
+				if route.Module != "subject-verification" || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyNone || route.Permission != "" || route.OrganizationTargetResolver != nil {
+					return errors.New("personal verification route loses account boundary")
+				}
+			}
 			if route.Path == verificationhttp.BasePath || route.Path == verificationhttp.BasePath+"/applications" {
 				if route.Module != "subject-verification" || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || route.Permission != authz.PermissionWorkbenchOrganizationMemberManage || route.OrganizationTargetResolver == nil || route.RequestTimeout != 15*time.Second {
 					return errors.New("verification route loses live admin boundary")

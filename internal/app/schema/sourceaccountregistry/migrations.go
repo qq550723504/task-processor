@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	VersionTableName     = "goose_source_account_registry_version"
-	versionTableRelation = "public." + VersionTableName
-	baselineVersion      = int64(2026090901)
-	verificationVersion  = int64(2026092601)
+	VersionTableName            = "goose_source_account_registry_version"
+	versionTableRelation        = "public." + VersionTableName
+	baselineVersion             = int64(2026090901)
+	verificationVersion         = int64(2026092601)
+	personalVerificationVersion = int64(2026092701)
 )
 
 func Migrations() []*goose.Migration {
@@ -28,6 +29,9 @@ func Migrations() []*goose.Migration {
 		}}, nil),
 		goose.NewGoMigration(verificationVersion, &goose.GoFunc{RunTx: func(ctx context.Context, tx *sql.Tx) error {
 			return verificationstore.InstallSchemaTx(ctx, tx)
+		}}, nil),
+		goose.NewGoMigration(personalVerificationVersion, &goose.GoFunc{RunTx: func(ctx context.Context, tx *sql.Tx) error {
+			return verificationstore.InstallPersonalSchemaTx(ctx, tx)
 		}}, nil),
 	}
 }
@@ -57,5 +61,9 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("initialize account profile schema: %w", err)
 	}
 	_, err = verificationstore.NewRepository(ctx, db)
+	if err != nil {
+		return err
+	}
+	_, err = verificationstore.NewPersonalRepository(ctx, db)
 	return err
 }

@@ -21,7 +21,10 @@ import (
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
-type subjectVerificationModule struct{ handler verificationhttp.Handler }
+type subjectVerificationModule struct {
+	handler  verificationhttp.Handler
+	personal verificationhttp.PersonalHandler
+}
 
 func (subjectVerificationModule) Name() string { return "subject-verification" }
 func (subjectVerificationModule) Enabled(cfg *config.Config) bool {
@@ -29,6 +32,7 @@ func (subjectVerificationModule) Enabled(cfg *config.Config) bool {
 }
 func (m subjectVerificationModule) Register(reg *kernelmodule.Registry) error {
 	reg.AddRoutes(m.handler.Routes(accountOrganizationTarget)...)
+	reg.AddRoutes(m.personal.Routes()...)
 	return nil
 }
 
@@ -36,6 +40,11 @@ func (m subjectVerificationModule) Register(reg *kernelmodule.Registry) error {
 // expose an explicit unavailable capability and make no provider requests.
 func buildSubjectVerificationModule(ctx context.Context, db *gorm.DB, cfg *config.Config) (kernelmodule.Module, error) {
 	m := subjectVerificationModule{}
+	personal, err := buildPersonalVerification(ctx, db, cfg)
+	if err != nil {
+		return nil, err
+	}
+	m.personal = personal
 	path := strings.TrimSpace(os.Getenv("TENCENT_ESIGN_VERIFICATION_CONFIG_FILE"))
 	if path == "" {
 		return m, nil

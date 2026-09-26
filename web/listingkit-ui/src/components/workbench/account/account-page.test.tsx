@@ -94,12 +94,21 @@ describe("AccountPage read-only projection", () => {
     expect(within(settings).getByRole("button", { name: "更换邮箱" })).toBeVisible();
     expect(within(settings).getByRole("button", { name: "修改密码" })).toBeVisible();
   });
-  it("requires a selected organization before showing verification authorization", async () => {
+  it.each(["no-org","revoked","loading","selection","switching","api-revoked","api-unavailable"])("keeps personal verification accessible with %s organization context", async mode => {
     state.context.effectiveOrganization = null;
-    vi.stubGlobal("fetch", vi.fn());
+    if(mode.startsWith("api-")||mode==="switching")state.context.effectiveOrganization={id:"B",name:"企业乙",roles:["viewer"]};
+    if(mode==="revoked")state.context.blockingError={code:"ORGANIZATION_ACCESS_REVOKED"};
+    if(mode==="loading")state.context.isLoading=true;
+    if(mode==="selection")state.context.selectionRequired=true;
+    if(mode==="switching")state.context.isSwitching=true;
+    const personal={userId:"u1",state:"NOT_STARTED",maskedPhone:"138****0001",canStart:true,canRefresh:false,phoneReady:true,quota:{totalLimit:5,totalUsed:0,totalRemaining:5,dailyLimit:3,dailyUsed:0,dailyRemaining:3,serverTime:"2026-09-27T01:00:00Z",resetAt:"2026-09-27T16:00:00Z",nextAllowedAt:"2026-09-27T01:00:00Z"}};
+    const fetcher=vi.fn((url:string)=>Promise.resolve(url==="/api/account/organization"?Response.json({code:mode==="api-revoked"?"ORGANIZATION_ACCESS_REVOKED":"DEPENDENCY_UNAVAILABLE",message:"",requestId:"",fieldErrors:[]},{status:mode==="api-revoked"?403:503}):Response.json(url==="/api/account/profile"?profile:personal)));
+    vi.stubGlobal("fetch",fetcher);
     mount("profile-verification");
-    expect(await screen.findByRole("alert")).toHaveTextContent("请选择当前企业");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText("真实姓名")).toBeVisible();
+    expect(fetcher.mock.calls.some(([url])=>url.includes("/organization"))).toBe(mode.startsWith("api-"));
+    await userEvent.click(screen.getByRole("button",{name:"企业认证"}));
+    expect(screen.getByText("企业认证需要选择有权访问的企业。")).toBeVisible();
   });
   it("clears password inputs after the password provider confirms success", async () => {
     const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
