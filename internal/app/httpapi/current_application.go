@@ -106,6 +106,8 @@ type currentApplicationOptions struct {
 	imageAgents          int
 	memberships          int
 	browserCaptures      int
+	productAgent         *ProductAgentDependencies
+	productAgents        int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -222,11 +224,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		option(&supplied)
 	}
-	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 {
+	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
 	if supplied.commercialOwnerDB != nil && (supplied.commercialOwnerDB == sourceAccountDB || supplied.commercialOwnerDB == commercialDB) {
 		return nil, errors.New("commercial owner requires an independent pool")
+	}
+	if supplied.productAgent != nil && supplied.productAcquisitionDB == nil {
+		return nil, errors.New("product agent requires current acquisition owner")
 	}
 	if supplied.productAcquisitionDB != nil && (supplied.productAcquisitionDB == sourceAccountDB || supplied.productAcquisitionDB == commercialDB) {
 		return nil, errors.New("product acquisition requires an independent pool")
@@ -374,6 +379,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, image)
 	}
+	if supplied.productAgent != nil {
+		agentModule, agentErr := buildProductAgentModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, *supplied.productAgent)
+		if agentErr != nil {
+			return nil, fmt.Errorf("build current product agent: %w", agentErr)
+		}
+		modules = append(modules, agentModule)
+	}
 	if factories.buildBrowserCapture != nil {
 		browser, err := factories.buildBrowserCapture(authorizer, *workbench.authDependencies)
 		if err != nil {
@@ -451,7 +463,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, includeMemberPoints, factories.buildSubjectVerification != nil); err != nil {
+	routeFeatures := currentApplicationOptionalRoutes{
+		AcquisitionImage:    factories.buildAcquisitionImage != nil,
+		ProductAgent:        supplied.productAgent != nil,
+		MemberPoints:        includeMemberPoints,
+		SubjectVerification: factories.buildSubjectVerification != nil,
+	}
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, routeFeatures); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -483,23 +501,30 @@ func validateCurrentApplicationRoutesForSourcing(routes []httproute.Descriptor, 
 
 func validateCurrentApplicationRoutesWithFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, allocation, false, currentApplicationOptionalRoutes{})
 }
 
 func validateCurrentApplicationRoutesWithAccountProfile(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership bool, includeAllocation ...bool) error {
 	allocation := len(includeAllocation) > 0 && includeAllocation[0]
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, true, allocation, false, currentApplicationOptionalRoutes{})
 }
 
 func validateCurrentApplicationRoutesWithBrowser(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, false, false, includeBrowser, currentApplicationOptionalRoutes{})
 }
 
 func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeBrowser, includeAccountProfile, includeAllocation bool) error {
-	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser)
+	return validateCurrentApplicationRoutesInternal(routes, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser, currentApplicationOptionalRoutes{})
 }
 
-func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, includeImage ...bool) error {
+type currentApplicationOptionalRoutes struct {
+	SubjectVerification bool
+	AcquisitionImage    bool
+	ProductAgent        bool
+	MemberPoints        bool
+}
+
+func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
 	if includeAccountProfile {
 		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
@@ -520,7 +545,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			currentApplicationRoute{Method: http.MethodGet, Path: browserCaptureBase + "/:operation_id"},
 		)
 	}
-	if len(includeImage) > 0 && includeImage[0] {
+	if optional.AcquisitionImage {
 		for _, route := range []currentApplicationRoute{
 			{Method: http.MethodGet, Path: acquisitionImageBase + "/candidates"},
 			{Method: http.MethodPost, Path: acquisitionImageBase},
@@ -530,8 +555,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			admitted = append(admitted, route)
 		}
 	}
-	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
-	if len(includeImage) > 2 && includeImage[2] {
+	if optional.SubjectVerification {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: verificationhttp.BasePath}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.BasePath + "/applications"}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.CallbackPath})
 		for _, route := range routes {
 			if route.Path == verificationhttp.BasePath || route.Path == verificationhttp.BasePath+"/applications" {
@@ -541,9 +565,21 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 			}
 		}
 	}
-	if len(includeImage) > 1 && includeImage[1] {
+	if optional.ProductAgent {
+		for _, r := range productAgentRoutes(nil) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+		for _, r := range productReviewRoutes(nil, nil) {
+			if r.Method == http.MethodPost && r.Path == "/api/product/text-proposals" {
+				continue
+			}
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
+	if optional.MemberPoints {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
 	}
+	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
 	for _, route := range admitted {
 		expected[route] = struct{}{}
 	}
@@ -595,6 +631,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionListingKitAdminWrite || descriptor.RequestTimeout != 2*time.Minute) {
+			return errors.New("product agent loses fresh permission boundary")
+		}
 		if strings.HasPrefix(descriptor.Path, memberPointLimitBase) {
 			permission := authz.PermissionWorkbenchOrganizationMemberRead
 			if descriptor.Method == http.MethodPut {
@@ -690,6 +729,14 @@ func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependenci
 	server.IdleTimeout = 60 * time.Second
 	inner := server.Handler
 	server.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if isProductAgentHTTPPath(request.URL.Path) {
+			// Only this bounded synchronous model path needs a longer response.
+			// Header/body read timeouts and all other route deadlines stay intact.
+			if err := http.NewResponseController(writer).SetWriteDeadline(time.Now().Add(125 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				http.Error(writer, "response deadline unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
 		writer.Header().Set("Cache-Control", "no-store")
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		inner.ServeHTTP(writer, request)

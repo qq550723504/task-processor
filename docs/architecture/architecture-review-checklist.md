@@ -385,6 +385,7 @@ Supporting context documents must not be listed as review references unless prom
 
 - `docs/architecture/README.md`
 - `docs/architecture/project-boundaries.md`
+- `docs/architecture/product-agent-runtime-contract.md`
 - `docs/architecture/commercial-wallet-billing-contract.md`
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +17,71 @@ import (
 )
 
 var sqliteSequence atomic.Uint64
+
+func TestInvocationClaimGrantsOnlyOneDispatch(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	recorder := NewGormInvocationRecorder(db)
+	record := aicapability.InvocationRecord{InvocationID: "agent-run:step:1", TenantID: "org", UserID: "actor", MemberID: "member", AgentRunID: "agent-run", InputHash: "input", StartedAt: time.Now().UTC(), Outcome: aicapability.InvocationDispatched, Operation: aicapability.OperationProductAgentDecision}
+	var winners atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			acquired, err := recorder.ClaimInvocation(context.Background(), record)
+			if err != nil {
+				t.Error(err)
+			}
+			if acquired {
+				winners.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	require.EqualValues(t, 1, winners.Load())
+	changed := record
+	changed.InputHash = "different"
+	acquired, err := recorder.ClaimInvocation(context.Background(), changed)
+	require.Error(t, err)
+	require.False(t, acquired)
+	changed = record
+	changed.TenantID = "other"
+	acquired, err = recorder.ClaimInvocation(context.Background(), changed)
+	require.Error(t, err)
+	require.False(t, acquired)
+	terminal := record
+	terminal.Outcome = aicapability.InvocationSucceeded
+	terminal.FinishedAt = time.Now().UTC()
+	terminal.UsageKnown = true
+	terminal.PromptTokens = 3
+	terminal.CompletionTokens = 2
+	terminal.TotalTokens = 5
+	require.NoError(t, recorder.RecordInvocation(context.Background(), terminal))
+	acquired, err = recorder.ClaimInvocation(context.Background(), record)
+	require.NoError(t, err)
+	require.False(t, acquired)
+}
+
+func TestAgentObservedInvalidOutputSettlesCurrentUsage(t *testing.T) {
+	db := newInvocationLedgerDB(t)
+	recorder := NewGormInvocationRecorder(db)
+	settler := &recordingInvocationUsageSettler{}
+	recorder.SetUsageSettler(settler)
+	record := aicapability.InvocationRecord{InvocationID: "agent-invalid", TenantID: "org", UserID: "actor", MemberID: "member", AgentRunID: "run", InputHash: "input", StartedAt: time.Now().UTC(), Outcome: aicapability.InvocationDispatched, Operation: aicapability.OperationProductAgentDecision}
+	acquired, err := recorder.ClaimInvocation(context.Background(), record)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	record.Outcome = aicapability.InvocationUsageObservedFailed
+	record.FinishedAt = time.Now().UTC()
+	record.UsageKnown = true
+	record.PromptTokens = 3
+	record.CompletionTokens = 2
+	record.TotalTokens = 5
+	record.ErrorCode = "invalid_agent_output"
+	require.NoError(t, recorder.RecordInvocation(context.Background(), record))
+	require.Equal(t, 1, settler.settleCalls)
+	require.Zero(t, settler.releaseCalls)
+}
 
 func TestGormInvocationRecorderRoundTripSafeNormalizedMetadata(t *testing.T) {
 	db := newInvocationLedgerDB(t)

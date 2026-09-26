@@ -23,7 +23,7 @@ const (
 	InvocationDispatched InvocationOutcome = "dispatched"
 	InvocationSucceeded  InvocationOutcome = "succeeded"
 	InvocationFailed     InvocationOutcome = "failed"
-	// InvocationUsageObservedFailed is limited to image Review output failures
+	// InvocationUsageObservedFailed is limited to image Review and Product Agent output failures
 	// with trustworthy provider-observed tokens. It bills consumption without
 	// claiming that QA succeeded or that an image may be approved.
 	InvocationUsageObservedFailed InvocationOutcome = "usage_observed_failed"
@@ -88,6 +88,19 @@ type InvocationRecord struct {
 
 type InvocationRecorder interface {
 	RecordInvocation(context.Context, InvocationRecord) error
+}
+
+// InvocationDispatchClaimer atomically inserts the existing dispatch fact.
+// Only acquired=true with nil error grants permission for one provider attempt.
+// Replays, conflicts and ambiguous writes never grant execution.
+type InvocationDispatchClaimer interface {
+	ClaimInvocation(context.Context, InvocationRecord) (acquired bool, err error)
+}
+
+// SupportsObservedUsageFailure deliberately allows only current consumers that
+// preserve trustworthy provider usage when their structured output is rejected.
+func SupportsObservedUsageFailure(operation Operation) bool {
+	return operation == OperationProductImageReview || operation == OperationProductAgentDecision
 }
 
 // InvocationReplayReader is optional for non-durable test recorders. The

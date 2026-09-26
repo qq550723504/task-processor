@@ -13,11 +13,14 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	aistore "task-processor/internal/aicapability/store"
 	"task-processor/internal/app/httpapi"
 	appruntime "task-processor/internal/app/runtime"
 	"task-processor/internal/app/runtime/currentapplication"
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	"task-processor/internal/integration/openai"
+	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
 )
 
@@ -68,6 +71,9 @@ func execute() error {
 		OpenImageAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenProductAgent: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		DialImageAgentWorkflow: func(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
 			return appruntime.DialOrganizationImageAgentTemporalWorkflowClient(ctx, address, namespace)
 		},
@@ -79,6 +85,20 @@ func execute() error {
 		},
 		NewApplicationWithFeatures: func(ctx context.Context, source, commercial *gorm.DB, features currentapplication.ApplicationFeatures, cfg *coreconfig.Config, logger *logrus.Logger) (*http.Server, error) {
 			options := make([]httpapi.CurrentApplicationOption, 0, 6)
+			var agentManager *openai.Manager
+			if features.ProductAgent != nil && features.ProductAgent.Enabled {
+				p := features.ProductAgent
+				// A registered client is required by Manager; this value is never
+				// a credential fallback. The Organization resolver fails closed.
+				manager, buildErr := openai.NewManager(&openai.ManagerConfig{Logger: openai.AdaptLogrus(logger.WithField("component", "product-agent")), Clients: map[string]*openai.ClientConfig{p.TextPolicy.ClientName: openai.NewClientConfig("organization-credential-required", "gemini-2.5-flash", "https://grsaiapi.com/v1", 25)}, ConfigResolver: openai.NewOrganizationCredentialResolver(features.ProductAgentDB)})
+				if buildErr != nil {
+					return nil, buildErr
+				}
+				ledger := aistore.NewGormInvocationRecorder(features.ProductAgentDB)
+				ledger.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(features.CommercialOwnerDB)})
+				options = append(options, httpapi.WithProductAgent(httpapi.ProductAgentDependencies{RunDB: features.ProductAgentDB, ReviewDB: features.ProductReviewDB, AssetDB: features.ProductAgentAssetDB, Manager: manager, Ledger: ledger, TextPolicy: p.TextPolicy, Enabled: true, AllowedOrganizationIDs: p.AllowedOrganizationIDs, Limits: p.Limits()}))
+				agentManager = manager
+			}
 			if features.RuntimeContext != nil {
 				options = append(options, httpapi.WithRuntimeContext(features.RuntimeContext))
 			}
@@ -97,11 +117,22 @@ func execute() error {
 			}
 			if features.MembershipDB != nil {
 				if features.Membership == nil {
+					if agentManager != nil {
+						_ = agentManager.Close()
+					}
 					return nil, fmt.Errorf("membership configuration unavailable")
 				}
 				options = append(options, httpapi.WithMembership(httpapi.MembershipDependencies{ReceiptDB: features.MembershipDB, ProviderOrigin: features.Membership.ProviderOrigin, ReadToken: features.Membership.ReadToken, WriteToken: features.Membership.WriteToken}))
 			}
-			return httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, options...)
+			server, buildErr := httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, options...)
+			if agentManager != nil {
+				if buildErr != nil {
+					_ = agentManager.Close()
+				} else {
+					server.RegisterOnShutdown(func() { _ = agentManager.Close() })
+				}
+			}
+			return server, buildErr
 		},
 		NewApplicationWithAcquisition:             httpapi.NewCurrentApplicationWithAcquisition,
 		NewApplicationWithAcquisitionAndReferrals: httpapi.NewCurrentApplicationWithAcquisitionAndReferrals,

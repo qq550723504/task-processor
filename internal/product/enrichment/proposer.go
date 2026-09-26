@@ -61,6 +61,24 @@ func (p *proposer) Propose(ctx context.Context, request Request) (Proposal, erro
 	if err != nil {
 		return Proposal{}, stableGenerationError(err)
 	}
+	return ValidateCandidate(ctx, working, candidate)
+}
+
+// ValidateCandidate applies the same deterministic rules to an existing or
+// repaired candidate without generating again or writing any Product facts.
+// The caller must supply the authorized current base/source and frozen policy;
+// model-authored evidence, quality or earlier validation is not authoritative.
+func ValidateCandidate(ctx context.Context, request Request, candidate Candidate) (Proposal, error) {
+	if ctx == nil {
+		return Proposal{}, ErrInputInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return Proposal{}, err
+	}
+	working := cloneRequest(request)
+	if err := validateRequest(working); err != nil {
+		return Proposal{}, err
+	}
 	candidate = cloneCandidate(candidate)
 
 	evidence, err := validateEvidence(working.Source, candidate.Changes)

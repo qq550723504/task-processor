@@ -1,4 +1,5 @@
 import { isBrowserCapturePath, isBrowserCaptureRequestURL } from "@/lib/contracts/browser-capture";
+import {agentPath} from "@/lib/contracts/product-agent";
 import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
@@ -129,7 +130,8 @@ async function handleWorkbenchRequest(
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   if (request.signal.aborted) abort();
-  const timeout = setTimeout(abort, dispatchState.acquisitionRequest ? ACQUISITION_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
+  const agentRequest=agentPath(new URL(request.url).pathname.split("/").filter(Boolean).slice(2))!==null;
+  const timeout = setTimeout(abort, agentRequest?125000:dispatchState.acquisitionRequest ? ACQUISITION_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
   try {
     const scopedRequest = new NextRequest(request, { signal: controller.signal });
     const result = await Promise.race([
@@ -167,6 +169,7 @@ export const POST = handleWorkbenchRequest;
 export const DELETE = handleWorkbenchRequest;
 
 function isSourceMutation(method: string, path: string[]) {
+  if(method.toUpperCase()==="POST" && agentPath(path)!==null)return true;
   if (method === "POST" && isBrowserCapturePath(method, path)) return true;
   if (method.toUpperCase() === "GET" && path[3] === "by-key" && isBrowserCapturePath(method, path)) return true;
 
