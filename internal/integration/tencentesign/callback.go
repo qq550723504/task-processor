@@ -78,9 +78,9 @@ func (c *Callback) Parse(raw []byte, signature string) (domain.Event, bool, erro
 		return domain.Event{}, false, nil
 	}
 	d := event.MsgData
-	if d.UserData == "" {
-		return domain.Event{}, false, nil
-	} // Contract-signing callbacks are outside this flow.
+	// Even absent UserData must reach the receipt check: a known MsgId cannot
+	// bypass replay protection by dropping its correlation. New unrelated
+	// messages have no local application and are acknowledged without storage.
 	if d.CreateTime <= 0 {
 		return invalid()
 	}

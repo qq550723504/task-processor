@@ -69,6 +69,10 @@ func TestCallbackAuthenticatesRawBodyBeforeInterpretingIdentity(t *testing.T) {
 	if _, _, err = c.Parse(plain, sig); err == nil {
 		t.Fatal("unencrypted callback accepted")
 	}
+	raw, sig = callbackEnvelope(t, key, sign, bytes.Replace(plain, []byte(`"UserData":"opaque"`), []byte(`"UserData":""`), 1))
+	if e, supported, err = c.Parse(raw, sig); err != nil || !supported || e.MessageID != "msg-1" || e.Correlation != "" {
+		t.Fatal("missing correlation must reach durable replay checks")
+	}
 	raw, sig = callbackEnvelope(t, key, sign, []byte(`{"MsgId":"msg-2","MsgType":"UserAccountVerify","MsgVersion":"CustomApp","MsgData":{"UserData":"opaque"}}`))
 	if _, supported, err = c.Parse(raw, sig); err != nil || supported {
 		t.Fatal("personal event treated as enterprise proof")

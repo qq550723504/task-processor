@@ -95,6 +95,19 @@ func readyLink() (Link, error) {
 	return Link{"https://qian.tencent.cn/verify?code=fixture", testNow.Add(24 * time.Hour)}, nil
 }
 
+func TestEmptyCallbackCorrelationStillChecksKnownMessage(t *testing.T) {
+	s := newTestService(providerFunc(func(context.Context, CreateRequest) (Link, error) { return readyLink() }))
+	s.Store.(*memoryStore).messages["fixture-app:known-message"] = "original-body"
+	event := Event{MessageID: "known-message", Digest: "changed-body"}
+	if err := s.Observe(context.Background(), event); !errors.Is(err, ErrConflict) {
+		t.Fatalf("known message with empty correlation: %v", err)
+	}
+	event.MessageID = "unrelated-message"
+	if err := s.Observe(context.Background(), event); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("new uncorrelated callback: %v", err)
+	}
+}
+
 func TestConcurrentSameApplicationCreatesOneProviderLink(t *testing.T) {
 	var calls atomic.Int32
 	s := newTestService(providerFunc(func(context.Context, CreateRequest) (Link, error) { calls.Add(1); return readyLink() }))

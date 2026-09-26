@@ -108,6 +108,10 @@ func TestPostgresReservationAndAtomicObservation(t *testing.T) {
 	if err = r.Apply(ctx, changedCorrelation, apply); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("receipt cannot be reassociated even with the same digest: %v", err)
 	}
+	changedCorrelation.Correlation = ""
+	if err = r.Apply(ctx, changedCorrelation, apply); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("receipt cannot discard its correlation: %v", err)
+	}
 	changedCorrelation.MessageID = "unrelated-message"
 	if err = r.Apply(ctx, changedCorrelation, apply); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("new unrelated callback: %v", err)

@@ -159,12 +159,12 @@ func (s *Service) Observe(ctx context.Context, e Event) error {
 	if !s.enabled() {
 		return ErrUnavailable
 	}
-	if !validText(e.MessageID, 128) || len(e.Digest) == 0 || len(e.Digest) > 128 || len(e.Correlation) == 0 || len(e.Correlation) > 1000 {
+	if !validText(e.MessageID, 128) || len(e.Digest) == 0 || len(e.Digest) > 128 || len(e.Correlation) > 1000 {
 		return ErrInvalid
 	}
 	phone := NormalizePhone(e.Phone)
 	return s.Store.Apply(ctx, Receipt{s.Scope, e.MessageID, e.Digest, e.Correlation}, func(a *Application) string {
-		if a.Scope != s.Scope || phone == "" || s.Protection.Digest("phone", phone) != a.PhoneDigest || NormalizeName(e.CompanyName) != a.CompanyName || e.CreditCode != a.CreditCode || !authidentity.IsBoundedIdentifier(e.ProviderOrganizationID) || !authidentity.IsBoundedIdentifier(e.ProviderAdminID) || e.VerifiedAt.IsZero() || e.VerifiedAt.After(s.now().Add(5*time.Minute)) {
+		if e.Correlation == "" || a.Scope != s.Scope || phone == "" || s.Protection.Digest("phone", phone) != a.PhoneDigest || NormalizeName(e.CompanyName) != a.CompanyName || e.CreditCode != a.CreditCode || !authidentity.IsBoundedIdentifier(e.ProviderOrganizationID) || !authidentity.IsBoundedIdentifier(e.ProviderAdminID) || e.VerifiedAt.IsZero() || e.VerifiedAt.After(s.now().Add(5*time.Minute)) {
 			return "SUBJECT_MISMATCH"
 		}
 		if a.State == Verified {
