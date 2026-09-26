@@ -102,7 +102,11 @@ func (c *whiteBackgroundCapability) RenderWhiteBackground(ctx context.Context, r
 	if err != nil {
 		return Candidate{}, capabilityError(err)
 	}
-	return validateCandidate(candidate, cloned.Source, RoleWhiteBackground, "render_white_background", forbiddenArtifactURLs(cloned.Source))
+	operation := "render_white_background"
+	if cloned.SourceOnly {
+		operation = SourceWhiteBackgroundOperation
+	}
+	return validateCandidate(candidate, cloned.Source, RoleWhiteBackground, operation, forbiddenArtifactURLs(cloned.Source))
 }
 
 type sceneCapability struct{ backend SceneRenderer }
@@ -177,6 +181,9 @@ func (c *reviewCapability) Review(ctx context.Context, request ReviewRequest) (R
 		return Review{}, err
 	}
 	review, err := c.backend.Review(ctx, cloned)
+	if err == ErrReviewConfirmedNotDispatched {
+		return Review{}, ErrReviewConfirmedNotDispatched
+	}
 	if contextErr := contextError(ctx); contextErr != nil {
 		return Review{}, contextErr
 	}
@@ -217,6 +224,16 @@ func cloneRenderRequest(request RenderRequest) (RenderRequest, error) {
 	source, product, err := validatedInput(request.Source, request.Product)
 	if err != nil {
 		return RenderRequest{}, err
+	}
+	if request.SourceOnly {
+		if !reflect.DeepEqual(request.Subject, Candidate{}) {
+			return RenderRequest{}, ErrInputInvalid
+		}
+		authorization, err := cloneUsageAuthorization(request.Authorization, SourceWhiteBackgroundOperation)
+		if err != nil {
+			return RenderRequest{}, err
+		}
+		return RenderRequest{Source: source, SourceOnly: true, Product: product, Authorization: authorization}, nil
 	}
 	subject, err := validateCandidate(
 		request.Subject, source, RoleSubject, "extract_subject", forbiddenArtifactURLs(source),

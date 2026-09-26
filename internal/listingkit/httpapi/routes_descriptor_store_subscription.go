@@ -26,9 +26,16 @@ func appendSubscriptionRouteDescriptors(routes []httproute.Descriptor, handler S
 }
 
 func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler PlatformAdminRouteHandler) []httproute.Descriptor {
+	routes = appendPlatformSubscriptionOwnerRouteDescriptors(routes, handler)
+	return append(routes,
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/tenant-directory", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformTenantDirectory},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations", Module: "listing-kit-platform-admin", Handler: handler.InviteTenantMember},
+	)
+}
+
+func appendPlatformSubscriptionOwnerRouteDescriptors(routes []httproute.Descriptor, handler PlatformAdminRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscriptions", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformTenantSubscriptions},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/tenant-directory", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformTenantDirectory},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/platform/subscription-plans", Module: "listing-kit-platform-admin", Handler: handler.ListPlatformSubscriptionPlans},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/subscription-plans", Module: "listing-kit-platform-admin", Handler: handler.UpsertPlatformSubscriptionPlan},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscription-plans/:plan_code", Module: "listing-kit-platform-admin", Handler: handler.UpsertPlatformSubscriptionPlan},
@@ -42,6 +49,5 @@ func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler 
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/plan", Module: "listing-kit-platform-admin", Handler: handler.ApplyPlatformTenantSubscriptionPlan},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code", Module: "listing-kit-platform-admin", Handler: handler.UpsertPlatformTenantSubscriptionEntitlement},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/usage/:module_code/:period_key/:metric", Module: "listing-kit-platform-admin", Handler: handler.SetPlatformTenantSubscriptionUsage},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations", Module: "listing-kit-platform-admin", Handler: handler.InviteTenantMember},
 	)
 }

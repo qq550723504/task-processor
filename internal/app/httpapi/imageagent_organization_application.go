@@ -31,12 +31,12 @@ type OrganizationImageBinding struct {
 	PublicationID string
 }
 
-type organizationImageCatalog struct {
+type boundOrganizationImageCatalog struct {
 	reader   catalog.CompleteSnapshotReader
 	bindings map[[3]string]OrganizationImageBinding
 }
 
-func (c *organizationImageCatalog) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
+func (c *boundOrganizationImageCatalog) Resolve(ctx context.Context, scope imageagent.AssetCatalogScope) (imageagent.AssetCatalog, error) {
 	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
 	if !ok || identity.EffectiveOrganizationID == "" || identity.EffectiveOrganizationID != scope.TenantID || identity.TenantID != scope.TenantID || identity.UserID != scope.OwnerUserID {
 		return imageagent.AssetCatalog{}, imageagent.ErrIdentityRequired
@@ -78,7 +78,7 @@ func NewImageAgentOrganizationApplication(db *gorm.DB, verifier zitadel.Verifier
 	if err != nil {
 		return nil, err
 	}
-	source := &organizationImageCatalog{reader: reader, bindings: make(map[[3]string]OrganizationImageBinding, len(bindings))}
+	source := &boundOrganizationImageCatalog{reader: reader, bindings: make(map[[3]string]OrganizationImageBinding, len(bindings))}
 	for _, binding := range bindings {
 		for _, value := range []string{binding.ContextID, binding.OwnerUserID, binding.Identity.TenantID, binding.Identity.ProductKey, binding.PublicationID} {
 			if value == "" || value != strings.TrimSpace(value) {

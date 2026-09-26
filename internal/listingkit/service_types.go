@@ -56,6 +56,7 @@ type ServiceSheinDependencies struct {
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	SheinSizeHeaderResolver    sheinpub.SizeAttributeHeaderResolver
 	SheinPricingPolicy         sheinpub.PricingPolicy
+	SheinCostPriceCalculator   SheinCostPriceCalculator
 	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder

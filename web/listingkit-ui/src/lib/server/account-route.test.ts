@@ -3,11 +3,16 @@ import { NextRequest } from "next/server";
 const state = vi.hoisted(() => ({ user: "u1", token: "fixture-token", blocked: false }));
 vi.mock("@/auth", () => ({ serverAuth: (handler: (r: NextRequest) => Promise<Response>) => (request: NextRequest) => state.blocked ? new Promise(() => {}) : handler(Object.assign(request, { auth: { accessToken: state.token, identityVersion: 3, identity: { userId: state.user, tenantId: "A" } } })) }));
 import { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } from "@/app/api/account/profile/route";
+import { GET as businessProfileGET, PUT as businessProfilePUT } from "@/app/api/account/business-profile/route";
 import { GET as organizationGET } from "@/app/api/account/organization/route";
+import { GET as identityProfileGET, PUT as identityEmailPUT } from "@/app/api/account/identity/[...path]/route";
 
 const profile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "Alice", email: null, emailVerified: null, phoneNumber: null, phoneNumberVerified: null, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "B", roles: ["listingkit_viewer"], source: "zitadel_project_authorizations", readAt: "2026-09-07T01:00:00Z", authorizationMaxAgeSeconds: 60 };
 function request(kind = "profile", headers: Record<string, string> = {}, signal?: AbortSignal) { return new NextRequest(`http://localhost/api/account/${kind}`, { headers: { "X-Expected-User-ID": "u1", ...headers }, signal }); }
+function writeBusinessProfile(headers: Record<string, string> = {}) { return new NextRequest("http://localhost/api/account/business-profile", { method: "PUT", headers: { "X-Expected-User-ID": "u1", "Content-Type": "application/json", cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", ...headers }, body: JSON.stringify({ userRole: "品牌方", shopSituation: "", factorySituation: "", platforms: [], sites: [], shopType: "", services: [] }) }); }
+function writeIdentityEmail(headers: Record<string, string> = {}) { return new NextRequest("http://localhost/api/account/identity/email", { method: "PUT", headers: { "X-Expected-User-ID": "u1", "Content-Type": "application/json", ...headers }, body: JSON.stringify({ email: "user@example.test" }) }); }
+function readIdentityProfile(headers: Record<string, string> = {}) { return new NextRequest("http://localhost/api/account/identity/profile", { method: "GET", headers: { "X-Expected-User-ID": "u1", ...headers } }); }
 beforeEach(() => { state.user = "u1"; state.token = "fixture-token"; state.blocked = false; vi.stubEnv("LISTINGKIT_SERVICE_API_BASE", "http://127.0.0.1:8085/api/v1"); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 describe("exported account routes", () => {
@@ -22,6 +27,58 @@ describe("exported account routes", () => {
   const fetch = vi.fn().mockResolvedValue(Response.json(organization)); vi.stubGlobal("fetch", fetch);
   const response = await organizationGET(request("organization", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B", "X-Requested-Organization-ID": "attacker" }));
   expect(response.status).toBe(200);expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+ it("binds business profile writes to the selected cookie organization", async () => {
+  const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfilePUT(writeBusinessProfile());
+  expect(response.status).toBe(200);
+  expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+ it("binds business profile reads to the selected cookie organization", async () => {
+  const business = { schemaVersion: "account-business-profile-v1", userId: "u1", userRole: "品牌方", shopSituation: null, factorySituation: null, platforms: [], sites: [], shopType: null, services: [], source: "account_profile", updatedAt: "2026-09-07T01:00:00Z", readAt: "2026-09-07T01:00:00Z" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(business)); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfileGET(request("business-profile", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B" }));
+  expect(response.status).toBe(200);
+  expect(fetch.mock.calls[0][1].headers.get("X-Requested-Organization-ID")).toBe("B");
+ });
+  it("keeps identity management inside Shuomi and forwards only the server session token", async () => {
+  const fetch = vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-identity-operation-v1", operation: "email", state: "verification_pending", source: "zitadel_auth_v1" })); vi.stubGlobal("fetch", fetch);
+  const response = await identityEmailPUT(writeIdentityEmail({ Authorization: "Bearer attacker", cookie: "private=cookie" }));
+  expect(response.status).toBe(200);
+  const [url, init] = fetch.mock.calls[0]; expect(url).toBe("http://127.0.0.1:8085/api/v1/account/identity/email");
+  expect(new Headers(init.headers).get("Authorization")).toBe("Bearer fixture-token"); expect(new Headers(init.headers).get("Cookie")).toBeNull();
+  expect(await new Response(init.body).json()).toEqual({ email: "user@example.test" });
+  });
+  it("marks an identity mutation unknown when Shuomi loses the dispatched response", async () => {
+   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection reset")));
+   const response = await identityEmailPUT(writeIdentityEmail());
+   expect(response.status).toBe(502); expect(await response.json()).toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
+  });
+  it("returns authentication required when the identity session has no access token", async () => {
+   state.token = "";
+   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+   const response = await identityEmailPUT(writeIdentityEmail());
+   expect(response.status).toBe(401); expect((await response.json()).code).toBe("AUTHENTICATION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("returns authentication required when the identity session is absent", async () => {
+   state.user = "";
+   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+   const response = await identityEmailPUT(writeIdentityEmail());
+   expect(response.status).toBe(401); expect((await response.json()).code).toBe("AUTHENTICATION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
+  });
+ it("reads the identity profile inside Shuomi without requiring a client body or cookie", async () => {
+  const identityProfile = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "First", lastName: "Last", nickName: "", displayName: "Name", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
+  const fetch = vi.fn().mockResolvedValue(Response.json(identityProfile)); vi.stubGlobal("fetch", fetch);
+  const response = await identityProfileGET(readIdentityProfile({ cookie: "private=cookie", Authorization: "Bearer attacker" }));
+  expect(response.status).toBe(200);
+  const [url, init] = fetch.mock.calls[0]; expect(url).toBe("http://127.0.0.1:8085/api/v1/account/identity/profile");
+  expect(init.method).toBe("GET"); expect(new Headers(init.headers).get("Authorization")).toBe("Bearer fixture-token"); expect(new Headers(init.headers).get("Cookie")).toBeNull(); expect(init.body).toBeUndefined();
+ });
+ it("rejects business profile writes without a selected organization", async () => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  const response = await businessProfilePUT(writeBusinessProfile({ cookie: "", "X-Expected-Organization-ID": "" }));
+  expect((await response.json()).code).toBe("ORGANIZATION_SELECTION_REQUIRED"); expect(fetch).not.toHaveBeenCalled();
  });
  it.each([
   [{}, "ORGANIZATION_SELECTION_REQUIRED"],
@@ -44,11 +101,24 @@ describe("exported account routes", () => {
   const response = await organizationGET(request("organization", { cookie: "shuomi_effective_organization=B", "X-Expected-Organization-ID": "B" }));
   expect(response.status).toBe(403);expect(response.headers.get("set-cookie")).toBeNull();expect(await response.text()).not.toContain("secret");
  });
- it("bounds exported serverAuth wait", async () => {
+  it("bounds exported serverAuth wait", async () => {
   vi.useFakeTimers(); state.blocked = true;
   const pending = GET(request()); await vi.advanceTimersByTimeAsync(15001);
   expect((await pending).status).toBe(504);
- });
+  });
+  it("bounds identity authentication inside the same deadline", async () => {
+   vi.useFakeTimers(); state.blocked = true;
+   const pending = identityEmailPUT(writeIdentityEmail()); await vi.advanceTimersByTimeAsync(15001);
+   expect((await pending).status).toBe(504);
+  });
+  it("preserves an unknown identity outcome when the route deadline fires after forwarding", async () => {
+   vi.useFakeTimers(); vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+   const pending = identityEmailPUT(writeIdentityEmail()); await vi.advanceTimersByTimeAsync(15001);
+   const response = await pending;
+   expect(response).toMatchObject({ status: 504 });
+   const payload = await response.json();
+   expect(payload).toMatchObject({ code: "RESULT_UNVERIFIED", outcome: "unknown" });
+  });
  it("bounds response body waiting", async () => {
   vi.useFakeTimers();vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({ start() {} }), { headers: { "Content-Type": "application/json" } })));
   const pending = GET(request());await vi.advanceTimersByTimeAsync(15001);expect((await pending).status).toBe(504);

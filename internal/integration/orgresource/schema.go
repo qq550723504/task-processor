@@ -49,7 +49,7 @@ func (organizationResourceOperationRow) TableName() string {
 type organizationResourceSourceClaimRow struct {
 	SourceType         string    `gorm:"column:source_type;primaryKey;size:96;not null"`
 	SourceIdentity     string    `gorm:"column:source_identity;primaryKey;size:192;not null"`
-	ResourceType       string    `gorm:"column:resource_type;primaryKey;size:64;not null;check:chk_org_resource_source_claim_type,resource_type IN ('store_renewal_period','ai_point','data_row')"`
+	ResourceType       string    `gorm:"column:resource_type;size:64;not null;check:chk_org_resource_source_claim_type,resource_type IN ('store_renewal_period','ai_point','data_row')"`
 	OrganizationID     string    `gorm:"column:organization_id;size:128;not null;index"`
 	OperationID        string    `gorm:"column:operation_id;size:128;not null"`
 	RequestFingerprint string    `gorm:"column:request_fingerprint;size:64;not null"`

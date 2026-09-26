@@ -173,7 +173,7 @@ func (s *Service) Start(ctx context.Context, input StartRunInput) error {
 		ScopeProtocol: identity.ScopeProtocol,
 		ID:            input.RunID, BusinessTaskID: input.BusinessTaskID, TargetPlatform: input.TargetPlatform,
 		ImagePolicyContext: input.ImagePolicyContext,
-		TenantID:           identity.TenantID, UserID: identity.UserID,
+		TenantID:           identity.TenantID, UserID: identity.UserID, MemberID: identity.MemberID,
 		Mode: RunModeManual, IdempotencyKey: input.IdempotencyKey,
 		Status: RunStatusPlanning, CurrentNode: "plan", Version: 1, ActivePlanRevision: input.Plan.Revision,
 		Budget: input.Budget, MaxConcurrentSlots: input.MaxConcurrentSlots,
@@ -442,7 +442,16 @@ func (s *Service) Get(ctx context.Context, runID string) (RunProjection, error) 
 		return RunProjection{}, err
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)}
-	return s.repository.GetProjection(ctx, scope)
+	projection, err := s.repository.GetProjection(ctx, scope)
+	if err != nil {
+		return RunProjection{}, err
+	}
+	if s.organizationScope {
+		if _, err := s.identityForRun(identity, projection.Run); err != nil {
+			return RunProjection{}, err
+		}
+	}
+	return projection, nil
 }
 
 func (s *Service) ReplacePlan(ctx context.Context, runID string, expectedRevision int64, plan Plan, actionID string) error {
@@ -571,6 +580,15 @@ func (s *Service) ListEvents(ctx context.Context, runID string, afterCursor int6
 		return nil, fmt.Errorf("%w: event cursor and limit are invalid", ErrValidation)
 	}
 	scope := RunScope{TenantID: identity.TenantID, OwnerUserID: identity.UserID, RunID: strings.TrimSpace(runID)}
+	if s.organizationScope {
+		projection, err := s.repository.GetProjection(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := s.identityForRun(identity, projection.Run); err != nil {
+			return nil, err
+		}
+	}
 	events, err := s.repository.ListEvents(ctx, scope, afterCursor, limit)
 	if err != nil {
 		return nil, err
@@ -610,7 +628,7 @@ func verifiedExecutionIdentity(ctx context.Context) (ExecutionIdentity, error) {
 		return ExecutionIdentity{}, ErrIdentityRequired
 	}
 	ai := aiidentity.FromContext(ctx)
-	return ExecutionIdentity{TenantID: identity.TenantID, UserID: identity.UserID, TraceID: ai.TraceID}, nil
+	return ExecutionIdentity{TenantID: identity.TenantID, UserID: identity.UserID, MemberID: identity.EffectiveMemberID, TraceID: ai.TraceID}, nil
 }
 
 func cloneBlock(block *Block) *Block {
@@ -634,7 +652,7 @@ const OrganizationScopeProtocol = "image-agent.organization.v1"
 func (s *Service) identityForRun(identity ExecutionIdentity, run Run) (ExecutionIdentity, error) {
 	identity.BusinessTaskID = run.BusinessTaskID
 	if s.organizationScope {
-		if run.ScopeProtocol != OrganizationScopeProtocol || run.TenantID != identity.TenantID || run.UserID != identity.UserID {
+		if run.ScopeProtocol != OrganizationScopeProtocol || run.TenantID != identity.TenantID || run.UserID != identity.UserID || run.MemberID == "" || run.MemberID != identity.MemberID {
 			return ExecutionIdentity{}, ErrIdentityRequired
 		}
 		identity.RunID = run.ID

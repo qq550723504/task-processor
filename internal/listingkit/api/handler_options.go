@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func newHandlerWithDefaults() *handler {
@@ -80,6 +81,22 @@ func NewHandler(service HandlerService, opts ...HandlerOption) (*handler, error)
 	h.applyOptions(opts)
 	if err := h.finalize(); err != nil {
 		return nil, err
+	}
+	return h, nil
+}
+
+// NewPlatformSubscriptionHandler assembles the existing platform subscription
+// owner routes without requiring the product task lifecycle runtime. This is
+// used by the account-center composition, where commercial ownership is
+// mounted separately from product execution.
+func NewPlatformSubscriptionHandler(service *listingsubscription.Service, opts ...HandlerOption) (*handler, error) {
+	if service == nil {
+		return nil, errors.New("subscription service is not configured")
+	}
+	h := newHandlerWithDefaults()
+	h.applyOptions(append([]HandlerOption{WithSubscriptionService(service)}, opts...))
+	if h.subscriptionService == nil || h.subscriptionHandler == nil {
+		return nil, errors.New("platform subscription handler is not configured")
 	}
 	return h, nil
 }

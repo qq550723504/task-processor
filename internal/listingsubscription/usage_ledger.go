@@ -19,7 +19,11 @@ const (
 	usageMetricProductImageJobsSucceeded      = "product_image_jobs_succeeded"
 	usageMetricSheinDraftsSucceeded           = "shein_drafts_succeeded"
 	usageMetricSheinPublishesSucceeded        = "shein_publishes_succeeded"
+	usageMetricAITokens                       = "ai_tokens"
 )
+
+// UsageMetricAITokens is the commercial usage metric for observed AI tokens.
+const UsageMetricAITokens = usageMetricAITokens
 
 const usageStorageBucketPeriodKey = "__current__"
 
@@ -141,7 +145,7 @@ func isUsageCountMetric(metric string) bool {
 }
 
 func isKnownUsageMetric(metric string) bool {
-	return metric == usageMetricStorageBytesCurrent || isUsageCountMetric(metric)
+	return metric == usageMetricStorageBytesCurrent || metric == usageMetricAITokens || isUsageCountMetric(metric)
 }
 
 func usageMetricModuleMatches(moduleCode, metric string) bool {
@@ -223,6 +227,12 @@ func canonicalUsagePeriodKey(metric, supplied string, occurredAt time.Time) (str
 	if metric == usageMetricStorageBytesCurrent {
 		return supplied, nil
 	}
+	if metric == usageMetricAITokens {
+		if supplied == "" {
+			return "", &UsageValidationError{Field: "period_key"}
+		}
+		return supplied, nil
+	}
 	canonical := occurredAt.UTC().Format("2006-01")
 	if supplied != canonical {
 		return "", &UsageValidationError{Field: "period_key"}
@@ -242,6 +252,8 @@ func usageMetricLimitKeys(metric string) []string {
 		return []string{usageMetricSheinDraftsSucceeded}
 	case usageMetricSheinPublishesSucceeded:
 		return []string{usageMetricSheinPublishesSucceeded}
+	case usageMetricAITokens:
+		return []string{usageMetricAITokens}
 	default:
 		return []string{metric}
 	}
@@ -292,6 +304,7 @@ func normalizeReserveUsageInput(input ReserveUsageInput) ReserveUsageInput {
 	input.PeriodKey = strings.TrimSpace(input.PeriodKey)
 	input.SourceType = strings.TrimSpace(input.SourceType)
 	input.SourceID = strings.TrimSpace(input.SourceID)
+	input.MemberID = strings.TrimSpace(input.MemberID)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	input.Metadata = cloneUsageMetadata(input.Metadata)
 	return input
@@ -304,7 +317,8 @@ func usageEventMatchesReserveInput(event UsageEvent, input ReserveUsageInput) bo
 		event.Quantity == input.Quantity &&
 		event.PeriodKey == input.PeriodKey &&
 		event.SourceType == input.SourceType &&
-		event.SourceID == input.SourceID
+		event.SourceID == input.SourceID &&
+		event.MemberID == input.MemberID
 }
 
 // usageReplayComparison preserves the persisted period only for legacy retries

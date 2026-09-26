@@ -111,7 +111,7 @@ func restoreActivityIdentity(ctx context.Context, identity imageagent.ExecutionI
 	if identity.TenantID == "" || identity.UserID == "" {
 		return nil, fmt.Errorf("captured image agent tenant and user identity are required")
 	}
-	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: identity.TenantID, UserID: identity.UserID})
+	ctx = authidentity.WithAuthenticatedIdentity(ctx, authidentity.AuthenticatedIdentity{TenantID: identity.TenantID, UserID: identity.UserID, EffectiveMemberID: identity.MemberID})
 	return aiidentity.WithIdentity(ctx, aiidentity.Identity{
 		TenantID: identity.TenantID, UserID: identity.UserID, BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
 	}), nil

@@ -15,17 +15,26 @@ const runtimePermissionQuery = `SELECT current_user,
     AND has_table_privilege(current_user, 'public.source_account_resources', 'INSERT')
     AND has_table_privilege(current_user, 'public.source_account_resources', 'UPDATE')
     AND has_table_privilege(current_user, 'public.source_account_operations', 'SELECT')
-    AND has_table_privilege(current_user, 'public.source_account_operations', 'INSERT') AS required_privileges,
+    AND has_table_privilege(current_user, 'public.source_account_operations', 'INSERT')
+    AND has_table_privilege(current_user, 'public.account_business_profiles', 'SELECT')
+    AND has_table_privilege(current_user, 'public.account_business_profiles', 'INSERT')
+    AND has_table_privilege(current_user, 'public.account_business_profiles', 'UPDATE')
+    AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'SELECT')
+    AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'INSERT')
+    AND has_sequence_privilege(current_user, 'public.account_business_profile_audit_events_id_seq', 'USAGE')
+    AND has_sequence_privilege(current_user, 'public.account_business_profile_audit_events_id_seq', 'SELECT') AS required_privileges,
   has_database_privilege(current_user, current_database(), 'CREATE')
     OR has_schema_privilege(current_user, 'public', 'CREATE')
     OR EXISTS (
       SELECT 1
       FROM pg_catalog.pg_class AS relation
       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-      CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.acldefault('r', relation.relowner)) AS privilege
+      CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl, pg_catalog.acldefault(CASE WHEN relation.relkind = 'S' THEN 'S'::"char" ELSE 'r'::"char" END, relation.relowner))) AS privilege
       WHERE namespace.nspname = 'public'
-        AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
-        AND CASE WHEN privilege.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+        AND relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+        AND CASE WHEN relation.relkind = 'S'
+          THEN pg_catalog.has_sequence_privilege(current_user, relation.oid, privilege.privilege_type)
+          WHEN privilege.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
           THEN pg_catalog.has_any_column_privilege(current_user, relation.oid, privilege.privilege_type)
           ELSE pg_catalog.has_table_privilege(current_user, relation.oid, privilege.privilege_type)
         END
@@ -34,7 +43,15 @@ const runtimePermissionQuery = `SELECT current_user,
           ('source_account_resources', 'INSERT'),
           ('source_account_resources', 'UPDATE'),
           ('source_account_operations', 'SELECT'),
-          ('source_account_operations', 'INSERT')
+          ('source_account_operations', 'INSERT'),
+          ('account_business_profiles', 'SELECT'),
+          ('account_business_profiles', 'INSERT'),
+          ('account_business_profiles', 'UPDATE'),
+          ('account_business_profile_audit_events', 'SELECT'),
+          ('account_business_profile_audit_events', 'INSERT'),
+          ('account_business_profile_audit_events_id_seq', 'USAGE'),
+          ('account_business_profile_audit_events_id_seq', 'SELECT'),
+          ('__account_allocation_moved_to_commercial__', 'SELECT')
         )
     ) AS forbidden_privileges`
 

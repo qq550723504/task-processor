@@ -1,0 +1,23 @@
+# Additional router for the public-shaped application origin.
+#
+# The browser extension for the 1688 capture channel refuses to talk to a
+# `localhost` / IP / `.local` application origin, so the acquisition trial also
+# serves the Web/BFF on `https://acquisition.home.arpa` (port 443, no port in
+# the origin). `home.arpa` is the RFC 8375 reserved home-network name: it is a
+# public-shaped hostname that can never collide with a real registrable domain,
+# and the operator maps it to 127.0.0.1 in their own hosts file.
+#
+# This file only adds a router. It deliberately does not redefine the
+# `listingkit-ui` service or the `tls` certificates section that already live
+# in the shared `referrals-compose/traefik-dynamic.yml` (mounted as
+# `10-base.yml`); re-declaring them in a second provider file would be a
+# duplicate definition and a second source of truth. Traefik merges every file
+# in `--providers.file.directory`, so the router below resolves the service
+# declared by the base file.
+http:
+  routers:
+    listingkit-ui-public:
+      entryPoints: [application-secure]
+      rule: Host(`acquisition.home.arpa`)
+      service: listingkit-ui
+      tls: {}

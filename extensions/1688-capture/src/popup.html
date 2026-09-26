@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="referrer" content="no-referrer"><title>1688 商品采集</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><span class="eyebrow">商品来源 · 1688</span><h1 id="title">1688 商品采集</h1></header>
+  <p id="source" class="source"></p>
+  <p id="status" role="status" aria-live="polite">打开商品详情页后采集。</p>
+  <p id="missing" class="muted"></p>
+  <button id="capture">采集当前商品</button>
+  <button id="handoff" disabled>在应用中导入</button>
+  <a id="recovery" target="_blank" rel="noreferrer noopener" hidden>在应用中核实原操作</a>
+  <div class="secondary"><button id="refresh">刷新状态</button><button id="fresh" hidden>开始新的采集</button></div>
+  <section id="new-confirm" hidden><p>新采集会建立另一笔操作。已交给应用的操作请先在原页面核实。</p><button id="new-confirm-button">确认开始新采集</button><button id="new-cancel">返回</button></section>
+  <footer>仅采集当前页面商品资料。来源图片尚未获批准。</footer>
+  <script type="module" src="popup.js"></script>
+</body></html>

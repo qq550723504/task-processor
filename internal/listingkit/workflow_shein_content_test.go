@@ -32,6 +32,7 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 	}
 
 	svc := seedWorkflowServices(seedSupportDeps(&service{
+		sheinRuntimeDeps: sheinRuntimeDependencies{costPriceCalculator: testSheinCostPrice},
 		sheinSharedDeps: sheinSharedDependencies{
 			contentOptimizer: ai,
 		},

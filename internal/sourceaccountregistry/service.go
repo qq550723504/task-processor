@@ -306,7 +306,7 @@ func (s *Service) authorize(ctx context.Context, permission string) (Scope, erro
 	if !validScopeValue(identity.EffectiveOrganizationID, MaxOrganizationIDBytes) || !validScopeValue(identity.UserID, MaxActorSubjectBytes) || identity.TenantID != identity.EffectiveOrganizationID {
 		return Scope{}, ErrForbidden
 	}
-	if !s.authorizer.Authorize("", identity.Roles, permission) {
+	if !s.authorizer.Authorize(identity.UserID, identity.Roles, permission) {
 		return Scope{}, ErrForbidden
 	}
 	return Scope{OrganizationID: identity.EffectiveOrganizationID, ActorSubject: identity.UserID}, nil

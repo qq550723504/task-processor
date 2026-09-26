@@ -19,13 +19,18 @@ type Publisher struct {
 	projections ProjectionSource
 	assets      productasset.Repository
 	publicURLs  imageagent.DurableAssetPublicURLResolver
+	trialURLs   *imageagent.IsolatedTrialGeneratedURLPolicy
 }
 
-func NewPublisher(projections ProjectionSource, assets productasset.Repository, publicURLs imageagent.DurableAssetPublicURLResolver) (*Publisher, error) {
-	if nilValue(projections) || nilValue(assets) || nilValue(publicURLs) {
+func NewPublisher(projections ProjectionSource, assets productasset.Repository, publicURLs imageagent.DurableAssetPublicURLResolver, trial ...*imageagent.IsolatedTrialGeneratedURLPolicy) (*Publisher, error) {
+	if nilValue(projections) || nilValue(assets) || nilValue(publicURLs) || len(trial) > 1 {
 		return nil, fmt.Errorf("image agent projection source, product asset repository, and public URL resolver are required")
 	}
-	return &Publisher{projections: projections, assets: assets, publicURLs: publicURLs}, nil
+	publisher := &Publisher{projections: projections, assets: assets, publicURLs: publicURLs}
+	if len(trial) == 1 {
+		publisher.trialURLs = trial[0]
+	}
+	return publisher, nil
 }
 
 // NewV2Publisher keeps only the frozen URL-based Temporal wire while writing
@@ -204,7 +209,7 @@ func (p *Publisher) approvalCommit(projection imageagent.RunProjection, input im
 			if err != nil {
 				return productasset.ApprovalCommit{}, "", err
 			}
-			url, err := imageagent.ValidateSafeImageURL(p.publicURLs.PublicURL(identity.ObjectKey))
+			url, err := imageagent.ResolvePublishedAssetURL(execution, identity, candidateIndex, p.publicURLs, p.trialURLs)
 			if err != nil {
 				return productasset.ApprovalCommit{}, "", imageagent.ErrValidation
 			}

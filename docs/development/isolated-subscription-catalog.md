@@ -1,0 +1,83 @@
+# Isolated subscription purchase catalog
+
+This is an explicit, one-time catalog input for the isolated #478 browser trial.
+It is **not** a production price, a default free plan, an application-startup
+seed, or a tenant-facing plan editor. Run it only against a fresh isolated
+commercial-owner PostgreSQL database after the existing schema migration and
+before any application replica serves purchase traffic. The command rejects a
+database containing plans, offers, quotes, orders, subscriptions or
+entitlements; it never writes an entitlement directly.
+The matching application/identity runtime must also use synthetic trial
+Organizations and grants only. This offer has no per-Organization allowlist;
+do not point an environment with real customer identities at this catalog.
+
+The authorized trial offer is:
+
+| Field | Isolated-trial value |
+| --- | --- |
+| Offer ID | `paid-pilot-isolated-trial-v1` |
+| Plan | `paid_pilot` / 付费试点（隔离试用） |
+| Subscription term | 1 month |
+| Offer availability | 48 hours from provisioning |
+| Settlement | `ZERO_PRICE`, `CNY`, `0` minor units |
+| Pricing version | `isolated-trial-v1` |
+
+The owner plan has this **exact** module set; all listed numeric limits are
+trial choices, not approved production quotas:
+
+| Module | Trial limits |
+| --- | --- |
+| `store_management` | `store_count=1` |
+| `rules` | no numeric limit; capability only |
+| `listingkit` | `listingkit_generations_succeeded=5`, `product_image_jobs_succeeded=5`, `shein_drafts_succeeded=5`, `ai_tokens=50000` |
+| `oss_storage` | `storage_bytes_current=104857600` and `storage_bytes=104857600` (both 100 MiB) |
+
+There is no `task_import` or `shein_publish` module/entitlement in this plan;
+the old import-task routes are not part of this self-service trial. The older
+`paid_pilot` product document names `listing_tasks_created` and
+`studio_design_jobs_succeeded`, but those are not the current Go subscription
+owner's enforced metric names; this trial does **not** claim to enforce a task
+creation quota or to implement that older metric contract. The current
+`listingkit_generations_succeeded` metric is the one enforced on the active
+ListingKit generation path. A limit value of `0` means unlimited in the
+current owner, so this trial does not use zero to disable a capability.
+The upload endpoint still authorizes the `storage_bytes` key, whereas the
+canonical retained-storage ledger reads `storage_bytes_current`. Both keys
+receive the same conservative trial cap so neither path silently treats the
+missing key as unlimited. This does not redefine their different accounting
+semantics or assert that upload bytes equal currently retained bytes.
+
+Use the same private commercial schema-owner JSON config shape as
+`commercial-owner-schema-migrate` (`host`, `port`, `user`, `password`,
+`database`, `maxConnections`, `maxIdleConnections`). Do not commit the config
+or put its password on the command line. Confirm the selected database is an
+isolated, empty database before invoking; its name must contain `isolated` or
+`trial` as an additional accidental-target guard:
+
+```powershell
+go run ./cmd/commercial-owner-schema-migrate -isolated-trial-catalog -config <private-config-absolute-path> -expected-database <isolated-database-name> -confirm ISOLATED_TRIAL_ONLY
+```
+
+The catalog is read-only while the application serves traffic, as required by
+the frozen #480 contract. A failed or repeated command does not repair an
+existing environment; inspect its state rather than clearing business data.
+An expired 48-hour offer is unavailable; this command intentionally cannot
+overwrite it or create a second free offer in the same database. Retire the
+isolated instance under the trial's own data-retention procedure, never by
+running this command against another environment.
+
+For a **new** local `account-compose` project, the existing schema-init service
+can run that same command after its commercial migrations and before the
+application starts. Set `ACCOUNT_COMMERCIAL_DATABASE=commercial_isolated_trial`
+and `ACCOUNT_ISOLATED_TRIAL_CATALOG=ISOLATED_TRIAL_ONLY` only for this one fresh
+project, alongside its unique Compose project name and unused local ports.
+The default database remains `commercial` and does not receive an offer. The
+isolated flag is refused when schema-init sees an already initialized project;
+do not add it to a retained or shared instance. Run `schema-init` and the
+existing `acceptance-fixture` first, then start the application and Console.
+
+After provisioning, start the isolated current application and Console, log in
+as `listingkit_admin` for a verified Effective Organization with no active
+subscription, then use 套餐与权益 → 套餐方案. Confirm the server quote, submit the
+canonical order, and read back 我的权益, 资源与额度, and 账单与订单. The code and
+PostgreSQL owner tests do not substitute for that browser acceptance.

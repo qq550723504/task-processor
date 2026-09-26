@@ -99,6 +99,63 @@ type organizationGrantAccumulator struct {
 	roles map[string]struct{}
 }
 
+// ExactServiceProjectAuthorization is the unmerged provider result used by
+// durable effect admission. Found=false is an authoritative zero-result read;
+// State is retained so inactive grants are not silently filtered away.
+type ExactServiceProjectAuthorization struct {
+	Found           bool
+	AuthorizationID string
+	State           string
+	Roles           []string
+}
+
+func (c *AuthorizationClient) ReadExactServiceProjectAuthorization(ctx context.Context, serviceToken, subject, projectID, organizationID string) (ExactServiceProjectAuthorization, error) {
+	if c == nil || strings.TrimSpace(c.apiURL) == "" {
+		return ExactServiceProjectAuthorization{}, errors.New("ZITADEL authorization API URL is required")
+	}
+	serviceToken = strings.TrimSpace(serviceToken)
+	subject = strings.TrimSpace(subject)
+	projectID = strings.TrimSpace(projectID)
+	organizationID = strings.TrimSpace(organizationID)
+	if serviceToken == "" || subject == "" || projectID == "" || organizationID == "" {
+		return ExactServiceProjectAuthorization{}, errors.New("ZITADEL exact service authorization input is required")
+	}
+	response, err := c.listAuthorizationPage(ctx, serviceToken, subject, projectID, organizationID, 0, 2)
+	if err != nil {
+		return ExactServiceProjectAuthorization{}, err
+	}
+	total := uint64(*response.Pagination.TotalResult)
+	rows := *response.Authorizations
+	if total == 0 && len(rows) == 0 {
+		return ExactServiceProjectAuthorization{Found: false}, nil
+	}
+	if total != 1 || len(rows) != 1 {
+		return ExactServiceProjectAuthorization{}, errors.New("ZITADEL exact service authorization returned an ambiguous assignment count")
+	}
+	row := rows[0]
+	if strings.TrimSpace(row.ID) == "" || strings.TrimSpace(row.User.ID) != subject || strings.TrimSpace(row.Project.ID) != projectID || strings.TrimSpace(row.Organization.ID) != organizationID {
+		return ExactServiceProjectAuthorization{}, errors.New("ZITADEL exact service authorization scope mismatch")
+	}
+	if row.State != "STATE_ACTIVE" && row.State != "STATE_INACTIVE" {
+		return ExactServiceProjectAuthorization{}, errors.New("ZITADEL exact service authorization has an unsupported state")
+	}
+	roleSet := make(map[string]struct{}, len(row.Roles))
+	roles := make([]string, 0, len(row.Roles))
+	for _, role := range row.Roles {
+		key := strings.TrimSpace(role.Key)
+		if key == "" {
+			return ExactServiceProjectAuthorization{}, errors.New("ZITADEL exact service authorization contains a blank role")
+		}
+		if _, duplicate := roleSet[key]; duplicate {
+			return ExactServiceProjectAuthorization{}, errors.New("ZITADEL exact service authorization contains a duplicate role")
+		}
+		roleSet[key] = struct{}{}
+		roles = append(roles, key)
+	}
+	sort.Strings(roles)
+	return ExactServiceProjectAuthorization{Found: true, AuthorizationID: row.ID, State: row.State, Roles: roles}, nil
+}
+
 // ListOwnProjectAuthorizations returns only active role assignments belonging
 // to subject and projectID. bearerToken is the user's access token, never a
 // management credential.
@@ -145,7 +202,7 @@ func (c *AuthorizationClient) listProjectAuthorizations(ctx context.Context, bea
 	var firstTotalResult uint64
 	firstPage := true
 	for offset := 0; ; {
-		response, err := c.listAuthorizationPage(ctx, bearerToken, subject, projectID, organizationID, offset)
+		response, err := c.listAuthorizationPage(ctx, bearerToken, subject, projectID, organizationID, offset, authorizationListPageSize)
 		if err != nil {
 			return nil, err
 		}
@@ -203,11 +260,12 @@ func (c *AuthorizationClient) listAuthorizationPage(
 	projectID string,
 	organizationID string,
 	offset int,
+	limit int,
 ) (authorizationListResponse, error) {
 	payload := authorizationListRequest{
 		Pagination: authorizationPaginationRequest{
 			Offset: offset,
-			Limit:  authorizationListPageSize,
+			Limit:  limit,
 			Asc:    true,
 		},
 		Sorting: "AUTHORIZATION_FIELD_NAME_ID",
@@ -291,6 +349,7 @@ func addAuthorizationGrant(
 	subject string,
 	projectID string,
 ) error {
+	authorizationID := strings.TrimSpace(authorization.ID)
 	organizationID := strings.TrimSpace(authorization.Organization.ID)
 	if organizationID == "" {
 		return errors.New("ZITADEL authorization contains a blank organization id")
@@ -312,6 +371,7 @@ func addAuthorizationGrant(
 	if !ok {
 		accumulator = &organizationGrantAccumulator{
 			grant: authidentity.OrganizationGrant{
+				AuthorizationID:  authorizationID,
 				OrganizationID:   organizationID,
 				OrganizationName: organizationName,
 				ProjectID:        authorizationProjectID,

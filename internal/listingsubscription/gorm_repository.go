@@ -75,7 +75,7 @@ type usageCounterRow struct {
 	ID         int64     `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID   string    `gorm:"column:tenant_id;not null;size:128;uniqueIndex:idx_saas_usage_counter"`
 	ModuleCode string    `gorm:"column:module_code;not null;size:64;uniqueIndex:idx_saas_usage_counter"`
-	PeriodKey  string    `gorm:"column:period_key;not null;size:16;uniqueIndex:idx_saas_usage_counter"`
+	PeriodKey  string    `gorm:"column:period_key;not null;size:128;uniqueIndex:idx_saas_usage_counter"`
 	Metric     string    `gorm:"column:metric;not null;size:64;uniqueIndex:idx_saas_usage_counter"`
 	Used       int       `gorm:"column:used;not null;default:0"`
 	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime"`
@@ -87,7 +87,7 @@ type usageCounterAdjustmentRow struct {
 	OperationKey string    `gorm:"column:operation_key;primaryKey;size:192"`
 	TenantID     string    `gorm:"column:tenant_id;not null;size:128;index"`
 	ModuleCode   string    `gorm:"column:module_code;not null;size:64"`
-	PeriodKey    string    `gorm:"column:period_key;not null;size:16"`
+	PeriodKey    string    `gorm:"column:period_key;not null;size:128"`
 	Metric       string    `gorm:"column:metric;not null;size:64"`
 	Amount       int       `gorm:"column:amount;not null"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
@@ -101,9 +101,10 @@ type usageEventRow struct {
 	ModuleCode        string     `gorm:"column:module_code;not null;size:64"`
 	Metric            string     `gorm:"column:metric;not null;size:64;index:idx_saas_usage_event_tenant_metric_status,priority:2"`
 	Quantity          int64      `gorm:"column:quantity;not null"`
-	PeriodKey         string     `gorm:"column:period_key;not null;size:16"`
+	PeriodKey         string     `gorm:"column:period_key;not null;size:128"`
 	SourceType        string     `gorm:"column:source_type;not null;size:64"`
 	SourceID          string     `gorm:"column:source_id;not null;size:128"`
+	MemberID          string     `gorm:"column:member_id;size:128;index:idx_saas_usage_event_member_scope"`
 	IdempotencyKey    string     `gorm:"column:idempotency_key;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:2"`
 	Status            string     `gorm:"column:status;not null;size:16;check:status IN ('reserved','committed','released','reversed');index:idx_saas_usage_event_tenant_metric_status,priority:3"`
 	OccurredAt        time.Time  `gorm:"column:occurred_at;not null"`
@@ -120,7 +121,7 @@ func (usageEventRow) TableName() string { return "saas_usage_events" }
 type usageBucketRow struct {
 	TenantID   string    `gorm:"column:tenant_id;primaryKey;size:128"`
 	ModuleCode string    `gorm:"column:module_code;primaryKey;size:64"`
-	PeriodKey  string    `gorm:"column:period_key;primaryKey;size:16"`
+	PeriodKey  string    `gorm:"column:period_key;primaryKey;size:128"`
 	Metric     string    `gorm:"column:metric;primaryKey;size:64"`
 	Committed  int64     `gorm:"column:committed;not null;default:0"`
 	Reserved   int64     `gorm:"column:reserved;not null;default:0"`
@@ -156,6 +157,36 @@ type auditLogRow struct {
 
 func (auditLogRow) TableName() string { return "saas_subscription_audit_logs" }
 
+type purchasedPlanActivationFenceRow struct {
+	OrganizationID string `gorm:"column:organization_id;primaryKey;size:128"`
+}
+
+func (purchasedPlanActivationFenceRow) TableName() string {
+	return "saas_subscription_activation_fences"
+}
+
+type purchasedPlanActivationRow struct {
+	OperationID               string     `gorm:"column:operation_id;primaryKey;size:128"`
+	OrganizationID            string     `gorm:"column:organization_id;size:128;not null;index"`
+	SourceType                string     `gorm:"column:source_type;size:64;not null;uniqueIndex:uq_saas_purchase_activation_source,priority:1"`
+	SourceID                  string     `gorm:"column:source_id;size:128;not null;uniqueIndex:uq_saas_purchase_activation_source,priority:2"`
+	RequestFingerprint        string     `gorm:"column:request_fingerprint;size:64;not null"`
+	PlanCode                  string     `gorm:"column:plan_code;size:64;not null"`
+	PlanFingerprint           string     `gorm:"column:plan_fingerprint;size:128;not null"`
+	TermMonths                int        `gorm:"column:term_months;not null"`
+	Outcome                   string     `gorm:"column:outcome;size:16;not null"`
+	FailureCode               string     `gorm:"column:failure_code;size:64;not null;default:''"`
+	SubscriptionID            *int64     `gorm:"column:subscription_id"`
+	StartsAt                  *time.Time `gorm:"column:starts_at"`
+	ExpiresAt                 *time.Time `gorm:"column:expires_at"`
+	EntitlementSetFingerprint string     `gorm:"column:entitlement_set_fingerprint;size:64;not null;default:''"`
+	DecidedAt                 time.Time  `gorm:"column:decided_at;not null"`
+}
+
+func (purchasedPlanActivationRow) TableName() string {
+	return "saas_purchased_plan_activations"
+}
+
 type GormRepository struct {
 	db *gorm.DB
 }
@@ -180,6 +211,8 @@ func AutoMigrateRepository(db *gorm.DB) error {
 		&usageBucketRow{},
 		&usageEventOutboxRow{},
 		&auditLogRow{},
+		&purchasedPlanActivationFenceRow{},
+		&purchasedPlanActivationRow{},
 		&storeQuotaAllocationRow{},
 		&storeQuotaBucketRow{},
 	)
@@ -272,6 +305,59 @@ func (r *GormRepository) ListPlans(ctx context.Context) ([]PlanBundle, error) {
 func (r *GormRepository) UpsertDefaultPlans(ctx context.Context, plans []PlanBundle) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return upsertDefaultPlans(tx, plans)
+	})
+}
+
+// CreateCatalogPlan is an insert-only, offline catalog provision operation.
+// The caller must finish catalog provisioning before purchase traffic starts.
+func (r *GormRepository) CreateCatalogPlan(ctx context.Context, modules []Module, bundle PlanBundle) error {
+	if r == nil || r.db == nil || strings.TrimSpace(bundle.Plan.Code) == "" || !bundle.Plan.Active || len(modules) == 0 || len(bundle.Modules) == 0 {
+		return ErrPurchasablePlanUnavailable
+	}
+	known := make(map[string]bool, len(modules))
+	for _, module := range modules {
+		if strings.TrimSpace(module.Code) == "" || strings.TrimSpace(module.Name) == "" || known[module.Code] || !module.Active {
+			return ErrPurchasablePlanUnavailable
+		}
+		known[module.Code] = true
+	}
+	if strings.TrimSpace(bundle.Plan.Name) == "" {
+		return ErrPurchasablePlanUnavailable
+	}
+	seen := make(map[string]bool, len(bundle.Modules))
+	for _, module := range bundle.Modules {
+		if module.PlanCode != bundle.Plan.Code || !known[module.ModuleCode] || seen[module.ModuleCode] {
+			return ErrPurchasablePlanUnavailable
+		}
+		seen[module.ModuleCode] = true
+		for _, limit := range module.Limits {
+			if limit < 0 {
+				return ErrPurchasablePlanUnavailable
+			}
+		}
+	}
+	return r.db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		for _, module := range modules {
+			row := subscriptionModuleRow{Code: module.Code, Name: module.Name, Description: module.Description, SortOrder: module.SortOrder, Active: module.Active}
+			if err := db.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		plan := subscriptionPlanRow{Code: bundle.Plan.Code, Name: bundle.Plan.Name, Description: bundle.Plan.Description, SortOrder: bundle.Plan.SortOrder, Active: true}
+		if err := db.Create(&plan).Error; err != nil {
+			return err
+		}
+		for _, module := range bundle.Modules {
+			limits, err := marshalLimits(module.Limits)
+			if err != nil {
+				return err
+			}
+			row := subscriptionPlanModuleRow{PlanCode: module.PlanCode, ModuleCode: module.ModuleCode, LimitsJSON: limits, SortOrder: module.SortOrder}
+			if err := db.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

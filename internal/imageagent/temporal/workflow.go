@@ -2471,6 +2471,12 @@ func approvalActionPublicationKey(actionID, runID string, revision int64) string
 	return fmt.Sprintf("image-agent:approval:%s", hex.EncodeToString(digest[:]))
 }
 
+// ApprovalActionPublicationKey is the current run-scoped Product Asset action
+// identity, also used to verify a completed action after Temporal has closed.
+func ApprovalActionPublicationKey(actionID, runID string, revision int64) string {
+	return approvalActionPublicationKey(actionID, runID, revision)
+}
+
 func legacyApprovalActionPublicationKey(actionID, runID string, revision int64) string {
 	digest := sha256.Sum256([]byte(strings.TrimSpace(actionID)))
 	return fmt.Sprintf("image-agent:%s:plan:%d:approval:%s", strings.TrimSpace(runID), revision, hex.EncodeToString(digest[:]))

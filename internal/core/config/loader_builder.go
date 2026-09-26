@@ -246,18 +246,8 @@ func BuildConfig(v *viper.Viper) *Config {
 
 	cfg.RabbitMQ = BuildRabbitMQConfig(v)
 
-	if v.GetString("database.host") != "" {
-		cfg.Database = &DatabaseConfig{
-			Host:                  v.GetString("database.host"),
-			Port:                  v.GetInt("database.port"),
-			User:                  v.GetString("database.user"),
-			Password:              v.GetString("database.password"),
-			Database:              v.GetString("database.database"),
-			MaxConnections:        v.GetInt("database.max_connections"),
-			MaxIdleConnections:    v.GetInt("database.max_idle_connections"),
-			ConnectionMaxLifetime: time.Duration(v.GetInt64("database.connection_max_lifetime")),
-		}
-	}
+	cfg.Database = databaseConfigFromViper(v, "database")
+	cfg.CommercialDatabase = databaseConfigFromViper(v, "commercialDatabase")
 
 	if v.GetString("redis.host") != "" {
 		port := v.GetInt("redis.port")
@@ -285,6 +275,22 @@ func BuildConfig(v *viper.Viper) *Config {
 	}
 
 	return cfg
+}
+
+func databaseConfigFromViper(v *viper.Viper, prefix string) *DatabaseConfig {
+	if v == nil || strings.TrimSpace(v.GetString(prefix+".host")) == "" {
+		return nil
+	}
+	return &DatabaseConfig{
+		Host:                  v.GetString(prefix + ".host"),
+		Port:                  v.GetInt(prefix + ".port"),
+		User:                  v.GetString(prefix + ".user"),
+		Password:              v.GetString(prefix + ".password"),
+		Database:              v.GetString(prefix + ".database"),
+		MaxConnections:        v.GetInt(prefix + ".max_connections"),
+		MaxIdleConnections:    v.GetInt(prefix + ".max_idle_connections"),
+		ConnectionMaxLifetime: time.Duration(v.GetInt64(prefix + ".connection_max_lifetime")),
+	}
 }
 
 func buildFeatureFlagsConfig(v *viper.Viper) FeatureFlagsConfig {

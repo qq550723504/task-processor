@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { connection } from "next/server";
 
 import { ApplicationFrame } from "@/components/application-frame";
+import { isProductAcquisitionAvailable } from "@/lib/server/product-acquisition-availability";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -29,11 +31,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // The server-only deployment switch must be read at request time; it is never
+  // accepted from browser state or inferred from a role.
+  await connection();
+  const productAcquisitionAvailable = isProductAcquisitionAvailable();
   return (
     <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground">
-        <ApplicationFrame>{children}</ApplicationFrame>
+        <ApplicationFrame productAcquisitionAvailable={productAcquisitionAvailable}>{children}</ApplicationFrame>
       </body>
     </html>
   );

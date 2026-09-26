@@ -1,0 +1,343 @@
+package billing
+
+import (
+	"context"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
+
+	"task-processor/internal/ledger/money"
+	"task-processor/internal/ledger/orgresource"
+)
+
+// OrderStore owns only commercial order meaning. It does not implement money
+// or resource balance changes; those are called through the two owner ports.
+type OrderStore interface {
+	CreatePendingResourceOrder(context.Context, CreateResourceOrderRequest, Quote) (Order, error)
+	FindResourceOrderByIdempotency(context.Context, string, string) (Order, bool, error)
+	UpdateOrder(context.Context, Order) error
+}
+
+type Service struct {
+	offers                 OfferCatalog
+	quotes                 QuoteEngine
+	orders                 OrderStore
+	reader                 OrderReader
+	wallet                 WalletPort
+	grants                 PurchasedResourceGrantPort
+	subscriptionOffers     SubscriptionOfferCatalog
+	subscriptionQuotes     SubscriptionQuoteStore
+	subscriptionOrders     SubscriptionOrderStore
+	subscriptions          SubscriptionPurchasePort
+	subscriptionAuthorizer SubscriptionPurchaseRecoveryAuthorizer
+	now                    func() time.Time
+}
+
+func NewService(offers OfferCatalog, quotes QuoteEngine, orders OrderStore, reader OrderReader, wallet WalletPort, grants PurchasedResourceGrantPort) (*Service, error) {
+	if offers == nil || quotes == nil || orders == nil || reader == nil || wallet == nil {
+		return nil, ErrFeatureUnavailable
+	}
+	service := &Service{offers: offers, quotes: quotes, orders: orders, reader: reader, wallet: wallet, grants: grants, now: func() time.Time { return time.Now().UTC() }}
+	service.subscriptionOffers, _ = offers.(SubscriptionOfferCatalog)
+	service.subscriptionQuotes, _ = quotes.(SubscriptionQuoteStore)
+	service.subscriptionOrders, _ = orders.(SubscriptionOrderStore)
+	return service, nil
+}
+
+func (s *Service) CreateQuote(ctx context.Context, request QuoteRequest) (Quote, error) {
+	if s == nil || s.quotes == nil {
+		return Quote{}, ErrFeatureUnavailable
+	}
+	return s.quotes.CreateQuote(ctx, request)
+}
+
+func (s *Service) ReadWallet(ctx context.Context, organizationID string) (money.OrganizationWalletSnapshot, error) {
+	if s == nil || s.wallet == nil {
+		return money.OrganizationWalletSnapshot{}, ErrFeatureUnavailable
+	}
+	return s.wallet.ReadOrganizationWallet(ctx, organizationID, CurrencyCNY)
+}
+
+func (s *Service) ListWalletEntries(ctx context.Context, organizationID, cursor string, limit int) (money.WalletEntryPage, error) {
+	if s == nil || s.wallet == nil {
+		return money.WalletEntryPage{}, ErrFeatureUnavailable
+	}
+	return s.wallet.ListOrganizationWalletEntries(ctx, organizationID, CurrencyCNY, cursor, limit)
+}
+
+func (s *Service) CreateResourceOrder(ctx context.Context, request CreateResourceOrderRequest) (Order, error) {
+	if s == nil || s.orders == nil || s.quotes == nil || s.wallet == nil || s.grants == nil {
+		return Order{}, ErrFeatureUnavailable
+	}
+	request.OrganizationID = strings.TrimSpace(request.OrganizationID)
+	request.QuoteID = strings.TrimSpace(request.QuoteID)
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+	if request.OrganizationID == "" || request.QuoteID == "" || request.IdempotencyKey == "" {
+		return Order{}, ErrInvalid
+	}
+	order, found, err := s.orders.FindResourceOrderByIdempotency(ctx, request.OrganizationID, request.IdempotencyKey)
+	if err != nil {
+		return Order{}, err
+	}
+	if found {
+		if order.QuoteID != request.QuoteID {
+			return Order{}, ErrConflict
+		}
+		if order.Status == OrderCancelled {
+			return order, cancellationError(order.FailureCode)
+		}
+		if order.Status == OrderReconciliationRequired || order.Status == OrderFundsReserved || order.Status == OrderFulfilling {
+			return s.ReconcileResourceOrder(ctx, order.OrganizationID, order.OrderID)
+		}
+	} else {
+		quote, quoteErr := s.quotes.ReadQuote(ctx, request.OrganizationID, request.QuoteID)
+		if quoteErr != nil {
+			return Order{}, quoteErr
+		}
+		order, err = s.orders.CreatePendingResourceOrder(ctx, request, quote)
+		if err != nil {
+			return Order{}, err
+		}
+	}
+	if order.Status != OrderPending {
+		return order, nil
+	}
+	reservation, err := s.wallet.ReserveCommercialPurchase(ctx, money.ReserveWalletFundsInput{OperationID: order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, Currency: order.Currency, AmountMinor: order.AmountMinor})
+	if err != nil {
+		if errors.Is(err, money.ErrWalletInsufficientBalance) {
+			order.Status = OrderCancelled
+			order.FailureCode = OrderFailureInsufficientFunds
+			order.UpdatedAt = s.now().UTC()
+			if updateErr := s.updateOrder(ctx, &order); updateErr != nil {
+				return Order{}, ErrReconciliationRequired
+			}
+			return order, ErrInsufficientFunds
+		}
+		order.Status = OrderReconciliationRequired
+		order.UpdatedAt = s.now().UTC()
+		_ = s.updateOrder(ctx, &order)
+		return order, ErrReconciliationRequired
+	}
+	order.WalletReservationID = reservation.ReservationID
+	order.WalletReservationState = reservation.State
+	order.Status = OrderFundsReserved
+	order.UpdatedAt = s.now().UTC()
+	if err := s.updateOrder(ctx, &order); err != nil {
+		return order, ErrReconciliationRequired
+	}
+	item := order.Items[0]
+	grant, err := s.grants.GrantPurchasedResource(ctx, orgresource.PurchasedResourceGrantInput{OrganizationID: order.OrganizationID, OperationID: "grant:" + order.OrderID, CommercialOrderID: order.OrderID, CommercialOrderItemID: item.OrderItemID, ResourceType: item.ResourceType, Quantity: item.ResourceQuantity, Principal: orgresource.Principal{ID: "commercial-billing", Kind: orgresource.PrincipalTrustedCommercial}})
+	if err != nil {
+		if !terminalGrantError(err) {
+			order.Status = OrderReconciliationRequired
+			order.UpdatedAt = s.now().UTC()
+			_ = s.updateOrder(ctx, &order)
+			return order, ErrReconciliationRequired
+		}
+		released, releaseErr := s.wallet.ReleaseCommercialPurchase(ctx, money.ReleaseWalletReservationInput{OperationID: "release:" + order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, ReservationID: reservation.ReservationID, Reason: "resource_grant_failed"})
+		if releaseErr != nil || released.State != money.WalletReservationReleased {
+			order.Status = OrderReconciliationRequired
+			order.UpdatedAt = s.now().UTC()
+			_ = s.updateOrder(ctx, &order)
+			return order, ErrReconciliationRequired
+		}
+		order.Status = OrderCancelled
+		order.FailureCode = OrderFailureGrantRejected
+		order.WalletReservationID = ""
+		order.WalletReservationState = ""
+		order.UpdatedAt = s.now().UTC()
+		if updateErr := s.updateOrder(ctx, &order); updateErr != nil {
+			return Order{}, ErrReconciliationRequired
+		}
+		return order, ErrResourceGrantRejected
+	}
+	if !matchesGrantProof(order, grant.Snapshot) {
+		order.Status = OrderReconciliationRequired
+		order.UpdatedAt = s.now().UTC()
+		_ = s.updateOrder(ctx, &order)
+		return order, ErrReconciliationRequired
+	}
+	order.ResourceGrantOperationID = grant.Snapshot.OperationID
+	order.ResourceGrantSourceType = grant.Snapshot.SourceType
+	order.ResourceGrantSourceIdentity = grant.Snapshot.SourceIdentity
+	order.Status = OrderFulfilling
+	order.UpdatedAt = s.now().UTC()
+	if err := s.updateOrder(ctx, &order); err != nil {
+		return order, ErrReconciliationRequired
+	}
+	committed, err := s.wallet.CommitCommercialPurchase(ctx, money.CommitWalletReservationInput{OperationID: "commit:" + order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, ReservationID: reservation.ReservationID})
+	if err != nil || committed.State != money.WalletReservationCommitted {
+		order.Status = OrderReconciliationRequired
+		order.UpdatedAt = s.now().UTC()
+		_ = s.updateOrder(ctx, &order)
+		return order, ErrReconciliationRequired
+	}
+	order.WalletReservationState = committed.State
+	order.Status = OrderFulfilled
+	order.UpdatedAt = s.now().UTC()
+	if err := s.updateOrder(ctx, &order); err != nil {
+		return order, ErrReconciliationRequired
+	}
+	return order, nil
+}
+
+// ReconcileResourceOrder repeats only the source-bound, idempotent grant and
+// wallet commit for the durable order identity. It never creates a new order.
+func (s *Service) ReconcileResourceOrder(ctx context.Context, organizationID, orderID string) (Order, error) {
+	if s == nil || s.orders == nil || s.reader == nil || s.wallet == nil || s.grants == nil {
+		return Order{}, ErrFeatureUnavailable
+	}
+	order, err := s.reader.ReadOrder(ctx, organizationID, orderID)
+	if err != nil {
+		return Order{}, err
+	}
+	if order.Status != OrderReconciliationRequired && order.Status != OrderFundsReserved && order.Status != OrderFulfilling {
+		return order, nil
+	}
+	if order.WalletReservationID == "" || len(order.Items) != 1 {
+		return order, ErrReconciliationRequired
+	}
+	reservation, err := s.wallet.ReadCommercialPurchaseReservation(ctx, order.OrganizationID, order.OrderID, order.WalletReservationID)
+	if err != nil || reservation.OrganizationID != order.OrganizationID || reservation.CommercialOrderID != order.OrderID || reservation.ReservationID != order.WalletReservationID || reservation.AmountMinor != order.AmountMinor || reservation.Currency != order.Currency {
+		return order, ErrReconciliationRequired
+	}
+	order.WalletReservationState = reservation.State
+	if reservation.State == money.WalletReservationReleased {
+		if hasResourceGrantEvidence(order) {
+			return order, ErrReconciliationRequired
+		}
+		order.Status = OrderCancelled
+		order.FailureCode = OrderFailureGrantRejected
+		order.WalletReservationID = ""
+		order.WalletReservationState = ""
+		order.UpdatedAt = s.now().UTC()
+		if err := s.updateOrder(ctx, &order); err != nil {
+			return Order{}, ErrReconciliationRequired
+		}
+		return order, ErrResourceGrantRejected
+	}
+	if order.WalletReservationState == money.WalletReservationCommitted {
+		if !hasResourceGrantProof(order) {
+			return order, ErrReconciliationRequired
+		}
+		order.Status = OrderFulfilled
+		order.UpdatedAt = s.now().UTC()
+		if err := s.updateOrder(ctx, &order); err != nil {
+			return order, ErrReconciliationRequired
+		}
+		return order, nil
+	}
+	if order.WalletReservationState != money.WalletReservationReserved {
+		return order, ErrReconciliationRequired
+	}
+	item := order.Items[0]
+	grant, err := s.grants.GrantPurchasedResource(ctx, orgresource.PurchasedResourceGrantInput{OrganizationID: order.OrganizationID, OperationID: "grant:" + order.OrderID, CommercialOrderID: order.OrderID, CommercialOrderItemID: item.OrderItemID, ResourceType: item.ResourceType, Quantity: item.ResourceQuantity, Principal: orgresource.Principal{ID: "commercial-billing", Kind: orgresource.PrincipalTrustedCommercial}})
+	if err != nil {
+		if terminalGrantError(err) {
+			released, releaseErr := s.wallet.ReleaseCommercialPurchase(ctx, money.ReleaseWalletReservationInput{OperationID: "release:" + order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, ReservationID: order.WalletReservationID, Reason: "resource_grant_failed"})
+			if releaseErr == nil && released.State == money.WalletReservationReleased {
+				order.Status = OrderCancelled
+				order.FailureCode = OrderFailureGrantRejected
+				order.WalletReservationID = ""
+				order.WalletReservationState = ""
+				order.UpdatedAt = s.now().UTC()
+				if s.updateOrder(ctx, &order) == nil {
+					return order, ErrResourceGrantRejected
+				}
+				return Order{}, ErrReconciliationRequired
+			}
+		}
+		return order, ErrReconciliationRequired
+	}
+	if !matchesGrantProof(order, grant.Snapshot) {
+		return order, ErrReconciliationRequired
+	}
+	order.ResourceGrantOperationID = grant.Snapshot.OperationID
+	order.ResourceGrantSourceType = grant.Snapshot.SourceType
+	order.ResourceGrantSourceIdentity = grant.Snapshot.SourceIdentity
+	order.Status = OrderFulfilling
+	order.UpdatedAt = s.now().UTC()
+	if err := s.updateOrder(ctx, &order); err != nil {
+		return order, ErrReconciliationRequired
+	}
+	committed, err := s.wallet.CommitCommercialPurchase(ctx, money.CommitWalletReservationInput{OperationID: "commit:" + order.OrderID, OrganizationID: order.OrganizationID, CommercialOrderID: order.OrderID, ReservationID: order.WalletReservationID})
+	if err != nil || committed.State != money.WalletReservationCommitted {
+		order.Status = OrderReconciliationRequired
+		order.UpdatedAt = s.now().UTC()
+		if err := s.updateOrder(ctx, &order); err != nil {
+			return Order{}, ErrReconciliationRequired
+		}
+		return order, ErrReconciliationRequired
+	}
+	order.WalletReservationState = committed.State
+	order.Status = OrderFulfilled
+	order.UpdatedAt = s.now().UTC()
+	if err := s.updateOrder(ctx, &order); err != nil {
+		return order, ErrReconciliationRequired
+	}
+	return order, nil
+}
+
+func cancellationError(code OrderFailureCode) error {
+	switch code {
+	case OrderFailureInsufficientFunds:
+		return ErrInsufficientFunds
+	case OrderFailureGrantRejected:
+		return ErrResourceGrantRejected
+	default:
+		return ErrOrderCancelled
+	}
+}
+
+func (s *Service) updateOrder(ctx context.Context, order *Order) error {
+	if err := s.orders.UpdateOrder(ctx, *order); err != nil {
+		return err
+	}
+	order.Version++
+	return nil
+}
+
+func matchesGrantProof(order Order, snapshot orgresource.PurchasedResourceGrantSnapshot) bool {
+	if len(order.Items) != 1 {
+		return false
+	}
+	item := order.Items[0]
+	expectedSource := orgresource.CommercialOrderItemSourceIdentity(order.OrganizationID, order.OrderID, item.OrderItemID)
+	return snapshot.OperationID == "grant:"+order.OrderID && snapshot.OrganizationID == order.OrganizationID &&
+		snapshot.CommercialOrderID == order.OrderID && snapshot.CommercialOrderItemID == item.OrderItemID &&
+		snapshot.ResourceType == item.ResourceType && snapshot.Quantity == strconv.FormatInt(item.ResourceQuantity, 10) &&
+		snapshot.SourceType == orgresource.SourceCommercialOrderItem && snapshot.SourceIdentity == expectedSource
+}
+
+func terminalGrantError(err error) bool {
+	// A source-claim conflict can mean that the resource owner already credited
+	// a different grant for this durable source. Keep the wallet reservation and
+	// require reconciliation rather than reporting a terminal rejection.
+	return errors.Is(err, orgresource.ErrForbidden) || errors.Is(err, orgresource.ErrInvalidInput)
+}
+
+func (s *Service) CreateWalletTopUpOrder(context.Context, CreateWalletTopUpOrderRequest) (Order, error) {
+	return Order{}, ErrFeatureUnavailable
+}
+
+func (s *Service) ReadOrder(ctx context.Context, organizationID, orderID string) (Order, error) {
+	if s == nil || s.reader == nil {
+		return Order{}, ErrFeatureUnavailable
+	}
+	return s.reader.ReadOrder(ctx, organizationID, orderID)
+}
+
+func (s *Service) ListOrders(ctx context.Context, organizationID string, filter OrderFilter) (OrderPage, error) {
+	if s == nil || s.reader == nil {
+		return OrderPage{}, ErrFeatureUnavailable
+	}
+	return s.reader.ListOrders(ctx, organizationID, filter)
+}
+
+func (s *Service) ReadOrderSummary(ctx context.Context, organizationID string, from, until time.Time) (OrderSummary, error) {
+	if s == nil || s.reader == nil {
+		return OrderSummary{}, ErrFeatureUnavailable
+	}
+	return s.reader.ReadOrderSummary(ctx, organizationID, from, until)
+}

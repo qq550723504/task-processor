@@ -46,6 +46,13 @@ func TestCommercialReadActualGrantAndLedgerWindow(t *testing.T) {
 	require.Len(t, got.Plans, 1, "technical default plans are not the sellable catalog")
 	require.Equal(t, "base_payg", got.Plans[0].Code)
 	require.Len(t, got.Usage, 5)
+	require.Equal(t, []string{
+		usageMetricListingKitGenerationsSucceeded,
+		usageMetricProductImageJobsSucceeded,
+		usageMetricSheinDraftsSucceeded,
+		usageMetricSheinPublishesSucceeded,
+		usageMetricStorageBytesCurrent,
+	}, []string{got.Usage[0].Metric, got.Usage[1].Metric, got.Usage[2].Metric, got.Usage[3].Metric, got.Usage[4].Metric})
 	require.Equal(t, "1", *got.Usage[0].Committed, "only the current month is read")
 	require.Equal(t, "0", *got.Usage[0].Reserved)
 	require.Equal(t, "unknown", got.Usage[1].State)
@@ -121,6 +128,10 @@ func TestCommercialReadLimitsRespectCanonicalKeysAndUnknown(t *testing.T) {
 	require.Equal(t, "product_image_jobs_succeeded", limits[0].SourceKey)
 	require.Equal(t, "operation", limits[0].Unit)
 	require.Equal(t, "unlimited", limits[0].Kind)
+	limits, unknown, err = commercialLimits(ModuleListingKit, `{"ai_tokens":100}`)
+	require.NoError(t, err)
+	require.Empty(t, limits, "model tokens are not a customer-facing commercial limit")
+	require.Equal(t, 1, unknown)
 	limits, unknown, err = commercialLimits(ModuleStoreManagement, `{"store_count":0}`)
 	require.NoError(t, err)
 	require.Zero(t, unknown)

@@ -10,6 +10,7 @@ type sheinRuntimeDependencies struct {
 	saleAttributeResolver  sheinpub.SaleAttributeResolver
 	sizeHeaderResolver     sheinpub.SizeAttributeHeaderResolver
 	pricingPolicy          sheinpub.PricingPolicy
+	costPriceCalculator    SheinCostPriceCalculator
 }
 
 func resolveSheinResolutionCacheStore(s *service) sheinpub.ResolutionCacheStore {

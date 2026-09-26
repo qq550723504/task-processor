@@ -34,6 +34,8 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	orgresourceadapter "task-processor/internal/integration/orgresource"
+	commercialstore "task-processor/internal/integration/persistence/commercialbilling"
+	moneystore "task-processor/internal/integration/persistence/money"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/workbenchcontext"
@@ -126,6 +128,58 @@ func commercialTableSnapshot(t *testing.T, db *gorm.DB) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func commercialOwnerTableSnapshot(t *testing.T, db *gorm.DB) string {
+	t.Helper()
+	var tables []string
+	require.NoError(t, db.Raw("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").Scan(&tables).Error)
+	var rows []string
+	for _, table := range tables {
+		var values []string
+		require.NoError(t, db.Raw(fmt.Sprintf(`SELECT row_to_json(t)::text || ':' || xmin::text FROM %q t`, table)).Scan(&values).Error)
+		sort.Strings(values)
+		rows = append(rows, table+":"+strings.Join(values, "|"))
+	}
+	sum := sha256.Sum256([]byte(strings.Join(rows, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+func commercialOwnerFixtureDB(t *testing.T, admin *gorm.DB, base *config.DatabaseConfig, suffix, role, password string, migrate func(*gorm.DB) error) (*gorm.DB, *config.DatabaseConfig) {
+	t.Helper()
+	database := "issue455_" + suffix + "_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+	roleSQL := role
+	require.NoError(t, admin.Exec("CREATE DATABASE \""+database+"\"").Error)
+	require.NoError(t, admin.Exec("CREATE ROLE "+roleSQL+" LOGIN PASSWORD '"+password+"'").Error)
+	ownerConfig := *base
+	ownerConfig.Database = database
+	ownerConfig.User = "issue347"
+	ownerConfig.Password = "issue347-fixture"
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", ownerConfig.Host, ownerConfig.Port, ownerConfig.User, ownerConfig.Password, ownerConfig.Database)
+	owner, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	ownerSQL, err := owner.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, ownerSQL.Close()) })
+	require.NoError(t, migrate(owner))
+	require.NoError(t, admin.Exec("GRANT CONNECT ON DATABASE \""+database+"\" TO "+roleSQL).Error)
+	require.NoError(t, owner.Exec("GRANT USAGE ON SCHEMA public TO "+roleSQL).Error)
+	require.NoError(t, owner.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO "+roleSQL).Error)
+	require.NoError(t, owner.Exec("ALTER ROLE "+roleSQL+" SET default_transaction_read_only=on").Error)
+	reader := *base
+	reader.Database, reader.User, reader.Password = database, role, password
+	return owner, &reader
+}
+
+func openCommercialFixtureReader(t *testing.T, cfg *config.DatabaseConfig) *gorm.DB {
+	t.Helper()
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Database)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	return db
+}
+
 func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	db, dbConfig := commercialPostgres(t)
 	repo := listingsubscription.NewGormRepository(db)
@@ -183,6 +237,14 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO commercial_reader").Error)
 	require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_reader").Error)
 	require.NoError(t, db.Exec("ALTER ROLE commercial_reader SET default_transaction_read_only = on").Error)
+	billingOwner, billingConfig := commercialOwnerFixtureDB(t, db, dbConfig, "billing", "issue455_billing_reader", "issue455-billing-fixture", func(owner *gorm.DB) error {
+		if err := commercialstore.AutoMigrate(owner); err != nil {
+			return err
+		}
+		return orgresourceadapter.AutoMigrate(owner)
+	})
+	moneyOwner, moneyConfig := commercialOwnerFixtureDB(t, db, dbConfig, "money", "issue455_money_reader", "issue455-money-fixture", moneystore.AutoMigrate)
+	billingBefore, moneyBefore := commercialOwnerTableSnapshot(t, billingOwner), commercialOwnerTableSnapshot(t, moneyOwner)
 	before := commercialTableSnapshot(t, db)
 	appCfg := &config.Config{Database: dbConfig, Workbench: config.WorkbenchConfig{Enabled: true}}
 	log := logrus.New()
@@ -192,7 +254,10 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, result.closer()) })
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, result.module.Register(registry))
-	require.Len(t, registry.Routes(), 1)
+	billingModule, err := buildCommercialBillingModule(ctx, openCommercialFixtureReader(t, billingConfig), openCommercialFixtureReader(t, moneyConfig), authz.DefaultListingKitAuthorizer(), appCfg)
+	require.NoError(t, err)
+	require.NoError(t, billingModule.Register(registry))
+	require.Greater(t, len(registry.Routes()), 1)
 	require.NoError(t, contextapi.NewModule(contextapi.NewHandlerWithWorkbenchAuthorizer(authz.DefaultListingKitAuthorizer())).Register(registry))
 	grants := &commercialGrantFixture{}
 	var verifier zitadel.Verifier = mountedVerifierStub{identity: authidentity.AuthenticatedIdentity{UserID: "fixture-user", HomeOrganizationID: "home-A", TokenExpiresAt: now.Add(time.Hour)}}
@@ -237,6 +302,8 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	if browser != nil {
 		browser.serve(t, server.URL)
 		require.Equal(t, before, commercialTableSnapshot(t, db), "browser fixture changed commercial business rows")
+		require.Equal(t, billingBefore, commercialOwnerTableSnapshot(t, billingOwner), "browser fixture changed commercial billing owner rows")
+		require.Equal(t, moneyBefore, commercialOwnerTableSnapshot(t, moneyOwner), "browser fixture changed canonical money owner rows")
 		t.Logf("ZERO_WRITE browser: all saas table values/xmin unchanged: %s", before)
 		return
 	}
@@ -257,6 +324,8 @@ func TestCommercialHTTPPostgresBFFClientZeroWrites(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, grants.calls.Load(), int32(5), "actual live grants executed")
 	require.Equal(t, before, commercialTableSnapshot(t, db), "all subscription, usage, resource tables and xmin unchanged")
+	require.Equal(t, billingBefore, commercialOwnerTableSnapshot(t, billingOwner), "GET routes changed commercial billing owner rows")
+	require.Equal(t, moneyBefore, commercialOwnerTableSnapshot(t, moneyOwner), "GET routes changed canonical money owner rows")
 	// An actual PostgreSQL permission failure is not converted to an empty/zero.
 	require.NoError(t, db.Exec("REVOKE SELECT ON saas_usage_buckets FROM commercial_reader").Error)
 	request, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/workbench/commercial/overview", nil)
