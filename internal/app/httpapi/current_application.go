@@ -24,6 +24,7 @@ import (
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	"task-processor/internal/integration/zitadelregistration"
 	kernelmodule "task-processor/internal/kernel/module"
+	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
 type currentApplicationRoute struct {
@@ -88,6 +89,7 @@ type currentApplicationFactories struct {
 	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
 	buildAccountIdentity            func(*config.Config) (kernelmodule.Module, error)
+	buildSubjectVerification        func(*gorm.DB, *config.Config) (kernelmodule.Module, error)
 }
 
 type CurrentApplicationOption func(*currentApplicationOptions)
@@ -177,6 +179,9 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 			return buildAccountAuditModule(ctx, sourceDB, commercialDB, membershipDB, resourceDB, authorizer, projectID)
 		},
 		buildAccountProfile: func(db *gorm.DB) (kernelmodule.Module, error) { return buildAccountProfileModule(db) },
+		buildSubjectVerification: func(db *gorm.DB, cfg *config.Config) (kernelmodule.Module, error) {
+			return buildSubjectVerificationModule(ctx, db, cfg)
+		},
 		buildAccountIdentity: func(cfg *config.Config) (kernelmodule.Module, error) {
 			return accountIdentityModule{client: zitadelruntime.NewSelfServiceClient(cfg.ListingKit.Zitadel.IssuerURL, &http.Client{Timeout: 5 * time.Second})}, nil
 		},
@@ -318,6 +323,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 	}
 	var referralMaturity func(context.Context, time.Time) error
+	if factories.buildSubjectVerification != nil {
+		verification, err := factories.buildSubjectVerification(sourceAccountDB, cfg)
+		if err != nil {
+			return nil, err
+		}
+		if verification == nil {
+			return nil, errors.New("subject verification module unavailable")
+		}
+		modules = append(modules, verification)
+	}
 	includeAccountProfile := factories.buildAccountProfile != nil
 	if includeAccountProfile {
 		accountProfile, profileErr := factories.buildAccountProfile(sourceAccountDB)
@@ -436,7 +451,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, includeMemberPoints); err != nil {
+	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, factories.buildAcquisitionImage != nil, includeMemberPoints, factories.buildSubjectVerification != nil); err != nil {
 		return nil, err
 	}
 	server := buildCurrentApplicationHTTPServer(bundle.routes, *workbench.authDependencies)
@@ -516,6 +531,16 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
+	if len(includeImage) > 2 && includeImage[2] {
+		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: verificationhttp.BasePath}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.BasePath + "/applications"}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.CallbackPath})
+		for _, route := range routes {
+			if route.Path == verificationhttp.BasePath || route.Path == verificationhttp.BasePath+"/applications" {
+				if route.Module != "subject-verification" || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || route.Permission != authz.PermissionWorkbenchOrganizationMemberManage || route.OrganizationTargetResolver == nil || route.RequestTimeout != 15*time.Second {
+					return errors.New("verification route loses live admin boundary")
+				}
+			}
+		}
+	}
 	if len(includeImage) > 1 && includeImage[1] {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
 	}

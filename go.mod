@@ -35,7 +35,7 @@ require (
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.12.1
-	github.com/tencentcloud/tencentcloud-sdk-go v3.0.233+incompatible
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ess v1.3.184
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/yuin/goldmark v1.8.5
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
@@ -167,6 +167,8 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.184
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms v1.0.233
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect

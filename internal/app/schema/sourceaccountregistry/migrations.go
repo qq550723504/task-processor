@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	accountprofileschema "task-processor/internal/app/schema/accountprofile"
+	verificationschema "task-processor/internal/app/schema/subjectverification"
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	platformmigration "task-processor/internal/platform/database/migration"
 )
@@ -49,5 +50,5 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 	if err := accountprofileschema.Migrate(ctx, db); err != nil {
 		return fmt.Errorf("initialize account profile schema: %w", err)
 	}
-	return nil
+	return verificationschema.Migrate(ctx, db)
 }

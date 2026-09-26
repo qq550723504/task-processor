@@ -7,7 +7,7 @@ import { WORKBENCH_COOKIE_NAME } from "./workbench-proxy";
 const validID = (value: string | null | undefined): value is string => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 function json(value: unknown, status: number) { return NextResponse.json(value, { status, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } }); }
 export function accountFailure(status: number, code: string, outcome?: "not_sent" | "unknown") { return json({ code, message: outcome === "unknown" ? "操作结果待核实，请刷新资料确认状态" : "Account request could not be completed", requestId: "", fieldErrors: [], ...(outcome === "unknown" ? { outcome } : {}) }, status); }
-function serviceOrigin(): string | null {
+export function serviceOrigin(): string | null {
   try {
     const raw = process.env.LISTINGKIT_SERVICE_API_BASE?.trim(); if (!raw) return null;
     const u = new URL(raw);
@@ -141,7 +141,7 @@ export async function proxyAccountIdentity(request: Request, token: string, sess
   } finally { clearTimeout(timer); request.signal.removeEventListener("abort", abort); }
 }
 
-async function readAccountRequestBody(request: Request, maxBytes: number, signal: AbortSignal) {
+export async function readAccountRequestBody(request: Request, maxBytes: number, signal: AbortSignal) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("missing request body");
   const chunks: Uint8Array[] = []; let size = 0;
