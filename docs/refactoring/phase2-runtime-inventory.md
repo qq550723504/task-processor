@@ -21,7 +21,7 @@ never increase them.
 | --- | ---: |
 | `core/logger` | 82 |
 | `platform/logging` | 9 |
-| `platform/database` | 21 |
+| `platform/database` | 23 |
 | `platform/redis` | 8 |
 | `platform/queue/rabbitmq` | 18 |
 | `platform/workerpool` | 23 |
@@ -34,9 +34,10 @@ never increase them.
 The reviewed plan's proposed 8/20 values were stale arithmetic, not valid
 targets. `platform/logging` has one intentional same-platform workerpool
 consumer in addition to app/config/facade wiring, so its final value is 9.
-`platform/database` has 21 because `internal/app/schema/productlisting` is the
-Goose migration owner introduced after the earlier database count. Removing
-either dependency merely to hit 8/20 would invert approved ownership. The
+`platform/database` has 23 because `internal/app/schema/productlisting`,
+`internal/app/schema/accountallocation`, and `internal/app/schema/accountprofile`
+are Goose migration owners introduced after the earlier database count.
+Removing either dependency merely to hit 8/20 would invert approved ownership. The
 lower natural values, `core/logger` 82 and `integration/s3` 4, replace the
 plan's higher draft ceilings.
 
@@ -183,6 +184,23 @@ App schema/runtime packages may continue to execute the migration baseline while
 Phase 2 centralizes database lifecycle. Each listed domain package must first
 define a focused repository port; only its GORM implementation then moves to an
 owning `integration/<domain>` adapter.
+
+## Current admitted edges: SRC-2B1 candidate
+
+The historical closure ceilings remain database **21** and httpimage **8**.
+#398 admission [5643032970](https://github.com/qq550723504/task-processor/issues/398#issuecomment-5643032970)
+separately accepts two CURRENT leaf-capability consumers in this candidate,
+not additional legacy migration debt or evidence of a merge/deployment:
+
+| Target | Exact new importer / production file | Allowed API | Current total |
+| --- | --- | --- | --- |
+| `internal/platform/database` | `internal/app/productsourcing` / `acquisition_initialization.go`; `internal/app/schema/accountallocation`; `internal/app/schema/accountprofile` | `OpenExistingWritableContext`, `Close`, `Config`; explicit initializer, pool 2; Goose migration owners | 24 = 21 historical + 3 current |
+| `internal/integration/httpimage` | `internal/integration/acquisition/a1688` / `public.go` | `NewPublicImageHTTPClient`; bounded anonymous public transport | 9 = 8 historical + 1 current |
+
+Only an actually present exact target/importer edge is excluded from the
+historical counter. Tracked-text AST guards constrain file and API use across
+OS/build tags; sibling files, nested targets and unapproved APIs remain rejected.
+This register does not authorize Browser capture, legacy wrappers or runtime DDL.
 
 ## Legacy consumer register
 
@@ -370,7 +388,7 @@ grant a domain dependency.
 - Phase 6 agent debt: `internal/localagent`, `internal/prompt`.
 - Phase 8 app-retirement debt: `internal/processor`, `internal/state`.
 
-### `platform/database` — closure ceiling 21
+### `platform/database` — closure ceiling 23
 
 - App importers rewired in Phase 2: `internal/app/bootstrap/resources`, `internal/app/httpapi`, `internal/app/runtime/listing`, `internal/app/runtime/listingcontrol`, `internal/app/runtime/listingkitidentitypreflight`, `internal/app/runtime/listingkitownerexceptions`, `internal/app/runtime/listingkitownerreconcile`, `internal/app/runtime/listingkitschemamigrate`, `internal/app/runtime/productlistingschemamigrate`, `internal/app/runtime/sheinplatformrecovery`, `internal/app/worker/imageagent`.
 - Phase 3 product debt: `internal/productenrich/httpapi`, `internal/productimage/httpapi`.

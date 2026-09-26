@@ -313,7 +313,54 @@ or RMB payment flows.
   usage-metering authority; its usage ledger is not reused as an enterprise
   resource-balance authority.
 
-### 3.11 `internal/storecenter` expanded Store state
+### 3.11 `internal/ledger/money`
+
+The money ledger is the canonical owner for monetary value and accepted money
+settlement facts. It is distinct from subscription usage and from
+`internal/ledger/orgresource`.
+
+- `internal/ledger/money` owns accepted payment/refund/chargeback facts,
+  payout-method facts, Organization-scoped wallet balance, immutable wallet
+  entries, money reservations, reversals, and money-operation idempotency.
+- Monetary amounts use integer minor units in domain/persistence contracts and
+  decimal strings at JSON boundaries. Float money and UI-derived prices are
+  forbidden.
+- A wallet is scoped by verified Organization and currency. Commercial callers
+  cannot infer beneficiary Organization from a payer's current membership.
+- Browser and tenant handlers never receive a generic money mint/debit command.
+  Top-up credit is bound to accepted settlement + canonical commercial order;
+  purchase debit is bound to a canonical commercial reservation.
+- `internal/integration/persistence/money` owns money persistence mechanics.
+  It does not own catalog, pricing, commercial-order meaning, or platform
+  resource balances.
+
+The detailed Organization wallet contract is
+[commercial-wallet-billing-contract.md](./commercial-wallet-billing-contract.md).
+
+### 3.12 `internal/commercial/billing`
+
+Commercial billing is the canonical owner for sellable offers, authoritative
+quotes, commercial orders/order items, order finality, and recovery
+coordination. It composes existing owners; it does not absorb their facts.
+
+- Money value remains owned by `internal/ledger/money`.
+- Purchased platform resources remain owned by `internal/ledger/orgresource`.
+- Current plan/entitlement/usage facts remain in `internal/listingsubscription`
+  while their approved EXTRACT target moves them into `internal/commercial/*`.
+- Resource purchases use a durable wallet reservation plus a narrow,
+  source-bound `commercial_order_item` resource grant. Commercial code may
+  not expose a generic positive-mint resource command.
+- Figma defines UI/IA and interaction semantics only. Prices, balances, payment
+  outcomes, bills, invoices, and resource grants require their canonical
+  backend facts.
+- Provider checkout and invoice/tax owners are separate capabilities; their
+  absence is represented as unavailable, never mock success.
+
+The detailed state, permission, idempotency, HTTP projection, and recovery
+contract is
+[commercial-wallet-billing-contract.md](./commercial-wallet-billing-contract.md).
+
+### 3.13 `internal/storecenter` expanded Store state
 
 Store Center keeps the legacy `lifecycle_status` during the expand/compatibility
 window, while the V7 state contract introduces nullable transitional
@@ -424,6 +471,9 @@ Use this table when adding new code:
 | Submission state / retry / recovery | `internal/listing/submission`; do not recreate `internal/listingkit/submission` |
 | Product facts | `internal/product/catalog.ProductSnapshot` |
 | Reusable asset facts | `internal/product/asset.ApprovedAsset`; explicit approval required |
+| Monetary settlements / Organization wallet | `internal/ledger/money`; never subscription usage or orgresource |
+| Commercial offers / quotes / orders | `internal/commercial/billing`; money and resource value remain in their ledger owners |
+| Purchased platform-resource grant | narrow source-bound `internal/ledger/orgresource` commercial purchase contract; never a generic mint |
 | Product image processing | `internal/product/image`; ImageAgent owns workflow/approval |
 | SHEIN publishing rules | `internal/marketplace/shein/publishing` |
 | SHEIN workspace/editor/repair rules | `internal/marketplace/shein/workspace` |

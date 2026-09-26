@@ -185,6 +185,172 @@ func TestSourceAccountApplicationPostgresAcceptance(t *testing.T) {
 	}
 }
 
+func TestSourceAccountConfiguredUserPostgresAcceptance(t *testing.T) {
+	db, _ := openSourceAccountApplicationPostgres(t)
+	if err := registrySchema.Migrate(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	fixture := &sourceAccountSubjectFixture{sourceAccountAuthFixture: newSourceAccountAuthFixture()}
+	start := func(users []string) (string, func()) {
+		authorizer, err := authz.NewListingKitAuthorizer(users, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolver := workbenchcontext.NewResolver(fixture, "project", "v1", fixture)
+		application, err := NewSourceAccountApplication(db, fixture, resolver, authorizer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return serveSourceAccountApplication(t, application)
+	}
+	baseURL, stop := start([]string{"actor-1"})
+	const path = "/api/v1/workbench/source-accounts"
+	const key = "0198c5c0-6666-7666-8666-666666666666"
+	const input = `{"displayName":"Subject authority","platform":"1688"}`
+	status, body := sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	if status != http.StatusCreated {
+		t.Fatalf("configured user with only custom_member role: status=%d body=%s", status, body)
+	}
+	var created struct{ Account struct{ ID string } }
+	if err := json.Unmarshal(body, &created); err != nil || created.Account.ID == "" {
+		t.Fatalf("created account: %s, %v", body, err)
+	}
+	item := path + "/" + created.Account.ID
+	for _, readPath := range []string{path, item} {
+		status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodGet, readPath, "", "", "")
+		if status != http.StatusOK || !bytes.Contains(body, []byte(created.Account.ID)) {
+			t.Fatalf("configured user read %s: %d %s", readPath, status, body)
+		}
+	}
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", `{"displayName":"Different","platform":"1688"}`)
+	assertHTTPCode(t, status, body, http.StatusConflict, "IDEMPOTENCY_CONFLICT")
+	for index, action := range []string{"disable", "enable"} {
+		actionKey := fmt.Sprintf("0198c5c0-7777-7777-8777-%012d", index+1)
+		etag := fmt.Sprintf(`"%d"`, index+1)
+		status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, item+"/"+action, actionKey, etag, "")
+		if status != http.StatusOK || !bytes.Contains(body, []byte(fmt.Sprintf(`"version":"%d"`, index+2))) {
+			t.Fatalf("configured user %s: %d %s", action, status, body)
+		}
+		status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, item+"/"+action, actionKey, etag, "")
+		if status != http.StatusOK || !bytes.Contains(body, []byte(`"replayed":true`)) {
+			t.Fatalf("configured user %s replay: %d %s", action, status, body)
+		}
+	}
+	assertUnchanged := func() {
+		t.Helper()
+		var row struct{ Count, Version int64 }
+		if err := db.Raw("SELECT count(*) AS count, max(version) AS version FROM source_account_resources").Scan(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		var receipts int64
+		if err := db.Table("source_account_operations").Count(&receipts).Error; err != nil {
+			t.Fatal(err)
+		}
+		if row.Count != 1 || row.Version != 3 || receipts != 3 {
+			t.Fatalf("unexpected persistence: resources=%d version=%d receipts=%d", row.Count, row.Version, receipts)
+		}
+	}
+	for _, test := range []struct {
+		name, token, org, method, target, requestKey, payload string
+		status                                                int
+		code                                                  string
+	}{
+		{"no grant", "token-admin", "org-c", http.MethodPost, path, key, input, 403, "ORGANIZATION_ACCESS_DENIED"},
+		{"other admitted organization", "token-admin", "org-a", http.MethodGet, item, "", "", 404, "SOURCE_ACCOUNT_NOT_FOUND"},
+		{"different actor", "token-viewer", "org-b", http.MethodPost, path, key, input, 403, "PERMISSION_DENIED"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, body := sourceAccountRequest(t, baseURL, test.token, test.org, test.method, test.target, test.requestKey, "", test.payload)
+			assertHTTPCode(t, status, body, test.status, test.code)
+			assertUnchanged()
+		})
+	}
+	fixture.setRevoked(true)
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	assertHTTPCode(t, status, body, 403, "ORGANIZATION_ACCESS_DENIED")
+	assertUnchanged()
+	fixture.setRevoked(false)
+	fixture.setUnavailable(true)
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	assertHTTPCode(t, status, body, 503, "DEPENDENCY_UNAVAILABLE")
+	assertUnchanged()
+	fixture.setUnavailable(false)
+	fixture.setSuspended(true)
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	assertHTTPCode(t, status, body, 403, "ORGANIZATION_SUSPENDED")
+	assertUnchanged()
+	fixture.setSuspended(false)
+	fixture.setExpired(true)
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	assertHTTPCode(t, status, body, 401, "AUTHENTICATION_REQUIRED")
+	assertUnchanged()
+	fixture.setExpired(false)
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	if status != http.StatusOK || !bytes.Contains(body, []byte(`"replayed":true`)) || !bytes.Contains(body, []byte(`"version":"3"`)) {
+		t.Fatalf("restored configured user replay: %d %s", status, body)
+	}
+	assertUnchanged()
+	stop()
+	// Removing the configured subject requires a newly constructed authorizer;
+	// reducing roles alone is not revocation of the still-configured subject.
+	baseURL, stop = start(nil)
+	defer stop()
+	for _, readPath := range []string{path, item} {
+		status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodGet, readPath, "", "", "")
+		assertHTTPCode(t, status, body, 403, "PERMISSION_DENIED")
+	}
+	status, body = sourceAccountRequest(t, baseURL, "token-admin", "org-b", http.MethodPost, path, key, "", input)
+	assertHTTPCode(t, status, body, 403, "PERMISSION_DENIED")
+	assertUnchanged()
+	if fixture.liveReads < 10 || fixture.cachedReads < 4 {
+		t.Fatalf("expected fresh replay admission: live=%d cached=%d", fixture.liveReads, fixture.cachedReads)
+	}
+}
+
+type sourceAccountSubjectFixture struct {
+	*sourceAccountAuthFixture
+	expired   bool
+	suspended bool
+}
+
+func (f *sourceAccountSubjectFixture) IsOrganizationSuspended(context.Context, string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.suspended, nil
+}
+
+func (f *sourceAccountSubjectFixture) setSuspended(value bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.suspended = value
+}
+
+func (f *sourceAccountSubjectFixture) Verify(ctx context.Context, token string) (authidentity.AuthenticatedIdentity, error) {
+	identity, err := f.sourceAccountAuthFixture.Verify(ctx, token)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.expired {
+		identity.TokenExpiresAt = time.Now().Add(-time.Minute)
+	}
+	return identity, err
+}
+
+func (f *sourceAccountSubjectFixture) Load(ctx context.Context, source workbenchcontext.GrantSource, request workbenchcontext.GrantRequest) (workbenchcontext.GrantResult, error) {
+	result, err := f.sourceAccountAuthFixture.Load(ctx, source, request)
+	if request.Subject == "actor-1" {
+		for index := range result.Grants {
+			result.Grants[index].Roles = []string{"custom_member"}
+		}
+	}
+	return result, err
+}
+
+func (f *sourceAccountSubjectFixture) setExpired(value bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.expired = value
+}
+
 type sourceAccountAuthFixture struct {
 	mu          sync.Mutex
 	revoked     bool

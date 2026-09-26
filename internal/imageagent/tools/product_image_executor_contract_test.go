@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,6 +41,54 @@ func TestExecutorResolvesOnlyExplicitRunPolicyKeyAndCarriesDefaults(t *testing.T
 	require.Equal(t, "misleading-category", renderer.request.Product.ProductType, "product facts are rendering input, not policy input")
 	require.Equal(t, testTinyPNG(t), generated.Assets[0].Bytes)
 	require.Equal(t, "image/png", generated.Assets[0].ContentType)
+}
+
+func TestGenericMainQuotesOnlyOneSourceEditWithoutExtractOrReview(t *testing.T) {
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = "product"
+	input.ImagePolicyContext = &imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
+	input.Slot.Role = imageagent.SlotRoleMain
+	profile := testImageProfile()
+	profile.Key = imagepolicy.PolicyKey{Marketplace: "product", Country: "zz", Family: "default", SceneCategory: "general"}
+	executor := NewProductImageSlotExecutor(Dependencies{UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: profile}})
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	require.Len(t, quote.Operations, 1)
+	require.Equal(t, "render_source_white_background", quote.Operations[0].Name)
+	require.EqualValues(t, 1, quote.Maximum.Images)
+	require.EqualValues(t, 1, quote.Maximum.ModelCalls)
+}
+
+func TestGenericMainGeneratesOneSourceEditWithoutReviewerOrExtractor(t *testing.T) {
+	input := testProductImageExecutionInput()
+	input.TargetPlatform = "product"
+	input.ImagePolicyContext = &imageagent.ImagePolicyContext{Country: "zz", Family: "default", SceneCategory: "general"}
+	input.Slot.Role = imageagent.SlotRoleMain
+	profile := testImageProfile()
+	profile.Key = imagepolicy.PolicyKey{Marketplace: "product", Country: "zz", Family: "default", SceneCategory: "general"}
+	profile.Thresholds.WhiteBackgroundReview = 1
+	white := &recordingProductWhiteRenderer{candidate: testWhiteCandidate(t, "https://source.example/item.png")}
+	white.candidate.Asset.Operations = []string{productimage.SourceWhiteBackgroundOperation}
+	executor := NewProductImageSlotExecutor(Dependencies{WhiteBackgroundRenderer: white, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: profile}})
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	output, err := executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.NoError(t, err)
+	require.True(t, white.request.SourceOnly)
+	require.Equal(t, productimage.Candidate{}, white.request.Subject)
+	require.Equal(t, "source-1", white.request.Source.SourceAssetID)
+	require.Len(t, output.Assets, 1)
+	require.Equal(t, []string{productimage.SourceWhiteBackgroundOperation}, output.Assets[0].Operations)
+	require.EqualValues(t, 1, output.UsageReceipt.Actual.Images)
+	require.EqualValues(t, 1, output.UsageReceipt.Actual.ModelCalls)
+	require.Equal(t, 1, white.calls)
+	oldQuote := quote
+	oldQuote.Fingerprint = "prior-extract-render-review-quote"
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, oldQuote)
+	require.ErrorIs(t, err, imageagent.ErrRevisionConflict)
+	require.Equal(t, 1, white.calls, "changed flow quote must not dispatch again")
+	_, err = executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+	require.Error(t, err, "this flow must not quote a hidden Review on recovery")
 }
 
 func TestExecutorReviewsGeneratedCandidatesBeforeAcceptance(t *testing.T) {
@@ -84,6 +133,80 @@ func TestExecutorReviewRetryPinsAndAuthorizesTheReviewRoute(t *testing.T) {
 	require.NotNil(t, reviewer.request.Authorization)
 	require.Equal(t, "review-route", reviewer.request.Authorization.RouteReference)
 	require.Equal(t, "review-model", reviewer.request.Authorization.Model)
+}
+
+func TestTrialStagedReviewRequiresExactRecoveredIdentityBeforeProvider(t *testing.T) {
+	base := "https://localhost:19444/image-agent-assets/issue487-images"
+	policy, err := imageagent.NewIsolatedTrialGeneratedURLPolicy(base, "issue487-images")
+	require.NoError(t, err)
+	reviewer := &recordingProductReviewer{review: productimage.Review{Score: 1}}
+	executor := NewProductImageSlotExecutor(Dependencies{
+		Reviewer: reviewer, UsageQuoter: testProductUsageQuoter{}, ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()}, GeneratedURLTrial: policy,
+	})
+	input := testProductImageExecutionInput()
+	owner, err := imageagent.ArtifactOwnerKey(input.UserID)
+	require.NoError(t, err)
+	hash := strings.Repeat("a", 64)
+	ref := imageagent.StagedAssetRef{ObjectKey: "image-agent/staging/" + input.TenantID + "/" + owner + "/" + input.RunID + "/1/scene-1/1/0-" + hash + ".png", SHA256: hash, SizeBytes: 8, ContentType: "image/png", Width: 1, Height: 1, SourceAssetID: "source-1", Operations: []string{"render_scene_model"}}
+	staged := imageagent.SlotGeneratedOutput{SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: "source-1", Assets: []imageagent.GeneratedAsset{{URL: base + "/" + ref.ObjectKey, ContentType: ref.ContentType, SourceURL: "https://source.example/item.png", Width: 1, Height: 1, Operations: ref.Operations, StagedRef: &ref}}}
+	quote, err := executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	_, err = executor.ReviewStagedSlotQuoted(context.Background(), input, staged, quote)
+	require.NoError(t, err)
+	require.NotEmpty(t, reviewer.request.Candidates)
+
+	staged.Assets[0].StagedRef = nil
+	_, err = executor.ReviewStagedSlotQuoted(context.Background(), input, staged, quote)
+	require.Error(t, err)
+	staged.Assets[0].StagedRef = &ref
+	staged.Assets[0].SourceURL = "https://localhost:19444/private-source.png"
+	_, err = executor.ReviewStagedSlotQuoted(context.Background(), input, staged, quote)
+	require.Error(t, err)
+}
+
+func TestStagedReviewOnlyReleasesBudgetForConfirmedNoDispatch(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		reviewErr error
+		want      imageagent.ProviderDispatchState
+	}{
+		{"confirmed_preflight", productimage.ErrReviewConfirmedNotDispatched, imageagent.ProviderRejectedBeforeEffect},
+		{"unknown_transport", productimage.ErrExternalCapabilityUnavailable, imageagent.ProviderDispatchedUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			executor := NewProductImageSlotExecutor(Dependencies{
+				Reviewer: &failingProductReviewer{err: tc.reviewErr}, UsageQuoter: testProductUsageQuoter{},
+				ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+			})
+			input := testProductImageExecutionInput()
+			quote, err := executor.QuoteStagedReview(context.Background(), input, imageagent.BudgetPolicy{})
+			require.NoError(t, err)
+			receipt, err := executor.ReviewStagedSlotQuoted(context.Background(), input, imageagent.SlotGeneratedOutput{
+				SlotID: input.Slot.ID, Attempt: input.Attempt, SourceAssetID: "source-1",
+				Assets: []imageagent.GeneratedAsset{{URL: "https://staging.example/review.png", SourceURL: "https://source.example/item.png", Width: 1, Height: 1, Operations: []string{"render_scene_model"}}},
+			}, quote)
+			require.Equal(t, tc.want, imageagent.ProviderDispatchStateOf(err))
+			if tc.want == imageagent.ProviderRejectedBeforeEffect {
+				require.Equal(t, imageagent.SlotUsageReceipt{}, receipt)
+			} else {
+				require.Equal(t, quote.Maximum, receipt.Actual)
+			}
+		})
+	}
+}
+
+func TestGenerateQuotedSlotPreservesPriorImageEffectWhenReviewNotDispatched(t *testing.T) {
+	executor := NewProductImageSlotExecutor(Dependencies{
+		SubjectExtractor: testProductSubjectExtractor{}, WhiteBackgroundRenderer: testProductWhiteRenderer{},
+		Reviewer: &failingProductReviewer{err: productimage.ErrReviewConfirmedNotDispatched}, UsageQuoter: testProductUsageQuoter{},
+		ProfileResolver: &recordingImageProfileResolver{profile: testImageProfile()},
+	})
+	input := testProductImageExecutionInput()
+	input.Slot.Role = imageagent.SlotRoleMain
+	quote, err := executor.QuoteSlot(context.Background(), input, imageagent.BudgetPolicy{})
+	require.NoError(t, err)
+	_, err = executor.GenerateQuotedSlot(context.Background(), input, quote)
+	require.Equal(t, imageagent.ProviderDispatchedUnknown, imageagent.ProviderDispatchStateOf(err), "image generation has already crossed its provider effect")
 }
 
 func TestExecutorClassifiesReviewerTransportFailureSeparately(t *testing.T) {
@@ -332,11 +455,13 @@ func (testProductSubjectExtractor) Extract(context.Context, productimage.Extract
 }
 
 type recordingProductWhiteRenderer struct {
+	calls     int
 	candidate productimage.Candidate
 	request   productimage.RenderRequest
 }
 
 func (r *recordingProductWhiteRenderer) RenderWhiteBackground(_ context.Context, request productimage.RenderRequest) (productimage.Candidate, error) {
+	r.calls++
 	r.request = request
 	return r.candidate, nil
 }

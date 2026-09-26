@@ -41,6 +41,26 @@ func TestPublisherCommitsApprovedAssetsExactlyOnce(t *testing.T) {
 	require.Equal(t, []string{"render_scene"}, inventory.Assets[1].Operations)
 }
 
+func TestPublisherTrialAcceptsOnlyVerifiedLocalPublishedAssetURLs(t *testing.T) {
+	projection := approvedV3Projection(t)
+	const base = "https://localhost:19444/image-agent-assets/issue487-images"
+	policy, err := imageagent.NewIsolatedTrialGeneratedURLPolicy(base, "issue487-images")
+	require.NoError(t, err)
+	repository := assettest.NewMemoryRepository()
+	publisher, err := NewPublisher(staticProjectionSource{projection: projection}, repository, trialPublicURLResolver{base}, policy)
+	require.NoError(t, err)
+	_, err = publisher.PublishApprovedV3(context.Background(), approvedV3PublicationInput(projection))
+	require.NoError(t, err)
+	inventory, err := repository.GetApprovedInventory(context.Background(), productasset.InventoryScope{TenantID: projection.Run.TenantID, ProductKey: "product-1"})
+	require.NoError(t, err)
+	require.Equal(t, base+"/"+projection.Slots[0].Candidates[0].DurableAsset.ObjectKey, inventory.Assets[0].URL)
+
+	rejected, err := NewPublisher(staticProjectionSource{projection: projection}, assettest.NewMemoryRepository(), trialPublicURLResolver{"https://localhost:19445/image-agent-assets/issue487-images"}, policy)
+	require.NoError(t, err)
+	_, err = rejected.PublishApprovedV3(context.Background(), approvedV3PublicationInput(projection))
+	require.Error(t, err)
+}
+
 func TestPublisherPersistsRunTargetPlatformInApprovalScope(t *testing.T) {
 	projection := approvedV3Projection(t)
 	projection.Run.TargetPlatform = "shein"
@@ -161,6 +181,10 @@ func (s staticProjectionSource) GetProjection(context.Context, imageagent.RunSco
 type staticPublicURLResolver struct{}
 
 func (staticPublicURLResolver) PublicURL(key string) string { return "https://cdn.example.test/" + key }
+
+type trialPublicURLResolver struct{ base string }
+
+func (r trialPublicURLResolver) PublicURL(key string) string { return r.base + "/" + key }
 
 type countingAssetRepository struct {
 	productasset.Repository

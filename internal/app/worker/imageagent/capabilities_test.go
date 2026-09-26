@@ -2,6 +2,7 @@ package imageagentworker
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -157,6 +158,33 @@ func completeProviderDependencies() providerDependencies {
 		Scene:           &stubProductImageProvider{quote: productimage.UsageQuote{Operation: "render_scene", Fingerprint: "scene-v1"}},
 		Review:          &stubProductImageProvider{quote: productimage.UsageQuote{Operation: "review", Fingerprint: "review-v1"}},
 	}
+}
+
+func TestProductionSourceEditDoesNotResolveReviewRoute(t *testing.T) {
+	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       map[string]*openaiclient.ClientConfig{imageAgentOpenAIClientName: openaiclient.NewClientConfig("controlled-only", "controlled-image", "https://provider.example.test/v1", 30)},
+		DefaultClient: imageAgentOpenAIClientName,
+	})
+	require.NoError(t, err)
+	resolver := &sourceOnlyRouteResolver{}
+	manager.SetConfigResolver(resolver)
+	capabilities, err := buildProductionImageCapabilities(imageCapabilityRuntime{OpenAIManager: manager})
+	require.NoError(t, err)
+	quote, err := capabilities.UsageQuoter.QuoteUsage(context.Background(), productimage.UsageQuoteRequest{Operation: productimage.SourceWhiteBackgroundOperation, InputFingerprint: "source-flow-v1", MaximumOutputs: 1})
+	require.NoError(t, err)
+	require.Equal(t, productimage.SourceWhiteBackgroundOperation, quote.Operation)
+	require.Zero(t, quote.MaximumTokens, "absence of image token bound is not a Review quote")
+	require.Zero(t, resolver.reviewCalls)
+}
+
+type sourceOnlyRouteResolver struct{ reviewCalls int }
+
+func (r *sourceOnlyRouteResolver) ResolveClientConfig(_ context.Context, name string, fallback *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+	if name == imageAgentReviewOpenAIClientName {
+		r.reviewCalls++
+		return nil, errors.New("review route not configured")
+	}
+	return &openaiclient.ResolvedClientConfig{Config: fallback, CacheKey: "source-only-test-v1"}, nil
 }
 
 type stubProductImageProvider struct {

@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Sanitized local fixture: the shape of a 1688 risk-control page. The marker
+     names are the ones this repository already measured on real 1688 responses
+     (HTTP 200 carrying Bxpunish/x5secdata with no product data); see
+     docs/superpowers/specs/2026-09-20-issue399-1688-context-locator-design.md:168.
+     The page itself is synthetic and contains no account data. -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>安全验证</title>
+  </head>
+  <body>
+    <div id="nocaptcha" data-bxpunish="1">
+      <p>为了您的账号安全，请完成验证。</p>
+    </div>
+    <script>
+      // The redirect target a real risk-control response uses.
+      window.__risk = "punish?x5secdata=REDACTED";
+    </script>
+  </body>
+</html>

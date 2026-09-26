@@ -21,6 +21,7 @@ type sheinAdminWiring struct {
 	repo                    Repository
 	recovery                *taskSubmissionRecoveryService
 	currentPricingRule      func() sheinpub.PricingRule
+	costPriceCalculator     SheinCostPriceCalculator
 	newSheinAPIClient       func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
 	buildTaskPreview        func(context.Context, *Task, string) (*ListingKitPreview, error)
 	categoryResolver        sheinpub.CategoryResolver
@@ -58,6 +59,7 @@ func buildSheinAdminWiring(s *service) sheinAdminWiring {
 		repo:                    repository.repo,
 		recovery:                s.taskSubmissionRecoveryOrDefault(),
 		currentPricingRule:      s.currentSheinPricingRule,
+		costPriceCalculator:     s.sheinRuntimeDeps.costPriceCalculator,
 		newSheinAPIClient:       s.newSheinAPIClient,
 		buildTaskPreview:        preview.buildTaskPreview,
 		categoryResolver:        resolveSheinCategoryResolver(s),
@@ -99,6 +101,7 @@ func buildSheinAdminServiceConfigWithWiring(wiring sheinAdminWiring) sheinAdminS
 		repo:                    wiring.repo,
 		recovery:                wiring.recovery,
 		currentPricingRule:      wiring.currentPricingRule,
+		costPriceCalculator:     wiring.costPriceCalculator,
 		newSheinAPIClient:       wiring.newSheinAPIClient,
 		buildTaskPreview:        wiring.buildTaskPreview,
 		categoryResolver:        wiring.categoryResolver,

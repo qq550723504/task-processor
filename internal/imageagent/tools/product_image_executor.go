@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"task-processor/internal/imageagent"
@@ -28,6 +29,7 @@ type Dependencies struct {
 	UsageQuoter             productimage.UsageQuoter
 	ProfileResolver         ProfileResolver
 	LegacyAssetMaterializer LegacyAssetMaterializer
+	GeneratedURLTrial       *imageagent.IsolatedTrialGeneratedURLPolicy
 }
 
 // LegacyAssetMaterializer bridges byte-producing providers to the frozen v2
@@ -93,6 +95,9 @@ func (e *ProductImageSlotExecutor) quoteSlot(ctx context.Context, input imageage
 	operations, err := slotOperations(resolved.slot.Role, e.legacyV2 || resolved.legacyPolicy)
 	if err != nil {
 		return quotedSlotExecution{}, err
+	}
+	if e.sourceOnlyMain(resolved) {
+		operations = []string{productimage.SourceWhiteBackgroundOperation}
 	}
 	inputFingerprint := imageagent.SlotExecutionFingerprint(input)
 	quoted := quotedSlotExecution{operations: make([]quotedSlotOperation, 0, len(operations))}
@@ -209,6 +214,9 @@ func (e *ProductImageSlotExecutor) generateSlot(ctx context.Context, input image
 }
 
 func (e *ProductImageSlotExecutor) reviewGeneratedCandidates(ctx context.Context, input resolvedSlotInput, candidates []productimage.Candidate, quoted *quotedSlotExecution) error {
+	if e.sourceOnlyMain(input) {
+		return nil
+	}
 	if e != nil && (e.legacyV2 || input.legacyPolicy) {
 		return nil
 	}
@@ -237,7 +245,10 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlot(ctx context.Context, input i
 	if err != nil {
 		return err
 	}
-	candidates, err := e.reviewCandidates(resolved, input.Attempt, staged)
+	if e.sourceOnlyMain(resolved) {
+		return imageagent.ErrValidation
+	}
+	candidates, err := e.reviewCandidates(input, resolved, staged)
 	if err != nil {
 		return err
 	}
@@ -248,6 +259,9 @@ func (e *ProductImageSlotExecutor) QuoteStagedReview(ctx context.Context, input 
 	resolved, err := e.resolveInput(input)
 	if err != nil {
 		return imageagent.SlotUsageQuote{}, err
+	}
+	if e.sourceOnlyMain(resolved) {
+		return imageagent.SlotUsageQuote{}, imageagent.ErrBudgetQuoteUnavailable
 	}
 	if e == nil || e.dependencies.UsageQuoter == nil {
 		return imageagent.SlotUsageQuote{}, fmt.Errorf("%w: image usage quoter is required", imageagent.ErrBudgetQuoteUnavailable)
@@ -280,6 +294,9 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlotQuoted(ctx context.Context, i
 	if err != nil {
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
 	}
+	if e.sourceOnlyMain(resolved) {
+		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, imageagent.ErrValidation)
+	}
 	if e.dependencies.Reviewer == nil {
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, fmt.Errorf("%w: image reviewer is required", imageagent.ErrValidation))
 	}
@@ -294,13 +311,16 @@ func (e *ProductImageSlotExecutor) ReviewStagedSlotQuoted(ctx context.Context, i
 		}
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
 	}
-	candidates, err := e.reviewCandidates(resolved, input.Attempt, staged)
+	candidates, err := e.reviewCandidates(input, resolved, staged)
 	if err != nil {
 		return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderNotDispatched, err)
 	}
 	review, err := e.dependencies.Reviewer.Review(ctx, productimage.ReviewRequest{Product: resolved.product, Sources: []productimage.Asset{resolved.source}, Candidates: candidates, Authorization: &capability})
 	receipt := imageagent.SlotUsageReceipt{Actual: expected.Maximum, CostBasis: imageagent.UsageCostReservedUpperBound}
 	if err != nil {
+		if err == productimage.ErrReviewConfirmedNotDispatched {
+			return imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderRejectedBeforeEffect, err)
+		}
 		return receipt, dispatchedCapabilityError("review image", err, true)
 	}
 	threshold := resolved.profile.Thresholds.MainReview
@@ -345,8 +365,8 @@ func reviewQuoteFromCapability(input imageagent.SlotExecutionInput, profile imag
 	return quote, nil
 }
 
-func (e *ProductImageSlotExecutor) reviewCandidates(input resolvedSlotInput, expectedAttempt int, staged imageagent.SlotGeneratedOutput) ([]productimage.Candidate, error) {
-	if staged.SlotID != input.slot.ID || staged.Attempt != expectedAttempt || staged.SourceAssetID != input.sourceAssetID || len(staged.Assets) == 0 {
+func (e *ProductImageSlotExecutor) reviewCandidates(execution imageagent.SlotExecutionInput, input resolvedSlotInput, staged imageagent.SlotGeneratedOutput) ([]productimage.Candidate, error) {
+	if staged.SlotID != input.slot.ID || staged.Attempt != execution.Attempt || staged.SourceAssetID != input.sourceAssetID || len(staged.Assets) == 0 {
 		return nil, imageagent.ErrRevisionConflict
 	}
 	candidates := make([]productimage.Candidate, len(staged.Assets))
@@ -355,7 +375,14 @@ func (e *ProductImageSlotExecutor) reviewCandidates(input resolvedSlotInput, exp
 		if url == "" || generated.Width <= 0 || generated.Height <= 0 || generated.SourceURL == "" || len(generated.Operations) == 0 {
 			return nil, imageagent.ErrValidation
 		}
-		if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
+		if e.dependencies.GeneratedURLTrial != nil {
+			if generated.StagedRef == nil || generated.URL != url || generated.StagedRef.SourceAssetID != input.sourceAssetID || generated.StagedRef.ContentType != generated.ContentType || generated.StagedRef.Width != generated.Width || generated.StagedRef.Height != generated.Height || !slices.Equal(generated.StagedRef.Operations, generated.Operations) {
+				return nil, imageagent.ErrValidation
+			}
+			if err := e.dependencies.GeneratedURLTrial.ValidateStaged(execution, *generated.StagedRef, index, url); err != nil {
+				return nil, err
+			}
+		} else if _, err := imageagent.ValidateSafeImageURL(url); err != nil {
 			return nil, err
 		}
 		if _, err := imageagent.ValidateSafeImageURL(generated.SourceURL); err != nil {
@@ -371,6 +398,20 @@ func (e *ProductImageSlotExecutor) reviewCandidates(input resolvedSlotInput, exp
 }
 
 func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resolvedSlotInput, quoted *quotedSlotExecution) ([]productimage.Candidate, imageagent.SlotUsageReceipt, error) {
+	if e.sourceOnlyMain(input) {
+		if e.dependencies.WhiteBackgroundRenderer == nil {
+			return nil, imageagent.SlotUsageReceipt{}, imageagent.ErrValidation
+		}
+		white, err := e.dependencies.WhiteBackgroundRenderer.RenderWhiteBackground(ctx, productimage.RenderRequest{
+			Source: input.source, SourceOnly: true, Product: input.product,
+			Authorization: capabilityAuthorization(quoted, productimage.SourceWhiteBackgroundOperation),
+		})
+		if err != nil {
+			// An ordinary provider error is not proof of no side effect.
+			return nil, imageagent.SlotUsageReceipt{}, providerError(imageagent.ProviderDispatchedUnknown, err)
+		}
+		return []productimage.Candidate{white}, receiptForQuote(quoted, 1, []productimage.Candidate{white}), nil
+	}
 	if e.dependencies.SubjectExtractor == nil || e.dependencies.WhiteBackgroundRenderer == nil {
 		return nil, imageagent.SlotUsageReceipt{}, fmt.Errorf("%w: main image capabilities are incomplete", imageagent.ErrValidation)
 	}
@@ -388,6 +429,11 @@ func (e *ProductImageSlotExecutor) generateMain(ctx context.Context, input resol
 		return nil, imageagent.SlotUsageReceipt{}, dispatchedCapabilityError("render white background", err, true)
 	}
 	return []productimage.Candidate{white}, receiptForQuote(quoted, 2, []productimage.Candidate{subject, white}), nil
+}
+
+func (e *ProductImageSlotExecutor) sourceOnlyMain(input resolvedSlotInput) bool {
+	return e != nil && !e.legacyV2 && !input.legacyPolicy && input.slot.Role == imageagent.SlotRoleMain &&
+		input.profile.Key == (imagepolicy.PolicyKey{Marketplace: "product", Country: "zz", Family: "default", SceneCategory: "general"})
 }
 
 func (e *ProductImageSlotExecutor) generateScene(ctx context.Context, input resolvedSlotInput, quoted *quotedSlotExecution) ([]productimage.Candidate, imageagent.SlotUsageReceipt, error) {

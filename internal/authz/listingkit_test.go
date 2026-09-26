@@ -159,3 +159,33 @@ func TestListingKitAuthorizerEnforcesSourceAccountPermissionMatrix(t *testing.T)
 	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchSourceAccountRead))
 	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchSourceAccountManage))
 }
+
+
+func TestListingKitAuthorizerEnforcesCommercialPermissionMatrix(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	require.NoError(t, err)
+
+	tests := []struct {
+		role            string
+		wantRead        bool
+		wantPurchase    bool
+		wantWalletTopUp bool
+	}{
+		{role: "listingkit_viewer"},
+		{role: "listingkit_operator", wantRead: true},
+		{role: "listingkit_admin", wantRead: true, wantPurchase: true, wantWalletTopUp: true},
+		{role: "platform_admin", wantRead: true, wantPurchase: true, wantWalletTopUp: true},
+		{role: "admin"},
+		{role: "configured-role", wantRead: true, wantPurchase: true, wantWalletTopUp: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			require.Equal(t, tt.wantRead, authorizer.Authorize("", []string{tt.role}, PermissionWorkbenchCommercialRead))
+			require.Equal(t, tt.wantPurchase, authorizer.Authorize("", []string{tt.role}, PermissionWorkbenchCommercialPurchase))
+			require.Equal(t, tt.wantWalletTopUp, authorizer.Authorize("", []string{tt.role}, PermissionWorkbenchCommercialWalletTopUp))
+		})
+	}
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchCommercialRead))
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchCommercialPurchase))
+	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchCommercialWalletTopUp))
+}

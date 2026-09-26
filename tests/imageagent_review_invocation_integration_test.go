@@ -22,6 +22,7 @@ import (
 	imageworker "task-processor/internal/app/worker/imageagent"
 	"task-processor/internal/authidentity"
 	openai "task-processor/internal/integration/openai"
+	"task-processor/internal/listingsubscription"
 	image "task-processor/internal/product/image"
 	"task-processor/internal/shared/aiidentity"
 )
@@ -29,7 +30,7 @@ import (
 // Fine-grained fault tests supplement the actual HTTP/Activity combination.
 // Only these transport/recorder cases construct an already-restored identity.
 func review334Context(org string) context.Context {
-	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{HomeOrganizationID: "A", EffectiveOrganizationID: org, TenantID: org, UserID: "actor"})
+	ctx := authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{HomeOrganizationID: "A", EffectiveOrganizationID: org, TenantID: org, UserID: "actor", EffectiveMemberID: "grant-" + org})
 	return aiidentity.WithIdentity(ctx, aiidentity.Identity{TenantID: org, UserID: "actor", BusinessTaskID: "context", AgentRunID: "run-" + org})
 }
 func review334Request() image.ReviewRequest {
@@ -51,10 +52,81 @@ func review334Manager(t *testing.T, db *gorm.DB, endpoint string, logger *logrus
 	require.NoError(t, err)
 	return manager
 }
+func review334Fixture(t *testing.T) (*scope339Fixture, *aistore.GormInvocationRecorder) {
+	t.Helper()
+	f := newScope339Fixture(t)
+	require.NoError(t, listingsubscription.AutoMigrateRepository(f.db))
+	require.NoError(t, f.db.Exec(`CREATE TABLE account_member_token_locks (organization_id text PRIMARY KEY, updated_at timestamptz NOT NULL)`).Error)
+	require.NoError(t, f.db.Exec(`CREATE TABLE account_member_token_allocations (organization_id text NOT NULL, member_id text NOT NULL, metric text NOT NULL, allocated bigint NOT NULL, version bigint NOT NULL, active boolean NOT NULL, window_start timestamptz NOT NULL, window_end timestamptz NOT NULL, updated_at timestamptz NOT NULL, PRIMARY KEY (organization_id,member_id,metric))`).Error)
+	start, end := time.Now().UTC().Add(-time.Hour), time.Now().UTC().Add(time.Hour)
+	for _, org := range []string{"B", "C"} {
+		require.NoError(t, f.db.Exec(`INSERT INTO saas_tenant_entitlements (tenant_id,module_code,status,starts_at,expires_at,limits) VALUES (?,?,?,?,?,?)`, org, listingsubscription.ModuleListingKit, listingsubscription.StatusActive, start, end, `{"ai_tokens":1000000}`).Error)
+		require.NoError(t, f.db.Exec(`INSERT INTO account_member_token_allocations (organization_id,member_id,metric,allocated,version,active,window_start,window_end,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`, org, "grant-"+org, "token", 1000000, 1, true, start, end, start).Error)
+	}
+	recorder := aistore.NewGormInvocationRecorder(f.db)
+	recorder.SetUsageSettler(listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.db)})
+	return f, recorder
+}
+
+type failFirstReviewRelease struct {
+	listingsubscription.AIInvocationUsageAdapter
+	fail atomic.Bool
+}
+
+func (s *failFirstReviewRelease) ReleaseAIInvocationUsage(ctx context.Context, tenantID, invocationID string) error {
+	if s.fail.CompareAndSwap(true, false) {
+		return fmt.Errorf("controlled release failure")
+	}
+	return s.AIInvocationUsageAdapter.ReleaseAIInvocationUsage(ctx, tenantID, invocationID)
+}
+
+func TestOrganizationReviewProvenNoDispatchReleaseFailureReplaysWithoutProvider(t *testing.T) {
+	for _, mode := range []string{"preflight", "adapter"} {
+		t.Run(mode, func(t *testing.T) {
+			f, recorder := review334Fixture(t)
+			settler := &failFirstReviewRelease{AIInvocationUsageAdapter: listingsubscription.AIInvocationUsageAdapter{Repository: listingsubscription.NewGormRepository(f.db)}}
+			settler.fail.Store(true)
+			recorder.SetUsageSettler(settler)
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
+			defer server.Close()
+			logger := logrus.New()
+			manager := review334Manager(t, f.db, server.URL, logger)
+			caps, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db, imageworker.OrganizationReviewOptions{Recorder: recorder, Logger: logger})
+			require.NoError(t, err)
+			ctx, request := review334Context("B"), review334Request()
+			quote, err := caps.UsageQuoter.QuoteUsage(ctx, image.UsageQuoteRequest{Operation: "review", InputFingerprint: "preflight", MaximumOutputs: 1})
+			require.NoError(t, err)
+			expectedCode := "review_preflight_failed"
+			if mode == "adapter" {
+				quote.ConfigurationVersion = "stale"
+				expectedCode = "review_adapter_failed"
+			} else {
+				quote.PricingVersion = "stale"
+			}
+			request.Authorization = &quote
+			_, err = caps.Reviewer.Review(ctx, request)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, image.ErrReviewConfirmedNotDispatched, "release failure cannot authorize a budget release")
+			var row struct{ Outcome, ErrorCode, InvocationID string }
+			require.NoError(t, f.db.Table("ai_invocations").Take(&row).Error)
+			require.Equal(t, "failed", row.Outcome)
+			require.Equal(t, expectedCode, row.ErrorCode)
+			var reservation struct{ Status string }
+			require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row.InvocationID).Take(&reservation).Error)
+			require.Equal(t, "reserved", reservation.Status)
+			_, err = caps.Reviewer.Review(ctx, request)
+			require.ErrorIs(t, err, image.ErrReviewConfirmedNotDispatched)
+			require.Zero(t, calls.Load())
+			require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row.InvocationID).Take(&reservation).Error)
+			require.Equal(t, "released", reservation.Status)
+		})
+	}
+}
 func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 	for _, name := range []string{"success", "missing_usage", "semantic_score", "semantic_reasons", "provider_503", "provider_400", "provider_401", "provider_429", "deadline", "inbound_cancel", "record_failure", "record_db_failure", "both_fail", "response_cancel", "nil_authorization", "stale_config", "stale_route", "stale_price", "forged_cost", "known_quote", "config_drift", "missing_scope", "missing_run"} {
 		t.Run(name, func(t *testing.T) {
-			f := newScope339Fixture(t)
+			f, recorder := review334Fixture(t)
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
@@ -103,7 +175,7 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 			logger.SetOutput(&logs)
 			logger.SetLevel(logrus.DebugLevel)
 			manager := review334Manager(t, f.db, server.URL, logger)
-			options := imageworker.OrganizationReviewOptions{Recorder: aistore.NewGormInvocationRecorder(f.db), Logger: logger}
+			options := imageworker.OrganizationReviewOptions{Recorder: recorder, Logger: logger}
 			if name == "known_quote" {
 				options.Pricing = &imageworker.ReviewPricing{Version: "controlled-price-v1", MaximumCostMicros: 7}
 			}
@@ -170,15 +242,18 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 				require.NoError(t, f.db.Exec("ALTER TABLE ai_invocations ADD CONSTRAINT controlled_record_failure CHECK (false)").Error)
 			}
 			result, err := capabilities.Reviewer.Review(ctx, req)
-			success := name == "success" || name == "missing_usage" || name == "record_failure" || name == "record_db_failure" || name == "known_quote"
+			success := name == "success" || name == "known_quote"
 			if success {
 				require.NoError(t, err)
 				require.Equal(t, 0.9, result.Score)
 			} else {
 				require.Error(t, err)
 				require.NotContains(t, err.Error(), "SENSITIVE-")
+				if name == "stale_config" || name == "stale_route" || name == "stale_price" || name == "config_drift" || name == "response_cancel" {
+					require.ErrorIs(t, err, image.ErrReviewConfirmedNotDispatched, "proven adapter/preflight rejection must release staged review budget")
+				}
 			}
-			before := name == "inbound_cancel" || name == "nil_authorization" || strings.HasPrefix(name, "stale_") || name == "forged_cost" || name == "config_drift" || name == "missing_scope" || name == "missing_run"
+			before := name == "inbound_cancel" || name == "nil_authorization" || strings.HasPrefix(name, "stale_") || name == "forged_cost" || name == "config_drift" || name == "missing_scope" || name == "missing_run" || name == "record_failure" || name == "record_db_failure" || name == "both_fail" || name == "response_cancel"
 			expectedCalls := int32(1)
 			if before {
 				expectedCalls = 0
@@ -186,7 +261,7 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 			require.Equal(t, expectedCalls, calls.Load())
 			var rows []map[string]any
 			require.NoError(t, f.db.Table("ai_invocations").Find(&rows).Error)
-			if before || name == "record_failure" || name == "record_db_failure" || name == "both_fail" {
+			if name == "inbound_cancel" || name == "nil_authorization" || name == "forged_cost" || name == "missing_scope" || name == "missing_run" || name == "record_failure" || name == "record_db_failure" || name == "both_fail" {
 				require.Empty(t, rows)
 			} else {
 				require.Len(t, rows, 1)
@@ -194,41 +269,56 @@ func TestOrganizationReviewInvocationFailureMatrix(t *testing.T) {
 				require.Equal(t, "B", row["tenant_id"])
 				require.Equal(t, "run-B", row["agent_run_id"])
 				require.Equal(t, false, row["estimated_cost_known"])
-				require.Equal(t, name != "missing_usage" && name != "provider_503" && name != "provider_400" && name != "provider_401" && name != "provider_429" && name != "deadline", row["usage_known"])
-				if name == "provider_503" || name == "provider_400" || name == "provider_401" || name == "provider_429" || name == "deadline" || name == "semantic_score" || name == "semantic_reasons" {
-					require.Equal(t, "failed", row["outcome"])
-					if name == "semantic_score" || name == "semantic_reasons" {
-						require.Equal(t, string(aicapability.ErrorInvalidProviderResponse), row["error_category"])
-						require.Equal(t, "invalid_review_output", row["error_code"])
-					}
-					if name == "provider_400" || name == "provider_401" {
-						require.Equal(t, string(aicapability.ErrorProviderRejected), row["error_category"])
-					}
-					if name == "provider_429" {
-						require.Equal(t, string(aicapability.ErrorRateLimited), row["error_category"])
-					}
-				} else {
+				knownUsage := name == "success" || name == "known_quote" || name == "semantic_score" || name == "semantic_reasons"
+				require.Equal(t, knownUsage, row["usage_known"])
+				switch name {
+				case "success", "known_quote":
 					require.Equal(t, "succeeded", row["outcome"])
+				case "semantic_score", "semantic_reasons":
+					require.Equal(t, "usage_observed_failed", row["outcome"])
+					require.Equal(t, string(aicapability.ErrorInvalidProviderResponse), row["error_category"])
+					require.Equal(t, "invalid_review_output", row["error_code"])
+				case "stale_config", "stale_route", "stale_price", "config_drift", "response_cancel":
+					require.Equal(t, "failed", row["outcome"], "proven adapter-construction failure is not a provider dispatch")
+				default:
+					require.Equal(t, "dispatched", row["outcome"], "missing usage must remain unknown and held")
 				}
 				if name == "missing_usage" {
 					require.Equal(t, "", row["provider_request_id"])
 				}
+				var reservation struct{ Status string }
+				require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation_reservation", row["invocation_id"]).Take(&reservation).Error)
+				if row["outcome"] == "dispatched" {
+					require.Equal(t, "reserved", reservation.Status, "unknown provider outcome retains quota")
+				} else {
+					require.Equal(t, "released", reservation.Status, "known terminal releases reservation")
+				}
+				var observed []struct {
+					Quantity int64
+					MemberID string
+					Status   string
+				}
+				require.NoError(t, f.db.Table("saas_usage_events").Where("source_type = ? AND source_id = ?", "ai_invocation", row["invocation_id"]).Find(&observed).Error)
+				if knownUsage {
+					require.Len(t, observed, 1, "observed Review usage is the sole commercial fact for Account/Audit projections")
+					require.EqualValues(t, 7, observed[0].Quantity)
+					require.Equal(t, "grant-B", observed[0].MemberID)
+					require.Equal(t, "committed", observed[0].Status)
+				} else {
+					require.Empty(t, observed, "unknown or rejected Review has no fabricated token usage")
+				}
 			}
-			if name == "record_failure" || name == "record_db_failure" || name == "both_fail" {
-				require.Contains(t, logs.String(), "image_review_record_degraded")
-			} else {
-				require.NotContains(t, logs.String(), "image_review_record_degraded")
-			}
+			require.NotContains(t, logs.String(), "image_review_record_degraded", "pre-dispatch recorder failure does not pretend a provider call occurred")
 			data, err := json.Marshal(rows)
 			require.NoError(t, err)
 			require.NotContains(t, string(data), "SENSITIVE-")
 			require.NotContains(t, logs.String(), "SENSITIVE-")
-			t.Logf("provider HTTP=%d ledger rows=%d record degradation=%t", calls.Load(), len(rows), name == "record_failure" || name == "record_db_failure" || name == "both_fail")
+			t.Logf("provider HTTP=%d invocation rows=%d", calls.Load(), len(rows))
 		})
 	}
 }
 func TestOrganizationReviewConcurrentRecordsAndRecorderConflict(t *testing.T) {
-	f := newScope339Fixture(t)
+	f, recorderWithUsage := review334Fixture(t)
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -240,7 +330,7 @@ func TestOrganizationReviewConcurrentRecordsAndRecorderConflict(t *testing.T) {
 	var logs bytes.Buffer
 	logger.SetOutput(&logs)
 	manager := review334Manager(t, f.db, server.URL, logger)
-	caps, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db)
+	caps, err := imageworker.BuildOrganizationImageCapabilities(manager, f.db, imageworker.OrganizationReviewOptions{Recorder: recorderWithUsage, Logger: logger})
 	require.NoError(t, err)
 	var wg sync.WaitGroup
 	for _, org := range []string{"B", "C"} {

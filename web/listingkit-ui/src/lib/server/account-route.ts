@@ -8,11 +8,18 @@ const deadline = () => accountFailure(504, "DEADLINE_EXCEEDED");
 const authenticated = serverAuth(async (request: NextRequest & { auth?: unknown }) => {
   if (request.signal.aborted) return deadline();
   const identity = readZitadelIdentityFromSession(request.auth as never);
-  const kind = new URL(request.url).pathname === "/api/account/profile" ? "profile" : "organization";
+  const pathname = new URL(request.url).pathname;
+  const kind = pathname === "/api/account/profile" ? "profile" : pathname === "/api/account/business-profile" ? "business-profile" : pathname === "/api/account/member-allocations" || pathname.startsWith("/api/account/member-allocations/") ? "member-allocations" : "organization";
   return proxyAccount(request, readZitadelServerAccessToken(request.auth as never), String(identity?.userId ?? ""), kind);
 });
 
 export async function handleAccountGET(request: NextRequest) {
+	return handleAccountRequest(request, "GET");
+}
+export async function handleAccountPUT(request: NextRequest) {
+	return handleAccountRequest(request, "PUT");
+}
+async function handleAccountRequest(request: NextRequest, method: "GET" | "PUT") {
   if (request.signal.aborted) return deadline();
   const controller = new AbortController(); const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
@@ -20,6 +27,7 @@ export async function handleAccountGET(request: NextRequest) {
   let finish = () => {};
   const ended = new Promise<Response>(resolve => { finish = () => resolve(deadline()); controller.signal.addEventListener("abort", finish, { once: true }); });
   try {
+    if (request.method !== method) return accountFailure(405, "INVALID_REQUEST");
     const result = await Promise.race([authenticated(new NextRequest(request, { signal: controller.signal }), { params: Promise.resolve({}) }), ended]);
     if (controller.signal.aborted) return deadline();
     return result ?? accountFailure(503, "DEPENDENCY_UNAVAILABLE");

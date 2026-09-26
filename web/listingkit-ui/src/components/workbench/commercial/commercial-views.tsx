@@ -1,8 +1,6 @@
 import Image from "next/image";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import type { CommercialOverview, CommercialSubscription } from "@/lib/api/commercial";
 import styles from "./commercial.module.css";
 
@@ -30,7 +28,7 @@ function Validity({ row }: { row: CommercialSubscription | CommercialOverview["e
   </dl>;
 }
 
-function ResourceCards({ options = false }: { options?: boolean }) {
+export function ResourceCards({ options = false }: { options?: boolean }) {
   const cards = [
     { name: "店铺服务", color: "blue", value: options ? "价格未提供" : "使用数量未提供", details: [options ? "币种与计价周期尚未提供" : "服务中的店铺数、到期数尚未提供", "绑定店铺不开始计费，显式激活才开始服务周期", "本页不提供购买、续费或重新激活"] },
     { name: "AI 点数", color: "teal", value: "资源余额未提供", details: ["企业 AI 点数读取尚未接入", "AI 点数不等于模型 token 数，也不等于现金", "充值与资源购买暂未开放"] },
@@ -43,46 +41,19 @@ function ResourceCards({ options = false }: { options?: boolean }) {
   </Card>)}</div>;
 }
 
-export function PlanOptions({ data }: { data: CommercialOverview }) {
-  return <div className={styles.stack}>
-    <Observation data={data} />
-    <Panel title="方案说明" className={styles.summary}>
-      {data.plans.map(plan => <article key={plan.code} className={styles.plan}>
-        <p className={styles.eyebrow}>{plan.availability === "invitation_only" ? "方案描述 · 仅限受邀" : "方案描述 · 暂不销售"}</p>
-        <h3>{plan.name}</h3><p className={styles.subtle}>方案代码：{plan.code}</p>
-        <p>价格未提供 · 币种未提供</p>
-        <p className={styles.subtle}>来源：已批准的产品说明。方案说明不代表当前订阅，也不授予权益；计价周期尚未提供。</p>
-      </article>)}
-    </Panel>
-    <div className={styles.sectionHeading}><h2>收费构成</h2><p>价格与资源获取能力尚未提供，以下项目分别展示。</p></div>
-    <ResourceCards options />
-    <div className={styles.twoColumns}>
-      <Panel title="计费与数据说明"><ol className={styles.rules}>
-        <li>方案目录、实际订阅和已授予权益是不同信息。</li>
-        <li>权益以当前企业读取结果为准，不根据方案名称推算。</li>
-        <li>已记录用量不是账单，也不是 AI 点数、数据或现金余额。</li>
-        <li>购买、充值、续费、退款与提现暂未开放。</li>
-      </ol></Panel>
-      <Panel title="相关管理"><Button asChild variant="outline"><Link href="/workbench/plans/entitlements" prefetch={false}>查看当前权益</Link></Button>
-        <p className={styles.subtle}>钱包、用量明细、账单与订单暂未开放。</p><p className={styles.subtle}>成员资源分配尚未开放。</p>
-      </Panel>
-    </div>
-  </div>;
-}
-
-export function EntitlementsOverview({ data }: { data: CommercialOverview }) {
+export function EntitlementsOverview({ data, showResourceSummary = true, showResourceCards = true }: { data: CommercialOverview; showResourceSummary?: boolean; showResourceCards?: boolean }) {
   return <div className={styles.stack}>
     <Observation data={data} />
     <Panel title="企业总权益" className={styles.summary}>
       <p className={styles.subtle}>企业资源读取尚未接入；下方另列实际订阅、已授予权益和已记录用量。</p>
-      <div className={styles.resourceSummary}>
+      {showResourceSummary ? <div className={styles.resourceSummary}>
         <div className={styles.blue}><p>店铺服务</p><strong>使用数量未提供</strong><small>有效期与到期数量未提供</small></div>
         <div className={styles.teal}><p>AI 点数余额</p><strong>未提供</strong><small>资源余额 · 未接入</small></div>
         <div className={styles.purple}><p>数据额度余额</p><strong>未提供</strong><small>资源余额 · 未接入</small></div>
-      </div>
+      </div> : null}
     </Panel>
     <div className={styles.sectionHeading}><h2>权益构成</h2><p>资源、已授予权益与用量分别呈现。</p></div>
-    <ResourceCards />
+    {showResourceCards ? <ResourceCards /> : null}
     <div className={styles.twoColumns}>
       <Panel title="已授予权益">
         <p className={styles.subtle}>仅展示已授予的限制，不含方案继承额度；不代表所有平台功能均已开通，也不代表成员访问权限。</p>

@@ -9,7 +9,7 @@ import (
 )
 
 func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
-	for _, root := range []string{"internal/product/sourcing", "internal/app/productsourcing", "internal/listing/readiness"} {
+	for _, root := range []string{"internal/product/sourcing", "internal/app/productsourcing", "internal/listing/readiness", "internal/integration/acquisition/a1688", "internal/integration/persistence/product/acquisition"} {
 		t.Run(root, func(t *testing.T) {
 			assertNoBannedImportPrefixes(t, filepath.Join("..", filepath.FromSlash(root)), []string{
 				"task-processor/internal/compatibility", "task-processor/internal/listingkit",
@@ -20,14 +20,17 @@ func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
 }
 
 // REV-1 admits one isolated Product Review composition to the in-process
-// productsourcing capability. Every other HTTP application and every command
-// remains barred from wiring it until separately accepted.
+// productsourcing capability. SRC-2B1 separately admits the precise Public
+// module and empty-database initializer (5643032970), not their subpackages.
+// TestIssue398TrackedCurrentLeafAPIsStayAdmitted limits those files' exact APIs.
 func TestIssue30InternalProducerIsOnlyWiredByAdmittedProductReview(t *testing.T) {
 	allowed := map[string]struct{}{
-		filepath.Join("..", "internal", "app", "httpapi", "product_review_application.go"): {},
+		filepath.Join("..", "internal", "app", "httpapi", "product_review_application.go"):      {},
+		filepath.Join("..", "internal", "app", "httpapi", "product_acquisition_application.go"): {},
 	}
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal"), []string{"task-processor/internal/app/productsourcing"}, allowed)
-	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{"task-processor/internal/app/productsourcing"}, nil)
+	commands := map[string]struct{}{filepath.Join("..", "cmd", "product-acquisition-init", "main.go"): {}}
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{"task-processor/internal/app/productsourcing"}, commands)
 }
 
 func TestIssue30LegacyImportGuardDetectsAliasesAndSubpackages(t *testing.T) {

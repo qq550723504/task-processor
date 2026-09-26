@@ -76,6 +76,7 @@ func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionS
 		sheinTranslateAPIBuilder: wiring.sheinTranslateAPIBuilder,
 		sheinContentOptimizer:    wiring.sheinContentOptimizer,
 		currentSheinPricingRule:  wiring.currentSheinPricingRule,
+		costPriceCalculator:      wiring.costPriceCalculator,
 		resolveSheinStoreID:      wiring.resolveSheinStoreID,
 		resolveSheinStoreInfo:    wiring.resolveSheinStoreInfo,
 		resolveSubmitSettings:    wiring.resolveSubmitSettings,

@@ -14,6 +14,7 @@ type RuntimeBuildInput struct {
 }
 
 type RuntimeDependencies struct {
+	SheinCostPriceCalculator           listingkit.SheinCostPriceCalculator
 	Config                             *config.Config
 	ProductSnapshotReader              listingkit.ProductSnapshotReader
 	AIClientCredentialStore            listingkit.AIClientCredentialStore
@@ -33,6 +34,7 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies) BuildServiceInput {
 	support := runtime.Support
 	return BuildServiceInput{
+		SheinCostPriceCalculator:  runtime.SheinCostPriceCalculator,
 		Config:                    runtime.Config,
 		Logger:                    logger,
 		ProductSnapshotReader:     runtime.ProductSnapshotReader,

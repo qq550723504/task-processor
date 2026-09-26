@@ -34,7 +34,7 @@ func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context,
 	if err != nil {
 		return imageagent.ErrIdentityRequired
 	}
-	grants, err := a.Client.ListServiceProjectAuthorizations(ctx, token, identity.UserID, a.ProjectID, identity.TenantID)
+	grant, err := a.Client.ReadExactServiceProjectAuthorization(ctx, token, identity.UserID, a.ProjectID, identity.TenantID)
 	if err != nil {
 		return imageagent.ErrIdentityRequired
 	}
@@ -44,10 +44,8 @@ func (a OrganizationExecutionAuthorizer) AuthorizeExecution(ctx context.Context,
 			return imageagent.ErrIdentityRequired
 		}
 	}
-	for _, grant := range grants {
-		if grant.OrganizationID == identity.TenantID && grant.ProjectID == a.ProjectID && a.Authorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionImageAgentWrite) {
-			return nil
-		}
+	if grant.Found && grant.State == "STATE_ACTIVE" && grant.AuthorizationID == identity.MemberID && a.Authorizer.Authorize(identity.UserID, grant.Roles, authz.PermissionImageAgentWrite) {
+		return nil
 	}
 	return imageagent.ErrIdentityRequired
 }

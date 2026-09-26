@@ -58,14 +58,17 @@ const (
 )
 
 type UsageEvent struct {
-	EventID        string
-	TenantID       string
-	ModuleCode     string
-	Metric         string
-	Quantity       int64
-	PeriodKey      string
-	SourceType     string
-	SourceID       string
+	EventID    string
+	TenantID   string
+	ModuleCode string
+	Metric     string
+	Quantity   int64
+	PeriodKey  string
+	SourceType string
+	SourceID   string
+	// MemberID scopes a member-allocatable usage event without copying
+	// membership state into the commercial owner.
+	MemberID       string
 	IdempotencyKey string
 	Status         UsageEventStatus
 	OccurredAt     time.Time
@@ -93,6 +96,7 @@ type ReserveUsageInput struct {
 	PeriodKey         string
 	SourceType        string
 	SourceID          string
+	MemberID          string
 	IdempotencyKey    string
 	OccurredAt        time.Time
 	Metadata          map[string]string

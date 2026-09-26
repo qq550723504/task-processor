@@ -227,8 +227,11 @@ func (repository *GormRepository) lookupOperation(ctx context.Context, db *gorm.
 
 func (repository *GormRepository) lookupSource(ctx context.Context, db *gorm.DB, input orgresource.WelcomeGrantExecution) (orgresource.WelcomeGrantResult, bool, error) {
 	var claim organizationResourceSourceClaimRow
+	// Source claims are globally unique by source type and identity. Resource
+	// type is the result carried by the claim, not part of the deduplication
+	// scope; otherwise one commercial order item could mint multiple resources.
 	err := db.WithContext(ctx).
-		Where("source_type = ? AND source_identity = ? AND resource_type = ?", input.SourceType, input.SourceIdentity, input.ResourceType).
+		Where("source_type = ? AND source_identity = ?", input.SourceType, input.SourceIdentity).
 		Take(&claim).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return orgresource.WelcomeGrantResult{}, false, nil

@@ -28,7 +28,7 @@ func TestPhase2ClosureDocumentsRuntimeOwnershipAndDeferredDebt(t *testing.T) {
 	})
 	requireDocumentPhrases(t, filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md"), []string{
 		"Final closure inventory",
-		"`core/logger` | 82", "`platform/logging` | 9", "`platform/database` | 21", "`integration/s3` | 4",
+		"`core/logger` | 82", "`platform/logging` | 9", "`platform/database` | 23", "`integration/s3` | 4",
 		"same-platform workerpool", "Goose migration owner", "Legacy consumer register",
 	})
 	requireDocumentPhrases(t, filepath.Join("..", "internal", "platform", "README.md"), []string{
@@ -1904,6 +1904,117 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so preview extraction keeps a stable platform-neutral boundary", path, phrase)
+		}
+	}
+}
+
+
+func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "self-service-subscription-purchase-contract.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	text := string(content)
+
+	for _, required := range []string{
+		"SUBSCRIPTION_PURCHASE",
+		"ZERO_PRICE",
+		"WALLET",
+		"Organization activation fence",
+		"RECONCILIATION_REQUIRED",
+		"ACTIVE_SUBSCRIPTION_EXISTS",
+		"PLAN_CHANGED",
+		"ReserveCommercialPurchase",
+		"release:<order_id>",
+		"commit:<order_id>",
+		"Hard-cut of the old subscription-management runtime",
+		"/api/v1/listing-kits/platform/subscriptions",
+		"/api/v1/listing-kits/platform/subscription-plans",
+		"PUT /api/v1/listing-kits/admin/subscription/entitlements/:module_code",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must lock %q", path, required)
+		}
+	}
+
+	for _, required := range []string{
+		"browser never submits a term",
+		"runtime catalog is read-only",
+		"SyncDefaultCatalog",
+		"REJECTED_INSUFFICIENT_FUNDS",
+		"WalletReserveDecision",
+		"SubscriptionPurchaseRecoveryAuthorizer",
+		"pending_effect",
+		"terminal_intent",
+		"terminal_intent=CANCEL",
+		"`pending_effect` is empty; neither `RESERVE` nor `ACTIVATE` may already be",
+		"must also require `terminal_intent` to still be empty",
+		"even if the actor later regains",
+		"inUserIds     = [actor_id]",
+		"projectId     = configured project id",
+		"organizationId = order.organization_id",
+		"no offset-pagination fallback exists",
+		"Every not-yet-admitted `RESERVE` and every",
+		"a new exact provider-backed actor grant query",
+		"the earlier RESERVE admission or request-start LiveWrite identity cannot satisfy this check",
+		"### ZERO_PRICE execution",
+		"complete the live-reauth + order-CAS admission protocol for `pending_effect=ACTIVATE`",
+		"zero matching assignments -> authorization denied/revoked",
+		"provider state `STATE_ACTIVE`",
+		"known provider state `STATE_INACTIVE`",
+		"more than one matching assignment -> invalid/unavailable",
+		"wrong Organization/project/user, unknown/unsupported state, malformed roles",
+		"deactivate-then-restore does not revive an order",
+		"pending_effect=RESERVE",
+		"pending_effect=ACTIVATE",
+		"terminal_intent=CANCEL / AUTHORIZATION_REVOKED",
+		"ActivationRequestFingerprint",
+		"canonical activation request fingerprint",
+		"including actor",
+		"including actor and term",
+		"run one recovery sweep immediately after successful application assembly",
+		"repeat a bounded sweep every",
+		"long-lived",
+		"workbench.commercial.purchase",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must retain self-service hard-cut boundary %q", path, required)
+		}
+	}
+}
+func TestCommercialWalletBillingContractLocksCanonicalOwners(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "commercial-wallet-billing-contract.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	text := string(content)
+
+	for _, required := range []string{
+		"internal/ledger/money",
+		"internal/commercial/billing",
+		"internal/ledger/orgresource",
+		"internal/listingsubscription",
+		"commercial_order_item",
+		"Idempotency-Key",
+		"RECONCILIATION_REQUIRED",
+		"workbench.commercial.read",
+		"workbench.commercial.purchase",
+		"workbench.commercial.wallet_topup",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("%s must lock %q", path, required)
+		}
+	}
+
+	for _, forbidden := range []string{
+		"Figma example prices never seed production",
+		"browser never receives a generic positive-credit API",
+		"Invoice creation is deliberately not authorized by this contract",
+	} {
+		if !strings.Contains(text, forbidden) {
+			t.Errorf("%s must retain safety boundary %q", path, forbidden)
 		}
 	}
 }

@@ -23,6 +23,7 @@ const (
 )
 
 type ImageAgentTemporalDependencies struct {
+	ExecutionAuthorizer      imageagent.ExecutionAuthorizer
 	Repository               imageagent.Repository
 	SlotExecutor             imageagent.SlotExecutor
 	Publisher                imageagent.ApprovedAssetPublisher
@@ -105,6 +106,17 @@ func DialImageAgentTemporalWorkflowClient(logger *logrus.Logger) (imageagent.Wor
 	return imageagenttemporal.NewClient(client), closeFn, nil
 }
 
+// DialOrganizationImageAgentTemporalWorkflowClient is the explicit current
+// acquisition control plane connection. It cannot silently select the legacy
+// v3 queue or be disabled by the older ambient feature flag.
+func DialOrganizationImageAgentTemporalWorkflowClient(ctx context.Context, address, namespace string) (imageagent.WorkflowClient, func() error, error) {
+	client, closeFn, err := dialImageAgentTemporal(ctx, address, namespace)
+	if err != nil {
+		return nil, nil, err
+	}
+	return imageagenttemporal.NewOrganizationClient(client), closeFn, nil
+}
+
 func RunImageAgentTemporalWorker(ctx context.Context, dependencies ImageAgentTemporalDependencies, logger *logrus.Logger) error {
 	return RunImageAgentTemporalWorkerWithOptions(ctx, dependencies, ImageAgentTemporalWorkerOptions{WireMode: imageagenttemporal.WorkerWireModeV3}, logger)
 }
@@ -137,8 +149,15 @@ func startImageAgentTemporalWorkerWithOptionsAndDependenciesContext(ctx context.
 	if !envBool(envImageAgentTemporalEnabled) {
 		return nil, nil
 	}
+	if options.WireMode == imageagenttemporal.WorkerWireModeOrganization && dependencies.ExecutionAuthorizer == nil {
+		return nil, fmt.Errorf("organization image agent execution authorizer is required")
+	}
+	if options.WireMode != imageagenttemporal.WorkerWireModeOrganization && dependencies.ExecutionAuthorizer != nil {
+		return nil, fmt.Errorf("organization image agent execution authorizer requires organization worker mode")
+	}
 	activities, err := imageagenttemporal.NewActivities(imageagenttemporal.ActivityDependencies{
-		Repository: dependencies.Repository, SlotExecutor: dependencies.SlotExecutor, Publisher: dependencies.Publisher, PublisherV3: dependencies.PublisherV3,
+		ExecutionAuthorizer: dependencies.ExecutionAuthorizer,
+		Repository:          dependencies.Repository, SlotExecutor: dependencies.SlotExecutor, Publisher: dependencies.Publisher, PublisherV3: dependencies.PublisherV3,
 		StagedSlotExecutor: dependencies.StagedSlotExecutor, ArtifactStore: dependencies.ArtifactStore,
 		PublicationLeaseDuration: dependencies.PublicationLeaseDuration,
 	})

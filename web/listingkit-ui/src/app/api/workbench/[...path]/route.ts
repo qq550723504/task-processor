@@ -1,3 +1,4 @@
+import { isBrowserCapturePath, isBrowserCaptureRequestURL } from "@/lib/contracts/browser-capture";
 import { NextRequest } from "next/server";
 
 import { serverAuth } from "@/auth";
@@ -12,6 +13,7 @@ import { readZitadelServerAccessToken } from "@/lib/server/zitadel-server-token"
 export const dynamic = "force-dynamic";
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
+const ACQUISITION_TIMEOUT_MS = 22_000;
 
 type AuthenticatedWorkbenchRequest = NextRequest & { auth?: unknown };
 type WorkbenchDispatchState = {
@@ -19,6 +21,7 @@ type WorkbenchDispatchState = {
   requestId: string;
   sourceRequest: boolean;
   sourceMutation: boolean;
+  acquisitionRequest: boolean;
 };
 type WorkbenchRouteContext = {
   params: Promise<{ path: string[] }>;
@@ -57,9 +60,11 @@ async function proxyWorkbenchRequest(
       : upstreamRequest;
   }
   dispatchState.requestId = upstreamRequest.requestId;
-  dispatchState.sourceRequest = upstreamRequest.responseContract.startsWith(
-    "source-account-",
-  );
+  dispatchState.acquisitionRequest =
+    upstreamRequest.responseContract === "product-acquisition" ||
+    upstreamRequest.responseContract === "product-acquisition-product" ||
+    upstreamRequest.responseContract.startsWith("acquisition-image-");
+  dispatchState.sourceRequest = dispatchState.acquisitionRequest || upstreamRequest.responseContract.startsWith("source-account-");
   dispatchState.sourceMutation = upstreamRequest.sourceMutation;
   if (request.signal.aborted) return deadlineFailure(dispatchState);
   try {
@@ -83,7 +88,7 @@ async function proxyWorkbenchRequest(
   } catch {
     if (request.signal.aborted) return deadlineFailure(dispatchState);
     if (dispatchState.sourceMutation && dispatchState.dispatched) {
-      return unknownMutationFailure(dispatchState.requestId);
+      return unknownMutationFailure(dispatchState.requestId, dispatchState.acquisitionRequest);
     }
     return workbenchProtocolError(
       502,
@@ -113,6 +118,7 @@ async function handleWorkbenchRequest(
     requestId: "",
     sourceRequest: isSourceRequestURL(request.url),
     sourceMutation: isSourceMutationURL(request.method, request.url),
+    acquisitionRequest: isAcquisitionRequestURL(request.method, request.url),
   };
   const controller = new AbortController();
   let resolveAbort = () => {};
@@ -123,7 +129,7 @@ async function handleWorkbenchRequest(
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   if (request.signal.aborted) abort();
-  const timeout = setTimeout(abort, UPSTREAM_TIMEOUT_MS);
+  const timeout = setTimeout(abort, dispatchState.acquisitionRequest ? ACQUISITION_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
   try {
     const scopedRequest = new NextRequest(request, { signal: controller.signal });
     const result = await Promise.race([
@@ -161,32 +167,54 @@ export const POST = handleWorkbenchRequest;
 export const DELETE = handleWorkbenchRequest;
 
 function isSourceMutation(method: string, path: string[]) {
+  if (method === "POST" && isBrowserCapturePath(method, path)) return true;
+  if (method.toUpperCase() === "GET" && path[3] === "by-key" && isBrowserCapturePath(method, path)) return true;
+
   return (
     method.toUpperCase() === "POST" &&
-    path[0] === "source-accounts" &&
+    ((path[0] === "sourcing" && path[1] === "1688" && path[2] === "acquisitions" &&
+      (path.length === 3 || (path.length === 4 && path[3] === "verify") ||
+        (path.length === 5 && path[4] === "main-image") ||
+        (path.length === 8 && path[4] === "main-image" && path[5] === "runs" && path[7] === "approve"))) ||
+    (path[0] === "source-accounts" &&
     (path.length === 1 ||
-      (path.length === 3 && ["enable", "disable"].includes(path[2] ?? "")))
+      (path.length === 3 && ["enable", "disable"].includes(path[2] ?? "")))))
   );
 }
 
+function isAcquisitionRequestURL(method: string, rawURL: string) {
+  if (isBrowserCaptureRequestURL(method, rawURL)) return true;
+
+  const path = new URL(rawURL).pathname;
+  const base = "/api/workbench/sourcing/1688/acquisitions";
+  if (method === "POST" && (path === base || path === `${base}/verify`)) return true;
+  if (method !== "GET" && method !== "POST") return false;
+  if (!path.startsWith(`${base}/`)) return false;
+  const suffix = path.slice(base.length + 1);
+  const id = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+  if (method === "POST") return new RegExp(`^${id}\\/main-image(?:\\/runs\\/${id}\\/approve)?$`).test(suffix);
+  return new RegExp(`^${id}(?:\\/product|\\/main-image\\/candidates|\\/main-image\\/runs\\/${id})?$`).test(suffix);
+}
+
 function isSourceRequestURL(rawURL: string) {
+  if (isBrowserCaptureRequestURL("POST", rawURL) || isBrowserCaptureRequestURL("GET", rawURL)) return true;
+
   const path = new URL(rawURL).pathname.split("/").filter(Boolean);
   return (
     path[0] === "api" &&
     path[1] === "workbench" &&
-    path[2] === "source-accounts"
+    (path[2] === "source-accounts" || (path[2] === "sourcing" && path[3] === "1688" && path[4] === "acquisitions"))
   );
 }
 
 function isSourceMutationURL(method: string, rawURL: string) {
-  if (method.toUpperCase() !== "POST") return false;
   const path = new URL(rawURL).pathname.split("/").filter(Boolean).slice(2);
   return isSourceMutation(method, path);
 }
 
 function deadlineFailure(state: WorkbenchDispatchState) {
   if (state.sourceMutation && state.dispatched) {
-    return unknownMutationFailure(state.requestId);
+    return unknownMutationFailure(state.requestId, state.acquisitionRequest);
   }
   if (state.sourceRequest) {
     return workbenchProtocolError(
@@ -204,11 +232,11 @@ function deadlineFailure(state: WorkbenchDispatchState) {
   );
 }
 
-function unknownMutationFailure(requestId: string) {
+function unknownMutationFailure(requestId: string, acquisition = false) {
   return workbenchProtocolError(
     503,
     "OUTCOME_UNKNOWN",
-    "Source Account mutation outcome is unknown",
+    acquisition ? "Acquisition or main-image action outcome is unknown" : "Source Account mutation outcome is unknown",
     requestId,
   );
 }

@@ -16,4 +16,5 @@ resources:
   - shein-login-worker-deployment.yaml
   - listingkit-ui-deployment.yaml
   - listingkit-ui-service.yaml
+  - listingkit-ui-traefik-network-policy.yaml
   - ingress.yaml
