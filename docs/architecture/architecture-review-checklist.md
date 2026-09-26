@@ -100,6 +100,7 @@ consider the applicable guards, including:
 - `depguard: listing_submission_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
+- `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`

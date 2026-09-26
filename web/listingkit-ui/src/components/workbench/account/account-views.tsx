@@ -14,6 +14,7 @@ import { getCommercialOverview, type CommercialSubscription } from "@/lib/api/co
 import { getMembers } from "@/lib/api/members";
 import styles from "./account.module.css";
 import { ConsoleState } from "../console/console-page";
+import { SubjectVerification } from "./subject-verification";
 
 const provided = (value: string | null) => value?.trim() || "未提供";
 const verification = (value: boolean | null) => value === true ? "已验证" : value === false ? "未验证" : "未提供";
@@ -87,9 +88,7 @@ function IdentityProfileForm({ data, profile, returnTo }: { data: AccountProfile
 
 function VerificationPanel({ data, organization, interactive = false, returnTo, identityVerificationOutcomeUnknown = false, onIdentityVerificationOutcomeUnknown }: { data: AccountProfile; organization?: AccountOrganization | null; interactive?: boolean; returnTo?: string; identityVerificationOutcomeUnknown?: boolean; onIdentityVerificationOutcomeUnknown?: () => void }) {
   return <>
-    <Panel title="身份认证" description="个人与企业身份认证由独立认证服务提供；当前账户中心未接入该能力。" className={styles.status}>
-      <div className={styles.verificationCards}><article><strong>个人身份认证</strong><span>暂不可用</span><small>当前没有个人实名状态或认证流程 owner。</small></article><article><strong>企业身份认证</strong><span>暂不可用</span><small>组织授权状态不代表企业身份认证结果。</small></article></div>
-    </Panel>
+    {interactive && organization ? <SubjectVerification userId={data.userId} organizationId={organization.effectiveOrganizationId} /> : <Panel title="身份认证" description="查看个人与企业认证的开放情况。" className={styles.status}><p>组织授权状态不代表企业身份认证结果。</p><Button asChild variant="outline"><Link href="/workbench/account/profile/verification" prefetch={false}>查看身份认证</Link></Button></Panel>}
     <Panel title="账户联系方式验证" description="手机和邮箱验证状态由 ZITADEL 官方 Auth API 返回；企业授权仅表示当前登录授权有效。" className={styles.status}>
       <Fields items={[["手机验证", verification(data.phoneNumberVerified)], ["邮箱验证", verification(data.emailVerified)], ["企业授权", organization ? "已读取当前企业授权" : "未读取当前企业授权"]]} />{interactive ? <IdentityVerificationManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/verification"} identityVerificationOutcomeUnknown={identityVerificationOutcomeUnknown} onIdentityVerificationOutcomeUnknown={onIdentityVerificationOutcomeUnknown} /> : null}
     </Panel>

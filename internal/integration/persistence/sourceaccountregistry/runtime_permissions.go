@@ -21,6 +21,12 @@ const runtimePermissionQuery = `SELECT current_user,
     AND has_table_privilege(current_user, 'public.account_business_profiles', 'UPDATE')
     AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'SELECT')
     AND has_table_privilege(current_user, 'public.account_business_profile_audit_events', 'INSERT')
+    AND has_table_privilege(current_user, 'public.subject_verification_applications', 'SELECT')
+    AND has_table_privilege(current_user, 'public.subject_verification_applications', 'INSERT')
+    AND has_table_privilege(current_user, 'public.subject_verification_applications', 'UPDATE')
+    AND has_table_privilege(current_user, 'public.subject_verification_messages', 'SELECT')
+    AND has_table_privilege(current_user, 'public.subject_verification_messages', 'INSERT')
+    AND has_table_privilege(current_user, 'public.subject_verification_messages', 'UPDATE')
     AND has_sequence_privilege(current_user, 'public.account_business_profile_audit_events_id_seq', 'USAGE')
     AND has_sequence_privilege(current_user, 'public.account_business_profile_audit_events_id_seq', 'SELECT') AS required_privileges,
   has_database_privilege(current_user, current_database(), 'CREATE')
@@ -49,6 +55,12 @@ const runtimePermissionQuery = `SELECT current_user,
           ('account_business_profiles', 'UPDATE'),
           ('account_business_profile_audit_events', 'SELECT'),
           ('account_business_profile_audit_events', 'INSERT'),
+          ('subject_verification_applications', 'SELECT'),
+          ('subject_verification_applications', 'INSERT'),
+          ('subject_verification_applications', 'UPDATE'),
+          ('subject_verification_messages', 'SELECT'),
+          ('subject_verification_messages', 'INSERT'),
+          ('subject_verification_messages', 'UPDATE'),
           ('account_business_profile_audit_events_id_seq', 'USAGE'),
           ('account_business_profile_audit_events_id_seq', 'SELECT'),
           ('__account_allocation_moved_to_commercial__', 'SELECT')
