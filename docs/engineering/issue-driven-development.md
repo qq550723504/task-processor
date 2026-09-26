@@ -40,7 +40,7 @@
 
 未达到准入前，可以安排只读调查、现状映射、证据收集和明确的 Spike / POC；这些工作不得进入正式业务路径，也不能被后续调用方当作已批准实现。
 
-实现中一旦发现需要改变 Design Basis 声明为“不变”的状态机、权限、事实 owner、持久化或恢复协议，Writer 立即停止该部分正式编码并回报；协调方将任务升级到 Independent Architecture 或更新已批准设计后再继续。
+实现中一旦发现需要改变 Design Basis 声明为“不变”的状态机、权限、事实 owner、持久化或恢复协议，Writer 立即停止该部分正式编码并回报；该任务必须升级为 `Independent Architecture`，补齐或修订独立架构文档，完成适用独立 Architecture Review，并重新达到 `IMPLEMENTATION_READY` 后才能继续该部分生产代码。普通 Issue 编辑或未复核的设计更新不能替代重新准入。
 
 ### 3.2 开工、并行和恢复
 
