@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { AccountReadError } from "@/lib/api/account";
 import { verificationRequest, type VerificationInput } from "@/lib/api/subject-verification";
 import styles from "./subject-verification.module.css";
+import { PersonalVerification } from "./personal-verification";
 
-export function SubjectVerification({userId, organizationId}: {userId:string;organizationId:string}) {
-  const [tab,setTab]=useState("enterprise");
+export function SubjectVerification({userId, organizationId}: {userId:string;organizationId?:string}) {
+  const [tab,setTab]=useState("personal");
   return <section className={styles.workspace} aria-label="身份认证">
     <div className={styles.tabs}><span>认证类型</span><button type="button" aria-pressed={tab==="personal"} onClick={()=>setTab("personal")}><UserRound size={17}/>个人认证</button><button type="button" aria-pressed={tab==="enterprise"} onClick={()=>setTab("enterprise")}><Building2 size={17}/>企业认证</button></div>
-    {tab==="enterprise"?<EnterpriseVerification key={`${userId}:${organizationId}`} userId={userId} organizationId={organizationId}/>:<div className={styles.card}><h2>个人认证暂不可用</h2><p>个人实名认证尚未开放。手机或邮箱已验证不代表已完成个人实名认证。</p></div>}
+    {tab==="enterprise"?(organizationId?<EnterpriseVerification key={`${userId}:${organizationId}`} userId={userId} organizationId={organizationId}/>:<div className={styles.card}><p>企业认证需要选择有权访问的企业。</p></div>):<PersonalVerification key={userId} userId={userId}/>}
   </section>;
 }
 function EnterpriseVerification({userId,organizationId}:{userId:string;organizationId:string}) {
