@@ -67,6 +67,15 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 ⇒ 浏览器路径按 Browser Capture 的既有模式：先取 evidence 并 validate，再 `StartPrepared` 一次性原子写入 command。只有可确定性恢复的操作才有 durable 行；这与 `src2b-acquisition-v1` 的「没有 background scheduler / 租约续期 / TTL / key GC」零冲突。
 
+**先重放、后抓取（Codex finding #5）**：上述顺序若无条件执行，同 key 的 POST 在响应丢失后重试会**先启一次浏览器**，此时若 1688 被挑战/不可用，重试会在 provider 处失败，而**无法返回已可恢复的结果**——违反 D6 的同 key 重放保证，并对外部重复了一次副作用。
+
+⇒ 浏览器路径**必须**在 acquisition 之前先走已授权的 `ByKey` 快速路径：
+
+1. 授权 + `Canonical1688Source` + 规范化 key 成功后，先 `ByKey(scope, key)`。
+2. 命中且可确定（`prepared/publishing/published/failed`）⇒ 直接走既有 resolve/read 逻辑返回，**不启浏览器**。
+3. 仅在 **confirmed not found** 时才进入抓取 + `StartPrepared`。
+4. 覆盖：响应丢失后的同 key 重试、并发同 key 重试。
+
 **失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §11）。
 
 ### D2. 独立 provider 时间预算与三层 deadline（**这是本设计最需要评审确认的一条**）
@@ -79,14 +88,16 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 | 层 | 当前值 | 浏览器路径要求 |
 | --- | --- | --- |
-| route `RequestTimeout` + `WithRequestBodyReadTimeout` | 20s | 按该路由实际最坏预算设置；不得小于 provider 预算 + 发布阶段预算 |
+| `WithRequestBodyReadTimeout`（**只管阻塞 body 读**） | 20s | **保持短值**（不放大）。它只用于中断卡住的 body 读取，不应承担整个操作预算 |
+| route `RequestTimeout`（从请求进入就开始计时） | 20s | 总量 = body 读预算 + 浏览器预算 + 发布预算（含余量） |
 | `AcquisitionService.Acquire` 的 `context.WithTimeout` | 20s | 按 provider 类型选择：HTTP 20s，浏览器 `BrowserAcquisitionTimeout` |
 | provider 内部（浏览器导航/验证码/提取） | 8s GET | 独立有界，且严格小于其上层 deadline，保证能及时如实失败 |
 | 发布阶段（`Prepare`/`Claim`/`Publish`） | 受各自既有边界 | 不被浏览器预算放大，单独计预算 |
 
+- **不可把 `WithRequestBodyReadTimeout` 扩成整个操作预算**（Codex finding #8）：那会削弱现有 slow-body 资源护栏；同时 route deadline 在 body 读之前就开始计时，若不把 body 读计入总量，合法 body 也可能在采集开始前就被取消。
 - 该预算必须**有界**，并与 HTTP 请求体读取超时、`MaxAcquisitionCommandBytes`、`MaxAcquisitionOperations` 的关系在实现中显式核对。
 - 若评审认为不应按 provider 分叉 deadline，替代方案是在 provider 内做浏览器复用/预热把首次耗时压到 20s 内；但实测数据不支持该假设，故默认采纳独立预算。
-- **不得**仅改 D2 而不改路由描述符；否则当前设计的主路径（提交链接→拿到已发布商品）在冷启动/验证码场景下无法完成。
+- **不得**仅改 service deadline 而不改路由描述符；否则当前设计的主路径（提交链接→拿到已发布商品）在冷启动/验证码场景下无法完成。
 
 ### D3. 匿名、非持久化、零凭据的浏览器上下文
 
@@ -108,7 +119,8 @@ consumer   productsourcing.AcquisitionService.Acquire
 | --- | --- |
 | 页面为挑战页且自动处理失败/超预算 | `ErrAcquisitionFailed` → HTTP 502 `SOURCE_UNAVAILABLE`（既有投影，前端已有清晰文案） |
 | 取得证据但字段缺失 | 进入 `MissingFacts`/`Warnings`，不伪造字段（既有 mapper 行为） |
-| 证据无法通过 `MapAcquisitionEvidence` | `ErrInvalidAcquisition` → 400 `INVALID_ACQUISITION` |
+| **服务端生成的证据无法通过 `MapAcquisitionEvidence`**（页面形状变化、提取器漏字段等） | **按 provider/解析失败处理 ⇒ 502 `SOURCE_UNAVAILABLE`**，与 HTTP 路径 `failFetch` 一致。**不得**投影成 400 `INVALID_ACQUISITION`：400 表示**调用方请求非法**，而这里拒绝的是服务端自己产出的输出（Codex finding #6） |
+| 调用方请求非法（URL/offer ID 不可规范化、key 非 UUID、body 畸形） | 400 `INVALID_ACQUISITION`（与 HTTP 路径一致） |
 | 发布阶段 COMMIT 结果未知 | 沿用既有 `ErrAcquisitionUnknown` → 503 `OUTCOME_UNKNOWN`，`Verify`/`GET` 用**原 command** 核实，**不重新抓取换 publication ID** |
 | 浏览器/驱动不可用 | `ErrAcquisitionUnavailable` → 503 `ACQUISITION_UNAVAILABLE` |
 | deadline | `DEADLINE_EXCEEDED`（按 D2 预算） |
@@ -177,17 +189,19 @@ consumer   productsourcing.AcquisitionService.Acquire
 - 持久化 command 是 durable 事实；恢复/回读路径必须能验证 `public_browser`，否则重启后无法读回（`validCommand` 是 `StartPrepared` 的校验，且 command 会被持久化并在恢复时重校验）。
 - producer 仍为 `public_acquisition/v1`，**不新增 producer kind**。
 
-### D12. 出网安全边界（SSRF）（Codex finding #3）
+### D12. 出网安全边界（SSRF）——必须作用在**连接层**（Codex finding #3 / #4）
 
-**评审确认（成立）**：HTTP provider 对每个重定向都重新校验，且 `httpimage.NewPublicImageHTTPClient` 在 dial 层拒绝私有/回环地址；而候选抽取的 legacy 浏览器代码**没有任何请求拦截**（全仓 `internal/crawler`、`shenlog` 无 `Route`/`webRequest` 拦截）。
+**评审确认（成立，且第二次复核指出了更强的约束）**：HTTP provider 对每个重定向重新校验，`httpimage.NewPublicImageHTTPClient` 在 dial 层拒绝私有/回环地址；而 legacy 浏览器代码**无任何请求拦截**。
 
-⇒ 只写“只能访问 1688”不构成强制。浏览器 provider 必须实现**请求拦截**，与 HTTP 路径提供等价的出网约束：
+**第一版设计（已废弃）**：仅用 Playwright `BrowserContext.Route`/`Page.Route` 校验“解析后的 IP”。**这不可执行**：route 回调发生在 Chromium **解析目的地之前**，playwright-go 只在 `Response.ServerAddr`（响应到达后）才暴露对端地址，因此无法把一次独立的 DNS 查询绑定到 Chromium 的 socket ⇒ **TOCTOU SSRF 绕过**（DNS rebinding / 私有地址均可绕过字符串校验）。
 
-- 使用 Playwright `BrowserContext.Route`/`Page.Route` 拦截并校验**每一次导航与子资源请求**；未被明确允许的目的地一律 abort。
-- **只允许**本任务明确需要的公开 1688/CDN origin（建议：`detail.1688.com`、`m.1688.com`、以及商品页必需的 `*.alicdn.com` 图片域），其余拒绝。具体允许列表在实现时由产品/安全确认。
-- 解析目标主机 IP，**拒绝**回环、链路本地、私网、保留及云元数据地址（复用/对齐 `httpimage.IsPrivateIP` 语义），防止 DNS rebinding：校验必须在实际连接解析结果上生效，而非仅看字符串 host。
-- **重定向必须逐跳重校验**：不得默认跟随到未批准 host；只有重校验通过且落在允许集内才继续，否则 fail-closed。
-- 该边界是新的跳系统安全边界；未实现拦截前不得接线到生产路由。
+⇒ 边界必须落在**实际连接点**，而非请求回调：
+
+1. **连接层强制**（唯一可信执行点）：Chromium 启动参数 + 出网策略。首选**出网代理/拨号/防火墙层**校验：对每次出站连接解析并拒绝回环、链路本地、私网、保留与云元数据地址；或用 Chromium `--host-resolver-rules` 把**允许 host 显式 pin 到已校验 IP**、其余一律 `~NOTFOUND`，从根上消除 rebinding。二者**至少其一为强制**，路由拦截仅作为**额外的**纵深防御。
+2. **纵深防御（仍需要，但不能单独依赖）**：`BrowserContext.Route`/`Page.Route` 按 **host/URL 字符串**拦截导航与子资源，只允许本任务明确的公开 1688/CDN origin（建议 `detail.1688.com`、`m.1688.com`、商品页必需的 `*.alicdn.com`），其余 abort；重定向逐跳重校验，fail-closed。
+3. **覆盖面**：必须同时覆盖 service worker、WebSocket 及 `fetch`/`xhr` 等非文档请求，以及浏览器预加载/预连接；不得只拦主文档导航。
+4. **运行时环境**：浏览器应在**隔离出网环境**（独立网络命名空间 / 容器网络策略，仅允许出站到白名单公网）运行；进程不得访问内网与管理面。
+5. **部署门禁**：上述未在目标部署形态落地前，**不得**把该 provider 接到生产路由；部署形态（容器/compose/裸机）必须在实现前确定，因为网络层强制方式依赖它。
 
 ## 6. 状态与持久化边界
 
@@ -206,6 +220,10 @@ consumer   productsourcing.AcquisitionService.Acquire
 ## 8. 验证与验收方法
 
 - provider 单测：挑战页 fixture、字段缺失 fixture、超预算 fixture、非预期 content-type、超大响应、驱动不可用。
+- **重放优先**：同 key POST 在响应丢失后重试、并发同 key 重试，**均不得启动浏览器**，直接由 `ByKey` 返回可恢复结果（finding #5）。
+- **失败归因**：页面形状变化/提取器漏字段导致服务端证据被拒时，投影为 502 `SOURCE_UNAVAILABLE` 而非 400；仅调用方请求非法才 400（finding #6）。
+- **出网边界（finding #4）**：证明连接层强制真实生效——本地构造指向回环/链路本地/私网/元数据地址的被允许 host，浏览器**必须无法建连**；并覆盖重定向、service worker、WebSocket、`fetch`/xhr、预连接；未落地则不得接生产路由。
+- **deadline（finding #8）**：slow-body 请求被短 body 读超时中断（不得因放大而失去护栏）；合法 body 在 route 总预算内完成采集与发布。
 - 真实链：current app → browser provider → `MapAcquisitionEvidence(public_browser)` → SRC-1 → Catalog → exact read-back，Product 不直接 seed。
 - 幂等：同 key 重放、异载荷冲突、并发、响应丢失、SRC-1 commit unknown、cancel/deadline。
 - 授权：Home A / Effective B、跨组织、撤权在 provider 前后正确拒绝。
@@ -249,6 +267,16 @@ Cutover/deletion condition:
 
 三条均为**真实设计缺陷**，不需要新 Broad 产品决定；已直接修正设计。修正只改变设计文本，未修改生产代码。
 
+### 10.1 第二轮增量复核（commit `6359b20d7`）
+
+| # | Finding | 分类 | 处置 |
+| --- | --- | --- | --- |
+| 4 | 上一轮的 D12 仍不可执行：`BrowserContext.Route` 在 Chromium **解析目的地之前**运行，playwright-go 仅在响应后的 `Response.ServerAddr` 暴露对端地址，无法把独立 DNS 校验绑定到实际 socket ⇒ TOCTOU SSRF 绕过；且未覆盖 service worker / WebSocket | **BLOCKER（成立，已修）** | 命中「新的跳系统安全边界」且绕过显式出网控制。已重写 D12：**强制点必须在连接层**（出网代理/拨号/防火墙校验，或 `--host-resolver-rules` 将允许 host pin 到已校验 IP），路由拦截降为纵深防御；并要求隔离出网环境 + 部署门禁 |
+| 5 | 同 key 重试会先启浏览器：响应丢失后重试未先查 durable 操作，可能在 provider 失败而无法返回可恢复结果，并重复外部副作用 | **IMPLEMENTATION_TEST（成立，已修）** | 影响 Must「幂等重放」。已在 D1 增加**先重放后抓取**：`ByKey` 快速路径，仅 confirmed not found 才抓取；并要求覆盖响应丢失 + 并发同 key 重试 |
+| 6 | 服务端生成的证据被 `MapAcquisitionEvidence` 拒绝时投影为 400 `INVALID_ACQUISITION`，错误归因于调用方 | **IMPLEMENTATION_TEST（成立，已修）** | 影响 Must「如实报告失败」。已改 D5：服务端产出失败 ⇒ 502 `SOURCE_UNAVAILABLE`（与 HTTP 路径 `failFetch` 一致）；400 仅用于调用方请求非法 |
+| 7 | PD 已标 ACTIVE，但被推翻的批量设计原文仍无 supersession 标记，可被发现并重新适用 | **BACKLOG（成立，已修）** | 仓库权威维护项。已在批量设计头部与 §1.2/§1.3 对应条款就地加 `SUPERSEDED` 标记并链接本 PD，保留历史文本；明确**其余设计继续有效** |
+| 8 | `WithRequestBodyReadTimeout` 是阻塞 body 读护栏，扩成整个操作预算会削弱 slow-body 护栏；且 route deadline 在 body 读前开始计时 | **IMPLEMENTATION_TEST（成立，已修）** | 影响 Must「提交链接→拿到已发布商品」与资源边界。已改 D2：body 读超时保持短值，route 总预算 = body 读 + 浏览器 + 发布 |
+
 ## 11. 未决 / 需评审确认
 
 1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
@@ -258,4 +286,6 @@ Cutover/deletion condition:
 5. **D1 的失败行差异**：确认浏览器路径「预 admission 失败不建行、同 key 可重试」相对 HTTP 路径「失败建行、同 key 永久失败」的差异是否接受。
 6. **D10 的依赖边界**：确认新 owner 自持最小浏览器实现（不 import `internal/crawler/*`），而不是把 `shared/browser` 提升为当前共享基础设施。
 7. **D9 的 `ContentSHA256` 定义**：确认为「映射字段子树规范化 JSON 摘要」，而非整页字节。
-8. **真实 1688 网络验收**：需用户单独授权；未授权保持 `NOT_RUN`。
+8. **D12 的连接层强制方式与部署形态**：目标部署（容器/compose/裸机）未定，连接层强制（代理/防火墙/host-resolver pin）的选择依赖它；**需在实现前确定**，否则 SSRF 边界无法落地。
+9. **D12 的允许 origin 集**：需产品/安全确认具体的 1688/CDN 允许列表。
+10. **真实 1688 网络验收**：需用户单独授权；未授权保持 `NOT_RUN`。
