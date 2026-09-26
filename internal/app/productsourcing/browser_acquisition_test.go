@@ -25,11 +25,12 @@ type browserProviderSpy struct {
 func (p *browserProviderSpy) Acquire(ctx context.Context, _ sourcing.AcquisitionSource) (sourcing.AcquisitionEvidence, error) {
 	p.mu.Lock()
 	p.calls++
-	p.delay = p.delay
 	ev, err := p.evidence, p.err
 	p.mu.Unlock()
 	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		p.mu.Lock()
 		p.lastChild = true
+		p.mu.Unlock()
 	}
 	if p.delay > 0 {
 		select {

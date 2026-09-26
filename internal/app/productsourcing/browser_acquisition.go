@@ -98,27 +98,13 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	if err != nil {
 		return sourcing.AcquisitionResult{}, s.failFetch(ctx, err)
 	}
-	if s.core.reader == nil {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
-	}
 	if err := s.core.authorizeScope(ctx, request.Scope); err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
-	productKey, publicationID, err := sourcing.PublicationIdentity(envelope)
+	command, err := s.core.prepareCommand(ctx, request.Scope, envelope)
 	if err != nil {
 		return sourcing.AcquisitionResult{}, s.failFetch(ctx, err)
 	}
-	base := uint64(0)
-	current, err := s.core.reader.GetCurrentSnapshot(ctx, catalog.SnapshotIdentity{TenantID: request.Scope.OrganizationID, ProductKey: productKey})
-	if err == nil {
-		base = current.Version
-	} else if !errors.Is(err, catalog.ErrSnapshotNotReady) {
-		return sourcing.AcquisitionResult{}, err
-	}
-	if err := s.core.authorizeScope(ctx, request.Scope); err != nil {
-		return sourcing.AcquisitionResult{}, err
-	}
-	command := sourcing.PublicationCommand{PublicationID: publicationID, ProductKey: productKey, Producer: sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"}, ExpectedBaseVersion: &base, Envelope: envelope}
 	preparedStore, ok := s.core.operations.(sourcing.PreparedAcquisitionOperationStore)
 	if !ok {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable

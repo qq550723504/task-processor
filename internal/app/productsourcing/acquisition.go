@@ -63,18 +63,10 @@ func (s *AcquisitionService) Acquire(ctx context.Context, key, source string) (s
 		if err := s.authorizeScope(ctx, op.Scope); err != nil {
 			return sourcing.AcquisitionResult{}, err
 		}
-		productKey, publicationID, err := sourcing.PublicationIdentity(envelope)
+		command, err := s.prepareCommand(ctx, op.Scope, envelope)
 		if err != nil {
 			return sourcing.AcquisitionResult{}, s.failFetch(ctx, op, err)
 		}
-		base := uint64(0)
-		current, err := s.reader.GetCurrentSnapshot(ctx, catalog.SnapshotIdentity{TenantID: op.Scope.OrganizationID, ProductKey: productKey})
-		if err == nil {
-			base = current.Version
-		} else if !errors.Is(err, catalog.ErrSnapshotNotReady) {
-			return sourcing.AcquisitionResult{}, err
-		}
-		command := sourcing.PublicationCommand{PublicationID: publicationID, ProductKey: productKey, Producer: sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"}, ExpectedBaseVersion: &base, Envelope: envelope}
 		op, err = s.operations.Prepare(ctx, op, command)
 		if err != nil {
 			return sourcing.AcquisitionResult{}, err
@@ -91,6 +83,28 @@ func (s *AcquisitionService) Acquire(ctx context.Context, key, source string) (s
 		}
 	}
 	return s.resolve(ctx, op, publishClaim, replayed)
+}
+
+// prepareCommand builds the publication command for an admitted envelope. It
+// lives here (an admitted PublicationIdentity call site) and is reused by both
+// the HTTP and server-side browser acquisition paths so the call remains a
+// single reviewed boundary. The caller must have authorized scope already.
+func (s *AcquisitionService) prepareCommand(ctx context.Context, scope sourcing.PublicationScope, envelope sourcing.SourceEnvelope) (sourcing.PublicationCommand, error) {
+	productKey, publicationID, err := sourcing.PublicationIdentity(envelope)
+	if err != nil {
+		return sourcing.PublicationCommand{}, err
+	}
+	if s.reader == nil {
+		return sourcing.PublicationCommand{}, sourcing.ErrAcquisitionUnavailable
+	}
+	base := uint64(0)
+	current, err := s.reader.GetCurrentSnapshot(ctx, catalog.SnapshotIdentity{TenantID: scope.OrganizationID, ProductKey: productKey})
+	if err == nil {
+		base = current.Version
+	} else if !errors.Is(err, catalog.ErrSnapshotNotReady) {
+		return sourcing.PublicationCommand{}, err
+	}
+	return sourcing.PublicationCommand{PublicationID: publicationID, ProductKey: productKey, Producer: sourcing.ProducerDescriptor{Kind: sourcing.AcquisitionProducerKind, Version: "v1"}, ExpectedBaseVersion: &base, Envelope: envelope}, nil
 }
 
 func (s *AcquisitionService) Verify(ctx context.Context, key, source string) (sourcing.AcquisitionResult, error) {
