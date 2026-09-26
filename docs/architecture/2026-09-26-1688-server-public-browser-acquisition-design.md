@@ -22,7 +22,7 @@
 
 - 不使用、不持久化用户 1688 登录态、Cookie、密码、profile、session token；仍是匿名路径，不引入 SourceAccount/Connection。
 - 不做多账号池、代理池、账号轮换、定时/周期重采、后台调度器。
-- 不新建 Product/Catalog 第二事实源；不改 SRC-1/Catalog 事实规则。
+- **不新建队列/调度器/Saga/Admission Control 平台、不建第二事实源**；采集以独立进程同步被调（见 D13），复用同一个二进制与同一个 `product_acquisition` 库；不改 SRC-1/Catalog 事实规则。
 - 不改浏览器插件 / Browser Capture / 本地执行器路线（#399 与批量设计继续有效）。
 - 不做 UI/IA 变更（复用现有采集页与详情页）。
 
@@ -50,8 +50,10 @@ contract   sourcing.PublicAcquirer.Acquire(ctx, AcquisitionSource) (AcquisitionE
 implementation
            internal/integration/acquisition/a1688/browser.Client   ← 新增（EXTRACT 自 legacy）
            复用 internal/crawler/shared/browser 的启动参数/反检测/验证码/提取器能力
+           ── 采集在独立进程/服务（D13）内运行，current-application 通过内部 RPC 同步调用
 injection  internal/app/httpapi/product_acquisition_application.go
            newCrawler1688HTTPModule 之外的 PublicAcquirer 构造点（当前 a1688.New()）
+           → 改为指向采集服务内部 RPC 客户端
 consumer   productsourcing.AcquisitionService.Acquire
            → MapAcquisitionEvidence(channel="public_browser")
            → PublicationIdentity → SRC-1 InternalProducer → Catalog
@@ -142,7 +144,7 @@ consumer   productsourcing.AcquisitionService.Acquire
 ### D8. 资源与副作用边界
 
 - **出网副作用**：新增服务端真实浏览器出网；其 host/子资源/重定向约束由 D12 强制，不是口头约定。
-- 并发：浏览器采集为稀有操作，需显式上限（建议单进程并发 ≤2，超出排队或 `ACQUISITION_CAPACITY`），避免把服务端资源打满。
+- 并发：浏览器采集为稀有操作，需显式上限（建议单进程并发 ≤2，超出排队或 `ACQUISITION_CAPACITY`），避免把服务端资源打满；在 D13 形态下该上限落在**采集容器**（可独立调），不与 API 进程共享。
 - 响应/命令大小沿用 `MaxAcquisitionCommandBytes`（2 MiB）；提取字段数量沿用既有 `AcquisitionEvidence` 上限校验。
 - 临时 profile 目录与浏览器产物在结束/失败时清理；不写入仓库目录。
 - **出口 IP 风控**是已接受风险（PD 文档第 3 条），因此实现必须支持「被风控时快速、如实失败」，不得通过无限重试放大对 IP 的伤害。
@@ -197,11 +199,26 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 ⇒ 边界必须落在**实际连接点**，而非请求回调：
 
-1. **连接层强制**（唯一可信执行点）：Chromium 启动参数 + 出网策略。首选**出网代理/拨号/防火墙层**校验：对每次出站连接解析并拒绝回环、链路本地、私网、保留与云元数据地址；或用 Chromium `--host-resolver-rules` 把**允许 host 显式 pin 到已校验 IP**、其余一律 `~NOTFOUND`，从根上消除 rebinding。二者**至少其一为强制**，路由拦截仅作为**额外的**纵深防御。
+1. **连接层强制**（唯一可信执行点）：由**采集容器的出网白名单**落实（D13）——该容器只允许出站到已校验的公开 1688/CDN 地址，拒绝回环、链路本地、私网、保留与云元数据地址；访问不到内网 DB。**或**用 Chromium `--host-resolver-rules` 将允许 host 显式 pin 到已校验 IP、其余 `~NOTFOUND`，从根上消除 rebinding。二者**至少其一为强制**；路由拦截仅作为**额外的**纵深防御。因为浏览器与 DB 不同进程/不同网络命名空间，同进程 SSRF 通道被结构性切断。
 2. **纵深防御（仍需要，但不能单独依赖）**：`BrowserContext.Route`/`Page.Route` 按 **host/URL 字符串**拦截导航与子资源，只允许本任务明确的公开 1688/CDN origin（建议 `detail.1688.com`、`m.1688.com`、商品页必需的 `*.alicdn.com`），其余 abort；重定向逐跳重校验，fail-closed。
 3. **覆盖面**：必须同时覆盖 service worker、WebSocket 及 `fetch`/`xhr` 等非文档请求，以及浏览器预加载/预连接；不得只拦主文档导航。
-4. **运行时环境**：浏览器应在**隔离出网环境**（独立网络命名空间 / 容器网络策略，仅允许出站到白名单公网）运行；进程不得访问内网与管理面。
+4. **运行时环境**：浏览器在**采集容器**（D13 独立网络命名空间）内运行；出网仅白名单，且进程不得访问内网与管理面。
 5. **部署门禁**：上述未在目标部署形态落地前，**不得**把该 provider 接到生产路由；部署形态（容器/compose/裸机）必须在实现前确定，因为网络层强制方式依赖它。
+
+### D13. 部署形态：独立采集进程（用户决定 2026-09-26）
+
+**用户决定（“按建议”）**：采纳**独立部署采集进程**、**同步被调**；不引入队列/调度器/第二事实源。
+
+依据与代价（已向用户说明并获采纳）：
+
+- **为什么分开**：浏览器采集与 API 进程不共性。`current-application` 同进程持有 product/source/commercial/membership 四个库凭据且能访问内网；同进程跑 Chromium 会让 D12 的出网边界难以真正落地，且 35s 级长任务与数百 MB 内存会拖垮认证/下单路径。这也是旧 `internal/crawler/alibaba1688` 历史上就是独立进程（`APIService` 独立端口 + worker pool）的教训。
+- **采纳的最小形态（避免建成平台）**：
+  - 复用**同一个二进制**与**同一个 `product_acquisition` 库**；不新增表、不新增状态机、不新增第二事实源。
+  - 采集以**独立进程/服务**运行，**同步被调**（保持 `acquiring → prepared → publishing → published` 既有同步语义），不引入队列、调度器、TTL 或 key GC。
+  - 采集服务**只暴露内部 RPC，不进公网路由**；`current-application` 在 `provider` 位置改为调用该内部 RPC。
+  - 幂等/重放/恢复完全沿用既有操作行（同 key 同载荷 replay、COMMIT unknown 走 Verify/Read），不新语义。
+- **代价（已知并接受）**：新增一个部署面（compose 服务、镜像、限额、升级/回滚）。`AGENTS.md` 禁止的是“预建平台/调度器”，本形态两者都不是；真实开新部署面仍需在实现 Issue 中明确，并单独授权部署。
+- **D8 并发上限**落到采集容器（可独立调），不再与 API 进程共享；**D12 连接层强制**落到采集容器出站白名单。
 
 ## 6. 状态与持久化边界
 
@@ -280,12 +297,13 @@ Cutover/deletion condition:
 ## 11. 未决 / 需评审确认
 
 1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
-2. **D8 的并发上限**：建议 ≤2；需确认是否与部署形态（单进程/多副本）一致。
+2. **D8 的并发上限**：建议 ≤2；在 D13 形态下落于采集容器（可独立调），需确认是否与部署形态（单副本/多副本）一致。
 3. **验证码自动处理的失败语义**：确认「自动处理失败即如实 `SOURCE_UNAVAILABLE`，不做二次人工介入」。
 4. **`public_browser` channel 命名**：需确认与 `src2b-acquisition-v1` 的 channel 语义扩展方式（`MapAcquisitionEvidence` 允许集合）。
 5. **D1 的失败行差异**：确认浏览器路径「预 admission 失败不建行、同 key 可重试」相对 HTTP 路径「失败建行、同 key 永久失败」的差异是否接受。
 6. **D10 的依赖边界**：确认新 owner 自持最小浏览器实现（不 import `internal/crawler/*`），而不是把 `shared/browser` 提升为当前共享基础设施。
 7. **D9 的 `ContentSHA256` 定义**：确认为「映射字段子树规范化 JSON 摘要」，而非整页字节。
-8. **D12 的连接层强制方式与部署形态**：目标部署（容器/compose/裸机）未定，连接层强制（代理/防火墙/host-resolver pin）的选择依赖它；**需在实现前确定**，否则 SSRF 边界无法落地。
+8. **D12 的连接层强制方式与部署形态**：**已定（D13 独立采集容器 + 出站白名单）**；具体白名单 CIDR/域名与采集容器网络策略仍需在实现前定稿。
 9. **D12 的允许 origin 集**：需产品/安全确认具体的 1688/CDN 允许列表。
 10. **真实 1688 网络验收**：需用户单独授权；未授权保持 `NOT_RUN`。
+11. **D13 的内部 RPC 契约与部署面**：采集服务只进内部网络，需定义最小 RPC（请求/响应/错误/超时）；新增 compose 服务/镜像/限额属新部署面，需在实现 Issue 明确并单独授权部署。
