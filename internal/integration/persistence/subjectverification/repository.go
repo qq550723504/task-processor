@@ -84,6 +84,16 @@ func (r *Repository) Apply(ctx context.Context, receipt domain.Receipt, apply fu
 		var a domain.Application
 		if err := tx.Table(applications).Clauses(clause.Locking{Strength: "UPDATE"}).Where("scope = ? AND correlation = ?", receipt.Scope, receipt.Correlation).Take(&a).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// A known message cannot become an unrelated callback by changing
+				// its correlation. Check durable receipts before acknowledging it.
+				var prior message
+				err := tx.Table(messages).Where("scope = ? AND message_id = ?", receipt.Scope, receipt.MessageID).Take(&prior).Error
+				if err == nil {
+					return domain.ErrConflict
+				}
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
 				return domain.ErrNotFound
 			}
 			return err
