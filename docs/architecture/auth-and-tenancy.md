@@ -2,13 +2,15 @@
 
 > Status: supporting architecture context.
 >
-> CURRENT STATE: inspected at `main @ cae67730c5c0e645d708cb2f6814f14781962bb1` (2026-09-05); no production acceptance claimed.
+> CURRENT STATE: the bounded account/context/member interface map below was checked against `main @ 7dc9a19a5043169cb4e014909da0549aa2a921cc` (2026-09-26). Earlier context was inspected at `cae67730c5c0e645d708cb2f6814f14781962bb1` (2026-09-05). Neither observation is production acceptance or a repository-wide authorization audit.
 >
-> Scope: ZITADEL-backed authentication, tenant context propagation, authorization boundaries, and data isolation expectations for ListingKit.
+> Scope: Shuomi authentication, authorization and Organization context; remaining ListingKit paths are implementation debt, not target product authority.
+
+Quick entry: [current interface and permission map](#auth-interface-map). This is a reading map of existing contracts, not a new wire specification or implementation gate.
 
 ## 1. Purpose
 
-ListingKit is a multi-tenant system. Authentication, tenant identification, route authorization, and tenant-scoped data access must stay explicit because ListingKit tasks, workbench state, uploaded assets, store configuration, and source facts can belong to different business owners.
+Shuomi reuses its current identity and Organization contracts. Authentication, Organization selection, action authorization and resource ownership must stay separate. User-owned identity data is not automatically Organization-owned; store, source and other business resources keep their own verified ownership boundaries.
 
 This supporting document explains the current
 [Identity / Organization contract](../superpowers/specs/2026-08-30-shuomi-workbench-store-center-zitadel-multi-org-design.md)
@@ -35,11 +37,14 @@ target resolver can select the target instead. Successful resolution writes
 Missing identity, denied/revoked access or unavailable required dependencies
 fail closed under the route policy; no global tenant fallback is allowed.
 
-CURRENT STATE also includes routes without Organization resolution. Where auth
-is required they use the legacy identity middleware, followed by existing role
-authorization. Public/OPTIONS behavior remains descriptor-specific. This is
-not evidence that all old routes have adopted the new Organization contract;
-do not add a second IAM or change route policy as a documentation fix.
+Routes without Organization resolution do not all use legacy authentication.
+`CurrentIdentity` uses the current verifier and clears business Organization/role
+context for personal operations; `CurrentIdentityWithVerifiedRoles` retains the
+verified roles for explicitly admitted identity-scoped routes. Other retained
+routes may still use the legacy allowlist/middleware path. Read the actual
+AuthPolicy, OrganizationAccessPolicy and injected middleware together; do not
+replace one policy with another as a documentation fix. Public/OPTIONS behavior
+also remains descriptor-specific.
 
 ## 3. Identity and tenant concepts
 
@@ -47,13 +52,11 @@ do not add a second IAM or change route policy as a documentation fix.
 
 User identity answers: who is calling the system?
 
-Typical fields:
-
-- subject / user id,
-- preferred username or display name,
-- email,
-- roles or groups,
-- token/session metadata.
+The internal [AuthenticatedIdentity](../../internal/authidentity/authenticated_identity.go)
+contains verified subject, Home/Effective Organization, effective member/grant
+identity, scoped roles/grants and token expiry. Display name, email and phone are
+separate UserInfo/self-service projections, not extra authentication authority.
+Do not serialize the internal principal as the public Workbench Context DTO.
 
 ### Tenant identity
 
@@ -68,8 +71,7 @@ to access another Organization. ZITADEL remains the identity/authorization sourc
 
 Tenant identity must be explicit when accessing:
 
-- ListingKit tasks,
-- Studio sessions and batches,
+- remaining legacy ListingKit tasks and Studio state (not new-feature owners),
 - uploaded files and image assets,
 - store and subscription configuration,
 - source import records,
@@ -229,3 +231,168 @@ This document can be promoted from supporting context to stable boundary documen
 - package-specific auth/tenant tests are named in the document.
 
 Until then, use it as shared context and keep formal package/dependency authority in the existing stable boundary documents.
+
+
+<a id="auth-interface-map"></a>
+
+## 10. Current authentication and authorization interface map
+
+This section is a bounded navigation aid for the inspected baseline, covering
+account identity, Workbench context and member-management examples. Route existence
+in source does not prove that a module is enabled in a deployed application.
+See [current application assembly](../../internal/app/httpapi/current_application.go)
+and [Repository Structure](../development/repository-structure.md#current-entrypoint-map).
+Existing wire contracts, route descriptors and domain checks remain authoritative;
+this map neither merges endpoints nor changes DTOs, permissions or error semantics.
+
+### 10.1 Existing owners and approved contract entrypoints
+
+| Concern | Existing owner / entrypoint | Consumer rule |
+| --- | --- | --- |
+| Login and browser session | [approved Login Phase1 decision](../superpowers/specs/2026-09-05-shuomi-login-phase1-zitadel-native-simplification.md), official ZITADEL Login V2 and existing Auth.js | Continue the approved generic `/login` flow; this task adds no Go login/refresh/logout or OTP-primary API. |
+| Request authentication | [ZITADEL verifier](../../internal/authruntime/zitadel/verifier.go), [server auth assembly](../../internal/app/httpapi/server_auth.go) | Verify the request bearer; supplied user/tenant/role headers are not identity proof. |
+| Verified principal | [authidentity](../../internal/authidentity/authenticated_identity.go) | `UserID` is the caller, Home is identity ownership, Effective is verified business scope, `EffectiveMemberID` is the selected authorization/grant identity, not a second user ID. |
+| Organization resolution | [Resolver](../../internal/workbenchcontext/resolver.go), [selection policy](../../internal/workbenchcontext/context.go), [Identity / Organization contract](../superpowers/specs/2026-08-30-shuomi-workbench-store-center-zitadel-multi-org-design.md) | A selector chooses a candidate, not a permission grant; apply the route's freshness policy. |
+| Personal and Organization reads | [account read-only contract](../engineering/account-readonly-contract.md) | Reuse the existing `account-v1` fields, BFF/client assertions, cancellation, null values and errors; do not publish a second wire contract here. |
+| Personal identity mutations | [account identity HTTP module](../../internal/app/httpapi/account_identity.go), [self-service adapter](../../internal/authruntime/zitadel/self_service.go) | Only the authenticated user's official provider self-service; no administrator credential or client-selected target user. Current HTTP placement is recorded, not moved. |
+| Member actions | [membership contract](../engineering/issue410-membership-contract.md), [route module](../../internal/organization/membership/httpapi/module.go) | Existing `authz` checks and membership service enforce project/Organization/actor/target/operation scope; no second RBAC. |
+
+### 10.2 Account and Workbench routes
+
+| User operation | Browser/BFF entry | Go API | Actual AuthPolicy / OrganizationAccessPolicy | Additional boundary |
+| --- | --- | --- | --- | --- |
+| Read own identity summary | `GET /api/account/profile` | `GET /api/v1/account/profile` | `CurrentIdentity` / `None` | No selected enterprise needed. UserInfo subject must match caller; missing claims stay null, not invented. |
+| Read selected enterprise | `GET /api/account/organization` | `GET /api/v1/account/organization` | `CurrentIdentity` / `CachedRead` | Explicit bounded selector required; own selected grant is not member-management permission. |
+| Read choices/current context | `GET /api/workbench/context` | `GET /api/v1/workbench/context` | `VerifiedIdentity` / `ContextRead` | Returns existing context projection; not the internal principal. |
+| Select enterprise | `PUT /api/workbench/context/effective-organization` | `PUT /api/v1/workbench/context/effective-organization` | `VerifiedIdentity` / `LiveSwitch` | Body `organizationId` is a candidate. Body/header mismatch is rejected; a switch grants no new membership. |
+
+Evidence: [Go descriptors](../../internal/workbenchcontext/httpapi/module.go),
+[Go context handler](../../internal/workbenchcontext/httpapi/handler.go),
+[Workbench BFF](../../web/listingkit-ui/src/app/api/workbench/%5B...path%5D/route.ts),
+and the account read-only contract above. `VerifiedIdentity` and `CurrentIdentity`
+are actual different enum choices, not interchangeable labels.
+
+For account reads, the browser's `X-Expected-User-ID` and, when applicable,
+`X-Expected-Organization-ID` are equality assertions. The BFF checks them against
+its server session/selection and the response; they do not confer authority.
+The existing selection cookie supplies the Go selector, and Go revalidates the
+grant. Browser bearer/user/role headers are not forwarded as trusted context.
+
+For generic ContextRead, an absent selector may select Home **only if Home has
+an actual matching grant**, otherwise a sole grant may be selected. An explicitly
+requested unauthorized Organization is rejected, never silently replaced.
+Account Organization GET is stricter: it requires the explicit selector and does
+not invoke that defaulting behavior. With ContextRead and no selection, zero
+grants can yield an empty context; `selectionRequired` is true only when no
+Effective Organization is selected and there are multiple choices. Do not turn
+that into an invented membership or deny independent personal-profile access.
+
+The public Context DTO remains `user.id`, `homeOrganizationId`, nullable
+`effectiveOrganizationId`, `selectionRequired` and `organizations` with existing
+roles/capabilities. It does not gain `memberId`, token expiry, raw grants or a new
+schema just because the internal principal has those fields. UI roles and
+capabilities are projections; backend permissions are checked again per action.
+
+### 10.3 Current-user self-service routes
+
+All rows use browser prefix `/api/account/identity` and Go prefix
+`/api/v1/account/identity`, with `CurrentIdentity` and no Organization resolution.
+Neither selected-enterprise membership nor enterprise-admin status is a new
+precondition or a way to edit another person's identity.
+
+| Method and suffix (same on both prefixes) | Existing provider operation |
+| --- | --- |
+| `GET /profile` | Read the editable provider profile, distinct from the account summary. |
+| `PUT /profile` | Update own provider profile. Display name is not a login credential. |
+| `PUT /email` | Set own email; verification remains a separate provider fact. |
+| `POST /email/resend` | Request an email verification message. |
+| `POST /email/verify` | Submit the email code to the provider. |
+| `PUT /phone` | Set own phone. |
+| `POST /phone/resend` | Request a phone verification message. |
+| `POST /phone/verify` | Submit the phone code to the provider, not OTP-primary login. |
+| `PUT /password` | Provider self-service password update, not local password authentication. |
+
+[BFF entry](../../web/listingkit-ui/src/lib/server/account-identity-route.ts)
+uses serverAuth/server-held token and delegates to
+[proxyAccountIdentity](../../web/listingkit-ui/src/lib/server/account-proxy.ts).
+The Go module and provider adapter linked in 10.1 own exact input/output and
+validation details. This map does not introduce new request fields or permissions.
+Passwords/codes may pass transiently through this self-service transport; they
+must not become locally stored/validated credentials or audit payloads.
+
+Keep unknown-result handling distinct from definite rejection. Go maps the
+adapter's unknown mutation outcome to `502 RESULT_UNVERIFIED`; the BFF can also
+return `502/504 RESULT_UNVERIFIED` after forwarding/transport failure. This is
+not a single global status-code rewrite. Keep the current safe errors, bounded
+requests/responses and no-store handling; do not add automatic mutation retries
+or treat a refresh/timeout as proof that the original operation failed. Contact
+verification is not personal real-name verification or enterprise certification.
+
+### 10.4 Member operations: permission and freshness are independent of method
+
+Browser `/api/account/members...` and `/api/account/member-operations...` use the
+existing [members proxy](../../web/listingkit-ui/src/lib/server/members-proxy.ts)
+to reach the corresponding `/api/v1/account/...` routes. All rows below use
+`CurrentIdentity` plus `LiveWrite` in the current membership descriptors.
+`LiveWrite` is the existing live-grant freshness policy name, **not a claim that
+every GET writes data** and not permission to change ordinary GET policies.
+
+| Go route group | Existing permission |
+| --- | --- |
+| `GET /api/v1/account/members` and `GET /api/v1/account/members/:member_id` | `workbench.organization_member.read` |
+| `GET /api/v1/account/member-operations` and `GET /api/v1/account/member-operations/:operation_id` | `workbench.organization_member.manage` |
+| `POST /api/v1/account/members/invitations`, `POST /api/v1/account/members/:member_id/role`, `POST /api/v1/account/members/:member_id/remove` | `workbench.organization_member.manage` |
+| `POST /api/v1/account/member-operations/:operation_id/verify` | `workbench.organization_member.manage`; explicit recovery may dispatch provider actions, not a harmless status read. |
+
+Under the membership contract, viewer/operator have read only; organization
+admin has read/manage, and configured platform users/roles follow the existing
+policy owner. Do not replace this with `IsTenantAdmin`, source-account permission,
+UI visibility or Organization equality. The service/provider adapter also checks
+project, Organization, actor and target/receipt ownership. Replay does not bypass
+fresh authorization. Pending-receipt listing is actor-scoped and does not settle
+an UNKNOWN invitation.
+
+### 10.5 How an Agent should reuse this map
+
+For the specific new user operation, cite the existing contract and trace:
+
+```text
+browser/BFF -> Go route descriptor
+  -> verified identity -> required Organization resolution
+  -> action permission -> domain target/ownership check
+  -> existing provider/repository/operation receipt
+```
+
+Do not choose policies solely from the URL or HTTP method. Ordinary account
+Organization reads allow the approved cache window (at most 60 seconds and
+bounded by token expiry); this is not immediate revocation. LiveWrite/LiveSwitch
+use current grants, but freshness is not an atomic transaction with a later
+external mutation. An optional suspension checker only applies where actually
+injected; do not claim all assemblies enforce a global enterprise lifecycle gate.
+
+Shared server assembly still references `internal/listingkit/httpapi` route/role
+helpers and `authz.ListingKitAuthorizer`. Policy and injected middleware determine
+which path is used. Those dependencies/names are current code observations,
+not a new-feature dependency allowance, a new authorization vulnerability finding,
+or proof that physical retirement is complete. Any later extraction needs a
+specific consumer/benefit and its own bounded scope; this document does not
+require moving `account_identity.go` or creating a giant AuthService.
+
+### 10.6 Evidence, limits and subject verification
+
+Existing evidence locations include the [account read contract](../engineering/account-readonly-contract.md),
+[membership contract](../engineering/issue410-membership-contract.md),
+[server auth tests](../../internal/app/httpapi/server_test.go),
+[account read tests](../../internal/app/httpapi/account_read_test.go) and
+[account BFF tests](../../web/listingkit-ui/src/lib/server/account-route.test.ts).
+These are references for the applicable path, not a new full-suite acceptance
+matrix or a claim that this documentation task reran them. Preserve original
+SHA/command/fixture/real-provider distinctions; a source reading is not runtime
+or security acceptance. Per-route wire contracts retain their own error/size/
+deadline rules rather than inheriting a new universal protocol from this map.
+
+Personal/enterprise subject verification remains #510 / #511, separate from
+login, contact verification and Organization authorization. Its new application,
+permissions and provider evidence must be designed there; none is enabled here.
+This documentation maintenance is not a prerequisite for that work, and does not
+promote the discarded AUTH-1 rewrite into a new implementation plan.
