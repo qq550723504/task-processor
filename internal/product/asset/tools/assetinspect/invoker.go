@@ -72,7 +72,8 @@ func (i *Invoker) Invoke(ctx context.Context, metadata commercetool.CallMetadata
 	}
 	result, err := i.tools.Invoke(ctx, commercetool.Call{Tool: Definition().Ref, Metadata: metadata, Arguments: raw})
 	if ctx.Err() != nil {
-		return commercetool.Result{}, mapReadError(ctx.Err())
+		result.Output = nil
+		return result, mapReadError(ctx.Err())
 	}
 	return result, err
 }

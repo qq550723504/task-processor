@@ -17,6 +17,77 @@ type freshPrincipalFixture struct {
 
 type blockingFreshPrincipalFixture struct{}
 
+type invocationAuditFixture struct {
+	err    error
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (f *invocationAuditFixture) RecordToolCall(context.Context, commercetool.AuditRecord) error {
+	f.calls++
+	if f.cancel != nil {
+		f.cancel()
+	}
+	return f.err
+}
+
+func TestInvokerPreservesAuditStatusWhenContextEnds(t *testing.T) {
+	for _, stage := range []string{"preflight", "execution", "audit"} {
+		for _, auditFails := range []bool{false, true} {
+			status := commercetool.AuditStatusRecorded
+			if auditFails {
+				status = commercetool.AuditStatusRecordFailed
+			}
+			t.Run(stage+"/"+string(status), func(t *testing.T) {
+				published, inventory := projectionFixture()
+				var snapshots catalog.VersionedSnapshotReader = &snapshotFixture{value: published}
+				var fresh FreshPrincipalResolver = &freshPrincipalFixture{}
+				assets := &inventoryFixture{value: inventory}
+				audit := &invocationAuditFixture{}
+				if auditFails {
+					audit.err = errors.New("audit unavailable")
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				switch stage {
+				case "preflight", "execution":
+					var deadlineCancel context.CancelFunc
+					ctx, deadlineCancel = context.WithTimeout(ctx, 20*time.Millisecond)
+					defer deadlineCancel()
+					if stage == "preflight" {
+						fresh = blockingFreshPrincipalFixture{}
+					} else {
+						snapshots = &blockingSnapshotFixture{}
+					}
+				case "audit":
+					// Successful output exists before the recorder cancels the call.
+					audit.cancel = cancel
+				}
+				deps := testDependencies()
+				deps.Recorder = audit
+				invoker, err := NewInvoker(snapshots, assets, fresh, testAgent(), deps)
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := invoker.Invoke(ctx, testMetadata(), Input{ProductKey: "product-1", CatalogVersion: "9007199254740993", TargetPlatform: "fixture-platform"})
+				if commercetool.CodeOf(err) != commercetool.ErrorDeadlineExceeded || len(result.Output) != 0 {
+					t.Fatalf("context end must discard output: result=%+v err=%v", result, err)
+				}
+				if result.AuditStatus != status || audit.calls != 1 {
+					t.Fatalf("audit outcome lost or retried: status=%q want=%q calls=%d", result.AuditStatus, status, audit.calls)
+				}
+				wantAssetCalls := 0
+				if stage == "audit" {
+					wantAssetCalls = 1
+				}
+				if assets.calls != wantAssetCalls {
+					t.Fatalf("unexpected asset calls: %d", assets.calls)
+				}
+			})
+		}
+	}
+}
+
 func (blockingFreshPrincipalFixture) ResolveFreshPrincipal(ctx context.Context) (commercetool.Principal, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		return commercetool.Principal{}, errors.New("missing tool deadline")
