@@ -330,3 +330,17 @@ func publishedOperationFor(t *testing.T, scope sourcing.PublicationScope, key, o
 	op.Command = &cmd
 	return op
 }
+
+// A provider-scoped deadline must surface as DEADLINE_EXCEEDED (504), not as a
+// 502 source failure, even though the outer publication budget is still alive.
+func TestBrowserProviderTimeoutIsDeadlineExceeded(t *testing.T) {
+	store := newBrowserStore()
+	store.prepared = true
+	// Provider blocks until its child context expires.
+	provider := &browserProviderSpy{delay: 200 * time.Millisecond}
+	svc, err := NewBrowserAcquisitionService(store, provider, &recordingPublisher{}, &acquisitionCatalogReaderSpy{}, browserAuthStub{scope: testScope()}, 30*time.Millisecond)
+	require.NoError(t, err)
+	_, err = svc.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "981645030344")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, 0, store.startPrep, "timeout must not admit an operation")
+}

@@ -89,21 +89,21 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 	evidence, err := s.provider.Acquire(providerCtx, request.Source)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, err)
+		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
 	}
 
 	// Server-generated evidence that fails mapping is a provider/parse failure,
 	// not a bad request (finding #6).
 	envelope, err := sourcing.MapAcquisitionEvidence(request.Source, evidence, sourcing.AcquisitionChannelPublicBrowser, request.ID)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, err)
+		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
 	}
 	if err := s.core.authorizeScope(ctx, request.Scope); err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
 	command, err := s.core.prepareCommand(ctx, request.Scope, envelope)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, err)
+		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
 	}
 	preparedStore, ok := s.core.operations.(sourcing.PreparedAcquisitionOperationStore)
 	if !ok {
@@ -206,16 +206,23 @@ func (s *BrowserAcquisitionService) outerBudget() time.Duration {
 	return sourcing.AcquisitionTimeout
 }
 
-// failFetch maps a provider/mapping failure to the existing failed sentinel.
-// A pre-admission browser failure must not leave a durable terminal row: the
-// path retries by re-acquiring under the same key (D1), and nothing is written
-// yet, so there is nothing to Finish. The HTTP layer already projects
-// ErrAcquisitionFailed as 502 SOURCE_UNAVAILABLE, which is the correct
-// "server/provider failed" projection (finding #6), distinct from a 400 for a
-// bad caller request.
-func (s *BrowserAcquisitionService) failFetch(ctx context.Context, cause error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
+// failFetch maps a provider/mapping failure to the established sentinels. A
+// pre-admission browser failure must not leave a durable terminal row: the path
+// retries by re-acquiring under the same key (D1), and nothing is written yet,
+// so there is nothing to Finish.
+//
+// A deadline/cancellation is reported as such (the HTTP layer renders
+// context.DeadlineExceeded as 504 DEADLINE_EXCEEDED); any other provider or
+// mapping failure is a source failure rendered as 502 SOURCE_UNAVAILABLE, which
+// is the correct "server/provider failed" projection (finding #6) and distinct
+// from a 400 for a bad caller request. causeCtx is the context the provider ran
+// under, so a provider-scoped timeout is not misreported as a source failure.
+func (s *BrowserAcquisitionService) failFetch(parent context.Context, causeCtx context.Context, cause error) error {
+	if parent != nil && parent.Err() != nil {
+		return parent.Err()
+	}
+	if errors.Is(cause, context.DeadlineExceeded) || errors.Is(cause, context.Canceled) || (causeCtx != nil && causeCtx.Err() != nil) {
+		return context.DeadlineExceeded
 	}
 	return sourcing.ErrAcquisitionFailed
 }
