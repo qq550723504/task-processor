@@ -67,6 +67,8 @@ consumer   productsourcing.AcquisitionService.Acquire
 
 ⇒ 浏览器路径按 Browser Capture 的既有模式：先取 evidence 并 validate，再 `StartPrepared` 一次性原子写入 command。只有可确定性恢复的操作才有 durable 行；这与 `src2b-acquisition-v1` 的「没有 background scheduler / 租约续期 / TTL / key GC」零冲突。
 
+**失败语义（与 HTTP 路径的差异，需评审确认）**：HTTP 路径用 `Acquire` 的 `Start` 建 `acquiring` 行，抓取失败会 `Finish(failed)`，同 key 之后**永久失败**（客户端须换新 key）。浏览器路径在 `StartPrepared` 之前失败**不建行**，因此同 key 可重试。这是**有意**的：浏览器失败多为可恢复的挑战/超时，允许重试比永久锁死更合理；但它改变了同一 `src2b-acquisition-v1` 契约下两条 provider 的可见失败行为，须在评审中显式确认（见 §10）。
+
 ### D2. 独立 provider 时间预算（**这是本设计最需要评审确认的一条**）
 
 `sourcing.AcquisitionTimeout = 20s` 由 `AcquisitionService` 对**整条 Acquire**施加，实测浏览器路径 19.6s 已贴线，冷启动会直接超时并返回 `DEADLINE_EXCEEDED`。
@@ -108,6 +110,34 @@ consumer   productsourcing.AcquisitionService.Acquire
 - 操作身份仍是 `(organization, actor, Idempotency-Key)`；等价 URL/offer ID 产生同一 SourceIdentity（既有 `Canonical1688Source`）。
 - 同 key 同载荷重放；异载荷冲突。浏览器重抓**不**换 publication ID；确认提交结果未知时只 Verify/Read。
 - 新 channel `public_browser` 进入 `MapAcquisitionEvidence` 的允许集合，并进入 `RawReference.Metadata["channel"]`；publication identity 计算方式不变。
+
+### D9. 真实页面形状与解析策略（依据 #399 实测，避免重复已知缺陷）
+
+`docs/superpowers/specs/2026-09-20-issue399-1688-context-locator-design.md` 已实测真实 1688 页面：
+
+- `window.context` 的赋值右边是 **IIFE**（`(function(b,d){...})(window.contextPath,{...})`），**不是** JSON 字面量；
+- 真实载荷含**裸数字对象键**（`skuWeight:{6290953586037:0.3}`），**不是严格 JSON**；
+- 归一化后节点数实测 **16501**，超过现有服务端 `boundedJSONDepth` 的 `nodes ≤ 4096`。
+
+⇒ 服务端浏览器 provider **不复制**插件的「解析脚本文本」路径，而是：**在已渲染页面中直接求值 `window.context`**（Playwright `page.Evaluate`），在页内只取出映射所需的有界子树，再在服务端复用**当前 owner 已有**的字段映射（`public.go` 的 `contextDocument` 字段路径）。理由：
+
+- 我们控制了页面（已导航、已执行页面 JS），求值 `window.context` 与插件「不得 eval / 不读全局」的约束前提不同；插件约束来自其在用户浏览器中运行，不适用于服务端受控浏览器。
+- 直接求值天然规避 IIFE 定位、裸键、脚本文本体积三个已实测缺陷，且无需新增跨语言解析库。
+- 只取所需子树即可保持有界，不需要放宽服务端 `nodes ≤ 4096`。
+
+`ContentSHA256` 定义为**被映射字段子树的规范化 JSON 摘要**（而非整页字节），保证同一商品的可重放摘要稳定。价格：真实页面价格 key 尚未验证（#399 §2.5 为 `NOT_RUN`），取不到时进入 `MissingFacts`，**不伪造**。`MaxSourceEnvelopeCollectionItems` 的重复项折叠（`foldSourceEnvelopeRepeats`）已是当前实现，413 风险已收敛。
+
+### D10. 浏览器依赖边界（Legacy 关键决策）
+
+`internal/crawler/shared/browser`（2385 行）被 `internal/crawler/*`、`sdslogin`、`sheinlogin` 等共用，属产品文档定义的**提取/退休区**（`internal/crawler`），不是新代码的合法依赖。
+
+⇒ **新 owner 不 import `internal/crawler/*`**。采用：
+
+- 新包 `internal/integration/acquisition/a1688/browser` 直接用 `github.com/mxschmitt/playwright-go` 持有**最小**启动/反检测/导航/验证码/求值能力；
+- 只 `EXTRACT` 行为（启动参数/反检测 init script/验证码检测与滑动），不 wrap、不 import 旧包；
+- 该决定与 `product-sourcing-handoff.md`「`internal/crawler` 是提取/退休区」一致。
+
+替代方案（评审可要求）：把 `shared/browser` 提升为当前共享基础设施并更新全部调用方——范围远大于本切片，默认不做。
 
 ### D7. 权限与租户边界
 
@@ -178,4 +208,8 @@ Cutover/deletion condition:
 1. **D2 的 provider 时间预算**：是否接受按 provider 分叉 deadline（建议 90s），或要求把浏览器耗时压进 20s。
 2. **D8 的并发上限**：建议 ≤2；需确认是否与部署形态（单进程/多副本）一致。
 3. **验证码自动处理的失败语义**：确认「自动处理失败即如实 `SOURCE_UNAVAILABLE`，不做二次人工介入」。
-4. **`public_browser` channel 命名**：需确认与 `src2b-acquisition-v1` 的 channel 语义扩展方式。
+4. **`public_browser` channel 命名**：需确认与 `src2b-acquisition-v1` 的 channel 语义扩展方式（`MapAcquisitionEvidence` 允许集合）。
+5. **D1 的失败行差异**：确认浏览器路径「预 admission 失败不建行、同 key 可重试」相对 HTTP 路径「失败建行、同 key 永久失败」的差异是否接受。
+6. **D10 的依赖边界**：确认新 owner 自持最小浏览器实现（不 import `internal/crawler/*`），而不是把 `shared/browser` 提升为当前共享基础设施。
+7. **D9 的 `ContentSHA256` 定义**：确认为「映射字段子树规范化 JSON 摘要」，而非整页字节。
+8. **真实 1688 网络验收**：需用户单独授权；未授权保持 `NOT_RUN`。
