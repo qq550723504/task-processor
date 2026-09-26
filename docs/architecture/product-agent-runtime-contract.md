@@ -325,7 +325,9 @@ GRSAI 官方两个 endpoint 的既有 OpenAI-compatible 配置均正确归属 GR
 
 该路径单次 SDK 调用，拒绝重定向，禁用 HTTP/2、连接复用及 GetBody 重放，沿用现有
 pool 的并发与限速。配置 timeout 包含排队，调用方更短的 deadline 同样生效。输入上限
-128 KiB、响应 envelope 上限 256 KiB；Agent Action 仍按 §4.2 的 64 KiB 另行校验。
+128 KiB（同时约束实际发送的 JSON envelope）、响应 envelope 上限 256 KiB；Agent Action
+仍按 §4.2 的 64 KiB 另行校验。GRSAI 要求显式 `stream:false`，在 SDK 的 HTTP seam
+补上被其 `omitempty` 省略的字段，不另行实现鉴权或响应协议。
 只返回安全错误分类，不将 provider 错误正文写入日志。`UsageKnown` 要求三个 provider
 计数字段全部存在、非负且总数一致；缺失/null 不等于已观察零值。
 

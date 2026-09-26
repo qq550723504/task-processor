@@ -36,7 +36,7 @@ func TestTextCompletionGRSAIWireAndUsage(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Error(err)
 		}
-		if r.URL.Path != "/v1/chat/completions" || r.Method != "POST" || r.Header.Get("Authorization") != "Bearer test-only" || payload["model"] != "gemini-2.5-flash" || payload["max_tokens"] != float64(128) || payload["stream"] == true {
+		if r.URL.Path != "/v1/chat/completions" || r.Method != "POST" || r.Header.Get("Authorization") != "Bearer test-only" || payload["model"] != "gemini-2.5-flash" || payload["max_tokens"] != float64(128) || payload["stream"] != false {
 			t.Errorf("unexpected request: %s %s %#v", r.Method, r.URL.Path, payload)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -280,7 +280,7 @@ func TestTextCompletionRejectsUnboundedInputBeforeDispatch(t *testing.T) {
 	defer srv.Close()
 	m := textTestManager(t, srv.URL)
 	route, _ := m.ResolveTextRoute(context.Background(), "text")
-	for _, req := range []TextCompletionRequest{{System: "system", Prompt: "prompt"}, {System: "system", Prompt: strings.Repeat("x", MaxTextPromptBytes), MaximumOutputTokens: 32}} {
+	for _, req := range []TextCompletionRequest{{System: "system", Prompt: "prompt"}, {System: "system", Prompt: strings.Repeat("x", MaxTextPromptBytes), MaximumOutputTokens: 32}, {System: "system", Prompt: strings.Repeat("x", MaxTextPromptBytes-100), MaximumOutputTokens: 32}} {
 		if _, err := m.CompleteText(context.Background(), "text", route, req); !errors.Is(err, ErrTextInput) {
 			t.Fatalf("got %v", err)
 		}

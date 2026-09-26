@@ -135,6 +135,9 @@ func completeTextOnce(ctx context.Context, config *ClientConfig, input TextCompl
 	if err != nil {
 		// Raw provider error bodies/URLs can include sensitive input. Only a safe
 		// classification leaves this seam; dispatch/usage ownership stays upstream.
+		if errors.Is(err, ErrTextInput) {
+			return nil, ErrTextInput
+		}
 		return nil, ErrTextOutcomeUnknown
 	}
 	return &TextCompletionResult{ChatCompletionResponse: *convertResponse(&response), UsageKnown: capture.usageKnown}, nil
@@ -146,6 +149,25 @@ type boundedTextHTTPClient struct {
 }
 
 func (c *boundedTextHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	// GRSAI requires an explicit stream boolean. The existing SDK marks false
+	// omitempty, so add only this wire field while retaining SDK serialization,
+	// authentication and response handling. Bound the actual outbound envelope.
+	input, err := io.ReadAll(io.LimitReader(request.Body, MaxTextPromptBytes+1))
+	_ = request.Body.Close()
+	if err != nil || len(input) > MaxTextPromptBytes {
+		return nil, ErrTextInput
+	}
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(input, &envelope) != nil || envelope == nil {
+		return nil, ErrTextInput
+	}
+	envelope["stream"] = json.RawMessage("false")
+	wire, err := json.Marshal(envelope)
+	if err != nil || len(wire) > MaxTextPromptBytes {
+		return nil, ErrTextInput
+	}
+	request.Body = io.NopCloser(bytes.NewReader(wire))
+	request.ContentLength = int64(len(wire))
 	request.GetBody = nil
 	response, err := c.client.Do(request)
 	if err != nil {
