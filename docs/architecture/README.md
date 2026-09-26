@@ -120,7 +120,7 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
-- [subject-verification-tencent-esign-design.md](./subject-verification-tencent-esign-design.md)
+- [`subject-verification-tencent-esign-design.md`](./subject-verification-tencent-esign-design.md)
   - DRAFT #510 personal/enterprise subject-verification provider feasibility;
     Tencent e-sign first candidate, not an Auth/IAM rewrite. Records subject
     binding, hosted flow, provider contract questions and authorized test gates.
