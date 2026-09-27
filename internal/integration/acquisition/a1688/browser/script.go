@@ -249,8 +249,10 @@ func extractScript() string {
   // Returns false once the extraction-wide budget is exhausted; callers stop
   // traversing and the whole price set is dropped.
   const scanPrice = (list) => {
-    if (!Array.isArray(list)) return [];
+    if (!Array.isArray(list) || list.length === 0) return [];
     if (priceScanned + list.length > MAX_PRICE_SCAN) {
+      // This is the only honest overflow signal: a price array exists and we
+      // cannot afford to read all of it, so completeness cannot be established.
       markTrunc('price_facts');
       priceOverflow = true;
       return [];
@@ -258,6 +260,12 @@ func extractScript() string {
     priceScanned += list.length;
     return list;
   };
+  // Page-supplied property enumeration is itself bounded, so a page cannot make
+  // the loop run unboundedly over properties that contain no price range. This is
+  // a bound on WORK, not a completeness signal: running out of it does not mean
+  // the price set is incomplete.
+  const MAX_PRICE_BLOCKS = 512;
+  let priceBlocksSeen = 0;
   const pushPrice = (amount, currency, beginAmount) => {
     if (out.priceFacts.length >= CAP.priceFacts) { priceOverflow = true; return; }
     // A nonpositive or unparsable minimum quantity is not a usable quantity and
@@ -288,18 +296,11 @@ func extractScript() string {
   };
   const readPrices = (data) => {
     for (const k in data) {
-      // Stop visiting further page-supplied blocks only once the extraction-wide
-      // scan budget is spent: at that point completeness can no longer be
-      // established, so the price set is dropped.
-      //
-      // Merely REACHING the output cap must not drop anything. A block yielding
-      // exactly the cap of complete facts is complete, and pushPrice already sets
-      // the overflow flag when a further price is actually encountered. Treating
-      // the cap as overflow would discard an exactly-complete set.
-      if (priceScanned >= MAX_PRICE_SCAN) {
-        priceOverflow = true;
-        break;
-      }
+      // Bound property enumeration as work, but do NOT treat running out of the
+      // scan budget as a completeness signal. A page whose price arrays exactly
+      // fill the budget is complete, and a later property may hold no price at
+      // all; only scanPrice refusing an actual array drops the set.
+      if (++priceBlocksSeen > MAX_PRICE_BLOCKS) break;
       const item = data[k];
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
       if (!Array.isArray(ranges)) continue;

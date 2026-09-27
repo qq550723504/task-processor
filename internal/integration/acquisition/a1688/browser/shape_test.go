@@ -332,16 +332,17 @@ window.__INIT_DATA = {
 		"a truncated global model must stop the whole extraction, not just its own candidate list")
 }
 
-// The outer price-block loop must stop once the scan budget is spent, and must
-// NOT treat merely reaching the output cap as overflow: a set that exactly fills
-// the cap is complete and has to survive.
-func TestExtractorPriceOuterLoopStopsOnScanBudgetOnly(t *testing.T) {
+// Reaching the scan budget or the output cap must not drop a complete price set;
+// only scanPrice refusing an actual price array may do that.
+func TestExtractorPriceOverflowRequiresAnActualRefusal(t *testing.T) {
 	script := extractScript()
-	require.Contains(t, script, "if (priceScanned >= MAX_PRICE_SCAN) {",
-		"the outer block loop must break once the extraction-wide scan budget is spent")
+	require.Contains(t, script, "let priceBlocksSeen = 0",
+		"property enumeration must be bounded as work")
+	require.Contains(t, script, "if (++priceBlocksSeen > MAX_PRICE_BLOCKS) break;",
+		"the outer loop must bound property enumeration without declaring overflow")
 	require.NotContains(t, script,
-		"priceScanned >= MAX_PRICE_SCAN || out.priceFacts.length >= CAP.priceFacts",
-		"reaching the output cap must not mark the price set as overflowing")
+		"priceScanned >= MAX_PRICE_SCAN) {"+"\n"+"        priceOverflow = true;",
+		"running out of the scan budget must not mark the price set as overflowing")
 }
 
 // The truncation flag must be declared before any reader that consults it.
@@ -381,4 +382,37 @@ func TestBrowserAcquirePreservesExactlyCappedPriceSet(t *testing.T) {
 		"a price set that exactly reaches the cap is complete and must be kept")
 	require.False(t, hasTruncation(evidence, "price_facts"),
 		"reaching the cap is not truncation")
+}
+
+// A price array that exactly fills the scan budget, followed by an unrelated
+// property, must keep the complete valid price set: only an actual refusal by
+// scanPrice may drop it.
+func TestBrowserAcquirePreservesSetThatExactlyExhaustsScanBudget(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	scanBudget := maxPriceFacts * 4
+	ranges := make([]any, 0, scanBudget)
+	for i := 0; i < scanBudget; i++ {
+		// Only the first maxPriceFacts entries are valid prices.
+		if i < maxPriceFacts {
+			ranges = append(ranges, map[string]any{"price": "1.00", "beginAmount": 1})
+			continue
+		}
+		ranges = append(ranges, map[string]any{"note": "not a price"})
+	}
+	data := map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Budget bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"prices": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": ranges},
+		}}},
+		"unrelated": map[string]any{"fields": map[string]any{"somethingElse": "x"}},
+	}
+	srv := serveFixture(t, buildContextPage(data))
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.PriceFacts, maxPriceFacts,
+		"exactly exhausting the scan budget must not drop a complete price set")
 }
