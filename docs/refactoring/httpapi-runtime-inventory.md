@@ -1,5 +1,8 @@
 # HTTPAPI Runtime Inventory
 
+> **Classification:** `DATED EVIDENCE` (checkpoint inventory; last refresh recorded in this file is 2026-07-09). The file/group map and sections named “Current” describe that checkpoint and are not current package authority.
+>
+> Use [Project Boundaries](../architecture/project-boundaries.md), [Repository Structure](../development/repository-structure.md), the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md), the [greenfield product decision](../product/greenfield-no-legacy-migration.md), and actual HEAD/tests for current ownership. Historical references to ProductEnrich/ProductImage runtime assembly, legacy-tenant builders, or compatibility bridges do not authorize restoring those retired paths.
 ## Purpose
 
 This inventory is the `Phase 5.1` checkpoint for ListingKit runtime assembly cleanup.

@@ -1,5 +1,10 @@
 # Phase 2 runtime convergence inventory
 
+> **Classification: MIXED.** `CURRENT CONTRACT` applies only to the executable closure ceilings and the **Legacy consumer register** consumed by architecture/import guards. The initial baseline, dated package maps, phase sequencing, and historical pre-migration snapshots are `DATED EVIDENCE`.
+>
+> The word “migration” in this file describes code/package dependency convergence. It does **not** authorize old business-data migration, legacy profile/account carry-over, compatibility adapters, fallback, dual read/write, or a second fact source. Those are governed by [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) and the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md).
+>
+> Any prose that says “current” outside the guarded closure/register sections must be revalidated against the actual HEAD before it is used for implementation decisions. Do not edit the machine-consumed register merely to make a historical narrative look cleaner.
 This inventory records the pre-migration dependency debt for Phase 2. Counts are
 ceilings for one-way convergence, not target package sizes and not approval for
 the listed dependencies to remain. A package that follows a relocated runtime
@@ -210,7 +215,7 @@ platform-to-platform, and integration-to-integration wiring is intentional;
 every other named package is frozen and moves only with its later owner. They
 must gain no new consumers.
 
-The table below is the authoritative current register. Each row names one
+The table below is the authoritative CURRENT CONTRACT for the import-guard consumer register only. Each row names one
 current legacy consumer and its later owner. App, platform, and integration
 internal wiring is intentionally excluded; no other package class is excluded.
 

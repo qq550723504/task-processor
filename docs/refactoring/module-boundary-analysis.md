@@ -2,7 +2,7 @@
 
 **日期**: 2026-06-08  
 **阶段**: Phase 2 - 模块拆分规划  
-**状态**: 历史分析记录；当前目标边界以 `project-wide-refactoring-plan.md`、`project-wide-execution-plan.md` 和 `listingkit-boundary-checkpoint.md` 为准
+**状态**: **DATED EVIDENCE**；当前目标边界以 [Architecture README](../architecture/README.md), [Project Boundaries](../architecture/project-boundaries.md), [Current Refactoring Status](current-refactoring-status.md), GitHub issue #137 / the current execution Issue, the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md), and [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) 为准；`project-wide-refactoring-plan.md`、`project-wide-execution-plan.md` 和 `listingkit-boundary-checkpoint.md` 只作历史上下文
 
 ---
 
