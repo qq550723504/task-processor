@@ -65,8 +65,17 @@ type Options struct {
 	navigateURLOverride string
 }
 
-// DefaultTimeout mirrors the provider budget used by the design.
-const DefaultTimeout = 90 * time.Second
+// DefaultTimeout bounds one provider acquisition.
+//
+// It must stay below the current-application's acquisition route budget
+// (sourcing.AcquisitionTimeout = 20s), because D1 persists the operation only
+// after acquisition returns: a provider that outlives the route leaves the user
+// with a deadline and no replayable operation. 12s leaves headroom inside the
+// 20s route for evidence mapping and publication.
+//
+// Raising this requires raising the route budget in the same change, and then
+// the BFF (22s) and browser client (25s) deadlines as well.
+const DefaultTimeout = 12 * time.Second
 
 // DefaultAllowedOrigins is the resolved egress allowlist (design A2, user
 // decision 2026-09-26): the 1688 product host, its CDN, and 1688 site assets,
@@ -78,11 +87,18 @@ var DefaultAllowedOrigins = []string{
 	"https://*.1688.com",
 }
 
+// navigationTimeout bounds one page navigation. It is capped by the acquisition
+// budget so a single navigation can never consume the whole budget on its own.
 func (o Options) navigationTimeout() time.Duration {
-	if o.NavigationTimeout > 0 {
-		return o.NavigationTimeout
+	budget := o.budget()
+	timeout := o.NavigationTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
 	}
-	return 30 * time.Second
+	if timeout > budget {
+		return budget
+	}
+	return timeout
 }
 
 func (o Options) budget() time.Duration {

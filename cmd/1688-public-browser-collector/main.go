@@ -59,7 +59,7 @@ func run(ctx context.Context, args []string) error {
 	fs.StringVar(&opts.listen, "listen", "127.0.0.1:19545", "listen address; keep on loopback unless the deployment provides network isolation")
 	fs.StringVar(&opts.browserPath, "browser", "", "path to the Chromium binary (required)")
 	fs.BoolVar(&opts.headless, "headless", true, "run the browser headless")
-	fs.DurationVar(&opts.timeout, "timeout", 90*time.Second, "per-acquisition budget")
+	fs.DurationVar(&opts.timeout, "timeout", browser.DefaultTimeout, "per-acquisition budget; must stay below the application acquisition route budget (sourcing.AcquisitionTimeout)")
 	fs.StringVar(&opts.credential, "credential", "", "service credential; defaults to $"+credentialEnvKey)
 	fs.StringVar(&opts.allowedOrigins, "allowed-origins", strings.Join(browser.DefaultAllowedOrigins, ","), "comma-separated egress allowlist")
 	fs.DurationVar(&opts.shutdownTimeout, "shutdown-timeout", 15*time.Second, "graceful shutdown budget")

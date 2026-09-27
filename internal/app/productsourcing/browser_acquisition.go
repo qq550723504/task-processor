@@ -80,6 +80,19 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	release := s.acquireSlot(request)
 	defer release()
 
+	// The leader may have completed while this caller waited on the same-key
+	// lock. Without this re-read, a caller arriving when the organization is at
+	// its last slot would fail the capacity preflight below and report
+	// ACQUISITION_CAPACITY, even though a replayable operation for its own key
+	// now exists. Replay it instead.
+	if replay, replayed, err := s.replay(ctx, request); err != nil {
+		return sourcing.AcquisitionResult{}, err
+	} else if replay != nil {
+		return *replay, nil
+	} else if replayed {
+		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
+	}
+
 	// Bounded capacity preflight so a capped organization does not launch a
 	// browser for every new key (finding #15/#19). StartPrepared stays the
 	// atomic correctness gate.

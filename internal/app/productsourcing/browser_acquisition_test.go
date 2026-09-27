@@ -121,6 +121,9 @@ func (s *browserStore) StartPrepared(_ context.Context, op sourcing.AcquisitionO
 	admitted := op
 	admitted.State = sourcing.AcquisitionPrepared
 	admitted.Command = &cmd
+	// A real store persists the row here, so ByKey can find it. The double must
+	// do the same or a same-key replay path can never be exercised.
+	s.byKey[admitted.Scope.OrganizationID+"|"+admitted.Key] = admitted
 	return admitted, true, nil
 }
 func (s *browserStore) Claim(_ context.Context, op sourcing.AcquisitionOperation) (sourcing.AcquisitionOperation, bool, error) {
@@ -130,11 +133,18 @@ func (s *browserStore) Claim(_ context.Context, op sourcing.AcquisitionOperation
 	op.State = sourcing.AcquisitionPublishing
 	return op, s.claimOK, nil
 }
-func (s *browserStore) Finish(_ context.Context, _ sourcing.AcquisitionOperation, state, _ string) error {
+func (s *browserStore) Finish(_ context.Context, op sourcing.AcquisitionOperation, state, _ string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.finished++
 	s.finishState = state
+	// Keep the durable row in step with its terminal state so a later ByKey
+	// read observes what a real store would return.
+	stored, ok := s.byKey[op.Scope.OrganizationID+"|"+op.Key]
+	if ok {
+		stored.State = state
+		s.byKey[op.Scope.OrganizationID+"|"+op.Key] = stored
+	}
 	return nil
 }
 func (s *browserStore) CapacityAdmitted(context.Context, sourcing.PublicationScope) (bool, error) {
@@ -404,4 +414,49 @@ func TestBrowserAcquisitionInflightSerializesAndDrains(t *testing.T) {
 	if remaining != 0 {
 		t.Fatalf("expected the admission map to drain, got %d entries", remaining)
 	}
+}
+
+// A same-key waiter must replay the leader's operation instead of failing the
+// capacity preflight. Scenario: the organization is at its last slot, so the
+// leader's acquisition consumes it; a concurrent same-key POST that missed the
+// initial ByKey must still receive the leader's terminal result rather than
+// ACQUISITION_CAPACITY (Codex finding on admission coordination).
+func TestBrowserAcquireSameKeyWaiterReplaysInsteadOfCapacityError(t *testing.T) {
+	store := newBrowserStore()
+	store.prepared = true
+	provider := &browserProviderSpy{evidence: browserEvidence(), delay: 150 * time.Millisecond}
+	service := newBrowserService(t, store, provider)
+
+	type outcome struct {
+		result sourcing.AcquisitionResult
+		err    error
+	}
+	results := make(chan outcome, 2)
+	acquire := func() {
+		res, err := service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "981645030344")
+		results <- outcome{res, err}
+	}
+
+	go acquire()
+	// Let the leader get far enough to be inside the provider call, then close
+	// capacity so the organization is exactly at its last slot.
+	require.Eventually(t, func() bool { return provider.count() == 1 }, 2*time.Second, 5*time.Millisecond)
+	store.mu.Lock()
+	store.capacity = false
+	store.mu.Unlock()
+
+	go acquire()
+
+	first := <-results
+	second := <-results
+
+	// Exactly one provider call: the waiter did not launch a second browser.
+	require.Equal(t, 1, provider.count(), "the same-key waiter must not re-acquire")
+
+	// Neither caller may see a capacity error: one publishes, the other replays.
+	for i, got := range []outcome{first, second} {
+		require.NoError(t, got.err, "caller %d must not fail with a capacity error (err=%v replayed=%v)", i, got.err, got.result.Replayed)
+		require.Equal(t, sourcing.AcquisitionPublished, got.result.Operation.State, "caller %d", i)
+	}
+	require.Equal(t, first.result.Operation.ID, second.result.Operation.ID, "both callers must observe the same operation")
 }
