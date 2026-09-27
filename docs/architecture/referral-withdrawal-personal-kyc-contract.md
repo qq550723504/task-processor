@@ -255,9 +255,10 @@ Stage B because Stage B does not change the rules schema.
 
 ### Stage B — enforce personal KYC, keep rules v1
 
-#519 may now activate the production composition with
-`requirePersonalKYC=true` while the authoritative rules endpoint continues to
-return strict `referral-rules-v1`.
+#519 activates personal-KYC admission unconditionally for every new withdrawal
+while the authoritative rules endpoint continues to return strict
+`referral-rules-v1`. The temporary rollout boolean is removed rather than left
+as a silent fallback to pre-KYC withdrawal semantics.
 
 This ordering is safe for both an old strict-v1 client and the merged dual-schema
 client because the server response shape is unchanged. The runtime becomes the
@@ -328,8 +329,8 @@ Required tests:
   `RequestWithdrawal` keeps its transactional operation lookup;
 - Stage A frontend contract accepts strict v1 and strict v2, renders no KYC claim
   for v1, and renders the KYC requirement for v2;
-- Stage B production composition enables personal-KYC admission while the rules
-  endpoint intentionally remains strict v1;
+- Stage B production composition makes personal-KYC admission mandatory for new
+  withdrawals while the rules endpoint intentionally remains strict v1;
 - Stage C rules v2 requires `personalKycRequired: true` after compatible UI
   deployment evidence exists;
 - existing referral economics, payout-method, withdrawal-state, architecture and
