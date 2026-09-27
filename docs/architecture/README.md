@@ -124,10 +124,15 @@ These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
 - [`subject-verification-tencent-esign-design.md`](./subject-verification-tencent-esign-design.md)
-  - DRAFT #510 personal/enterprise subject-verification provider feasibility;
-    Tencent e-sign first candidate, not an Auth/IAM rewrite. Records subject
-    binding, hosted flow, provider contract questions and authorized test gates.
-    Not IMPLEMENTATION_READY; no procurement, real identity checks or runtime changes.
+  - #510 bounded subject-verification design. Section 13 freezes the Tencent
+    enterprise first-verification contract and section 14 freezes the Aliyun
+    personal KYC contract; both are IMPLEMENTATION_READY and have merged
+    implementations. Real provider trials and production rollout remain separate gates.
+- [`referral-withdrawal-personal-kyc-contract.md`](./referral-withdrawal-personal-kyc-contract.md)
+  - IMPLEMENTATION_READY #519 cross-domain admission contract: a new referral
+    withdrawal consumes the same subject's authoritative personal KYC VERIFIED
+    fact through a narrow read port; includes committed-operation replay and the
+    staged v1/v2 rules rollout required by the API-first deployment order.
 - `alipay-wallet-topup-design.md`
   - DRAFT #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
     fixed-channel attempts, typed checkout, isolated verification, posting/refund

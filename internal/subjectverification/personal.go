@@ -120,6 +120,24 @@ func (s *PersonalService) enabled() bool {
 	return s != nil && s.Store != nil && s.Provider != nil && s.Protection != nil && authidentity.IsBoundedIdentifier(s.Scope) && s.SceneID > 0 && s.Limits.Valid()
 }
 
+func (s *PersonalService) IsPersonalVerified(ctx context.Context, userID string) (bool, error) {
+	if s == nil || s.Store == nil || !authidentity.IsBoundedIdentifier(s.Scope) || !s.Limits.Valid() {
+		return false, ErrUnavailable
+	}
+	if !authidentity.IsBoundedIdentifier(userID) {
+		return false, ErrInvalid
+	}
+	snapshot, err := s.Store.ReadPersonal(ctx, userID, s.Limits)
+	if err != nil {
+		return false, err
+	}
+	application := snapshot.Application
+	if application.ID == "" {
+		return false, nil
+	}
+	return application.UserID == userID && application.Scope == s.Scope && application.State == Verified, nil
+}
+
 var identityCardPattern = regexp.MustCompile(`^[0-9]{17}[0-9X]$`)
 
 func (s *PersonalService) Start(ctx context.Context, actor Actor, in PersonalInput) error {

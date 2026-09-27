@@ -101,6 +101,13 @@ func TestWriteReferralRulesJSONUsesEconomicsContract(t *testing.T) {
 	if response.SchemaVersion != "referral-rules-v1" || response.Currency != economics.CurrencyCNY || response.CommissionRateBPS != economics.CommissionRateBPS || response.SettlementPeriodDays != economics.SettlementPeriodDays || response.MinimumWithdrawalMinor != "10000" || response.WithdrawalReview != "manual" {
 		t.Fatalf("rules response=%s", w.Body.String())
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 8 || fields["personalKycRequired"] != nil {
+		t.Fatalf("Stage B must preserve strict referral-rules-v1: %s", w.Body.String())
+	}
 }
 
 func TestReferralMaturityLoopStopsWithServerShutdown(t *testing.T) {

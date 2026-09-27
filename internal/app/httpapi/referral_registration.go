@@ -88,6 +88,14 @@ type payoutMethodWriter interface {
 	CreatePayoutMethodIdempotent(context.Context, money.PayoutMethod, string, string) (money.PayoutMethod, error)
 }
 
+type withdrawalReplayReader interface {
+	ReplayWithdrawal(context.Context, economics.WithdrawalReplayRequest) (economics.Withdrawal, bool, error)
+}
+
+type personalKYCReader interface {
+	IsPersonalVerified(context.Context, string) (bool, error)
+}
+
 type referralHTTPModule struct {
 	commands              referralCommands
 	serviceCredential     string
@@ -99,6 +107,8 @@ type referralHTTPModule struct {
 	payoutEncryptionKeys  map[string][]byte
 	payoutEncryptionKeyID string
 	profileReader         authidentity.SelfProfileReader
+	withdrawalReplay      withdrawalReplayReader
+	personalKYC           personalKYCReader
 	settlements           settlementWriter
 	onSlotAcquiredForTest func()
 }
