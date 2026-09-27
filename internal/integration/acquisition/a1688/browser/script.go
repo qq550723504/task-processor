@@ -168,10 +168,32 @@ func extractScript() string {
       }
     }
   };
+  // Truncation is extraction-wide. Stopping only the current candidate list left
+  // later callers free to publish a lower-priority variant set, which is the data
+  // corruption this flag exists to prevent.
+  let variantTruncated = false;
+
+  // readSku reports whether it found a usable model, so the caller can fall
+  // through to the next candidate instead of committing to a truthy but empty
+  // one. Returns true when variants were produced, and the literal 'truncated'
+  // when a model was found but dropped as incomplete.
+  //
+  // Truncation is deliberately NOT the same as absent. If the preferred model was
+  // dropped because it was incomplete, falling through to a lower-priority model
+  // would publish a different variant set than the authoritative one, which is
+  // worse than publishing none.
+  const TRUNCATED = 'truncated';
   const readSku = (sku) => {
-    if (!sku) return;
-    const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
+    if (!sku || typeof sku !== 'object') return false;
+    if (!sku.skuInfoMap || typeof sku.skuInfoMap !== 'object') return false;
+    // A model with entries but no usable property names cannot yield trustworthy
+    // variants: every key segment would be unmatched. Treating it as authoritative
+    // would mark extraction-wide truncation and suppress a complete lower-priority
+    // model, so it is treated as unusable and the search falls through instead.
+    if (!Array.isArray(sku.skuProps) || sku.skuProps.length === 0) return false;
+    const props = sku.skuProps;
     const propNames = props.map((p) => (p && p.prop ? p.prop : ''));
+    if (propNames.every((n) => !n)) return false;
     const map = sku.skuInfoMap || {};
     let variantOverflow = false;
     let attributeOverflow = false;
@@ -203,25 +225,143 @@ func extractScript() string {
     if (variantOverflow || attributeOverflow) {
       markTrunc('variants');
       out.variants = [];
+      variantTruncated = true;
+      return TRUNCATED;
+    }
+    return out.variants.length > 0;
+  };
+  // Reads the first candidate that actually yields variants, so a truthy but
+  // unusable model does not shadow a complete fallback.
+  const readFirstUsableSku = (candidates) => {
+    for (const c of candidates) {
+      if (variantTruncated) return false;
+      if (!c) continue;
+      const result = readSku(c);
+      if (result === TRUNCATED) { variantTruncated = true; return false; }
+      if (result) return true;
+    }
+    return false;
+  };
+  // Every price reader appends through this one helper, so the cap can never be
+  // enforced at one site and forgotten at another. On overflow the whole price
+  // set is dropped, because a prefix is not the source's complete price set.
+  let priceOverflow = false;
+  // A single extraction-wide budget for price entries examined, independent of
+  // how many are kept and independent of how many separate price arrays the page
+  // supplies. A per-array bound is not enough: many individually small arrays
+  // would still add up to an unbounded traversal.
+  const MAX_PRICE_SCAN = CAP.priceFacts * 4;
+  let priceScanned = 0;
+  // Returns false once the extraction-wide budget is exhausted; callers stop
+  // traversing and the whole price set is dropped.
+  const scanPrice = (list) => {
+    if (!Array.isArray(list) || list.length === 0) return [];
+    if (priceScanned + list.length > MAX_PRICE_SCAN) {
+      // This is the only honest overflow signal: a price array exists and we
+      // cannot afford to read all of it, so completeness cannot be established.
+      markTrunc('price_facts');
+      priceOverflow = true;
+      return [];
+    }
+    priceScanned += list.length;
+    return list;
+  };
+  // Page-supplied property enumeration is itself bounded, so a page cannot make
+  // any reader run unboundedly over properties that contain no price range.
+  //
+  // The budget is SHARED by every price reader, including the currentPrices
+  // fallbacks: each of those walks the same page-supplied object, so giving one
+  // of them a fresh counter would let the total traversal grow without limit.
+  //
+  // Running out of it IS a completeness signal, because properties are left
+  // unvisited and we cannot know whether a later one carries a price.
+  const MAX_PRICE_BLOCKS = 512;
+  // Charged per DISTINCT page-supplied property, not per visit. Two readers
+  // legitimately walk the same object, so charging per visit would count the same
+  // properties repeatedly and could discard a price set that is in fact
+  // available. The number of distinct properties is what actually bounds the work.
+  const blockSeen = new WeakMap();
+  // Walks page-supplied properties under the shared budget, stopping early and
+  // marking the field incomplete when the budget is exhausted.
+  // The callback returns true to stop early, which the currentPrices readers use
+  // to honour the established behaviour of taking only the first representation
+  // rather than concatenating every block that carries one.
+  const forEachPriceBlock = (data, fn) => {
+    if (!data || typeof data !== 'object') return;
+    let charged = blockSeen.get(data);
+    if (charged === undefined) { charged = new Set(); blockSeen.set(data, charged); }
+    for (const k in data) {
+      if (!charged.has(k)) {
+        if (charged.size + 1 > MAX_PRICE_BLOCKS) {
+          markTrunc('price_facts');
+          priceOverflow = true;
+          return;
+        }
+        charged.add(k);
+      }
+      if (fn(k, data[k]) === true) return;
     }
   };
+  const pushPrice = (amount, currency, beginAmount) => {
+    if (out.priceFacts.length >= CAP.priceFacts) { priceOverflow = true; return; }
+    // A nonpositive or unparsable minimum quantity is not a usable quantity and
+    // would fail the acquisition during mapping, so it is normalized to 1. A
+    // value that is already a valid positive integer string is kept EXACTLY:
+    // parseInt would round a value beyond the safe-integer range and publish a
+    // different minimum quantity than the source supplied.
+    let minQuantity = '';
+    if (beginAmount !== undefined && beginAmount !== null && beginAmount !== '') {
+      // The downstream validator trims, so trim before deciding rather than
+      // discarding a usable value that merely carried surrounding whitespace.
+      const q = exactNum(beginAmount, 'price_facts').trim();
+      // A canonical positive integer is kept EXACTLY, including one beyond the
+      // safe-integer range: converting through Number would change it. Anything
+      // the downstream contract cannot accept - a leading zero, zero, or more
+      // than twenty digits - is omitted rather than coerced, because this field
+      // is optional and inventing a value would publish a fact the source did
+      // not state. The omission is reported.
+      if (q && /^[1-9][0-9]{0,19}$/.test(q)) {
+        minQuantity = q;
+      } else if (q && /^[0-9]+$/.test(q)) {
+        markTrunc('min_quantity');
+        minQuantity = '';
+      } else if (q) {
+        markTrunc('min_quantity');
+        minQuantity = '';
+      }
+    }
+    out.priceFacts.push({ amount: amount, currency: clip(currency || '', 'price_facts'), minQuantity: minQuantity });
+  };
   const readPrices = (data) => {
-    for (const k in data) {
-      const item = data[k];
+    // Two different bounds, with two different meanings:
+    //
+    //  - Running out of the SCAN budget is not a completeness signal. A page
+    //    whose price arrays exactly fill it may be complete, and a later
+    //    property may hold no price at all.
+    //  - Running out of the PROPERTY budget is a completeness signal, because
+    //    properties are left unvisited and we cannot know whether a later one
+    //    carries a price.
+    //
+    // scanPrice refusing an actual array is the third, equally honest signal.
+    forEachPriceBlock(data, (k, item) => {
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
-      if (!Array.isArray(ranges)) continue;
-      for (const r of ranges) {
-        if (out.priceFacts.length >= CAP.priceFacts) { markTrunc('price_facts'); break; }
+      if (!Array.isArray(ranges)) return false;
+      for (const r of scanPrice(ranges)) {
         if (!r || r.price === undefined || r.price === null) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;
-        out.priceFacts.push({
-          amount: amount,
-          currency: clip(r.currency || '', 'price_facts'),
-          minQuantity: exactNum(r.beginAmount, 'price_facts')
-        });
+        pushPrice(amount, r.currency, r.beginAmount);
       }
-    }
+      return false;
+    });
+  };
+
+  // A valid page of either supported shape may omit its offer id while the
+  // canonical detail URL already identifies the offer. The recovery is applied
+  // once, after extraction, so it covers standard and custom-item pages alike.
+  const offerIdFromURL = () => {
+    const m = /\/offer\/(\d+)\.html/.exec(String(location.pathname || ''));
+    return m ? m[1] : '';
   };
 
   // The description is read for both supported page shapes, so a custom-item
@@ -242,13 +382,6 @@ func extractScript() string {
     if (data.Root && data.Root.fields && data.Root.fields.dataJson && data.Root.fields.dataJson.tempModel) {
       out.offerId = exactNum(data.Root.fields.dataJson.tempModel.offerId, 'offer_id');
     }
-    // A valid page may omit tempModel while the canonical detail URL already
-    // identifies the offer. Recovering it keeps the acquisition usable instead of
-    // rejecting a page that has a title and product data.
-    if (!out.offerId) {
-      const m = /\/offer\/(\d+)\.html/.exec(String(location.pathname || ''));
-      if (m) out.offerId = m[1];
-    }
     if (data.gallery && data.gallery.fields && Array.isArray(data.gallery.fields.offerImgList)) {
       for (const u of cap(data.gallery.fields.offerImgList, CAP.images, 'images')) {
         if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
@@ -267,12 +400,11 @@ func extractScript() string {
       const op = dj && dj.orderParamModel && dj.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       const collect = (list) => {
-        for (const r of cap(list, CAP.priceFacts, 'price_facts')) {
-          if (out.priceFacts.length >= CAP.priceFacts) break;
+        for (const r of scanPrice(list)) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
-          out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+          pushPrice(amount, r.currency, r.beginAmount);
         }
       };
       if (Array.isArray(range)) collect(range);
@@ -280,10 +412,14 @@ func extractScript() string {
       // discriminator on AcquisitionPrice, appending both representations would
       // persist the same tiers twice as unrelated price facts.
       if (out.priceFacts.length === 0) {
-        for (const k in data) {
-          const f = data[k] && data[k].fields;
-          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) { collect(f.priceModel.currentPrices); break; }
-        }
+        forEachPriceBlock(data, (k, item) => {
+          const f = item && item.fields;
+          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) {
+            collect(f.priceModel.currentPrices);
+            return true;
+          }
+          return false;
+        });
       }
     }
   } else if (init) {
@@ -291,9 +427,7 @@ func extractScript() string {
     // block, matching the legacy foundSkuModel guard.
     const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
     if (g) {
-      if (g.skuModel) readSku(g.skuModel);
-      else if (g.nySkuModel) readSku(g.nySkuModel);
-      else if (g.skuModelOrigin) readSku(g.skuModelOrigin);
+      if (!variantTruncated) readFirstUsableSku([g.nySkuModel, g.skuModel, g.skuModelOrigin]);
     }
     for (const k in init) {
       const block = init[k];
@@ -320,11 +454,9 @@ func extractScript() string {
       // read before this loop, so a partial or differing block model cannot
       // pre-empt it, and reading both cannot duplicate variants (which
       // MapAcquisitionEvidence rejects as repeated source IDs).
-      if (out.variants.length === 0) {
-        if (d.skuModel) readSku(d.skuModel);
-        else if (d.nySkuModel) readSku(d.nySkuModel);
-        else if (d.skuModelOrigin) readSku(d.skuModelOrigin);
-        else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
+      if (!variantTruncated && out.variants.length === 0) {
+        readFirstUsableSku([d.nySkuModel, d.skuModel, d.skuModelOrigin,
+          (d.skuInfoMap ? { skuInfoMap: d.skuInfoMap, skuProps: d.skuProps } : null)]);
       }
     }
     if (g && g.offerInfoModel && !out.offerId) {
@@ -339,12 +471,11 @@ func extractScript() string {
       const op = g.orderParamModel && g.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       if (Array.isArray(range)) {
-        for (const r of cap(range, CAP.priceFacts, 'price_facts')) {
-          if (out.priceFacts.length >= CAP.priceFacts) break;
+        for (const r of scanPrice(range)) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
-          out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+          pushPrice(amount, r.currency, r.beginAmount);
         }
       }
     }
@@ -352,24 +483,29 @@ func extractScript() string {
     // read, appending this second representation would persist overlapping or
     // conflicting tiers as unrelated price facts, because AcquisitionPrice
     // carries no model or promotion discriminator.
-    for (const k in (out.priceFacts.length === 0 ? init : {})) {
-      const block = init[k];
-      const d = block && block.data;
-      if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;
-      for (const r of cap(d.priceModel.currentPrices, CAP.priceFacts, 'price_facts')) {
-        if (out.priceFacts.length >= CAP.priceFacts) break;
-        if (!r) continue;
-        const amount = exactNum(r.price, 'price_facts');
-        if (!amount) continue;
-        out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
-      }
-      break;
+    if (out.priceFacts.length === 0) {
+      forEachPriceBlock(init, (k, block) => {
+        const d = block && block.data;
+        if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) return false;
+        for (const r of scanPrice(d.priceModel.currentPrices)) {
+          if (!r) continue;
+          const amount = exactNum(r.price, 'price_facts');
+          if (!amount) continue;
+          pushPrice(amount, r.currency, r.beginAmount);
+        }
+        return true;
+      });
     }
     if (out.priceFacts.length === 0) readPrices(init);
   }
+  if (!out.offerId) out.offerId = offerIdFromURL();
   if (out.images.length > CAP.images) out.images = cap(out.images, CAP.images, 'images');
   if (out.attributes.length > CAP.attributes) out.attributes = cap(out.attributes, CAP.attributes, 'attributes');
   if (out.variants.length > CAP.variants) out.variants = cap(out.variants, CAP.variants, 'variants');
+  if (priceOverflow) {
+    markTrunc('price_facts');
+    out.priceFacts = [];
+  }
   if (out.priceFacts.length > CAP.priceFacts) out.priceFacts = cap(out.priceFacts, CAP.priceFacts, 'price_facts');
   return out;
 }`
