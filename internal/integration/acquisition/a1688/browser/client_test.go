@@ -274,3 +274,24 @@ func TestBrowserAcquireFailsHonestlyWhenChallengePersists(t *testing.T) {
 	_, err = client.Acquire(context.Background(), source)
 	require.ErrorIs(t, err, ErrChallenge)
 }
+
+// A login-wall redirect observed in real acceptance must be reported as a
+// challenge, not as an unknown page shape, and must not burn the captcha budget
+// on a slider that cannot clear a redirect.
+func TestBrowserAcquireReportsLoginWallAsChallenge(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	// A page whose title looks like a normal site title and which carries no
+	// product, served from a login-wall URL: the only reliable signal is the URL.
+	srv := serveFixture(t, `<!doctype html><html><head><title>Normal looking site title</title></head><body>no product here</body></html>`)
+	client := New(Options{
+		ExecutablePath:      browser,
+		Headless:            true,
+		AllowedOrigins:      []string{srv.URL},
+		navigateURLOverride: srv.URL + "/login.taobao.com/redirect",
+	})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	_, err = client.Acquire(context.Background(), source)
+	require.ErrorIs(t, err, ErrChallenge)
+	require.NotErrorIs(t, err, ErrUnsupported, "a login wall is a challenge, not an unknown shape")
+}

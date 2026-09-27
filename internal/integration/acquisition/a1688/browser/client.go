@@ -186,8 +186,12 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	if challenged {
 		// Design A4: at most ONE bounded automatic attempt, then an honest
 		// failure. No manual path, no retry-to-success, no fabricated product.
-		if _, solveErr := trySolveCaptcha(ctx, page); solveErr != nil && ctx.Err() != nil {
-			return sourcing.AcquisitionEvidence{}, ctx.Err()
+		// An authentication wall is not solvable by dragging a slider, so the
+		// attempt is skipped rather than burning the captcha budget on it.
+		if !isAuthenticationWall(page) {
+			if _, solveErr := trySolveCaptcha(ctx, page); solveErr != nil && ctx.Err() != nil {
+				return sourcing.AcquisitionEvidence{}, ctx.Err()
+			}
 		}
 		if stillChallenged, checkErr := detectChallenge(page); checkErr != nil {
 			return sourcing.AcquisitionEvidence{}, checkErr

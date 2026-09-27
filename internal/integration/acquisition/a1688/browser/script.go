@@ -14,10 +14,23 @@ const (
 	maxStringLen    = 8192
 )
 
+// challengeHostMarkers identify an anti-automation or authentication wall by
+// host. Observed in real acceptance: after repeated anonymous requests 1688
+// redirects detail pages to login.taobao.com / login.1688.com, which carries no
+// product and no slider, so it must be reported as a challenge rather than as an
+// unknown page shape.
+var challengeHostMarkers = []string{
+	"login.taobao.com",
+	"login.1688.com",
+	"passport.1688.com",
+	"_____tmd_____",
+	"punish",
+}
+
 // detectChallenge reports whether the loaded page is an anti-automation
-// interstitial rather than a product page. It is deliberately conservative: it
-// only returns true on clear, well-known markers so a real product page is
-// never misclassified.
+// interstitial or an authentication wall rather than a product page. It is
+// deliberately conservative: it only returns true on clear, well-known markers
+// so a real product page is never misclassified.
 func detectChallenge(page playwright.Page) (bool, error) {
 	if page == nil {
 		return false, nil
@@ -30,9 +43,13 @@ func detectChallenge(page playwright.Page) (bool, error) {
 			return true, nil
 		}
 	}
-	// A punish URL pattern is a definitive challenge signal.
-	if contains(toLower(page.URL()), "/_____tmd_____/punish") || contains(toLower(page.URL()), "punish?") {
-		return true, nil
+	// A redirect away from the product host, or 1688's anti-bot path marker, is a
+	// challenge even when the page title looks like a normal site title.
+	currentURL := toLower(page.URL())
+	for _, m := range challengeHostMarkers {
+		if contains(currentURL, m) {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -188,4 +205,22 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(buf[i:])
+}
+
+// isAuthenticationWall reports whether the challenge is a login redirect rather
+// than a slider challenge. Observed in real acceptance: 1688 answers repeated
+// anonymous requests with a redirect to login.taobao.com. No automatic handling
+// applies to that, so the caller reports it honestly instead of attempting a
+// slider that cannot help.
+func isAuthenticationWall(page playwright.Page) bool {
+	if page == nil {
+		return false
+	}
+	currentURL := toLower(page.URL())
+	for _, m := range []string{"login.taobao.com", "login.1688.com", "passport.1688.com"} {
+		if contains(currentURL, m) {
+			return true
+		}
+	}
+	return false
 }
