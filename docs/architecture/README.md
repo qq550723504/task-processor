@@ -129,9 +129,10 @@ documents unless they say so explicitly:
     personal KYC contract; both are IMPLEMENTATION_READY and have merged
     implementations. Real provider trials and production rollout remain separate gates.
 - [`referral-withdrawal-personal-kyc-contract.md`](./referral-withdrawal-personal-kyc-contract.md)
-  - CANDIDATE #519 cross-domain admission contract: a new referral withdrawal
-    consumes the same subject's authoritative personal KYC VERIFIED fact through
-    a narrow read port. Independent Architecture review required before implementation.
+  - IMPLEMENTATION_READY #519 cross-domain admission contract: a new referral
+    withdrawal consumes the same subject's authoritative personal KYC VERIFIED
+    fact through a narrow read port; includes committed-operation replay and the
+    staged v1/v2 rules rollout required by the API-first deployment order.
 - `alipay-wallet-topup-design.md`
   - DRAFT #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
     fixed-channel attempts, typed checkout, isolated verification, posting/refund
