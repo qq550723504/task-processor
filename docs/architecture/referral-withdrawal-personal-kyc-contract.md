@@ -130,18 +130,61 @@ adapter is introduced.
 
 ## 6. Exact withdrawal admission semantics
 
-For `POST /api/v1/account/referrals/withdrawals`:
+For `POST /api/v1/account/referrals/withdrawals`, committed-operation replay is
+resolved **before mutable eligibility dependencies**. This preserves an
+already-committed result after response loss even if profile, KYC or payout
+dependencies are temporarily unavailable.
+
+The referral owner exposes a narrow read-only replay capability:
+
+```go
+type withdrawalReplayReader interface {
+    ReplayWithdrawal(context.Context, WithdrawalReplayRequest) (Withdrawal, bool, error)
+}
+```
+
+`WithdrawalReplayRequest` contains only the authenticated referrer, CNY,
+amount, payoutMethodID, expectedVersion and idempotency key. The repository:
+
+1. looks up `referral_withdrawal_operations` by the idempotency key;
+2. when absent, returns `found=false` without creating anything;
+3. when present, loads the referenced authoritative withdrawal row;
+4. requires that row's `referrer` exactly equals the authenticated subject;
+5. reconstructs the existing withdrawal fingerprint using the committed row's
+   method plus the request's referrer/currency/payoutMethodID/amount/version and
+   compares it to the stored fingerprint;
+6. returns the current withdrawal projection only on an exact match;
+7. returns the existing idempotency conflict for a same key with different
+   subject or payload.
+
+No schema change is required: the existing operation fingerprint already binds
+referrer, currency, method, payoutMethodID, amount and expectedVersion, while the
+referenced withdrawal row supplies the committed method/referrer needed for safe
+reconstruction without consulting the payout-method owner.
+
+The HTTP order is:
 
 1. derive the authenticated current subject;
-2. preserve the existing verified-email + verified-phone check;
-3. validate the request envelope/body/idempotency as today;
-4. call `IsPersonalVerified(ctx, currentUserID)` **before any withdrawal
-   mutation**;
-5. reader missing or dependency error → `503 DEPENDENCY_UNAVAILABLE`;
-6. reader returns false → `409 PAYOUT_ELIGIBILITY_UNMET`;
-7. continue with the existing active payout-method lookup;
-8. call the unchanged `referraleconomics.RequestWithdrawal` for
-   amount/balance/version/idempotency/state validation.
+2. validate/decode the request body and idempotency key sufficiently to form the
+   replay request;
+3. call `ReplayWithdrawal`;
+4. exact committed replay → return that withdrawal immediately, with **no**
+   profile, KYC, payout-method or new economics mutation;
+5. replay conflict → existing `409 CONFLICT`; replay-store failure →
+   `503 DEPENDENCY_UNAVAILABLE`;
+6. only for `found=false`, run the existing verified-email + verified-phone
+   check;
+7. call `IsPersonalVerified(ctx, currentUserID)`;
+8. KYC reader missing/error → `503 DEPENDENCY_UNAVAILABLE`; false →
+   `409 PAYOUT_ELIGIBILITY_UNMET`;
+9. continue with the existing active payout-method lookup;
+10. call the unchanged `referraleconomics.RequestWithdrawal`, whose internal
+    operation lookup remains the final race-safe idempotency guard.
+
+A concurrent request may commit after the preflight reports absent. The final
+transactional operation lookup still prevents duplicate withdrawal facts. If a
+dependency fails during that race, the caller may retry the same key; the next
+preflight returns the committed result. No KYC state is copied into referrals.
 
 The gate is not added to:
 
@@ -160,29 +203,66 @@ withdrawal, reservation or audit fact is created by a rejected request.
 ## 7. Failure, race and replay rules
 
 - `PENDING`, `OUTCOME_UNKNOWN`, `REJECTED`, no application and stale
-  verification scope all fail eligibility.
+  verification scope all fail **new** withdrawal eligibility.
 - Store/configuration failures fail closed as dependency unavailable and do not
-  degrade to "not verified".
+  degrade to "not verified" for a never-seen key.
+- An exact already-committed operation is replayed before those eligibility
+  checks, so response-loss recovery does not depend on current KYC/profile/payout
+  availability.
+- A same-key/different-payload or same-key/different-subject request never
+  bypasses KYC through replay; it returns the existing idempotency conflict.
 - The eligibility read never refreshes provider state. The user completes or
   refreshes KYC through the existing #510 account-verification flow, then retries
-  the withdrawal.
-- A same-key retry that is rejected before `RequestWithdrawal` creates no
-  idempotency/withdrawal fact. Once KYC is verified, the normal economics
-  idempotency contract applies unchanged.
+  a never-seen withdrawal key.
+- A never-seen key rejected before `RequestWithdrawal` creates no
+  idempotency/withdrawal fact.
+- The existing transactional operation lookup inside `RequestWithdrawal`
+  remains required after the preflight to close concurrent first-write races.
 - Current v1 personal KYC has no revocation transition. If a future contract
   introduces revocation/expiry, this admission contract must be reviewed rather
   than silently inferring revocation semantics.
 - No cross-database atomicity is claimed. This is an admission read followed by
   the existing referral mutation; KYC is not copied into the withdrawal record.
 
-## 8. Referral rules contract and UI truth
+## 8. Referral rules contract and staged UI rollout
 
 The rules page must not hardcode a future KYC requirement before server
-enforcement exists.
+enforcement exists. The API and UI deploy separately, and the repository's
+release workflow deploys the API before the UI for a source release. Therefore a
+strict v1 → strict v2 cutover cannot be performed safely in one release.
 
-When the server-side gate is implemented in the same delivery, the rules
-endpoint changes atomically from strict `referral-rules-v1` to
-`referral-rules-v2` and adds:
+The rollout has **two releases**.
+
+### Stage A — compatibility client, no KYC enforcement
+
+A preparatory rules-page/client release must be merged and **deployed first**.
+PR #517 is the preferred existing delivery vehicle because it already owns the
+bounded referral rules page.
+
+Stage A changes only the client compatibility surface:
+
+- server continues returning strict `referral-rules-v1`;
+- withdrawal KYC enforcement remains disabled/not implemented;
+- frontend parser accepts a strict union of:
+  - existing `referral-rules-v1`; and
+  - future `referral-rules-v2` with required
+    `personalKycRequired: true`;
+- UI renders the personal-KYC requirement **only** when the received contract is
+  v2 and the flag is true;
+- v1 rendering remains the current truthful generic eligibility wording.
+
+Stage A deployment must be independently confirmed before Stage B is eligible
+for production rollout. Merely merging the compatibility code is not proof that
+the deployed UI can consume v2.
+
+### Stage B — enforcement + authoritative v2
+
+Only after Stage A is deployed may #519's enforcement release:
+
+1. enable the server-side new-withdrawal KYC gate;
+2. switch the rules endpoint from v1 to strict `referral-rules-v2`;
+3. return `personalKycRequired: true`;
+4. keep the frontend dual-reader in place during the release.
 
 ```json
 {
@@ -191,21 +271,23 @@ endpoint changes atomically from strict `referral-rules-v1` to
 }
 ```
 
-All existing rule fields remain unchanged. The strict frontend schema is updated
-in the same PR, and the withdrawal rules card may then state that completed
-personal KYC is required in addition to the displayed amount and other current
-eligibility checks.
+All existing rule fields remain unchanged.
 
-This avoids two invalid states:
+Because the already-deployed Stage A UI accepts both schemas, the API-first part
+of the Stage B deployment can safely begin enforcing KYC and returning v2 before
+the Stage B UI image rolls out. No point in the rollout requires an old strict-v1
+client to parse v2.
+
+A later cleanup may retire v1 client support only after v1 servers are no longer
+a supported rollback target. That cleanup is not required by #519.
+
+The prohibited states remain:
 
 - UI says KYC is required while runtime does not enforce it;
-- runtime enforces KYC while the authoritative rules projection omits the new
-  requirement.
+- runtime enforces KYC while the deployed rules client cannot parse/report v2.
 
-PR #517 may merge independently because its current wording only says the
-minimum is not sufficient and that current withdrawal eligibility is checked.
-The #519 UI update must be rebased/synced after #517 to avoid competing edits to
-the same referral component.
+The #519 implementation PR must record Stage A as a production rollout
+prerequisite; implementation CI cannot substitute for that deployment evidence.
 
 ## 9. TDD and verification matrix
 
@@ -213,18 +295,25 @@ Implementation starts with failing tests for the actual admission boundary.
 
 Required tests:
 
-- verified email/phone + active payout + enough funds + personal KYC VERIFIED →
-  reaches existing `RequestWithdrawal`;
+- exact committed operation + same subject/fingerprint replays successfully even
+  when profile/KYC/payout dependencies are unavailable;
+- same idempotency key with a different subject or request payload returns
+  conflict and never leaks another subject's withdrawal;
+- a never-seen key still requires verified email/phone + personal KYC VERIFIED +
+  active payout method before reaching `RequestWithdrawal`;
 - KYC absent / pending / rejected / unknown / stale scope → 409 and economics
-  mutation spy is not called;
-- KYC store/config unavailable → 503 and economics mutation spy is not called;
+  mutation spy is not called for a never-seen key;
+- KYC store/config unavailable → 503 and economics mutation spy is not called
+  for a never-seen key;
 - KYC for another subject cannot satisfy current subject;
 - provider adapter is never invoked by the KYC eligibility read;
 - cancellation of an existing withdrawal remains possible without a KYC read;
 - payout-method creation remains unchanged;
-- same-key retries cannot duplicate withdrawals or bypass KYC;
-- rules v2 strict frontend contract requires `personalKycRequired: true`;
-- rules UI names personal KYC only with the v2 server contract;
+- concurrent first requests remain duplicate-safe because
+  `RequestWithdrawal` keeps its transactional operation lookup;
+- Stage A frontend contract accepts strict v1 and strict v2, renders no KYC claim
+  for v1, and renders the KYC requirement for v2;
+- Stage B rules v2 requires `personalKycRequired: true`;
 - existing referral economics, payout-method, withdrawal-state, architecture and
   browser/accessibility tests remain green.
 
