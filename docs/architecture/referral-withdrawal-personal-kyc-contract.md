@@ -1,6 +1,6 @@
 # Referral Withdrawal Personal KYC Contract
 
-Status: **CANDIDATE — Independent Architecture review required**  
+Status: **IMPLEMENTATION_READY — architecture review round 2 completed with no new blocker**  
 Issue: #519  
 Dependencies: #510, merged PR #520, #469 / PR #517  
 Baseline: `c66f63bdbb007a770e4be667b6d8dafb9c3ce111`
@@ -348,15 +348,16 @@ Legacy decision: **N/A**. No legacy path is extended, migrated or preserved.
 
 ## 12. Admission gate
 
-This document is a candidate until an independent architecture review confirms:
+Architecture review round 1 identified two real issues: an unsafe strict v1→v2
+single-release rollout (BLOCKER) and loss of committed-withdrawal replay when KYC
+is unavailable (IMPLEMENTATION_TEST). Both were incorporated into this contract
+at `2074316a32bb177059dda49d88427cbfda8bece7`.
 
-- owner and dependency direction;
-- read-only authoritative KYC semantics;
-- new-withdrawal-only placement;
-- fail-closed behavior;
-- no second KYC fact source;
-- no hidden provider call or cross-database transaction;
-- rules contract/UI ordering.
+Architecture review round 2 found no new blocker. This document is now the frozen
+`IMPLEMENTATION_READY` baseline for #519.
 
-Only after that review has no unresolved blocker may #519 be marked
-`IMPLEMENTATION_READY` and production code be added to the same delivery PR.
+Implementation may proceed by TDD on the same delivery PR. Architecture is only
+reopened by a newly demonstrated blocker in the frozen owner, identity,
+transaction, replay, rollout or privacy boundaries. Stage A compatible-client
+**deployment evidence** remains a production-rollout prerequisite for Stage B;
+implementation CI or merge status cannot substitute for that evidence.
