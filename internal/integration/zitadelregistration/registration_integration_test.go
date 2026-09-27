@@ -340,7 +340,7 @@ func ownedRegistrationDatabase(t *testing.T) (*gorm.DB, *gorm.DB, *persistence.R
 		return db
 	}
 	owner := open(dsn)
-	if err = owner.Exec(`CREATE ROLE referral_runtime LOGIN PASSWORD '` + password + `'; REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE ON SCHEMA public TO referral_runtime; REVOKE CREATE,TEMP ON DATABASE referrals FROM PUBLIC; GRANT CONNECT ON DATABASE referrals TO referral_runtime; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA public TO referral_runtime; GRANT UPDATE(state,ciphertext,lease_until) ON public.registration_intents TO referral_runtime; GRANT UPDATE,DELETE ON public.registration_admission_buckets TO referral_runtime`).Error; err != nil {
+	if err = owner.Exec(`CREATE ROLE referral_runtime LOGIN PASSWORD '` + password + `'; REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT USAGE ON SCHEMA public TO referral_runtime; REVOKE CREATE,TEMP ON DATABASE referrals FROM PUBLIC; GRANT CONNECT ON DATABASE referrals TO referral_runtime; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA public TO referral_runtime; GRANT UPDATE ON public.referral_earning_claims, public.referral_earnings_projection, public.referral_withdrawals TO referral_runtime; GRANT UPDATE(state,ciphertext,lease_until) ON public.registration_intents TO referral_runtime; GRANT UPDATE,DELETE ON public.registration_admission_buckets TO referral_runtime`).Error; err != nil {
 		t.Fatal("owned runtime role setup failed")
 	}
 	parsed, err := url.Parse(dsn)
