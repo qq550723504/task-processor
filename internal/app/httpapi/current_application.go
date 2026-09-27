@@ -275,7 +275,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		productDB, imageDB, workflows := supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.imageAgentWorkflows
 		factories.buildAcquisitionImage = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			receipts, err := buildPublishedAcquisitionReader(ctx, productDB, dependencies, authorizer)
+			receipts, err := buildPublishedAcquisitionReader(ctx, productDB, cfg, dependencies, authorizer)
 			if err != nil {
 				return nil, err
 			}
@@ -380,7 +380,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		modules = append(modules, image)
 	}
 	if supplied.productAgent != nil {
-		agentModule, agentErr := buildProductAgentModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, *supplied.productAgent)
+		agentModule, agentErr := buildProductAgentModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, *supplied.productAgent, cfg)
 		if agentErr != nil {
 			return nil, fmt.Errorf("build current product agent: %w", agentErr)
 		}

@@ -68,6 +68,16 @@ type Options struct {
 // DefaultTimeout mirrors the provider budget used by the design.
 const DefaultTimeout = 90 * time.Second
 
+// DefaultAllowedOrigins is the resolved egress allowlist (design A2, user
+// decision 2026-09-26): the 1688 product host, its CDN, and 1688 site assets,
+// over https only. The browser never fetches image bytes (evidence carries URLs
+// only), so no object-storage host is admitted.
+var DefaultAllowedOrigins = []string{
+	"https://detail.1688.com",
+	"https://*.alicdn.com",
+	"https://*.1688.com",
+}
+
 func (o Options) navigationTimeout() time.Duration {
 	if o.NavigationTimeout > 0 {
 		return o.NavigationTimeout
@@ -174,7 +184,16 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		return sourcing.AcquisitionEvidence{}, err
 	}
 	if challenged {
-		return sourcing.AcquisitionEvidence{}, ErrChallenge
+		// Design A4: at most ONE bounded automatic attempt, then an honest
+		// failure. No manual path, no retry-to-success, no fabricated product.
+		if _, solveErr := trySolveCaptcha(ctx, page); solveErr != nil && ctx.Err() != nil {
+			return sourcing.AcquisitionEvidence{}, ctx.Err()
+		}
+		if stillChallenged, checkErr := detectChallenge(page); checkErr != nil {
+			return sourcing.AcquisitionEvidence{}, checkErr
+		} else if stillChallenged {
+			return sourcing.AcquisitionEvidence{}, ErrChallenge
+		}
 	}
 
 	raw, err := page.Evaluate(extractScript())
@@ -231,11 +250,34 @@ func (c *Client) routeGuard(route playwright.Route) {
 // originAllowed reports whether target is under one of the allowed origins.
 // It compares the full origin (scheme://host[:port]) so a host that merely
 // starts with an allowed prefix (e.g. detail.1688.com.evil.test) is rejected.
+//
+// An allowlist entry may use a single leading "*." label (design A2), e.g.
+// "https://*.alicdn.com". The wildcard matches exactly one label, so
+// "https://*.alicdn.com" admits "https://img.alicdn.com" but not
+// "https://a.b.alicdn.com" and never "https://alicdn.com.evil.test".
 func originAllowed(allowed []string, target string) bool {
 	origin := originOf(target)
-	for _, a := range allowed {
-		if originOf(a) == origin {
+	scheme, host, ok := strings.Cut(origin, "://")
+	if !ok {
+		host = origin
+	}
+	for _, entry := range allowed {
+		entryScheme, entryHost, entryOK := strings.Cut(originOf(entry), "://")
+		if !entryOK {
+			// No scheme in the entry: treat the whole value as a host.
+			entryScheme, entryHost = "", originOf(entry)
+		}
+		if entryScheme != scheme {
+			continue
+		}
+		if entryHost == host {
 			return true
+		}
+		if suffix, isWildcard := strings.CutPrefix(entryHost, "*."); isWildcard {
+			// Exactly one extra label, and the remainder must match the suffix.
+			if label, rest, found := strings.Cut(host, "."); found && label != "" && !strings.Contains(label, ".") && rest == suffix {
+				return true
+			}
 		}
 	}
 	return false

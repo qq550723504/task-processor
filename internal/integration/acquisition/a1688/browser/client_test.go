@@ -60,6 +60,42 @@ var fixtureContextJSON = func() string {
 
 var fixtureContextPage = "<!doctype html><html><head><title>Fixture bottle</title></head><body><script>window.context = " + fixtureContextJSON + ";</script></body></html>"
 
+// challengeTitleCN is the 1688 challenge page title marker.
+const challengeTitleCN = "安全验证"
+
+// sliderChallengePage builds a challenge page whose slider clears the challenge
+// once dragged past halfway, then reveals the window.context product shape. The
+// context JSON is injected as a quoted JS string literal so the page contains no
+// nested template literal.
+func sliderChallengePage() string {
+	// fixtureContextJSON is already encoded JSON; marshaling it again would
+	// produce a quoted literal and window.context would become a string.
+	js := "window.context = " + fixtureContextJSON + ";"
+	return `<!doctype html><html><head><title>` + challengeTitleCN + `</title></head><body>
+<div class="nc_wrapper"><span class="nc_iconfont btn_slide" style="position:fixed;left:20px;top:300px;width:40px;height:40px;background:#ccc;z-index:99"></span></div>
+<script>
+document.addEventListener('mousemove', function (e) {
+  if (e.clientX > 400) {
+    document.title = 'Fixture bottle';
+    var d = document.createElement('div');
+    d.className = 'slider-success';
+    d.style.cssText = 'width:12px;height:12px;background:green';
+    document.body.appendChild(d);
+    var s = document.createElement('script');
+    s.textContent = ` + js + `;
+    document.body.appendChild(s);
+  }
+});
+</script></body></html>`
+}
+
+// stubbornChallengePage never clears, so the honest failure path runs.
+func stubbornChallengePage() string {
+	return `<!doctype html><html><head><title>` + challengeTitleCN + ` 验证码</title></head><body>
+<div class="nc_wrapper"><span class="nc_iconfont btn_slide" style="position:fixed;left:20px;top:300px;width:40px;height:40px;background:#ccc;z-index:99"></span></div>
+</body></html>`
+}
+
 const fixtureChallengePage = `<!doctype html><html><head><title>请登录</title></head><body>login</body></html>`
 
 func serveFixture(t *testing.T, page string) *httptest.Server {
@@ -174,4 +210,67 @@ func TestOriginAllowedRejectsDisallowedAndSuffixTricks(t *testing.T) {
 	// An empty allowlist means the route guard is not installed at all (test-only);
 	// originAllowed itself still matches nothing.
 	require.False(t, originAllowed([]string{}, "https://anything.test"))
+}
+
+// The resolved A2 allowlist admits the 1688 host, its CDN, and 1688 assets over
+// https, while a single-label "*." wildcard must not match a deeper subdomain
+// and must never admit a lookalike host.
+func TestDefaultAllowedOriginsMatchOnly1688AndCDN(t *testing.T) {
+	for _, ok := range []string{
+		"https://detail.1688.com/offer/965933437579.html",
+		"https://img.alicdn.com/x.jpg",
+		"https://g.alicdn.com/code/y.js",
+		"https://s.1688.com/x",
+	} {
+		require.True(t, originAllowed(DefaultAllowedOrigins, ok), ok)
+	}
+	for _, bad := range []string{
+		"http://detail.1688.com/offer/1.html", // http is not admitted
+		"https://a.b.alicdn.com/x",            // wildcard is single-label only
+		"https://alicdn.com.evil.test/x",      // lookalike suffix
+		"https://detail.1688.com.evil.test/x", // lookalike suffix
+		"https://evil.test/x",
+		"https://localhost:5432/db", // no database reachability (D12/D13)
+		"https://127.0.0.1:5432/db",
+		"wss://detail.1688.com/socket", // non-http scheme
+	} {
+		require.False(t, originAllowed(DefaultAllowedOrigins, bad), bad)
+	}
+}
+
+// The default allowlist must not admit any private/loopback address, which is
+// what keeps the collector structurally unable to reach a database (D12/D13).
+func TestDefaultAllowedOriginsRejectPrivateAndLoopback(t *testing.T) {
+	for _, bad := range []string{
+		"https://127.0.0.1/x", "https://[::1]/x", "https://10.0.0.5/x",
+		"https://192.168.1.10/x", "https://172.16.0.3/x", "https://localhost/x",
+	} {
+		require.False(t, originAllowed(DefaultAllowedOrigins, bad), bad)
+	}
+}
+
+// A solvable challenge fixture: dragging the slider clears the challenge and the
+// product page is then collected. This exercises the A4 single automatic attempt
+// end to end in a real browser.
+func TestBrowserAcquireSolvesSliderChallengeOnce(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, sliderChallengePage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err, "a cleared challenge must yield the product: %v", err)
+	require.Equal(t, "Fixture browser bottle", *evidence.Title)
+}
+
+// A challenge that never clears must fail honestly: exactly one bounded
+// attempt, then ErrChallenge, and never a fabricated product (A4/D4).
+func TestBrowserAcquireFailsHonestlyWhenChallengePersists(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, stubbornChallengePage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	_, err = client.Acquire(context.Background(), source)
+	require.ErrorIs(t, err, ErrChallenge)
 }

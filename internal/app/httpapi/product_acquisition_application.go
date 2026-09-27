@@ -21,7 +21,6 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	a1688 "task-processor/internal/integration/acquisition/a1688"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/sourcing"
@@ -74,12 +73,18 @@ type productAcquisitionService interface {
 
 // The admitted acquisition composition owner constructs the producer. Current
 // image consumers receive only its domain-owned, actor-scoped exact-read port.
-func buildPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
+func buildPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, cfg *config.Config, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (sourcing.PublishedAcquisitionReader, error) {
 	if db == nil || dependencies.organizationResolver == nil || authorizer == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	return productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, a1688.New())
+	// The provider is config-gated: with no collector endpoint/credential the
+	// existing anonymous public HTTP provider is used unchanged (design D13).
+	provider, err := publicAcquisitionProvider(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider)
 }
 
 func productAcquisitionRoutes(service productAcquisitionService, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
