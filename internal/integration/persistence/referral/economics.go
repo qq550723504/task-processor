@@ -202,7 +202,10 @@ func (r *Repository) RecordSettledPayment(ctx context.Context, payment money.Pay
 		relation := relations[0]
 		var existing earningClaim
 		if err := tx.Where("payment_id=?", payment.PaymentID).Take(&existing).Error; err == nil {
-			if existing.Referrer != relation.Referrer || existing.Issuer != relation.Issuer || existing.Subject != payment.PayerUserID || existing.Currency != payment.Currency || existing.CommissionMinor != commission || existing.NetCashMinor != payment.CommissionableAmountMinor || !existing.AvailableAt.Equal(payment.SettledAt.UTC().AddDate(0, 0, economics.SettlementPeriodDays)) {
+			// The canonical payment (including SettledAt) was verified above.
+			// AvailableAt is fixed when the claim is created, not recalculated
+			// from the current settlement policy during an exact replay.
+			if existing.Referrer != relation.Referrer || existing.Issuer != relation.Issuer || existing.Subject != payment.PayerUserID || existing.Currency != payment.Currency || existing.CommissionMinor != commission || existing.NetCashMinor != payment.CommissionableAmountMinor {
 				return economics.ErrConflict
 			}
 			return nil

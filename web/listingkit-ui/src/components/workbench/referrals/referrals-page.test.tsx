@@ -69,34 +69,37 @@ describe("ReferralsPage", () => {
     expect(screen.getByRole("region", { name: "收益事件表格，可横向滚动" })).toHaveClass(styles.earningsTableWrap);
   });
 
-  it("renders authoritative promotion rules in user language", async () => {
-    const rules = { schemaVersion: "referral-rules-v1", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract" };
+  it.each([30, 45])("renders the authoritative %i-day period and approved conduct guidance", async (settlementPeriodDays) => {
+    const rules = { schemaVersion: "referral-rules-v1", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract" };
     const fetch = vi.fn().mockResolvedValue(Response.json(rules));
     vi.stubGlobal("fetch", fetch);
     mount("overview", "subject-1", true, "rules");
 
     expect(await screen.findByRole("heading", { name: "当前规则以平台实际生效版本为准" })).toBeVisible();
-    expect(screen.getByText("以下内容来自平台当前生效的推广收益规则。具体佣金比例、结算周期、最低提现金额和审核方式以本页当前读取结果为准。")).toBeVisible();
+    expect(screen.getByText("佣金比例、结算周期、最低提现金额和审核方式以本页当前读取结果为准；推广行为须遵守下列规范。")).toBeVisible();
 
     const rulesRegion = screen.getByRole("region", { name: "规则说明" });
     expect(within(rulesRegion).getAllByRole("article")).toHaveLength(6);
     expect(within(rulesRegion).getByText("10%")).toBeVisible();
-    expect(within(rulesRegion).getByText("14 天")).toBeVisible();
+    expect(within(rulesRegion).getByText(`${settlementPeriodDays} 天`)).toBeVisible();
+    expect(within(rulesRegion).getByText(`新生成的推广收益自对应支付确认结算时起满 ${settlementPeriodDays} 天进入可结算范围；已生成收益按记录的结算时间处理，实际入账以系统处理为准。退款或拒付发生后，相关收益会按实际结果调整。`)).toBeVisible();
     expect(within(rulesRegion).getByText("¥100.00")).toBeVisible();
     expect(within(rulesRegion).getByText("最低申请金额为 ¥100.00；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。")).toBeVisible();
     expect(within(rulesRegion).queryByText(/KYC/)).not.toBeInTheDocument();
     expect(within(rulesRegion).queryByText("可用收益达到最低申请金额后可发起提现；当前提现申请采用人工审核。")).not.toBeInTheDocument();
-    expect(within(rulesRegion).getByText("未提供")).toBeVisible();
-    expect(within(rulesRegion).getByText("当前规则接口尚未提供违规推广处理政策；本页面不补充或推测处罚规则。")).toBeVisible();
+    expect(within(rulesRegion).getByText("请真实、准确地介绍平台服务，不得虚构功能、价格、优惠或收益承诺，也不得冒充平台官方。")).toBeVisible();
+    expect(within(rulesRegion).getByText("禁止批量虚假注册、刷单或伪造交易以获取推广收益；不得发送垃圾信息、反复骚扰他人，或未经授权使用他人品牌、内容及个人信息。")).toBeVisible();
+    expect(within(rulesRegion).getByText("退款或拒付产生的收益按现有规则调整；提现申请仍需通过现有资格校验和人工审核。本页不承诺自动冻结、罚款或封禁。")).toBeVisible();
+    expect(within(rulesRegion).queryByText("未提供")).not.toBeInTheDocument();
 
     expect(screen.queryByText(/owner|canonical|projection/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/禁止虚假注册|严重违规时平台可限制推广或提现功能/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/严重违规时平台可限制推广或提现功能|违规收益自动清零/)).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-rules");
   });
 
   it("shows personal KYC only when the authoritative rules contract is v2", async () => {
-    const rules = { schemaVersion: "referral-rules-v2", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract", personalKycRequired: true };
+    const rules = { schemaVersion: "referral-rules-v2", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 30, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract", personalKycRequired: true };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(rules)));
     mount("overview", "subject-1", true, "rules");
 

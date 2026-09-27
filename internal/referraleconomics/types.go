@@ -13,7 +13,7 @@ const (
 	CommissionRateBPS      = int64(1000)
 	BPSDenominator         = int64(10000)
 	MinimumWithdrawalMinor = int64(10000)
-	SettlementPeriodDays   = 14
+	SettlementPeriodDays   = 30
 )
 
 var (
