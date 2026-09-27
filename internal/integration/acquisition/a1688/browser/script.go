@@ -260,7 +260,37 @@ func extractScript() string {
       if (g.skuModel) readSku(g.skuModel);
       if (g.nySkuModel) readSku(g.nySkuModel);
     }
-    if (out.variants.length === 0 || out.priceFacts.length === 0) readPrices(init);
+    // Custom-item price shapes, ported from the operator's legacy price
+    // extractor: the order-parameter SKU range prices, and each data block's
+    // priceModel.currentPrices. readPrices() only understands the standard
+    // item.fields.finalPriceModel nesting, so these needed explicit handling.
+    if (g) {
+      const op = g.orderParamModel && g.orderParamModel.orderParam;
+      const range = op && op.skuParam && op.skuParam.skuRangePrices;
+      if (Array.isArray(range)) {
+        for (const r of cap(range, CAP.priceFacts, 'price_facts')) {
+          if (out.priceFacts.length >= CAP.priceFacts) break;
+          if (!r) continue;
+          const amount = exactNum(r.price, 'price_facts');
+          if (!amount) continue;
+          out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+        }
+      }
+    }
+    for (const k in init) {
+      const block = init[k];
+      const d = block && block.data;
+      if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;
+      for (const r of cap(d.priceModel.currentPrices, CAP.priceFacts, 'price_facts')) {
+        if (out.priceFacts.length >= CAP.priceFacts) break;
+        if (!r) continue;
+        const amount = exactNum(r.price, 'price_facts');
+        if (!amount) continue;
+        out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+      }
+      break;
+    }
+    if (out.priceFacts.length === 0) readPrices(init);
   }
   if (out.images.length > CAP.images) out.images = cap(out.images, CAP.images, 'images');
   if (out.attributes.length > CAP.attributes) out.attributes = cap(out.attributes, CAP.attributes, 'attributes');

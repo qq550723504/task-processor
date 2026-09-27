@@ -174,7 +174,17 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 		return nil, false, err
 	}
 	if op.State == sourcing.AcquisitionAcquiring || op.Command == nil {
-		return nil, false, nil
+		// A durable row that exists but has no command is a terminal or in-flight
+		// state left by another path (for example the HTTP provider, before the
+		// collector was enabled). Re-acquiring would spend browser and shared-IP
+		// capacity only for StartPrepared to rediscover the same row, so the
+		// existing outcome is reported instead of launching a browser.
+		if op.State == sourcing.AcquisitionFailed {
+			return nil, true, nil
+		}
+		// acquiring with no command: report it as an in-flight request rather than
+		// starting a competing acquisition for the same key.
+		return nil, true, nil
 	}
 	if op.State == sourcing.AcquisitionPrepared {
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {

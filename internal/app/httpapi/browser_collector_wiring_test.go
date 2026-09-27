@@ -74,3 +74,29 @@ func TestBrowserCollectorSettingsDefaultTimeout(t *testing.T) {
 	require.True(t, ok)
 	require.Positive(t, settings.timeout)
 }
+
+// A conventional base URL with a trailing slash must not become a double slash,
+// which the collector's exact path match would reject with 404.
+func TestBrowserCollectorEndpointIsNormalized(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://127.0.0.1:19545",
+		"http://127.0.0.1:19545/",
+		"  http://127.0.0.1:19545/  ",
+		"https://collector.internal:8443",
+		"https://collector.internal/base",
+		"https://collector.internal/base/",
+	} {
+		cfg := &config.Config{BrowserCollector: config.BrowserCollectorConfig{Endpoint: endpoint, Credential: "secret"}}
+		provider, browserService, err := publicAcquisitionProvider(cfg)
+		require.NoError(t, err, endpoint)
+		require.IsType(t, &browserclient.Client{}, provider, endpoint)
+		require.True(t, browserService, endpoint)
+	}
+	// A base URL carrying a query or fragment carries no meaning for this RPC and
+	// is rejected rather than silently truncated.
+	for _, endpoint := range []string{"http://127.0.0.1:19545/?a=1", "ftp://collector/x", "not-a-url"} {
+		cfg := &config.Config{BrowserCollector: config.BrowserCollectorConfig{Endpoint: endpoint, Credential: "secret"}}
+		_, _, err := publicAcquisitionProvider(cfg)
+		require.Error(t, err, endpoint)
+	}
+}

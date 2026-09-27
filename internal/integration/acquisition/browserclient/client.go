@@ -14,6 +14,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"task-processor/internal/integration/acquisition/browsercollector"
@@ -67,8 +69,12 @@ func New(opts Options) (*Client, error) {
 			ExpectContinueTimeout: time.Second,
 		}
 	}
+	endpoint, endpointErr := resolveEndpoint(opts.Endpoint)
+	if endpointErr != nil {
+		return nil, endpointErr
+	}
 	return &Client{
-		endpoint:  opts.Endpoint + browsercollector.AcquirePath,
+		endpoint:  endpoint,
 		admission: opts.Admission,
 		httpClient: &http.Client{
 			Timeout:   timeout,
@@ -176,4 +182,34 @@ func decodeErrorStatus(status int, raw []byte) error {
 		return context.DeadlineExceeded
 	}
 	return sourcing.ErrAcquisitionFailed
+}
+
+// resolveEndpoint normalizes a configured collector base URL and appends the
+// versioned RPC path. Plain concatenation turns a conventional base URL with a
+// trailing slash into a double slash, and the collector requires an exact path
+// match, so every otherwise valid-looking configuration would fail with 404.
+func resolveEndpoint(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", sourcing.ErrAcquisitionUnavailable
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", sourcing.ErrAcquisitionUnavailable
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", sourcing.ErrAcquisitionUnavailable
+	}
+	if parsed.Host == "" {
+		return "", sourcing.ErrAcquisitionUnavailable
+	}
+	// A base path is allowed and preserved; a query or fragment on a base URL
+	// carries no meaning for this RPC and is rejected rather than silently
+	// dropped.
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", sourcing.ErrAcquisitionUnavailable
+	}
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + browsercollector.AcquirePath
+	parsed.RawPath = ""
+	return parsed.String(), nil
 }

@@ -63,7 +63,8 @@ func main() {
 	fmt.Printf("RESULT=%s duration=%s offer=%s\n", resultWord(err), elapsed.Round(time.Millisecond), source.OfferID)
 	if err != nil {
 		fmt.Printf("ERROR=%v\n", err)
-		return
+		// Exit nonzero so a failed trial can never be recorded as a passing run.
+		os.Exit(1)
 	}
 
 	if evidence.Title != nil {

@@ -519,3 +519,22 @@ func TestBrowserAcquireKeepsCollectorAvailabilityDistinct(t *testing.T) {
 	require.NotErrorIs(t, err, sourcing.ErrAcquisitionFailed)
 	require.Equal(t, 0, store.startPrep, "an unavailable collector must not admit an operation")
 }
+
+// A durable row that already exists for the key but has no command must be
+// reported from that row, never by launching a browser that StartPrepared would
+// only rediscover. This matters when the collector is enabled after the HTTP
+// provider left an acquiring or failed row.
+func TestBrowserAcquireReplaysPreCommandRowWithoutProviderWork(t *testing.T) {
+	store := newBrowserStore()
+	store.prepared = true
+	provider := &browserProviderSpy{evidence: browserEvidence()}
+	service := newBrowserService(t, store, provider)
+	scope := testScope()
+	// A terminal row left by another path for this same key.
+	store.byKey[scope.OrganizationID+"|8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50"] = sourcing.AcquisitionOperation{
+		Scope: scope, Key: "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50", State: sourcing.AcquisitionFailed,
+	}
+	_, err := service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50", "981645030344")
+	require.Error(t, err)
+	require.Equal(t, 0, provider.count(), "an existing pre-command row must not launch a browser")
+}
