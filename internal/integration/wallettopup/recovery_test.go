@@ -202,3 +202,20 @@ func TestNativeLateCheckoutClosesWithoutDispatch(t *testing.T) {
 		t.Fatalf("late Native checkout stuck or dispatched: %s %v requests=%d", a.Phase, err, *calls)
 	}
 }
+
+func TestUnvisitedAlipayCheckoutSurvivesVerifiedAbsenceBeforeDeadline(t *testing.T) {
+	s, r, a, calls := recoveryFixture(t, billing.PaymentAlipay, time.Now().UTC().Add(2*time.Minute), "NOT_EXIST", false)
+	ctx := context.Background()
+	original, err := s.CheckoutTopUp(ctx, a.OrganizationID, a.ActorID, a.OrderID, a.Version)
+	if err != nil || original.Kind != "REDIRECT" || *calls != 0 {
+		t.Fatalf("Page Pay URL creation: %+v %v requests=%d", original, err, *calls)
+	}
+	if err = s.ReconcileTopUpOrder(ctx, a.OrganizationID, a.OrderID); err != nil {
+		t.Fatalf("unvisited URL became unusable: %v", err)
+	}
+	a, _ = r.ReadTopUpAttempt(ctx, a.OrganizationID, a.OrderID)
+	replayed, err := s.CheckoutTopUp(ctx, a.OrganizationID, a.ActorID, a.OrderID, a.Version)
+	if err != nil || a.Phase != billing.TopUpAwaitingPayment || original != replayed || *calls != 1 {
+		t.Fatalf("original URL was not preserved: %s %v requests=%d", a.Phase, err, *calls)
+	}
+}

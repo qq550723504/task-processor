@@ -153,7 +153,7 @@ type ProviderObservation struct {
 	MerchantOrderID     string
 	EventID             string
 	Kind                string // PAYMENT or REFUND
-	State               string // PAID, PAID_REFUND_UNKNOWN, UNPAID, CLOSED, UNKNOWN, REFUNDED, REFUND_PENDING, REFUND_CLOSED
+	State               string // PAID, PAID_REFUND_UNKNOWN, UNPAID, NOT_FOUND, CLOSED, UNKNOWN, REFUNDED, REFUND_PENDING, REFUND_CLOSED
 	TradeID             string
 	RefundRequestID     string
 	NativeRefundID      string
@@ -174,7 +174,7 @@ func (o ProviderObservation) Validate() error {
 			if o.TradeID == "" || o.AmountMinor <= 0 || o.OccurredAt.IsZero() {
 				return ErrInvalid
 			}
-		case "UNPAID", "CLOSED", "UNKNOWN":
+		case "UNPAID", "NOT_FOUND", "CLOSED", "UNKNOWN":
 		default:
 			return ErrInvalid
 		}

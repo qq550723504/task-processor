@@ -310,7 +310,10 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 		o, queryErr := p.QueryPayment(requestCtx, a)
 		cancel()
 		if queryErr == nil && o.Validate() == nil && o.Matches(a) {
-			normalPending = o.State == "UNPAID" && len(a.CheckoutCiphertext) > 0
+			// Page Pay creates a signed URL locally; the trade need not exist until
+			// the user opens it. A verified absence preserves only that saved URL.
+			unvisitedPagePay := o.State == "NOT_FOUND" && a.Merchant.Provider == PaymentAlipay && a.CheckoutKind == "REDIRECT"
+			normalPending = (o.State == "UNPAID" || unvisitedPagePay) && len(a.CheckoutCiphertext) > 0
 			if err := t.store.RecordTopUpObservation(ctx, o); err != nil {
 				return s.deferTopUp(ctx, a, "EVIDENCE_STORE_UNAVAILABLE")
 			}
