@@ -100,16 +100,16 @@ type LeadResult struct {
 // documents invoiceId as its sale idempotency key.
 type SaleInput struct {
 	CustomerExternalID string
-	Amount              int64
-	Currency            string
-	EventName           string
-	PaymentProcessor    string
-	InvoiceID           string
-	LeadEventName       string
-	ClickID             string
-	CustomerName        string
-	CustomerEmail       string
-	Metadata            map[string]any
+	Amount             int64
+	Currency           string
+	EventName          string
+	PaymentProcessor   string
+	InvoiceID          string
+	LeadEventName      string
+	ClickID            string
+	CustomerName       string
+	CustomerEmail      string
+	Metadata           map[string]any
 }
 
 // SaleCustomer is nullable in Dub's sale response schema.

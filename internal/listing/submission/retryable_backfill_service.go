@@ -7,10 +7,10 @@ import (
 )
 
 type RetryableBackfillRecord struct {
-	ID         string
-	Error      string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID        string
+	Error     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type RetryableBackfillRequest struct {
@@ -18,12 +18,12 @@ type RetryableBackfillRequest struct {
 }
 
 type RetryableBackfillService[T any] struct {
-	listFailedTasks       func(context.Context) ([]T, error)
-	record                func(T) RetryableBackfillRecord
-	markBlockedRetryable  func(context.Context, T, *RetryableBlockState, string) error
-	now                   func() time.Time
-	maxAutoRetryAttempts  int
-	defaultRecoveryScope  string
+	listFailedTasks      func(context.Context) ([]T, error)
+	record               func(T) RetryableBackfillRecord
+	markBlockedRetryable func(context.Context, T, *RetryableBlockState, string) error
+	now                  func() time.Time
+	maxAutoRetryAttempts int
+	defaultRecoveryScope string
 }
 
 type RetryableBackfillServiceConfig[T any] struct {

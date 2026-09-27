@@ -71,7 +71,8 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
 
 - `cmd/`
   - 只放受维护的产品运行入口或有明确所有者的运维入口。
-  - 当前六个产品运行入口为：
+  - 当前七个产品运行入口为：
+    - `1688-public-browser-collector`
     - `current-application`
     - `image-agent-temporal-worker`
     - `listing-control-plane`
@@ -99,6 +100,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `source-account-registry-schema-init`
     - `organization-membership-schema-init`
     - `referral-schema-init`
+  - `1688-public-browser-collector` 是匿名公开 1688 采集的**独立采集进程**（设计 D13）：无数据库凭据、无数据库网络可达、不做授权、不写操作行，只经内部 RPC 返回 untrusted evidence。缺少调用方准入凭据或出网白名单为空时**拒绝启动**。归 #514 src2b-public-browser-v1；列入清单**不授权**部署该服务或对真实 1688 执行网络验收。
   - `image-agent-temporal-worker` 的构建归属为 `deployments/docker/Dockerfile.product-listing-api`，运行装配归 `internal/app/worker/imageagent`。
   - `1688-local-agent` 的维护入口为 `scripts/1688-local-agent-acceptance.ps1`；归 1688 source runtime。列入清单不授权连接真实账号或执行该脚本。
   - `1688-batch-import` 的维护入口为 `scripts/1688-batch-import.ps1`；属 #398 路线 B 的执行器本地队列切片 S1，只驱动本地队列中的单条商品并回读终态。已确认的 actor/组织必须由调用方显式提供，不从浏览器会话推断；退出码 3 表示结果未知，只允许人工核实，不允许重跑。列入清单不授权对真实 1688 账号执行批量采集。

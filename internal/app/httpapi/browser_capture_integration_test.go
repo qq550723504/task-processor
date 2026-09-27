@@ -48,7 +48,7 @@ func (f *acquisitionHTTPFixture) browserServer(t *testing.T) *httptest.Server {
 			return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 		},
 		buildAcquisition: func(auth *authz.ListingKitAuthorizer, d routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildProductAcquisitionModule(context.Background(), f.db, d, auth, f.provider)
+			return buildProductAcquisitionModule(context.Background(), f.db, d, auth, f.provider, false)
 		},
 		buildBrowserCapture: func(auth *authz.ListingKitAuthorizer, d routeAuthDependencies) (kernelmodule.Module, error) {
 			return buildBrowserCaptureModule(context.Background(), f.db, d, auth)

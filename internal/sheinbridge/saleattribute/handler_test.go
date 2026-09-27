@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	productapi "task-processor/internal/shein/api/product"
 	sheinctx "task-processor/internal/shein/context"

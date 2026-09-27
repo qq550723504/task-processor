@@ -15,10 +15,11 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	topupconfig "task-processor/internal/integration/wallettopup/config"
+	"time"
 
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	topupconfig "task-processor/internal/integration/wallettopup/config"
 )
 
 const (
@@ -45,6 +46,19 @@ type Config struct {
 	Membership                 *MembershipConfig             `json:"membership,omitempty"`
 	ListingKitAuthorization    ListingKitAuthorizationConfig `json:"listingKitAuthorization,omitempty"`
 	Referrals                  ReferralsConfig               `json:"referrals"`
+	// BrowserCollector enables the standalone anonymous public 1688 browser
+	// collector (design D13). Omitted means the application keeps the existing
+	// anonymous public HTTP provider unchanged.
+	BrowserCollector *BrowserCollectorConfig `json:"browserCollector,omitempty"`
+}
+
+// BrowserCollectorConfig is the opt-in wiring to the browser collector
+// process. Credential is a service-to-service credential between this
+// application and the collector; it is never a user or tenant credential.
+type BrowserCollectorConfig struct {
+	Endpoint   string        `json:"endpoint"`
+	Credential string        `json:"credential"`
+	Timeout    time.Duration `json:"timeout,omitempty"`
 }
 
 type ReferralsConfig struct {
@@ -475,6 +489,13 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 				AuthorizationRequired: true,
 			},
 		},
+	}
+	if collector := cfg.BrowserCollector; collector != nil {
+		core.BrowserCollector = coreconfig.BrowserCollectorConfig{
+			Endpoint:   collector.Endpoint,
+			Credential: collector.Credential,
+			Timeout:    collector.Timeout,
+		}
 	}
 	if image := cfg.ImageAgent; image != nil {
 		core.ImageAgent.Generation = image.Generation

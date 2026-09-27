@@ -425,18 +425,17 @@ func TestPostgresAdmissionAndAtomicConsumption(t *testing.T) {
 	}
 }
 
-
 func TestWithdrawalReplayReadsExactCommittedOperationWithoutEligibilityDependencies(t *testing.T) {
 	owner, runtime := ownedDatabase(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	request := economics.RequestWithdrawal{
-		Referrer:       "person-1",
-		Currency:       economics.CurrencyCNY,
-		PayoutMethodID: "method-1",
-		AmountMinor:    economics.MinimumWithdrawalMinor,
-		Method:         economics.MethodAlipay,
-		IdempotencyKey: "withdrawal-replay-1",
+		Referrer:        "person-1",
+		Currency:        economics.CurrencyCNY,
+		PayoutMethodID:  "method-1",
+		AmountMinor:     economics.MinimumWithdrawalMinor,
+		Method:          economics.MethodAlipay,
+		IdempotencyKey:  "withdrawal-replay-1",
 		ExpectedVersion: 7,
 	}
 	withdrawalID := uuid.NewString()

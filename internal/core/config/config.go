@@ -33,13 +33,16 @@ type Config struct {
 	Worker        WorkerConfig        `yaml:"worker"`
 	OpenAI        OpenAIConfig        `yaml:"openai"`
 	Browser       BrowserConfig       `yaml:"browser"`
-	Amazon        AmazonConfig        `yaml:"amazon"`
-	RabbitMQ      *RabbitMQConfig     `yaml:"rabbitmq"`
-	Updater       UpdaterConfig       `yaml:"updater"`
-	Platforms     PlatformsConfig     `yaml:"platforms"`
-	Watermark     *watermark.Config   `yaml:"watermark"`
-	ImageAgent    ImageAgentConfig    `yaml:"imageagent"`
-	Database      *DatabaseConfig     `yaml:"database"`
+	// BrowserCollector is the opt-in wiring to the standalone anonymous public
+	// 1688 browser collector process (design D13).
+	BrowserCollector BrowserCollectorConfig `yaml:"browserCollector"`
+	Amazon           AmazonConfig           `yaml:"amazon"`
+	RabbitMQ         *RabbitMQConfig        `yaml:"rabbitmq"`
+	Updater          UpdaterConfig          `yaml:"updater"`
+	Platforms        PlatformsConfig        `yaml:"platforms"`
+	Watermark        *watermark.Config      `yaml:"watermark"`
+	ImageAgent       ImageAgentConfig       `yaml:"imageagent"`
+	Database         *DatabaseConfig        `yaml:"database"`
 	// CommercialDatabase is optional for workers that settle observed AI
 	// usage into the commercial owner.
 	CommercialDatabase *DatabaseConfig `yaml:"commercialDatabase"`

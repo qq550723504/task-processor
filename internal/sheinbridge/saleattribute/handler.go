@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"task-processor/internal/product/catalog/canonical"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/listingruntime"
 	openaiclient "task-processor/internal/integration/openai"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	"task-processor/internal/product/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinctx "task-processor/internal/shein/context"
 )

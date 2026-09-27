@@ -160,7 +160,6 @@ func TestListingKitAuthorizerEnforcesSourceAccountPermissionMatrix(t *testing.T)
 	require.True(t, authorizer.Authorize("configured-user", nil, PermissionWorkbenchSourceAccountManage))
 }
 
-
 func TestListingKitAuthorizerEnforcesCommercialPermissionMatrix(t *testing.T) {
 	authorizer, err := NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
 	require.NoError(t, err)

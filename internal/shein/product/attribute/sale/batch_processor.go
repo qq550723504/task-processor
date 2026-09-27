@@ -94,12 +94,12 @@ func buildBatchProgressFields(batchNumber, totalBatches, batchSize, batchVariant
 	}
 
 	return map[string]any{
-		"batch":              batchNumber,
-		"total_batches":      totalBatches,
-		"batch_size":         batchSize,
+		"batch":               batchNumber,
+		"total_batches":       totalBatches,
+		"batch_size":          batchSize,
 		"batch_variant_count": batchVariantCount,
-		"processed_variants": processedVariants,
-		"total_variants":     totalVariants,
+		"processed_variants":  processedVariants,
+		"total_variants":      totalVariants,
 	}
 }
 

@@ -18,7 +18,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/imageagent"
-	a1688 "task-processor/internal/integration/acquisition/a1688"
 	moneystore "task-processor/internal/integration/persistence/money"
 	referralstore "task-processor/internal/integration/persistence/referral"
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
@@ -261,7 +260,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		productDB := supplied.productAcquisitionDB
 		factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
+			// The provider is config-gated: with no collector endpoint/credential
+			// the existing anonymous public HTTP provider is used unchanged.
+			provider, browserService, err := publicAcquisitionProvider(cfg)
+			if err != nil {
+				return nil, err
+			}
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -285,7 +290,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		productDB, imageDB, workflows := supplied.productAcquisitionDB, supplied.imageAgentDB, supplied.imageAgentWorkflows
 		factories.buildAcquisitionImage = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			receipts, err := buildPublishedAcquisitionReader(ctx, productDB, dependencies, authorizer)
+			receipts, err := buildPublishedAcquisitionReader(ctx, productDB, cfg, dependencies, authorizer)
 			if err != nil {
 				return nil, err
 			}
@@ -400,7 +405,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		modules = append(modules, image)
 	}
 	if supplied.productAgent != nil {
-		agentModule, agentErr := buildProductAgentModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, *supplied.productAgent)
+		agentModule, agentErr := buildProductAgentModule(ctx, supplied.productAcquisitionDB, *workbench.authDependencies, authorizer, *supplied.productAgent, cfg)
 		if agentErr != nil {
 			return nil, fmt.Errorf("build current product agent: %w", agentErr)
 		}
