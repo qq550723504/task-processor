@@ -731,7 +731,8 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	for keyID, key := range secrets.Encryption {
 		payoutEncryptionKeys[keyID] = append([]byte(nil), key...)
 	}
-	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), withdrawalReplay: repository, personalKYC: personalKYC, settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
+	// Stage B remains dormant until the #517 dual-schema client has been deployed and confirmed.
+	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), withdrawalReplay: repository, personalKYC: personalKYC, requirePersonalKYC: false, settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {
