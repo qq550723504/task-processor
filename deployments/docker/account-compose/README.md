@@ -504,8 +504,21 @@ actor grant before admitting each new effect.
 The one-shot `acceptance-fixture` service is part of this isolated Compose
 project only. Run it explicitly with the `acceptance` profile after the normal
 stack is healthy. It uses the existing ZITADEL provisioning owner to
-create/read back Organization A/B and the three user authorizations, then
-writes the sanitized manifest to the project-owned `acceptance-state` volume.
+create/read back Organization A/B and the three user authorizations. It also
+grants the existing `local-membership-write` service account exactly
+`ORG_USER_MANAGER` in **Organization A only**, then reads that role back before
+writing the sanitized manifest to the project-owned `acceptance-state` volume.
+The service account ID comes from the private OpenTofu output
+`membership-write-user-id`; its active machine identity and home organization
+must match. An unexpected identity or existing role fails closed without
+overwriting it. Repeated fixture runs read the existing exact role rather than
+adding privileges. Organization B and instance-level write privileges are not
+granted. User-facing membership authorization still checks the signed-in actor's
+current organization and manage permission.
+
+This setup is for fresh isolated projects. A retained project without the new
+private output fails explicitly; it is not automatically migrated or destroyed.
+Keep its data and obtain a separate configuration decision before changing it.
 It does not add a production route or insert business facts into PostgreSQL.
 
 ## Referral completion evidence for a separately authorized acceptance

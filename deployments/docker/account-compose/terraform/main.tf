@@ -210,6 +210,7 @@ output "project_id" { value = zitadel_project.listingkit.id }
 output "bootstrap_user_id" { value = zitadel_human_user.operator.id }
 output "viewer_user_id" { value = zitadel_human_user.viewer.id }
 output "insufficient_user_id" { value = zitadel_human_user.insufficient.id }
+output "membership_write_user_id" { value = zitadel_machine_user.membership_write.id }
 output "membership_read_pat" {
   value     = zitadel_personal_access_token.membership_read.token
   sensitive = true

@@ -103,12 +103,15 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
       <p>结果待核实的操作仍保留原成员或邮箱占用。其他成员的操作可以继续。</p>
       {operations.isError && <p role="alert">待处理列表暂不可用；已保存的操作标识继续保留。</p>}
       {operations.isPending && <p>正在找回待处理操作…</p>}
-      <ul className={styles.pendingList}>{keys.map(key=><li key={key}><Button variant={key===activeKey ? "secondary" : "outline"} onClick={()=>setChosen(key)} disabled={busy} aria-pressed={key===activeKey}><span>{receiptFor(key)?.kind === "role" ? "角色调整" : receiptFor(key)?.kind === "remove" ? "移除成员" : "成员操作"}</span><code>{key}</code><span>{terminalReceipt(receiptFor(key)) ? "已有终局回执" : "待核实"}</span></Button></li>)}</ul>
+      <ul className={styles.pendingList}>{keys.map(key=>{
+        const receipt = receiptFor(key);
+        return <li key={key}><Button variant={key===activeKey ? "secondary" : "outline"} onClick={()=>setChosen(key)} disabled={busy} aria-pressed={key===activeKey}><span>{receipt?.kind === "role" ? "角色调整" : receipt?.kind === "remove" ? "移除成员" : "成员操作"}</span><code>{key}</code><span>{!receipt ? "尚未读取回执" : terminalReceipt(receipt) ? "已有终局回执" : receipt.status === "unknown" ? "待核实" : "待继续"}</span></Button></li>;
+      })}</ul>
       {operations.isSuccess && keys.length===0 && <p>当前没有待处理操作。</p>}
       {operations.hasNextPage && <Button variant="outline" disabled={busy || operations.isFetching} onClick={()=>void operations.fetchNextPage()}>加载更多待处理操作</Button>}
     </section>}
-    {activeKey && <section className={styles.panel} aria-labelledby="pending-title"><h2 id="pending-title">{currentReceipt?.status === "acknowledged" ? "操作已获服务确认" : currentReceipt?.status === "rejected" ? "操作未执行" : "结果待核实"}</h2>
-      <p>{currentReceipt?.status === "acknowledged" ? "操作回执与当前成员状态分别显示，请以最新读取的成员资料为准。" : "请保留本次操作标识。核实可继续尚未发送的步骤；已发送的步骤不会再次发送。"}</p>
+    {activeKey && <section className={styles.panel} aria-labelledby="pending-title"><h2 id="pending-title">{!currentReceipt ? "尚未读取正式回执" : currentReceipt.status === "acknowledged" ? "操作已获服务确认" : currentReceipt.status === "rejected" ? "操作未执行" : currentReceipt.status === "unknown" ? "结果待核实" : "操作待继续"}</h2>
+      <p>{!currentReceipt ? "当前仅保留操作标识；读取正式回执前不判断操作结果。" : currentReceipt.status === "acknowledged" ? "操作回执与当前成员状态分别显示，请以最新读取的成员资料为准。" : "请保留本次操作标识。核实可继续尚未发送的步骤；已发送的步骤不会再次发送。"}</p>
       <p>当前操作：<span>{activeKey}</span></p>
       {operation.isError && !authorityError && <p role="alert">暂未取得此操作的正式回执，原标识仍保留。</p>}
       {currentReceipt?.userEvidence === "identity_verified" && <p>已核实新用户身份；这不代表验证邮件已送达。</p>}
