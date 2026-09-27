@@ -170,10 +170,17 @@ func extractScript() string {
   };
   // readSku reports whether it found a usable model, so the caller can fall
   // through to the next candidate instead of committing to a truthy but empty
-  // one. Returns true when at least one variant was produced.
+  // one. Returns true when variants were produced, and the literal 'truncated'
+  // when a model was found but dropped as incomplete.
+  //
+  // Truncation is deliberately NOT the same as absent. If the preferred model was
+  // dropped because it was incomplete, falling through to a lower-priority model
+  // would publish a different variant set than the authoritative one, which is
+  // worse than publishing none.
+  const TRUNCATED = 'truncated';
   const readSku = (sku) => {
     if (!sku || typeof sku !== 'object') return false;
-    if (!Array.isArray(sku.skuInfoMap) && (typeof sku.skuInfoMap !== 'object' || !sku.skuInfoMap)) return false;
+    if (!sku.skuInfoMap || typeof sku.skuInfoMap !== 'object') return false;
     const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
     const propNames = props.map((p) => (p && p.prop ? p.prop : ''));
     const map = sku.skuInfoMap || {};
@@ -207,7 +214,7 @@ func extractScript() string {
     if (variantOverflow || attributeOverflow) {
       markTrunc('variants');
       out.variants = [];
-      return false;
+      return TRUNCATED;
     }
     return out.variants.length > 0;
   };
@@ -215,7 +222,10 @@ func extractScript() string {
   // unusable model does not shadow a complete fallback.
   const readFirstUsableSku = (candidates) => {
     for (const c of candidates) {
-      if (c && readSku(c)) return true;
+      if (!c) continue;
+      const result = readSku(c);
+      if (result === TRUNCATED) return false;
+      if (result) return true;
     }
     return false;
   };
@@ -251,10 +261,20 @@ func extractScript() string {
     let minQuantity = '';
     if (beginAmount !== undefined && beginAmount !== null && beginAmount !== '') {
       const q = exactNum(beginAmount, 'price_facts');
-      if (q) {
-        const digits = /^[0-9]+$/.test(q);
-        const allZero = /^0+$/.test(q);
-        minQuantity = (digits && !allZero) ? q : '1';
+      // A canonical positive integer is kept EXACTLY, including one beyond the
+      // safe-integer range: converting through Number would change it. Anything
+      // the downstream contract cannot accept - a leading zero, zero, or more
+      // than twenty digits - is omitted rather than coerced, because this field
+      // is optional and inventing a value would publish a fact the source did
+      // not state. The omission is reported.
+      if (q && /^[1-9][0-9]{0,19}$/.test(q)) {
+        minQuantity = q;
+      } else if (q && /^[0-9]+$/.test(q)) {
+        markTrunc('min_quantity');
+        minQuantity = '';
+      } else if (q) {
+        markTrunc('min_quantity');
+        minQuantity = '';
       }
     }
     out.priceFacts.push({ amount: amount, currency: clip(currency || '', 'price_facts'), minQuantity: minQuantity });

@@ -242,3 +242,64 @@ func TestExtractorPriceScanBudgetIsExtractionWide(t *testing.T) {
 	require.Contains(t, script, "priceScanned + list.length > MAX_PRICE_SCAN",
 		"the bound must compare against the accumulated count, not one array")
 }
+
+// A preferred SKU model that was found but dropped as truncated must stop
+// candidate selection: falling through would publish a different variant set than
+// the authoritative one.
+func TestBrowserAcquireStopsAfterTruncatedSkuModel(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	// The authoritative model exceeds the variant cap; the fallback is complete
+	// but must NOT be used.
+	big := map[string]any{}
+	for i := 0; i < maxVariants+3; i++ {
+		big["c"+itoa(i)] = map[string]any{"skuId": i + 1, "price": 1.0}
+	}
+	page := `<!doctype html><html><head><title>Truncated primary</title></head><body><script>
+window.__INIT_DATA = {
+  "data": {"main": {"data": {"offerId": 981645030344, "title": "Truncated primary item"}}},
+  "globalData": {
+    "nySkuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap": BIG},
+    "skuModel": {"skuProps":[{"prop":"size"}], "skuInfoMap":{"fallback":{"skuId":777,"price":9.9}}}
+  }
+};
+</script></body></html>`
+	page = strings.Replace(page, "BIG", mustJSON(big), 1)
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Empty(t, evidence.Variants,
+		"a truncated authoritative model must not be replaced by a lower-priority fallback")
+}
+
+// A noncanonical minimum quantity must be omitted, not coerced, so a page with
+// "01" or an over-long digit string still publishes.
+func TestBrowserAcquireOmitsNoncanonicalMinimumQuantity(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	for _, begin := range []any{"01", "123456789012345678901"} {
+		page := buildContextPage(map[string]any{
+			"productTitle": map[string]any{"fields": map[string]any{"title": "Odd min qty bottle"}},
+			"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+				"tempModel": map[string]any{"offerId": 981645030344},
+			}}},
+			"price": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+				"tradeWithoutPromotion": map[string]any{"offerPriceRanges": []any{
+					map[string]any{"price": "12.50", "beginAmount": begin},
+				}},
+			}}},
+		})
+		srv := serveFixture(t, page)
+		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		source := mustSourceForShape(t)
+		evidence, err := client.Acquire(t.Context(), source)
+		require.NoError(t, err)
+		require.NotEmpty(t, evidence.PriceFacts)
+		_, err = sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-minq")
+		require.NoError(t, err, "a noncanonical minimum quantity must not fail the acquisition")
+	}
+}
+
+func mustJSON(v any) string {
+	encoded, _ := json.Marshal(v)
+	return string(encoded)
+}
