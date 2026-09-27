@@ -99,8 +99,8 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("MAP=OK\n")
-	fmt.Printf("IDENTITY=%s sourceType=%s platform=%s sourceID=%s\n",
-		envelope.Identity.SourceType, envelope.Identity.SourceType, envelope.Identity.SourcePlatform, envelope.Identity.SourceID)
+	fmt.Printf("IDENTITY sourceType=%s platform=%s sourceID=%s\n",
+		envelope.Identity.SourceType, envelope.Identity.SourcePlatform, envelope.Identity.SourceID)
 	fmt.Printf("RAW_REF=%s url=%s capturedAt=%s\n",
 		envelope.RawReference.ReferenceType, envelope.RawReference.URL, envelope.RawReference.CapturedAt.Format(time.RFC3339))
 	fmt.Printf("MISSING_FACTS=%d WARNINGS=%d\n", len(envelope.MissingFacts), len(envelope.Warnings))

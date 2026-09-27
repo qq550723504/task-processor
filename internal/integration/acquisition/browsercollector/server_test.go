@@ -43,7 +43,7 @@ func testNow() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC) 
 
 func post(t *testing.T, url, body string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url+browsercollector.AcquirePath, strings.NewReader(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
@@ -173,8 +173,46 @@ func TestHandlerRejectsOtherMethods(t *testing.T) {
 	require.NoError(t, err)
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
-	resp, err := http.Get(srv.URL)
+	resp, err := http.Get(srv.URL + browsercollector.AcquirePath)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+}
+
+// The handler is installed as the whole server handler, so it must reject any
+// path other than the single versioned RPC path before doing provider work.
+func TestHandlerRejectsOtherPathsBeforeProviderWork(t *testing.T) {
+	for _, path := range []string{"/", "/internal/v0/browser-collector/acquire", "/internal/v1/browser-collector/other", "/metrics"} {
+		provider := &stubProvider{ev: evidenceFor("981645030344", "ok")}
+		handler, err := browsercollector.Handler(browsercollector.Options{
+			Provider: provider,
+			Admit:    func(*http.Request) error { return nil },
+		})
+		require.NoError(t, err)
+		srv := httptest.NewServer(handler)
+		resp, err := http.Post(srv.URL+path, "application/json", strings.NewReader(`{"sourceURL":"https://detail.1688.com/offer/981645030344.html"}`))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNotFound, resp.StatusCode, path)
+		require.Equal(t, 0, provider.calls, path+": provider must not run")
+		resp.Body.Close()
+		srv.Close()
+	}
+}
+
+// An evidence body that would exceed the transport cap must be refused rather
+// than streamed, because no conforming client could accept it.
+func TestHandlerRefusesOversizedEvidence(t *testing.T) {
+	huge := strings.Repeat("x", browsercollector.MaxResponseBytes+64)
+	title := huge
+	provider := &stubProvider{ev: evidenceFor("981645030344", title)}
+	handler, err := browsercollector.Handler(browsercollector.Options{
+		Provider: provider,
+		Admit:    func(*http.Request) error { return nil },
+	})
+	require.NoError(t, err)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+	resp := post(t, srv.URL, `{"sourceURL":"https://detail.1688.com/offer/981645030344.html"}`)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 }

@@ -327,7 +327,11 @@ type evidencePayload struct {
 	Attributes  []kv      `json:"attributes"`
 	Variants    []variant `json:"variants"`
 	PriceFacts  []price   `json:"priceFacts"`
-	Truncated   bool      `json:"truncated"`
+	// TruncatedFields names every collection or field the page-side caps
+	// actually clipped, plus every numeric value JavaScript could not represent
+	// exactly. It is never silently dropped: each entry becomes an explicit
+	// warning and missing fact on the evidence.
+	TruncatedFields []string `json:"truncatedFields"`
 }
 
 type kv struct {
@@ -421,6 +425,23 @@ func decodeEvidence(source sourcing.AcquisitionSource, raw any) (sourcing.Acquis
 	}
 	digest := sha256.Sum256(encoded)
 	evidence.ContentSHA256 = hex.EncodeToString(digest[:])
+	// Make every page-side clip explicit. A truncated or imprecise field must
+	// never reach publication looking like the exact source fact.
+	for _, field := range payload.TruncatedFields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		evidence.Warnings = append(evidence.Warnings, sourcing.SourceWarning{
+			Code:    "source_evidence_truncated",
+			Field:   field,
+			Message: "page-side evidence caps clipped or dropped this field",
+		})
+		evidence.MissingFacts = append(evidence.MissingFacts, sourcing.MissingFact{
+			Field:  field,
+			Reason: "browser evidence for this field was clipped or not exactly representable and is incomplete",
+		})
+	}
 	return evidence, nil
 }
 

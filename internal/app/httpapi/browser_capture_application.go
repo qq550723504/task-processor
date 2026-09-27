@@ -14,7 +14,6 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	a1688 "task-processor/internal/integration/acquisition/a1688"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/sourcing"
 )
@@ -30,7 +29,13 @@ func NewCurrentApplicationWithBrowserCapture(ctx context.Context, sourceAccountD
 	}
 	factories := defaultCurrentApplicationFactories(ctx)
 	factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, a1688.New())
+		// Config-gated exactly like the main composition: the browser collector is
+		// used only when the deployment supplies endpoint plus credential.
+		provider, err := publicAcquisitionProvider(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider)
 	}
 	factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 		return buildBrowserCaptureModule(ctx, productDB, dependencies, authorizer)

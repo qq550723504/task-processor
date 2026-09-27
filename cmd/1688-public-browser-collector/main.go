@@ -60,7 +60,6 @@ func run(ctx context.Context, args []string) error {
 	fs.StringVar(&opts.browserPath, "browser", "", "path to the Chromium binary (required)")
 	fs.BoolVar(&opts.headless, "headless", true, "run the browser headless")
 	fs.DurationVar(&opts.timeout, "timeout", browser.DefaultTimeout, "per-acquisition budget; must stay below the application acquisition route budget (sourcing.AcquisitionTimeout)")
-	fs.StringVar(&opts.credential, "credential", "", "service credential; defaults to $"+credentialEnvKey)
 	fs.StringVar(&opts.allowedOrigins, "allowed-origins", strings.Join(browser.DefaultAllowedOrigins, ","), "comma-separated egress allowlist")
 	fs.DurationVar(&opts.shutdownTimeout, "shutdown-timeout", 15*time.Second, "graceful shutdown budget")
 	if err := fs.Parse(args); err != nil {
@@ -69,13 +68,14 @@ func run(ctx context.Context, args []string) error {
 	if opts.browserPath == "" {
 		return errors.New("-browser is required")
 	}
-	credential := strings.TrimSpace(opts.credential)
-	if credential == "" {
-		credential = strings.TrimSpace(os.Getenv(credentialEnvKey))
-	}
+	// The service credential is read from the environment only. A command-line
+	// flag would expose it through the process table, container specs and shell
+	// history, letting any co-located process or operator impersonate the
+	// application and spend the shared browser/IP budget.
+	credential := strings.TrimSpace(os.Getenv(credentialEnvKey))
 	if credential == "" {
 		// Fail closed: never start a collector whose callers cannot be verified.
-		return fmt.Errorf("caller admission credential is required (set -credential or $%s)", credentialEnvKey)
+		return fmt.Errorf("caller admission credential is required (set $%s)", credentialEnvKey)
 	}
 	origins := splitOrigins(opts.allowedOrigins)
 	if len(origins) == 0 {

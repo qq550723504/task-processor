@@ -77,7 +77,10 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 
 	// Same-key admission for a first-time request: collapse concurrent attempts
 	// so only one of them can spend the shared browser/IP budget (finding #10).
-	release := s.acquireSlot(request)
+	release, err := s.acquireSlot(ctx, request)
+	if err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
 	defer release()
 
 	// The leader may have completed while this caller waited on the same-key
@@ -149,7 +152,10 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 			return sourcing.AcquisitionResult{}, err
 		}
 	}
-	return s.core.resolve(ctx, op, publishClaim, claim)
+	// A newly admitted operation is not a replay. Match the existing acquisition
+	// convention (replayed := !claim) so a first-time browser acquisition is not
+	// reported to clients as an idempotent replay.
+	return s.core.resolve(ctx, op, publishClaim, !claim)
 }
 
 // replay resolves a durable operation without acquiring. A same-key
@@ -170,7 +176,6 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 	if op.State == sourcing.AcquisitionAcquiring || op.Command == nil {
 		return nil, false, nil
 	}
-	replayed := true
 	if op.State == sourcing.AcquisitionPrepared {
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
 			return nil, false, err
@@ -184,8 +189,19 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 			return nil, true, nil
 		}
 		op = claimed
+		// The claim token is the publication claim: a prepared operation that was
+		// successfully claimed must be PUBLISHED here, not merely verified.
+		// Verifying is read-only, so with no publication yet it would report
+		// not-found and leave the operation stranded in publishing forever.
+		result, err := s.core.resolve(ctx, op, publishClaim, true)
+		if err != nil {
+			return nil, false, err
+		}
+		return &result, true, nil
 	}
-	result, err := s.core.resolve(ctx, op, false, replayed)
+	// Already publishing or published: this is a genuine replay, so the read-only
+	// verification path is correct here.
+	result, err := s.core.resolve(ctx, op, false, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -230,7 +246,11 @@ func (s *BrowserAcquisitionService) capacityAdmitted(ctx context.Context, scope 
 // depend on it: StartPrepared remains the atomic arbiter. The map entry is
 // reference-counted and dropped when the last holder leaves, so the map does not
 // grow without bound across distinct keys over the process lifetime.
-func (s *BrowserAcquisitionService) acquireSlot(request sourcing.AcquisitionOperation) func() {
+//
+// The wait observes ctx, so a cancelled or expired request is not retained until
+// the preceding browser call and publication finish; the outer request deadline
+// therefore still bounds the handler.
+func (s *BrowserAcquisitionService) acquireSlot(ctx context.Context, request sourcing.AcquisitionOperation) (func(), error) {
 	key := request.Scope.OrganizationID + "|" + request.Scope.ActorID + "|" + request.Key
 	s.inflightMu.Lock()
 	if s.inflight == nil {
@@ -244,15 +264,36 @@ func (s *BrowserAcquisitionService) acquireSlot(request sourcing.AcquisitionOper
 	entry.waiters++
 	s.inflightMu.Unlock()
 
-	entry.mu.Lock()
-	return func() {
-		entry.mu.Unlock()
+	release := func() {
 		s.inflightMu.Lock()
 		entry.waiters--
 		if entry.waiters <= 0 {
 			delete(s.inflight, key)
 		}
 		s.inflightMu.Unlock()
+	}
+
+	// Cancellation-aware acquisition of the per-key lock. A plain Mutex.Lock
+	// cannot observe ctx.Done(), so a timed-out request would otherwise stay
+	// blocked for the whole preceding browser budget.
+	acquired := make(chan struct{})
+	go func() {
+		entry.mu.Lock()
+		close(acquired)
+	}()
+	select {
+	case <-acquired:
+		return func() {
+			entry.mu.Unlock()
+			release()
+		}, nil
+	case <-ctx.Done():
+		go func() {
+			<-acquired
+			entry.mu.Unlock()
+		}()
+		release()
+		return nil, ctx.Err()
 	}
 }
 

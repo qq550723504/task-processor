@@ -2,6 +2,7 @@ package browsercollector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -50,6 +51,14 @@ func Handler(opts Options) (http.Handler, error) {
 			WriteError(w, http.StatusMethodNotAllowed, CodeInvalidRequest)
 			return
 		}
+		// The handler is installed as the whole server handler, so every path
+		// reaches it. Reject anything other than the single versioned RPC path
+		// before any provider work, so a stale or misrouted admitted client
+		// cannot spend the shared browser/IP budget outside the contract.
+		if r.URL.Path != AcquirePath {
+			WriteError(w, http.StatusNotFound, CodeInvalidRequest)
+			return
+		}
 		req, err := ReadRequest(r)
 		if err != nil {
 			WriteError(w, http.StatusBadRequest, CodeInvalidRequest)
@@ -84,10 +93,18 @@ func writeAcquireError(w http.ResponseWriter, err error) {
 }
 
 func writeEvidence(w http.ResponseWriter, evidence sourcing.AcquisitionEvidence) {
+	// Bound the response before writing it. The page-side caps still allow a
+	// large combination of variants and long strings, so an untrusted page could
+	// otherwise make the collector marshal and stream a huge body that no
+	// conforming client would ever accept.
+	encoded, err := json.Marshal(evidence)
+	if err != nil || len(encoded) > MaxResponseBytes {
+		// Refuse rather than emit a body the peer must reject anyway.
+		WriteError(w, http.StatusBadGateway, CodeSourceUnavailable)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	// The evidence body is already page-side capped by the provider; this
-	// encoder only serializes what it produced.
 	w.WriteHeader(http.StatusOK)
-	_ = writeJSON(w, evidence)
+	_, _ = w.Write(encoded)
 }

@@ -12,6 +12,8 @@ const (
 	maxVariants     = 256
 	maxVariantAttrs = 32
 	maxStringLen    = 8192
+	// maxPriceFacts bounds price facts page-side, before the CDP boundary.
+	maxPriceFacts = 64
 )
 
 // challengeHostMarkers identify an anti-automation or authentication wall by
@@ -35,9 +37,13 @@ func detectChallenge(page playwright.Page) (bool, error) {
 	if page == nil {
 		return false, nil
 	}
+	// Only challenge-specific title markers count. Generic words such as
+	// "robot" or "verify" occur in ordinary product titles ("Robot Vacuum
+	// Cleaner"), and treating those as a challenge would permanently fail a
+	// legitimate listing.
 	title, _ := page.Title()
 	lower := toLower(title)
-	markers := []string{"验证码", "请登录", "安全验证", "captcha", "punish", "verify", "robot", "滑动验证"}
+	markers := []string{"验证码", "请登录", "安全验证", "滑动验证", "captcha", "punish", "滑动验证验证", "异常流量"}
 	for _, m := range markers {
 		if contains(lower, m) {
 			return true, nil
@@ -98,12 +104,92 @@ func stealthScript() string {
 // extractScript returns the bounded, page-side projection of window.context
 // (with a window.__INIT_DATA fallback for custom items). Field paths are
 // ported from the operator's extractors so evidence semantics match the static
-// HTTP provider. Every collection is capped before returning.
+// HTTP provider.
+//
+// Every collection and every string is capped before returning, and every cap
+// that actually clips records the affected field in truncatedFields. The Go
+// decoder turns those into explicit warnings and missing facts, so a clipped
+// value is never published as though it were the exact source fact.
+//
+// Numeric identifiers and prices are additionally guarded: JavaScript cannot
+// represent every integer exactly, so a number outside the safe-integer range
+// is reported as an imprecise field and dropped rather than silently rewritten
+// (String(9007199254740993) would otherwise publish ...992).
 func extractScript() string {
 	return `() => {
-  const CAP = { images: ` + itoa(maxImages) + `, attributes: ` + itoa(maxAttributes) + `, variants: ` + itoa(maxVariants) + `, variantAttrs: ` + itoa(maxVariantAttrs) + `, str: ` + itoa(maxStringLen) + ` };
-  const clip = (s) => (typeof s === 'string' ? s.slice(0, CAP.str) : '');
-  const out = { offerId: '', title: '', description: '', images: [], attributes: [], variants: [], priceFacts: [], truncated: false };
+  const CAP = { images: ` + itoa(maxImages) + `, attributes: ` + itoa(maxAttributes) + `, variants: ` + itoa(maxVariants) + `, variantAttrs: ` + itoa(maxVariantAttrs) + `, priceFacts: ` + itoa(maxPriceFacts) + `, str: ` + itoa(maxStringLen) + ` };
+  const out = { offerId: '', title: '', description: '', images: [], attributes: [], variants: [], priceFacts: [], truncatedFields: [] };
+  const seenTrunc = {};
+  const markTrunc = (field) => { if (!seenTrunc[field]) { seenTrunc[field] = true; out.truncatedFields.push(field); } };
+  const clip = (s, field) => {
+    if (typeof s !== 'string') return '';
+    if (s.length <= CAP.str) return s;
+    markTrunc(field);
+    return s.slice(0, CAP.str);
+  };
+  // Exact numeric text, or '' when the value cannot be represented exactly.
+  const exactNum = (v, field) => {
+    if (v === null || v === undefined || v === '') return '';
+    if (typeof v === 'number') {
+      if (!Number.isSafeInteger(v)) { markTrunc(field); return ''; }
+      return String(v);
+    }
+    if (typeof v === 'string') return v;
+    markTrunc(field);
+    return '';
+  };
+  const cap = (arr, n, field) => { if (arr.length > n) markTrunc(field); return arr.slice(0, n); };
+  const pushAttrs = (list, field) => {
+    for (const a of cap(list, CAP.attributes, field)) {
+      if (a && a.name && a.value && a.name !== a.value) {
+        out.attributes.push({ name: clip(a.name, field), value: clip(a.value, field) });
+      }
+    }
+  };
+  const readSku = (sku) => {
+    if (!sku) return;
+    const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
+    const propNames = props.map((p) => (p && p.prop ? p.prop : ''));
+    const map = sku.skuInfoMap || {};
+    for (const key in map) {
+      if (out.variants.length >= CAP.variants) { markTrunc('variants'); break; }
+      const entry = map[key] || {};
+      const parts = String(key).split('&gt;');
+      const attrsFor = [];
+      for (let i = 0; i < parts.length; i++) {
+        if (i >= CAP.variantAttrs) { markTrunc('variant_attributes'); break; }
+        const name = propNames[i];
+        // Never invent a name the source did not supply: an unmatched segment is
+        // reported as imprecise rather than persisted under a fabricated name.
+        if (!name) { markTrunc('variant_attributes'); continue; }
+        attrsFor.push({ name: clip(name, 'variant_attributes'), value: clip(parts[i], 'variant_attributes') });
+      }
+      const v = { sourceId: exactNum(entry.skuId, 'variant_source_id'), attributes: attrsFor, price: null };
+      const amount = exactNum(entry.price, 'variant_price');
+      if (amount) {
+        v.price = { amount: amount, currency: clip(entry.currency || '', 'variant_price'), minQuantity: '' };
+      }
+      out.variants.push(v);
+    }
+  };
+  const readPrices = (data) => {
+    for (const k in data) {
+      const item = data[k];
+      const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
+      if (!Array.isArray(ranges)) continue;
+      for (const r of ranges) {
+        if (out.priceFacts.length >= CAP.priceFacts) { markTrunc('price_facts'); break; }
+        if (!r || r.price === undefined || r.price === null) continue;
+        const amount = exactNum(r.price, 'price_facts');
+        if (!amount) continue;
+        out.priceFacts.push({
+          amount: amount,
+          currency: clip(r.currency || '', 'price_facts'),
+          minQuantity: clip(r.beginAmount === undefined || r.beginAmount === null ? '' : String(r.beginAmount), 'price_facts')
+        });
+      }
+    }
+  };
 
   const ctx = (typeof window.context !== 'undefined' && window.context && window.context.result) ? window.context.result : null;
   const init = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.data) ? window.__INIT_DATA.data : null;
@@ -111,100 +197,58 @@ func extractScript() string {
   if (ctx) {
     const data = ctx.data || {};
     if (data.productTitle && data.productTitle.fields) {
-      out.title = clip(data.productTitle.fields.title || '');
+      out.title = clip(data.productTitle.fields.title || '', 'title');
+    }
+    if (!out.description) {
+      const meta = document.querySelector('meta[name="description"]');
+      if (meta && meta.getAttribute('content')) out.description = clip(meta.getAttribute('content'), 'description');
     }
     if (data.Root && data.Root.fields && data.Root.fields.dataJson && data.Root.fields.dataJson.tempModel) {
-      out.offerId = String(data.Root.fields.dataJson.tempModel.offerId || '');
+      out.offerId = exactNum(data.Root.fields.dataJson.tempModel.offerId, 'offer_id');
     }
     if (data.gallery && data.gallery.fields && Array.isArray(data.gallery.fields.offerImgList)) {
-      for (const u of data.gallery.fields.offerImgList.slice(0, CAP.images)) {
-        if (typeof u === 'string' && u) out.images.push(clip(u));
+      for (const u of cap(data.gallery.fields.offerImgList, CAP.images, 'images')) {
+        if (typeof u === 'string' && u) out.images.push(clip(u, 'images'));
       }
-      if (data.gallery.fields.offerImgList.length > CAP.images) out.truncated = true;
     }
     const attrs = ctx.global && ctx.global.globalData && ctx.global.globalData.model && ctx.global.globalData.model.offerDetail && ctx.global.globalData.model.offerDetail.featureAttributes;
-    if (Array.isArray(attrs)) {
-      for (const a of attrs.slice(0, CAP.attributes)) {
-        if (a && a.name && a.value && a.name !== a.value) out.attributes.push({ name: clip(a.name), value: clip(a.value) });
-      }
-      if (attrs.length > CAP.attributes) out.truncated = true;
+    if (Array.isArray(attrs)) pushAttrs(attrs, 'attributes');
+    if (data.Root && data.Root.fields && data.Root.fields.dataJson) {
+      readSku(data.Root.fields.dataJson.skuModel);
     }
-    if (data.Root && data.Root.fields && data.Root.fields.dataJson && data.Root.fields.dataJson.skuModel) {
-      const sku = data.Root.fields.dataJson.skuModel;
-      const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
-      const propNames = props.map((p) => p && p.prop ? p.prop : 'attr');
-      const map = sku.skuInfoMap || {};
-      let n = 0;
-      for (const key in map) {
-        if (n++ >= CAP.variants) { out.truncated = true; break; }
-        const entry = map[key] || {};
-        const parts = String(key).split('&gt;');
-        const attrsFor = [];
-        for (let i = 0; i < parts.length && i < CAP.variantAttrs; i++) {
-          attrsFor.push({ name: clip(propNames[i] || ('attr' + i)), value: clip(parts[i]) });
-        }
-        const v = { sourceId: entry && entry.skuId != null ? String(entry.skuId) : '', attributes: attrsFor, price: null };
-        if (entry && entry.price != null) {
-          v.price = { amount: clip(String(entry.price)), currency: clip(entry.currency || ''), minQuantity: '' };
-        }
-        out.variants.push(v);
-      }
-    }
-    for (const k in data) {
-      const item = data[k];
-      const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
-      if (Array.isArray(ranges)) {
-        for (const r of ranges) {
-          if (r && r.price != null) {
-            out.priceFacts.push({ amount: clip(String(r.price)), currency: '', minQuantity: clip(String(r.beginAmount == null ? '' : r.beginAmount)) });
-          }
-        }
-      }
-    }
+    readPrices(data);
   } else if (init) {
-    // Custom-item fallback: window.__INIT_DATA carries the same facts under
-    // component data blocks.
     for (const k in init) {
       const block = init[k];
       if (!block || typeof block !== 'object') continue;
       const d = block.data || {};
       if (d.offerInfoModel && !out.offerId) {
-        out.offerId = String(d.offerInfoModel.offerId || '');
-        if (!out.title) out.title = clip(d.offerInfoModel.title || '');
-        if (!out.title) {
-          const t = block.data && d.offerInfoModel ? d.offerInfoModel.title : '';
-          out.title = clip(t);
-        }
+        out.offerId = exactNum(d.offerInfoModel.offerId, 'offer_id');
+        if (!out.title) out.title = clip(d.offerInfoModel.title || '', 'title');
       }
       if (Array.isArray(d.offerImgList) && out.images.length === 0) {
-        for (const u of d.offerImgList.slice(0, CAP.images)) if (typeof u === 'string' && u) out.images.push(clip(u));
+        for (const u of cap(d.offerImgList, CAP.images, 'images')) if (typeof u === 'string' && u) out.images.push(clip(u, 'images'));
       }
-      if (Array.isArray(d.propsList)) {
-        for (const p of d.propsList.slice(0, CAP.attributes)) {
-          if (p && p.name && p.value) out.attributes.push({ name: clip(p.name), value: clip(p.value) });
-        }
-      }
+      if (Array.isArray(d.propsList)) pushAttrs(d.propsList, 'attributes');
+      if (d.skuModel) readSku(d.skuModel);
+      else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
     }
+    const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
+    if (g) {
+      if (g.offerInfoModel && !out.offerId) {
+        out.offerId = exactNum(g.offerInfoModel.offerId, 'offer_id');
+        if (!out.title) out.title = clip(g.offerInfoModel.title || '', 'title');
+      }
+      if (g.skuModel) readSku(g.skuModel);
+    }
+    if (out.variants.length === 0 || out.priceFacts.length === 0) readPrices(init);
   }
-  if (out.images.length > CAP.images) out.images = out.images.slice(0, CAP.images);
-  if (out.attributes.length > CAP.attributes) out.attributes = out.attributes.slice(0, CAP.attributes);
-  if (out.variants.length > CAP.variants) out.variants = out.variants.slice(0, CAP.variants);
+  if (out.images.length > CAP.images) out.images = cap(out.images, CAP.images, 'images');
+  if (out.attributes.length > CAP.attributes) out.attributes = cap(out.attributes, CAP.attributes, 'attributes');
+  if (out.variants.length > CAP.variants) out.variants = cap(out.variants, CAP.variants, 'variants');
+  if (out.priceFacts.length > CAP.priceFacts) out.priceFacts = cap(out.priceFacts, CAP.priceFacts, 'price_facts');
   return out;
 }`
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }
 
 // isAuthenticationWall reports whether the challenge is a login redirect rather
@@ -223,4 +267,18 @@ func isAuthenticationWall(page playwright.Page) bool {
 		}
 	}
 	return false
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
 }

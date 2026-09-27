@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -56,9 +57,19 @@ func New(opts Options) (*Client, error) {
 		transport = http.DefaultTransport
 	}
 	return &Client{
-		endpoint:   opts.Endpoint + browsercollector.AcquirePath,
-		admission:  opts.Admission,
-		httpClient: &http.Client{Timeout: timeout, Transport: transport},
+		endpoint:  opts.Endpoint + browsercollector.AcquirePath,
+		admission: opts.Admission,
+		httpClient: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+			// Never follow a redirect. The service credential travels as a custom
+			// header and Go copies headers onto the redirect request, which would
+			// hand the secret to whatever the collector or an intermediate proxy
+			// points at.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}, nil
 }
 
@@ -97,8 +108,18 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		// Preserve the cause: a transport timeout must surface as a deadline so
+		// the caller renders 504 rather than a 502 source failure. Formatting the
+		// error with %v would discard context.DeadlineExceeded.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return sourcing.AcquisitionEvidence{}, ctxErr
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: collector transport timeout: %v", context.DeadlineExceeded, err)
+		}
 		// A transport failure is an unknown source outcome, not a caller error.
-		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: collector transport: %v", sourcing.ErrAcquisitionUnavailable, err)
+		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: collector transport: %w", sourcing.ErrAcquisitionUnavailable, err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, browsercollector.MaxResponseBytes))

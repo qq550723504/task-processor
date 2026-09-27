@@ -364,7 +364,8 @@ func TestBrowserAcquisitionInflightMapDrainsAfterUse(t *testing.T) {
 		Key:   "key-1",
 	}
 	for i := 0; i < 3; i++ {
-		release := service.acquireSlot(request)
+		release, err := service.acquireSlot(context.Background(), request)
+		require.NoError(t, err)
 		release()
 	}
 	service.inflightMu.Lock()
@@ -390,7 +391,8 @@ func TestBrowserAcquisitionInflightSerializesAndDrains(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			release := service.acquireSlot(request)
+			release, err := service.acquireSlot(context.Background(), request)
+			require.NoError(t, err)
 			mu.Lock()
 			concurrent++
 			if concurrent > peak {
@@ -459,4 +461,34 @@ func TestBrowserAcquireSameKeyWaiterReplaysInsteadOfCapacityError(t *testing.T) 
 		require.Equal(t, sourcing.AcquisitionPublished, got.result.Operation.State, "caller %d", i)
 	}
 	require.Equal(t, first.result.Operation.ID, second.result.Operation.ID, "both callers must observe the same operation")
+}
+
+// A cancelled same-key waiter must not stay blocked until the preceding browser
+// call finishes; the wait has to observe the request context.
+func TestBrowserAcquireSameKeyWaitHonorsCancellation(t *testing.T) {
+	service := &BrowserAcquisitionService{}
+	request := sourcing.AcquisitionOperation{
+		Scope: sourcing.PublicationScope{OrganizationID: "org-1", ActorID: "actor-1"},
+		Key:   "key-cancel",
+	}
+	// Hold the per-key lock.
+	held, err := service.acquireSlot(context.Background(), request)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.acquireSlot(ctx, request)
+		done <- err
+	}()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("a cancelled same-key waiter must not remain blocked")
+	}
+	held()
 }

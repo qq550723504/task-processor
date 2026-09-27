@@ -295,3 +295,102 @@ func TestBrowserAcquireReportsLoginWallAsChallenge(t *testing.T) {
 	require.ErrorIs(t, err, ErrChallenge)
 	require.NotErrorIs(t, err, ErrUnsupported, "a login wall is a challenge, not an unknown shape")
 }
+
+// A page-side clip or an unrepresentable number must never reach publication
+// looking like the exact source fact: it has to become an explicit warning and
+// missing fact on the evidence.
+func TestDecodeEvidenceSurfacesTruncationExplicitly(t *testing.T) {
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	payload := map[string]any{
+		"offerId":         "981645030344",
+		"title":           "Fixture bottle",
+		"truncatedFields": []any{"images", "variant_source_id"},
+	}
+	evidence, err := decodeEvidence(source, payload)
+	require.NoError(t, err)
+	require.Len(t, evidence.Warnings, 2)
+	require.Len(t, evidence.MissingFacts, 2)
+	codes := map[string]bool{}
+	fields := map[string]bool{}
+	for _, w := range evidence.Warnings {
+		codes[w.Code] = true
+		fields[w.Field] = true
+	}
+	require.True(t, codes["source_evidence_truncated"])
+	require.True(t, fields["images"])
+	require.True(t, fields["variant_source_id"])
+
+	// The warnings must survive into the mapped envelope rather than being
+	// dropped, so the Catalog publication is visibly incomplete.
+	envelope, err := sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-trunc")
+	require.NoError(t, err)
+	found := false
+	for _, w := range envelope.Warnings {
+		if w.Code == "source_evidence_truncated" {
+			found = true
+		}
+	}
+	require.True(t, found, "truncation must be visible on the published envelope")
+}
+
+// An untruncated payload must not gain any truncation warning.
+func TestDecodeEvidenceNoTruncationWarningWhenComplete(t *testing.T) {
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := decodeEvidence(source, map[string]any{
+		"offerId": "981645030344",
+		"title":   "Fixture bottle",
+	})
+	require.NoError(t, err)
+	require.Empty(t, evidence.Warnings)
+	require.Empty(t, evidence.MissingFacts)
+}
+
+// A SKU id or price outside JavaScript's safe-integer range cannot be
+// represented exactly, so it must be dropped and reported rather than silently
+// rewritten (String(9007199254740993) would publish ...992).
+func TestBrowserAcquireDropsUnrepresentableNumericIdentifiers(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	// 9007199254740993 loses its last digit as a JavaScript number, and the SKU
+	// key has more segments than skuProps supplies names for.
+	srv := serveFixture(t, sliderChallengePageWithUnsafeNumbers())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+
+	// No variant may carry a silently rewritten identifier.
+	for _, v := range evidence.Variants {
+		if v.SourceID != nil {
+			require.NotEqual(t, "9007199254740992", *v.SourceID, "an unsafe integer must never be published rewritten")
+			require.NotEqual(t, "9007199254740993", *v.SourceID, "an unrepresentable value must be dropped, not invented")
+		}
+	}
+	// And the loss must be reported explicitly.
+	reported := false
+	for _, w := range evidence.Warnings {
+		if w.Code == "source_evidence_truncated" {
+			reported = true
+		}
+	}
+	require.True(t, reported, "dropping an unrepresentable identifier must be reported, not silent")
+}
+
+// sliderChallengePageWithUnsafeNumbers returns a page whose only variant has an
+// unsafe-integer skuId, an unsafe-integer price, and an unmatched attribute
+// segment, so none of them may be published as an exact fact.
+func sliderChallengePageWithUnsafeNumbers() string {
+	return `<!doctype html><html><head><title>Fixture bottle</title></head><body>
+<script>
+window.context = {"result":{"data":{
+  "productTitle":{"fields":{"title":"Fixture browser bottle"}},
+  "Root":{"fields":{"dataJson":{
+    "tempModel":{"offerId":981645030344},
+    "skuModel":{"skuProps":[{"prop":"color"}],
+      "skuInfoMap":{"red&gt;blue":{"skuId":9007199254740993,"price":9007199254740993}}}
+  }}}
+}}};
+</script></body></html>`
+}
