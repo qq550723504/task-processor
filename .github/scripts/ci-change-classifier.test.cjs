@@ -12,6 +12,7 @@ test("runs all suites for main push mode", () => {
     code_health: true,
     release_authority: true,
     capture_extension: true,
+    isolated_runtime: true,
   });
 });
 
@@ -22,6 +23,7 @@ test("backend-only changes skip frontend", () => {
     code_health: true,
     release_authority: false,
     capture_extension: false,
+    isolated_runtime: false,
   });
 });
 
@@ -32,6 +34,7 @@ test("frontend-only changes skip backend", () => {
     code_health: true,
     release_authority: false,
     capture_extension: false,
+    isolated_runtime: false,
   });
 });
 
@@ -103,7 +106,64 @@ test("workflow-only changes run backend contracts without frontend or code-healt
     code_health: false,
     release_authority: true,
     capture_extension: true,
+    isolated_runtime: true,
   });
+});
+
+test("repository CI uses current identity while preserving the stable required check", () => {
+  const workflowPath = path.join(__dirname, "..", "workflows", "ci.yml");
+  const workflow = fs.readFileSync(workflowPath, "utf8").replaceAll("\r\n", "\n");
+  assert.match(workflow, /^name: Task Processor CI\n/);
+  assert.match(workflow, /group: task-processor-ci-\$\{\{/);
+  assert.match(workflow, /f"### Task Processor CI：\{overall\}"/);
+  assert.doesNotMatch(workflow, /f"### ListingKit CI：\{overall\}"/);
+  assert.match(workflow, /\n  required-gate:\n[\s\S]*?name: Required CI Gate/);
+});
+
+test("isolated runtime classification is limited to its owned harness and CI contract", () => {
+  for (const changedPath of [
+    "scripts/issue357/contract.mjs",
+    "scripts/issue357/lifecycle.test.mjs",
+    "scripts/issue357-runtime.mjs",
+    ".github/workflows/ci.yml",
+    ".github/scripts/ci-change-classifier.cjs",
+    ".github/scripts/ci-change-classifier.test.cjs",
+  ]) {
+    assert.equal(classifyChangedPaths([changedPath]).isolated_runtime, true, changedPath);
+  }
+
+  for (const changedPath of [
+    "internal/product/sourcing/service.go",
+    "web/listingkit-ui/src/app/page.tsx",
+    "extensions/1688-capture/src/extractor.ts",
+    "README.md",
+  ]) {
+    assert.equal(classifyChangedPaths([changedPath]).isolated_runtime, false, changedPath);
+  }
+
+  assert.equal(classifyChangedPaths([], { full: true }).isolated_runtime, true);
+});
+
+test("isolated runtime applicability reaches its job and required gate", () => {
+  const workflowPath = path.join(__dirname, "..", "workflows", "ci.yml");
+  const workflow = fs.readFileSync(workflowPath, "utf8").replaceAll("\r\n", "\n");
+  assert.match(workflow, /isolated_runtime: \$\{\{ steps\.classify\.outputs\.isolated_runtime \}\}/);
+
+  const job = workflow.slice(
+    workflow.indexOf("\n  isolated-runtime-contracts:\n"),
+    workflow.indexOf("\n  release-authority:\n"),
+  );
+  assert.match(job, /needs: changes/);
+  assert.match(
+    job,
+    /github\.event_name == 'pull_request' && needs\.changes\.outputs\.isolated_runtime == 'true'/,
+  );
+
+  const required = workflow.slice(
+    workflow.indexOf("\n  required-gate:\n"),
+    workflow.indexOf("\n  notify:\n"),
+  );
+  assert.match(required, /ISOLATED_RUNTIME_SELECTED: \$\{\{ needs\.changes\.outputs\.isolated_runtime \}\}/);
 });
 
 test("classification diff disables rename detection so both source and destination paths are visible", () => {
@@ -147,6 +207,7 @@ test("normalizes windows paths and emits github outputs", () => {
     "code_health=true",
     "release_authority=false",
     "capture_extension=false",
+    "isolated_runtime=false",
   ].join("\n"));
 });
 
@@ -193,11 +254,28 @@ test("actual required-gate shell rejects missing applicable capture checks", () 
       const env={...process.env,CI_EVENT:event,CAPTURE_EXTENSION_SELECTED:selected,CAPTURE_EXTENSION_RESULT:result};
       for(const key of ['CHANGES_RESULT','DEVELOPMENT_ADMISSION_TEST_RESULT','ARCHITECTURE_CONTRACT_RESULT','ISOLATED_RUNTIME_RESULT',
         'RELEASE_RESULT','BACKEND_RESULT','FRONTEND_RESULT','CODE_HEALTH_RESULT']) env[key]='success';
+      env.ISOLATED_RUNTIME_SELECTED='false';
       const run=spawnSync(bash,['-c',script],{env,encoding:'utf8'});
       if(run.error)throw run.error;
       const applicable=event==='push'||selected==='true';
       const shouldPass=applicable ? result==='success' : selected==='false' && ['success','skipped'].includes(result);
       assert.equal(run.status===0,shouldPass,`${event}/${selected}/${result}: ${run.stderr}`);
     }
+  }
+});
+
+
+test("actual required-gate shell rejects a skipped selected isolated runtime check", () => {
+  const {script}=captureGate();
+  const bash=process.platform==='win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
+  for(const selected of ['true','false']) for(const result of ['success','failure','cancelled','skipped','']) {
+    const env={...process.env,CI_EVENT:'pull_request',CAPTURE_EXTENSION_SELECTED:'false',CAPTURE_EXTENSION_RESULT:'skipped',
+      ISOLATED_RUNTIME_SELECTED:selected,ISOLATED_RUNTIME_RESULT:result};
+    for(const key of ['CHANGES_RESULT','DEVELOPMENT_ADMISSION_TEST_RESULT','ARCHITECTURE_CONTRACT_RESULT',
+      'RELEASE_RESULT','BACKEND_RESULT','FRONTEND_RESULT','CODE_HEALTH_RESULT']) env[key]='success';
+    const run=spawnSync(bash,['-c',script],{env,encoding:'utf8'});
+    if(run.error)throw run.error;
+    const shouldPass=selected==='true' ? result==='success' : ['success','skipped'].includes(result);
+    assert.equal(run.status===0,shouldPass,`${selected}/${result}: ${run.stderr}`);
   }
 });
