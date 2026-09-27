@@ -102,6 +102,7 @@ function classifyChangedPaths(paths, { full = false } = {}) {
     result.isolated_runtime ||=
       matchesPrefix(path, "scripts/issue357") ||
       path === "scripts/issue357-runtime.mjs" ||
+      path === "web/listingkit-ui/scripts/current-application-final-acceptance.mjs" ||
       path === ".github/workflows/ci.yml" ||
       path === ".github/scripts/ci-change-classifier.cjs" ||
       path === ".github/scripts/ci-change-classifier.test.cjs";
