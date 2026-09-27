@@ -275,6 +275,7 @@ function ScopedReferrals({ mode, view, expectedUserId, registrationAvailable }: 
 }
 
 function ReferralRulesView({ data }: { data: ReferralRules }) {
+  const personalKycRequired = data.schemaVersion === "referral-rules-v2" && data.personalKycRequired;
   return <div className={styles.pageBody}>
     <section className={styles.ruleNotice} aria-labelledby="referral-rules-current-title">
       <h2 id="referral-rules-current-title">当前规则以平台实际生效版本为准</h2>
@@ -285,7 +286,7 @@ function ReferralRulesView({ data }: { data: ReferralRules }) {
       <article className={styles.ruleCard}><h2>哪些订单产生收益</h2><p>只有平台已确认结算的支付会进入收益计算；后续发生退款或拒付时，相关收益会按实际结果调整。</p></article>
       <article className={styles.ruleCard}><h2>收益如何计算</h2><strong className={styles.ruleValue}>{formatCommissionRate(data.commissionRateBps)}</strong><p>当前推广收益按该佣金比例计算；实际收益金额以服务端记录的结算结果为准。</p></article>
       <article className={styles.ruleCard}><h2>结算与退款处理</h2><strong className={styles.ruleValue}>{data.settlementPeriodDays} 天</strong><p>当前结算周期为 {data.settlementPeriodDays} 天；退款或拒付发生后，相关收益会按实际结果调整。</p></article>
-      <article className={styles.ruleCard}><h2>提现规则</h2><strong className={styles.ruleValue}>{formatMinor(data.minimumWithdrawalMinor)}</strong><p>最低申请金额为 {formatMinor(data.minimumWithdrawalMinor)}；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。</p></article>
+      <article className={styles.ruleCard}><h2>提现规则</h2><strong className={styles.ruleValue}>{formatMinor(data.minimumWithdrawalMinor)}</strong><p>{personalKycRequired ? `最低申请金额为 ${formatMinor(data.minimumWithdrawalMinor)}；达到金额门槛不代表已满足全部提现条件，还需完成个人 KYC 认证，并通过当前提现资格和有效收款方式校验。申请进入人工审核。` : `最低申请金额为 ${formatMinor(data.minimumWithdrawalMinor)}；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。`}</p></article>
       <article className={styles.ruleCard}><h2>违规推广处理</h2><strong className={styles.ruleUnavailable}>未提供</strong><p>当前规则接口尚未提供违规推广处理政策；本页面不补充或推测处罚规则。</p></article>
     </section>
   </div>;
