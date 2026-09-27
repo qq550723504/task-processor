@@ -66,7 +66,7 @@ func TestListingKitReleaseDocumentationRejectsMutationFenceUnderAnyHeading(t *te
 	}
 }
 
-func TestListingKitCITriggersAllChangedPaths(t *testing.T) {
+func TestRepositoryCITriggersAllChangedPaths(t *testing.T) {
 	t.Parallel()
 
 	content, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "ci.yml"))
@@ -91,7 +91,7 @@ func TestListingKitCITriggersAllChangedPaths(t *testing.T) {
 		"pull_request": workflow.On.PullRequest.Paths,
 	} {
 		if !containsAnyExact(paths, "**") {
-			t.Errorf("ListingKit CI %s trigger must cover all changed paths so the Required CI Gate is stable", trigger)
+			t.Errorf("repository CI %s trigger must cover all changed paths so the Required CI Gate is stable", trigger)
 		}
 	}
 }
