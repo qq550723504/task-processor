@@ -179,7 +179,6 @@ func TestPersonalRetryConsentShowsCurrentPhone(t *testing.T) {
 	}
 }
 
-
 func TestPersonalVerificationEligibilityReadsOnlyPersistedSameSubjectFact(t *testing.T) {
 	s, r, p, actor, _ := personalFixture()
 	r.a = PersonalApplication{ID: "application-1", UserID: actor.UserID, Scope: s.Scope, State: Verified}

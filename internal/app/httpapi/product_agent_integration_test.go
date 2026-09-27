@@ -140,7 +140,7 @@ func testProductAgentOwners(t *testing.T, mode string) {
 	if mode == "revoked before dispatch" || mode == "release failed" {
 		settings.Ledger = agentReserveHook{AgentInvocationLedger: ledger, afterReserve: func() { f.grants.revoked.Store(true) }}
 	}
-	module, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings)
+	module, err := buildProductAgentModule(context.Background(), f.db, deps, auth, settings, nil)
 	require.NoError(t, err)
 	app := buildIsolatedApplicationHTTPServer(module.(productAgentModule).routes, deps, 2*time.Minute)
 	server := httptest.NewServer(app.Handler)

@@ -113,10 +113,10 @@ func (c *Client) CreatePartnerLink(ctx context.Context, input PartnerLinkInput) 
 		return Link{}, err
 	}
 	payload := struct {
-		TenantID string `json:"tenantId"`
-		URL      string `json:"url,omitempty"`
-		Key      string `json:"key,omitempty"`
-		Comments string `json:"comments,omitempty"`
+		TenantID  string `json:"tenantId"`
+		URL       string `json:"url,omitempty"`
+		Key       string `json:"key,omitempty"`
+		Comments  string `json:"comments,omitempty"`
 		LinkProps struct {
 			ExternalID string `json:"externalId"`
 			TenantID   string `json:"tenantId"`
@@ -180,16 +180,16 @@ func (c *Client) TrackSale(ctx context.Context, input SaleInput) (*SaleResult, e
 	}
 	payload := struct {
 		CustomerExternalID string         `json:"customerExternalId"`
-		Amount              int64          `json:"amount"`
-		Currency            string         `json:"currency"`
-		EventName           string         `json:"eventName"`
-		PaymentProcessor    string         `json:"paymentProcessor"`
-		InvoiceID           string         `json:"invoiceId"`
-		Metadata            map[string]any `json:"metadata,omitempty"`
-		LeadEventName       string         `json:"leadEventName,omitempty"`
-		ClickID             string         `json:"clickId,omitempty"`
-		CustomerName        string         `json:"customerName,omitempty"`
-		CustomerEmail       string         `json:"customerEmail,omitempty"`
+		Amount             int64          `json:"amount"`
+		Currency           string         `json:"currency"`
+		EventName          string         `json:"eventName"`
+		PaymentProcessor   string         `json:"paymentProcessor"`
+		InvoiceID          string         `json:"invoiceId"`
+		Metadata           map[string]any `json:"metadata,omitempty"`
+		LeadEventName      string         `json:"leadEventName,omitempty"`
+		ClickID            string         `json:"clickId,omitempty"`
+		CustomerName       string         `json:"customerName,omitempty"`
+		CustomerEmail      string         `json:"customerEmail,omitempty"`
 	}{
 		CustomerExternalID: input.CustomerExternalID, Amount: input.Amount, Currency: input.Currency,
 		EventName: input.EventName, PaymentProcessor: input.PaymentProcessor, InvoiceID: input.InvoiceID,

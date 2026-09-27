@@ -164,7 +164,7 @@ func TestGreenfieldNoLegacyMigrationPolicyIsConsistent(t *testing.T) {
 
 	for path, forbidden := range map[string]string{
 		filepath.Join("..", "docs", "refactoring", "legacy-register.md"):            "migration facts needed to preserve valid current value",
-		filepath.Join("..", "docs", "product", "product-sourcing-handoff.md"):      "#30/#307 own separately approved cutover",
+		filepath.Join("..", "docs", "product", "product-sourcing-handoff.md"):       "#30/#307 own separately approved cutover",
 		filepath.Join("..", "docs", "refactoring", "current-refactoring-status.md"): "#30 historical data and cutover",
 	} {
 		if strings.Contains(readGreenfieldPolicyDocument(t, path), forbidden) {

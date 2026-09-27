@@ -164,7 +164,7 @@ func TestWithdrawalCommittedReplayPrecedesMutableEligibilityDependencies(t *test
 	c, recorder := withdrawalKYCContext(t, accountReferralWithdrawalsPath, `{"amountMinor":"10000","payoutMethodId":"method-1","expectedVersion":"7"}`, "request-key")
 
 	module := referralHTTPModule{
-		economics: economicsStub,
+		economics:        economicsStub,
 		withdrawalReplay: replay,
 		// A committed replay must not need profile, KYC, or payout-method dependencies.
 	}

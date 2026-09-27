@@ -71,6 +71,24 @@ var acquisitionDigest = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var acquisitionDecimal = regexp.MustCompile(`^(0|[1-9][0-9]{0,15})(\.[0-9]{1,8})?$`)
 var acquisitionCurrency = regexp.MustCompile(`^[A-Z]{3}$`)
 
+// Acquisition channels admitted by the current owner. public_http and
+// public_browser are the two anonymous public providers; browser_capture is
+// the client-captured payload.
+const (
+	AcquisitionChannelPublicHTTP    = "public_http"
+	AcquisitionChannelPublicBrowser = "public_browser"
+	AcquisitionChannelBrowser       = "browser_capture"
+)
+
+func admittedAcquisitionChannel(channel string) bool {
+	switch channel {
+	case AcquisitionChannelPublicHTTP, AcquisitionChannelPublicBrowser, AcquisitionChannelBrowser:
+		return true
+	default:
+		return false
+	}
+}
+
 func Canonical1688Source(input string) (AcquisitionSource, error) {
 	if len(input) > 2048 || !utf8.ValidString(input) {
 		return AcquisitionSource{}, ErrInvalidAcquisition
@@ -99,9 +117,17 @@ func Canonical1688Source(input string) (AcquisitionSource, error) {
 
 // MapAcquisitionEvidence is the sole admission from untrusted acquisition facts.
 // Channel describes acquisition, never the source's product identity or authority.
+//
+// Admitted channels are exactly the current owner set; an unknown value is
+// rejected rather than defaulted.
+//   - public_http: anonymous public acquisition over plain HTTP.
+//   - public_browser: anonymous public acquisition in a controlled browser
+//     (src2b-public-browser-v1). Same anonymous/public premise and same
+//     CaptureSHA256-empty, content-independent fingerprint as public_http.
+//   - browser_capture: browser-captured payload submitted by the client.
 func MapAcquisitionEvidence(source AcquisitionSource, e AcquisitionEvidence, channel, operationID string) (SourceEnvelope, error) {
 	canonical, err := Canonical1688Source(source.URL)
-	if err != nil || canonical != source || e.SchemaVersion != 1 || e.OfferID != source.OfferID || e.SourceURL != source.URL || (channel != "public_http" && channel != "browser_capture") || operationID == "" || len(operationID) > 128 || !acquisitionDigest.MatchString(e.ContentSHA256) || e.CapturedAt.IsZero() || e.ParserVersion == "" || len(e.ParserVersion) > 128 {
+	if err != nil || canonical != source || e.SchemaVersion != 1 || e.OfferID != source.OfferID || e.SourceURL != source.URL || !admittedAcquisitionChannel(channel) || operationID == "" || len(operationID) > 128 || !acquisitionDigest.MatchString(e.ContentSHA256) || e.CapturedAt.IsZero() || e.ParserVersion == "" || len(e.ParserVersion) > 128 {
 		return SourceEnvelope{}, ErrInvalidAcquisition
 	}
 	if err := validateAcquisitionEvidenceSize(e); err != nil {

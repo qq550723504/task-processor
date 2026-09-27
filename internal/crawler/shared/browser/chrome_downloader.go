@@ -22,10 +22,10 @@ import (
 
 // ChromeDownloader fingerprint-chromium 下载器
 type ChromeDownloader struct {
-	version     string // Chrome 版本，如 "144"
-	downloadDir string // 下载目录
+	version         string // Chrome 版本，如 "144"
+	downloadDir     string // 下载目录
 	downloadTimeout time.Duration
-	httpClient  *httpclient.Client
+	httpClient      *httpclient.Client
 }
 
 // NewChromeDownloader 创建 Chrome 下载器

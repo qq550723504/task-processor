@@ -48,12 +48,12 @@ func WithProductAgent(deps ProductAgentDependencies) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) { options.productAgent = &deps; options.productAgents++ }
 }
 
-func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps routeAuthDependencies, auth *authz.ListingKitAuthorizer, cfg ProductAgentDependencies) (kernelmodule.Module, error) {
-	receipts, err := buildPublishedAcquisitionReader(ctx, productDB, deps, auth)
+func buildProductAgentModule(ctx context.Context, productDB *gorm.DB, deps routeAuthDependencies, auth *authz.ListingKitAuthorizer, agentCfg ProductAgentDependencies, appCfg *config.Config) (kernelmodule.Module, error) {
+	receipts, err := buildPublishedAcquisitionReader(ctx, productDB, appCfg, deps, auth)
 	if err != nil {
 		return nil, err
 	}
-	a, err := buildProductAgentApplication(cfg.ReviewDB, receipts, deps.organizationResolver, auth, cfg)
+	a, err := buildProductAgentApplication(agentCfg.ReviewDB, receipts, deps.organizationResolver, auth, agentCfg)
 	if err != nil {
 		return nil, err
 	}
