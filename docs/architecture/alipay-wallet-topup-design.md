@@ -364,6 +364,10 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 
 批准入口复用当前 `AuthPolicyCurrentIdentityWithVerifiedRoles` 与配置后的 `authz.PermissionListingKitPlatformAdm`（现有提现审批使用同一平台权限边界），不只检查客户端角色字符串，也不把 listingkit_admin/企业管理员当作平台管理员。该受限后台路由从原 order 读取 beneficiary org，订单版本、金额、原因和幂等键进入审批指纹；请求不能另指定收款企业或退款收款账号。既有可信批准允许恢复已准入的原退款结果，新的审批/首次派发必须通过当前平台权限；撤权后不建立新的退款能力。
 
+退款审批是全局平台管理操作，路由必须显式设置 `OrganizationAccessPolicyNone`，且不设置 `OrganizationTargetResolver`。平台管理员无需成为受益企业成员，也无需选择 Effective Organization；认证层清除请求携带的企业上下文，仅保留经认证的当前身份与可信平台角色，再执行平台权限检查。服务端在该权限检查通过后，按原 order 加载其固定 beneficiary org 和 payment binding；不能按当前企业、请求头或请求体决定退款归属。此策略只免除企业成员解析，不免除身份认证、平台权限或原订单/金额校验。
+
+现有 `internal/commercial/billing/httpapi/module.go:Routes` 对企业级路径统一设置 `OrganizationAccessPolicyLiveWrite`，因此该 admin route 必须作为独立 descriptor 注册，不得直接加入该循环，也不得修改循环使既有 workbench 充值/购买路由失去 live organization 检查。复用 `internal/app/httpapi/referral_registration.go` 的全局提现审批模式：`AuthPolicyCurrentIdentityWithVerifiedRoles` + `authz.PermissionListingKitPlatformAdm` + `OrganizationAccessPolicyNone`。
+
 1. billing 持久化 refund intent，绑定原 payment/order/org、金额、批准主体、原因及稳定 provider_refund_request_no（支付宝 out_request_no，微信 out_refund_no）；intent 与 money hold 都保存 `TopUpReversalKey`，Kind 固定为 REFUND，确认/释放不得只按裸 refund_id 匹配。
 2. money 在原 payment 锁下按 §11.3 检查已确认退款及拒付 + 未决退款保留 + 本次金额不超过原充值可退本金；再按 §5.3 锁顺序锁定钱包，要求 debt 为 0 且 available 足够，原子移动 available → refund-reserved 并产生 immutable hold。
 3. 只有成功取得该 hold 的原退款 intent 才可调用原渠道 GoPay 退款接口（支付宝 `TradeRefund`、微信 `V3Refund`）。首次派发准入还须在原 payment 锁下复核 §11.3 的本金预算（本 hold 已在未决总额中，不再加一次），并持久化派发资格；预算冲突不得准入，旧 worker 的未准入派发须被版本校验拒绝。网络调用在事务外，不能把 `10000` / 受理成功一概当成已退到账。
@@ -478,11 +482,13 @@ POST /api/v1/payment-notifications/wechat
 POST /api/v1/admin/commercial/wallet-top-up-orders/:order_id/refunds
 ```
 
-最后一条是 §11.1 的受限平台管理员批准入口，无 tenant 自助页面；与 workbench 的企业权限和两条外部通知认证分开。固定原订单查找受益企业，禁止通用正向加款或任意转账。
+最后一条是 §11.1 的受限平台管理员批准入口，无 tenant 自助页面；以独立 descriptor 显式配置 `AuthPolicyCurrentIdentityWithVerifiedRoles`、`authz.PermissionListingKitPlatformAdm`、`OrganizationAccessPolicyNone`，不设置 `OrganizationTargetResolver`。它与 workbench 的企业权限和两条外部通知认证分开。平台管理员不需要目标企业成员身份；固定原订单查找受益企业，禁止通用正向加款或任意转账。
 
-所有用户写入口使用当前 same-origin/CSRF、live grants、Idempotency-Key 与 expected version；Organization 来自 verified context，不来自 body。充值 options 返回两个渠道各自的 product、available、受限 reason 与获准金额规则，不暴露密钥。充值 intent 提交期望金额字符串和闭合枚举 provider，服务端核准后冻结；相同 key 改 provider 返回冲突；不接收 PaymentID、商户密钥、回调 URL 或可任意改写的 SDK BodyMap。
+workbench 企业写入口使用当前 same-origin/CSRF、live grants、Idempotency-Key 与 expected version；Organization 来自 verified context，不来自 body。平台退款审批沿现有平台管理入口的认证与浏览器请求保护、Idempotency-Key 和 expected version，使用上述独立平台权限策略及原订单企业绑定，不经过企业 live-grant 解析。充值 options 返回两个渠道各自的 product、available、受限 reason 与获准金额规则，不暴露密钥。充值 intent 提交期望金额字符串和闭合枚举 provider，服务端核准后冻结；相同 key 改 provider 返回冲突；不接收 PaymentID、商户密钥、回调 URL 或可任意改写的 SDK BodyMap。
 
 外部 notify 是独立的渠道认证入口，不套用户 cookie/CSRF，也不向它开放普通 admin 能力。必须保留其签名验证、请求限制、可信装配和 durable acceptance。
+
+相邻的两个 notification descriptor 同样不得进入企业级路由循环：显式使用 `AuthPolicyPublic` + `OrganizationAccessPolicyNone`，不配置用户 permission 或 `OrganizationTargetResolver`。这里的 Public 仅表示不要求用户登录，adapter 的渠道验签和原商户/订单绑定仍是必须条件；未验证请求不能到达 durable acceptance 或 money。实施时 descriptor 与 HTTP 装配测试同时证明：渠道通知无需用户/企业上下文，错误签名拒绝，成功响应必须晚于 durable 收证；平台退款审批仍要求 verified platform permission，不能复用通知的 Public 策略。
 
 UI 展示至少区分“待支付”“正在核实付款”“已付款、入账处理中”“充值完成”“已关闭”“需要人工核对”；退款另列。列表与详情由 billing 的同一 attempt/order 投影生成，不让浏览器维护第二状态机。订单仍 PENDING 时可以显示正在核对，不谎称未付款。
 
@@ -531,6 +537,7 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 | 外部退款先于入账、余额已用完、部分退款重复观察 | 已知事实同事务衔接；准确 debt；累计不重复 |
 | 当前正佣金 validator 与不计佣充值 | 合同显式扩展；不伪造 PayerUserID/CommissionableAmountMinor；§15.1 同时验证零佣金后的本金退款、拒付及 hold 竞争 |
 | 用户切企业、退出/撤权、角色不足 | 禁止新越权操作；已发生款项仍归原 org，旧响应不污染新页面 |
+| 平台管理员审批非成员企业的退款 | descriptor 测试断言该 admin route 的三项配置：AuthPolicyCurrentIdentityWithVerifiedRoles、PermissionListingKitPlatformAdm、OrganizationAccessPolicyNone，且 OrganizationTargetResolver 为 nil；现有 workbench 企业路由仍为 LiveWrite。真实 HTTP 装配测试使用无受益企业成员身份、无所选企业的已认证平台管理员，证明不调用企业解析器、可进入审批用例，且企业只能从原订单取得；伪造/不同企业请求头不得改变归属。企业管理员、普通成员、伪造平台角色和未认证请求不能进入审批或产生 money/provider 副作用；测试使用受控订单与替身，不执行真实退款 |
 | claim 超时、旧 worker 迟到、关闭新支付开关、重启 | 原身份恢复；旧 token 不覆盖新状态；已发生支付/退款继续可核实 |
 
 本地 fixture 只证明本地边界，不证明微信或支付宝真实协议。支付宝沙箱须使用被批准的实际产品，微信实际渠道验证单列；没有商户/凭据时标 NOT_RUN。真实小额、生产收款、退款、正式上线分别授权，CI/代码评审不能代替用户验收。
