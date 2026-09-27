@@ -20,6 +20,15 @@ import (
 func reviewTopUp(t *testing.T, channel billing.PaymentProvider) (*Repository, *billing.Service, *moneystore.Repository, *topUpTestProvider, billing.TopUpPaymentAttempt) {
 	t.Helper()
 	r := commercialRepository(t)
+	connection, err := r.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// SQLite shared-cache table locks do not model PostgreSQL row locking.
+	// Serialize fixture connections while channel workers remain independent;
+	// the PostgreSQL tests cover concurrent production transactions.
+	connection.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = connection.Close() })
 	if err := moneystore.AutoMigrate(r.db); err != nil {
 		t.Fatal(err)
 	}
