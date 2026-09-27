@@ -279,13 +279,35 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		}
 	}
 
-	raw, err := page.Evaluate(extractScript())
-	if err != nil {
+	// page.Evaluate neither accepts nor observes ctx, so a page that stalls the
+	// renderer or installs a non-returning getter could hold this Chromium and
+	// its collector slot indefinitely. Race it against the budget and actively
+	// interrupt the renderer by closing the page when the budget expires.
+	type evalResult struct {
+		raw any
+		err error
+	}
+	evalDone := make(chan evalResult, 1)
+	go func() {
+		raw, err := page.Evaluate(extractScript())
+		evalDone <- evalResult{raw, err}
+	}()
+	var evaluated evalResult
+	select {
+	case evaluated = <-evalDone:
+	case <-ctx.Done():
+		// Closing the page tears down the renderer, which unblocks the pending
+		// evaluation; the deferred context close then reclaims the process.
+		_ = page.Close()
+		return sourcing.AcquisitionEvidence{}, ctx.Err()
+	}
+	if evaluated.err != nil {
 		if ctx.Err() != nil {
 			return sourcing.AcquisitionEvidence{}, ctx.Err()
 		}
-		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: evaluate: %v", ErrUnavailable, err)
+		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: evaluate: %v", ErrUnavailable, evaluated.err)
 	}
+	raw := evaluated.raw
 	evidence, err := decodeEvidence(source, raw)
 	if err != nil {
 		return sourcing.AcquisitionEvidence{}, err

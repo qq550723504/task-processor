@@ -549,3 +549,32 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 }}}};
 </script></body></html>`
 }
+
+// A custom-item block that keeps its variants under a block-local nySkuModel or
+// skuModelOrigin must still publish them.
+func TestBrowserAcquireCollectsBlockLocalSkuModels(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	for name, page := range map[string]string{
+		"nySkuModel":     blockLocalCustomItemPage("nySkuModel"),
+		"skuModelOrigin": blockLocalCustomItemPage("skuModelOrigin"),
+	} {
+		srv := serveFixture(t, page)
+		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		source, err := sourcing.Canonical1688Source("981645030344")
+		require.NoError(t, err)
+		evidence, err := client.Acquire(context.Background(), source)
+		require.NoError(t, err, name)
+		require.NotEmpty(t, evidence.Variants, name+": block-local sku model must be read")
+	}
+}
+
+func blockLocalCustomItemPage(field string) string {
+	return `<!doctype html><html><head><title>Block local</title></head><body><script>
+window.__INIT_DATA = {"data":{"main":{"data":{
+  "offerId": 981645030344,
+  "title": "Block local item",
+  "` + field + `":{"skuProps":[{"prop":"color"}],
+    "skuInfoMap":{"red":{"skuId":7,"price":3.5}}}
+}}}};
+</script></body></html>`
+}

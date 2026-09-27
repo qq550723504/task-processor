@@ -279,6 +279,8 @@ func extractScript() string {
       }
       if (Array.isArray(d.propsList)) pushAttrs(d.propsList, 'attributes');
       if (d.skuModel) readSku(d.skuModel);
+      else if (d.nySkuModel) readSku(d.nySkuModel);
+      else if (d.skuModelOrigin) readSku(d.skuModelOrigin);
       else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
     }
     const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;

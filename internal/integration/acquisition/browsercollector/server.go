@@ -91,6 +91,11 @@ func writeAcquireError(w http.ResponseWriter, err error) {
 	case errors.Is(err, browser.ErrCapacity):
 		// A concurrency-limit rejection is retryable, not a source failure.
 		WriteError(w, http.StatusServiceUnavailable, CodeCapacity)
+	case errors.Is(err, browser.ErrUnavailable):
+		// The browser or driver never started, so the 1688 source was never
+		// evaluated. This is a collector availability failure, not a source
+		// failure, and must not be reported as SOURCE_UNAVAILABLE.
+		WriteError(w, http.StatusServiceUnavailable, CodeUnavailable)
 	default:
 		WriteError(w, http.StatusBadGateway, CodeSourceUnavailable)
 	}

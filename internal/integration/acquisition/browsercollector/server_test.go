@@ -237,3 +237,25 @@ func TestHandlerMapsCollectorCapacityToRetryableCode(t *testing.T) {
 	require.Equal(t, browsercollector.CodeCapacity, body.Code)
 	require.ErrorIs(t, browsercollector.SentinelFor(body.Code), sourcing.ErrAcquisitionCapacity)
 }
+
+// A browser or driver that never started means the public source was never
+// evaluated, so it must be reported as collector availability, not as a source
+// failure that tells the user 1688 is unavailable.
+func TestHandlerMapsBrowserUnavailableToAvailabilityCode(t *testing.T) {
+	provider := &stubProvider{err: browser.ErrUnavailable}
+	handler, err := browsercollector.Handler(browsercollector.Options{
+		Provider: provider,
+		Admit:    func(*http.Request) error { return nil },
+	})
+	require.NoError(t, err)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+	resp := post(t, srv.URL, `{"sourceURL":"https://detail.1688.com/offer/981645030344.html"}`)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	var body browsercollector.ErrorBody
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Equal(t, browsercollector.CodeUnavailable, body.Code)
+	require.ErrorIs(t, browsercollector.SentinelFor(body.Code), sourcing.ErrAcquisitionUnavailable)
+	require.NotErrorIs(t, browsercollector.SentinelFor(body.Code), sourcing.ErrAcquisitionFailed)
+}
