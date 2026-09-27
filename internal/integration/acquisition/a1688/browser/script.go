@@ -228,6 +228,13 @@ func extractScript() string {
     if (data.Root && data.Root.fields && data.Root.fields.dataJson && data.Root.fields.dataJson.tempModel) {
       out.offerId = exactNum(data.Root.fields.dataJson.tempModel.offerId, 'offer_id');
     }
+    // A valid page may omit tempModel while the canonical detail URL already
+    // identifies the offer. Recovering it keeps the acquisition usable instead of
+    // rejecting a page that has a title and product data.
+    if (!out.offerId) {
+      const m = /\/offer\/(\d+)\.html/.exec(String(location.pathname || ''));
+      if (m) out.offerId = m[1];
+    }
     if (data.gallery && data.gallery.fields && Array.isArray(data.gallery.fields.offerImgList)) {
       for (const u of cap(data.gallery.fields.offerImgList, CAP.images, 'images')) {
         if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
@@ -322,7 +329,11 @@ func extractScript() string {
         }
       }
     }
-    for (const k in init) {
+    // currentPrices is only a fallback: when the global range prices were already
+    // read, appending this second representation would persist overlapping or
+    // conflicting tiers as unrelated price facts, because AcquisitionPrice
+    // carries no model or promotion discriminator.
+    for (const k in (out.priceFacts.length === 0 ? init : {})) {
       const block = init[k];
       const d = block && block.data;
       if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;

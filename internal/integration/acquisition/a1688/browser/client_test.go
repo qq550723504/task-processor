@@ -637,3 +637,25 @@ window.__INIT_DATA = {
 };
 </script></body></html>`
 }
+
+// A standard page that omits tempModel must still be collected, using the offer
+// id carried by the canonical detail URL.
+func TestBrowserAcquireRecoversOfferIdFromCanonicalURL(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, noTempModelPage())
+	// Navigate a canonical-looking /offer/<id>.html path so the URL recovery applies.
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL + "/offer/981645030344.html"})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+	require.Equal(t, "981645030344", evidence.OfferID, "the offer id must be recovered from the canonical URL")
+}
+
+func noTempModelPage() string {
+	return `<!doctype html><html><head><title>No temp model</title></head><body><script>
+window.context = {"result":{"data":{
+  "productTitle":{"fields":{"title":"No temp model bottle"}}
+}}};
+</script></body></html>`
+}

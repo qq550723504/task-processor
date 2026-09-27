@@ -119,14 +119,17 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	// not a bad request (finding #6).
 	envelope, err := sourcing.MapAcquisitionEvidence(request.Source, evidence, sourcing.AcquisitionChannelPublicBrowser, request.ID)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
+		// The provider child budget may already have expired at this point; using
+		// it as the cause would report every post-provider failure as a browser
+		// timeout, hiding the real mapping or availability error.
+		return sourcing.AcquisitionResult{}, s.failFetch(ctx, ctx, err)
 	}
 	if err := s.core.authorizeScope(ctx, request.Scope); err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
 	command, err := s.core.prepareCommand(ctx, request.Scope, envelope)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
+		return sourcing.AcquisitionResult{}, s.failFetch(ctx, ctx, err)
 	}
 	preparedStore, ok := s.core.operations.(sourcing.PreparedAcquisitionOperationStore)
 	if !ok {
