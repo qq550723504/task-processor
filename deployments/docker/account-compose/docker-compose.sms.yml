@@ -1,0 +1,10 @@
+# Optional existing ZITADEL/Tencent SMS adapter. Does not activate a provider.
+services:
+  current-application:
+    environment:
+      ZITADEL_SMS_CONFIG_FILE: /private/notifications/zitadel-sms.json
+    volumes:
+      - type: bind
+        source: ${ZITADEL_SMS_CONFIG_HOST_FILE:?absolute private SMS configuration file required}
+        target: /private/notifications/zitadel-sms.json
+        read_only: true

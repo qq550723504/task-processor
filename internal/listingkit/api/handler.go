@@ -3,12 +3,12 @@ package api
 import (
 	"context"
 
+	"task-processor/internal/integration/zitadelsms"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/tenantdirectory"
-	"task-processor/internal/listingkit/zitadelsms"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
 )

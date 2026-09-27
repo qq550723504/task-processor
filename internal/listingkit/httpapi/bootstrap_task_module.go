@@ -4,11 +4,11 @@ import (
 	"strings"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/integration/zitadelsms"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/tenantdirectory"
-	"task-processor/internal/listingkit/zitadelsms"
 	"task-processor/internal/listingsubscription"
 )
 

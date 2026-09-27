@@ -1,5 +1,8 @@
 # Local account center Compose
 
+Optional ZITADEL/Tencent SMS delivery configuration and the remaining local
+provider connection prerequisite are documented in [SMS.md](SMS.md).
+
 ## Enterprise wallet top-up (optional, #481)
 
 The normal entry is `/workbench/plans/top-up`. A current organization administrator

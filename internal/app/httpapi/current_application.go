@@ -327,6 +327,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	sms, err := buildZitadelSMSModule(ctx)
+	if err != nil {
+		return nil, err
+	}
+	modules = append(modules, sms)
 	var subscriptionRecovery func(context.Context) error
 	var topUpRecovery func(context.Context) error
 	// Billing requires both its commercial owner and the canonical money owner.
@@ -489,6 +494,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, err
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
+		ZitadelSMS:          true,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		MemberPoints:        includeMemberPoints,
@@ -551,6 +557,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	ZitadelSMS          bool
 	SubjectVerification bool
 	AcquisitionImage    bool
 	ProductAgent        bool
@@ -559,6 +566,14 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.ZitadelSMS {
+		admitted = append(admitted, currentApplicationRoute{Method: http.MethodPost, Path: zitadelSMSPath})
+		for _, route := range routes {
+			if route.Path == zitadelSMSPath && (route.Module != "zitadel-sms" || route.AuthPolicy != httproute.AuthPolicyPublic || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyNone || route.Permission != "" || route.OrganizationTargetResolver != nil || route.RequestTimeout != 30*time.Second || route.Handler == nil) {
+				return errors.New("ZITADEL SMS route loses signature-authenticated delivery boundary")
+			}
+		}
+	}
 	if includeAccountProfile {
 		admitted = append(admitted, currentAccountProfileApplicationRoutes...)
 	}

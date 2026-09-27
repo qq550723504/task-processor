@@ -15,7 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/listingkit/zitadelsms"
+	"task-processor/internal/integration/zitadelsms"
 )
 
 const zitadelSMSWebhookPath = "/api/v1/listing-kits/integrations/zitadel/sms"
@@ -74,7 +74,7 @@ func TestZitadelSMSWebhookRejectsTooLargeBody(t *testing.T) {
 	router := newZitadelSMSWebhookRouter(t, newZitadelSMSService(t, sender))
 
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, zitadelSMSWebhookPath, strings.NewReader(strings.Repeat("x", int(zitadelSMSWebhookMaxBodyBytes+1)))))
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, zitadelSMSWebhookPath, strings.NewReader(strings.Repeat("x", int(zitadelsms.MaxBodyBytes+1)))))
 
 	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
 	require.Zero(t, sender.calls)
