@@ -161,7 +161,7 @@ func (s *Service) CheckoutTopUp(ctx context.Context, org, actor, order string, v
 	if err != nil {
 		return out, err
 	}
-	if !p.Available() || t.protection == nil {
+	if t.protection == nil {
 		return out, ErrPaymentMethodUnavailable
 	}
 	if len(a.CheckoutCiphertext) > 0 {
@@ -177,6 +177,9 @@ func (s *Service) CheckoutTopUp(ctx context.Context, org, actor, order string, v
 	}
 	if a.CheckoutAdmittedAt != nil {
 		return out, ErrReconciliationRequired
+	}
+	if !p.Available() {
+		return out, ErrPaymentMethodUnavailable
 	}
 	now := money.NormalizeTimestamp(s.now())
 	a.CheckoutAdmittedAt = &now
