@@ -56,6 +56,14 @@ func TestCommerceToolBoundaryDocumentsDefineNeutralRegistryOwnership(t *testing.
 	})
 }
 
+func TestProductAgentRuntimeDocumentPreservesOwnerAndExecutionLimits(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "product-agent-runtime-contract.md"), []string{
+		"internal/agent", "SDK DTO 留在 Integration", "Store 必须原子 claim/CAS",
+		"GovernedModel", "target platform", "2 MiB", "64 KiB",
+		"不清空既有 History/候选/校验", "不提交超限 Record", "fake",
+	})
+}
+
 func TestPhase2InventoryNamesEveryRemainingLegacyConcreteConsumer(t *testing.T) {
 	path := filepath.Join("..", "docs", "refactoring", "phase2-runtime-inventory.md")
 	content, err := os.ReadFile(path)
@@ -1907,7 +1915,6 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 		}
 	}
 }
-
 
 func TestSelfServiceSubscriptionPurchaseContractLocksHardCutAndRecovery(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "self-service-subscription-purchase-contract.md")

@@ -23,8 +23,11 @@ func TestIssue30PreparedSlicesHaveNoLegacyOwnershipDependencies(t *testing.T) {
 // productsourcing capability. SRC-2B1 separately admits the precise Public
 // module and empty-database initializer (5643032970), not their subpackages.
 // TestIssue398TrackedCurrentLeafAPIsStayAdmitted limits those files' exact APIs.
+// Product Agent consumes the same current Catalog/SRC binding and Review UoW
+// under product-agent-runtime-contract §8.5; this is one explicit consumer.
 func TestIssue30InternalProducerIsOnlyWiredByAdmittedProductReview(t *testing.T) {
 	allowed := map[string]struct{}{
+		filepath.Join("..", "internal", "app", "httpapi", "product_agent_application.go"):       {},
 		filepath.Join("..", "internal", "app", "httpapi", "product_review_application.go"):      {},
 		filepath.Join("..", "internal", "app", "httpapi", "product_acquisition_application.go"): {},
 	}

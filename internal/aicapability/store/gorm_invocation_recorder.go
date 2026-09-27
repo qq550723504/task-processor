@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"task-processor/internal/aicapability"
 )
 
@@ -20,6 +21,36 @@ import (
 type GormInvocationRecorder struct {
 	db           *gorm.DB
 	usageSettler aicapability.InvocationUsageSettler
+}
+
+func (r *GormInvocationRecorder) ClaimInvocation(ctx context.Context, record aicapability.InvocationRecord) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, fmt.Errorf("ai invocation recorder database is nil")
+	}
+	for _, value := range []string{record.InvocationID, record.TenantID, record.UserID, record.MemberID, record.AgentRunID, record.InputHash, string(record.Operation)} {
+		if value == "" || len(value) > 128 || strings.TrimSpace(value) != value {
+			return false, fmt.Errorf("invalid dispatch identity")
+		}
+	}
+	if record.Outcome != aicapability.InvocationDispatched || record.StartedAt.IsZero() || !record.FinishedAt.IsZero() || record.UsageKnown || record.PromptTokens != 0 || record.CompletionTokens != 0 || record.TotalTokens != 0 || record.ImageCount != 0 || record.EstimatedCostKnown || record.EstimatedCostMicros != 0 {
+		return false, fmt.Errorf("invalid initial dispatch fact")
+	}
+	row := invocationRowFromRecord(record)
+	insert := r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "invocation_id"}}, DoNothing: true}).Create(&row)
+	if insert.Error != nil {
+		return false, insert.Error
+	}
+	if insert.RowsAffected == 1 {
+		return true, nil
+	}
+	existing, found, err := r.FindInvocation(ctx, record.TenantID, record.MemberID, record.InvocationID, record.InputHash)
+	if err != nil {
+		return false, err
+	}
+	if !found || existing.UserID != record.UserID || existing.AgentRunID != record.AgentRunID || existing.Operation != record.Operation {
+		return false, fmt.Errorf("ai invocation identity conflict")
+	}
+	return false, nil
 }
 
 // SetUsageSettler attaches the commercial accounting adapter. It is kept as
@@ -96,8 +127,8 @@ func (r *GormInvocationRecorder) ResolveDispatchedInvocation(ctx context.Context
 	if existing.Outcome != aicapability.InvocationDispatched && existing.Outcome != record.Outcome {
 		return fmt.Errorf("ai invocation recovery outcome conflict")
 	}
-	if record.Outcome == aicapability.InvocationUsageObservedFailed && existing.Operation != aicapability.OperationProductImageReview {
-		return fmt.Errorf("observed-failed ai invocation is restricted to image review")
+	if record.Outcome == aicapability.InvocationUsageObservedFailed && !aicapability.SupportsObservedUsageFailure(existing.Operation) {
+		return fmt.Errorf("observed-failed ai invocation operation is unsupported")
 	}
 	if existing.Outcome != aicapability.InvocationDispatched {
 		// Re-run only the durable commercial settlement/release for the
@@ -159,7 +190,7 @@ func (r *GormInvocationRecorder) RecordInvocation(ctx context.Context, record ai
 	lookupErr := r.db.WithContext(ctx).Where("invocation_id = ?", record.InvocationID).Take(&existing).Error
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		if record.Outcome == aicapability.InvocationUsageObservedFailed {
-			return fmt.Errorf("observed-failed image review requires a durable dispatched invocation")
+			return fmt.Errorf("observed-failed invocation requires a durable dispatched invocation")
 		}
 		if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
@@ -221,8 +252,8 @@ func validateUsage(record aicapability.InvocationRecord) error {
 	if record.PromptTokens < 0 || record.CompletionTokens < 0 || record.TotalTokens < 0 || record.ImageCount < 0 || record.EstimatedCostMicros < 0 {
 		return fmt.Errorf("invocation usage and cost counters must not be negative")
 	}
-	if record.Outcome == aicapability.InvocationUsageObservedFailed && (record.Operation != aicapability.OperationProductImageReview || !record.UsageKnown || record.TotalTokens <= 0 || record.PromptTokens+record.CompletionTokens != record.TotalTokens || record.FinishedAt.IsZero()) {
-		return fmt.Errorf("observed-failed image review requires internally consistent provider token usage")
+	if record.Outcome == aicapability.InvocationUsageObservedFailed && (!aicapability.SupportsObservedUsageFailure(record.Operation) || !record.UsageKnown || record.TotalTokens <= 0 || record.PromptTokens+record.CompletionTokens != record.TotalTokens || record.FinishedAt.IsZero()) {
+		return fmt.Errorf("observed-failed invocation requires internally consistent provider token usage")
 	}
 	return nil
 }

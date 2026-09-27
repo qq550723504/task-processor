@@ -1,5 +1,124 @@
 # Local account center Compose
 
+## Personal verification (optional, #510)
+
+At `/workbench/account/profile/verification`, a signed-in account can use the
+personal tab to verify its current verified `+86` phone against its name/ID and
+then complete Aliyun ID_PRO face verification. Refreshing the result queries
+the application's saved scene/CertifyId. Browser redirects never confirm identity.
+
+Default limits are **5 attempts total per account, 3 per Beijing calendar day,
+60 seconds between starts, and one active application**. Phone verification and
+face initialization together consume one attempt. Failure, timeout, and an
+unknown outcome retain that attempt; duplicate idempotency keys do not consume
+another. Days, organization changes, service restarts, and provider configuration
+changes do not reset the lifetime count. Existing applications can still be
+continued/queried after exhaustion. There is no reset or rebind endpoint.
+
+This capability is **disabled by default**; no real Aliyun calls or product
+acceptance are implied by local tests. Preparing an authorized trial requires:
+
+1. Enable both Aliyun financial-grade ID_PRO PC/H5 and Mobile3MetaSimpleVerify in
+   the intended account. Use a scene with material retention and OSS access off.
+   Do not enable SDK `DEBUG` logging; the adapter rejects that configuration.
+2. Run the existing account Compose schema-init using `source_account_owner`.
+   Its appended migration creates `personal_verification_applications` in
+   `source_accounts`. `init.sh` grants SELECT/INSERT/UPDATE to the existing runtime;
+   it cannot delete attempts. Runtime startup only verifies schema.
+3. Outside the checkout, create an absolute-path private JSON file containing
+   string fields `Scope`, `AccessKeyID`, `AccessKeySecret`, `ReturnURL`,
+   `DataEncryptionKey`, and positive integer `SceneID`. Scope identifies the
+   provider account/environment; do not repurpose it. DataEncryptionKey is an
+   independent random 32-byte key in standard Base64, retained across restarts.
+   ReturnURL must be the public HTTPS URL of the above account verification page,
+   without query or fragment. Optional integers `TotalLimit`, `DailyLimit`,
+   `MinIntervalSeconds` default to 5/3/60; zero is invalid. Maximum total/daily
+   limits are 100 and daily cannot exceed total. Changes never reset usage.
+4. Direct API launch: set `ALIYUN_PERSONAL_VERIFICATION_CONFIG_FILE` to that file.
+   Compose: set `ALIYUN_PERSONAL_VERIFICATION_CONFIG_HOST_FILE` to the host's
+   private file and append `-f docker-compose.personal-verification.yml` to the
+   existing account Compose command (before its `up` subcommand). Preserve the
+   existing `.env`, project name and volumes. This overlay does not require the
+   Tencent overlay. No public callback route is needed.
+5. Log in, verify the account's own mainland mobile in account settings, open the
+   personal tab, enter name/18-character ID, read consent and submit. The page
+   loads Aliyun's official device SDK only after consent/submission. Continue at
+   Aliyun, return, and click **刷新认证结果**. Phone mismatch stops before face
+   initialization. A pending link lasts up to 30 minutes; an unknown start is
+   held for 35 minutes without resending. Rejected/expired applications can be
+   explicitly retried within both limits. Opening/refreshing does not charge
+   an additional platform attempt; refresh queries have a 10-second cooldown.
+
+The database saves HMACs, masked phone, minimal result/binding timestamps and
+CertifyId. It does not save full name, ID, phone, device metadata, face photos or
+raw provider responses. Pending URLs are encrypted and removed on a terminal
+result. The UI clears name/ID after submission. Account authentication and other
+business permissions are unchanged; withdrawal integration belongs to #519.
+Real paid testing and user acceptance require separate authorization and remain
+NOT_RUN. See [design §14](../../../docs/architecture/subject-verification-tencent-esign-design.md#14-阿里云个人首次认证与次数限制).
+
+## Enterprise verification (optional, #510)
+
+The account page `/workbench/account/profile/verification` supports the first
+enterprise authentication request through Tencent eSign's enterprise self-built
+application. Only a current organization administrator can create an application
+or read its result; the hosted link is returned only to its original applicant.
+The applicant must have a verified `+86` phone in ZITADEL. Personal verification
+uses the separate Aliyun option above. Repeat enterprise applications and
+changing the applicant remain unavailable.
+Authentication never grants platform permissions.
+
+This feature is **disabled by default**. To prepare an authorized isolated trial:
+
+1. Run the existing schema-init step with the `source_account_owner` role. It
+   installs `subject_verification_applications` and `subject_verification_messages`
+   in `source_accounts`; `init.sh` grants only SELECT/INSERT/UPDATE to the existing
+   runtime role. Runtime startup does no DDL. Existing business data must not be
+   deleted to enable this feature.
+2. Create a private, absolute-path JSON file outside the checkout with string
+   fields `Scope`, `SecretID`, `SecretKey`, `OperatorID`, `CallbackSigningKey`,
+   `CallbackEncryptionKey`, `DataEncryptionKey`. `Scope` is an immutable bounded
+   identifier for this Tencent account/application/environment. `OperatorID` is
+   the configured Tencent operator, never the logged-in platform user. Signing
+   key is at least 16 bytes; callback encryption key is Tencent's raw 32-byte AES
+   key; data key is a separate random 32-byte key encoded in standard Base64.
+   Use distinct keys, private file permissions (0600 on Linux; restricted ACL
+   on Windows), and back up the data key with the database. Never commit or log
+   the file. Changing scope or data key requires explicit operational review;
+   this version does not rotate, recover or rebind existing applications.
+3. For a directly launched API, set `TENCENT_ESIGN_VERIFICATION_CONFIG_FILE` to
+   that file, then use the normal `go run ./cmd/current-application -config
+   <private-runtime-manifest>` command. For Compose, set
+   `TENCENT_ESIGN_VERIFICATION_CONFIG_HOST_FILE` and add the optional
+   `docker-compose.verification.yml` overlay to the existing Compose command.
+   No credentials belong in the UI or its environment.
+4. Configure Tencent's encrypted, signed callback to the API's HTTPS endpoint
+   `/api/v1/callbacks/tencent-esign/verification`. The current local Compose
+   stack's UI proxy does not publish this API endpoint: the authorized trial
+   must separately provide a reachable HTTPS callback ingress. Do not point it
+   at Next.js `/api/account/verification`, which requires a browser session.
+5. Log in as the current enterprise administrator, open the page above, enter
+   the registered name and 18-character credit code, review consent, and submit.
+   Continue in Tencent, then return and use **刷新认证状态**. Refresh only reads
+   the platform's saved result; a browser return never marks authentication as
+   successful. After completion, check the result after restarting the API.
+
+State and message receipts are stored together in PostgreSQL. Links are encrypted
+and removed on verification; raw callback bodies, full phone numbers, identity
+documents, authorization letters and face images are not retained locally. The
+minimal company and provider reference facts remain stored. Expired links are
+hidden. A create timeout or lost response remains **申请结果待核实** and never
+automatically creates another vendor request; an authentic late callback can
+still complete the original request. This first version has no manual-success
+override or resubmission/recovery button.
+
+Development tests use synthetic callbacks and an isolated PostgreSQL container.
+Real Tencent authorization, callback reachability, supplier sample validation
+and user acceptance are **NOT_RUN**; these are trial/opening conditions, not
+claims established by local tests. Keep the optional configuration unset until
+the authorized trial is ready. Design and frozen boundary:
+[subject-verification design §13](../../../docs/architecture/subject-verification-tencent-esign-design.md#13-本轮企业首次引导认证合同).
+
 ## PostgreSQL layout (new local projects)
 
 The standard local stack has **one application PostgreSQL instance**

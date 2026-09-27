@@ -62,8 +62,8 @@ func TestCurrentApplicationAdmitsOnlyLiveAuthorizedAcquisitionImageRoutes(t *tes
 	}
 	imageRoutes := acquisitionImageRoutes(&acquisitionImageServiceSpy{}, &acquisitionImageCandidatesSpy{}, &acquisitionImageApprovalReaderSpy{}, func(ctx context.Context, _ string) (context.Context, error) { return ctx, nil }, acquisitionImagePublicURLs{})
 	routes = append(routes, imageRoutes...)
-	require.Error(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false), "disabled image module cannot leak routes")
-	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, true))
+	require.Error(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{}), "disabled image module cannot leak routes")
+	require.NoError(t, validateCurrentApplicationRoutesInternal(routes, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{AcquisitionImage: true}))
 	for i := range imageRoutes {
 		for _, mutate := range []func(*httproute.Descriptor){
 			func(route *httproute.Descriptor) { route.Module = "other" },
@@ -74,7 +74,7 @@ func TestCurrentApplicationAdmitsOnlyLiveAuthorizedAcquisitionImageRoutes(t *tes
 		} {
 			changed := append([]httproute.Descriptor(nil), routes...)
 			mutate(&changed[len(currentWorkbenchApplicationRoutes)+i])
-			require.Error(t, validateCurrentApplicationRoutesInternal(changed, false, false, false, false, false, false, false, true))
+			require.Error(t, validateCurrentApplicationRoutesInternal(changed, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{AcquisitionImage: true}))
 		}
 	}
 }

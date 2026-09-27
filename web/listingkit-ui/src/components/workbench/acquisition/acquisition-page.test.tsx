@@ -6,7 +6,7 @@ import { AcquisitionPage } from "./acquisition-page";
 
 const calls = vi.hoisted(() => ({ acquire: vi.fn(), verify: vi.fn(), read: vi.fn(), readProduct: vi.fn(), context: {} as Record<string, unknown>, push: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => calls.context }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: calls.push }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: calls.push }), useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/api/product-acquisition", async original => ({ ...await original<object>(), acquire1688: calls.acquire, verify1688: calls.verify, readAcquisition: calls.read, readAcquisitionProduct: calls.readProduct }));
 
 const operationID = "11111111-1111-4111-8111-111111111111";

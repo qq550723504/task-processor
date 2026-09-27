@@ -100,6 +100,7 @@ consider the applicable guards, including:
 - `depguard: listing_submission_persistence_boundary`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `TestMembershipHTTPBoundaryRegistration` — permits only the membership HTTP subtree; rejects the domain root, siblings, other organizations and similar prefixes.
+- `TestSubjectVerificationHTTPBoundaryRegistration` — permits only the approved subject verification HTTP subtree; rejects the domain root, siblings and similar prefixes.
 - `depguard: source_handoff_legacy_http`
 - `TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets`
 - `TestAlibaba1688CrawlerDoesNotImportListingKitRoot`
@@ -385,6 +386,7 @@ Supporting context documents must not be listed as review references unless prom
 
 - `docs/architecture/README.md`
 - `docs/architecture/project-boundaries.md`
+- `docs/architecture/product-agent-runtime-contract.md`
 - `docs/architecture/commercial-wallet-billing-contract.md`
 - `docs/architecture/self-service-subscription-purchase-contract.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`

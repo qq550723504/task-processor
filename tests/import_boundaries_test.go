@@ -3985,6 +3985,7 @@ func businessHTTPPackages(root string) map[string]struct{} {
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "organization", "membership", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "accountallocation", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "commercial", "billing", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "subjectverification", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 	return allowedHTTPPackages
 }
 
@@ -4010,6 +4011,26 @@ func TestMembershipHTTPBoundaryRegistration(t *testing.T) {
 				t.Errorf("actual HTTP boundary allows %s = %v, want %v", tc.path, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSubjectVerificationHTTPBoundaryRegistration(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowed := businessHTTPPackages(root)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"subjectverification/httpapi/handler.go", true},
+		{"subjectverification/httpapi/nested/handler.go", true},
+		{"subjectverification/service.go", false},
+		{"subjectverification/httpapi_extra/handler.go", false},
+		{"subjectverification/httpapi2/handler.go", false},
+		{"subjectverification-extra/httpapi/handler.go", false},
+	} {
+		if got := pathAllowed(filepath.Join(root, filepath.FromSlash(tc.path)), allowed); got != tc.want {
+			t.Errorf("HTTP boundary allows %s = %v, want %v", tc.path, got, tc.want)
+		}
 	}
 }
 

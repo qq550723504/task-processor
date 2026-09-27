@@ -64,6 +64,9 @@ Use these as the main source of truth for structural work:
 - `project-boundaries.md`
   - default package ownership, dependency direction, forbidden imports, and
     placement rules for new code
+- `product-agent-runtime-contract.md`
+  - #131 bounded Product Agent execution contract and #132 consumer gaps;
+    contract/fake execution does not imply real model or product availability
 - `commercial-wallet-billing-contract.md`
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `self-service-subscription-purchase-contract.md`
@@ -120,6 +123,11 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`subject-verification-tencent-esign-design.md`](./subject-verification-tencent-esign-design.md)
+  - DRAFT #510 personal/enterprise subject-verification provider feasibility;
+    Tencent e-sign first candidate, not an Auth/IAM rewrite. Records subject
+    binding, hosted flow, provider contract questions and authorized test gates.
+    Not IMPLEMENTATION_READY; no procurement, real identity checks or runtime changes.
 - `alipay-wallet-topup-design.md`
   - DRAFT #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
     fixed-channel attempts, typed checkout, isolated verification, posting/refund

@@ -36,7 +36,7 @@ func TestCurrentMemberPointLimitRoutesPreserveLiveBoundaryAfterBillingRoutes(t *
 	}
 	routes = append(routes, (memberPointLimitModule{}).routes()...)
 	validate := func(r []httproute.Descriptor) error {
-		return validateCurrentApplicationRoutesInternal(r, false, false, false, false, false, false, false, false, true)
+		return validateCurrentApplicationRoutesInternal(r, false, false, false, false, false, false, false, currentApplicationOptionalRoutes{MemberPoints: true})
 	}
 	require.NoError(t, validate(routes))
 	for _, mode := range []string{"auth", "permission", "live", "target", "body", "timeout"} {

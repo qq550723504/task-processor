@@ -204,6 +204,10 @@ func (m *Manager) resolveClientWithSelection(ctx context.Context, name string, s
 			return nil, fmt.Errorf("%w: selected version does not match current effective version", ErrClientConfigurationChanged)
 		}
 	}
+	return m.clientFromEffectiveConfiguration(resolved, name)
+}
+
+func (m *Manager) clientFromEffectiveConfiguration(resolved effectiveClientConfiguration, name string) (*Client, error) {
 	if resolved.staticClient != nil {
 		return resolved.staticClient, nil
 	}
@@ -312,6 +316,8 @@ func effectiveProviderID(apiStyle string) (string, bool) {
 		return "openai", true
 	case "gemini":
 		return "gemini", true
+	case "grsai":
+		return "grsai", true
 	default:
 		return "", false
 	}

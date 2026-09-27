@@ -4,6 +4,9 @@ go 1.26.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alibabacloud-go/cloudauth-20190307/v4 v4.14.0
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
+	github.com/alibabacloud-go/tea v1.5.2
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/credentials v1.12.20
@@ -11,6 +14,7 @@ require (
 	github.com/aws/smithy-go v1.24.2
 	github.com/casbin/casbin/v2 v2.128.0
 	github.com/cenkalti/backoff/v5 v5.0.3
+	github.com/cloudwego/eino v0.9.21
 	github.com/disintegration/imaging v1.6.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gin-gonic/gin v1.10.1
@@ -35,7 +39,7 @@ require (
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.12.1
-	github.com/tencentcloud/tencentcloud-sdk-go v3.0.233+incompatible
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ess v1.3.184
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/yuin/goldmark v1.8.5
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
@@ -60,7 +64,27 @@ require (
 	modernc.org/sqlite v1.54.0
 )
 
-require go.yaml.in/yaml/v3 v3.0.5 // indirect
+require (
+	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
+	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/tea-utils/v2 v2.0.9 // indirect
+	github.com/aliyun/credentials-go v1.4.5 // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
+	github.com/clbanning/mxj/v2 v2.7.0 // indirect
+	github.com/eino-contrib/jsonschema v1.0.3 // indirect
+	github.com/goph/emperror v0.17.2 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/nikolalohinski/gonja v1.5.3 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
+	github.com/tjfoc/gmsm v1.4.1 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
+	github.com/yargevad/filepathx v1.0.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
+)
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -76,7 +100,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
@@ -167,6 +191,8 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.184
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms v1.0.233
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect

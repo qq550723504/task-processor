@@ -1,0 +1,11 @@
+# Optional, explicitly enabled Tencent enterprise verification integration.
+# Apply only to an authorized isolated trial after provider configuration.
+services:
+  current-application:
+    environment:
+      TENCENT_ESIGN_VERIFICATION_CONFIG_FILE: /private/verification/tencent-esign.json
+    volumes:
+      - type: bind
+        source: ${TENCENT_ESIGN_VERIFICATION_CONFIG_HOST_FILE:?absolute private Tencent configuration file required}
+        target: /private/verification/tencent-esign.json
+        read_only: true

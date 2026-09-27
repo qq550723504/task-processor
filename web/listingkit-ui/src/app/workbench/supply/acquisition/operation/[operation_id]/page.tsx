@@ -7,5 +7,5 @@ export default async function Page({ params }: { params: Promise<{ operation_id:
   await connection();
   if (!isProductAcquisitionAvailable()) notFound();
   const { operation_id } = await params;
-  return <AcquisitionPage operationId={operation_id} />;
+  return <AcquisitionPage operationId={operation_id} agentEnabled={process.env.LISTINGKIT_PRODUCT_AGENT_ENABLED==="true"} />;
 }
