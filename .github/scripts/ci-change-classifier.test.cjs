@@ -125,6 +125,7 @@ test("isolated runtime classification is limited to its owned harness and CI con
     "scripts/issue357/contract.mjs",
     "scripts/issue357/lifecycle.test.mjs",
     "scripts/issue357-runtime.mjs",
+    "web/listingkit-ui/scripts/current-application-final-acceptance.mjs",
     ".github/workflows/ci.yml",
     ".github/scripts/ci-change-classifier.cjs",
     ".github/scripts/ci-change-classifier.test.cjs",
