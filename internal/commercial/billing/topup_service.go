@@ -654,6 +654,14 @@ func (s *Service) reconcileTopUpRefund(ctx context.Context, r TopUpRefundIntent)
 		return r, ErrReconciliationRequired
 	} else {
 		hold, holdErr := t.money.ReadTopUpRefundHold(ctx, r.HoldInput())
+		if holdErr == nil && hold.Input == r.HoldInput() && hold.State == "RELEASED" {
+			// Release has no reversal receipt. Recover its committed money outcome
+			// directly when the billing projection was lost, without channel calls.
+			r.State = "RELEASED"
+			r.LeaseToken = ""
+			r.LeaseUntil = time.Time{}
+			return t.store.SaveTopUpRefund(ctx, r)
+		}
 		if holdErr != nil || hold.Input != r.HoldInput() || hold.State != "RESERVED" || !hold.Dispatched {
 			// A restart never creates or admits a hold. Only the money owner's
 			// durable admission can recover a lost billing projection.

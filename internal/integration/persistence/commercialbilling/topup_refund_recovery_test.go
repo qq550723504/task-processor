@@ -12,11 +12,16 @@ import (
 
 type crashAfterRefundAdmission struct {
 	*Repository
-	crash      bool
-	beforeSave bool
+	crash       bool
+	beforeSave  bool
+	releaseSave bool
 }
 
 func (r *crashAfterRefundAdmission) SaveTopUpRefund(ctx context.Context, in billing.TopUpRefundIntent) (billing.TopUpRefundIntent, error) {
+	if r.releaseSave && in.State == "RELEASED" {
+		r.releaseSave = false
+		return in, errors.New("process stopped after money release, before billing commit")
+	}
 	if r.crash && r.beforeSave && in.Dispatched {
 		r.crash = false
 		return in, errors.New("process stopped after money admission, before billing commit")
@@ -36,6 +41,7 @@ type replayRefundProvider struct {
 	first                   billing.TopUpRefundIntent
 	queryErr                error
 	pending                 bool
+	closed                  bool
 	queryHook               func(billing.TopUpRefundIntent)
 }
 
@@ -43,6 +49,12 @@ func (p *replayRefundProvider) QueryRefund(_ context.Context, r billing.TopUpRef
 	p.queries++
 	if p.queryHook != nil {
 		p.queryHook(r)
+	}
+	if p.closed {
+		o := refundRecoveryObservation(r)
+		o.State = "REFUND_CLOSED"
+		o.OccurredAt = time.Time{}
+		return o, nil
 	}
 	if p.pending {
 		o := refundRecoveryObservation(r)
@@ -56,6 +68,12 @@ func (p *replayRefundProvider) QueryRefund(_ context.Context, r billing.TopUpRef
 }
 func (p *replayRefundProvider) Refund(_ context.Context, r billing.TopUpRefundIntent) (billing.ProviderObservation, error) {
 	p.calls++
+	if p.closed {
+		o := refundRecoveryObservation(r)
+		o.State = "REFUND_CLOSED"
+		o.OccurredAt = time.Time{}
+		return o, nil
+	}
 	if p.effects == 0 {
 		p.first = r
 		p.effects++
@@ -87,7 +105,7 @@ func (unavailableRefundAdmission) ReleaseTopUpRefundHold(context.Context, money.
 }
 
 func TestTopUpRefundRecoveryReplaysOnlyAdmittedOriginalIdentity(t *testing.T) {
-	for _, scenario := range []string{"pre_call_crash", "billing_commit_lost", "response_lost", "receipt_unavailable", "query_unknown", "pending", "never_admitted", "stale_worker", "external_reversal"} {
+	for _, scenario := range []string{"pre_call_crash", "billing_commit_lost", "response_lost", "receipt_unavailable", "query_unknown", "pending", "never_admitted", "stale_worker", "external_reversal", "release_commit_lost"} {
 		t.Run(scenario, func(t *testing.T) {
 			r, s, wallet, base, a := reviewTopUp(t, billing.PaymentAlipay)
 			ctx := context.Background()
@@ -99,8 +117,8 @@ func TestTopUpRefundRecoveryReplaysOnlyAdmittedOriginalIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			a, _ = r.ReadTopUpAttempt(ctx, a.OrganizationID, a.OrderID)
-			p := &replayRefundProvider{topUpTestProvider: base, lost: scenario == "response_lost", queryErr: billing.ErrReconciliationRequired}
-			store := &crashAfterRefundAdmission{Repository: r, crash: !p.lost, beforeSave: scenario == "billing_commit_lost"}
+			p := &replayRefundProvider{topUpTestProvider: base, lost: scenario == "response_lost", closed: scenario == "release_commit_lost", queryErr: billing.ErrReconciliationRequired}
+			store := &crashAfterRefundAdmission{Repository: r, crash: !p.lost && !p.closed, beforeSave: scenario == "billing_commit_lost", releaseSave: p.closed}
 			var admissionOwner money.ProviderTopUpOwner = wallet
 			if scenario == "never_admitted" {
 				admissionOwner = unavailableRefundAdmission{wallet}
@@ -115,8 +133,12 @@ func TestTopUpRefundRecoveryReplaysOnlyAdmittedOriginalIdentity(t *testing.T) {
 			}
 			refund := rows[0]
 			wantAdmission := scenario != "never_admitted"
+			wantHoldState := "RESERVED"
+			if p.closed {
+				wantHoldState = "RELEASED"
+			}
 			hold, err := wallet.ReadTopUpRefundHold(ctx, refund.HoldInput())
-			if err != nil || hold.Dispatched != wantAdmission || hold.State != "RESERVED" {
+			if err != nil || hold.Dispatched != wantAdmission || hold.State != wantHoldState {
 				t.Fatalf("wrong money admission: %+v %v", hold, err)
 			}
 			if scenario == "billing_commit_lost" && refund.Dispatched {
@@ -156,6 +178,7 @@ func TestTopUpRefundRecoveryReplaysOnlyAdmittedOriginalIdentity(t *testing.T) {
 			if err := restarted.EnableWalletTopUps(r, owner, p, nil, billing.TopUpAmountPolicy{}, topUpTestProtection{}, &topUpTestAuthorizer{denied: true}); err != nil {
 				t.Fatal(err)
 			}
+			queriesBeforeRestart := p.queries
 			if err := restarted.ReconcileRecoverableTopUps(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -177,6 +200,11 @@ func TestTopUpRefundRecoveryReplaysOnlyAdmittedOriginalIdentity(t *testing.T) {
 				}
 				if p.calls != wantCalls {
 					t.Fatal("completed refund was replayed")
+				}
+			} else if p.closed {
+				remaining, listErr := r.ListRecoverableTopUpRefunds(ctx, billing.PaymentAlipay, time.Now().UTC().Add(time.Hour), 25)
+				if listErr != nil || len(remaining) != 0 || p.calls != 1 || p.effects != 0 || p.queries != queriesBeforeRestart || balance.ReservedMinor != 0 || balance.AvailableMinor != 10000 {
+					t.Fatalf("released hold not projected without channel call: rows=%+v calls=%d queries=%d balance=%+v err=%v", remaining, p.calls, p.queries, balance, listErr)
 				}
 			} else if p.calls != 0 || balance.ReservedMinor != 6000 {
 				t.Fatalf("unproven replay or hold release: calls=%d balance=%+v", p.calls, balance)
