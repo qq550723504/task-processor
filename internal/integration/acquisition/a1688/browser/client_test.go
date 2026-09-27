@@ -608,3 +608,32 @@ window.__INIT_DATA = {
 };
 </script></body></html>`
 }
+
+// A custom-item attribute list stored directly as the block data array, and a
+// global SKU model that must win over a differing block-local model.
+func TestBrowserAcquireHandlesArrayAttributesAndGlobalSkuPriority(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, arrayAttrsAndGlobalSkuPage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+	require.NotEmpty(t, evidence.Attributes, "an array-backed attribute list must be read")
+	require.Len(t, evidence.Variants, 1, "the authoritative global SKU model must be used")
+	require.NotNil(t, evidence.Variants[0].SourceID)
+	require.Equal(t, "42", *evidence.Variants[0].SourceID, "the block-local model must not pre-empt the global one")
+}
+
+func arrayAttrsAndGlobalSkuPage() string {
+	return `<!doctype html><html><head><title>Array attrs</title></head><body><script>
+window.__INIT_DATA = {
+  "data": {
+    "attrs": {"data": [{"name":"material","value":"steel"},{"name":"color","value":"red"}]},
+    "sku": {"data": {"offerId": 981645030344, "title": "Array attrs item",
+      "skuModel": {"skuProps":[{"prop":"size"}], "skuInfoMap":{"s":{"skuId":7,"price":1.5}}}}}
+  },
+  "globalData": {"nySkuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap":{"red":{"skuId":42,"price":2.5}}}}
+};
+</script></body></html>`
+}

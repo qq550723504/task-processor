@@ -20,6 +20,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
@@ -35,6 +36,10 @@ var (
 	ErrUnsupported = errors.New("public page structure unsupported")
 	// ErrChallenge reports a detected anti-automation challenge page.
 	ErrChallenge = errors.New("public page challenged")
+	// ErrRejected reports that the requested public source was refused by this
+	// provider's own egress policy, so the source was never usable rather than
+	// the collector being unavailable.
+	ErrRejected = errors.New("public source rejected by the egress allowlist")
 	// ErrCapacity reports that this collector is already running its maximum
 	// number of concurrent browser acquisitions (design D8).
 	ErrCapacity = errors.New("browser collector at concurrency limit")
@@ -221,8 +226,14 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 
 	// Defense-in-depth egress guard (D12). Enforced at the request callback; the
 	// authoritative control is the connection-layer allowlist (Slice 3).
+	// Track policy aborts for this acquisition so a navigation rejected by the
+	// egress guard is attributed to the source/policy rather than to collector
+	// availability. The route is installed per acquisition, so this state is not
+	// shared between concurrent requests.
+	var policyAborts atomic.Bool
 	if len(c.opts.AllowedOrigins) > 0 {
-		if err := context.Route("**/*", c.routeGuard); err != nil {
+		guard := func(route playwright.Route) { c.routeGuard(route, &policyAborts) }
+		if err := context.Route("**/*", guard); err != nil {
 			return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: install route guard: %v", ErrUnavailable, err)
 		}
 	}
@@ -269,14 +280,39 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		if ctx.Err() != nil {
 			return sourcing.AcquisitionEvidence{}, ctx.Err()
 		}
+		// A navigation rejected by the egress guard (oversized document, or a
+		// redirect to a disallowed origin) is a source/policy rejection, not a
+		// collector outage: Chromium started fine and the response was refused.
+		if policyAborts.Load() {
+			return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: navigation rejected by the egress allowlist: %v", ErrRejected, navigated.err)
+		}
 		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: navigate: %v", ErrUnavailable, navigated.err)
 	}
 	if err := ctx.Err(); err != nil {
 		return sourcing.AcquisitionEvidence{}, err
 	}
 
-	// Detect an anti-automation challenge (punish/captcha) before extracting.
-	challenged, err := detectChallenge(page)
+	// The whole post-navigation phase (challenge inspection and any automatic
+	// attempt) performs uncancellable protocol calls: page.Title, QuerySelector,
+	// visibility, bounding box and mouse. Run it against the budget and close the
+	// page on expiry so a stalled renderer cannot retain a collector slot.
+	type phaseResult struct {
+		challenged bool
+		err        error
+	}
+	phaseDone := make(chan phaseResult, 1)
+	go func() {
+		challenged, err := detectChallenge(page)
+		phaseDone <- phaseResult{challenged, err}
+	}()
+	var inspected phaseResult
+	select {
+	case inspected = <-phaseDone:
+	case <-ctx.Done():
+		_ = page.Close()
+		return sourcing.AcquisitionEvidence{}, ctx.Err()
+	}
+	challenged, err := inspected.challenged, inspected.err
 	if err != nil {
 		return sourcing.AcquisitionEvidence{}, err
 	}
@@ -371,10 +407,16 @@ func (c *Client) launchOptions() playwright.BrowserTypeLaunchPersistentContextOp
 // against the live site while the egress IP is challenged. The bounded extractor
 // and the RPC transport cap remain the backstop for subresources; the residual
 // subresource download limit is recorded rather than silently assumed.
-func (c *Client) routeGuard(route playwright.Route) {
+func (c *Client) routeGuard(route playwright.Route, policyAborts *atomic.Bool) {
+	markAborted := func() {
+		if policyAborts != nil {
+			policyAborts.Store(true)
+		}
+		_ = route.Abort()
+	}
 	req := route.Request()
 	if !originAllowed(c.opts.AllowedOrigins, req.URL()) {
-		_ = route.Abort()
+		markAborted()
 		return
 	}
 	if !req.IsNavigationRequest() || req.ResourceType() != "document" {
@@ -387,7 +429,7 @@ func (c *Client) routeGuard(route playwright.Route) {
 	// instead and validated below.
 	resp, err := route.Fetch(playwright.RouteFetchOptions{MaxRedirects: playwright.Int(0)})
 	if err != nil {
-		_ = route.Abort()
+		markAborted()
 		return
 	}
 	if status := resp.Status(); status >= 300 && status < 400 {
@@ -399,22 +441,22 @@ func (c *Client) routeGuard(route playwright.Route) {
 			_ = route.Fulfill(playwright.RouteFulfillOptions{Status: &redirected, Headers: resp.Headers(), Body: ""})
 			return
 		}
-		_ = route.Abort()
+		markAborted()
 		return
 	}
 	limit := c.opts.maxResponseBytes()
 	// Reject on the declared size first, so a huge document is not transferred.
 	if declared, perr := strconv.ParseInt(resp.Headers()["content-length"], 10, 64); perr == nil && declared > limit {
-		_ = route.Abort()
+		markAborted()
 		return
 	}
 	body, berr := resp.Body()
 	if berr != nil {
-		_ = route.Abort()
+		markAborted()
 		return
 	}
 	if int64(len(body)) > limit {
-		_ = route.Abort()
+		markAborted()
 		return
 	}
 	status := resp.Status()

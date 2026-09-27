@@ -261,6 +261,14 @@ func extractScript() string {
       }
     }
   } else if (init) {
+    // The authoritative global SKU model is primary and is read before any data
+    // block, matching the legacy foundSkuModel guard.
+    const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
+    if (g) {
+      if (g.skuModel) readSku(g.skuModel);
+      else if (g.nySkuModel) readSku(g.nySkuModel);
+      else if (g.skuModelOrigin) readSku(g.skuModelOrigin);
+    }
     for (const k in init) {
       const block = init[k];
       if (!block || typeof block !== 'object') continue;
@@ -278,9 +286,14 @@ func extractScript() string {
         for (const u of cap(d.offerImgList, CAP.images, 'images')) if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
       }
       if (Array.isArray(d.propsList)) pushAttrs(d.propsList, 'attributes');
-      // The global model is primary and data blocks are a fallback, matching the
-      // legacy foundSkuModel guard. Reading both would append the same variants
-      // twice, and MapAcquisitionEvidence rejects repeated source IDs.
+      else if (Array.isArray(d)) {
+        // Known shape where the attribute list is the block data array itself.
+        pushAttrs(d.filter((a) => a && a.name && a.value), 'attributes');
+      }
+      // Block-local models are a fallback only; the authoritative global model is
+      // read before this loop, so a partial or differing block model cannot
+      // pre-empt it, and reading both cannot duplicate variants (which
+      // MapAcquisitionEvidence rejects as repeated source IDs).
       if (out.variants.length === 0) {
         if (d.skuModel) readSku(d.skuModel);
         else if (d.nySkuModel) readSku(d.nySkuModel);
@@ -288,17 +301,9 @@ func extractScript() string {
         else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
       }
     }
-    const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
-    if (g) {
-      if (g.offerInfoModel && !out.offerId) {
-        out.offerId = exactNum(g.offerInfoModel.offerId, 'offer_id');
-        if (!out.title) out.title = clip(g.offerInfoModel.title || '', 'title');
-      }
-      if (out.variants.length === 0) {
-        if (g.skuModel) readSku(g.skuModel);
-        else if (g.nySkuModel) readSku(g.nySkuModel);
-        else if (g.skuModelOrigin) readSku(g.skuModelOrigin);
-      }
+    if (g && g.offerInfoModel && !out.offerId) {
+      out.offerId = exactNum(g.offerInfoModel.offerId, 'offer_id');
+      if (!out.title) out.title = clip(g.offerInfoModel.title || '', 'title');
     }
     // Custom-item price shapes, ported from the operator's legacy price
     // extractor: the order-parameter SKU range prices, and each data block's
