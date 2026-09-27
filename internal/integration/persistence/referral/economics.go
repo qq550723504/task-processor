@@ -525,8 +525,19 @@ func (r *Repository) ReplayWithdrawal(ctx context.Context, input economics.Withd
 	if err := r.db.WithContext(ctx).Where("id=?", op.WithdrawalID).Take(&row).Error; err != nil {
 		return economics.Withdrawal{}, true, economics.ErrUnavailable
 	}
+	out, err := committedWithdrawalReplay(input, op, row)
+	if err != nil {
+		return economics.Withdrawal{}, true, err
+	}
+	return out, true, nil
+}
+
+func committedWithdrawalReplay(input economics.WithdrawalReplayRequest, op withdrawalOperationRow, row withdrawalRow) (economics.Withdrawal, error) {
+	if row.ID == "" || row.ID != op.WithdrawalID {
+		return economics.Withdrawal{}, economics.ErrUnavailable
+	}
 	if row.Referrer != input.Referrer {
-		return economics.Withdrawal{}, true, economics.ErrIdempotencyConflict
+		return economics.Withdrawal{}, economics.ErrIdempotencyConflict
 	}
 	request := economics.RequestWithdrawal{
 		Referrer: input.Referrer, Currency: input.Currency, PayoutMethodID: input.PayoutMethodID,
@@ -534,9 +545,9 @@ func (r *Repository) ReplayWithdrawal(ctx context.Context, input economics.Withd
 		IdempotencyKey: input.IdempotencyKey, ExpectedVersion: input.ExpectedVersion,
 	}
 	if op.Fingerprint != withdrawalFingerprint(request) {
-		return economics.Withdrawal{}, true, economics.ErrIdempotencyConflict
+		return economics.Withdrawal{}, economics.ErrIdempotencyConflict
 	}
-	return withdrawalFromRow(row), true, nil
+	return withdrawalFromRow(row), nil
 }
 
 func (r *Repository) RequestWithdrawal(ctx context.Context, input economics.RequestWithdrawal) (economics.Withdrawal, error) {
