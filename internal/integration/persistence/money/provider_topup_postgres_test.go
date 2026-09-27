@@ -21,9 +21,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func TestProviderTopUpPostgresConcurrentReceiptsAndZeroEarnings(t *testing.T) {
+func newMoneyPostgresRuntime(t *testing.T) (context.Context, *gorm.DB, *Repository, *referralstore.Repository) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	t.Cleanup(cancel)
 	c, err := pg.Run(ctx, "postgres:16-alpine", pg.WithDatabase("topup"), pg.WithUsername("topup"), pg.WithPassword(uuid.NewString()), pg.BasicWaitStrategies())
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +92,11 @@ func TestProviderTopUpPostgresConcurrentReceiptsAndZeroEarnings(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := New(moneyDB)
+	return ctx, db, r, observer
+}
+
+func TestProviderTopUpPostgresConcurrentReceiptsAndZeroEarnings(t *testing.T) {
+	ctx, db, r, observer := newMoneyPostgresRuntime(t)
 	input := providerTopUpInput()
 	var wg sync.WaitGroup
 	results := make(chan m.TopUpPostingReceipt, 8)

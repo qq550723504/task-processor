@@ -123,6 +123,9 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`settlement-reversal-locking.md`](./settlement-reversal-locking.md)
+  - IMPLEMENTATION_READY #413 repair of ordinary refund/chargeback concurrency
+    while preserving immutable canonical settlement privileges and replay bounds
 - [`subject-verification-tencent-esign-design.md`](./subject-verification-tencent-esign-design.md)
   - #510 bounded subject-verification design. Section 13 freezes the Tencent
     enterprise first-verification contract and section 14 freezes the Aliyun

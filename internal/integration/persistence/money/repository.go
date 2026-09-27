@@ -2,6 +2,7 @@ package money
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -9,7 +10,6 @@ import (
 	money "task-processor/internal/ledger/money"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type paymentRow struct {
@@ -142,8 +142,11 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockOrdinaryReversal(tx, refund.PaymentID); err != nil {
+			return money.ErrUnavailable
+		}
 		var payment paymentRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id = ?", refund.PaymentID).Take(&payment).Error; err != nil {
+		if err := tx.Where("payment_id = ?", refund.PaymentID).Take(&payment).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return money.ErrNotFound
 			}
@@ -175,7 +178,7 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 			return money.ErrUnavailable
 		}
 		return nil
-	})
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 }
 
 func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback money.ChargebackSettlement) error {
@@ -186,8 +189,11 @@ func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback 
 		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockOrdinaryReversal(tx, chargeback.PaymentID); err != nil {
+			return money.ErrUnavailable
+		}
 		var payment paymentRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id = ?", chargeback.PaymentID).Take(&payment).Error; err != nil {
+		if err := tx.Where("payment_id = ?", chargeback.PaymentID).Take(&payment).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return money.ErrNotFound
 			}
@@ -218,7 +224,24 @@ func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback 
 			return money.ErrUnavailable
 		}
 		return nil
-	})
+	}, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+}
+
+// Both ordinary reversal kinds serialize on the same payment without requiring
+// UPDATE authority on immutable settlement facts. Acquire this as a separate
+// statement before the READ COMMITTED reads so a waiter sees its predecessor's
+// committed totals. PostgreSQL releases the lock on transaction completion.
+func lockOrdinaryReversal(tx *gorm.DB, paymentID string) error {
+	switch tx.Dialector.Name() {
+	case "postgres":
+		return tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", "money:ordinary-reversal:"+paymentID).Error
+	case "sqlite":
+		// Existing single-writer SQLite unit fixtures; PostgreSQL integration
+		// tests, not this dialect, establish serving concurrency guarantees.
+		return nil
+	default:
+		return money.ErrUnavailable
+	}
 }
 
 func (r *Repository) RecordRefundSettlementAndNotify(ctx context.Context, refund money.RefundSettlement, observer money.SettlementObserver) error {
