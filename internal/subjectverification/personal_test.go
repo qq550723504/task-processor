@@ -12,6 +12,7 @@ type personalTestStore struct {
 	a       PersonalApplication
 	creates int
 	now     time.Time
+	readErr error
 }
 
 func (r *personalTestStore) ReservePersonal(_ context.Context, a PersonalApplication, _ PersonalLimits) (PersonalApplication, bool, error) {
@@ -28,6 +29,9 @@ func (r *personalTestStore) ReservePersonal(_ context.Context, a PersonalApplica
 	return a, true, nil
 }
 func (r *personalTestStore) ReadPersonal(_ context.Context, _ string, l PersonalLimits) (PersonalSnapshot, error) {
+	if r.readErr != nil {
+		return PersonalSnapshot{}, r.readErr
+	}
 	return PersonalSnapshot{Application: r.a, Quota: PersonalQuota{TotalLimit: l.Total, DailyLimit: l.Daily, TotalUsed: r.creates, DailyUsed: r.creates, ServerTime: r.now, ResetAt: r.now.Add(time.Hour)}}, nil
 }
 func (r *personalTestStore) UpdatePersonal(_ context.Context, user, id string, fn func(*PersonalApplication, time.Time) error) error {
@@ -172,5 +176,52 @@ func TestPersonalRetryConsentShowsCurrentPhone(t *testing.T) {
 				t.Fatalf("incorrect retry consent projection: %+v %v", v, err)
 			}
 		})
+	}
+}
+
+
+func TestPersonalVerificationEligibilityReadsOnlyPersistedSameSubjectFact(t *testing.T) {
+	s, r, p, actor, _ := personalFixture()
+	r.a = PersonalApplication{ID: "application-1", UserID: actor.UserID, Scope: s.Scope, State: Verified}
+	s.Provider = nil
+
+	verified, err := s.IsPersonalVerified(context.Background(), actor.UserID)
+	if err != nil || !verified {
+		t.Fatalf("persisted VERIFIED fact not admitted: verified=%t err=%v", verified, err)
+	}
+	if len(p.calls) != 0 {
+		t.Fatalf("eligibility read called provider: %v", p.calls)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		user  string
+		scope string
+		state string
+	}{
+		{name: "pending", user: actor.UserID, scope: s.Scope, state: Pending},
+		{name: "unknown", user: actor.UserID, scope: s.Scope, state: Unknown},
+		{name: "rejected", user: actor.UserID, scope: s.Scope, state: Rejected},
+		{name: "stale scope", user: actor.UserID, scope: "old-scope", state: Verified},
+		{name: "other subject", user: "other-user", scope: s.Scope, state: Verified},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r.a = PersonalApplication{ID: "application-1", UserID: tc.user, Scope: tc.scope, State: tc.state}
+			got, readErr := s.IsPersonalVerified(context.Background(), actor.UserID)
+			if readErr != nil || got {
+				t.Fatalf("ineligible fact admitted: verified=%t err=%v", got, readErr)
+			}
+		})
+	}
+
+	r.a = PersonalApplication{}
+	got, err := s.IsPersonalVerified(context.Background(), actor.UserID)
+	if err != nil || got {
+		t.Fatalf("missing fact admitted: verified=%t err=%v", got, err)
+	}
+
+	r.readErr = errors.New("store unavailable")
+	if _, err = s.IsPersonalVerified(context.Background(), actor.UserID); err == nil {
+		t.Fatal("store outage was hidden")
 	}
 }
