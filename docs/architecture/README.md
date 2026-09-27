@@ -134,11 +134,14 @@ documents unless they say so explicitly:
     receipts and recovery. Historical filename; one dual-channel design.
     Not IMPLEMENTATION_READY; does not supersede approved billing/money contracts.
 - `2026-09-26-1688-server-public-browser-acquisition-design.md`
-  - DRAFT #514 `src2b-public-browser-v1`: server-side anonymous 1688 browser
-    acquisition with automatic challenge handling, reusing the existing
-    `AcquisitionEvidence` → SourceEnvelope → SRC-1 → Catalog chain.
-    Not IMPLEMENTATION_READY; does not supersede approved sourcing contracts and
-    does not by itself authorize production wiring, deployment or real-page runs.
+  - FROZEN BASELINE / IMPLEMENTATION_READY #514 `src2b-public-browser-v1`:
+    server-side anonymous 1688 browser acquisition with automatic challenge
+    handling, reusing the existing `AcquisitionEvidence` → SourceEnvelope →
+    SRC-1 → Catalog chain. The design §12-A open items were resolved by user
+    decision on 2026-09-26 and are recorded in §12-A'; the real-network
+    acceptance result is recorded in §12-A''. Does not supersede approved
+    sourcing contracts, and does not by itself authorize production wiring or
+    deployment.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy

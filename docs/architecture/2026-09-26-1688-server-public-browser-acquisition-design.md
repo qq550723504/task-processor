@@ -421,6 +421,20 @@ Cutover/deletion condition:
 | A4 | **接受**：最多**一次**自动滑动尝试；失败即如实 `ErrChallenge` → `SOURCE_UNAVAILABLE`；**不做**人工介入、**不**重试到成功、**不**伪造商品 | 只移植旧实现的**最小**可用部分（定位滑块 + 缓动拖动 + 成功校验），**不**移植 2800 行 human-behavior 引擎；超出当前阶段所需，且引入不可验证的随机行为面 |
 | A6 | **授权准备但不自动部署**：允许新增 `cmd/1688-public-browser-collector`、compose 服务定义、镜像与限额配置；**实际 `docker compose up` / 部署仍需单独指令** | 准备配置 ≠ 部署；避免在未观察真实运行前变更共享环境 |
 
+### 记录：前端通道的实际超时层序（Codex P1，2026-09-27 核实）
+
+该 finding 指出 BFF 22s / 浏览器 25s 会截断后端更长的预算。**u6838实结论：当前链路已是正确分层，不存在截断。**
+
+| 层 | 值 | 位置 |
+| --- | --- | --- |
+| 浏览器客户端 | 25s | `web/listingkit-ui/src/lib/api/product-acquisition.ts` |
+| BFF 代理 | 22s | `web/listingkit-ui/src/app/api/workbench/[...path]/route.ts` |
+| **后端路由（最紧的一层）** | **20s** | `sourcing.AcquisitionTimeout`，由 `productAcquisitionRoutes` 的 `RequestTimeout` 引用 |
+
+后端路由在 20s 截断，严严实实小于两层前端超时，因此不存在“后端超时后用户看不到”的情况；采集进程内部的 provider 子预算（默认 90s）只影响采集进程自身，不能让路由超过 20s。真实验收实测耗时 2.4s，均在层内。
+
+分类：`NOT_APPLICABLE`（前置假设不成立）。若未来调整 `AcquisitionTimeout`，必须同步调整上表两层前端超时，不得只改一层。
+
 ### A''. 真实网络验收结论与当前阶段上线语义（A5，用户 2026-09-27）
 
 A5 已执行。真实 `detail.1688.com` 上**完整成功一次**：
@@ -449,7 +463,7 @@ A5 已执行。真实 `detail.1688.com` 上**完整成功一次**：
 | B3 | D8 的浏览器单响应 / 累计下载上限数值（finding #17） | 原则已定：与 `src2b-acquisition-v1` 的 2 MiB 语义对齐，在浏览器/代理边界生效，超限中止采集 |
 | B4 | §7 例外接口的最终签名（finding #19） | 原则已定：**只新增一个只读**容量查询，不改既有方法语义；建议 `CapacityAdmitted(ctx, scope) (bool, error)`；须确认不引入第二个容量事实源 |
 | B5 | D13 最小 RPC 契约（请求/响应/错误/超时/解码前限长） | 原则已定：入参仅 canonical source/offerID，**不带 org/actor/roles/token**；出参有界 `AcquisitionEvidence` |
-| B6 | D12 连接层强制的具体白名单 CIDR/域名 | 原则已定：连接层为强制点；`--host-resolver-rules` pin 为备选；Route 拦截仅纵深防御 |
+| B6 | D12 连接层强制的具体白名单 CIDR/域名 | 原则已定：**采集进程出网白名单（网络命名空间）为强制点**（D13 已定形态）；`--host-resolver-rules` pin 仅作**备选且不得单独使用**——它只覆盖走解析的连接，字面 IP preconnect 等不解析路径不受约束，选它时必须再叠加一层（如仓库 `browser-capture-network-probe.mjs` 用的 deny proxy）；Route 拦截仅纵深防御 |
 | B7 | `public_browser` channel 的实现落法（finding #2） | 原则已定：加入 `MapAcquisitionEvidence` 允许集合 **且** 同步 `validCommand` 的空-`CaptureSHA256` 分支；`CaptureSHA256` 保持为空；**不新增 producer kind** |
 | B8 | D9 `ContentSHA256` 定义 | 原则已定：被映射字段子树的规范化 JSON 摘要（非整页字节） |
 | B9 | D10 依赖边界 | 原则已定：新 owner 自持最小浏览器实现，**不 import `internal/crawler/*`** |

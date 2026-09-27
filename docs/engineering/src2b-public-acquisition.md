@@ -4,7 +4,9 @@ Contract: `src2b-acquisition-v1`, Issue #398. This is anonymous public acquisiti
 not Browser Capture, Source Account management, a Connection, or a login flow.
 The parser accepts only the explicitly supported static `window.context` JSON
 shape. The checked-in HTML is a synthetic fixture, not evidence that the current
-1688 site is available. Real 1688 network acceptance is NOT_RUN.
+1688 site is available. Real 1688 network acceptance for this static-HTML
+provider remains NOT_RUN; the separate browser provider has its own executed
+result recorded in the design §12-A''.
 
 > **Provider extension approved in design, not yet implemented (2026-09-26)**:
 > [`PD-1688-SERVER-PUBLIC-BROWSER-2026-09-26`](../product/pd-1688-server-public-browser-2026-09-26.md)
@@ -23,8 +25,17 @@ shape. The checked-in HTML is a synthetic fixture, not evidence that the current
 > than `INVALID_ACQUISITION`. Everything else here — identity, evidence
 > semantics, SourceEnvelope/SRC-1/Catalog ownership, idempotency, replay,
 > COMMIT-unknown, authorization, limits and the "no login, no SourceAccount"
-> premise — **remains in force for both providers**. Implementation has not
-> started; the design is not yet `IMPLEMENTATION_READY`.
+> premise — **remains in force for both providers**.
+
+> **Status (2026-09-27)**: the design is a **FROZEN BASELINE /
+> `IMPLEMENTATION_READY`**, its §12-A open items were resolved by user decision on
+> 2026-09-26 (recorded in §12-A′), and the implementation has landed on
+> `codex/issue-514-browser-provider` (PR #521). Real-network acceptance
+> (`src2b-public-browser-v1`) has been **executed**: one full real success on
+> `detail.1688.com/offer/965933437579` in 2.4s, after which this egress IP was
+> escalated to a 1688 login wall. The accepted current-stage semantics are
+> single-IP anonymous collection with honest failure on challenge; proxy/IP
+> rotation is **not authorized**.
 
 ## Ownership and lifecycle
 
