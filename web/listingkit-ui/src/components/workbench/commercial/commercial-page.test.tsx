@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { commercialOverviewFixture } from "@/test/fixtures/commercial-overview";
 import { CommercialPage } from "./commercial-page";
+vi.mock("./wallet-topup", () => ({ WalletTopUpEntry: () => <button disabled>充值钱包</button>, TopUpPaymentPanel: () => <section>充值订单</section> }));
 
 const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), offers: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
@@ -30,7 +31,7 @@ it("loads the wallet through the current identity and organization and keeps pay
   expect(within(await screen.findByRole("region", { name: "企业钱包余额" })).getAllByText("¥120.00")).toHaveLength(2);
   expect(state.wallet).toHaveBeenCalledWith("reader", "org-B", expect.any(AbortSignal));
   expect(state.entries).toHaveBeenCalledWith("reader", "org-B", expect.any(AbortSignal), undefined);
-  expect(screen.getByRole("button", { name: "充值暂未开放" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "充值钱包" })).toBeDisabled();
 });
 
 it("loads organization-scoped order summaries and detail deep links", async () => {

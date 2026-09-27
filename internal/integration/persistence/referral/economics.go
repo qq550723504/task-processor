@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
+	money "task-processor/internal/ledger/money"
+	economics "task-processor/internal/referraleconomics"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	money "task-processor/internal/ledger/money"
-	economics "task-processor/internal/referraleconomics"
 )
 
 type earningClaim struct {
@@ -126,6 +127,9 @@ func (economicsAuditRow) TableName() string { return "public.referral_earnings_a
 // may only consume an already durable canonical fact.
 type canonicalPaymentRow struct {
 	PaymentID                 string
+	PaymentPurpose            string
+	CommissionTreatment       string
+	PayerBinding              string
 	PayerUserID               string
 	Currency                  string
 	GrossAmountMinor          int64
@@ -164,16 +168,22 @@ func (r *Repository) RecordSettledPayment(ctx context.Context, payment money.Pay
 		return economics.ErrInvalid
 	}
 	payment.SettledAt = money.NormalizeTimestamp(payment.SettledAt)
-	commission, err := economics.CommissionForCashMinor(payment.CommissionableAmountMinor)
-	if err != nil {
-		return nil
-	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var canonical canonicalPaymentRow
 		if err := tx.Where("payment_id = ? AND payer_user_id = ? AND currency = ? AND gross_amount_minor = ? AND discount_amount_minor = ? AND commissionable_amount_minor = ? AND status = ? AND settled_at = ? AND provider_reference = ? AND version = ?", payment.PaymentID, payment.PayerUserID, payment.Currency, payment.GrossAmountMinor, payment.DiscountAmountMinor, payment.CommissionableAmountMinor, string(payment.Status), payment.SettledAt.UTC(), payment.ProviderReference, payment.Version).Take(&canonical).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 			return economics.ErrInvalid
 		} else if err != nil {
 			return economics.ErrUnavailable
+		}
+		if canonical.PaymentPurpose != payment.PaymentPurpose || canonical.CommissionTreatment != payment.CommissionTreatment || canonical.PayerBinding != payment.PayerBinding {
+			return economics.ErrInvalid
+		}
+		if payment.PaymentPurpose == money.PaymentPurposeWalletTopUp {
+			return nil
+		}
+		commission, err := economics.CommissionForCashMinor(payment.CommissionableAmountMinor)
+		if err != nil {
+			return nil
 		}
 		var relations []struct {
 			Issuer   string
@@ -236,6 +246,9 @@ func (r *Repository) RecordRefund(ctx context.Context, refund money.RefundSettle
 			return economics.ErrInvalid
 		} else if err != nil {
 			return economics.ErrUnavailable
+		}
+		if excluded, err := nonCommissionableTopUp(tx, refund.PaymentID); excluded || err != nil {
+			return err
 		}
 		var claim earningClaim
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id=?", refund.PaymentID).Take(&claim).Error; errors.Is(err, gorm.ErrRecordNotFound) {
@@ -316,6 +329,9 @@ func (r *Repository) RecordChargeback(ctx context.Context, chargeback money.Char
 		} else if err != nil {
 			return economics.ErrUnavailable
 		}
+		if excluded, err := nonCommissionableTopUp(tx, chargeback.PaymentID); excluded || err != nil {
+			return err
+		}
 		var claim earningClaim
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("payment_id=?", chargeback.PaymentID).Take(&claim).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 			return economics.ErrInvalid
@@ -378,6 +394,21 @@ func (r *Repository) RecordChargeback(ctx context.Context, chargeback money.Char
 
 func (r *Repository) ObserveChargebackSettlement(ctx context.Context, chargeback money.ChargebackSettlement) error {
 	return r.RecordChargeback(ctx, chargeback)
+}
+
+func nonCommissionableTopUp(tx *gorm.DB, paymentID string) (bool, error) {
+	var p canonicalPaymentRow
+	if err := tx.Where("payment_id = ?", paymentID).Take(&p).Error; err != nil {
+		return false, economics.ErrUnavailable
+	}
+	if p.PaymentPurpose != money.PaymentPurposeWalletTopUp {
+		return false, nil
+	}
+	fact := money.PaymentSettlement{PaymentID: p.PaymentID, PaymentPurpose: p.PaymentPurpose, CommissionTreatment: p.CommissionTreatment, PayerBinding: p.PayerBinding, PayerUserID: p.PayerUserID, Currency: p.Currency, GrossAmountMinor: p.GrossAmountMinor, DiscountAmountMinor: p.DiscountAmountMinor, CommissionableAmountMinor: p.CommissionableAmountMinor, Status: money.PaymentStatus(p.Status), SettledAt: p.SettledAt, ProviderReference: p.ProviderReference, Version: p.Version}
+	if fact.Validate() != nil {
+		return false, economics.ErrInvalid
+	}
+	return true, nil
 }
 
 func (r *Repository) Mature(ctx context.Context, at time.Time) error {

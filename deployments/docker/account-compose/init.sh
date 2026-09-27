@@ -74,6 +74,7 @@ if [ -f "$state/.init-complete" ]; then
     .sourceAccountDatabase.port == 5433 and .sourceAccountDatabase.database == "source_accounts" and
     .commercialDatabase.port == 5433 and .commercialDatabase.database == $database and
     .commercialOwnerDatabase.port == 5433 and .commercialOwnerDatabase.database == $database and
+    .moneyOwnerDatabase.port == 5433 and .moneyOwnerDatabase.database == "referrals" and .moneyOwnerDatabase.user == "money_owner_runtime" and
     .referrals.referralDatabase.port == 5433 and .referrals.referralDatabase.database == "referrals" and
     .membership.database.port == 5433 and .membership.database.database == "membership"
   ' "$runtime/current-application.json" >/dev/null || { echo 'database topology changed; use a new project' >&2; exit 1; }
@@ -175,6 +176,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
   "commercialDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "${commercial_database}", "maxConnections": 4},
   "commercialOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-owner-password")", "database": "${commercial_database}", "maxConnections": 2},
+  "moneyOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "money_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/money-owner-password")", "database": "referrals", "maxConnections": 4},
   "membership": {
     "providerOrigin": "${issuer}",
     "readToken": "$(tr -d '\r\n' < "$runtime/membership-read.pat")",

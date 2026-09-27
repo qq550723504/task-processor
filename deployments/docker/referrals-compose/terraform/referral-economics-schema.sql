@@ -40,10 +40,13 @@ CREATE TABLE IF NOT EXISTS public.referral_earnings_audit_events (
 -- never creates or updates a payment settlement.
 CREATE TABLE IF NOT EXISTS public.ledger_payment_settlements (
  payment_id text PRIMARY KEY, payer_user_id text NOT NULL, currency char(3) NOT NULL,
+ payment_purpose text NOT NULL DEFAULT '', commission_treatment text NOT NULL DEFAULT '', payer_binding text NOT NULL DEFAULT '',
  gross_amount_minor bigint NOT NULL, discount_amount_minor bigint NOT NULL,
  commissionable_amount_minor bigint NOT NULL, status text NOT NULL CHECK(status='SETTLED'),
  settled_at timestamptz NOT NULL, provider_reference text NOT NULL, version bigint NOT NULL,
- CHECK(gross_amount_minor>0 AND discount_amount_minor>=0 AND commissionable_amount_minor>0 AND discount_amount_minor<=gross_amount_minor AND commissionable_amount_minor<=gross_amount_minor-discount_amount_minor));
+ CHECK(gross_amount_minor>0 AND discount_amount_minor>=0 AND discount_amount_minor<=gross_amount_minor AND commissionable_amount_minor<=gross_amount_minor-discount_amount_minor),
+ CHECK((payment_purpose='' AND commission_treatment='' AND payer_binding='' AND payer_user_id<>'' AND commissionable_amount_minor>0)
+ OR (payment_purpose='WALLET_TOP_UP' AND commission_treatment='NON_COMMISSIONABLE' AND payer_binding='UNATTRIBUTED_EXTERNAL' AND payer_user_id='' AND currency='CNY' AND discount_amount_minor=0 AND commissionable_amount_minor=0)));
 CREATE TABLE IF NOT EXISTS public.ledger_refund_settlements (
  refund_id text PRIMARY KEY, payment_id text NOT NULL REFERENCES public.ledger_payment_settlements(payment_id),
  amount_minor bigint NOT NULL, occurred_at timestamptz NOT NULL, provider_reference text NOT NULL,

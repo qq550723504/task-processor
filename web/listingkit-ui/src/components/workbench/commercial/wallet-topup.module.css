@@ -1,0 +1,145 @@
+.entry {
+  display: grid;
+  gap: 10px;
+  font-size: 12px;
+}
+.entry p {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+.dialog {
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  margin: auto;
+}
+.dialog::backdrop {
+  background: rgb(15 23 42 / 0.5);
+}
+.dialog form {
+  display: grid;
+  gap: 18px;
+}
+.dialog h2,
+.payment h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+.description {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.8;
+  margin: -8px 0 0;
+}
+.field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.field input {
+  height: 42px;
+  border-radius: 8px;
+  color: var(--foreground);
+}
+.range {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin: -12px 0 0;
+}
+.dialog fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.dialog legend {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-bottom: 12px;
+}
+.amounts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.amounts button {
+  background: var(--muted);
+  padding: 0 4px;
+  border-radius: 9px;
+  height: 34px;
+  font-size: 12px;
+}
+.amounts button[aria-pressed="true"] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.channels {
+  display: grid;
+  gap: 10px;
+}
+.channels label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 11px;
+}
+.channels span {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.channels input {
+  accent-color: var(--primary);
+}
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.dialog .actions button {
+  min-width: 96px;
+  border-radius: 9px;
+  height: 36px;
+  font-size: 12px;
+}
+.payment {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 14px;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+.payment p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: 0;
+  line-height: 1.8;
+}
+.payment .actions {
+  justify-content: flex-start;
+}
+.qr {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+@media (max-width: 420px) {
+  .amounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .channels label {
+    flex-wrap: wrap;
+  }
+}

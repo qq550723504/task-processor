@@ -67,6 +67,12 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/:order_id"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/orders/summary"},
 	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/wallet/top-up-intents"},
+	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/wallet/top-up-options"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/orders/:order_id/checkout"},
+	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/orders/:order_id/cancel-payment"},
+	{Method: http.MethodPost, Path: "/api/v1/admin/commercial/top-up-orders/:order_id/refunds"},
+	{Method: http.MethodPost, Path: "/api/v1/payments/alipay/notify"},
+	{Method: http.MethodPost, Path: "/api/v1/payments/wechat/notify"},
 	{Method: http.MethodGet, Path: "/api/v1/workbench/commercial/subscription-offers"},
 	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/subscription-quotes"},
 	{Method: http.MethodPost, Path: "/api/v1/workbench/commercial/subscription-orders"},
@@ -95,6 +101,7 @@ type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
 	runtimeContext       context.Context
 	commercialOwnerDB    *gorm.DB
+	moneyOwnerDB         *gorm.DB
 	referralDB           *gorm.DB
 	productAcquisitionDB *gorm.DB
 	imageAgentDB         *gorm.DB
@@ -120,6 +127,9 @@ func WithRuntimeContext(ctx context.Context) CurrentApplicationOption {
 // pool used by commercial billing and the canonical subscription owner.
 func WithCommercialOwnerDatabase(db *gorm.DB) CurrentApplicationOption {
 	return func(options *currentApplicationOptions) { options.commercialOwnerDB = db }
+}
+func WithMoneyOwnerDatabase(db *gorm.DB) CurrentApplicationOption {
+	return func(options *currentApplicationOptions) { options.moneyOwnerDB = db }
 }
 
 // WithBrowserCapture enables the #399 exact-click browser capture ingress. It
@@ -318,9 +328,14 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
 	var subscriptionRecovery func(context.Context) error
+	var topUpRecovery func(context.Context) error
 	// Billing requires both its commercial owner and the canonical money owner.
-	if supplied.commercialOwnerDB != nil && supplied.referralDB != nil && factories.buildCommercialBilling != nil {
-		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, supplied.referralDB, authorizer, cfg)
+	if (cfg.WalletTopUp.Alipay.Enabled || cfg.WalletTopUp.WeChat.Enabled) && supplied.moneyOwnerDB == nil {
+		return nil, errors.New("wallet top-up requires the canonical money owner pool")
+	}
+	moneyDB := supplied.moneyOwnerDB
+	if supplied.commercialOwnerDB != nil && moneyDB != nil && factories.buildCommercialBilling != nil {
+		commercialBilling, billingErr := factories.buildCommercialBilling(ctx, supplied.commercialOwnerDB, moneyDB, authorizer, cfg)
 		if billingErr != nil {
 			return nil, fmt.Errorf("build current commercial billing module: %w", billingErr)
 		}
@@ -330,6 +345,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		modules = append(modules, commercialBilling)
 		if typed, ok := commercialBilling.(commercialBillingModule); ok {
 			subscriptionRecovery = typed.reconcileSubscriptions
+			topUpRecovery = typed.reconcileTopUps
 		}
 	}
 	var referralMaturity func(context.Context, time.Time) error
@@ -490,7 +506,15 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		startSubscriptionPurchaseRecoveryLoop(runtimeContext, server, subscriptionRecovery, 30*time.Second, logger)
 	}
 	if referralMaturity != nil {
+		// Referral maturity remains independent of channel recovery.
 		startReferralMaturityLoop(server, referralMaturity, time.Hour, logger)
+	}
+	if topUpRecovery != nil {
+		runtimeContext := supplied.runtimeContext
+		if runtimeContext == nil {
+			runtimeContext = context.Background()
+		}
+		startCommercialRecoveryLoop(runtimeContext, server, topUpRecovery, 30*time.Second, "wallet top-up", logger)
 	}
 	return server, nil
 }

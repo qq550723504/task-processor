@@ -14,6 +14,7 @@ import { SubscriptionPlanOptions } from "./subscription-plan-options";
 import { CommercialOverviewView, UsageDetailsView } from "./commercial-module-views";
 import { OrderDetailView, OrdersView, WalletView } from "./commercial-billing-views";
 import styles from "./commercial.module.css";
+import { TopUpPaymentPanel } from "./wallet-topup";
 
 export type PageKind = "overview" | "options" | "entitlements" | "usage" | "top-up" | "orders" | "order-detail";
 
@@ -53,7 +54,7 @@ function ScopedCommercial({ page, scope, userId, organizationId, organizationNam
   const [sequence, setSequence] = useState(0);
   const refresh = () => setSequence(value => value + 1);
   if (page === "top-up" || page === "orders" || page === "order-detail") {
-    return <PageFrame page={page} organization={`${organizationName || "未提供名称"}（${organizationId}）`} actions={<Button variant="outline" onClick={refresh}>刷新数据</Button>}><BillingRequest key={sequence} page={page} userId={userId} organizationId={organizationId} orderId={orderId} /></PageFrame>;
+    return <PageFrame page={page} organization={`${organizationName || "未提供名称"}（${organizationId}）`} actions={<Button variant="outline" onClick={refresh}>刷新数据</Button>}><BillingRequest key={sequence} page={page} userId={userId} organizationId={organizationId} roles={roles} orderId={orderId} /></PageFrame>;
   }
   return <PageFrame page={page} organization={`${organizationName || "未提供名称"}（${organizationId}）`} actions={<>
     {page === "overview" ? <Button asChild variant="outline"><Link prefetch={false} href="/workbench/plans/entitlements">查看我的权益</Link></Button> : <Button asChild variant="outline"><Link prefetch={false} href={page === "options" ? "/workbench/plans/entitlements" : "/workbench/plans/options"}>{page === "options" ? "查看我的权益" : "查看套餐方案"}</Link></Button>}
@@ -85,7 +86,7 @@ function CommercialRequest({ page, scope, userId, organizationId, organizationNa
   return <EntitlementsOverview data={response.data} />;
 }
 
-function BillingRequest({ page, userId, organizationId, orderId }: { page: "top-up" | "orders" | "order-detail"; userId: string; organizationId: string; orderId?: string }) {
+function BillingRequest({ page, userId, organizationId, orderId, roles }: { page: "top-up" | "orders" | "order-detail"; userId: string; organizationId: string; orderId?: string; roles: string[] }) {
   const [filters, setFilters] = useState<CommercialOrderFilters>({});
   const [cursor, setCursor] = useState("");
   const [walletCursor, setWalletCursor] = useState("");
@@ -99,7 +100,7 @@ function BillingRequest({ page, userId, organizationId, orderId }: { page: "top-
     if (wallet.isError) return <BillingReadError error={wallet.error} />;
     if (entries.isError) return <BillingReadError error={entries.error} />;
     if (!wallet.data || !entries.data) return <ConsoleState kind="error" title="钱包响应无效">未能校验当前企业钱包响应。</ConsoleState>;
-    return <WalletView wallet={wallet.data} entries={entries.data} onNext={() => setWalletCursor(entries.data.next_cursor)} />;
+    return <WalletView wallet={wallet.data} entries={entries.data} userId={userId} roles={roles} onNext={() => setWalletCursor(entries.data.next_cursor)} />;
   }
   if (page === "orders") {
     if (summary.isPending || orders.isPending) return <ConsoleState kind="loading" title="正在读取账单与订单">账单金额、状态和明细仅来自当前企业账单 owner。</ConsoleState>;
@@ -111,7 +112,7 @@ function BillingRequest({ page, userId, organizationId, orderId }: { page: "top-
   if (!orderId) return <ConsoleState kind="error" title="订单编号无效">无法读取未提供编号的订单详情。</ConsoleState>;
   if (detail.isPending) return <ConsoleState kind="loading" title="正在读取订单详情">仅展示当前企业 owner 返回的订单事实。</ConsoleState>;
   if (detail.isError) return <BillingReadError error={detail.error} />;
-  return detail.data ? <OrderDetailView order={detail.data} /> : <ConsoleState kind="error" title="订单响应无效">未能校验当前企业订单响应。</ConsoleState>;
+  return detail.data ? <>{detail.data.kind === "WALLET_TOP_UP" ? <TopUpPaymentPanel key={detail.data.order_id} userId={userId} organizationId={organizationId} roles={roles} initialOrder={detail.data} /> : null}<OrderDetailView order={detail.data} /></> : <ConsoleState kind="error" title="订单响应无效">未能校验当前企业订单响应。</ConsoleState>;
 }
 
 function BillingReadError({ error }: { error: unknown }) {

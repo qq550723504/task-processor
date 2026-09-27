@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { commercialOverviewFixture } from "@/test/fixtures/commercial-overview";
 import { CommercialOverviewView, UsageDetailsView } from "./commercial-module-views";
 import { OrdersView, WalletView } from "./commercial-billing-views";
+vi.mock("./wallet-topup", () => ({ WalletTopUpEntry: () => <button disabled>充值钱包</button> }));
 
 afterEach(cleanup);
 
@@ -30,12 +31,12 @@ it("keeps usage units and unknown state explicit while filtering the returned le
   expect(screen.queryByText("资料生成作业")).not.toBeInTheDocument();
 });
 
-it("renders only real wallet data and keeps payment writes unavailable", () => {
-  render(<WalletView wallet={{ organization_id: "org-A", currency: "CNY", available_minor: "12000", reserved_minor: "3000", debt_minor: "0", lifetime_topup_minor: "30000", lifetime_spend_minor: "18000", version: "4", observed_at: "2026-09-23T10:00:00Z" }} entries={{ organization_id: "org-A", items: [{ entry_id: "entry-1", currency: "CNY", entry_type: "PURCHASE_COMMIT", available_delta_minor: "0", reserved_delta_minor: "-3000", debt_delta_minor: "0", available_after_minor: "12000", reserved_after_minor: "0", debt_after_minor: "0", order_id: "order-1", source_id: "commercial-order:order-1", occurred_at: "2026-09-23T10:00:00Z" }], next_cursor: "" }} onNext={() => undefined} />);
+it("renders only real wallet data and delegates recharge to the configured payment entry", () => {
+  render(<WalletView userId="reader" roles={["listingkit_admin"]} wallet={{ organization_id: "org-A", currency: "CNY", available_minor: "12000", reserved_minor: "3000", debt_minor: "0", lifetime_topup_minor: "30000", lifetime_spend_minor: "18000", version: "4", observed_at: "2026-09-23T10:00:00Z" }} entries={{ organization_id: "org-A", items: [{ entry_id: "entry-1", currency: "CNY", entry_type: "PURCHASE_COMMIT", available_delta_minor: "0", reserved_delta_minor: "-3000", debt_delta_minor: "0", available_after_minor: "12000", reserved_after_minor: "0", debt_after_minor: "0", order_id: "order-1", source_id: "commercial-order:order-1", occurred_at: "2026-09-23T10:00:00Z" }], next_cursor: "" }} onNext={() => undefined} />);
   expect(screen.getByText("¥120.00")).toBeVisible();
   expect(screen.getByText("¥30.00")).toBeVisible();
-  expect(screen.getByRole("button", { name: "充值暂未开放" })).toBeDisabled();
-  expect(screen.getByText(/不会提交充值、购买或资金变更/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "充值钱包" })).toBeDisabled();
+  expect(screen.getByText(/有欠款时先偿债；渠道手续费由平台承担/)).toBeVisible();
   expect(screen.getByRole("link", { name: "order-1" })).toHaveAttribute("href", "/workbench/plans/orders/order-1");
   expect(screen.queryByText("¥5,000.00")).not.toBeInTheDocument();
 });

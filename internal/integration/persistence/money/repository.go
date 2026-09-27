@@ -6,13 +6,17 @@ import (
 	"strings"
 	"time"
 
+	money "task-processor/internal/ledger/money"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	money "task-processor/internal/ledger/money"
 )
 
 type paymentRow struct {
 	PaymentID                 string `gorm:"column:payment_id;primaryKey"`
+	PaymentPurpose            string
+	CommissionTreatment       string
+	PayerBinding              string
 	PayerUserID               string `gorm:"column:payer_user_id"`
 	Currency                  string
 	GrossAmountMinor          int64
@@ -87,12 +91,18 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(&paymentRow{}, &refundRow{}, &chargebackRow{}, &payoutMethodRow{}, &payoutMethodOperationRow{}); err != nil {
 		return err
 	}
-	return AutoMigrateWallet(db)
+	if err := AutoMigrateWallet(db); err != nil {
+		return err
+	}
+	return migrateProviderTopUp(db)
 }
 
 func (r *Repository) RecordPaymentSettlement(ctx context.Context, payment money.PaymentSettlement) error {
 	if r == nil || r.db == nil || payment.Validate() != nil {
 		return money.ErrInvalid
+	}
+	if payment.PaymentPurpose == money.PaymentPurposeWalletTopUp {
+		return money.ErrUnsupportedMutation
 	}
 	row := paymentRow{PaymentID: payment.PaymentID, PayerUserID: payment.PayerUserID, Currency: payment.Currency, GrossAmountMinor: payment.GrossAmountMinor, DiscountAmountMinor: payment.DiscountAmountMinor, CommissionableAmountMinor: payment.CommissionableAmountMinor, Status: string(payment.Status), SettledAt: money.NormalizeTimestamp(payment.SettledAt), ProviderReference: payment.ProviderReference, Version: payment.Version}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -127,6 +137,9 @@ func (r *Repository) RecordPaymentSettlementAndNotify(ctx context.Context, payme
 func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.RefundSettlement) error {
 	if r == nil || r.db == nil || refund.Validate() != nil {
 		return money.ErrInvalid
+	}
+	if handled, err := r.recordProviderReversal(ctx, refund.PaymentID, refund.RefundID, money.WalletReversalRefund, refund.AmountMinor, refund.OccurredAt, refund.ProviderReference); handled || err != nil {
+		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var payment paymentRow
@@ -168,6 +181,9 @@ func (r *Repository) RecordRefundSettlement(ctx context.Context, refund money.Re
 func (r *Repository) RecordChargebackSettlement(ctx context.Context, chargeback money.ChargebackSettlement) error {
 	if r == nil || r.db == nil || chargeback.Validate() != nil {
 		return money.ErrInvalid
+	}
+	if handled, err := r.recordProviderReversal(ctx, chargeback.PaymentID, chargeback.ChargebackID, money.WalletReversalChargeback, chargeback.AmountMinor, chargeback.OccurredAt, chargeback.ProviderReference); handled || err != nil {
+		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var payment paymentRow

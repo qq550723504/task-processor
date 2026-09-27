@@ -19,6 +19,7 @@ import (
 
 	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/imageagent"
+	topupconfig "task-processor/internal/integration/wallettopup/config"
 )
 
 const (
@@ -37,6 +38,8 @@ type Config struct {
 	SourceAccountDatabase      DatabaseConfig                `json:"sourceAccountDatabase"`
 	CommercialDatabase         DatabaseConfig                `json:"commercialDatabase"`
 	CommercialOwnerDatabase    *DatabaseConfig               `json:"commercialOwnerDatabase,omitempty"`
+	MoneyOwnerDatabase         *DatabaseConfig               `json:"moneyOwnerDatabase,omitempty"`
+	WalletTopUp                topupconfig.Config            `json:"walletTopUp,omitempty"`
 	ProductAcquisitionDatabase *DatabaseConfig               `json:"productAcquisitionDatabase,omitempty"`
 	ImageAgent                 *ImageAgentConfig             `json:"imageAgent,omitempty"`
 	ProductAgent               *ProductAgentConfig           `json:"productAgent,omitempty"`
@@ -275,6 +278,22 @@ func (cfg *Config) validate() error {
 			return errors.New("commercial owner database requires commercial_owner_runtime")
 		}
 	}
+	if cfg.WalletTopUp.Alipay.Enabled || cfg.WalletTopUp.WeChat.Enabled {
+		if cfg.MoneyOwnerDatabase == nil || cfg.CommercialOwnerDatabase == nil || cfg.Identity.TenantDirectoryToken == "" {
+			return errors.New("wallet top-up requires money and commercial owner databases and current directory authorization")
+		}
+	}
+	if owner := cfg.MoneyOwnerDatabase; owner != nil {
+		if err := owner.validate("moneyOwnerDatabase"); err != nil {
+			return err
+		}
+		if owner.User != "money_owner_runtime" || cfg.CommercialOwnerDatabase == nil {
+			return errors.New("money owner database requires money_owner_runtime and commercial owner")
+		}
+		if cfg.Referrals.Enabled && (owner.Host != cfg.Referrals.Database.Host || owner.Port != cfg.Referrals.Database.Port || owner.Database != cfg.Referrals.Database.Database) {
+			return errors.New("money owner must use the same canonical settlement database read by referrals")
+		}
+	}
 	if cfg.Membership != nil {
 		if err := cfg.Membership.validate(cfg.Identity); err != nil {
 			return err
@@ -457,8 +476,9 @@ func (cfg *Config) CoreConfig() *coreconfig.Config {
 		return nil
 	}
 	core := &coreconfig.Config{
-		Referrals: cfg.Referrals.ReferralsConfig,
-		Workbench: coreconfig.WorkbenchConfig{Enabled: true},
+		WalletTopUp: cfg.WalletTopUp,
+		Referrals:   cfg.Referrals.ReferralsConfig,
+		Workbench:   coreconfig.WorkbenchConfig{Enabled: true},
 		ListingKit: coreconfig.ListingKitConfig{
 			PlatformAdminUsers: append([]string(nil), cfg.ListingKitAuthorization.PlatformAdminUsers...),
 			PlatformAdminRoles: append([]string(nil), cfg.ListingKitAuthorization.PlatformAdminRoles...),

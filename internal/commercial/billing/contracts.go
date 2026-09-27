@@ -541,6 +541,8 @@ type CreateResourceOrderRequest struct {
 
 type CreateWalletTopUpOrderRequest struct {
 	OrganizationID string
+	ActorID        string
+	Provider       PaymentProvider
 	Currency       string
 	AmountMinor    int64
 	IdempotencyKey string

@@ -19,8 +19,17 @@ type PaymentStatus string
 
 const PaymentSettled PaymentStatus = "SETTLED"
 
+const (
+	PaymentPurposeWalletTopUp   = "WALLET_TOP_UP"
+	CommissionNonCommissionable = "NON_COMMISSIONABLE"
+	PayerUnattributedExternal   = "UNATTRIBUTED_EXTERNAL"
+)
+
 type PaymentSettlement struct {
 	PaymentID                 string
+	PaymentPurpose            string
+	CommissionTreatment       string
+	PayerBinding              string
 	PayerUserID               string
 	Currency                  string
 	GrossAmountMinor          int64
@@ -55,7 +64,14 @@ func NormalizeTimestamp(value time.Time) time.Time {
 }
 
 func (p PaymentSettlement) Validate() error {
-	if strings.TrimSpace(p.PaymentID) == "" || strings.TrimSpace(p.PayerUserID) == "" || strings.TrimSpace(p.Currency) == "" || p.Status != PaymentSettled || p.SettledAt.IsZero() || p.GrossAmountMinor <= 0 || p.DiscountAmountMinor < 0 || p.CommissionableAmountMinor <= 0 || p.DiscountAmountMinor > p.GrossAmountMinor || p.CommissionableAmountMinor > p.GrossAmountMinor-p.DiscountAmountMinor || strings.TrimSpace(p.ProviderReference) == "" || p.Version < 1 {
+	if strings.TrimSpace(p.PaymentID) == "" || strings.TrimSpace(p.Currency) == "" || p.Status != PaymentSettled || p.SettledAt.IsZero() || p.GrossAmountMinor <= 0 || p.DiscountAmountMinor < 0 || p.DiscountAmountMinor > p.GrossAmountMinor || p.CommissionableAmountMinor > p.GrossAmountMinor-p.DiscountAmountMinor || strings.TrimSpace(p.ProviderReference) == "" || p.Version < 1 {
+		return ErrInvalid
+	}
+	if p.PaymentPurpose == PaymentPurposeWalletTopUp {
+		if p.CommissionTreatment != CommissionNonCommissionable || p.PayerBinding != PayerUnattributedExternal || p.PayerUserID != "" || p.CommissionableAmountMinor != 0 || p.DiscountAmountMinor != 0 || p.Currency != WalletCurrencyCNY {
+			return ErrInvalid
+		}
+	} else if p.PaymentPurpose != "" || p.CommissionTreatment != "" || p.PayerBinding != "" || strings.TrimSpace(p.PayerUserID) == "" || p.CommissionableAmountMinor <= 0 {
 		return ErrInvalid
 	}
 	return nil

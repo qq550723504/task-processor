@@ -68,6 +68,32 @@ No table, DTO, BFF, or UI page may become a second fact owner.
 
 ## 3. Money contract
 
+The approved #481 [dual-channel top-up design](alipay-wallet-topup-design.md)
+extends this contract for provider wallet top-ups. The frozen policy is exact
+CNY principal credit (payment gross equals wallet credit), debt repayment first,
+platform-paid channel fees, no bonus/discount and no referral commission.
+Unattributed external payers are permitted; the original order fixes the
+beneficiary Organization. Existing non-top-up commission semantics are unchanged.
+
+Provider top-ups require atomic accepted facts, channel-scoped claims and an
+immutable exact posting receipt. The mutable wallet snapshot is not completion
+proof. Refund/chargeback facts retain their full amount R; the shared wallet
+principal effect W is bounded by the original credit, and excess E is recorded
+for reconciliation without adding wallet debt (R = W + E). Typed reversal
+identity is (payment_id, reversal_kind, reversal_id), including hold and readback.
+Refund reservations are distinct from purchase reservations. Confirmed refunds
+atomically settle their hold and receipt, even when intervening reversals exhaust
+principal; unused hold value repays debt before becoming available. New refund
+admission remains bounded by confirmed reversals plus outstanding refund holds.
+
+Only a currently verified platform administrator can approve or first dispatch a
+refund. Its organization-neutral route obtains the beneficiary from the original
+order. Recovery can reconcile the original admitted effect after revocation.
+Verified late payments are posted to the original Organization through the
+dedicated top-up correction; cancelled subscription orders are never revived.
+These additions do not authorize real channel operations or enable a channel
+without required merchant, amount, credential and callback configuration.
+
 ### 3.1 Currency and precision
 
 The first wallet capability is CNY only.

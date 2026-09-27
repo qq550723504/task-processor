@@ -20,6 +20,7 @@ type OrderStore interface {
 }
 
 type Service struct {
+	topups                 *walletTopUps
 	offers                 OfferCatalog
 	quotes                 QuoteEngine
 	orders                 OrderStore
@@ -317,8 +318,8 @@ func terminalGrantError(err error) bool {
 	return errors.Is(err, orgresource.ErrForbidden) || errors.Is(err, orgresource.ErrInvalidInput)
 }
 
-func (s *Service) CreateWalletTopUpOrder(context.Context, CreateWalletTopUpOrderRequest) (Order, error) {
-	return Order{}, ErrFeatureUnavailable
+func (s *Service) CreateWalletTopUpOrder(ctx context.Context, request CreateWalletTopUpOrderRequest) (Order, error) {
+	return s.createWalletTopUp(ctx, request)
 }
 
 func (s *Service) ReadOrder(ctx context.Context, organizationID, orderID string) (Order, error) {

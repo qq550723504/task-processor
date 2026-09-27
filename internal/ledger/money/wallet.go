@@ -35,6 +35,9 @@ const (
 	WalletEntryRefundReversal     WalletEntryKind = "REFUND_REVERSAL"
 	WalletEntryChargebackReversal WalletEntryKind = "CHARGEBACK_REVERSAL"
 	WalletEntryDebtRepayment      WalletEntryKind = "DEBT_REPAYMENT"
+	WalletEntryRefundReserve      WalletEntryKind = "REFUND_RESERVE"
+	WalletEntryRefundConfirm      WalletEntryKind = "REFUND_CONFIRM"
+	WalletEntryRefundRelease      WalletEntryKind = "REFUND_RELEASE"
 )
 
 type OrganizationWalletSnapshot struct {
@@ -120,6 +123,18 @@ func (entry WalletEntry) Validate() error {
 		}
 	case WalletEntryDebtRepayment:
 		if strings.TrimSpace(entry.PaymentID) == "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta != 0 || entry.ReservedDelta != 0 || entry.DebtDelta >= 0 {
+			return ErrInvalid
+		}
+	case WalletEntryRefundReserve:
+		if entry.PaymentID == "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta >= 0 || entry.ReservedDelta <= 0 || entry.AvailableDelta+entry.ReservedDelta != 0 || entry.DebtDelta != 0 {
+			return ErrInvalid
+		}
+	case WalletEntryRefundConfirm, WalletEntryRefundRelease:
+		if entry.PaymentID == "" || !isCanonicalWalletIdentifier(entry.CommercialOrderID) || entry.AvailableDelta < 0 || entry.ReservedDelta >= 0 || entry.DebtDelta > 0 {
+			return ErrInvalid
+		}
+		released, repaid := -entry.ReservedDelta, -entry.DebtDelta
+		if repaid > released || entry.AvailableDelta > released-repaid || (entry.Kind == WalletEntryRefundRelease && entry.AvailableDelta != released-repaid) {
 			return ErrInvalid
 		}
 	default:

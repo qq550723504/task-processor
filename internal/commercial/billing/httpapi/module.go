@@ -35,7 +35,10 @@ const (
 	maxBodyBytes                = 16 * 1024
 )
 
-type Handler struct{ service *billing.Service }
+type Handler struct {
+	service                    *billing.Service
+	alipayNotify, wechatNotify NotificationVerifier
+}
 
 func NewHandler(service *billing.Service) *Handler { return &Handler{service: service} }
 
@@ -365,14 +368,7 @@ func (h *Handler) Order(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
-	writeJSON(c, http.StatusOK, orderResponseFromDomain(order))
-}
-
-func (h *Handler) TopUpIntent(c *gin.Context) {
-	if _, ok := writeOrganization(c); !ok {
-		return
-	}
-	writeError(c, http.StatusServiceUnavailable, "FEATURE_UNAVAILABLE")
+	h.writeOrderWithTopUp(c, http.StatusOK, order)
 }
 
 func Routes(handler *Handler) ([]httproute.Descriptor, error) {
@@ -395,6 +391,9 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 		{http.MethodGet, orderSummaryPath, read, handler.OrderSummary},
 		{http.MethodGet, orderDetailPath, read, handler.Order},
 		{http.MethodPost, topUpIntentPath, topup, handler.TopUpIntent},
+		{http.MethodGet, topUpOptionsPath, read, handler.TopUpOptions},
+		{http.MethodPost, topUpCheckoutPath, topup, handler.TopUpCheckout},
+		{http.MethodPost, topUpCancelPath, topup, handler.TopUpCancel},
 		{http.MethodGet, subscriptionOfferPath, read, handler.SubscriptionOffers},
 		{http.MethodPost, subscriptionQuotePath, purchase, handler.CreateSubscriptionQuote},
 		{http.MethodPost, subscriptionOrderPath, purchase, handler.CreateSubscriptionOrder},
@@ -402,13 +401,13 @@ func Routes(handler *Handler) ([]httproute.Descriptor, error) {
 	} {
 		handler := route.handler
 		rejectUnreadRequestBody := true
-		if route.method == http.MethodPost && (route.path == quotePath || route.path == orderPath || route.path == subscriptionQuotePath || route.path == subscriptionOrderPath) {
+		if route.method == http.MethodPost {
 			rejectUnreadRequestBody = false
 			handler = httproute.WithRequestBodyReadTimeout(10*time.Second, handler)
 		}
 		routes = append(routes, httproute.Descriptor{Method: route.method, Path: route.path, Module: "commercial-billing", Permission: route.permission, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: rejectUnreadRequestBody, Handler: handler})
 	}
-	return routes, nil
+	return append(routes, handler.topUpExternalRoutes()...), nil
 }
 
 type walletResponse struct {
@@ -479,6 +478,7 @@ type subscriptionQuoteResponse struct {
 	CreatedAt       string `json:"created_at"`
 }
 type orderResponse struct {
+	TopUp               *topUpSummaryResponse                `json:"top_up,omitempty"`
 	OrderID             string                               `json:"order_id"`
 	OrganizationID      string                               `json:"organization_id"`
 	Kind                string                               `json:"kind"`

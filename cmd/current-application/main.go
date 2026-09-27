@@ -65,6 +65,9 @@ func execute() error {
 		OpenCommercialOwner: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
+		OpenMoneyOwner: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
+			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
+		},
 		OpenProductAcquisition: func(ctx context.Context, cfg currentapplication.DatabaseConfig) (*gorm.DB, error) {
 			return platformdatabase.OpenExistingWritableContext(ctx, databaseConfig(cfg))
 		},
@@ -104,6 +107,9 @@ func execute() error {
 			}
 			if features.CommercialOwnerDB != nil {
 				options = append(options, httpapi.WithCommercialOwnerDatabase(features.CommercialOwnerDB))
+			}
+			if features.MoneyOwnerDB != nil {
+				options = append(options, httpapi.WithMoneyOwnerDatabase(features.MoneyOwnerDB))
 			}
 			if features.ProductAcquisitionDB != nil {
 				options = append(options, httpapi.WithProductAcquisition(features.ProductAcquisitionDB))
