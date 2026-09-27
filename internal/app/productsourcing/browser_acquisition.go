@@ -352,5 +352,10 @@ func (s *BrowserAcquisitionService) failFetch(parent context.Context, causeCtx c
 	if errors.Is(cause, sourcing.ErrAcquisitionUnavailable) {
 		return sourcing.ErrAcquisitionUnavailable
 	}
+	// The source was collected successfully; a Catalog read failure afterwards is
+	// an internal dependency outage, not 1688 being unavailable.
+	if errors.Is(cause, catalog.ErrRepositoryUnavailable) {
+		return sourcing.ErrAcquisitionUnavailable
+	}
 	return sourcing.ErrAcquisitionFailed
 }

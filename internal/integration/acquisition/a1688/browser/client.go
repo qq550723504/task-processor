@@ -302,7 +302,17 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	}
 	phaseDone := make(chan phaseResult, 1)
 	go func() {
+		// The whole phase is inside the race: the automatic captcha attempt and the
+		// re-check perform further uncancellable protocol calls, so bounding only
+		// the first detection would leave the rest uninterruptible.
 		challenged, err := detectChallenge(page)
+		if err == nil && challenged && !isAuthenticationWall(page) {
+			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {
+				phaseDone <- phaseResult{false, ctx.Err()}
+				return
+			}
+			challenged, err = detectChallenge(page)
+		}
 		phaseDone <- phaseResult{challenged, err}
 	}()
 	var inspected phaseResult
@@ -319,18 +329,7 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	if challenged {
 		// Design A4: at most ONE bounded automatic attempt, then an honest
 		// failure. No manual path, no retry-to-success, no fabricated product.
-		// An authentication wall is not solvable by dragging a slider, so the
-		// attempt is skipped rather than burning the captcha budget on it.
-		if !isAuthenticationWall(page) {
-			if _, solveErr := trySolveCaptcha(ctx, page); solveErr != nil && ctx.Err() != nil {
-				return sourcing.AcquisitionEvidence{}, ctx.Err()
-			}
-		}
-		if stillChallenged, checkErr := detectChallenge(page); checkErr != nil {
-			return sourcing.AcquisitionEvidence{}, checkErr
-		} else if stillChallenged {
-			return sourcing.AcquisitionEvidence{}, ErrChallenge
-		}
+		return sourcing.AcquisitionEvidence{}, ErrChallenge
 	}
 
 	// page.Evaluate neither accepts nor observes ctx, so a page that stalls the
@@ -465,6 +464,11 @@ func (c *Client) routeGuard(route playwright.Route, policyAborts *atomic.Bool) {
 		Headers: resp.Headers(),
 		Body:    string(body),
 	})
+}
+
+// trySolve is the single bounded automatic captcha attempt (design A4).
+func (c *Client) trySolve(ctx context.Context, page playwright.Page) (bool, error) {
+	return trySolveCaptcha(ctx, page)
 }
 
 // originAllowed reports whether target is under one of the allowed origins.

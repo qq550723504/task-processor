@@ -659,3 +659,40 @@ window.context = {"result":{"data":{
 }}};
 </script></body></html>`
 }
+
+// An oversized collection must be dropped whole, not published as a lossy
+// prefix that looks like the complete source fact.
+func TestBrowserAcquireDropsOversizedCollection(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, manyImagesPage(maxImages+5))
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+	require.Empty(t, evidence.Images, "an oversized image list must be dropped, not truncated to a prefix")
+	reported := false
+	for _, w := range evidence.Warnings {
+		if w.Code == "source_evidence_truncated" && w.Field == "images" {
+			reported = true
+		}
+	}
+	require.True(t, reported, "the dropped collection must be reported")
+}
+
+func manyImagesPage(n int) string {
+	images := make([]any, 0, n)
+	for i := 0; i < n; i++ {
+		images = append(images, "https://cbu01.alicdn.com/i"+itoa(i)+".jpg")
+	}
+	raw := map[string]any{"result": map[string]any{"data": map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Many images bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"gallery": map[string]any{"fields": map[string]any{"offerImgList": images}},
+	}}}
+	encoded, _ := json.Marshal(raw)
+	return "<!doctype html><html><head><title>Many images</title></head><body><script>window.context = " +
+		string(encoded) + ";</script></body></html>"
+}

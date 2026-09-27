@@ -150,7 +150,13 @@ func extractScript() string {
     markTrunc(field);
     return '';
   };
-  const cap = (arr, n, field) => { if (arr.length > n) markTrunc(field); return arr.slice(0, n); };
+  // A capped collection is NOT the source fact. Slicing it would publish a lossy
+  // prefix as if it were complete, so an oversized collection is dropped whole
+  // and the field is reported.
+  const cap = (arr, n, field) => {
+    if (arr.length > n) { markTrunc(field); return []; }
+    return arr;
+  };
   // Protocol-relative URLs are a known 1688 image shape. MapAcquisitionEvidence
   // requires an https scheme, so they must be normalized rather than emitted as
   // "//host/..." which would fail the whole acquisition.
