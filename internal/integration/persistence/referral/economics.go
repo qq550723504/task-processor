@@ -510,6 +510,46 @@ func (r *Repository) ListPendingWithdrawals(ctx context.Context) ([]economics.Wi
 	return out, nil
 }
 
+func (r *Repository) ReplayWithdrawal(ctx context.Context, input economics.WithdrawalReplayRequest) (economics.Withdrawal, bool, error) {
+	if r == nil || r.db == nil || input.Referrer == "" || input.PayoutMethodID == "" || input.Currency != economics.CurrencyCNY || input.AmountMinor < 0 || input.IdempotencyKey == "" || input.ExpectedVersion < 0 {
+		return economics.Withdrawal{}, false, economics.ErrInvalid
+	}
+	var op withdrawalOperationRow
+	if err := r.db.WithContext(ctx).Where("idempotency_key=?", input.IdempotencyKey).Take(&op).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return economics.Withdrawal{}, false, nil
+		}
+		return economics.Withdrawal{}, false, economics.ErrUnavailable
+	}
+	var row withdrawalRow
+	if err := r.db.WithContext(ctx).Where("id=?", op.WithdrawalID).Take(&row).Error; err != nil {
+		return economics.Withdrawal{}, true, economics.ErrUnavailable
+	}
+	out, err := committedWithdrawalReplay(input, op, row)
+	if err != nil {
+		return economics.Withdrawal{}, true, err
+	}
+	return out, true, nil
+}
+
+func committedWithdrawalReplay(input economics.WithdrawalReplayRequest, op withdrawalOperationRow, row withdrawalRow) (economics.Withdrawal, error) {
+	if row.ID == "" || row.ID != op.WithdrawalID {
+		return economics.Withdrawal{}, economics.ErrUnavailable
+	}
+	if row.Referrer != input.Referrer {
+		return economics.Withdrawal{}, economics.ErrIdempotencyConflict
+	}
+	request := economics.RequestWithdrawal{
+		Referrer: input.Referrer, Currency: input.Currency, PayoutMethodID: input.PayoutMethodID,
+		AmountMinor: input.AmountMinor, Method: economics.WithdrawalMethod(row.Method),
+		IdempotencyKey: input.IdempotencyKey, ExpectedVersion: input.ExpectedVersion,
+	}
+	if op.Fingerprint != withdrawalFingerprint(request) {
+		return economics.Withdrawal{}, economics.ErrIdempotencyConflict
+	}
+	return withdrawalFromRow(row), nil
+}
+
 func (r *Repository) RequestWithdrawal(ctx context.Context, input economics.RequestWithdrawal) (economics.Withdrawal, error) {
 	if r == nil || r.db == nil || input.Referrer == "" || input.PayoutMethodID == "" || input.Currency != economics.CurrencyCNY || input.AmountMinor < economics.MinimumWithdrawalMinor || input.IdempotencyKey == "" || (input.Method != economics.MethodAlipay && input.Method != economics.MethodBankTransfer) || input.ExpectedVersion < 0 {
 		return economics.Withdrawal{}, economics.ErrInvalid

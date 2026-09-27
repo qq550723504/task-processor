@@ -1,6 +1,8 @@
-# 个人与企业主体认证：腾讯电子签接入设计候选
+# 个人与企业主体认证：腾讯企业认证与阿里云个人认证
 
-> Status: **企业首次引导认证（§13）：IMPLEMENTATION_READY；个人首次绑定：NOT_READY**。§13 限定本轮企业实现范围，其余候选不成为生产合同。
+> Status: **企业首次引导认证（§13）：IMPLEMENTATION_READY；阿里云个人首次绑定（§14）：IMPLEMENTATION_READY**。§14 是 2026-09-27 用户采用阿里云及次数规则后的当前个人设计；此前腾讯个人候选仅保留历史证据。
+>
+> §1–§12 记录最初候选及核对过程；当前用户路径、产品决定与实施合同以企业 §13、个人 §14 为准。旧“个人未开放/等待腾讯证明/阿里仅备选”不再作为个人离线实现前置，真实服务试用另行验收。
 >
 > Issue: #510；Design Basis: Independent Architecture；日期：2026-09-26。
 >
@@ -23,7 +25,7 @@
 - 第一候选：腾讯电子签的个人实名与企业认证链接/结果接口；不是泛指腾讯云 OCR 或慧眼 API。
 - 用户授权 Agent 决定具体方案后，本轮选择企业版自建应用与官方 `ess` Go SDK；不混用第三方应用/子客合同。如果实际开通模式不同，须按实际接口调整，不能隐式切换。
 - 用户本轮已确认：个人允许复用供应商已有实名，不承诺每次重新活体；企业必须核实本次经办授权；认证不自动增加硕米平台权限。允许复用实名不是允许跳过账户与实际主体绑定。
-- 阿里云仅为备选，不双接入，不跨厂商自动重试。企业要素一致性核验不能自动替代企业经办人授权核验。
+- 2026-09-27 新决定替代原“阿里云仅备选”：个人采用阿里云，企业继续 §13 腾讯；同一用途不做双供应商实现或自动重试。企业要素一致性核验不能自动替代企业经办人授权核验。
 - 优先托管核验，不预建证件存储、OCR 平台、人脸算法或内部审核工作台。正常通过后不默认再加一次内部人工审核。
 - 不改变 ZITADEL / Auth.js 登录与会话、`authidentity`、`workbenchcontext` 或现有 `authz` 的事实来源。
 - 不新增企业成员权限、钱包能力、签约/印章/自动签能力；认证通过不自动授予管理员权限，不自动放行提现或其他业务。
@@ -227,6 +229,66 @@ API：GET `/api/v1/account/organization/verification`；POST 同路径 `/applica
 ### 13.5 验证与开放
 
 TDD 覆盖真实规则：同键/并发只创建一次、跨组织/错 actor/未验证手机号拒绝、签名篡改/脱敏手机号/错公司不通过、重复消息/回调先于创建响应、创建超时/重启不重发。持久化事务使用已有 PostgreSQL 测试方式，UI/BFF 使用既有 Vitest；不建设新验收工具。G4 真实个人/法人/非法人样例仍分别 NOT_RUN，企业 runtime 默认关闭，获独立真实测试授权及通过对应验证后才能开放；开发自检不宣称上线。
+
+## 14. 阿里云个人首次认证与次数限制
+
+独立高风险边界检查已完成，无 BLOCKER，本节为 IMPLEMENTATION_READY。SceneId 列及按原值查询作为 IMPLEMENTATION_TEST 落地；真实调用/用户验收仍 NOT_RUN。
+
+### 14.1 产品决定与范围
+
+2026-09-27 用户明确采用阿里云个人认证，并接受：每账户累计最多 5 次（跨天不重置）、北京时间每天最多 3 次、发起间隔至少 60 秒、同时只有一项进行中申请；三要素与刷脸合计一次，发起后的失败、超时均占次数，重复提交不重复扣次，数值由服务端配置。允许本站处理姓名、身份证号文本，手机必须是同一人实名的大陆号码；人脸仍由供应商托管。此决定替代个人路径原腾讯托管全部证件/可复用旧实名方案。
+
+用户结果：在既有 `/workbench/account/profile/verification` 的个人标签输入姓名、大陆身份证号并同意用途说明，使用服务端当前已验证手机号核验三要素，然后前往阿里云刷脸，回来点击“刷新认证结果”；显示真实状态、今日剩余次数、下次可发起时间。Figma authority 仍为 §13.1 的个人节点与现有账户入口；字段和托管方式按本次产品决定调整。原企业路径保持不变。
+
+本次不做：更换已认证身份、跨账户身份证唯一性限制、定期重认证、撤销/风控平台、自动企业增权、提现准入（#519 的独立消费者）、新审核工作台、回调平台、真实收费样例、部署。取得 VERIFIED 仅是该账户的主体认证事实，不改 IAM/组织/钱包。
+
+### 14.2 证明链与官方合同
+
+采用官方 Go SDK `github.com/alibabacloud-go/cloudauth-20190307/v4 v4.14.0`。服务端固定 HTTPS 接入点、关闭 SDK 重试和地域自动切换，不自行实现签名。
+
+1. 当前登录主体从 CurrentIdentity 取得；通过既有 SelfProfileReader 读取同一 UserID 的 PhoneNumberVerified=true、+86 手机号，请求不得提供 userId、phone、SceneId 或供应商 CertifyId。
+2. [Mobile3MetaSimpleVerify](https://help.aliyun.com/zh/id-verification/information-verification/developer-reference/esf1ff158mxowkk6) 使用该手机和本次姓名/身份证，只有 Code=200 且 BizCode=1 才继续。2/3 明确未通过；不把接口请求成功当三要素成功。
+3. [InitFaceVerify / DescribeFaceVerify](https://help.aliyun.com/zh/id-verification/financial-grade-id-verification/server-side-integration-2) 固定 ID_PRO、IDENTITY_CARD、LIVENESS、RarelyCharacters=N、ProcedurePriority=url、VideoEvidence=false，CertName/CertNo 与三要素完全相同。OuterOrderNo 使用申请 UUID 去掉连字符，仅作关联，不假定供应商幂等。MetaInfo 由[官方网页 SDK](https://help.aliyun.com/zh/id-verification/financial-grade-id-verification/integration-by-using-pc-or-mobile-h5-pages-01)实时获取，不能使用示例值。ReturnUrl 固定配置为本站认证页；不传 CallbackUrl，不读取回跳中的成功标识。
+4. SDK 返回的 CertifyId 只保存到原申请。用户点击刷新后服务端用已保存的 SceneId/CertifyId 查询，Code=200、Passed=T 才确认；Passed=F 的未完成和失败不可混同，只有文档明确的失败 SubCode 201–206 终结为 REJECTED，其他未完成保持 PENDING。不依赖通常为空的 IdentityInfo，也不拼接不同申请结果。
+
+URL 来自经过 TLS/官方 SDK 认证的服务端响应，须为 HTTPS、非空主机、无用户名/密码/fragment，最长 8192 字节；不接受用户提供的 URL。官方说明认证链接域名可能变更，故不硬编码厂商域名枚举。平台仅返回链接供浏览器跳转，绝不由服务端抓取其内容。网页 SDK 地址固定为 `https://o.alicdn.com/yd-cloudauth/cloudauth-cdn/jsvm_all.js`，仅用户同意并发起时加载。
+
+### 14.3 Owner、持久化与并发
+
+复用 `internal/subjectverification`，新增有界 PersonalService/PersonalStore/PersonalProvider 合同；`internal/integration/aliyunverification` 封装官方 SDK；原认证 persistence 包实现个人存储。app/httpapi 注入，个人 HTTP/BFF → owner → store/provider；React 只消费投影。个人以全局登录 UserID 归属，跨组织切换不增加额度，组织管理员不能读他人身份申请。
+
+复用 source_accounts 数据库、schema owner 与 runtime，新增一张 `personal_verification_applications`，沿现有 Goose schema-init 追加新安装 schema。API 仅校验 schema，不执行建表。列包含：UUID、user_id、scope、idempotency_key、input/identity/phone HMAC、masked_phone、state、phone_verified_at、provider_scene_id、provider_certify_id、encrypted_url、created/expires/verified_at、refresh_token/refresh_after。唯一(user_id,idempotency_key)，索引(user_id,created_at)。不保留原始姓名/身份证/手机号/MetaInfo/供应商原始响应或人脸照片；链接复用既有 AES-GCM 和 scope/user/application AAD。三要素与认证时间、CertifyId、身份 HMAC 是最小审计证据。
+
+每个修改事务先持有 PostgreSQL `pg_advisory_xact_lock(hashtextextended('personal-verification:' || user_id,0))`，所有 reserve/link/result/refresh 路径使用同一锁，哈希碰撞仅增加串行等待。取得锁后读数据库 clock_timestamp；不使用浏览器或进程内计数。先查同键：同输入摘要回读原申请，不计次；不同摘要/作用域冲突。MetaInfo 不进入幂等输入摘要（设备元信息变动不能使同一次业务请求多扣费）。然后检查最新申请（已认证禁止重新绑定；未到期 UNKNOWN/PENDING 禁止新申请）、该账户全部申请行数（累计限额）/当日行数及最近 created_at。额度日按数据库时间换算 Asia/Shanghai，范围半开 [00:00,次日00:00)，跨日仍遵守 60 秒间隔。合法新申请和占用次数是同一条 INSERT/同一事务，提交后才允许付费调用。runtime 无 DELETE 权限，服务重启、组织切换、幂等键更换或配置 Scope 轮换均不清空账户次数。
+
+Limits 缺省累计 5、每日 3、间隔 60 秒，配置只接受正整数（累计/每日 1–100、间隔 1–86400 秒，每日不大于累计）；首版没有自动或人工重置次数入口；改变配置只改变门槛，不重置已发生次数。已发出付费调用前的本地输入/权限失败不占次数；持久化预占成功后即计一次，后续进程中断、供应商拒绝、超时或响应丢失不退款，也不自动重发。
+
+### 14.4 状态、UNKNOWN 与恢复
+
+| 事件 | 原子效果 / 恢复责任 |
+| --- | --- |
+| reserve 成功 | UNKNOWN，created_at 为数据库时间，保守 expires_at=created+35min；提交后依次三要素、初始化，各最多一次 |
+| 三要素 BizCode=2/3 | REJECTED，无刷脸调用，次数保留；按 60 秒/当日规则允许用户新申请 |
+| 三要素通过 | 保存 phone_verified_at，再发 Init；若保存失败则停止，不继续 Init |
+| Init 返回有效链接/CertifyId | 同申请 UNKNOWN→PENDING，保存加密链接和 response-observed+30min 到期，供应商实际 30min 有效期内继续同一申请 |
+| 任一调用未知/进程退出/落库失败 | 保留 UNKNOWN，无自动重发；同键回读。35min 后投影 EXPIRED，用户可显式新申请，仍受次数限制；不建设后台恢复器 |
+| GET 本地读取 | 返回状态/额度/服务端时钟。已到期 UNKNOWN/PENDING 投影 EXPIRED，不自动查询、不发起调用 |
+| 显式 POST refresh | 仅本人最新 PENDING 且存有 CertifyId、当前已验证手机号 HMAC 与原申请一致；允许到期后查询旧结果，但若已被新申请替代则拒绝 |
+| refresh 并发/响应丢失 | 事务领 UUID token 与 10 秒 lease，再执行一次最多 7 秒只读查询；结果写入要求 latest ID/token 匹配。lease 后可重试只读查询；GET/刷新不占认证次数 |
+| 查询 Passed=T | 同事务确认三要素证据、当前申请/token后写 VERIFIED/verified_at，清除链接；旧申请/旧 token 的迟到结果无法覆盖新申请 |
+| 已确认失败 | REJECTED，清除链接；供应商查询错误/未完成保持 PENDING，lease 到期后可再次刷新 |
+
+所有查询结果写入与新申请同一账户锁串行：若新申请先成立，旧查询拒绝；若 VERIFIED 先成立，新申请拒绝。没有自动 mutation 重试；只读 Describe 重试由用户点击触发。认证结果绑定本次发起时已验证手机；进行中手机变更拒绝继续/确认，用户待到期后重新发起。成功后修改联系方式不改写已存身份事实，本轮不定义全局联系方式重新认证政策。
+
+### 14.5 HTTP、配置、隐私与验证
+
+API：GET `/api/v1/account/verification`；POST `/api/v1/account/verification/applications`；POST `/api/v1/account/verification/refresh`（仅本地 applicationId）。均 CurrentIdentity，无组织权限前提，所有 owner 入参 actor 由服务端产生。POST start 为 name/idNumber/metaInfo/consent/idempotencyKey；严格 JSON 16KiB、未知字段拒绝。BFF 同源检查、服务端 token、无 query 透传，禁止缓存，跳转不判成功。响应只含脱敏手机号、状态、申请 ID、短期链接和 dailyLimit/dailyUsed/dailyRemaining/totalLimit/totalUsed/totalRemaining/resetAt/nextAllowedAt/serverTime；限额/冷却返回 429 和 Retry-After，冲突 409，依赖不可用 503。上游错误、原始 body、凭据和身份文本不写日志/URL/错误信息/浏览器持久缓存。前端提交后清空证件文本，网络不确定时先读状态，不自动重新提交。
+
+start 整体 deadline 20 秒，单次 SDK 7 秒；refresh 10 秒，BFF 22 秒，请求读体 deadline 一并约束。SDK 禁自动重试、日志和调试；本地读不向供应商发请求。新私密文件 `ALIYUN_PERSONAL_VERIFICATION_CONFIG_FILE` 缺失则功能 unavailable；字段 Scope/AccessKeyID/AccessKeySecret/SceneID/ReturnURL/DataEncryptionKey/TotalLimit/DailyLimit/MinIntervalSeconds。独立个人配置不要求腾讯配置存在。控制台关闭资料留存/OSS 授权；不申请或拉取影像资料。
+
+Legacy decision: RETIRE（腾讯个人候选不进入生产）；Reusable behavior: 当前主体认证的凭据保护、路由/BFF 授权和 schema 生命周期；Current owner: subjectverification；Cutover/deletion condition: 本节成为唯一个人生产合同，无兼容/迁移或第二事实源。
+
+必要开发证据：TDD 核验三要素失败不刷脸、固定身份与供应商 ID 查询、UNKNOWN 不重发、错误主体不能确认；真实 PostgreSQL 测试并发不同键/同键、累计 5 次且跨日不重置、跨日和 60 秒、失败计次、重启读额度、lease/旧结果竞争；HTTP/BFF 测本人身份、未验证手机、恶意字段/大体积/同源与敏感输出；UI 测剩余次数/冷却/错误与继续原申请。使用现有测试工具，不建专项平台。真实阿里云调用、用户试用和上线仍 NOT_RUN；完成实现交出私密配置说明/启动入口，由用户或指定独立验证者验收。
 
 [p1]: https://cloud.tencent.com/document/product/1323/105961
 [p2]: https://cloud.tencent.com/document/product/1323/106080

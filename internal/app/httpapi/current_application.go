@@ -328,6 +328,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 	}
 	var referralMaturity func(context.Context, time.Time) error
+	var personalKYC personalKYCReader
 	if factories.buildSubjectVerification != nil {
 		verification, err := factories.buildSubjectVerification(sourceAccountDB, cfg)
 		if err != nil {
@@ -337,6 +338,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return nil, errors.New("subject verification module unavailable")
 		}
 		modules = append(modules, verification)
+		if verificationModule, ok := verification.(subjectVerificationModule); ok {
+			personalKYC = verificationModule.personalKYC
+		}
 	}
 	includeAccountProfile := factories.buildAccountProfile != nil
 	if includeAccountProfile {
@@ -400,7 +404,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		if supplied.referralDB == nil {
 			return nil, errors.New("referrals dependencies unavailable")
 		}
-		module, err := buildReferralHTTPModule(ctx, supplied.referralDB, cfg)
+		module, err := buildReferralHTTPModule(ctx, supplied.referralDB, cfg, personalKYC)
 		if err != nil {
 			return nil, err
 		}
@@ -556,8 +560,16 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		}
 	}
 	if optional.SubjectVerification {
+		for _, route := range (verificationhttp.PersonalHandler{}).Routes() {
+			admitted = append(admitted, currentApplicationRoute{Method: route.Method, Path: route.Path})
+		}
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: verificationhttp.BasePath}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.BasePath + "/applications"}, currentApplicationRoute{Method: http.MethodPost, Path: verificationhttp.CallbackPath})
 		for _, route := range routes {
+			if route.Path == verificationhttp.PersonalBasePath || strings.HasPrefix(route.Path, verificationhttp.PersonalBasePath+"/") {
+				if route.Module != "subject-verification" || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyNone || route.Permission != "" || route.OrganizationTargetResolver != nil {
+					return errors.New("personal verification route loses account boundary")
+				}
+			}
 			if route.Path == verificationhttp.BasePath || route.Path == verificationhttp.BasePath+"/applications" {
 				if route.Module != "subject-verification" || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || route.Permission != authz.PermissionWorkbenchOrganizationMemberManage || route.OrganizationTargetResolver == nil || route.RequestTimeout != 15*time.Second {
 					return errors.New("verification route loses live admin boundary")
@@ -661,7 +673,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	return nil
 }
 
-func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Config) (kernelmodule.Module, error) {
+func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Config, personalKYC personalKYCReader) (kernelmodule.Module, error) {
 	r := cfg.Referrals
 	secrets := r.Prepared
 	if db == nil || secrets == nil || secrets.HTTPClient == nil || r.Issuer != cfg.ListingKit.Zitadel.IssuerURL {
@@ -719,7 +731,9 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	for keyID, key := range secrets.Encryption {
 		payoutEncryptionKeys[keyID] = append([]byte(nil), key...)
 	}
-	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
+	// Personal KYC admission is mandatory for new withdrawals. The rules projection
+	// intentionally remains v1 until a dual-schema UI is deployed and confirmed.
+	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), withdrawalReplay: repository, personalKYC: personalKYC, settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {

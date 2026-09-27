@@ -24,6 +24,7 @@ function classifyChangedPaths(paths, { full = false } = {}) {
       code_health: true,
       release_authority: true,
       capture_extension: true,
+      isolated_runtime: true,
     };
   }
 
@@ -33,6 +34,7 @@ function classifyChangedPaths(paths, { full = false } = {}) {
     code_health: false,
     release_authority: false,
     capture_extension: false,
+    isolated_runtime: false,
   };
 
   for (const raw of paths) {
@@ -94,6 +96,13 @@ function classifyChangedPaths(paths, { full = false } = {}) {
     result.release_authority ||= releaseAuthority;
     result.capture_extension ||=
       matchesPrefix(path, "extensions/1688-capture") ||
+      path === ".github/workflows/ci.yml" ||
+      path === ".github/scripts/ci-change-classifier.cjs" ||
+      path === ".github/scripts/ci-change-classifier.test.cjs";
+    result.isolated_runtime ||=
+      matchesPrefix(path, "scripts/issue357") ||
+      path === "scripts/issue357-runtime.mjs" ||
+      path === "web/listingkit-ui/scripts/current-application-final-acceptance.mjs" ||
       path === ".github/workflows/ci.yml" ||
       path === ".github/scripts/ci-change-classifier.cjs" ||
       path === ".github/scripts/ci-change-classifier.test.cjs";

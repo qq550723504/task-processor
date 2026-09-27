@@ -17,7 +17,7 @@ func TestSchemaHistoryIsDedicatedAndImmutable(t *testing.T) {
 		t.Fatalf("versionTableRelation = %q", versionTableRelation)
 	}
 	migrations := Migrations()
-	if len(migrations) != 2 || migrations[0].Version != 2026090901 || migrations[0].DownFnContext != nil || migrations[1].Version != 2026092601 || migrations[1].DownFnContext != nil {
+	if len(migrations) != 3 || migrations[0].Version != 2026090901 || migrations[0].DownFnContext != nil || migrations[1].Version != 2026092601 || migrations[1].DownFnContext != nil || migrations[2].Version != 2026092701 || migrations[2].DownFnContext != nil {
 		t.Fatalf("Migrations() = %#v", migrations)
 	}
 }

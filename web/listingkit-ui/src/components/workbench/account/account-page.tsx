@@ -35,12 +35,12 @@ export function AccountPage({ page, expectedUserId }: { page: AccountPageKind; e
   const identityChanged = !!context.user && context.user.id !== expectedUserId;
   const organization = context.effectiveOrganization;
   // A keyed request subtree discards both visible data and consumed query signals on context changes.
-  const scope = JSON.stringify([expectedUserId, context.user?.id, organization?.id, context.roles, context.error?.code, context.blockingError?.code, context.selectionRequired, context.isLoading]);
+  const scope = JSON.stringify([expectedUserId, context.user?.id, organization?.id, context.roles, context.error?.code, context.blockingError?.code, context.selectionRequired, context.isLoading, context.isSwitching]);
   let content;
   if (leaving || authError || identityChanged) content = <ReadError page={page} code={identityChanged ? "IDENTITY_CONTEXT_CHANGED" : "AUTHENTICATION_REQUIRED"} />;
-  else if (context.isSwitching || ((page === "organization" || page === "overview" || page === "profile-business" || page === "profile-verification") && context.isLoading)) content = <ConsoleState kind="loading" title="正在确认当前上下文">旧资料已清除。</ConsoleState>;
-  else if ((page === "organization" || page === "overview" || page === "profile-business" || page === "profile-verification") && (context.error || context.blockingError || !context.user || !organization || context.selectionRequired)) content = <ReadError code={context.blockingError?.code ?? context.error?.code ?? "ORGANIZATION_SELECTION_REQUIRED"} page={page} />;
-  else content = <ScopedAccount key={`${page}:${scope}`} page={page} scope={scope} expectedUserId={expectedUserId} organizationId={organization?.id} />;
+  else if ((context.isSwitching && page !== "profile-verification") || ((page === "organization" || page === "overview" || page === "profile-business") && context.isLoading)) content = <ConsoleState kind="loading" title="正在确认当前上下文">旧资料已清除。</ConsoleState>;
+  else if ((page === "organization" || page === "overview" || page === "profile-business") && (context.error || context.blockingError || !context.user || !organization || context.selectionRequired)) content = <ReadError code={context.blockingError?.code ?? context.error?.code ?? "ORGANIZATION_SELECTION_REQUIRED"} page={page} />;
+  else content = <ScopedAccount key={`${page}:${scope}`} page={page} scope={scope} expectedUserId={expectedUserId} organizationId={page === "profile-verification" && (context.isSwitching || context.isLoading || context.selectionRequired || context.error || context.blockingError) ? undefined : organization?.id} />;
   return <AccountShell pathname={accountPagePath(page)} title={title} description={page === "overview" ? "查看当前账户、企业与收益状态" : page === "profile" ? "查看你的账户信息与当前资料状态" : page === "profile-settings" ? "管理账户信息、联系方式与登录安全" : page === "profile-business" ? "维护用于业务服务匹配的经营画像" : page === "profile-verification" ? "查看身份与企业授权认证状态" : "查看当前企业信息与项目访问权限"}>{content}</AccountShell>;
 }
 
@@ -60,11 +60,14 @@ function AccountRequest({ page, scope, expectedUserId, organizationId, sequence,
     };
     if (profileSection(page)) {
       const readsBusinessProfile = page === "profile" || page === "profile-business";
-      const readsOrganization = page === "profile-verification";
+      const readsOrganization = page === "profile-verification" && organizationId;
       const [profile, businessProfile, organization] = await Promise.all([
         getAccountProfile({ expectedUserId, signal }),
         readsBusinessProfile ? business(page === "profile-business") : Promise.resolve(null),
-        readsOrganization ? getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal }) : Promise.resolve(null),
+        readsOrganization ? getAccountOrganization({ expectedUserId, expectedOrganizationId: organizationId!, signal }).catch(error => {
+          if (error instanceof AccountReadError && ["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED"].includes(error.code)) throw error;
+          return null;
+        }) : Promise.resolve(null),
       ]);
       return { kind: "profile" as const, profile, business: businessProfile, organization };
     }

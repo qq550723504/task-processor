@@ -1,13 +1,71 @@
 # Local account center Compose
 
+## Personal verification (optional, #510)
+
+At `/workbench/account/profile/verification`, a signed-in account can use the
+personal tab to verify its current verified `+86` phone against its name/ID and
+then complete Aliyun ID_PRO face verification. Refreshing the result queries
+the application's saved scene/CertifyId. Browser redirects never confirm identity.
+
+Default limits are **5 attempts total per account, 3 per Beijing calendar day,
+60 seconds between starts, and one active application**. Phone verification and
+face initialization together consume one attempt. Failure, timeout, and an
+unknown outcome retain that attempt; duplicate idempotency keys do not consume
+another. Days, organization changes, service restarts, and provider configuration
+changes do not reset the lifetime count. Existing applications can still be
+continued/queried after exhaustion. There is no reset or rebind endpoint.
+
+This capability is **disabled by default**; no real Aliyun calls or product
+acceptance are implied by local tests. Preparing an authorized trial requires:
+
+1. Enable both Aliyun financial-grade ID_PRO PC/H5 and Mobile3MetaSimpleVerify in
+   the intended account. Use a scene with material retention and OSS access off.
+   Do not enable SDK `DEBUG` logging; the adapter rejects that configuration.
+2. Run the existing account Compose schema-init using `source_account_owner`.
+   Its appended migration creates `personal_verification_applications` in
+   `source_accounts`. `init.sh` grants SELECT/INSERT/UPDATE to the existing runtime;
+   it cannot delete attempts. Runtime startup only verifies schema.
+3. Outside the checkout, create an absolute-path private JSON file containing
+   string fields `Scope`, `AccessKeyID`, `AccessKeySecret`, `ReturnURL`,
+   `DataEncryptionKey`, and positive integer `SceneID`. Scope identifies the
+   provider account/environment; do not repurpose it. DataEncryptionKey is an
+   independent random 32-byte key in standard Base64, retained across restarts.
+   ReturnURL must be the public HTTPS URL of the above account verification page,
+   without query or fragment. Optional integers `TotalLimit`, `DailyLimit`,
+   `MinIntervalSeconds` default to 5/3/60; zero is invalid. Maximum total/daily
+   limits are 100 and daily cannot exceed total. Changes never reset usage.
+4. Direct API launch: set `ALIYUN_PERSONAL_VERIFICATION_CONFIG_FILE` to that file.
+   Compose: set `ALIYUN_PERSONAL_VERIFICATION_CONFIG_HOST_FILE` to the host's
+   private file and append `-f docker-compose.personal-verification.yml` to the
+   existing account Compose command (before its `up` subcommand). Preserve the
+   existing `.env`, project name and volumes. This overlay does not require the
+   Tencent overlay. No public callback route is needed.
+5. Log in, verify the account's own mainland mobile in account settings, open the
+   personal tab, enter name/18-character ID, read consent and submit. The page
+   loads Aliyun's official device SDK only after consent/submission. Continue at
+   Aliyun, return, and click **刷新认证结果**. Phone mismatch stops before face
+   initialization. A pending link lasts up to 30 minutes; an unknown start is
+   held for 35 minutes without resending. Rejected/expired applications can be
+   explicitly retried within both limits. Opening/refreshing does not charge
+   an additional platform attempt; refresh queries have a 10-second cooldown.
+
+The database saves HMACs, masked phone, minimal result/binding timestamps and
+CertifyId. It does not save full name, ID, phone, device metadata, face photos or
+raw provider responses. Pending URLs are encrypted and removed on a terminal
+result. The UI clears name/ID after submission. Account authentication and other
+business permissions are unchanged; withdrawal integration belongs to #519.
+Real paid testing and user acceptance require separate authorization and remain
+NOT_RUN. See [design §14](../../../docs/architecture/subject-verification-tencent-esign-design.md#14-阿里云个人首次认证与次数限制).
+
 ## Enterprise verification (optional, #510)
 
 The account page `/workbench/account/profile/verification` supports the first
 enterprise authentication request through Tencent eSign's enterprise self-built
 application. Only a current organization administrator can create an application
 or read its result; the hosted link is returned only to its original applicant.
-The applicant must have a verified `+86` phone in ZITADEL. Personal verification,
-repeat enterprise applications and changing the applicant remain unavailable.
+The applicant must have a verified `+86` phone in ZITADEL. Personal verification
+uses the separate Aliyun option above. Repeat enterprise applications and
+changing the applicant remain unavailable.
 Authentication never grants platform permissions.
 
 This feature is **disabled by default**. To prepare an authorized isolated trial:
