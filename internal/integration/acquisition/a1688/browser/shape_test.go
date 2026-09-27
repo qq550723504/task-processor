@@ -299,6 +299,8 @@ func TestBrowserAcquireOmitsNoncanonicalMinimumQuantity(t *testing.T) {
 	}
 }
 
+func binPathOf(t *testing.T) string { return fixtureBrowserPath(t) }
+
 func mustJSON(v any) string {
 	encoded, _ := json.Marshal(v)
 	return string(encoded)
@@ -514,4 +516,31 @@ func TestExtractorSharesOnePropertyBudgetAcrossPriceReaders(t *testing.T) {
 		"every price reader must go through the shared budgeted walker")
 	require.Contains(t, script, "forEachPriceBlock(data,")
 	require.Contains(t, script, "forEachPriceBlock(init,")
+}
+
+// currentPrices is a single representation: only the first block carrying one is
+// read, matching the established extractor, rather than concatenating every block
+// and producing duplicate or conflicting tiers.
+func TestBrowserAcquireStopsAfterFirstCurrentPriceBlock(t *testing.T) {
+
+	mk := func(price string) map[string]any {
+		return map[string]any{"fields": map[string]any{"priceModel": map[string]any{
+			"currentPrices": []any{map[string]any{"price": price, "beginAmount": 1}},
+		}}}
+	}
+	page := buildContextPage(map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Two current price blocks"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"first":  mk("5.00"),
+		"second": mk("9.00"),
+		"third":  mk("13.00"),
+	})
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: binPathOf(t), Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.PriceFacts, 1, "only the first currentPrices representation may be read")
+	require.Equal(t, "5.00", evidence.PriceFacts[0].Amount)
 }

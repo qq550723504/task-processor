@@ -279,6 +279,9 @@ func extractScript() string {
   let priceBlocksSeen = 0;
   // Walks page-supplied properties under the shared budget, stopping early and
   // marking the field incomplete when the budget is exhausted.
+  // The callback returns true to stop early, which the currentPrices readers use
+  // to honour the established behaviour of taking only the first representation
+  // rather than concatenating every block that carries one.
   const forEachPriceBlock = (data, fn) => {
     if (!data || typeof data !== 'object') return;
     for (const k in data) {
@@ -287,7 +290,7 @@ func extractScript() string {
         priceOverflow = true;
         return;
       }
-      fn(k, data[k]);
+      if (fn(k, data[k]) === true) return;
     }
   };
   const pushPrice = (amount, currency, beginAmount) => {
@@ -333,13 +336,14 @@ func extractScript() string {
     // scanPrice refusing an actual array is the third, equally honest signal.
     forEachPriceBlock(data, (k, item) => {
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
-      if (!Array.isArray(ranges)) return;
+      if (!Array.isArray(ranges)) return false;
       for (const r of scanPrice(ranges)) {
         if (!r || r.price === undefined || r.price === null) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;
         pushPrice(amount, r.currency, r.beginAmount);
       }
+      return false;
     });
   };
 
@@ -401,7 +405,11 @@ func extractScript() string {
       if (out.priceFacts.length === 0) {
         forEachPriceBlock(data, (k, item) => {
           const f = item && item.fields;
-          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) collect(f.priceModel.currentPrices);
+          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) {
+            collect(f.priceModel.currentPrices);
+            return true;
+          }
+          return false;
         });
       }
     }
@@ -469,13 +477,14 @@ func extractScript() string {
     if (out.priceFacts.length === 0) {
       forEachPriceBlock(init, (k, block) => {
         const d = block && block.data;
-        if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) return;
+        if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) return false;
         for (const r of scanPrice(d.priceModel.currentPrices)) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
           pushPrice(amount, r.currency, r.beginAmount);
         }
+        return true;
       });
     }
     if (out.priceFacts.length === 0) readPrices(init);
