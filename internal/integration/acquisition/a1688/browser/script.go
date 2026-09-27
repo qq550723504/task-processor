@@ -185,11 +185,18 @@ func extractScript() string {
         out.priceFacts.push({
           amount: amount,
           currency: clip(r.currency || '', 'price_facts'),
-          minQuantity: clip(r.beginAmount === undefined || r.beginAmount === null ? '' : String(r.beginAmount), 'price_facts')
+          minQuantity: exactNum(r.beginAmount, 'price_facts')
         });
       }
     }
   };
+
+  // The description is read for both supported page shapes, so a custom-item
+  // page that supplies a meta description is not recorded as missing one.
+  {
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta && meta.getAttribute('content')) out.description = clip(meta.getAttribute('content'), 'description');
+  }
 
   const ctx = (typeof window.context !== 'undefined' && window.context && window.context.result) ? window.context.result : null;
   const init = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.data) ? window.__INIT_DATA.data : null;
@@ -198,10 +205,6 @@ func extractScript() string {
     const data = ctx.data || {};
     if (data.productTitle && data.productTitle.fields) {
       out.title = clip(data.productTitle.fields.title || '', 'title');
-    }
-    if (!out.description) {
-      const meta = document.querySelector('meta[name="description"]');
-      if (meta && meta.getAttribute('content')) out.description = clip(meta.getAttribute('content'), 'description');
     }
     if (data.Root && data.Root.fields && data.Root.fields.dataJson && data.Root.fields.dataJson.tempModel) {
       out.offerId = exactNum(data.Root.fields.dataJson.tempModel.offerId, 'offer_id');

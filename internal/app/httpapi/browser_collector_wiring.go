@@ -52,17 +52,30 @@ func browserCollectorSettingsFrom(cfg *config.Config) (browserCollectorSettings,
 // publicAcquisitionProvider builds the anonymous public acquisition provider for
 // the current composition. It prefers the browser collector when the deployment
 // has explicitly configured it, and otherwise returns the existing HTTP provider.
-func publicAcquisitionProvider(cfg *config.Config) (sourcing.PublicAcquirer, error) {
+func publicAcquisitionProvider(cfg *config.Config) (sourcing.PublicAcquirer, bool, error) {
 	settings, ok := browserCollectorSettingsFrom(cfg)
 	if !ok {
-		return a1688.New(), nil
+		provider, err := publicHTTPProvider()
+		return provider, false, err
 	}
 	// The client-side admission is fail-closed: a collector that rejects the
 	// credential surfaces as an availability failure, never as a fabricated
 	// product and never as a silent fallback to weaker collection.
-	return browserclient.New(browserclient.Options{
+	client, err := browserclient.New(browserclient.Options{
 		Endpoint:  settings.endpoint,
 		Admission: browsercollector.AttachSharedSecret(settings.credential),
 		Timeout:   settings.timeout,
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	// The second result reports that the browser provider is in use, so the
+	// caller can build the browser service rather than the generic one. Without
+	// it the provider would be injected but the generic service would still own
+	// the request, bypassing replay-first, StartPrepared and the provider
+	// child budget.
+	return client, true, nil
 }
+
+// publicHTTPProvider is the existing anonymous public HTTP provider.
+func publicHTTPProvider() (sourcing.PublicAcquirer, error) { return a1688.New(), nil }

@@ -492,3 +492,17 @@ func TestBrowserAcquireSameKeyWaitHonorsCancellation(t *testing.T) {
 	}
 	held()
 }
+
+// A collector concurrency-limit rejection is retryable. Flattening it into a
+// source failure would report 502 SOURCE_UNAVAILABLE and, on the generic
+// service, persist the idempotency key as permanently failed.
+func TestBrowserAcquireKeepsCollectorCapacityRetryable(t *testing.T) {
+	store := newBrowserStore()
+	store.prepared = true
+	provider := &browserProviderSpy{evidence: browserEvidence(), err: sourcing.ErrAcquisitionCapacity}
+	service := newBrowserService(t, store, provider)
+	_, err := service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4e", "981645030344")
+	require.ErrorIs(t, err, sourcing.ErrAcquisitionCapacity)
+	require.NotErrorIs(t, err, sourcing.ErrAcquisitionFailed)
+	require.Equal(t, 0, store.startPrep, "a capacity rejection must not admit an operation")
+}

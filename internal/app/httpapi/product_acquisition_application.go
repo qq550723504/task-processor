@@ -21,6 +21,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	browser "task-processor/internal/integration/acquisition/a1688/browser"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/product/sourcing"
@@ -99,7 +100,7 @@ func buildPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, cfg *conf
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
 	// The provider is config-gated: with no collector endpoint/credential the
 	// existing anonymous public HTTP provider is used unchanged (design D13).
-	provider, err := publicAcquisitionProvider(cfg)
+	provider, _, err := publicAcquisitionProvider(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +371,7 @@ func (m productAcquisitionModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
-func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer) (kernelmodule.Module, error) {
+func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, browserService bool) (kernelmodule.Module, error) {
 	if dependencies.organizationResolver == nil || authorizer == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -380,7 +381,19 @@ func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencie
 	// Reuse the existing request-local live organization capability, not Review
 	// domain behavior and not cached request roles or another IAM implementation.
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	service, err := productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider)
+	// The browser provider must be served by the browser service. Injecting only
+	// the provider would leave the generic service owning the request, which
+	// bypasses replay-first, StartPrepared admission, the capacity preflight and
+	// the provider child budget.
+	var (
+		service productAcquisitionService
+		err     error
+	)
+	if browserService {
+		service, err = productsourcing.NewBrowserPublicAcquisition(ctx, db, live, authorizer, provider, browser.DefaultTimeout)
+	} else {
+		service, err = productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider)
+	}
 	if err != nil {
 		return nil, err
 	}

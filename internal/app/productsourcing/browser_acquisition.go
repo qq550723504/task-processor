@@ -322,5 +322,11 @@ func (s *BrowserAcquisitionService) failFetch(parent context.Context, causeCtx c
 	if errors.Is(cause, context.DeadlineExceeded) || errors.Is(cause, context.Canceled) || (causeCtx != nil && causeCtx.Err() != nil) {
 		return context.DeadlineExceeded
 	}
+	// A collector concurrency-limit rejection is retryable, not a source
+	// failure. Flattening it would report 502 SOURCE_UNAVAILABLE and, on the
+	// generic service, persist the key as permanently failed.
+	if errors.Is(cause, sourcing.ErrAcquisitionCapacity) {
+		return sourcing.ErrAcquisitionCapacity
+	}
 	return sourcing.ErrAcquisitionFailed
 }

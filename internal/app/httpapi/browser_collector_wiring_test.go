@@ -24,9 +24,10 @@ func TestPublicAcquisitionProviderRequiresCompleteOptIn(t *testing.T) {
 	}
 	for name, collector := range cases {
 		cfg := &config.Config{BrowserCollector: collector}
-		provider, err := publicAcquisitionProvider(cfg)
+		provider, browserService, err := publicAcquisitionProvider(cfg)
 		require.NoError(t, err, name)
 		require.IsType(t, &a1688.Client{}, provider, name+": must stay on the existing HTTP provider")
+		require.False(t, browserService, name+": must not select the browser service")
 		if _, ok := browserCollectorSettingsFrom(cfg); ok {
 			t.Fatalf("%s: settings must not resolve without a complete opt-in", name)
 		}
@@ -46,16 +47,20 @@ func TestPublicAcquisitionProviderUsesCollectorWhenFullyConfigured(t *testing.T)
 	require.Equal(t, "service-secret", settings.credential)
 	require.Equal(t, 45*time.Second, settings.timeout)
 
-	provider, err := publicAcquisitionProvider(cfg)
+	provider, browserService, err := publicAcquisitionProvider(cfg)
 	require.NoError(t, err)
 	require.IsType(t, &browserclient.Client{}, provider)
+	// The configured collector must also select the browser service, otherwise
+	// the provider is injected but the generic service still owns the request.
+	require.True(t, browserService, "a configured collector must select the browser service")
 }
 
 // A nil config must not panic and must stay on the existing provider.
 func TestPublicAcquisitionProviderHandlesNilConfig(t *testing.T) {
-	provider, err := publicAcquisitionProvider(nil)
+	provider, browserService, err := publicAcquisitionProvider(nil)
 	require.NoError(t, err)
 	require.IsType(t, &a1688.Client{}, provider)
+	require.False(t, browserService)
 }
 
 // A zero timeout must fall back to the default acquisition timeout rather than

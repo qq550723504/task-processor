@@ -31,11 +31,11 @@ func NewCurrentApplicationWithBrowserCapture(ctx context.Context, sourceAccountD
 	factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 		// Config-gated exactly like the main composition: the browser collector is
 		// used only when the deployment supplies endpoint plus credential.
-		provider, err := publicAcquisitionProvider(cfg)
+		provider, browserService, err := publicAcquisitionProvider(cfg)
 		if err != nil {
 			return nil, err
 		}
-		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider)
+		return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService)
 	}
 	factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 		return buildBrowserCaptureModule(ctx, productDB, dependencies, authorizer)

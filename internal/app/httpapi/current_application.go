@@ -252,11 +252,11 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		factories.buildAcquisition = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
 			// The provider is config-gated: with no collector endpoint/credential
 			// the existing anonymous public HTTP provider is used unchanged.
-			provider, err := publicAcquisitionProvider(cfg)
+			provider, browserService, err := publicAcquisitionProvider(cfg)
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService)
 		}
 	}
 	if supplied.browserCaptures > 1 {

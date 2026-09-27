@@ -394,3 +394,40 @@ window.context = {"result":{"data":{
 }}};
 </script></body></html>`
 }
+
+// A custom-item page that supplies only window.__INIT_DATA must still have its
+// meta description preserved, and an unsafe-integer beginAmount must be dropped
+// rather than published as an already-rounded quantity.
+func TestBrowserAcquireCustomItemKeepsDescriptionAndExactQuantity(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, customItemPage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+
+	require.NotNil(t, evidence.Description, "a custom-item page must keep its observed description")
+	require.Equal(t, "Custom fixture item", *evidence.Description)
+
+	for _, f := range evidence.PriceFacts {
+		if f.MinQuantity != nil {
+			require.NotEqual(t, "9007199254740992", *f.MinQuantity, "an unsafe beginAmount must not be published rounded")
+		}
+	}
+}
+
+// customItemPage is a custom-item page: no window.context, a meta description,
+// and an unsafe-integer minimum quantity on its price range.
+func customItemPage() string {
+	return `<!doctype html><html><head><title>Custom item</title>
+<meta name="description" content="Custom fixture item"></head><body>
+<script>
+window.__INIT_DATA = {"data":{"main":{"data":{
+  "offerInfoModel":{"offerId":981645030344,"title":"Custom fixture bottle"},
+  "offerImgList":["https://cbu01.alicdn.com/custom.jpg"],
+  "propsList":[{"name":"material","value":"steel"}]
+}}},"globalData":{"skuModel":{"skuProps":[{"prop":"color"}],
+  "skuInfoMap":{"red":{"skuId":7,"price":9.5}}}}};
+</script></body></html>`
+}
