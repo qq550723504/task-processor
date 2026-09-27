@@ -276,7 +276,11 @@ func extractScript() string {
   // Running out of it IS a completeness signal, because properties are left
   // unvisited and we cannot know whether a later one carries a price.
   const MAX_PRICE_BLOCKS = 512;
-  let priceBlocksSeen = 0;
+  // Charged per DISTINCT page-supplied property, not per visit. Two readers
+  // legitimately walk the same object, so charging per visit would count the same
+  // properties repeatedly and could discard a price set that is in fact
+  // available. The number of distinct properties is what actually bounds the work.
+  const blockSeen = new WeakMap();
   // Walks page-supplied properties under the shared budget, stopping early and
   // marking the field incomplete when the budget is exhausted.
   // The callback returns true to stop early, which the currentPrices readers use
@@ -284,11 +288,16 @@ func extractScript() string {
   // rather than concatenating every block that carries one.
   const forEachPriceBlock = (data, fn) => {
     if (!data || typeof data !== 'object') return;
+    let charged = blockSeen.get(data);
+    if (charged === undefined) { charged = new Set(); blockSeen.set(data, charged); }
     for (const k in data) {
-      if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {
-        markTrunc('price_facts');
-        priceOverflow = true;
-        return;
+      if (!charged.has(k)) {
+        if (charged.size + 1 > MAX_PRICE_BLOCKS) {
+          markTrunc('price_facts');
+          priceOverflow = true;
+          return;
+        }
+        charged.add(k);
       }
       if (fn(k, data[k]) === true) return;
     }

@@ -348,9 +348,11 @@ func TestExtractorPriceOverflowSignalsAreDistinct(t *testing.T) {
 
 	// The property cap IS an incompleteness signal, because later properties go
 	// unvisited and completeness cannot be established.
-	require.Contains(t, script, "if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {",
-		"the property cap must stop enumeration")
-	require.Contains(t, script, "if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {"+"\n"+"        markTrunc('price_facts');",
+	// The property cap is charged per DISTINCT property, so a second reader
+	// walking the same object does not pay for it twice.
+	require.Contains(t, script, "if (charged.size + 1 > MAX_PRICE_BLOCKS) {",
+		"the property cap must count distinct properties, not visits")
+	require.Contains(t, script, "if (charged.size + 1 > MAX_PRICE_BLOCKS) {"+"\n"+"          markTrunc('price_facts');",
 		"leaving properties unvisited must mark the price field truncated")
 }
 
@@ -543,4 +545,35 @@ func TestBrowserAcquireStopsAfterFirstCurrentPriceBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, evidence.PriceFacts, 1, "only the first currentPrices representation may be read")
 	require.Equal(t, "5.00", evidence.PriceFacts[0].Amount)
+}
+
+// Two readers legitimately walk the same page-supplied object. Charging the
+// properties twice would exhaust the budget and discard an available price set,
+// so the budget must be per object rather than per walk.
+func TestBrowserAcquireDoesNotDoubleChargeThePropertyBudget(t *testing.T) {
+	bin := fixtureBrowserPath(t)
+	mkCurrent := func(price string) map[string]any {
+		return map[string]any{"fields": map[string]any{"priceModel": map[string]any{
+			"currentPrices": []any{map[string]any{"price": price, "beginAmount": 1}},
+		}}}
+	}
+	data := map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Double charge bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+	}
+	// A large number of properties with no offerPriceRanges, then the single
+	// currentPrices block well past the midpoint of the budget.
+	for i := 0; i < 300; i++ {
+		data["filler"+itoa(i)] = map[string]any{"fields": map[string]any{"n": i}}
+	}
+	data["late"] = mkCurrent("7.00")
+	srv := serveFixture(t, buildContextPage(data))
+	client := New(Options{ExecutablePath: bin, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.NotEmpty(t, evidence.PriceFacts,
+		"a second reader walking the same object must not exhaust the shared budget")
+	require.Equal(t, "7.00", evidence.PriceFacts[0].Amount)
 }
