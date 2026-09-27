@@ -28,6 +28,25 @@ import (
 
 const productAcquisitionBase = "/api/v1/workbench/sourcing/1688/acquisitions"
 
+// acquisitionBodyReadTimeout is the share of the acquisition route budget
+// reserved for reading and authenticating the request body.
+//
+// The route deadline (sourcing.AcquisitionTimeout) starts before the body is
+// read, and the durable operation is persisted only after acquisition returns,
+// so body read, acquisition and publication must all fit inside that one
+// budget. A body-read guard equal to the whole route budget let a slow uploader
+// consume the entire deadline and starve acquisition, so the budget is
+// partitioned instead:
+//
+//	body read <= acquisitionBodyReadTimeout
+//	acquisition <= browser.DefaultTimeout
+//	publication = the remainder
+//
+// The request body here is a few hundred bytes, so this allowance is generous.
+// Changing any part of the partition requires re-checking the whole equation
+// and the matching invariant test.
+const acquisitionBodyReadTimeout = 5 * time.Second
+
 // NewCurrentApplicationWithAcquisition adds only the explicitly enabled current
 // Product module. All three pools remain caller-owned; construction is read-only.
 func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, commercialDB, productDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
@@ -96,7 +115,7 @@ func productAcquisitionRoutes(service productAcquisitionService, bind func(conte
 	}
 	routes := make([]httproute.Descriptor, 0, len(specs))
 	for _, spec := range specs {
-		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-acquisition", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: false, Handler: httproute.WithRequestBodyReadTimeout(sourcing.AcquisitionTimeout, func(c *gin.Context) {
+		routes = append(routes, httproute.Descriptor{Method: spec.method, Path: spec.path, Module: "product-acquisition", Permission: "product_sourcing.write", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, RequestTimeout: sourcing.AcquisitionTimeout, RejectUnreadRequestBody: false, Handler: httproute.WithRequestBodyReadTimeout(acquisitionBodyReadTimeout, func(c *gin.Context) {
 			if service == nil || bind == nil {
 				writeAcquisitionError(c, sourcing.ErrAcquisitionUnavailable)
 				return
