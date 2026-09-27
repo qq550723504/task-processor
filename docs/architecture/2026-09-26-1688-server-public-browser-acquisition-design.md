@@ -433,7 +433,18 @@ Cutover/deletion condition:
 
 后端路由在 20s 截断，严严实实小于两层前端超时，因此不存在“后端超时后用户看不到”的情况；采集进程内部的 provider 子预算（默认 90s）只影响采集进程自身，不能让路由超过 20s。真实验收实测耗时 2.4s，均在层内。
 
-分类：`NOT_APPLICABLE`（前置假设不成立）。若未来调整 `AcquisitionTimeout`，必须同步调整上表两层前端超时，不得只改一层。
+分类：上表“前端截断后端”的前提 `NOT_APPLICABLE`（后端 20s 硬于两层前端）。
+
+**但同一轮复核发现了真实的相反矛盾（Codex P1，已修）**：原记录把 20s 路由写成“正确”，却忽略了**采集进程内部给了 90s provider 预算**。D1 在采集返回**之后**才 `StartPrepared` 落行，因此 provider 若超过路由，用户得到的是一个死线且**没有任何可重放的 operation**——这与 D2 要求路由覆盖浏览器+发布直接矛盾，属实质阻塞（核心 happy path 按当前文本无法完成）。
+
+**修复**：
+
+- 采集 provider 默认预算由 **90s 降为 12s**（`browser.DefaultTimeout`），在 20s 路由内为证据映射与发布留余量；单次导航超时同时被该预算截顶，避免导航单独吃完。
+- 采集进程 `-timeout` 默认值改为跟随 `browser.DefaultTimeout`，不再另行写死 90s。
+- 新增不变量测试，锁定 `DefaultTimeout < sourcing.AcquisitionTimeout`，防止再次漂移。
+- 本轮**不改** `AcquisitionTimeout`、BFF 22s 与浏览器 25s，因此现有静态 HTTP 路径行为不变。
+
+**接下来若确实需要更长预算**：必须在同一个变更里同时调高 `AcquisitionTimeout`、BFF 22s、浏览器 25s 三处，不得只改其中一处。
 
 ### A''. 真实网络验收结论与当前阶段上线语义（A5，用户 2026-09-27）
 
