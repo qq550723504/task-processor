@@ -163,6 +163,9 @@ jobs:
       - name: Verify startup schema cancellation and request context isolation
         run: go test -race -tags integration ./internal/app/httpapi -run '^TestCurrentApplicationStartupSchemaContextPostgres$' -count=1 -v
 
+      - name: Verify immutable settlement reversal concurrency
+        run: go test -race -tags integration ./internal/integration/persistence/money -run '^(TestOrdinaryReversalPostgresRuntime|TestProviderTopUpPostgresConcurrentReceiptsAndZeroEarnings)$' -count=1 -v
+
       - name: Run listing concurrency race tests
         run: |
           go test -race ./internal/app/runtime/listingcontrol -run TestControlPlaneService -count=1
