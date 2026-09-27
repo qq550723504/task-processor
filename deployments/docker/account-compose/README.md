@@ -61,6 +61,13 @@ authorized by these instructions. For an approved fresh, empty installation:
    a merchant profile that still owns unresolved attempts. Native checkout too
    near its original deadline is refused instead of extending that deadline.
 
+`profileVersion` identifies the logical merchant binding, not a credential
+rotation epoch. Rotate credential files while retaining that version and the
+original merchant/app/environment/product. Preserve the query and verification
+capability required by unresolved transactions; do not replace a logical profile
+while it owns unresolved attempts. Concurrent logical-profile switching is not
+part of this single-profile-per-channel configuration.
+
 Billing persists the order, attempt, encrypted checkout material and normalized
 verified inbox before callback acknowledgement. Money atomically persists the
 accepted fact, wallet/debt effect and immutable receipt. The existing application
@@ -80,6 +87,10 @@ or tenant-admin permission does not approve refunds. Only still-refundable
 principal backed by available wallet funds can be reserved. Unknown provider
 results retain the dedicated refund hold. Excess external reversals create a
 reconciliation difference without extra wallet debt or automatic compensation.
+If an approval response is lost, retry the exact original request, including its
+idempotency key and original `expected_version`. The stored approval fingerprint
+permits result recovery even after channel evidence advances the order version;
+changing the original actor, amount, reason or approval version conflicts.
 
 GoPay is pinned to `github.com/go-pay/gopay v1.5.123`; QR rendering reuses
 `qrcode.react 4.2.0`. Development evidence uses synthetic signed messages,

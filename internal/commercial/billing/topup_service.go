@@ -537,7 +537,7 @@ func (s *Service) ApproveTopUpRefund(ctx context.Context, actor, order, key, rea
 		return out, ErrFeatureUnavailable
 	}
 	t := s.topups
-	if !isCanonicalIdentifier(actor) || !isCanonicalIdentifier(order) || strings.TrimSpace(key) == "" || len(key) > 192 || strings.TrimSpace(reason) == "" || len(reason) > 500 || amount <= 0 {
+	if !isCanonicalIdentifier(actor) || !isCanonicalIdentifier(order) || strings.TrimSpace(key) == "" || len(key) > 192 || strings.TrimSpace(reason) == "" || len(reason) > 500 || amount <= 0 || version <= 0 {
 		return out, ErrInvalid
 	}
 	if err := t.authorizer.AuthorizeTopUp(ctx, "", actor, true); err != nil {
@@ -547,19 +547,31 @@ func (s *Service) ApproveTopUpRefund(ctx context.Context, actor, order, key, rea
 	if err != nil {
 		return out, err
 	}
-	if a.Version != version || a.Phase != TopUpCompleted {
-		return out, ErrConflict
-	}
-	receipt, err := t.money.ReadTopUpPosting(ctx, a.OrganizationID, a.OrderID, a.PaymentID)
-	if err != nil || receipt.Validate() != nil {
-		return out, ErrReconciliationRequired
-	}
-	requestID := strings.ReplaceAll(uuid.NewString(), "-", "")
-	o := ProviderObservation{Merchant: a.Merchant, RefundRequestID: requestID}
-	refundID := o.RefundKey(a.PaymentID).ReversalID
-	out = TopUpRefundIntent{RefundID: refundID, OrderID: a.OrderID, OrganizationID: a.OrganizationID, ActorID: actor, IdempotencyKey: key, AmountMinor: amount, TotalMinor: a.AmountMinor, Reason: reason, Merchant: a.Merchant, MerchantOrderID: a.MerchantOrderID, TradeID: receipt.Binding.TradeID, PaymentID: a.PaymentID, ProviderRequestID: requestID, State: "PREPARED", Version: 1, CreatedAt: money.NormalizeTimestamp(s.now()), NextCheckAt: s.now()}
-	out, err = t.store.CreateTopUpRefund(ctx, out)
-	if err != nil {
+	out, err = t.store.FindTopUpRefund(ctx, order, key)
+	if err == nil {
+		// Replay the original approval before checking the mutable attempt version.
+		// A channel observation may already have advanced that version after the
+		// caller lost its response; the immutable approval version must still match.
+		if out.ActorID != actor || out.OrderID != order || out.IdempotencyKey != key || out.AmountMinor != amount || out.Reason != reason || out.ApprovalVersion != version || out.OrganizationID != a.OrganizationID || out.PaymentID != a.PaymentID || out.Merchant != a.Merchant || out.MerchantOrderID != a.MerchantOrderID || out.TotalMinor != a.AmountMinor {
+			return TopUpRefundIntent{}, ErrConflict
+		}
+	} else if errors.Is(err, ErrNotFound) {
+		if a.Version != version || a.Phase != TopUpCompleted {
+			return out, ErrConflict
+		}
+		receipt, readErr := t.money.ReadTopUpPosting(ctx, a.OrganizationID, a.OrderID, a.PaymentID)
+		if readErr != nil || receipt.Validate() != nil {
+			return out, ErrReconciliationRequired
+		}
+		requestID := strings.ReplaceAll(uuid.NewString(), "-", "")
+		o := ProviderObservation{Merchant: a.Merchant, RefundRequestID: requestID}
+		refundID := o.RefundKey(a.PaymentID).ReversalID
+		out = TopUpRefundIntent{RefundID: refundID, OrderID: a.OrderID, OrganizationID: a.OrganizationID, ActorID: actor, IdempotencyKey: key, AmountMinor: amount, TotalMinor: a.AmountMinor, Reason: reason, Merchant: a.Merchant, MerchantOrderID: a.MerchantOrderID, TradeID: receipt.Binding.TradeID, PaymentID: a.PaymentID, ProviderRequestID: requestID, State: "PREPARED", ApprovalVersion: version, Version: 1, CreatedAt: money.NormalizeTimestamp(s.now()), NextCheckAt: s.now()}
+		out, err = t.store.CreateTopUpRefund(ctx, out)
+		if err != nil {
+			return out, err
+		}
+	} else {
 		return out, err
 	}
 	if out.State == "CONFIRMED" || out.State == "RELEASED" || out.State == "REJECTED" {

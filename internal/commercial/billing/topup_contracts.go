@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -232,6 +233,7 @@ type TopUpRefundIntent struct {
 	ProviderRequestID string
 	State             string
 	Dispatched        bool
+	ApprovalVersion   int64 // original attempt expected_version, immutable
 	Version           int64
 	CreatedAt         time.Time
 	NextCheckAt       time.Time
@@ -240,7 +242,7 @@ type TopUpRefundIntent struct {
 }
 
 func (r TopUpRefundIntent) HoldInput() money.TopUpRefundInput {
-	return money.TopUpRefundInput{Key: money.TopUpReversalKey{PaymentID: r.PaymentID, Kind: money.WalletReversalRefund, ReversalID: r.RefundID}, OrganizationID: r.OrganizationID, CommercialOrderID: r.OrderID, AmountMinor: r.AmountMinor, ApprovalID: "approval:" + money.TopUpFingerprint([]string{r.ActorID, r.OrderID, r.IdempotencyKey, r.Reason})}
+	return money.TopUpRefundInput{Key: money.TopUpReversalKey{PaymentID: r.PaymentID, Kind: money.WalletReversalRefund, ReversalID: r.RefundID}, OrganizationID: r.OrganizationID, CommercialOrderID: r.OrderID, AmountMinor: r.AmountMinor, ApprovalID: "approval:" + money.TopUpFingerprint([]string{r.ActorID, r.OrderID, r.IdempotencyKey, r.Reason, strconv.FormatInt(r.ApprovalVersion, 10)})}
 }
 
 type TopUpProviderPort interface {
@@ -269,6 +271,7 @@ type TopUpStore interface {
 	ReadTopUpObservations(context.Context, TopUpPaymentAttempt) ([]ProviderObservation, error)
 	ListRecoverableTopUps(context.Context, PaymentProvider, time.Time, int) ([]TopUpPaymentAttempt, error)
 	ReadTopUpForRefund(context.Context, string) (TopUpPaymentAttempt, error)
+	FindTopUpRefund(context.Context, string, string) (TopUpRefundIntent, error)
 	CreateTopUpRefund(context.Context, TopUpRefundIntent) (TopUpRefundIntent, error)
 	SaveTopUpRefund(context.Context, TopUpRefundIntent) (TopUpRefundIntent, error)
 	ListRecoverableTopUpRefunds(context.Context, PaymentProvider, time.Time, int) ([]TopUpRefundIntent, error)

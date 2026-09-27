@@ -303,11 +303,24 @@ func (r *Repository) ListRecoverableTopUps(ctx context.Context, provider billing
 func refundFingerprint(in billing.TopUpRefundIntent) string {
 	return money.TopUpFingerprint(struct {
 		Order, Org, Actor, Key, Reason, Payment string
-		Amount, Total                           int64
-	}{in.OrderID, in.OrganizationID, in.ActorID, in.IdempotencyKey, in.Reason, in.PaymentID, in.AmountMinor, in.TotalMinor})
+		Amount, Total, ApprovalVersion          int64
+	}{in.OrderID, in.OrganizationID, in.ActorID, in.IdempotencyKey, in.Reason, in.PaymentID, in.AmountMinor, in.TotalMinor, in.ApprovalVersion})
+}
+func (r *Repository) FindTopUpRefund(ctx context.Context, order, key string) (billing.TopUpRefundIntent, error) {
+	var out billing.TopUpRefundIntent
+	var row topUpRefundRow
+	if err := r.db.WithContext(ctx).Where("order_id = ? AND idempotency_key = ?", order, key).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return out, billing.ErrNotFound
+	} else if err != nil {
+		return out, err
+	}
+	if json.Unmarshal(row.Payload, &out) != nil || out.OrderID != order || out.IdempotencyKey != key || out.RefundID != row.RefundID || out.State != row.State || string(out.Merchant.Provider) != row.Provider || out.Version != row.Version || out.ApprovalVersion <= 0 || out.HoldInput().Validate() != nil || refundFingerprint(out) != row.Fingerprint {
+		return billing.TopUpRefundIntent{}, billing.ErrConflict
+	}
+	return out, nil
 }
 func (r *Repository) CreateTopUpRefund(ctx context.Context, in billing.TopUpRefundIntent) (billing.TopUpRefundIntent, error) {
-	if in.HoldInput().Validate() != nil || in.Merchant.Validate() != nil || len(in.ProviderRequestID) != 32 || in.Version != 1 || in.CreatedAt.IsZero() {
+	if in.HoldInput().Validate() != nil || in.Merchant.Validate() != nil || len(in.ProviderRequestID) != 32 || in.Version != 1 || in.ApprovalVersion <= 0 || in.CreatedAt.IsZero() {
 		return in, billing.ErrInvalid
 	}
 	var out billing.TopUpRefundIntent

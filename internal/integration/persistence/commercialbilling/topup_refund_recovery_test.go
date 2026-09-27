@@ -42,11 +42,16 @@ type replayRefundProvider struct {
 	queryErr                error
 	pending                 bool
 	closed                  bool
+	confirmed               bool
+	result                  billing.ProviderObservation
 	queryHook               func(billing.TopUpRefundIntent)
 }
 
 func (p *replayRefundProvider) QueryRefund(_ context.Context, r billing.TopUpRefundIntent) (billing.ProviderObservation, error) {
 	p.queries++
+	if p.confirmed && p.effects > 0 {
+		return p.result, nil
+	}
 	if p.queryHook != nil {
 		p.queryHook(r)
 	}
@@ -77,13 +82,14 @@ func (p *replayRefundProvider) Refund(_ context.Context, r billing.TopUpRefundIn
 	if p.effects == 0 {
 		p.first = r
 		p.effects++
+		p.result = refundRecoveryObservation(r)
 	} else if p.first.ProviderRequestID != r.ProviderRequestID || p.first.Merchant != r.Merchant || p.first.TradeID != r.TradeID || p.first.AmountMinor != r.AmountMinor || p.first.TotalMinor != r.TotalMinor {
 		return billing.ProviderObservation{}, billing.ErrConflict
 	}
 	if p.lost && p.calls == 1 {
 		return billing.ProviderObservation{}, billing.ErrReconciliationRequired
 	}
-	return refundRecoveryObservation(r), nil
+	return p.result, nil
 }
 func refundRecoveryObservation(r billing.TopUpRefundIntent) billing.ProviderObservation {
 	return billing.ProviderObservation{Merchant: r.Merchant, MerchantOrderID: r.MerchantOrderID, EventID: "refund-success", Kind: "REFUND", State: "REFUNDED", TradeID: r.TradeID, RefundRequestID: r.ProviderRequestID, Currency: "CNY", AmountMinor: r.AmountMinor, TotalMinor: r.TotalMinor, OccurredAt: time.Now().UTC(), VerificationVersion: "fixture-v1"}
