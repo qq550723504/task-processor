@@ -168,8 +168,12 @@ func extractScript() string {
       }
     }
   };
+  // readSku reports whether it found a usable model, so the caller can fall
+  // through to the next candidate instead of committing to a truthy but empty
+  // one. Returns true when at least one variant was produced.
   const readSku = (sku) => {
-    if (!sku) return;
+    if (!sku || typeof sku !== 'object') return false;
+    if (!Array.isArray(sku.skuInfoMap) && (typeof sku.skuInfoMap !== 'object' || !sku.skuInfoMap)) return false;
     const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
     const propNames = props.map((p) => (p && p.prop ? p.prop : ''));
     const map = sku.skuInfoMap || {};
@@ -203,23 +207,40 @@ func extractScript() string {
     if (variantOverflow || attributeOverflow) {
       markTrunc('variants');
       out.variants = [];
+      return false;
     }
+    return out.variants.length > 0;
+  };
+  // Reads the first candidate that actually yields variants, so a truthy but
+  // unusable model does not shadow a complete fallback.
+  const readFirstUsableSku = (candidates) => {
+    for (const c of candidates) {
+      if (c && readSku(c)) return true;
+    }
+    return false;
   };
   // Every price reader appends through this one helper, so the cap can never be
   // enforced at one site and forgotten at another. On overflow the whole price
   // set is dropped, because a prefix is not the source's complete price set.
   let priceOverflow = false;
+  // Number of price entries examined, independent of how many are kept. A
+  // page-created array can be arbitrarily long, so scanning is bounded too and
+  // exceeding the bound drops the whole price set.
+  const MAX_PRICE_SCAN = CAP.priceFacts * 4;
   const pushPrice = (amount, currency, beginAmount) => {
     if (out.priceFacts.length >= CAP.priceFacts) { priceOverflow = true; return; }
     // A nonpositive or unparsable minimum quantity is not a usable quantity and
-    // would fail the acquisition during mapping; the supported extractor
-    // normalizes it to 1.
+    // would fail the acquisition during mapping, so it is normalized to 1. A
+    // value that is already a valid positive integer string is kept EXACTLY:
+    // parseInt would round a value beyond the safe-integer range and publish a
+    // different minimum quantity than the source supplied.
     let minQuantity = '';
     if (beginAmount !== undefined && beginAmount !== null && beginAmount !== '') {
       const q = exactNum(beginAmount, 'price_facts');
       if (q) {
-        const n = parseInt(q, 10);
-        minQuantity = String(isNaN(n) || n < 1 ? 1 : n);
+        const digits = /^[0-9]+$/.test(q);
+        const allZero = /^0+$/.test(q);
+        minQuantity = (digits && !allZero) ? q : '1';
       }
     }
     out.priceFacts.push({ amount: amount, currency: clip(currency || '', 'price_facts'), minQuantity: minQuantity });
@@ -229,6 +250,7 @@ func extractScript() string {
       const item = data[k];
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
       if (!Array.isArray(ranges)) continue;
+      if (ranges.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; continue; }
       for (const r of ranges) {
         if (!r || r.price === undefined || r.price === null) continue;
         const amount = exactNum(r.price, 'price_facts');
@@ -282,6 +304,8 @@ func extractScript() string {
       const op = dj && dj.orderParamModel && dj.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       const collect = (list) => {
+        if (!Array.isArray(list)) return;
+        if (list.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; return; }
         for (const r of list) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
@@ -305,9 +329,7 @@ func extractScript() string {
     // block, matching the legacy foundSkuModel guard.
     const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
     if (g) {
-      if (g.nySkuModel) readSku(g.nySkuModel);
-      else if (g.skuModel) readSku(g.skuModel);
-      else if (g.skuModelOrigin) readSku(g.skuModelOrigin);
+      readFirstUsableSku([g.nySkuModel, g.skuModel, g.skuModelOrigin]);
     }
     for (const k in init) {
       const block = init[k];
@@ -335,10 +357,10 @@ func extractScript() string {
       // pre-empt it, and reading both cannot duplicate variants (which
       // MapAcquisitionEvidence rejects as repeated source IDs).
       if (out.variants.length === 0) {
-        if (d.nySkuModel) readSku(d.nySkuModel);
-        else if (d.skuModel) readSku(d.skuModel);
-        else if (d.skuModelOrigin) readSku(d.skuModelOrigin);
-        else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
+        if (out.variants.length === 0) {
+          readFirstUsableSku([d.nySkuModel, d.skuModel, d.skuModelOrigin,
+            (d.skuInfoMap ? { skuInfoMap: d.skuInfoMap, skuProps: d.skuProps } : null)]);
+        }
       }
     }
     if (g && g.offerInfoModel && !out.offerId) {
@@ -353,7 +375,8 @@ func extractScript() string {
       const op = g.orderParamModel && g.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       if (Array.isArray(range)) {
-        for (const r of range) {
+        if (range.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; }
+        for (const r of (range.length > MAX_PRICE_SCAN ? [] : range)) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
@@ -369,7 +392,9 @@ func extractScript() string {
       const block = init[k];
       const d = block && block.data;
       if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;
-      for (const r of d.priceModel.currentPrices) {
+      const cp = d.priceModel.currentPrices;
+      if (Array.isArray(cp) && cp.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; }
+      for (const r of (Array.isArray(cp) && cp.length > MAX_PRICE_SCAN ? [] : cp)) {
         if (!r) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;

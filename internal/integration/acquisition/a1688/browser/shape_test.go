@@ -130,3 +130,79 @@ func TestExtractorHasASingleSharedPriceGuard(t *testing.T) {
 	require.NotContains(t, script, "out.priceFacts.push({ amount: amount, currency: clip(r.currency",
 		"price readers must go through pushPrice")
 }
+
+// A valid positive integer minimum quantity beyond the safe-integer range must
+// be published exactly; parseInt would round it.
+func TestBrowserAcquirePreservesExactLargeMinimumQuantity(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	page := buildContextPage(map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Big min qty bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"price": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": []any{
+				map[string]any{"price": "12.50", "beginAmount": "9007199254740993"},
+			}},
+		}}},
+	})
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.NotEmpty(t, evidence.PriceFacts)
+	require.NotNil(t, evidence.PriceFacts[0].MinQuantity)
+	require.Equal(t, "9007199254740993", *evidence.PriceFacts[0].MinQuantity,
+		"an exact positive digit string must not be rounded")
+}
+
+// A truthy but unusable nySkuModel must not shadow a complete skuModel.
+func TestBrowserAcquireFallsThroughUnusableSkuModel(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	page := `<!doctype html><html><head><title>Fallback</title></head><body><script>
+window.__INIT_DATA = {"data":{"main":{"data":{
+  "offerId": 981645030344,
+  "title": "Fallback item",
+  "nySkuModel": {"note": "present but unusable"},
+  "skuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap":{"red":{"skuId":55,"price":4.5}}}
+}}}};
+</script></body></html>`
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.Variants, 1, "an unusable model must not shadow the complete fallback")
+	require.NotNil(t, evidence.Variants[0].SourceID)
+	require.Equal(t, "55", *evidence.Variants[0].SourceID)
+}
+
+// The same fall-through must apply to the global model chain.
+func TestBrowserAcquireFallsThroughUnusableGlobalSkuModel(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	page := `<!doctype html><html><head><title>Global fallback</title></head><body><script>
+window.__INIT_DATA = {
+  "data": {"main": {"data": {"offerId": 981645030344, "title": "Global fallback item"}}},
+  "globalData": {
+    "nySkuModel": {},
+    "skuModel": {"skuProps":[{"prop":"size"}], "skuInfoMap":{"l":{"skuId":88,"price":6.5}}}
+  }
+};
+</script></body></html>`
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.Variants, 1, "an empty global model must not shadow the complete one")
+	require.NotNil(t, evidence.Variants[0].SourceID)
+	require.Equal(t, "88", *evidence.Variants[0].SourceID)
+}
+
+// Scanning must be bounded even when nothing is kept, so a page-created huge
+// array cannot keep the evaluation busy until the deadline.
+func TestBrowserAcquireBoundsPriceScanning(t *testing.T) {
+	script := extractScript()
+	require.Contains(t, script, "MAX_PRICE_SCAN",
+		"price scanning must be bounded independently of how much is kept")
+	require.NotContains(t, script, "for (const r of ranges) {\n        if (out.priceFacts.length",
+		"no price loop may be bounded only by the output cap")
+}
