@@ -77,7 +77,7 @@ func (m referralHTTPModule) readRules(c *gin.Context) {
 }
 
 func writeReferralRulesJSON(c *gin.Context) {
-	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-rules-v2", "currency": economics.CurrencyCNY, "commissionRateBps": economics.CommissionRateBPS, "settlementPeriodDays": economics.SettlementPeriodDays, "minimumWithdrawalMinor": strconv.FormatInt(economics.MinimumWithdrawalMinor, 10), "withdrawalReview": "manual", "personalKycRequired": true, "earningsBasis": "canonical_settled_payment_refund_chargeback", "source": "referral_economics_contract"})
+	writeReferralEconomicsJSON(c, http.StatusOK, gin.H{"schemaVersion": "referral-rules-v1", "currency": economics.CurrencyCNY, "commissionRateBps": economics.CommissionRateBPS, "settlementPeriodDays": economics.SettlementPeriodDays, "minimumWithdrawalMinor": strconv.FormatInt(economics.MinimumWithdrawalMinor, 10), "withdrawalReview": "manual", "earningsBasis": "canonical_settled_payment_refund_chargeback", "source": "referral_economics_contract"})
 }
 
 func (m referralHTTPModule) readPayoutMethods(c *gin.Context) {
