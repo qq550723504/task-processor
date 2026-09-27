@@ -669,6 +669,12 @@ func (s *Service) reconcileTopUpRefund(ctx context.Context, r TopUpRefundIntent)
 		return r, ErrReconciliationRequired
 	} else {
 		hold, holdErr := t.money.ReadTopUpRefundHold(ctx, r.HoldInput())
+		if holdErr == nil && hold.Input == r.HoldInput() && hold.State == "RESERVED" && !hold.Dispatched {
+			// The money owner rechecks admission under its payment/hold lock.
+			// A concurrent original admission or an uncertain response must keep
+			// the reservation; recovery never grants a new dispatch capability.
+			hold, holdErr = t.money.ReleaseTopUpRefundHold(ctx, r.HoldInput(), false)
+		}
 		if holdErr == nil && hold.Input == r.HoldInput() && hold.State == "RELEASED" {
 			// Release has no reversal receipt. Recover its committed money outcome
 			// directly when the billing projection was lost, without channel calls.
