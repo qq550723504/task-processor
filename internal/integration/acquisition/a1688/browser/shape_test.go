@@ -502,3 +502,16 @@ func TestBrowserAcquireTrimsPaddedMinimumQuantity(t *testing.T) {
 	_, err = sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-pad")
 	require.NoError(t, err)
 }
+
+// The currentPrices fallback walks the same page-supplied object as readPrices,
+// so it must draw on the same property budget rather than starting a fresh
+// unbounded scan.
+func TestExtractorSharesOnePropertyBudgetAcrossPriceReaders(t *testing.T) {
+	script := extractScript()
+	require.Equal(t, 1, strings.Count(script, "for (const k in data) {"),
+		"only the shared walker may enumerate page-supplied properties directly")
+	require.Contains(t, script, "const forEachPriceBlock = (data, fn) => {",
+		"every price reader must go through the shared budgeted walker")
+	require.Contains(t, script, "forEachPriceBlock(data,")
+	require.Contains(t, script, "forEachPriceBlock(init,")
+}

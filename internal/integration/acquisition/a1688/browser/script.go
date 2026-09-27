@@ -267,11 +267,29 @@ func extractScript() string {
     return list;
   };
   // Page-supplied property enumeration is itself bounded, so a page cannot make
-  // the loop run unboundedly over properties that contain no price range. This is
-  // a bound on WORK, not a completeness signal: running out of it does not mean
-  // the price set is incomplete.
+  // any reader run unboundedly over properties that contain no price range.
+  //
+  // The budget is SHARED by every price reader, including the currentPrices
+  // fallbacks: each of those walks the same page-supplied object, so giving one
+  // of them a fresh counter would let the total traversal grow without limit.
+  //
+  // Running out of it IS a completeness signal, because properties are left
+  // unvisited and we cannot know whether a later one carries a price.
   const MAX_PRICE_BLOCKS = 512;
   let priceBlocksSeen = 0;
+  // Walks page-supplied properties under the shared budget, stopping early and
+  // marking the field incomplete when the budget is exhausted.
+  const forEachPriceBlock = (data, fn) => {
+    if (!data || typeof data !== 'object') return;
+    for (const k in data) {
+      if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {
+        markTrunc('price_facts');
+        priceOverflow = true;
+        return;
+      }
+      fn(k, data[k]);
+    }
+  };
   const pushPrice = (amount, currency, beginAmount) => {
     if (out.priceFacts.length >= CAP.priceFacts) { priceOverflow = true; return; }
     // A nonpositive or unparsable minimum quantity is not a usable quantity and
@@ -303,33 +321,26 @@ func extractScript() string {
     out.priceFacts.push({ amount: amount, currency: clip(currency || '', 'price_facts'), minQuantity: minQuantity });
   };
   const readPrices = (data) => {
-    for (const k in data) {
-      // Two different bounds, with two different meanings:
-      //
-      //  - Running out of the SCAN budget is not a completeness signal. A page
-      //    whose price arrays exactly fill it may be complete, and a later
-      //    property may hold no price at all.
-      //  - Hitting the PROPERTY cap is a completeness signal, because we stop
-      //    visiting properties and therefore cannot know whether a later one
-      //    carries a price. Leaving later properties unexamined while publishing
-      //    the tiers already collected would present a prefix as the whole set.
-      //
-      // scanPrice refusing an actual array is the third, equally honest signal.
-      if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {
-        markTrunc('price_facts');
-        priceOverflow = true;
-        break;
-      }
-      const item = data[k];
+    // Two different bounds, with two different meanings:
+    //
+    //  - Running out of the SCAN budget is not a completeness signal. A page
+    //    whose price arrays exactly fill it may be complete, and a later
+    //    property may hold no price at all.
+    //  - Running out of the PROPERTY budget is a completeness signal, because
+    //    properties are left unvisited and we cannot know whether a later one
+    //    carries a price.
+    //
+    // scanPrice refusing an actual array is the third, equally honest signal.
+    forEachPriceBlock(data, (k, item) => {
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
-      if (!Array.isArray(ranges)) continue;
+      if (!Array.isArray(ranges)) return;
       for (const r of scanPrice(ranges)) {
         if (!r || r.price === undefined || r.price === null) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;
         pushPrice(amount, r.currency, r.beginAmount);
       }
-    }
+    });
   };
 
   // A valid page of either supported shape may omit its offer id while the
@@ -388,10 +399,10 @@ func extractScript() string {
       // discriminator on AcquisitionPrice, appending both representations would
       // persist the same tiers twice as unrelated price facts.
       if (out.priceFacts.length === 0) {
-        for (const k in data) {
-          const f = data[k] && data[k].fields;
-          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) { collect(f.priceModel.currentPrices); break; }
-        }
+        forEachPriceBlock(data, (k, item) => {
+          const f = item && item.fields;
+          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) collect(f.priceModel.currentPrices);
+        });
       }
     }
   } else if (init) {
@@ -455,17 +466,17 @@ func extractScript() string {
     // read, appending this second representation would persist overlapping or
     // conflicting tiers as unrelated price facts, because AcquisitionPrice
     // carries no model or promotion discriminator.
-    for (const k in (out.priceFacts.length === 0 ? init : {})) {
-      const block = init[k];
-      const d = block && block.data;
-      if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;
-      for (const r of scanPrice(d.priceModel.currentPrices)) {
-        if (!r) continue;
-        const amount = exactNum(r.price, 'price_facts');
-        if (!amount) continue;
-        pushPrice(amount, r.currency, r.beginAmount);
-      }
-      break;
+    if (out.priceFacts.length === 0) {
+      forEachPriceBlock(init, (k, block) => {
+        const d = block && block.data;
+        if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) return;
+        for (const r of scanPrice(d.priceModel.currentPrices)) {
+          if (!r) continue;
+          const amount = exactNum(r.price, 'price_facts');
+          if (!amount) continue;
+          pushPrice(amount, r.currency, r.beginAmount);
+        }
+      });
     }
     if (out.priceFacts.length === 0) readPrices(init);
   }
