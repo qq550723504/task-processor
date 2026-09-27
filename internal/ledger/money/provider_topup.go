@@ -180,6 +180,7 @@ type ProviderTopUpOwner interface {
 	ReadTopUpPosting(context.Context, string, string, string) (TopUpPostingReceipt, error)
 	AcceptProviderTopUpReversal(context.Context, OrganizationWalletReversal) (TopUpReversalReceipt, error)
 	ReadTopUpReversal(context.Context, string, string, TopUpReversalKey) (TopUpReversalReceipt, error)
+	ReadTopUpRefundHold(context.Context, TopUpRefundInput) (TopUpRefundHold, error)
 	PrepareTopUpRefund(context.Context, TopUpRefundInput) (TopUpRefundHold, error)
 	AdmitTopUpRefund(context.Context, TopUpRefundInput) (TopUpRefundHold, error)
 	ReleaseTopUpRefundHold(context.Context, TopUpRefundInput, bool) (TopUpRefundHold, error)

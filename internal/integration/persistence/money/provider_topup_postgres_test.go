@@ -4,6 +4,7 @@ package money
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"reflect"
 	"sync"
@@ -126,11 +127,25 @@ func TestProviderTopUpPostgresConcurrentReceiptsAndZeroEarnings(t *testing.T) {
 		t.Fatalf("top-up earnings: %d %v", claimCount, err)
 	}
 	holdInput := m.TopUpRefundInput{Key: m.TopUpReversalKey{PaymentID: "payment-1", Kind: m.WalletReversalRefund, ReversalID: "refund-1"}, OrganizationID: "org-1", CommercialOrderID: "order-1", AmountMinor: 6000, ApprovalID: "approval-1"}
+	if _, err := r.ReadTopUpRefundHold(ctx, holdInput); !errors.Is(err, m.ErrNotFound) {
+		t.Fatalf("absent hold read: %v", err)
+	}
 	if _, err := r.PrepareTopUpRefund(ctx, holdInput); err != nil {
 		t.Fatal(err)
 	}
+	if hold, err := r.ReadTopUpRefundHold(ctx, holdInput); err != nil || hold.Dispatched || hold.State != "RESERVED" {
+		t.Fatalf("read changed admission: %+v %v", hold, err)
+	}
 	if _, err := r.AdmitTopUpRefund(ctx, holdInput); err != nil {
 		t.Fatal(err)
+	}
+	if hold, err := r.ReadTopUpRefundHold(ctx, holdInput); err != nil || !hold.Dispatched || hold.Input != holdInput {
+		t.Fatalf("admitted hold read: %+v %v", hold, err)
+	}
+	wrongHold := holdInput
+	wrongHold.AmountMinor++
+	if _, err := r.ReadTopUpRefundHold(ctx, wrongHold); !errors.Is(err, m.ErrConflict) {
+		t.Fatalf("mismatched hold read: %v", err)
 	}
 	refund := m.RefundSettlement{PaymentID: "payment-1", RefundID: "refund-1", AmountMinor: 6000, OccurredAt: time.Now().UTC(), ProviderReference: "refund-evidence"}
 	chargeback := m.ChargebackSettlement{PaymentID: "payment-1", ChargebackID: "refund-1", AmountMinor: 5000, OccurredAt: time.Now().UTC(), ProviderReference: "chargeback-evidence"}

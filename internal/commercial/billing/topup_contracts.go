@@ -12,6 +12,10 @@ import (
 // Only returned when the adapter proves it issued no checkout request or action.
 var ErrCheckoutNotDispatched = errors.New("top-up checkout was not dispatched")
 
+// Verified channel evidence permits replay of the same admitted refund identity.
+// It is never proof that the hold can be released or a new refund can be created.
+var ErrRefundReplayAllowed = errors.New("original refund request may be replayed")
+
 type PaymentProvider string
 
 const (

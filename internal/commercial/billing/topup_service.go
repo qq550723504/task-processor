@@ -629,9 +629,6 @@ func (s *Service) acceptTopUpRefundObservation(ctx context.Context, a TopUpPayme
 }
 func (s *Service) reconcileTopUpRefund(ctx context.Context, r TopUpRefundIntent) (TopUpRefundIntent, error) {
 	t := s.topups
-	if !r.Dispatched {
-		return r, ErrAuthorizationRevoked
-	} // requires a new live admin request
 	if r.LeaseToken != "" && s.now().Before(r.LeaseUntil) {
 		return r, ErrReconciliationRequired
 	}
@@ -648,9 +645,32 @@ func (s *Service) reconcileTopUpRefund(ctx context.Context, r TopUpRefundIntent)
 		return r, err
 	}
 	// Money readback always precedes a channel query or any new dispatch.
-	if receipt, readErr := t.money.ReadTopUpReversal(ctx, r.OrganizationID, r.OrderID, r.HoldInput().Key); readErr == nil && receipt.Validate() == nil && receipt.HoldState == "CONFIRMED" {
+	if receipt, readErr := t.money.ReadTopUpReversal(ctx, r.OrganizationID, r.OrderID, r.HoldInput().Key); readErr == nil {
+		if receipt.Validate() != nil || receipt.HoldState != "CONFIRMED" || receipt.Key != r.HoldInput().Key || receipt.OrganizationID != r.OrganizationID || receipt.CommercialOrderID != r.OrderID || receipt.ProviderAmountMinor != r.AmountMinor {
+			return r, ErrConflict
+		}
 		r.State = "CONFIRMED"
+	} else if !errors.Is(readErr, money.ErrNotFound) {
+		return r, ErrReconciliationRequired
 	} else {
+		hold, holdErr := t.money.ReadTopUpRefundHold(ctx, r.HoldInput())
+		if holdErr != nil || hold.Input != r.HoldInput() || hold.State != "RESERVED" || !hold.Dispatched {
+			// A restart never creates or admits a hold. Only the money owner's
+			// durable admission can recover a lost billing projection.
+			r.LeaseToken = ""
+			r.LeaseUntil = time.Time{}
+			r.NextCheckAt = s.now().Add(15 * time.Minute)
+			_, _ = t.store.SaveTopUpRefund(ctx, r)
+			return r, ErrReconciliationRequired
+		}
+		if !r.Dispatched {
+			r.Dispatched = true
+			r.State = "UNKNOWN"
+			r, err = t.store.SaveTopUpRefund(ctx, r)
+			if err != nil {
+				return r, err
+			}
+		}
 		p, providerErr := t.originalProvider(a)
 		if providerErr != nil {
 			return r, providerErr
@@ -658,6 +678,25 @@ func (s *Service) reconcileTopUpRefund(ctx context.Context, r TopUpRefundIntent)
 		requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		o, queryErr := p.QueryRefund(requestCtx, r)
 		cancel()
+		if errors.Is(queryErr, ErrRefundReplayAllowed) {
+			hold, holdErr := t.money.ReadTopUpRefundHold(ctx, r.HoldInput())
+			if holdErr != nil || hold.Input != r.HoldInput() || hold.State != "RESERVED" || !hold.Dispatched {
+				return r, ErrReconciliationRequired
+			}
+			// Authorization and budget were frozen at the original money admission.
+			// This CAS fences a stale worker before replaying that exact capability;
+			// no new intent, hold, request ID, amount or admission is created.
+			if !s.now().Before(r.LeaseUntil) {
+				return r, ErrConflict
+			}
+			r, err = t.store.SaveTopUpRefund(ctx, r)
+			if err != nil {
+				return r, err
+			}
+			requestCtx, cancel = context.WithTimeout(ctx, 10*time.Second)
+			o, queryErr = p.Refund(requestCtx, r)
+			cancel()
+		}
 		if queryErr == nil && s.acceptTopUpRefundObservation(ctx, a, r, o) == nil {
 			if o.State == "REFUNDED" {
 				_, err = t.money.AcceptProviderTopUpReversal(ctx, money.OrganizationWalletReversal{ReversalID: r.RefundID, PaymentID: r.PaymentID, Kind: money.WalletReversalRefund, OrganizationID: r.OrganizationID, CommercialOrderID: r.OrderID, Currency: CurrencyCNY, AmountMinor: r.AmountMinor, OccurredAt: o.OccurredAt, ProviderReference: "provider-refund:" + money.TopUpFingerprint([]string{string(o.Merchant.Provider), o.Merchant.Environment, o.Merchant.MerchantID, o.RefundRequestID})})
@@ -712,12 +751,7 @@ func (s *Service) ReconcileRecoverableTopUps(ctx context.Context) error {
 				if ctx.Err() != nil {
 					return
 				}
-				if r.Dispatched {
-					_, _ = s.reconcileTopUpRefund(ctx, r)
-				} else {
-					r.NextCheckAt = s.now().Add(15 * time.Minute)
-					_, _ = s.topups.store.SaveTopUpRefund(ctx, r)
-				}
+				_, _ = s.reconcileTopUpRefund(ctx, r)
 			}
 		})
 	}

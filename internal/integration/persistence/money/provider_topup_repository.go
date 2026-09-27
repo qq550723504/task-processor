@@ -402,6 +402,27 @@ func (r *Repository) ReadTopUpReversal(ctx context.Context, org, order string, k
 	return out, nil
 }
 
+func (r *Repository) ReadTopUpRefundHold(ctx context.Context, in m.TopUpRefundInput) (m.TopUpRefundHold, error) {
+	var out m.TopUpRefundHold
+	if r == nil || r.db == nil {
+		return out, m.ErrUnavailable
+	}
+	if in.Validate() != nil {
+		return out, m.ErrInvalid
+	}
+	var row topUpRefundHoldRow
+	if err := r.db.WithContext(ctx).Where("hold_id = ? AND organization_id = ? AND commercial_order_id = ?", in.Key.StorageID(), in.OrganizationID, in.CommercialOrderID).Take(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return out, m.ErrNotFound
+	} else if err != nil {
+		return out, err
+	}
+	out = refundHold(row)
+	if out.Input != in {
+		return m.TopUpRefundHold{}, m.ErrConflict
+	}
+	return out, nil
+}
+
 func (r *Repository) PrepareTopUpRefund(ctx context.Context, in m.TopUpRefundInput) (m.TopUpRefundHold, error) {
 	var out m.TopUpRefundHold
 	if r == nil || r.db == nil || in.Validate() != nil {

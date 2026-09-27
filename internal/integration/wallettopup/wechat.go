@@ -103,7 +103,7 @@ func (p *WeChat) QueryPayment(ctx context.Context, a billing.TopUpPaymentAttempt
 	rsp, err := p.client.V3TransactionQueryOrder(ctx, wechat.OutTradeNo, a.MerchantOrderID)
 	// GoPay verifies successful responses only. Independently verify the signed
 	// 404 body before treating absence as evidence for this original request.
-	if err == nil && rsp != nil && rsp.Code == http.StatusNotFound && rsp.ErrResponse.Code == "ORDER_NOT_EXIST" && p.verifiedQueryError(rsp.SignInfo) {
+	if err == nil && rsp != nil && rsp.Code == http.StatusNotFound && rsp.ErrResponse.Code == "ORDER_NOT_EXIST" && p.verifiedQueryError(rsp.SignInfo, "ORDER_NOT_EXIST") {
 		return absentPayment(a, p.now(), "wechat-v3:"+p.config.PublicKeyID), nil
 	}
 	if err != nil || rsp == nil || rsp.Code != 0 || rsp.Response == nil {
@@ -118,7 +118,7 @@ func (p *WeChat) QueryPayment(ctx context.Context, a billing.TopUpPaymentAttempt
 	}
 	return o, nil
 }
-func (p *WeChat) verifiedQueryError(s *wechat.SignInfo) bool {
+func (p *WeChat) verifiedQueryError(s *wechat.SignInfo, expectedCode string) bool {
 	if s == nil || s.HeaderSerial != p.config.PublicKeyID || s.HeaderNonce == "" {
 		return false
 	}
@@ -129,7 +129,7 @@ func (p *WeChat) verifiedQueryError(s *wechat.SignInfo) bool {
 	var body struct {
 		Code string `json:"code"`
 	}
-	return strictJSON([]byte(s.SignBody), &body) == nil && body.Code == "ORDER_NOT_EXIST" && wechat.V3VerifySignByPK(s.HeaderTimestamp, s.HeaderNonce, s.SignBody, s.HeaderSignature, p.publicKey) == nil
+	return strictJSON([]byte(s.SignBody), &body) == nil && body.Code == expectedCode && wechat.V3VerifySignByPK(s.HeaderTimestamp, s.HeaderNonce, s.SignBody, s.HeaderSignature, p.publicKey) == nil
 }
 func (p *WeChat) ClosePayment(ctx context.Context, a billing.TopUpPaymentAttempt) (billing.ProviderObservation, error) {
 	if a.Merchant != p.Merchant() {
@@ -176,6 +176,9 @@ func (p *WeChat) QueryRefund(ctx context.Context, r billing.TopUpRefundIntent) (
 		return empty, billing.ErrConflict
 	}
 	rsp, err := p.client.V3RefundQuery(ctx, r.ProviderRequestID, nil)
+	if err == nil && rsp != nil && rsp.Code == http.StatusNotFound && rsp.ErrResponse.Code == "RESOURCE_NOT_EXISTS" && p.verifiedQueryError(rsp.SignInfo, "RESOURCE_NOT_EXISTS") {
+		return empty, billing.ErrRefundReplayAllowed
+	}
 	if err != nil || rsp == nil || rsp.Code != 0 || rsp.Response == nil || rsp.Response.Amount == nil || rsp.Response.Amount.Currency != "CNY" {
 		return empty, billing.ErrReconciliationRequired
 	}

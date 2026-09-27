@@ -180,6 +180,27 @@ func (p *Alipay) QueryRefund(ctx context.Context, r billing.TopUpRefundIntent) (
 		return empty, billing.ErrReconciliationRequired
 	}
 	v := rsp.Response
+	if v.RefundStatus == "" {
+		// Alipay explicitly permits retrying an unconfirmed query with the same
+		// original request number and amount. Optional identities, when present,
+		// must still match. This is not evidence authorizing hold release.
+		if (v.OutTradeNo != "" && v.OutTradeNo != r.MerchantOrderID) || (v.TradeNo != "" && v.TradeNo != r.TradeID) || (v.OutRequestNo != "" && v.OutRequestNo != r.ProviderRequestID) {
+			return empty, billing.ErrConflict
+		}
+		if v.RefundAmount != "" {
+			amount, err := parseYuan(v.RefundAmount)
+			if err != nil || amount != r.AmountMinor {
+				return empty, billing.ErrConflict
+			}
+		}
+		if v.TotalAmount != "" {
+			total, err := parseYuan(v.TotalAmount)
+			if err != nil || total != r.TotalMinor {
+				return empty, billing.ErrConflict
+			}
+		}
+		return empty, billing.ErrRefundReplayAllowed
+	}
 	if v.OutTradeNo != r.MerchantOrderID || v.TradeNo != r.TradeID || v.OutRequestNo != r.ProviderRequestID {
 		return empty, billing.ErrConflict
 	}

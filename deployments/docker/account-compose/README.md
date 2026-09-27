@@ -65,8 +65,11 @@ Billing persists the order, attempt, encrypted checkout material and normalized
 verified inbox before callback acknowledgement. Money atomically persists the
 accepted fact, wallet/debt effect and immutable receipt. The existing application
 recovery loop queries original identities after restart; payment and refund work
-for each channel run independently. An unknown result never dispatches a second
-payment or refund. Unresolved or unsigned evidence stays pending for reconciliation.
+for each channel run independently. An unknown result never creates a second
+payment or refund identity. A refund already admitted by money may replay its
+original request and amount after a verified channel query permits that retry;
+recovery never creates or admits a hold. Unresolved or unsigned evidence retains
+the hold and stays pending for reconciliation.
 
 Original-route refunds use the global platform-admin API
 `POST /api/v1/admin/commercial/top-up-orders/{order_id}/refunds`, with a stable

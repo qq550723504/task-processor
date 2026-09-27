@@ -1,0 +1,189 @@
+package commercialbilling
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"task-processor/internal/commercial/billing"
+	"task-processor/internal/ledger/money"
+)
+
+type crashAfterRefundAdmission struct {
+	*Repository
+	crash      bool
+	beforeSave bool
+}
+
+func (r *crashAfterRefundAdmission) SaveTopUpRefund(ctx context.Context, in billing.TopUpRefundIntent) (billing.TopUpRefundIntent, error) {
+	if r.crash && r.beforeSave && in.Dispatched {
+		r.crash = false
+		return in, errors.New("process stopped after money admission, before billing commit")
+	}
+	out, err := r.Repository.SaveTopUpRefund(ctx, in)
+	if err == nil && r.crash && in.Dispatched {
+		r.crash = false
+		return out, errors.New("process stopped after commit, before provider call")
+	}
+	return out, err
+}
+
+type replayRefundProvider struct {
+	*topUpTestProvider
+	calls, effects, queries int
+	lost                    bool
+	first                   billing.TopUpRefundIntent
+	queryErr                error
+	pending                 bool
+	queryHook               func(billing.TopUpRefundIntent)
+}
+
+func (p *replayRefundProvider) QueryRefund(_ context.Context, r billing.TopUpRefundIntent) (billing.ProviderObservation, error) {
+	p.queries++
+	if p.queryHook != nil {
+		p.queryHook(r)
+	}
+	if p.pending {
+		o := refundRecoveryObservation(r)
+		o.State = "REFUND_PENDING"
+		return o, nil
+	}
+	if p.queryErr != nil {
+		return billing.ProviderObservation{}, p.queryErr
+	}
+	return billing.ProviderObservation{}, billing.ErrRefundReplayAllowed
+}
+func (p *replayRefundProvider) Refund(_ context.Context, r billing.TopUpRefundIntent) (billing.ProviderObservation, error) {
+	p.calls++
+	if p.effects == 0 {
+		p.first = r
+		p.effects++
+	} else if p.first.ProviderRequestID != r.ProviderRequestID || p.first.Merchant != r.Merchant || p.first.TradeID != r.TradeID || p.first.AmountMinor != r.AmountMinor || p.first.TotalMinor != r.TotalMinor {
+		return billing.ProviderObservation{}, billing.ErrConflict
+	}
+	if p.lost && p.calls == 1 {
+		return billing.ProviderObservation{}, billing.ErrReconciliationRequired
+	}
+	return refundRecoveryObservation(r), nil
+}
+func refundRecoveryObservation(r billing.TopUpRefundIntent) billing.ProviderObservation {
+	return billing.ProviderObservation{Merchant: r.Merchant, MerchantOrderID: r.MerchantOrderID, EventID: "refund-success", Kind: "REFUND", State: "REFUNDED", TradeID: r.TradeID, RefundRequestID: r.ProviderRequestID, Currency: "CNY", AmountMinor: r.AmountMinor, TotalMinor: r.TotalMinor, OccurredAt: time.Now().UTC(), VerificationVersion: "fixture-v1"}
+}
+
+type failRefundReceiptRead struct{ money.ProviderTopUpOwner }
+
+func (failRefundReceiptRead) ReadTopUpReversal(context.Context, string, string, money.TopUpReversalKey) (money.TopUpReversalReceipt, error) {
+	return money.TopUpReversalReceipt{}, money.ErrUnavailable
+}
+
+type unavailableRefundAdmission struct{ money.ProviderTopUpOwner }
+
+func (unavailableRefundAdmission) AdmitTopUpRefund(context.Context, money.TopUpRefundInput) (money.TopUpRefundHold, error) {
+	return money.TopUpRefundHold{}, money.ErrUnavailable
+}
+func (unavailableRefundAdmission) ReleaseTopUpRefundHold(context.Context, money.TopUpRefundInput, bool) (money.TopUpRefundHold, error) {
+	return money.TopUpRefundHold{}, money.ErrUnavailable
+}
+
+func TestTopUpRefundRecoveryReplaysOnlyAdmittedOriginalIdentity(t *testing.T) {
+	for _, scenario := range []string{"pre_call_crash", "billing_commit_lost", "response_lost", "receipt_unavailable", "query_unknown", "pending", "never_admitted", "stale_worker", "external_reversal"} {
+		t.Run(scenario, func(t *testing.T) {
+			r, s, wallet, base, a := reviewTopUp(t, billing.PaymentAlipay)
+			ctx := context.Background()
+			paid := billing.ProviderObservation{Merchant: a.Merchant, MerchantOrderID: a.MerchantOrderID, EventID: "paid", Kind: "PAYMENT", State: "PAID", TradeID: "trade-1", Currency: "CNY", AmountMinor: 10000, OccurredAt: time.Now().UTC(), VerificationVersion: "v1"}
+			if err := s.RecordVerifiedPaymentObservation(ctx, paid); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.ReconcileTopUpOrder(ctx, a.OrganizationID, a.OrderID); err != nil {
+				t.Fatal(err)
+			}
+			a, _ = r.ReadTopUpAttempt(ctx, a.OrganizationID, a.OrderID)
+			p := &replayRefundProvider{topUpTestProvider: base, lost: scenario == "response_lost", queryErr: billing.ErrReconciliationRequired}
+			store := &crashAfterRefundAdmission{Repository: r, crash: !p.lost, beforeSave: scenario == "billing_commit_lost"}
+			var admissionOwner money.ProviderTopUpOwner = wallet
+			if scenario == "never_admitted" {
+				admissionOwner = unavailableRefundAdmission{wallet}
+			}
+			if err := s.EnableWalletTopUps(store, admissionOwner, p, nil, billing.TopUpAmountPolicy{}, topUpTestProtection{}, &topUpTestAuthorizer{}); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = s.ApproveTopUpRefund(ctx, "platform-admin", a.OrderID, "recover-refund", "requested", 6000, a.Version)
+			rows, err := r.ListRecoverableTopUpRefunds(ctx, billing.PaymentAlipay, time.Now().UTC().Add(time.Hour), 25)
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("durable refund missing: %+v %v", rows, err)
+			}
+			refund := rows[0]
+			wantAdmission := scenario != "never_admitted"
+			hold, err := wallet.ReadTopUpRefundHold(ctx, refund.HoldInput())
+			if err != nil || hold.Dispatched != wantAdmission || hold.State != "RESERVED" {
+				t.Fatalf("wrong money admission: %+v %v", hold, err)
+			}
+			if scenario == "billing_commit_lost" && refund.Dispatched {
+				t.Fatal("billing unexpectedly persisted admission")
+			}
+			// Simulate restart after the original durable lease expires.
+			refund.LeaseUntil = time.Now().UTC().Add(-time.Minute)
+			refund.NextCheckAt = time.Now().UTC().Add(-time.Minute)
+			if _, err := r.SaveTopUpRefund(ctx, refund); err != nil {
+				t.Fatal(err)
+			}
+			var owner money.ProviderTopUpOwner = wallet
+			if scenario == "receipt_unavailable" {
+				owner = failRefundReceiptRead{wallet}
+			}
+			p.queryErr = nil
+			if scenario == "query_unknown" {
+				p.queryErr = billing.ErrReconciliationRequired
+			}
+			p.pending = scenario == "pending"
+			if scenario == "stale_worker" {
+				p.queryHook = func(current billing.TopUpRefundIntent) {
+					current.LeaseToken = "replacement-worker"
+					current.LeaseUntil = time.Now().UTC().Add(time.Minute)
+					if _, saveErr := r.SaveTopUpRefund(ctx, current); saveErr != nil {
+						t.Error(saveErr)
+					}
+				}
+			}
+			if scenario == "external_reversal" {
+				_, err = wallet.AcceptProviderTopUpReversal(ctx, money.OrganizationWalletReversal{ReversalID: "external-race", PaymentID: a.PaymentID, Kind: money.WalletReversalChargeback, OrganizationID: a.OrganizationID, CommercialOrderID: a.OrderID, Currency: "CNY", AmountMinor: 5000, OccurredAt: time.Now().UTC(), ProviderReference: "external-race"})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			restarted, _ := billing.NewService(r, r, r, r, wallet, nil)
+			if err := restarted.EnableWalletTopUps(r, owner, p, nil, billing.TopUpAmountPolicy{}, topUpTestProtection{}, &topUpTestAuthorizer{denied: true}); err != nil {
+				t.Fatal(err)
+			}
+			if err := restarted.ReconcileRecoverableTopUps(ctx); err != nil {
+				t.Fatal(err)
+			}
+			balance, _ := s.ReadWallet(ctx, a.OrganizationID)
+			if scenario == "pre_call_crash" || scenario == "billing_commit_lost" || scenario == "response_lost" || scenario == "external_reversal" {
+				wantCalls := 1
+				if p.lost {
+					wantCalls = 2
+				}
+				wantAvailable := int64(4000)
+				if scenario == "external_reversal" {
+					wantAvailable = 0
+				}
+				if p.calls != wantCalls || p.effects != 1 || p.first.ProviderRequestID != refund.ProviderRequestID || balance.ReservedMinor != 0 || balance.AvailableMinor != wantAvailable || balance.DebtMinor != 0 {
+					t.Fatalf("refund not recovered exactly once: calls=%d effects=%d balance=%+v", p.calls, p.effects, balance)
+				}
+				if err := restarted.ReconcileRecoverableTopUps(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if p.calls != wantCalls {
+					t.Fatal("completed refund was replayed")
+				}
+			} else if p.calls != 0 || balance.ReservedMinor != 6000 {
+				t.Fatalf("unproven replay or hold release: calls=%d balance=%+v", p.calls, balance)
+			}
+			if (scenario == "receipt_unavailable" || scenario == "never_admitted") && p.queries != 0 {
+				t.Fatal("queried provider without proven money admission")
+			}
+		})
+	}
+}
