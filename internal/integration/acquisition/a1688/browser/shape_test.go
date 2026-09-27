@@ -1,0 +1,132 @@
+package browser
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"task-processor/internal/product/sourcing"
+)
+
+func mustSourceForShape(t *testing.T) sourcing.AcquisitionSource {
+	t.Helper()
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	return source
+}
+
+// buildContextPage renders a page whose window.context is the given data object.
+func buildContextPage(data map[string]any) string {
+	raw := map[string]any{"result": map[string]any{"data": data}}
+	encoded, _ := json.Marshal(raw)
+	return "<!doctype html><html><head><title>Shape</title></head><body><script>window.context = " +
+		string(encoded) + ";</script></body></html>"
+}
+
+// A nonpositive or unparsable beginAmount must be normalized, because a "0"
+// minimum quantity fails the acquisition during mapping.
+func TestBrowserAcquireNormalizesNonpositiveMinimumQuantity(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	page := buildContextPage(map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Min qty bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"price": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": []any{
+				map[string]any{"price": "12.50", "beginAmount": 0},
+			}},
+		}}},
+	})
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source := mustSourceForShape(t)
+	evidence, err := client.Acquire(t.Context(), source)
+	require.NoError(t, err, "a zero minimum quantity must not fail the acquisition")
+	require.NotEmpty(t, evidence.PriceFacts)
+	// The full mapping must succeed, which is what a "0" quantity would break.
+	_, err = sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-minqty")
+	require.NoError(t, err, "the normalized minimum quantity must pass mapping validation")
+}
+
+// An oversized price-range list must drop the whole set rather than publish a
+// prefix of it.
+func TestBrowserAcquireDropsOversizedPriceRanges(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	ranges := make([]any, 0, maxPriceFacts+5)
+	for i := 0; i < maxPriceFacts+5; i++ {
+		ranges = append(ranges, map[string]any{"price": "1.00", "beginAmount": 1})
+	}
+	page := buildContextPage(map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Many ranges bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"price": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": ranges},
+		}}},
+	})
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Empty(t, evidence.PriceFacts, "a lossy price prefix must not be published")
+	require.True(t, hasTruncation(evidence, "price_facts"), "the dropped price set must be reported")
+}
+
+// A custom-item page with a title and product data but no offer id must still be
+// collected, using the canonical URL, exactly as a standard page is.
+func TestBrowserAcquireRecoversCustomItemOfferIDFromURL(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	page := `<!doctype html><html><head><title>No id</title></head><body><script>
+window.__INIT_DATA = {"data":{"main":{"data":{"title":"No id custom item",
+  "propsList":[{"name":"material","value":"steel"}]}}}};
+</script></body></html>`
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL + "/offer/981645030344.html"})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err, "a custom item without an inline offer id must still be collected")
+	require.Equal(t, "981645030344", evidence.OfferID)
+}
+
+// When a block exposes both a partial skuModel and the complete nySkuModel, the
+// complete one must win.
+func TestBrowserAcquirePrefersBlockLocalNySkuModel(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	page := `<!doctype html><html><head><title>Prefer ny</title></head><body><script>
+window.__INIT_DATA = {"data":{"main":{"data":{
+  "offerId": 981645030344,
+  "title": "Prefer ny item",
+  "skuModel": {"skuProps":[{"prop":"size"}], "skuInfoMap":{"partial":{"skuId":7,"price":1.5}}},
+  "nySkuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap":{"red":{"skuId":99,"price":2.5}}}
+}}}};
+</script></body></html>`
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.Variants, 1)
+	require.NotNil(t, evidence.Variants[0].SourceID)
+	require.Equal(t, "99", *evidence.Variants[0].SourceID, "the complete nySkuModel must win over the partial skuModel")
+}
+
+func hasTruncation(e sourcing.AcquisitionEvidence, field string) bool {
+	for _, w := range e.Warnings {
+		if w.Code == "source_evidence_truncated" && w.Field == field {
+			return true
+		}
+	}
+	return false
+}
+
+// The price cap must be enforced in one shared place; a second inline guard is
+// exactly the defect this change set out to remove.
+func TestExtractorHasASingleSharedPriceGuard(t *testing.T) {
+	script := extractScript()
+	require.Equal(t, 1, strings.Count(script, "const pushPrice ="),
+		"there must be exactly one price append helper")
+	// No price reader may push directly any more.
+	require.NotContains(t, script, "out.priceFacts.push({ amount: amount, currency: clip(r.currency",
+		"price readers must go through pushPrice")
+}

@@ -205,23 +205,45 @@ func extractScript() string {
       out.variants = [];
     }
   };
+  // Every price reader appends through this one helper, so the cap can never be
+  // enforced at one site and forgotten at another. On overflow the whole price
+  // set is dropped, because a prefix is not the source's complete price set.
+  let priceOverflow = false;
+  const pushPrice = (amount, currency, beginAmount) => {
+    if (out.priceFacts.length >= CAP.priceFacts) { priceOverflow = true; return; }
+    // A nonpositive or unparsable minimum quantity is not a usable quantity and
+    // would fail the acquisition during mapping; the supported extractor
+    // normalizes it to 1.
+    let minQuantity = '';
+    if (beginAmount !== undefined && beginAmount !== null && beginAmount !== '') {
+      const q = exactNum(beginAmount, 'price_facts');
+      if (q) {
+        const n = parseInt(q, 10);
+        minQuantity = String(isNaN(n) || n < 1 ? 1 : n);
+      }
+    }
+    out.priceFacts.push({ amount: amount, currency: clip(currency || '', 'price_facts'), minQuantity: minQuantity });
+  };
   const readPrices = (data) => {
     for (const k in data) {
       const item = data[k];
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
       if (!Array.isArray(ranges)) continue;
       for (const r of ranges) {
-        if (out.priceFacts.length >= CAP.priceFacts) { markTrunc('price_facts'); break; }
         if (!r || r.price === undefined || r.price === null) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;
-        out.priceFacts.push({
-          amount: amount,
-          currency: clip(r.currency || '', 'price_facts'),
-          minQuantity: exactNum(r.beginAmount, 'price_facts')
-        });
+        pushPrice(amount, r.currency, r.beginAmount);
       }
     }
+  };
+
+  // A valid page of either supported shape may omit its offer id while the
+  // canonical detail URL already identifies the offer. The recovery is applied
+  // once, after extraction, so it covers standard and custom-item pages alike.
+  const offerIdFromURL = () => {
+    const m = /\/offer\/(\d+)\.html/.exec(String(location.pathname || ''));
+    return m ? m[1] : '';
   };
 
   // The description is read for both supported page shapes, so a custom-item
@@ -242,13 +264,6 @@ func extractScript() string {
     if (data.Root && data.Root.fields && data.Root.fields.dataJson && data.Root.fields.dataJson.tempModel) {
       out.offerId = exactNum(data.Root.fields.dataJson.tempModel.offerId, 'offer_id');
     }
-    // A valid page may omit tempModel while the canonical detail URL already
-    // identifies the offer. Recovering it keeps the acquisition usable instead of
-    // rejecting a page that has a title and product data.
-    if (!out.offerId) {
-      const m = /\/offer\/(\d+)\.html/.exec(String(location.pathname || ''));
-      if (m) out.offerId = m[1];
-    }
     if (data.gallery && data.gallery.fields && Array.isArray(data.gallery.fields.offerImgList)) {
       for (const u of cap(data.gallery.fields.offerImgList, CAP.images, 'images')) {
         if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
@@ -267,12 +282,11 @@ func extractScript() string {
       const op = dj && dj.orderParamModel && dj.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       const collect = (list) => {
-        for (const r of cap(list, CAP.priceFacts, 'price_facts')) {
-          if (out.priceFacts.length >= CAP.priceFacts) break;
+        for (const r of list) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
-          out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+          pushPrice(amount, r.currency, r.beginAmount);
         }
       };
       if (Array.isArray(range)) collect(range);
@@ -291,8 +305,8 @@ func extractScript() string {
     // block, matching the legacy foundSkuModel guard.
     const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
     if (g) {
-      if (g.skuModel) readSku(g.skuModel);
-      else if (g.nySkuModel) readSku(g.nySkuModel);
+      if (g.nySkuModel) readSku(g.nySkuModel);
+      else if (g.skuModel) readSku(g.skuModel);
       else if (g.skuModelOrigin) readSku(g.skuModelOrigin);
     }
     for (const k in init) {
@@ -321,8 +335,8 @@ func extractScript() string {
       // pre-empt it, and reading both cannot duplicate variants (which
       // MapAcquisitionEvidence rejects as repeated source IDs).
       if (out.variants.length === 0) {
-        if (d.skuModel) readSku(d.skuModel);
-        else if (d.nySkuModel) readSku(d.nySkuModel);
+        if (d.nySkuModel) readSku(d.nySkuModel);
+        else if (d.skuModel) readSku(d.skuModel);
         else if (d.skuModelOrigin) readSku(d.skuModelOrigin);
         else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
       }
@@ -339,12 +353,11 @@ func extractScript() string {
       const op = g.orderParamModel && g.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       if (Array.isArray(range)) {
-        for (const r of cap(range, CAP.priceFacts, 'price_facts')) {
-          if (out.priceFacts.length >= CAP.priceFacts) break;
+        for (const r of range) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
-          out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+          pushPrice(amount, r.currency, r.beginAmount);
         }
       }
     }
@@ -356,20 +369,24 @@ func extractScript() string {
       const block = init[k];
       const d = block && block.data;
       if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;
-      for (const r of cap(d.priceModel.currentPrices, CAP.priceFacts, 'price_facts')) {
-        if (out.priceFacts.length >= CAP.priceFacts) break;
+      for (const r of d.priceModel.currentPrices) {
         if (!r) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;
-        out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+        pushPrice(amount, r.currency, r.beginAmount);
       }
       break;
     }
     if (out.priceFacts.length === 0) readPrices(init);
   }
+  if (!out.offerId) out.offerId = offerIdFromURL();
   if (out.images.length > CAP.images) out.images = cap(out.images, CAP.images, 'images');
   if (out.attributes.length > CAP.attributes) out.attributes = cap(out.attributes, CAP.attributes, 'attributes');
   if (out.variants.length > CAP.variants) out.variants = cap(out.variants, CAP.variants, 'variants');
+  if (priceOverflow) {
+    markTrunc('price_facts');
+    out.priceFacts = [];
+  }
   if (out.priceFacts.length > CAP.priceFacts) out.priceFacts = cap(out.priceFacts, CAP.priceFacts, 'price_facts');
   return out;
 }`
