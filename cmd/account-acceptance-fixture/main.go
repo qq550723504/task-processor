@@ -86,6 +86,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	membershipWriterID, err := readRuntime("membership-write-user-id")
+	if err != nil {
+		return err
+	}
 
 	previous, err := readManifest()
 	if err != nil {
@@ -125,6 +129,12 @@ func run(ctx context.Context) error {
 	}
 	if len(result.Organizations) != 2 || len(result.AdditionalAuthorizations) != 2 {
 		return errors.New("acceptance provisioner returned an incomplete fixture")
+	}
+	if err := zitadelprovision.ProvisionLocalAcceptanceMembershipWriter(ctx, zitadelprovision.Config{
+		IssuerURL: issuerURL, ManagementToken: managementToken, OrgID: homeOrganizationID,
+		AcceptanceOrganizationIDs: []string{result.Organizations[0].OrganizationID, result.Organizations[1].OrganizationID}, HTTPClient: client,
+	}, membershipWriterID); err != nil {
+		return fmt.Errorf("provision acceptance membership writer: %w", err)
 	}
 	output := manifest{
 		SchemaVersion:      1,

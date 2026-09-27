@@ -97,6 +97,7 @@ tofu apply -input=false -auto-approve \
 write_output provider_pat "$runtime/provider-machine.pat"
 write_output membership_read_pat "$runtime/membership-read.pat"
 write_output membership_write_pat "$runtime/membership-write.pat"
+write_output membership_write_user_id "$runtime/membership-write-user-id"
 write_output api_client_id "$runtime/api-client-id"
 write_output api_client_secret "$runtime/api-client-secret"
 write_output signup_org_id "$runtime/signup-org-id"

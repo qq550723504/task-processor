@@ -16,6 +16,29 @@ const result = { schemaVersion: "membership-v1", userId: "actor", organizationId
 const clients: QueryClient[] = [];
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); vi.restoreAllMocks(); state.switching = false; state.org = "org"; sessionStorage.clear(); });
 function page(client = new QueryClient()) { clients.push(client); return <QueryClientProvider client={client}><MembersPage expectedUserId="actor" /></QueryClientProvider>; }
+it("does not report an unread retained receipt as UNKNOWN after returning to the page", async () => {
+  const unknown = "4841d296-ef14-4c16-8d25-a7667e534feb", completed = "ea0390e6-6fd0-4834-8e9c-277caf59c122";
+  const retained = JSON.stringify([unknown, completed].map((key, index) => ({key, kind:"role", target:`grant-${index}`, input:{role:"listingkit_operator",expectedVersion:"a".repeat(64)}})));
+  sessionStorage.setItem('membership.pending:["actor","org"]', retained);
+  const receipt = {schemaVersion:"membership-operation-v1",userId:"actor",organizationId:"org",id:unknown,kind:"role",step:"update_authorization",status:"unknown",targetUserId:"member",authorizationId:"grant",userEvidence:"",userAcknowledgment:null,acknowledgment:null,observation:"unavailable",observed:null};
+  const calls = vi.fn().mockImplementation(url => Promise.resolve(Response.json(
+    String(url).endsWith(completed) ? {...receipt,id:completed,status:"acknowledged",acknowledgment:{id:"grant",at:"2026-09-27T00:00:00Z"}} :
+    String(url).endsWith(unknown) ? receipt :
+    String(url).includes("member-operations") ? {schemaVersion:"membership-operations-v1",userId:"actor",organizationId:"org",items:[receipt],next:""} :
+    {...result,canManage:true,assignableRoles:["listingkit_viewer"]}
+  )));
+  vi.stubGlobal("fetch",calls); render(page());
+  expect(await screen.findByRole("button",{name:new RegExp(`${unknown}.*待核实`)})).toBeVisible();
+  const unread = screen.getByRole("button",{name:new RegExp(completed)});
+  expect(unread).toHaveTextContent("尚未读取回执");
+  expect(unread).not.toHaveTextContent("待核实");
+  await userEvent.setup().click(unread);
+  expect(await screen.findByRole("heading",{name:"操作已获服务确认"})).toBeVisible();
+  expect(screen.getByRole("button",{name:new RegExp(completed)})).toHaveTextContent("已有终局回执");
+  expect(screen.getByRole("button",{name:new RegExp(unknown)})).toHaveTextContent("待核实");
+  expect(sessionStorage.getItem('membership.pending:["actor","org"]')).toBe(retained);
+  expect(calls.mock.calls.every(([,init])=>init.method === "GET")).toBe(true);
+});
 it("recovers durable pending in a new tab and keeps unrelated invitation available", async () => {
   const id = "ea0390e6-6fd0-4834-8e9c-277caf59c122";
   const receipt = {schemaVersion:"membership-operation-v1",userId:"actor",organizationId:"org",id,kind:"invite",step:"create_user",status:"unknown",targetUserId:"original-target",authorizationId:"",userEvidence:"",userAcknowledgment:null,acknowledgment:null,observation:"unavailable",observed:null};
