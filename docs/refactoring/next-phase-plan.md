@@ -1,5 +1,10 @@
 # Platform-aware Asset Refactoring Implementation Plan
 
+> **Classification:** `DATED EVIDENCE`. This file preserves the implementation/checklist record for the platform-aware asset refactor; it is not a current execution plan or a source of new compatibility requirements.
+>
+> **Superseded execution authority:** Any historical instruction below that keeps or introduces legacy decoding, compatibility fields/facades, release-window migration gates, or other old-design carry-over is `SUPERSEDED` by [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) and the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md). Reuse only behavior that is independently verified against the current owner and current code.
+>
+> **Current-contract note:** Live contracts referenced by this record (for example `docs/api/listingkit-asset.openapi.yaml`) derive authority from their own current code/generator/test consumers, not from this historical plan.
 > **Authority:** Historical implementation record. The platform-aware asset refactor is complete. This file no longer defines the active execution queue; use `docs/refactoring/current-refactoring-status.md` and GitHub issue #137 for current order.
 >
 > **For agentic workers:** Retain the checklist as execution evidence. Do not re-execute it as a current plan; use the active current-state document and backlog authority above.

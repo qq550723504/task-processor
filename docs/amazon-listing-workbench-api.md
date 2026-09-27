@@ -1,5 +1,9 @@
 # Amazon Listing Workbench API
 
+> **Classification:** `CURRENT CONTRACT` for the AmazonListing operator endpoints and request/response fields documented below. Verified against current `internal/amazonlisting/httpapi/routes.go`, `internal/marketplace/amazon/model/review_types.go`, `internal/amazonlisting/workspace_workbench.go`, `internal/amazonlisting/workspace_edit_fields.go`, `internal/amazonlisting/workspace_edit_variants.go`, and the current product HTTP E2E path.
+>
+> This contract belongs to the current AmazonListing domain. It does **not** revive retired ProductEnrich/ProductImage task, queue, worker, or child-task semantics. AmazonListing consumes current Product Snapshot / Approved Asset facts; legacy product-task behavior remains retired under [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](product/greenfield-no-legacy-migration.md).
+
 ## Task Queue
 
 `GET /api/v1/amazon/listings/tasks`
@@ -13,7 +17,6 @@ Supported query params:
 - `field=brand`
 - `severity=warning`
 - `source=llm`
-- `child_status=failed`
 - `needs_human=true`
 - `limit=20`
 
@@ -32,13 +35,14 @@ Example response:
     {
       "task_id": "listing-queue-1",
       "status": "needs_review",
+      "ready": false,
       "needs_review": true,
       "top_action": "fill_brand",
-      "total_items": 3,
+      "total_items": 1,
       "review_summary": {
-        "total_count": 3,
+        "total_count": 1,
         "blocking_count": 0,
-        "needs_human_count": 3,
+        "needs_human_count": 1,
         "by_action": {
           "fill_brand": 1
         }
@@ -52,7 +56,7 @@ Example response:
 
 `GET /api/v1/amazon/listings/tasks/:task_id/workbench`
 
-This endpoint returns both child-task progress and structured review items for operator follow-up.
+This endpoint returns the current AmazonListing review projection for operator follow-up. It does not expose retired ProductEnrich/ProductImage child-task progress.
 
 Example response:
 
@@ -62,19 +66,6 @@ Example response:
   "status": "needs_review",
   "ready": false,
   "needs_review": true,
-  "child_tasks": [
-    {
-      "kind": "product_enrich",
-      "task_id": "product-task-1",
-      "status": "completed"
-    },
-    {
-      "kind": "product_image",
-      "task_id": "image-task-2",
-      "status": "failed",
-      "error": "image processing failed: timeout"
-    }
-  ],
   "review_items": [
     {
       "field": "brand",
@@ -100,29 +91,23 @@ Example response:
           "detail": "brand = \"Generic\""
         }
       ]
-    },
-    {
-      "field": "title",
-      "action": "edit_title",
-      "severity": "warning",
-      "reason": "title may be too short for Amazon listing quality",
-      "needs_human": true,
-      "current_value": "Ceramic Mug",
-      "recommended_fix": "expand the title with concrete product facts",
-      "confidence": 0.62,
-      "is_inferred": true,
-      "evidence": [
-        {
-          "type": "scraped_data",
-          "detail": "scraped title: \"Ceramic Mug\""
-        },
-        {
-          "type": "field_value",
-          "detail": "title = \"Ceramic Mug\""
-        }
-      ]
     }
   ],
+  "review_summary": {
+    "total_count": 1,
+    "blocking_count": 0,
+    "needs_human_count": 1,
+    "by_action": {
+      "fill_brand": 1
+    },
+    "by_field": {
+      "brand": 1
+    },
+    "by_severity": {
+      "warning": 1
+    }
+  },
+  "total_items": 1,
   "top_action": "fill_brand",
   "action_buckets": [
     {
@@ -150,7 +135,7 @@ Example response:
 
 `POST /api/v1/amazon/listings/tasks/:task_id/review`
 
-Use `action=apply_edits` to write operator fixes back into the draft, rebuild export payloads, and re-run validation.
+Use `action=apply_edits` to write operator fixes back into the Amazon listing draft, rebuild export payloads, and re-run validation.
 
 Example request:
 
@@ -186,21 +171,15 @@ Example request:
 }
 ```
 
-Supported edit fields:
+Current accepted edit paths:
 
-- `title`
-- `brand`
-- `description`
-- `category_path`
-- `bullet_points`
-- `search_terms`
-- `images.main_image`
-- `images.white_bg_image`
-- `images.gallery`
-- `pricing.currency`
-- `pricing.suggested_price`
-- `pricing.min_price`
-- `pricing.source_cost`
+- Core text/list fields: `title`, `brand`, `description`, `category_path`, `bullet_points`, `search_terms`
+- Images: `images.main_image`, `images.white_bg_image`, `images.gallery`
+- Pricing: `pricing.currency`, `pricing.suggested_price`, `pricing.min_price`, `pricing.source_cost`
+- Product attributes: `attributes.<key>`, `specifications.technical.<key>`
+- Dimensions/weight: `dimensions.length`, `dimensions.width`, `dimensions.height`, `dimensions.unit`, `weight.value`, `weight.unit`
+- Package: `package.quantity`, `package.dimensions.length`, `package.dimensions.width`, `package.dimensions.height`, `package.dimensions.unit`, `package.weight.value`, `package.weight.unit`
+- Variants: `variants[n].sku`, `variants[n].barcode`, `variants[n].inventory`, `variants[n].is_default`, `variants[n].main_image`, `variants[n].price.amount`, `variants[n].price.currency`, `variants[n].cost_price.amount`, `variants[n].cost_price.currency`, `variants[n].attributes.<key>`
 
 Review item evidence fields:
 
