@@ -1,6 +1,6 @@
 # Referral Withdrawal Personal KYC Contract
 
-Status: **IMPLEMENTATION_READY — architecture review round 2 completed with no new blocker**  
+Status: **IMPLEMENTATION_READY — architecture review round 2 completed; rollout amendment approved 2026-09-27**  
 Issue: #519  
 Dependencies: #510, merged PR #520, #469 / PR #517  
 Baseline: `c66f63bdbb007a770e4be667b6d8dafb9c3ce111`
@@ -224,45 +224,61 @@ withdrawal, reservation or audit fact is created by a rejected request.
 - No cross-database atomicity is claimed. This is an admission read followed by
   the existing referral mutation; KYC is not copied into the withdrawal record.
 
-## 8. Referral rules contract and staged UI rollout
+## 8. Referral rules contract and staged rollout
 
-The rules page must not hardcode a future KYC requirement before server
-enforcement exists. The API and UI deploy separately, and the repository's
-release workflow deploys the API before the UI for a source release. Therefore a
-strict v1 → strict v2 cutover cannot be performed safely in one release.
+The rules page must never claim that personal KYC is an active requirement
+before the runtime enforces it. The inverse does **not** require an immediate
+schema cutover: once the runtime enforces KYC, the existing strict v1 rules
+response may remain temporarily authoritative because its withdrawal copy
+already states that additional eligibility conditions are checked and does not
+claim that the minimum amount is sufficient.
 
-The rollout has **two releases**.
+The user approved this rollout amendment on 2026-09-27. It supersedes only the
+prior deployment ordering that coupled server enforcement and the v2 rules
+schema. Fact owners, withdrawal admission, replay ordering, fail-closed
+semantics, cancellation asymmetry and privacy invariants remain unchanged.
 
-### Stage A — compatibility client, no KYC enforcement
+The rollout now has **three logical stages**.
 
-A preparatory rules-page/client release must be merged and **deployed first**.
-PR #517 is the preferred existing delivery vehicle because it already owns the
-bounded referral rules page.
+### Stage A — compatibility client, rules v1
 
-Stage A changes only the client compatibility surface:
+PR #517 is merged. Its client accepts a strict union of:
 
-- server continues returning strict `referral-rules-v1`;
-- withdrawal KYC enforcement remains disabled/not implemented;
-- frontend parser accepts a strict union of:
-  - existing `referral-rules-v1`; and
-  - future `referral-rules-v2` with required
-    `personalKycRequired: true`;
-- UI renders the personal-KYC requirement **only** when the received contract is
-  v2 and the flag is true;
-- v1 rendering remains the current truthful generic eligibility wording.
+- existing `referral-rules-v1`; and
+- future `referral-rules-v2` with required
+  `personalKycRequired: true`.
 
-Stage A deployment must be independently confirmed before Stage B is eligible
-for production rollout. Merely merging the compatibility code is not proof that
-the deployed UI can consume v2.
+The UI renders the personal-KYC requirement only for v2. For v1 it retains the
+generic eligibility wording. Stage A merge status is sufficient for repository
+compatibility work; no deployment evidence is required to implement or merge
+Stage B because Stage B does not change the rules schema.
 
-### Stage B — enforcement + authoritative v2
+### Stage B — enforce personal KYC, keep rules v1
 
-Only after Stage A is deployed may #519's enforcement release:
+#519 may now activate the production composition with
+`requirePersonalKYC=true` while the authoritative rules endpoint continues to
+return strict `referral-rules-v1`.
 
-1. enable the server-side new-withdrawal KYC gate;
-2. switch the rules endpoint from v1 to strict `referral-rules-v2`;
-3. return `personalKycRequired: true`;
-4. keep the frontend dual-reader in place during the release.
+This ordering is safe for both an old strict-v1 client and the merged dual-schema
+client because the server response shape is unchanged. The runtime becomes the
+source of truth for withdrawal eligibility, while the rules page remains
+truthful but intentionally generic until Stage C.
+
+Stage B must therefore:
+
+1. enable the server-side new-withdrawal personal-KYC gate;
+2. keep the rules endpoint on strict `referral-rules-v1`;
+3. keep all existing v1 rule fields and wording semantics unchanged;
+4. preserve the merged dual-reader client for future v2 cutover.
+
+No deployment is authorized by this contract update. Repository merge and
+production rollout remain separate decisions.
+
+### Stage C — publish authoritative rules v2 after compatible UI deployment
+
+Only after a compatible dual-schema UI has actually been deployed and
+independently confirmed may a later release switch the rules endpoint to strict
+`referral-rules-v2` and add:
 
 ```json
 {
@@ -273,21 +289,20 @@ Only after Stage A is deployed may #519's enforcement release:
 
 All existing rule fields remain unchanged.
 
-Because the already-deployed Stage A UI accepts both schemas, the API-first part
-of the Stage B deployment can safely begin enforcing KYC and returning v2 before
-the Stage B UI image rolls out. No point in the rollout requires an old strict-v1
-client to parse v2.
+This later schema cutover is not required to make the KYC gate real. It only
+makes the already-enforced requirement explicit in the rules projection.
 
-A later cleanup may retire v1 client support only after v1 servers are no longer
-a supported rollback target. That cleanup is not required by #519.
+The prohibited states are:
 
-The prohibited states remain:
+- UI explicitly says KYC is required while runtime does not enforce it;
+- rules v2 is returned to a deployed client that cannot parse/report v2;
+- Stage B disables or weakens the KYC gate merely to preserve rules v1.
 
-- UI says KYC is required while runtime does not enforce it;
-- runtime enforces KYC while the deployed rules client cannot parse/report v2.
+The intentionally permitted intermediate state is:
 
-The #519 implementation PR must record Stage A as a production rollout
-prerequisite; implementation CI cannot substitute for that deployment evidence.
+- runtime enforces personal KYC;
+- rules endpoint remains strict v1;
+- UI continues generic additional-eligibility wording.
 
 ## 9. TDD and verification matrix
 
@@ -313,7 +328,10 @@ Required tests:
   `RequestWithdrawal` keeps its transactional operation lookup;
 - Stage A frontend contract accepts strict v1 and strict v2, renders no KYC claim
   for v1, and renders the KYC requirement for v2;
-- Stage B rules v2 requires `personalKycRequired: true`;
+- Stage B production composition enables personal-KYC admission while the rules
+  endpoint intentionally remains strict v1;
+- Stage C rules v2 requires `personalKycRequired: true` after compatible UI
+  deployment evidence exists;
 - existing referral economics, payout-method, withdrawal-state, architecture and
   browser/accessibility tests remain green.
 
@@ -358,6 +376,6 @@ Architecture review round 2 found no new blocker. This document is now the froze
 
 Implementation may proceed by TDD on the same delivery PR. Architecture is only
 reopened by a newly demonstrated blocker in the frozen owner, identity,
-transaction, replay, rollout or privacy boundaries. Stage A compatible-client
-**deployment evidence** remains a production-rollout prerequisite for Stage B;
-implementation CI or merge status cannot substitute for that evidence.
+transaction, replay, rollout or privacy boundaries. Stage A compatible-client deployment evidence is **not** a prerequisite for
+Stage B because Stage B keeps the rules response on strict v1. Deployment
+evidence remains a prerequisite only for the later Stage C v2 schema cutover.
