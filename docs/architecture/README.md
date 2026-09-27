@@ -134,10 +134,12 @@ documents unless they say so explicitly:
     fact through a narrow read port; includes committed-operation replay and the
     staged v1/v2 rules rollout required by the API-first deployment order.
 - `alipay-wallet-topup-design.md`
-  - DRAFT #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
+  - DESIGNING #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
     fixed-channel attempts, typed checkout, isolated verification, posting/refund
     receipts and recovery. Historical filename; one dual-channel design.
-    Not IMPLEMENTATION_READY; does not supersede approved billing/money contracts.
+    Desktop checkout, third-party payer, zero top-up commission and admin-approved
+    refunds are approved. Economic amount mapping and incremental review remain;
+    not IMPLEMENTATION_READY or a real-payment authorization.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
