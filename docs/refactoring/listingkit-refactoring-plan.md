@@ -6,24 +6,24 @@
 
 This document narrows the project-wide refactoring program down to the `internal/listingkit` area.
 
-It should help us:
+It was intended to help us:
 
 - reduce root `internal/listingkit` complexity,
-- keep `listingkit` focused on orchestration and compatibility,
+- record the then-intended ListingKit orchestration/compatibility shape,
 - move platform-specific behavior out of the root package,
 - sequence small, testable, behavior-preserving PRs.
 
 It should not be treated as a competing source of truth.
 
-## 2. Current Position
+## 2. Historical Position (2026-06-09)
 
 Observed in the local workspace on 2026-06-09:
 
-Recent boundary checkpoint:
+Historical boundary checkpoint:
 
-- see [`listingkit-boundary-checkpoint.md`](./listingkit-boundary-checkpoint.md) for the current studio/preview/SHEIN publishing guard state and the recommended next direction toward `product/sourcing`.
+- [`listingkit-boundary-checkpoint.md`](./listingkit-boundary-checkpoint.md) records the then-current studio/preview/SHEIN publishing guard state and then-recommended direction toward `product/sourcing`; it is **SUPERSEDED FOR GREENFIELD** and is not current implementation authority.
 
-| Metric | Current snapshot |
+| Metric | 2026-06-09 snapshot |
 | --- | ---: |
 | Root `internal/listingkit` Go files excluding tests | 304 |
 | Root `internal/listingkit` Go files including tests | 512 |
@@ -34,8 +34,8 @@ Recent boundary checkpoint:
 Implications:
 
 - Older goals based on root-file-count `532` are no longer accurate.
-- Early extraction work has already started, so future work should continue from the current package shape rather than recreate it.
-- The next meaningful work is boundary tightening, preview modularization, submission consolidation, and service slimming, not broad directory creation.
+- At that checkpoint, early extraction had already started; the plan expected later work to continue from that package shape rather than recreate it.
+- At that checkpoint, the plan identified boundary tightening, preview modularization, submission consolidation, and service slimming as the next work rather than broad directory creation.
 
 ## 3. ListingKit Target Role
 
@@ -67,9 +67,9 @@ The following are out of scope for the first-pass ListingKit refactor:
 - moving files solely to satisfy arbitrary file-count targets,
 - promoting advisory dependency checks to CI before legacy exceptions are documented.
 
-## 5. Required Baseline Before More Moves
+## 5. Historical Baseline Used Before More Moves
 
-Before starting the next substantial code move, use the same baseline flow defined by the project-wide execution plan.
+This plan originally used the following baseline flow before a substantial code move. It is retained as historical validation evidence, not a current instruction; current checks come from repository CI and the current execution Issue.
 
 Commands:
 
@@ -80,7 +80,7 @@ go test ./internal/app/httpapi/... -count=1
 go test ./... -count=1
 ```
 
-Then update:
+The historical flow then updated:
 
 - [`dependency-baseline.md`](./dependency-baseline.md)
 
@@ -139,7 +139,7 @@ Goal:
 
 - reduce hardcoded platform branching inside preview assembly without changing API behavior.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. keep `preview_builder.go` thin and delegate to smaller helpers,
 2. split per-platform preview assembly into dedicated file-group helpers,
@@ -171,7 +171,7 @@ Goal:
 
 - group preview aggregation into a bounded module or file cluster without forcing premature package churn.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. finish internal preview file grouping while staying in `package listingkit` if necessary,
 2. introduce package-private adapter-like interfaces where they reduce central branching,
@@ -194,7 +194,7 @@ Goal:
 
 - gather submit, retry, recovery, lock, and Temporal-adjacent coordination into a tighter submission-oriented surface.
 
-Current checkpoint:
+Historical checkpoint recorded by this plan:
 
 - `internal/listing/submission` now owns nine small generic orchestration seams:
   - refresh status (`RefreshStatus`)
@@ -329,7 +329,7 @@ Current checkpoint:
 - workflow SDS sync home construction now also keeps local sync plus remote entry routing, while remote single-run execution and remote variant summary/finalize flows live in a dedicated support file, so root `listingkit` no longer mixes remote execution skeletons with top-level SDS sync entry seams in one broad workflow file.
 - asset workflow home construction now also keeps inventory/bundle rebuild primitives and task merge helpers, while platform image-bundle attachment plus pending-generation collection live in a dedicated support file, so root `listingkit` no longer mixes generic asset rebuild helpers with platform bundle handoff seams in one broad asset-workflow file.
 - interface definitions now also split into dependency/configurer contracts and business service contracts, so root `listingkit` no longer keeps repository/client/store abstractions mixed with high-level lifecycle/admin/generation service surfaces in one broad interfaces file.
-- The next preferred slice is to stop and reassess whether more submit extraction still shrinks `listingkit`, rather than automatically extracting every leftover helper.
+- At that checkpoint, the preferred next slice was to stop and reassess whether more submit extraction still shrank `listingkit`, rather than automatically extracting every leftover helper.
 
 ### Phase 3.5: Studio Skeleton Extraction
 
@@ -337,7 +337,7 @@ Goal:
 
 - establish `internal/listing/studio` with low-risk internal services before moving broader studio orchestration.
 
-Current checkpoint:
+Historical checkpoint recorded by this plan:
 
 - `internal/listing/studio` now owns its first real service skeleton:
   - studio batch-run service (`create/get/list/cancel`)
@@ -386,7 +386,7 @@ Current checkpoint:
 - `internal/listingkit` batch task resume now delegates completion-state persistence plus result reload orchestration to `internal/listing/studio`, while pending-design selection, session/batch loading, task creation execution, repository/session models, and resume entrypoint control stay in the compatibility shell.
 - `internal/listing/studio` now has a boundary guard that keeps it independent from `internal/listingkit`, SHEIN marketplace/workspace/publishing packages, and root runtime/integration wiring.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. continue with small studio services that already look like `load/check/build result` flows,
 2. keep listingkit-owned repositories and shell models behind adapters until multiple studio services settle,
@@ -403,7 +403,7 @@ Stop conditions:
 - if extraction requires copying large listingkit model trees into the new package,
 - if batch executor/coordinator behavior starts leaking into the first studio skeleton.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. inventory submit, retry, recovery, lock, and direct-submit flows,
 2. reduce root service field sprawl behind a submission-focused facade or coordinator,
@@ -439,7 +439,7 @@ Goal:
 
 - reduce root ListingKit service constructor and dependency sprawl.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. identify clusters such as preview, submission, revision/history, and studio coordination,
 2. introduce private facade structs for coherent clusters,
@@ -463,7 +463,7 @@ Goal:
 
 - keep `internal/app/httpapi` and other runtime assembly layers focused on wiring only.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. remove business-rule leakage from app assembly code,
 2. keep route and worker registration thin,
@@ -480,19 +480,19 @@ Goal:
 
 - keep marketplace-specific behavior in marketplace-owned packages and out of generic ListingKit surfaces.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. identify SHEIN-specific rules still living under root ListingKit,
 2. move marketplace-owned logic to the appropriate package when a safe target already exists,
-3. leave compatibility facades behind when needed to avoid broad breakage.
+3. **SUPERSEDED FOR GREENFIELD:** the historical plan allowed compatibility facades to remain to avoid broad breakage; current work must follow `EXTRACT | RETIRE` instead.
 
-Current checkpoint:
+Historical checkpoint recorded by this plan:
 
 - `internal/marketplace/shein/{publishing,workspace}` exists as the target SHEIN directory shape.
-- Stable low-risk helpers can start moving there first, while `internal/publishing/shein` and `internal/workspace/shein` shrink into compatibility shells.
-- When a helper is structurally independent, prefer moving the implementation first and letting the old package re-export it, instead of doing another large in-place cleanup in `listingkit`.
-- The current boundary posture is guard-first: keep `internal/publishing/shein` as a legacy compatibility/model package for now, while preventing new `internal/marketplace/shein/publishing` logic from depending on `listingkit` or root runtime wiring.
-- Current migrated examples:
+- At that checkpoint, stable low-risk helpers were candidates to move there while `internal/publishing/shein` and `internal/workspace/shein` shrank into compatibility shells; that compatibility direction is historical, not a current exception.
+- **SUPERSEDED FOR GREENFIELD:** this plan historically preferred moving an implementation first and letting the old package re-export it; current work must not create or preserve a re-export compatibility seam unless a current authority explicitly permits it.
+- Boundary posture recorded at that checkpoint: keep `internal/publishing/shein` as a legacy compatibility/model package while blocking new reverse dependencies. The compatibility-retention part is **SUPERSEDED FOR GREENFIELD**; the historical guard evidence remains useful only where current guards still enforce it.
+- Migrated examples recorded at that checkpoint:
   - `publishing`: pricing policy, remote confirmation fallback/default-confirmed rules, remote record classification/selection rules, confirm-remote decision policy
   - `workspace`: state helpers, dirty hints, editor progress, editor recommendations/effects, readiness/checklist/guidance helpers, repair center/plan/session projection helpers, editor context/revision models, editor context builder, editor revision skeleton, editor revision-from-context projection, minimal revision pruning, revision diff/applied-changes/history-compare helpers, restore draft/request/preview helpers, history detail/restore detail/presentation projections, revision field validation, revision validation/success payloads, overview projection, inspection payload/build helpers
 
@@ -507,7 +507,7 @@ Goal:
 
 - hide concrete external clients behind narrow interfaces where ListingKit currently depends on implementation details.
 
-Recommended work slices:
+Historical work slices recorded by this plan:
 
 1. identify direct infrastructure coupling in service construction and task flows,
 2. shrink interfaces to what ListingKit actually uses,
@@ -538,7 +538,7 @@ This is a planning backlog, not a mandatory move list.
 - task requeue coordination,
 - Temporal-facing submit adapters.
 
-Current narrow target:
+Historical narrow target recorded by this plan:
 
 - extract the smallest reusable orchestration inside direct submit before moving any platform-owned SHEIN rules
 
@@ -552,11 +552,11 @@ Current narrow target:
 
 - studio batch and session orchestration that still lives in root ListingKit,
 - bridge code that may belong in marketplace workspace packages,
-- compatibility shims that can stay in ListingKit temporarily.
+- **SUPERSEDED FOR GREENFIELD:** the historical plan allowed temporary compatibility shims in ListingKit; current work must use `EXTRACT | RETIRE` and current authority.
 
-## 9. PR Template for ListingKit Refactoring
+## 9. Historical PR Template for ListingKit Refactoring
 
-Each refactoring PR should answer:
+This was the PR checklist used by this historical plan. It is not current admission policy; follow `AGENTS.md` and the current execution Issue for present work.
 
 1. What single boundary or responsibility is being improved?
 2. What behavior is intentionally unchanged?
@@ -582,13 +582,13 @@ Secondary signals:
 - targeted test suites get faster and more reliable,
 - reviewers can explain package ownership with less ambiguity.
 
-## 11. Maintenance Rule
+## 11. Historical Maintenance Rule (Superseded)
 
-Update this document when:
+The original plan said to update this document when:
 
 - the project-wide execution order changes,
 - a major ListingKit boundary decision is made,
 - a phase is completed and the next bottleneck becomes clearer,
 - current metrics materially change.
 
-Do not leave stale hardcoded file counts, branch names, or package-creation steps here after the codebase has moved on.
+This maintenance rule is now superseded: keep this file as dated evidence. Put current metrics, sequencing, and authority changes in the stable architecture/refactoring entrypoints and the current Issue instead of reviving this plan.
