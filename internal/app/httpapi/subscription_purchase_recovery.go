@@ -9,6 +9,9 @@ import (
 )
 
 func startSubscriptionPurchaseRecoveryLoop(parent context.Context, server *http.Server, reconcile func(context.Context) error, interval time.Duration, logger *logrus.Logger) {
+	startCommercialRecoveryLoop(parent, server, reconcile, interval, "subscription purchase", logger)
+}
+func startCommercialRecoveryLoop(parent context.Context, server *http.Server, reconcile func(context.Context) error, interval time.Duration, name string, logger *logrus.Logger) {
 	if parent == nil || server == nil || reconcile == nil || interval <= 0 {
 		return
 	}
@@ -20,7 +23,7 @@ func startSubscriptionPurchaseRecoveryLoop(parent context.Context, server *http.
 			runCtx, runCancel := context.WithTimeout(ctx, 20*time.Second)
 			defer runCancel()
 			if err := reconcile(runCtx); err != nil && logger != nil {
-				logger.WithError(err).Warn("subscription purchase recovery sweep failed")
+				logger.WithField("recovery", name).Warn("commercial recovery sweep incomplete")
 			}
 		}
 		run()

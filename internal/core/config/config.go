@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	topupconfig "task-processor/internal/integration/wallettopup/config"
 	"task-processor/internal/pkg/watermark"
 	logger "task-processor/internal/platform/logging"
 
@@ -51,6 +52,7 @@ type Config struct {
 	ListingKit              ListingKitConfig          `yaml:"listingkit"`
 	ListingControlPlane     ListingControlPlaneConfig `yaml:"listingControlPlane"`
 	Workbench               WorkbenchConfig           `yaml:"workbench"`
+	WalletTopUp             topupconfig.Config        `yaml:"walletTopUp"`
 }
 
 type FeatureFlagsConfig struct {

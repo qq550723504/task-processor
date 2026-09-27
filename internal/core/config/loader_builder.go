@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	topupconfig "task-processor/internal/integration/wallettopup/config"
 	logger "task-processor/internal/platform/logging"
 	"time"
 
@@ -246,6 +247,7 @@ func BuildConfig(v *viper.Viper) *Config {
 		Workbench: WorkbenchConfig{
 			Enabled: v.GetBool("workbench.enabled"),
 		},
+		WalletTopUp: topupconfig.Load(v),
 	}
 
 	cfg.RabbitMQ = BuildRabbitMQConfig(v)

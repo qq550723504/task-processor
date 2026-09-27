@@ -1,6 +1,6 @@
 # 微信支付与支付宝企业钱包充值架构设计
 
-**状态：DESIGNING / D2、D4、D5 独立增量评审完成，待 D3 经济关系确认；不是 IMPLEMENTATION_READY。**<br>
+**状态：IMPLEMENTATION_READY / D2、D4、D5 独立增量评审完成，D3 等额经济规则已于 2026-09-27 由用户确认。**<br>
 **Design Basis：Independent Architecture。**<br>
 **关联：#481；复用 #457；订阅消费沿 #479 / #480。**  
 **设计日期：2026-09-24；产品决定更新：2026-09-27。最新代码核对基线：`72200675c123da2e10873232a84ec42bd6d645f0`；原 `c5deccbe7d42e211ab1e2c80987b1e7e67b671f2` 仅为历史证据。**
@@ -16,10 +16,11 @@
 **2026-09-27 用户批准（[当前 #481](https://github.com/qq550723504/task-processor/issues/481)，协调会话 `01a0dc1c-79f8-7081-97e0-2915333a0663`）：**
 
 - D2：支付宝电脑网站收银台与微信 Native 扫码；首版不做手机网页直接拉起支付。
+- D3：用户于实现会话 `01a0e156-ceba-7870-9196-54dad5fa5fbd` 确认等额记入企业钱包（有欠款先偿债）、渠道手续费由平台承担、首版无赠送优惠。快捷金额与上下限为服务端必填配置，缺失时关闭新充值。
 - D4：充值本身不计推广佣金；允许他人代付，余额始终归原订单企业。后续消费是否计佣沿既有合同，不在本批次增加规则。
 - D5：核实的迟到付款记入原企业；主动退款由平台管理员批准，限原订单尚可退且钱包可用资金足额部分，原路退回；异常超额差异记录待核对，不自动赔付或核销。
 
-这些是产品决定，不能用 SDK 示例、Figma 数字或 Reviewer 意见改变。D3 的等额到账/手续费关系另待用户确认；§11.3 的 B=C 仍是该未决输入下的提案，未获确认前不实现依赖它的资金路径。
+这些是产品决定，不能用 SDK 示例、Figma 数字或 Reviewer 意见改变。D3 确认既有等额提案，§11.3 的 B=C 为本次冻结合同；复用 #526 已完成的独立增量评审，无需重新展开全局设计。
 
 目标用户是当前已验证 Effective Organization 内有 `workbench.commercial.wallet_topup` 权限的企业管理员。目标链路：
 
@@ -53,12 +54,12 @@
 | --- | --- | --- | --- |
 | D1 | 两渠道收款主体、支付宝 PID/app、微信 mchid/appid 及企业充值业务资格 | 由用户/商户负责人分别确认，SDK 能调用不代表业务获准 | 对应渠道联调、真实开放 |
 | D2 | 已批准具体支付产品 | 支付宝 Page Pay + 微信 APIv3 Native；不做手机网页直接拉起；商户产品权限归 D1 | 产品形态已冻结 |
-| D3 | 等额到账、平台承担手续费、无赠送优惠待确认；实际快捷金额及上下限未指定 | UI 沿 Figma 自定义输入与快捷金额；不设默认生产金额；B=C 提案待确认，到账不按渠道净结算额推断；必要金额配置缺失则关闭新充值 | 经济关系影响本金/退款实现准入；额度配置影响创建真实支付 |
+| D3 | 已批准等额到账、平台承担手续费、无赠送优惠；实际快捷金额及上下限为服务端必填配置 | UI 沿 Figma 自定义输入与快捷金额；B=C，不按渠道净结算额入账；必要金额配置缺失则关闭新充值 | 经济关系已冻结；额度配置影响创建真实支付 |
 | D4 | 已批准充值不计佣、允许他人代付 | 明确 NON_COMMISSIONABLE；不伪造本系统付款人；归原订单企业；后续消费计佣不变 | 产品规则已冻结，纳入本轮合同准入 |
 | D5 | 已批准迟到入原企业、平台管理员批准原路退款、异常差异待核对 | 退款限原订单尚可退且钱包可用资金足额部分，先保留；不自动赔付或核销 | 产品规则已冻结，纳入本轮状态/退款准入 |
 | D6 | 两渠道获准测试条件、凭据、回调与配置 | 支付宝使用获准沙箱；微信 APIv3 不假设沙箱，受控替身与获准真实测试分列；小额付款也需授权 | 对应环境联调/开放 |
 
-D3–D5 是产品政策，D4/D5 已有明确批准，D3 不能由 SDK、Figma 示例或 Reviewer 代替用户决定。未配置或未获准的渠道显示 unavailable；不能为了满足双渠道演示而伪造成功。配置一方不自动开放另一方，关闭新付款能力不能关闭已发生资金事实的读取与恢复。
+D3–D5 是已批准产品政策，不能由 SDK、Figma 示例或 Reviewer 改变。未配置或未获准的渠道显示 unavailable；不能为了满足双渠道演示而伪造成功。配置一方不自动开放另一方，关闭新付款能力不能关闭已发生资金事实的读取与恢复。
 
 ## 2. 已有能力与实际缺口
 
@@ -167,7 +168,7 @@ type TopUpReversalKey struct {
 
 内部 `int64` 分，HTTP 金额为十进制字符串。充值输入只是用户意图，由服务端按 D3 的规则核准后冻结。渠道使用元字符串时，以整数运算转换，例如 `12345 分 ↔ "123.45"`；禁止 float、隐式舍入、科学计数法、负数和溢出。
 
-支付宝以订单 `total_amount` 核对订单面值，不用 `buyer_pay_amount`、`receipt_amount` 或渠道手续费净额冒充同一个金额。优惠/手续费如何影响钱包面值必须由 D3 决定。未获准的金额差异进入核对，不篡改原订单或丢弃付款证据。
+支付宝以订单 `total_amount` 核对订单面值，不用 `buyer_pay_amount`、`receipt_amount` 或渠道手续费净额冒充同一个金额。D3 已冻结等额本金及平台承担手续费，本系统不提供赠送优惠。未获准的金额差异进入核对，不篡改原订单或丢弃付款证据。
 
 微信 Native 的 `amount.total` 是整数分，核对 `amount.currency=CNY`，不能乘除 100 后再作为分入账；`payer_total` 不替代订单总金额。支付宝才使用元十进制字符串转换，D3 未批准的优惠差异不能隐式抹平。[S8][S9]
 
@@ -387,7 +388,7 @@ money 入口不能接受浏览器传入的 `verified=true`。可信 evidence 类
 
 ### 11.3 货币冲正上限与未决退款保留
 
-以下是 `payment_purpose = WALLET_TOP_UP` 的拟新增 money 合同，NON_COMMISSIONABLE 与 COMMISSIONABLE 都适用；不是全仓所有历史用途的静默规则替换。对 D3 建议的等额充值分支，必须区分**新退款准入预算、已确认渠道事实与钱包本金作用**：
+以下是 `payment_purpose = WALLET_TOP_UP` 的已批准 money 合同，NON_COMMISSIONABLE 与 COMMISSIONABLE 都适用；不是全仓所有历史用途的静默规则替换。对 D3 已批准的等额充值分支，必须区分**新退款准入预算、已确认渠道事实与钱包本金作用**：
 
 ```text
 B = payment.GrossAmountMinor
@@ -400,7 +401,7 @@ E = 累计渠道超本金差额
 x = 本次尚未接受的正数渠道冲正，或新的主动退款申请金额
 ```
 
-B/C 是原付款及不可变充值绑定中的本金，不是当前 available，也不是扣手续费后的净收入。不能使用 CommissionableAmountMinor 作为货币冲正上限。若 D3 不选择等额充值，须先明确付款本金到钱包可退本金的映射；本节 min 只对已冻结的等额分支分配剩余本金，不代替不同金额分支的政策。
+B/C 是原付款及不可变充值绑定中的本金，不是当前 available，也不是扣手续费后的净收入。不能使用 CommissionableAmountMinor 作为货币冲正上限。本节 min 只对已冻结的等额分支分配剩余本金，不支持未获批准的不同金额分支。
 
 R 按同一原付款的不同经济冲正完整累计，允许超过 B；W 是这些事实已经在钱包产生的本金扣减，不能超过 C；E 保留两者差额。退款与拒付共用 W，不能各自扣一遍本金。同一事实的 accepted settlement、wallet receipt 与通知不能重复累计。H 只含尚未确认/释放的退款保留，包括已派发但结果 unknown 的保留，不含 purchase reservation。
 
@@ -588,7 +589,7 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 同一 #481 Delivery Batch，一个主要分支/PR。当前先同步已批准产品决定，完成相应独立增量准入，再由一个 Writer 连续交付两渠道实现，不开多个平行实现任务。
 
-1. **M0 文档与高风险边界评审**：D2/D4/D5 已批准且其独立增量评审已完成，见 [PR #526 评审记录](https://github.com/qq550723504/task-processor/pull/526#issuecomment-5852702980)。除已知 D3 经济关系外没有新增实施 BLOCKER；零佣金全消费者、管理员首次派发与撤权恢复、退款/购买保留隔离和原 receipt 验证归 IMPLEMENTATION_TEST，在合并前收敛。复用 #482 的既有资金修正，不因日期或 main 变化重新展开全局设计。D3 若确认现有等额提案，只同步决定及准入状态；若不同仅复核受影响映射。D1/D6 留作分渠道联调/开放条件。D3 待确认期间状态保持 DESIGNING，不签发整体 IMPLEMENTATION_READY。
+1. **M0 文档与高风险边界评审**：D2/D4/D5 已批准且其独立增量评审已完成，见 [PR #526 评审记录](https://github.com/qq550723504/task-processor/pull/526#issuecomment-5852702980)。D3 已由用户确认既有等额提案，整体达到 IMPLEMENTATION_READY。零佣金全消费者、管理员首次派发与撤权恢复、退款/购买保留隔离和原 receipt 验证归 IMPLEMENTATION_TEST，在合并前收敛。复用 #482 的既有资金修正与 #526 的最终组织中立退款审批边界，不因日期或 main 变化重新展开全局设计。D1/D6 留作分渠道联调/开放条件。
 2. **M1 双渠道收款链**：在同一 PR 内连续实现公共 intent/checkout、支付宝与微信两个 GoPay adapter、各自通知/查单和共享 source-bound posting。可分提交验证，但不能交一方后将另一方自动降为 Later。
 3. **M2 同 PR 收敛恢复与退款**：实现原 receipt 恢复、必要退款/冲正、上述直接相关负例。不另造 scheduler 或故障注入平台。
 4. **M3 充值中心交付**：同页两种方式、分别真实 capability、状态和原 wallet/order API；两渠道分别跑“充值 → 钱包另行购买”链；订阅消费沿 #479，不接管其实现。
@@ -597,13 +598,19 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 ### 16.1 与既有合同的明确关系
 
-本草案**保持** #457 的 money/billing/resource ownership、整数金额、debt-first、top-up 无资源 quote/items/reservation、非完成 Order 不带 PaymentID；保持 #480 的订阅资金协议和独立激活 owner。
+本设计**保持** #457 的 money/billing/resource ownership、整数金额、debt-first、top-up 无资源 quote/items/reservation、非完成 Order 不带 PaymentID；保持 #480 的订阅资金协议和独立激活 owner。
 
-双渠道范围和 D2/D4/D5 已由用户批准，保留旧评审修复；本轮独立增量审查已完成，整体准入仍待 D3。以下技术方案在整体准入后实施：双渠道 adapter/信任域/固定 provider 与 typed checkout、payment attempt 子状态、精确 posting receipt、money 非佣金/付款人表示、top-up 完整渠道事实与受限本金作用/差额分解、未决 hold 成功结清规则、主动退款 purpose 与 receipt、受控迟到付款纠正。在同一 PR 同步相关稳定合同、类型 validator、下游消费者与直接回归，不能只新增文档却让旧合同与新实现互相冲突。未准入前本文件不作为绕过现有 guard 的依据。D3 未确认时不能把 B=C 默认为已批准；D1/D6 缺失不妨碍准入后的隔离开发，但不授予真实支付或部署权限。
+双渠道范围和 D2/D3/D4/D5 已由用户批准，保留旧评审修复；本轮独立增量审查已完成，整体已准入。以下技术方案在同一主要实现 PR 内实施：双渠道 adapter/信任域/固定 provider 与 typed checkout、payment attempt 子状态、精确 posting receipt、money 非佣金/付款人表示、top-up 完整渠道事实与受限本金作用/差额分解、未决 hold 成功结清规则、主动退款 purpose 与 receipt、受控迟到付款纠正。在同一 PR 同步相关稳定合同、类型 validator、下游消费者与直接回归，不能只新增文档却让旧合同与新实现互相冲突。D1/D6 缺失不妨碍隔离开发，但不授予真实支付或部署权限。
 
 ### 16.2 当前交付边界
 
-代码路径与文档已作定点核对，D2/D4/D5 增量独立架构检查已完成；尚未编译 GoPay、执行渠道接口、建立商户账户、操作数据库或验证用户浏览器。具体 PR、文档检查和 CI 的实际结果写 #481/PR，不把文档检查或设计审查写成资金行为/产品验收，不把未来验收勾成 PASS。
+上述为设计阶段证据边界。当前实现复用固定 GoPay SDK，并通过本地签名消息、持久化及隔离 PostgreSQL 验证；真实渠道、商户资格和用户验收仍须 D1/D6。具体 PR、编译、开发自检和 CI 的实际结果写 #481/实现 PR，不把测试替身或设计审查写成真实资金行为/产品验收。
+
+### 实现装配与运行入口
+
+渠道协议与配置分别落在 `internal/integration/wallettopup` 及其 `config` 子包；当前公共配置只引用支付配置类型，不向冻结的 `internal/core` 增加新生产文件。Billing 状态和 inbox 由 `internal/integration/persistence/commercialbilling` 实现，资金接受、钱包、退款 hold 和不可变 receipt 由 `internal/integration/persistence/money` 实现。
+
+当前运行装配采用独立 `money_owner_runtime` 连接池，指向既有 canonical money 数据库；不复用 referral runtime 写入渠道资金事实，也不向 referral 扩大资金写权限。原 application-shaped 配置仅引用当前 owner 类型。空安装 schema/init 增加该角色和固定表权限；不迁移旧数据或回退旧连接池。运行入口、必填金额与私密文件配置、回调和退款 API 见 [账户 Compose 说明](../../deployments/docker/account-compose/README.md#enterprise-wallet-top-up-optional-481)。
 
 ## 17. 依据与核查范围
 

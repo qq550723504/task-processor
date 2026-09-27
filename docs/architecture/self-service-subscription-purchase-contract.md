@@ -25,6 +25,13 @@ verified user + Effective Organization
 
 External payment is not implemented by this slice. An offer requiring an external provider remains non-executable until a provider adapter is separately approved.
 
+The separately approved #481 [wallet top-up design](alipay-wallet-topup-design.md)
+adds equal-value, non-commissionable wallet funding with platform-paid fees and
+no bonus. It does not enable EXTERNAL_PAYMENT subscription checkout, activate a
+plan, or retry a previously rejected purchase. After funding, the user explicitly
+creates a new purchase under this contract. Refund holds remain isolated from
+purchase reservations and cannot satisfy purchase reserve/commit proof.
+
 ## 2. Ownership
 
 ### `internal/commercial/billing`

@@ -49,6 +49,7 @@ create_role image_agent_owner /secrets/image-owner/image-db-password
 create_role source_account_runtime /secrets/source-runtime/source-runtime-password
 create_role commercial_runtime /secrets/commercial-runtime/commercial-reader-password
 create_role commercial_owner_runtime /secrets/commercial-runtime/commercial-owner-password
+create_role money_owner_runtime /secrets/commercial-runtime/money-owner-password
 create_role referral_runtime /secrets/referral-runtime/referral-runtime-password
 create_role organization_membership_runtime /secrets/membership-runtime/membership-runtime-password
 create_role source_acquisition_runtime /secrets/acquisition-runtime/acquisition-runtime-password

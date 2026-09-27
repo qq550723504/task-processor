@@ -7,8 +7,9 @@ import { Card } from "@/components/ui/card";
 import type { CommercialOrder, CommercialOrderPage, CommercialOrderSummary, CommercialWallet, CommercialWalletEntryPage } from "@/lib/api/commercial-billing";
 import { ConsoleState } from "../console/console-page";
 import styles from "./commercial.module.css";
+import { WalletTopUpEntry } from "./wallet-topup";
 
-const entryLabels: Record<string, string> = { TOP_UP_CREDIT: "钱包充值", PURCHASE_RESERVE: "资源购买预留", PURCHASE_COMMIT: "资源购买", PURCHASE_RELEASE: "购买释放", REFUND_REVERSAL: "退款冲正", CHARGEBACK_REVERSAL: "拒付冲正", DEBT_REPAYMENT: "欠款偿还" };
+const entryLabels: Record<string, string> = { TOP_UP_CREDIT: "钱包充值", PURCHASE_RESERVE: "资源购买预留", PURCHASE_COMMIT: "资源购买", PURCHASE_RELEASE: "购买释放", REFUND_RESERVE: "退款冻结", REFUND_CONFIRM: "退款确认", REFUND_RELEASE: "退款冻结释放", REFUND_REVERSAL: "退款冲正", CHARGEBACK_REVERSAL: "拒付冲正", DEBT_REPAYMENT: "欠款偿还" };
 const orderKindLabels: Record<CommercialOrder["kind"], string> = { WALLET_TOP_UP: "钱包充值", RESOURCE_PURCHASE: "资源购买", SUBSCRIPTION_PURCHASE: "套餐购买" };
 const orderStatusLabels: Record<CommercialOrder["status"], string> = { PENDING: "待处理", FUNDS_RESERVED: "资金已预留", FULFILLING: "履约中", FULFILLED: "已完成", CANCELLED: "已取消", RECONCILIATION_REQUIRED: "待核对" };
 
@@ -42,12 +43,11 @@ function CapabilityNote({ children }: { children: React.ReactNode }) {
   return <div className={styles.capabilityNote} role="note"><strong>写入能力未开放</strong><span>{children}</span></div>;
 }
 
-export function WalletView({ wallet, entries, onNext }: { wallet: CommercialWallet; entries: CommercialWalletEntryPage; onNext: () => void }) {
+export function WalletView({ wallet, entries, onNext, userId, roles }: { wallet: CommercialWallet; entries: CommercialWalletEntryPage; onNext: () => void; userId: string; roles: string[] }) {
   return <div className={styles.stack}>
-    <CapabilityNote>支付服务和充值 intent 当前不可用；此处仅展示企业钱包 owner 返回的数据，不会提交充值、购买或资金变更。</CapabilityNote>
     <Panel title="企业钱包余额" className={styles.walletHero}>
       <div><p className={styles.eyebrow}>当前企业 · {wallet.currency}</p><strong className={styles.walletBalance}>{minorAmount(wallet.available_minor, wallet.currency)}</strong><p className={styles.subtle}>可用余额 · 观察于 {timeLabel(wallet.observed_at)}</p></div>
-      <Button disabled aria-disabled="true">充值暂未开放</Button>
+      <WalletTopUpEntry userId={userId} organizationId={wallet.organization_id} roles={roles} />
       <dl className={styles.walletFacts}><div><dt>预留金额</dt><dd>{minorAmount(wallet.reserved_minor, wallet.currency)}</dd></div><div><dt>待偿欠款</dt><dd>{minorAmount(wallet.debt_minor, wallet.currency)}</dd></div><div><dt>累计充值</dt><dd>{minorAmount(wallet.lifetime_topup_minor, wallet.currency)}</dd></div><div><dt>累计支出</dt><dd>{minorAmount(wallet.lifetime_spend_minor, wallet.currency)}</dd></div></dl>
     </Panel>
     <Panel title="钱包流水" className={styles.billingPanel}>
@@ -55,7 +55,7 @@ export function WalletView({ wallet, entries, onNext }: { wallet: CommercialWall
       <div className={styles.pagination}><span>当前页 {entries.items.length} 条；流水金额按最小货币单位精确格式化。</span>{entries.next_cursor ? <Button variant="outline" onClick={onNext}>下一页流水</Button> : null}</div>
     </Panel>
     <Panel title="使用充值余额"><p className={styles.subtle}>真实报价和扣款需要经企业确认；当前 UI 不发起会改变钱包或资源的请求。</p><div className={styles.resourcePurchaseCards}>{[["店铺服务", "续费周期由账单与资源 owner 决定"], ["token 积分", "资源数量和报价由服务端合同提供"], ["数据服务", "资源数量和报价由服务端合同提供"]].map(([label, detail]) => <Card key={label} className={styles.resourcePurchaseCard}><h3>{label}</h3><p>{detail}</p><Button disabled variant="outline">购买暂未开放</Button></Card>)}</div></Panel>
-    <Panel title="充值与支付"><p className={styles.subtle}>当前没有可用的支付服务端入口。</p><p className={styles.subtle}>充值余额、充值记录和支付结果仅在真实 provider 接入后开放。</p></Panel>
+    <Panel title="充值与支付"><p className={styles.subtle}>通过已开放的支付宝电脑网页或微信扫码支付充值。付款金额等额记入企业钱包，有欠款时先偿债；渠道手续费由平台承担，无赠送或优惠。</p><p className={styles.subtle}>关闭付款页面不会取消订单。请到订单详情查询付款与入账结果；充值不会自动开通套餐。</p></Panel>
   </div>;
 }
 

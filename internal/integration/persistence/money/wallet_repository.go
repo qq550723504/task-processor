@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
+	ledgermoney "task-processor/internal/ledger/money"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	ledgermoney "task-processor/internal/ledger/money"
 )
 
 type organizationWalletRow struct {
@@ -232,6 +233,9 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 			}
 			return ledgermoney.ErrUnavailable
 		}
+		if payment.PaymentPurpose == ledgermoney.PaymentPurposeWalletTopUp {
+			return ledgermoney.ErrUnsupportedMutation
+		}
 		if payment.Currency != settlement.Currency || settlement.AmountMinor > payment.GrossAmountMinor {
 			return ledgermoney.ErrConflict
 		}
@@ -305,6 +309,19 @@ func (r *Repository) CreditSettledTopUp(ctx context.Context, _ string, settlemen
 func (r *Repository) ApplyTopUpReversal(ctx context.Context, _ string, reversal ledgermoney.OrganizationWalletReversal) (ledgermoney.OrganizationWalletSnapshot, error) {
 	if r == nil || r.db == nil || reversal.Validate() != nil {
 		return ledgermoney.OrganizationWalletSnapshot{}, ledgermoney.ErrInvalid
+	}
+	var payment paymentRow
+	if err := r.db.WithContext(ctx).Where("payment_id = ?", reversal.PaymentID).Take(&payment).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ledgermoney.OrganizationWalletSnapshot{}, ledgermoney.ErrNotFound
+		}
+		return ledgermoney.OrganizationWalletSnapshot{}, err
+	}
+	if payment.PaymentPurpose == ledgermoney.PaymentPurposeWalletTopUp {
+		if _, err := r.AcceptProviderTopUpReversal(ctx, reversal); err != nil {
+			return ledgermoney.OrganizationWalletSnapshot{}, err
+		}
+		return r.ReadOrganizationWallet(ctx, reversal.OrganizationID, reversal.Currency)
 	}
 	var out ledgermoney.OrganizationWalletSnapshot
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

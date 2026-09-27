@@ -26,6 +26,11 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 	if ctx == nil || commercialDB == nil || moneyDB == nil || authorizer == nil || cfg == nil {
 		return nil, errors.New("commercial billing or canonical money database unavailable")
 	}
+	if cfg.WalletTopUp.Alipay.Enabled || cfg.WalletTopUp.WeChat.Enabled {
+		if err := moneystore.VerifyProviderTopUpRuntime(ctx, moneyDB); err != nil {
+			return nil, errors.New("canonical money top-up runtime privileges unavailable")
+		}
+	}
 	wallet, err := moneystore.New(moneyDB)
 	if err != nil {
 		return nil, err
@@ -60,12 +65,17 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 		return nil, enableErr
 	}
 	module.reconcileSubscriptions = func(run context.Context) error { return service.ReconcileRecoverableSubscriptionOrders(run, 50) }
+	if err := configureWalletTopUps(service, module.handler, commercial, wallet, cfg.WalletTopUp, topUpRuntimeAuthorizer{directory: recoveryAuthorizer}); err != nil {
+		return nil, err
+	}
+	module.reconcileTopUps = func(run context.Context) error { return service.ReconcileRecoverableTopUps(run) }
 	return module, nil
 }
 
 type commercialBillingModule struct {
 	handler                *billinghttp.Handler
 	reconcileSubscriptions func(context.Context) error
+	reconcileTopUps        func(context.Context) error
 }
 
 func (commercialBillingModule) Name() string { return "commercial-billing" }

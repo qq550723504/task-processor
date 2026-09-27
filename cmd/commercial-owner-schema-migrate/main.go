@@ -124,6 +124,8 @@ func commercialRuntimeGrants() []string {
 		`GRANT SELECT ON TABLE public.commercial_offers TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.commercial_quotes, public.commercial_order_items TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_orders TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.commercial_topup_attempts, public.commercial_topup_refunds TO commercial_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.commercial_topup_inbox TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_organization_resource_buckets, public.saas_organization_resource_operations, public.saas_organization_resource_reservations, public.saas_organization_resource_debts TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.saas_member_ai_point_limits, public.saas_member_ai_point_months TO commercial_owner_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.saas_organization_resource_source_claims, public.saas_organization_resource_events, public.saas_organization_resource_audit_logs TO commercial_owner_runtime`,
@@ -142,6 +144,10 @@ func moneyRuntimeGrants() []string {
 		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations TO referral_runtime`,
 		`GRANT SELECT, INSERT ON TABLE public.ledger_organization_wallet_entries, public.ledger_organization_wallet_reserve_decisions, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals TO referral_runtime`,
 		`GRANT SELECT ON TABLE public.ledger_payment_settlements TO referral_runtime`,
+		`DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO money_owner_runtime', current_database()); END $$`,
+		`GRANT USAGE ON SCHEMA public TO money_owner_runtime`,
+		`GRANT SELECT, INSERT ON TABLE public.ledger_payment_settlements, public.ledger_refund_settlements, public.ledger_chargeback_settlements, public.ledger_organization_wallet_entries, public.ledger_organization_wallet_reserve_decisions, public.ledger_organization_topup_settlements, public.ledger_organization_wallet_reversals, public.ledger_topup_reversal_receipts, public.ledger_topup_excess_reconciliations TO money_owner_runtime`,
+		`GRANT SELECT, INSERT, UPDATE ON TABLE public.ledger_organization_wallets, public.ledger_organization_wallet_reservations, public.ledger_provider_topup_claims, public.ledger_topup_refund_holds TO money_owner_runtime`,
 	}
 }
 

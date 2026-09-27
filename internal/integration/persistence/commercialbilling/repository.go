@@ -132,7 +132,10 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return billing.ErrFeatureUnavailable
 	}
-	return db.AutoMigrate(&offerRow{}, &quoteRow{}, &orderRow{}, &orderItemRow{})
+	if err := db.AutoMigrate(&offerRow{}, &quoteRow{}, &orderRow{}, &orderItemRow{}); err != nil {
+		return err
+	}
+	return migrateTopUp(db)
 }
 
 func (r *Repository) SaveOffer(ctx context.Context, offer billing.Offer) error {
@@ -476,6 +479,9 @@ func (r *Repository) PersistSubscriptionOrder(ctx context.Context, order billing
 			return billing.ErrFeatureUnavailable
 		}
 		if row.Version != order.Version {
+			return billing.ErrConflict
+		}
+		if row.Kind == string(billing.OrderWalletTopUp) || order.Kind == billing.OrderWalletTopUp {
 			return billing.ErrConflict
 		}
 		applySubscriptionOrderToRow(&row, order)

@@ -44,6 +44,7 @@ if [ -f "$marker" ]; then
     test -f "$path"
   done
   test -s "$commercial_runtime_secret/commercial-owner-password"
+  test -s "$commercial_runtime_secret/money-owner-password" || { echo 'wallet top-up owner requires a new empty project' >&2; exit 1; }
   for path in "$image_db_owner_secret/image-db-password" "$image_runtime_secret/image-runtime-password" "$image_worker_secret/image-worker-password" \
       "$acquisition_db_owner_secret/acquisition-db-password" "$acquisition_runtime_secret/acquisition-runtime-password"; do test -f "$path"; done
   if [ "${ACCOUNT_IMAGE_AGENT_TRIAL:-}" = ISOLATED_TRIAL_ONLY ]; then test -s "$image_minio_secret/minio-root-password"; fi
@@ -69,6 +70,7 @@ write_random 24 "$source_runtime_secret/source-runtime-password"
 write_random 24 "$commercial_db_owner_secret/commercial-db-password"
 write_random 24 "$commercial_runtime_secret/commercial-reader-password"
 write_random 24 "$commercial_runtime_secret/commercial-owner-password"
+write_random 24 "$commercial_runtime_secret/money-owner-password"
 write_random 24 "$referral_db_owner_secret/referral-db-password"
 write_random 24 "$referral_runtime_secret/referral-runtime-password"
 write_random 24 "$membership_db_owner_secret/membership-db-password"
@@ -83,6 +85,7 @@ write_random 24 "$acquisition_runtime_secret/acquisition-runtime-password"
 # postgres:17.2-alpine runs its init hooks as UID/GID 70. Keep the files 0600;
 # root schema installers can also read them, serving containers never mount them.
 chown 70:70 "$source_db_owner_secret/source-db-password" "$source_runtime_secret/source-runtime-password" \
+  "$commercial_runtime_secret/money-owner-password" \
   "$commercial_db_owner_secret/commercial-db-password" "$commercial_runtime_secret/commercial-reader-password" \
   "$commercial_runtime_secret/commercial-owner-password" "$referral_db_owner_secret/referral-db-password" \
   "$referral_runtime_secret/referral-runtime-password" "$membership_db_owner_secret/membership-db-password" \

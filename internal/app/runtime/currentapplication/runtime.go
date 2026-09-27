@@ -21,6 +21,7 @@ type Dependencies struct {
 	OpenSourceAccount                         func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenCommercial                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenCommercialOwner                       func(context.Context, DatabaseConfig) (*gorm.DB, error)
+	OpenMoneyOwner                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenProductAcquisition                    func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	OpenImageAgent                            func(context.Context, DatabaseConfig) (*gorm.DB, error)
 	DialImageAgentWorkflow                    func(context.Context, string, string) (imageagent.WorkflowClient, func() error, error)
@@ -43,6 +44,7 @@ type ApplicationFeatures struct {
 	ProductAgentDB, ProductReviewDB, ProductAgentAssetDB *gorm.DB
 	ProductAgent                                         *ProductAgentConfig
 	CommercialOwnerDB                                    *gorm.DB
+	MoneyOwnerDB                                         *gorm.DB
 	ProductAcquisitionDB                                 *gorm.DB
 	ImageAgentDB                                         *gorm.DB
 	ImageAgentWorkflow                                   imageagent.WorkflowClient
@@ -104,6 +106,9 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	if cfg.CommercialOwnerDatabase != nil && dependencies.OpenCommercialOwner == nil {
 		return errors.New("current commercial owner lifecycle unavailable")
+	}
+	if cfg.MoneyOwnerDatabase != nil && (dependencies.OpenMoneyOwner == nil || dependencies.NewApplicationWithFeatures == nil) {
+		return errors.New("current money owner lifecycle unavailable")
 	}
 	if cfg.Referrals.Enabled && dependencies.OpenReferrals == nil {
 		return errors.New("current application referrals lifecycle unavailable")
@@ -171,6 +176,17 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 		}
 	}
 
+	var moneyOwnerDB *gorm.DB
+	if cfg.MoneyOwnerDatabase != nil {
+		moneyOwnerDB, err = dependencies.OpenMoneyOwner(startupContext, *cfg.MoneyOwnerDatabase)
+		if err != nil {
+			return errors.New("open existing money owner database failed")
+		}
+		if moneyOwnerDB == nil || moneyOwnerDB == sourceAccountDB || moneyOwnerDB == commercialDB || moneyOwnerDB == commercialOwnerDB {
+			return errors.New("money owner database unavailable")
+		}
+		defer func() { resultErr = errors.Join(resultErr, dependencies.CloseDatabase(moneyOwnerDB)) }()
+	}
 	var productDB *gorm.DB
 	if cfg.ProductAcquisitionDatabase != nil {
 		productDB, err = dependencies.OpenProductAcquisition(startupContext, *cfg.ProductAcquisitionDatabase)
@@ -259,7 +275,7 @@ func run(ctx context.Context, cfg *Config, logger *logrus.Logger, dependencies r
 	}
 	var server *http.Server
 	if dependencies.NewApplicationWithFeatures != nil {
-		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
+		server, err = dependencies.NewApplicationWithFeatures(startupContext, sourceAccountDB, commercialDB, ApplicationFeatures{MoneyOwnerDB: moneyOwnerDB, ProductAgentDB: agentDB, ProductReviewDB: agentReviewDB, ProductAgentAssetDB: agentAssetDB, ProductAgent: cfg.ProductAgent, CommercialOwnerDB: commercialOwnerDB, ProductAcquisitionDB: productDB, ImageAgentDB: imageDB, ImageAgentWorkflow: imageWorkflow, ReferralDB: referralDB, MembershipDB: membershipDB, Membership: cfg.Membership, RuntimeContext: ctx}, core, logger)
 	} else if membershipDB != nil {
 		server, err = dependencies.NewApplicationWithMembership(startupContext, sourceAccountDB, commercialDB, membershipDB, core, cfg.Membership, logger)
 	} else if productDB != nil {

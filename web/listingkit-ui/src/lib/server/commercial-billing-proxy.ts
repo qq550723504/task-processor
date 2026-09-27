@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
 import { BodyTooLargeError, readBodyWithinLimit, WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
 import { newRequestLogId } from "./request-log";
+import { hasTrustedSameOriginWrite } from "./same-origin-write";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -33,6 +34,8 @@ const failure = (status: number, code: string) => workbenchProtocolError(status,
 const safeJSON = (body: unknown, status: number) => NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 
 export async function proxyCommercialBilling(request: Request, accessToken: string, sessionUserId: string): Promise<Response> {
+  const paymentWrite = request.method === "POST" && /\/(top-up-intents|checkout|cancel-payment)$/.test(new URL(request.url).pathname);
+  if (paymentWrite && !hasTrustedSameOriginWrite(request)) return failure(403, "PERMISSION_DENIED");
   if (request.signal.aborted) return failure(504, "DEADLINE_EXCEEDED");
   const organization = selectedOrganization(request);
   if (!accessToken || !VALID_USER_ID.test(sessionUserId)) return failure(401, "AUTHENTICATION_REQUIRED");
