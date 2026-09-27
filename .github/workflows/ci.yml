@@ -1,4 +1,4 @@
-name: ListingKit CI
+name: Task Processor CI
 
 on:
   push:
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: listingkit-ci-${{ github.event.pull_request.number || github.ref }}
+  group: task-processor-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -35,6 +35,7 @@ jobs:
       code_health: ${{ steps.classify.outputs.code_health }}
       release_authority: ${{ steps.classify.outputs.release_authority }}
       capture_extension: ${{ steps.classify.outputs.capture_extension }}
+      isolated_runtime: ${{ steps.classify.outputs.isolated_runtime }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -97,7 +98,8 @@ jobs:
 
   isolated-runtime-contracts:
     name: Isolated Runtime Windows Contracts
-    if: ${{ github.event_name == 'pull_request' }}
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.isolated_runtime == 'true' }}
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -322,6 +324,7 @@ jobs:
           DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
           ARCHITECTURE_CONTRACT_RESULT: ${{ needs.architecture-contracts.result }}
           ISOLATED_RUNTIME_RESULT: ${{ needs.isolated-runtime-contracts.result }}
+          ISOLATED_RUNTIME_SELECTED: ${{ needs.changes.outputs.isolated_runtime }}
           RELEASE_RESULT: ${{ needs.release-authority.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
@@ -349,7 +352,26 @@ jobs:
           require_success "change classification" "$CHANGES_RESULT"
           require_success "development admission tests" "$DEVELOPMENT_ADMISSION_TEST_RESULT"
           require_success "architecture contracts" "$ARCHITECTURE_CONTRACT_RESULT"
-          require_success "isolated runtime contracts" "$ISOLATED_RUNTIME_RESULT"
+          if [[ "$CI_EVENT" == "pull_request" ]]; then
+            case "$ISOLATED_RUNTIME_SELECTED" in
+              true)
+                if [[ "$ISOLATED_RUNTIME_RESULT" != "success" ]]; then
+                  printf 'required isolated runtime result: %s\n' "$ISOLATED_RUNTIME_RESULT" >&2
+                  exit 1
+                fi
+                printf 'isolated runtime contracts success\n'
+                ;;
+              false)
+                require_success "isolated runtime contracts" "$ISOLATED_RUNTIME_RESULT"
+                ;;
+              *)
+                echo "isolated runtime applicability is unknown" >&2
+                exit 1
+                ;;
+            esac
+          else
+            require_success "isolated runtime contracts" "$ISOLATED_RUNTIME_RESULT"
+          fi
           require_success "release authority" "$RELEASE_RESULT"
           require_success "backend" "$BACKEND_RESULT"
           require_success "frontend" "$FRONTEND_RESULT"
@@ -373,6 +395,7 @@ jobs:
       - changes
       - development-admission-tests
       - architecture-contracts
+      - isolated-runtime-contracts
       - release-authority
       - backend
       - frontend
@@ -387,6 +410,7 @@ jobs:
       CHANGES_RESULT: ${{ needs.changes.result }}
       DEVELOPMENT_ADMISSION_TEST_RESULT: ${{ needs.development-admission-tests.result }}
       ARCHITECTURE_CONTRACT_RESULT: ${{ needs.architecture-contracts.result }}
+      ISOLATED_RUNTIME_RESULT: ${{ needs.isolated-runtime-contracts.result }}
       RELEASE_AUTHORITY_RESULT: ${{ needs.release-authority.result }}
       BACKEND_RESULT: ${{ needs.backend.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
@@ -432,13 +456,14 @@ jobs:
 
           sha = os.environ.get("CI_SHA", "")
           content = "\n".join([
-              f"### ListingKit CI：{overall}",
+              f"### Task Processor CI：{overall}",
               f"> 仓库：`{os.environ.get('REPOSITORY', '-')}`",
               f"> 分支：`{os.environ.get('CI_BRANCH') or '-'}`",
               f"> 事件：`{os.environ.get('CI_EVENT') or '-'}`",
               f"> Change classification：`{os.environ.get('CHANGES_RESULT', 'unknown')}`",
               f"> Development Admission tests：`{development_admission_tests}`",
               f"> Architecture Contracts：`{os.environ.get('ARCHITECTURE_CONTRACT_RESULT', 'unknown')}`",
+              f"> Isolated Runtime：`{os.environ.get('ISOLATED_RUNTIME_RESULT', 'unknown')}`",
               f"> Release Authority：`{os.environ.get('RELEASE_AUTHORITY_RESULT', 'unknown')}`",
               f"> Backend：`{backend}`",
               f"> Frontend：`{frontend}`",
