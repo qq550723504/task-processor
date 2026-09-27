@@ -109,7 +109,6 @@ type referralHTTPModule struct {
 	profileReader         authidentity.SelfProfileReader
 	withdrawalReplay      withdrawalReplayReader
 	personalKYC           personalKYCReader
-	requirePersonalKYC    bool
 	settlements           settlementWriter
 	onSlotAcquiredForTest func()
 }
