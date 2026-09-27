@@ -262,9 +262,6 @@ func (m referralHTTPModule) requestWithdrawal(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !m.requirePersonalKYC && !m.verifiedPayoutIdentity(c) {
-		return
-	}
 	body, err := decodeWithdrawalBody(c.Request)
 	if err != nil {
 		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
@@ -280,43 +277,41 @@ func (m referralHTTPModule) requestWithdrawal(c *gin.Context) {
 		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
 		return
 	}
-	if m.requirePersonalKYC {
-		if m.withdrawalReplay == nil {
-			writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
-			return
-		}
-		replayed, found, replayErr := m.withdrawalReplay.ReplayWithdrawal(c.Request.Context(), economics.WithdrawalReplayRequest{
-			Referrer: identity.UserID, Currency: economics.CurrencyCNY, PayoutMethodID: body.PayoutMethodID,
-			AmountMinor: amount, IdempotencyKey: key, ExpectedVersion: version,
-		})
-		if replayErr != nil {
-			writeEconomicsDomainError(c, replayErr)
-			return
-		}
-		if found {
-			writeWithdrawalJSON(c, replayed)
-			return
-		}
-		if amount < economics.MinimumWithdrawalMinor {
-			writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
-			return
-		}
-		if !m.verifiedPayoutIdentity(c) {
-			return
-		}
-		if m.personalKYC == nil {
-			writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
-			return
-		}
-		verified, kycErr := m.personalKYC.IsPersonalVerified(c.Request.Context(), identity.UserID)
-		if kycErr != nil {
-			writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
-			return
-		}
-		if !verified {
-			writeReferralEconomicsError(c, http.StatusConflict, "PAYOUT_ELIGIBILITY_UNMET")
-			return
-		}
+	if m.withdrawalReplay == nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	replayed, found, replayErr := m.withdrawalReplay.ReplayWithdrawal(c.Request.Context(), economics.WithdrawalReplayRequest{
+		Referrer: identity.UserID, Currency: economics.CurrencyCNY, PayoutMethodID: body.PayoutMethodID,
+		AmountMinor: amount, IdempotencyKey: key, ExpectedVersion: version,
+	})
+	if replayErr != nil {
+		writeEconomicsDomainError(c, replayErr)
+		return
+	}
+	if found {
+		writeWithdrawalJSON(c, replayed)
+		return
+	}
+	if amount < economics.MinimumWithdrawalMinor {
+		writeReferralEconomicsError(c, http.StatusBadRequest, "INVALID_REQUEST")
+		return
+	}
+	if !m.verifiedPayoutIdentity(c) {
+		return
+	}
+	if m.personalKYC == nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	verified, kycErr := m.personalKYC.IsPersonalVerified(c.Request.Context(), identity.UserID)
+	if kycErr != nil {
+		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE")
+		return
+	}
+	if !verified {
+		writeReferralEconomicsError(c, http.StatusConflict, "PAYOUT_ELIGIBILITY_UNMET")
+		return
 	}
 	if m.payoutMethods == nil {
 		writeReferralEconomicsError(c, http.StatusServiceUnavailable, "PAYOUT_METHOD_UNAVAILABLE")
