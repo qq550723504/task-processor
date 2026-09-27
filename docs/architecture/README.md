@@ -69,9 +69,6 @@ Use these as the main source of truth for structural work:
     contract/fake execution does not imply real model or product availability
 - `commercial-wallet-billing-contract.md`
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
-- [`settlement-reversal-locking.md`](./settlement-reversal-locking.md)
-  - IMPLEMENTATION_READY #413 repair of ordinary refund/chargeback concurrency
-    while preserving immutable canonical settlement privileges and replay bounds
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
 - `httpapi-assembly-boundaries.md`
@@ -126,6 +123,9 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`settlement-reversal-locking.md`](./settlement-reversal-locking.md)
+  - IMPLEMENTATION_READY #413 repair of ordinary refund/chargeback concurrency
+    while preserving immutable canonical settlement privileges and replay bounds
 - [`subject-verification-tencent-esign-design.md`](./subject-verification-tencent-esign-design.md)
   - #510 bounded subject-verification design. Section 13 freezes the Tencent
     enterprise first-verification contract and section 14 freezes the Aliyun
