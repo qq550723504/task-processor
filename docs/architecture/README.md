@@ -134,10 +134,13 @@ documents unless they say so explicitly:
     fact through a narrow read port; includes committed-operation replay and the
     staged v1/v2 rules rollout required by the API-first deployment order.
 - `alipay-wallet-topup-design.md`
-  - DRAFT #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
+  - DESIGNING #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
     fixed-channel attempts, typed checkout, isolated verification, posting/refund
     receipts and recovery. Historical filename; one dual-channel design.
-    Not IMPLEMENTATION_READY; does not supersede approved billing/money contracts.
+    Desktop checkout, third-party payer, zero top-up commission and admin-approved
+    refunds are approved and incrementally reviewed. Economic amount mapping remains;
+    not IMPLEMENTATION_READY or a real-payment authorization. Includes exact Figma
+    recharge-page and modal references.
 - `2026-09-26-1688-server-public-browser-acquisition-design.md`
   - FROZEN BASELINE / IMPLEMENTATION_READY #514 `src2b-public-browser-v1`:
     server-side anonymous 1688 browser acquisition with automatic challenge
