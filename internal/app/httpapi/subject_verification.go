@@ -21,6 +21,8 @@ import (
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
+var _ personalKYCReader = (*domain.PersonalService)(nil)
+
 type subjectVerificationModule struct {
 	handler     verificationhttp.Handler
 	personal    verificationhttp.PersonalHandler
