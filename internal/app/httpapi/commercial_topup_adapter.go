@@ -8,14 +8,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	topupconfig "task-processor/internal/integration/wallettopup/config"
 	"time"
 
 	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/commercial/billing"
 	billinghttp "task-processor/internal/commercial/billing/httpapi"
+	coreconfig "task-processor/internal/core/config"
 	"task-processor/internal/integration/wallettopup"
+	topupconfig "task-processor/internal/integration/wallettopup/config"
 	"task-processor/internal/ledger/money"
 )
 
@@ -45,7 +46,14 @@ func (a topUpRuntimeAuthorizer) AuthorizeTopUp(ctx context.Context, org, actor s
 	}
 	return nil
 }
-func readTopUpSecret(path string) (string, error) {
+func readTopUpSecret(ctx context.Context, path string) (string, error) {
+	if coreconfig.VerifyPrivateFiles(ctx, []string{path}) != nil {
+		return "", billing.ErrFeatureUnavailable
+	}
+	return readTopUpKeyFile(path)
+}
+
+func readTopUpKeyFile(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", billing.ErrFeatureUnavailable
 	}
@@ -60,7 +68,7 @@ func readTopUpSecret(path string) (string, error) {
 	}
 	return strings.TrimSpace(string(b)), nil
 }
-func configureWalletTopUps(service *billing.Service, handler *billinghttp.Handler, store billing.TopUpStore, owner money.ProviderTopUpOwner, cfg topupconfig.Config, auth topUpRuntimeAuthorizer) error {
+func configureWalletTopUps(ctx context.Context, service *billing.Service, handler *billinghttp.Handler, store billing.TopUpStore, owner money.ProviderTopUpOwner, cfg topupconfig.Config, auth topUpRuntimeAuthorizer) error {
 	policy := billing.TopUpAmountPolicy{MinMinor: cfg.MinMinor, MaxMinor: cfg.MaxMinor, PaymentWindow: time.Duration(cfg.PaymentWindowSeconds) * time.Second}
 	for _, raw := range cfg.QuickAmounts {
 		n, err := strconv.ParseInt(raw, 10, 64)
@@ -74,7 +82,7 @@ func configureWalletTopUps(service *billing.Service, handler *billinghttp.Handle
 	}
 	var protection billing.TopUpPayloadProtection
 	if cfg.PayloadKeyFile != "" {
-		raw, err := readTopUpSecret(cfg.PayloadKeyFile)
+		raw, err := readTopUpSecret(ctx, cfg.PayloadKeyFile)
 		if err != nil {
 			return errors.New("wallet top-up payload key unavailable")
 		}
@@ -98,8 +106,8 @@ func configureWalletTopUps(service *billing.Service, handler *billinghttp.Handle
 		if !c.Enabled {
 			continue
 		}
-		private, e1 := readTopUpSecret(c.PrivateKeyFile)
-		public, e2 := readTopUpSecret(c.PublicKeyFile)
+		private, e1 := readTopUpSecret(ctx, c.PrivateKeyFile)
+		public, e2 := readTopUpKeyFile(c.PublicKeyFile)
 		if e1 != nil || e2 != nil {
 			return errors.New("wallet top-up channel key unavailable")
 		}
@@ -112,7 +120,7 @@ func configureWalletTopUps(service *billing.Service, handler *billinghttp.Handle
 			alipay = p
 			aliNotify = p
 		} else {
-			apiKey, err := readTopUpSecret(c.APIv3KeyFile)
+			apiKey, err := readTopUpSecret(ctx, c.APIv3KeyFile)
 			if err != nil {
 				return errors.New("WeChat APIv3 key unavailable")
 			}

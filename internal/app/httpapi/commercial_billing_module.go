@@ -65,7 +65,7 @@ func buildCommercialBillingModule(ctx context.Context, commercialDB, moneyDB *go
 		return nil, enableErr
 	}
 	module.reconcileSubscriptions = func(run context.Context) error { return service.ReconcileRecoverableSubscriptionOrders(run, 50) }
-	if err := configureWalletTopUps(service, module.handler, commercial, wallet, cfg.WalletTopUp, topUpRuntimeAuthorizer{directory: recoveryAuthorizer}); err != nil {
+	if err := configureWalletTopUps(ctx, service, module.handler, commercial, wallet, cfg.WalletTopUp, topUpRuntimeAuthorizer{directory: recoveryAuthorizer}); err != nil {
 		return nil, err
 	}
 	module.reconcileTopUps = func(run context.Context) error { return service.ReconcileRecoverableTopUps(run) }

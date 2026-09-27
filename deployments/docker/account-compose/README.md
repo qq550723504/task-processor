@@ -49,7 +49,11 @@ authorized by these instructions. For an approved fresh, empty installation:
    `apiV3KeyFile`, `serialNumber`, and `publicKeyID` (the pinned `PUB_KEY_ID_…`).
    Keys are file references, not inline secrets. Use private files outside the
    checkout, restrict their OS permissions, and back up the payload key with the
-   database. Alipay supports `PRODUCTION` or an explicitly authorized `SANDBOX`;
+   database. Payload keys, merchant private keys and APIv3 keys must be absolute,
+   regular files with private Unix permissions or Windows ACLs; startup rejects
+   symlinks and shared secret files without modifying permissions. Public
+   verification keys do not require confidential-file permissions.
+   Alipay supports `PRODUCTION` or an explicitly authorized `SANDBOX`;
    WeChat uses `PRODUCTION` and does not invent a sandbox.
 5. Authorized HTTPS ingress must route the fixed API callback paths directly:
    `/api/v1/payments/alipay/notify` and `/api/v1/payments/wechat/notify`.
@@ -77,6 +81,12 @@ payment or refund identity. A refund already admitted by money may replay its
 original request and amount after a verified channel query permits that retry;
 recovery never creates or admits a hold. Unresolved or unsigned evidence retains
 the hold and stays pending for reconciliation.
+
+If checkout material is lost before it is saved, the order remains under
+reconciliation using its original identity. This version does not reconstruct
+a lost Alipay URL or recover a lost Native QR code. It continues checking for
+payment and safely closes the original order when cancellation or the original
+deadline permits; it does not issue a replacement payment or extend the deadline.
 
 Original-route refunds use the global platform-admin API
 `POST /api/v1/admin/commercial/top-up-orders/{order_id}/refunds`, with a stable
