@@ -133,6 +133,26 @@ func withdrawalKYCResult() economics.Withdrawal {
 	}
 }
 
+func TestWithdrawalKYCStagingSwitchPreservesCurrentBehavior(t *testing.T) {
+	result := withdrawalKYCResult()
+	replay := &withdrawalKYCReplayStub{err: errors.New("must not be called")}
+	kyc := &withdrawalKYCReaderStub{err: errors.New("must not be called")}
+	profile := &withdrawalKYCProfileStub{}
+	payout := &withdrawalKYCPayoutStub{}
+	economicsStub := &withdrawalKYCEconomicsStub{result: result}
+	c, recorder := withdrawalKYCContext(t, accountReferralWithdrawalsPath, `{"amountMinor":"10000","payoutMethodId":"method-1","expectedVersion":"1"}`, "request-key")
+
+	module := referralHTTPModule{
+		economics: economicsStub, withdrawalReplay: replay, personalKYC: kyc,
+		requirePersonalKYC: false, profileReader: profile, payoutMethods: payout,
+	}
+	module.requestWithdrawal(c)
+
+	if recorder.Code != http.StatusOK || replay.calls != 0 || kyc.calls != 0 || profile.calls != 1 || payout.calls != 1 || economicsStub.requestCalls != 1 {
+		t.Fatalf("status=%d replay=%d kyc=%d profile=%d payout=%d mutation=%d body=%s", recorder.Code, replay.calls, kyc.calls, profile.calls, payout.calls, economicsStub.requestCalls, recorder.Body.String())
+	}
+}
+
 func TestWithdrawalCommittedReplayPrecedesMutableEligibilityDependencies(t *testing.T) {
 	result := withdrawalKYCResult()
 	replay := &withdrawalKYCReplayStub{result: result, found: true}
