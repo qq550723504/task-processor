@@ -84,6 +84,7 @@ describe("ReferralsPage", () => {
     expect(within(rulesRegion).getByText("14 天")).toBeVisible();
     expect(within(rulesRegion).getByText("¥100.00")).toBeVisible();
     expect(within(rulesRegion).getByText("最低申请金额为 ¥100.00；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。")).toBeVisible();
+    expect(within(rulesRegion).queryByText(/KYC/)).not.toBeInTheDocument();
     expect(within(rulesRegion).queryByText("可用收益达到最低申请金额后可发起提现；当前提现申请采用人工审核。")).not.toBeInTheDocument();
     expect(within(rulesRegion).getByText("未提供")).toBeVisible();
     expect(within(rulesRegion).getByText("当前规则接口尚未提供违规推广处理政策；本页面不补充或推测处罚规则。")).toBeVisible();
@@ -92,6 +93,16 @@ describe("ReferralsPage", () => {
     expect(screen.queryByText(/禁止虚假注册|严重违规时平台可限制推广或提现功能/)).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("/api/account/referral-rules");
+  });
+
+  it("shows personal KYC only when the authoritative rules contract is v2", async () => {
+    const rules = { schemaVersion: "referral-rules-v2", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract", personalKycRequired: true };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(rules)));
+    mount("overview", "subject-1", true, "rules");
+
+    const rulesRegion = await screen.findByRole("region", { name: "规则说明" });
+    expect(within(rulesRegion).getByText(/还需完成个人 KYC 认证/)).toBeVisible();
+    expect(within(rulesRegion).getByText(/最低申请金额为 ¥100.00/)).toBeVisible();
   });
 
   it("uses the dedicated backend projection for the earnings page", async () => {
