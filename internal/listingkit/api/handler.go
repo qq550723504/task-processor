@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	"task-processor/internal/integration/zitadelsms"
+	"github.com/gin-gonic/gin"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
@@ -35,7 +35,7 @@ type handler struct {
 	adminHandlers
 	subscriptionDependencies
 	settingsService   settingsNamespaceService
-	zitadelSMSService *zitadelsms.Service
+	zitadelSMSHandler gin.HandlerFunc
 }
 
 type storeAdminHandlers struct {
@@ -138,7 +138,7 @@ type SubscriptionDependencies struct {
 type HandlerDependencies struct {
 	Admin             AdminHandlerDependencies
 	Subscription      SubscriptionDependencies
-	ZitadelSMSService *zitadelsms.Service
+	ZitadelSMSHandler gin.HandlerFunc
 }
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -171,7 +171,7 @@ func WithDependencies(deps HandlerDependencies) HandlerOption {
 		withStoreAdminDependencies(deps.Admin),
 		withCatalogAdminDependencies(deps.Admin),
 		withSubscriptionConfig(deps.Subscription),
-		WithZitadelSMSService(deps.ZitadelSMSService),
+		WithZitadelSMSHandler(deps.ZitadelSMSHandler),
 	}
 	return func(h *handler) {
 		for _, option := range options {
@@ -182,9 +182,9 @@ func WithDependencies(deps HandlerDependencies) HandlerOption {
 	}
 }
 
-func WithZitadelSMSService(service *zitadelsms.Service) HandlerOption {
+func WithZitadelSMSHandler(deliver gin.HandlerFunc) HandlerOption {
 	return withHandlerState(func(h *handler) {
-		h.zitadelSMSService = service
+		h.zitadelSMSHandler = deliver
 	})
 }
 

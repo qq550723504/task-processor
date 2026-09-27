@@ -42,6 +42,7 @@ func TestListingKitFeatureBuilderUsesCatalogAndApprovedAssetReaders(t *testing.T
 		buildListingKit: func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 			built = true
 			require.NotNil(t, input.Runtime.ProductSnapshotReader)
+			require.NotNil(t, input.Runtime.ZitadelSMSHandler)
 			require.NotNil(t, input.Runtime.Support.Repositories.Core.ApprovedAsset)
 			return &listingkithttpapi.Module{Pool: stubWorkerPool{}}, nil
 		},

@@ -186,7 +186,7 @@ func TestZitadelSMSCurrentHTTPDelivery(t *testing.T) {
 				t.Fatal(err)
 			}
 			registry := kernelmodule.NewRegistry()
-			if err := (zitadelSMSModule{handler: zitadelsms.Handler{Service: service}}).Register(registry); err != nil {
+			if err := (zitadelSMSModule{handler: zitadelSMSHandler{Service: service}}).Register(registry); err != nil {
 				t.Fatal(err)
 			}
 			server := buildCurrentApplicationHTTPServer(registry.Routes(), newRouteAuthDependencies())

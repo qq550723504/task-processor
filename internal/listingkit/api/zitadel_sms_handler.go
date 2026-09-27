@@ -2,9 +2,13 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"task-processor/internal/integration/zitadelsms"
+	"net/http"
 )
 
 func (h *handler) DeliverZitadelSMS(c *gin.Context) {
-	(zitadelsms.Handler{Service: h.zitadelSMSService}).Deliver(c)
+	if h.zitadelSMSHandler == nil {
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	h.zitadelSMSHandler(c)
 }

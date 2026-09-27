@@ -19,7 +19,7 @@ import (
 
 const zitadelSMSPath = "/api/v1/identity/notifications/sms"
 
-type zitadelSMSModule struct{ handler zitadelsms.Handler }
+type zitadelSMSModule struct{ handler zitadelSMSHandler }
 
 func (zitadelSMSModule) Name() string { return "zitadel-sms" }
 func (zitadelSMSModule) Enabled(cfg *config.Config) bool {
