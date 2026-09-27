@@ -328,6 +328,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 	}
 	var referralMaturity func(context.Context, time.Time) error
+	var personalKYC personalKYCReader
 	if factories.buildSubjectVerification != nil {
 		verification, err := factories.buildSubjectVerification(sourceAccountDB, cfg)
 		if err != nil {
@@ -337,6 +338,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			return nil, errors.New("subject verification module unavailable")
 		}
 		modules = append(modules, verification)
+		if verificationModule, ok := verification.(subjectVerificationModule); ok {
+			personalKYC = verificationModule.personalKYC
+		}
 	}
 	includeAccountProfile := factories.buildAccountProfile != nil
 	if includeAccountProfile {
@@ -400,7 +404,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		if supplied.referralDB == nil {
 			return nil, errors.New("referrals dependencies unavailable")
 		}
-		module, err := buildReferralHTTPModule(ctx, supplied.referralDB, cfg)
+		module, err := buildReferralHTTPModule(ctx, supplied.referralDB, cfg, personalKYC)
 		if err != nil {
 			return nil, err
 		}
@@ -669,7 +673,7 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	return nil
 }
 
-func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Config) (kernelmodule.Module, error) {
+func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Config, personalKYC personalKYCReader) (kernelmodule.Module, error) {
 	r := cfg.Referrals
 	secrets := r.Prepared
 	if db == nil || secrets == nil || secrets.HTTPClient == nil || r.Issuer != cfg.ListingKit.Zitadel.IssuerURL {
@@ -727,7 +731,7 @@ func buildReferralHTTPModule(ctx context.Context, db *gorm.DB, cfg *config.Confi
 	for keyID, key := range secrets.Encryption {
 		payoutEncryptionKeys[keyID] = append([]byte(nil), key...)
 	}
-	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
+	return referralHTTPModule{commands: service, economics: repository, ledgerReader: repository, withdrawals: repository, payoutMethods: payoutMethods, payoutMethodWriter: payoutMethods, payoutEncryptionKeys: payoutEncryptionKeys, payoutEncryptionKeyID: r.KeyID, profileReader: zitadelruntime.NewUserInfoClient(r.Issuer, secrets.HTTPClient), withdrawalReplay: repository, personalKYC: personalKYC, settlements: payoutMethods, serviceCredential: secrets.ServiceCredential}, nil
 }
 
 func buildCurrentApplicationHTTPServer(routes []httproute.Descriptor, dependencies routeAuthDependencies) *http.Server {
