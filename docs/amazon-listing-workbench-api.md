@@ -37,16 +37,54 @@ Example response:
       "status": "needs_review",
       "ready": false,
       "needs_review": true,
-      "top_action": "fill_brand",
-      "total_items": 1,
+      "review_items": [
+        {
+          "field": "brand",
+          "action": "fill_brand",
+          "severity": "warning",
+          "reason": "missing brand",
+          "source": "llm,user_text",
+          "confidence": 0.58,
+          "is_inferred": true,
+          "needs_human": true,
+          "recommended_fix": "confirm or fill the selling brand"
+        }
+      ],
       "review_summary": {
         "total_count": 1,
         "blocking_count": 0,
         "needs_human_count": 1,
         "by_action": {
           "fill_brand": 1
+        },
+        "by_field": {
+          "brand": 1
+        },
+        "by_severity": {
+          "warning": 1
         }
-      }
+      },
+      "total_items": 1,
+      "top_action": "fill_brand",
+      "action_buckets": [
+        {
+          "action": "fill_brand",
+          "label": "待补品牌",
+          "count": 1,
+          "blocking_count": 0,
+          "priority": 7,
+          "rank": 1,
+          "items": [
+            {
+              "message": "missing brand",
+              "severity": "warning",
+              "target": "brand",
+              "operator_action": "fill_brand",
+              "operator_advice": "confirm or fill the selling brand"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
