@@ -1,6 +1,6 @@
 # 方案 B 系统性重构 - 执行总结
 
-> 历史说明: 本文是阶段性总结，描述的是当时把部分提交逻辑移动到 `submission/` 子模块的中间态。当前 submission 目标方向请以 `project-wide-refactoring-plan.md`、`project-wide-execution-plan.md` 和 `listingkit-boundary-checkpoint.md` 为准。
+> **Classification: DATED EVIDENCE.** 本文是阶段性总结，描述的是当时把部分提交逻辑移动到 `submission/` 子模块的中间态。当前 submission / ListingKit 方向以 [Architecture README](../architecture/README.md), [Project Boundaries](../architecture/project-boundaries.md), [Current Refactoring Status](current-refactoring-status.md), GitHub issue #137 / the current execution Issue, the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md), and [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md) 为准；`project-wide-refactoring-plan.md`、`project-wide-execution-plan.md` 和 `listingkit-boundary-checkpoint.md` 仅保留历史上下文，不再决定当前实施顺序。
 
 ## 📅 执行日期
 2026-06-08
