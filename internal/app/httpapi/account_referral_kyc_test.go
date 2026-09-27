@@ -159,11 +159,13 @@ func TestWithdrawalNeverSeenKeyRequiresPersonalKYCBeforePayoutAndMutation(t *tes
 		name       string
 		verified   bool
 		kycErr     error
+		missingKYC bool
 		wantStatus int
 		wantCode   string
 	}{
 		{name: "not verified", verified: false, wantStatus: http.StatusConflict, wantCode: "PAYOUT_ELIGIBILITY_UNMET"},
 		{name: "KYC dependency unavailable", kycErr: errors.New("kyc unavailable"), wantStatus: http.StatusServiceUnavailable, wantCode: "DEPENDENCY_UNAVAILABLE"},
+		{name: "KYC capability not configured", missingKYC: true, wantStatus: http.StatusServiceUnavailable, wantCode: "DEPENDENCY_UNAVAILABLE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result := withdrawalKYCResult()
@@ -174,13 +176,21 @@ func TestWithdrawalNeverSeenKeyRequiresPersonalKYCBeforePayoutAndMutation(t *tes
 			economicsStub := &withdrawalKYCEconomicsStub{result: result}
 			c, recorder := withdrawalKYCContext(t, accountReferralWithdrawalsPath, `{"amountMinor":"10000","payoutMethodId":"method-1","expectedVersion":"1"}`, "request-key")
 
-			module := referralHTTPModule{economics: economicsStub, withdrawalReplay: replay, personalKYC: kyc, profileReader: profile, payoutMethods: payout}
+			var kycReader personalKYCReader = kyc
+			if tc.missingKYC {
+				kycReader = nil
+			}
+			module := referralHTTPModule{economics: economicsStub, withdrawalReplay: replay, personalKYC: kycReader, profileReader: profile, payoutMethods: payout}
 			module.requestWithdrawal(c)
 
 			if recorder.Code != tc.wantStatus || !strings.Contains(recorder.Body.String(), tc.wantCode) {
 				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 			}
-			if replay.calls != 1 || profile.calls != 1 || kyc.calls != 1 || kyc.subject != "person-1" || payout.calls != 0 || economicsStub.requestCalls != 0 {
+			wantKYCCalls := 1
+			if tc.missingKYC {
+				wantKYCCalls = 0
+			}
+			if replay.calls != 1 || profile.calls != 1 || kyc.calls != wantKYCCalls || (!tc.missingKYC && kyc.subject != "person-1") || payout.calls != 0 || economicsStub.requestCalls != 0 {
 				t.Fatalf("calls replay=%d profile=%d kyc=%d subject=%q payout=%d mutation=%d", replay.calls, profile.calls, kyc.calls, kyc.subject, payout.calls, economicsStub.requestCalls)
 			}
 		})
