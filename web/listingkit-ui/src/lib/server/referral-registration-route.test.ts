@@ -1,6 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -20,6 +22,15 @@ async function configuredCredential() {
   roots.push(root);
   const file = path.join(root, "service-credential.txt");
   await writeFile(file, `${credential}\n`, { mode: 0o600 });
+  if (process.platform === "win32") {
+    // Node's POSIX mode does not restrict inherited Windows ACL entries.
+    const env: NodeJS.ProcessEnv = { ...process.env, REFERRAL_TEST_CREDENTIAL_PATH: file };
+    for (const key of Object.keys(env)) if (key.toLowerCase() === "psmodulepath") delete env[key];
+    await promisify(execFile)("powershell.exe", [
+      "-NoProfile", "-NonInteractive", "-Command",
+      "$ErrorActionPreference='Stop';$p=$env:REFERRAL_TEST_CREDENTIAL_PATH;$acl=New-Object System.Security.AccessControl.FileSecurity;$acl.SetAccessRuleProtection($true,$false);$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User;$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,'FullControl','Allow');$acl.AddAccessRule($rule);[System.IO.File]::SetAccessControl($p,$acl)",
+    ], { env, timeout: 3000, windowsHide: true });
+  }
   vi.stubEnv("LISTINGKIT_REFERRAL_SERVICE_CREDENTIAL_FILE", file);
 }
 
