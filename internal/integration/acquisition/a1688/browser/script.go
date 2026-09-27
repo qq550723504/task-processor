@@ -296,11 +296,22 @@ func extractScript() string {
   };
   const readPrices = (data) => {
     for (const k in data) {
-      // Bound property enumeration as work, but do NOT treat running out of the
-      // scan budget as a completeness signal. A page whose price arrays exactly
-      // fill the budget is complete, and a later property may hold no price at
-      // all; only scanPrice refusing an actual array drops the set.
-      if (++priceBlocksSeen > MAX_PRICE_BLOCKS) break;
+      // Two different bounds, with two different meanings:
+      //
+      //  - Running out of the SCAN budget is not a completeness signal. A page
+      //    whose price arrays exactly fill it may be complete, and a later
+      //    property may hold no price at all.
+      //  - Hitting the PROPERTY cap is a completeness signal, because we stop
+      //    visiting properties and therefore cannot know whether a later one
+      //    carries a price. Leaving later properties unexamined while publishing
+      //    the tiers already collected would present a prefix as the whole set.
+      //
+      // scanPrice refusing an actual array is the third, equally honest signal.
+      if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {
+        markTrunc('price_facts');
+        priceOverflow = true;
+        break;
+      }
       const item = data[k];
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
       if (!Array.isArray(ranges)) continue;
@@ -407,11 +418,9 @@ func extractScript() string {
       // read before this loop, so a partial or differing block model cannot
       // pre-empt it, and reading both cannot duplicate variants (which
       // MapAcquisitionEvidence rejects as repeated source IDs).
-      if (out.variants.length === 0) {
-        if (!variantTruncated && out.variants.length === 0) {
-          readFirstUsableSku([d.nySkuModel, d.skuModel, d.skuModelOrigin,
-            (d.skuInfoMap ? { skuInfoMap: d.skuInfoMap, skuProps: d.skuProps } : null)]);
-        }
+      if (!variantTruncated && out.variants.length === 0) {
+        readFirstUsableSku([d.nySkuModel, d.skuModel, d.skuModelOrigin,
+          (d.skuInfoMap ? { skuInfoMap: d.skuInfoMap, skuProps: d.skuProps } : null)]);
       }
     }
     if (g && g.offerInfoModel && !out.offerId) {

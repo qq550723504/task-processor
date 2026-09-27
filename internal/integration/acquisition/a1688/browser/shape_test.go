@@ -332,17 +332,24 @@ window.__INIT_DATA = {
 		"a truncated global model must stop the whole extraction, not just its own candidate list")
 }
 
-// Reaching the scan budget or the output cap must not drop a complete price set;
-// only scanPrice refusing an actual price array may do that.
-func TestExtractorPriceOverflowRequiresAnActualRefusal(t *testing.T) {
+// Three different bounds, three different meanings, and only two of them may
+// drop the price set.
+func TestExtractorPriceOverflowSignalsAreDistinct(t *testing.T) {
 	script := extractScript()
-	require.Contains(t, script, "let priceBlocksSeen = 0",
-		"property enumeration must be bounded as work")
-	require.Contains(t, script, "if (++priceBlocksSeen > MAX_PRICE_BLOCKS) break;",
-		"the outer loop must bound property enumeration without declaring overflow")
-	require.NotContains(t, script,
-		"priceScanned >= MAX_PRICE_SCAN) {"+"\n"+"        priceOverflow = true;",
-		"running out of the scan budget must not mark the price set as overflowing")
+
+	// The scan budget is a work bound only: reaching it is not incompleteness.
+	require.Contains(t, script, "const MAX_PRICE_SCAN = CAP.priceFacts * 4;")
+
+	// scanPrice refusing an actual array IS an incompleteness signal.
+	require.Contains(t, script, "if (priceScanned + list.length > MAX_PRICE_SCAN) {",
+		"scanPrice must refuse an array it cannot afford to traverse")
+
+	// The property cap IS an incompleteness signal, because later properties go
+	// unvisited and completeness cannot be established.
+	require.Contains(t, script, "if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {",
+		"the property cap must stop enumeration")
+	require.Contains(t, script, "if (++priceBlocksSeen > MAX_PRICE_BLOCKS) {"+"\n"+"        markTrunc('price_facts');",
+		"leaving properties unvisited must mark the price field truncated")
 }
 
 // The truncation flag must be declared before any reader that consults it.
@@ -415,4 +422,37 @@ func TestBrowserAcquirePreservesSetThatExactlyExhaustsScanBudget(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, evidence.PriceFacts, maxPriceFacts,
 		"exactly exhausting the scan budget must not drop a complete price set")
+}
+
+// Hitting the property cap means later properties were never visited, so
+// completeness cannot be established and the collected prefix must be dropped.
+func TestBrowserAcquireDropsPrefixWhenPropertyCapIsHit(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	data := map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Property cap bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+	}
+	// A price array before the boundary, and another far after it.
+	data["early"] = map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+		"tradeWithoutPromotion": map[string]any{"offerPriceRanges": []any{
+			map[string]any{"price": "5.00", "beginAmount": 1},
+		}},
+	}}}
+	for i := 0; i < 600; i++ {
+		data["filler"+itoa(i)] = map[string]any{"fields": map[string]any{"n": i}}
+	}
+	data["late"] = map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+		"tradeWithoutPromotion": map[string]any{"offerPriceRanges": []any{
+			map[string]any{"price": "9.00", "beginAmount": 1},
+		}},
+	}}}
+	srv := serveFixture(t, buildContextPage(data))
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Empty(t, evidence.PriceFacts,
+		"prices collected before the property cap must not be published as the whole set")
+	require.True(t, hasTruncation(evidence, "price_facts"))
 }
