@@ -288,10 +288,15 @@ func extractScript() string {
   };
   const readPrices = (data) => {
     for (const k in data) {
-      // Stop visiting further page-supplied blocks once the extraction-wide scan
-      // budget is spent or the output cap is reached, otherwise a bounded prefix
-      // followed by arbitrarily many arrays still occupies the slot.
-      if (priceScanned >= MAX_PRICE_SCAN || out.priceFacts.length >= CAP.priceFacts) {
+      // Stop visiting further page-supplied blocks only once the extraction-wide
+      // scan budget is spent: at that point completeness can no longer be
+      // established, so the price set is dropped.
+      //
+      // Merely REACHING the output cap must not drop anything. A block yielding
+      // exactly the cap of complete facts is complete, and pushPrice already sets
+      // the overflow flag when a further price is actually encountered. Treating
+      // the cap as overflow would discard an exactly-complete set.
+      if (priceScanned >= MAX_PRICE_SCAN) {
         priceOverflow = true;
         break;
       }

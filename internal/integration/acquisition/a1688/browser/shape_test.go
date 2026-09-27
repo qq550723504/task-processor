@@ -332,11 +332,16 @@ window.__INIT_DATA = {
 		"a truncated global model must stop the whole extraction, not just its own candidate list")
 }
 
-// The outer price-block loop must stop once the scan budget is spent.
-func TestExtractorPriceOuterLoopStopsOnOverflow(t *testing.T) {
+// The outer price-block loop must stop once the scan budget is spent, and must
+// NOT treat merely reaching the output cap as overflow: a set that exactly fills
+// the cap is complete and has to survive.
+func TestExtractorPriceOuterLoopStopsOnScanBudgetOnly(t *testing.T) {
 	script := extractScript()
-	require.Contains(t, script, "if (priceScanned >= MAX_PRICE_SCAN || out.priceFacts.length >= CAP.priceFacts) {",
-		"the outer block loop must break once the extraction-wide budget is spent")
+	require.Contains(t, script, "if (priceScanned >= MAX_PRICE_SCAN) {",
+		"the outer block loop must break once the extraction-wide scan budget is spent")
+	require.NotContains(t, script,
+		"priceScanned >= MAX_PRICE_SCAN || out.priceFacts.length >= CAP.priceFacts",
+		"reaching the output cap must not mark the price set as overflowing")
 }
 
 // The truncation flag must be declared before any reader that consults it.
@@ -347,4 +352,33 @@ func TestVariantTruncationFlagIsDeclaredBeforeUse(t *testing.T) {
 	require.GreaterOrEqual(t, decl, 0, "the flag must exist")
 	require.Greater(t, decl, -1)
 	require.Less(t, decl, use, "the flag must be declared before any reader sets it")
+}
+
+// A price set that reaches exactly the cap is complete and must be preserved;
+// only an actual additional price entry may mark the set as overflowing.
+func TestBrowserAcquirePreservesExactlyCappedPriceSet(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	ranges := make([]any, 0, maxPriceFacts)
+	for i := 0; i < maxPriceFacts; i++ {
+		ranges = append(ranges, map[string]any{"price": "1.00", "beginAmount": 1})
+	}
+	data := map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Exact cap bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"prices": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": ranges},
+		}}},
+		// A later property with no price range must not trigger a drop.
+		"unrelated": map[string]any{"fields": map[string]any{"somethingElse": "x"}},
+	}
+	srv := serveFixture(t, buildContextPage(data))
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.PriceFacts, maxPriceFacts,
+		"a price set that exactly reaches the cap is complete and must be kept")
+	require.False(t, hasTruncation(evidence, "price_facts"),
+		"reaching the cap is not truncation")
 }
