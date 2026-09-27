@@ -18,6 +18,14 @@ func TestProviderBudgetFitsInsideTheAcquisitionRouteBudget(t *testing.T) {
 		"provider budget (%s) must be below the acquisition route budget (%s); "+
 			"raising it requires raising the route budget and both frontend deadlines together",
 		DefaultTimeout, sourcing.AcquisitionTimeout)
+
+	// The route timer starts before the body is read, and D1 persists only after
+	// acquisition returns, so the provider must leave room for body read plus
+	// mapping and publication inside the same route budget. Half the route is a
+	// deliberately conservative ceiling for that remainder.
+	require.LessOrEqual(t, DefaultTimeout, sourcing.AcquisitionTimeout/2,
+		"provider budget (%s) must leave at least half the route budget (%s) for body read, mapping and publication",
+		DefaultTimeout, sourcing.AcquisitionTimeout)
 }
 
 // A zero budget must resolve to the default rather than to an unbounded one.

@@ -67,15 +67,18 @@ type Options struct {
 
 // DefaultTimeout bounds one provider acquisition.
 //
-// It must stay below the current-application's acquisition route budget
+// It must stay well inside the current-application acquisition route budget
 // (sourcing.AcquisitionTimeout = 20s), because D1 persists the operation only
 // after acquisition returns: a provider that outlives the route leaves the user
-// with a deadline and no replayable operation. 12s leaves headroom inside the
-// 20s route for evidence mapping and publication.
+// with a deadline and no replayable operation. The route timer also starts
+// before the request body is read, so the budget must leave room for body read
+// plus evidence mapping and publication, not merely fit under 20s on its own.
+// 10s keeps the provider well inside that envelope; a request body for this
+// endpoint is a few hundred bytes, so body read is negligible in practice.
 //
 // Raising this requires raising the route budget in the same change, and then
 // the BFF (22s) and browser client (25s) deadlines as well.
-const DefaultTimeout = 12 * time.Second
+const DefaultTimeout = 10 * time.Second
 
 // DefaultAllowedOrigins is the resolved egress allowlist (design A2, user
 // decision 2026-09-26): the 1688 product host, its CDN, and 1688 site assets,
