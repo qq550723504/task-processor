@@ -1,5 +1,12 @@
 # Project-wide Refactoring Execution Plan
 
+> **Classification:** `DATED EVIDENCE / SUPERSEDED EXECUTION AUTHORITY`. This file preserves the historical refactoring PR sequence. Its phase ordering, baselines, “Recommended Immediate Next PR”, and file inventories are not a current execution queue.
+>
+> **Current authority:** use the [Architecture README](../architecture/README.md), [Project Boundaries](../architecture/project-boundaries.md), [Current Refactoring Status](current-refactoring-status.md), GitHub issue #137 / the current execution Issue, the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md), and [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md). The linked `httpapi-runtime-inventory.md` is `DATED EVIDENCE` and must not be treated as a live file map.
+>
+> “Migration” in this historical plan means code/package refactoring. It does not authorize old business-data migration, profile/account carry-over, legacy compatibility/fallback, dual read/write, or a second fact source.
+>
+> **Historical authority note:** The original Authority line below records what this plan meant when written; it is superseded for present scheduling.
 > Authority: this execution plan implements the direction from [`project-wide-refactoring-plan.md`](./project-wide-refactoring-plan.md) and the boundary rules from [`../architecture/project-boundaries.md`](../architecture/project-boundaries.md).
 
 ## 1. Execution Principles
