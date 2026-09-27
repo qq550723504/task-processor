@@ -303,3 +303,48 @@ func mustJSON(v any) string {
 	encoded, _ := json.Marshal(v)
 	return string(encoded)
 }
+
+// A truncated authoritative global model must stop the whole extraction: a later
+// block with a usable model must not publish a lower-priority variant set.
+func TestBrowserAcquireStopsExtractionAfterTruncatedGlobalModel(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	big := map[string]any{}
+	for i := 0; i < maxVariants+3; i++ {
+		big["c"+itoa(i)] = map[string]any{"skuId": i + 1, "price": 1.0}
+	}
+	page := `<!doctype html><html><head><title>Global truncated</title></head><body><script>
+window.__INIT_DATA = {
+  "data": {
+    "main": {"data": {"offerId": 981645030344, "title": "Global truncated item",
+      "skuModel": {"skuProps":[{"prop":"size"}], "skuInfoMap":{"blockFallback":{"skuId":777,"price":9.9}}}}}
+  },
+  "globalData": {
+    "nySkuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap": BIG}
+  }
+};
+</script></body></html>`
+	page = strings.Replace(page, "BIG", mustJSON(big), 1)
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Empty(t, evidence.Variants,
+		"a truncated global model must stop the whole extraction, not just its own candidate list")
+}
+
+// The outer price-block loop must stop once the scan budget is spent.
+func TestExtractorPriceOuterLoopStopsOnOverflow(t *testing.T) {
+	script := extractScript()
+	require.Contains(t, script, "if (priceScanned >= MAX_PRICE_SCAN || out.priceFacts.length >= CAP.priceFacts) {",
+		"the outer block loop must break once the extraction-wide budget is spent")
+}
+
+// The truncation flag must be declared before any reader that consults it.
+func TestVariantTruncationFlagIsDeclaredBeforeUse(t *testing.T) {
+	script := extractScript()
+	decl := strings.Index(script, "let variantTruncated = false;")
+	use := strings.Index(script, "variantTruncated = true;")
+	require.GreaterOrEqual(t, decl, 0, "the flag must exist")
+	require.Greater(t, decl, -1)
+	require.Less(t, decl, use, "the flag must be declared before any reader sets it")
+}

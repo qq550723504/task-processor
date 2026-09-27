@@ -168,6 +168,11 @@ func extractScript() string {
       }
     }
   };
+  // Truncation is extraction-wide. Stopping only the current candidate list left
+  // later callers free to publish a lower-priority variant set, which is the data
+  // corruption this flag exists to prevent.
+  let variantTruncated = false;
+
   // readSku reports whether it found a usable model, so the caller can fall
   // through to the next candidate instead of committing to a truthy but empty
   // one. Returns true when variants were produced, and the literal 'truncated'
@@ -214,6 +219,7 @@ func extractScript() string {
     if (variantOverflow || attributeOverflow) {
       markTrunc('variants');
       out.variants = [];
+      variantTruncated = true;
       return TRUNCATED;
     }
     return out.variants.length > 0;
@@ -222,9 +228,10 @@ func extractScript() string {
   // unusable model does not shadow a complete fallback.
   const readFirstUsableSku = (candidates) => {
     for (const c of candidates) {
+      if (variantTruncated) return false;
       if (!c) continue;
       const result = readSku(c);
-      if (result === TRUNCATED) return false;
+      if (result === TRUNCATED) { variantTruncated = true; return false; }
       if (result) return true;
     }
     return false;
@@ -281,6 +288,13 @@ func extractScript() string {
   };
   const readPrices = (data) => {
     for (const k in data) {
+      // Stop visiting further page-supplied blocks once the extraction-wide scan
+      // budget is spent or the output cap is reached, otherwise a bounded prefix
+      // followed by arbitrarily many arrays still occupies the slot.
+      if (priceScanned >= MAX_PRICE_SCAN || out.priceFacts.length >= CAP.priceFacts) {
+        priceOverflow = true;
+        break;
+      }
       const item = data[k];
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
       if (!Array.isArray(ranges)) continue;
@@ -360,7 +374,7 @@ func extractScript() string {
     // block, matching the legacy foundSkuModel guard.
     const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
     if (g) {
-      readFirstUsableSku([g.nySkuModel, g.skuModel, g.skuModelOrigin]);
+      if (!variantTruncated) readFirstUsableSku([g.nySkuModel, g.skuModel, g.skuModelOrigin]);
     }
     for (const k in init) {
       const block = init[k];
@@ -388,7 +402,7 @@ func extractScript() string {
       // pre-empt it, and reading both cannot duplicate variants (which
       // MapAcquisitionEvidence rejects as repeated source IDs).
       if (out.variants.length === 0) {
-        if (out.variants.length === 0) {
+        if (!variantTruncated && out.variants.length === 0) {
           readFirstUsableSku([d.nySkuModel, d.skuModel, d.skuModelOrigin,
             (d.skuInfoMap ? { skuInfoMap: d.skuInfoMap, skuProps: d.skuProps } : null)]);
         }
