@@ -28,7 +28,17 @@ type BrowserAcquisitionService struct {
 	provider sourcing.PublicAcquirer
 	// providerBudget bounds only the provider call; zero means the parent bound.
 	providerBudget time.Duration
-	inflight       sync.Map // scope+key -> *sync.WaitGroup-ish singleflight marker
+	// inflight serializes first-time acquisition per (organization, actor, key).
+	// Entries are reference-counted and dropped when the last holder leaves, so
+	// a long-lived process does not accumulate one entry per distinct key.
+	inflightMu sync.Mutex
+	inflight   map[string]*inflightEntry
+}
+
+// inflightEntry is a reference-counted same-key lock.
+type inflightEntry struct {
+	mu      sync.Mutex
+	waiters int
 }
 
 // NewBrowserAcquisitionService builds the browser-backed public acquisition
@@ -67,10 +77,7 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 
 	// Same-key admission for a first-time request: collapse concurrent attempts
 	// so only one of them can spend the shared browser/IP budget (finding #10).
-	release, err := s.acquireSlot(ctx, request)
-	if err != nil {
-		return sourcing.AcquisitionResult{}, err
-	}
+	release := s.acquireSlot(request)
 	defer release()
 
 	// Bounded capacity preflight so a capped organization does not launch a
@@ -207,13 +214,33 @@ func (s *BrowserAcquisitionService) capacityAdmitted(ctx context.Context, scope 
 
 // acquireSlot serializes first-time acquisition for one (scope, key) so
 // concurrent same-key POSTs do not each launch a browser. Correctness does not
-// depend on it: StartPrepared remains the atomic arbiter.
-func (s *BrowserAcquisitionService) acquireSlot(ctx context.Context, request sourcing.AcquisitionOperation) (func(), error) {
+// depend on it: StartPrepared remains the atomic arbiter. The map entry is
+// reference-counted and dropped when the last holder leaves, so the map does not
+// grow without bound across distinct keys over the process lifetime.
+func (s *BrowserAcquisitionService) acquireSlot(request sourcing.AcquisitionOperation) func() {
 	key := request.Scope.OrganizationID + "|" + request.Scope.ActorID + "|" + request.Key
-	value, _ := s.inflight.LoadOrStore(key, &sync.Mutex{})
-	mu := value.(*sync.Mutex)
-	mu.Lock()
-	return func() { mu.Unlock() }, nil
+	s.inflightMu.Lock()
+	if s.inflight == nil {
+		s.inflight = make(map[string]*inflightEntry)
+	}
+	entry := s.inflight[key]
+	if entry == nil {
+		entry = &inflightEntry{}
+		s.inflight[key] = entry
+	}
+	entry.waiters++
+	s.inflightMu.Unlock()
+
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		s.inflightMu.Lock()
+		entry.waiters--
+		if entry.waiters <= 0 {
+			delete(s.inflight, key)
+		}
+		s.inflightMu.Unlock()
+	}
 }
 
 func (s *BrowserAcquisitionService) outerBudget() time.Duration {

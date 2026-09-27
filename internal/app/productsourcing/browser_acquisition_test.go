@@ -344,3 +344,64 @@ func TestBrowserProviderTimeoutIsDeadlineExceeded(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Equal(t, 0, store.startPrep, "timeout must not admit an operation")
 }
+
+// The same-key admission map must not retain entries after use: a long-lived
+// process would otherwise grow one entry per distinct (org, actor, key).
+func TestBrowserAcquisitionInflightMapDrainsAfterUse(t *testing.T) {
+	service := &BrowserAcquisitionService{}
+	request := sourcing.AcquisitionOperation{
+		Scope: sourcing.PublicationScope{OrganizationID: "org-1", ActorID: "actor-1"},
+		Key:   "key-1",
+	}
+	for i := 0; i < 3; i++ {
+		release := service.acquireSlot(request)
+		release()
+	}
+	service.inflightMu.Lock()
+	remaining := len(service.inflight)
+	service.inflightMu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("expected the admission map to drain, got %d entries", remaining)
+	}
+}
+
+// Concurrent same-key callers must serialize, and the map must still drain
+// once every holder has released.
+func TestBrowserAcquisitionInflightSerializesAndDrains(t *testing.T) {
+	service := &BrowserAcquisitionService{}
+	request := sourcing.AcquisitionOperation{
+		Scope: sourcing.PublicationScope{OrganizationID: "org-1", ActorID: "actor-1"},
+		Key:   "key-1",
+	}
+	var concurrent, peak int
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			release := service.acquireSlot(request)
+			mu.Lock()
+			concurrent++
+			if concurrent > peak {
+				peak = concurrent
+			}
+			mu.Unlock()
+			time.Sleep(5 * time.Millisecond)
+			mu.Lock()
+			concurrent--
+			mu.Unlock()
+			release()
+		}()
+	}
+	wg.Wait()
+	if peak != 1 {
+		t.Fatalf("expected same-key callers to serialize, peak concurrency was %d", peak)
+	}
+	service.inflightMu.Lock()
+	remaining := len(service.inflight)
+	service.inflightMu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("expected the admission map to drain, got %d entries", remaining)
+	}
+}

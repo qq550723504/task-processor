@@ -289,6 +289,10 @@ func decodeEvidence(source sourcing.AcquisitionSource, raw any) (sourcing.Acquis
 		return sourcing.AcquisitionEvidence{}, ErrUnsupported
 	}
 	var payload evidencePayload
+	// Unlike the transport decoders, this one does not reject unknown fields:
+	// the payload is a projection of third-party page data, which legitimately
+	// carries fields we do not model. Duplicate keys cannot occur because the
+	// value came back as a JavaScript object, not a JSON document.
 	if _, err := sigjson.UnmarshalStrict(encoded, &payload, sigjson.DisallowDuplicateFields); err != nil {
 		return sourcing.AcquisitionEvidence{}, ErrUnsupported
 	}
