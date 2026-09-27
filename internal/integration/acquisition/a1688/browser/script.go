@@ -223,10 +223,24 @@ func extractScript() string {
   // enforced at one site and forgotten at another. On overflow the whole price
   // set is dropped, because a prefix is not the source's complete price set.
   let priceOverflow = false;
-  // Number of price entries examined, independent of how many are kept. A
-  // page-created array can be arbitrarily long, so scanning is bounded too and
-  // exceeding the bound drops the whole price set.
+  // A single extraction-wide budget for price entries examined, independent of
+  // how many are kept and independent of how many separate price arrays the page
+  // supplies. A per-array bound is not enough: many individually small arrays
+  // would still add up to an unbounded traversal.
   const MAX_PRICE_SCAN = CAP.priceFacts * 4;
+  let priceScanned = 0;
+  // Returns false once the extraction-wide budget is exhausted; callers stop
+  // traversing and the whole price set is dropped.
+  const scanPrice = (list) => {
+    if (!Array.isArray(list)) return [];
+    if (priceScanned + list.length > MAX_PRICE_SCAN) {
+      markTrunc('price_facts');
+      priceOverflow = true;
+      return [];
+    }
+    priceScanned += list.length;
+    return list;
+  };
   const pushPrice = (amount, currency, beginAmount) => {
     if (out.priceFacts.length >= CAP.priceFacts) { priceOverflow = true; return; }
     // A nonpositive or unparsable minimum quantity is not a usable quantity and
@@ -250,8 +264,7 @@ func extractScript() string {
       const item = data[k];
       const ranges = item && item.fields && item.fields.finalPriceModel && item.fields.finalPriceModel.tradeWithoutPromotion && item.fields.finalPriceModel.tradeWithoutPromotion.offerPriceRanges;
       if (!Array.isArray(ranges)) continue;
-      if (ranges.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; continue; }
-      for (const r of ranges) {
+      for (const r of scanPrice(ranges)) {
         if (!r || r.price === undefined || r.price === null) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;
@@ -304,9 +317,7 @@ func extractScript() string {
       const op = dj && dj.orderParamModel && dj.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       const collect = (list) => {
-        if (!Array.isArray(list)) return;
-        if (list.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; return; }
-        for (const r of list) {
+        for (const r of scanPrice(list)) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
@@ -375,8 +386,7 @@ func extractScript() string {
       const op = g.orderParamModel && g.orderParamModel.orderParam;
       const range = op && op.skuParam && op.skuParam.skuRangePrices;
       if (Array.isArray(range)) {
-        if (range.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; }
-        for (const r of (range.length > MAX_PRICE_SCAN ? [] : range)) {
+        for (const r of scanPrice(range)) {
           if (!r) continue;
           const amount = exactNum(r.price, 'price_facts');
           if (!amount) continue;
@@ -392,9 +402,7 @@ func extractScript() string {
       const block = init[k];
       const d = block && block.data;
       if (!d || !d.priceModel || !Array.isArray(d.priceModel.currentPrices)) continue;
-      const cp = d.priceModel.currentPrices;
-      if (Array.isArray(cp) && cp.length > MAX_PRICE_SCAN) { markTrunc('price_facts'); priceOverflow = true; }
-      for (const r of (Array.isArray(cp) && cp.length > MAX_PRICE_SCAN ? [] : cp)) {
+      for (const r of scanPrice(d.priceModel.currentPrices)) {
         if (!r) continue;
         const amount = exactNum(r.price, 'price_facts');
         if (!amount) continue;

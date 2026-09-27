@@ -206,3 +206,39 @@ func TestBrowserAcquireBoundsPriceScanning(t *testing.T) {
 	require.NotContains(t, script, "for (const r of ranges) {\n        if (out.priceFacts.length",
 		"no price loop may be bounded only by the output cap")
 }
+
+// Many individually small price arrays must not add up to an unbounded scan.
+func TestBrowserAcquireBoundsAggregatePriceScan(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	// 40 separate blocks, each with 5 ranges: every array is far under any
+	// per-array bound, but the aggregate is 200 entries.
+	data := map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Many arrays bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+	}
+	for i := 0; i < 40; i++ {
+		ranges := []any{}
+		for j := 0; j < 5; j++ {
+			ranges = append(ranges, map[string]any{"price": "1.00", "beginAmount": 1})
+		}
+		data["blk"+itoa(i)] = map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": ranges},
+		}}}
+	}
+	srv := serveFixture(t, buildContextPage(data))
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Empty(t, evidence.PriceFacts, "exceeding the extraction-wide scan budget must drop the price set")
+	require.True(t, hasTruncation(evidence, "price_facts"))
+}
+
+// The scan budget must be extraction-wide, not per array.
+func TestExtractorPriceScanBudgetIsExtractionWide(t *testing.T) {
+	script := extractScript()
+	require.Contains(t, script, "let priceScanned = 0", "the scan budget must be a single extraction-wide counter")
+	require.Contains(t, script, "priceScanned + list.length > MAX_PRICE_SCAN",
+		"the bound must compare against the accumulated count, not one array")
+}
