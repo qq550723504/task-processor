@@ -22,8 +22,9 @@ import (
 )
 
 type subjectVerificationModule struct {
-	handler  verificationhttp.Handler
-	personal verificationhttp.PersonalHandler
+	handler     verificationhttp.Handler
+	personal    verificationhttp.PersonalHandler
+	personalKYC personalKYCReader
 }
 
 func (subjectVerificationModule) Name() string { return "subject-verification" }
@@ -45,6 +46,9 @@ func buildSubjectVerificationModule(ctx context.Context, db *gorm.DB, cfg *confi
 		return nil, err
 	}
 	m.personal = personal
+	if reader, ok := personal.Service.(personalKYCReader); ok {
+		m.personalKYC = reader
+	}
 	path := strings.TrimSpace(os.Getenv("TENCENT_ESIGN_VERIFICATION_CONFIG_FILE"))
 	if path == "" {
 		return m, nil
