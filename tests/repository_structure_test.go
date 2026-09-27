@@ -39,12 +39,13 @@ func maintainedOperationalCommands() map[string]struct{} {
 
 func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 	productRuntimeCommands := map[string]struct{}{
-		"current-application":         {},
-		"image-agent-temporal-worker": {},
-		"listing-control-plane":       {},
-		"product-listing-api":         {},
-		"shein-listing":               {},
-		"temu-listing":                {},
+		"1688-public-browser-collector": {},
+		"current-application":           {},
+		"image-agent-temporal-worker":   {},
+		"listing-control-plane":         {},
+		"product-listing-api":           {},
+		"shein-listing":                 {},
+		"temu-listing":                  {},
 	}
 	operationalCommands := maintainedOperationalCommands()
 	document, err := os.ReadFile(filepath.Join("..", "docs", "development", "repository-structure.md"))
