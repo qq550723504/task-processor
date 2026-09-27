@@ -443,6 +443,7 @@ Cutover/deletion condition:
 **修复**：
 
 - 采集 provider 默认预算由 **90s 降为 10s**（`browser.DefaultTimeout`）；单次导航超时同时被该预算截顶，避免导航单独吃完。
+- 路由预算**分配**为：读体 ≤ 5s（`acquisitionBodyReadTimeout`）+ 采集 ≤ 10s（`browser.DefaultTimeout`）+ 发布 = 余量，合计不超过 20s 路由。原读体守卫与整个路由预算等同，慢上传者可独占整个截止时间，使采集无法启动；现已为读体预留明确配额并加不变量测试。
 - 预算不仅需「小于 20s」：路由计时器在**读请求体之前**就开始，而 D1 只在采集返回后落行，因此 provider 必须为「读体 + 映射 + 发布」留余量；不变量测试因此额外要求 `DefaultTimeout <= AcquisitionTimeout/2`。本接口请求体仅数百字节，实测读体可忽略，但预算式仍对慢客户端保留余量。
 - 采集进程 `-timeout` 默认值改为跟随 `browser.DefaultTimeout`，不再另行写死 90s。
 - 新增不变量测试，锁定 `DefaultTimeout < sourcing.AcquisitionTimeout`，防止再次漂移。
