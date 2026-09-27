@@ -54,7 +54,18 @@ func New(opts Options) (*Client, error) {
 	}
 	transport := opts.Transport
 	if transport == nil {
-		transport = http.DefaultTransport
+		// A dedicated transport that never uses an ambient proxy. With
+		// HTTP_PROXY set and a non-loopback collector hostname, the shared default
+		// transport would send this internal RPC through the proxy, handing it the
+		// X-Collector-Credential header and letting it impersonate the application.
+		transport = &http.Transport{
+			Proxy:                 nil,
+			DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+			MaxIdleConns:          8,
+			IdleConnTimeout:       30 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: time.Second,
+		}
 	}
 	return &Client{
 		endpoint:  opts.Endpoint + browsercollector.AcquirePath,

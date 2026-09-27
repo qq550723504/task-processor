@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -459,4 +460,25 @@ func TestAbsoluteURLResolution(t *testing.T) {
 
 	_, err = absoluteURL("https://detail.1688.com/offer/1.html", "  ")
 	require.Error(t, err)
+}
+
+// A clipped value is not the source fact and must never be published as one.
+// An oversized title is therefore rejected outright, and an oversized numeric
+// string is dropped and reported rather than transferred.
+func TestBrowserAcquireRejectsOversizedSourceFacts(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, oversizedTitlePage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	// An oversized title is the product identity, so the acquisition is refused
+	// rather than published with a shortened title.
+	_, err = client.Acquire(context.Background(), source)
+	require.Error(t, err, "an oversized title must not be published clipped")
+}
+
+func oversizedTitlePage() string {
+	return `<!doctype html><html><head><title>Fixture</title></head><body><script>
+window.context = {"result":{"data":{"productTitle":{"fields":{"title":"` + strings.Repeat("x", maxStringLen+64) + `"}}}}};
+</script></body></html>`
 }

@@ -121,11 +121,14 @@ func extractScript() string {
   const out = { offerId: '', title: '', description: '', images: [], attributes: [], variants: [], priceFacts: [], truncatedFields: [] };
   const seenTrunc = {};
   const markTrunc = (field) => { if (!seenTrunc[field]) { seenTrunc[field] = true; out.truncatedFields.push(field); } };
+  // A clipped value is NOT the source fact. Returning a shortened string would
+  // let the truncated value be published as if it were exact, so an oversized
+  // value is dropped entirely and the field is reported instead.
   const clip = (s, field) => {
     if (typeof s !== 'string') return '';
     if (s.length <= CAP.str) return s;
     markTrunc(field);
-    return s.slice(0, CAP.str);
+    return '';
   };
   // Exact numeric text, or '' when the value cannot be represented exactly.
   // A fractional number such as 9.5 is exactly representable and must be kept;
@@ -139,7 +142,11 @@ func extractScript() string {
       if (Number.isInteger(v) && !Number.isSafeInteger(v)) { markTrunc(field); return ''; }
       return String(v);
     }
-    if (typeof v === 'string') return v;
+    if (typeof v === 'string') {
+      // A huge numeric string would otherwise cross CDP unbounded.
+      if (v.length > CAP.str) { markTrunc(field); return ''; }
+      return v;
+    }
     markTrunc(field);
     return '';
   };
@@ -169,6 +176,9 @@ func extractScript() string {
         if (!name) { markTrunc('variant_attributes'); continue; }
         attrsFor.push({ name: clip(name, 'variant_attributes'), value: clip(parts[i], 'variant_attributes') });
       }
+      // If any attribute of this variant was clipped, publishing the remaining
+      // subset would misstate the variant. Drop the whole variant.
+      if (attrsFor.some((a) => !a.name || !a.value)) { markTrunc('variants'); continue; }
       const v = { sourceId: exactNum(entry.skuId, 'variant_source_id'), attributes: attrsFor, price: null };
       const amount = exactNum(entry.price, 'variant_price');
       if (amount) {
@@ -248,6 +258,7 @@ func extractScript() string {
         if (!out.title) out.title = clip(g.offerInfoModel.title || '', 'title');
       }
       if (g.skuModel) readSku(g.skuModel);
+      if (g.nySkuModel) readSku(g.nySkuModel);
     }
     if (out.variants.length === 0 || out.priceFacts.length === 0) readPrices(init);
   }
