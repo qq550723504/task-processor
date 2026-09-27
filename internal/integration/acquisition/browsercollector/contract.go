@@ -69,6 +69,9 @@ const (
 	CodeSourceUnavailable ErrorCode = "source_unavailable"
 	// CodeBudgetExceeded means the acquisition exceeded its own time budget.
 	CodeBudgetExceeded ErrorCode = "budget_exceeded"
+	// CodeCapacity means this collector is already at its concurrency limit, so
+	// the caller should retry rather than treat it as a source failure.
+	CodeCapacity ErrorCode = "capacity"
 )
 
 // ErrorBody is the bounded error response.
@@ -97,6 +100,8 @@ func SentinelFor(code ErrorCode) error {
 		return sourcing.ErrInvalidAcquisition
 	case CodeBudgetExceeded:
 		return context.DeadlineExceeded
+	case CodeCapacity:
+		return sourcing.ErrAcquisitionCapacity
 	case CodeSourceUnavailable:
 		return sourcing.ErrAcquisitionFailed
 	default:

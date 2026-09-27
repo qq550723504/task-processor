@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	browser "task-processor/internal/integration/acquisition/a1688/browser"
 	"task-processor/internal/integration/acquisition/browsercollector"
 	"task-processor/internal/product/sourcing"
 )
@@ -215,4 +216,24 @@ func TestHandlerRefusesOversizedEvidence(t *testing.T) {
 	resp := post(t, srv.URL, `{"sourceURL":"https://detail.1688.com/offer/981645030344.html"}`)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+}
+
+// A collector at its concurrency limit must report a retryable capacity code,
+// not a source failure, so the caller is not told the listing is unavailable.
+func TestHandlerMapsCollectorCapacityToRetryableCode(t *testing.T) {
+	provider := &stubProvider{err: browser.ErrCapacity}
+	handler, err := browsercollector.Handler(browsercollector.Options{
+		Provider: provider,
+		Admit:    func(*http.Request) error { return nil },
+	})
+	require.NoError(t, err)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+	resp := post(t, srv.URL, `{"sourceURL":"https://detail.1688.com/offer/981645030344.html"}`)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	var body browsercollector.ErrorBody
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Equal(t, browsercollector.CodeCapacity, body.Code)
+	require.ErrorIs(t, browsercollector.SentinelFor(body.Code), sourcing.ErrAcquisitionCapacity)
 }

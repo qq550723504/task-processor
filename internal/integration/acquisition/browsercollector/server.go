@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	browser "task-processor/internal/integration/acquisition/a1688/browser"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -87,6 +88,9 @@ func writeAcquireError(w http.ResponseWriter, err error) {
 		WriteError(w, http.StatusBadRequest, CodeInvalidRequest)
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		WriteError(w, http.StatusGatewayTimeout, CodeBudgetExceeded)
+	case errors.Is(err, browser.ErrCapacity):
+		// A concurrency-limit rejection is retryable, not a source failure.
+		WriteError(w, http.StatusServiceUnavailable, CodeCapacity)
 	default:
 		WriteError(w, http.StatusBadGateway, CodeSourceUnavailable)
 	}

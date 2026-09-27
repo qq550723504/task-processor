@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,9 @@ var (
 	ErrUnsupported = errors.New("public page structure unsupported")
 	// ErrChallenge reports a detected anti-automation challenge page.
 	ErrChallenge = errors.New("public page challenged")
+	// ErrCapacity reports that this collector is already running its maximum
+	// number of concurrent browser acquisitions (design D8).
+	ErrCapacity = errors.New("browser collector at concurrency limit")
 )
 
 // ParserVersion identifies the extraction contract. It is part of the evidence
@@ -59,6 +63,15 @@ type Options struct {
 	// is a deployment concern, Slice 3). Empty disables the origin check, which
 	// is only acceptable in isolated tests.
 	AllowedOrigins []string
+	// MaxConcurrent bounds how many browser acquisitions this process runs at
+	// once (design D8 / 12-B2, initial value 2). Organization-scoped acquisition
+	// limits do not bound a collector-wide burst, and every concurrent request
+	// launches its own Chromium, so the cap has to live on the collector. Zero
+	// means DefaultMaxConcurrent.
+	MaxConcurrent int
+	// MaxResponseBytes aborts an allowed subresource whose declared or observed
+	// body exceeds this size, before Chromium materializes it (design D8).
+	MaxResponseBytes int64
 	// navigateURLOverride replaces the navigation target. It exists only so the
 	// browser fixture test can drive a real Chromium against a loopback fixture
 	// page; production never sets it (the target is always source.URL).
@@ -66,7 +79,6 @@ type Options struct {
 }
 
 // DefaultTimeout bounds one provider acquisition.
-//
 // It must stay well inside the current-application acquisition route budget
 // (sourcing.AcquisitionTimeout = 20s), because D1 persists the operation only
 // after acquisition returns: a provider that outlives the route leaves the user
@@ -79,6 +91,16 @@ type Options struct {
 // Raising this requires raising the route budget in the same change, and then
 // the BFF (22s) and browser client (25s) deadlines as well.
 const DefaultTimeout = 10 * time.Second
+
+// DefaultMaxConcurrent is the collector-wide concurrency cap (design D8, 12-B2).
+// It is deliberately small: each acquisition launches its own Chromium, and the
+// shared egress IP is the scarce resource.
+const DefaultMaxConcurrent = 2
+
+// DefaultMaxSubresourceBytes bounds a single allowed subresource body so an
+// oversized document or script is aborted before Chromium materializes it
+// (design D8). It is generous for a 1688 detail page and its assets.
+const DefaultMaxSubresourceBytes int64 = 8 << 20
 
 // DefaultAllowedOrigins is the resolved egress allowlist (design A2, user
 // decision 2026-09-26): the 1688 product host, its CDN, and 1688 site assets,
@@ -104,6 +126,20 @@ func (o Options) navigationTimeout() time.Duration {
 	return timeout
 }
 
+func (o Options) maxConcurrent() int {
+	if o.MaxConcurrent > 0 {
+		return o.MaxConcurrent
+	}
+	return DefaultMaxConcurrent
+}
+
+func (o Options) maxResponseBytes() int64 {
+	if o.MaxResponseBytes > 0 {
+		return o.MaxResponseBytes
+	}
+	return DefaultMaxSubresourceBytes
+}
+
 func (o Options) budget() time.Duration {
 	if o.Budget > 0 {
 		return o.Budget
@@ -112,14 +148,25 @@ func (o Options) budget() time.Duration {
 }
 
 // Client is a PublicAcquirer backed by a controlled browser.
-type Client struct{ opts Options }
+type Client struct {
+	opts Options
+	// slots is the collector-wide concurrency cap. Every acquisition launches a
+	// separate Chromium, so a burst across organizations would otherwise exhaust
+	// CPU, memory and the shared egress IP.
+	slots chan struct{}
+}
 
 // The browser provider must satisfy the current owner's acquisition contract.
 var _ sourcing.PublicAcquirer = (*Client)(nil)
 
 // New builds a browser-backed public acquirer. It performs no IO at
 // construction; the browser starts per acquisition.
-func New(opts Options) *Client { return &Client{opts: opts} }
+// maxConcurrentInternal exposes the resolved cap for tests.
+func (c *Client) maxConcurrentInternal() int { return c.opts.maxConcurrent() }
+
+func New(opts Options) *Client {
+	return &Client{opts: opts, slots: make(chan struct{}, opts.maxConcurrent())}
+}
 
 // Acquire fetches one anonymous public product page and returns untrusted
 // evidence. It never retries automatically (D4); a detected challenge or an
@@ -137,6 +184,18 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.opts.budget())
 	defer cancel()
+
+	// Collector-wide concurrency cap (D8). Taken before any browser work so an
+	// over-capacity burst is rejected instead of launching more Chromium
+	// processes and consuming the shared egress IP.
+	select {
+	case c.slots <- struct{}{}:
+		defer func() { <-c.slots }()
+	case <-ctx.Done():
+		return sourcing.AcquisitionEvidence{}, ctx.Err()
+	default:
+		return sourcing.AcquisitionEvidence{}, ErrCapacity
+	}
 
 	pw, err := playwright.Run()
 	if err != nil {
@@ -260,14 +319,53 @@ func (c *Client) launchOptions() playwright.BrowserTypeLaunchPersistentContextOp
 	}
 }
 
-// routeGuard aborts any request whose origin is not explicitly allowed.
+// routeGuard admits only allowlisted origins, and bounds the main document
+// response before Chromium materializes it (design D8).
+//
+// The document is fetched through the route API and re-fulfilled from a bounded
+// body, so an oversized page is aborted rather than downloaded in full. Only the
+// navigation document is handled this way: subresources keep the plain continue
+// path, because rewriting every subresource response is a much larger change to
+// a path that has real-network evidence behind it and could not be re-verified
+// against the live site while the egress IP is challenged. The bounded extractor
+// and the RPC transport cap remain the backstop for subresources; the residual
+// subresource download limit is recorded rather than silently assumed.
 func (c *Client) routeGuard(route playwright.Route) {
 	req := route.Request()
 	if !originAllowed(c.opts.AllowedOrigins, req.URL()) {
 		_ = route.Abort()
 		return
 	}
-	_ = route.Continue()
+	if !req.IsNavigationRequest() || req.ResourceType() != "document" {
+		_ = route.Continue()
+		return
+	}
+	resp, err := route.Fetch()
+	if err != nil {
+		_ = route.Abort()
+		return
+	}
+	limit := c.opts.maxResponseBytes()
+	// Reject on the declared size first, so a huge document is not transferred.
+	if declared, perr := strconv.ParseInt(resp.Headers()["content-length"], 10, 64); perr == nil && declared > limit {
+		_ = route.Abort()
+		return
+	}
+	body, berr := resp.Body()
+	if berr != nil {
+		_ = route.Abort()
+		return
+	}
+	if int64(len(body)) > limit {
+		_ = route.Abort()
+		return
+	}
+	status := resp.Status()
+	_ = route.Fulfill(playwright.RouteFulfillOptions{
+		Status:  &status,
+		Headers: resp.Headers(),
+		Body:    string(body),
+	})
 }
 
 // originAllowed reports whether target is under one of the allowed origins.

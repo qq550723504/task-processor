@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -39,4 +40,30 @@ func TestZeroBudgetFallsBackToDefault(t *testing.T) {
 func TestNavigationTimeoutDefaultsWithinBudget(t *testing.T) {
 	opts := Options{Budget: 12 * time.Second}
 	require.LessOrEqual(t, opts.navigationTimeout(), opts.budget())
+}
+
+// Every acquisition launches its own Chromium, so a burst across organizations
+// must be bounded on the collector rather than only per organization.
+func TestConcurrentAcquisitionsAreBounded(t *testing.T) {
+	require.Equal(t, 2, Options{}.maxConcurrent(), "the default collector cap must follow design D8 / 12-B2")
+	require.Equal(t, 5, Options{MaxConcurrent: 5}.maxConcurrent())
+	require.Equal(t, DefaultMaxConcurrent, New(Options{}).maxConcurrentInternal())
+}
+
+// The concurrency slot must be taken before any browser work, so an over-limit
+// request is rejected instead of launching Chromium.
+func TestConcurrencySlotRejectsWhenFull(t *testing.T) {
+	browserPath := fixtureBrowserPath(t)
+	client := New(Options{ExecutablePath: browserPath, MaxConcurrent: 1})
+	client.slots <- struct{}{} // occupy the only slot
+	_, err := client.Acquire(context.Background(), mustCanonicalSource(t))
+	require.ErrorIs(t, err, ErrCapacity)
+	<-client.slots // release
+}
+
+func mustCanonicalSource(t *testing.T) sourcing.AcquisitionSource {
+	t.Helper()
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	return source
 }
