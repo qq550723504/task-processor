@@ -142,6 +142,7 @@ func TestWithdrawalCommittedReplayPrecedesMutableEligibilityDependencies(t *test
 	module := referralHTTPModule{
 		economics: economicsStub,
 		withdrawalReplay: replay,
+		requirePersonalKYC: true,
 		// A committed replay must not need profile, KYC, or payout-method dependencies.
 	}
 	module.requestWithdrawal(c)
@@ -180,7 +181,7 @@ func TestWithdrawalNeverSeenKeyRequiresPersonalKYCBeforePayoutAndMutation(t *tes
 			if tc.missingKYC {
 				kycReader = nil
 			}
-			module := referralHTTPModule{economics: economicsStub, withdrawalReplay: replay, personalKYC: kycReader, profileReader: profile, payoutMethods: payout}
+			module := referralHTTPModule{economics: economicsStub, withdrawalReplay: replay, personalKYC: kycReader, requirePersonalKYC: true, profileReader: profile, payoutMethods: payout}
 			module.requestWithdrawal(c)
 
 			if recorder.Code != tc.wantStatus || !strings.Contains(recorder.Body.String(), tc.wantCode) {
@@ -206,7 +207,7 @@ func TestWithdrawalVerifiedPersonalKYCContinuesExistingAdmission(t *testing.T) {
 	economicsStub := &withdrawalKYCEconomicsStub{result: result}
 	c, recorder := withdrawalKYCContext(t, accountReferralWithdrawalsPath, `{"amountMinor":"10000","payoutMethodId":"method-1","expectedVersion":"1"}`, "request-key")
 
-	module := referralHTTPModule{economics: economicsStub, withdrawalReplay: replay, personalKYC: kyc, profileReader: profile, payoutMethods: payout}
+	module := referralHTTPModule{economics: economicsStub, withdrawalReplay: replay, personalKYC: kyc, requirePersonalKYC: true, profileReader: profile, payoutMethods: payout}
 	module.requestWithdrawal(c)
 
 	if recorder.Code != http.StatusOK || replay.calls != 1 || profile.calls != 1 || kyc.calls != 1 || payout.calls != 1 || economicsStub.requestCalls != 1 {
