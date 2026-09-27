@@ -279,15 +279,20 @@ function ReferralRulesView({ data }: { data: ReferralRules }) {
   return <div className={styles.pageBody}>
     <section className={styles.ruleNotice} aria-labelledby="referral-rules-current-title">
       <h2 id="referral-rules-current-title">当前规则以平台实际生效版本为准</h2>
-      <p>以下内容来自平台当前生效的推广收益规则。具体佣金比例、结算周期、最低提现金额和审核方式以本页当前读取结果为准。</p>
+      <p>佣金比例、结算周期、最低提现金额和审核方式以本页当前读取结果为准；推广行为须遵守下列规范。</p>
     </section>
     <section className={styles.ruleGrid} aria-label="规则说明">
       <article className={styles.ruleCard}><h2>推广关系如何建立</h2><p>用户通过推广链接或推广码完成注册并通过官方验证后，推广关系以系统最终记录为准。</p></article>
       <article className={styles.ruleCard}><h2>哪些订单产生收益</h2><p>只有平台已确认结算的支付会进入收益计算；后续发生退款或拒付时，相关收益会按实际结果调整。</p></article>
       <article className={styles.ruleCard}><h2>收益如何计算</h2><strong className={styles.ruleValue}>{formatCommissionRate(data.commissionRateBps)}</strong><p>当前推广收益按该佣金比例计算；实际收益金额以服务端记录的结算结果为准。</p></article>
-      <article className={styles.ruleCard}><h2>结算与退款处理</h2><strong className={styles.ruleValue}>{data.settlementPeriodDays} 天</strong><p>当前结算周期为 {data.settlementPeriodDays} 天；退款或拒付发生后，相关收益会按实际结果调整。</p></article>
+      <article className={styles.ruleCard}><h2>结算与退款处理</h2><strong className={styles.ruleValue}>{data.settlementPeriodDays} 天</strong><p>新生成的推广收益自对应支付确认结算时起满 {data.settlementPeriodDays} 天进入可结算范围；已生成收益按记录的结算时间处理，实际入账以系统处理为准。退款或拒付发生后，相关收益会按实际结果调整。</p></article>
       <article className={styles.ruleCard}><h2>提现规则</h2><strong className={styles.ruleValue}>{formatMinor(data.minimumWithdrawalMinor)}</strong><p>{personalKycRequired ? `最低申请金额为 ${formatMinor(data.minimumWithdrawalMinor)}；达到金额门槛不代表已满足全部提现条件，还需完成个人 KYC 认证，并通过当前提现资格和有效收款方式校验。申请进入人工审核。` : `最低申请金额为 ${formatMinor(data.minimumWithdrawalMinor)}；达到金额门槛不代表已满足全部提现条件，提交时仍会校验当前提现资格和有效收款方式。申请进入人工审核。`}</p></article>
-      <article className={styles.ruleCard}><h2>违规推广处理</h2><strong className={styles.ruleUnavailable}>未提供</strong><p>当前规则接口尚未提供违规推广处理政策；本页面不补充或推测处罚规则。</p></article>
+      <article className={styles.ruleCard}>
+        <h2>违规推广处理</h2>
+        <p>请真实、准确地介绍平台服务，不得虚构功能、价格、优惠或收益承诺，也不得冒充平台官方。</p>
+        <p>禁止批量虚假注册、刷单或伪造交易以获取推广收益；不得发送垃圾信息、反复骚扰他人，或未经授权使用他人品牌、内容及个人信息。</p>
+        <p>退款或拒付产生的收益按现有规则调整；提现申请仍需通过现有资格校验和人工审核。本页不承诺自动冻结、罚款或封禁。</p>
+      </article>
     </section>
   </div>;
 }

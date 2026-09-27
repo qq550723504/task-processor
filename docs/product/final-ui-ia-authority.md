@@ -80,7 +80,7 @@
 
 Issue #408 的最新产品范围取代 3.1 的缩减版 v1 阶段边界。本批次以 Figma `31:463` 当前可见、非归档账户中心为完成目标，连续交付账户总览、账户设置/经营画像/认证信息、成员与角色权限、资源/套餐/额度与成员资源分配、企业通用审计、推广收益与提现。Figma 仍只决定 UI/IA、命名、布局和交互语义；真实事实、权限、幂等、账本和提现状态必须由当前 owner/API/persistence 提供，不得用原型示例数字替代。
 
-本批次按 M1–M5 推进，一个主要分支和一个主要 PR；M3 使用 Token set-target allocation、企业 entitlement window 和 version/idempotency；M5 使用个人 referral、10% minor-unit immutable ledger、14 日结算、退款 adjustment、¥100 人工提现和 version/idempotency 状态机。支付事实仍以 commercial/payment owner 的真实 settled cash payment、refund 和 chargeback 为唯一来源，不得由 referral 或前端推造。当前已接入的 M1 经营画像由账户中心持久化；身份认证状态仍以 ZITADEL 与当前组织授权事实为准。
+本批次按 M1–M5 推进，一个主要分支和一个主要 PR；M3 使用 Token set-target allocation、企业 entitlement window 和 version/idempotency；M5 使用个人 referral、10% minor-unit immutable ledger、30 日结算、退款 adjustment、¥100 人工提现和 version/idempotency 状态机。2026-09-27 用户决定将新收益结算期由 14 日改为 30 日，并完善推广行为规范及现有处理边界，具体按 [结算与推广规范合同](../architecture/referral-settlement-and-conduct.md)；不因此增加冻结、罚款或封禁机制。支付事实仍以 commercial/payment owner 的真实 settled cash payment、refund 和 chargeback 为唯一来源，不得由 referral 或前端推造。当前已接入的 M1 经营画像由账户中心持久化；身份认证状态仍以 ZITADEL 与当前组织授权事实为准。
 
 M5 提现申请还必须消费现有 canonical payout-method owner 的有效收款方式事实；渠道枚举本身不构成收款方式。当前仓库尚无该 owner，因此申请提现接口在 owner 接入前 fail closed，不能把任意 `ALIPAY` / `BANK_TRANSFER` 值当作已验证收款方式。
 
