@@ -69,8 +69,8 @@ type CaptchaStatistics struct {
 
 // CaptchaHandler 验证码处理器
 type CaptchaHandler struct {
-	statistics   CaptchaStatistics
-	lastAttempt  time.Time
+	statistics    CaptchaStatistics
+	lastAttempt   time.Time
 	successStreak int32
 	maxRetries    int
 }
@@ -93,15 +93,15 @@ func NewCaptchaHandlerWithConfig(maxRetries int) *CaptchaHandler {
 func (ch *CaptchaHandler) GetStatistics() CaptchaStatistics {
 	total := atomic.LoadInt64(&ch.statistics.TotalCount)
 	success := atomic.LoadInt64(&ch.statistics.SuccessCount)
-	
+
 	sliderRate := 0.0
 	imageRate := 0.0
-	
+
 	if total > 0 {
 		sliderRate = float64(success) / float64(total) * 100
 		imageRate = sliderRate
 	}
-	
+
 	return CaptchaStatistics{
 		TotalCount:        total,
 		SuccessCount:      success,

@@ -328,5 +328,12 @@ func (s *BrowserAcquisitionService) failFetch(parent context.Context, causeCtx c
 	if errors.Is(cause, sourcing.ErrAcquisitionCapacity) {
 		return sourcing.ErrAcquisitionCapacity
 	}
+	// A collector outage or a rejected service credential is an availability
+	// failure, not a 1688 source failure. Flattening it would report
+	// 502 SOURCE_UNAVAILABLE and hide the outage from retry behaviour and
+	// operational monitoring.
+	if errors.Is(cause, sourcing.ErrAcquisitionUnavailable) {
+		return sourcing.ErrAcquisitionUnavailable
+	}
 	return sourcing.ErrAcquisitionFailed
 }

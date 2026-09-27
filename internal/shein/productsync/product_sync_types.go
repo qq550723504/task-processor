@@ -10,15 +10,15 @@ import (
 // EnrichedSkuInfo 增强的SKU数据结构（用于序列化到Attributes）
 type EnrichedSkuInfo struct {
 	product.SkuInfo
-	MappingInfo       *listingruntime.ProductImportMapping `json:"mapping_info,omitempty"`    // 运行时映射
-	SaleNameInfo      []product.SaleNameInfo           `json:"sale_name_info,omitempty"`      // 自营店铺：销售属性
-	PriceInfoList     []product.SkuPriceDetail         `json:"price_info_list,omitempty"`     // 自营店铺：价格列表
-	SaleAttributeList []product.SaleAttributeItem      `json:"sale_attribute_list,omitempty"` // 半托店铺：销售属性
-	CostPriceInfo     *product.CostPrice               `json:"cost_price_info,omitempty"`     // 半托店铺：成本价
-	InventoryInfo     []product.WarehouseInventory     `json:"inventory_info,omitempty"`      // SKU 库存信息
-	UsableInventory   *int                             `json:"usable_inventory,omitempty"`    // 可用库存汇总
-	InventoryQuantity *int                             `json:"inventory_quantity,omitempty"`  // 总库存汇总
-	AmazonMonitorData *shein.AmazonMonitorData         `json:"amazon_monitor_data,omitempty"` // Amazon监控数据
+	MappingInfo       *listingruntime.ProductImportMapping `json:"mapping_info,omitempty"`        // 运行时映射
+	SaleNameInfo      []product.SaleNameInfo               `json:"sale_name_info,omitempty"`      // 自营店铺：销售属性
+	PriceInfoList     []product.SkuPriceDetail             `json:"price_info_list,omitempty"`     // 自营店铺：价格列表
+	SaleAttributeList []product.SaleAttributeItem          `json:"sale_attribute_list,omitempty"` // 半托店铺：销售属性
+	CostPriceInfo     *product.CostPrice                   `json:"cost_price_info,omitempty"`     // 半托店铺：成本价
+	InventoryInfo     []product.WarehouseInventory         `json:"inventory_info,omitempty"`      // SKU 库存信息
+	UsableInventory   *int                                 `json:"usable_inventory,omitempty"`    // 可用库存汇总
+	InventoryQuantity *int                                 `json:"inventory_quantity,omitempty"`  // 总库存汇总
+	AmazonMonitorData *shein.AmazonMonitorData             `json:"amazon_monitor_data,omitempty"` // Amazon监控数据
 }
 
 // EnrichedSkcInfo 增强的SKC数据结构（用于序列化到Attributes）

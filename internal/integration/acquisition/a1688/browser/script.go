@@ -128,10 +128,15 @@ func extractScript() string {
     return s.slice(0, CAP.str);
   };
   // Exact numeric text, or '' when the value cannot be represented exactly.
+  // A fractional number such as 9.5 is exactly representable and must be kept;
+  // only an integer beyond the safe-integer range has lost precision, and only
+  // that case is rejected. JavaScript number-to-string is a shortest
+  // round-trip, so a kept fraction faithfully reports the parsed value.
   const exactNum = (v, field) => {
     if (v === null || v === undefined || v === '') return '';
     if (typeof v === 'number') {
-      if (!Number.isSafeInteger(v)) { markTrunc(field); return ''; }
+      if (!Number.isFinite(v)) { markTrunc(field); return ''; }
+      if (Number.isInteger(v) && !Number.isSafeInteger(v)) { markTrunc(field); return ''; }
       return String(v);
     }
     if (typeof v === 'string') return v;

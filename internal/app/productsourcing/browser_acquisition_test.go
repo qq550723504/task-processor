@@ -506,3 +506,16 @@ func TestBrowserAcquireKeepsCollectorCapacityRetryable(t *testing.T) {
 	require.NotErrorIs(t, err, sourcing.ErrAcquisitionFailed)
 	require.Equal(t, 0, store.startPrep, "a capacity rejection must not admit an operation")
 }
+
+// A collector outage or a rejected service credential is an availability
+// failure, not a 1688 source failure, and must not be flattened into one.
+func TestBrowserAcquireKeepsCollectorAvailabilityDistinct(t *testing.T) {
+	store := newBrowserStore()
+	store.prepared = true
+	provider := &browserProviderSpy{evidence: browserEvidence(), err: sourcing.ErrAcquisitionUnavailable}
+	service := newBrowserService(t, store, provider)
+	_, err := service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4f", "981645030344")
+	require.ErrorIs(t, err, sourcing.ErrAcquisitionUnavailable)
+	require.NotErrorIs(t, err, sourcing.ErrAcquisitionFailed)
+	require.Equal(t, 0, store.startPrep, "an unavailable collector must not admit an operation")
+}

@@ -431,3 +431,32 @@ window.__INIT_DATA = {"data":{"main":{"data":{
   "skuInfoMap":{"red":{"skuId":7,"price":9.5}}}}};
 </script></body></html>`
 }
+
+// A fractional price is exactly representable and must survive: only an integer
+// beyond the safe-integer range has actually lost precision.
+func TestBrowserAcquireKeepsExactFractionalPrice(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, customItemPage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+	require.NotEmpty(t, evidence.Variants, "the custom-item SKU model must be extracted")
+	require.NotNil(t, evidence.Variants[0].Price, "a fractional price must not be dropped")
+	require.Equal(t, "9.5", evidence.Variants[0].Price.Amount)
+}
+
+// A redirect target must be resolved against the request URL and checked.
+func TestAbsoluteURLResolution(t *testing.T) {
+	got, err := absoluteURL("https://detail.1688.com/offer/1.html", "/offer/2.html")
+	require.NoError(t, err)
+	require.Equal(t, "https://detail.1688.com/offer/2.html", got)
+
+	got, err = absoluteURL("https://detail.1688.com/offer/1.html", "https://img.alicdn.com/x.png")
+	require.NoError(t, err)
+	require.Equal(t, "https://img.alicdn.com/x.png", got)
+
+	_, err = absoluteURL("https://detail.1688.com/offer/1.html", "  ")
+	require.Error(t, err)
+}

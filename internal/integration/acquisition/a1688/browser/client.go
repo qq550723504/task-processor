@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -340,8 +341,24 @@ func (c *Client) routeGuard(route playwright.Route) {
 		_ = route.Continue()
 		return
 	}
-	resp, err := route.Fetch()
+	// Do not follow redirects inside the route fetch: those internal hops never
+	// re-enter this guard, so an allowed origin could otherwise redirect the
+	// collector to an arbitrary public or private target. A redirect is returned
+	// instead and validated below.
+	resp, err := route.Fetch(playwright.RouteFetchOptions{MaxRedirects: playwright.Int(0)})
 	if err != nil {
+		_ = route.Abort()
+		return
+	}
+	if status := resp.Status(); status >= 300 && status < 400 {
+		// A redirect is only honoured when its resolved target is itself
+		// allowlisted; the browser then issues that request itself and it passes
+		// through this guard again.
+		if absolute, aerr := absoluteURL(req.URL(), resp.Headers()["location"]); aerr == nil && originAllowed(c.opts.AllowedOrigins, absolute) {
+			redirected := status
+			_ = route.Fulfill(playwright.RouteFulfillOptions{Status: &redirected, Headers: resp.Headers(), Body: ""})
+			return
+		}
 		_ = route.Abort()
 		return
 	}
@@ -558,4 +575,22 @@ func toAcquisitionPrice(p price) *sourcing.AcquisitionPrice {
 		out.MinQuantity = &qCopy
 	}
 	return out
+}
+
+// absoluteURL resolves a possibly relative Location header against the request
+// URL. It returns an error when the value cannot be resolved, which the caller
+// treats as a failed redirect.
+func absoluteURL(base, location string) (string, error) {
+	if strings.TrimSpace(location) == "" {
+		return "", errors.New("empty redirect location")
+	}
+	parsedBase, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(location)
+	if err != nil {
+		return "", err
+	}
+	return parsedBase.ResolveReference(parsed).String(), nil
 }

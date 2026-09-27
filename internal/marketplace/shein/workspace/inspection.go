@@ -2,9 +2,9 @@ package workspace
 
 import (
 	"strconv"
-	"task-processor/internal/shared/strx"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	"task-processor/internal/shared/strx"
 )
 
 func BuildInspection(pkg *sheinpub.Package) *sheinpub.Inspection {

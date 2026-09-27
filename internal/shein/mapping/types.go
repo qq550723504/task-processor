@@ -22,11 +22,11 @@ type MappingRepairRequest struct {
 
 // MappingRepairResult SKU映射关系修复结果
 type MappingRepairResult struct {
-	SkuCode     string                             `json:"skuCode"`     // SKU编码
-	Success     bool                               `json:"success"`     // 是否成功
+	SkuCode     string                               `json:"skuCode"`     // SKU编码
+	Success     bool                                 `json:"success"`     // 是否成功
 	MappingInfo *listingruntime.ProductImportMapping `json:"mappingInfo"` // 映射信息
-	Error       string                             `json:"error"`       // 错误信息
-	RepairTime  time.Time                          `json:"repairTime"`  // 修复时间
+	Error       string                               `json:"error"`       // 错误信息
+	RepairTime  time.Time                            `json:"repairTime"`  // 修复时间
 }
 
 // MappingRepairConfig SKU映射关系修复配置
@@ -51,12 +51,12 @@ func DefaultMappingRepairConfig() *MappingRepairConfig {
 
 // MappingRepairContext SKU映射关系修复上下文
 type MappingRepairContext struct {
-	Request     *MappingRepairRequest       `json:"request"`     // 修复请求
-	SkuInfo     *product.SkuInfo            `json:"skuInfo"`     // SKU信息
-	ProductInfo *product.ProductListItem    `json:"productInfo"` // 产品信息
-	StoreInfo   *listingruntime.StoreInfo   `json:"storeInfo"`   // 店铺信息
-	RetryCount  int                         `json:"retryCount"`  // 重试次数
-	StartTime   time.Time                   `json:"startTime"`   // 开始时间
+	Request     *MappingRepairRequest     `json:"request"`     // 修复请求
+	SkuInfo     *product.SkuInfo          `json:"skuInfo"`     // SKU信息
+	ProductInfo *product.ProductListItem  `json:"productInfo"` // 产品信息
+	StoreInfo   *listingruntime.StoreInfo `json:"storeInfo"`   // 店铺信息
+	RetryCount  int                       `json:"retryCount"`  // 重试次数
+	StartTime   time.Time                 `json:"startTime"`   // 开始时间
 }
 
 // MappingRepairStrategy SKU映射关系修复策略

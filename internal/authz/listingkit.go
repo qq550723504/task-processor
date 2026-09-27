@@ -26,9 +26,9 @@ const (
 	PermissionWorkbenchSourceAccountManage      = "workbench.source_account.manage"
 	PermissionWorkbenchOrganizationMemberRead   = "workbench.organization_member.read"
 	PermissionWorkbenchOrganizationMemberManage = "workbench.organization_member.manage"
-	PermissionWorkbenchCommercialRead            = "workbench.commercial.read"
-	PermissionWorkbenchCommercialPurchase        = "workbench.commercial.purchase"
-	PermissionWorkbenchCommercialWalletTopUp     = "workbench.commercial.wallet_topup"
+	PermissionWorkbenchCommercialRead           = "workbench.commercial.read"
+	PermissionWorkbenchCommercialPurchase       = "workbench.commercial.purchase"
+	PermissionWorkbenchCommercialWalletTopUp    = "workbench.commercial.wallet_topup"
 )
 
 var workbenchStorePermissions = []string{

@@ -6,22 +6,22 @@ import (
 
 // Config TEMU API配置
 type Config struct {
-	BaseURL        string
-	RequestTimeout time.Duration
-	RetryCount     int
-	MaxTimeout     time.Duration // 最大超时时间
-	RetryInterval  time.Duration // 重试间隔
+	BaseURL            string
+	RequestTimeout     time.Duration
+	RetryCount         int
+	MaxTimeout         time.Duration // 最大超时时间
+	RetryInterval      time.Duration // 重试间隔
 	InsecureSkipVerify bool
 }
 
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		BaseURL:        "https://seller.temu.com",
-		RequestTimeout: 30 * time.Second,  // 单次请求超时
-		MaxTimeout:     120 * time.Second, // 最大超时时间（包含重试）
-		RetryCount:     3,
-		RetryInterval:  2 * time.Second, // 重试间隔
+		BaseURL:            "https://seller.temu.com",
+		RequestTimeout:     30 * time.Second,  // 单次请求超时
+		MaxTimeout:         120 * time.Second, // 最大超时时间（包含重试）
+		RetryCount:         3,
+		RetryInterval:      2 * time.Second, // 重试间隔
 		InsecureSkipVerify: false,
 	}
 }
