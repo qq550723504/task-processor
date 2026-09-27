@@ -151,6 +151,10 @@ func extractScript() string {
     return '';
   };
   const cap = (arr, n, field) => { if (arr.length > n) markTrunc(field); return arr.slice(0, n); };
+  // Protocol-relative URLs are a known 1688 image shape. MapAcquisitionEvidence
+  // requires an https scheme, so they must be normalized rather than emitted as
+  // "//host/..." which would fail the whole acquisition.
+  const absUrl = (u) => (typeof u === 'string' && u.indexOf('//') === 0) ? 'https:' + u : u;
   const pushAttrs = (list, field) => {
     for (const a of cap(list, CAP.attributes, field)) {
       if (a && a.name && a.value && a.name !== a.value) {
@@ -180,7 +184,7 @@ func extractScript() string {
       // subset would misstate the variant. Drop the whole variant.
       if (attrsFor.some((a) => !a.name || !a.value)) { markTrunc('variants'); continue; }
       const v = { sourceId: exactNum(entry.skuId, 'variant_source_id'), attributes: attrsFor, price: null };
-      const amount = exactNum(entry.price, 'variant_price');
+      const amount = exactNum(entry.price === undefined || entry.price === null ? entry.discountPrice : entry.price, 'variant_price');
       if (amount) {
         v.price = { amount: amount, currency: clip(entry.currency || '', 'variant_price'), minQuantity: '' };
       }
@@ -226,7 +230,7 @@ func extractScript() string {
     }
     if (data.gallery && data.gallery.fields && Array.isArray(data.gallery.fields.offerImgList)) {
       for (const u of cap(data.gallery.fields.offerImgList, CAP.images, 'images')) {
-        if (typeof u === 'string' && u) out.images.push(clip(u, 'images'));
+        if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
       }
     }
     const attrs = ctx.global && ctx.global.globalData && ctx.global.globalData.model && ctx.global.globalData.model.offerDetail && ctx.global.globalData.model.offerDetail.featureAttributes;
@@ -235,6 +239,27 @@ func extractScript() string {
       readSku(data.Root.fields.dataJson.skuModel);
     }
     readPrices(data);
+    // Known standard-page price shapes when offerPriceRanges is absent, ported
+    // from the operator's legacy price extractor.
+    if (out.priceFacts.length === 0) {
+      const dj = data.Root && data.Root.fields && data.Root.fields.dataJson;
+      const op = dj && dj.orderParamModel && dj.orderParamModel.orderParam;
+      const range = op && op.skuParam && op.skuParam.skuRangePrices;
+      const collect = (list) => {
+        for (const r of cap(list, CAP.priceFacts, 'price_facts')) {
+          if (out.priceFacts.length >= CAP.priceFacts) break;
+          if (!r) continue;
+          const amount = exactNum(r.price, 'price_facts');
+          if (!amount) continue;
+          out.priceFacts.push({ amount: amount, currency: clip(r.currency || '', 'price_facts'), minQuantity: exactNum(r.beginAmount, 'price_facts') });
+        }
+      };
+      if (Array.isArray(range)) collect(range);
+      for (const k in data) {
+        const f = data[k] && data[k].fields;
+        if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) { collect(f.priceModel.currentPrices); break; }
+      }
+    }
   } else if (init) {
     for (const k in init) {
       const block = init[k];
@@ -244,8 +269,13 @@ func extractScript() string {
         out.offerId = exactNum(d.offerInfoModel.offerId, 'offer_id');
         if (!out.title) out.title = clip(d.offerInfoModel.title || '', 'title');
       }
+      // Known direct identity shape on custom-item blocks.
+      if (!out.offerId && d.offerId !== undefined && d.offerId !== null) {
+        out.offerId = exactNum(d.offerId, 'offer_id');
+      }
+      if (!out.title && d.title) out.title = clip(d.title, 'title');
       if (Array.isArray(d.offerImgList) && out.images.length === 0) {
-        for (const u of cap(d.offerImgList, CAP.images, 'images')) if (typeof u === 'string' && u) out.images.push(clip(u, 'images'));
+        for (const u of cap(d.offerImgList, CAP.images, 'images')) if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
       }
       if (Array.isArray(d.propsList)) pushAttrs(d.propsList, 'attributes');
       if (d.skuModel) readSku(d.skuModel);

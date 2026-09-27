@@ -482,3 +482,70 @@ func oversizedTitlePage() string {
 window.context = {"result":{"data":{"productTitle":{"fields":{"title":"` + strings.Repeat("x", maxStringLen+64) + `"}}}}};
 </script></body></html>`
 }
+
+// The known real page shapes must all be collected, using the field paths the
+// operator's legacy extractors document rather than invented ones: a
+// protocol-relative image URL, a discount price without a price, a direct
+// custom-item offerId/title, and the standard-page skuRangePrices fallback.
+func TestBrowserAcquireCollectsKnownLegacyShapes(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, knownShapesPage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+
+	require.Equal(t, "Known shapes bottle", *evidence.Title)
+	require.NotEmpty(t, evidence.Images)
+	for _, img := range evidence.Images {
+		require.True(t, strings.HasPrefix(img.URL, "https://"), "a protocol-relative image URL must be normalized")
+	}
+	require.NotEmpty(t, evidence.Variants, "the discount price must not drop the variant")
+	require.NotNil(t, evidence.Variants[0].Price, "a discount price must be retained as the variant price")
+	require.Equal(t, "8.25", evidence.Variants[0].Price.Amount)
+	require.NotEmpty(t, evidence.PriceFacts, "the standard-page skuRangePrices fallback must be read")
+}
+
+func knownShapesPage() string {
+	return `<!doctype html><html><head><title>Known shapes</title></head><body><script>
+window.context = {"result":{"data":{
+  "productTitle":{"fields":{"title":"Known shapes bottle"}},
+  "gallery":{"fields":{"offerImgList":["//cbu01.alicdn.com/legacy.jpg"]}},
+  "Root":{"fields":{"dataJson":{
+    "tempModel":{"offerId":981645030344},
+    "orderParamModel":{"orderParam":{"skuParam":{"skuRangePrices":[{"price":8.25,"beginAmount":3,"currency":"CNY"}]}}},
+    "skuModel":{"skuProps":[{"prop":"color"}],
+      "skuInfoMap":{"red":{"skuId":7,"discountPrice":8.25,"currency":"CNY"}}}
+  }}}
+}}};
+</script></body></html>`
+}
+
+// A custom-item page using the direct data.offerId / data.title identity shape,
+// with a protocol-relative image, must be collected rather than rejected.
+func TestBrowserAcquireCollectsDirectCustomItemIdentity(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, directCustomItemPage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+	require.Equal(t, "Direct identity item", *evidence.Title)
+	require.NotEmpty(t, evidence.Images)
+	for _, img := range evidence.Images {
+		require.True(t, strings.HasPrefix(img.URL, "https://"))
+	}
+}
+
+func directCustomItemPage() string {
+	return `<!doctype html><html><head><title>Direct identity</title></head><body><script>
+window.__INIT_DATA = {"data":{"main":{"data":{
+  "offerId": 981645030344,
+  "title": "Direct identity item",
+  "offerImgList": ["//cbu01.alicdn.com/direct.jpg"],
+  "propsList": [{"name":"material","value":"steel"}]
+}}}};
+</script></body></html>`
+}
