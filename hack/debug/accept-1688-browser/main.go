@@ -89,17 +89,20 @@ func main() {
 	fmt.Printf("PARSER=%s\n", evidence.ParserVersion)
 
 	// The real proof: the untrusted evidence must map through the current owner.
+	// This runner deliberately does NOT call sourcing.PublicationIdentity: the
+	// issue30 guard admits that call to specific owner files only, and product
+	// key derivation is already covered by the owner tests. The mapped identity
+	// is read off the envelope instead.
 	envelope, err := sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-acceptance")
 	if err != nil {
 		fmt.Printf("MAP=FAILED error=%v\n", err)
 		os.Exit(1)
 	}
-	key, version, err := sourcing.PublicationIdentity(envelope)
-	if err != nil {
-		fmt.Printf("IDENTITY=FAILED error=%v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("MAP=OK\nPRODUCT_KEY=%s\nVERSION=%s\n", key, version)
+	fmt.Printf("MAP=OK\n")
+	fmt.Printf("IDENTITY=%s sourceType=%s platform=%s sourceID=%s\n",
+		envelope.Identity.SourceType, envelope.Identity.SourceType, envelope.Identity.SourcePlatform, envelope.Identity.SourceID)
+	fmt.Printf("RAW_REF=%s url=%s capturedAt=%s\n",
+		envelope.RawReference.ReferenceType, envelope.RawReference.URL, envelope.RawReference.CapturedAt.Format(time.RFC3339))
 	fmt.Printf("MISSING_FACTS=%d WARNINGS=%d\n", len(envelope.MissingFacts), len(envelope.Warnings))
 }
 
