@@ -186,8 +186,14 @@ func extractScript() string {
   const readSku = (sku) => {
     if (!sku || typeof sku !== 'object') return false;
     if (!sku.skuInfoMap || typeof sku.skuInfoMap !== 'object') return false;
-    const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
+    // A model with entries but no usable property names cannot yield trustworthy
+    // variants: every key segment would be unmatched. Treating it as authoritative
+    // would mark extraction-wide truncation and suppress a complete lower-priority
+    // model, so it is treated as unusable and the search falls through instead.
+    if (!Array.isArray(sku.skuProps) || sku.skuProps.length === 0) return false;
+    const props = sku.skuProps;
     const propNames = props.map((p) => (p && p.prop ? p.prop : ''));
+    if (propNames.every((n) => !n)) return false;
     const map = sku.skuInfoMap || {};
     let variantOverflow = false;
     let attributeOverflow = false;
@@ -275,7 +281,9 @@ func extractScript() string {
     // different minimum quantity than the source supplied.
     let minQuantity = '';
     if (beginAmount !== undefined && beginAmount !== null && beginAmount !== '') {
-      const q = exactNum(beginAmount, 'price_facts');
+      // The downstream validator trims, so trim before deciding rather than
+      // discarding a usable value that merely carried surrounding whitespace.
+      const q = exactNum(beginAmount, 'price_facts').trim();
       // A canonical positive integer is kept EXACTLY, including one beyond the
       // safe-integer range: converting through Number would change it. Anything
       // the downstream contract cannot accept - a leading zero, zero, or more

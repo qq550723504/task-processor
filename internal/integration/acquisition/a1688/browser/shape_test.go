@@ -456,3 +456,49 @@ func TestBrowserAcquireDropsPrefixWhenPropertyCapIsHit(t *testing.T) {
 		"prices collected before the property cap must not be published as the whole set")
 	require.True(t, hasTruncation(evidence, "price_facts"))
 }
+
+// A model with entries but no usable property names must fall through to the
+// complete model, not become authoritative and suppress it.
+func TestBrowserAcquireFallsThroughModelWithoutUsableProps(t *testing.T) {
+	binPath := fixtureBrowserPath(t)
+	page := `<!doctype html><html><head><title>No props</title></head><body><script>
+window.__INIT_DATA = {"data":{"main":{"data":{
+  "offerId": 981645030344,
+  "title": "No props item",
+  "nySkuModel": {"skuInfoMap": {"red": {"skuId": 11, "price": 1.5}}},
+  "skuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap":{"blue":{"skuId":66,"price":2.5}}}
+}}}};
+</script></body></html>`
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: binPath, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	evidence, err := client.Acquire(t.Context(), mustSourceForShape(t))
+	require.NoError(t, err)
+	require.Len(t, evidence.Variants, 1, "a model without usable props must not suppress the complete model")
+	require.NotNil(t, evidence.Variants[0].SourceID)
+	require.Equal(t, "66", *evidence.Variants[0].SourceID)
+}
+
+// A whitespace-padded minimum quantity is usable and must be kept.
+func TestBrowserAcquireTrimsPaddedMinimumQuantity(t *testing.T) {
+	binPath := fixtureBrowserPath(t)
+	page := buildContextPage(map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Padded qty bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+		}}},
+		"price": map[string]any{"fields": map[string]any{"finalPriceModel": map[string]any{
+			"tradeWithoutPromotion": map[string]any{"offerPriceRanges": []any{
+				map[string]any{"price": "12.50", "beginAmount": " 2 "},
+			}},
+		}}},
+	})
+	srv := serveFixture(t, page)
+	client := New(Options{ExecutablePath: binPath, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source := mustSourceForShape(t)
+	evidence, err := client.Acquire(t.Context(), source)
+	require.NoError(t, err)
+	require.NotEmpty(t, evidence.PriceFacts)
+	require.NotNil(t, evidence.PriceFacts[0].MinQuantity, "a padded but valid minimum quantity must be kept")
+	_, err = sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-pad")
+	require.NoError(t, err)
+}
