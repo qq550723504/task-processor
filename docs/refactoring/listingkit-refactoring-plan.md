@@ -1,6 +1,6 @@
 # ListingKit Refactoring Plan
 
-> Status: active only as a ListingKit-specific supplement. For architecture authority and implementation order, follow [`project-wide-refactoring-plan.md`](./project-wide-refactoring-plan.md), [`project-wide-execution-plan.md`](./project-wide-execution-plan.md), and [`listingkit-boundary-checkpoint.md`](./listingkit-boundary-checkpoint.md) first.
+> **Status: DATED EVIDENCE / SUPERSEDED EXECUTION AUTHORITY.** This ListingKit-specific plan is retained for historical decomposition context, not current implementation order. For current authority use [Architecture README](../architecture/README.md), [Project Boundaries](../architecture/project-boundaries.md), [Current Refactoring Status](current-refactoring-status.md), GitHub issue #137 / the current execution Issue, the [Legacy Hard-Cut Policy](legacy-hard-cut-policy.md), and [PD-GREENFIELD-NO-LEGACY-MIGRATION-2026-09-08](../product/greenfield-no-legacy-migration.md). The former project-wide plans and `listingkit-boundary-checkpoint.md` are historical evidence under the greenfield baseline and must not recreate compatibility or migration requirements.
 
 ## 1. Purpose
 
