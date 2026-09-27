@@ -30,6 +30,16 @@ describe("account referral economics client", () => {
     await expect(getReferralRules("subject-1")).resolves.toMatchObject({ commissionRateBps: 1000, minimumWithdrawalMinor: "10000" });
   });
 
+  it("accepts the staged referral-rules-v2 contract with an explicit personal KYC requirement", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "referral-rules-v2", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract", personalKycRequired: true })));
+    await expect(getReferralRules("subject-1")).resolves.toMatchObject({ schemaVersion: "referral-rules-v2", personalKycRequired: true });
+  });
+
+  it("rejects referral-rules-v2 unless the personal KYC requirement is explicitly true", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ schemaVersion: "referral-rules-v2", currency: "CNY", commissionRateBps: 1000, settlementPeriodDays: 14, minimumWithdrawalMinor: "10000", withdrawalReview: "manual", earningsBasis: "canonical_settled_payment_refund_chargeback", source: "referral_economics_contract", personalKycRequired: false })));
+    await expect(getReferralRules("subject-1")).rejects.toMatchObject({ status: 502, code: "INVALID_UPSTREAM_RESPONSE" });
+  });
+
   it("classifies a referral POST transport loss as an unknown outcome", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("connection lost")));
     await expect(createReferralPayoutMethod("subject-1", { type: "ALIPAY", displayName: "支付宝", destination: "buyer@example.test" }, "payout-key"))
