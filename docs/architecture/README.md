@@ -133,6 +133,10 @@ documents unless they say so explicitly:
     withdrawal consumes the same subject's authoritative personal KYC VERIFIED
     fact through a narrow read port; includes committed-operation replay and the
     staged v1/v2 rules rollout required by the API-first deployment order.
+- [`referral-settlement-and-conduct.md`](./referral-settlement-and-conduct.md)
+  - IMPLEMENTATION_READY #469 contract for a 30-day period on newly recorded
+    referral earnings, immutable stored maturity deadlines during payment replay,
+    and promotion conduct guidance bounded by existing processing capabilities.
 - `alipay-wallet-topup-design.md`
   - DESIGNING #481 WeChat Pay and Alipay wallet top-up architecture using GoPay;
     fixed-channel attempts, typed checkout, isolated verification, posting/refund
