@@ -83,6 +83,12 @@ type RequestWithdrawal struct {
 	IdempotencyKey                     string
 	ExpectedVersion                    int64
 }
+type WithdrawalReplayRequest struct {
+	Referrer, Currency, PayoutMethodID string
+	AmountMinor                        int64
+	IdempotencyKey                     string
+	ExpectedVersion                    int64
+}
 type ReviewWithdrawal struct {
 	WithdrawalID             string
 	ExpectedVersion          int64
