@@ -138,8 +138,9 @@ documents unless they say so explicitly:
     fixed-channel attempts, typed checkout, isolated verification, posting/refund
     receipts and recovery. Historical filename; one dual-channel design.
     Desktop checkout, third-party payer, zero top-up commission and admin-approved
-    refunds are approved. Economic amount mapping and incremental review remain;
-    not IMPLEMENTATION_READY or a real-payment authorization.
+    refunds are approved and incrementally reviewed. Economic amount mapping remains;
+    not IMPLEMENTATION_READY or a real-payment authorization. Includes exact Figma
+    recharge-page and modal references.
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
