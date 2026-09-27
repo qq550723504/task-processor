@@ -244,14 +244,32 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	if c.opts.navigateURLOverride != "" {
 		navigateURL = c.opts.navigateURLOverride
 	}
-	if _, err := page.Goto(navigateURL, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(float64(c.opts.navigationTimeout().Milliseconds())),
-	}); err != nil {
+	// page.Goto neither accepts nor observes ctx either, so browser startup can
+	// leave less than the full navigation budget while navigation still receives
+	// the whole configured duration. Race it against the budget and close the
+	// page on expiry so a slow document or route fetch cannot hold Chromium and
+	// a collector slot past the acquisition deadline.
+	type navResult struct{ err error }
+	navDone := make(chan navResult, 1)
+	go func() {
+		_, err := page.Goto(navigateURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(float64(c.opts.navigationTimeout().Milliseconds())),
+		})
+		navDone <- navResult{err}
+	}()
+	var navigated navResult
+	select {
+	case navigated = <-navDone:
+	case <-ctx.Done():
+		_ = page.Close()
+		return sourcing.AcquisitionEvidence{}, ctx.Err()
+	}
+	if navigated.err != nil {
 		if ctx.Err() != nil {
 			return sourcing.AcquisitionEvidence{}, ctx.Err()
 		}
-		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: navigate: %v", ErrUnavailable, err)
+		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: navigate: %v", ErrUnavailable, navigated.err)
 	}
 	if err := ctx.Err(); err != nil {
 		return sourcing.AcquisitionEvidence{}, err

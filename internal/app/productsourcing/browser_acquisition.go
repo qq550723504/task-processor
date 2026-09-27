@@ -180,7 +180,11 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 		// capacity only for StartPrepared to rediscover the same row, so the
 		// existing outcome is reported instead of launching a browser.
 		if op.State == sourcing.AcquisitionFailed {
-			return nil, true, nil
+			// Surface the stored terminal failure. Reporting it as merely
+			// "replayed" would make the caller answer OUTCOME_UNKNOWN instead of the
+			// failure that actually happened, which is the wrong attribution for
+			// every retry after a provider cutover.
+			return nil, false, sourcing.ErrAcquisitionFailed
 		}
 		// acquiring with no command: report it as an in-flight request rather than
 		// starting a competing acquisition for the same key.

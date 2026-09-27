@@ -278,10 +278,15 @@ func extractScript() string {
         for (const u of cap(d.offerImgList, CAP.images, 'images')) if (typeof u === 'string' && u) out.images.push(clip(absUrl(u), 'images'));
       }
       if (Array.isArray(d.propsList)) pushAttrs(d.propsList, 'attributes');
-      if (d.skuModel) readSku(d.skuModel);
-      else if (d.nySkuModel) readSku(d.nySkuModel);
-      else if (d.skuModelOrigin) readSku(d.skuModelOrigin);
-      else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
+      // The global model is primary and data blocks are a fallback, matching the
+      // legacy foundSkuModel guard. Reading both would append the same variants
+      // twice, and MapAcquisitionEvidence rejects repeated source IDs.
+      if (out.variants.length === 0) {
+        if (d.skuModel) readSku(d.skuModel);
+        else if (d.nySkuModel) readSku(d.nySkuModel);
+        else if (d.skuModelOrigin) readSku(d.skuModelOrigin);
+        else if (d.skuInfoMap) readSku({ skuInfoMap: d.skuInfoMap, skuProps: d.skuProps });
+      }
     }
     const g = (typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA && window.__INIT_DATA.globalData) ? window.__INIT_DATA.globalData : null;
     if (g) {
@@ -289,8 +294,11 @@ func extractScript() string {
         out.offerId = exactNum(g.offerInfoModel.offerId, 'offer_id');
         if (!out.title) out.title = clip(g.offerInfoModel.title || '', 'title');
       }
-      if (g.skuModel) readSku(g.skuModel);
-      if (g.nySkuModel) readSku(g.nySkuModel);
+      if (out.variants.length === 0) {
+        if (g.skuModel) readSku(g.skuModel);
+        else if (g.nySkuModel) readSku(g.nySkuModel);
+        else if (g.skuModelOrigin) readSku(g.skuModelOrigin);
+      }
     }
     // Custom-item price shapes, ported from the operator's legacy price
     // extractor: the order-parameter SKU range prices, and each data block's

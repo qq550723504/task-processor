@@ -530,11 +530,18 @@ func TestBrowserAcquireReplaysPreCommandRowWithoutProviderWork(t *testing.T) {
 	provider := &browserProviderSpy{evidence: browserEvidence()}
 	service := newBrowserService(t, store, provider)
 	scope := testScope()
-	// A terminal row left by another path for this same key.
-	store.byKey[scope.OrganizationID+"|8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50"] = sourcing.AcquisitionOperation{
-		Scope: scope, Key: "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50", State: sourcing.AcquisitionFailed,
-	}
-	_, err := service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50", "981645030344")
-	require.Error(t, err)
+	// A terminal row left by another path for this same key. Seed it from the
+	// real request so identity, fingerprint and source all match.
+	request, err := service.core.request(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50", "981645030344")
+	require.NoError(t, err)
+	stored := request
+	stored.State = sourcing.AcquisitionFailed
+	stored.Command = nil
+	store.byKey[scope.OrganizationID+"|"+request.Key] = stored
+	_, err = service.Acquire(context.Background(), "8a2b1c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50", "981645030344")
+	// The stored terminal failure must be reported as itself, not as an unknown
+	// outcome, so a retry after a provider cutover keeps the right attribution.
+	require.ErrorIs(t, err, sourcing.ErrAcquisitionFailed)
+	require.NotErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 	require.Equal(t, 0, provider.count(), "an existing pre-command row must not launch a browser")
 }

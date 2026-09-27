@@ -578,3 +578,33 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 }}}};
 </script></body></html>`
 }
+
+// A custom-item payload exposing the same SKU model in a data block and in
+// globalData must not produce duplicated variants, because repeated source IDs
+// make the whole acquisition fail.
+func TestBrowserAcquireDoesNotDuplicateCustomItemVariants(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, duplicateCustomItemPage())
+	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	source, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	evidence, err := client.Acquire(context.Background(), source)
+	require.NoError(t, err)
+	require.Len(t, evidence.Variants, 1, "the same SKU model must not be read twice")
+	envelope, err := sourcing.MapAcquisitionEvidence(source, evidence, sourcing.AcquisitionChannelPublicBrowser, "op-dup")
+	require.NoError(t, err, "a duplicated source ID would fail the whole mapping")
+	_ = envelope
+}
+
+func duplicateCustomItemPage() string {
+	return `<!doctype html><html><head><title>Duplicate</title></head><body><script>
+window.__INIT_DATA = {
+  "data": {"main": {"data": {
+    "offerId": 981645030344,
+    "title": "Duplicate custom item",
+    "skuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap":{"red":{"skuId":7,"price":3.5}}}
+  }}},
+  "globalData": {"nySkuModel": {"skuProps":[{"prop":"color"}], "skuInfoMap":{"red":{"skuId":7,"price":3.5}}}}
+};
+</script></body></html>`
+}
