@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	d "task-processor/internal/referral"
+	economics "task-processor/internal/referraleconomics"
 	"testing"
 	"time"
 
@@ -421,5 +422,62 @@ func TestPostgresAdmissionAndAtomicConsumption(t *testing.T) {
 	saved, err := r.Find(ctx, "id", "issuer", a.ID)
 	if err != nil || len(saved.Ciphertext) != 0 || saved.State != "CONSUMED" {
 		t.Fatalf("consume not atomic: %+v %v", saved, err)
+	}
+}
+
+
+func TestWithdrawalReplayReadsExactCommittedOperationWithoutEligibilityDependencies(t *testing.T) {
+	owner, runtime := ownedDatabase(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	request := economics.RequestWithdrawal{
+		Referrer:       "person-1",
+		Currency:       economics.CurrencyCNY,
+		PayoutMethodID: "method-1",
+		AmountMinor:    economics.MinimumWithdrawalMinor,
+		Method:         economics.MethodAlipay,
+		IdempotencyKey: "withdrawal-replay-1",
+		ExpectedVersion: 7,
+	}
+	withdrawalID := uuid.NewString()
+	if err := owner.Exec(
+		"INSERT INTO public.referral_withdrawals (id,referrer,payout_method_id,currency,method,amount_minor,status,payout_reference,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+		withdrawalID, request.Referrer, request.PayoutMethodID, request.Currency, request.Method, request.AmountMinor,
+		economics.WithdrawalRequested, "", int64(1), now, now,
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Exec(
+		"INSERT INTO public.referral_withdrawal_operations (idempotency_key,withdrawal_id,fingerprint,result_version,result_status,created_at) VALUES (?,?,?,?,?,?)",
+		request.IdempotencyKey, withdrawalID, withdrawalFingerprint(request), int64(1), economics.WithdrawalRequested, now,
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+	repository, err := New(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay := economics.WithdrawalReplayRequest{
+		Referrer: request.Referrer, Currency: request.Currency, PayoutMethodID: request.PayoutMethodID,
+		AmountMinor: request.AmountMinor, IdempotencyKey: request.IdempotencyKey, ExpectedVersion: request.ExpectedVersion,
+	}
+	got, found, err := repository.ReplayWithdrawal(ctx, replay)
+	if err != nil || !found || got.ID != withdrawalID || got.Referrer != request.Referrer || got.Method != request.Method {
+		t.Fatalf("committed replay=%+v found=%t err=%v", got, found, err)
+	}
+	missing := replay
+	missing.IdempotencyKey = "never-seen"
+	if _, found, err = repository.ReplayWithdrawal(ctx, missing); err != nil || found {
+		t.Fatalf("missing replay found=%t err=%v", found, err)
+	}
+	foreign := replay
+	foreign.Referrer = "person-2"
+	if _, _, err = repository.ReplayWithdrawal(ctx, foreign); !errors.Is(err, economics.ErrIdempotencyConflict) {
+		t.Fatalf("cross-subject replay=%v", err)
+	}
+	changed := replay
+	changed.AmountMinor++
+	if _, _, err = repository.ReplayWithdrawal(ctx, changed); !errors.Is(err, economics.ErrIdempotencyConflict) {
+		t.Fatalf("changed-payload replay=%v", err)
 	}
 }
