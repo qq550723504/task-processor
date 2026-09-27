@@ -190,6 +190,7 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.opts.budget())
 	defer cancel()
+	deadlineAt, _ := ctx.Deadline()
 
 	// Collector-wide concurrency cap (D8). Taken before any browser work so an
 	// over-capacity burst is rejected instead of launching more Chromium
@@ -218,9 +219,42 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	}
 	defer func() { _ = os.RemoveAll(profile) }()
 
-	context, err := pw.Chromium.LaunchPersistentContext(profile, c.launchOptions())
-	if err != nil {
-		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: launch: %v", ErrUnavailable, err)
+	// Chromium startup does not observe ctx either, and Playwright's own launch
+	// timeout is longer than the provider budget. Bound the launch by the
+	// remaining budget and race it, closing the context on expiry so a stalled
+	// start cannot retain a collector slot past the advertised deadline.
+	type launchResult struct {
+		ctx playwright.BrowserContext
+		err error
+	}
+	launchOpts := c.launchOptions()
+	budgetLeft := time.Until(deadlineAt)
+	if budgetLeft <= 0 {
+		return sourcing.AcquisitionEvidence{}, ctx.Err()
+	}
+	launchOpts.Timeout = playwright.Float(float64(budgetLeft.Milliseconds()))
+	launchDone := make(chan launchResult, 1)
+	go func() {
+		c, err := pw.Chromium.LaunchPersistentContext(profile, launchOpts)
+		launchDone <- launchResult{c, err}
+	}()
+	var launched launchResult
+	select {
+	case launched = <-launchDone:
+	case <-ctx.Done():
+		go func() {
+			if r := <-launchDone; r.ctx != nil {
+				_ = r.ctx.Close()
+			}
+		}()
+		return sourcing.AcquisitionEvidence{}, ctx.Err()
+	}
+	if launched.err != nil {
+		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: launch: %v", ErrUnavailable, launched.err)
+	}
+	context := launched.ctx
+	if context == nil {
+		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: launch produced no context", ErrUnavailable)
 	}
 	defer func() { _ = context.Close() }()
 

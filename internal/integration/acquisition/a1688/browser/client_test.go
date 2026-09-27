@@ -696,3 +696,56 @@ func manyImagesPage(n int) string {
 	return "<!doctype html><html><head><title>Many images</title></head><body><script>window.context = " +
 		string(encoded) + ";</script></body></html>"
 }
+
+// An oversized skuInfoMap must drop the whole variant set rather than publish the
+// first N, and a SKU key segment with no matching prop name must drop that
+// variant rather than publish it partially described.
+func TestBrowserAcquireDropsLossyVariantSets(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+
+	t.Run("too many variants", func(t *testing.T) {
+		srv := serveFixture(t, oversizedSkuMapPage(maxVariants+3, 1))
+		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		source, err := sourcing.Canonical1688Source("981645030344")
+		require.NoError(t, err)
+		evidence, err := client.Acquire(context.Background(), source)
+		require.NoError(t, err)
+		require.Empty(t, evidence.Variants, "a lossy variant prefix must not be published")
+	})
+
+	t.Run("unmatched attribute segment", func(t *testing.T) {
+		srv := serveFixture(t, oversizedSkuMapPage(2, 2))
+		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		source, err := sourcing.Canonical1688Source("981645030344")
+		require.NoError(t, err)
+		evidence, err := client.Acquire(context.Background(), source)
+		require.NoError(t, err)
+		require.Empty(t, evidence.Variants, "a partially described variant must not be published")
+	})
+}
+
+// oversizedSkuMapPage builds a page with n variants and one SKU key carrying
+// `segments` segments against a single declared property name.
+func oversizedSkuMapPage(n, segments int) string {
+	skuMap := map[string]any{}
+	for i := 0; i < n; i++ {
+		key := "c" + itoa(i)
+		for j := 1; j < segments; j++ {
+			key += "&gt;x" + itoa(j)
+		}
+		skuMap[key] = map[string]any{"skuId": i + 1, "price": 1.5}
+	}
+	raw := map[string]any{"result": map[string]any{"data": map[string]any{
+		"productTitle": map[string]any{"fields": map[string]any{"title": "Variant overflow bottle"}},
+		"Root": map[string]any{"fields": map[string]any{"dataJson": map[string]any{
+			"tempModel": map[string]any{"offerId": 981645030344},
+			"skuModel": map[string]any{
+				"skuProps":   []any{map[string]any{"prop": "color"}},
+				"skuInfoMap": skuMap,
+			},
+		}}},
+	}}}
+	encoded, _ := json.Marshal(raw)
+	return "<!doctype html><html><head><title>Variant overflow</title></head><body><script>window.context = " +
+		string(encoded) + ";</script></body></html>"
+}

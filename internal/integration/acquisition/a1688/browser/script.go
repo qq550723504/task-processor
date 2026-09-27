@@ -173,28 +173,36 @@ func extractScript() string {
     const props = Array.isArray(sku.skuProps) ? sku.skuProps : [];
     const propNames = props.map((p) => (p && p.prop ? p.prop : ''));
     const map = sku.skuInfoMap || {};
+    let variantOverflow = false;
+    let attributeOverflow = false;
     for (const key in map) {
-      if (out.variants.length >= CAP.variants) { markTrunc('variants'); break; }
+      if (out.variants.length >= CAP.variants) { variantOverflow = true; break; }
       const entry = map[key] || {};
       const parts = String(key).split('&gt;');
       const attrsFor = [];
       for (let i = 0; i < parts.length; i++) {
-        if (i >= CAP.variantAttrs) { markTrunc('variant_attributes'); break; }
-        const name = propNames[i];
-        // Never invent a name the source did not supply: an unmatched segment is
-        // reported as imprecise rather than persisted under a fabricated name.
-        if (!name) { markTrunc('variant_attributes'); continue; }
-        attrsFor.push({ name: clip(name, 'variant_attributes'), value: clip(parts[i], 'variant_attributes') });
+        // Never invent a name the source did not supply. An unmatched or
+        // over-cap segment makes the whole variant untrustworthy, because the
+        // remaining subset would misstate the variant identity.
+        if (i >= CAP.variantAttrs || !propNames[i]) { attributeOverflow = true; break; }
+        const aName = clip(propNames[i], 'variant_attributes');
+        const aValue = clip(parts[i], 'variant_attributes');
+        if (!aName || !aValue) { attributeOverflow = true; break; }
+        attrsFor.push({ name: aName, value: aValue });
       }
-      // If any attribute of this variant was clipped, publishing the remaining
-      // subset would misstate the variant. Drop the whole variant.
-      if (attrsFor.some((a) => !a.name || !a.value)) { markTrunc('variants'); continue; }
+      if (attributeOverflow) break;
       const v = { sourceId: exactNum(entry.skuId, 'variant_source_id'), attributes: attrsFor, price: null };
-      const amount = exactNum(entry.price === undefined || entry.price === null ? entry.discountPrice : entry.price, 'variant_price');
+      const amount = exactNum(entry.price || entry.discountPrice, 'variant_price');
       if (amount) {
         v.price = { amount: amount, currency: clip(entry.currency || '', 'variant_price'), minQuantity: '' };
       }
       out.variants.push(v);
+    }
+    // An overflow means the collected variants are a lossy subset, which must not
+    // be published as the complete source variant set.
+    if (variantOverflow || attributeOverflow) {
+      markTrunc('variants');
+      out.variants = [];
     }
   };
   const readPrices = (data) => {
@@ -268,9 +276,14 @@ func extractScript() string {
         }
       };
       if (Array.isArray(range)) collect(range);
-      for (const k in data) {
-        const f = data[k] && data[k].fields;
-        if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) { collect(f.priceModel.currentPrices); break; }
+      // currentPrices is only a fallback: with no model or promotion
+      // discriminator on AcquisitionPrice, appending both representations would
+      // persist the same tiers twice as unrelated price facts.
+      if (out.priceFacts.length === 0) {
+        for (const k in data) {
+          const f = data[k] && data[k].fields;
+          if (f && f.priceModel && Array.isArray(f.priceModel.currentPrices)) { collect(f.priceModel.currentPrices); break; }
+        }
       }
     }
   } else if (init) {
