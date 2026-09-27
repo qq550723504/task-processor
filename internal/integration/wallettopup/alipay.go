@@ -3,6 +3,7 @@ package wallettopup
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/url"
@@ -64,7 +65,7 @@ func (p *Alipay) Merchant() billing.TopUpMerchant { return p.config.Merchant }
 func (p *Alipay) Available() bool                 { return p.config.NewPayments }
 func (p *Alipay) CreateOrReadCheckout(ctx context.Context, a billing.TopUpPaymentAttempt) (billing.CheckoutAction, error) {
 	if !p.Available() || a.Merchant != p.Merchant() || a.Validate() != nil || !p.now().Before(a.ExpiresAt) {
-		return billing.CheckoutAction{}, billing.ErrPaymentMethodUnavailable
+		return billing.CheckoutAction{}, billing.ErrCheckoutNotDispatched
 	}
 	bm := gopay.BodyMap{"out_trade_no": a.MerchantOrderID, "seller_id": p.Merchant().MerchantID, "total_amount": formatYuan(a.AmountMinor), "subject": "企业钱包充值", "time_expire": a.ExpiresAt.In(chinaZone).Format("2006-01-02 15:04:05")}
 	raw, err := p.client.TradePagePay(ctx, bm)
@@ -101,11 +102,27 @@ func (p *Alipay) QueryPayment(ctx context.Context, a billing.TopUpPaymentAttempt
 	if a.Merchant != p.Merchant() {
 		return empty, billing.ErrConflict
 	}
-	rsp, err := p.client.TradeQuery(ctx, gopay.BodyMap{"out_trade_no": a.MerchantOrderID})
-	if err != nil || rsp == nil || rsp.Response == nil || !p.verified(rsp.SignData, rsp.Sign) || rsp.Response.Code != "10000" {
+	// The SDK's typed TradeQuery exits before extracting SignData on business
+	// errors. Retain its signing/transport, then verify the exact raw response
+	// for both success and NOT_EXIST; never trust an unsigned error code.
+	raw, err := p.client.DoAliPay(ctx, gopay.BodyMap{"out_trade_no": a.MerchantOrderID}, "alipay.trade.query")
+	var envelope struct {
+		Response json.RawMessage `json:"alipay_trade_query_response"`
+		Sign     string          `json:"sign"`
+	}
+	if err != nil || strictJSON(raw, &envelope) != nil || !p.verified(string(envelope.Response), envelope.Sign) {
 		return empty, billing.ErrReconciliationRequired
 	}
-	v := rsp.Response
+	var v alipay.TradeQuery
+	if strictJSON(envelope.Response, &v) != nil {
+		return empty, billing.ErrReconciliationRequired
+	}
+	if v.Code == "40004" && v.SubCode == "ACQ.TRADE_NOT_EXIST" {
+		return absentPayment(a, p.now(), "alipay-rsa2-v1"), nil
+	}
+	if v.Code != "10000" {
+		return empty, billing.ErrReconciliationRequired
+	}
 	if v.OutTradeNo != a.MerchantOrderID || (v.TransCurrency != "" && v.TransCurrency != "CNY") || (v.PayCurrency != "" && v.PayCurrency != "CNY") {
 		return empty, billing.ErrConflict
 	}
@@ -121,7 +138,7 @@ func (p *Alipay) QueryPayment(ctx context.Context, a billing.TopUpPaymentAttempt
 		o.State = "UNPAID"
 	case "TRADE_CLOSED":
 		if !o.OccurredAt.IsZero() {
-			o.State = "PAID"
+			o.State = "PAID_REFUND_UNKNOWN"
 		} else {
 			o.State = "CLOSED"
 		}
@@ -222,6 +239,9 @@ func (p *Alipay) VerifyNotification(req *http.Request) (billing.ProviderObservat
 		o.State = "UNPAID"
 	case "TRADE_CLOSED":
 		o.State = "CLOSED"
+		if !o.OccurredAt.IsZero() {
+			o.State = "PAID_REFUND_UNKNOWN"
+		}
 	default:
 		return empty, billing.ErrInvalid
 	}

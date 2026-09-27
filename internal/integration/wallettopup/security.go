@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"task-processor/internal/commercial/billing"
 	"task-processor/internal/ledger/money"
@@ -155,4 +156,14 @@ func action(a billing.TopUpPaymentAttempt, kind, payload string) billing.Checkou
 func observationID(o billing.ProviderObservation) billing.ProviderObservation {
 	o.EventID = "fact:" + money.TopUpFingerprint(o)
 	return o
+}
+
+// Absence cannot close an attempt while its original checkout could still be
+// presented to the channel. The absolute provider expiry is never extended.
+func absentPayment(a billing.TopUpPaymentAttempt, now time.Time, verification string) billing.ProviderObservation {
+	state := "UNKNOWN"
+	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
+		state = "CLOSED"
+	}
+	return observationID(billing.ProviderObservation{Merchant: a.Merchant, MerchantOrderID: a.MerchantOrderID, Kind: "PAYMENT", State: state, Currency: a.Currency, VerificationVersion: verification})
 }

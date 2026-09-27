@@ -2,11 +2,15 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"task-processor/internal/ledger/money"
 )
+
+// Only returned when the adapter proves it issued no checkout request or action.
+var ErrCheckoutNotDispatched = errors.New("top-up checkout was not dispatched")
 
 type PaymentProvider string
 
@@ -149,7 +153,7 @@ type ProviderObservation struct {
 	MerchantOrderID     string
 	EventID             string
 	Kind                string // PAYMENT or REFUND
-	State               string // PAID, UNPAID, CLOSED, UNKNOWN, REFUNDED, REFUND_PENDING, REFUND_CLOSED
+	State               string // PAID, PAID_REFUND_UNKNOWN, UNPAID, CLOSED, UNKNOWN, REFUNDED, REFUND_PENDING, REFUND_CLOSED
 	TradeID             string
 	RefundRequestID     string
 	NativeRefundID      string
@@ -166,7 +170,7 @@ func (o ProviderObservation) Validate() error {
 	}
 	if o.Kind == "PAYMENT" {
 		switch o.State {
-		case "PAID":
+		case "PAID", "PAID_REFUND_UNKNOWN":
 			if o.TradeID == "" || o.AmountMinor <= 0 || o.OccurredAt.IsZero() {
 				return ErrInvalid
 			}
@@ -196,7 +200,7 @@ func (o ProviderObservation) Matches(a TopUpPaymentAttempt) bool {
 	if o.Merchant != a.Merchant || o.MerchantOrderID != a.MerchantOrderID || o.Currency != a.Currency {
 		return false
 	}
-	if o.Kind == "PAYMENT" && o.State == "PAID" {
+	if o.Kind == "PAYMENT" && (o.State == "PAID" || o.State == "PAID_REFUND_UNKNOWN") {
 		return o.AmountMinor == a.AmountMinor
 	}
 	if o.Kind == "REFUND" {

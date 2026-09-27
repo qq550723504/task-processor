@@ -229,7 +229,7 @@ func (h *Handler) SubscriptionOrder(c *gin.Context) {
 		writeServiceError(c, billing.ErrNotFound)
 		return
 	}
-	h.writeOrderWithTopUp(c, http.StatusOK, order)
+	writeJSON(c, http.StatusOK, orderResponseFromDomain(order))
 }
 
 func (h *Handler) Orders(c *gin.Context) {
@@ -368,7 +368,7 @@ func (h *Handler) Order(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
-	writeJSON(c, http.StatusOK, orderResponseFromDomain(order))
+	h.writeOrderWithTopUp(c, http.StatusOK, order)
 }
 
 func Routes(handler *Handler) ([]httproute.Descriptor, error) {

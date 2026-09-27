@@ -53,7 +53,7 @@ func (p *WeChat) Available() bool                 { return p.config.NewPayments 
 func (p *WeChat) CreateOrReadCheckout(ctx context.Context, a billing.TopUpPaymentAttempt) (billing.CheckoutAction, error) {
 	remaining := a.ExpiresAt.Sub(p.now())
 	if !p.Available() || a.Merchant != p.Merchant() || a.Validate() != nil || remaining < 75*time.Second || remaining > 2*time.Hour {
-		return billing.CheckoutAction{}, billing.ErrPaymentMethodUnavailable
+		return billing.CheckoutAction{}, billing.ErrCheckoutNotDispatched
 	}
 	// A short expiry is extended by the provider to one minute. Reject that
 	// boundary instead of silently changing the original attempt's deadline.
@@ -80,8 +80,10 @@ func (p *WeChat) payment(v wechat.QueryOrder) (billing.ProviderObservation, erro
 	paidAt, _ := time.Parse(time.RFC3339, v.SuccessTime)
 	o := billing.ProviderObservation{Merchant: p.Merchant(), MerchantOrderID: v.OutTradeNo, Kind: "PAYMENT", State: "UNKNOWN", TradeID: v.TransactionId, Currency: "CNY", AmountMinor: amount, OccurredAt: paidAt, VerificationVersion: "wechat-v3:" + p.config.PublicKeyID}
 	switch v.TradeState {
-	case "SUCCESS", "REFUND":
+	case "SUCCESS":
 		o.State = "PAID"
+	case "REFUND":
+		o.State = "PAID_REFUND_UNKNOWN"
 	case "NOTPAY", "USERPAYING":
 		o.State = "UNPAID"
 	case "CLOSED":
@@ -99,6 +101,11 @@ func (p *WeChat) QueryPayment(ctx context.Context, a billing.TopUpPaymentAttempt
 		return empty, billing.ErrConflict
 	}
 	rsp, err := p.client.V3TransactionQueryOrder(ctx, wechat.OutTradeNo, a.MerchantOrderID)
+	// GoPay verifies successful responses only. Independently verify the signed
+	// 404 body before treating absence as evidence for this original request.
+	if err == nil && rsp != nil && rsp.Code == http.StatusNotFound && rsp.ErrResponse.Code == "ORDER_NOT_EXIST" && p.verifiedQueryError(rsp.SignInfo) {
+		return absentPayment(a, p.now(), "wechat-v3:"+p.config.PublicKeyID), nil
+	}
 	if err != nil || rsp == nil || rsp.Code != 0 || rsp.Response == nil {
 		return empty, billing.ErrReconciliationRequired
 	}
@@ -110,6 +117,19 @@ func (p *WeChat) QueryPayment(ctx context.Context, a billing.TopUpPaymentAttempt
 		return empty, billing.ErrConflict
 	}
 	return o, nil
+}
+func (p *WeChat) verifiedQueryError(s *wechat.SignInfo) bool {
+	if s == nil || s.HeaderSerial != p.config.PublicKeyID || s.HeaderNonce == "" {
+		return false
+	}
+	ts, err := strconv.ParseInt(s.HeaderTimestamp, 10, 64)
+	if err != nil || time.Unix(ts, 0).Before(p.now().Add(-5*time.Minute)) || time.Unix(ts, 0).After(p.now().Add(5*time.Minute)) {
+		return false
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	return strictJSON([]byte(s.SignBody), &body) == nil && body.Code == "ORDER_NOT_EXIST" && wechat.V3VerifySignByPK(s.HeaderTimestamp, s.HeaderNonce, s.SignBody, s.HeaderSignature, p.publicKey) == nil
 }
 func (p *WeChat) ClosePayment(ctx context.Context, a billing.TopUpPaymentAttempt) (billing.ProviderObservation, error) {
 	if a.Merchant != p.Merchant() {

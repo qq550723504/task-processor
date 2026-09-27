@@ -191,6 +191,16 @@ func (s *Service) CheckoutTopUp(ctx context.Context, org, actor, order string, v
 	requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	out, err = p.CreateOrReadCheckout(requestCtx, a)
+	if errors.Is(err, ErrCheckoutNotDispatched) {
+		a.Phase = TopUpClosedUnpaid
+		a.ClosedAt = &now
+		a.LeaseToken = ""
+		a.LeaseUntil = time.Time{}
+		if _, saveErr := t.store.SaveTopUpAttempt(ctx, a); saveErr != nil {
+			return CheckoutAction{}, ErrReconciliationRequired
+		}
+		return CheckoutAction{}, ErrPaymentMethodUnavailable
+	}
 	if err != nil || !out.Matches(a) {
 		a.Phase = TopUpReconciliationRequired
 		a.LastSafeError = "CHECKOUT_RESULT_UNKNOWN"
@@ -290,6 +300,7 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 	if err != nil {
 		return s.deferTopUp(ctx, a, "EVIDENCE_CONFLICT")
 	}
+	normalPending := a.CheckoutAdmittedAt == nil && len(observations) == 0
 	if !hasPaid && a.CheckoutAdmittedAt != nil {
 		p, err := t.originalProvider(a)
 		if err != nil {
@@ -299,6 +310,7 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 		o, queryErr := p.QueryPayment(requestCtx, a)
 		cancel()
 		if queryErr == nil && o.Validate() == nil && o.Matches(a) {
+			normalPending = o.State == "UNPAID" && len(a.CheckoutCiphertext) > 0
 			if err := t.store.RecordTopUpObservation(ctx, o); err != nil {
 				return s.deferTopUp(ctx, a, "EVIDENCE_STORE_UNAVAILABLE")
 			}
@@ -356,7 +368,13 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 			resolved[o.RefundRequestID] = true
 		}
 		input := a.MoneyInput(paid)
+		unresolvedAggregate := false
+		remainingPrincipal := a.AmountMinor
+		confirmedRefunds := map[string]bool{}
 		for _, o := range observations {
+			if o.Kind == "PAYMENT" && o.State == "PAID_REFUND_UNKNOWN" {
+				unresolvedAggregate = true
+			}
 			if o.Kind != "REFUND" || o.State != "REFUNDED" {
 				continue
 			}
@@ -364,7 +382,18 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 				return s.deferTopUp(ctx, a, "REFUND_BINDING_CONFLICT")
 			}
 			key := o.RefundKey(input.Payment.PaymentID)
+			if !confirmedRefunds[key.ReversalID] {
+				remainingPrincipal -= min(remainingPrincipal, o.AmountMinor)
+				confirmedRefunds[key.ReversalID] = true
+			}
 			input.KnownReversals = append(input.KnownReversals, money.OrganizationWalletReversal{ReversalID: key.ReversalID, PaymentID: key.PaymentID, Kind: key.Kind, OrganizationID: a.OrganizationID, CommercialOrderID: a.OrderID, Currency: a.Currency, AmountMinor: o.AmountMinor, OccurredAt: o.OccurredAt, ProviderReference: "provider-refund:" + money.TopUpFingerprint([]string{string(o.Merchant.Provider), o.Merchant.Environment, o.Merchant.MerchantID, o.RefundRequestID})})
+		}
+		// A trade-level refund state does not enumerate individual refund IDs or
+		// amounts. Partial receipts cannot prove that all refunds are known. Keep
+		// reconciliation until original receipts cover the entire principal, at
+		// which point M1 can atomically post with no spendable net credit.
+		if unresolvedAggregate && remainingPrincipal > 0 {
+			return s.deferTopUp(ctx, a, "REFUND_DETAILS_UNKNOWN")
 		}
 		a.Phase = TopUpPaidPendingCredit
 		a.NeedsReconcile = false
@@ -391,6 +420,9 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 	}
 	confirmedClosed := false
 	for _, o := range observations {
+		if o.Kind == "REFUND" {
+			normalPending = false
+		}
 		if o.Kind == "PAYMENT" && o.State == "CLOSED" {
 			confirmedClosed = true
 		}
@@ -424,7 +456,7 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 				if a.LeaseToken != lease || !s.now().Before(a.LeaseUntil) {
 					return ErrConflict
 				}
-				if o.State == "PAID" {
+				if o.State == "PAID" || o.State == "PAID_REFUND_UNKNOWN" {
 					a.LeaseToken = ""
 					a.LeaseUntil = time.Time{}
 					if _, err = t.store.SaveTopUpAttempt(ctx, a); err != nil {
@@ -447,6 +479,19 @@ func (s *Service) ReconcileTopUpOrder(ctx context.Context, org, order string) er
 			return err
 		}
 	}
+	if normalPending && a.CloseRequestedAt == nil && s.now().Before(a.ExpiresAt) {
+		a.Phase = TopUpCreated
+		if a.CheckoutAdmittedAt != nil {
+			a.Phase = TopUpAwaitingPayment
+		}
+		a.NeedsReconcile = false
+		a.LastSafeError = ""
+		a.RetryCount = 0
+		a.LeaseToken = ""
+		a.LeaseUntil = time.Time{}
+		_, err = t.store.SaveTopUpAttempt(ctx, a)
+		return err
+	}
 	return s.deferTopUp(ctx, a, "PAYMENT_NOT_CONFIRMED")
 }
 
@@ -457,7 +502,7 @@ func selectTopUpPayment(a TopUpPaymentAttempt, observations []ProviderObservatio
 		if !o.Matches(a) {
 			return paid, false, ErrConflict
 		}
-		if o.Kind == "PAYMENT" && o.State == "PAID" {
+		if o.Kind == "PAYMENT" && (o.State == "PAID" || o.State == "PAID_REFUND_UNKNOWN") {
 			if found && (paid.TradeID != o.TradeID || !paid.OccurredAt.Equal(o.OccurredAt)) {
 				return paid, false, ErrConflict
 			}
@@ -531,7 +576,7 @@ func (s *Service) ApproveTopUpRefund(ctx context.Context, actor, order, key, rea
 		return s.releaseUndispatchedTopUpRefund(ctx, out, err)
 	}
 	if _, err = t.money.AdmitTopUpRefund(ctx, out.HoldInput()); err != nil {
-		return out, err
+		return s.releaseUndispatchedTopUpRefund(ctx, out, err)
 	}
 	out.Dispatched = true
 	out.State = "UNKNOWN"

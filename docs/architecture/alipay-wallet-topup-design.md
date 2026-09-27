@@ -612,6 +612,10 @@ SDK/渠道不可用、配置缺失、金额不合法、无权、幂等冲突、�
 
 当前运行装配采用独立 `money_owner_runtime` 连接池，指向既有 canonical money 数据库；不复用 referral runtime 写入渠道资金事实，也不向 referral 扩大资金写权限。原 application-shaped 配置仅引用当前 owner 类型。空安装 schema/init 增加该角色和固定表权限；不迁移旧数据或回退旧连接池。运行入口、必填金额与私密文件配置、回调和退款 API 见 [账户 Compose 说明](../../deployments/docker/account-compose/README.md#enterprise-wallet-top-up-optional-481)。
 
+实现中的订单级退款信号（微信 `REFUND`、支付宝已付 `TRADE_CLOSED`）保留为 `PAID_REFUND_UNKNOWN`，不能被迟到的付款回调覆盖。它不提供完整退款身份清单；无法证实完整退款事实时维持核对状态，不新增可消费金额。已核实的原退款回执覆盖全部本金后，M1 可原子接受付款和冲正而不产生净可用余额。仅有部分退款回执不足以解除这种总额未知状态；当前未增加人工强制放行入口。
+
+明确未派发的 checkout 可安全关闭；已经返回支付能力的 attempt 只有在原绝对期限之后可靠确认不存在，才按未付关闭。支付宝复用 GoPay 的请求签名/传输并验证原始响应，微信对 SDK 未自动验签的错误响应另行验签；期限前或未可信验签的 NOT_EXIST 保持 UNKNOWN。
+
 ## 17. 依据与核查范围
 
 仓库依据使用固定代码基线；外部依据为 GoPay 固定 tag、支付宝与微信支付官方文档。新增微信通知/退款规则按本轮官方页面核对；Native 接入能力同时参考腾讯云官方集成说明。支付宝文档站部分页面依赖客户端渲染，本轮部分规则来自官方索引摘录及官方 Easy SDK 的公开 API 文档；实施前必须核对所选产品当前完整文档，不能把索引摘录当完整接口测试。

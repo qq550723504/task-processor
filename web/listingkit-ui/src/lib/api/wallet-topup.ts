@@ -90,7 +90,7 @@ const checkout = z
       return false;
     }
   });
-export type TopUpOptions = z.infer<typeof options>;
+type TopUpOptions = z.infer<typeof options>;
 export type TopUpCheckout = z.infer<typeof checkout>;
 export type TopUpOrder = Extract<CommercialOrder, { kind: "WALLET_TOP_UP" }>;
 export const parseTopUpOptions = (v: unknown) => {
