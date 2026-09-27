@@ -90,7 +90,7 @@ func TestKnipFixtureDistinguishesFindingsFromEmptyIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 	var report struct {
-		Files  []string                         `json:"files"`
+		Files  []string                     `json:"files"`
 		Issues []map[string]json.RawMessage `json:"issues"`
 	}
 	if err := json.Unmarshal(data, &report); err != nil {

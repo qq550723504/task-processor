@@ -35,7 +35,10 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		{"cmd/product-acquisition-init", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", []string{"InitializeAcquisitionDatabase"}},
 		// Narrow #399 constructor admission; no new root, target or directory exemption.
 		// https://github.com/qq550723504/task-processor/issues/399#issuecomment-5643701012
-		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition", "PublishedAcquisition"}},
+		// Narrow #399 constructor admission; no new root, target or directory exemption.
+		// NewBrowserPublicAcquisition is the same admitted constructor surface for the
+		// server-side browser provider (design D13); it introduces no new root or target.
+		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition"}},
 	}
 	var violations []string
 	for _, source := range sources {
