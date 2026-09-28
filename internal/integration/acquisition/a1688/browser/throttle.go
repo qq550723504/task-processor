@@ -217,15 +217,27 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// went to sleep. Its timer still fires on the old timeline, which would let two
 	// callers start together, so re-evaluate against the current floor.
 	if t.generationSince(seen) {
-		t.release(mine)
+		// Give up this reservation WITHOUT rolling the floor back. The boundary it
+		// displaced was captured before the re-anchor, so restoring it would undo a
+		// newer floor and let the requeued waiter start immediately beside its
+		// predecessor. Dropping the slot is the conservative choice.
+		t.discard(mine)
 		return t.Wait(ctx)
 	}
 	// The wait may have spanned another acquisition, and that one may have
 	// observed a challenge. Returning success here would hand the caller a slot
 	// the process has already decided to refuse, so the block is re-checked once
 	// the wait is over.
-	if t.nowBlocked() {
-		t.release(mine)
+	// The block check and the dispatch commitment must be one critical section.
+	// Otherwise Observe can land between them, and a caller would launch a browser
+	// during a cooldown that had already been triggered.
+	t.mu.Lock()
+	if t.blockedLocked() {
+		if t.owner == mine {
+			t.next = t.prevNext
+			t.prevNext = time.Time{}
+		}
+		t.mu.Unlock()
 		return ErrThrottled
 	}
 	// Advance the floor from when this caller ACTUALLY starts, not from the slot
@@ -233,13 +245,37 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// otherwise let the next reservation be admitted on the ideal timeline, so two
 	// real acquisition starts could be only milliseconds apart - the burst this
 	// throttle exists to prevent, produced by the pacing itself.
-	t.mu.Lock()
 	if dispatched := time.Now().Add(span); dispatched.After(t.next) {
 		t.next = dispatched
 		t.generation++
 	}
 	t.mu.Unlock()
 	return nil
+}
+
+// discard drops a reservation without restoring any boundary.
+func (t *Throttle) discard(seq uint64) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.owner == seq {
+		t.prevNext = time.Time{}
+	}
+}
+
+// blockedLocked reports the block state, expiring an elapsed window. The caller
+// must hold the lock.
+func (t *Throttle) blockedLocked() bool {
+	if t.blocked && !t.cooledAt.IsZero() && !time.Now().Before(t.cooledAt) {
+		t.blocked = false
+		t.cooledAt = time.Time{}
+		if t.next.Before(time.Now().Add(t.MinInterval)) {
+			t.next = time.Now().Add(t.MinInterval)
+		}
+	}
+	return t.blocked
 }
 
 // generationSince reports whether the floor was re-anchored since it was read.
