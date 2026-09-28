@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useRef,useState } from "react";
+import { useEffect,useRef,useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { ExternalLink,ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,26 @@ async function deviceMeta():Promise<string>{
 }
 const stateText:Record<string,string>={NOT_STARTED:"尚未认证",PENDING:"等待完成刷脸认证",OUTCOME_UNKNOWN:"申请结果待核实，请勿重复提交",EXPIRED:"本次认证链接已过期",REJECTED:"本次认证未通过",VERIFIED:"个人认证已通过"};
 const errorText:Record<string,string>={VERIFICATION_TOTAL_LIMIT:"累计认证次数已用完，不能再发起新申请。",VERIFICATION_DAILY_LIMIT:"今日认证次数已用完，请明日再试。",VERIFICATION_COOLDOWN:"距离上次发起不足规定间隔，请稍后刷新。",VERIFICATION_REFRESH_BUSY:"认证结果正在查询，请稍后刷新。",VERIFIED_PHONE_REQUIRED:"请先绑定并验证本人的中国大陆手机号。",VERIFICATION_CONFLICT:"申请状态已变化，请刷新后确认。",RESULT_UNVERIFIED:"提交结果尚未确认，请先刷新状态，本页不会自动重新提交。"};
+function PersonalContinuation({url,expiresAt,serverTime}:{url:string;expiresAt:string;serverTime:string}){
+ const [elapsed,setElapsed]=useState(false);
+ const remaining=Date.parse(expiresAt)-Date.parse(serverTime);
+ useEffect(()=>{
+  if(remaining<=0)return;
+  const timer=setTimeout(()=>setElapsed(true),remaining);
+  return()=>clearTimeout(timer);
+ },[remaining]);
+ if(elapsed||remaining<=0)return <p role="status">认证链接已到期，请刷新认证结果后确认本次申请状态。</p>;
+ // Keep the provider's opaque URL unchanged. Encode locally; never send this short-lived credential to a QR service.
+ // Level M fits up to 2331 byte-mode bytes; leave room so a long provider URL cannot break the page.
+ const canEncode=new TextEncoder().encode(url).length<=2000;
+ return <div className={styles.result}>
+  <div className={styles.mobileVerification}>
+   {canEncode?<QRCodeSVG className={styles.verificationQR} value={url} size={256} marginSize={4} level="M" role="img" aria-label="手机扫码完成本次个人认证" title="手机扫码完成本次个人认证"/>:null}
+   <div><h3>手机扫码完成刷脸</h3><p>{canEncode?"请使用手机扫码，在手机浏览器中打开阿里云认证页面，允许使用摄像头。":"认证链接较长，暂无法显示二维码，请使用下方“继续个人认证”入口。"}</p><p>完成后回到电脑点击“刷新认证结果”。请保留此页面，方便查询本次申请结果。</p><p>有效期至北京时间 {new Date(expiresAt).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai"})}。仅供本人使用，请勿分享；扫码继续本次申请不另占认证次数。</p></div>
+  </div>
+  <Button asChild><a href={url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">继续个人认证<ExternalLink size={16}/></a></Button>
+ </div>;
+}
 export function PersonalVerification({userId}:{userId:string}){
  const client=useQueryClient(),queryKey=["personal-verification",userId];
  const query=useQuery({queryKey,queryFn:({signal})=>personalVerificationRequest(userId,"read",undefined,signal),retry:false,gcTime:0,staleTime:0});
@@ -54,7 +75,7 @@ export function PersonalVerification({userId}:{userId:string}){
      <label className={styles.consent}><input type="checkbox" checked={consent} disabled={busy} onChange={e=>setConsent(e.target.checked)}/>我确认使用本人身份，同意将姓名、身份证号、已验证手机号和认证所需设备信息提交阿里云用于本次认证。</label>
      <div className={styles.actions}><Button type="submit" disabled={!consent||!data.canStart||busy}>{start.isPending?"正在发起认证…":"开始个人认证"}</Button></div>
     </form>:null}
-    {state==="PENDING"?<div className={styles.result}><p>请完成阿里云刷脸，返回本页点击“刷新认证结果”。</p>{data.verificationUrl?<Button asChild><a href={data.verificationUrl} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">继续个人认证<ExternalLink size={16}/></a></Button>:<p>当前手机号与申请不一致，无法继续本次认证。</p>}</div>:null}
+    {state==="PENDING"?data.verificationUrl&&data.expiresAt?<PersonalContinuation key={`${data.applicationId}:${data.expiresAt}`} url={data.verificationUrl} expiresAt={data.expiresAt} serverTime={data.quota.serverTime}/>:<p>当前手机号与申请不一致，无法继续本次认证。</p>:null}
     {state==="OUTCOME_UNKNOWN"?<p>本次结果尚未确认，次数已占用；不会自动重发。请先刷新状态，申请到期后可在剩余额度内重新发起。</p>:null}
     {state==="EXPIRED"&&data.canRefresh?<p>若已完成刷脸，请先刷新查询原申请结果，再决定是否重新发起。</p>:null}
     {state==="VERIFIED"?<p>认证时间：{new Date(data.verifiedAt!).toLocaleString("zh-CN")}。本次认证不会自动增加平台权限。</p>:null}

@@ -26,6 +26,9 @@
 .warning { color: var(--destructive) !important; }
 .warning a { text-decoration: underline; }
 .result { display: grid; justify-items: start; gap: 12px; }
+.mobileVerification { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 24px; margin-top: 16px; }
+.mobileVerification > div { flex: 1; min-width: min(240px, 100%); }
+.verificationQR { width: 256px; max-width: 100%; height: auto; flex-shrink: 0; }
 .footer { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .footer p { margin: 0; }
 .footer button { flex-shrink: 0; }
