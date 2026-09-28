@@ -55,6 +55,11 @@ type Throttle struct {
 	// conservative choice - it can delay a request, never let two start together.
 	owner    uint64
 	prevNext time.Time
+	// generation is bumped whenever the floor is re-anchored on a late dispatch.
+	// Waiters capture it before sleeping and re-loop when it changed, so a
+	// caller already in the queue is not admitted on its original timer after an
+	// earlier waiter slipped.
+	generation uint64
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
@@ -194,6 +199,7 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	mine := t.owner
 	t.prevNext = t.next
 	t.next = start.Add(span)
+	seen := t.generation
 	t.mu.Unlock()
 
 	if wait <= 0 {
@@ -206,6 +212,13 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		t.release(mine)
 		return ctx.Err()
 	case <-timer.C:
+	}
+	// An earlier waiter may have slipped and re-anchored the floor after this one
+	// went to sleep. Its timer still fires on the old timeline, which would let two
+	// callers start together, so re-evaluate against the current floor.
+	if t.generationSince(seen) {
+		t.release(mine)
+		return t.Wait(ctx)
 	}
 	// The wait may have spanned another acquisition, and that one may have
 	// observed a challenge. Returning success here would hand the caller a slot
@@ -223,9 +236,17 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	t.mu.Lock()
 	if dispatched := time.Now().Add(span); dispatched.After(t.next) {
 		t.next = dispatched
+		t.generation++
 	}
 	t.mu.Unlock()
 	return nil
+}
+
+// generationSince reports whether the floor was re-anchored since it was read.
+func (t *Throttle) generationSince(seen uint64) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.generation != seen
 }
 
 // release hands a committed slot back when no later caller has committed since.

@@ -510,3 +510,38 @@ func TestThrottleCoolsOnAChallengeThatOutranItsBudget(t *testing.T) {
 	require.ErrorIs(t, outcome, context.DeadlineExceeded,
 		"the caller must still see a deadline")
 }
+
+// When an earlier waiter slips and re-anchors the floor, callers already in the
+// queue must re-evaluate against the new floor rather than dispatch on their
+// original timer, which would let two acquisitions start together.
+func TestThrottleQueuedWaitersReevaluateAfterALateDispatch(t *testing.T) {
+	interval := 60 * time.Millisecond
+	th := newThrottle(interval, 0, 0, -1, time.Minute, time.Nanosecond)
+	require.NoError(t, th.Wait(context.Background())) // A: immediate slot
+
+	// B and C reserve behind A.
+	startedB := make(chan time.Time, 1)
+	startedC := make(chan time.Time, 1)
+	go func() { _ = th.Wait(context.Background()); startedB <- time.Now() }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.next.After(time.Now().Add(20 * time.Millisecond))
+	}, time.Second, 5*time.Millisecond)
+	go func() { _ = th.Wait(context.Background()); startedC <- time.Now() }()
+
+	// Delay B's dispatch so the floor is re-anchored, then require that C does
+	// not start immediately after B.
+	time.Sleep(interval / 2)
+	th.mu.Lock()
+	hold := interval * 4
+	time.Sleep(hold)
+	th.mu.Unlock()
+
+	b := <-startedB
+	c := <-startedC
+	if c.After(b) {
+		require.GreaterOrEqual(t, c.Sub(b), interval-2*time.Millisecond,
+			"a queued waiter must be paced after a slipped predecessor, not admitted on its stale timer")
+	}
+}

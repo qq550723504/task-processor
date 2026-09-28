@@ -11,6 +11,7 @@ package browser
 
 import (
 	"context"
+	stdctx "context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -397,6 +398,12 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 	var inspected phaseResult
 	select {
 	case inspected = <-phaseDone:
+		// Both cases can be ready when the solve exhausts the budget. Whichever
+		// wins, an already-seen challenge must survive, or the cooldown is
+		// skipped and the next acquisition walks back into the block.
+		if sawChallenge.Load() && errors.Is(inspected.err, stdctx.DeadlineExceeded) {
+			inspected.err = errors.Join(ErrChallenge, stdctx.DeadlineExceeded)
+		}
 	case <-ctx.Done():
 		_ = page.Close()
 		if sawChallenge.Load() {
