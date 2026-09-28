@@ -139,3 +139,66 @@ func TestThrottleJitterStaysWithinBand(t *testing.T) {
 			"effective interval must stay within MinInterval*(1+Jitter)")
 	}
 }
+
+// A cooldown must expire on its own. If the block were only cleared by an
+// external reset, a process that saw one challenge could never collect again
+// without a restart, which is the opposite of a cooldown.
+func TestThrottleCooldownExpiresWithoutExternalReset(t *testing.T) {
+	th := newThrottle(time.Millisecond, 0, 60*time.Millisecond)
+	require.NoError(t, th.Wait(context.Background()))
+
+	th.Observe(ErrChallenge)
+	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled)
+	require.Positive(t, th.CooldownRemaining())
+
+	// After the window elapses the process must resume by itself.
+	require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+		2*time.Second, 10*time.Millisecond, "the cooldown must lapse on its own")
+	require.NoError(t, th.Wait(context.Background()),
+		"an expired cooldown must not keep the process blocked")
+}
+
+// A request that is refused must not consume a slot. Otherwise every retryable
+// refusal pushes the queue further out and the process can starve permanently.
+func TestThrottleRefusedRequestDoesNotConsumeSlot(t *testing.T) {
+	th := newThrottle(2*time.Second, 0, 0)
+	require.NoError(t, th.Wait(context.Background())) // consumes the immediate slot
+
+	// A budget far shorter than the interval cannot be served.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	for i := 0; i < 5; i++ {
+		require.ErrorIs(t, th.Wait(ctx), ErrThrottled)
+	}
+
+	th.mu.Lock()
+	queued := th.next
+	th.mu.Unlock()
+	// Repeated refusals must not have pushed the queue further out.
+	// Compare against the throttle's own effective band: passing Jitter: 0 selects
+	// the default rather than disabling jitter, so the bound is MinInterval*(1+Jitter).
+	band := time.Duration(float64(th.MinInterval) * (1 + th.Jitter))
+	require.False(t, queued.After(time.Now().Add(band)),
+		"refused requests must not extend the queue")
+}
+
+// A caller that is cancelled while waiting must give its slot back, so a client
+// that disconnects cannot starve the requests behind it.
+func TestThrottleCancelledWaitReleasesSlot(t *testing.T) {
+	th := newThrottle(300*time.Millisecond, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+	require.ErrorIs(t, th.Wait(ctx), context.Canceled)
+
+	th.mu.Lock()
+	queued := th.next
+	th.mu.Unlock()
+	band := time.Duration(float64(th.MinInterval) * (1 + th.Jitter))
+	require.True(t, queued.IsZero() || queued.Before(time.Now().Add(band)),
+		"a cancelled wait must release its reservation")
+}

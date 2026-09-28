@@ -35,6 +35,7 @@ type Throttle struct {
 	next     time.Time // earliest allowed start
 	cooledAt time.Time
 	blocked  bool
+	seq      uint64 // identifies the newest reservation, for safe rollback
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
@@ -75,64 +76,83 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown ti
 // A cooldown is returned as a typed refusal rather than waited out: holding an
 // HTTP handler for ten minutes is worse than telling the caller to retry, and the
 // caller's budget is far shorter than the cooldown anyway.
+//
+// A reservation is only committed when the caller can actually use the slot. A
+// request that is refused, or whose context is cancelled while waiting, gives its
+// slot back, so repeated retryable callers cannot push the queue forward forever
+// and starve every later request.
 func (t *Throttle) Wait(ctx context.Context) error {
 	if t == nil {
 		return nil
 	}
 	t.mu.Lock()
+	// A cooldown that has elapsed is no longer a block: clear it here rather than
+	// waiting for an external reset, so recovery is a time-based decision and the
+	// process resumes by itself.
+	if t.blocked && !t.cooledAt.IsZero() && !time.Now().Before(t.cooledAt) {
+		t.blocked = false
+		t.cooledAt = time.Time{}
+	}
 	if t.blocked {
 		t.mu.Unlock()
 		return ErrThrottled
 	}
+
 	now := time.Now()
-	if !t.cooledAt.IsZero() && now.Before(t.cooledAt) {
-		// A cooldown is still running; the next allowed start is the later of the
-		// cooldown expiry and the interval floor.
-		start := t.cooledAt
-		if t.next.After(start) {
-			start = t.next
-		}
-		t.next = start
-		t.cooledAt = time.Time{}
-	}
-	wait := time.Duration(0)
-	if now.Before(t.next) {
-		wait = t.next.Sub(now)
-	}
 	span := float64(t.MinInterval) * t.Jitter
 	effective := t.MinInterval
 	if span > 0 {
 		effective += time.Duration(t.rand.Float64() * span)
 	}
-	// Reserve this slot so concurrent callers queue behind each other instead of
-	// all passing the gate together. The reservation extends the slot that was
-	// already taken, not the current instant: using `now` here would let every
-	// waiter in the same instant claim the same next slot and defeat the floor.
 	start := t.next
 	if start.Before(now) {
 		start = now
 	}
-	t.next = start.Add(effective)
+	slotEnd := start.Add(effective)
+	wait := time.Duration(0)
+	if now.Before(start) {
+		wait = start.Sub(now)
+	}
+
+	// If this caller could not finish inside its own budget, do not consume a
+	// slot: the reservation would be a phantom that only pushes the queue
+	// further away, and refusing is what the caller can act on.
+	deadline, hasDeadline := ctx.Deadline()
+	if hasDeadline && slotEnd.After(deadline) {
+		t.mu.Unlock()
+		return ErrThrottled
+	}
+
+	t.seq++
+	mine := t.seq
+	t.next = slotEnd
 	t.mu.Unlock()
 
 	if wait <= 0 {
 		return nil
 	}
-	// If the wait cannot fit inside the caller's remaining budget, refuse now
-	// instead of blocking until the budget expires. Letting it expire would
-	// attribute a self-imposed pace to the source: the caller would see a
-	// deadline, as though 1688 had been slow, when in fact this collector
-	// declined to call out yet.
-	if deadline, ok := ctx.Deadline(); ok && time.Now().Add(wait).After(deadline) {
-		return ErrThrottled
-	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
+		t.release(mine)
 		return ctx.Err()
 	case <-timer.C:
 		return nil
+	}
+}
+
+// release gives back a reservation that the caller could not use. It only rolls
+// back when no later reservation was made, so a cancelled waiter never truncates
+// the queue of callers behind it.
+func (t *Throttle) release(seq uint64) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.seq == seq {
+		t.next = time.Time{}
 	}
 }
 
@@ -151,6 +171,7 @@ func (t *Throttle) Observe(err error) {
 	defer t.mu.Unlock()
 	t.blocked = true
 	t.cooledAt = time.Now().Add(t.ChallengeCooldown)
+	t.seq++
 	// Push the interval floor past the cooldown so work resumes paced.
 	if after := t.cooledAt.Add(t.MinInterval); after.After(t.next) {
 		t.next = after
