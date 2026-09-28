@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,9 +49,24 @@ export function StoreOfficialConnection({
   const [message, setMessage] = useState("");
   const [working, setWorking] = useState(false);
   const busy = useRef(false);
+  const active = useRef<{ alive: boolean } | null>(null);
+  useEffect(() => {
+    const current = { alive: true };
+    active.current = current;
+    return () => {
+      current.alive = false;
+    };
+  }, [
+    scope.expectedUserId,
+    scope.expectedOrganizationId,
+    store.id,
+    canWrite,
+    administrator,
+  ]);
   const data = !view.isFetching && !view.isError ? view.data : undefined;
   async function run(action: "begin" | "query" | "disconnect") {
-    if (busy.current) return;
+    const current = active.current;
+    if (busy.current || !current?.alive) return;
     busy.current = true;
     setWorking(true);
     setMessage("");
@@ -64,6 +79,7 @@ export function StoreOfficialConnection({
           store.version,
           key,
         );
+        if (!current.alive) return;
         rememberStoreAuthorization({
           ...scope,
           storeId: store.id,
@@ -82,10 +98,13 @@ export function StoreOfficialConnection({
           store.version,
           crypto.randomUUID(),
         );
+        if (!current.alive) return;
         setMessage("本地连接已断开。SHEIN 端授权请在‘我的授权’中自行撤销。");
       }
+      if (!current.alive) return;
       await Promise.all([view.refetch(), onChanged()]);
     } catch (error) {
+      if (!current.alive) return;
       setMessage(
         error instanceof StoreConnectionError &&
           error.code === "STORE_OFFICIAL_SETUP_UNAVAILABLE"
@@ -100,7 +119,7 @@ export function StoreOfficialConnection({
       await view.refetch();
     } finally {
       busy.current = false;
-      setWorking(false);
+      if (current.alive) setWorking(false);
     }
   }
   return (

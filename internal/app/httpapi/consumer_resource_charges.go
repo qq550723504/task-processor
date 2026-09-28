@@ -3,11 +3,9 @@ package httpapi
 import (
 	"context"
 	"gorm.io/gorm"
-	"task-processor/internal/app/productsourcing"
 	storeapp "task-processor/internal/app/storecenter"
 	"task-processor/internal/authz"
 	resourceadapter "task-processor/internal/integration/orgresource"
-	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/storecenter"
 )
@@ -24,11 +22,7 @@ func buildCurrentResourceCharges(ctx context.Context, productDB, storeDB, resour
 	}
 	owners := map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{}
 	if productDB != nil {
-		operations, err := acquisitionstore.NewRepository(ctx, productDB)
-		if err != nil {
-			return nil, err
-		}
-		owner, err := productsourcing.NewAcquisitionChargeOwner(operations)
+		owner, err := buildProductChargeOwner(ctx, productDB)
 		if err != nil {
 			return nil, err
 		}

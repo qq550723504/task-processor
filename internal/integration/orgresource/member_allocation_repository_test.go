@@ -2,11 +2,13 @@ package orgresourceadapter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"sync"
 	"testing"
+	"time"
 
 	"task-processor/internal/ledger/orgresource"
 )
@@ -32,6 +34,9 @@ func TestMemberAllocationConservesResourceAndReplaysOriginalReceipt(t *testing.T
 			}
 			if first.Position.Free != 10 || first.Position.Version != 1 || first.Unallocated != 90 || first.Allocated != 10 {
 				t.Fatalf("allocation: %#v", first)
+			}
+			if first.Position.UpdatedAt.Location() != time.UTC {
+				t.Fatalf("original receipt time is not canonical UTC: %v", first.Position.UpdatedAt)
 			}
 			reclaim := allocate
 			reclaim.Action, reclaim.OperationID, reclaim.Quantity, reclaim.ExpectedVersion = orgresource.MemberResourceReclaim, "reclaim-a", 3, 1
@@ -67,6 +72,28 @@ func TestMemberAllocationConservesResourceAndReplaysOriginalReceipt(t *testing.T
 			assertTableCount(t, db, "saas_organization_resource_operations", 2)
 			assertTableCount(t, db, "saas_organization_resource_events", 2)
 		})
+	}
+}
+
+func TestMemberResourcePositionCanonicalTimeSurvivesReceiptJSON(t *testing.T) {
+	// Gorm's clock can carry the host location and monotonic metadata.
+	// These cannot be part of the domain receipt's replay identity.
+	for _, observed := range []time.Time{time.Now(), time.Date(2026, 9, 29, 8, 0, 0, 123456000, time.FixedZone("test", 8*60*60))} {
+		position := memberResourcePosition(memberResourcePositionRow{UpdatedAt: observed})
+		if position.UpdatedAt.Location() != time.UTC || !position.UpdatedAt.Equal(observed) {
+			t.Fatalf("receipt did not retain the instant as UTC: %v", position.UpdatedAt)
+		}
+		encoded, err := json.Marshal(position)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var replay orgresource.MemberResourcePosition
+		if err := json.Unmarshal(encoded, &replay); err != nil {
+			t.Fatal(err)
+		}
+		if replay != position {
+			t.Fatalf("receipt representation changed after JSON replay")
+		}
 	}
 }
 

@@ -7,8 +7,12 @@ export const memberResourceID = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 export const resourceInteger = z
   .string()
-  .regex(/^(0|[1-9][0-9]*)$/)
-  .refine((v) => BigInt(v) <= BigInt("9223372036854775807"));
+  .refine(
+    (v) =>
+      v.length <= 19 &&
+      /^(0|[1-9][0-9]*)$/.test(v) &&
+      BigInt(v) <= BigInt("9223372036854775807"),
+  );
 const positive = resourceInteger.refine((v) => v !== "0");
 const timestamp = z.string().datetime({ precision: null });
 const resource = z.enum(["store_renewal_period", "data_row"]);
@@ -60,7 +64,12 @@ const offer = z
     maxQuantity: positive,
   })
   .strict()
-  .refine((v) => BigInt(v.minQuantity) <= BigInt(v.maxQuantity));
+  .refine(
+    (v) =>
+      [v.minQuantity, v.maxQuantity].every(
+        (n) => resourceInteger.safeParse(n).success,
+      ) && BigInt(v.minQuantity) <= BigInt(v.maxQuantity),
+  );
 const prices = z
   .object({ organizationId: memberResourceID, offers: z.array(offer).max(100) })
   .strict();
@@ -79,6 +88,9 @@ const quote = z
   .strict()
   .refine(
     (v) =>
+      [v.quantity, v.unitPriceMinor, v.remainderMinor, v.amountMinor].every(
+        (n) => resourceInteger.safeParse(n).success,
+      ) &&
       BigInt(v.quantity) * BigInt(v.unitPriceMinor) +
         BigInt(v.remainderMinor) ===
         BigInt(v.amountMinor) &&
@@ -100,7 +112,10 @@ const transfer = z
   })
   .strict()
   .refine(
-    (v) => BigInt(v.grossCredit) === BigInt(v.debtRepaid) + BigInt(v.netCredit),
+    (v) =>
+      [v.grossCredit, v.debtRepaid, v.netCredit].every(
+        (n) => resourceInteger.safeParse(n).success,
+      ) && BigInt(v.grossCredit) === BigInt(v.debtRepaid) + BigInt(v.netCredit),
   );
 const grant = z
   .object({
@@ -156,7 +171,7 @@ export type MemberResourceScope = {
   expectedOrganizationId: string;
 };
 export type MemberResourceEntry = z.infer<typeof member>;
-export type MemberResourceDirectory = z.infer<typeof directory>;
+type MemberResourceDirectory = z.infer<typeof directory>;
 export type MemberDataQuote = z.infer<typeof quote>;
 export type MemberTransferInput = z.infer<typeof memberTransferInput>;
 export type MemberGrantInput = z.infer<typeof memberGrantInput>;

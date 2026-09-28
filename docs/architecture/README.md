@@ -125,6 +125,13 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`member-resource-allocation-v1.md`](./member-resource-allocation-v1.md)
+  - IMPLEMENTATION_READY #561 member Store grants, period/data allocation and
+    independent Resource settlement from native Store/Product proofs, including
+    official SHEIN authorization. The existing admitted Product composition
+    constructs its exact-read and charge-proof adapters; candidate implementation
+    does not imply runtime rollout or real merchant authorization acceptance.
+
 - [`agent-knowledge-context-v1.md`](./agent-knowledge-context-v1.md)
   - IMPLEMENTATION_READY #555/#556 enterprise Knowledge + existing Product Agent V1:
     Organization-scoped Knowledge, bounded document lifecycle, immutable context bundles,

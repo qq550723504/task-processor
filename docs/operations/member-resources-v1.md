@@ -115,7 +115,13 @@ Resource observations, positions, operation receipts, Store grants, service
 dates and encrypted connection attempts persist in their current owners.
 Timeout/response loss keeps unknown reservations. The application checks only
 original persisted proofs; it never repeats acquisition/renewal or releases on
-age alone. The UI retains the original operation key/payload for verification.
+age alone. Before dispatch, the UI saves the original bounded operation key and
+payload in session storage under the user, enterprise and member/Store identity.
+Reloading or returning within the same browser tab restores only that command
+for verification, even if balances or Store versions have advanced. A recovery
+authorization failure retains the command. Unreadable or unwritable recovery
+storage closes new commands; a confirmed original success clears only its own
+record. This browser record is not the resource or operation fact owner.
 Reclaim/release repays enterprise resource debt first and reports net credit.
 Enterprise usable totals include unallocated and free member allocations;
 administrator spendable balance remains the unallocated portion.

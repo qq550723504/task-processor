@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SheinAuthorizationCallback } from "./shein-authorization-callback";
@@ -43,12 +43,43 @@ beforeEach(() => {
   );
 });
 afterEach(cleanup);
+it.each(["switch", "unmount"])(
+  "ignores a late callback result after %s",
+  async (mode) => {
+    let resolve!: (value: { connectionStatus: string }) => void;
+    state.complete.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    const view = render(<SheinAuthorizationCallback />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "完成官方连接" }),
+    );
+    if (mode === "switch") {
+      state.context = {
+        user: { id: "actor" },
+        effectiveOrganization: { id: "org-2" },
+      };
+      view.rerender(<SheinAuthorizationCallback />);
+    } else view.unmount();
+    await act(async () => {
+      resolve({ connectionStatus: "connected" });
+    });
+    expect(state.clear).not.toHaveBeenCalled();
+    expect(screen.queryByText(/官方连接已完成/)).not.toBeInTheDocument();
+    expect(state.complete).toHaveBeenCalledTimes(1);
+  },
+);
 it("cleans callback secrets, waits for matching context and exchanges only by explicit POST", async () => {
   state.context.user.id = "other";
   const { rerender } = render(<SheinAuthorizationCallback />);
   expect(window.location.search).toBe("");
   expect(state.complete).not.toHaveBeenCalled();
-  expect(await screen.findByRole("button", { name: "完成官方连接" })).toBeDisabled();
+  expect(
+    await screen.findByRole("button", { name: "完成官方连接" }),
+  ).toBeDisabled();
   state.context.user.id = "actor";
   rerender(<SheinAuthorizationCallback />);
   state.complete.mockRejectedValueOnce(

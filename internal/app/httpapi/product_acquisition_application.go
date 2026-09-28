@@ -102,6 +102,16 @@ func buildPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, cfg *conf
 	return productsourcing.NewPublishedAcquisitionReader(ctx, db, live, authorizer)
 }
 
+// Only this admitted Product composition owner constructs the read-only
+// acquisition proof adapter consumed by the independent Resource ledger.
+func buildProductChargeOwner(ctx context.Context, db *gorm.DB) (orgresource.ConsumerChargeOwner, error) {
+	operations, err := acquisitionstore.NewRepository(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	return productsourcing.NewAcquisitionChargeOwner(operations)
+}
+
 func productAcquisitionRoutes(service productAcquisitionService, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
 	specs := []struct{ method, path, action string }{
 		{http.MethodPost, productAcquisitionBase, "acquire"},

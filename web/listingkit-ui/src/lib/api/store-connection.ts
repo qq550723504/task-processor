@@ -157,10 +157,10 @@ const pendingKey = "listingkit.shein.pending";
 export function rememberStoreAuthorization(
   value: z.infer<typeof pendingSchema>,
 ) {
-  sessionStorage.setItem(
-    pendingKey,
-    JSON.stringify(pendingSchema.parse(value)),
-  );
+  const encoded = JSON.stringify(pendingSchema.parse(value));
+  sessionStorage.setItem(pendingKey, encoded);
+  if (sessionStorage.getItem(pendingKey) !== encoded)
+    throw new Error("Authorization routing metadata could not be saved");
 }
 export function readStoreAuthorization() {
   try {
@@ -171,6 +171,14 @@ export function readStoreAuthorization() {
     return null;
   }
 }
-export function clearStoreAuthorization() {
+export function clearStoreAuthorization(
+  original: z.infer<typeof pendingSchema>,
+) {
+  const current = readStoreAuthorization();
+  if (
+    !current ||
+    JSON.stringify(current) !== JSON.stringify(pendingSchema.parse(original))
+  )
+    return;
   sessionStorage.removeItem(pendingKey);
 }

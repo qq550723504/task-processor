@@ -56,9 +56,6 @@ export const officialConnectionCompleteSchema = z
 export const officialConnectionQuerySchema = z
   .object({ attemptId: z.uuid() })
   .strict();
-export type OfficialConnectionView = z.infer<
-  typeof officialConnectionViewSchema
->;
 export type OfficialConnectionCallback = z.infer<
   typeof officialConnectionCompleteSchema
 >;

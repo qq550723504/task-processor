@@ -27,6 +27,13 @@ export function SheinAuthorizationCallback() {
   const [canQuery, setCanQuery] = useState(false);
   const [done, setDone] = useState(false);
   const [hasCallback, setHasCallback] = useState(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (captured.current) return;
     captured.current = true;
@@ -55,6 +62,7 @@ export function SheinAuthorizationCallback() {
     // Publish the captured browser snapshot after the imperative URL scrub.
     // Only the readiness flag enters rendering; provider values stay in memory.
     queueMicrotask(() => {
+      if (!mounted.current) return;
       setPending(original);
       setHasCallback(valid);
       setMessage(
@@ -73,9 +81,24 @@ export function SheinAuthorizationCallback() {
     !context.isSwitching &&
     !context.error &&
     !context.blockingError;
+  const scopeRevision = JSON.stringify([
+    context.user?.id,
+    context.effectiveOrganization?.id,
+    matches,
+  ]);
+  const active = useRef<{ alive: boolean } | null>(null);
+  useEffect(() => {
+    const current = { alive: true };
+    active.current = current;
+    return () => {
+      current.alive = false;
+    };
+  }, [scopeRevision]);
   async function finish(queryOnly = false) {
+    const current = active.current;
     if (
       busy.current ||
+      !current?.alive ||
       !matches ||
       !pending ||
       (!queryOnly && !callback.current)
@@ -83,6 +106,11 @@ export function SheinAuthorizationCallback() {
       return;
     busy.current = true;
     setWorking(true);
+    const body = callback.current;
+    if (!queryOnly) {
+      callback.current = null;
+      setHasCallback(false);
+    }
     try {
       const result = queryOnly
         ? await queryStoreConnection(
@@ -90,15 +118,12 @@ export function SheinAuthorizationCallback() {
             pending.storeId,
             pending.attemptId,
           )
-        : await completeStoreConnection(
-            pending,
-            pending.storeId,
-            callback.current!,
-          );
+        : await completeStoreConnection(pending, pending.storeId, body!);
+      if (!current.alive) return;
       if (result.connectionStatus === "connected") {
         callback.current = null;
         setHasCallback(false);
-        clearStoreAuthorization();
+        clearStoreAuthorization(pending);
         setDone(true);
         setMessage("官方连接已完成。可以回到店铺开通服务。");
       } else {
@@ -108,6 +133,7 @@ export function SheinAuthorizationCallback() {
         setMessage("尚未确认连接有效，请核验原连接或回到店铺查看状态。");
       }
     } catch (error) {
+      if (!current.alive) return;
       callback.current = null;
       setHasCallback(false);
       setCanQuery(true);
@@ -119,7 +145,7 @@ export function SheinAuthorizationCallback() {
       );
     } finally {
       busy.current = false;
-      setWorking(false);
+      if (current.alive) setWorking(false);
     }
   }
   return (

@@ -15,6 +15,7 @@ import {
   type MemberDataQuote,
 } from "@/lib/api/member-resources";
 import { ResourceDialog } from "./resource-dialog";
+import { transferPendingSchema, useResourcePending } from "./resource-pending";
 import { roles, name, position, failure } from "./member-resource-view";
 import styles from "./resources.module.css";
 type TransferCommand = {
@@ -43,10 +44,18 @@ export function TransferDialog({
   const [offerId, setOfferId] = useState("");
   const [quote, setQuote] = useState<MemberDataQuote | null>(null);
   const [message, setMessage] = useState("");
-  const [operation, setOperation] = useState<{
+  const pending = useResourcePending(
+    scope,
+    ["transfer", member.memberId],
+    transferPendingSchema,
+  );
+  const [currentOperation, setOperation] = useState<{
     command: TransferCommand;
     unknown: boolean;
   } | null>(null);
+  const operation =
+    currentOperation ??
+    (pending.command ? { command: pending.command, unknown: true } : null);
   const [quoting, setQuoting] = useState(false);
   const busy = useRef(false);
   const balances = useQuery({
@@ -96,6 +105,7 @@ export function TransferDialog({
   const dataAmount = type === "data_row" && action === "allocate";
   const count = dataAmount ? (quote?.quantity ?? "") : quantity;
   const valid =
+    pending.ready &&
     resourceInteger.safeParse(count).success &&
     count !== "0" &&
     limit !== null &&
@@ -129,6 +139,13 @@ export function TransferDialog({
   }
   async function write(command: TransferCommand) {
     if (busy.current) return;
+    const recovering = pending.command !== null;
+    try {
+      pending.persist(command);
+    } catch {
+      setMessage("无法保存原操作，请先恢复浏览器存储；本次没有发送新命令。");
+      return;
+    }
     busy.current = true;
     setOperation({ command, unknown: false });
     setMessage("");
@@ -139,6 +156,7 @@ export function TransferDialog({
         command.input,
         command.key,
       );
+      pending.clear(command);
       setOperation(null);
       await onChanged();
       if (action === "reclaim" && result.debtRepaid !== "0") {
@@ -147,13 +165,21 @@ export function TransferDialog({
         );
       } else onClose();
     } catch (error) {
-      if (error instanceof MemberResourceError && error.outcome === "unknown") {
+      if (
+        recovering ||
+        (error instanceof MemberResourceError && error.outcome === "unknown")
+      ) {
         setOperation({ command, unknown: true });
         setMessage(
           "操作结果未确认；请核验原操作，期间不能创建新的分配或回收。",
         );
       } else {
-        setOperation(null);
+        try {
+          pending.clear(command);
+          setOperation(null);
+        } catch {
+          setOperation({ command, unknown: true });
+        }
         setMessage(failure(error));
       }
     } finally {
@@ -287,6 +313,11 @@ export function TransferDialog({
           : "换算数量不能超过管理员可用的未分配余额；成员月度 AI 点数上限在下方单独设置。"}
       </p>
       {message ? <p role="alert">{message}</p> : null}
+      {pending.error ? (
+        <p role="alert">
+          原操作记录不可读取，已暂停新操作。请恢复浏览器存储后重试。
+        </p>
+      ) : null}
       <div className={styles.dialogFooter}>
         <Button
           variant="outline"

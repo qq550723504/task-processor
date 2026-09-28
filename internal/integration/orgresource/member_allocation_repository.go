@@ -149,5 +149,5 @@ func lockMemberResourcePosition(tx *gorm.DB, org, member string, resource orgres
 	return row, err
 }
 func memberResourcePosition(row memberResourcePositionRow) orgresource.MemberResourcePosition {
-	return orgresource.MemberResourcePosition{OrganizationID: row.OrganizationID, MemberID: row.MemberID, ResourceType: orgresource.ResourceType(row.ResourceType), Free: row.Free, Reserved: row.Reserved, Consumed: row.Consumed, Version: row.Version, UpdatedAt: row.UpdatedAt}
+	return orgresource.MemberResourcePosition{OrganizationID: row.OrganizationID, MemberID: row.MemberID, ResourceType: orgresource.ResourceType(row.ResourceType), Free: row.Free, Reserved: row.Reserved, Consumed: row.Consumed, Version: row.Version, UpdatedAt: row.UpdatedAt.UTC()}
 }

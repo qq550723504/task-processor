@@ -52,6 +52,7 @@ function tree(administrator = false, connected = true, record = store) {
   );
 }
 beforeEach(() => {
+  sessionStorage.clear();
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
     configurable: true,
     value: function () {
@@ -74,6 +75,24 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+it("reload restores the original renewal version and key even after the Store advances", async () => {
+  state.renew.mockRejectedValue(
+    new WorkbenchAPIError(503, "STORE_SERVICE_OUTCOME_UNKNOWN", "safe", "", []),
+  );
+  const first = render(tree());
+  await userEvent.click(screen.getByRole("button", { name: "续费服务" }));
+  await screen.findByText("可用 2 期");
+  await userEvent.click(screen.getByRole("button", { name: "确认续费服务" }));
+  await screen.findByText(/续费结果未确认/);
+  const original = state.renew.mock.calls[0];
+  first.unmount();
+  render(tree(false, true, { ...store, version: 3 }));
+  await userEvent.click(screen.getByRole("button", { name: "续费服务" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "核验原操作" }),
+  );
+  expect(state.renew.mock.calls[1]).toEqual(original);
+});
 it("member renewals retry only the original key, version and captured user", async () => {
   state.renew
     .mockRejectedValueOnce(

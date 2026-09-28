@@ -3,6 +3,10 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ResourceDialog } from "../resources/resource-dialog";
+import {
+  servicePendingSchema,
+  useResourcePending,
+} from "../resources/resource-pending";
 import { getCommercialResources } from "@/lib/api/commercial-billing";
 import {
   getMemberResources,
@@ -40,10 +44,18 @@ export function StoreServiceActions({
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [periods, setPeriods] = useState("1");
-  const [operation, setOperation] = useState<{
+  const pending = useResourcePending(
+    scope,
+    ["service", store.id],
+    servicePendingSchema,
+  );
+  const [currentOperation, setOperation] = useState<{
     command: Command;
     unknown: boolean;
   } | null>(null);
+  const operation =
+    currentOperation ??
+    (pending.command ? { command: pending.command, unknown: true } : null);
   const [message, setMessage] = useState("");
   const busy = useRef(false);
   const balance = useQuery({
@@ -111,12 +123,20 @@ export function StoreServiceActions({
         ? "续费服务"
         : "恢复服务";
   const valid =
+    pending.ready &&
     /^[1-9][0-9]?$/.test(periods) &&
     Number(periods) <= 12 &&
     available !== null &&
     BigInt(periods) <= BigInt(available);
   async function write(command: Command) {
     if (busy.current) return;
+    const recovering = pending.command !== null;
+    try {
+      pending.persist(command);
+    } catch {
+      setMessage("无法保存原操作，请先恢复浏览器存储；本次没有发送新命令。");
+      return;
+    }
     busy.current = true;
     setOperation({ command, unknown: false });
     setMessage("");
@@ -142,6 +162,7 @@ export function StoreServiceActions({
                 command.periods,
                 ...(args.slice(1) as [number, string, string, string]),
               );
+      pending.clear(command);
       setOperation(null);
       setMessage(
         `服务已更新：到期 ${result.serviceExpiresAt}，本次扣 ${result.quantity} 期，原资金池余额 ${result.resourceBalanceAfter} 期。`,
@@ -172,11 +193,16 @@ export function StoreServiceActions({
         (error.status === 0 ||
           error.status >= 500 ||
           error.code === "INVALID_WORKBENCH_RESPONSE");
-      if (unknown) {
+      if (recovering || unknown) {
         setOperation({ command, unknown: true });
         setMessage("续费结果未确认；预留保持，不能另建操作。请核验原操作。");
       } else {
-        setOperation(null);
+        try {
+          pending.clear(command);
+          setOperation(null);
+        } catch {
+          setOperation({ command, unknown: true });
+        }
         setMessage(
           error instanceof WorkbenchAPIError &&
             error.code === "RESOURCE_INSUFFICIENT_BALANCE"
@@ -238,6 +264,11 @@ export function StoreServiceActions({
             已有效的服务从当前到期时间延长；到期后从本次开通时间计算。续费不会自动授权平台发布。
           </p>
           {message ? <p role="alert">{message}</p> : null}
+          {pending.error ? (
+            <p role="alert">
+              原操作记录不可读取，已暂停新操作。请恢复浏览器存储后重试。
+            </p>
+          ) : null}
           <div className={styles.dialogFooter}>
             <Button
               variant="outline"

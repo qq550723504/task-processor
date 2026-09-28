@@ -38,7 +38,9 @@ func issue398AcquisitionAPIViolations(sources []listingKitImageBoundarySource) (
 		// Narrow #399 constructor admission; no new root, target or directory exemption.
 		// NewBrowserPublicAcquisition is the same admitted constructor surface for the
 		// server-side browser provider (design D13); it introduces no new root or target.
-		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition"}},
+		// #561 frozen member-resource design admits the read-only published-result and
+		// native charge-proof constructors in this same Product composition owner.
+		{"internal/app/httpapi/product_acquisition_application.go", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", []string{"NewPublicAcquisition", "NewBrowserAcquisition", "NewBrowserPublicAcquisition", "PublishedAcquisition", "NewPublishedAcquisitionReader", "NewAcquisitionChargeOwner"}},
 	}
 	var violations []string
 	for _, source := range sources {
@@ -105,13 +107,13 @@ func TestIssue398ProducerImportAdmissionRejectsOtherFiles(t *testing.T) {
 		allowed[path] = struct{}{}
 		require.NoError(t, os.WriteFile(path, []byte(`package fixture; import p "task-processor/internal/app/productsourcing"; var use = p.NewPublicAcquisition`), 0600))
 	}
-	for _, name := range []string{"other_http.go", "other_command.go", "main.go.fake.go"} {
+	for _, name := range []string{"other_http.go", "other_command.go", "main.go.fake.go", "consumer_resource_charges.go"} {
 		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(`package fixture; import alias "task-processor/internal/app/productsourcing"; var use = alias.NewPublicAcquisition`), 0600))
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(root, "browser_capture_application.go"), []byte(`package fixture; import alias "task-processor/internal/app/productsourcing"; var use = alias.NewBrowserAcquisition`), 0600))
 	violations, err := findBannedImportViolations(root, []string{`"task-processor/internal/app/productsourcing"`}, allowed, true)
 	require.NoError(t, err)
-	require.Len(t, violations, 4)
+	require.Len(t, violations, 5)
 }
 
 func TestIssue398CurrentLeafEdgesAreExact(t *testing.T) {
@@ -162,6 +164,8 @@ func TestIssue398CurrentLeafAndInitializerAPIGuard(t *testing.T) {
 		{"Browser module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewBrowserAcquisition", false},
 		{"initializer cannot build Browser", "cmd/product-acquisition-init/main.go", "task-processor/internal/app/productsourcing", "NewBrowserAcquisition", false},
 		{"module exact receipt read", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "PublishedAcquisition", true},
+		{"module exact published reader", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewPublishedAcquisitionReader", true},
+		{"module exact charge proof owner", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing", "NewAcquisitionChargeOwner", true},
 		{"module target subpackage", "internal/app/httpapi/product_acquisition_application.go", "task-processor/internal/app/productsourcing/httpapi", "NewPublicAcquisition", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
