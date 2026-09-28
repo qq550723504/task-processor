@@ -17,7 +17,7 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 | | **RUN-1（保留）** | **FULL（新增，跟随生产）** |
 |---|---|---|
 | 目的 | 身份 / 生效组织 / 账户路由的**隔离**验收 | 商业只读、SA1 + 账号中心 + 认证、**1688 采集**的整链验收 |
-| 装配模块 | 仅其声明的四条身份/账户路由 | current-application 组合到的**全部**模块 |
+| 装配模块 | **`cmd/current-application` 当前组合的全部模块**（身份/账户四条路由 + 商业概览 + 五条 SA1 路由）。本文早期版本把它写成「仅四条身份路由」，那是错的：二进制并没有这样一个更窄的组合，装配面只能由代码决定 | current-application 组合到的全部模块，外加独立的采集进程（见 §3.5） |
 | schema 范围 | 仅其装配模块的域 | 全部组合域，随生产演进 |
 | 授权范围 | 同上 | 各域自己的 admitted boundary |
 | 生命周期 | 保留现有 start/stop/restart/destroy 边界 | 同源复用，不另造一套 |
@@ -40,11 +40,11 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 
 > 这一条是防复发的关键：把「漂移」变成「CI 失败」而不是「某人某天发现环境起不来」。
 
-### 3.3 `accountallocation` 需要 schema-init 入口
+### 3.3 `accountallocation` 已有 schema-init 入口（**更正**）
 
-该域有 `internal/app/schema/accountallocation`（含自带的 `commercial_runtime` 授权），但**没有 CLI**。FULL 环境需要安装它。
+本文早期版本称该域「没有 CLI」，这是**错的**：`cmd/listingkit-schema-migrate` 早已提供 `--scope commercial`，并由 `internal/app/runtime/listingkitschemamigrate/runtime.go` 调用 `accountallocationschema.Migrate`。
 
-**裁定**：新增 `cmd/account-allocation-schema-init`，与 `source-account-registry-schema-init` 同构（私有 manifest + 连接上限 + 安装后自校验），而不是在环境装配的 Go 测试里直接调 `Migrate` —— 后者会把 DDL 藏进测试二进制，正是设计里禁止的「请求内 DDL」的变体。
+**裁定**：FULL 直接复用该入口，**不新增**第二个 schema-init 命令——否则同一 schema 会有两个 owner 并各自漂移。若后续发现它无法满足需要（例如 manifest 契约、连接上限、安装后自校验），应先记录它具体不满足什么，而不是假定它不存在。
 
 ### 3.4 RUN-1 的三层修复仍然要做
 
@@ -55,6 +55,14 @@ RUN-1 自 2026-09-20 起无法启动，#541 逐层定位出**四个互相独立*
 3. 商业只读补 usage/audit 表授权
 
 但**第 3 层要按 §3.1 收窄到 RUN-1 实际装配的范围**，而不是继续加到与生产一致 —— 否则拆分就没有意义。
+
+### 3.5 FULL 还需要独立的采集进程
+
+FULL 的目标是覆盖 1688 采集的端到端，而采集**不是一个模块**：按 D13，它是**独立的、无数据库凭据的 Chromium 进程**，有自己的调用方准入（服务凭据）与网络边界，且 `current-application` 明确**不**启动浏览器。
+
+因此仅做 schema/授权的增量**不足以**让 FULL 覆盖采集路径。FULL 还必须包含：采集进程的启动、就绪、监管、停止与销毁，以及它自己的凭据生成与私密处理。若不做，FULL 只能验证到「应用能起来」，验证不了「提交链接 → 读回商品」。
+
+> 这也印证了 §4.1 的判断：FULL 不是「RUN-1 加点 schema」，而是一套新的共享验收基础设施。
 
 ## 4. 复用与不重复建设
 
