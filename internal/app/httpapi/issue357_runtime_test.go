@@ -84,7 +84,7 @@ func (c issue357Config) validate() error {
 	if err != nil || id.String() != c.RunID || id.Version() != 4 {
 		return errors.New("INVALID_RUN")
 	}
-	if c.Issuer != fmt.Sprintf("http://localhost:%d", c.IssuerPort) || c.DatabaseHost != "127.0.0.1" || c.DatabaseName != "issue357" || (c.DatabaseUser != "issue357" && c.DatabaseUser != "commercial_runtime" && c.DatabaseUser != "source_account_runtime") || (c.RuntimeMode != "" && c.RuntimeMode != "current-application") {
+	if c.Issuer != fmt.Sprintf("http://localhost:%d", c.IssuerPort) || c.DatabaseHost != "127.0.0.1" || c.DatabaseName != "issue357" || (c.DatabaseUser != "issue357" && c.DatabaseUser != "commercial_reader" && c.DatabaseUser != "source_account_runtime") || (c.RuntimeMode != "" && c.RuntimeMode != "current-application") {
 		return errors.New("INVALID_RUN")
 	}
 	seen := map[int]bool{}
@@ -186,20 +186,15 @@ func TestIssue357Seed(t *testing.T) {
 		}
 	}
 	require.NotContains(t, c.ReaderPassword, "'")
-	require.NoError(t, db.Exec("CREATE ROLE commercial_runtime LOGIN PASSWORD '"+c.ReaderPassword+"'").Error)
-	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO commercial_runtime").Error)
+	require.NoError(t, db.Exec("CREATE ROLE commercial_reader LOGIN PASSWORD '"+c.ReaderPassword+"'").Error)
+	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO commercial_reader").Error)
 	if c.RuntimeMode == "current-application" {
-		// The commercial boundary grew beyond the four read-only tables the
-		// runbook used to describe: the current code also records usage events,
-		// their outbox and the subscription audit trail through this same pool.
-		// Grant exactly what listingsubscription verifies, no more.
-		require.NoError(t, db.Exec("GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime").Error)
-		require.NoError(t, db.Exec("GRANT INSERT, UPDATE ON TABLE public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime").Error)
+		require.NoError(t, db.Exec("GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets TO commercial_reader").Error)
 	} else {
-		require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_runtime").Error)
+		require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_reader").Error)
 	}
-	require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET default_transaction_read_only=on").Error)
-	require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET statement_timeout='10s'").Error)
+	require.NoError(t, db.Exec("ALTER ROLE commercial_reader SET default_transaction_read_only=on").Error)
+	require.NoError(t, db.Exec("ALTER ROLE commercial_reader SET statement_timeout='10s'").Error)
 	snapshot := issue357Snapshot(t, db)
 	issue357Write(t, filepath.Join(dir, "baseline.json"), map[string]any{"digest": snapshot, "setupWrites": true})
 	t.Log("synthetic setup complete; baseline captured")
@@ -218,16 +213,6 @@ func TestIssue357GrantSourceAccountRuntime(t *testing.T) {
 	require.NoError(t, db.Exec("GRANT CONNECT ON DATABASE issue357 TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("GRANT USAGE ON SCHEMA public TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime").Error)
-	// The SA1 schema initializer already installs the account-profile and
-	// subject/personal verification tables into this database - current-application
-	// has a single sourceAccountDatabase DSN and those modules share it. What was
-	// missing was the GRANT: the runtime boundary check asserts this role can reach
-	// them, so without these the process failed startup on a permission mismatch
-	// even though the schema was present.
-	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime").Error)
-	require.NoError(t, db.Exec("GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime").Error)
-	require.NoError(t, db.Exec("GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime").Error)
-	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, public.subject_verification_messages, public.personal_verification_applications TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("ALTER ROLE source_account_runtime SET statement_timeout='10s'").Error)
 	var resourceCount, operationCount int64
@@ -266,8 +251,8 @@ func TestIssue357SourceAccountPermission(t *testing.T) {
 		"restore":                  "GRANT INSERT ON TABLE public.source_account_resources TO source_account_runtime",
 		"source-cross-grant":       "GRANT TRUNCATE ON TABLE public.saas_plans TO source_account_runtime",
 		"source-cross-restore":     "REVOKE TRUNCATE ON TABLE public.saas_plans FROM source_account_runtime",
-		"commercial-cross-grant":   "GRANT TRUNCATE ON TABLE public.source_account_resources TO commercial_runtime",
-		"commercial-cross-restore": "REVOKE TRUNCATE ON TABLE public.source_account_resources FROM commercial_runtime",
+		"commercial-cross-grant":   "GRANT TRUNCATE ON TABLE public.source_account_resources TO commercial_reader",
+		"commercial-cross-restore": "REVOKE TRUNCATE ON TABLE public.source_account_resources FROM commercial_reader",
 	}
 	require.NoError(t, db.Exec(statements[c.PermissionAction]).Error)
 }
@@ -291,7 +276,7 @@ func TestIssue357Snapshot(t *testing.T) {
 	if c.RuntimeMode == "current-application" {
 		require.Equal(t, "issue357", c.DatabaseUser)
 	} else {
-		require.Equal(t, "commercial_runtime", c.DatabaseUser)
+		require.Equal(t, "commercial_reader", c.DatabaseUser)
 	}
 	db := issue357Database(t, c)
 	snapshot := issue357Snapshot(t, db)
@@ -307,7 +292,7 @@ func TestIssue357Snapshot(t *testing.T) {
 }
 func TestIssue357Serve(t *testing.T) {
 	c, dir := issue357ReadConfig(t)
-	require.Equal(t, "commercial_runtime", c.DatabaseUser)
+	require.Equal(t, "commercial_reader", c.DatabaseUser)
 	require.Empty(t, c.ManagementToken)
 	require.Empty(t, c.ReaderPassword)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, Database: &config.DatabaseConfig{Host: c.DatabaseHost, Port: c.DatabasePort, User: c.DatabaseUser, Password: c.DatabasePassword, Database: c.DatabaseName, MaxConnections: 4, MaxIdleConnections: 2}}
