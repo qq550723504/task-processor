@@ -38,6 +38,12 @@ type Throttle struct {
 	// ChallengeCooldown is how long to refuse new work after a challenge. Zero
 	// uses DefaultChallengeCooldown.
 	ChallengeCooldown time.Duration
+	// CollectionHeadroom is the time reserved, after the wait, for the collection
+	// itself. A caller is only admitted if it can start early enough to still have
+	// this much budget left; otherwise the wait would consume the whole acquisition
+	// budget and the caller would see a timeout instead of an honest refusal.
+	// Zero uses DefaultCollectionHeadroom.
+	CollectionHeadroom time.Duration
 	// StartupQuarantine is how long a freshly constructed throttle refuses its
 	// first request. A restarted process has no memory of whether its egress IP
 	// was challenged just before it died, so without this it would immediately
@@ -54,6 +60,8 @@ type Throttle struct {
 	// undo an earlier boundary.
 	pending []reservation // seq identifies reservations; it is guarded by mu.
 	seq     uint64
+	// headroom is how much budget the caller must keep after waiting.
+	headroom time.Duration
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
@@ -69,9 +77,13 @@ const (
 	// A replacement collector must assume the worst about an exit IP it never
 	// observed, so the startup quarantine follows the configured cooldown.
 	DefaultChallengeCooldown = 10 * time.Minute
+	// DefaultCollectionHeadroom matches the acquisition budget: a caller that
+	// cannot leave a full budget's worth of time for the collection is refused
+	// rather than admitted into a wait that would spend it all.
+	DefaultCollectionHeadroom = DefaultTimeout
 )
 
-func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine time.Duration) *Throttle {
+func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine, headroom time.Duration) *Throttle {
 	if minInterval <= 0 {
 		minInterval = DefaultMinInterval
 	}
@@ -93,7 +105,11 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 	if startupQuarantine == 0 {
 		startupQuarantine = challengeCooldown
 	}
+	if headroom <= 0 {
+		headroom = DefaultCollectionHeadroom
+	}
 	th := &Throttle{
+		headroom:          headroom,
 		MinInterval:       minInterval,
 		Jitter:            jitter,
 		ChallengeCooldown: challengeCooldown,
@@ -161,8 +177,13 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// deliberately pushes the *next* caller a full interval out, so requiring
 	// that boundary to fit this caller's budget would reject the very first
 	// request of an idle process under the production defaults.
+	// Admit only if the caller can start early enough to still have collection
+	// headroom left. Checking the start alone let a caller that merely squeaks in
+	// just before its deadline spend the entire remaining budget on the wait, and
+	// then hand that exhausted budget to the collection - surfacing as a timeout
+	// rather than the refusal this throttle intends.
 	deadline, hasDeadline := ctx.Deadline()
-	if hasDeadline && start.After(deadline) {
+	if hasDeadline && start.Add(t.headroom).After(deadline) {
 		t.mu.Unlock()
 		return ErrThrottled
 	}

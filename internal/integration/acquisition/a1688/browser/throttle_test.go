@@ -250,14 +250,14 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 // silent for a full cooldown, which would otherwise stall every test; the
 // quarantine itself is covered by its own test.
 func newTestThrottle(minInterval time.Duration, jitter float64, challengeCooldown time.Duration) *Throttle {
-	return newThrottle(minInterval, jitter, challengeCooldown, -1)
+	return newThrottle(minInterval, jitter, challengeCooldown, -1, time.Nanosecond)
 }
 
 // A fresh collector must stay silent before its first request, because a
 // restarted process cannot know whether its egress IP was challenged just before
 // it died. Without this it re-hits 1688 and negates the cooldown.
 func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 10*time.Minute, 80*time.Millisecond)
+	th := newThrottle(time.Millisecond, 0, 10*time.Minute, 80*time.Millisecond, time.Nanosecond)
 
 	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled,
 		"a fresh collector must not call out immediately")
@@ -274,7 +274,7 @@ func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
 // deliberately shortens -challenge-cooldown must not still get a ten-minute
 // silence on every restart.
 func TestThrottleStartupQuarantineDefaultsToConfiguredCooldown(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, time.Minute, 0)
+	th := newThrottle(time.Millisecond, 0, time.Minute, 0, time.Nanosecond)
 	require.Equal(t, time.Minute, th.StartupQuarantine)
 }
 
@@ -316,7 +316,7 @@ func TestThrottleSupersededCancellationLeavesTheQueue(t *testing.T) {
 // The startup quarantine must follow the CONFIGURED cooldown, so shortening
 // -challenge-cooldown actually shortens the silence after a restart.
 func TestThrottleStartupQuarantineFollowsConfiguredCooldown(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 2*time.Second, 0)
+	th := newThrottle(time.Millisecond, 0, 2*time.Second, 0, time.Nanosecond)
 	require.Equal(t, 2*time.Second, th.StartupQuarantine,
 		"quarantine must follow the configured cooldown, not the packaged default")
 }
@@ -341,4 +341,30 @@ func TestThrottleRechecksCooldownAfterQueuedWait(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the queued wait never returned")
 	}
+}
+
+// A caller whose slot falls just inside its deadline must still be refused: the
+// wait would consume the budget and hand an exhausted context to the collection,
+// surfacing as a timeout rather than the honest refusal this throttle intends.
+func TestThrottleReservesCollectionHeadroom(t *testing.T) {
+	// The slot is 9s away and the caller has 10s: it *can* start in time, so a
+	// start-only check admits it, but then almost no budget remains to collect.
+	th := newThrottle(9*time.Second, 0, 10*time.Minute, -1, 10*time.Second)
+	require.NoError(t, th.Wait(context.Background())) // consume the immediate slot
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	err := th.Wait(ctx)
+	require.ErrorIs(t, err, ErrThrottled,
+		"admitting a slot that leaves no collection budget would surface as a timeout")
+	require.Less(t, time.Since(start), time.Second, "the refusal must be immediate, not a wait")
+
+	// With headroom removed the same slot is admitted, which is what made the old
+	// behaviour a timeout in disguise.
+	naive := newThrottle(9*time.Second, 0, 10*time.Minute, -1, time.Nanosecond)
+	require.NoError(t, naive.Wait(context.Background()))
+	generous, cancelGenerous := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelGenerous()
+	require.NoError(t, naive.Wait(generous), "without a headroom the slot is served")
 }
