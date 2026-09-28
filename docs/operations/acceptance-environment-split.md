@@ -1,6 +1,16 @@
 # 验收环境拆分：RUN-1 与跟随生产的完整环境
 
-**状态**：Draft，待准入。本文只做拆分设计与边界裁定，不含实现。
+**状态**：**拆分决策已准入（IMPLEMENTATION_READY，2026-09-27）**；FULL 部分**经用户决定暂缓**；§3.1 为**待三个域 owner 确认的提案**，未获裁定。本文不含实现。
+
+**准入记录**：独立只读评审（chatgpt-codex-connector），9 条 finding 全部处理完毕（0 未解决）。其中多数指出的都是我文档里的**事实错误**，已逐条更正而非绕过：
+
+- 装配面自述清单（写了两次都不完整）→ 改为「装配面由 `buildCurrentApplication` 决定，本文档不自述清单」
+- 误判 `accountallocation` 无 schema-init 入口 → 实为 `cmd/listingkit-schema-migrate --scope commercial` 已存在，改为复用
+- 误判「只读 `commercial_runtime` 会被启动拒绝」→ 预检只校验 ACL，不校验 `default_transaction_read_only`
+- §4 与 §3.5 对 FULL 增量的表述自相矛盾 → 已统一
+- 把 harness 实现混进设计 PR → 拆出至 #549
+
+**未获裁定的部分**：§3.1（启动权限校验按实际组合模块为界）改动商业/账号中心/认证三个域的边界，需三者 owner 同意后方可作为实现依据。在其确认前，RUN-1 的商业授权范围随之待定。
 **来源**：#541（四层漂移诊断）、#390（RUN-1 harness，原已关闭）
 **取代**：`docs/operations/current-application-run1.md` 中关于「当前应用只装配哪些域」的隐含假设
 
