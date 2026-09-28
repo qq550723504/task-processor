@@ -436,6 +436,77 @@ Rules:
 - Review/history retains opaque provenance after access loss/disable, while protected labels,
   excerpts and document content remain unavailable.
 
+### 6.4 Local disable and provider dispatch share one linearization fence
+
+A repeated active-state read alone is not enough to make local Knowledge disable immediate:
+there is an unavoidable TOCTOU window between the final read and the external HTTP send.
+
+V1 therefore introduces a Knowledge-owned **dispatch permit**. This is an authorization
+fence only; it is not a model retry owner, usage ledger, AgentRun or provider-outcome fact.
+
+For every model invocation that will send Knowledge content:
+
+```text
+existing Quote / usage reservation
+  -> existing transport queue / credential re-resolution
+  -> BeforeDispatch
+       -> acquire KnowledgeDispatchPermit in knowledge DB
+       -> only if permit committed: return nil
+  -> HTTP transport handoff
+  -> CompleteText returns success / not-dispatched / outcome-unknown
+  -> terminalize/release permit with bounded best-effort write
+     (lease expiry is the crash fallback)
+```
+
+Permit acquisition is the **Knowledge content-use linearization point**.
+
+The permit transaction:
+
+1. locks the referenced KnowledgeBase and all referenced KnowledgeSource rows in canonical
+   ID order;
+2. requires Base/Source state ACTIVE and exact bundle/ref/digest/revision binding;
+3. inserts one active permit keyed by Organization + bundle + model InvocationID;
+4. records the current Base/Source content-fence versions;
+5. commits before provider transport can start.
+
+The existing OpenAI-compatible `TextCompletionRequest.BeforeDispatch` seam is the intended
+integration point because it already runs after provider queueing/route re-resolution and
+before the request is handed to HTTP transport. The Knowledge permit check is composed into
+that seam after the existing identity/route recheck, not added as a second provider client.
+
+Permit lifetime is bounded:
+
+- one permit per model InvocationID;
+- hard maximum lease: 5 minutes 30 seconds;
+- normal release happens when `CompleteText` returns;
+- release failure is fail-safe: disable remains pending until lease expiry/recovery;
+- a process crash cannot leave a permanent permit.
+
+Local disable uses the same Knowledge DB rows and permit set:
+
+```text
+ACTIVE
+  -> DISABLING   # linearization point for disable; no new permits can commit
+  -> DISABLED    # only after all earlier permits are terminal/expired
+```
+
+Concurrent ordering is therefore explicit:
+
+- **permit commits first**: that one provider send is admitted before disable. Disable moves
+  the Base/Source to DISABLING, blocks every later permit, and does not claim DISABLED until
+  the earlier permit ends/expires.
+- **disable commits DISABLING first**: subsequent permit acquisition sees non-ACTIVE state
+  and fails before provider transport; zero later Knowledge dispatch is allowed.
+
+No transaction is held open across the provider network call.
+
+This protocol applies to local KnowledgeBase/Source disable because both facts and permits
+share the Knowledge database. External ZITADEL grant revocation cannot be made atomic with
+an external model HTTP send; it continues to use the existing fresh authorization check at
+BeforeDispatch. A grant revocation that is already visible before permit acquisition blocks
+the send; an invocation whose permit and existing authorization admission linearized first
+is treated as already admitted. The system must not claim stronger cross-system atomicity.
+
 The implementation extends the existing Casbin authorizer and
 `WorkbenchPermissions()` display contract. It must not create a second IAM, role directory
 or Knowledge-specific membership model.
@@ -950,6 +1021,14 @@ Semantics:
   document access must not retain the ordinary cached-read revocation window;
 - Organization comes only from current server-resolved context, never path/body/query;
 - V1 has no delete/restore route.
+- Disable is idempotent and may return:
+  - **200** with state `disabled` when no earlier Knowledge dispatch permit is live;
+  - **202** with state `disabling` when an earlier permit already linearized and must
+    finish/expire before final disable.
+- `disabling` is content-ineligible immediately: it is excluded from preview, selection,
+  materialization and all new dispatch permits.
+- clients poll/read the ordinary KnowledgeBase/Source projection for final state; there is
+  no separate cancellation/restore action in V1.
 
 Create/update JSON bodies are strict, unknown fields rejected, maximum 8 KiB.
 Names are UTF-8, trimmed, bounded to 120 Unicode scalar values, and cannot contain control
@@ -1172,6 +1251,7 @@ knowledge_revisions
 knowledge_ingest_operations
 knowledge_context_bundles
 knowledge_context_bundle_entries
+knowledge_dispatch_permits
 ```
 
 Required integrity:
@@ -1185,6 +1265,10 @@ Required integrity:
 - ContextBundle has one unique pre-Start MaterializationIdentity and immutable
   MaterializationFingerprint;
 - ContextBundle entries bind exact Source + Revision + citation ID;
+- Base/Source rows carry a monotonic content-fence version;
+- KnowledgeDispatchPermit binds one bundle, one InvocationID, the exact referenced
+  Base/Source fence versions, state and bounded expiry;
+- at most one active permit exists per Organization + model InvocationID;
 - mutable records use explicit version/CAS for user-visible writes;
 - source/base disable cannot mutate existing historical bundle entries.
 
@@ -1333,22 +1417,91 @@ Bounded parse output:
 - no OCR/VLM;
 - raw document and parser body are excluded from ordinary logs.
 
-### 15.8 Disable, revoke and historical provenance
+### 15.8 Disable, dispatch permits and historical provenance
 
-Disable is an immediate **content-use fence**, not merely a discovery/listing flag.
+Local disable is an immediate **new-use fence**, with a precise linearization contract.
 
-When a KnowledgeBase or Source transitions away from active:
+KnowledgeBase and KnowledgeSource lifecycle for V1:
+
+```text
+ACTIVE
+DISABLING
+DISABLED
+```
+
+`DISABLING` is not readable/usable content. It exists only to drain provider dispatches
+whose KnowledgeDispatchPermit committed before the disable operation.
+
+#### Permit claim
+
+Immediately before provider transport, the Knowledge dispatch-gate transaction:
+
+- locks Base + all referenced Source rows in canonical ID order;
+- verifies all are ACTIVE;
+- verifies current fence versions and exact bundle/ref/digest binding;
+- verifies caller/scope admission supplied by the fresh model path;
+- inserts one active permit for the exact model InvocationID/bundle;
+- commits.
+
+Provider transport is forbidden unless this permit commit succeeds.
+
+#### Disable
+
+A Base/Source disable transaction locks the same lifecycle row(s), increments the target
+content-fence version and changes ACTIVE -> DISABLING.
+
+From that commit:
+
+- no new permit can be acquired;
+- no preview/materialization/citation content can be released;
+- no new model invocation can send that Knowledge;
+- historical bundle/provenance remains opaque.
+
+If there are no earlier active permits referencing the disabled target, the same operation
+may finalize DISABLED and return HTTP 200.
+
+If an earlier permit exists, the endpoint returns HTTP 202 / DISABLING. The permit release
+path and Knowledge recovery loop finalize DISABLING -> DISABLED after all such permits are
+terminal or expired.
+
+The service never reports state DISABLED while a valid earlier dispatch permit can still
+authorize a transport handoff.
+
+#### Permit terminalization / crash recovery
+
+A permit is released/terminalized after `CompleteText` returns, regardless of whether the
+provider result is success, confirmed-not-dispatched or outcome-unknown. AI Capability
+remains the only owner of provider-dispatch/usage/UNKNOWN truth; Knowledge only records that
+its content-use admission no longer needs to block disable.
+
+If the process crashes, the permit expires after its bounded lease. The recovery loop:
+
+- treats expired permits as no longer live;
+- finalizes any DISABLING Base/Source with zero remaining live permits;
+- never re-dispatches the model;
+- never changes AI invocation outcome.
+
+The permit lease must outlive the maximum admitted provider call window; V1 caps it at
+5m30s while current text provider timeout is bounded to at most 5m. Implementation tests
+must prove the configured timeout cannot exceed the permit safety bound.
+
+#### Ordering guarantee
+
+Exactly two valid concurrent outcomes exist:
+
+1. permit commit < disable linearization: that invocation may send; disable remains
+   DISABLING until the permit drains;
+2. disable linearization < permit commit attempt: permit fails and provider transport is
+   never entered.
+
+There is no check-then-send third state.
+
+When a KnowledgeBase or Source is DISABLING/DISABLED:
 
 - it is excluded from all new selection/materialization;
-- every future preview/content read fails closed;
-- every future load of any already-created ContextBundle that references it fails closed
-  before releasing cached excerpts;
-- every future model Quote/Decide/dispatch or resume that needs such bundle content is
-  blocked before provider dispatch;
-- every future citation-detail resolution returns only safe unavailable/disabled state.
-
-The same content-use fence applies when the caller loses current
-`workbench.knowledge.read` or Organization access.
+- preview/content reads fail closed;
+- already-created ContextBundles referencing it cannot release cached excerpts;
+- future citation-detail resolution returns only safe unavailable/disabled state.
 
 What remains durable:
 
@@ -1360,14 +1513,17 @@ What remains durable:
 
 What does **not** remain readable solely because it was once materialized:
 
-- source/document display name if it is protected enterprise metadata;
+- source/document display name if protected enterprise metadata;
 - excerpt/body;
 - object key;
 - cached model-visible content;
 - parser output.
 
-Disable/revoke does not retroactively change what the original model saw. It only prevents
-that protected content from being released again.
+Disable does not retroactively change what a provider invocation admitted **before** the
+disable linearization point already saw. It prevents every later Knowledge content use.
+
+External Organization/role revocation is still freshly checked before permit acquisition
+but is not falsely described as cross-system transactionally atomic with provider HTTP.
 
 V1 has disable, not destructive user delete. Physical purge/retention is not a V1 user
 action. Operational retention/purge policy must be added before destructive delete is
@@ -1472,28 +1628,37 @@ authorization checks.
 
 Existing Product Agent quote/reservation/UNKNOWN/budget semantics remain authoritative.
 
-Before **every** `Quote`, `Decide` or provider dispatch that needs Knowledge content, the
-governed model adapter:
+For a model call that uses Knowledge:
 
-1. loads the exact ContextSnapshotRef;
-2. performs the complete §6.3 current-state admission;
-3. only after that releases model-visible bundle bytes to quote/token estimation;
-4. verifies the same admission again immediately before provider dispatch if the quote and
-   dispatch are separated by an authorization/state boundary.
+1. `Quote` may load the exact bundle only after the §6.3 read admission; no provider send
+   occurs at Quote.
+2. `Decide` performs the existing invocation claim + usage reservation.
+3. Existing provider route/identity is re-resolved after queueing.
+4. In the existing `BeforeDispatch` seam, after those existing checks, acquire the
+   §6.4 KnowledgeDispatchPermit.
+5. Only a committed permit allows the request to be handed to HTTP transport.
+6. After `CompleteText` returns, terminalize/release the permit with a bounded
+   `context.WithoutCancel` write; if that write fails, lease expiry is the fail-safe.
+7. Provider outcome, usage, retry prohibition and UNKNOWN remain owned by AI Capability and
+   the current text adapter.
 
 The context bytes actually used for the model are included in the quote/token estimate;
 Knowledge must not become an unmetered hidden prompt.
 
-If permission is revoked, KnowledgeBase/Source disabled, or exact Revision becomes
-content-ineligible before a later model call/resume:
+A local Knowledge disable does **not** rely on “one more active-state read” immediately
+before send. It serializes with provider admission through the durable dispatch permit:
 
-- no Knowledge bytes are released to the model layer;
-- provider dispatch does not occur;
-- the run stops/fails under the existing authoritative no-send/dependency/authorization
-  semantics;
-- opaque provenance remains durable.
+- DISABLING/DISABLED before permit claim -> `BeforeDispatch` fails, transport is not
+  entered and current no-send handling applies;
+- permit claim before disable -> that invocation is already Knowledge-admitted; disable
+  stays DISABLING until the permit drains.
 
-Knowledge adds no second model retry owner.
+If current Organization/Knowledge permission is already revoked before permit acquisition,
+permit acquisition fails. No Knowledge bytes are newly released to provider transport.
+
+Knowledge dispatch permits do not retry models, do not reserve/settle AI usage and do not
+convert provider UNKNOWN into success/failure. They exist only to serialize local content
+disable with external transport admission.
 
 ## 17. Legacy decision
 
@@ -1548,7 +1713,8 @@ User result:
 - explicitly select enterprise Knowledge for a bounded title run;
 - server materializes one immutable bounded KnowledgeContextBundle before model dispatch;
 - exact Revision/citation identity survives restart;
-- cross-Organization/revoked access fails closed.
+- cross-Organization/revoked access fails closed;
+- local Base/Source disable and Knowledge dispatch permits have restart-safe state.
 
 No Product mutation.
 
@@ -1573,6 +1739,9 @@ User result:
 - generated title can cite only citation IDs from that bundle;
 - Product/source deterministic evidence remains canonical and separate;
 - Product Review receives bounded supplemental ContextProvenanceRef;
+- existing BeforeDispatch seam acquires/releases KnowledgeDispatchPermit;
+- disable-before-permit prevents provider send; permit-before-disable drains through
+  DISABLING before final DISABLED;
 - user can accept, reject or edit, then Apply under existing Product Review rules.
 
 Generic Agent contract adds only provider-neutral opaque context/citation fields; it does
@@ -1637,7 +1806,10 @@ Review history:
 The normal review stop rule was reached at `96ba7f6`, but Ready-triggered review on
 `174d31b` demonstrated a new P1 BLOCKER: the public Product Agent start request did not
 define how explicit KnowledgeSelection enters the application. §14.4 now freezes that
-transport contract. The stale ADMITTED ingest recovery obligation is also made explicit as
+transport contract. Subsequent Ready-triggered review demonstrated a second fresh P1
+BLOCKER: local disable and provider handoff lacked a shared linearization point. §6.4,
+§15.8 and §16.5 now freeze the KnowledgeDispatchPermit protocol using the existing
+BeforeDispatch seam. The stale ADMITTED ingest recovery obligation is also explicit as
 IMPLEMENTATION_TEST, and §9.3 removes the contradictory live-reference alternative.
 
 ### Implementation gate — CLOSED PENDING TARGETED VERIFICATION
@@ -1671,8 +1843,16 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - grant revoked after bundle creation blocks the next model dispatch;
 - KnowledgeBase disabled after bundle creation blocks bundle reload and next model dispatch;
 - Source disabled after bundle creation blocks bundle reload and next model dispatch;
-- disable between model Quote and provider dispatch is rechecked and blocks dispatch;
-- citation read after disable returns only safe unavailable state, not source name/excerpt;
+- permit claim commits first, then disable: disable returns/stays DISABLING until the permit
+  terminalizes/expires, and only that earlier invocation may transport content;
+- disable commits DISABLING first, then permit claim: permit fails and provider HTTP
+  transport is never entered;
+- concurrent Base/Source disable and permit claim use canonical row locking without deadlock;
+- crash after permit claim: lease expiry allows DISABLING -> DISABLED without any model
+  redispatch;
+- permit timeout bound is strictly longer than every admitted provider-call timeout;
+- citation read during DISABLING/DISABLED returns only safe unavailable state, not source
+  name/excerpt;
 - historical Review/Agent provenance remains structurally present after disable;
 - template reference does not restore revoked/disabled Knowledge access.
 
@@ -1725,7 +1905,9 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - Product fact conflict wins over Knowledge suggestion;
 - canonical `FieldChange.EvidenceIDs` remains Product/source-only;
 - Knowledge prompt bytes are included in existing model quote/usage accounting;
-- disabled/revoked bundle content is never sent on a later model call;
+- DISABLING/DISABLED bundle content cannot acquire a new dispatch permit;
+- provider outcome UNKNOWN terminalizes only the Knowledge permit while retaining current
+  AI Capability UNKNOWN semantics and no redispatch;
 - model outcome UNKNOWN retains current Product Agent recovery semantics.
 
 ### 20.4 Human Review / provenance
@@ -1746,6 +1928,7 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - template UI states that defaults are re-authorized at execution;
 - title execution shows actual selected Knowledge revision/version indicator;
 - Human Review shows citation provenance separately from Product fact validation;
+- disabling Knowledge renders “正在停用” and is already unavailable for new reads/runs;
 - disabled Knowledge renders an unavailable provenance state without protected excerpt leak.
 
 Real enterprise documents, production S3/Tika deployment and paid model/provider operations
