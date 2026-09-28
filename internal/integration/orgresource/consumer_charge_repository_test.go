@@ -56,6 +56,9 @@ func TestConsumerChargeMemberReleaseReturnsNetToMemberAndCommitsOnce(t *testing.
 	if released.State != orgresource.ReservationReleased {
 		t.Fatalf("release: %#v", released)
 	}
+	if released.BalanceAfter != 9 {
+		t.Fatalf("receipt returned another funding pool or ignored debt: %d", released.BalanceAfter)
+	}
 	position, err := allocations.ReadPosition(context.Background(), "org-a", "membership-a", orgresource.ResourceDataRow)
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +83,8 @@ func TestConsumerChargeMemberReleaseReturnsNetToMemberAndCommitsOnce(t *testing.
 	for n := 0; n < 2; n++ {
 		if receipt, err := service.Reconcile(context.Background(), intent.Identity); err != nil || receipt.State != orgresource.ReservationCommitted {
 			t.Fatalf("commit %d: %#v %v", n, receipt, err)
+		} else if receipt.BalanceAfter != 8 {
+			t.Fatalf("receipt failed to preserve original member balance: %d", receipt.BalanceAfter)
 		}
 	}
 	position, err = allocations.ReadPosition(context.Background(), "org-a", "membership-a", orgresource.ResourceDataRow)

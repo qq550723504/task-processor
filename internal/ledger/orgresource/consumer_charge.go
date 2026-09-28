@@ -56,6 +56,7 @@ type ConsumerChargeReceipt struct {
 	State           ReservationState
 	OwnerEvidenceID string
 	CreatedAt       time.Time
+	BalanceAfter    int64
 }
 type ConsumerChargeProof struct {
 	Intent        ConsumerChargeIntent

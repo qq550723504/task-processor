@@ -117,6 +117,10 @@ func (r *GormConsumerChargeRepository) Reserve(ctx context.Context, intent orgre
 		}
 		bucket.Reserved += intent.Quantity
 		row := organizationResourceReservationRow{ChargeProtocol: consumerChargeProtocol, ChargeActorID: intent.ActorID, ChargeFunding: string(intent.Funding), NextCheckAt: &now, OrganizationID: intent.Identity.OrganizationID, ReservationID: uuid.NewString(), OperationID: op.OperationID, OwnerType: string(intent.Identity.Consumer), OwnerAttemptID: intent.Identity.OperationID, BusinessScope: intent.BusinessScope, ResourceType: string(intent.ResourceType), ReservationPurpose: consumerChargeProtocol, Quantity: intent.Quantity, State: string(orgresource.ReservationReserved), RequestFingerprint: intent.Fingerprint, MemberID: intent.MemberID, CreatedAt: now}
+		row.ChargeBalanceAfter = bucket.Available
+		if intent.Funding == orgresource.FundingMember {
+			row.ChargeBalanceAfter = position.Free
+		}
 		if err := tx.Omit("Events").Create(&row).Error; err != nil {
 			return err
 		}
@@ -247,6 +251,10 @@ func (r *GormConsumerChargeRepository) Settle(ctx context.Context, original orgr
 			}
 		}
 		row.ChargeEvidenceID = proof.EvidenceID
+		row.ChargeBalanceAfter = bucket.Available
+		if intent.Funding == orgresource.FundingMember {
+			row.ChargeBalanceAfter = position.Free
+		}
 		row.SettledAt = &now
 		row.SettlementOperationID = &op.OperationID
 		row.NextCheckAt = nil
@@ -315,7 +323,7 @@ func readConsumerReservation(db *gorm.DB, identity orgresource.ConsumerChargeIde
 	return row, err
 }
 func consumerChargeReceipt(row organizationResourceReservationRow) orgresource.ConsumerChargeReceipt {
-	return orgresource.ConsumerChargeReceipt{Intent: orgresource.ConsumerChargeIntent{Identity: orgresource.ConsumerChargeIdentity{OrganizationID: row.OrganizationID, Consumer: orgresource.ResourceConsumer(row.OwnerType), OperationID: row.OwnerAttemptID}, ActorID: row.ChargeActorID, MemberID: row.MemberID, Funding: orgresource.ResourceFunding(row.ChargeFunding), ResourceType: orgresource.ResourceType(row.ResourceType), Quantity: row.Quantity, Fingerprint: row.RequestFingerprint, BusinessScope: row.BusinessScope}, ReservationID: row.ReservationID, State: orgresource.ReservationState(row.State), OwnerEvidenceID: row.ChargeEvidenceID, CreatedAt: row.CreatedAt}
+	return orgresource.ConsumerChargeReceipt{Intent: orgresource.ConsumerChargeIntent{Identity: orgresource.ConsumerChargeIdentity{OrganizationID: row.OrganizationID, Consumer: orgresource.ResourceConsumer(row.OwnerType), OperationID: row.OwnerAttemptID}, ActorID: row.ChargeActorID, MemberID: row.MemberID, Funding: orgresource.ResourceFunding(row.ChargeFunding), ResourceType: orgresource.ResourceType(row.ResourceType), Quantity: row.Quantity, Fingerprint: row.RequestFingerprint, BusinessScope: row.BusinessScope}, ReservationID: row.ReservationID, State: orgresource.ReservationState(row.State), OwnerEvidenceID: row.ChargeEvidenceID, CreatedAt: row.CreatedAt, BalanceAfter: row.ChargeBalanceAfter}
 }
 func updateConsumerBucket(tx *gorm.DB, bucket organizationResourceBucketRow, now time.Time) error {
 	updated := tx.Model(&organizationResourceBucketRow{}).Where("organization_id = ? AND resource_type = ?", bucket.OrganizationID, bucket.ResourceType).Updates(map[string]any{"available": bucket.Available, "allocated": bucket.Allocated, "reserved": bucket.Reserved, "consumed": bucket.Consumed, "updated_at": now})

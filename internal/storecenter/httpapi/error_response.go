@@ -28,6 +28,8 @@ type protocolError struct {
 func mapStoreError(err error) protocolError {
 	response := protocolError{Status: http.StatusServiceUnavailable, Code: "DEPENDENCY_UNAVAILABLE", Message: "A required dependency is unavailable", FieldErrors: []FieldError{}}
 	switch {
+	case errors.Is(err, storecenter.ErrServiceChargeUnknown):
+		response.Code, response.Message = "STORE_SERVICE_OUTCOME_UNKNOWN", "Store service outcome is still being checked"
 	case errors.Is(err, storecenter.ErrNotFound):
 		response.Status, response.Code, response.Message = http.StatusNotFound, "STORE_NOT_FOUND", "Store was not found"
 	case errors.Is(err, storecenter.ErrAlreadyExists):

@@ -65,7 +65,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	recordsOwner := open("store_center", "store_center_owner")
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
-	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_store_member_grants TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_member_grant_operations TO store_center_runtime`} {
+	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_store_member_grants TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_member_grant_operations TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_store_service_operations TO store_center_runtime`} {
 		require.NoError(t, recordsOwner.Exec(q).Error)
 	}
 	require.NoError(t, listingsubscription.AutoMigrateRepository(commercial))

@@ -92,6 +92,7 @@ func (organizationResourceEventRow) TableName() string {
 }
 
 type organizationResourceReservationRow struct {
+	ChargeBalanceAfter    int64                          `gorm:"column:charge_balance_after;not null;default:0;check:chk_consumer_charge_balance_nonnegative,charge_balance_after >= 0"`
 	ChargeProtocol        string                         `gorm:"column:charge_protocol;size:64;not null;default:''"`
 	ChargeActorID         string                         `gorm:"column:charge_actor_id;size:128;not null;default:''"`
 	ChargeFunding         string                         `gorm:"column:charge_funding;size:64;not null;default:''"`
