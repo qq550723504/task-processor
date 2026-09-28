@@ -65,6 +65,7 @@ type OfficialConnectionView struct {
 type OfficialConnectionStore interface {
 	BeginOfficialConnection(context.Context, OfficialConnectionCommand, OfficialApplication, string, time.Time) (OfficialConnectionAttempt, error)
 	ClaimOfficialExchange(context.Context, string, string, string, string, string, string, time.Time) (OfficialConnectionAttempt, bool, error)
+	ReadOfficialQueryAttempt(context.Context, string, string, string) (OfficialConnectionAttempt, error)
 	SaveOfficialCredential(context.Context, OfficialConnectionAttempt, string, string, string) error
 	CompleteOfficialConnection(context.Context, OfficialConnectionAttempt, ConnectionStatus, time.Time) (OfficialConnectionView, error)
 	ReadOfficialConnection(context.Context, string, string) (OfficialConnectionView, error)

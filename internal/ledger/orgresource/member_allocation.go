@@ -28,6 +28,7 @@ type MemberResourceTransfer struct {
 	Action          MemberResourceAction
 	Quantity        int64
 	ExpectedVersion int64
+	QuoteID         string
 }
 type MemberResourcePosition struct {
 	OrganizationID string
@@ -95,5 +96,5 @@ func ValidMemberResourcePositionIdentity(org, member string, resource ResourceTy
 	return validLimitIdentity(org) && validLimitIdentity(member) && IsMemberAllocatedResource(resource)
 }
 func ValidMemberResourceTransfer(c MemberResourceTransfer) bool {
-	return validLimitIdentity(c.OrganizationID) && validLimitIdentity(c.MemberID) && validLimitIdentity(c.ActorID) && validLimitIdentity(c.OperationID) && IsMemberAllocatedResource(c.ResourceType) && (c.Action == MemberResourceAllocate || c.Action == MemberResourceReclaim) && c.Quantity > 0 && c.ExpectedVersion >= 0
+	return validLimitIdentity(c.OrganizationID) && validLimitIdentity(c.MemberID) && validLimitIdentity(c.ActorID) && validLimitIdentity(c.OperationID) && (c.QuoteID == "" || validLimitIdentity(c.QuoteID)) && IsMemberAllocatedResource(c.ResourceType) && (c.Action == MemberResourceAllocate || c.Action == MemberResourceReclaim) && c.Quantity > 0 && c.ExpectedVersion >= 0
 }

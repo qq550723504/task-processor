@@ -112,7 +112,9 @@ func TestOfficialEncryptedCredentialRecoveryQueriesOnlyAndDisconnectFences(t *te
 		t.Fatal("credential not sealed")
 	}
 	provider.queryErr = nil
-	result, err := app.Complete(context.Background(), request)
+	// A page reload has lost state/tempToken. Recovery may only query the
+	// already encrypted credential, never repeat the one-time exchange.
+	result, err := app.ResumeQuery(context.Background(), "org-a", stored.ID(), command.AttemptID)
 	if err != nil || result.Status != storecenter.ConnectionStatusConnected || provider.exchanges != 1 || provider.queries != 2 {
 		t.Fatalf("safe recovery: %+v %v", result, err)
 	}

@@ -30,6 +30,22 @@
 .allocationEdit label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .allocationEdit input { width: 110px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--background); color: var(--foreground); }
 .readOnly { color: var(--muted-foreground); font-size: 13px; }
+.rowActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.resourceDialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; margin: auto; padding: 26px; background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: 12px; }
+.resourceDialog::backdrop { background: rgb(0 0 0 / 55%); }
+.resourceDialog > * + * { margin-top: 16px; }
+.dialogHeading, .dialogFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialogHeading h2 { font-size: 24px; font-weight: 700; }
+.dialogFooter { justify-content: flex-end; }
+.dialogField { display: grid; gap: 8px; font-size: 13px; }
+.dialogField input, .dialogField select { width: 100%; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); padding: 12px; }
+.allocationSection { display: grid; gap: 12px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+.allocationSection h3 { font-weight: 700; }
+.conversion { padding: 10px 12px; border-radius: 6px; background: color-mix(in srgb, var(--primary) 12%, var(--background)); color: var(--primary); }
+.conversion small { display: block; margin-top: 6px; }
+.assignedStores { display: grid; gap: 12px; }
+.assignedStores li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
+.assignedStores small { color: var(--muted-foreground); }
 .pointPanel { padding: 18px; gap: 12px; border-radius: 12px; }
 .pointPanel h2 { font-size: 18px; font-weight: 700; }
 .pointPanel p { font-size: 12px; }

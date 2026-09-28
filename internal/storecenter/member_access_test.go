@@ -109,3 +109,41 @@ func TestMemberStoreCreateRollsBackWhenAssignmentCannotBeSaved(t *testing.T) {
 		t.Fatalf("unassigned Store persisted: %d %v", count, err)
 	}
 }
+
+func TestMemberGrantReceiptKeepsOriginalVersionForNoopAndLaterChanges(t *testing.T) {
+	db := openStoreDB(t)
+	access := &storeMemberAuthorizer{member: "member-a"}
+	repo, err := storecenter.NewMemberScopedStoreRepository(db, access)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := newPersistenceStore(t, "org-a", uuid.NewString(), uuid.NewString(), uuid.NewString(), "receipt", "SG", "receipt", time.Now().UTC())
+	created, _, err := repo.CreateOrReplay(context.Background(), "org-a", candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noop := storecenter.MemberStoreGrantCommand{OrganizationID: "org-a", StoreID: created.ID(), MemberID: "member-a", OperationID: uuid.NewString(), Active: true, ExpectedVersion: 1}
+	access.admin = true
+	if err := repo.SetMemberGrant(context.Background(), noop); err != nil {
+		t.Fatal(err)
+	}
+	revoke := noop
+	revoke.OperationID = uuid.NewString()
+	revoke.Active = false
+	if err := repo.SetMemberGrant(context.Background(), revoke); err != nil {
+		t.Fatal(err)
+	}
+	receipt, found, err := repo.ReadMemberGrantReceipt(context.Background(), noop)
+	if err != nil || !found || receipt.Version != 1 || !receipt.Active {
+		t.Fatalf("receipt drifted after revoke: %+v %v %v", receipt, found, err)
+	}
+	changed := noop
+	changed.Active = false
+	if _, _, err := repo.ReadMemberGrantReceipt(context.Background(), changed); !errors.Is(err, storecenter.ErrAlreadyExists) {
+		t.Fatalf("different payload read original receipt: %v", err)
+	}
+	access.admin = false
+	if _, _, err := repo.ReadMemberGrantReceipt(context.Background(), noop); !errors.Is(err, storecenter.ErrNotFound) {
+		t.Fatalf("ordinary member read administrative receipt: %v", err)
+	}
+}

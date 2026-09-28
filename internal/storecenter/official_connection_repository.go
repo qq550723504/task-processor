@@ -240,6 +240,28 @@ func (r *MemberScopedStoreRepository) SaveOfficialCredential(ctx context.Context
 		return tx.Model(&officialAttemptRow{}).Where("organization_id = ? AND attempt_id = ? AND state = ?", a.OrganizationID, a.AttemptID, "exchange_dispatched").Updates(map[string]any{"state": "credential_received", "key_id": keyID, "ciphertext": ciphertext, "updated_at": time.Now().UTC()}).Error
 	})
 }
+
+func (r *MemberScopedStoreRepository) ReadOfficialQueryAttempt(ctx context.Context, org, storeID, attemptID string) (result OfficialConnectionAttempt, err error) {
+	access, err := r.authorize(ctx, org, true)
+	if err != nil {
+		return result, err
+	}
+	err = r.db.WithContext(ctx).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).Transaction(func(tx *gorm.DB) error {
+		original, _, err := r.authorizedAttempt(tx, access, attemptID)
+		if err != nil {
+			return err
+		}
+		if original.StoreID != storeID {
+			return ErrNotFound
+		}
+		if original.State != "credential_received" && original.State != "verified" {
+			return ErrOfficialExchangeUnknown
+		}
+		result = attemptValue(original)
+		return nil
+	})
+	return result, err
+}
 func (r *MemberScopedStoreRepository) CompleteOfficialConnection(ctx context.Context, a OfficialConnectionAttempt, status ConnectionStatus, now time.Time) (view OfficialConnectionView, err error) {
 	access, err := r.authorize(ctx, a.OrganizationID, true)
 	if err != nil {

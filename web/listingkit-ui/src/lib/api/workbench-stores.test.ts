@@ -46,6 +46,7 @@ const activateWorkbenchStoreService = (id: string, version: number, key: string)
     version,
     key,
     ORGANIZATION_ID,
+    "user-1",
   );
 const renewWorkbenchStoreService = (
   id: string,
@@ -59,6 +60,7 @@ const renewWorkbenchStoreService = (
     version,
     key,
     ORGANIZATION_ID,
+    "user-1",
   );
 const reactivateWorkbenchStoreService = (
   id: string,
@@ -72,6 +74,7 @@ const reactivateWorkbenchStoreService = (
     version,
     key,
     ORGANIZATION_ID,
+    "user-1",
   );
 const store = {
   id: STORE_ID,

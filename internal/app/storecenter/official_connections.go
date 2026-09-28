@@ -112,6 +112,25 @@ func (a *OfficialConnections) Complete(ctx context.Context, c storecenter.Comple
 	if attempt.State != "credential_received" {
 		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialAuthorizationRejected
 	}
+	return a.queryAttempt(ctx, attempt)
+}
+
+func (a *OfficialConnections) ResumeQuery(ctx context.Context, org, storeID, attemptID string) (storecenter.OfficialConnectionView, error) {
+	if a.provider == nil || a.protection == nil {
+		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable
+	}
+	attempt, err := a.store.ReadOfficialQueryAttempt(ctx, org, storeID, attemptID)
+	if err != nil {
+		return storecenter.OfficialConnectionView{}, err
+	}
+	app := a.provider.Application()
+	if attempt.AppID != app.AppID || attempt.AppVersion != app.Version {
+		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable
+	}
+	return a.queryAttempt(ctx, attempt)
+}
+
+func (a *OfficialConnections) queryAttempt(ctx context.Context, attempt storecenter.OfficialConnectionAttempt) (storecenter.OfficialConnectionView, error) {
 	credential, err := a.protection.Open(attempt, attempt.KeyID, attempt.Ciphertext)
 	if err != nil {
 		return storecenter.OfficialConnectionView{}, storecenter.ErrOfficialConnectionUnavailable

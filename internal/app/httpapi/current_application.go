@@ -98,6 +98,7 @@ type currentApplicationFactories struct {
 	buildMembership                 func(context.Context, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildAccountAllocation          func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer, routeAuthDependencies) (kernelmodule.Module, error)
 	buildMemberPointLimits          func(context.Context, *config.Config, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
+	buildMemberResources            func(context.Context, *config.Config, *gorm.DB, *gorm.DB, MembershipDependencies, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAudit               func(*gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountAuditWithMembership func(*gorm.DB, *gorm.DB, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildAccountProfile             func(*gorm.DB) (kernelmodule.Module, error)
@@ -213,6 +214,7 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		},
 		buildAccountAllocation: buildAccountResourceAllocationModule,
 		buildMemberPointLimits: buildMemberPointLimitModule,
+		buildMemberResources:   buildMemberResourcesModule,
 	}
 }
 
@@ -565,6 +567,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		modules = append(modules, points)
 	}
+	includeMemberResources := factories.buildMemberResources != nil && supplied.membership != nil && supplied.commercialOwnerDB != nil
+	if includeMemberResources {
+		resources, err := factories.buildMemberResources(ctx, cfg, supplied.commercialOwnerDB, supplied.storeCenterDB, *supplied.membership, authorizer)
+		if err != nil {
+			return nil, fmt.Errorf("build member resources: %w", err)
+		}
+		if resources == nil {
+			return nil, errors.New("member resources unavailable")
+		}
+		modules = append(modules, resources)
+	}
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err
@@ -575,6 +588,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		MemberPoints:        includeMemberPoints,
+		MemberResources:     includeMemberResources,
 		Resources:           includeResources,
 		SubjectVerification: factories.buildSubjectVerification != nil,
 	}
@@ -649,6 +663,7 @@ type currentApplicationOptionalRoutes struct {
 	AcquisitionImage    bool
 	ProductAgent        bool
 	MemberPoints        bool
+	MemberResources     bool
 }
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
@@ -727,6 +742,11 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	if optional.MemberPoints {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
 	}
+	if optional.MemberResources {
+		for _, descriptor := range (memberResourcesModule{}).routes() {
+			admitted = append(admitted, currentApplicationRoute{Method: descriptor.Method, Path: descriptor.Path})
+		}
+	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
 	if optional.Resources {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: commercialResourcesPath})
@@ -782,6 +802,15 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if descriptor.Path == memberResourcesBase || strings.HasPrefix(descriptor.Path, memberResourcesBase+"/") {
+			permission := authz.PermissionWorkbenchOrganizationMemberRead
+			if descriptor.Method != http.MethodGet {
+				permission = authz.PermissionWorkbenchOrganizationMemberManage
+			}
+			if !optional.MemberResources || descriptor.Module != memberResourcesModuleName || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver == nil || !descriptor.RejectUnreadRequestBody || descriptor.RequestTimeout != 15*time.Second || descriptor.Permission != permission || descriptor.Handler == nil {
+				return errors.New("member resources route loses live permission boundary")
+			}
+		}
 		if descriptor.Path == "/api/v1/workbench/stores" || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/stores/") {
 			if !optional.StoreCenter {
 				return errors.New("store center feature not admitted")

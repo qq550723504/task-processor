@@ -98,3 +98,31 @@ func (h *Handler) CompleteOfficialConnection(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, result)
 }
+
+func (h *Handler) ResumeOfficialConnectionQuery(c *gin.Context) {
+	identity, id, ok := h.itemIdentity(c)
+	if !ok {
+		return
+	}
+	if len(c.Request.Header.Values("If-Match")) != 0 || len(c.Request.Header.Values("Idempotency-Key")) != 0 {
+		writeInvalid(c, "headers", "not_allowed")
+		return
+	}
+	values, field, err := parseStringObject(c.Request.Body, map[string]bool{"attemptId": true})
+	if err != nil {
+		writeInvalid(c, field, "invalid")
+		return
+	}
+	attempt, err := canonicalUUID(values["attemptId"])
+	if err != nil {
+		writeInvalid(c, "attemptId", "invalid")
+		return
+	}
+	result, err := h.officialConnections.ResumeQuery(c.Request.Context(), identity.EffectiveOrganizationID, id, attempt)
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, result)
+}

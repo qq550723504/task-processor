@@ -39,6 +39,13 @@ const serviceLifecyclePayload = {
   resourceBalanceAfter: "2",
 };
 
+it("admits the official connection only for the captured user and same-origin write",async()=>{
+ vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost");
+ const request=new Request(`http://localhost/api/workbench/stores/${storeId}/connection/query`,{method:"POST",headers:{cookie:`${WORKBENCH_COOKIE_NAME}=org-b`,Origin:"http://localhost","X-Expected-User-ID":"user-1","X-Expected-Organization-ID":"org-b","Content-Type":"application/json"},body:JSON.stringify({attemptId:operationKey})});
+ const result=await buildWorkbenchUpstreamRequest(request,["stores",storeId,"connection","query"],"token","user-1");
+ expect(result).not.toBeInstanceOf(Response);
+});
+
 describe("buildWorkbenchUpstreamRequest", () => {
   it("fails closed before reading a Store body when the captured Organization differs from the selection cookie", async () => {
     const request = new Request("http://localhost/api/workbench/stores", {
@@ -1173,10 +1180,11 @@ describe("strict Store Center request boundary", () => {
     if (result instanceof Response) expect(result.status).toBe(400);
   });
 
-  it.each(["activate", "renew", "reactivate"])("keeps unopened %s service actions out of the BFF", async (action) => {
-    const result = await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, { method: "POST", headers: storeHeaders(), body: "{}" }), ["stores", storeId, action], "server-token");
-    expect(result).toBeInstanceOf(Response);
-    if (result instanceof Response) expect(result.status).toBe(404);
+  it.each(["activate", "renew", "reactivate"])("admits %s service actions with captured user, original key and version", async (action) => {
+    vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost");
+    const result = await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, { method: "POST", headers: storeHeaders({Origin:"http://localhost","X-Expected-User-ID":"user-1","Idempotency-Key":operationKey,"If-Match":'"2"',"Content-Type":"application/json"}), body: action === "activate" ? "{}":'{"periods":1}' }), ["stores", storeId, action], "server-token","user-1");
+    expect(result).not.toBeInstanceOf(Response);
+    if (!(result instanceof Response)) expect((result.init.headers as Headers).get("Idempotency-Key")).toBe(operationKey);
   });
 
 });

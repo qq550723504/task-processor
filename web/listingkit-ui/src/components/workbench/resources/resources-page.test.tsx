@@ -12,6 +12,7 @@ vi.mock("@/lib/api/commercial", async original => ({ ...await original<typeof im
 vi.mock("@/lib/api/commercial-billing", async original => ({ ...await original<typeof import("@/lib/api/commercial-billing")>(), getCommercialResources: state.resources }));
 vi.mock("@/lib/api/member-ai-point-limits", async original => ({ ...await original<typeof import("@/lib/api/member-ai-point-limits")>(), getMemberAIPointLimits: state.pointLimits }));
 vi.mock("@/lib/api/workbench-stores", async original => ({ ...await original<typeof import("@/lib/api/workbench-stores")>(), listWorkbenchStores: state.stores }));
+vi.mock("@/lib/api/member-resources",async original=>({...await original<typeof import("@/lib/api/member-resources")>(),getMemberResources:vi.fn().mockImplementation((scope:{expectedOrganizationId:string})=>Promise.resolve({schemaVersion:"member-resource-directory-v1",organizationId:scope.expectedOrganizationId,observedAt:"2026-09-29T00:00:00Z",members:[]}))}));
 let client: QueryClient;
 const tree = () => <QueryClientProvider client={client}><ResourcesPage /></QueryClientProvider>;
 beforeEach(() => {
@@ -63,7 +64,7 @@ it("projects real grants and usage while unknown resource and Store facts never 
   expect(topMetrics.compareDocumentPosition(memberDirectory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(memberDirectory.compareDocumentPosition(screen.getByRole("region", { name: "源账号资源" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const memberTable = within(memberDirectory).getByRole("table");
-  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "AI Token 额度", "数据额度", "操作"]);
+  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "AI Token 额度", "操作"]);
   expect(topMetrics.compareDocumentPosition(screen.getByRole("region", { name: "源账号资源" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByRole("group", { name: "成员资源筛选" })).toBeVisible();
   expect(screen.getByRole("link", { name: "管理源账号" })).toHaveAttribute("href", "/workbench/account/organization/resources/source-accounts");
@@ -117,8 +118,8 @@ it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED
   expect(await within(fallbackMetrics).findByText("9007199254740993 点")).toBeVisible();
   const allocationDirectory = screen.getByRole("region", { name: "成员 AI Token 分配" });
   expect(within(allocationDirectory).getByRole("alert")).toHaveTextContent("本次未能确认成员分配数据");
-  const memberTable = screen.getByRole("region", { name: "成员资源表格，可横向滚动" });
-  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "AI Token 额度", "数据额度", "操作"]);
+  const memberTable = screen.getByRole("region", { name: "成员 Token 表格，可横向滚动" });
+  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "AI Token 额度", "操作"]);
   expect(within(memberTable).queryByText("当前没有可展示的成员资源记录。")).not.toBeInTheDocument();
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
   expect(screen.queryByText("无订阅")).not.toBeInTheDocument();
@@ -126,7 +127,7 @@ it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED
   expect(screen.getByRole("link", { name: "管理源账号" })).toBeVisible();
 });
 
-it("shows unavailable owner fields without deriving them and keeps the real token allocation editable", async () => {
+it("keeps Token allocation separate from Store and purchased resources", async () => {
   state.context.roles = ["admin"];
   const fetcher = vi.fn().mockResolvedValue(Response.json({ schemaVersion: "account-member-token-allocation-v1", organizationId: "org-B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "user-1", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] }));
   vi.stubGlobal("fetch", fetcher);
@@ -137,7 +138,7 @@ it("shows unavailable owner fields without deriving them and keeps the real toke
   const table = within(directory).getByRole("table");
   const row = within(table).getByRole("row", { name: /成员甲/ });
   expect(await within(row).findByText("操作成员")).toBeVisible();
-  expect(within(row).getAllByText("未提供")).toHaveLength(3);
+  expect(within(row).queryByText("未提供")).not.toBeInTheDocument();
   expect(within(row).getByText("4500")).toBeVisible();
   expect(within(row).getByText("已消费 1200 · 剩余 3300")).toBeVisible();
   expect(within(row).getByRole("button", { name: "保存目标" })).toBeVisible();
