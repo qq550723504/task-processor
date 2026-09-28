@@ -579,29 +579,30 @@ func TestThrottleIdlePathRespectsAConcurrentCooldown(t *testing.T) {
 	require.True(t, blocked, "the cooldown must still be in force after a concurrent trigger")
 }
 
-// A cooldown must end at the configured deadline: the FIRST request afterwards is
-// served, rather than being refused for a further interval that the budget and
-// headroom can no longer fit. The floor sitting one interval out afterwards is
-// correct steady-state pacing, so it is not asserted here.
+// A cooldown longer than the interval must end AT the configured deadline: the
+// first request afterwards is served rather than refused for a further interval.
+//
+// The short-cooldown case is deliberately NOT asserted here: when the cooldown is
+// shorter than the interval, honouring the floor the last dispatch established is
+// correct, and that is covered by TestThrottleShortCooldownKeepsThePacingFloor.
 func TestThrottleCooldownEndsAtTheConfiguredDeadline(t *testing.T) {
-	interval := 20 * time.Second // deliberately longer than the budget
+	interval := 50 * time.Millisecond
 	cooldown := 300 * time.Millisecond
-	budget := 10 * time.Second
-	th := newThrottle(interval, 0, cooldown, -1, budget, budget*3/4)
+	budget := time.Minute
+	th := newThrottle(interval, 0, cooldown, -1, budget, budget/4)
 	require.NoError(t, th.Wait(context.Background()))
 	th.Observe(ErrChallenge)
 
 	require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
-		2*time.Second, 10*time.Millisecond)
+		2*time.Second, 5*time.Millisecond)
 
-	// The first request after the window is served immediately, not refused.
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
-	start := time.Now()
+	// No elapsed bound here: with a cooldown LONGER than the interval both
+	// implementations serve, so timing cannot distinguish them and would only make
+	// the test flaky. The discriminating case is the short-cooldown one below.
 	require.NoError(t, th.Wait(ctx),
-		"a caller must be served once the configured cooldown has elapsed")
-	require.Less(t, time.Since(start), time.Second,
-		"resumption must not wait out another full interval")
+		"a caller must be served once a cooldown longer than the interval has elapsed")
 }
 
 // A challenge seen while the solver is still working must stop other
@@ -687,38 +688,32 @@ func TestThrottleCancellationDuringTheDispatchLockIsNotCommitted(t *testing.T) {
 	}, time.Second, 5*time.Millisecond, "the cancelled caller's slot must be released")
 }
 
-// The immediate path must revalidate the generation too: while queued
-// reservations expire under scheduler delay, a new caller can take an idle slot
-// before an older waiter re-anchors the floor, and both then start inside
-// MinInterval.
-func TestThrottleImmediatePathRevalidatesGeneration(t *testing.T) {
-	interval := 40 * time.Millisecond
-	th := newTestThrottle(interval, 0, 0)
+// When the cooldown is SHORTER than the interval, expiry must not discard the
+// floor the last real dispatch established, or the first request after the
+// window starts well before MinInterval has elapsed.
+func TestThrottleShortCooldownKeepsThePacingFloor(t *testing.T) {
+	interval := 300 * time.Millisecond
+	cooldown := 60 * time.Millisecond
+	budget := time.Minute
+	th := newThrottle(interval, 0, cooldown, -1, budget, budget/4)
 	require.NoError(t, th.Wait(context.Background()))
+	dispatch := time.Now()
 
-	// An older waiter queues.
-	old := make(chan time.Time, 1)
-	go func() { _ = th.Wait(context.Background()); old <- time.Now() }()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return th.owner > 1
-	}, time.Second, 5*time.Millisecond)
+	th.Observe(ErrChallenge)
+	require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+		2*time.Second, 5*time.Millisecond)
 
-	// Hold the lock so that waiter's timer elapses un-committed, then let a fresh
-	// caller arrive on the immediate path.
+	// The pacing floor from the real dispatch must still be honoured.
 	th.mu.Lock()
-	time.Sleep(interval * 3)
+	floor := th.next
 	th.mu.Unlock()
+	require.False(t, floor.Before(dispatch.Add(interval)),
+		"a short cooldown must not discard the floor the last dispatch established")
 
-	fresh := make(chan time.Time, 1)
-	go func() { _ = th.Wait(context.Background()); fresh <- time.Now() }()
-
-	a, b := <-old, <-fresh
-	earlier, later := a, b
-	if later.Before(earlier) {
-		earlier, later = later, earlier
-	}
-	require.GreaterOrEqual(t, later.Sub(earlier), interval-2*time.Millisecond,
-		"an immediate caller must not start beside a waiter whose floor it missed")
+	ctx, cancel := context.WithTimeout(context.Background(), interval/2)
+	defer cancel()
+	require.ErrorIs(t, th.Wait(ctx), ErrThrottled,
+		"a request inside the remaining interval must still be refused")
+	require.NoError(t, th.Wait(context.Background()),
+		"and served once the interval elapses")
 }

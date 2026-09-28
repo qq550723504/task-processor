@@ -163,10 +163,16 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		// Resume at the configured deadline. Observe had pushed the floor to
 		// cooldown+interval; leaving it there would refuse every request for a
 		// further interval - well past the window the operator configured - because
-		// the budget and headroom no longer fit. The cooldown itself already served
-		// as the wait, so the floor returns to now and the next caller is paced
-		// normally from there.
-		t.next = now
+		// the budget and headroom no longer fit.
+		//
+		// But the floor must neither be discarded nor extended: when the cooldown is
+		// LONGER than the interval the last dispatch's floor is already past and
+		// returning to now resumes at the deadline, while when the cooldown is
+		// SHORTER that floor is still ahead and must stand, or the first request would
+		// start well before MinInterval has elapsed.
+		if t.next.Before(now) {
+			t.next = now
+		}
 	}
 	if t.blocked {
 		t.mu.Unlock()
@@ -220,7 +226,14 @@ func (t *Throttle) Wait(ctx context.Context) error {
 			return t.Wait(ctx)
 		}
 		if err := ctx.Err(); err != nil {
-			if t.owner == mine {
+			// Roll back only while this reservation is still the newest. If another
+			// waiter already re-anchored the floor, restoring this caller's stale
+			// prevNext would let the next caller start beside that waiter.
+			if t.generationLocked(seen) {
+				if t.owner == mine {
+					t.prevNext = time.Time{}
+				}
+			} else if t.owner == mine {
 				t.next = t.prevNext
 				t.prevNext = time.Time{}
 			}
