@@ -10,7 +10,22 @@ const int64 = z.string().max(20).regex(/^(0|-?[1-9][0-9]*)$/).refine(value => {
   try { const parsed = BigInt(value); return parsed >= BigInt("-9223372036854775808") && parsed <= BigInt("9223372036854775807"); } catch { return false; }
 });
 const nonnegative = int64.refine(value => BigInt(value) >= BigInt(0));
+export const COMMERCIAL_RESOURCE_MAX_BYTES = 16 * 1024;
 const timestamp = z.string().max(40).regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/).refine(value => Number.isFinite(Date.parse(value)));
+const resourceTimestamp = timestamp.refine(value => {
+  try { return Number(value.slice(0, 4)) > 0 && new Date(value).toISOString().slice(0, 19) === value.slice(0, 19); } catch { return false; }
+});
+// Do not call BigInt in a refinement that can run after an invalid string.
+const resourceQuantity = int64.refine(value => /^(0|[1-9][0-9]*)$/.test(value));
+const resourceType = z.enum(["store_renewal_period", "ai_point", "data_row"]);
+const resourceBase = { resource_type: resourceType, unit: z.enum(["period", "point", "row"]) };
+const resourceBalance = z.discriminatedUnion("state", [
+  z.object({ ...resourceBase, state: z.literal("recorded"), available: resourceQuantity, reserved: resourceQuantity, consumed: resourceQuantity, debt: resourceQuantity, updated_at: resourceTimestamp }).strict(),
+  z.object({ ...resourceBase, state: z.literal("not_recorded"), available: z.null(), reserved: z.null(), consumed: z.null(), debt: z.null(), updated_at: z.null() }).strict(),
+]).refine(value => value.unit === ({ store_renewal_period: "period", ai_point: "point", data_row: "row" } as const)[value.resource_type] && (value.state !== "recorded" || value.debt === "0" || value.available === "0"));
+const resourceBalances = z.object({ schema_version: z.literal("organization-resource-balances-v1"), organization_id: id, observed_at: resourceTimestamp, resources: z.array(resourceBalance).length(3) }).strict().refine(value => new Set(value.resources.map(v => v.resource_type)).size === 3);
+export type CommercialResources = z.infer<typeof resourceBalances>;
+export const parseCommercialResources = (value: unknown) => { const parsed = resourceBalances.safeParse(value); return parsed.success ? parsed.data : null; };
 const wallet = z.object({ organization_id: id, currency: z.literal("CNY"), available_minor: nonnegative, reserved_minor: nonnegative, debt_minor: nonnegative, lifetime_topup_minor: nonnegative, lifetime_spend_minor: nonnegative, version: nonnegative.refine(value => BigInt(value) > BigInt(0)), observed_at: timestamp }).strict().refine(value => !(BigInt(value.available_minor) > BigInt(0) && BigInt(value.debt_minor) > BigInt(0)));
 const walletEntry = z.object({ entry_id: id, currency: z.literal("CNY"), entry_type: z.enum(["TOP_UP_CREDIT", "PURCHASE_RESERVE", "PURCHASE_COMMIT", "PURCHASE_RELEASE", "REFUND_REVERSAL", "CHARGEBACK_REVERSAL", "DEBT_REPAYMENT", "REFUND_RESERVE", "REFUND_CONFIRM", "REFUND_RELEASE"]), available_delta_minor: int64, reserved_delta_minor: int64, debt_delta_minor: int64, available_after_minor: nonnegative, reserved_after_minor: nonnegative, debt_after_minor: nonnegative, order_id: id.optional(), payment_id: id.optional(), source_id: text, occurred_at: timestamp }).strict();
 const walletEntryPage = z.object({ organization_id: id, items: z.array(walletEntry).max(50), next_cursor: z.string().max(2048) }).strict();
@@ -47,12 +62,12 @@ export class CommercialBillingReadError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly requestId = "") { super("Commercial billing read could not be completed"); }
 }
 
-function parseFailure(payload: unknown, status: number) {
+export function parseCommercialBillingFailure(payload: unknown, status: number) {
   const parsed = parseWorkbenchErrorEnvelopePayload(payload);
   return parsed.success && errorStatuses[parsed.data.code] === status ? parsed.data : null;
 }
 
-async function read<T extends { organization_id: string }>(path: string, expectedUserId: string, expectedOrganizationId: string, parser: (payload: unknown) => T | null, signal?: AbortSignal): Promise<T> {
+async function read<T extends { organization_id: string }>(path: string, expectedUserId: string, expectedOrganizationId: string, parser: (payload: unknown) => T | null, signal?: AbortSignal, maxBytes = MAX_BYTES): Promise<T> {
   if (!id.safeParse(expectedUserId).success || !id.safeParse(expectedOrganizationId).success) throw new CommercialBillingReadError(400, "INVALID_REQUEST");
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -62,13 +77,13 @@ async function read<T extends { organization_id: string }>(path: string, expecte
   try {
     controller.signal.throwIfAborted();
     const response = await fetch(path, { method: "GET", headers: { Accept: "application/json", "X-Expected-User-ID": expectedUserId, "X-Expected-Organization-ID": expectedOrganizationId }, cache: "no-store", redirect: "manual", signal: controller.signal });
-    const payload = await readBoundedStrictJSON(response, response.status === 200 ? MAX_BYTES : 8192, controller.signal);
+    const payload = await readBoundedStrictJSON(response, response.status === 200 ? maxBytes : 8192, controller.signal);
     controller.signal.throwIfAborted();
     if (response.status === 200) {
       const result = parser(payload);
       if (result && result.organization_id === expectedOrganizationId) return result;
     }
-    const failure = parseFailure(payload, response.status);
+    const failure = parseCommercialBillingFailure(payload, response.status);
     throw failure ? new CommercialBillingReadError(response.status, failure.code, failure.requestId) : new CommercialBillingReadError(502, "INVALID_UPSTREAM_RESPONSE");
   } catch (error) {
     if (controller.signal.aborted) throw new CommercialBillingReadError(504, "DEADLINE_EXCEEDED");
@@ -82,6 +97,9 @@ async function read<T extends { organization_id: string }>(path: string, expecte
 
 export function getCommercialWallet(userId: string, organizationId: string, signal?: AbortSignal) {
   return read("/api/workbench/commercial/wallet", userId, organizationId, parseCommercialWallet, signal);
+}
+export function getCommercialResources(userId: string, organizationId: string, signal?: AbortSignal) {
+  return read("/api/workbench/commercial/resources", userId, organizationId, parseCommercialResources, signal, COMMERCIAL_RESOURCE_MAX_BYTES);
 }
 export function getCommercialWalletEntries(userId: string, organizationId: string, signal?: AbortSignal, cursor?: string) {
   const query = new URLSearchParams({ limit: "50" });

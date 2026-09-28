@@ -19,13 +19,14 @@
 .sectionHeading p { color: var(--muted-foreground); font-size: 12px; }
 .threeColumns, .resourceSummary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
 .resourceSummary { margin-top: 14px; }
+.resourceSummary > div { min-width: 0; overflow-wrap: anywhere; }
 .resourceSummary > div + div { border-left: 1px solid var(--border); padding-left: 20px; }
 .resourceSummary p, .resourceSummary small { color: var(--muted-foreground); font-size: 12px; }
 .resourceSummary strong { display: block; font-size: 22px; color: var(--resource-accent); margin: 6px 0; }
 .blue { --resource-accent: var(--console-blue); }
 .teal { --resource-accent: var(--primary); }
 .purple { --resource-accent: var(--console-purple); }
-.resourceCard { min-height: 220px; padding: 20px; border-radius: 13px; background: color-mix(in srgb, var(--card) 65%, var(--background)); }
+.resourceCard { min-width: 0; overflow-wrap: anywhere; min-height: 220px; padding: 20px; border-radius: 13px; background: color-mix(in srgb, var(--card) 65%, var(--background)); }
 .cardHeading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .cardHeading span { color: var(--resource-accent); font-size: 12px; }
 .resourceValue { color: var(--resource-accent); font-size: 22px; font-weight: 700; margin: 16px 0 20px; }

@@ -80,6 +80,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
+	buildCommercialResources        func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercial                 func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
@@ -182,7 +183,8 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		buildCommercial: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildCommercialReadModuleFromDatabase(ctx, db, authorizer)
 		},
-		buildCommercialBilling: buildCommercialBillingModule,
+		buildCommercialBilling:   buildCommercialBillingModule,
+		buildCommercialResources: buildCommercialResourcesModule,
 		buildAccountAudit: func(sourceDB, commercialDB, resourceDB *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			return buildAccountAuditModule(ctx, sourceDB, commercialDB, nil, resourceDB, authorizer, projectID)
 		},
@@ -333,6 +335,17 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	modules = append(modules, sms)
 	var subscriptionRecovery func(context.Context) error
+	includeResources := supplied.commercialOwnerDB != nil && factories.buildCommercialResources != nil
+	if includeResources {
+		resources, err := factories.buildCommercialResources(ctx, supplied.commercialOwnerDB)
+		if err != nil {
+			return nil, fmt.Errorf("build current commercial resources: %w", err)
+		}
+		if resources == nil {
+			return nil, errors.New("current commercial resources unavailable")
+		}
+		modules = append(modules, resources)
+	}
 	var topUpRecovery func(context.Context) error
 	// Billing requires both its commercial owner and the canonical money owner.
 	if (cfg.WalletTopUp.Alipay.Enabled || cfg.WalletTopUp.WeChat.Enabled) && supplied.moneyOwnerDB == nil {
@@ -498,6 +511,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		MemberPoints:        includeMemberPoints,
+		Resources:           includeResources,
 		SubjectVerification: factories.buildSubjectVerification != nil,
 	}
 	if err := validateCurrentApplicationRoutesInternal(bundle.routes, factories.buildAccountAudit != nil, factories.buildAcquisition != nil, cfg.Referrals.Enabled, factories.buildMembership != nil, includeAccountProfile, includeAccountAllocation, factories.buildBrowserCapture != nil, routeFeatures); err != nil {
@@ -557,6 +571,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	Resources           bool
 	ZitadelSMS          bool
 	SubjectVerification bool
 	AcquisitionImage    bool
@@ -636,6 +651,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: memberPointLimitBase}, currentApplicationRoute{Method: http.MethodPut, Path: memberPointLimitBase + "/:member_id"})
 	}
 	expected := make(map[currentApplicationRoute]struct{}, len(admitted))
+	if optional.Resources {
+		admitted = append(admitted, currentApplicationRoute{Method: http.MethodGet, Path: commercialResourcesPath})
+	}
 	for _, route := range admitted {
 		expected[route] = struct{}{}
 	}
@@ -687,6 +705,9 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if descriptor.Path == commercialResourcesPath && (descriptor.Module != commercialResourcesModuleName || descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver != nil || descriptor.Permission != authz.PermissionWorkbenchCommercialRead || descriptor.RequestTimeout != 15*time.Second || !descriptor.RejectUnreadRequestBody || descriptor.Handler == nil) {
+			return errors.New("commercial resources route loses live read boundary")
+		}
 		if strings.HasPrefix(descriptor.Path, productAgentBase) && (descriptor.Module != "product-agent" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.Permission != authz.PermissionListingKitAdminWrite || descriptor.RequestTimeout != 2*time.Minute) {
 			return errors.New("product agent loses fresh permission boundary")
 		}
