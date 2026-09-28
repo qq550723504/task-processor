@@ -63,7 +63,16 @@ working directory with an allowlisted environment; the launcher rejects every
 the existing database through two roles:
 
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
-  `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`.
+  `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`, **plus** — in
+  current-application mode — the account-center and verification tables that
+  `sourceaccountregistry` verifies for the same pool: `SELECT/INSERT/UPDATE` on
+  `account_business_profiles` and `personal_verification_applications`,
+  `SELECT/INSERT` on `account_business_profile_audit_events`,
+  `subject_verification_applications` and `subject_verification_messages`, plus
+  `USAGE/SELECT` on `account_business_profile_audit_events_id_seq`. Those tables
+  are installed by the SA1 schema initializer; it is the grant that was missing.
+  A launch **without** `--current-application` does not receive them, because that
+  composition is not verified against them.
 - `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
   commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
   **not** a read-only *grant*, though the role keeps a read-only session setting:
