@@ -38,16 +38,24 @@ export type AccountPreferences = z.infer<typeof accountPreferencesSchema>;
 export type RegionInput = z.infer<typeof regionInputSchema>;
 type Scope = { expectedUserId: string; signal?: AbortSignal };
 export function getAccountFacts(scope: Scope) {
-  return request("facts", scope, accountFactsSchema);
+  return request("/api/account/facts", scope, accountFactsSchema);
+}
+export function getAccountSessionAuthentication(scope: Scope) {
+  const schema = z.object({
+    ok: z.literal(true),
+    identity: z.object({ userId: accountFactSubject }),
+    authenticatedAt: timestamp.nullable(),
+  }).transform(({ identity, authenticatedAt }) => ({ userId: identity.userId, authenticatedAt }));
+  return request("/api/zitadel-auth/session", scope, schema);
 }
 export function getAccountPreferences(scope: Scope) {
-  return request("preferences", scope, accountPreferencesSchema);
+  return request("/api/account/preferences", scope, accountPreferencesSchema);
 }
 export function saveAccountPreferences(scope: Scope & { input: RegionInput }) {
-  return request("preferences", scope, accountPreferencesSchema, scope.input);
+  return request("/api/account/preferences", scope, accountPreferencesSchema, scope.input);
 }
 async function request<T extends { userId: string }>(
-  kind: "facts" | "preferences",
+  path: "/api/account/facts" | "/api/account/preferences" | "/api/zitadel-auth/session",
   scope: Scope,
   schema: z.ZodType<T>,
   input?: RegionInput,
@@ -69,7 +77,7 @@ async function request<T extends { userId: string }>(
       "X-Expected-User-ID": scope.expectedUserId,
     });
     if (input) headers.set("Content-Type", "application/json");
-    const response = await fetch(`/api/account/${kind}`, {
+    const response = await fetch(path, {
       method: input ? "PUT" : "GET",
       headers,
       ...(input ? { body: JSON.stringify(input) } : {}),

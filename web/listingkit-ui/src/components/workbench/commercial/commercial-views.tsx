@@ -37,7 +37,7 @@ export function EntitlementsOverview({ data }: { data: CommercialOverview }) {
         {data.entitlements.length === 0 ? <p>暂无已授予权益</p> : <div className={styles.grants}>{data.entitlements.map(grant => <article key={grant.module_code}>
           <h3>{moduleLabels[grant.module_code] ?? grant.module_code}</h3><Validity row={grant} />
           {grant.limits.length ? <dl className={styles.limits}>{grant.limits.map(limit => <div key={limit.metric}><dt>{metricLabels[limit.metric] ?? limit.metric}</dt><dd>{limit.kind === "unlimited" ? `不限额（${units[limit.unit]}）` : `${limit.value} ${units[limit.unit]}`}</dd></div>)}</dl> : <p className={styles.subtle}>未提供已解释的限制；不能判断为不限额。</p>}
-          {grant.uninterpreted_limit_count > 0 ? <p className={styles.subtle}>另有 {grant.uninterpreted_limit_count} 项限制尚未解释。</p> : null}
+          {grant.uninterpreted_limit_count > 0 ? <p className={styles.subtle}>另有 {grant.uninterpreted_limit_count} 项配置未在此摘要展开；Token 分配额度单独读取。</p> : null}
         </article>)}</div>}
       </Panel>
       <Panel title="资源与余额说明"><p className={styles.subtle}>成员 AI Token 分配请查看“我的账户 → 企业空间 → 资源与额度”；可用状态和操作权限以该页实际读取结果为准。</p>

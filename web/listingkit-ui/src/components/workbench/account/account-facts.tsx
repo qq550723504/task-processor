@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   getAccountFacts,
+  getAccountSessionAuthentication,
   getAccountPreferences,
   saveAccountPreferences,
   type RegionInput,
@@ -26,28 +27,20 @@ export function IdentityDates({ subject }: { subject: string }) {
     gcTime: 0,
     staleTime: 0,
   });
-  if (query.isPending || query.isFetching)
-    return <span className={styles.identityMeta}>正在读取注册与登录时间…</span>;
-  if (query.isError)
-    return (
-      <span className={styles.identityMeta} role="status">
-        注册与登录时间暂不可用
-      </span>
-    );
+  const authentication = useQuery({
+    queryKey: ["account-session-authentication", subject],
+    queryFn: ({ signal }) => getAccountSessionAuthentication({ expectedUserId: subject, signal }),
+    retry: false, gcTime: 0, staleTime: 0,
+  });
   return (
     <span className={styles.identityMeta}>
       注册时间：
-      <time dateTime={query.data.registeredAt}>
-        {date(query.data.registeredAt)}
-      </time>{" "}
-      · 最近登录：
-      {query.data.lastLogin ? (
-        <time dateTime={query.data.lastLogin}>
-          {date(query.data.lastLogin)}
-        </time>
-      ) : (
-        "暂无登录记录"
-      )}
+      {query.isPending || query.isFetching ? "正在读取…" : query.isError ? "暂不可用" :
+        <time dateTime={query.data.registeredAt}>{date(query.data.registeredAt)}</time>}{" "}
+      · 当前会话认证时间：
+      {authentication.isPending || authentication.isFetching ? "正在读取…" :
+        authentication.isError || !authentication.data.authenticatedAt ? "当前会话认证时间暂不可用" :
+          <time dateTime={authentication.data.authenticatedAt}>{date(authentication.data.authenticatedAt)}</time>}
     </span>
   );
 }
