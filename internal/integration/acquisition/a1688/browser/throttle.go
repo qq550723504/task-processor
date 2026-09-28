@@ -165,11 +165,14 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		// further interval - well past the window the operator configured - because
 		// the budget and headroom no longer fit.
 		//
-		// But the floor must neither be discarded nor extended: when the cooldown is
-		// LONGER than the interval the last dispatch's floor is already past and
-		// returning to now resumes at the deadline, while when the cooldown is
-		// SHORTER that floor is still ahead and must stand, or the first request would
-		// start well before MinInterval has elapsed.
+		// No real acquisition can start during a cooldown, so the floor here is
+		// always the one Observe pushed; whenever a cooldown longer than the interval
+		// has elapsed it is already in the past and the reset resumes at the
+		// configured deadline. A cooldown shorter than the interval leaves a real
+		// dispatch's floor in the future, and that one stands. So: with a
+		// cooldown LONGER than the interval it is already past and resumption is
+		// immediate, while with a cooldown SHORTER it is still ahead and must stand,
+		// or the first request would start before MinInterval has elapsed.
 		if t.next.Before(now) {
 			t.next = now
 		}
@@ -399,9 +402,7 @@ func (t *Throttle) Observe(err error) {
 	t.blocked = true
 	t.cooledAt = time.Now().Add(t.ChallengeCooldown)
 	// Push the interval floor past the cooldown so work resumes paced.
-	if after := t.cooledAt.Add(t.MinInterval); after.After(t.next) {
-		t.next = after
-	}
+	t.next = t.cooledAt.Add(t.MinInterval)
 }
 
 // Reset clears a cooldown, for an operator-confirmed recovery. It is not called

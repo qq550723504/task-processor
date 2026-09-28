@@ -717,3 +717,37 @@ func TestThrottleShortCooldownKeepsThePacingFloor(t *testing.T) {
 	require.NoError(t, th.Wait(context.Background()),
 		"and served once the interval elapses")
 }
+
+// Both halves of the cooldown contract at once: with a cooldown LONGER than the
+// interval the synthetic floor Observe pushed must be cleared so the window means
+// what it says, and with a cooldown SHORTER the floor from a real dispatch must
+// still be honoured.
+func TestThrottleCooldownRespectsBothDirections(t *testing.T) {
+	budget := time.Minute
+
+	t.Run("long cooldown resumes at the deadline", func(t *testing.T) {
+		th := newThrottle(50*time.Millisecond, 0, 300*time.Millisecond, -1, budget, budget/4)
+		require.NoError(t, th.Wait(context.Background()))
+		th.Observe(ErrChallenge)
+		require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+			2*time.Second, 5*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), budget)
+		defer cancel()
+		require.NoError(t, th.Wait(ctx),
+			"the synthetic resume floor must not extend past the configured window")
+	})
+
+	t.Run("short cooldown keeps the real dispatch floor", func(t *testing.T) {
+		th := newThrottle(300*time.Millisecond, 0, 60*time.Millisecond, -1, budget, budget/4)
+		require.NoError(t, th.Wait(context.Background()))
+		dispatch := time.Now()
+		th.Observe(ErrChallenge)
+		require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+			2*time.Second, 5*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+		require.ErrorIs(t, th.Wait(ctx), ErrThrottled,
+			"a real dispatch floor must survive a shorter cooldown")
+		require.True(t, dispatch.Add(300*time.Millisecond).After(time.Now()))
+	})
+}
