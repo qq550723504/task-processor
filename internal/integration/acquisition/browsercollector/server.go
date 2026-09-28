@@ -91,6 +91,11 @@ func writeAcquireError(w http.ResponseWriter, err error) {
 	case errors.Is(err, browser.ErrCapacity):
 		// A concurrency-limit rejection is retryable, not a source failure.
 		WriteError(w, http.StatusServiceUnavailable, CodeCapacity)
+	case errors.Is(err, browser.ErrThrottled):
+		// A self-imposed rate floor is retryable. Reporting it as a source failure
+		// would tell the user 1688 is unavailable when this collector simply chose
+		// not to call out right now.
+		WriteError(w, http.StatusServiceUnavailable, CodeCapacity)
 	case errors.Is(err, browser.ErrRejected):
 		// The provider's own egress policy refused this source. Chromium ran fine,
 		// so this is a source failure, not a collector outage.

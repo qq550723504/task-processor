@@ -40,6 +40,10 @@ var (
 	// provider's own egress policy, so the source was never usable rather than
 	// the collector being unavailable.
 	ErrRejected = errors.New("public source rejected by the egress allowlist")
+	// ErrThrottled reports that this collector is refusing work because a recent
+	// challenge put it into cooldown. It is retryable: the caller should come back
+	// after the cooldown rather than treat the source as unavailable.
+	ErrThrottled = errors.New("browser collector in challenge cooldown")
 	// ErrCapacity reports that this collector is already running its maximum
 	// number of concurrent browser acquisitions (design D8).
 	ErrCapacity = errors.New("browser collector at concurrency limit")
@@ -78,6 +82,12 @@ type Options struct {
 	// MaxResponseBytes aborts an allowed subresource whose declared or observed
 	// body exceeds this size, before Chromium materializes it (design D8).
 	MaxResponseBytes int64
+	// Rate floors the collection rate of this collector. Zero values use the
+	// conservative defaults in Throttle; see that type for why the rate is
+	// governed here and not by the number of exit IPs.
+	MinInterval       time.Duration
+	Jitter            float64
+	ChallengeCooldown time.Duration
 	// navigateURLOverride replaces the navigation target. It exists only so the
 	// browser fixture test can drive a real Chromium against a loopback fixture
 	// page; production never sets it (the target is always source.URL).
@@ -160,6 +170,8 @@ type Client struct {
 	// separate Chromium, so a burst across organizations would otherwise exhaust
 	// CPU, memory and the shared egress IP.
 	slots chan struct{}
+	// throttle paces acquisitions and stops the world after a challenge.
+	throttle *Throttle
 }
 
 // The browser provider must satisfy the current owner's acquisition contract.
@@ -171,7 +183,11 @@ var _ sourcing.PublicAcquirer = (*Client)(nil)
 func (c *Client) maxConcurrentInternal() int { return c.opts.maxConcurrent() }
 
 func New(opts Options) *Client {
-	return &Client{opts: opts, slots: make(chan struct{}, opts.maxConcurrent())}
+	return &Client{
+		opts:     opts,
+		slots:    make(chan struct{}, opts.maxConcurrent()),
+		throttle: newThrottle(opts.MinInterval, opts.Jitter, opts.ChallengeCooldown),
+	}
 }
 
 // Acquire fetches one anonymous public product page and returns untrusted
@@ -190,7 +206,6 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.opts.budget())
 	defer cancel()
-	deadlineAt, _ := ctx.Deadline()
 
 	// Collector-wide concurrency cap (D8). Taken before any browser work so an
 	// over-capacity burst is rejected instead of launching more Chromium
@@ -204,6 +219,22 @@ func (c *Client) Acquire(ctx context.Context, source sourcing.AcquisitionSource)
 		return sourcing.AcquisitionEvidence{}, ErrCapacity
 	}
 
+	// Rate gate runs before any browser work so a paced collector never spends
+	// a Chromium on a request the process has already decided to refuse.
+	if err := c.throttle.Wait(ctx); err != nil {
+		return sourcing.AcquisitionEvidence{}, err
+	}
+
+	evidence, outcome := c.collect(ctx, source)
+	// A challenge is the only outcome that stops the process: it is the observed
+	// escalation, and continuing immediately is what deepens it.
+	c.throttle.Observe(outcome)
+	return evidence, outcome
+}
+
+// collect performs one paced acquisition. Its outcome is observed by Acquire.
+func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource) (sourcing.AcquisitionEvidence, error) {
+	deadlineAt, _ := ctx.Deadline()
 	pw, err := playwright.Run()
 	if err != nil {
 		return sourcing.AcquisitionEvidence{}, fmt.Errorf("%w: start playwright: %v", ErrUnavailable, err)

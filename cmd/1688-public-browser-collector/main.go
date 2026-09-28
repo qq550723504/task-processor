@@ -44,13 +44,16 @@ func main() {
 }
 
 type options struct {
-	listen          string
-	browserPath     string
-	headless        bool
-	timeout         time.Duration
-	credential      string
-	allowedOrigins  string
-	shutdownTimeout time.Duration
+	listen            string
+	browserPath       string
+	headless          bool
+	timeout           time.Duration
+	credential        string
+	allowedOrigins    string
+	shutdownTimeout   time.Duration
+	minInterval       time.Duration
+	jitter            float64
+	challengeCooldown time.Duration
 }
 
 func run(ctx context.Context, args []string) error {
@@ -62,6 +65,9 @@ func run(ctx context.Context, args []string) error {
 	fs.DurationVar(&opts.timeout, "timeout", browser.DefaultTimeout, "per-acquisition budget; must stay below the application acquisition route budget (sourcing.AcquisitionTimeout)")
 	fs.StringVar(&opts.allowedOrigins, "allowed-origins", strings.Join(browser.DefaultAllowedOrigins, ","), "comma-separated egress allowlist")
 	fs.DurationVar(&opts.shutdownTimeout, "shutdown-timeout", 15*time.Second, "graceful shutdown budget")
+	fs.DurationVar(&opts.minInterval, "min-interval", browser.DefaultMinInterval, "floor between acquisition starts; the 1688 challenge is frequency-triggered, so this is the primary control")
+	fs.Float64Var(&opts.jitter, "jitter", browser.DefaultJitterFraction, "random extra fraction of min-interval, so collectors do not synchronise")
+	fs.DurationVar(&opts.challengeCooldown, "challenge-cooldown", browser.DefaultChallengeCooldown, "how long to refuse work after a challenge is observed")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -86,10 +92,13 @@ func run(ctx context.Context, args []string) error {
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
 	provider := browser.New(browser.Options{
-		ExecutablePath: opts.browserPath,
-		Headless:       opts.headless,
-		Budget:         opts.timeout,
-		AllowedOrigins: origins,
+		ExecutablePath:    opts.browserPath,
+		Headless:          opts.headless,
+		Budget:            opts.timeout,
+		AllowedOrigins:    origins,
+		MinInterval:       opts.minInterval,
+		Jitter:            opts.jitter,
+		ChallengeCooldown: opts.challengeCooldown,
 	})
 	handler, err := browsercollector.Handler(browsercollector.Options{
 		Provider: provider,

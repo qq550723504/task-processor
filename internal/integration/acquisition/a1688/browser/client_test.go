@@ -115,7 +115,7 @@ func serveFixture(t *testing.T, page string) *httptest.Server {
 func TestBrowserAcquireExtractsContextEvidence(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, fixtureContextPage)
-	client := New(Options{
+	client := newTestClient(Options{
 		ExecutablePath:      browser,
 		Headless:            true,
 		AllowedOrigins:      []string{srv.URL},
@@ -145,7 +145,7 @@ func TestBrowserAcquireExtractsContextEvidence(t *testing.T) {
 func TestBrowserAcquireReportsChallenge(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, fixtureChallengePage)
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	_, err = client.Acquire(context.Background(), source)
@@ -256,7 +256,7 @@ func TestDefaultAllowedOriginsRejectPrivateAndLoopback(t *testing.T) {
 func TestBrowserAcquireSolvesSliderChallengeOnce(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, sliderChallengePage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -269,7 +269,7 @@ func TestBrowserAcquireSolvesSliderChallengeOnce(t *testing.T) {
 func TestBrowserAcquireFailsHonestlyWhenChallengePersists(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, stubbornChallengePage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	_, err = client.Acquire(context.Background(), source)
@@ -284,7 +284,7 @@ func TestBrowserAcquireReportsLoginWallAsChallenge(t *testing.T) {
 	// A page whose title looks like a normal site title and which carries no
 	// product, served from a login-wall URL: the only reliable signal is the URL.
 	srv := serveFixture(t, `<!doctype html><html><head><title>Normal looking site title</title></head><body>no product here</body></html>`)
-	client := New(Options{
+	client := newTestClient(Options{
 		ExecutablePath:      browser,
 		Headless:            true,
 		AllowedOrigins:      []string{srv.URL},
@@ -356,7 +356,7 @@ func TestBrowserAcquireDropsUnrepresentableNumericIdentifiers(t *testing.T) {
 	// 9007199254740993 loses its last digit as a JavaScript number, and the SKU
 	// key has more segments than skuProps supplies names for.
 	srv := serveFixture(t, sliderChallengePageWithUnsafeNumbers())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -402,7 +402,7 @@ window.context = {"result":{"data":{
 func TestBrowserAcquireCustomItemKeepsDescriptionAndExactQuantity(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, customItemPage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -438,7 +438,7 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 func TestBrowserAcquireKeepsExactFractionalPrice(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, customItemPage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -468,7 +468,7 @@ func TestAbsoluteURLResolution(t *testing.T) {
 func TestBrowserAcquireRejectsOversizedSourceFacts(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, oversizedTitlePage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	// An oversized title is the product identity, so the acquisition is refused
@@ -490,7 +490,7 @@ window.context = {"result":{"data":{"productTitle":{"fields":{"title":"` + strin
 func TestBrowserAcquireCollectsKnownLegacyShapes(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, knownShapesPage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -527,7 +527,7 @@ window.context = {"result":{"data":{
 func TestBrowserAcquireCollectsDirectCustomItemIdentity(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, directCustomItemPage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -559,7 +559,7 @@ func TestBrowserAcquireCollectsBlockLocalSkuModels(t *testing.T) {
 		"skuModelOrigin": blockLocalCustomItemPage("skuModelOrigin"),
 	} {
 		srv := serveFixture(t, page)
-		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 		source, err := sourcing.Canonical1688Source("981645030344")
 		require.NoError(t, err)
 		evidence, err := client.Acquire(context.Background(), source)
@@ -585,7 +585,7 @@ window.__INIT_DATA = {"data":{"main":{"data":{
 func TestBrowserAcquireDoesNotDuplicateCustomItemVariants(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, duplicateCustomItemPage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -614,7 +614,7 @@ window.__INIT_DATA = {
 func TestBrowserAcquireHandlesArrayAttributesAndGlobalSkuPriority(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, arrayAttrsAndGlobalSkuPage())
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -644,7 +644,7 @@ func TestBrowserAcquireRecoversOfferIdFromCanonicalURL(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, noTempModelPage())
 	// Navigate a canonical-looking /offer/<id>.html path so the URL recovery applies.
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL + "/offer/981645030344.html"})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL + "/offer/981645030344.html"})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -665,7 +665,7 @@ window.context = {"result":{"data":{
 func TestBrowserAcquireDropsOversizedCollection(t *testing.T) {
 	browser := fixtureBrowserPath(t)
 	srv := serveFixture(t, manyImagesPage(maxImages+5))
-	client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+	client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 	source, err := sourcing.Canonical1688Source("981645030344")
 	require.NoError(t, err)
 	evidence, err := client.Acquire(context.Background(), source)
@@ -705,7 +705,7 @@ func TestBrowserAcquireDropsLossyVariantSets(t *testing.T) {
 
 	t.Run("too many variants", func(t *testing.T) {
 		srv := serveFixture(t, oversizedSkuMapPage(maxVariants+3, 1))
-		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 		source, err := sourcing.Canonical1688Source("981645030344")
 		require.NoError(t, err)
 		evidence, err := client.Acquire(context.Background(), source)
@@ -715,7 +715,7 @@ func TestBrowserAcquireDropsLossyVariantSets(t *testing.T) {
 
 	t.Run("unmatched attribute segment", func(t *testing.T) {
 		srv := serveFixture(t, oversizedSkuMapPage(2, 2))
-		client := New(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
+		client := newTestClient(Options{ExecutablePath: browser, Headless: true, AllowedOrigins: []string{srv.URL}, navigateURLOverride: srv.URL})
 		source, err := sourcing.Canonical1688Source("981645030344")
 		require.NoError(t, err)
 		evidence, err := client.Acquire(context.Background(), source)
