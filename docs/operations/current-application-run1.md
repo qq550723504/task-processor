@@ -1,5 +1,15 @@
 # RUN-1 current application loopback runbook
 
+> **Scope note (2026-09-27)**: this runbook describes RUN-1, the identity/route acceptance
+> environment only. The drift that broke it from 2026-09-20 is analysed in #541, and the
+> split into RUN-1 plus a production-following FULL environment is designed in
+> [`acceptance-environment-split.md`](acceptance-environment-split.md) - the split decision is
+> **admitted (IMPLEMENTATION_READY)**; the FULL environment is **deferred by decision**, and
+> section 3.1 there remains an **unadjudicated proposal** pending the commercial, account-center
+> and verification domain owners.
+> Do not widen RUN-1's schema or grant scope to follow production.
+
+
 This runbook owns an isolated, disposable acceptance environment for Issue #390.
 It is not a deployment path and never targets shared or production resources.
 The launcher allocates fresh loopback ports, private files, Docker resources and
@@ -54,8 +64,11 @@ the existing database through two roles:
 
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
   `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`.
-- `commercial_reader`: read-only session and `SELECT` only on the four tables
-  used by the commercial overview.
+- `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
+  commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
+  **not** a read-only *grant*, though the role keeps a read-only session setting:
+  the startup preflight checks ACL grants, not that setting, and the repository's
+  own permission test starts the binary with `default_transaction_read_only=on`.
 
 The bootstrap token, database owner credentials and Login V2 service credentials
 stay in run-private control files and are not present in the serving manifest.
