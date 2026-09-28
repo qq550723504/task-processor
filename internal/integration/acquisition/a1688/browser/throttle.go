@@ -77,10 +77,11 @@ const (
 	// A replacement collector must assume the worst about an exit IP it never
 	// observed, so the startup quarantine follows the configured cooldown.
 	DefaultChallengeCooldown = 10 * time.Minute
-	// DefaultCollectionHeadroom matches the acquisition budget: a caller that
-	// cannot leave a full budget's worth of time for the collection is refused
-	// rather than admitted into a wait that would spend it all.
-	DefaultCollectionHeadroom = DefaultTimeout
+	// DefaultCollectionHeadroom sits deliberately BELOW the acquisition budget. At
+	// equality the very first request of an idle collector is refused, because
+	// start+headroom lands on its own deadline. The margin is what makes an idle
+	// collector serve while still refusing a wait that would spend the budget.
+	DefaultCollectionHeadroom = DefaultTimeout * 3 / 4
 )
 
 func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine, headroom time.Duration) *Throttle {
@@ -140,6 +141,12 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	if t == nil {
 		return nil
 	}
+	// Reject an already-canceled caller before it can reserve anything, otherwise
+	// an idle throttle returns success for a request nobody is waiting for and
+	// leaves a phantom slot behind.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	t.mu.Lock()
 	// A cooldown that has elapsed is no longer a block: clear it here rather than
 	// waiting for an external reset, so recovery is a time-based decision and the
@@ -154,6 +161,10 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	}
 
 	now := time.Now()
+	// Retire reservations whose slot has already been consumed. Without this the
+	// list grows for the lifetime of the collector and the floor it computes is
+	// dragged forward by slots nobody will use.
+	t.pending = liveReservations(t.pending, now)
 	span := float64(t.MinInterval) * t.Jitter
 	effective := t.MinInterval
 	if span > 0 {
@@ -232,20 +243,34 @@ func (t *Throttle) nowBlocked() bool {
 	return t.blocked
 }
 
-// release gives back a reservation the caller could not use. next is recomputed
-// from the reservations that remain, so releasing is correct whether or not
-// other callers reserved in the meantime.
+// release gives back a reservation the caller could not use.
 func (t *Throttle) release(seq uint64) {
 	if t == nil {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	kept := t.pending[:0]
+	kept := make([]reservation, 0, len(t.pending))
+	span := t.MinInterval
+	if float64(t.MinInterval)*t.Jitter > 0 {
+		span += time.Duration(t.rand.Float64() * float64(t.MinInterval) * t.Jitter)
+	}
+	now := time.Now()
+	cursor := now
 	for _, r := range t.pending {
-		if r.seq != seq {
-			kept = append(kept, r)
+		if r.seq == seq {
+			continue
 		}
+		// Re-pack the survivors: a cancelled middle reservation leaves a gap, and
+		// keeping the later reservations at their old positions would hold the
+		// queue open for a slot that no longer exists.
+		start := cursor
+		if r.start.After(start) {
+			start = r.start
+		}
+		end := start.Add(span)
+		kept = append(kept, reservation{seq: r.seq, start: start, end: end})
+		cursor = end
 	}
 	t.pending = kept
 	t.next = time.Time{}
@@ -254,6 +279,17 @@ func (t *Throttle) release(seq uint64) {
 			t.next = r.end
 		}
 	}
+}
+
+// liveReservations drops reservations whose slot has already been consumed.
+func liveReservations(pending []reservation, now time.Time) []reservation {
+	kept := pending[:0]
+	for _, r := range pending {
+		if r.end.After(now) {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }
 
 // Observe reports the outcome of an acquisition so the throttle can react.

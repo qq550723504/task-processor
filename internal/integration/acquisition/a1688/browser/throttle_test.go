@@ -238,11 +238,17 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 	}()
 	require.ErrorIs(t, th.Wait(ctx), context.Canceled)
 
+	// The property that matters is that the floor survives: the next caller must
+	// still not be able to start immediately after the preceding acquisition. The
+	// exact boundary is not pinned, because releasing re-packs the surviving
+	// reservations with a fresh jittered interval.
 	th.mu.Lock()
 	after := th.next
 	th.mu.Unlock()
-	require.Equal(t, established, after,
-		"a cancelled waiter must restore the displaced boundary, not erase the schedule")
+	require.False(t, after.Before(established.Add(-50*time.Millisecond)),
+		"a cancelled waiter must not pull the schedule earlier than the floor it left")
+	require.True(t, after.After(time.Now().Add(100*time.Millisecond)),
+		"a cancelled waiter must not erase the schedule")
 }
 
 // newTestThrottle builds a throttle with the startup quarantine reduced to a
@@ -367,4 +373,91 @@ func TestThrottleReservesCollectionHeadroom(t *testing.T) {
 	generous, cancelGenerous := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelGenerous()
 	require.NoError(t, naive.Wait(generous), "without a headroom the slot is served")
+}
+
+// A reservation whose slot has been consumed must not stay in the queue: the list
+// would grow for the collector's lifetime and its floor would be dragged forward
+// by slots nobody will use.
+func TestThrottleRetiresConsumedReservations(t *testing.T) {
+	th := newTestThrottle(20*time.Millisecond, 0, 0)
+	for i := 0; i < 5; i++ {
+		require.NoError(t, th.Wait(context.Background()))
+	}
+	th.mu.Lock()
+	grown := len(th.pending)
+	th.mu.Unlock()
+	require.LessOrEqual(t, grown, 2, "consumed reservations must be retired, not accumulated")
+
+	time.Sleep(60 * time.Millisecond)
+	require.NoError(t, th.Wait(context.Background()))
+	th.mu.Lock()
+	afterIdle := len(th.pending)
+	th.mu.Unlock()
+	require.LessOrEqual(t, afterIdle, 2, "an idle collector must not accumulate history")
+}
+
+// An already-canceled caller must be rejected before it reserves anything, so an
+// idle throttle does not return success and leave a phantom slot.
+func TestThrottleRejectsCanceledContextBeforeReserving(t *testing.T) {
+	th := newTestThrottle(time.Minute, 0, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, th.Wait(ctx), context.Canceled)
+
+	th.mu.Lock()
+	pending := len(th.pending)
+	th.mu.Unlock()
+	require.Zero(t, pending, "a canceled caller must not create a reservation")
+}
+
+// Cancelling a middle waiter must compact the slots behind it, so the queue is
+// not held open by a reservation that no longer exists.
+func TestThrottleCompactsAfterCancellingAMiddleWaiter(t *testing.T) {
+	th := newTestThrottle(60*time.Millisecond, 0, 0)
+	require.NoError(t, th.Wait(context.Background())) // A consumes the immediate slot
+
+	mid, cancelMid := context.WithCancel(context.Background())
+	go func() { _ = th.Wait(mid) }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return len(th.pending) == 2
+	}, time.Second, 5*time.Millisecond)
+
+	// A third caller reserves behind the middle one.
+	tail, cancelTail := context.WithCancel(context.Background())
+	go func() { _ = th.Wait(tail) }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return len(th.pending) == 3
+	}, time.Second, 5*time.Millisecond)
+
+	cancelMid()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return len(th.pending) == 2
+	}, time.Second, 5*time.Millisecond)
+
+	th.mu.Lock()
+	kept := th.pending
+	th.mu.Unlock()
+	for i := 1; i < len(kept); i++ {
+		require.False(t, kept[i].start.Before(kept[i-1].end),
+			"surviving reservations must be re-packed, not left at stale positions")
+	}
+	cancelTail()
+}
+
+// The default headroom must leave a margin below the acquisition budget, or an
+// idle collector refuses its own first request.
+func TestThrottleDefaultHeadroomLeavesAMargin(t *testing.T) {
+	require.Less(t, DefaultCollectionHeadroom, DefaultTimeout,
+		"headroom must sit below the budget, or an idle collector refuses its first request")
+	require.Greater(t, DefaultCollectionHeadroom, DefaultTimeout/2,
+		"headroom must still cover a real collection")
+
+	th := newThrottle(time.Millisecond, 0, time.Minute, -1, 0)
+	require.Equal(t, DefaultCollectionHeadroom, th.headroom)
 }
