@@ -545,3 +545,61 @@ func TestThrottleQueuedWaitersReevaluateAfterALateDispatch(t *testing.T) {
 			"a queued waiter must be paced after a slipped predecessor, not admitted on its stale timer")
 	}
 }
+
+// A challenge observed and then interrupted by a caller disconnect must still
+// engage the cooldown, exactly as a deadline must.
+func TestThrottleCoolsOnAChallengeInterruptedByCancellation(t *testing.T) {
+	th := newTestThrottle(time.Millisecond, 0, 10*time.Minute)
+	require.NoError(t, th.Wait(context.Background()))
+
+	th.Observe(errors.Join(ErrChallenge, context.Canceled))
+	require.Positive(t, th.CooldownRemaining(),
+		"a challenge followed by a caller disconnect must still engage the cooldown")
+}
+
+// The immediate (idle) path must respect a cooldown that another acquisition
+// triggered after this caller reserved.
+func TestThrottleIdlePathRespectsAConcurrentCooldown(t *testing.T) {
+	th := newTestThrottle(time.Hour, 0, 10*time.Minute)
+
+	// A cooldown is already in force when this caller arrives.
+	th.Observe(ErrChallenge)
+	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled)
+
+	// And the same for a caller that reserved before the cooldown began.
+	th2 := newTestThrottle(time.Hour, 0, 10*time.Minute)
+	ready := make(chan struct{})
+	go func() { defer close(ready); _ = th2.Wait(context.Background()) }()
+	time.Sleep(30 * time.Millisecond)
+	th2.Observe(ErrChallenge)
+	<-ready
+	th2.mu.Lock()
+	blocked := th2.blocked
+	th2.mu.Unlock()
+	require.True(t, blocked, "the cooldown must still be in force after a concurrent trigger")
+}
+
+// A cooldown must end at the configured deadline: the FIRST request afterwards is
+// served, rather than being refused for a further interval that the budget and
+// headroom can no longer fit. The floor sitting one interval out afterwards is
+// correct steady-state pacing, so it is not asserted here.
+func TestThrottleCooldownEndsAtTheConfiguredDeadline(t *testing.T) {
+	interval := 20 * time.Second // deliberately longer than the budget
+	cooldown := 300 * time.Millisecond
+	budget := 10 * time.Second
+	th := newThrottle(interval, 0, cooldown, -1, budget, budget*3/4)
+	require.NoError(t, th.Wait(context.Background()))
+	th.Observe(ErrChallenge)
+
+	require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+		2*time.Second, 10*time.Millisecond)
+
+	// The first request after the window is served immediately, not refused.
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	start := time.Now()
+	require.NoError(t, th.Wait(ctx),
+		"a caller must be served once the configured cooldown has elapsed")
+	require.Less(t, time.Since(start), time.Second,
+		"resumption must not wait out another full interval")
+}

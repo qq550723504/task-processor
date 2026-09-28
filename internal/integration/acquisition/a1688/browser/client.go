@@ -401,8 +401,12 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 		// Both cases can be ready when the solve exhausts the budget. Whichever
 		// wins, an already-seen challenge must survive, or the cooldown is
 		// skipped and the next acquisition walks back into the block.
-		if sawChallenge.Load() && errors.Is(inspected.err, stdctx.DeadlineExceeded) {
-			inspected.err = errors.Join(ErrChallenge, stdctx.DeadlineExceeded)
+		// A challenge was already seen on this page, so ANY terminal context error
+		// from here - deadline or caller cancellation - must still carry it. Without
+		// this, a caller that disconnects mid-solve reports a bare cancellation and
+		// the cooldown is skipped.
+		if sawChallenge.Load() && inspected.err != nil && isTerminalContextErr(inspected.err) {
+			inspected.err = errors.Join(ErrChallenge, inspected.err)
 		}
 	case <-ctx.Done():
 		_ = page.Close()
@@ -768,4 +772,10 @@ func absoluteURL(base, location string) (string, error) {
 		return "", err
 	}
 	return parsedBase.ResolveReference(parsed).String(), nil
+}
+
+// isTerminalContextErr reports whether an error is a deadline or a cancellation
+// rather than a substantive failure.
+func isTerminalContextErr(err error) bool {
+	return errors.Is(err, stdctx.DeadlineExceeded) || errors.Is(err, stdctx.Canceled)
 }

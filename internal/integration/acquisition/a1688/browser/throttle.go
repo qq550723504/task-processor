@@ -160,9 +160,13 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	if t.blocked && !t.cooledAt.IsZero() && !now.Before(t.cooledAt) {
 		t.blocked = false
 		t.cooledAt = time.Time{}
-		if t.next.Before(now.Add(t.MinInterval)) {
-			t.next = now.Add(t.MinInterval)
-		}
+		// Resume at the configured deadline. Observe had pushed the floor to
+		// cooldown+interval; leaving it there would refuse every request for a
+		// further interval - well past the window the operator configured - because
+		// the budget and headroom no longer fit. The cooldown itself already served
+		// as the wait, so the floor returns to now and the next caller is paced
+		// normally from there.
+		t.next = now
 	}
 	if t.blocked {
 		t.mu.Unlock()
@@ -203,6 +207,23 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	t.mu.Unlock()
 
 	if wait <= 0 {
+		// An idle slot still goes through the locked block check: an Observe can
+		// land between the reservation and here, and this path must not be the one
+		// way past a cooldown that has already begun.
+		t.mu.Lock()
+		if t.blockedLocked() {
+			if t.owner == mine {
+				t.next = t.prevNext
+				t.prevNext = time.Time{}
+			}
+			t.mu.Unlock()
+			return ErrThrottled
+		}
+		if dispatched := time.Now().Add(span); dispatched.After(t.next) {
+			t.next = dispatched
+			t.generation++
+		}
+		t.mu.Unlock()
 		return nil
 	}
 	timer := time.NewTimer(wait)
