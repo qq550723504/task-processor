@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect,useMemo,useState } from "react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import type { z } from "zod";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { ConsolePage,ConsoleState } from "@/components/workbench/console/console-page";
 import { Card } from "@/components/ui/card";
@@ -47,7 +48,7 @@ const stateLabels:Record<string,string>={ADMITTED:"等待保存",OBJECT_STORED:"
 const reasons:Record<string,string>={UPLOAD_INCOMPLETE:"上传未完成，请重试原上传。",OBJECT_INTEGRITY_FAILURE:"文件校验失败，请重新上传。",CORRUPT_OR_UNSUPPORTED_DOCUMENT:"文件损坏或无法解析，请重新上传。",DOCUMENT_TYPE_MISMATCH:"文件内容与格式不符。",NO_EXTRACTABLE_TEXT:"未提取到正文；扫描件不支持 OCR。",PARSER_RETRIES_EXHAUSTED:"解析服务多次失败，请重新上传。",PARSER_UNAVAILABLE:"解析服务暂时不可用。",TEXT_TRUNCATED:"正文超过 2 MiB，已保留前部分。",INCOMPLETE_EXTRACTION:"部分内容未能完整提取，请检查预览。"};
 function date(value:string){return new Date(value).toLocaleString("zh-CN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}
 type Intent={path:string;init:RequestInit;key:string;unconfirmed?:boolean};
-function isAuthorityFailure(error:unknown){return error instanceof KnowledgeError && ([401,403].includes(error.status) || ["IDENTITY_CONTEXT_CHANGED","ORGANIZATION_CONTEXT_CHANGED"].includes(error.code));}
+function isAuthorityFailure(error:unknown):error is KnowledgeError{return error instanceof KnowledgeError && ([401,403].includes(error.status) || ["IDENTITY_CONTEXT_CHANGED","ORGANIZATION_CONTEXT_CHANGED"].includes(error.code));}
 function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) {
  const client=useQueryClient(),context=useWorkbenchContext();
  // The verified current-organization roles include configured admin overrides.
@@ -57,23 +58,29 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  const canRead=canManage || context.roles.includes("listingkit_operator");
  const [page,setPage]=useState(1),[name,setName]=useState(""),[editing,setEditing]=useState(false),[file,setFile]=useState<File|null>(null),[sourceName,setSourceName]=useState(""),[replacement,setReplacement]=useState<KnowledgeSource|null>(null),[preview,setPreview]=useState<KnowledgeSource|null>(null),[intent,setIntent]=useState<Intent|null>(null),[message,setMessage]=useState("");
  const key=["knowledge",scope.userId,scope.organizationId];
+ const [authorityError,setAuthorityError]=useState<KnowledgeError|null>(null),[readAttempt,setReadAttempt]=useState(0);
  const rolesKey=JSON.stringify([...context.roles].sort());
- const readKey=useMemo(()=>["knowledge",scope.userId,scope.organizationId,"read",rolesKey],[scope.userId,scope.organizationId,rolesKey]);
+ const readKey=useMemo(()=>["knowledge",scope.userId,scope.organizationId,"read",rolesKey,readAttempt],[scope.userId,scope.organizationId,rolesKey,readAttempt]);
  // Authorization changes create fresh read observers and cancel old in-flight
  // responses. The write intent remains scoped to the same identity/org.
  useEffect(()=>()=>{void client.cancelQueries({queryKey:readKey});client.removeQueries({queryKey:readKey});},[client,readKey]);
- const list=useQuery({queryKey:[...readKey,"bases",page],queryFn:({signal})=>knowledgeRequest(scope,"knowledge-bases?page="+page+"&pageSize=20",basesSchema,{signal}),enabled:canRead && !baseId,retry:false,gcTime:0});
- const base=useQuery({queryKey:[...readKey,"base",baseId],queryFn:({signal})=>knowledgeRequest(scope,"knowledge-bases/"+baseId,baseSchema,{signal}),enabled:canRead && !!baseId,retry:false,gcTime:0,refetchInterval:5000});
+ // A query-key change must not erase an observed authorization failure. Keep
+ // the fence until explicit context confirmation starts entirely fresh reads.
+ useEffect(()=>{if(authorityError){void client.cancelQueries({queryKey:readKey});client.removeQueries({queryKey:readKey});}},[authorityError,client,readKey]);
+ const read=async <T,>(path:string,schema:z.ZodType<T>,signal:AbortSignal)=>{try{return await knowledgeRequest(scope,path,schema,{signal});}catch(error){if(!signal.aborted && isAuthorityFailure(error))setAuthorityError(error);throw error;}};
+ const readable=canRead && !authorityError;
+ const list=useQuery({queryKey:[...readKey,"bases",page],queryFn:({signal})=>read("knowledge-bases?page="+page+"&pageSize=20",basesSchema,signal),enabled:readable && !baseId,retry:false,gcTime:0});
+ const base=useQuery({queryKey:[...readKey,"base",baseId],queryFn:({signal})=>read("knowledge-bases/"+baseId,baseSchema,signal),enabled:readable && !!baseId,retry:false,gcTime:0,refetchInterval:5000});
  const sources=useQuery({queryKey:[...readKey,"sources",baseId],queryFn:async({signal})=>{
- const result=await knowledgeRequest(scope,"knowledge-bases/"+baseId+"/sources",sourcesSchema,{signal});
+ const result=await read("knowledge-bases/"+baseId+"/sources",sourcesSchema,signal);
  if(result.items.some(source=>source.knowledgeBaseId!==baseId))throw new KnowledgeError("INVALID_UPSTREAM_RESPONSE");return result;
- },enabled:canRead && !!baseId && base.data?.state==="ACTIVE",retry:false,gcTime:0,refetchInterval:5000});
+ },enabled:readable && !!baseId && base.data?.state==="ACTIVE",retry:false,gcTime:0,refetchInterval:5000});
  const currentPreview=!sources.error && preview ? sources.data?.items.find(s=>s.id===preview.id && s.state==="ACTIVE" && s.currentReadableRevision?.id===preview.currentReadableRevision?.id) : undefined;
  const text=useQuery({queryKey:[...readKey,"preview",currentPreview?.id,currentPreview?.currentReadableRevision?.id],queryFn:async({signal})=>{
  const revision=currentPreview!.currentReadableRevision!.id;
- const result=await knowledgeRequest(scope,"knowledge-sources/"+currentPreview!.id+"/revisions/"+revision+"/preview",previewSchema,{signal});
+ const result=await read("knowledge-sources/"+currentPreview!.id+"/revisions/"+revision+"/preview",previewSchema,signal);
  if(result.revisionId!==revision)throw new KnowledgeError("INVALID_UPSTREAM_RESPONSE");return result;
- },enabled:canRead && !!currentPreview && base.data?.state==="ACTIVE",retry:false,gcTime:0,staleTime:0,refetchInterval:5000});
+ },enabled:readable && !!currentPreview && base.data?.state==="ACTIVE",retry:false,gcTime:0,staleTime:0,refetchInterval:5000});
  const mutation=useMutation({mutationKey:[...key,"mutation"],retry:false,mutationFn:(command:Intent)=>knowledgeRequest(scope,command.path,resultSchema,command.init),onSuccess:async(result)=>{
  setIntent(null);setMessage("操作已保存。");setEditing(false);setName("");setFile(null);setSourceName("");setReplacement(null);setPreview(null);
  if(result.knowledgeBase && baseId)client.setQueryData([...readKey,"base",baseId],result.knowledgeBase);
@@ -94,9 +101,9 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  };
  const active=base.data?.state==="ACTIVE";
  const listError=!baseId && list.error, detailError=baseId && base.error;
- const authorityError=[list.error,base.error,sources.error,text.error].find(isAuthorityFailure);
- const notice=message?<Card className="knowledge-notice" role={mutation.isError?"alert":"status"}><p>{message}</p>{intent && !mutation.isPending && canRead?<Button onClick={()=>mutation.mutate(intent)}>重试同一次操作</Button>:null}</Card>:null;
- if(!canRead || authorityError)return <ConsolePage title="我的知识库（当前企业）" description={description}>{notice}<ConsoleState kind="unavailable" title={canRead?errorMessage(authorityError):"当前身份没有知识库读取权限"}><Button onClick={()=>{void context.retry();void client.invalidateQueries({queryKey:key});}}>重新确认</Button></ConsoleState></ConsolePage>;
+ const notice=message?<Card className="knowledge-notice" role={mutation.isError?"alert":"status"}><p>{message}</p>{intent && !mutation.isPending && readable?<Button onClick={()=>mutation.mutate(intent)}>重试同一次操作</Button>:null}</Card>:null;
+ const refreshAccess=async()=>{const next=await context.retry();if(next?.user.id===scope.userId && next.effectiveOrganizationId===scope.organizationId){setReadAttempt(value=>value+1);setAuthorityError(null);}};
+ if(!readable)return <ConsolePage title="我的知识库（当前企业）" description={description}>{notice}<ConsoleState kind="unavailable" title={canRead?errorMessage(authorityError):"当前身份没有知识库读取权限"}><Button onClick={()=>void refreshAccess()}>重新确认</Button></ConsoleState></ConsolePage>;
  return <ConsolePage title={baseId?(base.data?.name??"知识库"):"我的知识库（当前企业）"} description={description} breadcrumbs={baseId?[{label:"知识库",href:root},{label:base.data?.name??"资料"}]:undefined}
  actions={canManage?(!baseId?<Button onClick={()=>setEditing(true)} disabled={busy}>创建知识库</Button>:active?<Button variant="outline" disabled={busy} onClick={()=>{setName(base.data!.name);setEditing(true);}}>编辑名称</Button>:undefined):undefined}>
  {notice}

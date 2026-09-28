@@ -68,6 +68,19 @@ it("cancels an old read when roles lose access and rejects its late result",asyn
  await act(async()=>release(Response.json({items:[source]})));expect(screen.queryByText("已撤销资料")).not.toBeInTheDocument();
  roles=["listingkit_operator"];await userEvent.click(screen.getByRole("button",{name:"更新企业授权"}));await screen.findByText("重新授权资料");expect(screen.queryByText("已撤销资料")).not.toBeInTheDocument();unmount();
 });
+it("keeps a preview authorization failure latched when a late source response changes its revision",async()=>{
+ vi.useFakeTimers();let denied=false,release!:(response:Response)=>void;let sourceSignal:AbortSignal|undefined;const late=new Promise<Response>(resolve=>{release=resolve;});
+ const source={id:sourceId,knowledgeBaseId:baseId,name:"产品资料",state:"ACTIVE",version:1,latestRevision:old,currentReadableRevision:old,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp};
+ vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
+ if(url==="/api/workbench/context")return Response.json(context);
+ if(url.endsWith("/sources")){if(denied){sourceSignal=init?.signal??undefined;return late;}return Response.json({items:[source]});}
+ if(url.endsWith("/preview"))return denied?Response.json({code:"PERMISSION_DENIED"},{status:403}):Response.json({revisionId:oldId,text:"受保护正文"});return Response.json(base);
+ }));const unmount=mount(baseId);await act(async()=>{await vi.advanceTimersByTimeAsync(10);});fireEvent.click(screen.getByRole("button",{name:"预览"}));await act(async()=>{await vi.advanceTimersByTimeAsync(10);});expect(screen.getByText("受保护正文")).toBeVisible();
+ denied=true;await act(async()=>{await vi.advanceTimersByTimeAsync(5010);});expect(screen.getByText("当前身份没有知识库管理或读取权限。")).toBeVisible();
+ await act(async()=>{release(Response.json({items:[{...source,latestRevision:{...old,id:latestId,number:2},currentReadableRevision:{...old,id:latestId,number:2}}]}));await vi.advanceTimersByTimeAsync(10);});
+ for(const value of ["品牌指南","产品资料","受保护正文"])expect(screen.queryAllByText(value)).toHaveLength(0);expect(screen.queryByText(/old.txt/)).not.toBeInTheDocument();expect(sourceSignal?.aborted).toBe(true);
+ denied=false;fireEvent.click(screen.getByRole("button",{name:"重新确认"}));await act(async()=>{await vi.advanceTimersByTimeAsync(10);});await act(async()=>{await vi.advanceTimersByTimeAsync(10);});expect(screen.getByRole("heading",{name:"品牌指南"})).toBeVisible();unmount();
+});
 it("lets an operator preview saved text while hiding all management controls",async()=>{
  vi.stubGlobal("fetch",vi.fn(async(url:string)=>{
  if(url==="/api/workbench/context")return Response.json({...context,organizations:[{...context.organizations[0],roles:["listingkit_operator"]},context.organizations[1]]});
