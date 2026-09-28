@@ -192,7 +192,7 @@ func New(opts Options) *Client {
 	return &Client{
 		opts:     opts,
 		slots:    make(chan struct{}, opts.maxConcurrent()),
-		throttle: newThrottle(opts.MinInterval, opts.Jitter, opts.ChallengeCooldown, opts.StartupQuarantine, opts.budget()),
+		throttle: newThrottle(opts.MinInterval, opts.Jitter, opts.ChallengeCooldown, opts.StartupQuarantine, opts.budget(), opts.CollectionHeadroom),
 	}
 }
 

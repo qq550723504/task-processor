@@ -235,14 +235,14 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 // silent for a full cooldown, which would otherwise stall every test; the
 // quarantine itself is covered by its own test.
 func newTestThrottle(minInterval time.Duration, jitter float64, challengeCooldown time.Duration) *Throttle {
-	return newThrottle(minInterval, jitter, challengeCooldown, -1, DefaultTimeout)
+	return newThrottle(minInterval, jitter, challengeCooldown, -1, DefaultTimeout, time.Nanosecond)
 }
 
 // A fresh collector must stay silent before its first request, because a
 // restarted process cannot know whether its egress IP was challenged just before
 // it died. Without this it re-hits 1688 and negates the cooldown.
 func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 10*time.Minute, 80*time.Millisecond, time.Nanosecond)
+	th := newThrottle(time.Millisecond, 0, 10*time.Minute, 80*time.Millisecond, time.Minute, time.Nanosecond)
 
 	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled,
 		"a fresh collector must not call out immediately")
@@ -259,14 +259,14 @@ func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
 // deliberately shortens -challenge-cooldown must not still get a ten-minute
 // silence on every restart.
 func TestThrottleStartupQuarantineDefaultsToConfiguredCooldown(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, time.Minute, 0, time.Nanosecond)
+	th := newThrottle(time.Millisecond, 0, time.Minute, 0, time.Minute, time.Nanosecond)
 	require.Equal(t, time.Minute, th.StartupQuarantine)
 }
 
 // The startup quarantine must follow the CONFIGURED cooldown, so shortening
 // -challenge-cooldown actually shortens the silence after a restart.
 func TestThrottleStartupQuarantineFollowsConfiguredCooldown(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 2*time.Second, 0, time.Nanosecond)
+	th := newThrottle(time.Millisecond, 0, 2*time.Second, 0, time.Minute, time.Nanosecond)
 	require.Equal(t, 2*time.Second, th.StartupQuarantine,
 		"quarantine must follow the configured cooldown, not the packaged default")
 }
@@ -299,7 +299,7 @@ func TestThrottleRechecksCooldownAfterQueuedWait(t *testing.T) {
 func TestThrottleReservesCollectionHeadroom(t *testing.T) {
 	// The slot is 9s away and the caller has 10s: it *can* start in time, so a
 	// start-only check admits it, but then almost no budget remains to collect.
-	th := newThrottle(9*time.Second, 0, 10*time.Minute, -1, 10*time.Second)
+	th := newThrottle(9*time.Second, 0, 10*time.Minute, -1, 10*time.Second, 10*time.Second)
 	require.NoError(t, th.Wait(context.Background())) // consume the immediate slot
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -312,7 +312,7 @@ func TestThrottleReservesCollectionHeadroom(t *testing.T) {
 
 	// With headroom removed the same slot is admitted, which is what made the old
 	// behaviour a timeout in disguise.
-	naive := newThrottle(9*time.Second, 0, 10*time.Minute, -1, time.Nanosecond)
+	naive := newThrottle(9*time.Second, 0, 10*time.Minute, -1, 10*time.Second, time.Nanosecond)
 	require.NoError(t, naive.Wait(context.Background()))
 	generous, cancelGenerous := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelGenerous()
@@ -397,4 +397,85 @@ func TestThrottleStateIsBoundedByConstruction(t *testing.T) {
 	_ = fields
 	require.False(t, floor.IsZero(), "the floor is the only pacing state")
 	require.False(t, blocked)
+}
+
+// A caller that configures the headroom must get that value, not the derived
+// one; otherwise the option is a dead setting that only tests can reach.
+func TestThrottleHonoursConfiguredHeadroom(t *testing.T) {
+	th := newThrottle(time.Millisecond, 0, time.Minute, -1, 10*time.Second, 2*time.Second)
+	require.Equal(t, 2*time.Second, th.headroom,
+		"a configured headroom must be used verbatim")
+	derived := newThrottle(time.Millisecond, 0, time.Minute, -1, 10*time.Second, 0)
+	require.Equal(t, 10*time.Second*CollectionHeadroomNumerator/CollectionHeadroomDenominator, derived.headroom,
+		"an unset headroom must be derived from the configured budget")
+}
+
+// A cancelled waiter hands its slot back when no later caller committed, so
+// disconnects cannot starve valid work indefinitely. The boundary is asserted
+// exactly: the floor must return to the FIRST waiter's slot, not merely become
+// unreachable in time, which a stale floor would also satisfy.
+func TestThrottleCancelledWaiterHandsBackItsSlot(t *testing.T) {
+	th := newThrottle(2*time.Second, 0, 0, -1, time.Minute, time.Nanosecond)
+	require.NoError(t, th.Wait(context.Background())) // A takes the immediate slot
+
+	th.mu.Lock()
+	firstFloor := th.next
+	th.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = th.Wait(ctx) }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.next.After(firstFloor)
+	}, time.Second, 5*time.Millisecond, "the second caller must hold a later slot")
+
+	cancel()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.next.Equal(firstFloor)
+	}, time.Second, 5*time.Millisecond,
+		"an un-superseded cancellation must restore exactly the boundary it displaced")
+}
+
+// When a later caller already committed, the cancelled one cannot know which
+// boundary it displaced, so the floor stands - the conservative direction.
+// Asserted directly on the contract rather than through a timing-sensitive
+// interleaving, which only tested the scheduler.
+func TestThrottleSupersededCancellationKeepsTheFloor(t *testing.T) {
+	th := newThrottle(150*time.Millisecond, 0, 0, -1, time.Minute, time.Nanosecond)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// Two further callers commit in order.
+	ctxB, cancelB := context.WithCancel(context.Background())
+	go func() { _ = th.Wait(ctxB) }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return th.next.After(time.Now().Add(100 * time.Millisecond))
+	}, time.Second, 5*time.Millisecond)
+	stale := func() uint64 { th.mu.Lock(); defer th.mu.Unlock(); return th.owner }()
+
+	ctxC, cancelC := context.WithCancel(context.Background())
+	go func() { _ = th.Wait(ctxC) }()
+	require.Eventually(t, func() bool {
+		staleNow := func() uint64 { th.mu.Lock(); defer th.mu.Unlock(); return th.owner }()
+		return staleNow > stale
+	}, time.Second, 5*time.Millisecond, "a later caller must supersede the first")
+
+	th.mu.Lock()
+	floor := th.next
+	th.mu.Unlock()
+
+	// Releasing the superseded sequence must not move the floor.
+	th.release(stale)
+	th.mu.Lock()
+	after := th.next
+	th.mu.Unlock()
+	require.False(t, after.Before(floor),
+		"a superseded cancellation must not move the floor backwards")
+
+	cancelB()
+	cancelC()
 }

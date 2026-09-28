@@ -48,6 +48,13 @@ type Throttle struct {
 	blocked  bool
 	// headroom is how much budget the caller must keep after waiting.
 	headroom time.Duration
+	// owner/prevNext describe the newest committed reservation, so a caller that
+	// is cancelled can hand its slot back when no later caller has committed
+	// since. Only the newest is tracked: if it has been superseded this process
+	// cannot tell which boundary was displaced, and leaving the floor is the
+	// conservative choice - it can delay a request, never let two start together.
+	owner    uint64
+	prevNext time.Time
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
@@ -72,7 +79,7 @@ const (
 	CollectionHeadroomDenominator = 4
 )
 
-func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine time.Duration, budget time.Duration) *Throttle {
+func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine time.Duration, budget, headroom time.Duration) *Throttle {
 	if minInterval <= 0 {
 		minInterval = DefaultMinInterval
 	}
@@ -97,8 +104,14 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 	if budget <= 0 {
 		budget = DefaultTimeout
 	}
+	// A caller may configure the headroom explicitly; otherwise it is derived
+	// from the CONFIGURED budget. Ignoring the option would make it a dead
+	// setting that only appears in tests.
+	if headroom <= 0 {
+		headroom = budget * CollectionHeadroomNumerator / CollectionHeadroomDenominator
+	}
 	th := &Throttle{
-		headroom:          budget * CollectionHeadroomNumerator / CollectionHeadroomDenominator,
+		headroom:          headroom,
 		MinInterval:       minInterval,
 		Jitter:            jitter,
 		ChallengeCooldown: challengeCooldown,
@@ -169,13 +182,17 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		t.mu.Unlock()
 		return ErrThrottled
 	}
-	// Commit the slot. Only the floor is kept, deliberately: an earlier version
-	// tracked every reservation in a list so that a cancelled caller could give
-	// its slot back, and that bookkeeping produced repeated defects - unbounded
-	// growth, walls deleting slots from delayed waiters, and compaction that never
-	// actually closed a gap. A cancelled caller simply leaves its interval
-	// consumed, which is the safe direction: it can delay one request, never
-	// allow a burst.
+	// Commit the slot, remembering the boundary it displaced.
+	//
+	// Only the newest reservation is tracked. An earlier version kept a list of
+	// every reservation, which produced repeated defects - unbounded growth,
+	// wall-clock retirement deleting slots from delayed waiters, and compaction
+	// that never actually closed a gap. A single value is enough: it lets the
+	// common cancellation hand its slot back, and when a later caller has already
+	// committed there is nothing safe to do, so the floor stands.
+	t.owner++
+	mine := t.owner
+	t.prevNext = t.next
 	t.next = start.Add(span)
 	t.mu.Unlock()
 
@@ -186,6 +203,7 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
+		t.release(mine)
 		return ctx.Err()
 	case <-timer.C:
 	}
@@ -194,9 +212,26 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	// the process has already decided to refuse, so the block is re-checked once
 	// the wait is over.
 	if t.nowBlocked() {
+		t.release(mine)
 		return ErrThrottled
 	}
 	return nil
+}
+
+// release hands a committed slot back when no later caller has committed since.
+// When one has, the floor stands: this process cannot tell which boundary the
+// cancelled reservation displaced, and delaying one request is safer than
+// letting two start together.
+func (t *Throttle) release(seq uint64) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.owner == seq {
+		t.next = t.prevNext
+		t.prevNext = time.Time{}
+	}
 }
 
 // nowBlocked reports whether a challenge has put the process into cooldown,
