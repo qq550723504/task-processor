@@ -551,34 +551,7 @@ func storeQuotaLimit(tx *gorm.DB, organizationID string, now time.Time) (int64, 
 		}
 		return int64(value), nil
 	}
-	var subscription tenantSubscriptionRow
-	if err := tx.Where("tenant_id = ?", organizationID).Take(&subscription).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, ErrSubscriptionRequired
-		}
-		return 0, err
-	}
-	subscriptionValue := subscription.toTenantSubscription()
-	subscriptionEntitlement := &Entitlement{Status: subscriptionValue.Status, StartsAt: subscriptionValue.StartsAt, ExpiresAt: subscriptionValue.ExpiresAt}
-	if allowed, _ := evaluateEntitlement(subscriptionEntitlement, now); !allowed {
-		return 0, ErrSubscriptionRequired
-	}
-	var module subscriptionPlanModuleRow
-	if err := tx.Where("plan_code = ? AND module_code = ?", subscription.PlanCode, ModuleStoreManagement).Take(&module).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, ErrSubscriptionRequired
-		}
-		return 0, err
-	}
-	planLimits, err := unmarshalLimits(module.LimitsJSON)
-	if err != nil {
-		return 0, err
-	}
-	value, ok := planLimits[storeQuotaMetric]
-	if !ok || value <= 0 {
-		return 0, ErrSubscriptionRequired
-	}
-	return int64(value), nil
+	return 0, ErrSubscriptionRequired
 }
 
 func storeQuotaAllocationFromRow(row storeQuotaAllocationRow) StoreQuotaAllocation {

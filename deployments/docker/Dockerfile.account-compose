@@ -8,6 +8,7 @@ RUN apk add --no-cache git
 COPY go.mod go.sum ./
 RUN go mod download
 
+COPY cmd/store-center-schema-init ./cmd/store-center-schema-init
 COPY cmd/current-application ./cmd/current-application
 COPY cmd/referral-schema-init ./cmd/referral-schema-init
 COPY cmd/organization-membership-schema-init ./cmd/organization-membership-schema-init
@@ -20,7 +21,8 @@ COPY cmd/product-listing-api-schema-migrate ./cmd/product-listing-api-schema-mig
 COPY cmd/image-agent-temporal-worker ./cmd/image-agent-temporal-worker
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-application ./cmd/current-application && \
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/store-center-schema-init ./cmd/store-center-schema-init && \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/current-application ./cmd/current-application && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/referral-schema-init ./cmd/referral-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/organization-membership-schema-init ./cmd/organization-membership-schema-init && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/source-account-registry-schema-init ./cmd/source-account-registry-schema-init && \
@@ -43,6 +45,7 @@ ENTRYPOINT ["/usr/local/bin/account-bootstrap"]
 
 FROM alpine:3.22 AS schema-init
 RUN apk add --no-cache jq openssl postgresql17-client tzdata
+COPY --from=go-builder /out/store-center-schema-init /usr/local/bin/store-center-schema-init
 COPY --from=go-builder /out/referral-schema-init /usr/local/bin/referral-schema-init
 COPY --from=go-builder /out/organization-membership-schema-init /usr/local/bin/organization-membership-schema-init
 COPY --from=go-builder /out/source-account-registry-schema-init /usr/local/bin/source-account-registry-schema-init

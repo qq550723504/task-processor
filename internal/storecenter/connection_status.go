@@ -28,9 +28,6 @@ type ConnectionStatusProvider interface {
 }
 
 func resolveConnectionStatus(ctx context.Context, provider ConnectionStatusProvider, input ConnectionStatusInput, timeout time.Duration) ConnectionStatus {
-	if input.ConnectionRef == "" {
-		return ConnectionStatusDisconnected
-	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	status, err := provider.Status(callCtx, input)

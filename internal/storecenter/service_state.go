@@ -5,14 +5,13 @@ import (
 	"time"
 )
 
-// RecordStatus is the durable Store record lifecycle introduced by the V7
-// expand phase. It is intentionally separate from the legacy lifecycle_status
-// compatibility column.
+// RecordStatus is the single durable Store record lifecycle.
 type RecordStatus string
 
 const (
 	RecordStatusProvisioning RecordStatus = "provisioning"
 	RecordStatusActive       RecordStatus = "active"
+	RecordStatusDisabled     RecordStatus = "disabled"
 	RecordStatusDeleting     RecordStatus = "deleting"
 	RecordStatusDeleted      RecordStatus = "deleted"
 )
@@ -29,14 +28,11 @@ const (
 var (
 	ErrInvalidServiceState       = errors.New("invalid store record/service state")
 	ErrInvalidServiceTransition  = errors.New("invalid store service transition")
-	ErrServiceResumeRequired     = errors.New("store service resume is required")
 	ErrConnectionSnapshotChanged = errors.New("store connection snapshot changed")
 )
 
-// StoreServiceState is a pure validation boundary for the expanded state.
-// History resolution evidence is deliberately not inferred here; a suspended
-// state may have no timestamps until the authoritative history resolver has
-// produced a durable result.
+// StoreServiceState validates independent record and service facts. Changing
+// a record between active and disabled preserves the service and paid period.
 type StoreServiceState struct {
 	RecordStatus  RecordStatus
 	ServiceStatus ServiceStatus
@@ -77,7 +73,7 @@ func ValidateStoreServiceState(state StoreServiceState) error {
 			return ErrInvalidServiceState
 		}
 		return nil
-	case RecordStatusActive:
+	case RecordStatusActive, RecordStatusDisabled:
 		// Continue with service-state validation below.
 	default:
 		return ErrInvalidServiceState

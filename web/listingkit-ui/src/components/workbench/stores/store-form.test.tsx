@@ -22,7 +22,7 @@ import { StoreForm } from "@/components/workbench/stores/store-form";
 
 const STORE = {
   id: "11111111-1111-4111-8111-111111111111", name: "旧店铺", platform: "shein" as const,
-  region: "CN", externalStoreId: "external-1", lifecycleStatus: "active" as const,
+  region: "CN", externalStoreId: "external-1", recordStatus: "active" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "disconnected" as const, version: 3,
   createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z",
 };
@@ -135,7 +135,7 @@ describe("StoreForm", () => {
 
   it("refreshes a clean edit baseline and form after a lifecycle projection advances", async () => {
     const view = render(<StoreForm mode="edit" store={STORE} />);
-    view.rerender(<StoreForm mode="edit" store={{ ...STORE, name: "已停用店铺", lifecycleStatus: "disabled" as const, version: 4 }} />);
+    view.rerender(<StoreForm mode="edit" store={{ ...STORE, name: "已停用店铺", recordStatus: "disabled" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, version: 4 }} />);
     await waitFor(() => {
       expect(screen.getByLabelText("店铺名称")).toHaveValue("已停用店铺");
     });

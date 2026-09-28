@@ -67,7 +67,7 @@ func TestServiceLifecycleRoutesRemainAbsentUntilLifecycleHandlerIsExplicitlySupp
 		require.Equal(t, http.MethodPost, route.Method)
 		require.Equal(t, expected.path, route.Path)
 		require.Equal(t, expected.permission, route.Permission)
-		require.Equal(t, httproute.AuthPolicyVerifiedIdentity, route.AuthPolicy)
+		require.Equal(t, httproute.AuthPolicyCurrentIdentity, route.AuthPolicy)
 		require.Equal(t, expected.access, route.OrganizationAccessPolicy)
 	}
 }

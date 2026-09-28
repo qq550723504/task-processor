@@ -69,8 +69,8 @@ type AuditEvent struct {
 	ActorSubject       string           `json:"actorSubject"`
 	SafeFieldNames     []string         `json:"safeFieldNames"`
 	PayloadFingerprint string           `json:"payloadFingerprint,omitempty"`
-	PreviousState      LifecycleStatus  `json:"previousState"`
-	NewState           LifecycleStatus  `json:"newState"`
+	PreviousState      RecordStatus     `json:"previousState"`
+	NewState           RecordStatus     `json:"newState"`
 	FailureCode        AuditFailureCode `json:"failureCode"`
 	StoreVersion       int64            `json:"storeVersion"`
 	OccurredAt         time.Time        `json:"occurredAt"`
@@ -253,7 +253,7 @@ func normalizeAuditEvent(event AuditEvent) (AuditEvent, error) {
 func validTaskFiveAuditCombination(event AuditEvent) bool {
 	succeeded := event.Outcome == AuditOutcomeSucceeded && event.FailureCode == AuditFailureNone && event.StoreVersion > 0
 	unknown := event.Outcome == AuditOutcomeUnknown && event.FailureCode == AuditFailureNone && event.StoreVersion > 0
-	sameMutableState := event.PreviousState == event.NewState && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled)
+	sameMutableState := event.PreviousState == event.NewState && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled)
 	profileFields := len(event.SafeFieldNames) > 0
 	for _, field := range event.SafeFieldNames {
 		profileFields = profileFields && (field == "name" || field == "region")
@@ -266,26 +266,26 @@ func validTaskFiveAuditCombination(event AuditEvent) bool {
 	case AuditActionStoreUpdateNoOp:
 		return succeeded && sameMutableState && len(event.SafeFieldNames) == 0
 	case AuditActionStoreLifecycleStarted:
-		return unknown && ((event.PreviousState == StoreStatusActive && event.NewState == StoreStatusDisabled) || (event.PreviousState == StoreStatusDisabled && event.NewState == StoreStatusActive)) && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+		return unknown && ((event.PreviousState == RecordStatusActive && event.NewState == RecordStatusDisabled) || (event.PreviousState == RecordStatusDisabled && event.NewState == RecordStatusActive)) && exactSafeFields(event.SafeFieldNames, "record_status")
 	case AuditActionStoreDisabled:
-		return succeeded && event.PreviousState == StoreStatusActive && event.NewState == StoreStatusDisabled && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+		return succeeded && event.PreviousState == RecordStatusActive && event.NewState == RecordStatusDisabled && exactSafeFields(event.SafeFieldNames, "record_status")
 	case AuditActionStoreEnabled:
-		return succeeded && event.PreviousState == StoreStatusDisabled && event.NewState == StoreStatusActive && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+		return succeeded && event.PreviousState == RecordStatusDisabled && event.NewState == RecordStatusActive && exactSafeFields(event.SafeFieldNames, "record_status")
 	case AuditActionDeleteStarted:
-		return unknown && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+		return unknown && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "record_status")
 	case AuditActionStoreMarkedDeleting:
-		return succeeded && (event.PreviousState == StoreStatusActive || event.PreviousState == StoreStatusDisabled) && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+		return succeeded && (event.PreviousState == RecordStatusActive || event.PreviousState == RecordStatusDisabled) && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "record_status")
 	case AuditActionQuotaDeallocated:
-		return succeeded && event.PreviousState == StoreStatusDeleting && event.NewState == StoreStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id")
+		return succeeded && event.PreviousState == RecordStatusDeleting && event.NewState == RecordStatusDeleting && exactSafeFields(event.SafeFieldNames, "quota_allocation_id")
 	case AuditActionDeleteComplete:
-		return succeeded && event.PreviousState == StoreStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "lifecycle_status")
+		return succeeded && event.PreviousState == RecordStatusDeleting && event.NewState == "" && exactSafeFields(event.SafeFieldNames, "record_status")
 	default:
 		return true
 	}
 }
 
 func normalizeSafeFieldNames(fields []string) ([]string, error) {
-	allowed := map[string]bool{"name": true, "platform": true, "region": true, "external_store_id": true, "lifecycle_status": true, "quota_allocation_id": true}
+	allowed := map[string]bool{"name": true, "platform": true, "region": true, "external_store_id": true, "record_status": true, "quota_allocation_id": true}
 	set := make(map[string]bool, len(fields))
 	for _, field := range fields {
 		if !allowed[field] {
@@ -314,7 +314,7 @@ func validAuditOutcome(outcome AuditOutcome) bool {
 func validAuditFailure(code AuditFailureCode) bool {
 	return code == AuditFailureNone || code == AuditFailureAlreadyExists || code == AuditFailureDependencyUnavailable
 }
-func validAuditState(state LifecycleStatus) bool { return state == "" || validLifecycleStatus(state) }
+func validAuditState(state RecordStatus) bool { return state == "" || validRecordStatus(state) }
 
 func auditRecordFromEvent(event AuditEvent) (workbenchStoreAuditLogRecord, error) {
 	fields, err := json.Marshal(event.SafeFieldNames)
@@ -329,7 +329,7 @@ func auditEventFromRecord(record workbenchStoreAuditLogRecord) (AuditEvent, erro
 	if err := json.Unmarshal([]byte(record.SafeFieldNames), &fields); err != nil {
 		return AuditEvent{}, err
 	}
-	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PayloadFingerprint: record.PayloadFingerprint, PreviousState: LifecycleStatus(record.PreviousState), NewState: LifecycleStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
+	return normalizeAuditEvent(AuditEvent{EventID: record.EventID, OrganizationID: record.OrganizationID, StoreID: record.StoreID, AllocationID: record.AllocationID, RequestKey: record.RequestKey, Action: AuditAction(record.Action), Outcome: AuditOutcome(record.Outcome), ActorSubject: record.ActorSubject, SafeFieldNames: fields, PayloadFingerprint: record.PayloadFingerprint, PreviousState: RecordStatus(record.PreviousState), NewState: RecordStatus(record.NewState), FailureCode: AuditFailureCode(record.FailureCode), StoreVersion: record.StoreVersion, OccurredAt: record.OccurredAt})
 }
 
 func sameAuditSemanticPayload(a, b AuditEvent) bool {
@@ -341,7 +341,7 @@ func sameAuditSemanticPayload(a, b AuditEvent) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func newAuditEvent(organizationID, storeID, allocationID, requestKey string, action AuditAction, outcome AuditOutcome, actor string, fields []string, previous, next LifecycleStatus, failure AuditFailureCode, occurredAt time.Time) AuditEvent {
+func newAuditEvent(organizationID, storeID, allocationID, requestKey string, action AuditAction, outcome AuditOutcome, actor string, fields []string, previous, next RecordStatus, failure AuditFailureCode, occurredAt time.Time) AuditEvent {
 	return AuditEvent{EventID: uuid.NewString(), OrganizationID: organizationID, StoreID: storeID, AllocationID: allocationID, RequestKey: requestKey, Action: action, Outcome: outcome, ActorSubject: actor, SafeFieldNames: fields, PreviousState: previous, NewState: next, FailureCode: failure, OccurredAt: occurredAt.UTC()}
 }
 

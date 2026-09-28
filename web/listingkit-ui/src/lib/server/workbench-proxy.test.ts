@@ -22,7 +22,7 @@ const storePayload = {
   platform: "shein",
   region: "SG",
   externalStoreId: "external-1",
-  lifecycleStatus: "active",
+  recordStatus: "active", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "connected",
   version: 2,
   createdAt: "2026-08-30T01:02:03Z",
@@ -1173,88 +1173,12 @@ describe("strict Store Center request boundary", () => {
     if (result instanceof Response) expect(result.status).toBe(400);
   });
 
-  it.each([
-    ["activate", "{}"],
-    ["renew", JSON.stringify({ periods: 2 })],
-    ["reactivate", JSON.stringify({ periods: 3 })],
-  ] as const)(
-    "forwards the exact keyed %s service lifecycle contract",
-    async (action, body) => {
-      const result = await buildWorkbenchUpstreamRequest(
-        new Request(
-          `http://localhost/api/workbench/stores/${storeId}/${action}`,
-          {
-            method: "POST",
-            headers: storeHeaders({
-              "Idempotency-Key": operationKey,
-              "If-Match": '"2"',
-            }),
-            body,
-          },
-        ),
-        ["stores", storeId, action],
-        "server-token",
-      );
-
-      expect(result).not.toBeInstanceOf(Response);
-      if (result instanceof Response) return;
-      expect(result.url).toBe(
-        `http://localhost:8085/api/v1/workbench/stores/${storeId}/${action}`,
-      );
-      expect(result.responseContract).toBe("store-service-lifecycle");
-      expect(result.expectedStoreId).toBe(storeId);
-      expect(result.init.body).toBe(body);
-      const headers = new Headers(result.init.headers);
-      expect(headers.get("Idempotency-Key")).toBe(operationKey);
-      expect(headers.get("If-Match")).toBe('"2"');
-      expect(headers.get("Content-Type")).toBe("application/json");
-    },
-  );
-
-  it.each([
-    ["activate unknown body", "activate", '{"periods":1}'],
-    ["activate duplicate object", "activate", '{"x":1,"x":1}'],
-    ["renew missing periods", "renew", "{}"],
-    ["renew duplicate periods", "renew", '{"periods":1,"periods":1}'],
-    ["renew fractional periods", "renew", '{"periods":1.0}'],
-    ["renew zero periods", "renew", '{"periods":0}'],
-    ["reactivate excess periods", "reactivate", '{"periods":13}'],
-    ["reactivate unknown field", "reactivate", '{"periods":1,"tenant":"x"}'],
-  ] as const)("rejects invalid service body: %s", async (_name, action, body) => {
-    const result = await buildWorkbenchUpstreamRequest(
-      new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, {
-        method: "POST",
-        headers: storeHeaders({
-          "Idempotency-Key": operationKey,
-          "If-Match": '"2"',
-        }),
-        body,
-      }),
-      ["stores", storeId, action],
-      "server-token",
-    );
+  it.each(["activate", "renew", "reactivate"])("keeps unopened %s service actions out of the BFF", async (action) => {
+    const result = await buildWorkbenchUpstreamRequest(new Request(`http://localhost/api/workbench/stores/${storeId}/${action}`, { method: "POST", headers: storeHeaders(), body: "{}" }), ["stores", storeId, action], "server-token");
     expect(result).toBeInstanceOf(Response);
-    if (result instanceof Response) expect(result.status).toBe(400);
+    if (result instanceof Response) expect(result.status).toBe(404);
   });
 
-  it.each([
-    ["missing idempotency", { "If-Match": '"2"' }],
-    ["missing If-Match", { "Idempotency-Key": operationKey }],
-    ["invalid idempotency", { "Idempotency-Key": "bad", "If-Match": '"2"' }],
-    ["invalid If-Match", { "Idempotency-Key": operationKey, "If-Match": 'W/"2"' }],
-  ])("rejects service lifecycle headers: %s", async (_name, headers) => {
-    const result = await buildWorkbenchUpstreamRequest(
-      new Request(`http://localhost/api/workbench/stores/${storeId}/activate`, {
-        method: "POST",
-        headers: storeHeaders(headers),
-        body: "{}",
-      }),
-      ["stores", storeId, "activate"],
-      "server-token",
-    );
-    expect(result).toBeInstanceOf(Response);
-    if (result instanceof Response) expect(result.status).toBe(400);
-  });
 });
 
 describe("strict Store Center response boundary", () => {
@@ -1298,7 +1222,6 @@ describe("strict Store Center response boundary", () => {
   });
 
   it.each([
-    ["STORE_SERVICE_RESUME_REQUIRED", 409],
     ["STORE_SERVICE_STATE_CORRUPT", 409],
     ["STORE_CONNECTION_UNAVAILABLE", 503],
     ["STORE_CONNECTION_NOT_CONNECTED", 422],
@@ -1594,7 +1517,7 @@ describe("strict Store Center response boundary", () => {
     ["connection reference", { ...storePayload, connectionRef: "private" }],
     ["nil UUID", { ...storePayload, id: "00000000-0000-0000-0000-000000000000" }],
     ["unsafe version", { ...storePayload, version: Number.MAX_SAFE_INTEGER + 1 }],
-    ["invalid lifecycle", { ...storePayload, lifecycleStatus: "deleted" }],
+    ["invalid lifecycle", { ...storePayload, recordStatus: "deleted", serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }],
     ["invalid connection", { ...storePayload, connectionStatus: "unknown" }],
     ["offset timestamp", { ...storePayload, createdAt: "2026-08-30T09:02:03+08:00" }],
     ["impossible timestamp", { ...storePayload, updatedAt: "2026-02-30T02:03:04Z" }],

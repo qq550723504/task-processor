@@ -11,6 +11,9 @@ referral_db_owner_secret=/secrets/referral-owner
 referral_runtime_secret=/secrets/referral-runtime
 membership_db_owner_secret=/secrets/membership-owner
 membership_runtime_secret=/secrets/membership-runtime
+store_owner_secret=/secrets/store-owner
+store_runtime_secret=/secrets/store-runtime
+store_quota_secret=/secrets/store-quota
 runtime=/runtime
 frontend=/frontend
 identity_port=${ACCOUNT_IDENTITY_PORT:?ACCOUNT_IDENTITY_PORT is required}
@@ -64,6 +67,13 @@ EOF
   commercial-owner-schema-migrate -config "$work/commercial-owner-schema.json" -money-config "$work/canonical-money-schema.json"
 }
 
+initialize_store_center() {
+  cat > "$work/store-owner-schema.json" <<EOF
+{"host":"127.0.0.1","port":5433,"user":"store_center_owner","password":"$(tr -d '\r\n' < "$store_owner_secret/store-owner-password")","database":"store_center","maxConnections":2,"maxIdleConnections":1}
+EOF
+  store-center-schema-init -config "$work/store-owner-schema.json" -quota-config "$work/commercial-owner-schema.json"
+}
+
 umask 077
 if [ -f "$state/.init-complete" ]; then
   if [ "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" = ISOLATED_TRIAL_ONLY ]; then
@@ -73,6 +83,7 @@ if [ -f "$state/.init-complete" ]; then
   jq -e --arg database "$commercial_database" '
     .sourceAccountDatabase.port == 5433 and .sourceAccountDatabase.database == "source_accounts" and
     .commercialDatabase.port == 5433 and .commercialDatabase.database == $database and
+    .storeCenter.enabled == true and .storeCenter.database.database == "store_center" and .storeCenter.database.user == "store_center_runtime" and .storeCenter.database.port == 5433 and .storeCenter.quotaDatabase.database == $database and .storeCenter.quotaDatabase.user == "store_quota_runtime" and .storeCenter.quotaDatabase.port == 5433 and
     .commercialOwnerDatabase.port == 5433 and .commercialOwnerDatabase.database == $database and
     .moneyOwnerDatabase.port == 5433 and .moneyOwnerDatabase.database == "referrals" and .moneyOwnerDatabase.user == "money_owner_runtime" and
     .referrals.referralDatabase.port == 5433 and .referrals.referralDatabase.database == "referrals" and
@@ -129,6 +140,7 @@ SQL
   psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
   psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
   migrate_commercial_owner_schema
+  initialize_store_center
   membership_dsn="postgresql://membership_owner:$(tr -d '\r\n' < "$membership_db_owner_secret/membership-db-password")@127.0.0.1:5433/membership?sslmode=disable"
   printf '%s\n' "$membership_dsn" > "$work/membership-owner-dsn"
   chmod 600 "$work/membership-owner-dsn"
@@ -176,6 +188,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
   "sourceAccountDatabase": {"host": "127.0.0.1", "port": 5433, "user": "source_account_runtime", "password": "$(tr -d '\r\n' < "$source_runtime_secret/source-runtime-password")", "database": "source_accounts", "maxConnections": 4},
   "commercialDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-reader-password")", "database": "${commercial_database}", "maxConnections": 4},
   "commercialOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-owner-password")", "database": "${commercial_database}", "maxConnections": 2},
+  "storeCenter": {"enabled": true, "database": {"host":"127.0.0.1","port":5433,"user":"store_center_runtime","password":"$(tr -d '\r\n' < "$store_runtime_secret/store-runtime-password")","database":"store_center","maxConnections":4}, "quotaDatabase": {"host":"127.0.0.1","port":5433,"user":"store_quota_runtime","password":"$(tr -d '\r\n' < "$store_quota_secret/store-quota-password")","database":"${commercial_database}","maxConnections":4}},
   "moneyOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "money_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/money-owner-password")", "database": "referrals", "maxConnections": 4},
   "membership": {
     "providerOrigin": "${issuer}",
@@ -261,6 +274,7 @@ referral-schema-init -dsn-file "$work/referral-owner-dsn"
 psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -f "$terraform_source/referral-economics-schema.sql"
 psql "postgresql://referral_owner:$(tr -d '\r\n' < "$referral_db_owner_secret/referral-db-password")@127.0.0.1:5433/referrals?sslmode=disable" -v ON_ERROR_STOP=1 -v runtime_roles_ready=true -f "$terraform_source/referral-grants.sql"
 migrate_commercial_owner_schema
+initialize_store_center
 if [ "${ACCOUNT_ISOLATED_TRIAL_CATALOG:-}" = ISOLATED_TRIAL_ONLY ]; then
   commercial-owner-schema-migrate -isolated-trial-catalog \
     -config "$work/commercial-owner-schema.json" \

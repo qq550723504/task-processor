@@ -37,19 +37,6 @@ type Platform string
 
 const PlatformShein Platform = "shein"
 
-type LifecycleStatus string
-
-// StoreStatus remains an alias while the aggregate exposes the authoritative
-// LifecycleStatus field name in its persistence snapshot.
-type StoreStatus = LifecycleStatus
-
-const (
-	StoreStatusProvisioning LifecycleStatus = "provisioning"
-	StoreStatusActive       LifecycleStatus = "active"
-	StoreStatusDisabled     LifecycleStatus = "disabled"
-	StoreStatusDeleting     LifecycleStatus = "deleting"
-)
-
 // Store is the Organization-scoped Store Center aggregate. Its state is kept
 // private so identity and lifecycle changes can only occur through its rules.
 type Store struct {
@@ -59,7 +46,10 @@ type Store struct {
 	platform             Platform
 	region               string
 	externalStoreID      string
-	lifecycleStatus      LifecycleStatus
+	recordStatus         RecordStatus
+	serviceStatus        ServiceStatus
+	serviceStartedAt     *time.Time
+	serviceExpiresAt     *time.Time
 	connectionRef        string
 	quotaAllocationID    string
 	version              int64
@@ -81,7 +71,10 @@ type StoreSnapshot struct {
 	Platform             Platform
 	Region               string
 	ExternalStoreID      string
-	LifecycleStatus      LifecycleStatus
+	RecordStatus         RecordStatus
+	ServiceStatus        ServiceStatus
+	ServiceStartedAt     *time.Time
+	ServiceExpiresAt     *time.Time
 	ConnectionRef        string
 	QuotaAllocationID    string
 	Version              int64
@@ -155,7 +148,7 @@ func NewStore(input CreateStoreInput) (*Store, error) {
 		Platform:             platform,
 		Region:               region,
 		ExternalStoreID:      externalStoreID,
-		LifecycleStatus:      StoreStatusProvisioning,
+		RecordStatus:         RecordStatusProvisioning,
 		ConnectionRef:        "",
 		QuotaAllocationID:    quotaAllocationID,
 		Version:              1,
@@ -173,23 +166,26 @@ func RehydrateStore(snapshot StoreSnapshot) (*Store, error) {
 	return newStoreFromSnapshot(snapshot)
 }
 
-func (s *Store) ID() string                       { return s.id }
-func (s *Store) OrganizationID() string           { return s.organizationID }
-func (s *Store) Name() string                     { return s.name }
-func (s *Store) Platform() Platform               { return s.platform }
-func (s *Store) Region() string                   { return s.region }
-func (s *Store) ExternalStoreID() string          { return s.externalStoreID }
-func (s *Store) LifecycleStatus() LifecycleStatus { return s.lifecycleStatus }
-func (s *Store) ConnectionRef() string            { return s.connectionRef }
-func (s *Store) QuotaAllocationID() string        { return s.quotaAllocationID }
-func (s *Store) Version() int64                   { return s.version }
-func (s *Store) CreatedBy() string                { return s.createdBy }
-func (s *Store) UpdatedBy() string                { return s.updatedBy }
-func (s *Store) CreatedAt() time.Time             { return s.createdAt }
-func (s *Store) UpdatedAt() time.Time             { return s.updatedAt }
-func (s *Store) CreateIdempotencyKey() string     { return s.createIdempotencyKey }
-func (s *Store) DeleteOperationKey() string       { return s.deleteOperationKey }
-func (s *Store) DeletedAt() *time.Time            { return copyTimePointer(s.deletedAt) }
+func (s *Store) ID() string                   { return s.id }
+func (s *Store) OrganizationID() string       { return s.organizationID }
+func (s *Store) Name() string                 { return s.name }
+func (s *Store) Platform() Platform           { return s.platform }
+func (s *Store) Region() string               { return s.region }
+func (s *Store) ExternalStoreID() string      { return s.externalStoreID }
+func (s *Store) RecordStatus() RecordStatus   { return s.recordStatus }
+func (s *Store) ServiceStatus() ServiceStatus { return s.serviceStatus }
+func (s *Store) ServiceStartedAt() *time.Time { return copyTimePointer(s.serviceStartedAt) }
+func (s *Store) ServiceExpiresAt() *time.Time { return copyTimePointer(s.serviceExpiresAt) }
+func (s *Store) ConnectionRef() string        { return s.connectionRef }
+func (s *Store) QuotaAllocationID() string    { return s.quotaAllocationID }
+func (s *Store) Version() int64               { return s.version }
+func (s *Store) CreatedBy() string            { return s.createdBy }
+func (s *Store) UpdatedBy() string            { return s.updatedBy }
+func (s *Store) CreatedAt() time.Time         { return s.createdAt }
+func (s *Store) UpdatedAt() time.Time         { return s.updatedAt }
+func (s *Store) CreateIdempotencyKey() string { return s.createIdempotencyKey }
+func (s *Store) DeleteOperationKey() string   { return s.deleteOperationKey }
+func (s *Store) DeletedAt() *time.Time        { return copyTimePointer(s.deletedAt) }
 
 func (s *Store) Snapshot() StoreSnapshot {
 	return StoreSnapshot{
@@ -199,7 +195,10 @@ func (s *Store) Snapshot() StoreSnapshot {
 		Platform:             s.platform,
 		Region:               s.region,
 		ExternalStoreID:      s.externalStoreID,
-		LifecycleStatus:      s.lifecycleStatus,
+		RecordStatus:         s.recordStatus,
+		ServiceStatus:        s.serviceStatus,
+		ServiceStartedAt:     copyTimePointer(s.serviceStartedAt),
+		ServiceExpiresAt:     copyTimePointer(s.serviceExpiresAt),
 		ConnectionRef:        s.connectionRef,
 		QuotaAllocationID:    s.quotaAllocationID,
 		Version:              s.version,
@@ -216,7 +215,7 @@ func (s *Store) Snapshot() StoreSnapshot {
 // EditBasic applies the aggregate-owned mutable Store profile. A normalized
 // no-op is accepted without changing provenance or version.
 func (s *Store) EditBasic(name, region, actorSubject string, occurredAt time.Time) (bool, error) {
-	if s.lifecycleStatus != StoreStatusActive && s.lifecycleStatus != StoreStatusDisabled {
+	if s.recordStatus != RecordStatusActive && s.recordStatus != RecordStatusDisabled {
 		return false, ErrInvalidTransition
 	}
 	normalizedName, err := normalizeUserValue("name", name, MaxStoreNameCodePoints, true)
@@ -252,13 +251,13 @@ func (s *Store) BeginDelete(operationKey, actorSubject string, occurredAt time.T
 	if err != nil {
 		return fmt.Errorf("delete operation key: %w", err)
 	}
-	if s.lifecycleStatus == StoreStatusDeleting {
+	if s.recordStatus == RecordStatusDeleting {
 		if s.deleteOperationKey == operationKey {
 			return nil
 		}
 		return ErrInvalidTransition
 	}
-	if s.lifecycleStatus != StoreStatusActive && s.lifecycleStatus != StoreStatusDisabled {
+	if s.recordStatus != RecordStatusActive && s.recordStatus != RecordStatusDisabled {
 		return ErrInvalidTransition
 	}
 	actorSubject, err = validateOpaqueIdentity("actor subject", actorSubject, MaxSubjectBytes)
@@ -268,7 +267,10 @@ func (s *Store) BeginDelete(operationKey, actorSubject string, occurredAt time.T
 	if occurredAt.IsZero() || occurredAt.Before(s.updatedAt) {
 		return errors.New("delete time must not precede the last update")
 	}
-	s.lifecycleStatus = StoreStatusDeleting
+	s.recordStatus = RecordStatusDeleting
+	s.serviceStatus = ""
+	s.serviceStartedAt = nil
+	s.serviceExpiresAt = nil
 	s.deleteOperationKey = operationKey
 	s.updatedBy = actorSubject
 	s.updatedAt = occurredAt
@@ -276,9 +278,9 @@ func (s *Store) BeginDelete(operationKey, actorSubject string, occurredAt time.T
 	return nil
 }
 
-func (s *Store) TransitionTo(target LifecycleStatus, actorSubject string, occurredAt time.Time) error {
-	if !canTransition(s.lifecycleStatus, target) {
-		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, s.lifecycleStatus, target)
+func (s *Store) TransitionTo(target RecordStatus, actorSubject string, occurredAt time.Time) error {
+	if !canTransition(s.recordStatus, target) {
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, s.recordStatus, target)
 	}
 	actorSubject, err := validateOpaqueIdentity("actor subject", actorSubject, MaxSubjectBytes)
 	if err != nil {
@@ -287,7 +289,10 @@ func (s *Store) TransitionTo(target LifecycleStatus, actorSubject string, occurr
 	if occurredAt.IsZero() || occurredAt.Before(s.updatedAt) {
 		return errors.New("transition time must not precede the last update")
 	}
-	s.lifecycleStatus = target
+	if s.recordStatus == RecordStatusProvisioning && target == RecordStatusActive {
+		s.serviceStatus = ServiceStatusPendingActivation
+	}
+	s.recordStatus = target
 	s.updatedBy = actorSubject
 	s.updatedAt = occurredAt
 	s.version++
@@ -339,11 +344,14 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !validLifecycleStatus(snapshot.LifecycleStatus) {
-		return nil, errors.New("lifecycle status is invalid")
+	if !validRecordStatus(snapshot.RecordStatus) {
+		return nil, errors.New("record status is invalid")
+	}
+	if err := ValidateStoreServiceState(StoreServiceState{RecordStatus: snapshot.RecordStatus, ServiceStatus: snapshot.ServiceStatus, StartedAt: snapshot.ServiceStartedAt, ExpiresAt: snapshot.ServiceExpiresAt}); err != nil {
+		return nil, err
 	}
 	deleteOperationKey := ""
-	if snapshot.LifecycleStatus == StoreStatusDeleting {
+	if snapshot.RecordStatus == RecordStatusDeleting || snapshot.RecordStatus == RecordStatusDeleted {
 		deleteOperationKey, err = canonicalUUID(snapshot.DeleteOperationKey)
 		if err != nil {
 			return nil, fmt.Errorf("delete operation key: %w", err)
@@ -351,8 +359,8 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	} else if snapshot.DeleteOperationKey != "" {
 		return nil, errors.New("only deleting stores may have a delete operation key")
 	}
-	if snapshot.Version < minimumLifecycleVersion(snapshot.LifecycleStatus) {
-		return nil, fmt.Errorf("version %d cannot reach lifecycle status %s", snapshot.Version, snapshot.LifecycleStatus)
+	if snapshot.Version < minimumRecordVersion(snapshot.RecordStatus) {
+		return nil, fmt.Errorf("version %d cannot reach record status %s", snapshot.Version, snapshot.RecordStatus)
 	}
 	if snapshot.CreatedAt.IsZero() || snapshot.UpdatedAt.IsZero() {
 		return nil, errors.New("created and updated times are required")
@@ -360,12 +368,15 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	if snapshot.UpdatedAt.Before(snapshot.CreatedAt) {
 		return nil, errors.New("updated time must not precede created time")
 	}
+	if snapshot.RecordStatus == RecordStatusDeleted && snapshot.DeletedAt == nil {
+		return nil, errors.New("deleted stores require a deleted time")
+	}
 	if snapshot.DeletedAt != nil {
 		if snapshot.DeletedAt.IsZero() || snapshot.DeletedAt.Before(snapshot.UpdatedAt) {
 			return nil, errors.New("deleted time is invalid")
 		}
-		if snapshot.LifecycleStatus != StoreStatusDeleting {
-			return nil, errors.New("only deleting stores may have a deleted time")
+		if snapshot.RecordStatus != RecordStatusDeleted {
+			return nil, errors.New("only deleted stores may have a deleted time")
 		}
 	}
 
@@ -376,7 +387,10 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 		platform:             platform,
 		region:               region,
 		externalStoreID:      externalStoreID,
-		lifecycleStatus:      snapshot.LifecycleStatus,
+		recordStatus:         snapshot.RecordStatus,
+		serviceStatus:        snapshot.ServiceStatus,
+		serviceStartedAt:     copyTimePointer(snapshot.ServiceStartedAt),
+		serviceExpiresAt:     copyTimePointer(snapshot.ServiceExpiresAt),
 		connectionRef:        connectionRef,
 		quotaAllocationID:    quotaAllocationID,
 		version:              snapshot.Version,
@@ -390,36 +404,38 @@ func newStoreFromSnapshot(snapshot StoreSnapshot) (*Store, error) {
 	}, nil
 }
 
-func canTransition(current, target LifecycleStatus) bool {
+func canTransition(current, target RecordStatus) bool {
 	switch current {
-	case StoreStatusProvisioning:
-		return target == StoreStatusActive
-	case StoreStatusActive:
-		return target == StoreStatusDisabled
-	case StoreStatusDisabled:
-		return target == StoreStatusActive
+	case RecordStatusProvisioning:
+		return target == RecordStatusActive
+	case RecordStatusActive:
+		return target == RecordStatusDisabled
+	case RecordStatusDisabled:
+		return target == RecordStatusActive
 	default:
 		return false
 	}
 }
 
-func validLifecycleStatus(status LifecycleStatus) bool {
+func validRecordStatus(status RecordStatus) bool {
 	switch status {
-	case StoreStatusProvisioning, StoreStatusActive, StoreStatusDisabled, StoreStatusDeleting:
+	case RecordStatusProvisioning, RecordStatusActive, RecordStatusDisabled, RecordStatusDeleting, RecordStatusDeleted:
 		return true
 	default:
 		return false
 	}
 }
 
-func minimumLifecycleVersion(status LifecycleStatus) int64 {
+func minimumRecordVersion(status RecordStatus) int64 {
 	switch status {
-	case StoreStatusProvisioning:
+	case RecordStatusProvisioning:
 		return 1
-	case StoreStatusActive:
+	case RecordStatusActive:
 		return 2
-	case StoreStatusDisabled, StoreStatusDeleting:
+	case RecordStatusDisabled, RecordStatusDeleting:
 		return 3
+	case RecordStatusDeleted:
+		return 4
 	default:
 		return 1
 	}

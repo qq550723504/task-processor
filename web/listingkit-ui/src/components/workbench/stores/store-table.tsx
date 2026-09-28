@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 
+import { StoreStateFacts } from "@/components/workbench/stores/store-state-facts";
 import { StoreLifecycleActions } from "@/components/workbench/stores/store-lifecycle-actions";
 import type { WorkbenchStore } from "@/lib/api/workbench-stores";
 
-const lifecycleLabels: Record<WorkbenchStore["lifecycleStatus"], string> = {
+const lifecycleLabels: Record<WorkbenchStore["recordStatus"], string> = {
   provisioning: "开通中",
   active: "已启用",
   disabled: "已停用",
@@ -24,8 +25,9 @@ export function StoreTable({ stores, onDeleted, onRefreshStore }: { stores: Work
     const timestamp = formatStoreTimestamp(store.updatedAt);
     return <li key={store.id} className="console-store-card">
       <div className="console-store-card-header"><div className="console-store-identity"><span aria-hidden="true" className="console-store-avatar">S</span><div><h2>{store.name}</h2><p className="console-description">外部店铺 ID：<span>{store.externalStoreId || "未设置"}</span></p></div></div>
-        <div className="console-store-badges"><span>SHEIN</span><span>{store.region}</span><span>{lifecycleLabels[store.lifecycleStatus]}</span><span>{connectionLabels[store.connectionStatus]}</span></div>
+        <div className="console-store-badges"><span>SHEIN</span><span>{store.region}</span><span>{lifecycleLabels[store.recordStatus]}</span><span>{connectionLabels[store.connectionStatus]}</span></div>
       </div>
+      <StoreStateFacts store={store} />
       <div className="console-store-card-footer"><dl><dt>更新时间</dt><dd><time dateTime={timestamp ? store.updatedAt : ""}>{timestamp || "—"}</time></dd></dl>
         <div className="console-store-actions"><StoreLifecycleActions onDeleted={onDeleted} onRefreshStore={onRefreshStore ? () => onRefreshStore(store.id) : undefined} store={store} /><Link aria-label={`查看${store.name}`} className="console-store-detail" href={`/workbench/stores/${store.id}`}>进入店铺 →</Link></div>
       </div>

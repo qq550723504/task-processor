@@ -34,8 +34,6 @@ func mapStoreError(err error) protocolError {
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_ALREADY_EXISTS", "Store already exists"
 	case errors.Is(err, storecenter.ErrVersionConflict):
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_VERSION_CONFLICT", "Store has changed"
-	case errors.Is(err, storecenter.ErrServiceResumeRequired):
-		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_SERVICE_RESUME_REQUIRED", "Store service must be resumed"
 	case errors.Is(err, storecenter.ErrInvalidServiceState):
 		response.Status, response.Code, response.Message = http.StatusConflict, "STORE_SERVICE_STATE_CORRUPT", "Store service state is invalid"
 	case errors.Is(err, storecenter.ErrConnectionUnavailable), errors.Is(err, storecenter.ErrConnectionSnapshotChanged):

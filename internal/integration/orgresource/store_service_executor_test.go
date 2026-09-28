@@ -287,7 +287,7 @@ func seedPendingActivationStore(t *testing.T, db *gorm.DB, repository *storecent
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "creator", createdAt.Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "creator", createdAt.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.Save(context.Background(), organizationID, store, 1); err != nil {

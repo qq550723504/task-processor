@@ -49,7 +49,7 @@ export function StoreListPage() {
   };
 
   return (
-    <ConsolePage title="我的店铺" breadcrumbs={findConsoleRoute("/workbench/stores")?.trail} description={<>统一管理店铺连接、授权与当前状态。{context.effectiveOrganization ? `当前企业：${context.effectiveOrganization.name}` : ""}</>} actions={canCreate ? <Button asChild><Link href="/workbench/stores/new"><Plus aria-hidden="true" />新建店铺</Link></Button> : undefined}>
+    <ConsolePage title="我的店铺" breadcrumbs={findConsoleRoute("/workbench/stores")?.trail} description={<>管理店铺记录并查看连接与服务状态。{context.effectiveOrganization ? `当前企业：${context.effectiveOrganization.name}` : ""}</>} actions={canCreate ? <Button asChild><Link href="/workbench/stores/new"><Plus aria-hidden="true" />新建店铺</Link></Button> : undefined}>
       {!stores.isPending && !stores.isError && data ? <div className="console-store-metrics">{[
         ["当前筛选店铺", data.pagination.total], ["店铺额度已用", data.quota.used], ["预留额度", data.quota.reserved], ["额度上限", data.quota.limit ?? "未提供"],
       ].map(([label, value]) => <Card className="console-store-metric" key={label}><h2>{label}</h2><p>{value}</p></Card>)}</div> : null}
@@ -75,7 +75,7 @@ export function StoreListPage() {
         {hasFilters && data?.items.length !== 0 ? <Button onClick={resetFilters} variant="ghost">清除筛选</Button> : null}
       </ConsoleToolbar>
 
-      {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除。界面不提供恢复；如需运营恢复，请由管理员通过数据库软删除恢复流程处理。</p> : null}
+      {deletedNotice ? <p className="mt-4 rounded-md border p-3 text-sm" role="status">店铺已删除，店铺名额已释放。当前不提供恢复入口。</p> : null}
 
       {stores.isPending ? <LoadingState /> : stores.isError ? (
         <ErrorState error={stores.error} retry={retryStores} />

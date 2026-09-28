@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
+import { StoreStateFacts } from "@/components/workbench/stores/store-state-facts";
 import { StoreForm } from "@/components/workbench/stores/store-form";
 import { StoreLifecycleActions } from "@/components/workbench/stores/store-lifecycle-actions";
 import { Button } from "@/components/ui/button";
@@ -21,12 +22,14 @@ export function StoreDetailPage({ storeId }: { storeId: string }) {
   const router = useRouter();
   const context = useWorkbenchContext();
   const organizationId = context.effectiveOrganization?.id ?? "";
-  const [initialOrganizationId] = useState(organizationId);
-  const organizationChanged = organizationId !== initialOrganizationId;
+  const [initialOrganizationId, setInitialOrganizationId] = useState(organizationId);
+  if (!initialOrganizationId && organizationId) setInitialOrganizationId(organizationId);
+  const organizationChanged = Boolean(initialOrganizationId) && organizationId !== initialOrganizationId;
   useEffect(() => {
     if (!organizationId || !organizationChanged) return;
     router.replace("/workbench/stores");
   }, [organizationChanged, organizationId, router]);
+  if (!organizationId) return <section className="mx-auto max-w-2xl px-4 py-8" role="status">正在加载企业权限...</section>;
   if (organizationChanged) {
     return (
       <section
@@ -46,7 +49,7 @@ export function StoreDetailPage({ storeId }: { storeId: string }) {
   );
 }
 
-const lifecycleLabels: Record<WorkbenchStore["lifecycleStatus"], string> = {
+const lifecycleLabels: Record<WorkbenchStore["recordStatus"], string> = {
   provisioning: "开通中",
   active: "已启用",
   disabled: "已停用",
@@ -61,7 +64,7 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
   const [recovery, setRecovery] = useState<RecoveryState>({ state: "idle" });
   const displayStore = (next: WorkbenchStore) => {
     setDisplayedStore((current) => {
-      if (!current || (next.version >= current.version && !(current.lifecycleStatus === "deleting" && next.lifecycleStatus !== "deleting"))) return next;
+      if (!current || (next.version >= current.version && !(current.recordStatus === "deleting" && next.recordStatus !== "deleting"))) return next;
       return current;
     });
   };
@@ -83,7 +86,7 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
       setRecovery({ state: "failed", base, draft });
       return;
     }
-    if (result.data.lifecycleStatus === "deleting") {
+    if (result.data.recordStatus === "deleting") {
       displayStore(result.data);
       setRecovery({ state: "idle" });
       return;
@@ -99,11 +102,12 @@ function StoreDetailContent({ canUpdate, storeId }: { canUpdate: boolean; storeI
     <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4">
       <p className="text-sm text-muted-foreground">店铺中心</p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">{store.name}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">店铺状态：{lifecycleLabels[store.lifecycleStatus]}</p>
+      <p className="mt-2 text-sm text-muted-foreground">店铺状态：{lifecycleLabels[store.recordStatus]}</p>
+      <StoreStateFacts store={store} />
       <div className="mt-4"><StoreLifecycleActions onDeleted={() => router.push("/workbench/stores?notice=store-deleted")} onRefreshStore={refreshLifecycleStore} onStoreUpdated={(next) => { displayStore(next); setRecovery({ state: "idle" }); }} store={store} /></div>
     </section>
     {recovery.state === "failed" ? <section className="mx-auto mt-6 max-w-2xl rounded-xl border bg-card p-4" role="alert"><p>无法确认店铺最新版本，草稿已保留。</p><Button className="mt-3" onClick={() => void loadLatest(recovery.draft, recovery.base)} variant="outline">重试获取最新版本</Button></section> : null}
-    {canUpdate && (store.lifecycleStatus === "active" || store.lifecycleStatus === "disabled") ? <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { displayStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} /> : null}
+    {canUpdate && (store.recordStatus === "active" || store.recordStatus === "disabled") ? <StoreForm conflict={recovery.state === "ready" ? { latest: recovery.latest, changedFields: recovery.changedFields } : null} mode="edit" onConflict={(draft, baseline) => void loadLatest(draft, baseline)} onSaved={(next) => { displayStore(next); setRecovery({ state: "idle" }); }} recoveryState={recovery.state === "loading" || recovery.state === "failed" ? recovery.state : "idle"} store={store} /> : null}
   </>;
 }
 
@@ -112,6 +116,6 @@ function changedFields(oldStore: WorkbenchStore, latest: WorkbenchStore): ("name
 }
 
 function DetailError({ code, retry }: { code?: string; retry: () => void }) {
-  const message = code === "STORE_NOT_FOUND" || code === "ORGANIZATION_ACCESS_DENIED" || code === "ORGANIZATION_ACCESS_REVOKED" ? "店铺不存在或已不可访问" : code === "PERMISSION_DENIED" ? "没有编辑当前企业店铺的权限" : "店铺服务暂时不可用，请稍后重试";
+  const message = code === "STORE_NOT_FOUND" || code === "ORGANIZATION_ACCESS_DENIED" || code === "ORGANIZATION_ACCESS_REVOKED" ? "店铺不存在或已不可访问" : code === "PERMISSION_DENIED" ? "没有查看当前企业店铺的权限" : "店铺服务暂时不可用，请稍后重试";
   return <section className="mx-auto mt-8 max-w-2xl rounded-xl border bg-card p-6" role="alert"><h1 className="font-semibold">{message}</h1><Button className="mt-4" onClick={retry} variant="outline">重试</Button></section>;
 }
