@@ -1,6 +1,6 @@
 # Agent + Knowledge Context V1
 
-> Status: **APPROVED / IMPLEMENTATION_READY**
+> Status: **ARCHITECTURE_REVIEW / NOT IMPLEMENTATION_READY**
 >
 > Product Design Issue: #555
 >
@@ -22,13 +22,12 @@
 >
 > Product Gate: **APPROVED FOR ARCHITECTURE REVIEW** under #555.
 >
-> Architecture Review: **PASSED**. Normal review stop rule reached after two rounds plus
-> targeted BLOCKER verification. Reviewed content HEAD `96ba7f6549fcaf97ed358f94802919bbb03ea9d2`;
-> CI run `36422741730` completed SUCCESS.
+> Architecture Review: **REOPENED FOR NEW BLOCKER** after Ready-triggered review at
+> `174d31b0431821368087f24b41b9470e5e17d556` identified the missing public
+> KnowledgeSelection transport contract.
 >
-> This document is an Independent Architecture **implementation baseline**. Production
-> implementation may start only from an explicit execution Issue after this architecture PR
-> is merged into main. Real enterprise uploads, production Tika/S3 deployment, paid model
+> This document remains an Independent Architecture **review candidate**. Production
+> implementation is closed until that blocker is fixed and targeted verification completes. Real enterprise uploads, production Tika/S3 deployment, paid model
 > calls and release enablement remain separate authorization/acceptance gates.
 
 ## 1. Product outcome
@@ -507,8 +506,10 @@ Organization
 + Agent request key
 ```
 
-Its stored fingerprint additionally binds the complete Agent Binding, selected Knowledge
-inputs and materialization policy version. Therefore:
+Its stored fingerprint additionally binds the complete Agent Binding, the normalized
+client KnowledgeSelection from §14.4 and materialization policy version. The exact
+server-resolved Source/Revision set is frozen inside the first committed bundle, not
+re-resolved into the command fingerprint on a same-key retry. Therefore:
 
 - first start can materialize before an AgentRun exists;
 - same request retry adopts the same bundle/ref;
@@ -771,13 +772,16 @@ Candidate first version:
 
 ### 9.3 Keyword import
 
-Product review still must choose one contract:
+V1 is frozen to **snapshot copy + source/revision provenance**.
 
-A. snapshot copy + source/revision reference; or  
-B. live reference.
+When a keyword set is imported into a saved configuration/template:
 
-Current recommendation is **A** for v1 because it makes saved configuration deterministic
-while keeping provenance. This recommendation is not yet frozen.
+- the selected keyword values are copied into that configuration version;
+- the originating KnowledgeBase/Source/Revision identity is retained as provenance;
+- later Knowledge edits do not silently mutate the saved template or historical run;
+- a user must explicitly re-import/re-save to adopt newer keyword content.
+
+Live reference is not an allowed V1 alternative.
 
 ## 10. Prompt-injection and trust model
 
@@ -1020,7 +1024,84 @@ They never expose:
 - provider credential;
 - other Organization identifiers.
 
-### 14.4 Internal local ports
+### 14.4 Product Agent start KnowledgeSelection
+
+Knowledge-backed title optimization extends the **existing** start endpoint; V1 does not add
+a second Agent start route:
+
+```text
+POST /api/v1/product-acquisitions/:operation_id/product-agent/runs
+Idempotency-Key: <canonical UUID>
+Content-Type: application/json
+```
+
+The existing strict 8 KiB JSON request contract remains in force
+(`readAcquisitionImageJSON`: UTF-8 JSON, no content encoding, duplicate/unknown fields
+rejected).
+
+V1 start body:
+
+```json
+{
+  "targetPlatform": "shein",
+  "knowledgeSelection": {
+    "knowledgeBaseId": "01234567-89ab-cdef-0123-456789abcdef"
+  }
+}
+```
+
+Rules:
+
+- `knowledgeSelection` is optional; **omitted** means “do not use enterprise Knowledge”.
+- Explicit `null`, empty object, empty ID, unknown fields, duplicate fields, non-canonical
+  UUID and more than one KnowledgeBase are invalid.
+- V1 accepts exactly one `knowledgeBaseId` when Knowledge is selected.
+- Browser/BFF never submits Source IDs, Revision IDs, citation IDs, S3 keys,
+  `ContextSnapshotRef`, bundle ID or bundle digest.
+- The selected KnowledgeBase must belong to the current Effective Organization and be active.
+- Server resolves **all active Sources** in that KnowledgeBase. V1 requires 1–4 active
+  Sources total.
+- Every active Source must have a current content-readable revision in AVAILABLE or PARTIAL
+  state. PROCESSING/FAILED/missing current revision makes the explicit selection
+  `KNOWLEDGE_NOT_READY`; the server does not silently drop that Source.
+- PARTIAL revisions may be admitted only with their existing omission/truncation warnings
+  carried into the bundle.
+- The existing ContextBundle byte/citation limits still apply after source resolution.
+  Exceeding them fails visibly as `KNOWLEDGE_CONTEXT_TOO_LARGE`.
+
+Canonical normalized selection is either:
+
+```text
+none
+```
+
+or:
+
+```text
+knowledge-base:<canonical-lowercase-uuid>
+```
+
+The pre-Start MaterializationFingerprint binds:
+
+```text
+full Agent Binding
++ normalized KnowledgeSelection
++ materialization policy version
+```
+
+It does **not** recompute latest Source/Revision IDs into the request fingerprint on a retry.
+On the first admitted materialization, the server resolves and persists the exact Source /
+Revision / digest set inside the immutable bundle. A same-key retry compares the original
+client command fingerprint and adopts that existing bundle even if the KnowledgeBase has
+since gained a newer Revision; it never silently moves that retry to latest Knowledge.
+
+The resulting `ContextSnapshotRef` is created server-side and inserted into the complete
+`agent.Request` before `Runtime.Start`. It is not client authority.
+
+Start without `knowledgeSelection` preserves the existing no-Knowledge Product Agent path
+and does not create an empty ContextBundle.
+
+### 14.5 Internal local ports
 
 Agent integration uses local contracts, not self-HTTP:
 
@@ -1205,6 +1286,25 @@ Repository processing fields include:
 Current-application assembly starts the processor/recovery loop only when Knowledge is
 enabled. It owns start/stop coordination through the long-lived runtime context and server
 shutdown. HTTP handlers do not spawn unmanaged goroutines.
+
+The same Knowledge processing/recovery owner also reconciles stale pre-object
+`ADMITTED` intents; they must not remain pending forever.
+
+For a stale `ADMITTED` operation:
+
+1. claim it using the same bounded DB lease/fence;
+2. Inspect the deterministic S3 object identity;
+3. matching object digest/size -> adopt it and advance the same Revision to
+   `OBJECT_STORED`;
+4. mismatched object -> terminal integrity failure;
+5. confirmed object missing and original request spool unavailable -> mark the same
+   Revision `FAILED` with safe `UPLOAD_INCOMPLETE` / re-upload-required category;
+6. never invent another Source/Revision or upload bytes the reconciler does not possess.
+
+A later client retry with the **same Idempotency-Key + same complete upload fingerprint**
+may resume that exact `UPLOAD_INCOMPLETE` operation/revision using the resent bounded
+bytes. It must not create a second visible Source. A changed fingerprint conflicts.
+A new key is a genuinely new upload command and must not be used automatically as recovery.
 
 Candidate runtime bounds:
 
@@ -1495,7 +1595,7 @@ Before changing this document to `IMPLEMENTATION_READY`:
 - V1 content types, snapshot-copy keyword semantics, enterprise ownership, governed-model
   boundary, template semantics and Human Review provenance rules are frozen in §2.
 
-### Architecture gate — SATISFIED
+### Architecture gate — REOPENED FOR TRANSPORT BLOCKER
 
 Architecture Review accepted the following V1 contracts:
 
@@ -1524,16 +1624,20 @@ Review history:
 - targeted verification identified and closed upload/materialization idempotency and the
   pre-Start AgentRun/ContextBundle circular-admission BLOCKER;
 - targeted review at `96ba7f6549fcaf97ed358f94802919bbb03ea9d2` found no major issue;
-- CI `36422741730` completed SUCCESS.
+- CI `36422741730` completed SUCCESS;
+- later Ready-triggered review at `174d31b0431821368087f24b41b9470e5e17d556`
+  demonstrated the missing KnowledgeSelection transport P1 BLOCKER; admission was reopened.
 
-The normal review stop rule is reached. New non-blocking implementation detail belongs to
-IMPLEMENTATION_TEST/BACKLOG. Reopen this architecture only for a newly demonstrated
-BLOCKER.
+The normal review stop rule was reached at `96ba7f6`, but Ready-triggered review on
+`174d31b` demonstrated a new P1 BLOCKER: the public Product Agent start request did not
+define how explicit KnowledgeSelection enters the application. §14.4 now freezes that
+transport contract. The stale ADMITTED ingest recovery obligation is also made explicit as
+IMPLEMENTATION_TEST, and §9.3 removes the contradictory live-reference alternative.
 
-### Implementation gate — IMPLEMENTATION_READY
+### Implementation gate — CLOSED PENDING TARGETED VERIFICATION
 
-Slices A–C may be implemented by explicit execution Issues after this architecture PR is
-merged into main.
+Slices A–C must not start until the §14.4 transport fix receives targeted review and this
+document is explicitly returned to `IMPLEMENTATION_READY`.
 
 This status does **not** authorize:
 
@@ -1568,6 +1672,14 @@ Architecture acceptance requires implementation evidence plans for these risks.
 
 ### 20.2 Persistence / upload / parser
 
+- Product Agent start rejects unknown/duplicate KnowledgeSelection fields, null/empty
+  selection and non-canonical IDs;
+- omitted KnowledgeSelection preserves the existing no-Knowledge start path;
+- explicit selection accepts one active KnowledgeBase only and server-resolves its Sources;
+- PROCESSING/FAILED active Source causes KNOWLEDGE_NOT_READY rather than silent omission;
+- same Agent key + same normalized selection adopts the original bundle after a newer
+  Knowledge revision appears;
+- same Agent key + changed KnowledgeSelection conflicts;
 - upload fingerprint is complete before durable idempotency admission/S3 write;
 - duplicate Idempotency-Key + same upload returns the same revision/operation;
 - concurrent same key + same upload creates one revision identity;
@@ -1575,6 +1687,11 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - S3 timeout + confirmed matching exact object adopts original write;
 - S3 timeout + confirmed missing exact object resends same identity;
 - mismatched deterministic key/digest fails closed;
+- stale ADMITTED + matching object is adopted into OBJECT_STORED;
+- stale ADMITTED + confirmed missing object becomes UPLOAD_INCOMPLETE instead of remaining
+  pending forever;
+- same upload key/fingerprint can resume the exact UPLOAD_INCOMPLETE revision with resent
+  bytes without creating a duplicate Source;
 - restart after OBJECT_STORED resumes parsing;
 - expired processing lease can be reclaimed without duplicate revision;
 - unsupported/encrypted/corrupt input -> FAILED;
