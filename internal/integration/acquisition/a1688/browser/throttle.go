@@ -35,7 +35,8 @@ type Throttle struct {
 	next     time.Time // earliest allowed start
 	cooledAt time.Time
 	blocked  bool
-	seq      uint64 // identifies the newest reservation, for safe rollback
+	seq      uint64    // identifies the newest reservation, for safe rollback
+	prevNext time.Time // boundary the newest reservation displaced
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
@@ -114,15 +115,21 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		wait = start.Sub(now)
 	}
 
-	// If this caller could not finish inside its own budget, do not consume a
+	// If this caller cannot even START inside its own budget, do not consume a
 	// slot: the reservation would be a phantom that only pushes the queue
 	// further away, and refusing is what the caller can act on.
+	//
+	// The check is on the scheduled start, not on slotEnd. The interval floor
+	// deliberately pushes the *next* caller a full interval out, so requiring
+	// that boundary to fit this caller's budget would reject the very first
+	// request of an idle process under the production defaults.
 	deadline, hasDeadline := ctx.Deadline()
-	if hasDeadline && slotEnd.After(deadline) {
+	if hasDeadline && start.After(deadline) {
 		t.mu.Unlock()
 		return ErrThrottled
 	}
 
+	t.prevNext = t.next
 	t.seq++
 	mine := t.seq
 	t.next = slotEnd
@@ -152,7 +159,10 @@ func (t *Throttle) release(seq uint64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.seq == seq {
-		t.next = time.Time{}
+		// Restore the boundary this reservation displaced. Clearing the schedule
+		// outright would let the next caller start immediately after the preceding
+		// acquisition and recreate the burst this throttle exists to prevent.
+		t.next = t.prevNext
 	}
 }
 

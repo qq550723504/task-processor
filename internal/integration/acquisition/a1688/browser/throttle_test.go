@@ -202,3 +202,40 @@ func TestThrottleCancelledWaitReleasesSlot(t *testing.T) {
 	require.True(t, queued.IsZero() || queued.Before(time.Now().Add(band)),
 		"a cancelled wait must release its reservation")
 }
+
+// Under the production defaults the first request of an idle process must be
+// served. Requiring the *following* reservation boundary to fit the caller's
+// budget would reject it, because the interval floor is wider than the budget by
+// design.
+func TestThrottleServesFirstRequestUnderProductionDefaults(t *testing.T) {
+	th := newThrottle(DefaultMinInterval, DefaultJitterFraction, DefaultChallengeCooldown)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancel()
+	require.NoError(t, th.Wait(ctx),
+		"an idle collector must serve its first request under production defaults")
+}
+
+// A cancelled waiter must not erase the schedule: the caller behind it must
+// still respect the floor the preceding acquisition established.
+func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
+	th := newThrottle(400*time.Millisecond, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	th.mu.Lock()
+	established := th.next
+	th.mu.Unlock()
+	require.False(t, established.IsZero(), "the first acquisition must establish a floor")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+	require.ErrorIs(t, th.Wait(ctx), context.Canceled)
+
+	th.mu.Lock()
+	after := th.next
+	th.mu.Unlock()
+	require.Equal(t, established, after,
+		"a cancelled waiter must restore the displaced boundary, not erase the schedule")
+}
