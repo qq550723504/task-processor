@@ -38,7 +38,10 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
   PRIMARY KEY(project_id,organization_id,actor_id,operation_key),
   CONSTRAINT organization_member_audit_operation_check CHECK (operation IN ('invite','role','remove'))
  );`)
-	return err
+	if err != nil {
+		return err
+	}
+	return installInvitations(ctx, tx)
 }
 
 type schemaReader interface {
@@ -168,7 +171,10 @@ func verifySchema(ctx context.Context, db schemaReader) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	return verifyReservationIndexes(ctx, db)
+	if err := verifyReservationIndexes(ctx, db); err != nil {
+		return err
+	}
+	return verifyInvitations(ctx, db)
 }
 func verifyReservationIndexes(ctx context.Context, db schemaReader) error {
 	want := map[string]string{

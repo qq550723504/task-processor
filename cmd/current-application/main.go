@@ -137,7 +137,7 @@ func execute() error {
 					}
 					return nil, fmt.Errorf("membership configuration unavailable")
 				}
-				options = append(options, httpapi.WithMembership(httpapi.MembershipDependencies{ReceiptDB: features.MembershipDB, ProviderOrigin: features.Membership.ProviderOrigin, ReadToken: features.Membership.ReadToken, WriteToken: features.Membership.WriteToken}))
+				options = append(options, httpapi.WithMembership(httpapi.MembershipDependencies{ReceiptDB: features.MembershipDB, ProviderOrigin: features.Membership.ProviderOrigin, ReadToken: features.Membership.ReadToken, WriteToken: features.Membership.WriteToken, InvitationMail: features.Membership.InvitationMail}))
 			}
 			server, buildErr := httpapi.NewCurrentApplicationWithOptions(ctx, source, commercial, cfg, logger, options...)
 			if agentManager != nil {

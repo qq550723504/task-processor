@@ -30,6 +30,8 @@ func (m accountProfileModule) Register(reg *kernelmodule.Registry) error {
 		return errors.New("account profile repository unavailable")
 	}
 	reg.AddRoutes(
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/account/preferences", Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RejectUnreadRequestBody: true, RequestTimeout: 15 * time.Second, Handler: m.preferences},
+		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/account/preferences", Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RequestTimeout: 15 * time.Second, Handler: httproute.WithRequestBodyReadTimeout(10*time.Second, m.preferences)},
 		httproute.Descriptor{Method: http.MethodGet, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyContextRead, RequestTimeout: 15 * time.Second, RejectUnreadRequestBody: true, Handler: m.read},
 		httproute.Descriptor{Method: http.MethodPut, Path: accountBusinessProfilePath, Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: accountOrganizationTarget, RequestTimeout: 15 * time.Second, Handler: m.update},
 	)

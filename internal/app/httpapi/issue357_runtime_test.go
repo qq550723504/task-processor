@@ -238,7 +238,7 @@ func TestIssue357GrantSourceAccountRuntime(t *testing.T) {
 	// missing was the GRANT: the runtime boundary check asserts this role can reach
 	// them, so without these the process failed startup on a permission mismatch
 	// even though the schema was present.
-	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime").Error)
+	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles,public.account_user_preferences TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime").Error)
 	require.NoError(t, db.Exec("GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, public.subject_verification_messages, public.personal_verification_applications TO source_account_runtime").Error)

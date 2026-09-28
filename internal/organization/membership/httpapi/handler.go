@@ -13,8 +13,9 @@ import (
 )
 
 type Handler struct {
-	service  *membership.Service
-	commands CommandFactory
+	service     *membership.Service
+	commands    CommandFactory
+	invitations InvitationFactory
 }
 
 func NewHandler(service *membership.Service) *Handler { return &Handler{service: service} }
@@ -56,6 +57,18 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	result, err := h.service.List(c.Request.Context(), page)
+	respond(c, result, err)
+}
+func (h *Handler) Summary(c *gin.Context) {
+	if err := validateScope(c); err != nil {
+		writeError(c, err)
+		return
+	}
+	if c.Request.URL.RawQuery != "" || c.Request.URL.ForceQuery {
+		writeError(c, membership.ErrInvalidRequest)
+		return
+	}
+	result, err := h.service.Summary(c.Request.Context())
 	respond(c, result, err)
 }
 func (h *Handler) Read(c *gin.Context) {
@@ -105,7 +118,7 @@ func parsePage(u *url.URL) (membership.PageRequest, error) {
 	return page, nil
 }
 
-func respond(c *gin.Context, result membership.Result, err error) {
+func respond(c *gin.Context, result any, err error) {
 	if err != nil {
 		writeError(c, err)
 		return

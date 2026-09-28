@@ -14,6 +14,9 @@ const runtimePermissionQuery = `SELECT current_user,
  AND has_table_privilege(current_user,'public.organization_member_operations','SELECT')
  AND has_table_privilege(current_user,'public.organization_member_operations','INSERT')
  AND has_table_privilege(current_user,'public.organization_member_operations','UPDATE')
+ AND has_table_privilege(current_user,'public.organization_member_invitations','SELECT')
+ AND has_table_privilege(current_user,'public.organization_member_invitations','INSERT')
+ AND has_table_privilege(current_user,'public.organization_member_invitations','UPDATE')
  AND has_table_privilege(current_user,'public.organization_member_audit_events','SELECT')
  AND has_table_privilege(current_user,'public.organization_member_audit_events','INSERT') AS required,
  has_database_privilege(current_user,current_database(),'CREATE')
@@ -31,6 +34,7 @@ const runtimePermissionQuery = `SELECT current_user,
  AND NOT (
    namespace.nspname='public' AND (
      relation.relname='organization_member_operations' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE')
+     OR relation.relname='organization_member_invitations' AND privilege.privilege_type IN ('SELECT','INSERT','UPDATE')
      OR relation.relname='organization_member_audit_events' AND privilege.privilege_type IN ('SELECT','INSERT')
    )
  )

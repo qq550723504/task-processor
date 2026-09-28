@@ -52,7 +52,6 @@ func validateMutationScope(c *gin.Context) error {
 
 func (h *Handler) ChangeRole(c *gin.Context) { h.execute(c, domain.CommandRole) }
 func (h *Handler) Remove(c *gin.Context)     { h.execute(c, domain.CommandRemove) }
-func (h *Handler) Invite(c *gin.Context)     { h.execute(c, domain.CommandInvite) }
 
 func (h *Handler) execute(c *gin.Context, kind domain.CommandKind) {
 	if err := validateMutationScope(c); err != nil {
@@ -71,16 +70,6 @@ func (h *Handler) execute(c *gin.Context, kind domain.CommandKind) {
 	}
 	input := domain.CommandInput{Kind: kind, AuthorizationID: c.Param("member_id")}
 	switch kind {
-	case domain.CommandInvite:
-		var payload struct {
-			Email     string `json:"email"`
-			FirstName string `json:"firstName"`
-			LastName  string `json:"lastName"`
-			Role      string `json:"role"`
-		}
-		err = decodeCommand(c.Request, &payload)
-		input.Role = payload.Role
-		input.Invitation = &domain.Invitation{Email: payload.Email, FirstName: payload.FirstName, LastName: payload.LastName}
 	case domain.CommandRole:
 		var payload struct {
 			Role            string `json:"role"`
@@ -95,6 +84,8 @@ func (h *Handler) execute(c *gin.Context, kind domain.CommandKind) {
 		}
 		err = decodeCommand(c.Request, &payload)
 		input.ExpectedVersion = payload.ExpectedVersion
+	default:
+		err = domain.ErrInvalidRequest
 	}
 	if err != nil {
 		writeError(c, domain.ErrInvalidRequest)

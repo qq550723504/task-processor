@@ -125,6 +125,11 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`account-facts-invitations-v1.md`](./account-facts-invitations-v1.md)
+  - IMPLEMENTATION_READY Design Basis for the bounded #551 Account Center
+    delivery: user facts, region preferences, complete enterprise statistics and
+    consent-based email invitations. It does not supersede repository structural
+    boundaries; candidate delivery is not browser acceptance or runtime rollout.
 - [`settlement-reversal-locking.md`](./settlement-reversal-locking.md)
   - IMPLEMENTATION_READY #413 repair of ordinary refund/chargeback concurrency
     while preserving immutable canonical settlement privileges and replay bounds

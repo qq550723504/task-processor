@@ -219,6 +219,7 @@ export class WorkbenchAPIError extends Error {
 export async function listWorkbenchStores(
   filters: WorkbenchStoreListFilters,
   expectedOrganizationId: string,
+  signal?: AbortSignal,
 ): Promise<WorkbenchStoreList> {
   const parsedFilters = parseInput(workbenchStoreListFiltersSchema, filters);
   const search = new URLSearchParams();
@@ -232,7 +233,7 @@ export async function listWorkbenchStores(
   }
   return requestWorkbenchStores(
     `/api/workbench/stores?${search.toString()}`,
-    { method: "GET" },
+    { method: "GET", signal, cache: "no-store", redirect: "error" },
     workbenchStoreListResponseSchema,
     200,
     expectedOrganizationId,

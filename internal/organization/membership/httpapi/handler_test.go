@@ -31,7 +31,7 @@ func TestCommandRoutesHaveExactManagePermission(t *testing.T) {
 	if len(routes) != 8 {
 		t.Fatalf("routes=%d", len(routes))
 	}
-	for _, route := range routes[2:] {
+	for _, route := range routes[3:] {
 		if route.Permission != authz.PermissionWorkbenchOrganizationMemberManage || route.AuthPolicy != httproute.AuthPolicyCurrentIdentity || route.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || route.OrganizationTargetResolver == nil {
 			t.Fatalf("unprotected command: %+v", route)
 		}
@@ -96,7 +96,7 @@ func TestMemberRoutesRequireCurrentIdentityAndLiveGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	routes := reg.Routes()
-	if len(routes) != 2 {
+	if len(routes) != 3 {
 		t.Fatalf("routes=%d", len(routes))
 	}
 	for _, r := range routes {

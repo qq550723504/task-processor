@@ -30,6 +30,7 @@ type Member struct {
 	ObservedVersion string   `json:"observedVersion"`
 	CanChangeRole   bool     `json:"canChangeRole"`
 	CanRemove       bool     `json:"canRemove"`
+	Permissions     []string `json:"permissions"`
 }
 
 type PageRequest struct{ Limit, Offset int }

@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({ context: { user: { id: "u1" } as { id: string 
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 const profile: AccountProfile = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", displayName: "本人甲", email: null, emailVerified: null, phoneNumber: "+8613800000000", phoneNumberVerified: false, source: "zitadel_userinfo", readAt: "2026-09-07T01:00:00Z" };
 const organization: AccountOrganization = { schemaVersion: "account-v1", userId: "u1", homeOrganizationId: "A", effectiveOrganizationId: "B", name: "企业乙", roles: ["viewer"], source: "zitadel_project_authorizations", readAt: profile.readAt, authorizationMaxAgeSeconds: 60 };
+function withSelfReads(original:(url:string,init?:RequestInit)=>Promise<Response>){return vi.fn((url:RequestInfo|URL,init?:RequestInit)=>{if(url==="/api/account/facts")return Promise.resolve(Response.json({schemaVersion:"account-identity-facts-v1",userId:"u1",registeredAt:"2026-09-01T00:00:00Z",lastLogin:null,passwordChangedAt:null,readAt:"2026-09-28T00:00:00Z",source:"zitadel_auth_v1"}));if(url==="/api/account/preferences")return Promise.resolve(Response.json({schemaVersion:"account-preferences-v1",userId:"u1",country:"",province:"",city:"",updatedAt:null,readAt:"2026-09-28T00:00:00Z",source:"account_profile"}));return original(String(url),init);});}
 const clients: QueryClient[] = [];
 function mount(page: "profile" | "profile-settings" | "profile-business" | "profile-verification" | "organization" = "profile", expectedUserId = "u1") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); clients.push(client);
@@ -20,7 +21,7 @@ describe("AccountPage read-only projection", () => {
   it("shows all three entry cards without turning links into management authority", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "管理成员" })).toHaveAttribute("href", "/workbench/account/organization/members");
-    expect(screen.getByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
+    expect(screen.getByRole("link", { name: "管理成员额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
     expect(screen.getByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
     expect(screen.getByText("角色与可执行操作以当前组织授权 owner 为准。")).toBeVisible();
     expect(screen.getByText("只展示已提交成功的业务事件。")).toBeVisible();
@@ -32,16 +33,16 @@ describe("AccountPage read-only projection", () => {
     expect(screen.getByText("查看企业成员；获准管理员可邀请成员、调整角色和移除成员")).toBeVisible();
     expect(screen.getByText("角色与可执行操作以当前组织授权 owner 为准。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看资源与额度" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "管理成员额度" })).toBeVisible();
     expect(screen.getByRole("link", { name: "查看操作记录" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /邀请|移除/ })).not.toBeInTheDocument();
   });
   it("keeps resources and bounded audit cards available together alongside the permission-qualified member entry", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
     expect(await screen.findByRole("link", { name: "查看操作记录" })).toHaveAttribute("href", "/workbench/account/organization/audit");
-    expect(screen.getByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
+    expect(screen.getByRole("link", { name: "管理成员额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
     expect(screen.getByText("只展示已提交成功的业务事件。")).toBeVisible();
-    expect(screen.getByText("店铺实际数量、AI 点数与数据余额仅在各自 owner 返回后展示，不由套餐或用量推算。")).toBeVisible();
+    expect(screen.getByText("AI 点数与模型 Token、订阅 Token 额度及现金分别计量。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
@@ -55,13 +56,13 @@ describe("AccountPage read-only projection", () => {
   });
   it("links the available resource page without claiming balances", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(organization))); mount("organization");
-    expect(await screen.findByRole("link", { name: "查看资源与额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
-    expect(screen.getByText("店铺实际数量、AI 点数与数据余额仅在各自 owner 返回后展示，不由套餐或用量推算。")).toBeVisible();
+    expect(await screen.findByRole("link", { name: "管理成员额度" })).toHaveAttribute("href", "/workbench/account/organization/resources");
+    expect(screen.getByText("AI 点数与模型 Token、订阅 Token 额度及现金分别计量。")).toBeVisible();
     expect(screen.queryByText("暂未接入")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "管理成员" })).toBeVisible();
   });
   it("offers an account return link in the breadcrumb", async () => {
-    const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
+    const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch",withSelfReads(fetcher)); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
     expect(screen.getByText("账户状态")).toBeVisible();
     expect(screen.getByText("待完善")).toBeVisible();
@@ -73,7 +74,7 @@ describe("AccountPage read-only projection", () => {
   it.each(["profile-settings", "profile-verification"] as const)("does not read the business profile on the %s leaf", async page => {
     const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : url === "/api/account/identity/profile" ? Response.json(identity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     mount(page);
     expect(await screen.findByRole("heading", { name: page === "profile-settings" ? "账户信息" : "本人甲" })).toBeVisible();
     if (page === "profile-settings") expect(screen.getByText("显示名称")).toBeVisible();
@@ -103,7 +104,7 @@ describe("AccountPage read-only projection", () => {
     if(mode==="switching")state.context.isSwitching=true;
     const personal={userId:"u1",state:"NOT_STARTED",maskedPhone:"138****0001",canStart:true,canRefresh:false,phoneReady:true,quota:{totalLimit:5,totalUsed:0,totalRemaining:5,dailyLimit:3,dailyUsed:0,dailyRemaining:3,serverTime:"2026-09-27T01:00:00Z",resetAt:"2026-09-27T16:00:00Z",nextAllowedAt:"2026-09-27T01:00:00Z"}};
     const fetcher=vi.fn((url:string)=>Promise.resolve(url==="/api/account/organization"?Response.json({code:mode==="api-revoked"?"ORGANIZATION_ACCESS_REVOKED":"DEPENDENCY_UNAVAILABLE",message:"",requestId:"",fieldErrors:[]},{status:mode==="api-revoked"?403:503}):Response.json(url==="/api/account/profile"?profile:personal)));
-    vi.stubGlobal("fetch",fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     mount("profile-verification");
     expect(await screen.findByLabelText("真实姓名")).toBeVisible();
     expect(fetcher.mock.calls.some(([url])=>url.includes("/organization"))).toBe(mode.startsWith("api-"));
@@ -114,7 +115,7 @@ describe("AccountPage read-only projection", () => {
     const identity = { schemaVersion: "account-identity-profile-v1", userId: "u1", firstName: "本人", lastName: "甲", nickName: "", displayName: "本人甲", preferredLanguage: "", gender: "", source: "zitadel_auth_v1" };
     const operation = { schemaVersion: "account-identity-operation-v1", operation: "password", state: "updated", source: "zitadel_auth_v1" };
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identity) : url === "/api/account/identity/password" ? Response.json(operation) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-settings");
     const oldPassword = await screen.findByLabelText("当前密码");
@@ -130,7 +131,7 @@ describe("AccountPage read-only projection", () => {
     const refreshedIdentity = { ...identity, firstName: "更新" };
     let identityReads = 0;
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/identity/profile" ? Response.json(identityReads++ === 0 ? identity : refreshedIdentity) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-settings");
     expect(await screen.findByLabelText("名")).toHaveValue("本人");
@@ -139,14 +140,14 @@ describe("AccountPage read-only projection", () => {
   });
   it("offers login recovery when the identity profile read expires", async () => {
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     mount("profile-settings");
     expect(await screen.findByText("个人资料暂时无法读取，请稍后重试。")).toBeVisible();
     expect(screen.getByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/login?returnTo=%2Fworkbench%2Faccount%2Fprofile%2Fsettings");
   });
   it("surfaces a failed verification resend instead of hiding the mutation error", async () => {
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-verification");
     await user.click((await screen.findAllByRole("button", { name: "重新发送" }))[0]);
@@ -154,7 +155,7 @@ describe("AccountPage read-only projection", () => {
   });
   it("offers login recovery when a verification resend sees an expired session", async () => {
     const fetcher = vi.fn((url: string) => Promise.resolve(url === "/api/account/profile" ? Response.json(profile) : url === "/api/account/organization" ? Response.json(organization) : Response.json({ code: "AUTHENTICATION_REQUIRED", message: "", requestId: "", fieldErrors: [] }, { status: 401 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-verification");
     await user.click((await screen.findAllByRole("button", { name: "重新发送" }))[0]);
@@ -168,7 +169,7 @@ describe("AccountPage read-only projection", () => {
       if (url === "/api/account/identity/email/resend" && init?.method === "POST") return Promise.resolve(Response.json(unknown, { status: 504 }));
       throw new Error(`unexpected fetch: ${url}`);
     });
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-verification");
     await user.click((await screen.findAllByRole("button", { name: "重新发送" }))[0]);
@@ -183,7 +184,7 @@ describe("AccountPage read-only projection", () => {
       if (url === "/api/account/identity/email" && init?.method === "PUT") return Promise.resolve(Response.json(unknown, { status: 504 }));
       throw new Error(`unexpected fetch: ${url}`);
     });
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-settings");
     const email = await screen.findByLabelText("邮箱地址");
@@ -201,7 +202,7 @@ describe("AccountPage read-only projection", () => {
       if (url === "/api/account/identity/phone/verify" && init?.method === "POST") return Promise.resolve(Response.json(unknown, { status: 504 }));
       throw new Error(`unexpected fetch: ${url}`);
     });
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-verification");
     await user.type(await screen.findByLabelText("手机验证码"), "123456");
@@ -231,7 +232,7 @@ describe("AccountPage read-only projection", () => {
     const fetcher = vi.fn((url: string) => url === "/api/account/profile"
       ? Promise.resolve(Response.json(profile))
       : Promise.resolve(Response.json({ code: "ORGANIZATION_ACCESS_REVOKED", message: "", requestId: "", fieldErrors: [] }, { status: 403 })));
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     mount("profile-business");
     expect(await screen.findByRole("alert")).toHaveTextContent("企业访问已撤销");
     expect(screen.queryByText("业务档案服务暂未接入")).not.toBeInTheDocument();
@@ -275,7 +276,7 @@ describe("AccountPage read-only projection", () => {
       if (path === "/api/account/business-profile") return Promise.resolve(Response.json(business));
       return Promise.resolve(Response.json(organization));
     });
-    vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("fetch",withSelfReads(fetcher));
     const user = userEvent.setup();
     mount("profile-business");
     const platforms = await screen.findByRole("region", { name: "选择店铺平台、经营站点与店铺类型" });
@@ -288,7 +289,7 @@ describe("AccountPage read-only projection", () => {
   });
   it("retries a dependency failure only after user action and rereads facts", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })).mockImplementation(() => Promise.resolve(Response.json(profile)));
-    vi.stubGlobal("fetch", fetcher); mount();
+    vi.stubGlobal("fetch",withSelfReads(fetcher)); mount();
     expect(await screen.findByRole("alert")).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(2);
     await userEvent.click(screen.getByRole("button", { name: "刷新资料" }));
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); expect(fetcher).toHaveBeenCalledTimes(4);
@@ -297,7 +298,7 @@ describe("AccountPage read-only projection", () => {
     state.context.effectiveOrganization = null; state.context.user = null;
     state.context.selectionRequired = mode === "selection"; state.context.isLoading = mode === "loading";
     state.context.error = mode === "grant-error" ? { code: "DEPENDENCY_UNAVAILABLE" } : null;
-    const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch", fetcher); mount();
+    const fetcher = vi.fn().mockResolvedValue(Response.json(profile)); vi.stubGlobal("fetch",withSelfReads(fetcher)); mount();
     expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
     expect(fetcher).toHaveBeenCalledTimes(1); expect(fetcher.mock.calls[0][0]).toBe("/api/account/profile");
     expect(new Headers(fetcher.mock.calls[0][1].headers).get("X-Expected-User-ID")).toBe("u1");
@@ -312,33 +313,28 @@ describe("AccountPage read-only projection", () => {
     expect(screen.queryByRole("button", { name: /管理成员|管理资源|邀请/ })).not.toBeInTheDocument();
   });
   it("renders returned enterprise owner facts and labels a failed commercial read unavailable", async () => {
-    const memberList = { schemaVersion: "membership-v1", userId: "u1", organizationId: "B", items: [{ id: "member-1", userId: "member-user", organizationId: "B", projectId: "project-1", displayName: "成员甲", loginName: "member@example.test", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false }], total: 8, canManage: false, assignableRoles: [] };
+    const memberList = { schemaVersion: "membership-v1", userId: "u1", organizationId: "B", items: [{ id: "member-1", userId: "member-user", organizationId: "B", projectId: "project-1", displayName: "成员甲", loginName: "member@example.test", roles: ["listingkit_viewer"], state: "active", createdAt: "2026-09-12T00:00:00Z", changedAt: "2026-09-12T00:00:00Z", observedVersion: "a".repeat(64), canChangeRole: false, canRemove: false, permissions: [] }], total: 8, canManage: false, assignableRoles: [] };
     const allocation = { schemaVersion: "account-member-token-allocation-v1", organizationId: "B", metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9000", allocated: "4500", unallocated: "4500", consumed: "1200" }, members: [{ memberId: "member-1", userId: "member-user", displayName: "成员甲", loginName: "member@example.test", state: "active", allocation: { metric: "token", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", allocated: "4500", consumed: "1200", remaining: "3300", version: "1", active: true } }] };
     const audit = { schemaVersion: "account-audit-v1", userId: "u1", effectiveOrganizationId: "B", source: "source_account_committed_operations+account_business_profile_audit", items: [{ eventType: "account_business_profile.updated", actor: "operator-B", time: "2026-09-12T00:00:00Z", objectType: "account_business_profile", objectReference: "u1", operation: "update", result: "succeeded", relation: { type: "account_business_profile_version", reference: "u1", version: "1" } }], nextCursor: null };
     const fetcher = vi.fn((input: string) => {
       const path = String(input);
       if (path === "/api/account/organization") return Promise.resolve(Response.json(organization));
-      if (path === "/api/account/members?limit=20&offset=0") return Promise.resolve(Response.json(memberList));
+      if (path === "/api/account/members/summary") return Promise.resolve(Response.json({schemaVersion:"membership-summary-v1",userId:"u1",organizationId:"B",total:8,active:7,administrators:1,inactive:1,source:"zitadel_authorization_v2",readAt:profile.readAt}));
       if (path === "/api/workbench/commercial/overview") return Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 }));
       if (path === "/api/account/member-allocations") return Promise.resolve(Response.json(allocation));
       if (path.startsWith("/api/account/audit?")) return Promise.resolve(Response.json(audit));
       throw new Error(`unexpected fetch: ${path}`);
     });
-    vi.stubGlobal("fetch", fetcher); mount("organization");
+    vi.stubGlobal("fetch",withSelfReads(fetcher)); mount("organization");
 
     expect(await screen.findByText("8")).toBeVisible();
-    expect(screen.getByText("当前页有效成员 1 人")).toBeVisible();
+    expect(screen.getByText("全部有效成员 7 人")).toBeVisible();
     expect(screen.getByText("权益服务未返回订阅")).toBeVisible();
     expect(screen.getAllByText("暂不可用").length).toBeGreaterThan(0);
-    expect(screen.getByText("9000")).toBeVisible();
-    expect(screen.getAllByText("1200")).toHaveLength(2);
-    expect(screen.getByText("3300")).toBeVisible();
-    expect(fetcher).toHaveBeenCalledWith("/api/account/member-allocations", expect.objectContaining({ headers: expect.objectContaining({ "X-Expected-User-ID": "u1", "X-Expected-Organization-ID": "B" }) }));
-    expect(screen.getByText("账号标识")).toBeVisible();
-    expect(screen.queryByText("成员 / 角色")).not.toBeInTheDocument();
+    expect(screen.getByRole("region",{name:"AI 点数余额"})).toBeVisible();
     expect(screen.getByText("operator-B")).toBeVisible();
     expect(screen.getByText("update · u1")).toBeVisible();
-    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(fetcher).toHaveBeenCalledTimes(7);
   });
   it.each([
     ["expired", "已过期", "active", "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"],
@@ -356,7 +352,7 @@ describe("AccountPage read-only projection", () => {
       resource_balance: { state: "unsupported", value: null }, cash_balance: { state: "unsupported", value: null },
     };
     const fetcher = vi.fn((input: string) => String(input) === "/api/workbench/commercial/overview" ? Promise.resolve(Response.json(commercial)) : String(input) === "/api/account/organization" ? Promise.resolve(Response.json(organization)) : Promise.resolve(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "", requestId: "", fieldErrors: [] }, { status: 503 })));
-    vi.stubGlobal("fetch", fetcher); mount("organization");
+    vi.stubGlobal("fetch",withSelfReads(fetcher)); mount("organization");
     expect(await screen.findByText(`当前订阅：Paid Pilot · ${label}`)).toBeVisible();
   });
   it.each(["AUTHENTICATION_REQUIRED", "IDENTITY_CONTEXT_CHANGED", "ACCOUNT_NOT_CONFIGURED", "DEPENDENCY_UNAVAILABLE", "DEADLINE_EXCEEDED", "PERMISSION_DENIED", "ORGANIZATION_ACCESS_REVOKED", "unexpected"])("shows a safe %s state without data or raw error", async code => {
@@ -386,7 +382,7 @@ describe("AccountPage read-only projection", () => {
     state.context.effectiveOrganization = { id: "C", name: "企业丙", roles: ["viewer"] }; view.update();
     expect(await screen.findByRole("heading", { name: "企业丙" })).toBeVisible();
     await act(async () => release(Response.json({ code: "DEPENDENCY_UNAVAILABLE", message: "private", requestId: "", fieldErrors: [] }, { status: 503 })));
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); expect(screen.getByRole("heading", { name: "企业丙" })).toBeVisible();
+    expect(screen.queryByRole("heading",{name:"企业信息暂不可用"})).not.toBeInTheDocument(); expect(screen.getByRole("heading", { name: "企业丙" })).toBeVisible();
   });
   it.each([true, false, null])("renders nullable verification without inventing binding state: %s", async verified => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ...profile, phoneNumberVerified: verified }))); mount();
@@ -396,13 +392,13 @@ describe("AccountPage read-only projection", () => {
     expect(screen.queryByText("未绑定")).not.toBeInTheDocument();
   });
   it("clears visible profile on logout click and does not replay requests", async () => {
-    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(Response.json(profile))); vi.stubGlobal("fetch", fetcher);
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(Response.json(profile))); vi.stubGlobal("fetch",withSelfReads(fetcher));
     mount(); expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible();
     const link = document.createElement("a"); link.href = "/api/zitadel-auth/logout"; link.textContent = "退出"; link.onclick = e => e.preventDefault(); document.body.append(link);
     await userEvent.click(link); expect(screen.queryByText("本人甲")).not.toBeInTheDocument(); expect(fetcher).toHaveBeenCalledTimes(2); link.remove();
   });
   it("clears visible profile and reauthorizes when role context changes", async () => {
-    const fetcher = vi.fn().mockImplementationOnce(() => Promise.resolve(Response.json(profile))).mockImplementationOnce(() => Promise.resolve(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "hidden", requestId: "", fieldErrors: [] }, { status: 401 }))); vi.stubGlobal("fetch", fetcher);
+    const fetcher = vi.fn().mockImplementationOnce(() => Promise.resolve(Response.json(profile))).mockImplementationOnce(() => Promise.resolve(Response.json({ code: "AUTHENTICATION_REQUIRED", message: "hidden", requestId: "", fieldErrors: [] }, { status: 401 }))); vi.stubGlobal("fetch",withSelfReads(fetcher));
     const view = mount(); expect(await screen.findByRole("heading", { name: "本人甲" })).toBeVisible(); state.context.roles = []; view.update();
     expect(screen.queryByText("本人甲")).not.toBeInTheDocument(); expect(await screen.findByRole("alert")).toBeVisible();
   });

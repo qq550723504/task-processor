@@ -80,7 +80,7 @@ func (c *Client) List(ctx context.Context, organization string, page domain.Page
 	return c.list(ctx, organization, page, "")
 }
 
-func (c *Client) list(ctx context.Context, organization string, page domain.PageRequest, assignmentID string) (domain.Page, error) {
+func (c *Client) list(ctx context.Context, organization string, page domain.PageRequest, assignmentID string, extra ...any) (domain.Page, error) {
 	if c == nil || c.http == nil {
 		return domain.Page{}, domain.ErrUnavailable
 	}
@@ -93,6 +93,7 @@ func (c *Client) list(ctx context.Context, organization string, page domain.Page
 		return domain.Page{}, err
 	}
 	filters := []any{map[string]any{"organizationId": map[string]string{"id": organization}}, map[string]any{"projectId": map[string]string{"id": c.project}}}
+	filters = append(filters, extra...)
 	if assignmentID != "" {
 		filters = append(filters, map[string]any{"authorizationIds": map[string][]string{"ids": {assignmentID}}})
 	}

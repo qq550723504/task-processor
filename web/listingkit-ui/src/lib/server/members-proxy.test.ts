@@ -36,13 +36,13 @@ it("uses the configured public origin across Next URL normalization", async () =
 });
 it("blocks cross-site mutation before upstream access", async () => {
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
-  const response = await proxyMembers(new Request("http://localhost:3000/api/account/members/invitations", { method: "POST", headers: { ...headers, Origin: "http://foreign.test" } }), "server-secret", "actor");
+  const response = await proxyMembers(new Request("http://localhost:3000/api/account/member-invitations", { method: "POST", headers: { ...headers, Origin: "http://foreign.test" } }), "server-secret", "actor");
   expect(response.status).toBe(403); expect(fetch).not.toHaveBeenCalled();
 });
 it("reports a request-body deadline without sending a mutation", async () => {
   vi.useFakeTimers(); vi.stubEnv("LISTINGKIT_PUBLIC_BASE_URL","http://localhost:3000"); vi.stubEnv("LISTINGKIT_SERVICE_API_BASE","http://127.0.0.1:9000/api/v1");
   const fetch = vi.fn(); vi.stubGlobal("fetch",fetch);
-  const request = new Request("http://localhost:3000/api/account/members/invitations",{method:"POST",headers:{...headers,"Content-Type":"application/json","Idempotency-Key":"4841d296-ef14-4c16-8d25-a7667e534feb"},body:new ReadableStream({start(){}}),duplex:"half"} as RequestInit);
+  const request = new Request("http://localhost:3000/api/account/member-invitations",{method:"POST",headers:{...headers,"Content-Type":"application/json","Idempotency-Key":"4841d296-ef14-4c16-8d25-a7667e534feb"},body:new ReadableStream({start(){}}),duplex:"half"} as RequestInit);
   const response = proxyMembers(request,"server-secret","actor"); await vi.advanceTimersByTimeAsync(15001);
   expect((await response).status).toBe(504); expect(fetch).not.toHaveBeenCalled();
 });

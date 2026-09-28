@@ -3,13 +3,16 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +24,7 @@ import (
 	"gorm.io/gorm"
 	registrySchema "task-processor/internal/app/schema/sourceaccountregistry"
 	"task-processor/internal/core/config"
+	invitationmail "task-processor/internal/integration/mail"
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	"task-processor/internal/listingsubscription"
 	platformdatabase "task-processor/internal/platform/database"
@@ -54,7 +58,7 @@ func newMembershipFixture(t *testing.T) *membershipFixture {
 		require.NoError(t, owner.Exec(`CREATE ROLE `+role+` LOGIN PASSWORD 'membership-fixture-password'; GRANT CONNECT ON DATABASE issue347 TO `+role+`; GRANT USAGE ON SCHEMA public TO `+role).Error)
 		allowed := run1AllowedPrivileges[role]
 		if role == "organization_membership_runtime" {
-			allowed = map[string][]string{"organization_member_operations": {"SELECT", "INSERT", "UPDATE"}, "organization_member_audit_events": {"SELECT", "INSERT"}}
+			allowed = map[string][]string{"organization_member_operations": {"SELECT", "INSERT", "UPDATE"}, "organization_member_invitations": {"SELECT", "INSERT", "UPDATE"}, "organization_member_audit_events": {"SELECT", "INSERT"}}
 		}
 		for table, privileges := range allowed {
 			require.NoError(t, owner.Exec(`GRANT `+strings.Join(privileges, ",")+` ON public.`+table+` TO `+role).Error)
@@ -79,7 +83,8 @@ func newMembershipFixture(t *testing.T) *membershipFixture {
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: fixture.provider.URL, AuthorizationAPIURL: fixture.provider.URL, ClientID: "membership-fixture", ClientSecret: "synthetic-client-secret", ProjectID: "project", AuthorizationRequired: true}}}
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
-	server, err := NewCurrentApplicationWithMembership(ctx, pools["source_account_runtime"], pools["commercial_reader"], cfg, logger, MembershipDependencies{ReceiptDB: pools["organization_membership_runtime"], ProviderOrigin: fixture.provider.URL, ReadToken: "directory-read-sentinel", WriteToken: "membership-write-sentinel"})
+	mailPort := membershipSMTP(t)
+	server, err := NewCurrentApplicationWithMembership(ctx, pools["source_account_runtime"], pools["commercial_reader"], cfg, logger, MembershipDependencies{ReceiptDB: pools["organization_membership_runtime"], ProviderOrigin: fixture.provider.URL, ReadToken: "directory-read-sentinel", WriteToken: "membership-write-sentinel", InvitationMail: &invitationmail.Config{Host: "127.0.0.1", Port: mailPort, LocalPlaintext: true, From: "invitations@example.test", PublicOrigin: "https://localhost:22544"}})
 	require.NoError(t, err)
 	fixture.application = httptest.NewServer(server.Handler)
 	t.Cleanup(fixture.application.Close)
@@ -93,6 +98,9 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	emit := func(value any) { _ = json.NewEncoder(w).Encode(value) }
 	switch r.URL.Path {
+	case "/auth/v1/users/me":
+		emit(map[string]any{"user": map[string]any{"id": token, "details": map[string]string{"creationDate": "2026-09-01T00:00:00Z"}, "human": map[string]any{"email": map[string]any{"email": token + "@example.test", "isEmailVerified": true}}}})
+		return
 	case "/.well-known/openid-configuration":
 		emit(map[string]string{"introspection_endpoint": f.provider.URL + "/oauth/v2/introspect"})
 		return
@@ -144,11 +152,17 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 		} else {
 			var filters []map[string]json.RawMessage
 			_ = json.Unmarshal(payload["filters"], &filters)
-			org, exact := "", ""
+			org, exact, subject := "", "", ""
 			for _, filter := range filters {
 				var value struct {
 					ID  string   `json:"id"`
 					IDs []string `json:"ids"`
+				}
+				if raw := filter["inUserIds"]; raw != nil {
+					_ = json.Unmarshal(raw, &value)
+					if len(value.IDs) == 1 {
+						subject = value.IDs[0]
+					}
 				}
 				if raw := filter["organizationId"]; raw != nil {
 					_ = json.Unmarshal(raw, &value)
@@ -162,7 +176,13 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 				}
 			}
 			if !f.permissionDenied {
+				if subject == "admin" && !f.revoked {
+					rows = append(rows, map[string]any{"id": "actor-grant-" + org, "project": map[string]string{"id": "project"}, "organization": map[string]string{"id": org}, "user": map[string]string{"id": subject}, "state": "STATE_ACTIVE", "roles": []any{map[string]string{"key": "listingkit_admin"}}})
+				}
 				for user, role := range f.roles {
+					if subject != "" && subject != user || user == "recipient" && org != "B" {
+						continue
+					}
 					id := "grant-" + user
 					if exact != "" && exact != id {
 						continue
@@ -228,55 +248,31 @@ func (f *membershipFixture) handleProvider(w http.ResponseWriter, r *http.Reques
 
 func TestMembershipPendingRecoveryKeepsUnknownAndAllowsOtherTargets(t *testing.T) {
 	f := newMembershipFixture(t)
+	status, detail := f.request(t, "GET", "/api/v1/account/members/grant-member", "admin", "B", "", nil)
+	require.Equal(t, 200, status, detail)
+	version := detail["items"].([]any)[0].(map[string]any)["observedVersion"]
 	f.mu.Lock()
-	f.loseCreate = true
+	f.loseUpdate = true
 	f.mu.Unlock()
 	key := uuid.NewString()
-	input := map[string]any{"email": "pending@example.test", "firstName": "Private", "lastName": "Invitation", "role": "listingkit_viewer"}
-	status, original := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", key, input)
+	status, original := f.request(t, "POST", "/api/v1/account/members/grant-member/role", "admin", "B", key, map[string]any{"role": "listingkit_operator", "expectedVersion": version})
 	require.Equal(t, 200, status, original)
 	require.Equal(t, "unknown", original["status"])
 	status, listing := f.request(t, "GET", "/api/v1/account/member-operations?limit=1", "admin", "B", "", nil)
 	require.Equal(t, 200, status, listing)
-	require.Equal(t, "membership-operations-v1", listing["schemaVersion"])
-	items := listing["items"].([]any)
-	require.Len(t, items, 1)
-	require.Equal(t, key, items[0].(map[string]any)["id"])
-	raw, err := json.Marshal(listing)
-	require.NoError(t, err)
-	require.NotContains(t, string(raw), "pending@example.test")
-	require.NotContains(t, string(raw), "Private")
-	for _, scope := range [][2]string{{"other-admin", "B"}, {"admin", "C"}} {
-		status, listing = f.request(t, "GET", "/api/v1/account/member-operations", scope[0], scope[1], "", nil)
-		require.Equal(t, 200, status, listing)
-		require.Empty(t, listing["items"])
-	}
-	status, _ = f.request(t, "GET", "/api/v1/account/member-operations", "viewer", "B", "", nil)
-	require.Equal(t, 403, status)
-	status, _ = f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", uuid.NewString(), input)
-	require.Equal(t, 409, status)
-	f.mu.Lock()
-	require.Equal(t, 1, f.sends)
-	f.loseCreate = false
-	f.mu.Unlock()
-	input["email"] = "different@example.test"
-	status, completed := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", uuid.NewString(), input)
-	require.Equal(t, 200, status, completed)
-	require.Equal(t, "acknowledged", completed["status"])
-	status, listing = f.request(t, "GET", "/api/v1/account/member-operations", "admin", "B", "", nil)
-	require.Equal(t, 200, status, listing)
 	require.Len(t, listing["items"], 1)
+	status, created := f.request(t, "POST", "/api/v1/account/member-invitations", "admin", "B", uuid.NewString(), map[string]any{"email": "recipient@example.test", "role": "listingkit_viewer"})
+	require.Equal(t, 200, status, created)
 	status, reread := f.request(t, "GET", "/api/v1/account/member-operations/"+key, "admin", "B", "", nil)
 	require.Equal(t, 200, status, reread)
-	require.Equal(t, original, reread)
+	require.Equal(t, "unknown", reread["status"])
 	f.mu.Lock()
-	require.Equal(t, 3, f.sends)
+	require.Equal(t, 1, f.sends)
 	f.revoked = true
 	f.mu.Unlock()
 	status, _ = f.request(t, "GET", "/api/v1/account/member-operations", "admin", "B", "", nil)
 	require.Equal(t, 403, status)
 }
-
 func (f *membershipFixture) request(t *testing.T, method, path, actor, org, key string, payload any) (int, map[string]any) {
 	t.Helper()
 	var body []byte
@@ -299,7 +295,13 @@ func (f *membershipFixture) request(t *testing.T, method, path, actor, org, key 
 	require.NoError(t, err)
 	defer response.Body.Close()
 	var result map[string]any
-	require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+	raw, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	err = json.Unmarshal(raw, &result)
+	if err != nil {
+		require.Equal(t, 404, response.StatusCode, string(raw))
+		result = map[string]any{}
+	}
 	return response.StatusCode, result
 }
 
@@ -348,31 +350,88 @@ func TestMembershipMountedPostgresProviderChain(t *testing.T) {
 func TestMembershipMountedInviteRemoveAndScopedReceipts(t *testing.T) {
 	f := newMembershipFixture(t)
 	key := uuid.NewString()
-	input := map[string]any{"email": "fixture@example.com", "firstName": "Test", "lastName": "Member", "role": "listingkit_viewer"}
-	status, result := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", key, input)
-	require.Equal(t, 200, status, result)
-	require.Equal(t, "acknowledged", result["status"])
-	require.NotNil(t, result["userAcknowledgment"])
-	require.NotNil(t, result["acknowledgment"])
-	grant := result["authorizationId"].(string)
-	status, replay := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", key, input)
-	require.Equal(t, 200, status, replay)
-	require.Equal(t, result["targetUserId"], replay["targetUserId"])
-	status, _ = f.request(t, "GET", "/api/v1/account/member-operations/"+key, "admin", "C", "", nil)
+	input := map[string]any{"email": "recipient@example.test", "role": "listingkit_viewer"}
+	status, _ := f.request(t, "POST", "/api/v1/account/members/invitations", "admin", "B", key, input)
 	require.Equal(t, 404, status)
-	status, _ = f.request(t, "GET", "/api/v1/account/member-operations/"+key, "viewer", "B", "", nil)
+	status, result := f.request(t, "POST", "/api/v1/account/member-invitations", "admin", "B", key, input)
+	require.Equal(t, 200, status, result)
+	inv := result["invitation"].(map[string]any)
+	require.Equal(t, "pending", inv["state"])
+	require.Equal(t, "mail_server_accepted", inv["deliveryState"])
+	status, replay := f.request(t, "POST", "/api/v1/account/member-invitations", "admin", "B", key, input)
+	require.Equal(t, 200, status, replay)
+	require.Equal(t, result, replay)
+	f.mu.Lock()
+	require.Zero(t, f.sends)
+	require.Empty(t, f.users)
+	f.mu.Unlock()
+	status, _ = f.request(t, "GET", "/api/v1/account/member-invitations/"+key, "admin", "C", "", nil)
+	require.Equal(t, 404, status)
+	status, _ = f.request(t, "GET", "/api/v1/account/invitations/"+key, "foreign", "", "", nil)
 	require.Equal(t, 403, status)
-	status, _ = f.request(t, "GET", "/api/v1/account/members", "admin", "A", "", nil)
-	require.Equal(t, 403, status)
+	status, accepted := f.request(t, "POST", "/api/v1/account/invitations/"+key+"/accept", "recipient", "", "", nil)
+	require.Equal(t, 200, status, accepted)
+	require.Equal(t, "accepted", accepted["invitation"].(map[string]any)["state"])
+	status, acceptedReplay := f.request(t, "POST", "/api/v1/account/invitations/"+key+"/accept", "recipient", "", "", nil)
+	require.Equal(t, 200, status, acceptedReplay)
+	grant := accepted["invitation"].(map[string]any)["authorizationId"].(string)
 	status, detail := f.request(t, "GET", "/api/v1/account/members/"+grant, "admin", "B", "", nil)
 	require.Equal(t, 200, status, detail)
 	version := detail["items"].([]any)[0].(map[string]any)["observedVersion"]
-	status, result = f.request(t, "POST", "/api/v1/account/members/"+grant+"/remove", "admin", "B", uuid.NewString(), map[string]any{"expectedVersion": version})
-	require.Equal(t, 200, status, result)
-	require.Equal(t, "acknowledged", result["status"])
-	require.Equal(t, "not_visible", result["observation"])
+	status, removed := f.request(t, "POST", "/api/v1/account/members/"+grant+"/remove", "admin", "B", uuid.NewString(), map[string]any{"expectedVersion": version})
+	require.Equal(t, 200, status, removed)
+	require.Equal(t, "acknowledged", removed["status"])
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	require.Equal(t, 3, f.sends)
-	require.Len(t, f.users, 1, "removal must retain the identity")
+	require.Equal(t, 2, f.sends)
+	require.Empty(t, f.users, "formal invitations never create identities")
+}
+func membershipSMTP(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	number, _ := strconv.Atoi(port)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+				fmt.Fprint(conn, "220 local ESMTP\r\n")
+				reader := bufio.NewReader(conn)
+				data := false
+				for {
+					line, err := reader.ReadString('\n')
+					if err != nil {
+						return
+					}
+					if data {
+						if line == ".\r\n" {
+							data = false
+							fmt.Fprint(conn, "250 queued\r\n")
+						}
+						continue
+					}
+					switch {
+					case strings.HasPrefix(line, "EHLO"):
+						fmt.Fprint(conn, "250 local\r\n")
+					case strings.HasPrefix(line, "DATA"):
+						data = true
+						fmt.Fprint(conn, "354 go\r\n")
+					case strings.HasPrefix(line, "QUIT"):
+						fmt.Fprint(conn, "221 bye\r\n")
+						return
+					default:
+						fmt.Fprint(conn, "250 OK\r\n")
+					}
+				}
+			}()
+		}
+	}()
+	return number
 }

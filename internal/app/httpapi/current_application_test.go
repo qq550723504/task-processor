@@ -20,6 +20,7 @@ import (
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 	memberhttp "task-processor/internal/organization/membership/httpapi"
+	flow "task-processor/internal/organization/membership/inviteflow"
 )
 
 func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
@@ -33,7 +34,9 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 		t.Fatal(err)
 	}
 	members := kernelmodule.NewRegistry()
-	if err := memberhttp.NewModule(memberhttp.NewCommandHandler(nil, func(*http.Request) (memberhttp.CommandService, error) { return nil, nil })).Register(members); err != nil {
+	handler := memberhttp.NewCommandHandler(nil, func(*http.Request) (memberhttp.CommandService, error) { return nil, nil })
+	handler.ConfigureInvitations(func(*http.Request) (*flow.Service, error) { return nil, nil })
+	if err := memberhttp.NewModule(handler).Register(members); err != nil {
 		t.Fatal(err)
 	}
 	for _, includeAudit := range []bool{false, true} {
@@ -50,7 +53,7 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 				}
 				if includeMembership {
 					routes = append(routes, members.Routes()...)
-					want += 8
+					want += 17
 				}
 				if len(routes) != want {
 					t.Fatalf("route count got %d want %d", len(routes), want)
@@ -70,7 +73,13 @@ func TestCurrentApplicationAuditMembershipRouteCombinations(t *testing.T) {
 						func(r *httproute.Descriptor) {
 							r.OrganizationAccessPolicy = httproute.OrganizationAccessPolicyCachedRead
 						},
-						func(r *httproute.Descriptor) { r.OrganizationTargetResolver = nil },
+						func(r *httproute.Descriptor) {
+							if r.OrganizationAccessPolicy == httproute.OrganizationAccessPolicyNone {
+								r.OrganizationTargetResolver = memberhttp.ResolveMutationTarget
+							} else {
+								r.OrganizationTargetResolver = nil
+							}
+						},
 						func(r *httproute.Descriptor) { r.RequestTimeout = 0 },
 						func(r *httproute.Descriptor) { r.RejectUnreadRequestBody = false },
 					} {
@@ -127,7 +136,7 @@ func TestCurrentApplicationReferralRouteAdmission(t *testing.T) {
 	}
 }
 
-func TestMembershipFactoryReceivesSharedAuthorityAndAddsOnlySevenRoutes(t *testing.T) {
+func TestMembershipFactoryReceivesSharedAuthorityAndCurrentInvitationRoutes(t *testing.T) {
 	deps := newRouteAuthDependencies()
 	var shared *authz.ListingKitAuthorizer
 	factories := currentApplicationFactories{
@@ -143,7 +152,9 @@ func TestMembershipFactoryReceivesSharedAuthorityAndAddsOnlySevenRoutes(t *testi
 			if a != shared || auth.authorizer != shared {
 				t.Fatal("membership received another authority")
 			}
-			return memberhttp.NewModule(memberhttp.NewCommandHandler(nil, func(*http.Request) (memberhttp.CommandService, error) { return nil, nil })), nil
+			h := memberhttp.NewCommandHandler(nil, func(*http.Request) (memberhttp.CommandService, error) { return nil, nil })
+			h.ConfigureInvitations(func(*http.Request) (*flow.Service, error) { return nil, nil })
+			return memberhttp.NewModule(h), nil
 		},
 	}
 	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)

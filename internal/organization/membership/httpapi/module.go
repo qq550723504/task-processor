@@ -24,6 +24,7 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 		handler gin.HandlerFunc
 	}{
 		{"/api/v1/account/members", m.handler.List},
+		{"/api/v1/account/members/summary", m.handler.Summary},
 		{"/api/v1/account/members/:member_id", m.handler.Read},
 	} {
 		reg.AddRoutes(httproute.Descriptor{Method: "GET", Path: item.path, Module: ModuleName, Permission: authz.PermissionWorkbenchOrganizationMemberRead, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: ResolveOrganizationTarget, RejectUnreadRequestBody: true, RequestTimeout: 15 * time.Second, Handler: item.handler})
@@ -34,7 +35,6 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 			method, path string
 			handler      gin.HandlerFunc
 		}{
-			{"POST", "/api/v1/account/members/invitations", m.handler.Invite},
 			{"POST", "/api/v1/account/members/:member_id/role", m.handler.ChangeRole},
 			{"POST", "/api/v1/account/members/:member_id/remove", m.handler.Remove},
 			{"GET", "/api/v1/account/member-operations/:operation_id", m.handler.GetOperation},
@@ -43,5 +43,6 @@ func (m routeModule) Register(reg *kernelmodule.Registry) error {
 			reg.AddRoutes(httproute.Descriptor{Method: item.method, Path: item.path, Module: ModuleName, Permission: authz.PermissionWorkbenchOrganizationMemberManage, AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyLiveWrite, OrganizationTargetResolver: ResolveMutationTarget, RejectUnreadRequestBody: true, RequestTimeout: 15 * time.Second, Handler: httproute.WithRequestBodyReadTimeout(10*time.Second, item.handler)})
 		}
 	}
+	m.handler.registerInvitations(reg)
 	return nil
 }

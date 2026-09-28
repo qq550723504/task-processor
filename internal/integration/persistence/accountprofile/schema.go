@@ -48,7 +48,7 @@ func InstallSchemaTx(ctx context.Context, tx *sql.Tx) error {
 			return fmt.Errorf("install account profile schema: %w", err)
 		}
 	}
-	return nil
+	return InstallPreferencesTx(ctx, tx)
 }
 
 func VerifySchema(ctx context.Context, db *gorm.DB) error {
@@ -66,7 +66,7 @@ func VerifySchema(ctx context.Context, db *gorm.DB) error {
 	if !slices.Equal(columns, expectedColumns()) {
 		return fmt.Errorf("account profile schema mismatch: got %v", columns)
 	}
-	return nil
+	return VerifyPreferencesSchema(ctx, db)
 }
 
 type schemaQuery interface {
