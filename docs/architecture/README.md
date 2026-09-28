@@ -150,12 +150,10 @@ documents unless they say so explicitly:
     recharge-page and modal references.
 - `2026-09-27-1688-anonymous-rate-and-egress-proxy-addendum.md`
   - Draft addendum to the #514 browser acquisition design: anonymous collection
-    rate governance (observed frequency-triggered challenge wall) and the
-    constraints any egress proxy must satisfy. **Draft — not an implementation
-    approval**; the egress proxy part is unimplemented and awaits confirmation of
-    the provider shape, authorisation of the exit IPs, and the trade-off notes.
-  - The rate-governance half is implemented in
-    `internal/integration/acquisition/a1688/browser` (`Throttle`).
+    rate governance (the observed 1688 challenge is frequency-triggered) and the
+    constraints any egress proxy must satisfy. **Proposal only — neither the
+    rate-governance half nor the egress-proxy half is implemented.** Implementation
+    waits on admission of this document and an explicit `IMPLEMENTATION_READY`.
 - `2026-09-26-1688-server-public-browser-acquisition-design.md`
   - FROZEN BASELINE / IMPLEMENTATION_READY #514 `src2b-public-browser-v1`:
     server-side anonymous 1688 browser acquisition with automatic challenge
