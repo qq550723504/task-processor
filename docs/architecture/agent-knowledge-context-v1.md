@@ -330,58 +330,75 @@ DISABLED
 
 ## 6. Authorization boundary
 
-V1 Slices A–C should add only the Knowledge permissions actually needed by the first user
-path:
+V1 Slices A–C add only the Knowledge permissions required by the first user path:
 
 ```text
 workbench.knowledge.read
 workbench.knowledge.manage
 ```
 
-Exact strings are candidate names until Architecture Review freezes them.
+The current Product Agent title flow keeps its existing admission and LiveWrite checks.
+Knowledge V1 does **not** rename or broaden that Agent/Product permission.
 
-The existing Product Agent title flow keeps its current Agent/Product permission and
-LiveWrite admission. Knowledge V1 does **not** rename or broaden that permission as part of
-this work. A caller must satisfy both:
+A knowledge-backed title run must satisfy both:
 
 ```text
 current Product Agent admission
 +
-current Knowledge read admission for every selected KnowledgeBase
+workbench.knowledge.read for every selected KnowledgeBase
 ```
 
-`agent.use` / `agent.configure` are deferred to Slice D, when #555 has frozen persistent
-enterprise Agent enablement/template ownership. Do not expand RBAC now merely because the
-final Figma contains “我的智能体”.
+### 6.1 Role mapping frozen for V1
 
-Candidate semantics:
+Use the existing Organization role model; do not create a Knowledge IAM.
 
-- `knowledge.read`: list/read allowed enterprise Knowledge metadata/content and materialize
-  an execution context;
-- `knowledge.manage`: create/update/disable sources and KnowledgeBases; it does not grant
-  Agent execution by itself.
+Candidate permission mapping for Architecture Review:
 
-Role mapping is still a Product Review decision. In particular, this draft does not
-automatically grant all Organization viewers access to potentially confidential enterprise
-documents.
+| Current role | Knowledge read/use | Knowledge manage |
+| --- | --- | --- |
+| `listingkit_viewer` | deny | deny |
+| `listingkit_operator` | allow | deny |
+| `listingkit_admin` | allow | allow |
+| `platform_admin` | allow | allow |
+
+Configured platform-admin users/roles receive the same Knowledge permissions through the
+existing Casbin assembly path.
+
+The generic legacy/internal `admin` role is not automatically granted new Workbench
+Knowledge permissions merely because it has older ListingKit permissions.
+
+This mapping intentionally prevents all viewers from reading enterprise documents by
+default. A later product decision can broaden access, but that is not a V1 implementation
+detail.
+
+### 6.2 Semantics
+
+- `workbench.knowledge.read`: list/read allowed enterprise Knowledge metadata/content,
+  preview allowed source text, and materialize an execution context.
+- `workbench.knowledge.manage`: create/update/disable KnowledgeBases and source revisions.
+  It does not grant Product Agent execution by itself.
+
+`agent.use` / `agent.configure` remain deferred to Slice D, when persistent enterprise
+Agent enablement/template ownership is implemented.
 
 Rules:
 
 - every Knowledge list/read/context-materialization is scoped to current Effective Organization;
 - template binding does not grant access to a KnowledgeBase;
 - context materialization performs fresh authorization;
-- the governed model adapter rechecks access when it loads the exact bundle for each new
-  paid/model dispatch rather than trusting a browser/template/cached document;
+- the governed model adapter rechecks Knowledge read access when it loads the exact bundle
+  for each new paid/model dispatch;
 - revoked access after bundle creation blocks the next model dispatch/resume that needs the
   bundle;
 - browser-provided user/org/role/template ownership is never authority;
-- knowledge text cannot grant a ToolRef, model route, marketplace permission or write action;
-- review/history may retain opaque provenance refs after access loss, but source labels,
-  excerpts or document content are only resolved for a caller still authorized to read them.
+- knowledge text cannot grant ToolRefs, change model route, increase budget, change
+  Organization or authorize writes;
+- Review/history may retain opaque provenance refs after access loss, but protected labels,
+  excerpts or document content are resolved only for a caller still allowed to read them.
 
-The implementation may extend the existing Casbin authorizer with these current Workbench
-permissions. It must not create a second IAM, role directory or Knowledge-specific user
-membership system.
+The implementation extends the existing Casbin authorizer and
+`WorkbenchPermissions()` display contract. It must not create a second IAM, role directory
+or Knowledge-specific membership model.
 
 ## 7. Knowledge ingestion and V1 context materialization
 
@@ -792,25 +809,94 @@ it requires:
 - rotation/revocation;
 - no secret copy into templates or browser persistence.
 
-## 14. Public API shape — candidate responsibilities only
+## 14. Public API and HTTP contract
 
-Exact routes/DTOs are **not frozen** during PRODUCT_REVIEW.
+The first API surface is bounded to enterprise Knowledge management and observation.
+There is no public generic retrieval endpoint in V1.
 
-Likely user-facing responsibilities:
+### 14.1 KnowledgeBase routes
 
 ```text
-GET    /api/v1/workbench/knowledge-bases
-POST   /api/v1/workbench/knowledge-bases
-GET    /api/v1/workbench/knowledge-bases/:id
-PUT    /api/v1/workbench/knowledge-bases/:id
+GET  /api/v1/workbench/knowledge-bases
+POST /api/v1/workbench/knowledge-bases
 
-POST   /api/v1/workbench/knowledge-bases/:id/sources
-GET    /api/v1/workbench/knowledge-bases/:id/sources
-GET    /api/v1/workbench/knowledge-sources/:source_id
+GET  /api/v1/workbench/knowledge-bases/:knowledge_base_id
+PUT  /api/v1/workbench/knowledge-bases/:knowledge_base_id
+POST /api/v1/workbench/knowledge-bases/:knowledge_base_id/disable
 ```
 
-V1 Agent integration should use **local narrow ports**, not make the Agent call its own
-public HTTP API:
+Semantics:
+
+- GET routes require `workbench.knowledge.read`;
+- create/update/disable require `workbench.knowledge.manage`;
+- all use verified identity + `LiveWrite` Organization resolution because enterprise
+  document access must not retain the ordinary cached-read revocation window;
+- Organization comes only from current server-resolved context, never path/body/query;
+- V1 has no delete/restore route.
+
+Create/update JSON bodies are strict, unknown fields rejected, maximum 8 KiB.
+Names are UTF-8, trimmed, bounded to 120 Unicode scalar values, and cannot contain control
+characters.
+
+Mutations require exactly one `Idempotency-Key` and use request fingerprinting so a lost
+response can be safely read/replayed without creating a duplicate KnowledgeBase mutation.
+
+### 14.2 Source routes
+
+```text
+GET  /api/v1/workbench/knowledge-bases/:knowledge_base_id/sources
+POST /api/v1/workbench/knowledge-bases/:knowledge_base_id/sources
+
+GET  /api/v1/workbench/knowledge-sources/:source_id
+POST /api/v1/workbench/knowledge-sources/:source_id/revisions
+POST /api/v1/workbench/knowledge-sources/:source_id/disable
+
+GET  /api/v1/workbench/knowledge-sources/:source_id/revisions/:revision_id/preview
+```
+
+Source list/detail/preview require `workbench.knowledge.read`.
+Upload new source/revision and disable require `workbench.knowledge.manage`.
+
+Upload routes use `multipart/form-data` with exactly one document part plus bounded
+metadata fields. V1 limits:
+
+- request body: 10 MiB maximum;
+- one file only;
+- file name: 255 UTF-8 bytes maximum after normalization;
+- accepted content: UTF-8 text, Markdown, PDF with extractable text, DOCX;
+- MIME is verified from bytes/allowed parser result, not trusted from extension alone.
+
+Every upload mutation requires `Idempotency-Key`. Same key + same fingerprint returns the
+same operation/source/revision. Same key + changed file or metadata conflicts.
+
+Upload success is **202 Accepted** with the durable source/revision identity and current
+processing state. It does not wait for Tika parsing.
+
+### 14.3 Read projection
+
+Source/revision reads expose only bounded product-safe metadata:
+
+- source/revision IDs;
+- display name;
+- content type/size;
+- state;
+- digest prefix or non-secret version indicator where useful;
+- created/updated times;
+- safe failure category;
+- bounded preview when current access permits.
+
+They never expose:
+
+- S3 object key;
+- bucket/endpoint;
+- raw parser response;
+- Agent prompt;
+- provider credential;
+- other Organization identifiers.
+
+### 14.4 Internal local ports
+
+Agent integration uses local contracts, not self-HTTP:
 
 ```text
 KnowledgeContextMaterializer
@@ -826,163 +912,264 @@ KnowledgeCitationReader
   -> safe display metadata/excerpts
 ```
 
-There is no generic public `/knowledge-retrieval` endpoint in the first slice.
-
-Delete/disable/reprocess semantics require explicit review before adding corresponding
-mutation routes.
+Delete, restore, generic search/retrieval and external-URL ingestion are Later.
 
 ## 15. Persistence, object storage and consistency
 
-### 15.1 Current database reality
+### 15.1 Current database reality at the inspected baseline
 
-At the inspected baseline, the standard local current-application composition uses one
-application PostgreSQL instance (`business-db`) with six logical application databases:
+The latest main already has a dedicated `store_center` database owner in
+`business-db-init.sh`, even though the account-compose README database-count paragraph is
+temporarily stale. That Store documentation drift belongs to #552 and is not repaired by
+this PR.
 
-- `source_accounts`;
-- commercial;
-- `referrals`;
-- `membership`;
-- `product_acquisition`;
-- `image_agent`.
+Knowledge must not be put into `source_accounts`, commercial, referrals, membership,
+`product_acquisition`, `image_agent` or `store_center` simply to avoid another
+configuration entry. None is the fact owner of enterprise Knowledge.
 
-ZITADEL remains on its separate identity PostgreSQL instance.
+### 15.2 Knowledge logical database frozen for V1
 
-None of the six current application databases is the semantic owner of enterprise
-Knowledge:
-
-- `source_accounts` owns Source Account / account-profile and selected account verification
-  facts, not enterprise document knowledge;
-- `product_acquisition` owns sourcing evidence and Product Catalog, not enterprise policy or
-  brand documents;
-- `image_agent` owns ImageAgent, ApprovedAsset and AI invocation facts;
-- commercial/referrals/membership have their own unrelated canonical owners.
-
-Putting Knowledge tables into one of those databases merely to avoid a new pool would
-create an ownership dependency that the domain model does not justify.
-
-### 15.2 Database candidate for Architecture Review
-
-The current recommendation is:
+Architecture target:
 
 ```text
-same application PostgreSQL instance: business-db
-new logical database: knowledge
-schema owner: dedicated install/migration owner
+same PostgreSQL instance: business-db
+logical database: knowledge
+schema owner: knowledge_owner
 serving role: knowledge_runtime
-current application: separately injected bounded pool
+current-application pool: knowledge.database
+maximum runtime connections: 4
+schema-owner install pool: maximum 2
 ```
 
-This adds a **logical database**, not another PostgreSQL server.
+This is a new logical database in the existing application PostgreSQL instance, **not a new
+PostgreSQL server**.
 
-The recommendation is not an implementation authorization. Architecture Review must still
-confirm connection-budget impact, schema installation path, least-privilege grants and
-backup/restore coverage before it becomes final.
+The cluster bootstrap creates the empty database/roles only for fresh greenfield projects.
+A dedicated Knowledge schema-init command installs tables/grants as `knowledge_owner`.
+The serving application never runs DDL.
 
-If review instead chooses an existing logical database, it must document why that database
-is the legitimate fact owner and how the runtime role remains least-privileged. “Fewer
-config fields” is not sufficient justification.
+`knowledge_runtime` receives only CONNECT/USAGE plus the exact SELECT/INSERT/UPDATE columns
+needed by the Knowledge repository. It receives no CREATE/TEMP, no cross-database CONNECT,
+no role membership and no blanket access to other application databases.
 
-No cross-database transaction is assumed. Product Agent and Product Review store only
-immutable Knowledge bundle/provenance references; Knowledge remains the only writer of
-Knowledge facts.
+No cross-database transaction, FDW or dblink is introduced.
 
-### 15.3 Object storage candidate
+### 15.3 Minimal durable tables
 
-The repository already has a provider-specific S3 integration with bounded immutable put,
-inspect and read behavior. V1 should reuse that integration implementation behind a
-Knowledge-owned narrow port rather than import AWS/S3 types into `internal/knowledge`.
-
-Candidate domain port responsibilities:
+Exact SQL belongs to implementation, but V1 schema ownership is frozen around these facts:
 
 ```text
-KnowledgeObjectStore
-  PutImmutable(revision object identity, bounded bytes)
-  Inspect(exact object identity)
-  ReadBounded(exact object identity, max bytes)
+knowledge_bases
+knowledge_sources
+knowledge_revisions
+knowledge_ingest_operations
+knowledge_context_bundles
+knowledge_context_bundle_entries
 ```
 
-Integration:
+Required integrity:
+
+- every row carries bounded Organization identity where needed for direct authorization;
+- IDs are opaque UUIDs;
+- operation idempotency is unique within Organization + operation kind;
+- revision content digest is immutable after admission;
+- one Source may have many Revisions but only one current/latest pointer;
+- ContextBundle is immutable after materialization;
+- ContextBundle entries bind exact Source + Revision + citation ID;
+- mutable records use explicit version/CAS for user-visible writes;
+- source/base disable cannot mutate existing historical bundle entries.
+
+### 15.4 Object storage
+
+The repository already has provider-specific S3 integration with immutable put, inspect and
+bounded read behavior. V1 reuses that implementation behind a Knowledge-owned narrow port.
 
 ```text
-internal/knowledge local port
+internal/knowledge KnowledgeObjectStore
   -> internal/integration/s3 adapter
-  -> private S3-compatible storage
+  -> private Knowledge bucket/namespace
 ```
 
-Knowledge storage requirements:
-
-- private objects only; no public URL is part of the Knowledge contract;
-- deterministic/content-addressed revision object keys;
-- digest + size verification before a revision becomes usable;
-- dedicated bucket or credentials/policy restricted to the Knowledge namespace;
-- do not reuse ImageAgent public artifact projection or expose its `PublicBase` behavior;
-- object bytes are never returned solely because a caller knows an object key.
-
-### 15.4 Upload / metadata transaction boundary
-
-A database transaction cannot atomically commit PostgreSQL and S3.
-
-Candidate V1 protocol:
+Candidate port:
 
 ```text
-1. authorize + create durable revision/upload operation identity
-2. compute deterministic object identity/digest for admitted bytes
-3. immutable object put
-4. if response is unknown, Inspect exact key/digest before any resend
-5. persist confirmed object reference + processing state
-6. parse/materialize derived Knowledge revision content
-7. mark AVAILABLE / PARTIAL / FAILED
+PutImmutable(object identity, bounded bytes)
+Inspect(exact object identity)
+ReadBounded(exact object identity, max bytes)
 ```
 
-A lost response never creates a second revision identity merely to retry an object write.
+Requirements:
 
-For bounded local deterministic parsing, retry may reuse the confirmed immutable input.
-If a future parser/index provider introduces its own external side effect or charge, that
-provider needs a separate durable dispatch/UNKNOWN contract; it is not silently inherited
-from this S3 protocol.
+- private objects only;
+- deterministic/content-addressed revision keys;
+- SHA-256 + size verification before processing;
+- dedicated bucket or credentials/policy restricted to a Knowledge prefix;
+- no ImageAgent `PublicBase` projection;
+- no object is readable merely because the caller knows a key;
+- raw object identity is never exposed to browser DTOs.
 
-### 15.5 Delete / disable and historical provenance
+### 15.5 Upload / PostgreSQL / S3 protocol
 
-Product Review still needs to explain historical AI suggestions without leaking deleted or
-revoked enterprise content.
+PostgreSQL and S3 are not one transaction. V1 freezes this protocol:
 
-V1 candidate semantics:
+```text
+1. fresh authorization + idempotency admission
+2. create durable ingest operation + revision intent
+3. read bounded request and compute SHA-256/size
+4. immutable PutObject using deterministic revision object identity
+5. on ambiguous PutObject result, Inspect exact key/digest before any resend
+6. confirm stored object reference in PostgreSQL
+7. state -> PROCESSING
+8. background processor parses the exact immutable object
+9. persist normalized parsed result / safe failure + state
+10. state -> AVAILABLE | PARTIAL | FAILED
+```
 
-- disable/delete stops new selection, context materialization and content reads;
-- Agent runs already bound to a bundle retain opaque bundle/revision/citation identity;
-- Review records retain opaque provenance;
-- current unauthorized callers cannot resolve labels/excerpts after access loss;
-- physical object/index retention and purge timing must be frozen before implementation;
-- purge must not mutate historical Product/Review/Agent records into a different factual
-  claim.
+A lost HTTP response or process crash reuses the same operation/revision identity.
+It does not allocate another revision merely to retry.
 
-AgentRun does not copy full Knowledge content into its state.
+### 15.6 Processing lifecycle and recovery
 
-## 16. Failure / retry / UNKNOWN
+V1 parsing is asynchronous and restart-safe, but does **not** introduce Temporal or
+RabbitMQ.
 
-### Read/retrieval
+Reason:
 
-Safe reads may retry within bounded policy.
+- parsing one confirmed immutable document is a simple background job;
+- the parser has no durable remote business side effect;
+- re-parsing the same immutable bytes is safe;
+- Temporal workflow history is not required;
+- current-application already has bounded recovery-loop patterns coordinated with server
+  shutdown.
 
-A Knowledge dependency failure produces explicit unavailable/partial evidence; it does not
-silently fall back to unrestricted model-only behavior when the user required that
-knowledge.
+Internal revision processing states:
 
-### Upload / processing
+```text
+ADMITTED
+OBJECT_STORED
+PROCESSING
+AVAILABLE
+PARTIAL
+FAILED
+```
 
-If an upload or provider/index dispatch outcome is unknown:
+`DISABLED` is a Source/KnowledgeBase availability state, not a parser terminal result.
 
-- preserve the original operation/revision identity;
-- verify/read back when the provider supports it;
-- do not create a new revision and blindly resend an external side effect.
+Repository processing fields include:
 
-If processing is deterministic and entirely local after a confirmed durable input, local
-reprocessing may be safe; exact policy depends on implementation choice.
+- lease owner;
+- lease until;
+- attempt count;
+- next attempt time;
+- bounded failure category.
 
-### Agent model dispatch
+Current-application assembly starts the processor/recovery loop only when Knowledge is
+enabled. It owns start/stop coordination through the long-lived runtime context and server
+shutdown. HTTP handlers do not spawn unmanaged goroutines.
 
-Existing Product Agent unknown/usage/budget semantics remain authoritative. Knowledge does
-not add a second retry owner.
+Candidate runtime bounds:
+
+- sweep every 5 seconds;
+- claim at most 4 revisions per sweep;
+- maximum parser concurrency 2;
+- lease 30 seconds;
+- one parse call deadline 20 seconds;
+- maximum 3 transient parse attempts with bounded backoff.
+
+A deterministic unsupported/encrypted/corrupt-document error becomes `FAILED`.
+A parser result with useful bounded text plus declared omissions may become `PARTIAL`.
+Infrastructure timeout/crash retries the same immutable revision.
+
+### 15.7 Document parser limits
+
+The V1 parser adapter is private Apache Tika 4.x when PDF/DOCX support remains enabled.
+
+Bounded parse output:
+
+- raw source: 10 MiB maximum;
+- normalized extracted UTF-8 text: 2 MiB maximum per Revision;
+- parser output beyond the bound is PARTIAL with explicit truncation/omission metadata;
+- no embedded-file recursive ingestion in V1;
+- no remote URL fetching;
+- no OCR/VLM;
+- raw document and parser body are excluded from ordinary logs.
+
+### 15.8 Delete / disable and historical provenance
+
+V1 has disable, not destructive user delete.
+
+Disable:
+
+- removes the KnowledgeBase/Source from new selection and context materialization;
+- blocks protected preview/content reads for callers without a still-valid path;
+- does not mutate Agent runs, ContextBundles or Product Review provenance already recorded.
+
+Physical purge/retention is **not** a V1 user action. Operational retention/purge policy must
+be added before a destructive-delete feature is admitted.
+
+AgentRun stores ContextSnapshotRef and validated citation refs, not the full enterprise
+document body.
+
+## 16. Failure, retry and UNKNOWN
+
+### 16.1 Read/materialization
+
+Safe database/S3 reads may retry only within bounded local policy.
+
+If the user explicitly selected Knowledge and materialization cannot establish a valid
+bundle, the title run fails closed with a Knowledge-unavailable result. It must not silently
+drop the selected Knowledge and continue as unrestricted model-only generation.
+
+### 16.2 Immutable object write
+
+For S3-compatible immutable Put:
+
+- authoritative pre-dispatch failure may be retried with the same operation/revision;
+- timeout/connection loss is outcome-unknown;
+- outcome-unknown must Inspect the exact deterministic key + SHA-256 + size;
+- matching object means the original write is adopted;
+- missing object after authoritative inspection permits resend with the same identity;
+- mismatched object is integrity conflict and fails closed.
+
+No second revision identity is created to escape an ambiguous object write.
+
+### 16.3 Parser processing
+
+Tika parsing does not mutate an external business system. Re-executing the same immutable
+object is allowed after lease expiry or process crash.
+
+- deterministic unsupported/encrypted/corrupt input -> FAILED;
+- valid partial extraction -> PARTIAL;
+- transient parser/service failure -> retry same revision up to the bounded attempt limit;
+- exhausted transient attempts -> FAILED with safe category;
+- manual “re-upload” creates a **new** Revision only when the user intentionally provides a
+  new upload command.
+
+### 16.4 ContextBundle materialization
+
+ContextBundle creation is deterministic for an exact:
+
+```text
+Organization
++ selected KnowledgeBase/Source set
++ exact current Revision set at admission
++ materialization policy version
+```
+
+A committed bundle is immutable. Lost response with the same idempotency identity returns
+the existing bundle/ref. Changed selection/policy with the same key conflicts.
+
+### 16.5 Agent model dispatch
+
+Existing Product Agent quote/reservation/UNKNOWN/budget semantics remain authoritative.
+
+Before `Quote` or `Decide`, the governed model adapter loads the exact ContextBundle and
+rechecks Knowledge read access. The context bytes used for the model must be included in the
+quote/token estimate; Knowledge must not become an unmetered hidden prompt.
+
+If access is revoked before a later model call/resume, the call is not dispatched and the
+run stops/fails according to the existing authoritative no-send/dependency semantics.
+Knowledge adds no second model retry owner.
 
 ## 17. Legacy decision
 
@@ -1003,52 +1190,79 @@ RETIRE / DO NOT RESTORE:
 
 No migration/backfill from an old Knowledge system is planned under the greenfield policy.
 
-## 18. Implementation sequence after product + architecture approval
+## 18. Implementation sequence after Architecture approval
+
+No slice may modify production code before this document becomes
+`IMPLEMENTATION_READY`.
 
 ### Slice A — Knowledge owner + content lifecycle
 
 User result:
 
 - create one enterprise KnowledgeBase;
-- add one bounded text/document source;
-- see PROCESSING / AVAILABLE / PARTIAL / FAILED;
-- view safe source metadata and content preview.
+- upload one V1-supported document;
+- receive durable source/revision identity immediately;
+- observe PROCESSING -> AVAILABLE/PARTIAL/FAILED;
+- preview bounded extracted content;
+- restart current-application without losing processing/recovery state.
+
+Includes:
+
+- Knowledge logical DB/schema-owner/runtime-role;
+- S3 KnowledgeObjectStore adapter;
+- Tika adapter when PDF/DOCX is enabled;
+- DB-lease parser recovery loop;
+- Knowledge read/manage permissions;
+- Workbench HTTP/BFF/UI first slice.
 
 No Agent integration yet.
 
-### Slice B — authorized context materialization + citation
+### Slice B — immutable execution context + citation
 
 User result:
 
-- explicitly select one enterprise KnowledgeBase;
-- server materializes one immutable bounded KnowledgeContextBundle;
-- exact Source/Revision refs and citation IDs survive restart;
-- cross-Organization/revoked access fails closed;
-- no model-directed retrieval is introduced.
+- explicitly select enterprise Knowledge for a bounded title run;
+- server materializes one immutable bounded KnowledgeContextBundle before model dispatch;
+- exact Revision/citation identity survives restart;
+- cross-Organization/revoked access fails closed.
 
 No Product mutation.
+
+V1 ContextBundle hard bounds:
+
+- maximum 4 selected Sources;
+- maximum 16 KiB normalized model-visible content per selected Revision;
+- maximum 48 KiB normalized model-visible Knowledge text in one bundle;
+- maximum 64 citation entries;
+- maximum 96 KiB serialized bundle payload.
+
+If explicit selection exceeds the bound, materialization fails visibly with a
+`KNOWLEDGE_CONTEXT_TOO_LARGE`-class result. V1 does not silently truncate arbitrary
+documents into a misleading context. Users may select fewer/smaller sources.
 
 ### Slice C — Product Agent title optimization consumption
 
 User result:
 
-- select one enterprise KnowledgeBase for an existing Product Agent run;
-- ContextSnapshotRef is bound before first model dispatch;
-- generated title suggestion can cite only entries from that frozen bundle;
-- canonical Product/source evidence remains separate;
-- Product Review receives the validated supplemental provenance and keeps existing
-  Accept/Edit/Reject/Apply state semantics.
+- start existing Product Agent title optimization with an optional ContextSnapshotRef;
+- first model quote/dispatch happens only after exact Knowledge context is frozen;
+- generated title can cite only citation IDs from that bundle;
+- Product/source deterministic evidence remains canonical and separate;
+- Product Review receives bounded supplemental ContextProvenanceRef;
+- user can accept, reject or edit, then Apply under existing Product Review rules.
 
-This slice may require the small generic Agent context-ref/citation contract and the
-additive Product Review provenance extension described above. Those are explicit
-architecture changes, not hidden implementation details.
+Generic Agent contract adds only provider-neutral opaque context/citation fields; it does
+not import Knowledge types.
 
 ### Slice D — enterprise Agent enablement/template projection
 
-Only after #555 freezes enabled-Agent/template ownership.
+Only after Slices A–C are proven and #555’s “我的智能体” persistent configuration is
+scheduled.
 
-Do not block Slice A–C on a generic marketplace, Multi-Agent coordinator, Project Center,
-full Chat implementation or vector database.
+Possible new Agent-specific permissions belong here, not in A–C.
+
+Do not block A–C on Agent marketplace, Multi-Agent coordination, Project Center, full Chat,
+vector database or model-directed retrieval.
 
 ## 19. Review gates
 
@@ -1062,55 +1276,100 @@ Before changing this document to `IMPLEMENTATION_READY`:
   candidate evidence for Architecture Review.
 - V1 content types, snapshot-copy keyword semantics, enterprise ownership, governed-model
   boundary, template semantics and Human Review provenance rules are frozen in §2.
-- Product Gate completion does **not** imply Architecture Gate completion or implementation
-  authorization.
 
-### Architecture gate
+### Architecture gate — REVIEWING
 
-- Knowledge owner and database/persistence boundary;
-- authorization model;
-- ingestion state and durable operation semantics;
-- immutable V1 KnowledgeContextBundle contract and limits;
-- generic Agent ContextSnapshotRef / validated ContextCitationRef contract;
-- exact bundle binding before first model dispatch;
+This document now proposes/fixes for review:
+
+- Knowledge owner: `internal/knowledge`;
+- dedicated `knowledge` logical database in the existing business PostgreSQL instance;
+- `knowledge_owner` schema installer + `knowledge_runtime` serving role/pool;
+- Workbench Knowledge read/manage permissions and V1 role mapping;
+- strict V1 HTTP/API surface and upload bounds;
+- private S3 object boundary and ambiguous immutable-write recovery;
+- asynchronous DB-lease parser recovery without Temporal/RabbitMQ;
+- bounded Tika integration and source types;
+- immutable KnowledgeContextBundle and hard materialization bounds;
+- generic Agent ContextSnapshotRef / validated citation extension;
+- exact bundle binding before first model quote/dispatch;
 - additive Product Review ContextProvenanceRef persistence/projection;
 - citation read authorization and human-edit semantics;
 - prompt-injection boundary;
-- deletion/disable semantics;
-- fee/provider boundary;
-- current application composition;
-- validation plan.
+- disable/history semantics;
+- existing AI usage/budget ownership;
+- current-application composition and validation plan.
 
-### Implementation gate
+Architecture Review must identify remaining **BLOCKERs** against these exact contracts.
+Non-blocking implementation details belong to IMPLEMENTATION_TEST/BACKLOG after the review
+stop rule is reached.
+
+### Implementation gate — CLOSED
 
 Only after Architecture Review explicitly records `IMPLEMENTATION_READY`.
 
-The first-review findings about Review citation loss and pre-first-model revision pinning
-are architecture BLOCKERs until these contracts are accepted; they must not be reclassified
-as ordinary implementation tests.
+Production code, schema installation, Tika deployment, real enterprise uploads and model
+calls are not authorized by this document yet.
 
-## 20. Validation plan candidate
+## 20. Validation plan
 
-Risk-matched tests should cover:
+Architecture acceptance requires implementation evidence plans for these risks.
 
-- Organization A/B isolation;
-- read/manage/use permission separation according to the final product rule;
-- revoked access between template selection and context materialization;
-- revoked access after bundle creation but before a later model dispatch;
-- first model dispatch is impossible before a valid immutable ContextSnapshotRef is bound;
-- same source update creates a new revision while an old run remains pinned to its bundle;
-- processing FAILED/PARTIAL cannot appear AVAILABLE;
-- knowledge text cannot alter tool allowlist, actor, org, budget or approval;
-- model-returned citation ID outside the frozen bundle is rejected;
-- Product fact conflict wins over knowledge suggestion;
+### 20.1 Authorization / Organization
+
+- viewer denied Knowledge read/manage;
+- operator read allowed, manage denied;
+- admin read/manage allowed;
+- Organization A cannot list/read/preview/materialize B Knowledge;
+- browser-selected Organization is not authority;
+- grant revoked between selection and materialization fails closed;
+- grant revoked after bundle creation blocks the next model dispatch;
+- template reference does not restore revoked Knowledge access.
+
+### 20.2 Persistence / upload / parser
+
+- duplicate Idempotency-Key + same upload returns the same revision/operation;
+- same key + changed file/metadata conflicts;
+- S3 timeout + confirmed matching exact object adopts original write;
+- S3 timeout + confirmed missing exact object resends same identity;
+- mismatched deterministic key/digest fails closed;
+- restart after OBJECT_STORED resumes parsing;
+- expired processing lease can be reclaimed without duplicate revision;
+- unsupported/encrypted/corrupt input -> FAILED;
+- useful incomplete extraction -> PARTIAL;
+- output bound is enforced without pretending truncated output is complete;
+- runtime role cannot DDL, connect to unrelated databases or read raw object credentials.
+
+### 20.3 Context binding / Agent
+
+- first model Quote cannot occur before a valid ContextSnapshotRef is committed/bound;
+- same Knowledge source update creates a new Revision while an existing run remains on its
+  original bundle;
+- bundle limits fail visibly rather than silently changing selected evidence;
+- ContextSnapshotRef/digest mismatch fails closed;
+- citation outside the frozen bundle is rejected;
+- knowledge text cannot alter actor, Organization, Tool allowlist, model, budget or approval;
+- Product fact conflict wins over Knowledge suggestion;
 - canonical `FieldChange.EvidenceIDs` remains Product/source-only;
-- validated citations survive Agent -> Product Review -> restart without copying raw documents;
-- Review read after knowledge-access revocation does not leak protected source content;
-- a human-edited title does not inherit a false claim that AI knowledge citations support it;
-- template rename/delete does not change prior run;
-- model outcome UNKNOWN keeps existing Product Agent recovery semantics;
-- restart reloads durable Knowledge bundle/revision/provenance references;
-- browser scope switch does not render stale knowledge from previous Organization.
+- Knowledge prompt bytes are included in existing model quote/usage accounting;
+- model outcome UNKNOWN retains current Product Agent recovery semantics.
 
-Real enterprise documents, paid model calls and production provider operations remain
-separate explicit authorization gates.
+### 20.4 Human Review / provenance
+
+- validated citations survive Agent -> Product Review -> process restart;
+- Review does not copy raw enterprise documents;
+- revoked caller cannot resolve protected citation excerpts;
+- human-edited title does not falsely inherit AI citation support;
+- Accept/Reject/Edit/Apply retain existing Product Review CAS/authorization behavior.
+
+### 20.5 UI / Figma
+
+- all eight accepted candidate flows have loading/empty/denied/failed states where relevant;
+- Organization switch cannot render stale Knowledge from the previous Organization;
+- upload processing state is truthful after refresh/restart;
+- “enabled Agent” is never rendered from AgentRun running state;
+- template UI states that defaults are re-authorized at execution;
+- title execution shows actual selected Knowledge revision/version indicator;
+- Human Review shows citation provenance separately from Product fact validation.
+
+Real enterprise documents, production S3/Tika deployment and paid model/provider operations
+remain separate explicitly authorized acceptance gates.
