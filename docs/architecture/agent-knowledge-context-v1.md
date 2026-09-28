@@ -1,6 +1,6 @@
 # Agent + Knowledge Context V1
 
-> Status: **ARCHITECTURE_REVIEW / NOT IMPLEMENTATION_READY**
+> Status: **APPROVED / IMPLEMENTATION_READY**
 >
 > Product Design Issue: #555
 >
@@ -22,9 +22,14 @@
 >
 > Product Gate: **APPROVED FOR ARCHITECTURE REVIEW** under #555.
 >
-> This document is an Independent Architecture **review candidate only**. It does not authorize
-> production code, schema, provider/model calls, real enterprise document uploads,
-> deployment, or release enablement.
+> Architecture Review: **PASSED**. Normal review stop rule reached after two rounds plus
+> targeted BLOCKER verification. Reviewed content HEAD `96ba7f6549fcaf97ed358f94802919bbb03ea9d2`;
+> CI run `36422741730` completed SUCCESS.
+>
+> This document is an Independent Architecture **implementation baseline**. Production
+> implementation may start only from an explicit execution Issue after this architecture PR
+> is merged into main. Real enterprise uploads, production Tika/S3 deployment, paid model
+> calls and release enablement remain separate authorization/acceptance gates.
 
 ## 1. Product outcome
 
@@ -1490,9 +1495,9 @@ Before changing this document to `IMPLEMENTATION_READY`:
 - V1 content types, snapshot-copy keyword semantics, enterprise ownership, governed-model
   boundary, template semantics and Human Review provenance rules are frozen in §2.
 
-### Architecture gate — REVIEWING
+### Architecture gate — SATISFIED
 
-This document now proposes/fixes for review:
+Architecture Review accepted the following V1 contracts:
 
 - Knowledge owner: `internal/knowledge`;
 - dedicated `knowledge` logical database in the existing business PostgreSQL instance;
@@ -1512,16 +1517,34 @@ This document now proposes/fixes for review:
 - existing AI usage/budget ownership;
 - current-application composition and validation plan.
 
-Architecture Review must identify remaining **BLOCKERs** against these exact contracts.
-Non-blocking implementation details belong to IMPLEMENTATION_TEST/BACKLOG after the review
-stop rule is reached.
+Review history:
 
-### Implementation gate — CLOSED
+- formal round 1 identified the disable/revoke content-use fence BLOCKER;
+- formal round 2 found no new major issue after that fix;
+- targeted verification identified and closed upload/materialization idempotency and the
+  pre-Start AgentRun/ContextBundle circular-admission BLOCKER;
+- targeted review at `96ba7f6549fcaf97ed358f94802919bbb03ea9d2` found no major issue;
+- CI `36422741730` completed SUCCESS.
 
-Only after Architecture Review explicitly records `IMPLEMENTATION_READY`.
+The normal review stop rule is reached. New non-blocking implementation detail belongs to
+IMPLEMENTATION_TEST/BACKLOG. Reopen this architecture only for a newly demonstrated
+BLOCKER.
 
-Production code, schema installation, Tika deployment, real enterprise uploads and model
-calls are not authorized by this document yet.
+### Implementation gate — IMPLEMENTATION_READY
+
+Slices A–C may be implemented by explicit execution Issues after this architecture PR is
+merged into main.
+
+This status does **not** authorize:
+
+- merging this PR;
+- deployment;
+- real enterprise document uploads;
+- production Tika/S3 enablement;
+- paid/real model calls;
+- release enablement or user acceptance.
+
+Those remain separate explicit gates.
 
 ## 20. Validation plan
 
