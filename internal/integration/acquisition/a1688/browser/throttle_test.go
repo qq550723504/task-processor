@@ -358,27 +358,36 @@ func TestThrottleResumesPacedAfterCooldown(t *testing.T) {
 		"an elapsed cooldown must resume the process")
 }
 
-// A waiter that is merely delayed past its slot keeps the floor it committed, so
-// the next caller cannot start on top of it.
-func TestThrottleDelayedWaiterKeepsItsSlot(t *testing.T) {
-	th := newTestThrottle(60*time.Millisecond, 0, 0)
-	require.NoError(t, th.Wait(context.Background()))
+// The floor must advance from when a caller ACTUALLY starts, not from the slot it
+// reserved. A waiter whose timer has fired but which is then scheduled late must
+// not let the next caller in on the ideal timeline, or two real acquisition
+// starts end up milliseconds apart - a burst produced by the pacing itself.
+func TestThrottleAdvancesFloorFromActualDispatch(t *testing.T) {
+	interval := 60 * time.Millisecond
+	th := newThrottle(interval, 0, 0, -1, time.Minute, time.Nanosecond)
+	require.NoError(t, th.Wait(context.Background())) // consumes the immediate slot
+
+	done := make(chan struct{})
+	go func() { defer close(done); _ = th.Wait(context.Background()) }() // will wait out its slot
+
+	// Let that waiter commit its reservation and enter its timer, then hold the
+	// throttle's lock so its dispatch is delayed well past the slot.
+	time.Sleep(interval / 2)
+	th.mu.Lock()
+	hold := interval * 4
+	release := time.Now().Add(hold)
+	time.Sleep(hold)
+	th.mu.Unlock()
+
+	<-done
+	dispatch := time.Now()
 
 	th.mu.Lock()
-	floorBefore := th.next
+	gap := th.next.Sub(dispatch)
 	th.mu.Unlock()
-	require.True(t, floorBefore.After(time.Now()), "a reservation must advance the floor")
-
-	// Let the floor elapse, as a delayed waiter would experience.
-	time.Sleep(90 * time.Millisecond)
-
-	// A new caller still cannot start immediately, because the floor was committed
-	// when the earlier caller reserved it and only moves forward.
-	th.mu.Lock()
-	floorAfter := th.next
-	th.mu.Unlock()
-	require.False(t, floorAfter.Before(floorBefore),
-		"the floor must never move backwards, whatever the wall clock does")
+	require.GreaterOrEqual(t, gap, interval-time.Millisecond,
+		"the floor must be re-anchored on the real dispatch, not the ideal slot")
+	require.True(t, release.Before(dispatch), "the dispatch must genuinely be late")
 }
 
 // The reservation bookkeeping is a single floor, so the state cannot grow.

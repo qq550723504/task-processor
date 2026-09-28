@@ -215,6 +215,16 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		t.release(mine)
 		return ErrThrottled
 	}
+	// Advance the floor from when this caller ACTUALLY starts, not from the slot
+	// it reserved. A goroutine whose timer fires but which is scheduled late would
+	// otherwise let the next reservation be admitted on the ideal timeline, so two
+	// real acquisition starts could be only milliseconds apart - the burst this
+	// throttle exists to prevent, produced by the pacing itself.
+	t.mu.Lock()
+	if dispatched := time.Now().Add(span); dispatched.After(t.next) {
+		t.next = dispatched
+	}
+	t.mu.Unlock()
 	return nil
 }
 
