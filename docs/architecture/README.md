@@ -126,10 +126,11 @@ These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
 - [`agent-knowledge-context-v1.md`](./agent-knowledge-context-v1.md)
-  - ARCHITECTURE_REVIEW #555/#556 for enterprise Knowledge + existing Product Agent
+  - IMPLEMENTATION_READY #555/#556 enterprise Knowledge + existing Product Agent
     integration: explicit Organization-scoped knowledge, immutable context bundles,
-    exact revision citations and supplemental Human Review provenance. Product Gate is
-    frozen; **NOT IMPLEMENTATION_READY** until the Architecture Gate closes.
+    exact revision citations and supplemental Human Review provenance. Production
+    implementation still requires an explicit execution Issue; real uploads/deployment
+    and paid provider acceptance remain separate gates.
 - [`account-facts-invitations-v1.md`](./account-facts-invitations-v1.md)
   - IMPLEMENTATION_READY Design Basis for the bounded #551 Account Center
     delivery: user facts, region preferences, complete enterprise statistics and
