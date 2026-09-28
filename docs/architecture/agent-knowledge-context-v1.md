@@ -1,6 +1,6 @@
 # Agent + Knowledge Context V1
 
-> Status: **ARCHITECTURE_REVIEW / NOT IMPLEMENTATION_READY**
+> Status: **APPROVED / IMPLEMENTATION_READY**
 >
 > Product Design Issue: #555
 >
@@ -22,14 +22,18 @@
 >
 > Product Gate: **APPROVED FOR ARCHITECTURE REVIEW** under #555.
 >
-> Architecture Review: **REOPENED FOR NEW BLOCKERS**. KnowledgeSelection transport and
-> command fingerprint issues are fixed; current targeted review is closing the
-> KnowledgeDispatchPermit linearization, active-Source cardinality and replacement-Revision
-> promotion contracts.
+> Architecture Review: **PASSED**. Final reviewed contract HEAD before this status-only
+> admission commit: `499b41165a5d4377c4f0f20200626698e693ed46`.
+> Code Review on that HEAD found no major issue; Task Processor CI
+> `36434705916` completed SUCCESS including Required CI Gate. The security-sensitive
+> KnowledgeDispatchPermit / DISABLING protocol was covered by Security Review on
+> `a3b696296fad5c7e1d989ad86f20a1eeea9f9d1f`; later `499b411` changes only froze
+> Source-cardinality / replacement-Revision lifecycle and admission-gate wording.
 >
-> This document remains an Independent Architecture **review candidate**. Production
-> implementation is closed until that blocker is fixed and targeted verification completes. Real enterprise uploads, production Tika/S3 deployment, paid model
-> calls and release enablement remain separate authorization/acceptance gates.
+> This document is the Independent Architecture **implementation baseline**. Production
+> implementation may begin only from explicit execution Issues **after PR #556 is merged
+> into main**. Real enterprise uploads, production Tika/S3 deployment, paid model calls and
+> release enablement remain separate authorization/acceptance gates.
 
 ## 1. Product outcome
 
@@ -1836,81 +1840,77 @@ vector database or model-directed retrieval.
 
 ## 19. Review gates
 
-Before changing this document to `IMPLEMENTATION_READY`:
-
 ### Product gate — SATISFIED
 
-- #555 Product Gate is frozen for this V1 review.
+- #555 Product Gate is frozen for this V1.
 - Figma candidates `4703:429`, `4703:572`, `4703:694`, `4703:892`,
   `4711:429`, `4713:429`, `4714:429`, and `4722:429` are the accepted
-  candidate evidence for Architecture Review.
+  Product Gate evidence.
 - V1 content types, snapshot-copy keyword semantics, enterprise ownership, governed-model
   boundary, template semantics and Human Review provenance rules are frozen in §2.
 
-### Architecture gate — REOPENED FOR TRANSPORT BLOCKER
+### Architecture gate — SATISFIED
 
-Architecture Review accepted the following V1 contracts:
+The final accepted V1 contracts include:
 
 - Knowledge owner: `internal/knowledge`;
 - dedicated `knowledge` logical database in the existing business PostgreSQL instance;
 - `knowledge_owner` schema installer + `knowledge_runtime` serving role/pool;
 - Workbench Knowledge read/manage permissions and V1 role mapping;
-- strict V1 HTTP/API surface and upload bounds;
-- private S3 object boundary and ambiguous immutable-write recovery;
+- strict Knowledge management/upload API and Product Agent `KnowledgeSelection` transport;
+- one KnowledgeBase = maximum 4 ACTIVE Sources in V1;
+- separate `latestRevision` / `currentReadableRevision` promotion semantics;
+- private S3 object boundary and ambiguous immutable-write/stale-ADMITTED recovery;
 - asynchronous DB-lease parser recovery without Temporal/RabbitMQ;
-- bounded Tika integration and source types;
-- immutable KnowledgeContextBundle and hard materialization bounds;
+- bounded private Tika integration and V1 source types;
+- immutable pre-Start KnowledgeContextBundle and hard materialization bounds;
+- command fingerprint separate from bundle content digest;
 - generic Agent ContextSnapshotRef / validated citation extension;
 - exact bundle binding before first model quote/dispatch;
-- additive Product Review ContextProvenanceRef persistence/projection;
-- citation read authorization and human-edit semantics;
-- prompt-injection boundary;
-- disable/history semantics;
-- existing AI usage/budget ownership;
-- current-application composition and validation plan.
+- KnowledgeDispatchPermit + ACTIVE -> DISABLING -> DISABLED linearization for local disable;
+- additive Product Review ContextProvenanceRef while canonical Product EvidenceIDs remain
+  unchanged;
+- citation read authorization, human-edit semantics and prompt-injection boundary;
+- existing AI Capability usage/budget/provider UNKNOWN ownership;
+- current-application composition and risk-matched validation plan.
 
 Review history:
 
-- formal round 1 identified the disable/revoke content-use fence BLOCKER;
-- formal round 2 found no new major issue after that fix;
-- targeted verification identified and closed upload/materialization idempotency and the
-  pre-Start AgentRun/ContextBundle circular-admission BLOCKER;
-- targeted review at `96ba7f6549fcaf97ed358f94802919bbb03ea9d2` found no major issue;
-- CI `36422741730` completed SUCCESS;
-- later Ready-triggered review at `174d31b0431821368087f24b41b9470e5e17d556`
-  demonstrated the missing KnowledgeSelection transport P1 BLOCKER; admission was reopened.
+- formal round 1 found the disable/revoke content-use fence blocker;
+- formal round 2 converged without a new major issue;
+- targeted reviews fixed citation-through-Review, pre-first-model pinning, upload/materialization
+  idempotency and the pre-Start AgentRun/ContextBundle cycle;
+- Ready-triggered review exposed and fixed the public KnowledgeSelection transport contract;
+- targeted review separated command fingerprint from server-resolved bundle content;
+- Ready-triggered review exposed local disable/provider-dispatch TOCTOU; the
+  KnowledgeDispatchPermit protocol fixed it and targeted Code Review found no major issue;
+- Ready-triggered review exposed the fifth-ACTIVE-Source usability gap; V1 now enforces the
+  four-ACTIVE-Source invariant;
+- replacement Revision promotion is frozen as a Slice A IMPLEMENTATION_TEST contract;
+- final contract HEAD `499b41165a5d4377c4f0f20200626698e693ed46` received Code Review with
+  no major issue;
+- security-sensitive dispatch-permit delta was covered by Security Review on
+  `a3b696296fad5c7e1d989ad86f20a1eeea9f9d1f`;
+- CI `36434705916` completed SUCCESS, including Architecture Contract Guards, Backend
+  Checks and Required CI Gate;
+- no unresolved review thread remains.
 
-The normal review stop rule was reached at `96ba7f6`, but later Ready-triggered reviews
-demonstrated concrete new BLOCKER evidence and therefore legitimately reopened admission:
-the missing KnowledgeSelection transport/fingerprint contract; local disable/provider-send
-TOCTOU; and the fact that an unconstrained fifth ACTIVE Source would make a Base unselectable
-without any Source-selection UI. §§14.2/14.4 and §§6.4/15.8/16.5 now freeze those contracts.
-The stale ADMITTED ingest recovery and replacement-Revision promotion rules are explicit
-IMPLEMENTATION_TEST obligations; §9.3 also removes the contradictory live-reference
-alternative.
+The normal review stop rule is reached. Further non-blocking implementation detail belongs
+to the execution Issues' IMPLEMENTATION_TEST/BACKLOG. Reopen this architecture only for a
+newly demonstrated BLOCKER.
 
-### Implementation gate — CLOSED PENDING TARGETED VERIFICATION
+### Implementation gate — IMPLEMENTATION_READY
 
-Slices A–C must not start until targeted verification confirms all newly demonstrated
-BLOCKER fixes on the same current HEAD:
-
-1. §14.4 KnowledgeSelection transport + command fingerprint;
-2. §6.4 / §15.8 / §16.5 KnowledgeDispatchPermit ordering and the 5m30s lease safety bound;
-3. §14.2 active-Source maximum invariant, so a valid KnowledgeBase cannot become
-   unselectable after a fifth upload;
-4. §15.6 replacement-Revision promotion semantics are covered as IMPLEMENTATION_TEST and do
-   not let PROCESSING/FAILED overwrite a prior readable Revision.
-
-Only after those checks have no unresolved BLOCKER and latest-head CI succeeds may this
-document be explicitly returned to `IMPLEMENTATION_READY`.
+Slices A–C are admitted for implementation through explicit execution Issues **after this
+architecture PR is merged into main**.
 
 This status does **not** authorize:
 
-- merging this PR;
+- merging PR #556;
 - deployment;
 - real enterprise document uploads;
 - production Tika/S3 enablement;
-- paid/real model calls;
+- paid/real model/provider calls;
 - release enablement or user acceptance.
 
 Those remain separate explicit gates.
