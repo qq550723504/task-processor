@@ -188,17 +188,17 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 		{"quota", "store_quota_runtime", commercial, quota, listingsubscription.VerifyStoreQuotaRuntime},
 	} {
 		t.Run("extra-schema-permissions-"+target.name, func(t *testing.T) {
-			require.NoError(t, target.owner.Exec(`CREATE SCHEMA store_shadow`).Error)
-			require.NoError(t, target.owner.Exec(`CREATE TABLE store_shadow.workbench_stores(id text)`).Error)
-			require.NoError(t, target.owner.Exec(`GRANT USAGE ON SCHEMA store_shadow TO `+target.role).Error)
-			require.NoError(t, target.owner.Exec(`GRANT SELECT ON store_shadow.workbench_stores TO `+target.role).Error)
+			require.NoError(t, target.owner.Exec(`CREATE SCHEMA pgx_store_shadow`).Error)
+			require.NoError(t, target.owner.Exec(`CREATE TABLE pgx_store_shadow.workbench_stores(id text)`).Error)
+			require.NoError(t, target.owner.Exec(`GRANT USAGE ON SCHEMA pgx_store_shadow TO `+target.role).Error)
+			require.NoError(t, target.owner.Exec(`GRANT SELECT ON pgx_store_shadow.workbench_stores TO `+target.role).Error)
 			require.Error(t, target.verify(ctx, target.runtime), "additional schema grants must not bypass the narrow runtime contract")
-			require.NoError(t, target.owner.Exec(`REVOKE SELECT ON store_shadow.workbench_stores FROM `+target.role).Error)
-			require.NoError(t, target.runtime.Exec(`SET search_path TO store_shadow,public`).Error)
+			require.NoError(t, target.owner.Exec(`REVOKE SELECT ON pgx_store_shadow.workbench_stores FROM `+target.role).Error)
+			require.NoError(t, target.runtime.Exec(`SET search_path TO pgx_store_shadow,public`).Error)
 			require.Error(t, target.verify(ctx, target.runtime), "unqualified tables must resolve the inspected canonical schema")
 			require.NoError(t, target.runtime.Exec(`RESET search_path`).Error)
-			require.NoError(t, target.owner.Exec(`DROP TABLE store_shadow.workbench_stores`).Error)
-			require.NoError(t, target.owner.Exec(`DROP SCHEMA store_shadow`).Error)
+			require.NoError(t, target.owner.Exec(`DROP TABLE pgx_store_shadow.workbench_stores`).Error)
+			require.NoError(t, target.owner.Exec(`DROP SCHEMA pgx_store_shadow`).Error)
 		})
 	}
 	t.Run("wrong-record-search-path", func(t *testing.T) {
