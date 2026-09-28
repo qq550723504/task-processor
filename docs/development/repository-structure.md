@@ -79,12 +79,13 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
-  - 当前二十个运维入口为：
+  - 当前二十一个运维入口为：
     - `account-acceptance-fixture`
     - `1688-batch-import`
     - `1688-local-agent`
     - `commercial-owner-schema-migrate`
     - `fingerprint-browser-installer`
+    - `knowledge-schema-init`
     - `listing-scheduler`
     - `listingkit-identity-preflight`
     - `listingkit-owner-scope-dry-run`
@@ -107,6 +108,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
   - `store-center-schema-init` 由 `deployments/docker/account-compose` 维护，通过显式私密 owner 配置创建当前 Store 空库 schema，并向既有 canonical commercial quota 表授予窄运行权限；不读取、迁移或兼容历史 Store 数据。
+  - `knowledge-schema-init` 由 `deployments/docker/account-compose` 的可选 Knowledge overlay 维护，使用私密 `knowledge_owner` 配置通过 Goose 初始化新空 `knowledge` 数据库，并授予 `knowledge_runtime` 所需列权限；运行进程不执行 DDL，不迁移历史数据。依据 #557 / [Knowledge V1 架构](../architecture/agent-knowledge-context-v1.md)。
   - 不再新增临时调试可执行程序。
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，是历史 Source Account 迁移的只读运维预检，不是 #301 当前新系统开发前置；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。保留历史运维工具不恢复已取消的迁移授权。
   - `source-account-registry-schema-init` 由 `scripts/source-account-registry-local-acceptance.ps1` 维护，只初始化 #368 当前 Source Account registry 的空库 schema；不读取、迁移或兼容旧 Source Account 数据。
