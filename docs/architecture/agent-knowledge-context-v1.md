@@ -1413,21 +1413,14 @@ object is allowed after lease expiry or process crash.
 
 ### 16.4 ContextBundle materialization
 
-ContextBundle creation is deterministic for an exact:
+There are two different immutable identities and they must not be mixed:
 
-```text
-Organization
-+ selected KnowledgeBase/Source set
-+ exact current Revision set at admission
-+ materialization policy version
-```
+1. **incoming command identity/fingerprint** — derived only from information available before
+   server-side Knowledge resolution;
+2. **bundle content identity/digest** — records the exact Source/Revision content frozen by
+   the first successful materialization.
 
-A committed bundle is immutable.
-
-For Product Agent V1, context materialization uses the **pre-Start stable request identity**
-defined in §7.2; it never derives identity from AgentRunID or an already-claimed Agent row.
-
-Conceptually:
+For Product Agent V1, materialization uses the pre-Start stable request identity from §7.2:
 
 ```text
 MaterializationIdentity {
@@ -1440,24 +1433,37 @@ MaterializationIdentity {
 
 MaterializationFingerprint = SHA256(
   full Agent Binding
-  + selected KnowledgeBase/Source identities
-  + exact selection semantics
+  + normalized client KnowledgeSelection
   + materialization policy version
 )
 ```
 
-The Knowledge repository atomically enforces uniqueness on the MaterializationIdentity and
-fingerprint equality, analogous to—but independent from—the Agent Store's run claim.
+**MaterializationFingerprint never includes server-resolved Source IDs, Revision IDs,
+current/latest pointers, content digests or source counts.**
 
-Repeating the same Agent Start request resolves/adopts the same ContextBundle before
-`runtime.Start`. It must not allocate a fresh bundle ID that would turn an otherwise
-identical Agent retry into a binding conflict.
+On the first successful admission only, the materializer resolves the selected
+KnowledgeBase under current authorization/active-state rules and persists the exact
+Source/Revision/digest/citation set inside the immutable KnowledgeContextBundle. The
+bundle's own digest binds that resolved content.
 
-Lost response with the same materialization identity returns the existing bundle/ref.
-Same identity + changed full binding, selected Knowledge or policy conflicts rather than
-silently rematerializing latest Knowledge. A bundle committed before an AgentRun is claimed
-may remain as an unused durable context object; it is not execution evidence and cannot
-authorize model dispatch.
+The Knowledge repository atomically enforces uniqueness on MaterializationIdentity and
+command-fingerprint equality, analogous to—but independent from—the Agent Store's run
+claim.
+
+Retry behavior is therefore unambiguous:
+
+- same identity + same full Agent Binding + same normalized KnowledgeSelection + same policy
+  -> return/adopt the originally committed bundle/ref without resolving latest Sources;
+- a Source added/removed or a newer Revision created after the first commit does not change
+  that retry's command fingerprint;
+- same identity + changed Binding, changed normalized KnowledgeSelection or changed policy
+  -> conflict;
+- if current access/active-state checks later make the frozen bundle content ineligible,
+  §6.3/§15.8 block content release/dispatch; the system does not rematerialize latest
+  Knowledge under the old Agent key.
+
+A bundle committed before an AgentRun is claimed may remain as an unused durable context
+object; it is not execution evidence and cannot authorize model dispatch.
 
 Immutability preserves historical provenance; it does not bypass later active-state or
 authorization checks.
