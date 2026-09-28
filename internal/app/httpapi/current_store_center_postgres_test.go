@@ -46,6 +46,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 		require.NoError(t, err)
 		pool, err := db.DB()
 		require.NoError(t, err)
+		pool.SetMaxOpenConns(1)
 		t.Cleanup(func() { _ = pool.Close() })
 		return db
 	}
@@ -56,13 +57,14 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 		`CREATE ROLE store_quota_runtime LOGIN PASSWORD 'synthetic-store-test'`,
 		`CREATE DATABASE store_center OWNER store_center_owner`,
 		`REVOKE CREATE ON SCHEMA public FROM PUBLIC`,
+		`REVOKE ALL ON DATABASE commercial FROM PUBLIC`,
 	} {
 		require.NoError(t, commercial.Exec(q).Error)
 	}
 	recordsOwner := open("store_center", "store_center_owner")
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
-	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`} {
+	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`} {
 		require.NoError(t, recordsOwner.Exec(q).Error)
 	}
 	require.NoError(t, listingsubscription.AutoMigrateRepository(commercial))
@@ -168,6 +170,8 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Error(t, quota.Exec(`UPDATE saas_tenant_entitlements SET status='inactive'`).Error)
 	require.Error(t, records.Exec(`DELETE FROM workbench_store_audit_logs`).Error)
 	require.Error(t, records.Exec(`CREATE TABLE forbidden(id int)`).Error)
+	require.Error(t, records.Exec(`CREATE TEMP TABLE workbench_stores(id text)`).Error)
+	require.Error(t, quota.Exec(`CREATE TEMP TABLE saas_store_quota_buckets(organization_id text)`).Error)
 	require.NoError(t, recordsOwner.Exec(`GRANT UPDATE ON workbench_store_audit_logs TO store_center_runtime`).Error)
 	require.Error(t, storecenter.VerifyRuntimePermissions(ctx, records))
 	require.NoError(t, recordsOwner.Exec(`REVOKE UPDATE ON workbench_store_audit_logs FROM store_center_runtime`).Error)
@@ -175,6 +179,38 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Error(t, listingsubscription.VerifyStoreQuotaRuntime(ctx, quota))
 	require.NoError(t, commercial.Exec(`REVOKE UPDATE(status) ON saas_tenant_entitlements FROM store_quota_runtime`).Error)
 
+	for _, target := range []struct {
+		name, role     string
+		owner, runtime *gorm.DB
+		verify         func(context.Context, *gorm.DB) error
+	}{
+		{"records", "store_center_runtime", recordsOwner, records, storecenter.VerifyRuntimePermissions},
+		{"quota", "store_quota_runtime", commercial, quota, listingsubscription.VerifyStoreQuotaRuntime},
+	} {
+		t.Run("extra-schema-permissions-"+target.name, func(t *testing.T) {
+			require.NoError(t, target.owner.Exec(`CREATE SCHEMA store_shadow`).Error)
+			require.NoError(t, target.owner.Exec(`CREATE TABLE store_shadow.workbench_stores(id text)`).Error)
+			require.NoError(t, target.owner.Exec(`GRANT USAGE ON SCHEMA store_shadow TO `+target.role).Error)
+			require.NoError(t, target.owner.Exec(`GRANT SELECT ON store_shadow.workbench_stores TO `+target.role).Error)
+			require.Error(t, target.verify(ctx, target.runtime), "additional schema grants must not bypass the narrow runtime contract")
+			require.NoError(t, target.owner.Exec(`REVOKE SELECT ON store_shadow.workbench_stores FROM `+target.role).Error)
+			require.NoError(t, target.runtime.Exec(`SET search_path TO store_shadow,public`).Error)
+			require.Error(t, target.verify(ctx, target.runtime), "unqualified tables must resolve the inspected canonical schema")
+			require.NoError(t, target.runtime.Exec(`RESET search_path`).Error)
+			require.NoError(t, target.owner.Exec(`DROP TABLE store_shadow.workbench_stores`).Error)
+			require.NoError(t, target.owner.Exec(`DROP SCHEMA store_shadow`).Error)
+		})
+	}
+	t.Run("wrong-record-search-path", func(t *testing.T) {
+		require.NoError(t, records.Exec(`SET search_path TO pg_catalog`).Error)
+		defer func() { require.NoError(t, records.Exec(`RESET search_path`).Error) }()
+		require.Error(t, storecenter.VerifyRuntimePermissions(ctx, records), "catalog preflight must match the unqualified repository target")
+	})
+	t.Run("wrong-quota-search-path", func(t *testing.T) {
+		require.NoError(t, quota.Exec(`SET search_path TO pg_catalog`).Error)
+		defer func() { require.NoError(t, quota.Exec(`RESET search_path`).Error) }()
+		require.Error(t, listingsubscription.VerifyStoreQuotaRuntime(ctx, quota), "quota must resolve the inspected canonical public facts")
+	})
 	t.Run("missing-store-primary-identity", func(t *testing.T) {
 		require.NoError(t, recordsOwner.Exec(`ALTER TABLE workbench_stores DROP CONSTRAINT workbench_stores_pkey`).Error)
 		require.Error(t, storecenter.VerifyCurrentSchema(ctx, records))
