@@ -603,3 +603,45 @@ func TestThrottleCooldownEndsAtTheConfiguredDeadline(t *testing.T) {
 	require.Less(t, time.Since(start), time.Second,
 		"resumption must not wait out another full interval")
 }
+
+// A challenge seen while the solver is still working must stop other
+// acquisitions immediately, not only once the first one returns.
+func TestThrottleCoolsAsSoonAsAChallengeIsObserved(t *testing.T) {
+	th := newTestThrottle(50*time.Millisecond, 0, 10*time.Minute)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// The first acquisition is inside its solve when the challenge is observed.
+	th.Observe(ErrChallenge)
+
+	// A caller that arrives during that window is refused straight away.
+	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled)
+	require.Positive(t, th.CooldownRemaining())
+}
+
+// The generation check and the dispatch commitment must be the same critical
+// section, so two waiters whose timers both elapsed cannot both dispatch.
+func TestThrottleConcurrentExpiredTimersDoNotDispatchTogether(t *testing.T) {
+	interval := 40 * time.Millisecond
+	th := newTestThrottle(interval, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// Two waiters queue behind it.
+	starts := make(chan time.Time, 2)
+	for i := 0; i < 2; i++ {
+		go func() { _ = th.Wait(context.Background()); starts <- time.Now() }()
+	}
+
+	// Hold the lock so both timers elapse before either can dispatch, then release.
+	time.Sleep(interval)
+	th.mu.Lock()
+	time.Sleep(interval * 3)
+	th.mu.Unlock()
+
+	a, b := <-starts, <-starts
+	earlier, later := a, b
+	if later.Before(earlier) {
+		earlier, later = later, earlier
+	}
+	require.GreaterOrEqual(t, later.Sub(earlier), interval-2*time.Millisecond,
+		"two waiters whose timers both elapsed must not start together")
+}

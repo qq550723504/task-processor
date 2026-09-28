@@ -234,25 +234,25 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		return ctx.Err()
 	case <-timer.C:
 	}
-	// An earlier waiter may have slipped and re-anchored the floor after this one
-	// went to sleep. Its timer still fires on the old timeline, which would let two
-	// callers start together, so re-evaluate against the current floor.
-	if t.generationSince(seen) {
-		// Give up this reservation WITHOUT rolling the floor back. The boundary it
-		// displaced was captured before the re-anchor, so restoring it would undo a
-		// newer floor and let the requeued waiter start immediately beside its
-		// predecessor. Dropping the slot is the conservative choice.
-		t.discard(mine)
-		return t.Wait(ctx)
-	}
 	// The wait may have spanned another acquisition, and that one may have
 	// observed a challenge. Returning success here would hand the caller a slot
 	// the process has already decided to refuse, so the block is re-checked once
 	// the wait is over.
-	// The block check and the dispatch commitment must be one critical section.
-	// Otherwise Observe can land between them, and a caller would launch a browser
-	// during a cooldown that had already been triggered.
+	// The generation check, the block check and the dispatch commitment must all be
+	// ONE critical section. If the generation is validated separately, two waiters
+	// whose timers both elapsed can both see the old value and then dispatch
+	// together; if Observe can interleave, a caller starts during a cooldown.
 	t.mu.Lock()
+	if t.generationLocked(seen) {
+		// Someone else re-anchored the floor while this caller slept. Drop this
+		// reservation without restoring anything - the newer floor stands - and
+		// re-evaluate against it.
+		if t.owner == mine {
+			t.prevNext = time.Time{}
+		}
+		t.mu.Unlock()
+		return t.Wait(ctx)
+	}
 	if t.blockedLocked() {
 		if t.owner == mine {
 			t.next = t.prevNext
@@ -299,10 +299,9 @@ func (t *Throttle) blockedLocked() bool {
 	return t.blocked
 }
 
-// generationSince reports whether the floor was re-anchored since it was read.
-func (t *Throttle) generationSince(seen uint64) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// generationLocked reports whether the floor was re-anchored since it was read.
+// The caller must hold the lock.
+func (t *Throttle) generationLocked(seen uint64) bool {
 	return t.generation != seen
 }
 
