@@ -26,9 +26,6 @@ func (r *Repository) ClaimUpload(ctx context.Context, org, id, owner string) (re
 		if e != nil {
 			return e
 		}
-		if base.State != k.Active || source.State != k.Active {
-			return k.ErrInactive
-		}
 		if e := one(tx, "SELECT * FROM public.knowledge_revisions WHERE organization_id=? AND id=? FOR UPDATE", &rev, org, id); e != nil {
 			return e
 		}
@@ -43,6 +40,11 @@ func (r *Repository) ClaimUpload(ctx context.Context, org, id, owner string) (re
 			}
 		} else if rev.State != k.Admitted {
 			return nil
+		}
+		// A completed same-key operation is read-only reconciliation, including
+		// after disable. Only an actual upload/resume requires ACTIVE lifecycle.
+		if base.State != k.Active || source.State != k.Active {
+			return k.ErrInactive
 		}
 		if rev.LeaseUntil != nil && rev.LeaseUntil.After(now) {
 			return nil

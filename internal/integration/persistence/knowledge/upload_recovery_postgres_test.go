@@ -83,6 +83,17 @@ func TestKnowledgeUploadAmbiguityAndRestartKeepOriginalIdentity(t *testing.T) {
 	if err != nil || preview.Text != "hello" {
 		t.Fatalf("stored restart: %+v %v", preview, err)
 	}
+	sourceBeforeDisable, err := service.GetSource(ctx, scope, first.Source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Mutate(ctx, k.Command{Scope: scope, Kind: "source_disable", Key: uuid.NewString(), SourceID: first.Source.ID, Version: sourceBeforeDisable.Version}); err != nil {
+		t.Fatal(err)
+	}
+	completedReplay, err := service.Upload(ctx, command, "brand.txt", []byte("hello"))
+	if err != nil || completedReplay.Revision.ID != first.Revision.ID || completedReplay.Source.State != k.Disabled {
+		t.Fatalf("completed replay after source disable: %+v %v", completedReplay, err)
+	}
 
 	// A transport failure during inspection cannot be classified as absence.
 	objects.inspectUnavailable = true
@@ -127,6 +138,54 @@ func TestKnowledgeUploadAmbiguityAndRestartKeepOriginalIdentity(t *testing.T) {
 	}
 	if objects.puts != 2 {
 		t.Fatal("mismatch performed another put")
+	}
+	// Completed replays do not perform object I/O even after a Base disable.
+	objects.mismatch = false
+	objects.inspectUnavailable = true
+	incompleteCommand := command
+	incompleteCommand.Key = uuid.NewString()
+	incomplete, err := service.Upload(ctx, incompleteCommand, "brand.txt", []byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Exec("UPDATE knowledge_revisions SET lease_until=clock_timestamp()-interval '1 second',next_attempt_at=clock_timestamp()-interval '1 second' WHERE id=?", incomplete.Revision.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	objects.inspectUnavailable = false
+	if err = processor.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	incompleteSource, err := repo.GetSource(ctx, scope.OrganizationID, incomplete.Source.ID)
+	if err != nil || incompleteSource.LatestRevision.Failure != "UPLOAD_INCOMPLETE" {
+		t.Fatal("incomplete resume fixture was not reached", err)
+	}
+	objects.inspectUnavailable = true
+	admittedCommand := command
+	admittedCommand.Key = uuid.NewString()
+	if _, err = service.Upload(ctx, admittedCommand, "brand.txt", []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	baseNow, err := service.GetBase(ctx, scope, base.Base.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Mutate(ctx, k.Command{Scope: scope, Kind: "base_disable", Key: uuid.NewString(), BaseID: base.Base.ID, Version: baseNow.Version}); err != nil {
+		t.Fatal(err)
+	}
+	completedReplay, err = service.Upload(ctx, command, "brand.txt", []byte("hello"))
+	if err != nil || completedReplay.Revision.State != k.Failed || completedReplay.Source.BaseState != k.Disabled {
+		t.Fatalf("completed failure replay after base disable: %+v %v", completedReplay, err)
+	}
+	if objects.puts != 2 {
+		t.Fatal("disabled completed replay wrote an object")
+	}
+	for _, blocked := range []k.Command{incompleteCommand, admittedCommand} {
+		if _, err = service.Upload(ctx, blocked, "brand.txt", []byte("hello")); !errors.Is(err, k.ErrInactive) {
+			t.Fatalf("disabled actual upload/resume: %v", err)
+		}
+	}
+	if objects.puts != 2 {
+		t.Fatal("disabled actual resume wrote an object")
 	}
 }
 
