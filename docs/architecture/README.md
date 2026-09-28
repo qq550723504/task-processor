@@ -125,6 +125,12 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`agent-knowledge-context-v1.md`](./agent-knowledge-context-v1.md)
+  - IMPLEMENTATION_READY #555/#556 enterprise Knowledge + existing Product Agent V1:
+    Organization-scoped Knowledge, bounded document lifecycle, immutable context bundles,
+    exact citations, dispatch-permit disable fence and Human Review provenance. Production
+    Writer starts only after PR #556 is merged to main; rollout/provider use remains gated.
+
 - [`account-facts-invitations-v1.md`](./account-facts-invitations-v1.md)
   - IMPLEMENTATION_READY Design Basis for the bounded #551 Account Center
     delivery: user facts, region preferences, complete enterprise statistics and
