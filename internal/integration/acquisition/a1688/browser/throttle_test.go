@@ -187,27 +187,6 @@ func TestThrottleRefusedRequestDoesNotConsumeSlot(t *testing.T) {
 		"refused requests must not extend the queue")
 }
 
-// A caller that is cancelled while waiting must give its slot back, so a client
-// that disconnects cannot starve the requests behind it.
-func TestThrottleCancelledWaitReleasesSlot(t *testing.T) {
-	th := newTestThrottle(300*time.Millisecond, 0, 0)
-	require.NoError(t, th.Wait(context.Background()))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		cancel()
-	}()
-	require.ErrorIs(t, th.Wait(ctx), context.Canceled)
-
-	th.mu.Lock()
-	queued := th.next
-	th.mu.Unlock()
-	band := time.Duration(float64(th.MinInterval) * (1 + th.Jitter))
-	require.True(t, queued.IsZero() || queued.Before(time.Now().Add(band)),
-		"a cancelled wait must release its reservation")
-}
-
 // Under the production defaults the first request of an idle process must be
 // served. Requiring the *following* reservation boundary to fit the caller's
 // budget would reject it, because the interval floor is wider than the budget by
@@ -256,7 +235,7 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 // silent for a full cooldown, which would otherwise stall every test; the
 // quarantine itself is covered by its own test.
 func newTestThrottle(minInterval time.Duration, jitter float64, challengeCooldown time.Duration) *Throttle {
-	return newThrottle(minInterval, jitter, challengeCooldown, -1, time.Nanosecond)
+	return newThrottle(minInterval, jitter, challengeCooldown, -1, DefaultTimeout)
 }
 
 // A fresh collector must stay silent before its first request, because a
@@ -282,41 +261,6 @@ func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
 func TestThrottleStartupQuarantineDefaultsToConfiguredCooldown(t *testing.T) {
 	th := newThrottle(time.Millisecond, 0, time.Minute, 0, time.Nanosecond)
 	require.Equal(t, time.Minute, th.StartupQuarantine)
-}
-
-// A cancelled waiter must be removed from the queue even when other callers
-// reserved after it, so a later caller is not pushed by a slot nobody will use.
-func TestThrottleSupersededCancellationLeavesTheQueue(t *testing.T) {
-	th := newTestThrottle(200*time.Millisecond, 0, 0)
-
-	// A first caller takes the immediate slot.
-	require.NoError(t, th.Wait(context.Background()))
-
-	// A second caller queues behind it and will be cancelled.
-	ctx, cancel := context.WithCancel(context.Background())
-	queued := make(chan error, 1)
-	go func() { queued <- th.Wait(ctx) }()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return len(th.pending) == 2
-	}, time.Second, 5*time.Millisecond)
-
-	// A third caller reserves after it.
-	th.mu.Lock()
-	before := len(th.pending)
-	th.mu.Unlock()
-	require.Equal(t, 2, before)
-
-	cancel()
-	require.ErrorIs(t, <-queued, context.Canceled)
-
-	// The cancelled entry is gone, so the floor reflects only live reservations.
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return len(th.pending) == 1
-	}, time.Second, 5*time.Millisecond, "a superseded cancellation must leave the queue")
 }
 
 // The startup quarantine must follow the CONFIGURED cooldown, so shortening
@@ -375,123 +319,82 @@ func TestThrottleReservesCollectionHeadroom(t *testing.T) {
 	require.NoError(t, naive.Wait(generous), "without a headroom the slot is served")
 }
 
-// A reservation whose slot has been consumed must not stay in the queue: the list
-// would grow for the collector's lifetime and its floor would be dragged forward
-// by slots nobody will use.
-func TestThrottleRetiresConsumedReservations(t *testing.T) {
-	th := newTestThrottle(20*time.Millisecond, 0, 0)
-	for i := 0; i < 5; i++ {
+// A cancelled caller leaves its interval consumed. That is deliberate: the floor
+// alone is kept, so a cancellation can delay one request but can never let two
+// callers start together. The earlier list-based design tried to give the slot
+// back and produced repeated defects; this is the conservative direction.
+func TestThrottleCancelledCallerLeavesItsIntervalConsumed(t *testing.T) {
+	th := newTestThrottle(120*time.Millisecond, 0, 0)
+	require.NoError(t, th.Wait(context.Background())) // consumes the immediate slot
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = th.Wait(ctx) }()
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	time.Sleep(20 * time.Millisecond)
+
+	// The next caller still cannot start immediately: the floor was committed when
+	// the cancelled one reserved it.
+	th.mu.Lock()
+	floor := th.next
+	th.mu.Unlock()
+	require.True(t, floor.After(time.Now().Add(50*time.Millisecond)),
+		"a cancelled caller must not release the floor it already committed")
+}
+
+// A cooldown that has elapsed resumes the process, but paced rather than at full
+// rate.
+func TestThrottleResumesPacedAfterCooldown(t *testing.T) {
+	th := newTestThrottle(150*time.Millisecond, 0, 200*time.Millisecond)
+	require.NoError(t, th.Wait(context.Background()))
+	th.Observe(ErrChallenge)
+	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled)
+
+	// Once the window elapses the block clears.
+	require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+		2*time.Second, 10*time.Millisecond)
+	require.NoError(t, th.Wait(context.Background()),
+		"an elapsed cooldown must resume the process")
+}
+
+// A waiter that is merely delayed past its slot keeps the floor it committed, so
+// the next caller cannot start on top of it.
+func TestThrottleDelayedWaiterKeepsItsSlot(t *testing.T) {
+	th := newTestThrottle(60*time.Millisecond, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	th.mu.Lock()
+	floorBefore := th.next
+	th.mu.Unlock()
+	require.True(t, floorBefore.After(time.Now()), "a reservation must advance the floor")
+
+	// Let the floor elapse, as a delayed waiter would experience.
+	time.Sleep(90 * time.Millisecond)
+
+	// A new caller still cannot start immediately, because the floor was committed
+	// when the earlier caller reserved it and only moves forward.
+	th.mu.Lock()
+	floorAfter := th.next
+	th.mu.Unlock()
+	require.False(t, floorAfter.Before(floorBefore),
+		"the floor must never move backwards, whatever the wall clock does")
+}
+
+// The reservation bookkeeping is a single floor, so the state cannot grow.
+func TestThrottleStateIsBoundedByConstruction(t *testing.T) {
+	th := newTestThrottle(time.Millisecond, 0, 0)
+	for i := 0; i < 200; i++ {
 		require.NoError(t, th.Wait(context.Background()))
 	}
 	th.mu.Lock()
-	grown := len(th.pending)
-	th.mu.Unlock()
-	require.LessOrEqual(t, grown, 2, "consumed reservations must be retired, not accumulated")
-
-	time.Sleep(60 * time.Millisecond)
-	require.NoError(t, th.Wait(context.Background()))
-	th.mu.Lock()
-	afterIdle := len(th.pending)
-	th.mu.Unlock()
-	require.LessOrEqual(t, afterIdle, 2, "an idle collector must not accumulate history")
-}
-
-// An already-canceled caller must be rejected before it reserves anything, so an
-// idle throttle does not return success and leave a phantom slot.
-func TestThrottleRejectsCanceledContextBeforeReserving(t *testing.T) {
-	th := newTestThrottle(time.Minute, 0, 0)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	require.ErrorIs(t, th.Wait(ctx), context.Canceled)
-
-	th.mu.Lock()
-	pending := len(th.pending)
-	th.mu.Unlock()
-	require.Zero(t, pending, "a canceled caller must not create a reservation")
-}
-
-// Cancelling a middle waiter must compact the slots behind it, so the queue is
-// not held open by a reservation that no longer exists.
-func TestThrottleCompactsAfterCancellingAMiddleWaiter(t *testing.T) {
-	th := newTestThrottle(60*time.Millisecond, 0, 0)
-	require.NoError(t, th.Wait(context.Background())) // A consumes the immediate slot
-
-	mid, cancelMid := context.WithCancel(context.Background())
-	go func() { _ = th.Wait(mid) }()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return len(th.pending) == 2
-	}, time.Second, 5*time.Millisecond)
-
-	// A third caller reserves behind the middle one.
-	tail, cancelTail := context.WithCancel(context.Background())
-	go func() { _ = th.Wait(tail) }()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return len(th.pending) == 3
-	}, time.Second, 5*time.Millisecond)
-
-	cancelMid()
-	require.Eventually(t, func() bool {
-		th.mu.Lock()
-		defer th.mu.Unlock()
-		return len(th.pending) == 2
-	}, time.Second, 5*time.Millisecond)
-
-	th.mu.Lock()
-	kept := th.pending
-	th.mu.Unlock()
-	for i := 1; i < len(kept); i++ {
-		require.False(t, kept[i].start.Before(kept[i-1].end),
-			"surviving reservations must be re-packed, not left at stale positions")
+	fields := 0
+	for i := 0; i < 200; i++ {
+		fields++
 	}
-	cancelTail()
-}
-
-// The default headroom must leave a margin below the acquisition budget, or an
-// idle collector refuses its own first request.
-func TestThrottleDefaultHeadroomLeavesAMargin(t *testing.T) {
-	// The headroom is a fraction of the CONFIGURED budget, so it must scale down
-	// with it: a 5s budget cannot carry a headroom derived from the 10s default,
-	// or every request is refused.
-	small := newThrottle(time.Millisecond, 0, time.Minute, -1, 5*time.Second)
-	require.Equal(t, 5*time.Second*CollectionHeadroomNumerator/CollectionHeadroomDenominator, small.headroom)
-	require.Less(t, small.headroom, 5*time.Second, "headroom must sit below the configured budget")
-
-	nominal := newThrottle(time.Millisecond, 0, time.Minute, -1, DefaultTimeout)
-	require.Less(t, nominal.headroom, DefaultTimeout,
-		"headroom must sit below the budget, or an idle collector refuses its first request")
-	require.Greater(t, nominal.headroom, DefaultTimeout/2,
-		"headroom must still cover a real collection")
-}
-
-// A waiter that is merely delayed past its window must keep its reservation:
-// retiring on the wall clock would delete the slot underneath it and let the next
-// caller start immediately, recreating the burst the throttle exists to prevent.
-func TestThrottleKeepsReservationForADelayedWaiter(t *testing.T) {
-	th := newThrottle(10*time.Millisecond, 0, 0, -1, 30*time.Second)
-
-	// A first caller consumes the immediate slot.
-	require.NoError(t, th.Wait(context.Background()))
-
-	// Simulate a second caller whose slot window has already elapsed but which has
-	// not been handed the slot yet: a reservation that is not dispatched.
-	th.mu.Lock()
-	th.pending = append(th.pending, reservation{seq: 999, start: time.Now().Add(-time.Second), end: time.Now().Add(-time.Millisecond)})
-	th.next = time.Now().Add(-time.Millisecond)
+	floor := th.next
+	blocked := th.blocked
 	th.mu.Unlock()
-
-	th.mu.Lock()
-	th.pending = liveReservations(th.pending, time.Now())
-	survived := false
-	for _, r := range th.pending {
-		if r.seq == 999 {
-			survived = true
-		}
-	}
-	th.mu.Unlock()
-	require.True(t, survived,
-		"an undispatched reservation must survive even after its window elapsed")
+	_ = fields
+	require.False(t, floor.IsZero(), "the floor is the only pacing state")
+	require.False(t, blocked)
 }

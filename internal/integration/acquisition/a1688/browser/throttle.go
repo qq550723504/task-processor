@@ -19,19 +19,6 @@ import (
 // It is deliberately self-imposed and conservative by default. Every duration is
 // configurable so a deployment can measure its own budget rather than inherit a
 // guess.
-// reservation is one committed slot: the caller may start at start, and the next
-// caller must not start before end.
-type reservation struct {
-	seq   uint64
-	start time.Time
-	end   time.Time
-	// dispatched records that Wait actually handed this slot to its caller.
-	// Retirement keys off that rather than the wall clock, so a waiter that is
-	// merely delayed past its window keeps its slot instead of having it deleted
-	// underneath it and letting the next caller start immediately.
-	dispatched bool
-}
-
 type Throttle struct {
 	// MinInterval is the floor between the START of two acquisitions. Zero uses
 	// DefaultMinInterval.
@@ -59,12 +46,6 @@ type Throttle struct {
 	next     time.Time // earliest allowed start
 	cooledAt time.Time
 	blocked  bool
-	// pending holds live reservations in start order. Keeping them explicitly
-	// makes releasing one correct regardless of release order: next is
-	// recomputed from what is left, instead of being reconstructed by trying to
-	// undo an earlier boundary.
-	pending []reservation // seq identifies reservations; it is guarded by mu.
-	seq     uint64
 	// headroom is how much budget the caller must keep after waiting.
 	headroom time.Duration
 	// rand is guarded by mu.
@@ -148,107 +129,74 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	if t == nil {
 		return nil
 	}
-	// Reject an already-canceled caller before it can reserve anything, otherwise
-	// an idle throttle returns success for a request nobody is waiting for and
-	// leaves a phantom slot behind.
+	// Reject an already-canceled caller before it can consume a slot, otherwise
+	// an idle throttle returns success for a request nobody is waiting for.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	t.mu.Lock()
-	// A cooldown that has elapsed is no longer a block: clear it here rather than
-	// waiting for an external reset, so recovery is a time-based decision and the
-	// process resumes by itself.
-	if t.blocked && !t.cooledAt.IsZero() && !time.Now().Before(t.cooledAt) {
+	now := time.Now()
+	// A cooldown that has elapsed is no longer a block. Resuming is paced rather
+	// than immediate: the floor is set one interval out, so the process does not
+	// immediately resume at full rate right after a challenge.
+	if t.blocked && !t.cooledAt.IsZero() && !now.Before(t.cooledAt) {
 		t.blocked = false
 		t.cooledAt = time.Time{}
+		if t.next.Before(now.Add(t.MinInterval)) {
+			t.next = now.Add(t.MinInterval)
+		}
 	}
 	if t.blocked {
 		t.mu.Unlock()
 		return ErrThrottled
 	}
 
-	now := time.Now()
-	// Retire reservations whose slot has already been consumed. Without this the
-	// list grows for the lifetime of the collector and the floor it computes is
-	// dragged forward by slots nobody will use.
-	t.pending = liveReservations(t.pending, now)
-	span := float64(t.MinInterval) * t.Jitter
-	effective := t.MinInterval
-	if span > 0 {
-		effective += time.Duration(t.rand.Float64() * span)
+	span := t.MinInterval
+	if extra := float64(t.MinInterval) * t.Jitter; extra > 0 {
+		span += time.Duration(t.rand.Float64() * extra)
 	}
 	start := t.next
 	if start.Before(now) {
 		start = now
 	}
-	slotEnd := start.Add(effective)
-	wait := time.Duration(0)
-	if now.Before(start) {
-		wait = start.Sub(now)
-	}
-
-	// If this caller cannot even START inside its own budget, do not consume a
-	// slot: the reservation would be a phantom that only pushes the queue
-	// further away, and refusing is what the caller can act on.
-	//
-	// The check is on the scheduled start, not on slotEnd. The interval floor
-	// deliberately pushes the *next* caller a full interval out, so requiring
-	// that boundary to fit this caller's budget would reject the very first
-	// request of an idle process under the production defaults.
-	// Admit only if the caller can start early enough to still have collection
+	wait := start.Sub(now)
+	// Admit only if the caller can start early enough to keep collection
 	// headroom left. Checking the start alone let a caller that merely squeaks in
 	// just before its deadline spend the entire remaining budget on the wait, and
 	// then hand that exhausted budget to the collection - surfacing as a timeout
 	// rather than the refusal this throttle intends.
-	deadline, hasDeadline := ctx.Deadline()
-	if hasDeadline && start.Add(t.headroom).After(deadline) {
+	if deadline, ok := ctx.Deadline(); ok && start.Add(t.headroom).After(deadline) {
 		t.mu.Unlock()
 		return ErrThrottled
 	}
-
-	t.seq++
-	mine := t.seq
-	t.pending = append(t.pending, reservation{seq: mine, start: start, end: slotEnd})
-	t.next = slotEnd
+	// Commit the slot. Only the floor is kept, deliberately: an earlier version
+	// tracked every reservation in a list so that a cancelled caller could give
+	// its slot back, and that bookkeeping produced repeated defects - unbounded
+	// growth, walls deleting slots from delayed waiters, and compaction that never
+	// actually closed a gap. A cancelled caller simply leaves its interval
+	// consumed, which is the safe direction: it can delay one request, never
+	// allow a burst.
+	t.next = start.Add(span)
 	t.mu.Unlock()
 
 	if wait <= 0 {
-		t.markDispatched(mine)
 		return nil
 	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		t.release(mine)
 		return ctx.Err()
 	case <-timer.C:
 	}
-	t.markDispatched(mine)
 	// The wait may have spanned another acquisition, and that one may have
 	// observed a challenge. Returning success here would hand the caller a slot
 	// the process has already decided to refuse, so the block is re-checked once
-	// the wait is over and the reservation is given back if the process is now
-	// cooling down.
+	// the wait is over.
 	if t.nowBlocked() {
-		t.release(mine)
 		return ErrThrottled
 	}
 	return nil
-}
-
-// markDispatched records that the slot was handed to its caller.
-func (t *Throttle) markDispatched(seq uint64) {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for i := range t.pending {
-		if t.pending[i].seq == seq {
-			t.pending[i].dispatched = true
-		}
-	}
 }
 
 // nowBlocked reports whether a challenge has put the process into cooldown,
@@ -264,56 +212,6 @@ func (t *Throttle) nowBlocked() bool {
 		t.cooledAt = time.Time{}
 	}
 	return t.blocked
-}
-
-// release gives back a reservation the caller could not use.
-func (t *Throttle) release(seq uint64) {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	kept := make([]reservation, 0, len(t.pending))
-	span := t.MinInterval
-	if float64(t.MinInterval)*t.Jitter > 0 {
-		span += time.Duration(t.rand.Float64() * float64(t.MinInterval) * t.Jitter)
-	}
-	now := time.Now()
-	cursor := now
-	for _, r := range t.pending {
-		if r.seq == seq {
-			continue
-		}
-		// Re-pack the survivors: a cancelled middle reservation leaves a gap, and
-		// keeping the later reservations at their old positions would hold the
-		// queue open for a slot that no longer exists.
-		start := cursor
-		if r.start.After(start) {
-			start = r.start
-		}
-		end := start.Add(span)
-		kept = append(kept, reservation{seq: r.seq, start: start, end: end, dispatched: r.dispatched})
-		cursor = end
-	}
-	t.pending = kept
-	t.next = time.Time{}
-	for _, r := range kept {
-		if r.end.After(t.next) {
-			t.next = r.end
-		}
-	}
-}
-
-// liveReservations drops reservations whose slot has already been consumed.
-func liveReservations(pending []reservation, now time.Time) []reservation {
-	kept := pending[:0]
-	for _, r := range pending {
-		if r.dispatched && !r.end.After(now) {
-			continue // consumed: its slot has been used
-		}
-		kept = append(kept, r)
-	}
-	return kept
 }
 
 // Observe reports the outcome of an acquisition so the throttle can react.
@@ -338,7 +236,6 @@ func (t *Throttle) Observe(err error) {
 	defer t.mu.Unlock()
 	t.blocked = true
 	t.cooledAt = time.Now().Add(t.ChallengeCooldown)
-	t.seq++
 	// Push the interval floor past the cooldown so work resumes paced.
 	if after := t.cooledAt.Add(t.MinInterval); after.After(t.next) {
 		t.next = after
