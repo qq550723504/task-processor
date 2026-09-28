@@ -127,9 +127,10 @@ documents unless they say so explicitly:
 
 - [`agent-knowledge-context-v1.md`](./agent-knowledge-context-v1.md)
   - ARCHITECTURE_REVIEW #555/#556 for enterprise Knowledge + existing Product Agent
-    integration. Product Gate is frozen; Ready-triggered review exposed a local
-    disable/provider-dispatch linearization BLOCKER. `KnowledgeDispatchPermit` is now the
-    proposed fix; implementation remains **NOT READY** until targeted verification closes it.
+    integration. Product Gate is frozen; Ready-triggered review exposed bounded V1
+    implementation blockers around dispatch fencing and Source/Revision lifecycle.
+    Fixes are documented; implementation remains **NOT READY** until targeted verification
+    closes them.
 
 - [`account-facts-invitations-v1.md`](./account-facts-invitations-v1.md)
   - IMPLEMENTATION_READY Design Basis for the bounded #551 Account Center
