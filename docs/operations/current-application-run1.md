@@ -63,12 +63,23 @@ working directory with an allowlisted environment; the launcher rejects every
 the existing database through two roles:
 
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
-  `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`.
+  `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`, **plus** — in
+  current-application mode — the account-center and verification tables that
+  `sourceaccountregistry` verifies for the same pool: `SELECT/INSERT/UPDATE` on
+  `account_business_profiles`, `personal_verification_applications`,
+  `subject_verification_applications` and `subject_verification_messages`,
+  `SELECT/INSERT` on `account_business_profile_audit_events`, plus
+  `USAGE/SELECT` on `account_business_profile_audit_events_id_seq`. Those tables
+  are installed by the SA1 schema initializer; it is the grant that was missing.
+  A launch **without** `--current-application` does not receive them, because that
+  composition is not verified against them.
 - `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
   commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
   **not** a read-only *grant*, though the role keeps a read-only session setting:
   the startup preflight checks ACL grants, not that setting, and the repository's
   own permission test starts the binary with `default_transaction_read_only=on`.
+- `commercial_reader`: the legacy/default composition's read-only role, retained
+  so that a launch without `--current-application` has the role it names.
 
 The bootstrap token, database owner credentials and Login V2 service credentials
 stay in run-private control files and are not present in the serving manifest.
