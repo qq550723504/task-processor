@@ -32,6 +32,7 @@ const (
 var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,62}$`)
 
 type Config struct {
+	StoreCenter                *StoreCenterConfig            `json:"storeCenter,omitempty"`
 	SchemaVersion              int                           `json:"schemaVersion"`
 	Listen                     ListenConfig                  `json:"listen"`
 	Identity                   IdentityConfig                `json:"identity"`
@@ -374,6 +375,9 @@ func (cfg *Config) validate() error {
 		} else if _, err := imageagent.ValidateSafeImageURL(image.PublicBase); err != nil {
 			return errors.New("image agent public base must be a safe public URL")
 		}
+	}
+	if err := cfg.validateStoreCenter(); err != nil {
+		return err
 	}
 	if cfg.ProductAgent != nil {
 		if err := cfg.ProductAgent.validate(cfg); err != nil {

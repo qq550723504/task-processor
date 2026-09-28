@@ -2025,3 +2025,9 @@ func TestCommercialWalletBillingContractLocksCanonicalOwners(t *testing.T) {
 		}
 	}
 }
+
+func TestCurrentStoreDesignPreservesGreenfieldOwnersAndUnopenedServices(t *testing.T) {
+	requireDocumentPhrases(t, filepath.Join("..", "docs", "architecture", "store-center-current-application-v1.md"), []string{
+		"IMPLEMENTATION_READY", "全新系统产品基线", "storeCenter.quotaDatabase", "commercialOwnerDatabase", "AuthPolicyCurrentIdentity", "LiveWrite", "record_status", "pending_activation", "store_center_runtime", "store_quota_runtime", "Activate/Renew/Reactivate", "EXTRACT", "RETIRE",
+	})
+}

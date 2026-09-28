@@ -95,7 +95,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
     - `product-acquisition-init`
     - `shein-import-platform-recovery`
     - `shein-login-worker`
-    - `store-service-history-migrate`
+    - `store-center-schema-init`
     - `source-account-ownership-preflight`
     - `source-account-registry-schema-init`
     - `organization-membership-schema-init`
@@ -106,7 +106,7 @@ CURRENT STATE：命令清单核对于上述 `main @ eb9e019686564b976c1a1a9828ee
   - `1688-batch-import` 的维护入口为 `scripts/1688-batch-import.ps1`；属 #398 路线 B 的执行器本地队列切片 S1，只驱动本地队列中的单条商品并回读终态。已确认的 actor/组织必须由调用方显式提供，不从浏览器会话推断；退出码 3 表示结果未知，只允许人工核实，不允许重跑。列入清单不授权对真实 1688 账号执行批量采集。
   - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
   - `shein-import-platform-recovery` 由 `scripts/shein-import-platform-recovery.ps1` 运行；脚本默认 dry-run，只有同时提供 `-Execute` 和 dry-run 返回的 `-ConfirmFingerprint` 才会请求写入。
-  - `store-service-history-migrate` 由 `scripts/store-service-history-migrate.ps1` 运行；脚本默认只读 `verify`，只有显式选择 `backfill` 才会写入一个有界批次，只有显式选择 `constraints` 且 Phase D 重验通过才会执行 PostgreSQL staged constraints。
+  - `store-center-schema-init` 由 `deployments/docker/account-compose` 维护，通过显式私密 owner 配置创建当前 Store 空库 schema，并向既有 canonical commercial quota 表授予窄运行权限；不读取、迁移或兼容历史 Store 数据。
   - 不再新增临时调试可执行程序。
   - `source-account-ownership-preflight` 由 `scripts/source-account-ownership-preflight.ps1` 维护，是历史 Source Account 迁移的只读运维预检，不是 #301 当前新系统开发前置；两个数据库连接从环境注入，不执行 backfill 或生产 cutover。运行说明见 `docs/operations/source-account-ownership-preflight.md`。保留历史运维工具不恢复已取消的迁移授权。
   - `source-account-registry-schema-init` 由 `scripts/source-account-registry-local-acceptance.ps1` 维护，只初始化 #368 当前 Source Account registry 的空库 schema；不读取、迁移或兼容旧 Source Account 数据。

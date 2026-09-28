@@ -27,13 +27,13 @@ func TestSourcingStoreAccessFailsClosed(t *testing.T) {
 		err   error
 		want  bool
 	}{
-		{name: "active", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, lifecycleStatus: StoreStatusActive}, want: true},
-		{name: "cross organization", store: &Store{id: id, organizationID: "org-b", platform: PlatformShein, lifecycleStatus: StoreStatusActive}},
-		{name: "wrong store", store: &Store{id: "other", organizationID: "org-a", platform: PlatformShein, lifecycleStatus: StoreStatusActive}},
-		{name: "wrong platform", store: &Store{id: id, organizationID: "org-a", platform: "amazon", lifecycleStatus: StoreStatusActive}},
-		{name: "disabled", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, lifecycleStatus: StoreStatusDisabled}},
-		{name: "provisioning", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, lifecycleStatus: StoreStatusProvisioning}},
-		{name: "deleting", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, lifecycleStatus: StoreStatusDeleting}},
+		{name: "active", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusActive}, want: true},
+		{name: "cross organization", store: &Store{id: id, organizationID: "org-b", platform: PlatformShein, recordStatus: RecordStatusActive}},
+		{name: "wrong store", store: &Store{id: "other", organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusActive}},
+		{name: "wrong platform", store: &Store{id: id, organizationID: "org-a", platform: "amazon", recordStatus: RecordStatusActive}},
+		{name: "disabled", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusDisabled}},
+		{name: "provisioning", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusProvisioning}},
+		{name: "deleting", store: &Store{id: id, organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusDeleting}},
 		{name: "missing"}, {name: "repository failure", err: errors.New("unavailable")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -62,12 +62,12 @@ func TestSourcingStoreAccessFailsClosed(t *testing.T) {
 }
 
 func TestSourcingStoreAccessRechecksLifecycleOnReplay(t *testing.T) {
-	store := &Store{id: "f16fd962-d190-4fcf-a4ab-3c8f473f40de", organizationID: "org-a", platform: PlatformShein, lifecycleStatus: StoreStatusActive}
+	store := &Store{id: "f16fd962-d190-4fcf-a4ab-3c8f473f40de", organizationID: "org-a", platform: PlatformShein, recordStatus: RecordStatusActive}
 	reader := &sourcingStoreReader{store: store}
 	if err := ValidateSourcingStoreAccess(context.Background(), reader, "org-a", store.id, PlatformShein); err != nil {
 		t.Fatal(err)
 	}
-	store.lifecycleStatus = StoreStatusDisabled
+	store.recordStatus = RecordStatusDisabled
 	if ValidateSourcingStoreAccess(context.Background(), reader, "org-a", store.id, PlatformShein) == nil || reader.calls != 2 {
 		t.Fatal("revoked store access reused")
 	}

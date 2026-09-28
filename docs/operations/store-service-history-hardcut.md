@@ -1,5 +1,8 @@
 # Store Service History Hard-cut Runbook
 
+> HISTORICAL / RETIRED by #552. Historical migration commands, lifecycle compatibility and constraints/backfill procedures below are not executable current authority. The current greenfield installation uses [Store Center current application v1](../architecture/store-center-current-application-v1.md) and `store-center-schema-init`; no historical migration is authorized.
+
+
 This runbook covers only the approved Phase 1 decision that no authoritative
 legacy Store paid-service history source exists. It does not authorize a future
 external history resolver.

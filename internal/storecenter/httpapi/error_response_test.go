@@ -23,7 +23,6 @@ func TestMapStoreErrorUsesStableRedactedProtocolContract(t *testing.T) {
 		{name: "not found", err: fmt.Errorf("sql secret: %w", storecenter.ErrNotFound), status: http.StatusNotFound, code: "STORE_NOT_FOUND"},
 		{name: "already exists", err: fmt.Errorf("provider secret: %w", storecenter.ErrAlreadyExists), status: http.StatusConflict, code: "STORE_ALREADY_EXISTS"},
 		{name: "version", err: fmt.Errorf("row secret: %w", storecenter.ErrVersionConflict), status: http.StatusConflict, code: "STORE_VERSION_CONFLICT"},
-		{name: "service resume", err: fmt.Errorf("state secret: %w", storecenter.ErrServiceResumeRequired), status: http.StatusConflict, code: "STORE_SERVICE_RESUME_REQUIRED"},
 		{name: "service corrupt", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidServiceState), status: http.StatusConflict, code: "STORE_SERVICE_STATE_CORRUPT"},
 		{name: "service transition", err: fmt.Errorf("state secret: %w", storecenter.ErrInvalidServiceTransition), status: http.StatusUnprocessableEntity, code: "STORE_INVALID_STATE"},
 		{name: "connection", err: fmt.Errorf("provider secret: %w", storecenter.ErrConnectionNotFresh), status: http.StatusUnprocessableEntity, code: "STORE_CONNECTION_NOT_CONNECTED"},

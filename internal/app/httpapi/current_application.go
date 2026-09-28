@@ -83,6 +83,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
+	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB) (kernelmodule.Module, error)
 	buildCommercialResources        func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
@@ -103,21 +104,23 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
-	runtimeContext       context.Context
-	commercialOwnerDB    *gorm.DB
-	moneyOwnerDB         *gorm.DB
-	referralDB           *gorm.DB
-	productAcquisitionDB *gorm.DB
-	imageAgentDB         *gorm.DB
-	imageAgentWorkflows  imageagent.WorkflowClient
-	membership           *MembershipDependencies
-	referrals            int
-	productAcquisitions  int
-	imageAgents          int
-	memberships          int
-	browserCaptures      int
-	productAgent         *ProductAgentDependencies
-	productAgents        int
+	storeCenters                int
+	storeCenterDB, storeQuotaDB *gorm.DB
+	runtimeContext              context.Context
+	commercialOwnerDB           *gorm.DB
+	moneyOwnerDB                *gorm.DB
+	referralDB                  *gorm.DB
+	productAcquisitionDB        *gorm.DB
+	imageAgentDB                *gorm.DB
+	imageAgentWorkflows         imageagent.WorkflowClient
+	membership                  *MembershipDependencies
+	referrals                   int
+	productAcquisitions         int
+	imageAgents                 int
+	memberships                 int
+	browserCaptures             int
+	productAgent                *ProductAgentDependencies
+	productAgents               int
 }
 
 // WithRuntimeContext supplies the long-lived application context for bounded
@@ -176,7 +179,8 @@ func defaultCurrentApplicationFactories(ctx context.Context, projectIDs ...strin
 		projectID = projectIDs[0]
 	}
 	return currentApplicationFactories{
-		buildWorkbench: buildDefaultWorkbenchContextModule,
+		buildWorkbench:   buildDefaultWorkbenchContextModule,
+		buildStoreCenter: buildCurrentStoreCenterModule,
 		buildSourceAccount: func(db *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 			if err := sourceaccountstore.VerifyRuntimePermissions(ctx, db); err != nil {
 				return nil, err
@@ -238,8 +242,25 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		option(&supplied)
 	}
-	if supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
+	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
+	}
+	if supplied.storeCenters > 0 {
+		if supplied.storeCenterDB == nil || supplied.storeQuotaDB == nil || supplied.storeCenterDB == supplied.storeQuotaDB || factories.buildStoreCenter == nil || supplied.commercialOwnerDB == nil {
+			return nil, errors.New("store center dependencies unavailable")
+		}
+		others := []*gorm.DB{sourceAccountDB, commercialDB, supplied.commercialOwnerDB, supplied.moneyOwnerDB, supplied.referralDB, supplied.productAcquisitionDB, supplied.imageAgentDB}
+		if supplied.membership != nil {
+			others = append(others, supplied.membership.ReceiptDB)
+		}
+		if supplied.productAgent != nil {
+			others = append(others, supplied.productAgent.RunDB, supplied.productAgent.AssetDB, supplied.productAgent.ReviewDB)
+		}
+		for _, db := range others {
+			if supplied.storeCenterDB == db || supplied.storeQuotaDB == db {
+				return nil, errors.New("store center requires independent pools")
+			}
+		}
 	}
 	if supplied.commercialOwnerDB != nil && (supplied.commercialOwnerDB == sourceAccountDB || supplied.commercialOwnerDB == commercialDB) {
 		return nil, errors.New("commercial owner requires an independent pool")
@@ -332,6 +353,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	if supplied.storeCenters > 0 {
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB)
+		if err != nil {
+			return nil, fmt.Errorf("build current store center: %w", err)
+		}
+		if stores == nil {
+			return nil, errors.New("current store center unavailable")
+		}
+		modules = append(modules, stores)
+	}
 	sms, err := buildZitadelSMSModule(ctx)
 	if err != nil {
 		return nil, err
@@ -511,6 +542,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	routeFeatures := currentApplicationOptionalRoutes{
 		ZitadelSMS:          true,
+		StoreCenter:         supplied.storeCenters > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		MemberPoints:        includeMemberPoints,
@@ -574,6 +606,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	StoreCenter         bool
 	Resources           bool
 	ZitadelSMS          bool
 	SubjectVerification bool
@@ -584,6 +617,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.StoreCenter {
+		for _, r := range currentStoreCenterRoutes {
+			admitted = append(admitted, currentApplicationRoute{Method: r.method, Path: r.path})
+		}
+	}
 	if optional.ZitadelSMS {
 		admitted = append(admitted, currentApplicationRoute{Method: http.MethodPost, Path: zitadelSMSPath})
 		for _, route := range routes {
@@ -708,6 +746,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	seen := make(map[currentApplicationRoute]struct{}, len(routes))
 	for _, descriptor := range routes {
+		if descriptor.Path == "/api/v1/workbench/stores" || strings.HasPrefix(descriptor.Path, "/api/v1/workbench/stores/") {
+			if !optional.StoreCenter {
+				return errors.New("store center feature not admitted")
+			}
+			if err := validateCurrentStoreDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if descriptor.Path == commercialResourcesPath && (descriptor.Module != commercialResourcesModuleName || descriptor.Method != http.MethodGet || descriptor.AuthPolicy != httproute.AuthPolicyCurrentIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.OrganizationTargetResolver != nil || descriptor.Permission != authz.PermissionWorkbenchCommercialRead || descriptor.RequestTimeout != 15*time.Second || !descriptor.RejectUnreadRequestBody || descriptor.Handler == nil) {
 			return errors.New("commercial resources route loses live read boundary")
 		}

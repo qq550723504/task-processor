@@ -385,6 +385,17 @@ contract is
 
 ### 3.13 `internal/storecenter` expanded Store state
 
+For new current-application consumers, the expand/compatibility and historical
+backfill details below are **historical implementation evidence**, not admission
+authority. The active [greenfield product decision](../product/greenfield-no-legacy-migration.md)
+forbids introducing lifecycle/record dual writes, history migration or fallback.
+Issue #552 records the concrete existing enable-path conflict and the current
+owner/pool/route proposal in [Store Center current application v1](store-center-current-application-v1.md).
+That document's admission status controls its implementation gate; a link here
+does not approve production code. The current Store service/resource owner and
+its atomic execution semantics remain reusable; Activate/Renew/Reactivate stay
+outside the first current-application record-management delivery.
+
 Store Center keeps the legacy `lifecycle_status` during the expand/compatibility
 window, while the V7 state contract introduces nullable transitional
 `record_status`, `service_status`, `service_started_at`, and

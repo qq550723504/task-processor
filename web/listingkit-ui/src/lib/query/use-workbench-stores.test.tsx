@@ -28,7 +28,7 @@ const store = {
   platform: "shein" as const,
   region: "SG",
   externalStoreId: "",
-  lifecycleStatus: "active" as const,
+  recordStatus: "active" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "disconnected" as const,
   version: 2,
   createdAt: "2026-08-30T01:02:03Z",

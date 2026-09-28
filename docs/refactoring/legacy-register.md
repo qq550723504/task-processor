@@ -123,6 +123,26 @@ This section calibrates only the exact edges below; it does not claim a new full
 
 ## 3. Current drain rules
 
+### Store Center current-application admission (#552)
+
+Observed at `8478800e31bf2e126bd03fae5ec45536056d823e`: the Store repository still
+uses `compatibilityStateForNewStore/Save`, lifecycle/record/service dual writes,
+and historical resolution fields; its enable persistence path requires service
+resume. The old HTTP builder opens `cfg.Database` with `OpenShared`. These paths
+cannot be newly mounted into current application under the greenfield decision.
+
+- Decision: **EXTRACT / RETIRE**.
+- Reusable behavior: Organization-scoped identity/profile, CAS, safe audit,
+  existing Subscription StoreQuotaLedger admission/replay, core CRUD and Console/BFF.
+- Current owner: Store Center, Subscription quota owner and application assembly.
+- Cutover/deletion condition: current consumers switch together to the admitted
+  single current Store contract; no old DTO/state/shared-builder fallback or
+  history backfill is introduced. Current service/resource execution remains its
+  existing owner and is not blanket-retired.
+- Related Issue/design: [#552](https://github.com/qq550723504/task-processor/issues/552),
+  [Store Center current application v1](../architecture/store-center-current-application-v1.md).
+  The design's explicit admission status must pass before formal implementation.
+
 ### `internal/compatibility/*`
 
 - Existing production callers are migration debt, not precedent.

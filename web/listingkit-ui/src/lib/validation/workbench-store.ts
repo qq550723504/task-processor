@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const workbenchStorePlatformSchema = z.literal("shein");
-const workbenchStoreLifecycleStatusSchema = z.enum([
+const workbenchStoreRecordStatusSchema = z.enum([
   "provisioning",
   "active",
   "disabled",
@@ -43,7 +43,7 @@ export const workbenchStoreListFiltersSchema = z
     page: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
     pageSize: z.number().int().min(1).max(100),
     platform: workbenchStorePlatformSchema.optional(),
-    status: workbenchStoreLifecycleStatusSchema.optional(),
+    status: workbenchStoreRecordStatusSchema.optional(),
   })
   .strict();
 
@@ -56,3 +56,12 @@ export type WorkbenchStoreUpdateInput = z.infer<
 export type WorkbenchStoreListFilters = z.infer<
   typeof workbenchStoreListFiltersSchema
 >;
+
+export function hasValidStoreServiceFacts(store: { recordStatus: string; serviceStatus: string | null; serviceStartedAt: string | null; serviceExpiresAt: string | null }) {
+  const { recordStatus, serviceStatus, serviceStartedAt: start, serviceExpiresAt: expiry } = store;
+  if (recordStatus === "provisioning" || recordStatus === "deleting") return serviceStatus === null && start === null && expiry === null;
+  if (serviceStatus === "pending_activation") return start === null && expiry === null;
+  const orderedPeriod = start !== null && expiry !== null && Date.parse(expiry) > Date.parse(start);
+  if (serviceStatus === "active" || serviceStatus === "expired") return orderedPeriod;
+  return serviceStatus === "suspended" && ((start === null && expiry === null) || orderedPeriod);
+}

@@ -30,7 +30,7 @@ func ValidateSourcingStoreAccess(ctx context.Context, reader SourcingStoreReader
 	if err != nil {
 		return err
 	}
-	if store == nil || store.OrganizationID() != organizationID || store.ID() != storeID || store.Platform() != platform || store.LifecycleStatus() != StoreStatusActive || store.Snapshot().DeletedAt != nil {
+	if store == nil || store.OrganizationID() != organizationID || store.ID() != storeID || store.Platform() != platform || store.RecordStatus() != RecordStatusActive || store.Snapshot().DeletedAt != nil {
 		return ErrNotFound
 	}
 	return ctx.Err()

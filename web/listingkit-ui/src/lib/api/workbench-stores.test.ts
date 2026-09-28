@@ -79,7 +79,7 @@ const store = {
   platform: "shein",
   region: "SG",
   externalStoreId: "external-1",
-  lifecycleStatus: "active",
+  recordStatus: "active", serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null,
   connectionStatus: "disconnected",
   version: 2,
   createdAt: "2026-08-30T01:02:03Z",
@@ -129,6 +129,26 @@ describe("workbench Store API", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it.each(["active", "expired", "suspended"])("keeps paid service facts on a disabled record (%s)", async (serviceStatus) => {
+    const paid = { ...store, recordStatus: "disabled", serviceStatus, serviceStartedAt: "2026-09-01T00:00:00Z", serviceExpiresAt: "2026-10-01T00:00:00Z" };
+    fetchMock.mockResolvedValue(jsonResponse(paid));
+    await expect(getWorkbenchStore(STORE_ID)).resolves.toEqual(paid);
+  });
+
+  it("rejects the retired alias and inconsistent service facts", async () => {
+    const { recordStatus, ...withoutRecord } = store;
+    for (const invalid of [
+      { ...withoutRecord, lifecycleStatus: recordStatus },
+      { ...store, lifecycleStatus: recordStatus },
+      { ...store, recordStatus: "disabled", serviceStatus: null },
+      { ...store, recordStatus: "provisioning" },
+      { ...store, serviceStatus: "active", serviceStartedAt: "2026-10-01T00:00:00Z", serviceExpiresAt: "2026-09-01T00:00:00Z" },
+    ]) {
+      fetchMock.mockResolvedValue(jsonResponse(invalid));
+      await expect(getWorkbenchStore(STORE_ID)).rejects.toMatchObject({ code: "INVALID_WORKBENCH_RESPONSE" });
+    }
   });
 
   it("rebuilds the allowlisted list query and omits absent filters", async () => {

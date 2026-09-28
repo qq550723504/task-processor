@@ -71,6 +71,8 @@ Use these as the main source of truth for structural work:
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
+- `store-center-current-application-v1.md`
+  - #552 current Console Store record management, owner pools, quota, authorization and single-state hard-cut; service activation remains a separate unopened capability
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`

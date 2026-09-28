@@ -1,3 +1,4 @@
+import { hasValidStoreServiceFacts } from "@/lib/validation/workbench-store";
 import { BROWSER_CAPTURE_MAX_BYTES, browserCaptureSchema } from "@/lib/contracts/browser-capture";
 import {agentEmptyRequestSchema,agentStartRequestSchema,agentResumeRequestSchema,agentResultSchema,agentReviewLinkSchema,agentPath} from "@/lib/contracts/product-agent";
 import { NextResponse } from "next/server";
@@ -159,12 +160,15 @@ const storeResponseSchema = z
     platform: z.literal("shein"),
     region: normalizedPublicString(1, 64),
     externalStoreId: normalizedPublicString(0, 128),
-    lifecycleStatus: z.enum([
+    recordStatus: z.enum([
       "provisioning",
       "active",
       "disabled",
       "deleting",
     ]),
+    serviceStatus: z.enum(["pending_activation", "active", "expired", "suspended"]).nullable(),
+    serviceStartedAt: utcRFC3339Schema.nullable(),
+    serviceExpiresAt: utcRFC3339Schema.nullable(),
     connectionStatus: z.enum([
       "disconnected",
       "connected",
@@ -175,7 +179,7 @@ const storeResponseSchema = z
     createdAt: utcRFC3339Schema,
     updatedAt: utcRFC3339Schema,
   })
-  .strict();
+  .strict().refine(hasValidStoreServiceFacts, "Inconsistent record/service facts");
 const quotaResponseSchema = z
   .object({
     used: nonnegativeSafeIntegerSchema,
@@ -277,7 +281,6 @@ const documentedWorkbenchErrorStatuses: Readonly<Record<string, number>> = {
   STORE_ALREADY_EXISTS: 409,
   STORE_VERSION_CONFLICT: 409,
   STORE_INVALID_STATE: 422,
-  STORE_SERVICE_RESUME_REQUIRED: 409,
   STORE_SERVICE_STATE_CORRUPT: 409,
   STORE_CONNECTION_UNAVAILABLE: 503,
   STORE_CONNECTION_NOT_CONNECTED: 422,
@@ -374,24 +377,6 @@ const workbenchRouteAllowlist = [
   ),
   routeDefinition("POST", "store-resume", "store-item", (path) =>
     storeActionPath(path, "resume"),
-  ),
-  routeDefinition(
-    "POST",
-    "store-service-activate",
-    "store-service-lifecycle",
-    (path) => storeActionPath(path, "activate"),
-  ),
-  routeDefinition(
-    "POST",
-    "store-service-renew",
-    "store-service-lifecycle",
-    (path) => storeActionPath(path, "renew"),
-  ),
-  routeDefinition(
-    "POST",
-    "store-service-reactivate",
-    "store-service-lifecycle",
-    (path) => storeActionPath(path, "reactivate"),
   ),
   routeDefinition("GET", "source-account-list", "source-account-list", (path) =>
     exactPath(path, "source-accounts") ? "source-accounts" : null,

@@ -15,7 +15,7 @@ type mutationRequest struct {
 	fields                                     []string
 	payloadFingerprint                         string
 	fieldsFor                                  func(*Store) []string
-	previous, next                             LifecycleStatus
+	previous, next                             RecordStatus
 	apply                                      func(*Store, time.Time, string) (bool, error)
 	matches                                    func(*Store) bool
 }
@@ -40,27 +40,27 @@ func (s *Service) Update(ctx context.Context, request UpdateStoreRequest) (Store
 }
 
 func (s *Service) Disable(ctx context.Context, request StoreLifecycleRequest) (StoreMutationResult, error) {
-	return s.changeLifecycle(ctx, request, "disable", AuditActionStoreDisabled, StoreStatusActive, StoreStatusDisabled)
+	return s.changeLifecycle(ctx, request, "disable", AuditActionStoreDisabled, RecordStatusActive, RecordStatusDisabled)
 }
 
 func (s *Service) Enable(ctx context.Context, request StoreLifecycleRequest) (StoreMutationResult, error) {
-	return s.changeLifecycle(ctx, request, "enable", AuditActionStoreEnabled, StoreStatusDisabled, StoreStatusActive)
+	return s.changeLifecycle(ctx, request, "enable", AuditActionStoreEnabled, RecordStatusDisabled, RecordStatusActive)
 }
 
-func (s *Service) changeLifecycle(ctx context.Context, request StoreLifecycleRequest, actionName string, auditAction AuditAction, from, to LifecycleStatus) (StoreMutationResult, error) {
+func (s *Service) changeLifecycle(ctx context.Context, request StoreLifecycleRequest, actionName string, auditAction AuditAction, from, to RecordStatus) (StoreMutationResult, error) {
 	normalized, err := normalizeLifecycleRequest(request)
 	if err != nil {
 		return StoreMutationResult{}, err
 	}
-	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: actionName, intentAuditAction: AuditActionStoreLifecycleStarted, auditAction: auditAction, fields: []string{"lifecycle_status"}, payloadFingerprint: hashTuple("store-lifecycle-request", actionName, string(from), string(to)), previous: from, next: to, apply: func(store *Store, at time.Time, actor string) (bool, error) {
-		if store.LifecycleStatus() != from {
+	return s.mutate(ctx, mutationRequest{organizationID: normalized.OrganizationID, actor: normalized.ActorSubject, storeID: normalized.StoreID, expectedVersion: normalized.ExpectedVersion, actionName: actionName, intentAuditAction: AuditActionStoreLifecycleStarted, auditAction: auditAction, fields: []string{"record_status"}, payloadFingerprint: hashTuple("store-lifecycle-request", actionName, string(from), string(to)), previous: from, next: to, apply: func(store *Store, at time.Time, actor string) (bool, error) {
+		if store.RecordStatus() != from {
 			return false, ErrInvalidTransition
 		}
 		if err := store.TransitionTo(to, actor, at); err != nil {
 			return false, err
 		}
 		return true, nil
-	}, matches: func(store *Store) bool { return store.LifecycleStatus() == to }})
+	}, matches: func(store *Store) bool { return store.RecordStatus() == to }})
 }
 
 func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMutationResult, error) {
@@ -129,7 +129,7 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 			if request.intentAuditAction != "" {
 				intentPrevious, intentNext := request.previous, request.next
 				if request.actionName == "update" {
-					intentPrevious, intentNext = candidate.LifecycleStatus(), candidate.LifecycleStatus()
+					intentPrevious, intentNext = candidate.RecordStatus(), candidate.RecordStatus()
 				}
 				intent := newAuditEvent(request.organizationID, request.storeID, candidate.QuotaAllocationID(), operationKey, request.intentAuditAction, AuditOutcomeUnknown, applyActor, auditFields, intentPrevious, intentNext, AuditFailureNone, s.utcNow())
 				intent.StoreVersion = request.expectedVersion
@@ -176,9 +176,6 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 					if errors.Is(err, ErrAlreadyExists) {
 						return StoreMutationResult{}, ErrAlreadyExists
 					}
-					if errors.Is(err, ErrServiceResumeRequired) {
-						return StoreMutationResult{}, ErrServiceResumeRequired
-					}
 					return StoreMutationResult{}, dependencyError(err)
 				} else {
 					return StoreMutationResult{}, ErrVersionConflict
@@ -191,7 +188,7 @@ func (s *Service) mutate(ctx context.Context, request mutationRequest) (StoreMut
 	}
 	previous, next := request.previous, request.next
 	if request.actionName == "update" {
-		previous, next = store.LifecycleStatus(), store.LifecycleStatus()
+		previous, next = store.RecordStatus(), store.RecordStatus()
 	}
 	event := newAuditEvent(request.organizationID, request.storeID, store.QuotaAllocationID(), operationKey, auditAction, AuditOutcomeSucceeded, request.actor, auditFields, previous, next, AuditFailureNone, s.utcNow())
 	if durableIntent != nil {
@@ -218,10 +215,10 @@ func validateMutationIntent(event *AuditEvent, request mutationRequest, store *S
 	if event == nil || store == nil || event.OrganizationID != request.organizationID || event.StoreID != request.storeID || event.AllocationID != store.QuotaAllocationID() || event.RequestKey != operationKey || event.Action != request.intentAuditAction || event.Outcome != AuditOutcomeUnknown || event.FailureCode != AuditFailureNone || event.StoreVersion != request.expectedVersion || event.PayloadFingerprint != request.payloadFingerprint {
 		return ErrAuditIdentityMismatch
 	}
-	if request.actionName == "update" && (event.PreviousState != store.LifecycleStatus() || event.NewState != store.LifecycleStatus() || (!exactSafeFields(event.SafeFieldNames, "name") && !exactSafeFields(event.SafeFieldNames, "region") && !exactSafeFields(event.SafeFieldNames, "name", "region"))) {
+	if request.actionName == "update" && (event.PreviousState != store.RecordStatus() || event.NewState != store.RecordStatus() || (!exactSafeFields(event.SafeFieldNames, "name") && !exactSafeFields(event.SafeFieldNames, "region") && !exactSafeFields(event.SafeFieldNames, "name", "region"))) {
 		return ErrAuditIdentityMismatch
 	}
-	if request.actionName != "update" && (event.PreviousState != request.previous || event.NewState != request.next || !exactSafeFields(event.SafeFieldNames, "lifecycle_status")) {
+	if request.actionName != "update" && (event.PreviousState != request.previous || event.NewState != request.next || !exactSafeFields(event.SafeFieldNames, "record_status")) {
 		return ErrAuditIdentityMismatch
 	}
 	return nil
@@ -232,12 +229,12 @@ func validateMutationIntentForRepair(event *AuditEvent, request mutationRequest,
 		return ErrAuditIdentityMismatch
 	}
 	if request.actionName == "update" {
-		if event.PreviousState != event.NewState || (event.PreviousState != StoreStatusActive && event.PreviousState != StoreStatusDisabled) || (!exactSafeFields(event.SafeFieldNames, "name") && !exactSafeFields(event.SafeFieldNames, "region") && !exactSafeFields(event.SafeFieldNames, "name", "region")) {
+		if event.PreviousState != event.NewState || (event.PreviousState != RecordStatusActive && event.PreviousState != RecordStatusDisabled) || (!exactSafeFields(event.SafeFieldNames, "name") && !exactSafeFields(event.SafeFieldNames, "region") && !exactSafeFields(event.SafeFieldNames, "name", "region")) {
 			return ErrAuditIdentityMismatch
 		}
 		return nil
 	}
-	if event.PreviousState != request.previous || event.NewState != request.next || !exactSafeFields(event.SafeFieldNames, "lifecycle_status") {
+	if event.PreviousState != request.previous || event.NewState != request.next || !exactSafeFields(event.SafeFieldNames, "record_status") {
 		return ErrAuditIdentityMismatch
 	}
 	return nil

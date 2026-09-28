@@ -321,7 +321,7 @@ function ScopedStoreLifecycleActions({
     if (
       latest &&
       latest.version > minimumVersion &&
-      latest.lifecycleStatus === "deleting"
+      latest.recordStatus === "deleting"
     ) {
       onStoreUpdated?.(latest);
     }
@@ -411,7 +411,7 @@ function ScopedStoreLifecycleActions({
     );
   };
   const retryDelete = () => {
-    const deletingStore = store.lifecycleStatus === "deleting";
+    const deletingStore = store.recordStatus === "deleting";
     const interruptedRetry =
       currentAction.kind === "delete-interrupted" &&
       currentAction.retryable &&
@@ -484,7 +484,7 @@ function ScopedStoreLifecycleActions({
       </div>
     );
   }
-  if (store.lifecycleStatus === "provisioning") {
+  if (store.recordStatus === "provisioning") {
     return (
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">
@@ -503,7 +503,7 @@ function ScopedStoreLifecycleActions({
       </div>
     );
   }
-  if (store.lifecycleStatus === "deleting") {
+  if (store.recordStatus === "deleting") {
     const deleteRecoveryAvailable =
       currentAction.kind === "idle" ||
       (currentAction.kind === "delete-interrupted" &&
@@ -532,8 +532,8 @@ function ScopedStoreLifecycleActions({
     );
   }
   if (
-    store.lifecycleStatus !== "active" &&
-    store.lifecycleStatus !== "disabled"
+    store.recordStatus !== "active" &&
+    store.recordStatus !== "disabled"
   ) {
     return null;
   }
@@ -641,13 +641,13 @@ function StoreLifecycleControls({
           disabled={isBusy || action.kind !== "idle"}
           onClick={() =>
             onStateAction(
-              store.lifecycleStatus === "active" ? "disable" : "enable",
+              store.recordStatus === "active" ? "disable" : "enable",
             )
           }
           size="sm"
           variant="outline"
         >
-          {store.lifecycleStatus === "active" ? "停用店铺" : "重新启用店铺"}
+          {store.recordStatus === "active" ? "停用店铺" : "重新启用店铺"}
         </Button>
       ) : null}
       {canDelete ? (

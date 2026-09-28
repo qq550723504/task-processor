@@ -46,7 +46,7 @@ func TestGormStoreRepositoryMigratesRepeatableScopedSchema(t *testing.T) {
 	for _, column := range columns {
 		byName[column.Name] = column
 	}
-	for _, name := range []string{"id", "organization_id", "version", "lifecycle_status", "quota_allocation_id", "created_by", "updated_by", "created_at", "updated_at", "create_idempotency_key", "delete_operation_key", "identity_key", "create_request_fingerprint"} {
+	for _, name := range []string{"id", "organization_id", "version", "record_status", "quota_allocation_id", "created_by", "updated_by", "created_at", "updated_at", "create_idempotency_key", "delete_operation_key", "identity_key", "create_request_fingerprint"} {
 		column, ok := byName[name]
 		if !ok || column.NotNull == 0 {
 			t.Fatalf("required column %q = %#v, want present and NOT NULL", name, column)
@@ -59,163 +59,10 @@ func TestGormStoreRepositoryMigratesRepeatableScopedSchema(t *testing.T) {
 		t.Fatalf("delete_operation_key type = %q, want variable-width varchar(36)", got)
 	}
 
-	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "lifecycle_status", "updated_at"}, false)
+	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "record_status", "updated_at"}, false)
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "platform", "region"}, false)
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "create_idempotency_key"}, true)
 	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "identity_key"}, true)
-}
-
-func TestGormStoreRepositoryExpandsNullableStoreServiceColumns(t *testing.T) {
-	db := openStoreDB(t)
-	if err := storecenter.AutoMigrateStoreRepository(db); err != nil {
-		t.Fatal(err)
-	}
-	type column struct {
-		Name    string `gorm:"column:name"`
-		NotNull int    `gorm:"column:notnull"`
-	}
-	var columns []column
-	if err := db.Raw("PRAGMA table_info(workbench_stores)").Scan(&columns).Error; err != nil {
-		t.Fatal(err)
-	}
-	byName := make(map[string]column, len(columns))
-	for _, column := range columns {
-		byName[column.Name] = column
-	}
-	for _, name := range []string{
-		"record_status",
-		"service_status",
-		"service_started_at",
-		"service_expires_at",
-		"service_history_resolution_status",
-		"service_history_source_identity",
-		"service_history_snapshot_token",
-		"service_history_resolved_at",
-	} {
-		column, ok := byName[name]
-		if !ok || column.NotNull != 0 {
-			t.Fatalf("expand column %q = %#v, want present and nullable", name, column)
-		}
-	}
-	assertSQLiteIndex(t, db, "workbench_stores", []string{"organization_id", "record_status", "updated_at"}, false)
-	assertSQLiteIndex(t, db, "workbench_stores", []string{"record_status", "id"}, false)
-	assertSQLiteIndex(t, db, "workbench_stores", []string{"service_history_resolution_status", "lifecycle_status", "deleted_at", "id"}, false)
-}
-
-func TestGormStoreRepositoryCompatibilityWriterMirrorsLifecycleState(t *testing.T) {
-	db := openStoreDB(t)
-	repo, err := storecenter.NewGormStoreRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000401", "00000000-0000-4000-8000-000000000402", "00000000-0000-4000-8000-000000000403", "Legacy", "SG", "legacy-external", time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC))
-	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
-		t.Fatal(err)
-	}
-	var row struct {
-		RecordStatus     *string    `gorm:"column:record_status"`
-		ServiceStatus    *string    `gorm:"column:service_status"`
-		ServiceStartedAt *time.Time `gorm:"column:service_started_at"`
-		ServiceExpiresAt *time.Time `gorm:"column:service_expires_at"`
-	}
-	if err := db.Table("workbench_stores").Where("id = ?", store.ID()).Take(&row).Error; err != nil {
-		t.Fatal(err)
-	}
-	if row.RecordStatus == nil || *row.RecordStatus != string(storecenter.RecordStatusProvisioning) || row.ServiceStatus != nil || row.ServiceStartedAt != nil || row.ServiceExpiresAt != nil {
-		t.Fatalf("create compatibility state = %#v, want provisioning with no service state", row)
-	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-active", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
-		t.Fatal(err)
-	}
-	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusPendingActivation))
-
-	if err := store.TransitionTo(storecenter.StoreStatusDisabled, "subject-disabled", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 2); err != nil {
-		t.Fatal(err)
-	}
-	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusSuspended))
-
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-reactivated", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 3); !errors.Is(err, storecenter.ErrServiceResumeRequired) {
-		t.Fatalf("legacy enable Save() error = %v, want ErrServiceResumeRequired", err)
-	}
-	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusActive), string(storecenter.ServiceStatusSuspended))
-
-	store, err = repo.Get(context.Background(), "org-a", store.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.BeginDelete("00000000-0000-4000-8000-000000000404", "subject-deleter", store.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", store, 3); err != nil {
-		t.Fatal(err)
-	}
-	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusDeleting), "")
-	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 4); err != nil {
-		t.Fatal(err)
-	}
-	assertCompatibilityStoreState(t, db, store.ID(), string(storecenter.RecordStatusDeleted), "")
-}
-
-func TestGormStoreRepositoryRejectsLegacyEnableUntilServiceHistoryResolves(t *testing.T) {
-	db := openStoreDB(t)
-	repo, err := storecenter.NewGormStoreRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := newPersistenceStore(t, "org-a", "00000000-0000-4000-8000-000000000405", "00000000-0000-4000-8000-000000000406", "00000000-0000-4000-8000-000000000407", "Legacy disabled", "SG", "legacy-disabled", time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC))
-	created, _, err := repo.CreateOrReplay(context.Background(), "org-a", store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := created.TransitionTo(storecenter.StoreStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Table("workbench_stores").Where("organization_id = ? AND id = ?", "org-a", created.ID()).Updates(map[string]any{
-		"lifecycle_status":   string(storecenter.StoreStatusDisabled),
-		"version":            int64(3),
-		"record_status":      nil,
-		"service_status":     nil,
-		"service_started_at": nil,
-		"service_expires_at": nil,
-	}).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	disabled, err := repo.Get(context.Background(), "org-a", created.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := disabled.TransitionTo(storecenter.StoreStatusActive, "subject-enable", disabled.UpdatedAt().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(context.Background(), "org-a", disabled, 3); !errors.Is(err, storecenter.ErrServiceResumeRequired) {
-		t.Fatalf("legacy enable Save() error = %v, want ErrServiceResumeRequired", err)
-	}
-
-	var row struct {
-		LifecycleStatus string  `gorm:"column:lifecycle_status"`
-		Version         int64   `gorm:"column:version"`
-		RecordStatus    *string `gorm:"column:record_status"`
-		ServiceStatus   *string `gorm:"column:service_status"`
-	}
-	if err := db.Table("workbench_stores").Where("organization_id = ? AND id = ?", "org-a", created.ID()).Take(&row).Error; err != nil {
-		t.Fatal(err)
-	}
-	if row.LifecycleStatus != string(storecenter.StoreStatusDisabled) || row.Version != 3 || row.RecordStatus != nil || row.ServiceStatus != nil {
-		t.Fatalf("legacy enable mutated row = %+v", row)
-	}
 }
 
 func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testing.T) {
@@ -229,7 +76,7 @@ func TestGormStoreRepositoryAppliesServiceStateInsideCallerTransaction(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := created.TransitionTo(storecenter.StoreStatusActive, "creator", created.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := created.TransitionTo(storecenter.RecordStatusActive, "creator", created.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
@@ -304,7 +151,7 @@ func TestGormStoreRepositoryServiceTransactionFailsClosedOnScopeOrCASMismatch(t 
 	}
 }
 
-func assertCompatibilityStoreState(t *testing.T, db *gorm.DB, storeID, wantRecordStatus, wantServiceStatus string) {
+func assertStoreServiceState(t *testing.T, db *gorm.DB, storeID, wantRecordStatus, wantServiceStatus string) {
 	t.Helper()
 	var row struct {
 		RecordStatus     *string    `gorm:"column:record_status"`
@@ -359,7 +206,7 @@ func TestGormStoreRepositoryCreateReturnsDurableTimestampForImmediateSave(t *tes
 	if got := created.CreatedAt(); !got.Equal(canonical) {
 		t.Errorf("returned CreatedAt = %s, want durable %s", got.Format(time.RFC3339Nano), canonical.Format(time.RFC3339Nano))
 	}
-	if err := created.TransitionTo(storecenter.StoreStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := created.TransitionTo(storecenter.RecordStatusActive, "subject-active", created.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", created, 1); err != nil {
@@ -385,7 +232,7 @@ func TestGormStoreRepositoryCreateReplaysOnlyTheImmutableCreationRequest(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.TransitionTo(storecenter.StoreStatusActive, "subject-update", first.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := first.TransitionTo(storecenter.RecordStatusActive, "subject-update", first.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", first, 1); err != nil {
@@ -423,7 +270,7 @@ func TestGormStoreRepositoryCreateFingerprintIgnoresMutableAndDeleteFields(t *te
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", original); err != nil {
 		t.Fatal(err)
 	}
-	if err := original.TransitionTo(storecenter.StoreStatusActive, "operator", original.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := original.TransitionTo(storecenter.RecordStatusActive, "operator", original.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", original, 1); err != nil {
@@ -444,7 +291,7 @@ func TestGormStoreRepositoryCreateFingerprintIgnoresMutableAndDeleteFields(t *te
 	}
 	pristine := newPersistenceStore(t, "org-a", original.ID(), original.CreateIdempotencyKey(), original.QuotaAllocationID(), "Original", "SG", "external-18", original.CreatedAt())
 	replayed, existing, err := repo.CreateOrReplay(context.Background(), "org-a", pristine)
-	if err != nil || !existing || replayed.LifecycleStatus() != storecenter.StoreStatusDeleting || replayed.DeleteOperationKey() != deleteKey || replayed.Name() != "Renamed" {
+	if err != nil || !existing || replayed.RecordStatus() != storecenter.RecordStatusDeleting || replayed.DeleteOperationKey() != deleteKey || replayed.Name() != "Renamed" {
 		t.Fatalf("CreateOrReplay after edit/delete = %#v, %v, %v", replayed, existing, err)
 	}
 }
@@ -459,17 +306,19 @@ func TestGormStoreRepositoryRejectsNonPristineCreateSnapshots(t *testing.T) {
 		mutate func(*storecenter.StoreSnapshot)
 	}{
 		{"active lifecycle", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusActive, 2, "subject-update", snapshot.UpdatedAt.Add(time.Minute)
+			snapshot.ServiceStatus = storecenter.ServiceStatusPendingActivation
+			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusActive, 2, "subject-update", snapshot.UpdatedAt.Add(time.Minute)
 		}},
 		{"disabled lifecycle", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusDisabled, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
+			snapshot.ServiceStatus = storecenter.ServiceStatusPendingActivation
+			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusDisabled, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
 		}},
 		{"deleting lifecycle", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusDeleting, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
+			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusDeleting, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
 			snapshot.DeleteOperationKey = "00000000-0000-4000-8000-000000000999"
 		}},
 		{"deleted state", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.LifecycleStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.StoreStatusDeleting, 3, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
+			snapshot.RecordStatus, snapshot.Version, snapshot.UpdatedBy, snapshot.UpdatedAt = storecenter.RecordStatusDeleted, 4, "subject-update", snapshot.UpdatedAt.Add(2*time.Minute)
 			snapshot.DeleteOperationKey = "00000000-0000-4000-8000-000000000998"
 			deletedAt := snapshot.UpdatedAt.Add(time.Minute)
 			snapshot.DeletedAt = &deletedAt
@@ -552,7 +401,7 @@ func TestGormStoreRepositoryListsOnlyMatchingOrganizationFiltersAndPage(t *testi
 			t.Fatalf("ordered ID[%d] = %q, want %q", i, page.Stores[i].ID(), id)
 		}
 	}
-	capped, err := repo.List(context.Background(), "org-a", storecenter.StoreListQuery{Page: 1, PageSize: 500, Platform: storecenter.PlatformShein, Status: storecenter.StoreStatusProvisioning})
+	capped, err := repo.List(context.Background(), "org-a", storecenter.StoreListQuery{Page: 1, PageSize: 500, Platform: storecenter.PlatformShein, Status: storecenter.RecordStatusProvisioning})
 	if err != nil || capped.Total != 3 || len(capped.Stores) != 3 {
 		t.Fatalf("filtered capped list = (%d, %d, %v), want 3", capped.Total, len(capped.Stores), err)
 	}
@@ -578,7 +427,7 @@ func TestGormStoreRepositoryScopesGetsAndClassifiesVersionedWrites(t *testing.T)
 		t.Fatalf("cross-org Get error = %v, want ErrNotFound", err)
 	}
 
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -629,10 +478,11 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 		{"created time", func(snapshot *storecenter.StoreSnapshot) { snapshot.CreatedAt = snapshot.CreatedAt.Add(-time.Minute) }},
 		{"connection reference", func(snapshot *storecenter.StoreSnapshot) { snapshot.ConnectionRef = "new-opaque-ref" }},
 		{"lifecycle and edit combined", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.LifecycleStatus, snapshot.Name = storecenter.StoreStatusDisabled, "Combined edit"
+			snapshot.RecordStatus, snapshot.Name = storecenter.RecordStatusDisabled, "Combined edit"
 		}},
 		{"lifecycle regression", func(snapshot *storecenter.StoreSnapshot) {
-			snapshot.LifecycleStatus = storecenter.StoreStatusProvisioning
+			snapshot.RecordStatus = storecenter.RecordStatusProvisioning
+			snapshot.ServiceStatus = ""
 		}},
 		{"stale update time", func(snapshot *storecenter.StoreSnapshot) {
 			snapshot.UpdatedAt = snapshot.UpdatedAt.Add(-2 * time.Minute)
@@ -644,7 +494,7 @@ func TestGormStoreRepositoryRejectsCraftedImmutableOrIllegalLifecycleSave(t *tes
 			if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+			if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 				t.Fatal(err)
 			}
 			if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -686,7 +536,7 @@ func TestGormStoreRepositoryRejectsDeletingSameKeyVersionOnlySave(t *testing.T) 
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -731,7 +581,7 @@ func TestGormStoreRepositoryRoundTripsEveryLiveAggregateField(t *testing.T) {
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -772,7 +622,7 @@ func TestGormStoreRepositorySoftDeletesOnlyDeletingRows(t *testing.T) {
 	if err := repo.SoftDelete(context.Background(), "org-a", store.ID(), 1); !errors.Is(err, storecenter.ErrInvalidTransition) {
 		t.Fatalf("SoftDelete active/provisioning error = %v, want ErrInvalidTransition", err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -825,7 +675,7 @@ func TestGormStoreRepositorySoftDeleteNeverBackdatesFutureDurableUpdate(t *testi
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", future.Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", future.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -861,7 +711,7 @@ func TestGormStoreRepositoryClassifiesDeletedRowIdentityCollisions(t *testing.T)
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-update", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -903,7 +753,7 @@ func TestGormStoreRepositoryConcurrentSavesHaveOneWinner(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, candidate := range []*storecenter.Store{left, right} {
-		if err := candidate.TransitionTo(storecenter.StoreStatusActive, "subject-update", candidate.UpdatedAt().Add(time.Minute)); err != nil {
+		if err := candidate.TransitionTo(storecenter.RecordStatusActive, "subject-update", candidate.UpdatedAt().Add(time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -945,7 +795,7 @@ func TestGormStoreRepositoryPrioritizesVersionConflictOverStaleLifecycleValidati
 	if _, _, err := repo.CreateOrReplay(context.Background(), "org-a", store); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.TransitionTo(storecenter.StoreStatusActive, "subject-active", store.UpdatedAt().Add(time.Minute)); err != nil {
+	if err := store.TransitionTo(storecenter.RecordStatusActive, "subject-active", store.UpdatedAt().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", store, 1); err != nil {
@@ -965,7 +815,7 @@ func TestGormStoreRepositoryPrioritizesVersionConflictOverStaleLifecycleValidati
 	if err := repo.Save(context.Background(), "org-a", winner, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := stale.TransitionTo(storecenter.StoreStatusDisabled, "subject-stale", stale.UpdatedAt().Add(2*time.Minute)); err != nil {
+	if err := stale.TransitionTo(storecenter.RecordStatusDisabled, "subject-stale", stale.UpdatedAt().Add(2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Save(context.Background(), "org-a", stale, 2); !errors.Is(err, storecenter.ErrVersionConflict) {
@@ -975,8 +825,8 @@ func TestGormStoreRepositoryPrioritizesVersionConflictOverStaleLifecycleValidati
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.LifecycleStatus() != storecenter.StoreStatusDeleting || got.Version() != 3 || got.UpdatedBy() != "subject-winner" {
-		t.Fatalf("stale Save mutated winner: got status=%q version=%d actor=%q", got.LifecycleStatus(), got.Version(), got.UpdatedBy())
+	if got.RecordStatus() != storecenter.RecordStatusDeleting || got.Version() != 3 || got.UpdatedBy() != "subject-winner" {
+		t.Fatalf("stale Save mutated winner: got status=%q version=%d actor=%q", got.RecordStatus(), got.Version(), got.UpdatedBy())
 	}
 }
 

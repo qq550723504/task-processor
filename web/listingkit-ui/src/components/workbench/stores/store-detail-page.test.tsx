@@ -29,13 +29,23 @@ vi.mock("@/lib/query/use-workbench-stores", () => ({
 
 import { StoreDetailPage } from "@/components/workbench/stores/store-detail-page";
 
-const STORE = { id: "11111111-1111-4111-8111-111111111111", name: "店铺", platform: "shein" as const, region: "CN", externalStoreId: "", lifecycleStatus: "active" as const, connectionStatus: "disconnected" as const, version: 1, createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z" };
+const STORE = { id: "11111111-1111-4111-8111-111111111111", name: "店铺", platform: "shein" as const, region: "CN", externalStoreId: "", recordStatus: "active" as const, serviceStatus: "pending_activation" as const, serviceStartedAt: null, serviceExpiresAt: null, connectionStatus: "disconnected" as const, version: 1, createdAt: "2026-08-31T00:00:00Z", updatedAt: "2026-08-31T00:00:00Z" };
 describe("StoreDetailPage", () => {
   afterEach(() => { query.value = {}; update.mutate.mockReset(); update.isPending = false; create.mutate.mockReset(); enable.mutate.mockReset(); enable.isPending = false; disable.mutate.mockReset(); disable.isPending = false; resumeCreate.mutate.mockReset(); resumeCreate.isPending = false; remove.mutate.mockReset(); remove.retryLast.mockReset(); remove.canRetryLast = false; remove.isPending = false; queryClient.removeQueries.mockReset(); context.retry.mockReset(); context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] }; context.roles = ["listingkit_operator"]; context.registerOrganizationSwitchGuard.mockReset(); context.registerOrganizationSwitchGuard.mockImplementation(() => vi.fn()); router.push.mockReset(); router.replace.mockReset(); });
+  it("waits for the initial organization without redirecting a valid detail", () => {
+    context.effectiveOrganization = { id: "", name: "", roles: [] };
+    query.value = { isPending: true };
+    const { rerender } = render(<StoreDetailPage storeId={STORE.id} />);
+    context.effectiveOrganization = { id: "org-a", name: "企业 A", roles: [] };
+    query.value = { isPending: false, data: STORE, refetch: vi.fn() };
+    rerender(<StoreDetailPage storeId={STORE.id} />);
+    expect(screen.getByRole("heading", { name: "店铺" })).toBeInTheDocument();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
   it("renders stable loading, not-found, access, and dependency states", () => {
     query.value = { isPending: true }; const { rerender } = render(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("status")).toHaveTextContent("正在加载店铺");
     query.value = { isPending: false, isError: true, error: { code: "STORE_NOT_FOUND" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("店铺不存在或已不可访问");
-    query.value = { isPending: false, isError: true, error: { code: "PERMISSION_DENIED" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("没有编辑当前企业店铺的权限");
+    query.value = { isPending: false, isError: true, error: { code: "PERMISSION_DENIED" }, refetch: vi.fn() }; rerender(<StoreDetailPage storeId={STORE.id} />); expect(screen.getByRole("alert")).toHaveTextContent("没有查看当前企业店铺的权限");
   });
   it.each([
     "ORGANIZATION_CONTEXT_CHANGED",
@@ -62,20 +72,20 @@ describe("StoreDetailPage", () => {
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
   });
   it("hides editing but keeps deleting lifecycle information visible while deletion is in progress", () => {
-    query.value = { isPending: false, isError: false, data: { ...STORE, lifecycleStatus: "deleting" as const }, refetch: vi.fn() };
+    query.value = { isPending: false, isError: false, data: { ...STORE, recordStatus: "deleting" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }, refetch: vi.fn() };
     render(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByText(/店铺状态：删除中/)).toBeInTheDocument();
     expect(screen.getByText(/删除正在进行中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
   });
   it("hides editing while the store is still provisioning", () => {
-    query.value = { isPending: false, isError: false, data: { ...STORE, lifecycleStatus: "provisioning" as const }, refetch: vi.fn() };
+    query.value = { isPending: false, isError: false, data: { ...STORE, recordStatus: "provisioning" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null }, refetch: vi.fn() };
     render(<StoreDetailPage storeId={STORE.id} />);
     expect(screen.getByText(/店铺状态：开通中/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
   });
   it("locks the real detail form when a terminal delete refresh proves deleting", async () => {
-    const deleting = { ...STORE, lifecycleStatus: "deleting" as const, version: 2 };
+    const deleting = { ...STORE, recordStatus: "deleting" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null, version: 2 };
     const refetch = vi.fn().mockResolvedValue({ data: deleting, isSuccess: true, isError: false });
     query.value = { isPending: false, isError: false, data: STORE, refetch };
     context.roles = ["listingkit_admin"];
@@ -127,7 +137,7 @@ describe("StoreDetailPage", () => {
     expect(update.mutate).toHaveBeenLastCalledWith({ id: STORE.id, version: 2, input: { name: "我的草稿", region: "CN" } }, expect.any(Object));
   });
   it("switches to deleting lifecycle recovery when conflict refetch returns deleting", async () => {
-    const deleting = { ...STORE, lifecycleStatus: "deleting" as const, version: 2 };
+    const deleting = { ...STORE, recordStatus: "deleting" as const, serviceStatus: null, serviceStartedAt: null, serviceExpiresAt: null, version: 2 };
     const refetch = vi.fn().mockResolvedValue({ data: deleting, isSuccess: true, isError: false });
     query.value = { isPending: false, isError: false, data: STORE, refetch };
     const user = userEvent.setup(); render(<StoreDetailPage storeId={STORE.id} />);
