@@ -20,7 +20,7 @@ func prepareKnowledge(ctx context.Context, db *gorm.DB, cfg *currentapplication.
 		return nil, nil, err
 	}
 	c := cfg.Storage
-	client, err := s3.NewClient(s3.ClientConfig{Region: c.Region, Endpoint: c.Endpoint, AccessKeyID: c.AccessKeyID, SecretAccessKey: c.SecretAccessKey, UsePathStyle: true})
+	client, err := s3.NewKnowledgeClient(s3.ClientConfig{Region: c.Region, Endpoint: c.Endpoint, AccessKeyID: c.AccessKeyID, SecretAccessKey: c.SecretAccessKey, UsePathStyle: true})
 	if err != nil {
 		return nil, nil, err
 	}

@@ -66,7 +66,7 @@ func TestKnowledgeMinIORuntimeMissingObjectAndImmutableRoundTrip(t *testing.T) {
 	}
 	host, _ := server.Host(ctx)
 	port, _ := server.MappedPort(ctx, "9000/tcp")
-	client, err := NewClient(ClientConfig{Region: "us-east-1", Endpoint: "http://" + host + ":" + port.Port(), AccessKeyID: "knowledge-runtime-test", SecretAccessKey: "isolated-minio-runtime-password", UsePathStyle: true})
+	client, err := NewKnowledgeClient(ClientConfig{Region: "us-east-1", Endpoint: "http://" + host + ":" + port.Port(), AccessKeyID: "knowledge-runtime-test", SecretAccessKey: "isolated-minio-runtime-password", UsePathStyle: true})
 	if err != nil {
 		t.Fatal(err)
 	}

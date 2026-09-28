@@ -47,6 +47,7 @@ Dockerfile 校验各架构已固定的官方 SHA256；首次构建需要访问 G
   本文件 policy 对应固定 MinIO；若单独配置 AWS S3，必须按[官方 HeadObject 权限要求](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
   为专用私有 bucket 配置 `s3:ListBucket` 以区分缺失对象的 404 与拒绝访问的 403。生产 S3 仍为 NOT_RUN。
   对象 endpoint 留空使用 AWS 默认 HTTPS；自定义外部地址必须 HTTPS。HTTP 仅允许固定 `knowledge-objects` 服务、localhost、loopback 或私网 IP。
+  知识库专属 HTTP 客户端禁止所有重定向，且不使用环境代理；配置错误须修正原 endpoint，不能自动转发签名请求或正文。
 - Tika 只连接 internal Docker network，无公开端口、凭据或宿主目录；非 root、只读 rootfs、256 MiB 临时盘、
   2 CPU/2 GiB/128 PID，仅 PDF/OOXML parser，关闭 OCR/嵌入文档/请求配置。
   [官方配置说明](https://tika.apache.org/docs/4.0.x/configuration/index.html)与[服务端边界](https://tika.apache.org/docs/4.0.x/using-tika/server/index.html)。

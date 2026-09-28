@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"net/http"
 	"strings"
+
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"task-processor/internal/knowledge"
 )
@@ -12,6 +16,16 @@ import (
 // KnowledgeStore borrows the existing immutable S3 implementation. It never
 // creates a public object URL or owns document lifecycle.
 type KnowledgeStore struct{ uploader *Uploader }
+
+func NewKnowledgeClient(cfg ClientConfig) (*awss3.Client, error) {
+	// Keep SDK transport defaults while pinning Knowledge requests to the
+	// configured endpoint. A redirect must never forward private content or a
+	// signed request; operator-local HTTP must not use an environment proxy.
+	transport := awshttp.NewBuildableClient().GetTransport()
+	transport.Proxy = nil
+	cfg.HTTPClient = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return NewClient(cfg)
+}
 
 func NewKnowledgeStore(uploader *Uploader) (*KnowledgeStore, error) {
 	if uploader == nil || uploader.publicBase != "" {
