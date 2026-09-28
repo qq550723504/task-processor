@@ -32,10 +32,25 @@
 
 **语义要点**
 
-- 挑战（`ErrChallenge` / `ErrRejected`）→ 进入冷却，后续请求**立即**返回 `ErrThrottled`（不在 handler 内等待十分钟）
+- **仅**挑战（`ErrChallenge`）→ 进入冷却，后续请求**立即**返回 `ErrThrottled`（不在 handler 内等待十分钟）。
+  `ErrRejected`（本文档 Part A 之外、本 provider 自身出网策略拒绝导航：文档超限、重定向到未允许 origin）**不触发**冷却——那是我们自己的策略判定，不是 1688 风控信号；把它当挑战会让一次配置或内容策略失败把此后所有无关采集一起挡在十分钟冷却后，且策略不匹配持续存在时会无限重复。
 - 等待装不进调用方预算时**立即拒绝**，而不是让预算耗尽 —— 否则会把「我们自己选择等待」误报成「1688 慢」的 deadline
 - 非挑战失败（`ErrUnsupported` / `ErrUnavailable` / `ErrCapacity`）**不触发**冷却
 - 采集器把 `ErrThrottled` 映射为**可重试**的 capacity（503），不报 502 SOURCE_UNAVAILABLE
+
+**多采集进程的协调（已定方向）**
+
+冻结基线把准入放在**每个采集进程/容器**内，因此进程内的节流与抖动**不会**跨进程强制 20s 间隔，也不会传播冷却。两种可选做法：
+
+- (i) 以**出口 IP 为键**做跨进程协调（共享速率存储）
+- (ii) **约束每个出口 IP 只由一个采集进程使用**
+
+**本文选择 (ii)**：它不需要新增协调服务或共享事实源，符合「不新建 Admission Control 平台 / 第二事实源」的既定边界，且 (i) 引入的共享速率状态本身就是需要独立准入的新持久化事实。代价是**该约束必须由部署保证**，因此：
+
+- 同一出口 IP 不得被多个采集进程同时使用（compose/编排层保证）
+- 验证必须覆盖**多实例与重启**场景：重启后的进程不得立即发出请求
+
+> 若未来确实需要同一出口 IP 承载多个采集进程，则 (i) 成为必需，届时需独立架构准入。
 
 **不改**：身份契约（canonical source 仍为 `detail.1688.com`）、`MapAcquisitionEvidence`、SRC-1/Catalog 事实规则、operation 状态机。
 
@@ -85,5 +100,7 @@
 
 ## 7. Legacy 决策
 
-- **EXTRACT**：`url_helper.go:112 GetMobileURL` 为**无调用方、无测试的死代码**，不构成「移动版回退可行」的证据，不得引用为既有能力。
+- **RETIRE**：`internal/crawler/alibaba1688/url_helper.go:112 GetMobileURL` —— **无调用方、无测试的死代码**。
+  标为 RETIRE 而非 EXTRACT：它不包含仍正确且需迁移的行为，把它放在 EXTRACT 下会诱导后续实现去保留或移植这个废弃 helper。
+  **删除条件**：随 legacy crawler 整体退役时删除，不得被新代码引用为「移动版回退可行」的既有能力。
 - **RETIRE**：不恢复任何旧 browser/profile/service 路径。
