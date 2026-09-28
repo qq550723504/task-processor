@@ -269,9 +269,76 @@ func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
 		"the first request must be served once the quarantine elapses")
 }
 
-// The quarantine defaults to the cooldown: a replacement collector assumes the
-// worst about an exit IP it never observed.
-func TestThrottleStartupQuarantineDefaultsToCooldown(t *testing.T) {
+// The quarantine follows the CONFIGURED cooldown: a replacement collector
+// assumes the worst about an exit IP it never observed, but an operator who
+// deliberately shortens -challenge-cooldown must not still get a ten-minute
+// silence on every restart.
+func TestThrottleStartupQuarantineDefaultsToConfiguredCooldown(t *testing.T) {
 	th := newThrottle(time.Millisecond, 0, time.Minute, 0)
-	require.Equal(t, DefaultChallengeCooldown, th.StartupQuarantine)
+	require.Equal(t, time.Minute, th.StartupQuarantine)
+}
+
+// A cancelled waiter must be removed from the queue even when other callers
+// reserved after it, so a later caller is not pushed by a slot nobody will use.
+func TestThrottleSupersededCancellationLeavesTheQueue(t *testing.T) {
+	th := newTestThrottle(200*time.Millisecond, 0, 0)
+
+	// A first caller takes the immediate slot.
+	require.NoError(t, th.Wait(context.Background()))
+
+	// A second caller queues behind it and will be cancelled.
+	ctx, cancel := context.WithCancel(context.Background())
+	queued := make(chan error, 1)
+	go func() { queued <- th.Wait(ctx) }()
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return len(th.pending) == 2
+	}, time.Second, 5*time.Millisecond)
+
+	// A third caller reserves after it.
+	th.mu.Lock()
+	before := len(th.pending)
+	th.mu.Unlock()
+	require.Equal(t, 2, before)
+
+	cancel()
+	require.ErrorIs(t, <-queued, context.Canceled)
+
+	// The cancelled entry is gone, so the floor reflects only live reservations.
+	require.Eventually(t, func() bool {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return len(th.pending) == 1
+	}, time.Second, 5*time.Millisecond, "a superseded cancellation must leave the queue")
+}
+
+// The startup quarantine must follow the CONFIGURED cooldown, so shortening
+// -challenge-cooldown actually shortens the silence after a restart.
+func TestThrottleStartupQuarantineFollowsConfiguredCooldown(t *testing.T) {
+	th := newThrottle(time.Millisecond, 0, 2*time.Second, 0)
+	require.Equal(t, 2*time.Second, th.StartupQuarantine,
+		"quarantine must follow the configured cooldown, not the packaged default")
+}
+
+// A wait that spans another acquisition which observed a challenge must not
+// return success; the block is re-checked once the wait ends.
+func TestThrottleRechecksCooldownAfterQueuedWait(t *testing.T) {
+	th := newTestThrottle(150*time.Millisecond, 0, 0)
+	require.NoError(t, th.Wait(context.Background()))
+
+	queued := make(chan error, 1)
+	go func() { queued <- th.Wait(context.Background()) }()
+
+	// While the second caller waits, another acquisition is challenged.
+	time.Sleep(20 * time.Millisecond)
+	th.Observe(ErrChallenge)
+
+	select {
+	case err := <-queued:
+		require.ErrorIs(t, err, ErrThrottled,
+			"a wait that spans a challenge must not hand back a usable slot")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the queued wait never returned")
+	}
 }

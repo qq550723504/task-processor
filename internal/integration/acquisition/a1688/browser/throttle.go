@@ -19,6 +19,14 @@ import (
 // It is deliberately self-imposed and conservative by default. Every duration is
 // configurable so a deployment can measure its own budget rather than inherit a
 // guess.
+// reservation is one committed slot: the caller may start at start, and the next
+// caller must not start before end.
+type reservation struct {
+	seq   uint64
+	start time.Time
+	end   time.Time
+}
+
 type Throttle struct {
 	// MinInterval is the floor between the START of two acquisitions. Zero uses
 	// DefaultMinInterval.
@@ -40,8 +48,12 @@ type Throttle struct {
 	next     time.Time // earliest allowed start
 	cooledAt time.Time
 	blocked  bool
-	seq      uint64    // identifies the newest reservation, for safe rollback
-	prevNext time.Time // boundary the newest reservation displaced
+	// pending holds live reservations in start order. Keeping them explicitly
+	// makes releasing one correct regardless of release order: next is
+	// recomputed from what is left, instead of being reconstructed by trying to
+	// undo an earlier boundary.
+	pending []reservation // seq identifies reservations; it is guarded by mu.
+	seq     uint64
 	// rand is guarded by mu.
 	rand *rand.Rand
 }
@@ -52,12 +64,11 @@ type Throttle struct {
 // ChallengeCooldown is long enough for the observed recovery window. Both are
 // starting points to be measured, not tuned truths.
 const (
-	DefaultMinInterval       = 20 * time.Second
-	DefaultJitterFraction    = 0.3
+	DefaultMinInterval    = 20 * time.Second
+	DefaultJitterFraction = 0.3
+	// A replacement collector must assume the worst about an exit IP it never
+	// observed, so the startup quarantine follows the configured cooldown.
 	DefaultChallengeCooldown = 10 * time.Minute
-	// DefaultStartupQuarantine matches the cooldown by default: a replacement
-	// collector must assume the worst about an exit IP it did not observe.
-	DefaultStartupQuarantine = DefaultChallengeCooldown
 )
 
 func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine time.Duration) *Throttle {
@@ -70,12 +81,17 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 	if challengeCooldown <= 0 {
 		challengeCooldown = DefaultChallengeCooldown
 	}
-	// Zero (the unset default) means "use the conservative default"; a negative
+	// Zero (the unset default) means "follow the configured cooldown"; a negative
 	// value explicitly disables the quarantine, which only tests need. Disabling
 	// it by default would be the unsafe direction.
+	//
+	// It follows the CONFIGURED cooldown, not the packaged constant: an operator
+	// who deliberately shortens -challenge-cooldown must not still get a
+	// ten-minute silence on every restart, or the setting is not actually
+	// tunable.
 	quarantined := startupQuarantine >= 0
 	if startupQuarantine == 0 {
-		startupQuarantine = DefaultStartupQuarantine
+		startupQuarantine = challengeCooldown
 	}
 	th := &Throttle{
 		MinInterval:       minInterval,
@@ -151,9 +167,9 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		return ErrThrottled
 	}
 
-	t.prevNext = t.next
 	t.seq++
 	mine := t.seq
+	t.pending = append(t.pending, reservation{seq: mine, start: start, end: slotEnd})
 	t.next = slotEnd
 	t.mu.Unlock()
 
@@ -167,24 +183,55 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		t.release(mine)
 		return ctx.Err()
 	case <-timer.C:
-		return nil
 	}
+	// The wait may have spanned another acquisition, and that one may have
+	// observed a challenge. Returning success here would hand the caller a slot
+	// the process has already decided to refuse, so the block is re-checked once
+	// the wait is over and the reservation is given back if the process is now
+	// cooling down.
+	if t.nowBlocked() {
+		t.release(mine)
+		return ErrThrottled
+	}
+	return nil
 }
 
-// release gives back a reservation that the caller could not use. It only rolls
-// back when no later reservation was made, so a cancelled waiter never truncates
-// the queue of callers behind it.
+// nowBlocked reports whether a challenge has put the process into cooldown,
+// after lazily expiring a window that has already elapsed.
+func (t *Throttle) nowBlocked() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.blocked && !t.cooledAt.IsZero() && !time.Now().Before(t.cooledAt) {
+		t.blocked = false
+		t.cooledAt = time.Time{}
+	}
+	return t.blocked
+}
+
+// release gives back a reservation the caller could not use. next is recomputed
+// from the reservations that remain, so releasing is correct whether or not
+// other callers reserved in the meantime.
 func (t *Throttle) release(seq uint64) {
 	if t == nil {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.seq == seq {
-		// Restore the boundary this reservation displaced. Clearing the schedule
-		// outright would let the next caller start immediately after the preceding
-		// acquisition and recreate the burst this throttle exists to prevent.
-		t.next = t.prevNext
+	kept := t.pending[:0]
+	for _, r := range t.pending {
+		if r.seq != seq {
+			kept = append(kept, r)
+		}
+	}
+	t.pending = kept
+	t.next = time.Time{}
+	for _, r := range kept {
+		if r.end.After(t.next) {
+			t.next = r.end
+		}
 	}
 }
 
