@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"task-processor/internal/authidentity"
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -27,7 +28,7 @@ func WithStoreCenter(records, quota *gorm.DB) CurrentApplicationOption {
 	}
 }
 
-func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB) (kernelmodule.Module, error) {
+func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 	if records == nil || quota == nil || records == quota {
 		return nil, errors.New("store center requires independent record and quota pools")
 	}
@@ -40,7 +41,10 @@ func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB)
 	if err := listingsubscription.VerifyStoreQuotaRuntime(ctx, quota); err != nil {
 		return nil, err
 	}
-	repo, err := storecenter.NewGormStoreRepository(records)
+	if authorizer == nil {
+		return nil, errors.New("store center authorizer unavailable")
+	}
+	repo, err := storecenter.NewMemberScopedStoreRepository(records, currentStoreMemberAuthorizer{authorizer: authorizer})
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +62,28 @@ func buildCurrentStoreCenterModule(ctx context.Context, records, quota *gorm.DB)
 		return nil, err
 	}
 	return storehttp.NewModule(handler), nil
+}
+
+// Current Store descriptors resolve live Organization access before invoking
+// this capability. No member ID or administrator flag comes from the request.
+type currentStoreMemberAuthorizer struct{ authorizer *authz.ListingKitAuthorizer }
+
+func (a currentStoreMemberAuthorizer) AuthorizeStoreMember(ctx context.Context, organizationID string) (storecenter.StoreMemberAccess, error) {
+	identity, ok := authidentity.AuthenticatedIdentityFromContext(ctx)
+	if !ok || identity.EffectiveOrganizationID != organizationID || identity.TenantID != organizationID || !authidentity.IsBoundedIdentifier(identity.EffectiveMemberID) || !a.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchStoreRead) {
+		return storecenter.StoreMemberAccess{}, storecenter.ErrNotFound
+	}
+	granted := false
+	for _, grant := range identity.OrganizationGrants {
+		if grant.OrganizationID == organizationID && grant.AuthorizationID == identity.EffectiveMemberID {
+			granted = true
+			break
+		}
+	}
+	if !granted {
+		return storecenter.StoreMemberAccess{}, storecenter.ErrNotFound
+	}
+	return storecenter.StoreMemberAccess{OrganizationID: organizationID, ActorID: identity.UserID, MemberID: identity.EffectiveMemberID, Administrator: a.authorizer.IsTenantAdmin(identity.UserID, identity.Roles), CanWrite: a.authorizer.Authorize(identity.UserID, identity.Roles, authz.PermissionWorkbenchStoreUpdate)}, nil
 }
 
 var currentStoreCenterRoutes = []struct{ method, path, permission string }{

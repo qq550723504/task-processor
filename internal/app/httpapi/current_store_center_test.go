@@ -68,7 +68,7 @@ func TestCurrentStoreOptionalAssembly(t *testing.T) {
 				},
 				buildSourceAccount: func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
 				buildCommercial:    func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error) { return nil, nil },
-				buildStoreCenter: func(_ context.Context, r, q *gorm.DB) (kernelmodule.Module, error) {
+				buildStoreCenter: func(_ context.Context, r, q *gorm.DB, _ *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
 					calls++
 					require.Same(t, records, r)
 					require.Same(t, quota, q)

@@ -72,6 +72,8 @@ func grantStoreRuntime(ctx context.Context, db *gorm.DB) error {
 		`GRANT USAGE ON SCHEMA public TO store_center_runtime`,
 		`GRANT SELECT,INSERT,UPDATE ON public.workbench_stores TO store_center_runtime`,
 		`GRANT SELECT,INSERT ON public.workbench_store_audit_logs TO store_center_runtime`,
+		`GRANT SELECT,INSERT,UPDATE ON public.workbench_store_member_grants TO store_center_runtime`,
+		`GRANT SELECT,INSERT ON public.workbench_store_member_grant_operations TO store_center_runtime`,
 	} {
 		if err := db.WithContext(ctx).Exec(statement).Error; err != nil {
 			return err

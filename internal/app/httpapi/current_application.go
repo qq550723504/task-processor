@@ -84,7 +84,7 @@ var currentCommercialBillingApplicationRoutes = []currentApplicationRoute{
 }
 
 type currentApplicationFactories struct {
-	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB) (kernelmodule.Module, error)
+	buildStoreCenter                func(context.Context, *gorm.DB, *gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
 	buildCommercialResources        func(context.Context, *gorm.DB) (kernelmodule.Module, error)
 	buildWorkbench                  workbenchContextModuleBuilder
 	buildSourceAccount              func(*gorm.DB, *authz.ListingKitAuthorizer) (kernelmodule.Module, error)
@@ -364,7 +364,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
 	if supplied.storeCenters > 0 {
-		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB)
+		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB, authorizer)
 		if err != nil {
 			return nil, fmt.Errorf("build current store center: %w", err)
 		}

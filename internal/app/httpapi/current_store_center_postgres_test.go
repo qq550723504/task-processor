@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	storeschema "task-processor/internal/app/schema/storecenter"
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingsubscription"
@@ -64,7 +65,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	recordsOwner := open("store_center", "store_center_owner")
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
 	require.NoError(t, storeschema.Migrate(ctx, recordsOwner))
-	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`} {
+	for _, q := range []string{`REVOKE CREATE ON SCHEMA public FROM PUBLIC`, `REVOKE ALL ON DATABASE store_center FROM PUBLIC`, `GRANT CONNECT ON DATABASE store_center TO store_center_runtime`, `GRANT USAGE ON SCHEMA public TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_stores TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_audit_logs TO store_center_runtime`, `GRANT SELECT,INSERT,UPDATE ON workbench_store_member_grants TO store_center_runtime`, `GRANT SELECT,INSERT ON workbench_store_member_grant_operations TO store_center_runtime`} {
 		require.NoError(t, recordsOwner.Exec(q).Error)
 	}
 	require.NoError(t, listingsubscription.AutoMigrateRepository(commercial))
@@ -73,7 +74,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, entitlement)
 	records, quota := open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime")
-	module, err := buildCurrentStoreCenterModule(ctx, records, quota)
+	module, err := buildCurrentStoreCenterModule(ctx, records, quota, authz.DefaultListingKitAuthorizer())
 	require.NoError(t, err)
 	f := newAccountFixture(t)
 	cfg := &config.Config{Workbench: config.WorkbenchConfig{Enabled: true}, ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{IssuerURL: f.provider.URL, ClientID: "fixture-client", ClientSecret: "fixture-secret", ProjectID: "project", AuthorizationAPIURL: f.provider.URL}}}
@@ -141,7 +142,7 @@ func TestCurrentStorePostgresDelivery(t *testing.T) {
 	require.Equal(t, 404, status, out)
 	require.Greater(t, f.grantReads.Load(), int32(5))
 	// A fresh module/pool reads the durable results after reconstructing runtime.
-	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime"))
+	fresh, err := buildCurrentStoreCenterModule(ctx, open("store_center", "store_center_runtime"), open("commercial", "store_quota_runtime"), authz.DefaultListingKitAuthorizer())
 	require.NoError(t, err)
 	reg = kernelmodule.NewRegistry()
 	require.NoError(t, fresh.Register(reg))

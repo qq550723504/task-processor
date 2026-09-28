@@ -13,6 +13,7 @@ type Repository interface {
 }
 
 type StoreListQuery struct {
+	MemberID string
 	Page     int
 	PageSize int
 	Platform Platform
