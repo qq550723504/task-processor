@@ -62,8 +62,10 @@ the existing database through two roles:
 - `source_account_runtime`: `CONNECT`, schema `USAGE`, resource
   `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`.
 - `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
-  commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers, **not**
-  a read-only role. Provisioning it as read-only is rejected at startup.
+  commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
+  **not** a read-only *grant*, though the role keeps a read-only session setting:
+  the startup preflight checks ACL grants, not that setting, and the repository's
+  own permission test starts the binary with `default_transaction_read_only=on`.
 
 The bootstrap token, database owner credentials and Login V2 service credentials
 stay in run-private control files and are not present in the serving manifest.
