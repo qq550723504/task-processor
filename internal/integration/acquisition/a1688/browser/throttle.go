@@ -25,6 +25,11 @@ type reservation struct {
 	seq   uint64
 	start time.Time
 	end   time.Time
+	// dispatched records that Wait actually handed this slot to its caller.
+	// Retirement keys off that rather than the wall clock, so a waiter that is
+	// merely delayed past its window keeps its slot instead of having it deleted
+	// underneath it and letting the next caller start immediately.
+	dispatched bool
 }
 
 type Throttle struct {
@@ -77,14 +82,16 @@ const (
 	// A replacement collector must assume the worst about an exit IP it never
 	// observed, so the startup quarantine follows the configured cooldown.
 	DefaultChallengeCooldown = 10 * time.Minute
-	// DefaultCollectionHeadroom sits deliberately BELOW the acquisition budget. At
-	// equality the very first request of an idle collector is refused, because
-	// start+headroom lands on its own deadline. The margin is what makes an idle
-	// collector serve while still refusing a wait that would spend the budget.
-	DefaultCollectionHeadroom = DefaultTimeout * 3 / 4
+	// CollectionHeadroomNumerator/Denominator express the headroom as a fraction
+	// of the CONFIGURED budget, not of a packaged constant: an operator running a
+	// 5s budget must not get a 7.5s headroom, which would refuse every request.
+	// The margin is what lets an idle collector serve while still refusing a wait
+	// that would spend the whole budget.
+	CollectionHeadroomNumerator   = 3
+	CollectionHeadroomDenominator = 4
 )
 
-func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine, headroom time.Duration) *Throttle {
+func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine time.Duration, budget time.Duration) *Throttle {
 	if minInterval <= 0 {
 		minInterval = DefaultMinInterval
 	}
@@ -106,11 +113,11 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, s
 	if startupQuarantine == 0 {
 		startupQuarantine = challengeCooldown
 	}
-	if headroom <= 0 {
-		headroom = DefaultCollectionHeadroom
+	if budget <= 0 {
+		budget = DefaultTimeout
 	}
 	th := &Throttle{
-		headroom:          headroom,
+		headroom:          budget * CollectionHeadroomNumerator / CollectionHeadroomDenominator,
 		MinInterval:       minInterval,
 		Jitter:            jitter,
 		ChallengeCooldown: challengeCooldown,
@@ -206,6 +213,7 @@ func (t *Throttle) Wait(ctx context.Context) error {
 	t.mu.Unlock()
 
 	if wait <= 0 {
+		t.markDispatched(mine)
 		return nil
 	}
 	timer := time.NewTimer(wait)
@@ -216,6 +224,7 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		return ctx.Err()
 	case <-timer.C:
 	}
+	t.markDispatched(mine)
 	// The wait may have spanned another acquisition, and that one may have
 	// observed a challenge. Returning success here would hand the caller a slot
 	// the process has already decided to refuse, so the block is re-checked once
@@ -226,6 +235,20 @@ func (t *Throttle) Wait(ctx context.Context) error {
 		return ErrThrottled
 	}
 	return nil
+}
+
+// markDispatched records that the slot was handed to its caller.
+func (t *Throttle) markDispatched(seq uint64) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for i := range t.pending {
+		if t.pending[i].seq == seq {
+			t.pending[i].dispatched = true
+		}
+	}
 }
 
 // nowBlocked reports whether a challenge has put the process into cooldown,
@@ -269,7 +292,7 @@ func (t *Throttle) release(seq uint64) {
 			start = r.start
 		}
 		end := start.Add(span)
-		kept = append(kept, reservation{seq: r.seq, start: start, end: end})
+		kept = append(kept, reservation{seq: r.seq, start: start, end: end, dispatched: r.dispatched})
 		cursor = end
 	}
 	t.pending = kept
@@ -285,9 +308,10 @@ func (t *Throttle) release(seq uint64) {
 func liveReservations(pending []reservation, now time.Time) []reservation {
 	kept := pending[:0]
 	for _, r := range pending {
-		if r.end.After(now) {
-			kept = append(kept, r)
+		if r.dispatched && !r.end.After(now) {
+			continue // consumed: its slot has been used
 		}
+		kept = append(kept, r)
 	}
 	return kept
 }

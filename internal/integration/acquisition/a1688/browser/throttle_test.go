@@ -453,11 +453,45 @@ func TestThrottleCompactsAfterCancellingAMiddleWaiter(t *testing.T) {
 // The default headroom must leave a margin below the acquisition budget, or an
 // idle collector refuses its own first request.
 func TestThrottleDefaultHeadroomLeavesAMargin(t *testing.T) {
-	require.Less(t, DefaultCollectionHeadroom, DefaultTimeout,
-		"headroom must sit below the budget, or an idle collector refuses its first request")
-	require.Greater(t, DefaultCollectionHeadroom, DefaultTimeout/2,
-		"headroom must still cover a real collection")
+	// The headroom is a fraction of the CONFIGURED budget, so it must scale down
+	// with it: a 5s budget cannot carry a headroom derived from the 10s default,
+	// or every request is refused.
+	small := newThrottle(time.Millisecond, 0, time.Minute, -1, 5*time.Second)
+	require.Equal(t, 5*time.Second*CollectionHeadroomNumerator/CollectionHeadroomDenominator, small.headroom)
+	require.Less(t, small.headroom, 5*time.Second, "headroom must sit below the configured budget")
 
-	th := newThrottle(time.Millisecond, 0, time.Minute, -1, 0)
-	require.Equal(t, DefaultCollectionHeadroom, th.headroom)
+	nominal := newThrottle(time.Millisecond, 0, time.Minute, -1, DefaultTimeout)
+	require.Less(t, nominal.headroom, DefaultTimeout,
+		"headroom must sit below the budget, or an idle collector refuses its first request")
+	require.Greater(t, nominal.headroom, DefaultTimeout/2,
+		"headroom must still cover a real collection")
+}
+
+// A waiter that is merely delayed past its window must keep its reservation:
+// retiring on the wall clock would delete the slot underneath it and let the next
+// caller start immediately, recreating the burst the throttle exists to prevent.
+func TestThrottleKeepsReservationForADelayedWaiter(t *testing.T) {
+	th := newThrottle(10*time.Millisecond, 0, 0, -1, 30*time.Second)
+
+	// A first caller consumes the immediate slot.
+	require.NoError(t, th.Wait(context.Background()))
+
+	// Simulate a second caller whose slot window has already elapsed but which has
+	// not been handed the slot yet: a reservation that is not dispatched.
+	th.mu.Lock()
+	th.pending = append(th.pending, reservation{seq: 999, start: time.Now().Add(-time.Second), end: time.Now().Add(-time.Millisecond)})
+	th.next = time.Now().Add(-time.Millisecond)
+	th.mu.Unlock()
+
+	th.mu.Lock()
+	th.pending = liveReservations(th.pending, time.Now())
+	survived := false
+	for _, r := range th.pending {
+		if r.seq == 999 {
+			survived = true
+		}
+	}
+	th.mu.Unlock()
+	require.True(t, survived,
+		"an undispatched reservation must survive even after its window elapsed")
 }
