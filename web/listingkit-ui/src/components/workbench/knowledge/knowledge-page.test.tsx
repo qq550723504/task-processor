@@ -127,6 +127,17 @@ it("reuses the original command after admission succeeded but the HTTP response 
  const unmount=mount();await screen.findByText("当前企业还没有知识库");await userEvent.click(screen.getByRole("button",{name:"创建知识库"}));await userEvent.type(screen.getByLabelText("知识库名称"),"品牌指南");await userEvent.click(screen.getByRole("button",{name:"保存"}));
  await userEvent.click(await screen.findByRole("button",{name:"重试同一次操作"}));await screen.findByText("操作已保存。");expect(keys).toHaveLength(2);expect(keys[1]).toBe(keys[0]);unmount();
 });
+it("retains an unknown write through failed context confirmation and same-scope recovery",async()=>{
+ const keys:string[]=[];let contextReads=0;
+ vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{
+ if(url==="/api/workbench/context")return ++contextReads===2?Response.json({code:"DEPENDENCY_UNAVAILABLE"},{status:503}):Response.json(context);
+ if(init?.method==="POST"){keys.push(new Headers(init.headers).get("Idempotency-Key")!);return keys.length===1?Response.json({code:"OUTCOME_UNKNOWN"},{status:503}):Response.json({knowledgeBase:base},{status:201});}
+ return keys.length===1 && contextReads<3?Response.json({code:"PERMISSION_DENIED"},{status:403}):Response.json({items:[],pagination:{page:1,pageSize:20,total:0}});
+ }));const unmount=mount();await screen.findByText("当前企业还没有知识库");await userEvent.click(screen.getByRole("button",{name:"创建知识库"}));await userEvent.type(screen.getByLabelText("知识库名称"),"品牌指南");await userEvent.click(screen.getByRole("button",{name:"保存"}));
+ await screen.findByText("当前身份没有知识库管理或读取权限。");await userEvent.click(screen.getByRole("button",{name:"重新确认"}));await screen.findByText("企业上下文不可用");
+ await userEvent.click(screen.getByRole("button",{name:"重新确认"}));await screen.findByText("当前身份没有知识库管理或读取权限。");expect(screen.getByText(/请求结果尚未确认/)).toBeVisible();
+ await userEvent.click(screen.getByRole("button",{name:"重新确认"}));await userEvent.click(await screen.findByRole("button",{name:"重试同一次操作"}));await screen.findByText("操作已保存。");expect(keys).toHaveLength(2);expect(keys[1]).toBe(keys[0]);unmount();
+});
 it("retains the original unknown intent when refreshed authority becomes read-only",async()=>{
  const keys:string[]=[];let contextReads=0;
  vi.stubGlobal("fetch",vi.fn(async(url:string,init?:RequestInit)=>{

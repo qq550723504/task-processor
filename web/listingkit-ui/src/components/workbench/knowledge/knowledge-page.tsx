@@ -19,14 +19,13 @@ const maxUploadFileBytes=10*1024*1024-4096;
 const description="知识库归当前企业所有，默认不会自动用于 AI。支持 TXT、Markdown、可提取正文的 PDF 和 DOCX，不支持扫描件 OCR。";
 export function KnowledgePage({baseId}:{baseId?:string}) {
  const context=useWorkbenchContext();
- if(context.isLoading) return <ConsoleState kind="loading" title="正在确认当前企业" />;
- if(context.error || context.blockingError) return <ConsoleState kind="error" title="企业上下文不可用"><Button onClick={()=>void context.retry()}>重新确认</Button></ConsoleState>;
- if(!context.user || !context.effectiveOrganization) return <ConsoleState kind="unavailable" title="请先选择企业" />;
+ const failure=context.error || context.blockingError;
+ const state=failure?<ConsoleState kind="error" title="企业上下文不可用"><Button onClick={()=>void context.retry()}>重新确认</Button></ConsoleState>:context.isLoading || context.isSwitching?<ConsoleState kind="loading" title="正在确认当前企业" />:null;
+ if(!context.user || !context.effectiveOrganization){if(state)return state;return <ConsoleState kind="unavailable" title="请先选择企业" />;}
  const scope={userId:context.user.id,organizationId:context.effectiveOrganization.id};
- // Switch preparation may be rejected by a pending-intent guard. Hide the old
- // view during preparation without discarding that intent; an actual identity
- // or organization change still remounts and clears all scoped state.
- return <>{context.isSwitching?<ConsoleState kind="loading" title="正在确认当前企业" />:null}<div hidden={context.isSwitching}><KnowledgeContent key={scope.userId+":"+scope.organizationId+":"+(baseId??"list")} scope={scope} baseId={baseId} /></div></>;
+ // Switch preparation or context confirmation may fail. Keep the same scope's
+ // intent while hiding its content; actual identity/org changes still remount.
+ return <>{state}<div hidden={!!state}><KnowledgeContent key={scope.userId+":"+scope.organizationId+":"+(baseId??"list")} scope={scope} baseId={baseId} /></div></>;
 }
 function errorMessage(error:unknown) {
  const code=error instanceof KnowledgeError?error.code:"KNOWLEDGE_UNAVAILABLE";
@@ -59,6 +58,7 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  const [page,setPage]=useState(1),[name,setName]=useState(""),[editing,setEditing]=useState(false),[file,setFile]=useState<File|null>(null),[sourceName,setSourceName]=useState(""),[replacement,setReplacement]=useState<KnowledgeSource|null>(null),[preview,setPreview]=useState<KnowledgeSource|null>(null),[intent,setIntent]=useState<Intent|null>(null),[message,setMessage]=useState("");
  const key=["knowledge",scope.userId,scope.organizationId];
  const [authorityError,setAuthorityError]=useState<KnowledgeError|null>(null),[readAttempt,setReadAttempt]=useState(0);
+ const readable=canRead && !authorityError && !context.error && !context.blockingError && !context.isLoading && !context.isSwitching;
  const rolesKey=JSON.stringify([...context.roles].sort());
  const readKey=useMemo(()=>["knowledge",scope.userId,scope.organizationId,"read",rolesKey,readAttempt],[scope.userId,scope.organizationId,rolesKey,readAttempt]);
  // Authorization changes create fresh read observers and cancel old in-flight
@@ -66,9 +66,8 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  useEffect(()=>()=>{void client.cancelQueries({queryKey:readKey});client.removeQueries({queryKey:readKey});},[client,readKey]);
  // A query-key change must not erase an observed authorization failure. Keep
  // the fence until explicit context confirmation starts entirely fresh reads.
- useEffect(()=>{if(authorityError){void client.cancelQueries({queryKey:readKey});client.removeQueries({queryKey:readKey});}},[authorityError,client,readKey]);
+ useEffect(()=>{if(!readable){void client.cancelQueries({queryKey:readKey});client.removeQueries({queryKey:readKey});}},[readable,client,readKey]);
  const read=async <T,>(path:string,schema:z.ZodType<T>,signal:AbortSignal)=>{try{return await knowledgeRequest(scope,path,schema,{signal});}catch(error){if(!signal.aborted && isAuthorityFailure(error))setAuthorityError(error);throw error;}};
- const readable=canRead && !authorityError;
  const list=useQuery({queryKey:[...readKey,"bases",page],queryFn:({signal})=>read("knowledge-bases?page="+page+"&pageSize=20",basesSchema,signal),enabled:readable && !baseId,retry:false,gcTime:0});
  const base=useQuery({queryKey:[...readKey,"base",baseId],queryFn:({signal})=>read("knowledge-bases/"+baseId,baseSchema,signal),enabled:readable && !!baseId,retry:false,gcTime:0,refetchInterval:5000});
  const sources=useQuery({queryKey:[...readKey,"sources",baseId],queryFn:async({signal})=>{
