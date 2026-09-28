@@ -148,6 +148,12 @@ documents unless they say so explicitly:
     refunds are approved and incrementally reviewed. Economic amount mapping remains;
     not IMPLEMENTATION_READY or a real-payment authorization. Includes exact Figma
     recharge-page and modal references.
+- `2026-09-27-1688-anonymous-rate-and-egress-proxy-addendum.md`
+  - Draft addendum to the #514 browser acquisition design: anonymous collection
+    rate governance (the observed 1688 challenge is frequency-triggered) and the
+    constraints any egress proxy must satisfy. **Proposal only — neither the
+    rate-governance half nor the egress-proxy half is implemented.** Implementation
+    waits on admission of this document and an explicit `IMPLEMENTATION_READY`.
 - `2026-09-26-1688-server-public-browser-acquisition-design.md`
   - FROZEN BASELINE / IMPLEMENTATION_READY #514 `src2b-public-browser-v1`:
     server-side anonymous 1688 browser acquisition with automatic challenge
