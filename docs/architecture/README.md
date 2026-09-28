@@ -71,6 +71,10 @@ Use these as the main source of truth for structural work:
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
+- `account-facts-invitations-v1.md`
+  - IMPLEMENTATION_READY #551 user facts, region preferences, complete enterprise
+    statistics and consent-based email invitations; candidate delivery does not
+    imply browser acceptance, SMTP inbox delivery or runtime rollout
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`

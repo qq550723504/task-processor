@@ -57,7 +57,7 @@ const invitation = z
   .refine(
     (v) => !(v.state === "accepted" && (!v.recipientId || !v.authorizationId)),
   );
-export const invitationSchema = z
+const invitationSchema = z
   .object({
     schemaVersion: z.literal("membership-invitation-v1"),
     userId: memberId,

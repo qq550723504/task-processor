@@ -34,7 +34,6 @@ export const accountPreferencesSchema = regionInputSchema
     source: z.literal("account_profile"),
   })
   .strict();
-export type AccountFacts = z.infer<typeof accountFactsSchema>;
 export type AccountPreferences = z.infer<typeof accountPreferencesSchema>;
 export type RegionInput = z.infer<typeof regionInputSchema>;
 type Scope = { expectedUserId: string; signal?: AbortSignal };
