@@ -22,7 +22,7 @@ const volumes=['identity','commercial','login','setup'];
 function binary(m){return join(m.directory,'runtime.test.exe')}
 function applicationBinary(m){return join(m.directory,'current-application.exe')}
 function schemaBinary(m){return join(m.directory,'bin','source-account-registry-schema-init.exe')}
-function baseConfig(m){return {runId:m.runId,runtimeMode:m.runtimeMode,issuer:m.origins.issuer,issuerPort:m.ports.issuer,webOrigin:m.origins.web,goPort:m.ports.go,databasePort:m.ports.database,databaseHost:'127.0.0.1',databaseName:'issue357',databaseUser:'commercial_reader',databasePassword:m.secrets.reader,projectId:m.projectId,organizationA:m.organizations.A?.id,organizationB:m.organizations.B?.id,organizationC:m.organizations.C?.id}}
+function baseConfig(m){return {runId:m.runId,runtimeMode:m.runtimeMode,issuer:m.origins.issuer,issuerPort:m.ports.issuer,webOrigin:m.origins.web,goPort:m.ports.go,databasePort:m.ports.database,databaseHost:'127.0.0.1',databaseName:'issue357',databaseUser:'commercial_runtime',databasePassword:m.secrets.reader,projectId:m.projectId,organizationA:m.organizations.A?.id,organizationB:m.organizations.B?.id,organizationC:m.organizations.C?.id}}
 async function go(m,mode,input='runtime.json') {
  return run(binary(m),[`-test.run=^TestIssue357${mode}$`,'-test.v','-test.timeout=120s'],{cwd:m.directory,env:{...childEnvironment(),ISSUE357_INPUT_FILE:join(m.directory,input)}});
 }
@@ -69,7 +69,7 @@ async function startApplications(m) {
  let goService={binary:binary(m),goArgs:['-test.run=^TestIssue357Serve$','-test.timeout=24h'],goEnvironment:{ISSUE357_INPUT_FILE:join(m.directory,'runtime.json')}};
  if(currentMode(m)) {
   const currentConfig=join(m.directory,'current-application.json');
-  await json(currentConfig,{schemaVersion:1,listen:{host:'127.0.0.1',port:m.ports.go},identity:{issuerURL:m.origins.issuer,authorizationAPIURL:m.origins.issuer,clientID:apps.APIClientID,clientSecret:apps.APIClientSecret,projectID:m.projectId},sourceAccountDatabase:{host:'127.0.0.1',port:m.ports.database,user:'source_account_runtime',password:m.secrets.sourceRuntime,database:'issue357',maxConnections:4},commercialDatabase:{host:'127.0.0.1',port:m.ports.database,user:'commercial_reader',password:m.secrets.reader,database:'issue357',maxConnections:4}});
+  await json(currentConfig,{schemaVersion:1,listen:{host:'127.0.0.1',port:m.ports.go},identity:{issuerURL:m.origins.issuer,authorizationAPIURL:m.origins.issuer,clientID:apps.APIClientID,clientSecret:apps.APIClientSecret,projectID:m.projectId},sourceAccountDatabase:{host:'127.0.0.1',port:m.ports.database,user:'source_account_runtime',password:m.secrets.sourceRuntime,database:'issue357',maxConnections:4},commercialDatabase:{host:'127.0.0.1',port:m.ports.database,user:'commercial_runtime',password:m.secrets.reader,database:'issue357',maxConnections:4}});
   goService={binary:applicationBinary(m),goArgs:['-config',currentConfig,'-shutdown-file',join(m.directory,'stop-go')],goEnvironment:{},goReadyFromPort:true,goPort:m.ports.go};
  }
  await json(join(m.directory,'services.json'),{...goService,uiDirectory:ui,webPort:m.ports.web,nextEnvironment});
