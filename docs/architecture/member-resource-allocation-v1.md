@@ -2,8 +2,12 @@
 
 Execution: #561. Parent: #551 / #469. Design Basis: Independent Architecture.
 Baseline: main `6918c0276f286e51105dfb217d5eb4a2d184e64b`.
-Admission: NOT_READY; first independent boundary review pending. This document
-precedes production implementation. One Writer and one main Delivery Batch PR.
+Admission: IMPLEMENTATION_READY after first independent boundary review. Review
+bound baseline above and design blob `6cf89c8ba986fd70eed1144918df8478d1ee7b0b`.
+No design BLOCKER; implementation tests cover all acquisition admission paths,
+member-funded release/debt conservation, atomic create assignment and fair
+UNKNOWN recovery scanning. This document precedes production implementation.
+One Writer and one main Delivery Batch PR.
 
 ## 1. Product authority and deliverable
 
@@ -202,6 +206,9 @@ failure. Once an owner intent is failed, no older worker may commit its effect.
 
 Recovery host: reuse `startCommercialRecoveryLoop`, startup plus 30-second
 ticks, at most 25 pending reservations per pass and bounded per-proof deadlines.
+Order due work by durable next-check time plus original reservation identity;
+advance its bounded next-check metadata when probing even an UNKNOWN result.
+Do not let the first 25 permanent unknowns starve later terminal results.
 The registered consumer coordinator is the sole settlement responsibility;
 requests may call the same idempotent method for immediate completion. This
 loop reads proof and settles only; it does not start a new acquisition, renew a
@@ -282,13 +289,19 @@ AES-GCM with random nonce, a separately configured 32-byte private deployment
 key and associated data binding org/Store/attempt/application/credential
 version. Store key ID with ciphertext; refuse operation if its configured key
 is unavailable. Never put credentials, tempToken, state or signature into
-normal logs, audit payloads, HTTP response DTOs, source control or test reports.
+normal logs, audit payloads, arbitrary response DTOs, source control or test
+reports. The required one-time state is exposed only within the prescribed
+official authorization URL/callback protocol; begin returns that URL, without
+additional state/token echoes or caller-chosen redirection.
 No new general secret-management platform; reuse private runtime config.
 
 With the stored credential, sign the documented store-info POST. Its actual
-response is `info.storeInfo` plus a separate `storeProductQuota`; verify
-supplier identity against token exchange. `storeStatus` and `storeName` are
-optional (returned only for self-operated/semi-managed stores). A successful
+response is `info.storeInfo` plus a separate `storeProductQuota`; when its
+optional supplier ID is present, compare it exactly with the required token
+exchange supplier ID. Missing query fields remain unavailable; do not invent
+them or turn an optional query field into an unsupported required provider
+contract. `storeStatus` and `storeName` are optional (returned only for
+self-operated/semi-managed stores). A successful
 authenticated query proves credential connectivity; it does not prove a
 missing store-status value is enabled or grant product publishing. Keep those
 fields unavailable when absent. Global uniqueness of `(AppId, openKeyId)`
