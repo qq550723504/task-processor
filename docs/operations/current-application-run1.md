@@ -3,7 +3,10 @@
 > **Scope note (2026-09-27)**: this runbook describes RUN-1, the identity/route acceptance
 > environment only. The drift that broke it from 2026-09-20 is analysed in #541, and the
 > split into RUN-1 plus a production-following FULL environment is designed in
-> [`acceptance-environment-split.md`](acceptance-environment-split.md) (Draft, not yet admitted).
+> [`acceptance-environment-split.md`](acceptance-environment-split.md) - the split decision is
+> **admitted (IMPLEMENTATION_READY)**; the FULL environment is **deferred by decision**, and
+> section 3.1 there remains an **unadjudicated proposal** pending the commercial, account-center
+> and verification domain owners.
 > Do not widen RUN-1's schema or grant scope to follow production.
 
 
