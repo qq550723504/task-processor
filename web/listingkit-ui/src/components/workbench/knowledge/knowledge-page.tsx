@@ -15,11 +15,14 @@ const root="/workbench/ai/knowledge";
 const description="知识库归当前企业所有，默认不会自动用于 AI。支持 TXT、Markdown、可提取正文的 PDF 和 DOCX，不支持扫描件 OCR。";
 export function KnowledgePage({baseId}:{baseId?:string}) {
  const context=useWorkbenchContext();
- if(context.isLoading || context.isSwitching) return <ConsoleState kind="loading" title="正在确认当前企业" />;
+ if(context.isLoading) return <ConsoleState kind="loading" title="正在确认当前企业" />;
  if(context.error || context.blockingError) return <ConsoleState kind="error" title="企业上下文不可用"><Button onClick={()=>void context.retry()}>重新确认</Button></ConsoleState>;
  if(!context.user || !context.effectiveOrganization) return <ConsoleState kind="unavailable" title="请先选择企业" />;
  const scope={userId:context.user.id,organizationId:context.effectiveOrganization.id};
- return <KnowledgeContent key={scope.userId+":"+scope.organizationId+":"+(baseId??"list")} scope={scope} baseId={baseId} />;
+ // Switch preparation may be rejected by a pending-intent guard. Hide the old
+ // view during preparation without discarding that intent; an actual identity
+ // or organization change still remounts and clears all scoped state.
+ return <>{context.isSwitching?<ConsoleState kind="loading" title="正在确认当前企业" />:null}<div hidden={context.isSwitching}><KnowledgeContent key={scope.userId+":"+scope.organizationId+":"+(baseId??"list")} scope={scope} baseId={baseId} /></div></>;
 }
 function errorMessage(error:unknown) {
  const code=error instanceof KnowledgeError?error.code:"KNOWLEDGE_UNAVAILABLE";
@@ -43,6 +46,10 @@ function date(value:string){return new Date(value).toLocaleString("zh-CN",{year:
 type Intent={path:string;init:RequestInit;key:string};
 function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) {
  const client=useQueryClient(),context=useWorkbenchContext();
+ // The verified current-organization roles include configured admin overrides.
+ // Ordinary controls follow the same admin boundary as KnowledgeManage; the
+ // server still authorizes every write with a fresh organization grant.
+ const canManage=context.roles.some(role=>role==="listingkit_admin" || role==="platform_admin");
  const [page,setPage]=useState(1),[name,setName]=useState(""),[editing,setEditing]=useState(false),[file,setFile]=useState<File|null>(null),[sourceName,setSourceName]=useState(""),[replacement,setReplacement]=useState<KnowledgeSource|null>(null),[preview,setPreview]=useState<KnowledgeSource|null>(null),[intent,setIntent]=useState<Intent|null>(null),[message,setMessage]=useState("");
  const key=["knowledge",scope.userId,scope.organizationId];
  const list=useQuery({queryKey:[...key,"bases",page],queryFn:({signal})=>knowledgeRequest(scope,"knowledge-bases?page="+page+"&pageSize=20",basesSchema,{signal}),enabled:!baseId,retry:false});
@@ -66,7 +73,7 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  useEffect(()=>registerSwitchGuard(()=>!mutation.isPending && !intent),[registerSwitchGuard,mutation.isPending,intent]);
  const busy=mutation.isPending || !!intent;
  const run=(path:string,method:string,body?:BodyInit,version?:number)=>{
- if(busy)return;const id=crypto.randomUUID();const headers:Record<string,string>={"Idempotency-Key":id};if(version)headers["If-Match"]='"'+version+'"';if(typeof body==="string")headers["Content-Type"]="application/json";
+ if(busy || !canManage)return;const id=crypto.randomUUID();const headers:Record<string,string>={"Idempotency-Key":id};if(version)headers["If-Match"]='"'+version+'"';if(typeof body==="string")headers["Content-Type"]="application/json";
  const command={path,init:{method,headers,body},key:id};setIntent(command);setMessage("");mutation.mutate(command);
  };
  const selectedCount=sources.data?.items.filter(s=>s.state==="ACTIVE").length??0;
@@ -78,28 +85,28 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  const active=base.data?.state==="ACTIVE";
  const listError=!baseId && list.error, detailError=baseId && base.error;
  return <ConsolePage title={baseId?(base.data?.name??"知识库"):"我的知识库（当前企业）"} description={description} breadcrumbs={baseId?[{label:"知识库",href:root},{label:base.data?.name??"资料"}]:undefined}
- actions={!baseId?<Button onClick={()=>setEditing(true)} disabled={busy}>创建知识库</Button>:active?<Button variant="outline" disabled={busy} onClick={()=>{setName(base.data!.name);setEditing(true);}}>编辑名称</Button>:undefined}>
+ actions={canManage?(!baseId?<Button onClick={()=>setEditing(true)} disabled={busy}>创建知识库</Button>:active?<Button variant="outline" disabled={busy} onClick={()=>{setName(base.data!.name);setEditing(true);}}>编辑名称</Button>:undefined):undefined}>
  {message?<Card className="knowledge-notice" role={mutation.isError?"alert":"status"}><p>{message}</p>{intent && !mutation.isPending?<Button onClick={()=>mutation.mutate(intent)}>重试同一次操作</Button>:null}</Card>:null}
- {editing?<Card className="knowledge-form"><form onSubmit={e=>{e.preventDefault();run(baseId?"knowledge-bases/"+baseId:"knowledge-bases",baseId?"PUT":"POST",JSON.stringify({name}),base.data?.version);}}>
+ {editing && canManage?<Card className="knowledge-form"><form onSubmit={e=>{e.preventDefault();run(baseId?"knowledge-bases/"+baseId:"knowledge-bases",baseId?"PUT":"POST",JSON.stringify({name}),base.data?.version);}}>
  <label htmlFor="knowledge-name">知识库名称</label><Input id="knowledge-name" value={name} onChange={e=>setName(e.target.value)} required disabled={busy} placeholder="例如：品牌资料" />
  <div className="knowledge-actions"><Button type="submit" disabled={busy || !name.trim() || [...name.trim()].length>120}>保存</Button><Button variant="outline" disabled={busy} onClick={()=>setEditing(false)}>取消</Button></div></form></Card>:null}
  {listError || detailError?<ConsoleState kind="error" title={errorMessage(listError||detailError)}><Button onClick={()=>void (baseId?base.refetch():list.refetch())}>重新读取</Button></ConsoleState>:null}
  {!baseId?<>
  {list.isPending?<ConsoleState kind="loading" title="正在读取知识库" />:null}
- {list.data?.items.length===0?<ConsoleState kind="empty" title="当前企业还没有知识库">创建知识库后上传企业资料，处理完成后即可预览正文。</ConsoleState>:null}
+ {list.data?.items.length===0?<ConsoleState kind="empty" title="当前企业还没有知识库">{canManage?"创建知识库后上传企业资料，处理完成后即可预览正文。":"管理员创建知识库并上传企业资料后，即可在此预览正文。"}</ConsoleState>:null}
  <div className="knowledge-grid">{list.data?.items.map(item=><Card className="knowledge-base-card" key={item.id}><h2>{item.name}</h2><p className="console-description">更新于 {date(item.updatedAt)}</p><p className="console-description">更新人：{item.updatedBy}</p><div className="knowledge-actions"><span className="knowledge-status" data-state={item.state}>{item.state==="ACTIVE"?"启用中":"已停用"}</span><Button asChild><Link href={root+"/"+item.id} prefetch={false}>打开知识库</Link></Button></div></Card>)}</div>
  {list.data?<div className="knowledge-pagination"><Button variant="outline" disabled={page===1} onClick={()=>setPage(v=>v-1)}>上一页</Button><span>第 {page} 页 · 共 {list.data.pagination.total} 个</span><Button variant="outline" disabled={page*20>=list.data.pagination.total} onClick={()=>setPage(v=>v+1)}>下一页</Button></div>:null}
  </>:<>
  {base.isPending?<ConsoleState kind="loading" title="正在读取知识库" />:null}
  {base.data && !active?<ConsoleState kind="unavailable" title="知识库已停用">资料正文已停止读取。</ConsoleState>:null}
- {active?<Card className="knowledge-sources"><div className="knowledge-panel-header"><div><h2>资料与处理状态</h2><p className="console-description">有效资料 {selectedCount}/4 · 只预览当前可读版本</p></div><div className="knowledge-actions"><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm("停用知识库后将无法读取资料正文，且无法恢复。是否继续？"))run("knowledge-bases/"+baseId+"/disable","POST",undefined,base.data!.version);}}>停用知识库</Button><Button disabled={busy || selectedCount>=4 || sources.isPending || !!sources.error} onClick={()=>{setReplacement(null);setFile(null);setEditing(false);document.getElementById("knowledge-upload")?.focus();}}>上传资料</Button></div></div>
- <div className="knowledge-upload"><label htmlFor="knowledge-upload">{replacement?"替换："+replacement.name:"上传新资料"}</label><input id="knowledge-upload" type="file" accept=".txt,.md,.markdown,.pdf,.docx" disabled={busy || (!replacement && selectedCount>=4)} onChange={e=>{const selected=e.target.files?.[0]??null;setFile(selected);if(!replacement)setSourceName([...selected?.name??""].slice(0,120).join(""));}} />
+ {active?<Card className="knowledge-sources"><div className="knowledge-panel-header"><div><h2>资料与处理状态</h2><p className="console-description">有效资料 {selectedCount}/4 · 只预览当前可读版本</p></div>{canManage?<div className="knowledge-actions"><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm("停用知识库后将无法读取资料正文，且无法恢复。是否继续？"))run("knowledge-bases/"+baseId+"/disable","POST",undefined,base.data!.version);}}>停用知识库</Button><Button disabled={busy || selectedCount>=4 || sources.isPending || !!sources.error} onClick={()=>{setReplacement(null);setFile(null);setEditing(false);document.getElementById("knowledge-upload")?.focus();}}>上传资料</Button></div>:null}</div>
+ {canManage?<div className="knowledge-upload"><label htmlFor="knowledge-upload">{replacement?"替换："+replacement.name:"上传新资料"}</label><input id="knowledge-upload" type="file" accept=".txt,.md,.markdown,.pdf,.docx" disabled={busy || (!replacement && selectedCount>=4)} onChange={e=>{const selected=e.target.files?.[0]??null;setFile(selected);if(!replacement)setSourceName([...selected?.name??""].slice(0,120).join(""));}} />
  {!replacement?<><label htmlFor="knowledge-source-name">资料名称</label><Input id="knowledge-source-name" disabled={busy} value={sourceName} onChange={e=>setSourceName(e.target.value)} placeholder="最多 120 个字符" /></>:null}
- <span className="console-description">文件与请求总大小不超过 10 MiB，每次一份资料。</span><div className="knowledge-actions"><Button disabled={busy || !file || file.size===0 || file.size>=10*1024*1024 || !replacement && (!sourceName.trim() || [...sourceName.trim()].length>120)} onClick={upload}>{replacement?"提交新版本":"上传并处理"}</Button>{replacement?<Button variant="outline" disabled={busy} onClick={()=>{setReplacement(null);setFile(null);}}>取消替换</Button>:null}</div></div>
+ <span className="console-description">文件与请求总大小不超过 10 MiB，每次一份资料。</span><div className="knowledge-actions"><Button disabled={busy || !file || file.size===0 || file.size>=10*1024*1024 || !replacement && (!sourceName.trim() || [...sourceName.trim()].length>120)} onClick={upload}>{replacement?"提交新版本":"上传并处理"}</Button>{replacement?<Button variant="outline" disabled={busy} onClick={()=>{setReplacement(null);setFile(null);}}>取消替换</Button>:null}</div></div>:null}
  {sources.isPending?<ConsoleState kind="loading" title="正在读取资料" />:sources.error?<ConsoleState kind="error" title={errorMessage(sources.error)}><Button onClick={()=>void sources.refetch()}>重新读取</Button></ConsoleState>:sources.data?.items.length===0?<ConsoleState kind="empty" title="尚未上传资料" />:null}
  <div className="knowledge-source-list">{sources.data?.items.map(source=>{
  const latest=source.latestRevision,readable=source.currentReadableRevision,isActive=source.state==="ACTIVE",processing=latest && ["ADMITTED","OBJECT_STORED","PROCESSING"].includes(latest.state);
- return <article className="knowledge-source" key={source.id}><div className="knowledge-source-copy"><h3>{isActive?source.name:"已停用资料"}</h3>{isActive && latest?<><p className="console-description">最新版本 v{latest.number} · {latest.filename} · {date(latest.updatedAt)}</p>{readable && readable.id!==latest.id?<p className="console-description">当前仍可读取 v{readable.number}，新版本尚未替换旧正文。</p>:null}<span className="knowledge-status" data-state={latest.state}>{stateLabels[latest.state]}</span>{latest.failure || latest.warning?<p className="knowledge-reason">{reasons[latest.failure??latest.warning??""]??"文件处理未完成，请检查资料后重试。"}</p>:null}</>:null}</div><div className="knowledge-actions">{isActive?<><Button variant="outline" disabled={!readable} onClick={()=>setPreview(source)}>预览{readable && latest && readable.id!==latest.id?"旧版本":""}</Button><Button variant="outline" disabled={busy || !!processing} onClick={()=>{setReplacement(source);setFile(null);document.getElementById("knowledge-upload")?.focus();}}>重新上传</Button><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm("停用后将无法读取此资料正文，且无法恢复。是否继续？"))run("knowledge-sources/"+source.id+"/disable","POST",undefined,source.version);}}>停用</Button></>:<span className="knowledge-status">已停用</span>}</div></article>;
+ return <article className="knowledge-source" key={source.id}><div className="knowledge-source-copy"><h3>{isActive?source.name:"已停用资料"}</h3>{isActive && latest?<><p className="console-description">最新版本 v{latest.number} · {latest.filename} · {date(latest.updatedAt)}</p>{readable && readable.id!==latest.id?<p className="console-description">当前仍可读取 v{readable.number}，新版本尚未替换旧正文。</p>:null}<span className="knowledge-status" data-state={latest.state}>{stateLabels[latest.state]}</span>{latest.failure || latest.warning?<p className="knowledge-reason">{reasons[latest.failure??latest.warning??""]??"文件处理未完成，请检查资料后重试。"}</p>:null}</>:null}</div><div className="knowledge-actions">{isActive?<><Button variant="outline" disabled={!readable} onClick={()=>setPreview(source)}>预览{readable && latest && readable.id!==latest.id?"旧版本":""}</Button>{canManage?<><Button variant="outline" disabled={busy || !!processing} onClick={()=>{setReplacement(source);setFile(null);document.getElementById("knowledge-upload")?.focus();}}>重新上传</Button><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm("停用后将无法读取此资料正文，且无法恢复。是否继续？"))run("knowledge-sources/"+source.id+"/disable","POST",undefined,source.version);}}>停用</Button></>:null}</>:<span className="knowledge-status">已停用</span>}</div></article>;
  })}</div></Card>:null}
  {active && currentPreview?<Card className="knowledge-preview" role="region" aria-label="资料正文预览"><div className="knowledge-panel-header"><h2>{currentPreview.name} · v{currentPreview.currentReadableRevision!.number}</h2><Button variant="outline" onClick={()=>setPreview(null)}>关闭预览</Button></div>{text.isPending?<p role="status">正在读取正文</p>:text.error?<p role="alert">{errorMessage(text.error)}</p>:text.data?<>{text.data.warning?<p className="knowledge-reason">{reasons[text.data.warning]??"正文部分提取，请检查内容。"}</p>:null}<pre>{text.data.text}</pre></>:null}</Card>:null}
  </>}

@@ -91,6 +91,35 @@ func TestWorkbenchContextExposesConfiguredPlatformAdminToBrowserRoleChecks(t *te
 	require.JSONEq(t, `{"user":{"id":"configured-user"},"homeOrganizationId":"org-a","effectiveOrganizationId":"org-a","selectionRequired":false,"organizations":[{"id":"org-a","name":"Organization A","roles":["custom-role","platform_admin"],"capabilities":{"workbench.source_account.manage":true}}]}`, response.Body.String())
 }
 
+func TestKnowledgeManagementRoleProjectionMatchesAuthorityPerOrganization(t *testing.T) {
+	authorizer, err := authz.NewListingKitAuthorizer([]string{"configured-user"}, []string{"configured-role"})
+	require.NoError(t, err)
+	for _, tc := range []struct{ user, role string }{
+		{"reader", "listingkit_viewer"}, {"reader", "listingkit_operator"},
+		{"reader", "listingkit_admin"}, {"reader", "platform_admin"},
+		{"reader", "admin"}, {"reader", ""},
+		{"configured-user", "listingkit_operator"}, {"reader", "configured-role"},
+	} {
+		t.Run(tc.user+"/"+tc.role, func(t *testing.T) {
+			grants := []authidentity.OrganizationGrant{
+				{OrganizationID: "org-a", Roles: []string{"listingkit_admin"}},
+				{OrganizationID: "org-b", Roles: []string{tc.role}},
+			}
+			response := serveHandler(t, http.MethodGet, "/api/v1/workbench/context", "", authidentity.AuthenticatedIdentity{
+				UserID: tc.user, HomeOrganizationID: "org-a", EffectiveOrganizationID: "org-b", OrganizationGrants: grants,
+			}, NewHandlerWithWorkbenchAuthorizer(authorizer).GetContext)
+			require.Equal(t, http.StatusOK, response.Code)
+			var result contextResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+			require.Len(t, result.Organizations, len(grants))
+			for i, organization := range result.Organizations {
+				visible := containsRole(organization.Roles, "listingkit_admin") || containsRole(organization.Roles, "platform_admin")
+				require.Equal(t, authorizer.Authorize(tc.user, grants[i].Roles, authz.PermissionWorkbenchKnowledgeManage), visible, organization.ID)
+			}
+		})
+	}
+}
+
 func (reader *workbenchBodyBoundaryReader) Read(buffer []byte) (int, error) {
 	if reader.offset >= len(reader.payload) {
 		reader.readsPastPayload++

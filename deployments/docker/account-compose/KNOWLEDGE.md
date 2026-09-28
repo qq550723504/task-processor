@@ -21,8 +21,13 @@ docker compose -f deployments/docker/account-compose/docker-compose.yml -f deplo
 
 首次启动会生成私密凭据。按账户中心 README 的方式取得初始登录凭据；不要将卷中的密码复制到 Issue、PR 或聊天。
 登录后在当前企业打开 `https://localhost:29442/workbench/ai/knowledge`。
+MinIO / mc 从[官方 MinIO Release](https://github.com/minio/minio/releases/tag/RELEASE.2025-04-22T22-12-26Z)和
+[官方 mc Release](https://github.com/minio/mc/releases/tag/RELEASE.2025-04-16T18-13-26Z)的固定二进制构建，
+Dockerfile 校验各架构已固定的官方 SHA256；首次构建需要访问 GitHub Release，提供 amd64 / arm64。
+本轮实际构建运行的是 amd64，arm64 构建未执行。
+原 Quay 固定镜像与 DockerHub 同版本镜像在开发验证时无法拉取，不作为启动依赖。
 本地 bootstrap 管理员允许管理；常规 `listingkit_admin/platform_admin` 可管理，
-`listingkit_operator` 只读，`listingkit_viewer` 不可读取。每次读取和写入都重新验证企业授权。
+`listingkit_operator` 只读且页面隐藏管理控件，`listingkit_viewer` 不可读取。每次读取和写入都重新验证企业授权。
 
 1. 创建知识库，打开详情。
 2. 选择一份文件并确认资料名称；请求总大小不超过 10 MiB、文件名不超过 255 UTF-8 字节、资料名最多 120 字符。
@@ -38,6 +43,9 @@ docker compose -f deployments/docker/account-compose/docker-compose.yml -f deplo
   只有所需 SELECT/INSERT/可变列 UPDATE，无 DDL、TEMP、跨业务库 CONNECT 或角色继承。
 - 原文件保存在私有 MinIO 卷的 `knowledge/knowledge/*` 命名空间，运行凭据只允许该前缀 GetObject/PutObject。
   重复写入复用确定对象身份并先检查摘要与大小；浏览器没有对象 URL 或 key。
+  合成集成检查已用实际 bootstrap/policy 的非 root 运行凭据验证缺失对象、首次上传、不可覆盖、读回、禁止删除与前缀外写入。
+  本文件 policy 对应固定 MinIO；若单独配置 AWS S3，必须按[官方 HeadObject 权限要求](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+  为专用私有 bucket 配置 `s3:ListBucket` 以区分缺失对象的 404 与拒绝访问的 403。生产 S3 仍为 NOT_RUN。
 - Tika 只连接 internal Docker network，无公开端口、凭据或宿主目录；非 root、只读 rootfs、256 MiB 临时盘、
   2 CPU/2 GiB/128 PID，仅 PDF/OOXML parser，关闭 OCR/嵌入文档/请求配置。
   [官方配置说明](https://tika.apache.org/docs/4.0.x/configuration/index.html)与[服务端边界](https://tika.apache.org/docs/4.0.x/using-tika/server/index.html)。
@@ -62,6 +70,7 @@ docker compose -f deployments/docker/account-compose/docker-compose.yml -f deplo
 ```powershell
 go test ./internal/knowledge/... ./internal/integration/documentparser/tika ./internal/integration/s3 ./internal/authz
 go test -tags=integration ./internal/integration/persistence/knowledge ./internal/app/httpapi -run "TestKnowledge|TestCurrentKnowledge" -count=1
+go test -tags=integration ./internal/integration/s3 -run TestKnowledgeMinIORuntimeMissingObjectAndImmutableRoundTrip -count=1
 # 可选：仅指向独立 localhost Tika 开发实例
 $env:KNOWLEDGE_TIKA_TEST_URL = "http://127.0.0.1:29998"
 go test -tags=integration ./internal/integration/documentparser/tika -run TestTikaPinned -count=1

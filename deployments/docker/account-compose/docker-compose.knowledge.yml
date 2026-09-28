@@ -25,15 +25,15 @@ services:
  listingkit-ui:
   environment: {LISTINGKIT_KNOWLEDGE_ENABLED: "true"}
  knowledge-objects:
-  image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: server}
   networks: [knowledge-private]
   entrypoint: [/bin/sh,-ec]
   command: ['export MINIO_ROOT_USER=knowledge_local_root; export MINIO_ROOT_PASSWORD="$$(cat /private/root-password)"; exec minio server /data --address :9000']
   volumes: [knowledge-storage-secret:/private:ro,knowledge-objects:/data]
   depends_on: {bootstrap: {condition: service_completed_successfully}}
-  healthcheck: {test: [CMD,curl,-fsS,http://127.0.0.1:9000/minio/health/live],interval: 3s,timeout: 3s,retries: 40}
+  healthcheck: {test: [CMD,wget,-q,-O,/dev/null,http://127.0.0.1:9000/minio/health/live],interval: 3s,timeout: 3s,retries: 40}
  knowledge-storage-init:
-  image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+  build: {context: .,dockerfile: Dockerfile.knowledge-storage,target: client}
   networks: [knowledge-private]
   entrypoint: [/bin/sh,/init/knowledge-storage-init.sh]
   volumes: [knowledge-storage-secret:/private:ro,./knowledge-storage-init.sh:/init/knowledge-storage-init.sh:ro,./knowledge-storage-policy.json:/init/policy.json:ro]
