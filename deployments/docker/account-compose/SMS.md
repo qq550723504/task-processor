@@ -32,6 +32,34 @@ expiry. It **must match the actual ZITADEL phone-code expiry**; the example does
 not configure expiry in ZITADEL. Other supported events use provider-supplied
 expiry. Check template parameters before activating the provider.
 
+### Identity contract checks before activation
+
+Tencent approval alone does not prove that ZITADEL's generated values fit the
+template. [Tencent's SendSms contract](https://cloud.tencent.com/document/api/382/55981)
+requires verification-template variables to contain at most six ASCII digits.
+An uppercase-letter code causes `InvalidParameterValue.TemplateParameterFormatError`.
+For phone verification, read this instance's
+`SECRET_GENERATOR_TYPE_VERIFY_PHONE_CODE` through the official Admin API and
+configure `length: 6`, `includeDigits: true`, with `includeLowerLetters`,
+`includeUpperLetters` and `includeSymbols` all false. Preserve the approved
+expiry and match `PhoneVerificationExpiryMinutes` to it. This changes the
+generator's alphabet and requires the installation owner's approval; it does
+not configure SMS MFA or other generators. Never convert the code in the relay:
+the handset must receive exactly the value ZITADEL will validate.
+
+The Account Compose OIDC scopes include `phone`, because the account profile
+and KYC gate consume ZITADEL UserInfo's phone claims. After a scope change,
+complete a fresh normal login. When overriding the UI command, retain exactly
+`$$(cat ...)` in Compose YAML; doubling it again makes the shell use its PID
+instead of reading the client credentials.
+
+The existing verification action calls **Auth v1**, whose
+[VerifyMyPhoneRequest and VerifyMyEmailRequest](https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/auth.proto)
+both require `{"code":"<received-code>"}`. The User v2 field `verificationCode`
+does not belong on these endpoints. A successful resend response acknowledges
+the code request; confirm delivery separately, then submit the handset code and
+read back the official verified state.
+
 Use an absolute path and a private regular file: mode 0600 on Linux, or a
 Windows ACL allowing only the owner, SYSTEM and Administrators. Symlinks,
 relative paths, public files, missing fields, unknown fields and trailing JSON

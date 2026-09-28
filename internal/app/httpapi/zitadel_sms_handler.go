@@ -17,6 +17,11 @@ const zitadelSMSWebhookMaxBodyBytes int64 = 64 * 1024
 // Deliver accepts callbacks from ZITADEL's HTTP SMS provider. This
 // route intentionally bypasses bearer authentication because it authenticates
 // the complete bounded raw payload using ZITADEL's webhook signature instead.
+// Before activation, match ZITADEL's phone generator to Tencent's verification
+// template: at most six ASCII digits, no letters/symbols, and matching expiry.
+// Letter-bearing codes fail with TemplateParameterFormatError even if approved.
+// The relay must preserve the original code; changing it breaks verification.
+// Deployment checks: deployments/docker/account-compose/SMS.md.
 func (h zitadelSMSHandler) Deliver(c *gin.Context) {
 	body, ok := readZitadelSMSWebhookBody(c)
 	if !ok {
