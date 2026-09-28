@@ -206,7 +206,6 @@ func TestIssue357Seed(t *testing.T) {
 		// Grant exactly what listingsubscription verifies, no more.
 		require.NoError(t, db.Exec("GRANT SELECT ON TABLE public.saas_tenant_subscriptions, public.saas_plans, public.saas_tenant_entitlements, public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime").Error)
 		require.NoError(t, db.Exec("GRANT INSERT, UPDATE ON TABLE public.saas_usage_buckets, public.saas_usage_events, public.saas_usage_event_outbox, public.saas_subscription_audit_logs TO commercial_runtime").Error)
-		require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET default_transaction_read_only=off").Error)
 		require.NoError(t, db.Exec("ALTER ROLE commercial_runtime SET statement_timeout='10s'").Error)
 	} else {
 		require.NoError(t, db.Exec("GRANT SELECT ON ALL TABLES IN SCHEMA public TO commercial_runtime, commercial_reader").Error)

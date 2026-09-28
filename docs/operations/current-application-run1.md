@@ -63,7 +63,10 @@ the existing database through two roles:
   `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`.
 - `commercial_runtime`: the boundary `listingsubscription` verifies — `SELECT` on the
   commercial tables plus `INSERT`/`UPDATE` on the usage and audit writers. It is
-  **not** a read-only role; provisioning it read-only is rejected at startup.
+  **not** a read-only *grant*, although the role keeps a read-only session
+  setting: the startup preflight checks ACL grants, not that setting, and the
+  repository's own permission test starts the binary successfully with
+  `default_transaction_read_only=on`.
 - `commercial_reader`: the legacy/default composition's read-only role, retained
   so that a launch without `--current-application` has the role it names.
 
