@@ -7,16 +7,20 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getAccountAudit } from "@/lib/api/account-audit";
-import { getMemberTokenAllocations } from "@/lib/api/account-allocation";
+
 import { AccountReadError, updateAccountBusinessProfile, type AccountBusinessProfile, type AccountBusinessProfileInput, type AccountOrganization, type AccountProfile } from "@/lib/api/account";
 import { getAccountIdentityProfile, resendAccountEmailVerification, resendAccountPhoneVerification, setAccountEmail, setAccountPhone, updateAccountIdentityProfile, updateAccountPassword, verifyAccountEmail, verifyAccountPhone, type AccountIdentityProfileInput } from "@/lib/api/account-identity";
 import { getCommercialOverview, type CommercialSubscription } from "@/lib/api/commercial";
-import { getMembers } from "@/lib/api/members";
+import { getMemberSummary } from "@/lib/api/members";
+import {getInvitationSummary} from "@/lib/api/invitations";
+import {listWorkbenchStores} from "@/lib/api/workbench-stores";
+import {EnterpriseResources} from "../commercial/enterprise-resources";
 import styles from "./account.module.css";
 import { ConsoleState } from "../console/console-page";
 import { SubjectVerification } from "./subject-verification";
+import {IdentityDates,RegionSettings,RegionValue} from "./account-facts";
 
-const provided = (value: string | null) => value?.trim() || "未提供";
+const provided = (value: string | null) => value?.trim() || "未设置";
 const verification = (value: boolean | null) => value === true ? "已验证" : value === false ? "未验证" : "未提供";
 const effectiveSubscriptionLabels: Record<CommercialSubscription["effective_status"], string> = { active: "生效中", trialing: "试用中", expired: "已过期", disabled: "已停用", not_started: "尚未生效" };
 function Panel({ title, description, children, className = "" }: { title: string; description?: string; children: ReactNode; className?: string }) {
@@ -50,20 +54,21 @@ export function ProfileView({ data, business, organization, organizationId, sect
 }
 
 function ProfileIdentity({ data }: { data: AccountProfile }) {
-  return <Card className={styles.identity}><div><h2>{data.displayName?.trim() || "当前账户"}</h2><p>账户 ID：{data.userId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div><div className={styles.identityStatus}><span className={styles.badge}>账户资料 · 当前用户</span><span className={styles.identityMeta}>注册时间：未提供 · 最近登录：未提供</span></div></Card>;
+  return <Card className={styles.identity}><div><h2>{data.displayName?.trim() || "当前账户"}</h2><p>账户 ID：{data.userId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div><div className={styles.identityStatus}><span className={styles.badge}>账户资料 · 当前用户</span><IdentityDates subject={data.userId}/></div></Card>;
 }
 
 function AccountSettingsPanel({ data, editable = false, returnTo, identityContactOutcomeUnknown = false, onIdentityContactOutcomeUnknown }: { data: AccountProfile; editable?: boolean; returnTo?: string; identityContactOutcomeUnknown?: boolean; onIdentityContactOutcomeUnknown?: () => void }) {
   if (editable) return <>
     <Panel title="账户信息" description="个人身份资料由 ZITADEL 官方 Auth API 管理" className={styles.settingsAccount}>
-      <Fields items={[["显示名称", provided(data.displayName)], ["国家 / 地区", "未提供"], ["省 / 州", "未提供"], ["城市", "未提供"]]} />
+      <Fields items={[["显示名称", provided(data.displayName)], ["国家 / 地区", <RegionValue key="country" subject={data.userId} field="country"/>], ["省 / 州", <RegionValue key="province" subject={data.userId} field="province"/>], ["城市", <RegionValue key="city" subject={data.userId} field="city"/>]]} />
+      <RegionSettings subject={data.userId}/>
       <IdentityProfileManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/settings"} />
     </Panel>
     <IdentityContactManagement data={data} returnTo={returnTo ?? "/workbench/account/profile/settings"} identityContactOutcomeUnknown={identityContactOutcomeUnknown} onIdentityContactOutcomeUnknown={onIdentityContactOutcomeUnknown} />
   </>;
   return <div className={styles.settingsSections}>
     <Panel title="账户设置" description="个人身份资料由 ZITADEL 官方 Auth API 管理">
-      <Fields items={[["显示名称", provided(data.displayName)], ["国家 / 地区", "未提供"], ["省 / 州", "未提供"], ["城市", "未提供"]]} />
+      <Fields items={[["显示名称", provided(data.displayName)], ["国家 / 地区", <RegionValue key="country" subject={data.userId} field="country"/>], ["省 / 州", <RegionValue key="province" subject={data.userId} field="province"/>], ["城市", <RegionValue key="city" subject={data.userId} field="city"/>]]} />
       <p className={styles.note}>进入账户设置后，可在 Shuomi 内修改个人资料；字段由当前登录身份服务提供。</p>
     </Panel>
     <Panel title="联系方式"><Fields items={[["手机号码", <>{provided(data.phoneNumber)} · {verification(data.phoneNumberVerified)}</>], ["邮箱地址", <>{provided(data.email)} · {verification(data.emailVerified)}</>]]} /><p className={styles.note}>修改和验证由 ZITADEL 官方流程完成。</p></Panel>
@@ -187,22 +192,19 @@ function profileInput(profile?: AccountBusinessProfile | null): AccountBusinessP
 function splitList(value: string) { return [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))].slice(0, 16); }
 
 export function OrganizationView({ data }: { data: AccountOrganization }) {
-  const members = useQuery({ queryKey: ["account-overview", data.userId, data.effectiveOrganizationId, "members"], queryFn: ({ signal }) => getMembers({ expectedUserId: data.userId, expectedOrganizationId: data.effectiveOrganizationId, signal }, 0), gcTime: 0, staleTime: 0, retry: false });
+  const members = useQuery({ queryKey: ["account-overview", data.userId, data.effectiveOrganizationId, "members"], queryFn: ({ signal }) => getMemberSummary({ expectedUserId: data.userId, expectedOrganizationId: data.effectiveOrganizationId, signal }), gcTime: 0, staleTime: 0, retry: false });
   const commercial = useQuery({ queryKey: ["account-overview", data.userId, data.effectiveOrganizationId, "commercial"], queryFn: ({ signal }) => getCommercialOverview(data.effectiveOrganizationId, signal), gcTime: 0, staleTime: 0, retry: false });
-  const allocation = useQuery({ queryKey: ["account-overview", data.userId, data.effectiveOrganizationId, "allocation"], queryFn: ({ signal }) => getMemberTokenAllocations({ expectedUserId: data.userId, expectedOrganizationId: data.effectiveOrganizationId }, signal), gcTime: 0, staleTime: 0, retry: false });
   const audit = useQuery({ queryKey: ["account-overview", data.userId, data.effectiveOrganizationId, "audit"], queryFn: ({ signal }) => getAccountAudit({ expectedUserId: data.userId, expectedOrganizationId: data.effectiveOrganizationId, signal }), gcTime: 0, staleTime: 0, retry: false });
   const metric = (query: { isPending: boolean; isError: boolean }, value: ReactNode, unavailable: string) => query.isPending ? "正在读取" : query.isError ? unavailable : value;
-  const activeMembers = members.data?.items.filter(member => member.state === "active").length;
+  const activeMembers = members.data?.active;
+  const invites = useQuery({queryKey:["invitation-summary",data.userId,data.effectiveOrganizationId],queryFn:({signal})=>getInvitationSummary({expectedUserId:data.userId,expectedOrganizationId:data.effectiveOrganizationId,signal}),gcTime:0,staleTime:0,retry:false});
+  const stores = useQuery({queryKey:["enterprise-stores",data.userId,data.effectiveOrganizationId],queryFn:({signal})=>listWorkbenchStores({page:1,pageSize:1},data.effectiveOrganizationId,signal),gcTime:0,staleTime:0,retry:false});
   const subscription = commercial.data?.subscription;
   return <>
     <Card className={styles.identity}><div className={styles.organizationIdentity}><Image src="/console/account/organization-avatar.svg" width={64} height={64} alt="" unoptimized /><div><h2>{provided(data.name)}</h2><p>当前有效企业：{data.effectiveOrganizationId}</p><p>归属企业（Home）：{data.homeOrganizationId}</p></div></div><div className={styles.identityStatus}><span className={styles.badge}>企业信息 · 只读</span><span className={styles.identityMeta}>当前组织角色：{data.roles.length ? data.roles.join("、") : "未提供"}</span></div></Card>
-    <div className={styles.enterpriseMetrics} aria-label="当前企业信息"><article><span>企业成员</span><strong>{metric(members, members.data?.total, "暂不可用")}</strong><small>{activeMembers === undefined ? "有效成员统计未提供" : `当前页有效成员 ${activeMembers} 人`}</small></article><article><span>已绑定店铺</span><strong>未提供</strong><small>当前资源 owner 未返回已绑定店铺数</small></article><article><span>待处理邀请</span><strong>未提供</strong><small>当前成员目录未返回邀请状态</small></article><article><span>已授予权益</span><strong>{metric(commercial, commercial.data?.entitlements.length, "暂不可用")}</strong><small>{subscription ? `当前订阅：${subscription.plan_name ?? subscription.plan_code} · ${effectiveSubscriptionLabels[subscription.effective_status]}` : commercial.isError ? "权益服务未返回订阅" : "当前无订阅"}</small></article></div>
-    <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "查看企业成员；获准管理员可邀请成员、调整角色和移除成员"], ["资源与额度", "查看企业已授予权益和成员 Token 分配"], ["操作记录", "查看账户资料、成员、额度与源账号的已提交事件"]].map(([title, description]) => <Panel key={title} title={title} description={description}>{title === "成员与权限" ? <><Button asChild variant="outline"><Link href="/workbench/account/organization/members" prefetch={false}>管理成员</Link></Button><p className={styles.note}>角色与可执行操作以当前组织授权 owner 为准。</p></> : title === "资源与额度" ? <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>管理资源</Link></Button> : <><Button asChild variant="outline"><Link href="/workbench/account/organization/audit" prefetch={false}>查看记录</Link></Button><p className={styles.note}>只展示已提交成功的业务事件。</p></>}</Panel>)}</div>
-    <Panel title="企业资源" className={styles.resources}><div className={styles.enterpriseResources}><div><span>订阅权益</span><strong>{commercial.isPending ? "正在读取" : commercial.isError ? "暂不可用" : commercial.data.subscription?.plan_name ?? "无订阅"}</strong></div><div><span>AI Token 总额度</span><strong>{allocation.isPending ? "正在读取" : allocation.isError ? "暂不可用" : allocation.data.enterprise.total}</strong></div><div><span>已分配</span><strong>{allocation.isPending ? "正在读取" : allocation.isError ? "暂不可用" : allocation.data.enterprise.allocated}</strong></div><div><span>已消费</span><strong>{allocation.isPending ? "正在读取" : allocation.isError ? "暂不可用" : allocation.data.enterprise.consumed}</strong></div></div><p className={styles.note}>店铺实际数量、AI 点数与数据余额仅在各自 owner 返回后展示，不由套餐或用量推算。</p></Panel>
-    <Panel title="成员资源分配" description="AI Token 使用当前企业 entitlement window 的真实 set-target 分配事实。" className={styles.resources}>
-      {allocation.isPending ? <p className={styles.note}>正在读取成员分配…</p> : allocation.isError ? <p className={styles.unavailable} role="status">成员 Token 分配暂不可用。</p> : allocation.data.members.length === 0 ? <p className={styles.unavailable} role="status">当前周期暂无成员分配记录。</p> : <div className={styles.allocationPreview}><div className={styles.allocationHead}><span>账号标识</span><span>已分配</span><span>已消费</span><span>剩余</span></div>{allocation.data.members.slice(0, 5).map(member => <div className={styles.allocationLine} key={member.memberId}><span><strong>{member.displayName || member.loginName || member.userId}</strong><small>{member.loginName || member.userId}</small></span><span>{member.allocation.allocated}</span><span>{member.allocation.consumed}</span><span>{member.allocation.remaining}</span></div>)}</div>}
-      <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>查看资源与额度</Link></Button>
-    </Panel>
+    <div className={styles.enterpriseMetrics} aria-label="当前企业信息"><article><span>企业成员</span><strong>{metric(members, members.data?.total, "暂不可用")}</strong><small>{activeMembers === undefined ? "有效成员统计暂不可用" : `全部有效成员 ${activeMembers} 人`}</small></article><article><span>已绑定店铺</span><strong>{metric(stores, stores.data?.pagination.total, "暂不可用")}</strong><small>来自当前企业店铺目录</small></article><article><span>待处理邀请</span><strong>{metric(invites, invites.data?.pending, "暂不可用")}</strong><small>未结束且未过期的正式邀请</small></article><article><span>已授予权益</span><strong>{metric(commercial, commercial.data?.entitlements.length, "暂不可用")}</strong><small>{subscription ? `当前订阅：${subscription.plan_name ?? subscription.plan_code} · ${effectiveSubscriptionLabels[subscription.effective_status]}` : commercial.isError ? "权益服务未返回订阅" : "当前无订阅"}</small></article></div>
+    <h2 className={styles.sectionTitle}>企业管理</h2><div className={styles.managementGrid}>{[["成员与权限", "查看企业成员；获准管理员可邀请成员、调整角色和移除成员"], ["资源与额度", "查看企业余额和成员消费上限"], ["操作记录", "查看账户资料、成员、额度与源账号的已提交事件"]].map(([title, description]) => <Panel key={title} title={title} description={description}>{title === "成员与权限" ? <><Button asChild variant="outline"><Link href="/workbench/account/organization/members" prefetch={false}>管理成员</Link></Button><p className={styles.note}>角色与可执行操作以当前组织授权 owner 为准。</p></> : title === "资源与额度" ? <Button asChild variant="outline"><Link href="/workbench/account/organization/resources" prefetch={false}>管理资源</Link></Button> : <><Button asChild variant="outline"><Link href="/workbench/account/organization/audit" prefetch={false}>查看记录</Link></Button><p className={styles.note}>只展示已提交成功的业务事件。</p></>}</Panel>)}</div>
+    <Panel title="企业资源" className={styles.resources}><EnterpriseResources userId={data.userId} organizationId={data.effectiveOrganizationId} scope={JSON.stringify([data.userId,data.effectiveOrganizationId])} sequence={0}/></Panel>
     <Panel title="最近操作记录" description="时间为业务操作时间；记录只供追溯。" className={styles.resources}>
       {audit.isPending ? <p className={styles.note}>正在读取操作记录…</p> : audit.isError ? <p className={styles.unavailable} role="status">操作记录暂不可用。</p> : audit.data.items.length === 0 ? <p className={styles.unavailable} role="status">暂无已提交的操作记录。</p> : <ul className={styles.auditPreview}>{audit.data.items.slice(0, 4).map(item => <li key={`${item.eventType}:${item.relation.reference}:${item.relation.version}`}><time dateTime={item.time}>{new Date(item.time).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false })}</time><span>{item.actor}</span><strong>{item.operation} · {item.objectReference}</strong></li>)}</ul>}
       <Button asChild variant="outline"><Link href="/workbench/account/organization/audit" prefetch={false}>查看操作记录</Link></Button>

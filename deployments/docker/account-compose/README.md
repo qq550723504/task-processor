@@ -247,7 +247,7 @@ their application features.
 | Commercial reads, usage reservation/settlement, member allocation | `saas_plans`, `saas_tenant_subscriptions`, `saas_tenant_entitlements`; `saas_usage_buckets`, `saas_usage_events`, `saas_usage_event_outbox`, `saas_subscription_audit_logs`; `account_member_token_locks`, `account_member_token_allocations`, `account_member_token_operations`, `account_member_token_audit_events` | `commercial` (or `ACCOUNT_COMMERCIAL_DATABASE`) | `commercial_runtime` | `commercialDatabase` / 4; image worker has its own commercial pool / 4 | `business-db:5433` |
 | Subscription/catalog owner; commercial orders; organization resources | `saas_modules`, `saas_plans`, `saas_plan_modules`, `saas_tenant_subscriptions`, `saas_tenant_entitlements`, `saas_usage_counters`, `saas_usage_counter_adjustments`, `saas_subscription_audit_logs`, `saas_subscription_activation_fences`, `saas_purchased_plan_activations`; `commercial_offers`, `commercial_quotes`, `commercial_orders`, `commercial_order_items`; `saas_organization_resource_buckets`, `saas_organization_resource_operations`, `saas_organization_resource_source_claims`, `saas_organization_resource_events`, `saas_organization_resource_reservations`, `saas_organization_resource_debts`, `saas_organization_resource_audit_logs` | same commercial database | `commercial_owner_runtime` (separate password) | `commercialOwnerDatabase` / 2 | `business-db:5433` |
 | Referral registration/economics; canonical Money owner | `referral_codes`, `registration_intents`, `referral_relations`, `referral_receipts`, `registration_admission_buckets`, `referral_earning_claims`, `referral_earnings_ledger`, `referral_refund_operations`, `referral_chargeback_operations`, `referral_earnings_projection`, `referral_withdrawals`, `referral_withdrawal_operations`, `referral_earnings_audit_events`; `ledger_payment_settlements`, `ledger_refund_settlements`, `ledger_chargeback_settlements`, `ledger_payout_methods`, `ledger_payout_method_operations`, `ledger_organization_wallets`, `ledger_organization_wallet_entries`, `ledger_organization_wallet_reservations`, `ledger_organization_wallet_reserve_decisions`, `ledger_organization_topup_settlements`, `ledger_organization_wallet_reversals` | `referrals` | `referral_runtime` | `referrals.referralDatabase` / 4 | `business-db:5433` |
-| Organization membership operation receipts/audit (identity remains ZITADEL-owned) | `organization_member_operations`, `organization_member_audit_events` | `membership` | `organization_membership_runtime` | `membership.database` / 4 | `business-db:5433` |
+| Organization membership invitation/operation receipts and audit (identity remains ZITADEL-owned) | `organization_member_invitations`, `organization_member_operations`, `organization_member_audit_events` | `membership` | `organization_membership_runtime` | `membership.database` / 4 | `business-db:5433` |
 | Acquisition; SRC publication and Product Catalog | `product_acquisition_operations`, `product_source_publications`, `product_source_publication_receipts`, `product_snapshot_versions`, `product_snapshot_heads` | `product_acquisition` | `source_acquisition_runtime` | `productAcquisitionDatabase` / 4 | `business-db:5433` |
 | Organization ImageAgent; approved Product assets; AI invocation records | `image_agent_v2_runs`, `image_agent_v2_plans`, `image_agent_v2_slots`, `image_agent_v2_attempts`, `image_agent_v2_events`, `image_agent_v2_asset_catalog`, `image_agent_v2_asset_catalog_manifests`, `image_agent_v2_projection_snapshots`, `image_agent_v2_projection_commits`, `image_agent_v2_slot_external_effects`, `image_agent_v3_slot_external_effects`; `product_approved_assets`, `product_approval_receipts`, `product_approved_inventory_heads`, `product_approved_inventory_version_heads`; `ai_client_credentials`, `ai_invocations` | `image_agent` | `image_agent_runtime` (API), `image_agent_worker_runtime` (worker) | `imageAgent.database` / 4; worker `database` / 4 | `business-db:5433` |
 | ZITADEL / official Login V2 | ZITADEL-managed identity schema | `zitadel` | existing ZITADEL provisioning configuration, unchanged | ZITADEL-managed pools, separate from application | `identity-db:5432` |
@@ -493,6 +493,37 @@ The account profile, membership and referral schemas are initialized once by
 the existing source-account boundary, provider credentials and independent
 database pools before serving; a
 misconfigured module fails startup instead of appearing as an unavailable page.
+
+### Account facts and email invitations
+
+Fresh initialization also creates user region preferences in the AccountProfile
+database and formal invitation receipts in the membership database. The current
+runtime roles receive only SELECT/INSERT/UPDATE on those tables. Account dates
+come from the signed-in user's ZITADEL self profile; member counts come from
+provider totals, and an absent login record is shown separately from a read error.
+
+`membership.invitationMail` in the private current-application manifest configures
+automatic SMTP notification. Fresh local initialization sets the loopback Mailpit
+transport (127.0.0.1:1025), `invitations@localhost` sender and this Compose project's
+HTTPS application origin. In the members page, create an email invitation, open
+its message in this project's Mailpit inbox, then sign in through the official
+login page with the matching verified email and explicitly accept or decline.
+Creation and email delivery do not create an identity or grant enterprise access.
+
+External SMTP requires `host`, `port`, `from`, and a fixed HTTPS `publicOrigin`;
+`username` and `password` must be configured together if authentication is used.
+External connections require TLS. `localPlaintext: true` is restricted to
+explicit loopback development SMTP without credentials. Keep this configuration
+in the private manifest; do not commit or print credentials. Missing SMTP disables
+new email invitations with a visible configuration message. Phone/SMS invitations
+are not opened in this batch.
+
+The notification status means the SMTP server acknowledged the message, not that
+it reached an inbox. An administrator can resend the same pending, unexpired
+invitation link. A lost authorization result stays pending verification and can
+only be queried; it is never sent to the identity provider again. These changes
+do not update or migrate a retained instance automatically; a candidate runtime
+update requires its own authorization.
 
 The separate membership directory PAT has the read-only ZITADEL instance role
 `IAM_OWNER_VIEWER`: the directory contains role assignments from multiple

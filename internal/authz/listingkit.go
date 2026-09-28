@@ -55,6 +55,15 @@ var workbenchCommercialPermissions = []string{
 	PermissionWorkbenchCommercialWalletTopUp,
 }
 
+// WorkbenchPermissions is a bounded display contract, never a policy source.
+func WorkbenchPermissions() []string {
+	result := []string{PermissionProductSourcingWrite, PermissionLocalAgentWrite, PermissionImageAgentRead, PermissionImageAgentWrite}
+	for _, group := range [][]string{workbenchStorePermissions, workbenchSourceAccountPermissions, workbenchOrganizationMemberPermissions, workbenchCommercialPermissions} {
+		result = append(result, group...)
+	}
+	return result
+}
+
 const listingKitModel = `
 [request_definition]
 r = sub, obj

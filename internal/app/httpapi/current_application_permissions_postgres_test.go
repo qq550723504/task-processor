@@ -37,6 +37,7 @@ var run1AllowedPrivileges = map[string]map[string][]string{
 	"source_account_runtime": {
 		"source_account_resources":              {"SELECT", "INSERT", "UPDATE"},
 		"source_account_operations":             {"SELECT", "INSERT"},
+		"account_user_preferences":              {"SELECT", "INSERT", "UPDATE"},
 		"account_business_profiles":             {"SELECT", "INSERT", "UPDATE"},
 		"account_business_profile_audit_events": {"SELECT", "INSERT"},
 		"subject_verification_applications":     {"SELECT", "INSERT", "UPDATE"},

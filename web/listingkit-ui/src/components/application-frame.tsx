@@ -40,6 +40,9 @@ export function ApplicationFrame({ children, productAcquisitionAvailable = false
   if (isPublicRoute(pathname)) {
     return <>{children}</>;
   }
+  if (pathname?.startsWith("/invitations/")) {
+    return <ThemeProvider defaultTheme="dark"><div className="console-theme"><QueryProvider>{children}</QueryProvider></div></ThemeProvider>;
+  }
 
   if (isWorkbenchRoute(pathname)) {
     return (

@@ -151,14 +151,15 @@ func TestAccountIdentityRegistersOfficialOperationsWithCorrectMethods(t *testing
 	registry := kernelmodule.NewRegistry()
 	require.NoError(t, (accountIdentityModule{client: &accountIdentitySelfServiceSpy{}}).Register(registry))
 	want := map[string][]string{
-		accountIdentityProfilePath:     {http.MethodGet, http.MethodPut},
-		accountIdentityEmailPath:       {http.MethodPut},
-		accountIdentityEmailResendPath: {http.MethodPost},
-		accountIdentityEmailVerifyPath: {http.MethodPost},
-		accountIdentityPhonePath:       {http.MethodPut},
-		accountIdentityPhoneResendPath: {http.MethodPost},
-		accountIdentityPhoneVerifyPath: {http.MethodPost},
-		accountIdentityPasswordPath:    {http.MethodPut},
+		accountIdentityProfilePath:         {http.MethodGet, http.MethodPut},
+		accountIdentityEmailPath:           {http.MethodPut},
+		accountIdentityEmailResendPath:     {http.MethodPost},
+		accountIdentityEmailVerifyPath:     {http.MethodPost},
+		accountIdentityPhonePath:           {http.MethodPut},
+		accountIdentityPhoneResendPath:     {http.MethodPost},
+		accountIdentityPhoneVerifyPath:     {http.MethodPost},
+		accountIdentityPasswordPath:        {http.MethodPut},
+		accountIdentityBasePath + "/facts": {http.MethodGet},
 	}
 	for path := range want {
 		slices.Sort(want[path])

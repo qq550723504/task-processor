@@ -55,10 +55,14 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	if err := verifySchema(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
 	repo, err := NewRepository(ctx, db, "p")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("formal invitations", func(t *testing.T) { testInvitations(t, ctx, repo) })
 	original := domain.Operation{Scope: domain.OperationScope{ProjectID: "p", OrganizationID: "org", ActorID: "actor-a"}, Key: uuid.NewString(), Fingerprint: strings.Repeat("a", 64), Kind: domain.CommandRole, TargetUserID: "target", AuthorizationID: "grant", Role: "listingkit_viewer", ExpectedVersion: strings.Repeat("b", 64), Step: domain.StepRole, Phase: domain.PhaseReady, Revision: 1}
 	other := original
 	other.Scope.ActorID = "actor-b"
@@ -252,7 +256,7 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
  REVOKE CREATE ON SCHEMA public FROM PUBLIC;
  GRANT CONNECT ON DATABASE membership_test TO organization_membership_runtime;
  GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
- GRANT SELECT,INSERT,UPDATE ON public.organization_member_operations TO organization_membership_runtime;
+ GRANT SELECT,INSERT,UPDATE ON public.organization_member_operations,public.organization_member_invitations TO organization_membership_runtime;
  GRANT SELECT,INSERT ON public.organization_member_audit_events TO organization_membership_runtime;
  CREATE TABLE public.unrelated_facts (id integer);`).Error; err != nil {
 		t.Fatal(err)
@@ -300,6 +304,9 @@ func TestPostgresReservationDispatchAndRestart(t *testing.T) {
 		`ALTER TABLE public.organization_member_operations ALTER COLUMN revision TYPE integer`,
 		`ALTER TABLE public.organization_member_operations DROP CONSTRAINT organization_member_operations_revision_check`,
 		`ALTER TABLE public.organization_member_operations DROP CONSTRAINT organization_member_operations_payload_check`,
+		`ALTER TABLE public.organization_member_invitations DROP CONSTRAINT organization_member_invitations_state_check`,
+		`ALTER TABLE public.organization_member_invitations DROP CONSTRAINT organization_member_invitations_revision_check`,
+		`ALTER TABLE public.organization_member_invitations DROP CONSTRAINT organization_member_invitations_payload_check`,
 	} {
 		tx, err := sqlDB.BeginTx(ctx, nil)
 		if err != nil {

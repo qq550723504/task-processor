@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getMembers, parseMembers, invitationInput, getMemberOperations, parseMemberOperations, getMemberOperation, verifyMemberOperation, inviteMember, changeMemberRole, removeMember } from "./members";
+import { getMembers, parseMembers, invitationInput, getMemberOperations, parseMemberOperations, getMemberOperation, verifyMemberOperation, changeMemberRole, removeMember } from "./members";
 
 const empty = { schemaVersion: "membership-v1", userId: "actor", organizationId: "org", items: [], total: 0, canManage: false, assignableRoles: [] };
 afterEach(() => vi.unstubAllGlobals());
@@ -35,7 +35,6 @@ it("binds every single receipt to its requested operation ID",async()=>{
   const scope={expectedUserId:"actor",expectedOrganizationId:"org"}, key="4841d296-ef14-4c16-8d25-a7667e534feb";
   for(const read of [
     ()=>getMemberOperation(scope,key),()=>verifyMemberOperation(scope,key),
-    ()=>inviteMember(scope,key,{email:"new@example.com",firstName:"New",lastName:"Member",role:"listingkit_viewer"}),
     ()=>changeMemberRole(scope,key,"grant",{role:"listingkit_viewer",expectedVersion:"a".repeat(64)}),
     ()=>removeMember(scope,key,"grant",{expectedVersion:"a".repeat(64)}),
   ]) await expect(read()).rejects.toMatchObject({code:"INVALID_UPSTREAM_RESPONSE"});

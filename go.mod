@@ -43,6 +43,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ess v1.3.184
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
+	github.com/wneessen/go-mail v0.8.1
 	github.com/yuin/goldmark v1.8.5
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 	go.opentelemetry.io/otel v1.46.0

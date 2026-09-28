@@ -1,16 +1,18 @@
 "use client";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { z } from "zod";
+
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useWorkbenchContext } from "@/components/providers/workbench-context-provider";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { changeMemberRole, getMember, getMemberOperation, getMemberOperations, getMembers, invitationInput, inviteMember, MemberError, MemberOperation, MemberOperations, MemberRole, MemberScope, removeMember, verifyMemberOperation } from "@/lib/api/members";
+
+import { changeMemberRole, getMember, getMemberOperation, getMemberOperations, getMembers, MemberError, MemberOperation, MemberOperations, MemberRole, MemberScope, removeMember, verifyMemberOperation } from "@/lib/api/members";
 import { Pending, readPending, retainAdvancedReceipt, savePending, terminalReceipt } from "./member-pending";
 import { ConsoleState } from "../console/console-page";
 import { AccountShell } from "./account-shell";
 import styles from "./members.module.css";
+import {InvitationsPanel} from "./invitations";
+import {MemberStats,PermissionScope,RecentMemberActivity} from "./member-facts";
 
 const roleNames: Record<MemberRole, string> = { listingkit_viewer: "只读成员", listingkit_operator: "操作成员", listingkit_admin: "企业管理员" };
 const subscribe = (notify: () => void) => { window.addEventListener("membership-pending", notify); window.addEventListener("storage", notify); return () => { window.removeEventListener("membership-pending", notify); window.removeEventListener("storage", notify); }; };
@@ -31,7 +33,7 @@ export function MembersPage({ expectedUserId }: { expectedUserId: string }) {
 }
 
 function ScopedMembers({ scope }: { scope: MemberScope }) {
-  const [offset, setOffset] = useState(0); const [selected, setSelected] = useState<string | null>(null); const [inviting, setInviting] = useState(false);
+  const [offset, setOffset] = useState(0); const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const busyRef = useRef(false); const [error, setError] = useState("");
   const [receipts, setReceipts] = useState<Record<string, MemberOperation>>({});
   const remember = (items: MemberOperation[]) => setReceipts(previous => {
@@ -45,8 +47,7 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
   const authorityRevision = useRef(0);
   const quarantine = (failure: unknown) => {
     if (!isAuthorityFailure(failure)) return;
-    authorityRevision.current++; setAuthorityError(failure); setSelected(null); setInviting(false);
-  };
+    authorityRevision.current++; setAuthorityError(failure); setSelected(null); };
   const controllerRef = useRef<AbortController | null>(null);
   useEffect(() => { const current = new AbortController(); controllerRef.current = current; return () => current.abort(); }, []);
   const storageKey = `membership.pending:${JSON.stringify([scope.expectedUserId, scope.expectedOrganizationId])}`;
@@ -64,14 +65,9 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
   const operation = useQuery({ queryKey:operationKey, queryFn: async ({ signal }) => { try { const receipt=await getMemberOperation({ ...scope, signal }, activeKey!);if(!signal.aborted)remember([receipt]);return receipt; } catch (failure) { if (!signal.aborted) quarantine(failure); throw failure; } }, enabled:!!activeKey && !authorityError, gcTime:0,staleTime:0,retry:false });
   const receiptFor = (key:string) => retainAdvancedReceipt(retainAdvancedReceipt(durable.find(item=>item.id===key),receipts[key]),operation.data?.id===key ? operation.data : undefined);
   const currentReceipt = authorityError ? undefined : activeKey ? receiptFor(activeKey) : undefined;
-  const directoryComplete = ready && query.data.items.length === query.data.total;
-  const formalMemberCount = directoryComplete ? query.data.items.filter(member => member.state === "active").length : null;
-  const administratorCount = directoryComplete ? query.data.items.filter(member => member.roles.includes("listingkit_admin")).length : null;
-  const inactiveCount = directoryComplete ? query.data.items.filter(member => member.state !== "active").length : null;
   const refreshMembers = async () => {
     const revision = authorityRevision.current;
-    setSelected(null); setInviting(false);
-    const refreshed = await query.refetch();
+    setSelected(null); const refreshed = await query.refetch();
     // An older refresh must not undo an authority failure observed in flight.
     if (refreshed.isSuccess && revision === authorityRevision.current) { setAuthorityError(null); setError(""); }
   };
@@ -84,18 +80,18 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
     try {
       await queryClient.cancelQueries({queryKey:["member-operation",scope.expectedUserId,scope.expectedOrganizationId,key]});
       const requestScope = { ...scope, signal: controller.signal };
-      const result = verify || !command ? await verifyMemberOperation(requestScope, key) : command.kind === "invite" ? await inviteMember(requestScope, key, command.input) : command.kind === "role" ? await changeMemberRole(requestScope, key, command.target, command.input) : await removeMember(requestScope, key, command.target, command.input);
+      const result = verify || !command ? await verifyMemberOperation(requestScope, key) : command.kind === "invite" ? await verifyMemberOperation(requestScope, key) : command.kind === "role" ? await changeMemberRole(requestScope, key, command.target, command.input) : await removeMember(requestScope, key, command.target, command.input);
       if (!controller.signal.aborted) { remember([result]); queryClient.setQueryData(["member-operation",scope.expectedUserId,scope.expectedOrganizationId,key],result); void query.refetch(); void operations.refetch(); }
     } catch (failure) { if (!controller.signal.aborted) { quarantine(failure); setError(failure instanceof MemberError ? failure.code : "DEPENDENCY_UNAVAILABLE"); } }
     finally { busyRef.current=false; if (!controller.signal.aborted) setBusy(false); }
   };
   const submit = (command: Pending) => {
     if (busyRef.current || !canManage || local.error) return;
-    try { persist(command); setChosen(command.key); setSelected(null); setInviting(false); void run(command.key,command); }
+    try { persist(command); setChosen(command.key); setSelected(null); void run(command.key,command); }
     catch { setError("OPERATION_STORAGE_UNAVAILABLE"); }
   };
   return <div className={styles.page}>
-    <div className={styles.toolbar}><p>{ready ? `当前企业 · ${query.data.total} 位成员` : "当前企业成员"}</p><div><Button variant="outline" onClick={() => void refreshMembers()} disabled={busy}>刷新成员</Button>{canManage && <Button disabled={local.error || busy || !query.data.assignableRoles.length} onClick={() => { setSelected(null); setInviting(true); }}>邀请成员</Button>}</div></div>
+    <div className={styles.toolbar}><p>{ready ? `当前企业 · ${query.data.total} 位成员` : "当前企业成员"}</p><div><Button variant="outline" onClick={() => void refreshMembers()} disabled={busy}>刷新成员</Button></div></div>
     {error && !authorityError && <MemberFailure code={error} />}
     {local.error && <MemberFailure code="OPERATION_STORAGE_UNAVAILABLE" />}
     {canManage && <section className={styles.panel} aria-label="待处理成员操作">
@@ -122,21 +118,16 @@ function ScopedMembers({ scope }: { scope: MemberScope }) {
       </>}</div>
     </section>}
     {!ready ? authorityError ? <MemberFailure code={authorityError.code} /> : query.isError ? <MemberFailure code={query.error instanceof MemberError ? query.error.code : "DEPENDENCY_UNAVAILABLE"} /> : <ConsoleState kind="loading" title="正在读取成员">正在确认成员目录与当前权限。</ConsoleState> : <>
-      <div className={styles.sectionTabs} role="group" aria-label="成员与权限页面分区"><span aria-current="page">成员管理</span><button type="button" disabled title="当前组织服务未提供角色权限矩阵">角色权限 · 暂不可用</button></div>
-      <section className={styles.memberMetrics} aria-label="成员目录摘要"><article><span>正式成员</span><strong>{formalMemberCount ?? "未提供"}</strong><small>{formalMemberCount === null ? "目录分页未覆盖全体成员" : "来自完整成员目录的有效成员"}</small></article><article><span>管理员</span><strong>{administratorCount ?? "未提供"}</strong><small>{administratorCount === null ? "目录分页未覆盖全体成员" : "来自完整成员目录的管理员角色"}</small></article><article><span>邀请中</span><strong>未提供</strong><small>当前 owner 未返回邀请状态</small></article><article><span>已停用</span><strong>{inactiveCount ?? "未提供"}</strong><small>{inactiveCount === null ? "目录分页未覆盖全体成员" : "来自完整成员目录的停用状态"}</small></article></section>
+      <div className={styles.sectionTabs} role="group" aria-label="成员与权限页面分区"><span aria-current="page">成员管理</span><span>权限范围随成员展示</span></div>
+      <MemberStats scope={scope} />
       <div className={styles.memberFilters} aria-label="成员筛选能力"><label>搜索成员<input disabled placeholder="目录服务未提供搜索" /></label><label>角色筛选<select disabled><option>当前目录未提供筛选</option></select></label><label>状态筛选<select disabled><option>当前目录未提供筛选</option></select></label></div>
-      <p className={styles.authorityNote}>角色权限详情由组织身份服务管理；本页面只显示 owner 返回的成员角色和可执行管理动作。</p>
-      {inviting && canManage && !local.error && <InvitationForm roles={query.data.assignableRoles} onCancel={() => setInviting(false)} onSubmit={input => submit({ key: crypto.randomUUID(), kind: "invite", input })} />}
+      <p className={styles.authorityNote}>权限由当前授权规则计算；最近活跃只覆盖本企业已记录的账户操作。</p>
+      {canManage && <InvitationsPanel scope={scope} assignableRoles={query.data.assignableRoles} onChanged={()=>{void query.refetch();void queryClient.invalidateQueries({queryKey:["invitation-summary",scope.expectedUserId,scope.expectedOrganizationId]});}} onAuthorityFailure={quarantine}/> }
       {selected && <MemberDetail key={selected} id={selected} scope={scope} roles={query.data.assignableRoles} disabled={busy || local.error} onClose={() => setSelected(null)} onSubmit={submit} onAuthorityFailure={quarantine} />}
-      {query.data.items.length === 0 ? <ConsoleState kind="empty" title="当前没有可显示的成员">当前企业的成员目录读取成功。</ConsoleState> : <div className={styles.tableWrap} role="region" aria-label="成员表格，可横向滚动" tabIndex={0}><table className={styles.table}><caption className={styles.caption}>当前企业成员</caption><thead><tr><th>成员</th><th>账号</th><th>角色</th><th>权限范围</th><th>状态</th><th>最近活跃</th><th>操作</th></tr></thead><tbody>{query.data.items.map(member => <tr key={member.id}><td><strong>{member.displayName || member.loginName || member.userId}</strong></td><td>{member.loginName || "未提供"}</td><td>{member.roles.map(value => roleNames[value as MemberRole] ?? value).join("、") || "未授予角色"}</td><td>未提供</td><td>{member.state === "active" ? "有效" : "已停用"}</td><td>未提供</td><td><Button variant="ghost" onClick={() => { setInviting(false); setSelected(member.id); }}>查看详情</Button></td></tr>)}</tbody></table></div>}
+      {query.data.items.length === 0 ? <ConsoleState kind="empty" title="当前没有可显示的成员">当前企业的成员目录读取成功。</ConsoleState> : <div className={styles.tableWrap} role="region" aria-label="成员表格，可横向滚动" tabIndex={0}><table className={styles.table}><caption className={styles.caption}>当前企业成员</caption><thead><tr><th>成员</th><th>账号</th><th>角色</th><th>权限范围</th><th>状态</th><th>最近活跃</th><th>操作</th></tr></thead><tbody>{query.data.items.map(member => <tr key={member.id}><td><strong>{member.displayName || member.loginName || member.userId}</strong></td><td>{member.loginName || "未提供"}</td><td>{member.roles.map(value => roleNames[value as MemberRole] ?? value).join("、") || "未授予角色"}</td><td><PermissionScope permissions={member.permissions}/></td><td>{member.state === "active" ? "有效" : "已停用"}</td><td><RecentMemberActivity scope={scope} userId={member.userId}/></td><td><Button variant="ghost" onClick={() => { setSelected(member.id); }}>查看详情</Button></td></tr>)}</tbody></table></div>}
       <div className={styles.pagination}><Button variant="outline" disabled={offset === 0 || busy} onClick={() => { setSelected(null); setOffset(value => Math.max(0, value - 20)); }}>上一页</Button><span>第 {Math.floor(offset / 20) + 1} 页</span><Button variant="outline" disabled={offset + 20 >= query.data.total || busy} onClick={() => { setSelected(null); setOffset(value => value + 20); }}>下一页</Button></div>
     </>}
   </div>;
-}
-
-function InvitationForm({ roles, onCancel, onSubmit }: { roles: MemberRole[]; onCancel: () => void; onSubmit: (input: z.infer<typeof invitationInput>) => void }) {
-  const [invalid, setInvalid] = useState(false);
-  return <section className={styles.panel}><h2>邀请新成员</h2><p>创建新的企业成员身份。验证邮件由身份服务发送，已有身份不会被自动关联。</p><form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); const parsed = invitationInput.safeParse(Object.fromEntries(form)); setInvalid(!parsed.success); if (parsed.success) onSubmit(parsed.data); }}>{invalid && <p role="alert">请填写有效邮箱和非空姓名，姓名不能包含控制字符。</p>}<div className={styles.formGrid}><label>邮箱<Input name="email" type="email" maxLength={200} required /></label><label>名字<Input name="firstName" maxLength={200} required /></label><label>姓氏<Input name="lastName" maxLength={200} required /></label><label>角色<RoleSelect name="role" roles={roles} /></label></div><div className={styles.actions}><Button type="submit">确认邀请</Button><Button type="button" variant="outline" onClick={onCancel}>取消</Button></div></form></section>;
 }
 
 function MemberDetail({ id, scope, roles, disabled, onClose, onSubmit, onAuthorityFailure }: { id: string; scope: MemberScope; roles: MemberRole[]; disabled: boolean; onClose: () => void; onSubmit: (pending: Pending) => void; onAuthorityFailure: (failure: unknown) => void }) {

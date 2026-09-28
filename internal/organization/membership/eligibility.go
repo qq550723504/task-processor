@@ -38,6 +38,12 @@ func (s *Service) project(identity authidentity.AuthenticatedIdentity, items []M
 		}
 	}
 	for i := range items {
+		items[i].Permissions = []string{}
+		for _, permission := range authz.WorkbenchPermissions() {
+			if items[i].State == "active" && s.authorizer.Authorize(items[i].UserID, items[i].Roles, permission) {
+				items[i].Permissions = append(items[i].Permissions, permission)
+			}
+		}
 		items[i].ObservedVersion = observedVersion(items[i])
 		items[i].CanChangeRole = manage && len(roles) > 0 && s.editable(items[i])
 		items[i].CanRemove = manage && s.editable(items[i])

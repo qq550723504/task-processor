@@ -1,9 +1,22 @@
 package membership
 
 import (
+	"slices"
 	"task-processor/internal/authz"
 	"testing"
 )
+
+func TestInactiveMemberHasNoEffectivePermissions(t *testing.T) {
+	a, _ := authz.NewListingKitAuthorizer(nil, nil)
+	d := &directoryStub{page: Page{Total: 2, Items: []Member{{ID: "active", UserID: "u1", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_operator"}, State: "active"}, {ID: "inactive", UserID: "u2", OrganizationID: "effective-b", ProjectID: "project", Roles: []string{"listingkit_admin"}, State: "inactive"}}}}
+	result, err := NewService(d, a, "project").List(scopedContext("listingkit_admin"), PageRequest{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(result.Items[0].Permissions, authz.PermissionWorkbenchStoreCreate) || len(result.Items[1].Permissions) != 0 {
+		t.Fatalf("permissions %+v", result.Items)
+	}
+}
 
 func TestConfiguredPlatformRolesAreNeverAssignableOrEditable(t *testing.T) {
 	a, _ := authz.NewListingKitAuthorizer(nil, []string{"listingkit_operator"})

@@ -3,18 +3,25 @@ package currentapplication
 import (
 	"errors"
 	"task-processor/internal/authidentity"
+	invitationmail "task-processor/internal/integration/mail"
 )
 
 // MembershipConfig is opt-in current application configuration. Credentials
 // are never included in diagnostic messages or protocol receipts.
 type MembershipConfig struct {
-	Database       DatabaseConfig `json:"database"`
-	ProviderOrigin string         `json:"providerOrigin"`
-	ReadToken      string         `json:"readToken"`
-	WriteToken     string         `json:"writeToken"`
+	Database       DatabaseConfig         `json:"database"`
+	ProviderOrigin string                 `json:"providerOrigin"`
+	ReadToken      string                 `json:"readToken"`
+	WriteToken     string                 `json:"writeToken"`
+	InvitationMail *invitationmail.Config `json:"invitationMail,omitempty"`
 }
 
 func (cfg MembershipConfig) validate(identity IdentityConfig) error {
+	if cfg.InvitationMail != nil {
+		if _, err := invitationmail.New(*cfg.InvitationMail); err != nil {
+			return err
+		}
+	}
 	origin, err := validateLoopbackURL("membership.providerOrigin", cfg.ProviderOrigin)
 	if err != nil {
 		return errors.New("membership provider origin is invalid")

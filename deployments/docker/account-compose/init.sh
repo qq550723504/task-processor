@@ -96,6 +96,7 @@ EOF
 GRANT CONNECT ON DATABASE source_accounts TO source_account_runtime;
 GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_user_preferences TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, public.subject_verification_messages, public.personal_verification_applications TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
 GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
@@ -136,7 +137,7 @@ SQL
   psql "$membership_dsn" -v ON_ERROR_STOP=1 <<SQL
 GRANT CONNECT ON DATABASE membership TO organization_membership_runtime;
 GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations TO organization_membership_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations, public.organization_member_invitations TO organization_membership_runtime;
 GRANT SELECT, INSERT ON TABLE public.organization_member_audit_events TO organization_membership_runtime;
 SQL
   exit 0
@@ -178,6 +179,7 @@ cat > "$runtime/current-application.json.tmp" <<EOF
   "commercialOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "commercial_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/commercial-owner-password")", "database": "${commercial_database}", "maxConnections": 2},
   "moneyOwnerDatabase": {"host": "127.0.0.1", "port": 5433, "user": "money_owner_runtime", "password": "$(tr -d '\r\n' < "$commercial_runtime_secret/money-owner-password")", "database": "referrals", "maxConnections": 4},
   "membership": {
+    "invitationMail": {"host": "127.0.0.1", "port": 1025, "from": "invitations@localhost", "publicOrigin": "${public_app}", "localPlaintext": true},
     "providerOrigin": "${issuer}",
     "readToken": "$(tr -d '\r\n' < "$runtime/membership-read.pat")",
     "writeToken": "$(tr -d '\r\n' < "$runtime/membership-write.pat")",
@@ -228,6 +230,7 @@ GRANT USAGE ON SCHEMA public TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.source_account_resources TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.source_account_operations TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.account_business_profiles TO source_account_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.account_user_preferences TO source_account_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.subject_verification_applications, public.subject_verification_messages, public.personal_verification_applications TO source_account_runtime;
 GRANT SELECT, INSERT ON TABLE public.account_business_profile_audit_events TO source_account_runtime;
 GRANT USAGE, SELECT ON SEQUENCE public.account_business_profile_audit_events_id_seq TO source_account_runtime;
@@ -276,7 +279,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
 GRANT CONNECT ON DATABASE membership TO organization_membership_runtime;
 GRANT USAGE ON SCHEMA public TO organization_membership_runtime;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations TO organization_membership_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.organization_member_operations, public.organization_member_invitations TO organization_membership_runtime;
 GRANT SELECT, INSERT ON TABLE public.organization_member_audit_events TO organization_membership_runtime;
 SQL
 

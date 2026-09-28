@@ -54,6 +54,7 @@ func (m accountIdentityModule) Register(reg *kernelmodule.Registry) error {
 	if m.client == nil {
 		return errors.New("account identity self-service unavailable")
 	}
+	reg.AddRoutes(httproute.Descriptor{Method: http.MethodGet, Path: accountIdentityBasePath + "/facts", Module: m.Name(), AuthPolicy: httproute.AuthPolicyCurrentIdentity, OrganizationAccessPolicy: httproute.OrganizationAccessPolicyNone, RejectUnreadRequestBody: true, RequestTimeout: 15 * time.Second, Handler: m.readFacts})
 	for path, operation := range accountIdentityRoutes {
 		method := http.MethodPut
 		if isPostIdentityOperation(operation) {

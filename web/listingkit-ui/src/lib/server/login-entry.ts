@@ -109,6 +109,7 @@ function isAllowedReturnToPath(value: string) {
     pathname === "/listing-kits" ||
     pathname.startsWith("/listing-kits/") ||
     pathname === "/workbench" ||
+    /^\/invitations\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(pathname) ||
     pathname.startsWith("/workbench/")
   );
 }

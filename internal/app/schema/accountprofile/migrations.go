@@ -39,6 +39,7 @@ func Migrations() []*goose.Migration {
 )`)
 			return err
 		}}, nil),
+		goose.NewGoMigration(2026092801, &goose.GoFunc{RunTx: store.InstallPreferencesTx}, nil),
 	}
 }
 

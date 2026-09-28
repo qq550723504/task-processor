@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	invitationmail "task-processor/internal/integration/mail"
 	memberstore "task-processor/internal/integration/persistence/organization/membership"
 	memberprovider "task-processor/internal/integration/zitadel/membership"
 	kernelmodule "task-processor/internal/kernel/module"
@@ -24,6 +25,7 @@ import (
 type MembershipDependencies struct {
 	ReceiptDB                             *gorm.DB
 	ProviderOrigin, ReadToken, WriteToken string
+	InvitationMail                        *invitationmail.Config
 }
 
 // NewCurrentApplicationWithMembership borrows pools owned by the caller. It
@@ -95,6 +97,11 @@ func buildMembershipModule(ctx context.Context, cfg *config.Config, deps Members
 		}
 		return membership.NewCommands(service, store, writer, refresh), nil
 	})
+	factory, err := buildInvitationFactory(deps, cfg.ListingKit.Zitadel.ProjectID, auth, service, store, writer, authorizer)
+	if err != nil {
+		return nil, err
+	}
+	handler.ConfigureInvitations(factory)
 	if ctx.Err() != nil {
 		return nil, membership.ErrUnavailable
 	}
