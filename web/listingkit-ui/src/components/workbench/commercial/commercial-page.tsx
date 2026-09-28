@@ -11,6 +11,7 @@ import { getSubscriptionOffers } from "@/lib/api/subscription-purchase";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 import { EntitlementsOverview } from "./commercial-views";
 import { EnterpriseResources } from "./enterprise-resources";
+import { EnterpriseTokenSummary } from "./enterprise-token-summary";
 import { SubscriptionPlanOptions } from "./subscription-plan-options";
 import { CommercialOverviewView, UsageDetailsView } from "./commercial-module-views";
 import { OrderDetailView, OrdersView, WalletView } from "./commercial-billing-views";
@@ -62,6 +63,7 @@ function ScopedCommercial({ page, scope, userId, organizationId, organizationNam
     <Button variant="outline" onClick={refresh}>刷新数据</Button>
   </>}>
     {page === "entitlements" ? <EnterpriseResources userId={userId} organizationId={organizationId} scope={scope} sequence={sequence} showSummary /> : null}
+    {page === "entitlements" ? <EnterpriseTokenSummary userId={userId} organizationId={organizationId} sequence={sequence} /> : null}
     <CommercialRequest key={sequence} page={page} scope={scope} userId={userId} organizationId={organizationId} organizationName={organizationName} roles={roles} sequence={sequence} />
   </PageFrame>;
 }
