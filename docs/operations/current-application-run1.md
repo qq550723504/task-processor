@@ -66,9 +66,9 @@ the existing database through two roles:
   `SELECT/INSERT/UPDATE`, and operation `SELECT/INSERT`, **plus** — in
   current-application mode — the account-center and verification tables that
   `sourceaccountregistry` verifies for the same pool: `SELECT/INSERT/UPDATE` on
-  `account_business_profiles` and `personal_verification_applications`,
-  `SELECT/INSERT` on `account_business_profile_audit_events`,
-  `subject_verification_applications` and `subject_verification_messages`, plus
+  `account_business_profiles`, `personal_verification_applications`,
+  `subject_verification_applications` and `subject_verification_messages`,
+  `SELECT/INSERT` on `account_business_profile_audit_events`, plus
   `USAGE/SELECT` on `account_business_profile_audit_events_id_seq`. Those tables
   are installed by the SA1 schema initializer; it is the grant that was missing.
   A launch **without** `--current-application` does not receive them, because that
