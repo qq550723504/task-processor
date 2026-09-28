@@ -49,8 +49,69 @@ add `-f deployments/docker/account-compose/docker-compose.sms.yml` after the
 normal Compose file, retaining the same authorized project and ports. This
 overlay only mounts configuration; it neither creates nor activates a provider.
 The mounted file must retain private permissions inside the Linux container.
-If Docker Desktop does not preserve them, supply the file through the existing
-private-volume procedure with mode 0600; do not weaken permission validation.
+If Docker Desktop does not preserve them, use the concrete named-volume workflow
+below instead of the bind overlay; do not weaken permission validation.
+
+### Docker Desktop private-volume workflow
+
+These commands copy the already-private host file into a **fresh**, project-specific
+volume and set Linux permissions. They do not start the app, configure ZITADEL,
+or send SMS. Use the same explicitly authorized isolated `COMPOSE_PROJECT_NAME`
+and host file as above. The runtime image currently runs as root, so the file is
+owned by root and mode 0600; the application mounts the volume read-only.
+
+```powershell
+$smsProject = $env:COMPOSE_PROJECT_NAME
+if ($smsProject -notmatch '^[a-z0-9][a-z0-9_-]*$') {
+  throw 'Set the authorized isolated COMPOSE_PROJECT_NAME first'
+}
+$smsSource = (Get-Item -LiteralPath $env:ZITADEL_SMS_CONFIG_HOST_FILE -ErrorAction Stop)
+if ($smsSource.PSIsContainer -or ($smsSource.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+  throw 'SMS source must be a private regular file'
+}
+$smsVolume = "${smsProject}-sms-secrets"
+$smsHelper = "${smsProject}-sms-copy"
+$smsVolumes = docker volume ls --format '{{.Name}}'
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Docker volumes' }
+$smsContainers = docker ps -a --format '{{.Names}}'
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Docker containers' }
+if ($smsVolumes -contains $smsVolume -or $smsContainers -contains $smsHelper) {
+  throw 'Name already exists; preserve it and inspect ownership, do not overwrite'
+}
+docker volume create $smsVolume | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Cannot create private volume' }
+docker create --name $smsHelper --network none `
+  --mount "type=volume,src=$smsVolume,dst=/private/notifications" `
+  alpine:3.22 sh -c 'sleep 300' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Cannot create copy container; volume retained' }
+try {
+  docker start $smsHelper | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot start copy container' }
+  docker cp $smsSource.FullName "${smsHelper}:/private/notifications/zitadel-sms.json"
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot copy private configuration' }
+  docker exec $smsHelper sh -ec 'chmod 700 /private/notifications; chmod 600 /private/notifications/zitadel-sms.json; test "$(stat -c %a /private/notifications/zitadel-sms.json)" = 600'
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot establish private Linux permissions' }
+} finally {
+  # Remove only the container just created here. Retain the configuration volume.
+  docker rm -f $smsHelper | Out-Null
+}
+```
+
+Then use `docker-compose.sms-volume.yml` **instead of** `docker-compose.sms.yml`:
+
+```powershell
+docker compose -f deployments/docker/account-compose/docker-compose.yml `
+  -f deployments/docker/account-compose/docker-compose.sms-volume.yml config --quiet
+# Only after runtime-update authorization, retain the same project/ports and start:
+docker compose -f deployments/docker/account-compose/docker-compose.yml `
+  -f deployments/docker/account-compose/docker-compose.sms-volume.yml up -d current-application
+```
+
+The external volume must already exist; Compose does not silently create or
+replace it. Do not run both SMS overlays, print the file, commit credentials,
+delete retained volumes, or automatically overwrite a prior configuration after
+a failed preparation. This procedure changes file storage only; the callback
+connectivity and provider-activation prerequisites below still apply.
 
 ## Provider connection and local limitation
 
@@ -76,6 +137,26 @@ Once that connection exists, an unsigned callback must return 401 and send
 nothing. A valid signed callback returns 204 on SDK success; invalid payloads
 return 400, oversized payloads 413, and delivery failures 502. Provider error
 categories may be logged, but response bodies contain no provider details.
+
+### Repeated delivery and production activation
+
+This extraction preserves the existing stateless delivery contract. Two valid
+callbacks carrying the same code can cause two Tencent sends and charges; the
+five-minute HMAC freshness check is **not** a deduplication guarantee. This patch
+does not claim at-most-once delivery. ZITADEL owns notification retry; the app
+adds no retry or automatic resend. After a lost response, do not manually replay
+an uncertain send.
+
+**Production SMS activation is not authorized by this PR.** Surface this duplicate
+send/cost risk in any separate rollout decision, including lost responses and
+Tencent's result being unknown; no production acceptance of that risk is implied.
+A local claim/cache alone cannot establish durable at-most-once delivery across
+restart or reconcile provider acceptance with a lost response. If the rollout
+decision requires such persistence or a recovery protocol, that change requires
+its own Design Basis and is outside this wiring-only extraction. The code may be
+reviewed and merged while the provider remains inactive; this is not production
+SMS acceptance. Any real local trial still needs explicit scope and recipient
+authorization.
 
 After activation, use Account settings with an E.164 phone number (for example,
 `+86` followed by the mainland number), request one fresh official verification

@@ -1,0 +1,15 @@
+# Alternative to docker-compose.sms.yml for Docker Desktop private-file modes.
+# Prepare this project-specific external volume using SMS.md before starting.
+services:
+  current-application:
+    environment:
+      ZITADEL_SMS_CONFIG_FILE: /private/notifications/zitadel-sms.json
+    volumes:
+      - type: volume
+        source: sms-secrets
+        target: /private/notifications
+        read_only: true
+volumes:
+  sms-secrets:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:?authorized isolated account-center project required}-sms-secrets
