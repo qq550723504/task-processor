@@ -589,6 +589,9 @@ internal/knowledge DocumentParser port
 Requirements:
 
 - no public Tika ingress;
+- run Tika as a separately bounded parser process/service rather than in the API process;
+- non-root runtime, read-only/rootless filesystem where supported, bounded CPU/memory/PIDs,
+  and no general outbound network access;
 - fixed accepted MIME allowlist, checked from bytes rather than filename alone;
 - bounded upload bytes, output bytes, pages/embedded objects and parser deadline;
 - extracted text/metadata remain untrusted content;
@@ -929,8 +932,21 @@ metadata fields. V1 limits:
 - accepted content: UTF-8 text, Markdown, PDF with extractable text, DOCX;
 - MIME is verified from bytes/allowed parser result, not trusted from extension alone.
 
-Every upload mutation requires `Idempotency-Key`. Same key + same fingerprint returns the
-same operation/source/revision. Same key + changed file or metadata conflicts.
+Every upload mutation requires `Idempotency-Key`.
+
+After authentication/authorization and before any durable mutation or S3 write, the server
+must bounded-read/spool the one admitted file, verify the multipart shape, compute SHA-256
+and size, normalize the bounded metadata, and construct the complete upload fingerprint.
+
+Then:
+
+- same key + same complete fingerprint returns/adopts the same operation/source/revision;
+- same key + changed file bytes, filename-relevant metadata or other immutable command field
+  conflicts;
+- concurrent requests with the same key cannot both create revision identities.
+
+Reading/spooling the bounded request before idempotency admission is not a business side
+effect. No Knowledge row/object is created until the complete fingerprint is known.
 
 Upload success is **202 Accepted** with the durable source/revision identity and current
 processing state. It does not wait for Tika parsing.
@@ -1080,20 +1096,27 @@ Requirements:
 PostgreSQL and S3 are not one transaction. V1 freezes this protocol:
 
 ```text
-1. fresh authorization + idempotency admission
-2. create durable ingest operation + revision intent
-3. read bounded request and compute SHA-256/size
-4. immutable PutObject using deterministic revision object identity
-5. on ambiguous PutObject result, Inspect exact key/digest before any resend
-6. confirm stored object reference in PostgreSQL
-7. state -> PROCESSING
-8. background processor parses the exact immutable object
-9. persist normalized parsed result / safe failure + state
-10. state -> AVAILABLE | PARTIAL | FAILED
+1. fresh authentication / Organization authorization
+2. bounded-read/spool the single file; validate shape/MIME admission and compute SHA-256/size
+3. normalize immutable metadata and construct the complete request fingerprint
+4. idempotency admission + create/adopt one durable ingest operation/revision intent
+5. immutable PutObject using deterministic revision object identity
+6. on ambiguous PutObject result, Inspect exact key/digest before any resend
+7. confirm stored object reference in PostgreSQL
+8. state -> PROCESSING
+9. background processor parses the exact immutable object
+10. persist normalized parsed result / safe failure + state
+11. state -> AVAILABLE | PARTIAL | FAILED
 ```
 
-A lost HTTP response or process crash reuses the same operation/revision identity.
-It does not allocate another revision merely to retry.
+The pre-admission spool is bounded and must be cleaned up after request completion/crash
+according to the app/runtime temp-file policy. It cannot be treated as a second durable
+Knowledge store.
+
+A lost HTTP response or process crash after durable admission reuses the same
+operation/revision identity. It does not allocate another revision merely to retry. A crash
+before durable admission leaves no Knowledge operation and may safely repeat the bounded
+request-read step.
 
 ### 15.6 Processing lifecycle and recovery
 
@@ -1250,8 +1273,17 @@ Organization
 + materialization policy version
 ```
 
-A committed bundle is immutable. Lost response with the same idempotency identity returns
-the existing bundle/ref. Changed selection/policy with the same key conflicts.
+A committed bundle is immutable.
+
+For Product Agent V1, context materialization uses an idempotency identity derived from the
+already-admitted Agent run identity plus the materialization policy version. Repeating the
+same Agent Start request therefore resolves/adopts the same ContextBundle before the Agent
+request fingerprint is compared; it must not allocate a fresh bundle ID that would turn an
+otherwise identical retry into a binding conflict.
+
+Lost response with the same materialization identity returns the existing bundle/ref.
+Changed selected revisions or policy under the same admitted Agent request conflicts rather
+than silently rematerializing latest Knowledge.
 
 Immutability preserves historical provenance; it does not bypass later active-state or
 authorization checks.
@@ -1444,20 +1476,25 @@ Architecture acceptance requires implementation evidence plans for these risks.
 
 ### 20.2 Persistence / upload / parser
 
+- upload fingerprint is complete before durable idempotency admission/S3 write;
 - duplicate Idempotency-Key + same upload returns the same revision/operation;
-- same key + changed file/metadata conflicts;
+- concurrent same key + same upload creates one revision identity;
+- same key + changed file/metadata conflicts before object write;
 - S3 timeout + confirmed matching exact object adopts original write;
 - S3 timeout + confirmed missing exact object resends same identity;
 - mismatched deterministic key/digest fails closed;
 - restart after OBJECT_STORED resumes parsing;
 - expired processing lease can be reclaimed without duplicate revision;
 - unsupported/encrypted/corrupt input -> FAILED;
+- Tika process runs with the approved private/no-general-egress/resource-bounded sandbox;
 - useful incomplete extraction -> PARTIAL;
 - output bound is enforced without pretending truncated output is complete;
 - runtime role cannot DDL, connect to unrelated databases or read raw object credentials.
 
 ### 20.3 Context binding / Agent
 
+- repeated same Agent Start idempotency identity adopts the same ContextBundle/ref;
+- same Agent key + changed selected revision/policy conflicts rather than creating a second bundle;
 - first model Quote cannot occur before a valid ContextSnapshotRef is committed/bound;
 - same Knowledge source update creates a new Revision while an existing run remains on its
   original bundle;
