@@ -448,6 +448,135 @@ updated_at
 The Figma 30-day summary is aggregated from canonical commercial orders. Usage
 metering or estimated model cost never creates a bill.
 
+### 8.3 Enterprise resource balances (2026-09-28 increment)
+
+**Design Basis: Independent Architecture; admission: IMPLEMENTATION_READY.**
+
+Bounded independent review on 2026-09-28 by `payment_architecture_review`
+admitted this increment against main `e0d73b5cd9aad35c43f09c534d1516e04dea81db`:
+no BLOCKER. Independent commercial-owner injection, one-statement missing/zero/
+debt semantics, strict BFF validation and scope isolation are IMPLEMENTATION_TEST
+items to satisfy before merge. This admission is not product acceptance.
+This increment is limited to the new read contract below. The existing wallet,
+purchase, subscription, member-limit and recovery contracts remain frozen.
+
+Product authority is the user's 2026-09-28 decision to finish Account Center
+and Plans / Entitlements first (Issue #478, acceptance #438/#473). Figma
+`tg48P46SSXl6TBy9lZwg63 / 431:4158` (read live on 2026-09-28) separates the
+enterprise resource pool from member allocation. Its sample balances are not
+business facts. Member AI-point monthly limits retain the approved contract
+in `docs/engineering/2026-09-25-issue487-main-image-execution-design.md` §9.5.
+
+#### Outcome, scope and owner
+
+An authorized user can read the same actual enterprise AI-point / data-row
+balances on My Entitlements and Account / Organization / Resources. The cards
+also identify renewal-period resources separately from actual active shops.
+The existing `internal/ledger/orgresource` owns these facts; the existing
+bucket/debt tables in the commercial database remain the only balance source.
+Subscription limits, member monthly caps and money-wallet CNY balances are
+different facts and must never be relabeled or added together.
+
+Scope is a bounded GET projection, its explicit app injection, strict BFF/client
+validation, shared cards and correction of contradicted static capability/unit
+text in those consumers. Existing purchase/order/activation paths are reused.
+No schema, command, grant, price, resource purchase flow, callback, provider
+call, new balance, shop counter, data-service consumer, migration, retry or
+recovery mechanism is added. Missing prices/capabilities remain unavailable.
+Legacy decision: N/A; no retired owner is consumed.
+
+#### Contract and call path
+
+```http
+GET /api/v1/workbench/commercial/resources
+```
+
+App-owned HTTP composition delegates to an orgresource read port implemented
+by `internal/integration/orgresource`. It uses the already-installed commercial
+owner connection and existing privileges. It does not use the subscription
+reader connection or extend that reader's privilege allowlist.
+
+```text
+current user + live Effective Organization + commercial read permission
+→ fixed-origin same-origin BFF /api/workbench/commercial/resources
+→ app HTTP module / current application explicit registration
+→ orgresource balance read port → existing bucket/debt tables
+→ typed shared cards on Plans/Entitlements and Account/Resources
+```
+
+The route uses the same `PermissionWorkbenchCommercialRead`,
+`AuthPolicyCurrentIdentity` and `OrganizationAccessPolicyLiveWrite` admission
+as existing wallet/order reads. Roles and identity come only from the current
+trusted context. The handler requires a bound actor, and TenantID must equal
+EffectiveOrganizationID. The organization is not supplied in body/path/query.
+Reject query strings and unread GET bodies. A viewer gains no new permission;
+operator/admin permissions retain the existing commercial matrix. Revoked,
+unavailable or suspended live grants fail closed before repository access.
+
+The response is a strict envelope with `schema_version` equal to
+`organization-resource-balances-v1`, `organization_id`, `observed_at` and
+`resources`. The array contains exactly one entry for each of
+`store_renewal_period`, `ai_point`, and `data_row`; no unknown/duplicate/missing
+type is accepted. Each entry has `resource_type`, `unit` (`period`, `point`,
+`row` respectively), `state` (`recorded` or `not_recorded`), `available`,
+`reserved`, `consumed`, `debt` and `updated_at`.
+
+For a recorded bucket, all quantities are canonical nonnegative int64 decimal
+strings; an absent debt row means recorded debt `0`. Debt > 0 requires
+available = 0, as in the existing debt-first owner. An absent bucket is
+`not_recorded` with all quantities and updated_at null; it is not an observed
+zero balance. A debt without its bucket, negative/inconsistent facts, invalid
+timestamps, missing tables or a database error produce dependency unavailable,
+not a successful empty response. A recorded zero remains visibly zero.
+
+#### Read consistency and failure boundaries
+
+Read all three buckets and their debts in one bounded SQL statement, with
+every table join bound to the exact organization. This observes one database
+statement snapshot without taking write locks or repairing/creating records.
+Concurrent grants/reservation/finalization can produce the before or after
+snapshot, never a mixed bucket/debt snapshot. No snapshot is claimed across
+the independent subscription, money and resource reads.
+
+GET has no business side effects. Failed/cancelled/time-limited reads neither
+change balances nor create resource business operations/events/audits; existing
+authentication/authorization denial auditing remains enabled. Retry is only another
+read. Resource UNKNOWN reservations remain represented by the canonical
+reserved amount and are not released by reading or changing month.
+
+The existing 15-second bounded route/client deadlines and no-store transport
+apply. Successful resource JSON is capped at 16 KiB; errors at 8 KiB. The BFF
+checks exactly one expected-user/organization header against the actual session
+and current organization cookie, uses only the fixed backend origin, rejects
+redirects and duplicate/malformed JSON, and validates the returned organization
+and the complete resource schema. Identifiers remain bounded to current rules.
+
+React queries are scoped to actor, organization and roles; selection/loading/
+switching invalidates the visible prior scope. Late A replies cannot render in
+B. Resource-read errors/forbidden/missing state do not become zero and do not
+hide unrelated member/entitlement sections. Refresh obtains new owner facts.
+The shared resource cards label AI points and data rows explicitly; renewal
+periods never become a shop-use count. Existing Token allocation is labeled
+Token, never AI points. A read page links to the existing wallet and member
+management pages without promising that payment/resource purchase is enabled.
+
+#### Verification and delivery
+
+Use focused TDD for exact int64 including > JS safe integers, recorded zero vs
+absent bucket, debts, A/B isolation, current grant/role denial, strict DTO/BFF
+binding, late replies and the shared consumers. An owner write followed by
+this reader must reflect the resulting persisted snapshot without adding read
+operations/audit/events. Reuse existing PostgreSQL facilities for the new
+statement and commercial role where available; no new runner/fault platform.
+Existing purchase/activation, member limits and wallet regressions are reused
+and run only where the changed consumption creates combination risk.
+
+One writer, branch and main PR under #478; a bounded independent design review
+is required before production implementation, followed by focused development
+checks, required CI and final independent diff/call-path review. Developer
+checks are not product acceptance. Runtime deployment, real provider/payment,
+shared-data changes, merge and Issue closure remain separately authorized.
+
 ## 9. BFF contract
 
 Next BFF follows the existing Workbench transport:

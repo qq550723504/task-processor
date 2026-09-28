@@ -3,13 +3,14 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { commercialOverviewFixture } from "@/test/fixtures/commercial-overview";
+import { commercialResourcesFixture } from "@/test/fixtures/commercial-resources";
 import { CommercialPage } from "./commercial-page";
 vi.mock("./wallet-topup", () => ({ WalletTopUpEntry: () => <button disabled>充值钱包</button>, TopUpPaymentPanel: () => <section>充值订单</section> }));
 
-const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), offers: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn() }));
+const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), resources: vi.fn(), offers: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 vi.mock("@/lib/api/commercial", async (original) => ({ ...await original<typeof import("@/lib/api/commercial")>(), getCommercialOverview: state.read }));
-vi.mock("@/lib/api/commercial-billing", async (original) => ({ ...await original<typeof import("@/lib/api/commercial-billing")>(), getCommercialWallet: state.wallet, getCommercialWalletEntries: state.entries, getCommercialOrders: state.orders, getCommercialOrderSummary: state.summary, getCommercialOrder: state.detail }));
+vi.mock("@/lib/api/commercial-billing", async (original) => ({ ...await original<typeof import("@/lib/api/commercial-billing")>(), getCommercialResources: state.resources, getCommercialWallet: state.wallet, getCommercialWalletEntries: state.entries, getCommercialOrders: state.orders, getCommercialOrderSummary: state.summary, getCommercialOrder: state.detail }));
 vi.mock("@/lib/api/subscription-purchase", async (original) => ({ ...await original<typeof import("@/lib/api/subscription-purchase")>(), getSubscriptionOffers: state.offers }));
 let client: QueryClient;
 const tree = (page: "options" | "entitlements" | "top-up" | "orders" | "order-detail" = "entitlements", orderId?: string) => <QueryClientProvider client={client}><CommercialPage page={page} orderId={orderId} /></QueryClientProvider>;
@@ -17,6 +18,7 @@ function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: unknown)
 beforeEach(() => {
   state.context = { user: { id: "reader" }, effectiveOrganization: { id: "org-B", name: "企业乙", roles: ["listingkit_admin"] }, roles: ["listingkit_admin"], retry: vi.fn() };
   state.read.mockReset().mockResolvedValue(commercialOverviewFixture());
+  state.resources.mockReset().mockImplementation((_user, org) => Promise.resolve(commercialResourcesFixture(org)));
   state.offers.mockReset().mockResolvedValue({ organization_id: "org-B", items: [] });
   state.wallet.mockReset().mockResolvedValue({ organization_id: "org-B", currency: "CNY", available_minor: "12000", reserved_minor: "0", debt_minor: "0", lifetime_topup_minor: "12000", lifetime_spend_minor: "0", version: "1", observed_at: "2026-09-23T10:00:00Z" });
   state.entries.mockReset().mockResolvedValue({ organization_id: "org-B", items: [], next_cursor: "" });
@@ -57,6 +59,21 @@ it("shows a subscription order's plan and activation proof separately from a res
   expect(screen.queryByText("该订单没有返回项目明细。")).not.toBeInTheDocument();
 });
 afterEach(() => { cleanup(); client.clear(); });
+
+it("keeps resource balances visible when subscription reading fails and vice versa", async () => {
+  state.read.mockRejectedValueOnce({ code: "DEPENDENCY_UNAVAILABLE" });
+  const view = render(tree());
+  const points = screen.getByRole("region", { name: "AI 点数余额" });
+  expect(await within(points).findByText("9007199254740993 点")).toBeVisible();
+  expect(await screen.findByRole("alert")).toHaveTextContent("未取得订阅与已授予权益");
+  expect(screen.queryByText(/不能判断.*余额/)).not.toBeInTheDocument();
+  state.read.mockResolvedValue(commercialOverviewFixture()); state.resources.mockRejectedValueOnce({ code: "PERMISSION_DENIED" });
+  await userEvent.click(screen.getByRole("button", { name: "刷新数据" }));
+  expect(await screen.findByText("企业实际合同")).toBeVisible();
+  expect(await screen.findByRole("alert")).toHaveTextContent("无资源查看权限");
+  expect(within(points).queryByText("9007199254740993 点")).not.toBeInTheDocument();
+  view.unmount();
+});
 
 it("separates actual subscription, grants, resource balances and ledger observations with exact units", async () => {
   render(tree());

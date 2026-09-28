@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readBoundedStrictJSON } from "@/lib/api/strict-json-response";
+import { COMMERCIAL_RESOURCE_MAX_BYTES, parseCommercialResources, parseCommercialBillingFailure } from "@/lib/api/commercial-billing";
 import { BodyTooLargeError, readBodyWithinLimit, WORKBENCH_COOKIE_NAME, workbenchProtocolError } from "./workbench-proxy";
 import { newRequestLogId } from "./request-log";
 import { hasTrustedSameOriginWrite } from "./same-origin-write";
@@ -34,6 +35,9 @@ const failure = (status: number, code: string) => workbenchProtocolError(status,
 const safeJSON = (body: unknown, status: number) => NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 
 export async function proxyCommercialBilling(request: Request, accessToken: string, sessionUserId: string): Promise<Response> {
+  const incomingURL = new URL(request.url);
+  const resourceRead = incomingURL.pathname === "/api/workbench/commercial/resources";
+  if (resourceRead && (request.method !== "GET" || incomingURL.href.includes("?"))) return failure(400, "INVALID_REQUEST");
   const paymentWrite = request.method === "POST" && /\/(top-up-intents|checkout|cancel-payment)$/.test(new URL(request.url).pathname);
   if (paymentWrite && !hasTrustedSameOriginWrite(request)) return failure(403, "PERMISSION_DENIED");
   if (request.signal.aborted) return failure(504, "DEADLINE_EXCEEDED");
@@ -72,7 +76,6 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
       await request.body.cancel().catch(() => undefined);
       return failure(400, "INVALID_REQUEST");
     }
-    const incomingURL = new URL(request.url);
     const path = `${incomingURL.pathname.replace("/api/workbench/", "/api/v1/workbench/")}${incomingURL.search}`;
     const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${accessToken}`, "X-Requested-Organization-ID": organization, "X-Request-ID": newRequestLogId() });
     if (body) headers.set("Content-Type", request.headers.get("content-type") ?? "application/json");
@@ -85,11 +88,18 @@ export async function proxyCommercialBilling(request: Request, accessToken: stri
     }
     let payload: unknown;
     try {
-      payload = await readBoundedStrictJSON(upstream, upstream.status >= 200 && upstream.status < 300 ? MAX_RESPONSE_BYTES : 8192, controller.signal);
+      payload = await readBoundedStrictJSON(upstream, upstream.status >= 200 && upstream.status < 300 ? (resourceRead ? COMMERCIAL_RESOURCE_MAX_BYTES : MAX_RESPONSE_BYTES) : 8192, controller.signal);
     } catch {
       return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(502, "INVALID_UPSTREAM_RESPONSE");
     }
     controller.signal.throwIfAborted();
+    if (resourceRead) {
+      if (upstream.status === 200) {
+        const parsed = parseCommercialResources(payload);
+        return parsed && parsed.organization_id === organization ? safeJSON(parsed, 200) : failure(502, "INVALID_UPSTREAM_RESPONSE");
+      }
+      if (!parseCommercialBillingFailure(payload, upstream.status)) return failure(502, "INVALID_UPSTREAM_RESPONSE");
+    }
     return safeJSON(payload, upstream.status);
   } catch {
     return controller.signal.aborted ? failure(504, "DEADLINE_EXCEEDED") : failure(503, "DEPENDENCY_UNAVAILABLE");

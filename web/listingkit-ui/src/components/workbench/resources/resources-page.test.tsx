@@ -3,17 +3,20 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { commercialOverviewFixture } from "@/test/fixtures/commercial-overview";
+import { commercialResourcesFixture } from "@/test/fixtures/commercial-resources";
 import { ResourcesPage } from "./resources-page";
 
-const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn() }));
+const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), resources: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 vi.mock("@/lib/api/commercial", async original => ({ ...await original<typeof import("@/lib/api/commercial")>(), getCommercialOverview: state.read }));
+vi.mock("@/lib/api/commercial-billing", async original => ({ ...await original<typeof import("@/lib/api/commercial-billing")>(), getCommercialResources: state.resources }));
 vi.mock("@/lib/api/member-ai-point-limits", async original => ({ ...await original<typeof import("@/lib/api/member-ai-point-limits")>(), getMemberAIPointLimits: async (scope: { expectedOrganizationId: string }) => ({ schemaVersion: "member-ai-point-monthly-limit-v1", organizationId: scope.expectedOrganizationId, resourceType: "ai_point", timezone: "UTC", members: [] }) }));
 let client: QueryClient;
 const tree = () => <QueryClientProvider client={client}><ResourcesPage /></QueryClientProvider>;
 beforeEach(() => {
   state.context = { user: { id: "actor" }, effectiveOrganization: { id: "org-B", name: "企业乙" }, roles: ["listingkit_operator"], retry: vi.fn() };
   state.read.mockReset().mockResolvedValue(commercialOverviewFixture());
+  state.resources.mockReset().mockImplementation((_user, org) => Promise.resolve(commercialResourcesFixture(org)));
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(() => { cleanup(); client.clear(); });
@@ -33,7 +36,7 @@ it("projects real grants and usage while unknown resource and Store facts never 
   expect(topMetrics.compareDocumentPosition(memberDirectory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(memberDirectory.compareDocumentPosition(screen.getByRole("region", { name: "源账号资源" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const memberTable = within(memberDirectory).getByRole("table");
-  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "token积分额度", "数据额度", "操作"]);
+  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "AI Token 额度", "数据额度", "操作"]);
   expect(topMetrics.compareDocumentPosition(screen.getByRole("region", { name: "源账号资源" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByRole("group", { name: "成员资源筛选" })).toBeVisible();
   expect(screen.getByRole("link", { name: "管理源账号" })).toHaveAttribute("href", "/workbench/account/organization/resources/source-accounts");
@@ -81,14 +84,14 @@ it.each(["PERMISSION_DENIED", "DEPENDENCY_UNAVAILABLE", "AUTHENTICATION_REQUIRED
   state.read.mockResolvedValueOnce(commercialOverviewFixture()).mockRejectedValue({ code, message: "private token" });
   render(tree()); await screen.findByText("企业实际合同");
   await userEvent.click(screen.getByRole("button", { name: "刷新资源" }));
-  expect(await screen.findByText(/本次未取得数据，权益、用量与余额暂不可用/)).toBeVisible();
+  expect(await screen.findByText(/本次未取得订阅权益与用量/)).toBeVisible();
   const fallbackMetrics = screen.getByRole("region", { name: "企业资源权益摘要" });
   expect(within(fallbackMetrics).getAllByRole("heading", { level: 3 })).toHaveLength(3);
-  expect(within(fallbackMetrics).getAllByText("资源余额未提供")).toHaveLength(2);
+  expect(await within(fallbackMetrics).findByText("9007199254740993 点")).toBeVisible();
   const allocationDirectory = screen.getByRole("region", { name: "成员 AI Token 分配" });
   expect(within(allocationDirectory).getByRole("alert")).toHaveTextContent("本次未能确认成员分配数据");
   const memberTable = screen.getByRole("region", { name: "成员资源表格，可横向滚动" });
-  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "token积分额度", "数据额度", "操作"]);
+  expect(within(memberTable).getAllByRole("columnheader").map(header => header.textContent)).toEqual(["成员", "角色", "店铺", "续费期数", "AI Token 额度", "数据额度", "操作"]);
   expect(within(memberTable).queryByText("当前没有可展示的成员资源记录。")).not.toBeInTheDocument();
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
   expect(screen.queryByText("无订阅")).not.toBeInTheDocument();

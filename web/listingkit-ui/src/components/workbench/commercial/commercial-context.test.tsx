@@ -7,6 +7,7 @@ import { OrganizationSwitcher } from "@/components/workbench/organization-switch
 import { parseCommercialOverview } from "@/lib/api/commercial";
 import { WORKBENCH_CONTEXT_QUERY_KEY } from "@/lib/api/workbench-context";
 import { commercialOverviewFixture } from "@/test/fixtures/commercial-overview";
+import { commercialResourcesFixture } from "@/test/fixtures/commercial-resources";
 import { CommercialPage } from "./commercial-page";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -16,12 +17,23 @@ it("uses real context/switcher and commercial client, drops late HTTP response, 
   let context = { user: { id: "reader" }, homeOrganizationId: "org-A", effectiveOrganizationId: "org-B", selectionRequired: false, organizations: [{ id: "org-B", name: "企业乙", roles: ["listingkit_admin"] }, { id: "org-C", name: "企业丙", roles: ["listingkit_admin"] }] };
   let release!: (response: Response) => void;
   const late = new Promise<Response>(resolve => { release = resolve; });
+  let releaseResources!: (response: Response) => void;
+  const lateResources = new Promise<Response>(resolve => { releaseResources = resolve; });
   const requests: RequestInit[] = [];
+  const resourceRequests: RequestInit[] = [];
   let revoked = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/workbench/context") return Response.json(context);
     if (url === "/api/workbench/context/effective-organization") {
       context = { ...context, effectiveOrganizationId: "org-C" }; return Response.json(context);
+    }
+    if (url === "/api/workbench/commercial/resources") {
+      resourceRequests.push(init!);
+      expect(new Headers(init?.headers).get("X-Expected-User-ID")).toBe("reader");
+      if (revoked) return Response.json({ code: "PERMISSION_DENIED", message: "private", requestId: "test-request", fieldErrors: [] }, { status: 403 });
+      if (new Headers(init?.headers).get("X-Expected-Organization-ID") === "org-B") return lateResources;
+      const value = commercialResourcesFixture("org-C");
+      return Response.json({ ...value, resources: value.resources.map(v => v.resource_type === "ai_point" ? { ...v, available: "88" } : v) });
     }
     expect(url).toBe("/api/workbench/commercial/overview");
     requests.push(init!);
@@ -35,15 +47,22 @@ it("uses real context/switcher and commercial client, drops late HTTP response, 
   expect(await screen.findByText("无订阅")).toBeVisible();
   expect(requests[0].signal?.aborted).toBe(true);
   expect(new Headers(requests[1].headers).get("X-Expected-Organization-ID")).toBe("org-C");
+  expect(await screen.findAllByText("88 点")).toHaveLength(2);
+  expect(resourceRequests[0].signal?.aborted).toBe(true);
+  expect(new Headers(resourceRequests[1].headers).get("X-Expected-Organization-ID")).toBe("org-C");
   await act(async () => release(Response.json(commercialOverviewFixture())));
+  await act(async () => releaseResources(Response.json(commercialResourcesFixture())));
   expect(screen.queryByText("企业实际合同")).not.toBeInTheDocument();
+  expect(screen.queryByText("9007199254740993 点")).not.toBeInTheDocument();
   revoked = true;
   context = { ...context, organizations: context.organizations.map(org => ({ ...org, roles: ["listingkit_viewer"] })) };
   await act(async () => { await queryClient.invalidateQueries({ queryKey: WORKBENCH_CONTEXT_QUERY_KEY }); });
-  expect(await screen.findByRole("alert")).toHaveTextContent("无查看权限");
+  expect(await screen.findByRole("heading", { name: "无查看权限" })).toBeVisible();
+  expect(await screen.findByText(/无资源查看权限/)).toBeVisible();
   expect(screen.queryByText("无订阅")).not.toBeInTheDocument();
   expect(screen.queryByText("private")).not.toBeInTheDocument();
-  expect(requests.every(request => request.method === "GET" && request.cache === "no-store" && request.redirect === "manual")).toBe(true);
+  expect(screen.queryByText("88 点")).not.toBeInTheDocument();
+  expect([...requests, ...resourceRequests].every(request => request.method === "GET" && request.cache === "no-store" && request.redirect === "manual")).toBe(true);
   view.unmount(); queryClient.clear();
 });
 

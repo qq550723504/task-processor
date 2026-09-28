@@ -10,6 +10,7 @@ import { getCommercialOrder, getCommercialOrderSummary, getCommercialOrders, get
 import { getSubscriptionOffers } from "@/lib/api/subscription-purchase";
 import { ConsolePage, ConsoleState } from "../console/console-page";
 import { EntitlementsOverview } from "./commercial-views";
+import { EnterpriseResources } from "./enterprise-resources";
 import { SubscriptionPlanOptions } from "./subscription-plan-options";
 import { CommercialOverviewView, UsageDetailsView } from "./commercial-module-views";
 import { OrderDetailView, OrdersView, WalletView } from "./commercial-billing-views";
@@ -60,6 +61,7 @@ function ScopedCommercial({ page, scope, userId, organizationId, organizationNam
     {page === "overview" ? <Button asChild variant="outline"><Link prefetch={false} href="/workbench/plans/entitlements">查看我的权益</Link></Button> : <Button asChild variant="outline"><Link prefetch={false} href={page === "options" ? "/workbench/plans/entitlements" : "/workbench/plans/options"}>{page === "options" ? "查看我的权益" : "查看套餐方案"}</Link></Button>}
     <Button variant="outline" onClick={refresh}>刷新数据</Button>
   </>}>
+    {page === "entitlements" ? <EnterpriseResources userId={userId} organizationId={organizationId} scope={scope} sequence={sequence} showSummary /> : null}
     <CommercialRequest key={sequence} page={page} scope={scope} userId={userId} organizationId={organizationId} organizationName={organizationName} roles={roles} sequence={sequence} />
   </PageFrame>;
 }
@@ -132,7 +134,7 @@ function ReadError({ error }: { error: unknown }) {
     INVALID_UPSTREAM_RESPONSE: "商业数据响应无效",
   };
   return <ConsoleState kind="error" title={messages[code] ?? "商业数据读取失败"}>
-    <p>本次未取得数据，不能判断订阅、权益或余额。观察时间与周期未取得。</p>
+    <p>本次未取得订阅与已授予权益、订阅用量。企业资源余额以资源卡片的独立读取结果为准。</p>
     <p>可重新选择企业或刷新数据，再由服务端确认访问权限。</p>
   </ConsoleState>;
 }
