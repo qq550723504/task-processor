@@ -367,9 +367,9 @@ existing Casbin assembly path.
 The generic legacy/internal `admin` role is not automatically granted new Workbench
 Knowledge permissions merely because it has older ListingKit permissions.
 
-This mapping intentionally prevents all viewers from reading enterprise documents by
-default. A later product decision can broaden access, but that is not a V1 implementation
-detail.
+This mapping intentionally prevents all Organization viewers from reading enterprise
+documents by default. A later product decision can broaden access, but that is not a V1
+implementation detail.
 
 ### 6.2 Semantics
 
@@ -381,20 +381,56 @@ detail.
 `agent.use` / `agent.configure` remain deferred to Slice D, when persistent enterprise
 Agent enablement/template ownership is implemented.
 
+### 6.3 Current-state admission is mandatory on every protected content load
+
+Permission alone is insufficient to read a frozen KnowledgeContextBundle.
+
+Every operation that would reveal or dispatch Knowledge content must revalidate, at the
+moment of that operation:
+
+```text
+verified actor
++ Effective Organization
++ workbench.knowledge.read
++ KnowledgeBase.state == active
++ KnowledgeSource.state == active
++ exact KnowledgeRevision is still content-readable
++ bundle Organization/source/revision/digest binding still matches
+```
+
+This check applies independently to:
+
+- preview reads;
+- KnowledgeContextBundle materialization;
+- every load of a frozen bundle before model Quote/Decide/dispatch;
+- every citation excerpt/source-content resolution in Human Review;
+- resume paths after process restart or Agent checkpoint recovery.
+
+If a KnowledgeBase or Source is disabled after a bundle was created, that historical bundle
+remains an immutable provenance object but becomes **content-ineligible** for any subsequent
+model dispatch or protected excerpt read. The system must not send its previously frozen
+excerpts to the model merely because the caller still has `workbench.knowledge.read`.
+
+Historical Agent/Review records may retain only opaque identity/provenance such as bundle
+ID, digest, revision IDs and citation IDs. When current content admission fails, UI may show
+a safe state such as “引用资料当前不可访问/已停用”, but must not reveal protected document
+name, excerpt, object key or cached model-visible text unless the current read path is again
+authorized and active.
+
 Rules:
 
 - every Knowledge list/read/context-materialization is scoped to current Effective Organization;
 - template binding does not grant access to a KnowledgeBase;
-- context materialization performs fresh authorization;
-- the governed model adapter rechecks Knowledge read access when it loads the exact bundle
-  for each new paid/model dispatch;
-- revoked access after bundle creation blocks the next model dispatch/resume that needs the
-  bundle;
+- context materialization performs fresh authorization + active-state admission;
+- the governed model adapter repeats that full admission when it loads the exact bundle for
+  **every** new paid/model dispatch;
+- revoked permission, disabled base/source or non-readable exact revision after bundle
+  creation blocks the next model dispatch/resume that needs the bundle;
 - browser-provided user/org/role/template ownership is never authority;
 - knowledge text cannot grant ToolRefs, change model route, increase budget, change
   Organization or authorize writes;
-- Review/history may retain opaque provenance refs after access loss, but protected labels,
-  excerpts or document content are resolved only for a caller still allowed to read them.
+- Review/history retains opaque provenance after access loss/disable, while protected labels,
+  excerpts and document content remain unavailable.
 
 The implementation extends the existing Casbin authorizer and
 `WorkbenchPermissions()` display contract. It must not create a second IAM, role directory
@@ -434,7 +470,8 @@ Before `runtime.Start`:
 ```text
 explicit KnowledgeSelection
   -> fresh Organization + knowledge authorization
-  -> resolve only AVAILABLE/PARTIAL admitted revisions
+  -> active KnowledgeBase/Source admission
+  -> resolve only currently content-readable AVAILABLE/PARTIAL revisions
   -> bounded materialization
   -> persist immutable KnowledgeContextBundle
   -> return ContextSnapshotRef{id,digest}
@@ -448,19 +485,35 @@ eligible Knowledge revisions and model-visible bounded content are frozen.
 “Actual citations used by the suggestion” are a subset of entries in the frozen bundle and
 can be discovered by the model later. The run never resolves a citation against `latest`.
 
+A committed bundle proves what was selected/materialized at that time. It does **not**
+grant future access to its cached content.
+
 ### 7.3 Context loading during model execution
 
 The governed model adapter may read the exact immutable bundle by
-`ContextSnapshotRef{id,digest}` through a narrow Knowledge reader after fresh access
-checking.
+`ContextSnapshotRef{id,digest}` through a narrow Knowledge reader only after the full
+current-state admission from §6.3.
+
+The reader must:
+
+1. verify ref/digest + Organization binding;
+2. re-read current KnowledgeBase and KnowledgeSource states for every referenced entry;
+3. verify current caller still has Knowledge read permission;
+4. verify every exact Revision is still content-readable;
+5. only then return the bounded frozen model-visible content.
 
 It must fail closed when:
 
 - the ref/digest does not match;
 - the bundle belongs to another Organization;
-- current access has been revoked;
+- current read permission has been revoked;
+- any referenced KnowledgeBase/Source is disabled;
+- any exact Revision is no longer content-readable;
 - required bundle content is unavailable/corrupt;
 - the model tries to cite an ID not present in that bundle.
+
+A failed admission does not delete or mutate the historical bundle. It only blocks content
+release/dispatch and preserves opaque provenance for audit.
 
 No knowledge text is placed in the browser-authoritative Agent request.
 
@@ -547,8 +600,9 @@ Requirements:
 - parser restart/crash cannot mutate Knowledge authority; durable source/revision state
   remains in the Knowledge owner.
 
-This parser choice is still a Product/Architecture candidate. If Product Review narrows V1
-to text/Markdown only, no Tika deployment should be added merely for future compatibility.
+This parser choice is still an implementation candidate under the approved product scope.
+If V1 is later explicitly narrowed to text/Markdown, no Tika deployment should be added
+merely for future compatibility.
 
 ## 8. Product Agent integration
 
@@ -707,14 +761,14 @@ The model can reason over knowledge, but runtime policy is enforced outside mode
 
 ## 11. Citation and Human Review contract
 
-When a knowledge-backed suggestion is shown to the user, the UI should be able to display:
+When a knowledge-backed suggestion is shown to the user and current Knowledge content
+admission still succeeds, the UI may display:
 
 - knowledge/library name;
 - source/document name;
 - exact revision or updated-at indicator;
 - location/page/section when available;
-- whether the source/result was partial;
-- unavailable/deleted/revoked state without exposing source content after access is lost.
+- whether the source/result was partial.
 
 “引用知识 1” alone is insufficient for result explainability.
 
@@ -739,12 +793,20 @@ ContextProvenanceRef {
 ```
 
 The Review record needs enough immutable reference data to survive restart and preserve the
-link to the exact Knowledge revisions used by the original AI suggestion. Raw knowledge
-content is not copied into Review storage.
+link to the exact Knowledge revisions that informed the original AI suggestion. Raw knowledge
+content, source display names and excerpts are not copied into Review storage.
 
-At read time, display metadata/excerpts are resolved through a narrow Knowledge citation
-reader under current authorization. If access is gone, the Review can still say that the
-original suggestion used an unavailable source without disclosing its protected content.
+At Review read time, display labels/excerpts are resolved through
+`KnowledgeCitationReader` using the full current-state admission from §6.3. Permission
+alone is not sufficient.
+
+If the KnowledgeBase/Source was disabled or access revoked after the AI run:
+
+- Review retains the opaque original provenance;
+- UI may state that an original Knowledge citation is currently unavailable/disabled;
+- source/document names, excerpts and cached model-visible text are not returned;
+- Apply still depends on canonical Product/source validation and current Review
+  authorization, never on the availability of Knowledge citation content.
 
 ### 11.2 Human edit semantics
 
@@ -752,14 +814,15 @@ Knowledge citations describe the **original AI suggestion**.
 
 If the reviewer edits the title:
 
-- the original provenance remains for audit/explanation;
+- the original opaque provenance remains for audit/explanation;
 - the UI must not claim the same citations support the human-edited title;
 - existing Review/Product validation and Apply semantics remain authoritative.
 
 ### 11.3 No citation authority escalation
 
 A valid Knowledge citation proves only “this exact context was available to the model and
-was cited”. It does not prove a Product attribute, policy compliance or approval.
+was cited at generation time”. It does not prove a Product attribute, policy compliance or
+approval, and it does not create a future right to re-read that Knowledge content.
 
 ## 12. Chat / BusinessTask boundary
 
@@ -979,6 +1042,10 @@ Required integrity:
 - mutable records use explicit version/CAS for user-visible writes;
 - source/base disable cannot mutate existing historical bundle entries.
 
+Historical bundle rows may retain bounded model-visible content required to explain/recover
+the exact past run, but that content is **not independently readable**. Every release of
+that cached content is mediated by current Knowledge state/authorization (§6.3).
+
 ### 15.4 Object storage
 
 The repository already has provider-specific S3 integration with immutable put, inspect and
@@ -1094,21 +1161,48 @@ Bounded parse output:
 - no OCR/VLM;
 - raw document and parser body are excluded from ordinary logs.
 
-### 15.8 Delete / disable and historical provenance
+### 15.8 Disable, revoke and historical provenance
 
-V1 has disable, not destructive user delete.
+Disable is an immediate **content-use fence**, not merely a discovery/listing flag.
 
-Disable:
+When a KnowledgeBase or Source transitions away from active:
 
-- removes the KnowledgeBase/Source from new selection and context materialization;
-- blocks protected preview/content reads for callers without a still-valid path;
-- does not mutate Agent runs, ContextBundles or Product Review provenance already recorded.
+- it is excluded from all new selection/materialization;
+- every future preview/content read fails closed;
+- every future load of any already-created ContextBundle that references it fails closed
+  before releasing cached excerpts;
+- every future model Quote/Decide/dispatch or resume that needs such bundle content is
+  blocked before provider dispatch;
+- every future citation-detail resolution returns only safe unavailable/disabled state.
 
-Physical purge/retention is **not** a V1 user action. Operational retention/purge policy must
-be added before a destructive-delete feature is admitted.
+The same content-use fence applies when the caller loses current
+`workbench.knowledge.read` or Organization access.
 
-AgentRun stores ContextSnapshotRef and validated citation refs, not the full enterprise
-document body.
+What remains durable:
+
+- bundle ID/digest;
+- Source/Revision IDs;
+- citation IDs;
+- Agent run and Product Review provenance relationships;
+- safe state that the source is currently unavailable/disabled.
+
+What does **not** remain readable solely because it was once materialized:
+
+- source/document display name if it is protected enterprise metadata;
+- excerpt/body;
+- object key;
+- cached model-visible content;
+- parser output.
+
+Disable/revoke does not retroactively change what the original model saw. It only prevents
+that protected content from being released again.
+
+V1 has disable, not destructive user delete. Physical purge/retention is not a V1 user
+action. Operational retention/purge policy must be added before destructive delete is
+admitted.
+
+AgentRun stores ContextSnapshotRef and validated citation refs, not authority to re-read the
+content.
 
 ## 16. Failure, retry and UNKNOWN
 
@@ -1159,16 +1253,34 @@ Organization
 A committed bundle is immutable. Lost response with the same idempotency identity returns
 the existing bundle/ref. Changed selection/policy with the same key conflicts.
 
+Immutability preserves historical provenance; it does not bypass later active-state or
+authorization checks.
+
 ### 16.5 Agent model dispatch
 
 Existing Product Agent quote/reservation/UNKNOWN/budget semantics remain authoritative.
 
-Before `Quote` or `Decide`, the governed model adapter loads the exact ContextBundle and
-rechecks Knowledge read access. The context bytes used for the model must be included in the
-quote/token estimate; Knowledge must not become an unmetered hidden prompt.
+Before **every** `Quote`, `Decide` or provider dispatch that needs Knowledge content, the
+governed model adapter:
 
-If access is revoked before a later model call/resume, the call is not dispatched and the
-run stops/fails according to the existing authoritative no-send/dependency semantics.
+1. loads the exact ContextSnapshotRef;
+2. performs the complete §6.3 current-state admission;
+3. only after that releases model-visible bundle bytes to quote/token estimation;
+4. verifies the same admission again immediately before provider dispatch if the quote and
+   dispatch are separated by an authorization/state boundary.
+
+The context bytes actually used for the model are included in the quote/token estimate;
+Knowledge must not become an unmetered hidden prompt.
+
+If permission is revoked, KnowledgeBase/Source disabled, or exact Revision becomes
+content-ineligible before a later model call/resume:
+
+- no Knowledge bytes are released to the model layer;
+- provider dispatch does not occur;
+- the run stops/fails under the existing authoritative no-send/dependency/authorization
+  semantics;
+- opaque provenance remains durable.
+
 Knowledge adds no second model retry owner.
 
 ## 17. Legacy decision
@@ -1314,7 +1426,7 @@ calls are not authorized by this document yet.
 
 Architecture acceptance requires implementation evidence plans for these risks.
 
-### 20.1 Authorization / Organization
+### 20.1 Authorization / Organization / disable fence
 
 - viewer denied Knowledge read/manage;
 - operator read allowed, manage denied;
@@ -1323,7 +1435,12 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - browser-selected Organization is not authority;
 - grant revoked between selection and materialization fails closed;
 - grant revoked after bundle creation blocks the next model dispatch;
-- template reference does not restore revoked Knowledge access.
+- KnowledgeBase disabled after bundle creation blocks bundle reload and next model dispatch;
+- Source disabled after bundle creation blocks bundle reload and next model dispatch;
+- disable between model Quote and provider dispatch is rechecked and blocks dispatch;
+- citation read after disable returns only safe unavailable state, not source name/excerpt;
+- historical Review/Agent provenance remains structurally present after disable;
+- template reference does not restore revoked/disabled Knowledge access.
 
 ### 20.2 Persistence / upload / parser
 
@@ -1351,13 +1468,15 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - Product fact conflict wins over Knowledge suggestion;
 - canonical `FieldChange.EvidenceIDs` remains Product/source-only;
 - Knowledge prompt bytes are included in existing model quote/usage accounting;
+- disabled/revoked bundle content is never sent on a later model call;
 - model outcome UNKNOWN retains current Product Agent recovery semantics.
 
 ### 20.4 Human Review / provenance
 
 - validated citations survive Agent -> Product Review -> process restart;
-- Review does not copy raw enterprise documents;
-- revoked caller cannot resolve protected citation excerpts;
+- Review does not copy raw enterprise documents/source display content;
+- revoked/disabled caller path cannot resolve protected citation labels/excerpts;
+- Review can still show safe “original citation unavailable/disabled” provenance;
 - human-edited title does not falsely inherit AI citation support;
 - Accept/Reject/Edit/Apply retain existing Product Review CAS/authorization behavior.
 
@@ -1369,7 +1488,8 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - “enabled Agent” is never rendered from AgentRun running state;
 - template UI states that defaults are re-authorized at execution;
 - title execution shows actual selected Knowledge revision/version indicator;
-- Human Review shows citation provenance separately from Product fact validation.
+- Human Review shows citation provenance separately from Product fact validation;
+- disabled Knowledge renders an unavailable provenance state without protected excerpt leak.
 
 Real enterprise documents, production S3/Tika deployment and paid model/provider operations
 remain separate explicitly authorized acceptance gates.
