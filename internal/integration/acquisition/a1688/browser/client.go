@@ -372,11 +372,19 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 		err        error
 	}
 	phaseDone := make(chan phaseResult, 1)
+	// Once a challenge has been SEEN on this page, any later budget expiry must
+	// still report it. Otherwise a challenge whose automatic attempt happened to
+	// run out of budget is reported as an ordinary timeout, the throttle does not
+	// cool, and the next acquisition walks straight back into the block.
+	var sawChallenge atomic.Bool
 	go func() {
 		// The whole phase is inside the race: the automatic captcha attempt and the
 		// re-check perform further uncancellable protocol calls, so bounding only
 		// the first detection would leave the rest uninterruptible.
 		challenged, err := detectChallenge(page)
+		if challenged {
+			sawChallenge.Store(true)
+		}
 		if err == nil && challenged && !isAuthenticationWall(page) {
 			if _, solveErr := c.trySolve(ctx, page); solveErr != nil && ctx.Err() != nil {
 				phaseDone <- phaseResult{false, ctx.Err()}
@@ -391,6 +399,9 @@ func (c *Client) collect(ctx context.Context, source sourcing.AcquisitionSource)
 	case inspected = <-phaseDone:
 	case <-ctx.Done():
 		_ = page.Close()
+		if sawChallenge.Load() {
+			return sourcing.AcquisitionEvidence{}, errors.Join(ErrChallenge, ctx.Err())
+		}
 		return sourcing.AcquisitionEvidence{}, ctx.Err()
 	}
 	challenged, err := inspected.challenged, inspected.err

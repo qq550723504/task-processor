@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -478,4 +479,25 @@ func TestThrottleSupersededCancellationKeepsTheFloor(t *testing.T) {
 
 	cancelB()
 	cancelC()
+}
+
+// A challenge observed but not cleared because the automatic attempt ran out of
+// budget must still engage the cooldown. If only the deadline survived, the next
+// acquisition would proceed after the rate floor and deepen the block - the exact
+// failure the throttle exists to prevent.
+func TestThrottleCoolsOnAChallengeThatOutranItsBudget(t *testing.T) {
+	th := newTestThrottle(time.Millisecond, 0, 10*time.Minute)
+	require.NoError(t, th.Wait(context.Background()))
+
+	// What collect returns when the solve attempt exhausts the budget.
+	outcome := errors.Join(ErrChallenge, context.DeadlineExceeded)
+	th.Observe(outcome)
+
+	require.Positive(t, th.CooldownRemaining(),
+		"a challenge that outran its budget must still engage the cooldown")
+	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled)
+
+	// And the caller still learns it was a timeout.
+	require.ErrorIs(t, outcome, context.DeadlineExceeded,
+		"the caller must still see a deadline")
 }

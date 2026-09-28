@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/product/sourcing"
@@ -748,4 +749,32 @@ func oversizedSkuMapPage(n, segments int) string {
 	encoded, _ := json.Marshal(raw)
 	return "<!doctype html><html><head><title>Variant overflow</title></head><body><script>window.context = " +
 		string(encoded) + ";</script></body></html>"
+}
+
+// A challenge that is detected but whose automatic attempt runs out of budget
+// must still surface the challenge, not a bare timeout. If only the deadline
+// survived, the throttle would treat it as an ordinary timeout and the next
+// acquisition would proceed after the rate floor, deepening the block.
+func TestBrowserAcquireKeepsChallengeSignalWhenTheSolveOutrunsBudget(t *testing.T) {
+	browser := fixtureBrowserPath(t)
+	srv := serveFixture(t, stubbornChallengePage())
+	// A budget so small that the captcha attempt cannot finish.
+	client := newTestClient(Options{
+		ExecutablePath:      browser,
+		Headless:            true,
+		AllowedOrigins:      []string{srv.URL},
+		navigateURLOverride: srv.URL,
+		Budget:              1200 * time.Millisecond,
+	})
+	_, err := client.Acquire(t.Context(), mustCanonicalSourceForTest(t))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrChallenge,
+		"a detected challenge must survive the budget expiring mid-solve")
+}
+
+func mustCanonicalSourceForTest(t *testing.T) sourcing.AcquisitionSource {
+	t.Helper()
+	src, err := sourcing.Canonical1688Source("981645030344")
+	require.NoError(t, err)
+	return src
 }
