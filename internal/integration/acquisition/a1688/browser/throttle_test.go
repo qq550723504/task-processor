@@ -55,6 +55,9 @@ func TestThrottleIgnoresNonChallengeFailures(t *testing.T) {
 	th.Observe(ErrUnavailable)
 	th.Observe(ErrCapacity)
 	th.Observe(nil)
+	// Our own egress-policy rejection is not evidence of 1688 risk control, so it
+	// must not park unrelated acquisitions behind a cooldown.
+	th.Observe(ErrRejected)
 	require.Zero(t, th.CooldownRemaining(), "only a challenge may trigger a cooldown")
 	require.NoError(t, th.Wait(context.Background()))
 }

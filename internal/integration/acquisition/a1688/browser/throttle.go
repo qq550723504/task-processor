@@ -170,11 +170,18 @@ func (t *Throttle) release(seq uint64) {
 //
 // A challenge is the only signal treated as a reason to stop the world: it is
 // the observed escalation, and continuing immediately is what deepens it.
+//
+// ErrRejected is deliberately NOT a trigger. It means this provider refused
+// navigation under its OWN egress policy - an oversized document, or a redirect
+// to a disallowed origin. That is a local policy decision, not evidence of 1688
+// risk control, so treating it as a challenge would let one configuration or
+// content-policy mismatch park every unrelated acquisition behind a multi-minute
+// cooldown, and would keep repeating for as long as the mismatch persists.
 func (t *Throttle) Observe(err error) {
 	if t == nil || err == nil {
 		return
 	}
-	if !errorsIs(err, ErrChallenge) && !errorsIs(err, ErrRejected) {
+	if !errorsIs(err, ErrChallenge) {
 		return
 	}
 	t.mu.Lock()
