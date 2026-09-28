@@ -208,9 +208,11 @@ func decodeAccountIdentityBody(r *http.Request, operation zitadel.SelfServiceOpe
 		if err := strictIdentityJSON(value, &input); err != nil || !validIdentityText(input.Code, 64) {
 			return nil, errors.New("invalid verification code")
 		}
-		return json.Marshal(struct {
-			VerificationCode string `json:"verificationCode"`
-		}{VerificationCode: input.Code})
+		// Auth v1 VerifyMyEmailRequest and VerifyMyPhoneRequest require "code".
+		// Do not rename it to the User v2 field "verificationCode": that rejects
+		// a valid handset/email code before ZITADEL can verify it.
+		// Contract: https://github.com/zitadel/zitadel/blob/v4.17.1/proto/zitadel/auth.proto
+		return json.Marshal(input)
 	case zitadel.SelfServiceResendEmailVerification, zitadel.SelfServiceResendPhoneVerification:
 		var input struct{}
 		if err := strictIdentityJSON(value, &input); err != nil {

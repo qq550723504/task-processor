@@ -109,15 +109,32 @@ func TestAccountIdentityUsesVerifiedUserTokenWithoutOrganizationContext(t *testi
 
 func TestAccountIdentityMapsVerificationCodeToOfficialProviderField(t *testing.T) {
 	for _, operation := range []struct {
-		path string
-		name zitadel.SelfServiceOperation
+		path         string
+		providerPath string
+		name         zitadel.SelfServiceOperation
 	}{
-		{path: accountIdentityEmailVerifyPath, name: zitadel.SelfServiceVerifyEmail},
-		{path: accountIdentityPhoneVerifyPath, name: zitadel.SelfServiceVerifyPhone},
+		{path: accountIdentityEmailVerifyPath, providerPath: "/auth/v1/users/me/email/_verify", name: zitadel.SelfServiceVerifyEmail},
+		{path: accountIdentityPhoneVerifyPath, providerPath: "/auth/v1/users/me/phone/_verify", name: zitadel.SelfServiceVerifyPhone},
 	} {
 		t.Run(string(operation.name), func(t *testing.T) {
-			spy := &accountIdentitySelfServiceSpy{}
-			module := accountIdentityModule{client: spy}
+			// The deployed Auth v1 VerifyMyEmailRequest/VerifyMyPhoneRequest
+			// contract has only "code"; reject fields from other API versions.
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var input struct {
+					Code string `json:"code"`
+				}
+				decoder := json.NewDecoder(r.Body)
+				decoder.DisallowUnknownFields()
+				if r.Method != http.MethodPost || r.URL.Path != operation.providerPath ||
+					r.Header.Get("Authorization") != "Bearer user-token" ||
+					decoder.Decode(&input) != nil || input.Code != "123456" {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			module := accountIdentityModule{client: zitadel.NewSelfServiceClient(server.URL, server.Client())}
 			request := httptest.NewRequest(http.MethodPost, operation.path, strings.NewReader(`{"code":"123456"}`))
 			request = request.WithContext(zitadel.WithBearerToken(authidentity.WithAuthenticatedIdentity(context.Background(), authidentity.AuthenticatedIdentity{UserID: "user-a"}), "user-token"))
 			recorder := httptest.NewRecorder()
@@ -125,8 +142,7 @@ func TestAccountIdentityMapsVerificationCodeToOfficialProviderField(t *testing.T
 			ginContext.Request = request
 			module.execute(ginContext)
 			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-			require.Equal(t, operation.name, spy.operation)
-			require.JSONEq(t, `{"verificationCode":"123456"}`, string(spy.body))
+			require.Contains(t, recorder.Body.String(), `"state":"verified"`)
 		})
 	}
 }

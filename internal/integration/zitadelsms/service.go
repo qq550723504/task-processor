@@ -54,6 +54,9 @@ type Sender interface {
 
 type Config struct {
 	SigningKey string
+	// Tencent verification templates require each parameter to be at most six
+	// ASCII digits. Configure the ZITADEL generator accordingly; this adapter
+	// forwards its code unchanged and never generates or converts an OTP.
 	TemplateID string
 	SignName   string
 	AppID      string
