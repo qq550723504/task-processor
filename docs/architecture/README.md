@@ -71,10 +71,6 @@ Use these as the main source of truth for structural work:
   - canonical money/wallet, commercial offer/quote/order, and purchased-resource ownership contract for #457
 - `self-service-subscription-purchase-contract.md`
   - tenant self-service subscription offer/quote/order, source-bound subscription activation, settlement and recovery contract for #478/#479
-- `account-facts-invitations-v1.md`
-  - IMPLEMENTATION_READY #551 user facts, region preferences, complete enterprise
-    statistics and consent-based email invitations; candidate delivery does not
-    imply browser acceptance, SMTP inbox delivery or runtime rollout
 - `httpapi-assembly-boundaries.md`
   - HTTP API ownership, route/module builder boundaries, and app/httpapi limits
 - `app-assembly-boundaries.md`
@@ -127,6 +123,11 @@ source of truth for long-lived rules.
 These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
+- [`account-facts-invitations-v1.md`](./account-facts-invitations-v1.md)
+  - IMPLEMENTATION_READY Design Basis for the bounded #551 Account Center
+    delivery: user facts, region preferences, complete enterprise statistics and
+    consent-based email invitations. It does not supersede repository structural
+    boundaries; candidate delivery is not browser acceptance or runtime rollout.
 - [`settlement-reversal-locking.md`](./settlement-reversal-locking.md)
   - IMPLEMENTATION_READY #413 repair of ordinary refund/chargeback concurrency
     while preserving immutable canonical settlement privileges and replay bounds
