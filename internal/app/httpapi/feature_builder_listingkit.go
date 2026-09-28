@@ -54,6 +54,7 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps, re
 	return listingkithttpapi.RuntimeBuildInput{
 		Logger: logger,
 		Runtime: listingkithttpapi.RuntimeDependencies{
+			ZitadelSMSHandler:                  (zitadelSMSHandler{Service: buildZitadelSMSService(deps.shared.cfg.ListingKit.Zitadel.SMS)}).Deliver,
 			SheinCostPriceCalculator:           marketplaceSheinCostPrice,
 			Config:                             deps.shared.cfg,
 			ProductSnapshotReader:              deps.features.productSnapshotReader,

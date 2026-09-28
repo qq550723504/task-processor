@@ -237,7 +237,6 @@ internal wiring is intentionally excluded; no other package class is excluded.
 | `task-processor/internal/core/logger` | `task-processor/internal/crawler/fetcher` | crawler business consumer | product + marketplace / Phases 3-4 |
 | `task-processor/internal/core/logger` | `task-processor/internal/crawler/shared/browser` | crawler business consumer | product + marketplace / Phases 3-4 |
 | `task-processor/internal/core/logger` | `task-processor/internal/listingkit` | listing business consumer | listing owner / Phase 5 |
-| `task-processor/internal/core/logger` | `task-processor/internal/listingkit/api` | listing business consumer | listing owner / Phase 5 |
 | `task-processor/internal/core/logger` | `task-processor/internal/localagent` | agent business consumer | agent owner / Phase 6 |
 | `task-processor/internal/core/logger` | `task-processor/internal/pipeline` | mixed product pipeline | product owner / Phase 3 |
 | `task-processor/internal/core/logger` | `task-processor/internal/pkg/appenv` | runtime-support debt | app retirement / Phase 8 |

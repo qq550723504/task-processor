@@ -3,12 +3,12 @@ package httpapi
 import (
 	"strings"
 
-	"task-processor/internal/core/config"
+	"github.com/gin-gonic/gin"
+
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/tenantdirectory"
-	"task-processor/internal/listingkit/zitadelsms"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -21,7 +21,7 @@ type taskModuleInput struct {
 	TenantDirectory                 tenantdirectory.Directory
 	MemberInvitationProvider        memberinvite.Provider
 	MemberInvitationAuditRepository memberinvite.AuditRepository
-	ZitadelSMSService               *zitadelsms.Service
+	ZitadelSMSHandler               gin.HandlerFunc
 }
 
 type taskModule struct {
@@ -32,7 +32,6 @@ type taskModule struct {
 func newTaskModuleInput(input BuildServiceInput, repos *builtRepositories) taskModuleInput {
 	var directory tenantdirectory.Directory
 	var invitationProvider memberinvite.Provider
-	var zitadelSMSService *zitadelsms.Service
 	if input.Config != nil {
 		directory, _ = tenantdirectory.NewClient(tenantdirectory.ClientConfig{
 			IssuerURL: input.Config.ListingKit.Zitadel.IssuerURL,
@@ -46,7 +45,6 @@ func newTaskModuleInput(input BuildServiceInput, repos *builtRepositories) taskM
 				ProjectID: zitadelConfig.ProjectID,
 			})
 		}
-		zitadelSMSService = buildZitadelSMSService(zitadelConfig.SMS)
 	}
 	var audit memberinvite.AuditRepository
 	if repos != nil {
@@ -66,7 +64,7 @@ func newTaskModuleInput(input BuildServiceInput, repos *builtRepositories) taskM
 		TenantDirectory:                 directory,
 		MemberInvitationProvider:        invitationProvider,
 		MemberInvitationAuditRepository: audit,
-		ZitadelSMSService:               zitadelSMSService,
+		ZitadelSMSHandler:               input.ZitadelSMSHandler,
 	}
 }
 
@@ -83,27 +81,9 @@ func buildTaskModule(in taskModuleInput) taskModule {
 				MemberInvitationProvider:        in.MemberInvitationProvider,
 				MemberInvitationAuditRepository: in.MemberInvitationAuditRepository,
 			},
-			ZitadelSMSService: in.ZitadelSMSService,
+			ZitadelSMSHandler: in.ZitadelSMSHandler,
 		},
 	}
-}
-
-func buildZitadelSMSService(cfg config.ListingKitZitadelSMSConfig) *zitadelsms.Service {
-	sender, err := zitadelsms.NewTencentSender(cfg.TencentSecretID, cfg.TencentSecretKey)
-	if err != nil {
-		return nil
-	}
-	service, err := zitadelsms.NewService(zitadelsms.Config{
-		SigningKey:                     cfg.SigningKey,
-		TemplateID:                     cfg.TencentTemplateID,
-		SignName:                       cfg.TencentSignName,
-		AppID:                          cfg.TencentAppID,
-		PhoneVerificationExpiryMinutes: cfg.PhoneVerificationExpiryMinutes,
-	}, sender)
-	if err != nil {
-		return nil
-	}
-	return service
 }
 
 func (m taskModule) handlerDependenciesWithAdmin(admin adminModule) listingkitapi.HandlerDependencies {

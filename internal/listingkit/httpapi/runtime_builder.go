@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/ai"
@@ -14,6 +15,7 @@ type RuntimeBuildInput struct {
 }
 
 type RuntimeDependencies struct {
+	ZitadelSMSHandler                  gin.HandlerFunc
 	SheinCostPriceCalculator           listingkit.SheinCostPriceCalculator
 	Config                             *config.Config
 	ProductSnapshotReader              listingkit.ProductSnapshotReader
@@ -34,6 +36,7 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies) BuildServiceInput {
 	support := runtime.Support
 	return BuildServiceInput{
+		ZitadelSMSHandler:         runtime.ZitadelSMSHandler,
 		SheinCostPriceCalculator:  runtime.SheinCostPriceCalculator,
 		Config:                    runtime.Config,
 		Logger:                    logger,

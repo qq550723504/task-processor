@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/ai"
@@ -133,6 +134,7 @@ type BuildServiceHooks struct {
 }
 
 type BuildServiceInput struct {
+	ZitadelSMSHandler         gin.HandlerFunc
 	SheinCostPriceCalculator  listingkit.SheinCostPriceCalculator
 	Config                    *config.Config
 	Logger                    *logrus.Logger
