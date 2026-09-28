@@ -8,23 +8,28 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
 
 type AcquisitionService struct {
-	operations sourcing.AcquisitionOperationStore
-	provider   sourcing.PublicAcquirer
-	publisher  sourcing.AcquisitionPublisher
+	operations   sourcing.AcquisitionOperationStore
+	provider     sourcing.PublicAcquirer
+	publisher    sourcing.AcquisitionPublisher
+	publications interface {
+		Read(context.Context, string) (sourcing.PersistedPublication, error)
+	}
 	reader     catalog.CompleteSnapshotReader
 	authorizer sourcing.PublicationAuthorizer
+	charges    AcquisitionCharges
 }
 
-func NewAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer) (*AcquisitionService, error) {
-	if store == nil || publisher == nil || authorizer == nil {
+func NewAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, charges AcquisitionCharges) (*AcquisitionService, error) {
+	if store == nil || publisher == nil || authorizer == nil || charges == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	return &AcquisitionService{store, provider, publisher, reader, authorizer}, nil
+	return &AcquisitionService{operations: store, provider: provider, publisher: publisher, publications: publisher, reader: reader, authorizer: authorizer, charges: charges}, nil
 }
 
 func (s *AcquisitionService) Acquire(ctx context.Context, key, source string) (sourcing.AcquisitionResult, error) {
@@ -52,6 +57,9 @@ func (s *AcquisitionService) Acquire(ctx context.Context, key, source string) (s
 		if err := s.authorizeScope(ctx, op.Scope); err != nil {
 			return sourcing.AcquisitionResult{}, err
 		}
+		if err := s.admitCharge(ctx, op); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
 		evidence, err := s.provider.Acquire(ctx, op.Source)
 		if err != nil {
 			return sourcing.AcquisitionResult{}, s.failFetch(ctx, op, err)
@@ -73,10 +81,13 @@ func (s *AcquisitionService) Acquire(ctx context.Context, key, source string) (s
 		}
 	}
 	if op.State == sourcing.AcquisitionFailed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionFailed
+		return sourcing.AcquisitionResult{}, acquisitionFailure(op)
 	}
 	publishClaim := false
 	if op.State == sourcing.AcquisitionPrepared {
+		if err := s.admitCharge(ctx, op); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
 		op, publishClaim, err = s.operations.Claim(ctx, op)
 		if err != nil {
 			return sourcing.AcquisitionResult{}, err
@@ -242,12 +253,23 @@ func (s *AcquisitionService) failFetch(ctx context.Context, op sourcing.Acquisit
 	if err := s.operations.Finish(ctx, op, sourcing.AcquisitionFailed, code); err != nil {
 		return err
 	}
+	_ = s.charges.Reconcile(ctx, op)
 	return sourcing.ErrAcquisitionFailed
+}
+
+func (s *AcquisitionService) admitCharge(ctx context.Context, op sourcing.AcquisitionOperation) error {
+	err := s.charges.BeforeDispatch(ctx, op)
+	if errors.Is(err, orgresource.ErrInsufficientBalance) || errors.Is(err, orgresource.ErrResourceDebtOutstanding) {
+		if fenceErr := s.operations.Finish(ctx, op, sourcing.AcquisitionFailed, "DATA_QUOTA_INSUFFICIENT"); fenceErr != nil {
+			return sourcing.ErrAcquisitionUnknown
+		}
+	}
+	return err
 }
 
 func (s *AcquisitionService) resolve(ctx context.Context, op sourcing.AcquisitionOperation, publish, replayed bool) (sourcing.AcquisitionResult, error) {
 	if op.State == sourcing.AcquisitionFailed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionFailed
+		return sourcing.AcquisitionResult{}, acquisitionFailure(op)
 	}
 	if op.Command == nil || (op.State != sourcing.AcquisitionPublishing && op.State != sourcing.AcquisitionPublished) {
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
@@ -270,6 +292,7 @@ func (s *AcquisitionService) resolve(ctx context.Context, op sourcing.Acquisitio
 			if finishErr := s.operations.Finish(ctx, op, sourcing.AcquisitionFailed, "PUBLICATION_CONFLICT"); finishErr != nil {
 				return sourcing.AcquisitionResult{}, finishErr
 			}
+			_ = s.charges.Reconcile(ctx, op)
 			return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionConflict
 		}
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
@@ -290,11 +313,21 @@ func (s *AcquisitionService) resolve(ctx context.Context, op sourcing.Acquisitio
 		}
 	}
 	op.State = sourcing.AcquisitionPublished
+	if err := s.charges.Reconcile(ctx, op); err != nil {
+		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
+	}
 	return sourcing.AcquisitionResult{Operation: op, Replayed: replayed, Publication: &persisted}, nil
 }
 
+func acquisitionFailure(op sourcing.AcquisitionOperation) error {
+	if op.FailureCode == "DATA_QUOTA_INSUFFICIENT" {
+		return orgresource.ErrInsufficientBalance
+	}
+	return sourcing.ErrAcquisitionFailed
+}
+
 func (s *AcquisitionService) exact(ctx context.Context, op sourcing.AcquisitionOperation) (sourcing.PersistedPublication, error) {
-	persisted, err := s.publisher.Read(ctx, op.Command.PublicationID)
+	persisted, err := s.publications.Read(ctx, op.Command.PublicationID)
 	if err != nil {
 		return sourcing.PersistedPublication{}, err
 	}

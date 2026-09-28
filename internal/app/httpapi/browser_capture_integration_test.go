@@ -48,10 +48,10 @@ func (f *acquisitionHTTPFixture) browserServer(t *testing.T) *httptest.Server {
 			return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 		},
 		buildAcquisition: func(auth *authz.ListingKitAuthorizer, d routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildProductAcquisitionModule(context.Background(), f.db, d, auth, f.provider, false)
+			return buildProductAcquisitionModule(context.Background(), f.db, d, auth, f.provider, false, testHTTPResourceCharges{db: f.db})
 		},
 		buildBrowserCapture: func(auth *authz.ListingKitAuthorizer, d routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(context.Background(), f.db, d, auth)
+			return buildBrowserCaptureModule(context.Background(), f.db, d, auth, testHTTPResourceCharges{db: f.db})
 		},
 	}
 	server, err := buildCurrentApplication(context.Background(), &gorm.DB{}, &gorm.DB{}, currentApplicationTestConfig(), logrus.New(), factories)

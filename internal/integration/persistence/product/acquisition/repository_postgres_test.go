@@ -103,14 +103,16 @@ func TestAcquisitionPostgresFrozenCommandFenceAndUniquePublish(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, fetch)
 	require.Equal(t, old.ID, replay.ID)
-	// Only an unprepared expired acquisition may be re-fetched.
+	// Expiry alone cannot authorize another provider call for this operation.
 	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET lease_until=clock_timestamp()-interval '1 second' WHERE operation_id=?", old.ID).Error)
 	current, fetch, err := r.Start(ctx, req)
 	require.NoError(t, err)
-	require.True(t, fetch)
-	require.EqualValues(t, 2, current.Fence)
+	require.False(t, fetch)
+	require.EqualValues(t, 1, current.Fence)
 	_, err = r.Prepare(ctx, old, originalCommand(t, old))
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionFence)
+	// The original still-active worker may prepare under its original fence.
+	require.NoError(t, db.Exec("UPDATE public.product_acquisition_operations SET lease_until=clock_timestamp()+interval '30 seconds' WHERE operation_id=?", old.ID).Error)
 	command := originalCommand(t, current)
 	prepared, err := r.Prepare(ctx, current, command)
 	require.NoError(t, err)

@@ -30,16 +30,17 @@ func TestAcquisitionPostPublicationReadDeadlineRemainsUnknown(t *testing.T) {
 	require.NoError(t, InstallAcquisitionSchema(db))
 	provider, fetches, _ := acquisitionFixture(t)
 	permissions, live := acquisitionPermissionDependencies(t)
-	service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+	service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	service.publisher = acquisitionReadDeadlinePublisher{service.publisher}
+	service.publications = service.publisher
 	ctx, key := acquisitionIdentity("org-read-deadline", "actor"), uuid.NewString()
 	_, err = service.Acquire(ctx, key, "981645030344")
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 	var versions int64
 	require.NoError(t, db.Table("product_snapshot_versions").Count(&versions).Error)
 	require.EqualValues(t, 1, versions)
-	rebuilt, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+	rebuilt, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 	require.NoError(t, err)
 	result, err := rebuilt.Verify(ctx, key, "981645030344")
 	require.NoError(t, err)
@@ -133,7 +134,7 @@ func (s *acquisitionAckStmt) mark() {
 			switch {
 			case strings.Contains(q, "set command="):
 				s.conn.stage = "prepare"
-			case strings.Contains(q, "state='publishing'"):
+			case strings.Contains(q, "set state='publishing'"):
 				s.conn.stage = "claim"
 			case strings.Contains(q, "failure_code="):
 				s.conn.stage = "finish"
@@ -141,6 +142,13 @@ func (s *acquisitionAckStmt) mark() {
 		}
 	} else if strings.HasPrefix(q, "insert") && strings.Contains(q, "product_source_publications") {
 		s.conn.stage = "publication"
+	} else if strings.Contains(q, "product_acquisition_charge_intents") {
+		if strings.HasPrefix(q, "insert") {
+			s.conn.stage = "charge_intent"
+		}
+		if strings.HasPrefix(q, "update") && strings.Contains(q, "set reservation_id=") {
+			s.conn.stage = "charge_binding"
+		}
 	}
 }
 func (s *acquisitionAckStmt) Exec(v []driver.Value) (driver.Result, error) {
@@ -161,7 +169,7 @@ func (s *acquisitionAckStmt) QueryContext(ctx context.Context, v []driver.NamedV
 }
 
 func TestAcquisitionActualCommitAcknowledgementLossAtEveryPersistenceBoundary(t *testing.T) {
-	for _, stage := range []string{"start", "prepare", "claim", "publication", "finish"} {
+	for _, stage := range []string{"start", "charge_intent", "charge_binding", "prepare", "claim", "publication"} {
 		t.Run(stage, func(t *testing.T) {
 			owner := acquisitionDatabase(t)
 			require.NoError(t, InstallAcquisitionSchema(owner))
@@ -178,7 +186,7 @@ func TestAcquisitionActualCommitAcknowledgementLossAtEveryPersistenceBoundary(t 
 			require.NoError(t, err)
 			provider, fetches, _ := acquisitionFixture(t)
 			permissions, live := acquisitionPermissionDependencies(t)
-			service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider)
+			service, err := NewPublicAcquisition(context.Background(), db, live, permissions, provider, newTestResourceChargePort(t, db))
 			require.NoError(t, err)
 			ctx := acquisitionIdentity("org-ack", "actor")
 			key := uuid.NewString()
@@ -186,7 +194,7 @@ func TestAcquisitionActualCommitAcknowledgementLossAtEveryPersistenceBoundary(t 
 			require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 			require.True(t, fault.lost.Load(), "test must cross and lose the targeted real COMMIT")
 			// Restart without fault injection: persisted state alone drives recovery.
-			rebuilt, err := NewPublicAcquisition(context.Background(), owner, live, permissions, provider)
+			rebuilt, err := NewPublicAcquisition(context.Background(), owner, live, permissions, provider, newTestResourceChargePort(t, owner))
 			require.NoError(t, err)
 			op, err := rebuilt.operations.ByKey(ctx, sourcing.PublicationScope{OrganizationID: "org-ack", ActorID: "actor"}, key)
 			require.NoError(t, err)
@@ -194,17 +202,17 @@ func TestAcquisitionActualCommitAcknowledgementLossAtEveryPersistenceBoundary(t 
 			var versions int64
 			require.NoError(t, owner.Table("product_snapshot_versions").Count(&versions).Error)
 			switch stage {
-			case "start":
+			case "start", "charge_intent", "charge_binding":
 				require.Equal(t, sourcing.AcquisitionAcquiring, op.State)
 				require.Zero(t, before)
 				require.Zero(t, versions)
 				_, err = rebuilt.Verify(ctx, key, "981645030344")
 				require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
-				// Only this pre-prepare state may acquire a new fenced GET lease.
+				// Expiry cannot authorize another provider invocation.
 				require.NoError(t, owner.Exec("UPDATE product_acquisition_operations SET lease_until=clock_timestamp()-interval '1 second' WHERE operation_id=?", op.ID).Error)
-				result, e := rebuilt.Acquire(ctx, key, "981645030344")
-				require.NoError(t, e)
-				require.EqualValues(t, 1, result.Publication.Receipt.CatalogVersion)
+				_, e := rebuilt.Acquire(ctx, key, "981645030344")
+				require.ErrorIs(t, e, sourcing.ErrAcquisitionUnknown)
+				require.Equal(t, before, fetches.Load())
 			case "prepare":
 				require.Equal(t, sourcing.AcquisitionPrepared, op.State)
 				require.Zero(t, versions)
@@ -224,7 +232,7 @@ func TestAcquisitionActualCommitAcknowledgementLossAtEveryPersistenceBoundary(t 
 				require.NoError(t, owner.Table("product_snapshot_versions").Count(&versions).Error)
 				require.Zero(t, versions)
 				require.Equal(t, before, fetches.Load())
-			case "publication", "finish":
+			case "publication":
 				require.EqualValues(t, 1, versions)
 				result, e := rebuilt.Verify(ctx, key, "981645030344")
 				require.NoError(t, e)

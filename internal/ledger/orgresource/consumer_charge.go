@@ -71,7 +71,7 @@ type ConsumerChargeRepository interface {
 	Reserve(context.Context, ConsumerChargeIntent) (ConsumerChargeReceipt, error)
 	Read(context.Context, ConsumerChargeIdentity) (ConsumerChargeReceipt, error)
 	Settle(context.Context, ConsumerChargeReceipt, ConsumerChargeProof) (ConsumerChargeReceipt, error)
-	ClaimDue(context.Context) ([]ConsumerChargeIdentity, error)
+	ClaimDue(context.Context, []ResourceConsumer) ([]ConsumerChargeIdentity, error)
 }
 
 // Owners use this narrow in-process port; it has no caller-selected principal,
@@ -153,7 +153,11 @@ func (s *ConsumerChargeService) Reconcile(ctx context.Context, identity Consumer
 	return s.repository.Settle(ctx, receipt, proof)
 }
 func (s *ConsumerChargeService) RecoverDue(ctx context.Context) (int, error) {
-	identities, err := s.repository.ClaimDue(ctx)
+	consumers := make([]ResourceConsumer, 0, len(s.owners))
+	for consumer := range s.owners {
+		consumers = append(consumers, consumer)
+	}
+	identities, err := s.repository.ClaimDue(ctx, consumers)
 	if err != nil {
 		return 0, err
 	}

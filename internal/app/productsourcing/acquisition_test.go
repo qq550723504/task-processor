@@ -93,7 +93,7 @@ func TestAcquisitionVerifyAuthorizesBeforeAnyOperationRead(t *testing.T) {
 	store := &acquisitionStoreSpy{}
 	service, err := NewAcquisitionService(store, nil, &acquisitionPublisherSpy{}, nil, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) {
 		return sourcing.PublicationScope{}, sourcing.ErrPublicationForbidden
-	}))
+	}), &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 	_, err = service.Verify(context.Background(), uuid.NewString(), "123")
 	require.ErrorIs(t, err, sourcing.ErrPublicationForbidden)
@@ -113,14 +113,14 @@ func TestAcquisitionUnknownUsesFrozenCommandAcrossServiceRebuild(t *testing.T) {
 	store := &acquisitionStoreSpy{op: op}
 	publisher := &acquisitionPublisherSpy{}
 	for range 2 {
-		service, err := NewAcquisitionService(store, nil, publisher, nil, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }))
+		service, err := NewAcquisitionService(store, nil, publisher, nil, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }), &acquisitionTestChargeCoordinator{})
 		require.NoError(t, err)
 		_, err = service.Verify(context.Background(), key, "https://detail.1688.com/offer/123.html?tracking=new")
 		require.ErrorIs(t, err, sourcing.ErrAcquisitionUnknown)
 		require.Equal(t, command, publisher.command)
 	}
 	require.Equal(t, 2, publisher.verifies)
-	service, _ := NewAcquisitionService(store, nil, publisher, nil, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }))
+	service, _ := NewAcquisitionService(store, nil, publisher, nil, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }), &acquisitionTestChargeCoordinator{})
 	_, err = service.Verify(context.Background(), key, "124")
 	require.ErrorIs(t, err, sourcing.ErrAcquisitionConflict)
 	require.Equal(t, 2, publisher.verifies)
@@ -133,7 +133,7 @@ func TestReadPublishedUsesOnlyTheOperationReceiptCatalogVersion(t *testing.T) {
 	op := sourcing.AcquisitionOperation{ID: operationID, Scope: scope, State: sourcing.AcquisitionPublished, Command: &command}
 	receipt := sourcing.PublicationReceipt{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, PublicationID: command.PublicationID, CatalogPublicationID: command.PublicationID, ProductKey: command.ProductKey, CatalogVersion: 7}
 	reader := &acquisitionCatalogReaderSpy{published: catalog.PublishedSnapshot{Identity: catalog.SnapshotIdentity{TenantID: scope.OrganizationID, ProductKey: command.ProductKey}, PublicationID: command.PublicationID, Version: 7, Snapshot: catalog.ProductSnapshot{Title: "Catalog fact"}}}
-	service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{persisted: sourcing.PersistedPublication{Receipt: receipt}}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }))
+	service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{persisted: sourcing.PersistedPublication{Receipt: receipt}}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }), &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 	result, err := service.ReadPublished(context.Background(), operationID)
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestReadPublishedDoesNotExposeAnotherActorOrAnUnpublishedOperation(t *testi
 			op := sourcing.AcquisitionOperation{ID: operationID, Scope: scope, State: tc.state, Command: &command}
 			service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) {
 				return sourcing.PublicationScope{OrganizationID: scope.OrganizationID, ActorID: tc.actor}, nil
-			}))
+			}), &acquisitionTestChargeCoordinator{})
 			require.NoError(t, err)
 			_, err = service.ReadPublished(context.Background(), operationID)
 			require.ErrorIs(t, err, tc.want)
@@ -169,7 +169,7 @@ func TestReadPublishedDoesNotExposeAnotherActorOrAnUnpublishedOperation(t *testi
 	reader.err = catalog.ErrSnapshotNotReady
 	op := sourcing.AcquisitionOperation{ID: operationID, Scope: scope, State: sourcing.AcquisitionPublished, Command: &command}
 	receipt := sourcing.PublicationReceipt{OrganizationID: scope.OrganizationID, ActorID: scope.ActorID, PublicationID: command.PublicationID, CatalogPublicationID: command.PublicationID, ProductKey: command.ProductKey, CatalogVersion: 1}
-	service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{persisted: sourcing.PersistedPublication{Receipt: receipt}}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }))
+	service, err := NewAcquisitionService(&acquisitionStoreSpy{op: op}, nil, &acquisitionPublishedPublisherSpy{persisted: sourcing.PersistedPublication{Receipt: receipt}}, reader, acquisitionAuthFunc(func(context.Context) (sourcing.PublicationScope, error) { return scope, nil }), &acquisitionTestChargeCoordinator{})
 	require.NoError(t, err)
 	_, err = service.ReadPublished(context.Background(), operationID)
 	require.True(t, errors.Is(err, sourcing.ErrAcquisitionUnknown))

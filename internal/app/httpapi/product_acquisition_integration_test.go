@@ -128,7 +128,7 @@ func (f *acquisitionHTTPFixture) server(t *testing.T) *httptest.Server {
 			return currentApplicationTestModule{name: "commercial", routes: currentWorkbenchApplicationRoutes[4:5]}, nil
 		},
 		buildAcquisition: func(auth *authz.ListingKitAuthorizer, d routeAuthDependencies) (kernelmodule.Module, error) {
-			module, err := buildProductAcquisitionModule(context.Background(), f.db, d, auth, f.provider, false)
+			module, err := buildProductAcquisitionModule(context.Background(), f.db, d, auth, f.provider, false, testHTTPResourceCharges{db: f.db})
 			if err == nil && f.requestTimeout > 0 {
 				controlled := module.(productAcquisitionModule)
 				for i := range controlled.routes {

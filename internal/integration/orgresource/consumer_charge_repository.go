@@ -273,14 +273,22 @@ func (r *GormConsumerChargeRepository) Settle(ctx context.Context, original orgr
 
 // Advance the durable check time before any external proof read. Permanently
 // UNKNOWN reservations cannot occupy every slot in subsequent recovery passes.
-func (r *GormConsumerChargeRepository) ClaimDue(ctx context.Context) ([]orgresource.ConsumerChargeIdentity, error) {
+func (r *GormConsumerChargeRepository) ClaimDue(ctx context.Context, consumers []orgresource.ResourceConsumer) ([]orgresource.ConsumerChargeIdentity, error) {
+	if len(consumers) < 1 || len(consumers) > 2 {
+		return nil, orgresource.ErrInvalidInput
+	}
+	for _, consumer := range consumers {
+		if consumer != orgresource.ConsumerProductAcquisition && consumer != orgresource.ConsumerStoreService {
+			return nil, orgresource.ErrReservationOwnerNotRegistered
+		}
+	}
 	var identities []orgresource.ConsumerChargeIdentity
 	err := r.runner.run(ctx, func(tx *gorm.DB) error {
 		identities = nil
 		now := r.now().UTC()
 		next := now.Add(30 * time.Second)
 		var rows []organizationResourceReservationRow
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("charge_protocol = ? AND state = ? AND next_check_at <= ?", consumerChargeProtocol, orgresource.ReservationReserved, now).Order("next_check_at, created_at, reservation_id").Limit(25).Find(&rows).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("charge_protocol = ? AND owner_type IN ? AND state = ? AND next_check_at <= ?", consumerChargeProtocol, consumers, orgresource.ReservationReserved, now).Order("next_check_at, created_at, reservation_id").Limit(25).Find(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {

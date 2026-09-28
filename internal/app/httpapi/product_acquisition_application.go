@@ -24,6 +24,7 @@ import (
 	browser "task-processor/internal/integration/acquisition/a1688/browser"
 	acquisitionstore "task-processor/internal/integration/persistence/product/acquisition"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -50,16 +51,16 @@ const acquisitionBodyReadTimeout = 5 * time.Second
 
 // NewCurrentApplicationWithAcquisition adds only the explicitly enabled current
 // Product module. All three pools remain caller-owned; construction is read-only.
-func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, commercialDB, productDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+func NewCurrentApplicationWithAcquisition(ctx context.Context, sourceAccountDB, commercialDB, productDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
 	if ctx == nil || productDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB))
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithCommercialOwnerDatabase(resourceDB))
 }
 
 // Browser construction stays in the existing admitted Product composition owner.
 // Its routes and transport DTO validation live in the Browser-specific file.
-func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer) (kernelmodule.Module, error) {
+func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort) (kernelmodule.Module, error) {
 	if dependencies.organizationResolver == nil || authorizer == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -67,7 +68,7 @@ func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies ro
 		return nil, err
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer)
+	service, err := productsourcing.NewBrowserAcquisition(ctx, db, live, authorizer, charges)
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +78,11 @@ func buildBrowserCaptureModule(ctx context.Context, db *gorm.DB, dependencies ro
 
 // NewCurrentApplicationWithAcquisitionAndReferrals composes the two explicitly
 // enabled current modules while keeping all caller-owned pools independent.
-func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, commercialDB, productDB, referralDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
+func NewCurrentApplicationWithAcquisitionAndReferrals(ctx context.Context, sourceAccountDB, commercialDB, productDB, referralDB, resourceDB *gorm.DB, cfg *config.Config, logger *logrus.Logger) (*http.Server, error) {
 	if ctx == nil || productDB == nil || referralDB == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
-	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithReferrals(referralDB))
+	return NewCurrentApplicationWithOptions(ctx, sourceAccountDB, commercialDB, cfg, logger, WithProductAcquisition(productDB), WithReferrals(referralDB), WithCommercialOwnerDatabase(resourceDB))
 }
 
 type productAcquisitionService interface {
@@ -98,13 +99,7 @@ func buildPublishedAcquisitionReader(ctx context.Context, db *gorm.DB, cfg *conf
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
 	live := &productReviewLiveOrganizationAccess{resolver: dependencies.organizationResolver, now: time.Now}
-	// The provider is config-gated: with no collector endpoint/credential the
-	// existing anonymous public HTTP provider is used unchanged (design D13).
-	provider, _, err := publicAcquisitionProvider(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider)
+	return productsourcing.NewPublishedAcquisitionReader(ctx, db, live, authorizer)
 }
 
 func productAcquisitionRoutes(service productAcquisitionService, bind func(context.Context, string) (context.Context, error)) []httproute.Descriptor {
@@ -338,6 +333,8 @@ func writeAcquisitionProduct(c *gin.Context, published sourcing.PublishedAcquisi
 func writeAcquisitionError(c *gin.Context, err error) {
 	status, code := http.StatusServiceUnavailable, "ACQUISITION_UNAVAILABLE"
 	switch {
+	case errors.Is(err, orgresource.ErrInsufficientBalance), errors.Is(err, orgresource.ErrResourceDebtOutstanding):
+		status, code = http.StatusConflict, "DATA_QUOTA_INSUFFICIENT"
 	case errors.Is(err, sourcing.ErrPublicationForbidden):
 		status, code = http.StatusForbidden, "FORBIDDEN"
 	case errors.Is(err, sourcing.ErrInvalidAcquisition):
@@ -371,7 +368,7 @@ func (m productAcquisitionModule) Register(reg *kernelmodule.Registry) error {
 	return nil
 }
 
-func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, browserService bool) (kernelmodule.Module, error) {
+func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencies routeAuthDependencies, authorizer *authz.ListingKitAuthorizer, provider sourcing.PublicAcquirer, browserService bool, charges orgresource.ConsumerChargePort) (kernelmodule.Module, error) {
 	if dependencies.organizationResolver == nil || authorizer == nil || provider == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -390,9 +387,9 @@ func buildProductAcquisitionModule(ctx context.Context, db *gorm.DB, dependencie
 		err     error
 	)
 	if browserService {
-		service, err = productsourcing.NewBrowserPublicAcquisition(ctx, db, live, authorizer, provider, browser.DefaultTimeout)
+		service, err = productsourcing.NewBrowserPublicAcquisition(ctx, db, live, authorizer, provider, browser.DefaultTimeout, charges)
 	} else {
-		service, err = productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider)
+		service, err = productsourcing.NewPublicAcquisition(ctx, db, live, authorizer, provider, charges)
 	}
 	if err != nil {
 		return nil, err

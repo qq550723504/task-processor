@@ -9,6 +9,7 @@ import (
 	acquisitionpersistence "task-processor/internal/integration/persistence/product/acquisition"
 	catalogpersistence "task-processor/internal/integration/persistence/product/catalog"
 	sourcingpersistence "task-processor/internal/integration/persistence/product/sourcing"
+	"task-processor/internal/ledger/orgresource"
 	"task-processor/internal/product/catalog"
 	"task-processor/internal/product/sourcing"
 )
@@ -17,8 +18,8 @@ import (
 // It has no provider: receiving or recovering a capture never fetches a page.
 type BrowserCaptureService struct{ core *AcquisitionService }
 
-func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer) (*BrowserCaptureService, error) {
-	core, err := NewAcquisitionService(store, nil, publisher, reader, authorizer)
+func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, charges AcquisitionCharges) (*BrowserCaptureService, error) {
+	core, err := NewAcquisitionService(store, nil, publisher, reader, authorizer, charges)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +28,7 @@ func NewBrowserCaptureService(store sourcing.AcquisitionOperationStore, publishe
 
 // NewBrowserAcquisition admits the approved Browser descriptor through existing
 // SRC-1/Catalog constructors. It performs no schema installation or provider IO.
-func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer) (*BrowserCaptureService, error) {
+func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveOrganizationAccess, permissions *authz.ListingKitAuthorizer, charges orgresource.ConsumerChargePort) (*BrowserCaptureService, error) {
 	if ctx == nil {
 		return nil, sourcing.ErrAcquisitionUnavailable
 	}
@@ -35,7 +36,7 @@ func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveO
 	if err != nil {
 		return nil, err
 	}
-	store, err := sourcingpersistence.NewRepository(db, newCatalogBridge)
+	store, err := sourcingpersistence.NewRepositoryWithAcquisitionGuard(db, newCatalogBridge, newPublicationChargeGuard)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +52,11 @@ func NewBrowserAcquisition(ctx context.Context, db *gorm.DB, live sourcing.LiveO
 	if err != nil {
 		return nil, err
 	}
-	return NewBrowserCaptureService(operations, producer, reader, authorizer)
+	coordinator, err := newAcquisitionChargeCoordinator(operations, charges, permissions, live)
+	if err != nil {
+		return nil, err
+	}
+	return NewBrowserCaptureService(operations, producer, reader, authorizer, coordinator)
 }
 
 func (s *BrowserCaptureService) request(ctx context.Context, key string, body []byte) (sourcing.AcquisitionOperation, sourcing.AcquisitionEvidence, error) {
@@ -125,10 +130,13 @@ func (s *BrowserCaptureService) Capture(ctx context.Context, key string, body []
 		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 	}
 	if op.State == sourcing.AcquisitionFailed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionFailed
+		return sourcing.AcquisitionResult{}, acquisitionFailure(op)
 	}
 	publishClaim := false
 	if op.State == sourcing.AcquisitionPrepared {
+		if err := s.core.admitCharge(ctx, op); err != nil {
+			return sourcing.AcquisitionResult{}, err
+		}
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
 			return sourcing.AcquisitionResult{}, err
 		}

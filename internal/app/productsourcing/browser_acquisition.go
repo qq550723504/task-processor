@@ -43,8 +43,8 @@ type inflightEntry struct {
 
 // NewBrowserAcquisitionService builds the browser-backed public acquisition
 // service over the same store/publisher/reader/authorizer as the HTTP path.
-func NewBrowserAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, providerBudget time.Duration) (*BrowserAcquisitionService, error) {
-	core, err := NewAcquisitionService(store, provider, publisher, reader, authorizer)
+func NewBrowserAcquisitionService(store sourcing.AcquisitionOperationStore, provider sourcing.PublicAcquirer, publisher sourcing.AcquisitionPublisher, reader catalog.CompleteSnapshotReader, authorizer sourcing.PublicationAuthorizer, providerBudget time.Duration, charges AcquisitionCharges) (*BrowserAcquisitionService, error) {
+	core, err := NewAcquisitionService(store, provider, publisher, reader, authorizer, charges)
 	if err != nil {
 		return nil, err
 	}
@@ -64,15 +64,12 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 
 	// Replay first: a durable operation must be resolved without re-acquiring.
-	replay, replayed, err := s.replay(ctx, request)
+	replay, _, err := s.replay(ctx, request)
 	if err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
 	if replay != nil {
 		return *replay, nil
-	}
-	if replayed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
 	}
 
 	// Same-key admission for a first-time request: collapse concurrent attempts
@@ -102,6 +99,19 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	if err := s.capacityAdmitted(ctx, request.Scope); err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
+	op, fetchClaim, err := s.core.operations.Start(ctx, request)
+	if err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
+	if err := sameAcquisition(request, op); err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
+	if !fetchClaim {
+		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnknown
+	}
+	if err := s.core.admitCharge(ctx, op); err != nil {
+		return sourcing.AcquisitionResult{}, err
+	}
 
 	// Provider budget is a child context only.
 	providerCtx := ctx
@@ -112,13 +122,18 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 	evidence, err := s.provider.Acquire(providerCtx, request.Source)
 	if err != nil {
-		return sourcing.AcquisitionResult{}, s.failFetch(ctx, providerCtx, err)
+		cause := s.failFetch(ctx, providerCtx, err)
+		if ctx.Err() == nil && providerCtx.Err() == nil {
+			_ = s.core.failFetch(ctx, op, err)
+		}
+		return sourcing.AcquisitionResult{}, cause
 	}
 
 	// Server-generated evidence that fails mapping is a provider/parse failure,
 	// not a bad request (finding #6).
 	envelope, err := sourcing.MapAcquisitionEvidence(request.Source, evidence, sourcing.AcquisitionChannelPublicBrowser, request.ID)
 	if err != nil {
+		_ = s.core.failFetch(ctx, op, err)
 		// The provider child budget may already have expired at this point; using
 		// it as the cause would report every post-provider failure as a browser
 		// timeout, hiding the real mapping or availability error.
@@ -129,13 +144,10 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	}
 	command, err := s.core.prepareCommand(ctx, request.Scope, envelope)
 	if err != nil {
+		_ = s.core.failFetch(ctx, op, err)
 		return sourcing.AcquisitionResult{}, s.failFetch(ctx, ctx, err)
 	}
-	preparedStore, ok := s.core.operations.(sourcing.PreparedAcquisitionOperationStore)
-	if !ok {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionUnavailable
-	}
-	op, claim, err := preparedStore.StartPrepared(ctx, request, command)
+	op, err = s.core.operations.Prepare(ctx, op, command)
 	if err != nil {
 		return sourcing.AcquisitionResult{}, err
 	}
@@ -143,7 +155,7 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 		return sourcing.AcquisitionResult{}, err
 	}
 	if op.State == sourcing.AcquisitionFailed {
-		return sourcing.AcquisitionResult{}, sourcing.ErrAcquisitionFailed
+		return sourcing.AcquisitionResult{}, acquisitionFailure(op)
 	}
 	publishClaim := false
 	if op.State == sourcing.AcquisitionPrepared {
@@ -158,7 +170,7 @@ func (s *BrowserAcquisitionService) Acquire(ctx context.Context, key, source str
 	// A newly admitted operation is not a replay. Match the existing acquisition
 	// convention (replayed := !claim) so a first-time browser acquisition is not
 	// reported to clients as an idempotent replay.
-	return s.core.resolve(ctx, op, publishClaim, !claim)
+	return s.core.resolve(ctx, op, publishClaim, false)
 }
 
 // replay resolves a durable operation without acquiring. A same-key
@@ -187,13 +199,16 @@ func (s *BrowserAcquisitionService) replay(ctx context.Context, request sourcing
 			// "replayed" would make the caller answer OUTCOME_UNKNOWN instead of the
 			// failure that actually happened, which is the wrong attribution for
 			// every retry after a provider cutover.
-			return nil, false, sourcing.ErrAcquisitionFailed
+			return nil, false, acquisitionFailure(op)
 		}
 		// acquiring with no command: report it as an in-flight request rather than
 		// starting a competing acquisition for the same key.
 		return nil, true, nil
 	}
 	if op.State == sourcing.AcquisitionPrepared {
+		if err := s.core.admitCharge(ctx, op); err != nil {
+			return nil, false, err
+		}
 		if err := s.core.authorizeScope(ctx, op.Scope); err != nil {
 			return nil, false, err
 		}

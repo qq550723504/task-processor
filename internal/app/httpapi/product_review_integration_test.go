@@ -163,7 +163,7 @@ func (g *titleGrants) Load(ctx context.Context, source workbenchcontext.GrantSou
 	if r.Subject == "readonly" {
 		roles = []string{"admin"}
 	}
-	grants := []authidentity.OrganizationGrant{{OrganizationID: "B", ProjectID: "project", Roles: roles}, {OrganizationID: "A", ProjectID: "project", Roles: []string{"listingkit_admin"}}}
+	grants := []authidentity.OrganizationGrant{{AuthorizationID: "member-B-" + r.Subject, OrganizationID: "B", ProjectID: "project", Roles: roles}, {AuthorizationID: "member-A-" + r.Subject, OrganizationID: "A", ProjectID: "project", Roles: []string{"listingkit_admin"}}}
 	if g.revoked.Load() || g.revokeAt.Load() > 0 && liveCall >= g.revokeAt.Load() {
 		grants = nil
 	}

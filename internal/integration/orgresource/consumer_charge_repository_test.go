@@ -166,6 +166,40 @@ func TestConsumerChargeRejectsProofForDifferentMember(t *testing.T) {
 	}
 }
 
+func TestConsumerChargeRecoveryOnlyClaimsRegisteredOwners(t *testing.T) {
+	db := openSQLiteStore(t)
+	if err := AutoMigrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, resource := range []string{"data_row", "store_renewal_period"} {
+		if err := db.Create(&organizationResourceBucketRow{OrganizationID: "org-a", ResourceType: resource, Available: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo, _ := NewGormConsumerChargeRepository(db, TransactionConfig{})
+	owner := &chargeTestOwner{intents: map[orgresource.ConsumerChargeIdentity]orgresource.ConsumerChargeIntent{}, proofs: map[string]orgresource.ConsumerChargeProof{}}
+	product := chargeTestIntent("product", orgresource.FundingEnterprise)
+	store := chargeTestIntent("store", orgresource.FundingEnterprise)
+	store.Identity.Consumer = orgresource.ConsumerStoreService
+	store.ResourceType = orgresource.ResourceStoreRenewalPeriod
+	for _, intent := range []orgresource.ConsumerChargeIntent{product, store} {
+		owner.intents[intent.Identity] = intent
+		receipt, err := repo.Reserve(context.Background(), intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner.proofs[receipt.ReservationID] = orgresource.ConsumerChargeProof{Intent: intent, ReservationID: receipt.ReservationID, State: orgresource.ConsumerEffectSucceeded, EvidenceID: "owner:done"}
+	}
+	productService, _ := orgresource.NewConsumerChargeService(repo, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerProductAcquisition: owner})
+	if count, err := productService.RecoverDue(context.Background()); err != nil || count != 1 {
+		t.Fatalf("product recovery: %d %v", count, err)
+	}
+	storeService, _ := orgresource.NewConsumerChargeService(repo, map[orgresource.ResourceConsumer]orgresource.ConsumerChargeOwner{orgresource.ConsumerStoreService: owner})
+	if count, err := storeService.RecoverDue(context.Background()); err != nil || count != 1 {
+		t.Fatalf("unregistered Store work was delayed by Product recovery: %d %v", count, err)
+	}
+}
+
 func chargeTestIntent(operation string, funding orgresource.ResourceFunding) orgresource.ConsumerChargeIntent {
 	return orgresource.ConsumerChargeIntent{Identity: orgresource.ConsumerChargeIdentity{OrganizationID: "org-a", Consumer: orgresource.ConsumerProductAcquisition, OperationID: operation}, ActorID: "user-a", MemberID: "membership-a", Funding: funding, ResourceType: orgresource.ResourceDataRow, Quantity: 1, Fingerprint: strings.Repeat("a", 64), BusinessScope: "1688:product-a"}
 }

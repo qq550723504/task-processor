@@ -23,6 +23,7 @@ import (
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	"task-processor/internal/integration/zitadelregistration"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/ledger/orgresource"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
@@ -280,7 +281,16 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if supplied.membership != nil && (supplied.membership.ReceiptDB == nil || supplied.membership.ReceiptDB == sourceAccountDB || supplied.membership.ReceiptDB == commercialDB || supplied.membership.ReceiptDB == supplied.productAcquisitionDB || supplied.membership.ReceiptDB == supplied.referralDB) {
 		return nil, errors.New("membership requires an independent receipt pool")
 	}
+	var consumerCharges *orgresource.ConsumerChargeService
 	if supplied.productAcquisitionDB != nil {
+		if supplied.commercialOwnerDB == nil {
+			return nil, errors.New("product acquisition requires its resource owner pool")
+		}
+		var err error
+		consumerCharges, err = buildProductResourceCharges(ctx, supplied.productAcquisitionDB, supplied.commercialOwnerDB)
+		if err != nil {
+			return nil, err
+		}
 		if factories.buildAcquisition != nil {
 			return nil, errors.New("product acquisition factory and pool cannot both be supplied")
 		}
@@ -292,7 +302,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			if err != nil {
 				return nil, err
 			}
-			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService)
+			return buildProductAcquisitionModule(ctx, productDB, dependencies, authorizer, provider, browserService, consumerCharges)
 		}
 	}
 	if supplied.browserCaptures > 1 {
@@ -307,7 +317,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		}
 		browserDB := supplied.productAcquisitionDB
 		factories.buildBrowserCapture = func(authorizer *authz.ListingKitAuthorizer, dependencies routeAuthDependencies) (kernelmodule.Module, error) {
-			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer)
+			return buildBrowserCaptureModule(ctx, browserDB, dependencies, authorizer, consumerCharges)
 		}
 	}
 	if supplied.imageAgents > 0 {
@@ -570,6 +580,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 			runtimeContext = context.Background()
 		}
 		startCommercialRecoveryLoop(runtimeContext, server, topUpRecovery, 30*time.Second, "wallet top-up", logger)
+	}
+	if consumerCharges != nil {
+		runtimeContext := supplied.runtimeContext
+		if runtimeContext == nil {
+			runtimeContext = context.Background()
+		}
+		startCommercialRecoveryLoop(runtimeContext, server, func(ctx context.Context) error { _, err := consumerCharges.RecoverDue(ctx); return err }, 30*time.Second, "resource consumers", logger)
 	}
 	return server, nil
 }
