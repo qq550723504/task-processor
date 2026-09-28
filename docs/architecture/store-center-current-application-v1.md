@@ -1,6 +1,6 @@
 # Store Center 接入 current application v1
 
-状态：`REVIEW_PENDING`。本文是 #552 的设计依据，不是实现或运行验收。
+状态：`IMPLEMENTATION_READY`（2026-09-28 独立 Architecture Review，无未解决 BLOCKER）。本文是 #552 的设计依据，不是实现或运行验收；正式 Writer 授权仍须满足 Issue「权限与责任」。
 
 执行 Issue：[#552](https://github.com/qq550723504/task-processor/issues/552)。调查基线为 `8478800e31bf2e126bd03fae5ec45536056d823e`；2026-09-28 远端 main 与本地基线一致。独立评审通过后才更新准入状态；Issue 的生产实现授权还须满足其「权限与责任」。
 
@@ -70,6 +70,8 @@ manifest 增加可选 `storeCenter` 区块，仅包含 `database`（Store）和 
 
 runtime 在 bounded startup context 中分别 OpenStoreCenter/OpenStoreQuota，做 schema/权限只读 preflight，再经 `ApplicationFeatures` 和 current application option 传入 builder。Store pool 与 source/commercial/money/referral/product/membership pools 独立；quota pool 连接已存在的 commercial database，不另建 entitlement DB。不允许 Store module 从 `cfg.Database` 开库，也不由 module 关闭借用 pool。
 
+这里的 canonical commercial target 明确为 manifest `commercialOwnerDatabase`，不是 `commercialDatabase` 读投影。启用 Store 时须有明确的 owner target；`storeCenter.quotaDatabase` 规范化后的 host/port/database 必须与它一致，user/credential/role/pool 独立且只具下节窄权限。禁止从 `commercialDatabase` 推定、fallback或允许不同owner目标；两入口实际同一物理库时允许相同target，但不能借用读/宽写pool。匹配配置之外仍须schema及权限preflight。
+
 runtime 持有并唯一关闭两池：任一构造/preflight/listener 错误关闭已打开资源；shutdown 先停止接收并等请求完成，再关闭 pools。复用现有 startup deadline、manifest pool cap、DB statement timeout、server shutdown 协议，不创建后台扫描器。
 
 feature 启用时所有八个 core descriptors 必须完整存在，method/path/module/auth/org-policy/permission 与下节一致；缺项、多挂生命周期 route、typed nil 或 owner preflight 失败则不监听。feature 未启用不挂 Store routes，入口准确显示服务未开放，不把 404 或 dependency unavailable 展示成空列表。
@@ -137,6 +139,8 @@ quota 两表由 Subscription owner 的窄 schema entrypoint 安装（复用现�
 
 先评估共享事务：Store 与 Subscription 是独立 database/pool owner，不能把两个 GORM transaction 当一份原子事务。既有 StoreQuotaLedger 已具有事务 reservation、Store/operation 身份、CAS lease、bucket lock、fingerprint 和 readback 协议，复用它；不新建 Saga/outbox/reconciler。服务 Store+Resource 原子事务是不同边界，本批不调用。
 
+现有 `internal/integration/orgresource/store_service_executor.go` 把 Store repository 和 Resource repositories 注入同一 `tx`，要求Store行与资源行同库。新独立Store database不能直接使用该executor完成跨库原子激活/恢复；本批不装配它或服务routes，因此不阻塞core CRUD。未来真实服务任务须重新确认当前持久化owner和原子性、connection authority及产品开放条件，独立准入；不能只打开开关、复制Store行或偷偷移动现有资源数据。
+
 | 中断 / 并发点 | Durable result / 后续动作 | 唯一责任方 |
 | --- | --- | --- |
 | reserve 响应丢失 | 同 org/create key 重读 allocation/fingerprint，复用原 StoreID | Subscription ledger；Store Create 协调 |
@@ -203,4 +207,11 @@ Legacy decision: **EXTRACT / RETIRE**
 
 本次优先复核：唯一状态与record启停是否满足#552，旧服务不会被记录Enable意外恢复；两个数据库owner的持久化与quota恢复；live企业grant与角色；当前schema/窄role；未知副作用同键恢复；Figma示例未冒充事实。
 
-待完成独立Architecture Review。达到 `IMPLEMENTATION_READY`只表示这份设计允许进入正式实施准入，不表示代码已接入、已部署或产品验收。#552现有权限还要求指定唯一生产Writer，未授权时继续停在架构交接；merge/deploy/Issue close/真实provider及共享数据操作均不授权。
+独立Reviewer `store_architecture_review` 已对候选 `b9167e9cb0108b4f54a15c5a866f512408a7837a` 完成第1轮Architecture Review，结论：无当前#552架构BLOCKER，`IMPLEMENTATION_READY`。上文canonical quota target与服务executor同库限制是本轮集中澄清；滚动最终HEAD/CI和增量复核证据写PR。
+
+| Finding | 当前requirement / 分类 | 理由与action |
+| --- | --- | --- |
+| quota的“commercial DB”须区分canonical owner和read projection | 单一商业fact owner / IMPLEMENTATION_TEST | 上文明确匹配commercialOwnerDatabase；实现时验证wrong target、窄role、schema后才监听；不放宽商业读role |
+| 后续服务executor只支持Store+Resource同库 | 服务未开放，不是本批Must / BACKLOG | 本批不挂服务routes/executor；未来服务任务另行准入，不把既有同库transaction当跨库事务 |
+
+达到 `IMPLEMENTATION_READY`只表示这份设计允许进入正式实施准入，不表示代码已接入、已部署或产品验收。#552现有权限还要求指定唯一生产Writer，未授权时继续停在架构交接；merge/deploy/Issue close/真实provider及共享数据操作均不授权。
