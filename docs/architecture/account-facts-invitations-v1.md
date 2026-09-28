@@ -29,23 +29,52 @@ transport; production SMTP configuration is separate. No fake sent state.
 
 | Fact | Authority | Consumer path |
 | --- | --- | --- |
-| Registration, last successful login | ZITADEL Auth v1 GetMyUser | SelfServiceClient → account identity read → BFF → profile/header |
+| Registration | ZITADEL Auth v1 GetMyUser | SelfServiceClient → account identity read → BFF → profile/header |
+| Current session authentication time | Official OIDC `auth_time`, validated initial Auth.js profile | Encrypted Auth.js session → authenticated session BFF → profile/header |
 | Name, verified email/phone | ZITADEL current user | Existing self-service/userinfo clients; never local copies as identity authority |
 | Country/region, province, city | AccountProfile user preferences | Preferences repository → self-scoped HTTP → BFF → settings/readback |
 | Membership and roles | ZITADEL authorization v2 | Existing Directory; scoped project and organization |
 | Member/admin/inactive totals | Same ZITADEL ListAuthorizations filtered totals | Summary reader → live-authorized member summary → members/enterprise |
 | Role permission scope | Existing Casbin authorizer | Backend projection of allowlisted current permissions; no policy changes |
 | Recent enterprise activity | Existing account audit owner | Actor-filtered latest event for the current enterprise; disclose coverage |
-| Bound stores | StoreCenter | Existing authenticated store list's total; never source account count |
+| Registered store count | StoreCenter | Existing authenticated store list's pagination total; never source account count, connection status or entitlement limit |
 | Resource balances | Commercial owner | Reuse #550 enterprise resource read and display |
 | Pending invitation count/status | Membership invitation protocol | New invitation repository, separate from provider membership directory |
 
-Pinned provider authority: ZITADEL v4.17.1 `proto/zitadel/auth.proto`
-GetMyUserResponse includes `user.details.creation_date` and `last_login`.
-Check returned user ID against the verified token subject; parse timestamps,
-missing last_login is 'no login record', not a fabricated date. Keep read
-failure separate from absent data. Do not use authorization creation/change
-timestamps as registration/login/activity facts.
+Pinned provider authority: ZITADEL v4.17.1 `proto/zitadel/auth.proto` declares
+`user.details.creation_date` and `last_login`, but the actual
+[`internal/api/grpc/auth/user.go`](https://github.com/zitadel/zitadel/blob/v4.17.1/internal/api/grpc/auth/user.go)
+GetMyUser handler only fills `User`, not `LastLogin`. A missing value therefore
+does not prove that the user never logged in. The original last-login product
+requirement is replaced by the user's 2026-09-28 decision: show official OIDC
+current-session authentication time and do not build a global login history.
+The historical preliminary last-login FAIL remains historical evidence.
+
+Registration still checks returned user ID against the verified token subject.
+Authentication time comes only from the initial ZITADEL OIDC profile validated
+by Auth.js: positive safe integer `auth_time` seconds, no future value, rendered
+as UTC ISO time. Save this value in the existing encrypted session; preserve
+it on token refresh for the same subject. Missing/invalid claims, identity loss
+or a changed refresh subject expose no date. Do not substitute current time,
+token issuance/refresh time, provider password-check time or membership time.
+The authenticated session BFF returns only identity and this timestamp; no
+credentials. The UI checks the returned subject, scopes its query by user and
+keeps registration reads independent. Existing sessions without this claim
+show unavailable until a new official sign-in, without backfill or fallback.
+
+The bounded preliminary-acceptance repair reuses current Store, Membership and
+Allocation read contracts. Resources display Store `pagination.total`; member
+Token rows join the existing monthly-AI-point-limit Directory role projection
+by canonical member ID under the same expected user/organization. A failed or
+unmatched role read remains unavailable. Per-member stores, renewal periods
+and data-row quotas have no current owner and remain unprovided.
+
+Entitlements separately display the existing member-token-allocation reader's
+enterprise total, allocated/unallocated amounts and period in exact Token
+units. This is not the AI point balance, model usage or a new Commercial usage
+metric. The Commercial five-metric read contract remains unchanged. Pending,
+failed and mismatched scoped reads hide previous values, never synthesize zero.
+No schema, authorization, billing, invitation or recovery protocol changes.
 
 Region is an application localization preference belonging to a user, not
 an enterprise identity or ZITADEL credential. Persist it in a new

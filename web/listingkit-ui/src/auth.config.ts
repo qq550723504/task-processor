@@ -26,6 +26,7 @@ declare module "next-auth" {
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
     identityVersion?: number;
+    authenticatedAt?: string | null;
   }
 }
 
@@ -40,6 +41,7 @@ declare module "next-auth/jwt" {
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
     identityVersion?: number;
+    authenticatedAt?: string | null;
   }
 }
 
@@ -199,6 +201,11 @@ export function buildAuthConfig(): NextAuthConfig {
             error: undefined,
             identity,
             identityVersion: identity ? ZITADEL_IDENTITY_VERSION : undefined,
+            // Initial OIDC profile claims have been validated by Auth.js.
+            // Refreshing an access token does not reauthenticate the user.
+            authenticatedAt: identity
+              ? oidcAuthenticationTime(profile?.auth_time)
+              : null,
           } satisfies JWT;
         }
 
@@ -222,6 +229,10 @@ export function buildAuthConfig(): NextAuthConfig {
           return {
             ...token,
             ...refreshed,
+            authenticatedAt:
+              token.identity?.userId === refreshed.identity?.userId
+                ? token.authenticatedAt ?? null
+                : null,
             issuerUrl: zitadel.issuerUrl,
             clientId: zitadel.clientId,
             error: undefined,
@@ -249,6 +260,10 @@ export function buildAuthConfig(): NextAuthConfig {
         session.identityVersion = hasCurrentZitadelIdentity(token)
           ? ZITADEL_IDENTITY_VERSION
           : undefined;
+        session.authenticatedAt =
+          hasCurrentZitadelIdentity(token) && !token.error
+            ? token.authenticatedAt ?? null
+            : null;
         return session;
       },
       async redirect({ url, baseUrl }) {
@@ -256,6 +271,16 @@ export function buildAuthConfig(): NextAuthConfig {
       },
     },
   };
+}
+
+function oidcAuthenticationTime(value: unknown): string | null {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    value > Math.floor(Date.now() / 1000)
+  ) return null;
+  return new Date(value * 1000).toISOString();
 }
 
 export function buildServerAuthConfig(): NextAuthConfig {

@@ -22,6 +22,44 @@ const canonicalIdentity = {
   roles: ["listingkit_admin"],
 };
 
+afterEach(() => {
+  mockedAcceptanceHandoff.persist.mockClear();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+it("preserves only the validated OIDC authentication time across refresh and hides it after identity loss", async () => {
+  vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+  vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+  const config = buildAuthConfig();
+  const jwt = config.callbacks!.jwt!;
+  const session = config.callbacks!.session!;
+  const signedIn = await jwt({ token: {}, account: { provider: "zitadel", access_token: "access-token", expires_at: Math.floor(Date.now() / 1000) + 3600 }, profile: { sub: "zitadel-subject-123", "urn:zitadel:iam:user:resourceowner:id": "org-286", auth_time: 1788228000 } } as never);
+  expect(signedIn).toMatchObject({ authenticatedAt: "2026-09-01T02:00:00.000Z" });
+  expect(await jwt({ token: signedIn } as never)).toMatchObject({ authenticatedAt: "2026-09-01T02:00:00.000Z" });
+  const refreshed = await refreshSession(expiredToken({ authenticatedAt: "2026-09-01T02:00:00.000Z" }), { access_token: "new-access-token", expires_in: 3600, id_token: encodeIDToken({ sub: canonicalIdentity.userId, "urn:zitadel:iam:user:resourceowner:id": canonicalIdentity.tenantId, auth_time: 1788229000 }) });
+  expect(refreshed).toMatchObject({ accessToken: "new-access-token", authenticatedAt: "2026-09-01T02:00:00.000Z" });
+  const visible = await session({ session: {}, token: signedIn } as never);
+  expect(visible).toMatchObject({ authenticatedAt: "2026-09-01T02:00:00.000Z" });
+  const invalid = await session({ session: {}, token: { ...signedIn, identity: null } } as never);
+  expect(invalid).toMatchObject({ authenticatedAt: null });
+});
+
+it.each([undefined, 0, -1, "1788228000", 1.5, Math.floor(Date.now() / 1000) + 86400, Number.MAX_SAFE_INTEGER])("does not synthesize authentication time for invalid auth_time %s", async auth_time => {
+  vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+  vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+  const jwt = buildAuthConfig().callbacks!.jwt!;
+  const result = await jwt({ token: { authenticatedAt: "old actor date" }, account: { provider: "zitadel", access_token: "access-token" }, profile: { sub: "zitadel-subject-123", "urn:zitadel:iam:user:resourceowner:id": "org-286", auth_time } } as never);
+  expect(result).toMatchObject({ authenticatedAt: null });
+});
+
+it("does not attach a previous subject's authentication time to a changed refresh identity", async () => {
+  vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+  vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+  const result = await refreshSession(expiredToken({ authenticatedAt: "2026-09-01T02:00:00.000Z" }), { access_token: "new-access-token", expires_in: 3600, id_token: encodeIDToken({ sub: "another-subject", "urn:zitadel:iam:user:resourceowner:id": "org-286" }) });
+  expect(result).toMatchObject({ authenticatedAt: null });
+});
+
 function encodeIDToken(payload: Record<string, unknown>) {
   return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
 }
@@ -71,11 +109,6 @@ async function refreshSession(
 }
 
 describe("ListingKit Auth.js canonical ZITADEL identity", () => {
-  afterEach(() => {
-    mockedAcceptanceHandoff.persist.mockClear();
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-  });
 
   it.each([
     "/workbench/stores?tab=active",

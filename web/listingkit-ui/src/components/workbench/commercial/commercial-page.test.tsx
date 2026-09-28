@@ -7,19 +7,40 @@ import { commercialResourcesFixture } from "@/test/fixtures/commercial-resources
 import { CommercialPage } from "./commercial-page";
 vi.mock("./wallet-topup", () => ({ WalletTopUpEntry: () => <button disabled>充值钱包</button>, TopUpPaymentPanel: () => <section>充值订单</section> }));
 
-const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), resources: vi.fn(), offers: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn() }));
+const state = vi.hoisted(() => ({ context: {} as Record<string, unknown>, read: vi.fn(), resources: vi.fn(), offers: vi.fn(), wallet: vi.fn(), entries: vi.fn(), orders: vi.fn(), summary: vi.fn(), detail: vi.fn(), tokens: vi.fn() }));
 vi.mock("@/components/providers/workbench-context-provider", () => ({ useWorkbenchContext: () => state.context }));
 vi.mock("@/lib/api/commercial", async (original) => ({ ...await original<typeof import("@/lib/api/commercial")>(), getCommercialOverview: state.read }));
 vi.mock("@/lib/api/commercial-billing", async (original) => ({ ...await original<typeof import("@/lib/api/commercial-billing")>(), getCommercialResources: state.resources, getCommercialWallet: state.wallet, getCommercialWalletEntries: state.entries, getCommercialOrders: state.orders, getCommercialOrderSummary: state.summary, getCommercialOrder: state.detail }));
 vi.mock("@/lib/api/subscription-purchase", async (original) => ({ ...await original<typeof import("@/lib/api/subscription-purchase")>(), getSubscriptionOffers: state.offers }));
+vi.mock("@/lib/api/account-allocation", async original => ({ ...await original<typeof import("@/lib/api/account-allocation")>(), getMemberTokenAllocations: state.tokens }));
 let client: QueryClient;
 const tree = (page: "options" | "entitlements" | "top-up" | "orders" | "order-detail" = "entitlements", orderId?: string) => <QueryClientProvider client={client}><CommercialPage page={page} orderId={orderId} /></QueryClientProvider>;
 function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: unknown) => void; const promise = new Promise<T>((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
+it("names the exact allocation-owner Token quota separately from AI point balances", async () => {
+  state.tokens.mockResolvedValue({ organizationId: "org-B", windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "9007199254740993", allocated: "0", unallocated: "9007199254740993", consumed: "0" }, members: [] });
+  render(tree());
+  const panel = await screen.findByRole("region", { name: "AI Token 分配额度" });
+  expect(await within(panel).findByText("9007199254740993 Token", { selector: "p" })).toBeVisible();
+  expect(within(panel).getByText(/不折算为 AI 点数/)).toBeVisible();
+  expect(state.tokens).toHaveBeenCalledWith({ expectedUserId: "reader", expectedOrganizationId: "org-B" }, expect.any(AbortSignal));
+});
+
+it("clears old Token quota when its reader fails on refresh", async () => {
+  render(tree());
+  expect(await screen.findByText("50000 Token", { selector: "p" })).toBeVisible();
+  state.tokens.mockRejectedValue(new Error("private provider detail"));
+  await userEvent.click(screen.getByRole("button", { name: "刷新数据" }));
+  const panel = screen.getByRole("region", { name: "AI Token 分配额度" });
+  expect(await within(panel).findByRole("alert")).toHaveTextContent("本次未取得");
+  expect(screen.queryAllByText("50000 Token")).toHaveLength(0);
+  expect(screen.queryByText(/private provider detail/)).not.toBeInTheDocument();
+});
 beforeEach(() => {
   state.context = { user: { id: "reader" }, effectiveOrganization: { id: "org-B", name: "企业乙", roles: ["listingkit_admin"] }, roles: ["listingkit_admin"], retry: vi.fn() };
   state.read.mockReset().mockResolvedValue(commercialOverviewFixture());
   state.resources.mockReset().mockImplementation((_user, org) => Promise.resolve(commercialResourcesFixture(org)));
   state.offers.mockReset().mockResolvedValue({ organization_id: "org-B", items: [] });
+  state.tokens.mockReset().mockImplementation((scope: { expectedOrganizationId: string }) => Promise.resolve({ organizationId: scope.expectedOrganizationId, windowStart: "2026-09-01T00:00:00Z", windowEnd: "2026-10-01T00:00:00Z", enterprise: { total: "50000", allocated: "0", unallocated: "50000", consumed: "0" }, members: [] }));
   state.wallet.mockReset().mockResolvedValue({ organization_id: "org-B", currency: "CNY", available_minor: "12000", reserved_minor: "0", debt_minor: "0", lifetime_topup_minor: "12000", lifetime_spend_minor: "0", version: "1", observed_at: "2026-09-23T10:00:00Z" });
   state.entries.mockReset().mockResolvedValue({ organization_id: "org-B", items: [], next_cursor: "" });
   state.summary.mockReset().mockResolvedValue({ organization_id: "org-B", currency: "CNY", from: "2026-08-24T10:00:00Z", until: "2026-09-23T10:00:00Z", spend_minor: "0", store_renewal_spend_minor: "0", ai_point_spend_minor: "0", data_row_spend_minor: "0", other_spend_minor: "0", observed_at: "2026-09-23T10:00:00Z" });

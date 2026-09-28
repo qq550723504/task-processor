@@ -45,7 +45,10 @@ const authenticatedGET = serverAuth(async (request) => {
         { status: 403 },
       );
     }
-    return NextResponse.json({ ok: true, identity });
+    return NextResponse.json(
+      { ok: true, identity, authenticatedAt: session?.authenticatedAt ?? null },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     return NextResponse.json(
       {

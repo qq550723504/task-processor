@@ -100,6 +100,7 @@ describe("GET /api/zitadel-auth/session", () => {
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
     mockedAuthState.session = {
       identityVersion: 3,
+      authenticatedAt: "2026-09-01T02:00:00.000Z",
       identity: {
         tenantId: "org-286",
         userId: "user-1",
@@ -113,14 +114,25 @@ describe("GET /api/zitadel-auth/session", () => {
       ok?: boolean;
       identity?: { tenantId?: string };
       accessToken?: string;
+      authenticatedAt?: string | null;
     };
 
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
     expect(payload.identity?.tenantId).toBe("org-286");
     expect(payload.accessToken).toBeUndefined();
+    expect(payload.authenticatedAt).toBe("2026-09-01T02:00:00.000Z");
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("set-cookie")).toContain(
       "authjs.session-token=refreshed-session",
     );
+  });
+
+  it("returns null when the authenticated session has no provider authentication time", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedAuthState.session = { identityVersion: 3, identity: { tenantId: "org-286", userId: "user-1", roles: ["listingkit_operator"] } };
+    mockedServerToken.accessToken = "access-token-1";
+    expect(await (await callGET()).json()).toMatchObject({ ok: true, authenticatedAt: null });
   });
 });
