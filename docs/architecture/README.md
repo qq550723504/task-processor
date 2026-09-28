@@ -126,11 +126,10 @@ These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
 - [`agent-knowledge-context-v1.md`](./agent-knowledge-context-v1.md)
-  - ARCHITECTURE_REVIEW #555/#556 for enterprise Knowledge + existing Product Agent
-    integration. Product Gate is frozen; Ready-triggered review exposed bounded V1
-    implementation blockers around dispatch fencing and Source/Revision lifecycle.
-    Fixes are documented; implementation remains **NOT READY** until targeted verification
-    closes them.
+  - IMPLEMENTATION_READY #555/#556 enterprise Knowledge + existing Product Agent V1:
+    Organization-scoped Knowledge, bounded document lifecycle, immutable context bundles,
+    exact citations, dispatch-permit disable fence and Human Review provenance. Production
+    Writer starts only after PR #556 is merged to main; rollout/provider use remains gated.
 
 - [`account-facts-invitations-v1.md`](./account-facts-invitations-v1.md)
   - IMPLEMENTATION_READY Design Basis for the bounded #551 Account Center
