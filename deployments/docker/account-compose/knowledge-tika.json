@@ -1,0 +1,7 @@
+{
+ "parsers":[{"pdf-parser":{"ocr":{"strategy":"NO_OCR"},"extractActions":false,"extractInlineImages":false,"imageStrategy":"NONE","throwOnEncryptedPayload":true}},{"ooxml-parser":{}}],
+ "parse-context":{"skip-embedded-document-selector":{},"timeout-limits":{"totalTaskTimeoutMillis":15000,"progressTimeoutMillis":10000}},
+ "server":{"endpoints":["rmeta","version"],"allowPipes":false,"allowPerRequestConfig":false,"maxRequestSizeBytes":10485760},
+ "pipes":{"numClients":2,"forkedJvmArgs":["-Xmx512m","-XX:ActiveProcessorCount=1"],"maxWaitForClientMillis":1000,"socketTimeoutMillis":18000,"maxTotalTaskTimeoutMillis":15000,"maxIpcPayloadBytes":16777216,"tempDirectory":"/tmp"},
+ "content-handler-factory":{"basic-content-handler-factory":{"type":"TEXT","writeLimit":2097152}}
+}

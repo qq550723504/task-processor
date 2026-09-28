@@ -32,7 +32,7 @@ export function isWorkbenchRoute(pathname: string | null): boolean {
   );
 }
 
-export function ApplicationFrame({ children, productAcquisitionAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean }>) {
+export function ApplicationFrame({ children, productAcquisitionAvailable = false, knowledgeAvailable = false }: Readonly<{ children: React.ReactNode; productAcquisitionAvailable?: boolean; knowledgeAvailable?: boolean }>) {
   const pathname = usePathname();
 
   // Public marketing, legal, and login routes must not initialize the authenticated
@@ -51,7 +51,7 @@ export function ApplicationFrame({ children, productAcquisitionAvailable = false
           <QueryProvider>
             <ToastProvider>
               <WorkbenchContextProvider>
-                <WorkspaceAppShell productAcquisitionAvailable={productAcquisitionAvailable}>{children}</WorkspaceAppShell>
+                <WorkspaceAppShell productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={knowledgeAvailable}>{children}</WorkspaceAppShell>
               </WorkbenchContextProvider>
             </ToastProvider>
           </QueryProvider>

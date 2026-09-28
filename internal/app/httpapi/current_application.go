@@ -23,6 +23,8 @@ import (
 	sourceaccountstore "task-processor/internal/integration/persistence/sourceaccountregistry"
 	"task-processor/internal/integration/zitadelregistration"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/knowledge"
+	knowledgehttp "task-processor/internal/knowledge/httpapi"
 	verificationhttp "task-processor/internal/subjectverification/httpapi"
 )
 
@@ -104,6 +106,8 @@ type currentApplicationFactories struct {
 
 type CurrentApplicationOption func(*currentApplicationOptions)
 type currentApplicationOptions struct {
+	knowledgeServices           int
+	knowledge                   *knowledge.Service
 	storeCenters                int
 	storeCenterDB, storeQuotaDB *gorm.DB
 	runtimeContext              context.Context
@@ -245,6 +249,9 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	if supplied.storeCenters > 1 || supplied.referrals > 1 || supplied.productAcquisitions > 1 || supplied.imageAgents > 1 || supplied.memberships > 1 || supplied.productAgents > 1 {
 		return nil, errors.New("current application feature pool supplied more than once")
 	}
+	if supplied.knowledgeServices > 1 || supplied.knowledgeServices > 0 && supplied.knowledge == nil {
+		return nil, errors.New("knowledge service unavailable or supplied more than once")
+	}
 	if supplied.storeCenters > 0 {
 		if supplied.storeCenterDB == nil || supplied.storeQuotaDB == nil || supplied.storeCenterDB == supplied.storeQuotaDB || factories.buildStoreCenter == nil || supplied.commercialOwnerDB == nil {
 			return nil, errors.New("store center dependencies unavailable")
@@ -353,6 +360,13 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 		return nil, fmt.Errorf("build current commercial module: %w", err)
 	}
 	modules := []kernelmodule.Module{workbench.module, commercial, sourceAccount}
+	if supplied.knowledgeServices > 0 {
+		handler, err := knowledgehttp.NewHandler(supplied.knowledge)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, knowledgehttp.NewModule(handler))
+	}
 	if supplied.storeCenters > 0 {
 		stores, err := factories.buildStoreCenter(ctx, supplied.storeCenterDB, supplied.storeQuotaDB)
 		if err != nil {
@@ -543,6 +557,7 @@ func buildCurrentApplication(ctx context.Context, sourceAccountDB, commercialDB 
 	routeFeatures := currentApplicationOptionalRoutes{
 		ZitadelSMS:          true,
 		StoreCenter:         supplied.storeCenters > 0,
+		Knowledge:           supplied.knowledgeServices > 0,
 		AcquisitionImage:    factories.buildAcquisitionImage != nil,
 		ProductAgent:        supplied.productAgent != nil,
 		MemberPoints:        includeMemberPoints,
@@ -606,6 +621,7 @@ func validateCurrentApplicationRoutesWithBrowserFeatures(routes []httproute.Desc
 }
 
 type currentApplicationOptionalRoutes struct {
+	Knowledge           bool
 	StoreCenter         bool
 	Resources           bool
 	ZitadelSMS          bool
@@ -617,6 +633,11 @@ type currentApplicationOptionalRoutes struct {
 
 func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, includeAudit, includeAcquisition, includeReferrals, includeMembership, includeAccountProfile, includeAllocation, includeBrowser bool, optional currentApplicationOptionalRoutes) error {
 	admitted := append([]currentApplicationRoute(nil), currentWorkbenchApplicationRoutes...)
+	if optional.Knowledge {
+		for _, r := range knowledgehttp.Routes(&knowledgehttp.Handler{}) {
+			admitted = append(admitted, currentApplicationRoute{Method: r.Method, Path: r.Path})
+		}
+	}
 	if optional.StoreCenter {
 		for _, r := range currentStoreCenterRoutes {
 			admitted = append(admitted, currentApplicationRoute{Method: r.method, Path: r.path})
@@ -715,6 +736,14 @@ func validateCurrentApplicationRoutesInternal(routes []httproute.Descriptor, inc
 	}
 	includeCommercialBilling := false
 	for _, descriptor := range routes {
+		if strings.HasPrefix(descriptor.Path, "/api/v1/workbench/knowledge-") {
+			if !optional.Knowledge {
+				return errors.New("knowledge feature not admitted")
+			}
+			if err := validateKnowledgeDescriptor(descriptor); err != nil {
+				return err
+			}
+		}
 		if strings.HasPrefix(descriptor.Path, acquisitionImageBase) && (descriptor.Module != "acquisition-main-image" || descriptor.AuthPolicy != httproute.AuthPolicyVerifiedIdentity || descriptor.OrganizationAccessPolicy != httproute.OrganizationAccessPolicyLiveWrite || descriptor.RequestTimeout != 30*time.Second || descriptor.Permission != map[bool]string{true: authz.PermissionImageAgentRead, false: authz.PermissionImageAgentWrite}[descriptor.Method == http.MethodGet]) {
 			return errors.New("current acquisition image route loses live permission boundary")
 		}

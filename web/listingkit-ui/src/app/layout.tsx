@@ -4,6 +4,7 @@ import { connection } from "next/server";
 
 import { ApplicationFrame } from "@/components/application-frame";
 import { isProductAcquisitionAvailable } from "@/lib/server/product-acquisition-availability";
+import { isKnowledgeAvailable } from "@/lib/server/knowledge-availability";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -39,7 +40,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground">
-        <ApplicationFrame productAcquisitionAvailable={productAcquisitionAvailable}>{children}</ApplicationFrame>
+        <ApplicationFrame productAcquisitionAvailable={productAcquisitionAvailable} knowledgeAvailable={isKnowledgeAvailable()}>{children}</ApplicationFrame>
       </body>
     </html>
   );
