@@ -88,6 +88,10 @@ type Options struct {
 	MinInterval       time.Duration
 	Jitter            float64
 	ChallengeCooldown time.Duration
+	// StartupQuarantine is how long a freshly started collector refuses its first
+	// request, because a restarted process cannot know whether its egress IP was
+	// challenged just before it died. Zero uses the cooldown default.
+	StartupQuarantine time.Duration
 	// navigateURLOverride replaces the navigation target. It exists only so the
 	// browser fixture test can drive a real Chromium against a loopback fixture
 	// page; production never sets it (the target is always source.URL).
@@ -186,7 +190,7 @@ func New(opts Options) *Client {
 	return &Client{
 		opts:     opts,
 		slots:    make(chan struct{}, opts.maxConcurrent()),
-		throttle: newThrottle(opts.MinInterval, opts.Jitter, opts.ChallengeCooldown),
+		throttle: newThrottle(opts.MinInterval, opts.Jitter, opts.ChallengeCooldown, opts.StartupQuarantine),
 	}
 }
 

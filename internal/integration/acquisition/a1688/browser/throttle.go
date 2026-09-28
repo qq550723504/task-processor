@@ -30,6 +30,11 @@ type Throttle struct {
 	// ChallengeCooldown is how long to refuse new work after a challenge. Zero
 	// uses DefaultChallengeCooldown.
 	ChallengeCooldown time.Duration
+	// StartupQuarantine is how long a freshly constructed throttle refuses its
+	// first request. A restarted process has no memory of whether its egress IP
+	// was challenged just before it died, so without this it would immediately
+	// re-hit 1688 and negate the cooldown. Zero uses DefaultChallengeCooldown.
+	StartupQuarantine time.Duration
 
 	mu       sync.Mutex
 	next     time.Time // earliest allowed start
@@ -50,9 +55,12 @@ const (
 	DefaultMinInterval       = 20 * time.Second
 	DefaultJitterFraction    = 0.3
 	DefaultChallengeCooldown = 10 * time.Minute
+	// DefaultStartupQuarantine matches the cooldown by default: a replacement
+	// collector must assume the worst about an exit IP it did not observe.
+	DefaultStartupQuarantine = DefaultChallengeCooldown
 )
 
-func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown time.Duration) *Throttle {
+func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown, startupQuarantine time.Duration) *Throttle {
 	if minInterval <= 0 {
 		minInterval = DefaultMinInterval
 	}
@@ -62,12 +70,26 @@ func newThrottle(minInterval time.Duration, jitter float64, challengeCooldown ti
 	if challengeCooldown <= 0 {
 		challengeCooldown = DefaultChallengeCooldown
 	}
-	return &Throttle{
+	// Zero (the unset default) means "use the conservative default"; a negative
+	// value explicitly disables the quarantine, which only tests need. Disabling
+	// it by default would be the unsafe direction.
+	quarantined := startupQuarantine >= 0
+	if startupQuarantine == 0 {
+		startupQuarantine = DefaultStartupQuarantine
+	}
+	th := &Throttle{
 		MinInterval:       minInterval,
 		Jitter:            jitter,
 		ChallengeCooldown: challengeCooldown,
+		StartupQuarantine: startupQuarantine,
 		rand:              rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
+	if quarantined && startupQuarantine > 0 {
+		// A new collector assumes the worst about an exit IP it never observed.
+		th.blocked = true
+		th.cooledAt = time.Now().Add(startupQuarantine)
+	}
+	return th
 }
 
 // Wait blocks until this acquisition may start, the context expires, or the

@@ -13,7 +13,7 @@ import (
 // The rate floor must actually pace acquisitions, and it must queue concurrent
 // callers behind each other instead of letting a burst through.
 func TestThrottlePacesAndQueuesConcurrentCallers(t *testing.T) {
-	th := newThrottle(120*time.Millisecond, 0, 0)
+	th := newTestThrottle(120*time.Millisecond, 0, 0)
 
 	started := time.Now()
 	var wg sync.WaitGroup
@@ -34,7 +34,7 @@ func TestThrottlePacesAndQueuesConcurrentCallers(t *testing.T) {
 // A challenge must stop the process, and the refusal must be typed and
 // immediate rather than a multi-minute block.
 func TestThrottleChallengeCooldownRefusesImmediately(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 10*time.Minute)
+	th := newTestThrottle(time.Millisecond, 0, 10*time.Minute)
 	require.NoError(t, th.Wait(context.Background()))
 
 	th.Observe(ErrChallenge)
@@ -50,7 +50,7 @@ func TestThrottleChallengeCooldownRefusesImmediately(t *testing.T) {
 // A non-challenge failure must NOT stop the world: only a challenge is the
 // observed escalation signal.
 func TestThrottleIgnoresNonChallengeFailures(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 10*time.Minute)
+	th := newTestThrottle(time.Millisecond, 0, 10*time.Minute)
 	th.Observe(ErrUnsupported)
 	th.Observe(ErrUnavailable)
 	th.Observe(ErrCapacity)
@@ -67,7 +67,7 @@ func TestThrottleIgnoresNonChallengeFailures(t *testing.T) {
 // self-imposed pace to the source: the caller would see a deadline as though
 // 1688 had been slow.
 func TestThrottleWaitRefusesWhenItCannotMeetTheBudget(t *testing.T) {
-	th := newThrottle(2*time.Second, 0, 0)
+	th := newTestThrottle(2*time.Second, 0, 0)
 	require.NoError(t, th.Wait(context.Background())) // consumes the immediate slot
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -81,7 +81,7 @@ func TestThrottleWaitRefusesWhenItCannotMeetTheBudget(t *testing.T) {
 // A wait that does fit must still stop when the caller's context is cancelled, so
 // the acquisition budget continues to bound the handler.
 func TestThrottleWaitHonoursContextCancellation(t *testing.T) {
-	th := newThrottle(400*time.Millisecond, 0, 0)
+	th := newTestThrottle(400*time.Millisecond, 0, 0)
 	require.NoError(t, th.Wait(context.Background())) // consumes the immediate slot
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -101,7 +101,9 @@ func TestThrottleWaitHonoursContextCancellation(t *testing.T) {
 // throttle must surface as a typed refusal.
 func TestClientAppliesThrottleBeforeBrowserWork(t *testing.T) {
 	binPath := fixtureBrowserPath(t)
-	client := New(Options{ExecutablePath: binPath, MinInterval: time.Hour, ChallengeCooldown: time.Minute})
+	// StartupQuarantine is disabled so the first slot is genuinely available here;
+	// the quarantine has its own test.
+	client := New(Options{ExecutablePath: binPath, MinInterval: time.Hour, ChallengeCooldown: time.Minute, StartupQuarantine: -1})
 	// The first call reserves a slot an hour out, so the next one cannot start
 	// and must be refused before a browser is ever launched.
 	require.NoError(t, client.throttle.Wait(context.Background()), "first slot should be immediate")
@@ -122,7 +124,7 @@ func TestThrottleDefaultsAreConservative(t *testing.T) {
 	require.Equal(t, 10*time.Minute, DefaultChallengeCooldown)
 	require.Greater(t, DefaultMinInterval, 5*time.Second,
 		"the floor must sit well above the burst that triggered a wall")
-	th := newThrottle(0, 0, 0)
+	th := newTestThrottle(0, 0, 0)
 	require.Equal(t, DefaultMinInterval, th.MinInterval)
 	require.Equal(t, DefaultJitterFraction, th.Jitter)
 	require.Equal(t, DefaultChallengeCooldown, th.ChallengeCooldown)
@@ -131,7 +133,7 @@ func TestThrottleDefaultsAreConservative(t *testing.T) {
 // Jitter must keep the effective interval within the configured band so many
 // collectors do not synchronise.
 func TestThrottleJitterStaysWithinBand(t *testing.T) {
-	th := newThrottle(100*time.Millisecond, 0.5, 0)
+	th := newTestThrottle(100*time.Millisecond, 0.5, 0)
 	for i := 0; i < 8; i++ {
 		require.NoError(t, th.Wait(context.Background()))
 		// After a wait returns, the reserved next slot is the one just consumed
@@ -147,7 +149,7 @@ func TestThrottleJitterStaysWithinBand(t *testing.T) {
 // external reset, a process that saw one challenge could never collect again
 // without a restart, which is the opposite of a cooldown.
 func TestThrottleCooldownExpiresWithoutExternalReset(t *testing.T) {
-	th := newThrottle(time.Millisecond, 0, 60*time.Millisecond)
+	th := newTestThrottle(time.Millisecond, 0, 60*time.Millisecond)
 	require.NoError(t, th.Wait(context.Background()))
 
 	th.Observe(ErrChallenge)
@@ -164,7 +166,7 @@ func TestThrottleCooldownExpiresWithoutExternalReset(t *testing.T) {
 // A request that is refused must not consume a slot. Otherwise every retryable
 // refusal pushes the queue further out and the process can starve permanently.
 func TestThrottleRefusedRequestDoesNotConsumeSlot(t *testing.T) {
-	th := newThrottle(2*time.Second, 0, 0)
+	th := newTestThrottle(2*time.Second, 0, 0)
 	require.NoError(t, th.Wait(context.Background())) // consumes the immediate slot
 
 	// A budget far shorter than the interval cannot be served.
@@ -188,7 +190,7 @@ func TestThrottleRefusedRequestDoesNotConsumeSlot(t *testing.T) {
 // A caller that is cancelled while waiting must give its slot back, so a client
 // that disconnects cannot starve the requests behind it.
 func TestThrottleCancelledWaitReleasesSlot(t *testing.T) {
-	th := newThrottle(300*time.Millisecond, 0, 0)
+	th := newTestThrottle(300*time.Millisecond, 0, 0)
 	require.NoError(t, th.Wait(context.Background()))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -211,7 +213,7 @@ func TestThrottleCancelledWaitReleasesSlot(t *testing.T) {
 // budget would reject it, because the interval floor is wider than the budget by
 // design.
 func TestThrottleServesFirstRequestUnderProductionDefaults(t *testing.T) {
-	th := newThrottle(DefaultMinInterval, DefaultJitterFraction, DefaultChallengeCooldown)
+	th := newTestThrottle(DefaultMinInterval, DefaultJitterFraction, DefaultChallengeCooldown)
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
 	require.NoError(t, th.Wait(ctx),
@@ -221,7 +223,7 @@ func TestThrottleServesFirstRequestUnderProductionDefaults(t *testing.T) {
 // A cancelled waiter must not erase the schedule: the caller behind it must
 // still respect the floor the preceding acquisition established.
 func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
-	th := newThrottle(400*time.Millisecond, 0, 0)
+	th := newTestThrottle(400*time.Millisecond, 0, 0)
 	require.NoError(t, th.Wait(context.Background()))
 
 	th.mu.Lock()
@@ -241,4 +243,35 @@ func TestThrottleRollbackPreservesPrecedingFloor(t *testing.T) {
 	th.mu.Unlock()
 	require.Equal(t, established, after,
 		"a cancelled waiter must restore the displaced boundary, not erase the schedule")
+}
+
+// newTestThrottle builds a throttle with the startup quarantine reduced to a
+// negligible value. The production default deliberately keeps a fresh collector
+// silent for a full cooldown, which would otherwise stall every test; the
+// quarantine itself is covered by its own test.
+func newTestThrottle(minInterval time.Duration, jitter float64, challengeCooldown time.Duration) *Throttle {
+	return newThrottle(minInterval, jitter, challengeCooldown, -1)
+}
+
+// A fresh collector must stay silent before its first request, because a
+// restarted process cannot know whether its egress IP was challenged just before
+// it died. Without this it re-hits 1688 and negates the cooldown.
+func TestThrottleFreshProcessIsQuarantined(t *testing.T) {
+	th := newThrottle(time.Millisecond, 0, 10*time.Minute, 80*time.Millisecond)
+
+	require.ErrorIs(t, th.Wait(context.Background()), ErrThrottled,
+		"a fresh collector must not call out immediately")
+
+	require.Eventually(t, func() bool { return th.CooldownRemaining() == 0 },
+		2*time.Second, 10*time.Millisecond, "the startup quarantine must lapse on its own")
+
+	require.NoError(t, th.Wait(context.Background()),
+		"the first request must be served once the quarantine elapses")
+}
+
+// The quarantine defaults to the cooldown: a replacement collector assumes the
+// worst about an exit IP it never observed.
+func TestThrottleStartupQuarantineDefaultsToCooldown(t *testing.T) {
+	th := newThrottle(time.Millisecond, 0, time.Minute, 0)
+	require.Equal(t, DefaultChallengeCooldown, th.StartupQuarantine)
 }

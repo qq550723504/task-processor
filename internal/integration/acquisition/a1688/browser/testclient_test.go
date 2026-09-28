@@ -9,5 +9,6 @@ import "time"
 func newTestClient(opts Options) *Client {
 	opts.MinInterval = time.Nanosecond
 	opts.ChallengeCooldown = time.Nanosecond
+	opts.StartupQuarantine = -1
 	return New(opts)
 }
