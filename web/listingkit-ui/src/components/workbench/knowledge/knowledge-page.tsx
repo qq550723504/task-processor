@@ -53,7 +53,7 @@ function KnowledgeContent({scope,baseId}:{scope:KnowledgeScope;baseId?:string}) 
  const [page,setPage]=useState(1),[name,setName]=useState(""),[editing,setEditing]=useState(false),[file,setFile]=useState<File|null>(null),[sourceName,setSourceName]=useState(""),[replacement,setReplacement]=useState<KnowledgeSource|null>(null),[preview,setPreview]=useState<KnowledgeSource|null>(null),[intent,setIntent]=useState<Intent|null>(null),[message,setMessage]=useState("");
  const key=["knowledge",scope.userId,scope.organizationId];
  const list=useQuery({queryKey:[...key,"bases",page],queryFn:({signal})=>knowledgeRequest(scope,"knowledge-bases?page="+page+"&pageSize=20",basesSchema,{signal}),enabled:!baseId,retry:false});
- const base=useQuery({queryKey:[...key,"base",baseId],queryFn:({signal})=>knowledgeRequest(scope,"knowledge-bases/"+baseId,baseSchema,{signal}),enabled:!!baseId,retry:false});
+ const base=useQuery({queryKey:[...key,"base",baseId],queryFn:({signal})=>knowledgeRequest(scope,"knowledge-bases/"+baseId,baseSchema,{signal}),enabled:!!baseId,retry:false,refetchInterval:5000});
  const sources=useQuery({queryKey:[...key,"sources",baseId],queryFn:async({signal})=>{
  const result=await knowledgeRequest(scope,"knowledge-bases/"+baseId+"/sources",sourcesSchema,{signal});
  if(result.items.some(source=>source.knowledgeBaseId!==baseId))throw new KnowledgeError("INVALID_UPSTREAM_RESPONSE");return result;

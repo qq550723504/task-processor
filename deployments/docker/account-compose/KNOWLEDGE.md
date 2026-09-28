@@ -46,12 +46,14 @@ Dockerfile 校验各架构已固定的官方 SHA256；首次构建需要访问 G
   合成集成检查已用实际 bootstrap/policy 的非 root 运行凭据验证缺失对象、首次上传、不可覆盖、读回、禁止删除与前缀外写入。
   本文件 policy 对应固定 MinIO；若单独配置 AWS S3，必须按[官方 HeadObject 权限要求](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
   为专用私有 bucket 配置 `s3:ListBucket` 以区分缺失对象的 404 与拒绝访问的 403。生产 S3 仍为 NOT_RUN。
+  对象 endpoint 留空使用 AWS 默认 HTTPS；自定义外部地址必须 HTTPS。HTTP 仅允许固定 `knowledge-objects` 服务、localhost、loopback 或私网 IP。
 - Tika 只连接 internal Docker network，无公开端口、凭据或宿主目录；非 root、只读 rootfs、256 MiB 临时盘、
   2 CPU/2 GiB/128 PID，仅 PDF/OOXML parser，关闭 OCR/嵌入文档/请求配置。
   [官方配置说明](https://tika.apache.org/docs/4.0.x/configuration/index.html)与[服务端边界](https://tika.apache.org/docs/4.0.x/using-tika/server/index.html)。
 - 后台每 5 秒最多领取 2 个立即可运行任务（合同上限 4），租约 30 秒、处理截止 20 秒、最多 3 次解析尝试。
   重启从数据库恢复；缺失对象标记 UPLOAD_INCOMPLETE，相同上传键与字节可恢复原 Revision。
 - 企业切换时清空旧企业数据、请求与预览。结果不确定的写操作先用原键收敛后才能切换企业。
+- 打开详情每 5 秒同步知识库与资料状态，其他管理员的改名/停用会反映在页面；停用后移除预览与管理控件。
 
 停止/重启保留资料与凭据：
 

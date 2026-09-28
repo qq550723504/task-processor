@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"strings"
 )
 
 type KnowledgeStorageConfig struct {
@@ -35,6 +36,16 @@ func (c *Config) validateKnowledge() error {
 	}
 	if k.Storage.Region == "" || k.Storage.Bucket == "" || k.Storage.AccessKeyID == "" || k.Storage.SecretAccessKey == "" || k.Storage.Mode != "aws" && k.Storage.Mode != "cos" || k.Storage.Mode == "cos" && !k.Storage.COSImmutableNonVersionedBucketPolicy {
 		return errors.New("knowledge requires explicit private immutable object storage")
+	}
+	if k.Storage.Endpoint != "" {
+		endpoint, err := url.Parse(k.Storage.Endpoint)
+		if err != nil || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.Scheme != "https" && endpoint.Scheme != "http" {
+			return errors.New("knowledge requires a valid private object endpoint")
+		}
+		ip := net.ParseIP(endpoint.Hostname())
+		if endpoint.Scheme == "http" && !strings.EqualFold(endpoint.Hostname(), "knowledge-objects") && !strings.EqualFold(endpoint.Hostname(), "localhost") && (ip == nil || !ip.IsLoopback() && !ip.IsPrivate()) {
+			return errors.New("knowledge external object endpoint requires HTTPS")
+		}
 	}
 	u, err := url.Parse(k.ParserEndpoint)
 	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {

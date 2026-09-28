@@ -1,16 +1,31 @@
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
-import {act,cleanup,render,screen,waitFor} from "@testing-library/react";
+import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {afterEach,expect,it,vi} from "vitest";
 import {WorkbenchContextProvider,useWorkbenchContext} from "@/components/providers/workbench-context-provider";
 import {OrganizationSwitcher} from "@/components/workbench/organization-switcher";
 import {KnowledgePage} from "./knowledge-page";
-afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
 const baseId="4841d296-ef14-4c16-8d25-a7667e534feb",sourceId="d6c33a5b-95dd-4a3c-a420-652ec52b5f08",oldId="f5dd72eb-e639-436e-b057-38c713d12ce9",latestId="b6f6b343-b4d6-4db4-ac21-98585bc527f6";
 const context={user:{id:"reader"},homeOrganizationId:"org-a",effectiveOrganizationId:"org-a",selectionRequired:false,organizations:[{id:"org-a",name:"企业甲",roles:["listingkit_admin"]},{id:"org-b",name:"企业乙",roles:["listingkit_admin"]}]};
 const timestamp="2026-09-28T10:00:00Z";
 const base={id:baseId,name:"品牌指南",state:"ACTIVE",version:1,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp};
 const old={id:oldId,number:1,filename:"old.txt",contentType:"text/plain",sizeBytes:5,state:"AVAILABLE",createdAt:timestamp,updatedAt:timestamp};
+it("refreshes an externally renamed and disabled base alongside its sources",async()=>{
+ vi.useFakeTimers();let current=base;
+ vi.stubGlobal("fetch",vi.fn(async(url:string)=>{
+ if(url==="/api/workbench/context")return Response.json(context);
+ if(url.endsWith("/sources"))return Response.json({items:[{id:sourceId,knowledgeBaseId:baseId,name:"产品资料",state:"ACTIVE",version:1,latestRevision:old,currentReadableRevision:old,createdBy:"reader",updatedBy:"reader",createdAt:timestamp,updatedAt:timestamp}]});
+ if(url.endsWith("/preview"))return Response.json({revisionId:oldId,text:"已保存正文"});return Response.json(current);
+ }));const unmount=mount(baseId);await act(async()=>{await vi.advanceTimersByTimeAsync(10);});
+ expect(screen.getByRole("heading",{name:"品牌指南"})).toBeVisible();
+ current={...base,name:"更新后的指南",version:2};await act(async()=>{await vi.advanceTimersByTimeAsync(5010);});
+ expect(screen.getByRole("heading",{name:"更新后的指南"})).toBeVisible();
+ fireEvent.click(screen.getByRole("button",{name:"预览"}));await act(async()=>{await vi.advanceTimersByTimeAsync(10);});expect(screen.getByText("已保存正文")).toBeVisible();
+ current={...current,state:"DISABLED",version:3};await act(async()=>{await vi.advanceTimersByTimeAsync(5010);});
+ expect(screen.getByText("知识库已停用")).toBeVisible();expect(screen.queryByText("已保存正文")).not.toBeInTheDocument();
+ for(const name of ["编辑名称","停用知识库","上传资料","重新上传","预览"])expect(screen.queryByRole("button",{name})).not.toBeInTheDocument();unmount();
+});
 function RefreshContext(){const context=useWorkbenchContext();return <button onClick={()=>void context.retry()}>更新企业授权</button>;}
 function mount(baseId?:string,refresh=false){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const view=render(<QueryClientProvider client={client}><WorkbenchContextProvider><OrganizationSwitcher/>{refresh?<RefreshContext/>:null}<KnowledgePage baseId={baseId}/></WorkbenchContextProvider></QueryClientProvider>);return ()=>{view.unmount();client.clear();};}
 it.each(["listingkit_operator","listingkit_viewer","admin",""])("hides creation for current organization role %s even with admin in another organization",async(role)=>{
