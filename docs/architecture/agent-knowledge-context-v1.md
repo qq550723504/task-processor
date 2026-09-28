@@ -22,9 +22,10 @@
 >
 > Product Gate: **APPROVED FOR ARCHITECTURE REVIEW** under #555.
 >
-> Architecture Review: **REOPENED FOR NEW BLOCKER** after Ready-triggered review at
-> `174d31b0431821368087f24b41b9470e5e17d556` identified the missing public
-> KnowledgeSelection transport contract.
+> Architecture Review: **REOPENED FOR NEW BLOCKERS**. KnowledgeSelection transport and
+> command fingerprint issues are fixed; current targeted review is closing the
+> KnowledgeDispatchPermit linearization, active-Source cardinality and replacement-Revision
+> promotion contracts.
 >
 > This document remains an Independent Architecture **review candidate**. Production
 > implementation is closed until that blocker is fixed and targeted verification completes. Real enterprise uploads, production Tika/S3 deployment, paid model
@@ -1064,6 +1065,32 @@ metadata fields. V1 limits:
 
 Every upload mutation requires `Idempotency-Key`.
 
+V1 freezes a management invariant: **one KnowledgeBase may have at most 4 ACTIVE Sources**.
+
+For `POST /knowledge-bases/:id/sources`:
+
+- after fresh authorization and bounded request fingerprinting, the repository transaction
+  locks the KnowledgeBase row before durable Source admission;
+- Base must be ACTIVE;
+- count only Sources whose lifecycle state is ACTIVE;
+- if the count is already 4, fail with `KNOWLEDGE_SOURCE_LIMIT_REACHED` before S3 write
+  or Source/Revision creation;
+- concurrent Source-create commands serialize on the Base row, so two requests cannot both
+  create a fifth ACTIVE Source;
+- DISABLING/DISABLED Sources do not consume an ACTIVE slot.
+
+V1 intentionally does not expose Source-level selection in the Product Agent start UI/API.
+To add a fifth usable document, the user first disables an existing Source, then creates the
+new Source.
+
+For `POST /knowledge-sources/:source_id/revisions`:
+
+- this updates an existing Source and does not consume another Source slot;
+- V1 permits at most one nonterminal replacement Revision
+  (`ADMITTED|OBJECT_STORED|PROCESSING`) per Source;
+- another replacement while one is nonterminal returns `KNOWLEDGE_REVISION_IN_PROGRESS`;
+- a failed/terminal replacement may be followed by a new explicit revision command.
+
 After authentication/authorization and before any durable mutation or S3 write, the server
 must bounded-read/spool the one admitted file, verify the multipart shape, compute SHA-256
 and size, normalize the bounded metadata, and construct the complete upload fingerprint.
@@ -1138,13 +1165,19 @@ Rules:
 - Browser/BFF never submits Source IDs, Revision IDs, citation IDs, S3 keys,
   `ContextSnapshotRef`, bundle ID or bundle digest.
 - The selected KnowledgeBase must belong to the current Effective Organization and be active.
-- Server resolves **all active Sources** in that KnowledgeBase. V1 requires 1–4 active
-  Sources total.
-- Every active Source must have a current content-readable revision in AVAILABLE or PARTIAL
-  state. PROCESSING/FAILED/missing current revision makes the explicit selection
-  `KNOWLEDGE_NOT_READY`; the server does not silently drop that Source.
-- PARTIAL revisions may be admitted only with their existing omission/truncation warnings
-  carried into the bundle.
+- Server resolves **all ACTIVE Sources** in that KnowledgeBase. The management invariant in
+  §14.2 guarantees 1–4 ACTIVE Sources; zero ACTIVE Sources is `KNOWLEDGE_NOT_READY`.
+- For each ACTIVE Source, server uses only its atomic `currentReadableRevision` pointer.
+  That pointer must reference an AVAILABLE or PARTIAL Revision.
+- A first upload or Source with no current-readable Revision is `KNOWLEDGE_NOT_READY`.
+- A newer replacement Revision that is ADMITTED/OBJECT_STORED/PROCESSING does **not** hide
+  the prior current-readable Revision; the prior readable version remains eligible until
+  atomic promotion.
+- A FAILED replacement likewise leaves the prior current-readable Revision in place. If the
+  Source has never had a readable Revision, it remains NOT_READY until a later successful
+  revision or the Source is disabled.
+- PARTIAL current-readable revisions may be admitted only with their existing
+  omission/truncation warnings carried into the bundle.
 - The existing ContextBundle byte/citation limits still apply after source resolution.
   Exceeding them fails visibly as `KNOWLEDGE_CONTEXT_TOO_LARGE`.
 
@@ -1260,7 +1293,9 @@ Required integrity:
 - IDs are opaque UUIDs;
 - operation idempotency is unique within Organization + operation kind;
 - revision content digest is immutable after admission;
-- one Source may have many Revisions but only one current/latest pointer;
+- one Source may have many Revisions and has two distinct pointers:
+  `latestRevision` for newest admitted attempt/UI status and
+  `currentReadableRevision` for the version eligible for Knowledge use;
 - ContextBundle is immutable after materialization;
 - ContextBundle has one unique pre-Start MaterializationIdentity and immutable
   MaterializationFingerprint;
@@ -1269,6 +1304,8 @@ Required integrity:
 - KnowledgeDispatchPermit binds one bundle, one InvocationID, the exact referenced
   Base/Source fence versions, state and bounded expiry;
 - at most one active permit exists per Organization + model InvocationID;
+- at most 4 Source rows per KnowledgeBase may be ACTIVE;
+- at most one nonterminal replacement Revision exists per Source;
 - mutable records use explicit version/CAS for user-visible writes;
 - source/base disable cannot mutate existing historical bundle entries.
 
@@ -1389,6 +1426,46 @@ A later client retry with the **same Idempotency-Key + same complete upload fing
 may resume that exact `UPLOAD_INCOMPLETE` operation/revision using the resent bounded
 bytes. It must not create a second visible Source. A changed fingerprint conflicts.
 A new key is a genuinely new upload command and must not be used automatically as recovery.
+
+### Replacement Revision promotion
+
+A replacement upload must never make a previously usable Source unreadable merely because
+the new bytes are still processing or later fail.
+
+Source projection semantics:
+
+```text
+latestRevision
+  = newest admitted revision attempt, regardless of processing outcome
+
+currentReadableRevision
+  = exact Revision currently eligible for Knowledge materialization
+  = only AVAILABLE or PARTIAL
+```
+
+Admission of a replacement Revision atomically:
+
+- creates the new Revision/ingest operation;
+- moves `latestRevision` to that new Revision;
+- leaves `currentReadableRevision` unchanged.
+
+When parsing finishes:
+
+- FAILED: persist failure and leave `currentReadableRevision` unchanged;
+- AVAILABLE/PARTIAL: in one PostgreSQL transaction, lock the Source row and exact Revision,
+  verify the Revision is terminal-readable and still the expected replacement, then CAS
+  `currentReadableRevision` to that Revision;
+- if Source/Base is DISABLING/DISABLED, persist the Revision result for history/UI but do
+  not promote it for future content use.
+
+Materialization locks/reads the ACTIVE Source row and its
+`currentReadableRevision` consistently before freezing the bundle. It therefore observes
+either the old readable Revision or the newly promoted readable Revision, never a pointer to
+PROCESSING/FAILED content.
+
+If a Source has no prior readable Revision, `currentReadableRevision` remains null until
+the first AVAILABLE/PARTIAL promotion. An active Source with null current-readable makes
+explicit KnowledgeBase selection NOT_READY.
 
 Candidate runtime bounds:
 
@@ -1803,19 +1880,29 @@ Review history:
 - later Ready-triggered review at `174d31b0431821368087f24b41b9470e5e17d556`
   demonstrated the missing KnowledgeSelection transport P1 BLOCKER; admission was reopened.
 
-The normal review stop rule was reached at `96ba7f6`, but Ready-triggered review on
-`174d31b` demonstrated a new P1 BLOCKER: the public Product Agent start request did not
-define how explicit KnowledgeSelection enters the application. §14.4 now freezes that
-transport contract. Subsequent Ready-triggered review demonstrated a second fresh P1
-BLOCKER: local disable and provider handoff lacked a shared linearization point. §6.4,
-§15.8 and §16.5 now freeze the KnowledgeDispatchPermit protocol using the existing
-BeforeDispatch seam. The stale ADMITTED ingest recovery obligation is also explicit as
-IMPLEMENTATION_TEST, and §9.3 removes the contradictory live-reference alternative.
+The normal review stop rule was reached at `96ba7f6`, but later Ready-triggered reviews
+demonstrated concrete new BLOCKER evidence and therefore legitimately reopened admission:
+the missing KnowledgeSelection transport/fingerprint contract; local disable/provider-send
+TOCTOU; and the fact that an unconstrained fifth ACTIVE Source would make a Base unselectable
+without any Source-selection UI. §§14.2/14.4 and §§6.4/15.8/16.5 now freeze those contracts.
+The stale ADMITTED ingest recovery and replacement-Revision promotion rules are explicit
+IMPLEMENTATION_TEST obligations; §9.3 also removes the contradictory live-reference
+alternative.
 
 ### Implementation gate — CLOSED PENDING TARGETED VERIFICATION
 
-Slices A–C must not start until the §14.4 transport fix receives targeted review and this
-document is explicitly returned to `IMPLEMENTATION_READY`.
+Slices A–C must not start until targeted verification confirms all newly demonstrated
+BLOCKER fixes on the same current HEAD:
+
+1. §14.4 KnowledgeSelection transport + command fingerprint;
+2. §6.4 / §15.8 / §16.5 KnowledgeDispatchPermit ordering and the 5m30s lease safety bound;
+3. §14.2 active-Source maximum invariant, so a valid KnowledgeBase cannot become
+   unselectable after a fifth upload;
+4. §15.6 replacement-Revision promotion semantics are covered as IMPLEMENTATION_TEST and do
+   not let PROCESSING/FAILED overwrite a prior readable Revision.
+
+Only after those checks have no unresolved BLOCKER and latest-head CI succeeds may this
+document be explicitly returned to `IMPLEMENTATION_READY`.
 
 This status does **not** authorize:
 
@@ -1861,8 +1948,19 @@ Architecture acceptance requires implementation evidence plans for these risks.
 - Product Agent start rejects unknown/duplicate KnowledgeSelection fields, null/empty
   selection and non-canonical IDs;
 - omitted KnowledgeSelection preserves the existing no-Knowledge start path;
-- explicit selection accepts one active KnowledgeBase only and server-resolves its Sources;
-- PROCESSING/FAILED active Source causes KNOWLEDGE_NOT_READY rather than silent omission;
+- explicit selection accepts one active KnowledgeBase only and server-resolves its ACTIVE
+  Sources;
+- concurrent Source creation cannot exceed four ACTIVE Sources;
+- fifth ACTIVE Source creation fails before object write with
+  KNOWLEDGE_SOURCE_LIMIT_REACHED;
+- disabling one Source immediately frees the ACTIVE slot for a later explicit Source create;
+- Source with no current-readable Revision causes KNOWLEDGE_NOT_READY;
+- replacement PROCESSING/FAILED does not hide a prior current-readable Revision;
+- AVAILABLE/PARTIAL replacement atomically promotes current-readable with Source/Revision
+  consistency;
+- FAILED replacement preserves the prior current-readable Revision;
+- concurrent materialization vs promotion freezes either the complete old or complete new
+  readable Revision, never a PROCESSING/FAILED/inconsistent pointer;
 - same Agent key + same normalized selection adopts the original bundle after a newer
   Knowledge revision appears;
 - same Agent key + changed KnowledgeSelection conflicts;
@@ -1923,6 +2021,10 @@ Architecture acceptance requires implementation evidence plans for these risks.
 
 - all eight accepted candidate flows have loading/empty/denied/failed states where relevant;
 - Organization switch cannot render stale Knowledge from the previous Organization;
+- Knowledge detail communicates the V1 maximum of 4 ACTIVE Sources and the need to disable
+  one before adding another;
+- replacement upload may show “new version processing/failed” while the previous readable
+  version remains the one used by new runs;
 - upload processing state is truthful after refresh/restart;
 - “enabled Agent” is never rendered from AgentRun running state;
 - template UI states that defaults are re-authorized at execution;
